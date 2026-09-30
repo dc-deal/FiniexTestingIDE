@@ -160,7 +160,7 @@ which is the one moment a sequence counter can be re-minted.
 
 ### Connect check — reachability and credential, before a session needs them
 
-`connect-check` probes the configured producer and answers three questions a live session
+`connect-check` probes the configured producer and answers three questions a live-adapter session
 answers only expensively: is the address reachable, **which** producer answered, and was our
 credential accepted.
 
@@ -213,9 +213,9 @@ Three properties, each with a reason:
   was rejected, silently, as *their* fault.
 - **The connection stays open**, unlike the credential case. One malformed pass must not end a
   session, and a producer-side fix should be picked up without a restart.
-- **The error goes to the session logger**, so it enters the §35 error pot — which means the run
-  grades `finished_with_errors` and exits `3` (#372) instead of finishing clean on a feed that
-  delivered nothing.
+- **The error goes to the session logger**, so it enters the error pot — the errors a run
+  collects without crashing — which means the run grades `finished_with_errors` and exits `3`
+  (#372) instead of finishing clean on a feed that delivered nothing.
 
 An additive field with no version bump is invisible to a consumer until something breaks; this is
 what makes the break diagnosable instead of silent.
@@ -359,7 +359,7 @@ mount archive slice ──► last (epoch, seq) ──► ?since=&epoch= ──�
         └─ no cursor (pre-stream archive, first session) ──► ?history=1 ──────────────────┘
 ```
 
-Without this a live session starts **BLIND**: its SIGNAL workers hold nothing and the first decision
+Without this a live-adapter session starts **BLIND**: its SIGNAL workers hold nothing and the first decision
 waits out a full producer cadence. On a thirty-day unattended run that is every restart. The bridge
 mounts the archive slice and takes its newest `(stream_epoch, seq)` as the connect cursor, so the
 opening state is **STALE** instead — knowing something old is a strictly better input to a staleness
@@ -441,7 +441,7 @@ advanced a session's cursor would consume envelopes the session it was meant to 
 **Why the second command exists, and it is not a convenience.** A mock AutoTrader session mounts its
 signal series from the archive (`scenario_settings.data_sentiment_type`), and the source resolver
 answers MOUNTED — *no live transport*. That is deliberate: a replay is reproducible precisely because
-nothing arrives from outside. The consequence is that **no mock run in this project ever opens a
+nothing arrives from outside. The consequence is that **no mock session in this project ever opens a
 connection**, so everything BEHIND the inbox is richly covered by them and everything in FRONT of it
 is not reachable from a mock profile at all.
 
@@ -452,12 +452,12 @@ a healthy producer will never produce on request. The stand-in lives in
 `signal_data/producer/signal_mock_producer.py`, is a diagnostic tool, and nothing in the runtime path
 imports it.
 
-| | mock AutoTrader session | `stream-probe-mock` | live session |
+| | mock session | `stream-probe-mock` | live-adapter session |
 |---|---|---|---|
 | Signal source | mounted archive | local stand-in over HTTP | the real producer |
 | Transport opened | no | yes, the real one | yes |
 | Control codes visible | never | all five, on request | only what the producer emits |
-| Broker / ticks | mock adapter + mock ticks | none — transport only | live |
+| Broker / ticks | mock adapter + replayed archive ticks | none — transport only | the venue's adapter and feed |
 
 ## Scenario usage
 
@@ -560,7 +560,7 @@ The reports run in the batch's Phase 1 and feed `ScenarioDataValidator`:
   the run will start on.
 - a hole **inside the loaded tick stretch** whose category is not in
   `data_validation.allowed_gap_categories` (`app_config.json`, shared with the tick check) is an
-  error — the scenario is excluded, the batch continues (§33).
+  error — the scenario is excluded, the batch continues.
 - a window reaching **past the last snapshot** is NOT flagged: that is the contracted staleness
   degradation (#434), and `sentiment_forex_demo` relies on it deliberately.
 
@@ -624,10 +624,10 @@ rendered in the run's **📡 SIGNAL CONFIGURATION** section (#433):
 | Archive | what *can* happen | `SignalCoverageReport`, read once in preparation Phase 1 |
 | Decision basis | what the strategy *actually decided on* | per-tick counters on every SIGNAL worker |
 
-### A live session has only one of them
+### A live-adapter session has only one of them
 
-A simulation and an AutoTrader **mock** run read their signal facts out of a finished archive. A
-**live** session has no archive: envelopes arrive while it runs. So the run report is built from
+A backtest and a **mock** session read their signal facts out of a finished archive. A
+**live-adapter** session has no archive: envelopes arrive while it runs. So the run report is built from
 whichever plane exists, and says which one it is:
 
 | | Archive | Feed |
@@ -723,8 +723,8 @@ each found the hard way against the real archive.
 > BOTH or in NEITHER.** The one exception is producer or transport HEALTH, and it never rides on the
 > runtime envelope — it lives on the transport plane, where a worker cannot reach it.
 
-This is not thrift. A field readable in a live session but absent from the archive means a
-**backtest stops predicting the live run**, which is the framework's central claim rather than a
+This is not thrift. A field readable in a live-adapter session but absent from the archive means a
+**backtest stops predicting the session**, which is the framework's central claim rather than a
 preference. And "we only look at it, we do not decide on it" does not save it: once a field sits on
 the runtime snapshot it is in reach of the decision logic whether that was intended or not.
 **Presence is reach.**
@@ -741,7 +741,7 @@ arrive that we do not declare:
 | `result.breaking_reason` | the display half, deliberately not consumed (see below) |
 
 **Prefer deriving over consuming.** Where a fact about our own processing is on offer as an upstream
-field, count it ourselves: the number is then identical in simulation and live over the same
+field, count it ourselves: the number is then identical in both pipelines over the same
 archive, it needs no parquet column and no re-import, and it does not depend on the producer
 continuing to send it. A cross-check against an upstream field belongs at **import** time — validate
 and refuse — not in the runtime path, where it needs no field at all.
@@ -990,7 +990,7 @@ takes effect only when `data_sentiment_type` is not set on the scenario. The fir
 
 ## AutoTrader mock feed — `scenario_settings.data_sentiment_type` (#438)
 
-The AutoTrader mock pipeline consumes the same archives through the **same field a sim scenario
+A mock session consumes the same archives through the **same field a sim scenario
 uses** — the profile's `scenario_settings` block, prepared by the shared `MountPreparer`:
 
 ```json
@@ -1005,22 +1005,23 @@ uses** — the profile's `scenario_settings` block, prepared by the shared `Moun
 The feed is resolved via the signal index against the **scenario window** (like the sim), carried
 in the data package as a `SignalSeries`, and injected as a `SignalDataProvider` into each SIGNAL
 worker (`inject_signal_providers`, the same function the sim subprocess uses). Validation is strict
-and fails at startup (§35), never at the first tick:
+and fails at startup, never at the first tick — an AutoTrader session is one session with nothing
+to exclude, so a problem found before the run aborts it:
 
 | Case | Behavior |
 |------|----------|
 | SIGNAL worker, no `scenario_settings.data_sentiment_type` | Startup abort (no feed for the worker) |
 | No index overlap with the scenario window | Startup abort (`SignalDataUnavailableError`) |
-| Live tick source with a SIGNAL worker | Startup abort (live sentiment = the #375 event path, not available yet) |
+| Live-adapter session with a SIGNAL worker | Not this feed — the live push stream (above) feeds it; with the stream disabled, startup abort (`SignalSourceUnresolvedError`) |
 
 A **deliberate outage** is expressed the sim way — a
 `scenario_settings.stress_test_config.stale_data_stress` event carves a window out of the sentiment
 series (data-plane), so the worker reports `is_stale` during that window and the decision degrades
-(#438; the tick status-plane carve stays sim-only → #444). The session summary tags the feed as
+(#438; a planned window on the tick source's status plane is driven on the AutoTrader loop too,
+since #444). The session summary tags the feed as
 `· 📡 Sentiment: <type>`.
 
 ## Scope
 
-Sim (backtesting) pipeline + the AutoTrader **mock** feed above. Real-time/live sentiment
-(API/EVENT, push) is a separate follow-up on the event timeline; the shared reader keeps both
-worlds on one load path.
+Sim pipeline, the AutoTrader mock feed, and the live push stream (above); the shared reader keeps
+both worlds on one load path.

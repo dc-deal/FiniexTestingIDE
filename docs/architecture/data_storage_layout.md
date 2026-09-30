@@ -31,17 +31,18 @@ worse. What they *can* share is how they describe themselves.
 |---|---|---|---|---|---|
 | 1 | `runs/` | RECORD | `run_id` | `runs_index.parquet`, from `header.json` | A · document |
 | 1b | `run_configs/` | RECORD | `config_id` — SHA256 over the normalised content | `run_configs_index.parquet` | A · document |
-| 1c | `run_patches/` | RECORD | patch hash — SHA256 over the patch bytes | none — opened by id | A · document |
-| 2 | `runs/ledger/` | RECORD | `(run_id, unit, segment_no, currency)` — columns, never a path | `run_ledger_index.parquet` | B · set |
+| 1c | `run_patches/` — this repository's; a strategy repository keeps its own inside itself | RECORD | patch hash — SHA256 over the patch bytes | none — opened by id | A · document |
+| 2 | `runs/ledger/` | RECORD | `(run_id, unit, period_no, currency)` — columns, never a path | `run_ledger_index.parquet` | B · set |
 | 3 | `tests/*/reports/` | RECORD | family + version + date | `certificates_index.parquet` | A · document |
-| 4 | `data/runtime/session_state/` | **CARRY-OVER** | `<profile>_<symbol>`, separator reserved | none — opened by key | A · document |
-| 4b | `data/runtime/cold_start_state/` | **CARRY-OVER** | `<profile>_<symbol>`, separator reserved | `cold_start_state_index.parquet` | A · document |
+| 4 | `data/runtime/session_state/` | **CARRY-OVER** | `<bot_id>_<symbol>`, separator reserved | none — opened by key | A · document |
+| 4b | `data/runtime/cold_start_state/` | **CARRY-OVER** | `<bot_id>_<symbol>`, separator reserved | `cold_start_state_index.parquet` | A · document |
 | 5 | `data/processed/{broker}/ticks` | ARCHIVE | broker / symbol / file | `ticks_index.parquet` | C · bulk |
 | 6 | `data/processed/{broker}/bars` | **DERIVED** ← ticks | broker / symbol / timeframe | `bars_index.parquet` | C · bulk |
 | 7 | `data/processed/signals/` | ARCHIVE | type / symbol / day | `signals_index.parquet` | C · bulk |
 | 8 | `data/processed/discovery_caches/` | DERIVED ← bars | family / broker_symbol | `discovery_caches_index.parquet` | A · document |
 | 9 | `configs/generator_profiles/` | DERIVED ← discovery caches | mode / broker / symbol | none — its own fingerprints | A · document |
 | 10 | `data/runtime/brokers/` | DERIVED ← a remote API | `broker_type` | none — one file per broker | A · document |
+| 10b | `data/runtime/config_directory/` | DERIVED ← the configuration files (not a store) | path of the configuration file | `config_directory_index.parquet` | B · set |
 | 11 | `data/finished/` | ARCHIVE | file name | none — opened by name | A · document |
 | 12 | `data/raw/` → `data/finished/` | **SPECIAL** | file name | none — conveyor | — |
 | 13 | `logs/global.log` | **SPECIAL** | none | none — append stream | — |
@@ -50,49 +51,57 @@ worse. What they *can* share is how they describe themselves.
 **Ticks and bars are two stores, and bars are DERIVED.** Ticks are IMPORTED from the collector's
 JSON; bars are GENERATED from those ticks, today only by a full re-render (`clean_mode` →
 `_clean_bars`). Different origin, different producer, different index. Registering bars as
-ARCHIVE was the first defect this model found in itself — and §44 had already written down the
-sentence the registration then contradicted.
+ARCHIVE was the first defect this model found in itself — and the project's own store rules had
+already written down the sentence the registration then contradicted.
 
 See it live, with entry counts and the stated reasons:
 
 ```bash
 python python/cli/store_cli.py catalog          # add --sizes to also walk for bytes
-python python/cli/store_cli.py rebuild --all    # every index this model owns
+python python/cli/store_cli.py rebuild --all    # every index a rebuild restores fully
 ```
+
+Underneath the stores the catalog shows two advisories about dated claims the installation holds:
+a release gate whose newest certificate has expired, and a broker fee structure frozen more than
+ninety days ago. Both are decided in `validators/store_health_checks.py` and come back as findings
+with their own check ids, so any other surface can show them the same way.
 
 ---
 
 ### The ledger's grain, and why it is four parts
 
 A ledger row used to be one per `(run, currency)`. Since #537 a run books in **periods**, so the
-grain is `(run_id, unit, segment_no, currency)` — and each part of that key earns its place:
+grain is `(run_id, unit, period_no, currency)` — and each part of that key earns its place:
 
 - **`unit`** because a run's scenarios cover DIFFERENT windows (measured: 40 scenarios, 40
   distinct ones), so "day 1 of the run" is not a thing and only "day 1 of this unit" is.
-- **`segment_no`** rather than a date, because a date cannot express two closes on one day and
+- **`period_no`** rather than a date, because a date cannot express two closes on one day and
   the industry books more than once a day in several places — perpetual funding every eight
   hours, an intraday margin call, an operator's period close.
 - **`currency`** because P&L-denominated figures never mix currencies.
 
-Both pipelines book: a live session writes one row per trading day, a simulation scenario one
+Both pipelines book: an AutoTrader session writes one row per trading day, a simulation scenario one
 per trading day of ITS window. A run whose scenarios are shorter than a day writes one row each,
 which is the shape the ledger had before — the grain widened, it did not change meaning.
 
 **No aggregate row is written beside the periods.** The run's total is derivable from them —
 `COLUMN_REDUCTION` beside `LEDGER_COLUMNS` states how every column combines — and a derivable
-copy kept next to its source is the pair that drifts (§19). Keeping both would also be wrong in
+copy kept next to its source is the pair that drifts. Keeping both would also be wrong in
 a way no reader could see: the deployment history SUMS rows and would count every month twice,
-the sweep ranking SORTS them and would see one candidate four times.
+the sweep ranking SORTS them and would see one candidate four times. One reduction has a limit
+the others do not: a STOCK (`final_equity`, `unrealized_pnl`, `open_position_count`) is the latest
+reading of ONE account, so folded over the rows of several units — a backtest's scenarios — it
+answers null rather than whichever account closed last.
 
 The three levels this produces are ordinary double-entry bookkeeping, and
 [accounting_periods.md](accounting_periods.md) names them: the trade records are the
-**Grundbuch**, the ledger rows are the **Hauptbuch**, and everything over many periods — a
-deployment's total, a Sharpe ratio — is the **Abschluss**.
+**journal**, the ledger rows are the **ledger**, and everything over many periods — a
+deployment's total, a Sharpe ratio — is the **closing**.
 
 
 ## The carry-over separator is reserved (#538)
 
-A bot's persistent state is filed under `<profile>_<symbol>`, and until 2026-09-22 both halves
+A bot's persistent state is filed under `<bot_id>_<symbol>`, and until 2026-09-22 both halves
 were sanitised to `[a-z0-9_]` — so the underscore occurred inside the halves as well as between
 them, and two DIFFERENT bots could resolve to one document:
 
@@ -111,22 +120,21 @@ is its job — and a restarted bot would then point at a new, empty document the
 raised a stop level, with its inherited position book gone from its own view while the venue still
 held it. The key answers *which bot am I*, never *what does it currently look like*.
 
-**The structural answer is `bot_id`, which a profile DECLARES**, and it is optional so that no
-existing profile changes key by the field existing. Composing an identity from what a profile is
+**The structural answer is `bot_id`, which every profile DECLARES** — mandatory since 2026-09-24,
+so a profile without one is refused at boot. Composing an identity from what a profile is
 CALLED means the identity moves when the name does — and a display name is exactly the thing an
-operator improves: renaming `dot_live` to `dotusd_live_v2` would point a restarted bot at a new,
+operator improves: renaming `dotusd_production` to `dotusd_production_v2` would point a restarted bot at a new,
 empty document while the venue still held its position. A declared id survives every rename of
 everything else.
 
 ```json
-{ "name": "dotusd_live_v2", "bot_id": "dot-usd-live", "symbol": "DOTUSD" }
-                                  ↑ the key stays dot-usd-live_dotusd through any rename
+{ "profile_name": "dotusd_production_v2", "bot_id": "dotlive01", "symbol": "DOTUSD" }
+                                              ↑ the key stays dotlive01_dotusd through any rename
 ```
 
-**What remains, for a profile that declares none**: two SPELLINGS of one name (`dot live` and
-`dot-live`) still meet, as do two profiles using the same name for the same symbol. Those are one
-bot written two ways rather than two bots merging, and the startup validator is the answer — it
-compares the DECLARED identity where there is one.
+**What remains is uniqueness**: two profiles declaring the same `bot_id` for the same symbol would
+still meet in one document. The startup validator is the answer — it compares every declared
+identity across both profile trees and refuses a duplicate.
 
 The declared id also reaches the LEDGER (`bot_id`, IDENTITY reduction), so a report can say
 which BOT a row belongs to rather than only what the profile was called at the time. And the
@@ -143,7 +151,7 @@ A scenario set and an AutoTrader profile used to be files at a path, and a path 
 identity. Three things followed. Nothing could say two runs used the SAME configuration —
 measured on this tree: 53 per-run config snapshots holding **23 distinct contents**, one of them
 eight times. A config edited yesterday left no trace that it changed. And the backtest half of a
-parity measurement could not name its own strategy identity at all, where the live half has
+parity measurement could not name its own strategy identity at all, where the AutoTrader half has
 carried `param_hash` and `profile_hash` since #497.
 
 **The store owns its own bytes.** Registering FREEZES the normalised content under its id rather
@@ -156,9 +164,8 @@ run_configs/
   autotrader_profiles/<config_id>.json
 ```
 
-That is not tidiness. A source may live in `user_algos/`, a separate repository this project
-never writes into, and an index whose entries lived outside its own root could not die with its
-store. The per-run snapshot in each run directory stays: it is the evidence, and an id that
+That is not tidiness. A source may live in `user_algos/`, a separate repository, and an index
+whose entries lived outside its own root could not die with its store. The per-run snapshot in each run directory stays: it is the evidence, and an id that
 cannot be resolved back to bytes is not one.
 
 **Several rows per source file are NORMAL here, unlike every other store.** Each row is one
@@ -185,6 +192,46 @@ of stats for 67 configs against 613 ms for a single recursive glob, and the scen
 from 19.5 s to 6.7 s — of which 5.7 s is Python startup, so the work itself went from 13.8 s to
 0.95 s.
 
+## The config directory reads, and writes nothing but itself (#554)
+
+Every file that can start a run — scenario sets and AutoTrader profiles, under `configs/`,
+`user_configs/` and the user algo directories — read into one row each: what it DECLARES, from its
+raw JSON, never through the loader. The cache is one parquet file at the store's root, one row per
+file keyed on its path, modification time and size, the row itself carried as its JSON:
+
+```
+data/runtime/config_directory/
+  config_directory_index.parquet   path · source_mtime · source_size · status · row_json
+```
+
+- **A read writes nothing but this cache.** The scenario listing it replaced froze every file it
+  saw into `run_configs/` — a RECORD that deletes nothing — so a half-finished file being edited
+  became a permanent "version". The run-config store is not touched here at all.
+- **Only a changed file is read.** A request walks the roots and compares each file's `stat` with
+  its row; an unchanged file costs one `stat`, a new or changed one a parse, a deleted one drops
+  out. A new `LOGIC_VERSION` reads everything again.
+- **The walk is the cost** — one `stat` per directory entry, each a request across the bridged
+  mount — so hidden and bytecode directories are pruned before they are entered (a strategy
+  repository's `.git` is most of what lies under it), and a reading is served for `FRESHNESS_S`
+  (30 s) from memory; `refresh` walks at once. Measured 2026-09-27 over 37 scenario sets and 31
+  profiles: a refresh 0.3 s (0.2 s of it the walk), from memory under 0.1 ms.
+- **A file that does not parse is a row**, `unreadable` with its reason — never an error, never
+  cached as anything but what it is. JSON carrying neither marker (an analysis result beside a
+  strategy) is cached as `not_a_config`, so it is not read again, and never served.
+- **One name, one kind.** A file name is how a configuration is addressed everywhere a record
+  names it, so a scenario set and an AutoTrader profile named alike is a conflict, not a
+  precedence: the row is `unreadable` with that as its reason (judged at serve time, because it
+  is a fact about another file), and both loaders refuse to start a run from the name —
+  `validators/config_name_validator.py`, which only reads, so an AutoTrader start depends on
+  nothing it has to write.
+- **The run figures are not in it.** They are joined at serve time from the run index, matched on
+  `config_snapshot` (the source file name, in both pipelines) and the run type, so a run that just
+  started counts at once — and deleting this cache loses nothing. What the newest of those runs DID
+  comes from the run-results ledger through the run list's own join, so the directory and the run
+  list cannot disagree about a run.
+- **`derived_from` is None on purpose:** its sources are hand-written configuration files, which
+  are not a store.
+
 ## Run patches keep the code a dirty tree ran (#551)
 
 A run header names each repository's commit. On a dirty tree that commit is not what ran: the
@@ -193,18 +240,34 @@ backtest afterwards would be compared against code that no longer exists. This s
 patch that separates the tree from its commit, and the header's `code_identity` names it:
 
 ```
-run_patches/
+run_patches/                        this repository's patches
   <patch_hash>.patch    one diff against the commit: tracked changes, deletions and every
                         untracked file as a creation — credential homes left out
+
+<strategy repository>/              any OTHER repository a strategy came from, e.g. user_algos/
+  .finiex_run_patches/
+    .gitignore          `*` — hides the directory, itself included
+    <patch_hash>.patch  the same entry, kept beside the code it describes
 ```
+
+**A strategy repository keeps its patches inside itself.** A private strategy has a repository of
+its own so that its code never enters this project's tree — and a patch is a full copy of the
+uncommitted part of it, so filing it in `run_patches/` would undo exactly that separation. The
+directory writes its own `.gitignore` (the `.pytest_cache` pattern): nobody edits the repository's
+ignore rules, `git add -A` never picks a patch up, and keeping a patch never turns the tree dirty —
+which would refuse the next real-money start from a freshly committed repository. An existing
+`.gitignore` there is left as it is. These homes are not a catalog entry of their own: a strategy
+can be loaded from any path, so the set of them is no configuration — the run headers that name
+them are the list.
 
 **Two digests, and only one of them is a key here.** The header's `diff_hash` is taken over the
 CONTENT of the changed paths — path, executable bit and bytes — so the same delta has the same
 identity on any machine, under any git configuration and any git version. The patch is one
 RENDERING of that delta, and the store files it under the SHA256 of exactly its bytes. The header
-names the entry in `patch_ref` (`run_patches/<patch_hash>.patch` under the default
-`app_config.json::paths.run_patches`); the file name IS the key, so a moved root still resolves
-through the store by that name. `diff_hash` is never a file name.
+names the entry in `patch_ref`, relative to the repository's `root` —
+`run_patches/<patch_hash>.patch` under the default `app_config.json::paths.run_patches` for this
+repository, `.finiex_run_patches/<patch_hash>.patch` for a strategy's; the file name IS the key, so
+a moved root still resolves through the store by that name. `diff_hash` is never a file name.
 
 Restoring the code that ran is the recorded commit, a check, and one `git apply`. The check is
 the one the store's own read makes: the file must hash to its name — a damaged entry would
@@ -214,6 +277,7 @@ not against the project root:
 
 ```bash
 patch="$PWD/run_patches/<patch_hash>.patch"                   # run from the project root
+# a strategy repository's: patch="<repository>/.finiex_run_patches/<patch_hash>.patch"
 git -C <repository> worktree add /tmp/restored <commit>
 echo "<patch_hash>  $patch" | sha256sum --check && git -C /tmp/restored apply "$patch"
 ```
@@ -347,7 +411,15 @@ artifacts with a CSV surface and the two with a row filter keep that real logic 
 An index is **derived**: it may be deleted or go stale without anything being lost, because
 `rebuild()` reconstructs it from the store. The store is the truth; the index is the read path.
 
-- **ONE file, never a fragment per entry.** Measured here: 404 small parquet fragments cost 3.29 s
+**One index breaks that today, and says so: `run_configs`.** Its frozen copies carry each
+version's content, but which file a version came from, when it was first seen and how often it ran
+were only ever written into the index. A rebuild therefore empties every configuration's history.
+The store declares that loss on its descriptor (`rebuild_loses`), so `rebuild --all` leaves it out
+and names it, a rebuild of that store alone needs `--accept-loss`, and the catalog does not advise
+rebuilding it when it is stale. Making the index derivable again, so that it rejoins
+`rebuild --all`, is #547.
+
+- **ONE file, never a file per entry.** Measured here: 404 small parquet files cost 3.29 s
   to open, the same rows as a single file 0.008 s — 420×, and 99.6 % of it is the file OPEN rather
   than the work.
 - **`LOGIC_VERSION` is stamped into the parquet's Arrow metadata.** It closes a blind spot every
@@ -419,7 +491,9 @@ just invalidated — but the reason line is what makes the remaining cases actio
 1. Add a `StoreId` value in [`store_types.py`](../../python/framework/types/store_types.py).
 2. Register it in [`store_registrations.py`](../../python/framework/store/store_registrations.py)
    with its kind, root, key, form and — unless it is SPECIAL — its index or a stated reason for
-   having none.
+   having none. Two fields are for the reader of the catalog: `purpose`, one line saying what the
+   store is FOR (printed on its row), and `doc`, the document that explains it, with a heading
+   anchor where one section covers it (printed under the table as its help link).
 3. Add its row to the table above.
 4. `tests/framework/store/` asserts completeness, so a forgotten registration fails the suite
    rather than going unnoticed.
@@ -433,7 +507,7 @@ Store 4 holds what the ALGO remembers (#354); store 4b holds what the FRAMEWORK 
 (#355) — the session keys this bot has sent orders under, and how far its position counter had
 run. They are separate for a structural reason rather than a tidy one: store 4 is only ever
 constructed when the decision logic opts in (`uses_state_persistence()`), while 4b has to be
-written for EVERY live bot — a bot whose algo remembers nothing still sends orders under a key,
+written for EVERY bot — a bot whose algo remembers nothing still sends orders under a key,
 and its successor still has to recognise them.
 
 4b HAS an index, and by the rule above rather than against it: something does search across
@@ -447,7 +521,7 @@ bending a carry-over into a log would make it a different kind of store.
 
 #### They share exactly one thing, and the rest can diverge
 
-Both turn on the same restart, and both are keyed `<profile>_<symbol>` with the same
+Both turn on the same restart, and both are keyed `<bot_id>_<symbol>` with the same
 sanitisation — that identity is the ONLY connection. There is no shared write, no
 transaction, no ordering guarantee. Anyone reasoning about restarts needs the differences:
 
@@ -455,7 +529,7 @@ transaction, no ordering guarantee. Anyone reasoning about restarts needs the di
 |---|---|---|
 | Writer | `AlgoStateStore` | `ColdStartStateStore` |
 | **When** | every N ticks OR M seconds, plus shutdown | **boot + shutdown + on a STRUCTURAL book change, plus a tick cadence for drift** |
-| **Gate** | the algo's own opt-in `uses_state_persistence()` | none — every live bot |
+| **Gate** | the algo's own opt-in `uses_state_persistence()` | none — every bot |
 | Payload | the algo's opaque snapshot | session keys + position-counter high-water mark + the open position book |
 | **Staleness** | `max_age_trading_days` + `on_stale` → **discards** | none |
 | Index | none (opened by key) | yes (searched across bots) |
@@ -490,16 +564,16 @@ restore   at BOOT, no tick needed: every field was known when the position was o
 check     the restored book against the venue's balance — and only REPORT
 ```
 
-The split is a measurement, not a preference. One carry-over write costs **11 ms** on this
-project's tree, and the store's index rebuild another **26-40 ms** (§42 — `/tmp` says 2 ms;
-the bridged mount is the difference). A structural change happens a handful of times a day
-and cannot be recovered, so it is written immediately. Drift moves on nearly every tick of a
-trend — a trailing stop follows every new high — and is either re-derived by the algo on its
-next pass or loses at most one interval of a running maximum, so it waits for
-`cold_start.book_drift_interval_ticks`. Counted in TICKS because drift is *caused* by ticks: a
-quiet market needs no writes, and a tick counter needs no clock (the first passes happen
-before the canonical clock is injected). The index rebuild is left to the writes that BOUND a
-session; an index is derived and reports itself stale until the next boot.
+The split is a measurement, not a preference. One carry-over write costs **11 ms** on this project's
+tree, and the store's index rebuild another **26-40 ms** (`/tmp` says 2 ms; on this bridged mount
+every file operation is a request across it, and that is the difference). A structural change
+happens a handful of times a day and cannot be recovered, so it is written immediately. Drift moves
+on nearly every tick of a trend — a trailing stop follows every new high — and is either re-derived
+by the algo on its next pass or loses at most one interval of a running maximum, so it waits for
+`cold_start.book_drift_interval_ticks`. Counted in TICKS because drift is *caused* by ticks: a quiet
+market needs no writes, and a tick counter needs no clock (the first passes happen before the
+canonical clock is injected). The index rebuild is left to the writes that BOUND a session; an index
+is derived and reports itself stale until the next boot.
 
 **The shutdown write happens BEFORE the order cleanup, and the note describes the VENUE.**
 This was a workaround before #492: the cleanup closed open positions in our book only — it
@@ -526,9 +600,9 @@ total does not. The cold-start report block states that, because otherwise it re
 rounding error.
 
 Margin is not restored — those positions come back from the venue, where they carry our tag
-(#209) — and a dry run restores nothing, because it never queried the venue and a rehearsal
-that closes remembered REAL positions with orders that never leave the process reports a book
-it does not have.
+(#209) — and a dry run (like a mock session) restores nothing, because it never queried the venue,
+and a rehearsal that closes remembered REAL positions with orders that are never placed reports a
+book it does not have.
 
 #### When an order of our shape cannot be placed — the causes, most likely first
 

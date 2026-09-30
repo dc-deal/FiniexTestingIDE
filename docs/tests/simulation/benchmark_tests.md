@@ -268,7 +268,6 @@ The benchmark scenario `backtesting_loadtest_40_scenarios.json` defines 40 USDJP
   "version": "1.0",
   "scenario_set_name": "backtesting_loadtest_40_scenarios",
   "global": {
-    "data_mode": "realistic",
     "strategy_config": {
       "decision_logic_type": "CORE/aggressive_trend",
       "worker_instances": {
@@ -282,7 +281,7 @@ The benchmark scenario `backtesting_loadtest_40_scenarios.json` defines 40 USDJP
   },
   "scenarios": [
     {
-      "name": "USDJPY_blocks_01",
+      "scenario_name": "USDJPY_blocks_01",
       "symbol": "USDJPY",
       "start_date": "2025-09-18T16:00:00+00:00",
       "end_date": "2025-09-19T04:00:00+00:00"
@@ -307,11 +306,11 @@ When running on a new system (different CPU, new machine), you must first regist
 
 **Option A: VS Code (without debugger!)**
 
-Use the launch configuration "🧪 Run (BENCHMARK Scenario)" but run it **without debugging** (Ctrl+F5 or "Run Without Debugging"):
+Use the launch configuration "🧪 Simulation: Benchmark" but run it **without debugging** (Ctrl+F5 or "Run Without Debugging"):
 
 ```json
 {
-    "name": "🧪 Run (BENCHMARK Scenario)",
+    "name": "🧪 Simulation: Benchmark",
     "type": "debugpy",
     "request": "launch",
     "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",

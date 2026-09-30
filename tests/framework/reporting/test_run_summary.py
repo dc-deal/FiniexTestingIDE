@@ -5,6 +5,8 @@ Composes the cross-section KPI model from the section reports (portfolio aggrega
 trade analytics + execution totals) — no re-derivation. Per-currency join + global counts.
 """
 
+from datetime import datetime, timedelta, timezone
+
 from python.framework.reporting.io.artifact_specs import (
     RUN_SUMMARY_ARTIFACT,
 )
@@ -13,15 +15,21 @@ from python.framework.reporting.builders.report_aggregators import (
     aggregate_portfolio_by_currency,
 )
 from python.framework.reporting.builders.run_summary_builder import build_run_summary
+from python.framework.reporting.builders.run_unit import RunUnit
 from python.framework.types.api.report_types import (
+    AbsentUnitRow,
     ExecutionStatsReport,
     ExecutionStatsTotals,
     PortfolioAggregateRow,
     PortfolioReport,
     PortfolioUnitRow,
+    RunSummary,
     TradeAnalytics,
     TradeHistoryReport,
+    UnitRoster,
 )
+from python.framework.types.market_types.market_data_types import TickData
+from python.framework.utils.process_debug_info_utils import processed_tick_range_stats
 
 # Every report artifact names its run (#475); the value is opaque to these tests.
 _RUN_ID = '20260830_120000_a1b2c3d4'
@@ -89,6 +97,49 @@ class TestBuild:
         assert rs.unit_count == 2
 
 
+class TestTheRosterSaysWhatIsMissing:
+    """
+    The figures above are summed over the units that produced something. The roster says how
+    many were DECLARED and what became of the rest, so a run of ten with two rejected no longer
+    reads as a run of eight (contract 6).
+    """
+
+    @staticmethod
+    def _reports():
+        portfolio = PortfolioReport(run_id=_RUN_ID, units=[_unit()], aggregates=[_agg()])
+        trade = TradeHistoryReport(run_id=_RUN_ID, trades=[], count=0, symbols=[],
+                                   analytics=[_analytics()])
+        return portfolio, trade
+
+    def test_the_roster_reaches_the_summary(self):
+        portfolio, trade = self._reports()
+        roster = UnitRoster(declared=4, disabled=2, absent=[
+            AbsentUnitRow(name='w_01', reason='Warmup for M30 has 1/20 bars')])
+
+        rs = build_run_summary(_RUN_ID, portfolio, trade, _exec(), roster=roster)
+
+        assert (rs.units_declared, rs.units_disabled, rs.unit_count) == (4, 2, 1)
+        assert [(row.name, row.reason) for row in rs.units_absent] == [
+            ('w_01', 'Warmup for M30 has 1/20 bars')]
+        assert rs.units_declared == rs.units_disabled + len(rs.units_absent) + rs.unit_count
+
+    def test_without_a_roster_every_summed_unit_is_declared(self):
+        """A summary over units a caller already chose — one robustness window — is complete."""
+        portfolio, trade = self._reports()
+
+        rs = build_run_summary(_RUN_ID, portfolio, trade, _exec())
+
+        assert (rs.units_declared, rs.units_disabled, rs.units_absent) == (1, 0, [])
+
+    def test_a_run_recorded_before_the_roster_states_nothing_rather_than_zero(self):
+        """
+        An artifact written before contract 6 carries no roster. Read back, it says NOTHING —
+        null — rather than 0, which the invariant would then disprove on every old run.
+        """
+        old = RunSummary.model_validate({'run_id': _RUN_ID, 'currencies': [], 'unit_count': 8})
+        assert (old.units_declared, old.units_disabled, old.units_absent) == (None, None, None)
+
+
 class TestUndefinedProfitFactor:
     """A run without a losing trade has no profit factor — and must still round-trip.
 
@@ -118,3 +169,48 @@ class TestUndefinedProfitFactor:
         row.total_loss = 0.0
         row.losing_trades = 0
         assert aggregate_portfolio_by_currency([row])[0].profit_factor is None
+
+
+class TestTheMarketTimeTheRunProcessed:
+    """
+    The run's tick timespan is its units' spans COVERED together — a stretch two scenarios
+    share counts once — beside their plain sum, which is the work. The console used to print the
+    sum of the DECLARED windows as "Total Simulation", i.e. the sum, and not what it measured.
+    """
+
+    _T0 = datetime(2025, 10, 13, tzinfo=timezone.utc)
+
+    def _summary(self, spans):
+        units = [RunUnit(name=f'u{i}', symbol='EURUSD', first_tick_time=first,
+                         last_tick_time=last) for i, (first, last) in enumerate(spans)]
+        portfolio = PortfolioReport(run_id=_RUN_ID, units=[_unit()], aggregates=[_agg()])
+        trade = TradeHistoryReport(run_id=_RUN_ID, trades=[], count=0, symbols=[], analytics=[])
+        return build_run_summary(_RUN_ID, portfolio, trade, _exec(), units=units)
+
+    def test_two_scenarios_over_one_window_cover_it_once(self):
+        window = (self._T0, self._T0 + timedelta(hours=10))
+        summary = self._summary([window, window])
+
+        assert summary.tick_timespan_seconds == 10 * 3600
+        assert summary.tick_timespan_total_seconds == 20 * 3600
+
+    def test_separate_windows_add_up(self):
+        summary = self._summary([(self._T0, self._T0 + timedelta(hours=2)),
+                                 (self._T0 + timedelta(hours=5), self._T0 + timedelta(hours=6))])
+
+        assert summary.tick_timespan_seconds == summary.tick_timespan_total_seconds == 3 * 3600
+
+    def test_no_recorded_span_is_no_figure(self):
+        summary = self._summary([(None, None)])
+
+        assert (summary.tick_timespan_seconds, summary.tick_timespan_total_seconds) == (None, None)
+
+    def test_a_unit_s_span_ends_at_the_last_tick_it_processed(self):
+        ticks = tuple(TickData(timestamp=self._T0 + timedelta(minutes=m), symbol='EURUSD',
+                               bid=1.1, ask=1.1) for m in range(10))
+
+        stats = processed_tick_range_stats(ticks, processed=4)
+
+        assert (stats.tick_count, stats.last_tick_time) == (4, ticks[3].timestamp)
+        assert stats.tick_timespan_seconds == 3 * 60
+        assert processed_tick_range_stats(ticks, processed=0).tick_timespan_seconds is None

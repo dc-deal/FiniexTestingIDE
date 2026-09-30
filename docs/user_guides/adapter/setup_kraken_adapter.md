@@ -1,6 +1,6 @@
 # Kraken Adapter Setup Guide
 
-How to configure the KrakenAdapter for live trading (dry-run and production).
+How to configure the KrakenAdapter for a live connection — dry run or real orders.
 
 ## Prerequisites
 
@@ -23,7 +23,7 @@ Copy the **API Key** and **Private Key** (shown once at creation).
 
 ## 2. Credentials File
 
-Create `user_configs/credentials/kraken_credentials.json`:
+Create `user_configs/credentials/venues/kraken_credentials.json`:
 
 ```json
 {
@@ -32,7 +32,7 @@ Create `user_configs/credentials/kraken_credentials.json`:
 }
 ```
 
-This file is gitignored. The tracked default at `configs/credentials/kraken_credentials.json` contains placeholder values.
+This file is gitignored. The tracked default at `configs/credentials/venues/kraken_credentials.json` contains placeholder values.
 
 **Cascade:** `user_configs/credentials/` takes priority over `configs/credentials/`.
 
@@ -43,7 +43,7 @@ Connection settings for `kraken_spot` live in `configs/market_config.json` under
 ```json
 {
   "broker_type": "kraken_spot",
-  "credentials_file": "kraken_credentials.json",
+  "credentials_file": "venues/kraken_credentials.json",
   "dry_run": true,
   "broker_transport": {
     "api_base_url": "https://api.kraken.com",
@@ -56,12 +56,12 @@ Connection settings for `kraken_spot` live in `configs/market_config.json` under
 
 | Field | Description | Default |
 |-------|-------------|---------|
-| `credentials_file` | Credentials filename (resolved via cascade) | `kraken_credentials.json` |
-| `dry_run` | Validate orders without executing (`validate=true`) | `true` |
+| `credentials_file` | Credentials filename (resolved via cascade) | `venues/kraken_credentials.json` |
+| `dry_run` | Validate orders at the venue without placing them (`validate=true`); fills are simulated locally | `true` |
 | `broker_transport.api_base_url` | Kraken REST API base URL | `https://api.kraken.com` |
 | `broker_transport.rate_limit_interval_s` | Minimum seconds between private API calls | `1.0` |
 | `broker_transport.request_timeout_s` | HTTP request timeout in seconds | `15` |
-| `broker_transport.poll_interval_ms` | Minimum interval between per-order status polls (live LIMIT orders) | `5000` |
+| `broker_transport.poll_interval_ms` | Minimum interval between per-order status polls (resting LIMIT orders at the venue) | `5000` |
 
 To override any field, create `user_configs/market_config.json` with only the changed values:
 
@@ -76,27 +76,31 @@ To override any field, create `user_configs/market_config.json` with only the ch
 }
 ```
 
-`user_configs/market_config.json` is gitignored — safe for real credentials references and live mode flags.
+`user_configs/market_config.json` is gitignored — safe for real credentials references and the `dry_run` switch.
 
 ### Dry-Run Mode
 
 When `dry_run: true`, the adapter sends `validate=true` to Kraken's AddOrder endpoint. Kraken validates the order completely (pair, volume, balance, permissions) but **does not execute it**. No money is moved, no txid is generated.
 
-This is Kraken's native validation parameter — not a local simulation. It catches real API errors (bad permissions, insufficient balance, invalid pair) without risking funds.
+The submit goes to Kraken with `validate=true` — checked, never placed — and `DryRunOrderSimulator`
+then plays the order's lifecycle locally, filling it when the market reaches its price (#505). The
+venue's check catches real API errors (bad permissions, insufficient balance, invalid pair) without
+risking funds.
 
 **Kraken Spot has no testnet/sandbox.** Dry-run mode is the only way to test order flow without real execution.
 
-`dry_run` is a **broker-level deployment decision** — not a per-session flag. It applies to all
-AutoTrader sessions that use `kraken_spot`. The committed default (`configs/market_config.json`) is
-always `true`. Switch to live trading by overriding in `user_configs/market_config.json`.
+`dry_run` in `market_config.json` is the broker's standing posture. A profile may only tighten it:
+`true` wins, and `false` against a `true` default is refused at startup (`DryRunConflictError`). A
+mock session is always dry. The committed default (`configs/market_config.json`) is always `true`.
+Switch to real-money sessions by overriding in `user_configs/market_config.json`.
 
 ## 4. AutoTrader Profile
 
-AutoTrader profiles contain only algorithm config — no broker connection fields needed. Example `configs/autotrader_profiles/production/ethusd_live.json`:
+AutoTrader profiles contain only algorithm config — no broker connection fields needed. Example `configs/autotrader_profiles/production/ethusd_production.json`:
 
 ```json
 {
-  "name": "ethusd_live",
+  "profile_name": "ethusd_production",
   "symbol": "ETHUSD",
   "broker_type": "kraken_spot",
   "adapter_type": "live",
@@ -114,29 +118,29 @@ for P&L denomination.
 ## Config File Relationship
 
 ```
-AutoTrader Profile (ethusd_live.json)
+AutoTrader Profile (ethusd_production.json)
   "broker_type": "kraken_spot"
         |
         v
 market_config.json → kraken_spot entry
-  "credentials_file": "kraken_credentials.json"
+  "credentials_file": "venues/kraken_credentials.json"
   "dry_run": true
   "api_base_url": "https://api.kraken.com"
         |
         v
-Credentials (user_configs/credentials/kraken_credentials.json)
+Credentials (user_configs/credentials/venues/kraken_credentials.json)
   "api_key": "..."
   "api_secret": "..."
 ```
 
 **Profile** = algorithm config (strategy, symbol, workers).
-**market_config.json** = broker-specific live config (API URL, dry_run, rate limit, credentials reference).
+**market_config.json** = broker-specific connection config (API URL, dry_run, rate limit, credentials reference).
 **Credentials** = only API keys.
 
-## 5. First Run (Dry-Run)
+## 5. First Run (Dry Run)
 
 ```bash
-python python/cli/autotrader_cli.py run --config configs/autotrader_profiles/production/ethusd_live.json
+python python/cli/autotrader_cli.py run --config configs/autotrader_profiles/production/ethusd_production.json
 ```
 
 Expected startup output:
@@ -146,9 +150,11 @@ Live balance: 0.006 ETH (profile default was 0.0)
 Mode: DRY RUN (validate only)
 ```
 
-If balance fetch succeeds, your API key and permissions are correct. Orders will be validated by Kraken but not executed.
+If balance fetch succeeds, your API key and permissions are correct. Each order goes to Kraken with
+`validate=true` — checked, never placed — and `DryRunOrderSimulator` fills it locally when the
+market reaches its price (#505).
 
-## 6. Going Live
+## 6. Placing Real Orders
 
 Set `dry_run: false` in `user_configs/market_config.json` (gitignored):
 
@@ -171,7 +177,7 @@ order book.
 Ensure:
 - Your account has sufficient balance for the configured `lot_size`
 - You understand the minimum order sizes for your trading pair (e.g., BTCUSD minimum ~0.0001 BTC)
-- You have tested the full pipeline in dry-run mode first
+- You have tested the full pipeline in a dry run first
 - The code is committed — this repository and the one your strategy lives in — and nothing edits
   it while the session starts. A real-money session refuses to start from uncommitted code, or
   from code that changed during its start; see

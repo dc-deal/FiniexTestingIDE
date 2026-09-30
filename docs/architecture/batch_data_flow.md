@@ -51,24 +51,24 @@ index is assigned once at config load (`scenario_config_loader.py`) and stays wi
 the first case — and only until one scenario is excluded. Keying by position silently pairs a
 scenario with a neighbour's data. A missing package raises `ScenarioPackageMissingError`: after
 keying correctly, a hole can only mean the preparator and the consumer disagree about what was
-prepared, which is framework logic and not operator config (§33).
+prepared, which is framework logic and not operator config.
 
 **The scenario log buffer crosses as `list[LogRecord]`, not as rendered lines.** A record
 (`framework/types/log_record_types.py`) carries level, observation timestamp, scope, message and
 the run's own `event_time`. Rendering (colours, the level column, the elapsed timestamp, the
 event-time column) happens at the surface that prints it.
 
-The two times are §9's pair and must not be conflated: the elapsed bracket is OBSERVATION time
-(how far into the run we were), the column is EVENT time (what time it was in the market, from
-the canonical clock). The clock is PULLED through an injected `clock_fn`, attached once the
-executor exists — so heartbeat and ghost passes stamp their own instant, and the timer /
-resolution events of #375 need no further wiring. Whether a log renders the column at all is a
-ROLE declared at construction (`event_time_column`): the per-scenario logs and the live session
-log carry it, the run-level logs do not, and a declared column with no clock yet renders a
-fixed-width filler rather than a wall-clock substitute. A buffer
+The two times are the pair every event carries — when we observed it, and when it happened — and
+must not be conflated: the elapsed bracket is OBSERVATION time (how far into the run we were), the
+column is EVENT time (what time it was in the market, from the canonical clock). The clock is PULLED
+through an injected `clock_fn`, attached once the executor exists — so heartbeat and ghost passes
+stamp their own instant, and the timer / resolution events of #375 need no further wiring. Whether a
+log renders the column at all is a ROLE declared at construction (`event_time_column`): the
+per-scenario logs and the AutoTrader session log carry it, the run-level logs do not, and a declared
+column with no clock yet renders a fixed-width filler rather than a wall-clock substitute. A buffer
 of rendered lines forces every later consumer to take the fact apart again, and the run report is
-such a consumer: it used to recover the message with `split(' | ', 1)` and carried ANSI escape
-codes into the persisted JSON on the way.
+such a consumer: it used to recover the message with `split(' | ', 1)` and carried ANSI escape codes
+into the persisted JSON on the way.
 
 ### What identifies a run (#475)
 
@@ -78,19 +78,19 @@ it); the random half makes it distinct, because a second-resolution stamp collid
 use — 4 of 188 runs, and a collision made the API serve a different run's artifacts than the index
 listed under that id.
 
-It is minted ONCE per run and passed down: to the three loggers of a live session, and through
+It is minted ONCE per run and passed down: to the three loggers of an AutoTrader session, and through
 `ProcessScenarioConfig` into each simulation subprocess. Deriving it per logger would give one run
 three ids and therefore three directories.
 
 Each run writes a `header.json` at its START — id, start time, category, owner, and the parent it
-belongs to (a sweep, today; a session for #476's daily fragments). At the start rather than the
-end, because a run that crashes is exactly the run somebody needs to identify. The same header
-states where the run came from and, for a run that reports, which code it ran — see
+belongs to (a sweep or a deployment today; a session once #476's day records exist). At the start
+rather than the end, because a run that crashes is exactly the run somebody needs to identify. The
+same header states where the run came from and, for a run that reports, which code it ran — see
 [Run Origin and Code Identity](run_origin_and_code_identity.md).
 
 `runs/runs_index.parquet` is ONE compacted file DERIVED from those headers, and it is what the API
 reads. Derived is the point: it may be deleted or go stale without anything being lost —
-`run_index_cli.py rebuild` reconstructs it. Directories stay human-navigable (§36) but no program
+`run_index_cli.py rebuild` reconstructs it. Directories stay human-navigable but no program
 reads meaning out of them any more.
 
 ### Where a run's logs land — three categories, one source
@@ -100,21 +100,21 @@ A run belongs to exactly ONE category, and the category IS its `group` in the AP
 ```
 file_logging.run_logs.simulation    runs/simulation/<set>/<run_id>/
                                     runs/simulation/sweeps/<sweep_id>/<combination>/<run_id>/
-file_logging.run_logs.live          runs/live/<profile>/<run_id>/
+file_logging.run_logs.autotrader    runs/autotrader/<profile>/<run_id>/
 ```
 
 **Two roots, because there are two run TYPES** — and the type is the PIPELINE, not the nesting.
-A sweep combination is a `simulation` with a `parent_id`; a live day fragment (#476) will be a
-`live` with a `parent_id`. Folding nesting into the type would make the most basic question —
+A sweep combination is a `simulation` with a `parent_id`; an AutoTrader day record (#476) will be an
+`autotrader` run with a `parent_id`. Folding nesting into the type would make the most basic question —
 "is this a simulation?" — a two-value comparison, and would need a new value for every new kind
 of parent. Which KIND of parent an id names is its own field, `parent_kind` — the ids are all a
 prefix plus a timestamp, so nothing about the id itself tells them apart, and deriving the kind
-from the run type would be right exactly until #476 gives a `live` run a parent that is a
+from the run type would be right exactly until #476 gives an `autotrader` run a parent that is a
 session rather than a deployment.
 
 **The paths are configuration** (`app_config.json` → `file_logging.run_logs`), read by the
 writers (`ScenarioSet`, `autotrader_startup`) AND by the run index — one source, so a moved log
-root cannot make runs invisible to the API. Before that, the sim root was config, the live root
+root cannot make runs invisible to the API. Before that, the sim root was config, the AutoTrader root
 was a hard-coded `Path('logs/autotrader')` and the reader assumed a third thing: changing the
 config would silently have emptied the run index.
 

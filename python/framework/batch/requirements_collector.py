@@ -258,7 +258,8 @@ class RequirementsCollector:
         if violations:
             result = (
                 'Wall-clock read in decision logic / worker code — use '
-                'self.trading_api.get_current_time() (§9): ' + '; '.join(violations)
+                'self.trading_api.get_current_time(), the run\'s own clock, so a backtest can be '
+                'reproduced: ' + '; '.join(violations)
             )
 
         self._clock_preflight_cache[cache_key] = result

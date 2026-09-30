@@ -121,7 +121,7 @@ class ConsumerToken(ConsumerTokenBase):
     """
     One API consumer's credential, validated against this project's own surfaces.
 
-    A surface is a ROUTER, not a route: `bars`, `brokers`, `deployments`, `reports`, `sweeps`.
+    A surface is a ROUTER, not a route — the closed list is `GRANT_SURFACES` below.
     What a grant
     names is the thing a route addresses — its first path parameter — so `bars:kraken_spot` is
     one venue's bar data and `deployments:deploy_20260918_091413` is one bot's history, while
@@ -138,7 +138,7 @@ class ConsumerToken(ConsumerTokenBase):
     """
 
     GRANT_SURFACES: ClassVar[Tuple[str, ...]] = (
-        'bars', 'brokers', 'deployments', 'reports', 'sweeps')
+        'bars', 'brokers', 'deployments', 'directory', 'reports', 'sweeps')
 
     account: str
 

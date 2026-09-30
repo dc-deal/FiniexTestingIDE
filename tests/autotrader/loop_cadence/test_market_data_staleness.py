@@ -320,8 +320,8 @@ class TestMandatoryHookValidation:
 class TestStaleDataEventParsing:
     """stale_data_stress config: parse once, validate hard (config errors, §33)."""
 
-    def test_missing_data_source_rejected(self):
-        with pytest.raises(ValueError, match="'data_source' is required"):
+    def test_missing_stale_data_source_rejected(self):
+        with pytest.raises(ValueError, match="'stale_data_source' is required"):
             StaleDataEvent.from_dict({
                 'stale_start_date': '2026-04-27T06:00:00+00:00',
                 'stale_end_date': '2026-04-27T06:10:00+00:00'})
@@ -329,19 +329,19 @@ class TestStaleDataEventParsing:
     def test_inverted_window_rejected(self):
         with pytest.raises(ValueError, match='before'):
             StaleDataEvent.from_dict({
-                'data_source': 'kraken_spot',
+                'stale_data_source': 'kraken_spot',
                 'stale_start_date': '2026-04-27T06:10:00+00:00',
                 'stale_end_date': '2026-04-27T06:00:00+00:00'})
 
     def test_sources_are_filtered_and_sorted(self):
         cfg = StressTestStaleDataConfig.from_dict({'enabled': True, 'events': [
-            {'label': 'b', 'data_source': 'kraken_spot',
+            {'label': 'b', 'stale_data_source': 'kraken_spot',
              'stale_start_date': '2026-04-27T07:00:00+00:00',
              'stale_end_date': '2026-04-27T07:10:00+00:00'},
-            {'label': 'a', 'data_source': 'kraken_spot',
+            {'label': 'a', 'stale_data_source': 'kraken_spot',
              'stale_start_date': '2026-04-27T06:00:00+00:00',
              'stale_end_date': '2026-04-27T06:10:00+00:00'},
-            {'label': 's', 'data_source': 'crypto_sentiment',
+            {'label': 's', 'stale_data_source': 'crypto_sentiment',
              'stale_start_date': '2026-04-27T06:30:00+00:00',
              'stale_end_date': '2026-04-27T07:30:00+00:00'},
         ]})
@@ -354,7 +354,7 @@ class TestStaleDataEventParsing:
 
     def test_disabled_config_yields_nothing(self):
         cfg = StressTestStaleDataConfig.from_dict({'enabled': False, 'events': [
-            {'label': 'x', 'data_source': 'kraken_spot',
+            {'label': 'x', 'stale_data_source': 'kraken_spot',
              'stale_start_date': '2026-04-27T06:00:00+00:00',
              'stale_end_date': '2026-04-27T06:10:00+00:00'}]})
         assert cfg.get_events_for_source('kraken_spot') == []
@@ -363,7 +363,7 @@ class TestStaleDataEventParsing:
 
 def _event(label, start, end) -> StaleDataEvent:
     return StaleDataEvent(
-        label=label, data_source='kraken_spot',
+        label=label, stale_data_source='kraken_spot',
         stale_start_date=start, stale_end_date=end)
 
 
@@ -622,7 +622,7 @@ class TestTheSharedBuilder:
         """A signal-plane window is carved out of the series and must not drive status."""
         executor, decision, logger = self._args()
         signal_event = StaleDataEvent(
-            label='signal outage', data_source='crypto_sentiment',
+            label='signal outage', stale_data_source='crypto_sentiment',
             stale_start_date=_utc(2026, 4, 27, 6, 10),
             stale_end_date=_utc(2026, 4, 27, 6, 20))
 
@@ -644,7 +644,7 @@ class TestTheSharedBuilder:
     def test_no_driver_when_nothing_hits_this_source(self):
         executor, decision, logger = self._args()
         signal_only = StaleDataEvent(
-            label='signal outage', data_source='crypto_sentiment',
+            label='signal outage', stale_data_source='crypto_sentiment',
             stale_start_date=_utc(2026, 4, 27, 6, 10),
             stale_end_date=_utc(2026, 4, 27, 6, 20))
 
@@ -686,7 +686,7 @@ class TestTheSharedBuilder:
         """
         executor, decision, logger = self._args()
         unreachable_signal = StaleDataEvent(
-            label='signal outage', data_source='crypto_sentiment',
+            label='signal outage', stale_data_source='crypto_sentiment',
             stale_start_date=_utc(2026, 5, 1, 6, 0),
             stale_end_date=_utc(2026, 5, 1, 7, 0))
 

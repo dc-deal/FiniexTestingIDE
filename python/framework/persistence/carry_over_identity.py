@@ -27,7 +27,7 @@ longer a collision to refuse in this shape.
 
 **The structural answer is `bot_id`, which a profile DECLARES.** Composing an identity from what
 a profile is CALLED means the identity moves when the name does — and a display name is exactly
-the thing an operator improves: renaming `dot_live` to `dotusd_live_v2` would point a restarted
+the thing an operator improves: renaming `dotusd_production` to `dotusd_production_v2` would point a restarted
 bot at a new, empty document while the venue still held its position. A declared id says "this is
 the same bot" out loud and survives every rename of everything else. It is OPTIONAL: a profile
 without one keeps the composed key, so nothing that exists changes.
@@ -77,7 +77,7 @@ def carry_over_key(profile: str, symbol: str, bot_id: str = '') -> str:
 
     **`bot_id` is the DECLARED identity and takes precedence.** Without it the key is composed
     from what the profile happens to be CALLED, and a display name is something an operator
-    improves: renaming `dot_live` to `dotusd_live_v2` silently points the bot at a new, empty
+    improves: renaming `dotusd_production` to `dotusd_production_v2` silently points the bot at a new, empty
     document while the venue still holds its position. A declared id is the operator saying "this
     is the same bot" out loud, and it survives every rename of everything else. It is optional so
     that no existing profile changes key by this function gaining an argument.

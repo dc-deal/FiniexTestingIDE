@@ -14,17 +14,17 @@ override mechanism — `docs/user_configs_override_system.md`. Where credentials
 
 ## `bot_id` — the identity a bot's state is filed under
 
-A live bot's persistent state — its open position book, the position-counter high-water mark, the
+A bot's persistent state — its open position book, the position-counter high-water mark, the
 session keys its orders were sent under — lives in a file named after the bot. Which bot that is
 was composed from what the profile is CALLED:
 
 ```
-name: "dotusd_live"  +  symbol: "DOTUSD"   ->   dotusd-live_dotusd.json
+profile_name: "dotusd_production"  +  symbol: "DOTUSD"   ->   dotusd-production_dotusd.json
 ```
 
 **That makes the identity move when the name does**, and a display name is exactly the thing an
-operator improves. Renaming `dotusd_live` to `dotusd_live_v2` points the next session at
-`dotusd-live-v2_dotusd.json`, which does not exist — so the bot starts, finds no carry-over, and
+operator improves. Renaming `dotusd_production` to `dotusd_production_v2` points the next session at
+`dotusd-production-v2_dotusd.json`, which does not exist — so the bot starts, finds no carry-over, and
 reads its own holding as flat. At spot that is not recoverable from the venue: a holding is a
 balance the venue cannot describe as a position, so our own record is the only one there is.
 
@@ -32,8 +32,8 @@ Declaring the identity separates the two:
 
 ```json
 {
-  "name": "dotusd_live_v2",
-  "bot_id": "dotusd-live",
+  "profile_name": "dotusd_production_v2",
+  "bot_id": "dotlive01",
   "symbol": "DOTUSD"
 }
 ```
@@ -45,13 +45,13 @@ to be recomputed.
 **Set it once and never change it.** Changing a `bot_id` is the same event as renaming without
 one: the next session looks somewhere else.
 
-**MANDATORY on every profile since 2026-09-24**, and the widening is the point. The older rule
-asked only of a profile declaring `deployment.continuous: true`, which protected the case least in
-need of it: a continuous profile is one somebody thought about. The route into a collision is
-copying a profile into another purpose folder and keeping its name — and that copy was exactly
-what the narrow rule exempted. A one-off is no longer exempt either: it inherits nothing, which
-was the old argument, but it still WRITES a carry-over document, and a document written under a
-name is one the next rename orphans.
+**MANDATORY on every profile since 2026-09-24**, and the widening is the point. The older rule asked
+only of a profile declaring `deployment.continuous: true`, which protected the case least in need of
+it: a profile declaring `deployment.continuous: true` is one somebody thought about. The route into
+a collision is copying a profile into another purpose folder and keeping its name — and that copy
+was exactly what the narrow rule exempted. A one-off is no longer exempt either: it inherits
+nothing, which was the old argument, but it still WRITES a carry-over document, and a document
+written under a name is one the next rename orphans.
 
 **The shape:** 1 to 10 characters of `a-z`, `0-9` and hyphen.
 
@@ -71,7 +71,7 @@ The profile 'DOTUSD Live Bot' declares no `bot_id`.
     the profile points the next session at an empty document while the venue still holds
     the position.
 
-    Add it to the profile, beside `name`:
+    Add it to the profile, beside `profile_name`:
 
         "bot_id": "dotusd-liv"
 
@@ -109,11 +109,12 @@ an identity, with a malformed one, or with one already taken.
 
 ## Configuration
 
-Config file: `configs/autotrader_profiles/backtesting/mock_session_test.json` — own format, NOT scenario-set based.
+Config file: `configs/autotrader_profiles/mock/mock_session_test.json` — own format, NOT scenario-set based.
 
 ```json
 {
-  "name": "btcusd_mock",
+  "profile_name": "btcusd_mock",
+  "bot_id": "mocksess01",
   "symbol": "BTCUSD",
   "broker_type": "kraken_spot",
   "adapter_type": "mock",
@@ -132,10 +133,12 @@ Config file: `configs/autotrader_profiles/backtesting/mock_session_test.json` �
 
 A **mock** session replays scenario base data: `scenario_settings` describes the data window
 (broker/symbol/window/sentiment) resolved through the **same index/preparation stack the
-backtesting batch uses** (the shared `MountPreparer`, #438) — the mock is "a scenario replayed
-through the live decision path". `tick_source` then carries only the transport (`type`, replay
-delay, the `freeze_after_ticks` outage drill). A **live** session has no `scenario_settings` —
-its data streams from the broker.
+backtesting batch uses** (the shared `MountPreparer`, #438), and the mock session replays that
+window through the whole AutoTrader stack. `tick_source` then carries only the transport (`type`,
+replay delay, the `freeze_after_ticks` outage drill). A **live-adapter** session has no
+`scenario_settings` — its data streams from the venue. `adapter_type` selects only the adapter and
+`tick_source.type` the tick source; a live adapter paired with the replaying `mock` tick source or
+with `scenario_settings` is refused at load (`AdapterWiringError`).
 
 Sections not listed here (`execution`, `clipping_monitor`, `order_guard`) inherit their values from `app_config.json::autotrader` — only specify them in the profile when overriding a default.
 
@@ -144,15 +147,16 @@ Sections not listed here (`execution`, `clipping_monitor`, `order_guard`) inheri
 
 | Section | Purpose | Notes |
 |---------|---------|-------|
-| `name` | Session name | Used for run directory (`runs/live/<name>/`) |
+| `profile_name` | Profile name | **Required.** Used for the run directory (`runs/autotrader/<profile_name>/`) and as the unit name in every report |
+| `bot_id` | Carry-over identity | **Mandatory** — see [`bot_id`](#bot_id--the-identity-a-bots-state-is-filed-under) above |
 | `symbol` | Trading pair | Single symbol per session |
 | `broker_type` | Broker identifier | Maps to MarketType via `market_config.json`; broker connection settings read from there too |
-| `adapter_type` | `mock` or `live` | Mock: no credentials needed |
+| `adapter_type` | `mock` or `live` | Selects only the adapter; the tick source is `tick_source.type`. Mock: no credentials needed |
 | `deployment` | `{"continuous": true\|false}` | **Mandatory — the loader refuses a profile without it.** Whether this profile's sessions form ONE deployment whose ledger rows join into one history (#497) |
-| `dry_run` | `true` / `false` / omit | Optional per-profile override of the global `market_config` dry_run. Omit = inherit the broker default. Setting it (especially `false` = live) overrides the global default for this profile only and logs a loud override warning at startup |
+| `dry_run` | `true` / `false` / omit | Optional per-profile override of the broker's `market_config` dry_run. Omit = inherit the broker default. May only TIGHTEN: `true` wins over a live broker default; `false` against a dry-run default is refused at startup (`DryRunConflictError`) |
 | `strategy_config` | Workers + DecisionLogic | Same format as scenario sets |
-| `scenario_settings` | Mock data + account (#438) | **Mock only.** Data window (`start_date`/`end_date`/`max_ticks`, optional `data_broker_type`) resolved via the shared index/prep stack; `data_sentiment_type` for SIGNAL workers; `balances` (spot: `{"USD": X, "ETH": Y}`; live: fetched from the broker at startup); optional `stress_test_config.stale_data_stress`. Absent for live |
-| `tick_source` | Tick transport | Mock: `tick_delay_ms` replay speed + `freeze_after_ticks`/`freeze_duration_s` outage drill (#436). Live: WebSocket (#232). The data window lives in `scenario_settings` |
+| `scenario_settings` | Mock data + account (#438) | **Mock only.** Data window (`start_date`/`end_date`/`max_ticks`, optional `data_broker_type`) resolved via the shared index/prep stack; `data_sentiment_type` for SIGNAL workers; `balances` (spot: `{"USD": X, "ETH": Y}`; live adapter: fetched from the broker at startup); optional `stress_test_config.stale_data_stress`. Absent for a live adapter |
+| `tick_source` | Tick transport | Mock: `tick_delay_ms` replay speed + `freeze_after_ticks`/`freeze_duration_s` outage drill (#436). Venue feed: WebSocket (#232). The data window lives in `scenario_settings` |
 | `execution` | Runtime parameters | Inherits from `app_config.autotrader.execution`; override per profile if needed |
 | `clipping_monitor` | Timing config | Inherits from `app_config.autotrader.clipping_monitor`; strategy: `queue_all` or `drop_stale` |
 | `display` | Dashboard config | Inherits `enabled: true`, `update_interval_ms: 300` — test profiles set `enabled: false` |
@@ -192,7 +196,7 @@ REFUSED (`OneOffInsideDeploymentError`), because past that point it means someth
 session still trades the account, but leaves no mark on the history its own drawdown keeps
 running inside. `--new-deployment` begins a fresh history instead of continuing the last one. Declaring a
 deployment from the command line is deliberately impossible: an unattended restart re-executes a
-command nobody typed, so a deployment declared there would fragment at exactly the restarts it
+command nobody typed, so a deployment declared there would break apart at exactly the restarts it
 exists to span — silently, because a missing flag looks like a one-off. **The flag whose absence
 is expensive lives in the profile; the flags whose absence is harmless live on the command
 line.** Everything shown — the display title, the startup line in the session log, the ledger
@@ -202,12 +206,12 @@ The identity travels through the cold-start carry-over (store 4b): a session wri
 and at shutdown, and the next session reads it before its own run header is written.
 
 **The carry-over's write gate is split by what each field CLAIMS**, which is what makes this
-rehearsable at all. The session key and the open position book are claims about the VENUE — this
-key sent orders, this book is open — and a dry run sent nothing anywhere, so its successor must
-not inherit either (#355: a key recorded by a dry run would let a restart loop evict the key that
-owns a real resting order). The risk baseline, the reported drawdown curve and the deployment
-identity are OUR OWN records: numbers this process computed, true whether or not the venue was
-real, and written either way. A refused boot still writes nothing at all.
+rehearsable at all. The session key and the open position book are claims about the VENUE — this key
+sent orders, this book is open — and a dry run or a mock session placed nothing at any venue, so its
+successor must not inherit either (#355: a key recorded by a dry run would let a restart loop evict
+the key that owns a real resting order). The risk baseline, the reported drawdown curve and the
+deployment identity are OUR OWN records: numbers this process computed, true whether or not the
+venue was real, and written either way. A refused boot still writes nothing at all.
 
 Before that split the whole write was refused for a dry run, and since `_is_dry_run()` answers
 True on `adapter_type == 'mock'` before it looks at anything else, a mock profile could not reach
@@ -230,31 +234,32 @@ particular one.
 
 ### Two fingerprints, because they answer two questions
 
-A live run's ledger row carries two hashes over the profile, and the split is deliberate:
+An AutoTrader session's ledger row carries two hashes over the profile, and the split is deliberate:
 
 | Hash | Covers | Answers |
 |---|---|---|
 | `param_hash` | `strategy_config` | Did the bot's DECISIONS change — what #512 compares a backtest against |
 | `profile_hash` | the operational rest — safety, order guard, execution, tick source, capital, the deployment declaration | Did what the session DOES change, without changing what it decides |
 
-One wide hash would answer neither. A raised stop level must not read as a different strategy —
-that would put an otherwise comparable run beyond comparison; and a changed RSI threshold must
-not pass as mere operation. Both are computed from the LOADED config, so a value the loader
-resolved is fingerprinted as resolved; `config_path`, `name` and `symbol` are excluded, because
-where a profile sits on disk is not a property of the run.
+One wide hash would answer neither. A raised stop level must not read as a different strategy — that
+would put an otherwise comparable run beyond comparison; and a changed RSI threshold must not pass
+as mere operation. Both are computed from the LOADED config, so a value the loader resolved is
+fingerprinted as resolved; `config_path`, `profile_name` and `symbol` are excluded, because where a
+profile sits on disk is not a property of the run.
 
 **Three identity columns sit beside them on the ledger row, and they answer different
 questions.** `scenario_set_name` is what the profile is CALLED and an operator improves that;
 `deployment_id` is minted per deployment and `--new-deployment` starts a fresh one; only `bot_id`
 does not move. A reader asking *is this the same bot as the row above* has no other column to ask
 — and it is what the bot's carry-over state is filed under, which is what makes a ledger row and a
-position book joinable at all. Empty on a simulation row and on a profile that declares none.
+position book joinable at all. Empty on a simulation row, and on a row written before `bot_id` was
+mandatory.
 
 Two bots running ONE strategy are the case this makes readable, and it is worth seeing measured:
 
 ```
-Bot A   config_id ae4f91bb5520   param_hash a17e364498f6   carry-over  dotusd-live_dotusd
-Bot B   731d21024b31             a17e364498f6              dotusd-live-b_dotusd
+Bot A   config_id ae4f91bb5520   param_hash a17e364498f6   carry-over  dotlive01_dotusd
+Bot B   731d21024b31             a17e364498f6              dotlive02_dotusd
         ↑ two configurations     ↑ provably one strategy   ↑ separate position books
 ```
 
@@ -263,4 +268,4 @@ deployments` marks the session it happened on — and whether the halves may be 
 judgement a person makes. The full resolved configuration rides the same row, so a tool can say
 `rsi_buy_threshold: 45 → 40` rather than only "the hash differs".
 
-End-user view of all of this: [Live Deployment & Ledger](../user_guides/live_deployment_ledger_guide.md).
+End-user view of all of this: [Deployment Ledger](../user_guides/deployment_ledger_guide.md).

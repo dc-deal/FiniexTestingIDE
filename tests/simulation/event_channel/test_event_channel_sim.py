@@ -3,7 +3,7 @@ FiniexTestingIDE - Decision Event Channel — Simulation Pipeline (#348)
 
 Runs the event-probe decision logic through the backtesting (simulation)
 pipeline and asserts the ordered sequence of decision events it received via
-the on_* hooks. The same sequence is asserted by the AutoTrader-mock test
+the on_* hooks. The same sequence is asserted by the mock-session test
 (tests/autotrader/integration/test_event_channel_live_pipeline.py) — proving the
 channel behaves identically in both pipelines.
 """
@@ -11,7 +11,7 @@ channel behaves identically in both pipelines.
 import pytest
 
 from tests.shared.fixture_helpers import (
-    extract_backtesting_metadata,
+    extract_probe_metadata,
     extract_process_result,
     extract_tick_loop_results,
     run_scenario,
@@ -19,7 +19,7 @@ from tests.shared.fixture_helpers import (
 
 EVENT_CHANNEL_CONFIG = 'backtesting/event_channel_test.json'
 
-# Must match the AutoTrader-mock world (test_event_channel_live_pipeline.py).
+# Must match the mock-session world (test_event_channel_live_pipeline.py).
 EXPECTED_EVENT_SEQUENCE = ['order_filled', 'partial_close', 'session_end']
 
 
@@ -29,7 +29,7 @@ def received_events():
     summary = run_scenario(EVENT_CHANNEL_CONFIG)
     process_result = extract_process_result(summary)
     tick_loop_results = extract_tick_loop_results(process_result)
-    metadata = extract_backtesting_metadata(tick_loop_results)
+    metadata = extract_probe_metadata(tick_loop_results)
     return metadata.received_events
 
 

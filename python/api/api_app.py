@@ -10,18 +10,25 @@ which says for each what it serves and what it deliberately does not — a secon
 would be the copy nobody updates. `ROUTER_SURFACES` below is the authoritative mount table.
 """
 
-from typing import Dict
+import textwrap
+import time
+from datetime import datetime, timezone
+from typing import Dict, List
 
 from fastapi import Depends, FastAPI, Request, Security
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.routing import APIRoute
 
 from python.api.api_auth_setup import setup_api_auth
 from python.api.api_contract import API_CONTRACT_VERSION, CHANGES, CONTRACT_HEADER
+from python.api.api_error_catalog import IDENTITY_UNBOUND, api_error
+from python.api.head_request_middleware import HeadRequestMiddleware
 from python.api.endpoints import (
     bars_router,
     broker_router,
     deployments_router,
+    directory_router,
     reports_router,
     sweeps_router,
 )
@@ -32,13 +39,15 @@ from python.framework.types.api.api_identity_types import ApiConsumerIdentity
 from python.framework.types.api.api_types import (
     ApiContractResponse,
     BrokerListResponse,
+    CallerResponse,
     HealthResponse,
     TimeframeInfo,
     TimeframeListResponse,
-    CallerResponse,
+    ValidationCheckListResponse,
+    ValidationCheckRow,
 )
 from python.framework.utils.timeframe_config_utils import TimeframeConfig
-
+from python.framework.validators.validation_check_catalog import VALIDATION_CHECKS
 
 # Every gated router and the surface its grants name. The surface is the ROUTER's name, and a
 # grant names the thing a route addresses — its first path parameter. So `bars:kraken_spot` is
@@ -53,9 +62,14 @@ ROUTER_SURFACES = (
     (broker_router.router, 'brokers'),
     (bars_router.router, 'bars'),
     (deployments_router.router, 'deployments'),
+    (directory_router.router, 'directory'),
     (reports_router.router, 'reports'),
     (sweeps_router.router, 'sweeps'),
 )
+
+# How much of one CHANGES line the boot overview shows: the route and the gist. The full
+# sentence is what `/api/v1/contract` serves.
+_CHANGE_PREVIEW_CHARS = 96
 
 
 def _describe_caller(request: Request, enforced: bool,
@@ -82,9 +96,7 @@ def _describe_caller(request: Request, enforced: bool,
     if identity is None:
         # The boot refuses a live token without an account, so a verified consumer with no
         # identity is a defect on this side. Answering it as an anonymous caller would hide it.
-        raise ApiException(
-            status_code=500, error='identity_unbound',
-            detail=f'Consumer {consumer!r} was authenticated but is bound to no account.')
+        raise api_error(IDENTITY_UNBOUND, consumer=consumer)
     return CallerResponse(
         enforced=enforced,
         client=identity.consumer,
@@ -96,6 +108,41 @@ def _describe_caller(request: Request, enforced: bool,
     )
 
 
+def _describe_the_api(app: FastAPI, app_version: str) -> List[str]:
+    """
+    The console overview printed once every route is mounted: which contract this process
+    serves, what moved into it, and how many routes each surface carries.
+
+    Args:
+        app: The fully mounted application
+        app_version: The app version from the configuration
+
+    Returns:
+        The lines to print — the routes COUNTED from the app, never taken from a list
+    """
+    # Counted from the ROUTERS the mount loop includes, not from `app.routes`: FastAPI keeps an
+    # included router there as one wrapper object, so `app.routes` lists only the routes the
+    # factory mounts itself — health, contract and the other app-level reads.
+    top_level = sum(isinstance(route, APIRoute) and route.path.startswith('/api/v1')
+                    for route in app.routes)
+    per_surface = [(surface, sum(isinstance(route, APIRoute) for route in router.routes))
+                   for router, surface in ROUTER_SURFACES]
+    total = top_level + sum(count for _, count in per_surface)
+    surfaces = ' · '.join(f'{surface} {count}' for surface, count in per_surface)
+
+    lines = [
+        f'📜 API contract {API_CONTRACT_VERSION} · app {app_version} · '
+        f'{total} routes under /api/v1',
+        f'   per surface: {surfaces} · top-level {top_level}',
+        f'   moved into contract {API_CONTRACT_VERSION} ({len(CHANGES)}), '
+        f'in full at GET /api/v1/contract:',
+    ]
+    lines.extend(
+        f'     · {textwrap.shorten(change, width=_CHANGE_PREVIEW_CHARS, placeholder=" …")}'
+        for change in CHANGES)
+    return lines
+
+
 def create_app() -> FastAPI:
     """
     Create and configure the FastAPI application.
@@ -104,6 +151,11 @@ def create_app() -> FastAPI:
         Configured FastAPI instance with CORS, error handler, and routes registered.
     """
     app_version = AppConfigManager().get_version()
+    # When THIS process started serving — a provenance stamp, so the wall clock is right for it
+    # (§9) — and the monotonic reading the uptime is measured from, so a clock step cannot make
+    # the server look younger or older than it is.
+    started_at = datetime.now(timezone.utc)
+    started_monotonic = time.monotonic()
     auth = setup_api_auth()
     print(auth.boot_line)
 
@@ -140,7 +192,7 @@ def create_app() -> FastAPI:
             'http://localhost:8000',
             'http://127.0.0.1:8000',
         ],
-        allow_methods=['GET'],
+        allow_methods=['GET', 'HEAD'],
         allow_headers=['*'],
         # A browser hides every response header that is not CORS-safelisted, so without this
         # a cross-origin client sees the STATUS of a 401 or 429 and neither the scheme to
@@ -148,6 +200,9 @@ def create_app() -> FastAPI:
         # client; invisible from here, because our other consumer is server-side.
         expose_headers=['WWW-Authenticate', 'Retry-After', CONTRACT_HEADER],
     )
+    # Every GET route answers HEAD too, the way HTTP expects — a consumer reading only the
+    # contract header asks with HEAD, and FastAPI alone refuses that with a 405.
+    app.add_middleware(HeadRequestMiddleware)
 
     @app.middleware('http')
     async def stamp_the_contract(request: Request, call_next):
@@ -173,7 +228,9 @@ def create_app() -> FastAPI:
 
     @app.get('/api/v1/health', response_model=HealthResponse)
     def health() -> HealthResponse:
-        return HealthResponse(status='ok', version=app_version)
+        return HealthResponse(status='ok', version=app_version,
+                              started_at=started_at.isoformat(),
+                              uptime_s=round(time.monotonic() - started_monotonic, 1))
 
     # Open beside /health, decided rather than inherited: a timeframe list is the app's own
     # static configuration, not data about a venue or a run, and it is none of the
@@ -192,6 +249,15 @@ def create_app() -> FastAPI:
         return TimeframeListResponse(timeframes=[
             TimeframeInfo(name=tf, minutes=TimeframeConfig.get_minutes(tf))
             for tf in TimeframeConfig.sorted()
+        ])
+
+    # Open beside /timeframes for the same reason: the check vocabulary is the app's own static
+    # declaration — what an id MEANS — and says nothing about a venue, a run or an account.
+    @app.get('/api/v1/validation-checks', response_model=ValidationCheckListResponse)
+    def list_validation_checks() -> ValidationCheckListResponse:
+        return ValidationCheckListResponse(checks=[
+            ValidationCheckRow(check=info.check, title=info.title, description=info.description)
+            for info in VALIDATION_CHECKS
         ])
 
     @app.get('/api/v1/brokers', response_model=BrokerListResponse,
@@ -216,4 +282,5 @@ def create_app() -> FastAPI:
             dependencies=guarded + [Security(auth.grant, scopes=[surface])],
         )
 
+    print('\n'.join(_describe_the_api(app, app_version)))
     return app

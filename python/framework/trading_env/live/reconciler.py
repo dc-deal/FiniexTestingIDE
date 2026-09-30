@@ -66,7 +66,7 @@ _DUST_THRESHOLD = 1e-8
 
 class Reconciler:
     """
-    Read-only broker-vs-local reconciliation for live trading (ALERT_ONLY).
+    Read-only broker-vs-local reconciliation for live-adapter sessions (ALERT_ONLY).
 
     Pulls broker truth via the adapter's get_broker_* methods and diffs it
     against the executor's local shadow state (resting orders, positions). On

@@ -230,7 +230,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             rest_ladder=self._rest_ladder,
         )
 
-        # Live mode: broker handles SL/TP server-side
+        # Live mode: SL/TP closes go through the real asynchronous close path (#500)
         self._executor_mode = ExecutorMode.LIVE
 
         # #318 — Tracker for in-flight position SL/TP modifications.
@@ -1472,7 +1472,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         decision, which by definition already ran on a tick — so the situation could not occur
         until boot ADOPTION became the first path that puts a fillable order into the shadow
         before any tick exists. Polling one then would answer FILLED into a dereference of
-        None, i.e. an uncaught exception in the tick loop of a live session, with a real
+        None, i.e. an uncaught exception in the tick loop of a live-adapter session, with a real
         execution at the venue and no local record of it. Waiting for the first tick costs
         nothing: the algo is not running before it either.
         """
@@ -3134,7 +3134,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         new_take_profit: Union[float, None, _UnsetType] = UNSET
     ) -> ModificationResult:
         """
-        Schedule modification of a pending limit order via async pattern (#318).
+        Schedule modification of a resting limit order via async pattern (#318).
 
         Resolves order_id to broker_ref via _active_limit_orders, sets the
         in-flight flag on the target PendingOrder, enqueues an EditJob to the
@@ -3143,7 +3143,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         EditResponse arrives on the next drain_inbox.
 
         Args:
-            order_id: Pending limit order ID
+            order_id: Resting limit order ID
             new_price: New limit price (UNSET=keep current)
             new_stop_loss: New SL level (UNSET=no change, None=remove)
             new_take_profit: New TP level (UNSET=no change, None=remove)
@@ -3284,15 +3284,15 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         new_take_profit: Union[float, None, _UnsetType] = UNSET
     ) -> ModificationResult:
         """
-        Schedule modification of a pending stop order via async pattern (#318).
+        Schedule modification of a resting stop order via async pattern (#318).
 
         Capability-gated: returns ORDER_TYPE_NOT_SUPPORTED if the adapter
-        doesn't declare stop_orders or stop_limit_orders. A stop can rest in live since
-        #500 — from the boot adoption of a venue-reported one, and from a submit once the
-        executor declares the type.
+        doesn't declare stop_orders or stop_limit_orders. A stop can rest in an AutoTrader
+        session since #500 — from the boot adoption of a venue-reported one, and from a submit
+        once the executor declares the type.
 
         Args:
-            order_id: Pending stop order ID
+            order_id: Resting stop order ID
             new_stop_price: New trigger price (UNSET=keep current)
             new_limit_price: New limit price for STOP_LIMIT (UNSET=keep current)
             new_stop_loss: New SL level (UNSET=no change, None=remove)

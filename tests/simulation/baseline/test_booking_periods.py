@@ -20,33 +20,33 @@ class TestTheScenarioBooks:
         # The subprocess cannot write the ledger, so the periods travel back on the result like
         # every other figure. Arriving empty here would mean the seal never ran, or that the
         # field never made it onto the bridge — two different mistakes with one symptom.
-        assert tick_loop_results.booking_segments
-        assert len(tick_loop_results.booking_segments) >= 1
+        assert tick_loop_results.booking_periods
+        assert len(tick_loop_results.booking_periods) >= 1
 
     def test_a_scenario_counts_its_own_periods_from_one(
             self, tick_loop_results: ProcessTickLoopResult):
         # No floor is carried into a backtest: a scenario has no predecessor to inherit a
-        # period count from, unlike a live session continuing a deployment.
-        numbers = [s.segment_no for s in tick_loop_results.booking_segments]
+        # period count from, unlike an AutoTrader session continuing a deployment.
+        numbers = [s.period_no for s in tick_loop_results.booking_periods]
         assert numbers == list(range(1, len(numbers) + 1))
 
     def test_the_last_period_says_the_scenario_finished(
             self, tick_loop_results: ProcessTickLoopResult):
         # A scenario whose data simply ends still books what it has: the final period is closed
         # by the run ending, not by the market.
-        assert tick_loop_results.booking_segments[-1].reason.value == 'session_end'
+        assert tick_loop_results.booking_periods[-1].reason.value == 'session_end'
 
     def test_the_periods_partition_the_scenario_s_trades(
             self, tick_loop_results: ProcessTickLoopResult):
         # The control total: nothing counted twice, nothing lost between the periods.
-        booked = sum(s.trade_count for s in tick_loop_results.booking_segments)
+        booked = sum(s.trade_count for s in tick_loop_results.booking_periods)
         assert booked == len(tick_loop_results.trade_history or [])
 
     def test_the_periods_sum_to_the_scenario_s_realised_result(
             self, tick_loop_results: ProcessTickLoopResult):
         # The reconciliation the console prints, asserted against the portfolio's own figure —
         # two derivations over the same trades, arrived at by different routes.
-        booked = sum(s.figures.net_pnl for s in tick_loop_results.booking_segments)
+        booked = sum(s.figures.net_pnl for s in tick_loop_results.booking_periods)
         stats = tick_loop_results.portfolio_stats
         assert abs(booked - (stats.total_profit - stats.total_loss)) < 0.01
 
@@ -60,5 +60,5 @@ class TestTheScenarioBooks:
             return                                  # nothing declined, nothing to assert
         # A MAGNITUDE since #539, like `account_max_drawdown` beside it — the sign is a display
         # decision and lives in the renderers. `max()` is therefore the deepest fall here.
-        deepest = max(s.segment_max_drawdown for s in tick_loop_results.booking_segments)
+        deepest = max(s.period_max_drawdown for s in tick_loop_results.booking_periods)
         assert deepest > 0

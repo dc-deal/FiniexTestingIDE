@@ -170,7 +170,7 @@ class BrokerConfigFactory:
         frozen, and this reads that date back — the same shape a certificate's `valid_until`
         has, because it is the same kind of statement: a dated claim whose validity decays.
 
-        Who needs it: a live session already compares the declared rate against the venue on
+        Who needs it: a live-adapter session already compares the declared rate against the venue on
         every start and warns. Someone running only BACKTESTS never sees that warning, and
         the seed can rot indefinitely for them. This is the answer for that reader.
 
@@ -201,8 +201,8 @@ class BrokerConfigFactory:
 
         ONE declared source for both pipelines. The rate lives in the git-tracked seed and
         nowhere else: the backtest reads it so a run stays reproducible from a commit, and a
-        live session starts from the same number so the two agree about what was expected
-        before the venue is asked. Without this the live baseline came from a Python literal
+        live-adapter session starts from the same number so the two agree about what was expected
+        before the venue is asked. Without this the session's baseline came from a Python literal
         in the config fetcher — a third place the rate was written down, which no amount of
         re-freezing the seed could correct.
 
@@ -265,7 +265,7 @@ class BrokerConfigFactory:
         8-char SHA256 over one config block, key-order independent.
 
         Args:
-            block: Any JSON-serializable config fragment
+            block: Any JSON-serializable config block
 
         Returns:
             The first 8 hex characters of its SHA256

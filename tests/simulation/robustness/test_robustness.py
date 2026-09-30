@@ -51,7 +51,7 @@ def _stats(net: float, currency: str = 'USD') -> PortfolioStats:
         account_max_drawdown=0.0, max_equity=0.0, account_max_drawdown_pct=0.0,
         win_rate=1.0 if net > 0 else 0.0,
         profit_factor=0.0, total_spread_cost=0.0, total_commission=0.0, total_swap=0.0,
-        maker_fee=0.0, taker_fee=0.0, total_fees=0.0,
+        maker_fee=0.0, taker_fee=0.0, total_fees=0.0, fees_charged=0.0,
         currency=currency, broker_name='kraken', current_conversion_rate=1.0,
         current_balance=0.0, initial_balance=0.0, symbol='ETHUSD',
     )

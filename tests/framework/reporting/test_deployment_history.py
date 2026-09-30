@@ -3,8 +3,8 @@ Reading a restarted bot's ledger rows back as ONE history (#497).
 
 A thirty-day live run restarts — #476 rehearses it on purpose — and every restart writes its
 own ledger row under its own run id. Until the deployment identity those rows were a pile: the
-ledger's only other reader filters on `sweep_id`, which a live session does not have, so a live
-row was written and unreachable (§44 calls that a store with no read path).
+ledger's only other reader filters on `sweep_id`, which an AutoTrader session does not have, so
+its row was written and unreachable (§44 calls that a store with no read path).
 
 What is pinned here is the GROUPING and what it refuses to do. It groups, it orders, it names
 the gaps and the two kinds of change — and it judges none of them. Whether eleven hours between
@@ -32,7 +32,7 @@ DEPLOYMENT = 'deploy_20260901_060000_ab12'
 
 def row(run_id: str, timestamp: str, deployment: str = DEPLOYMENT, **overrides) -> RunResultRow:
     """
-    One ledger row as a live session writes it.
+    One ledger row as an AutoTrader session writes it.
 
     Args:
         run_id: The session's own identity
@@ -127,6 +127,20 @@ class TestMultiCurrency:
         assert len(summaries) == 2
         assert {s.currency for s in summaries} == {'USD', 'BTC'}
         assert all(s.sessions == 1 for s in summaries)
+
+    def test_each_currency_is_its_own_series(self):
+        # The first session of the second currency has no predecessor in ITS currency: no gap
+        # and no change mark may be measured against the other currency's last session.
+        histories = build_deployment_histories([
+            row('r1', '2026-09-01T06:00:00+00:00', currency='BTC'),
+            row('r2', '2026-09-02T06:00:00+00:00', currency='BTC', param_hash='changed'),
+            row('r1', '2026-09-01T06:00:00+00:00', currency='USD'),
+        ])
+        usd = [s for s in histories[DEPLOYMENT] if s.currency == 'USD']
+        btc = [s for s in histories[DEPLOYMENT] if s.currency == 'BTC']
+
+        assert (usd[0].index, usd[0].gap_hours, usd[0].strategy_changed) == (1, None, False)
+        assert [s.index for s in btc] == [1, 2]
 
 
 class TestWhatChangedBetweenSessions:
@@ -378,14 +392,14 @@ class TestTheDetailViewDescendsFromTheList:
         assert printed.index('newest') < printed.index('oldest')
 
     def test_each_line_is_keyed_by_the_run_id(self, capsys):
-        """The id is what opens `runs/live/<profile>/<run id>/`; a position number is not."""
+        """The id is what opens `runs/autotrader/<profile>/<run id>/`; a position number is not."""
         sessions = build_deployment_histories(
             [row('20260916_060500_8e10', '2026-09-16T06:05:00+00:00')])[DEPLOYMENT]
         render_deployment_history(DEPLOYMENT, sessions)
 
         printed = capsys.readouterr().out
         assert '20260916_060500_8e10' in printed
-        assert 'runs/live/<profile>/<run id>/' in printed
+        assert 'runs/autotrader/<profile>/<run id>/' in printed
 
     def test_a_session_reports_how_long_it_ran(self):
         sessions = build_deployment_histories([
@@ -445,18 +459,18 @@ class TestTheOverviewNamesTheBot:
     def test_two_deployments_of_one_bot_stand_together(self, capsys):
         rows = [
             row('old1', '2026-07-12T05:15:00+00:00', deployment='deploy_old',
-                scenario_set_name='dotusd_live'),
+                scenario_set_name='dotusd_production'),
             row('new1', '2026-09-01T06:00:00+00:00', deployment='deploy_new',
-                scenario_set_name='dotusd_live'),
+                scenario_set_name='dotusd_production'),
             row('other', '2026-08-20T09:00:00+00:00', deployment='deploy_other',
-                scenario_set_name='ethusd_live'),
+                scenario_set_name='ethusd_production'),
         ]
         histories = build_deployment_histories(rows)
         render_deployment_list(summarize_deployments(
             histories, {k: None for k in histories}))
 
         printed = capsys.readouterr().out
-        lines = [line for line in printed.splitlines() if 'deploy_' in line and 'usd_live' in line]
-        assert [l.split()[1] for l in lines] == ['ethusd_live', 'dotusd_live', 'dotusd_live'], (
+        lines = [line for line in printed.splitlines() if 'deploy_' in line and 'usd_production' in line]
+        assert [l.split()[1] for l in lines] == ['ethusd_production', 'dotusd_production', 'dotusd_production'], (
             'the two deployments of one bot did not end up adjacent')
         assert '--new-deployment' in printed, 'the list does not say what two rows mean'

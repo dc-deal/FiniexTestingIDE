@@ -8,16 +8,30 @@
             "name": "📙 List Scenarios",
             "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
+            "program": "${workspaceFolder}/python/cli/config_directory_cli.py",
             "args": [
-                "list",
-                "--full-details"
+                "list"
             ],
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
                 "group": "01_runs_simulation",
                 "order": 1
+            }
+        },
+        {
+            "name": "📙 Validate Scenario Sets",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
+            "args": [
+                "validate"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "01_runs_simulation",
+                "order": 2
             }
         },
         // 📡 SIGNAL feature demo: forex_macro_sentiment on mt5/EURUSD. The window straddles the
@@ -37,7 +51,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "01_runs_simulation",
-                "order": 2
+                "order": 3
             }
         },
         // 📡 SIGNAL on REAL collected data — both planes real on both markets: live-collected
@@ -57,7 +71,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "01_runs_simulation",
-                "order": 3
+                "order": 4
             }
         },
         {
@@ -73,11 +87,11 @@
             "justMyCode": false,
             "presentation": {
                 "group": "01_runs_simulation",
-                "order": 4
+                "order": 5
             }
         },
         {
-            "name": "🔬 Profile Run: All continuous/ - Folder",
+            "name": "🔬 Generator-Profile Run: continuous/ folder",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
@@ -91,11 +105,11 @@
             "justMyCode": false,
             "presentation": {
                 "group": "01_runs_simulation",
-                "order": 5
+                "order": 6
             }
         },
         {
-            "name": "🔬 Profile Run: All volatility_split/ Folder",
+            "name": "🔬 Generator-Profile Run: volatility_split/ folder",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
@@ -109,7 +123,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "01_runs_simulation",
-                "order": 6
+                "order": 7
             }
         },
         {
@@ -125,7 +139,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "01_runs_simulation",
-                "order": 7
+                "order": 8
             }
         },
         {
@@ -141,7 +155,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "01_runs_simulation",
-                "order": 8
+                "order": 9
             }
         },
         {
@@ -157,7 +171,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "01_runs_simulation",
-                "order": 9
+                "order": 10
             }
         },
         {
@@ -173,7 +187,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "01_runs_simulation",
-                "order": 10
+                "order": 11
             }
         },
         {
@@ -189,7 +203,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "01_runs_simulation",
-                "order": 11
+                "order": 12
             }
         },
         {
@@ -205,7 +219,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "01_runs_simulation",
-                "order": 12
+                "order": 13
             }
         },
         {
@@ -221,11 +235,11 @@
             "justMyCode": false,
             "presentation": {
                 "group": "01_runs_simulation",
-                "order": 13
+                "order": 14
             }
         },
         {
-            "name": "🔬🧪 Run User Scenario Set - ALL CONTINUOUS (prompt)",
+            "name": "🔬🧪 Run User Scenario Set - continuous-mode generator profiles (prompt)",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
@@ -239,7 +253,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "01_runs_simulation",
-                "order": 14
+                "order": 15
             }
         },
         // ====================================================
@@ -257,7 +271,7 @@
             "args": [
                 "run",
                 "--config",
-                "configs/autotrader_profiles/backtesting/aggressive_trend_mock.json",
+                "configs/autotrader_profiles/mock/aggressive_trend_mock.json",
                 "--display",
                 "--delay",
                 "1"
@@ -277,7 +291,7 @@
             "args": [
                 "run",
                 "--config",
-                "configs/autotrader_profiles/backtesting/cautious_macd_mock.json",
+                "configs/autotrader_profiles/mock/cautious_macd_mock.json",
                 "--display",
                 "--delay",
                 "1"
@@ -297,7 +311,7 @@
             "args": [
                 "run",
                 "--config",
-                "configs/autotrader_profiles/backtesting/session_end_test.json",
+                "configs/autotrader_profiles/mock/session_end_test.json",
                 "--display",
                 "--delay",
                 "1"
@@ -317,7 +331,7 @@
             "args": [
                 "run",
                 "--config",
-                "configs/autotrader_profiles/backtesting/mock_session_test.json",
+                "configs/autotrader_profiles/mock/mock_session_test.json",
                 "--display",
                 "--delay",
                 "1"
@@ -330,14 +344,14 @@
             }
         },
         {
-            "name": "🤖 AutoTrader: DASHUSD Live",
+            "name": "🤖 AutoTrader: DASHUSD Production",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/autotrader_cli.py",
             "args": [
                 "run",
                 "--config",
-                "configs/autotrader_profiles/production/dashusd_live.json"
+                "configs/autotrader_profiles/production/dashusd_production.json"
             ],
             "console": "integratedTerminal",
             "justMyCode": false,
@@ -347,14 +361,14 @@
             }
         },
         {
-            "name": "🤖 AutoTrader: DOTUSD Live",
+            "name": "🤖 AutoTrader: DOTUSD Production",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/autotrader_cli.py",
             "args": [
                 "run",
                 "--config",
-                "configs/autotrader_profiles/production/dotusd_live.json"
+                "configs/autotrader_profiles/production/dotusd_production.json"
             ],
             "console": "integratedTerminal",
             "justMyCode": false,
@@ -382,14 +396,14 @@
             }
         },
         {
-            "name": "🤖 AutoTrader: ETHUSD Live",
+            "name": "🤖 AutoTrader: ETHUSD Production",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/autotrader_cli.py",
             "args": [
                 "run",
                 "--config",
-                "configs/autotrader_profiles/production/ethusd_live.json"
+                "configs/autotrader_profiles/production/ethusd_production.json"
             ],
             "console": "integratedTerminal",
             "justMyCode": false,
@@ -399,14 +413,14 @@
             }
         },
         {
-            "name": "🤖 AutoTrader: SOLUSD Live",
+            "name": "🤖 AutoTrader: SOLUSD Production",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/autotrader_cli.py",
             "args": [
                 "run",
                 "--config",
-                "configs/autotrader_profiles/production/solusd_live.json"
+                "configs/autotrader_profiles/production/solusd_production.json"
             ],
             "console": "integratedTerminal",
             "justMyCode": false,
@@ -901,7 +915,7 @@
         // do not go through store_cli — they predate the shared base and #175 converges
         // them; until then the split is real and this group shows it.
         {
-            "name": "🔄 Rebuild: All indexes the store model owns",
+            "name": "🔄 Rebuild: All indexes a rebuild restores fully",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/store_cli.py",
@@ -1345,7 +1359,7 @@
         // ⚡ SCENARIO GENERATION
         // ====================================================
         {
-            "name": "⚡ Generate All Profiles (continuous)",
+            "name": "⚡ Generate All Profiles (continuous mode)",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/generator_cli.py",
@@ -1395,7 +1409,7 @@
             }
         },
         {
-            "name": "⚡ Generate Profile: kraken_spot/BTCUSD (continuous)",
+            "name": "⚡ Generate Profile: kraken_spot/BTCUSD (continuous mode)",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/generator_cli.py",
@@ -1441,7 +1455,7 @@
             }
         },
         {
-            "name": "⚡ Generate Profile: kraken_spot/ETHUSD (continuous)",
+            "name": "⚡ Generate Profile: kraken_spot/ETHUSD (continuous mode)",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/generator_cli.py",
@@ -1487,7 +1501,7 @@
             }
         },
         {
-            "name": "⚡ Generate Profile: mt5/EURUSD (continuous)",
+            "name": "⚡ Generate Profile: mt5/EURUSD (continuous mode)",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/generator_cli.py",
@@ -1533,7 +1547,7 @@
             }
         },
         {
-            "name": "⚡ Generate Profile: mt5/USDJPY (continuous)",
+            "name": "⚡ Generate Profile: mt5/USDJPY (continuous mode)",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/generator_cli.py",
@@ -2650,6 +2664,21 @@
             }
         },
         {
+            "name": "🧩 Pytest: Path-Based Loading (All)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/framework/path_based_loading/",
+                "-v"
+            ],
+            "console": "integratedTerminal",
+            "presentation": {
+                "group": "13_pytest_validation",
+                "order": 47
+            }
+        },
+        {
             "name": "🧩 Pytest: Protective Levels (#500)",
             "type": "debugpy",
             "request": "launch",
@@ -2663,7 +2692,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 47
+                "order": 48
             }
         },
         {
@@ -2680,7 +2709,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 48
+                "order": 49
             }
         },
         {
@@ -2697,7 +2726,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 49
+                "order": 50
             }
         },
         {
@@ -2714,7 +2743,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 50
+                "order": 51
             }
         },
         {
@@ -2725,7 +2754,7 @@
             "console": "integratedTerminal",
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 51
+                "order": 52
             }
         },
         {
@@ -2742,7 +2771,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 52
+                "order": 53
             }
         },
         {
@@ -2759,7 +2788,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 53
+                "order": 54
             }
         },
         {
@@ -2776,7 +2805,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 54
+                "order": 55
             }
         },
         {
@@ -2793,7 +2822,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 55
+                "order": 56
             }
         },
         {
@@ -2810,7 +2839,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 56
+                "order": 57
             }
         },
         {
@@ -2827,7 +2856,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 57
+                "order": 58
             }
         },
         {
@@ -2844,7 +2873,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 58
+                "order": 59
             }
         },
         {
@@ -2861,7 +2890,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 59
+                "order": 60
             }
         },
         {
@@ -2878,7 +2907,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 60
+                "order": 61
             }
         },
         {
@@ -2895,7 +2924,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 61
+                "order": 62
             }
         },
         {
@@ -2912,7 +2941,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 62
+                "order": 63
             }
         },
         {
@@ -2929,7 +2958,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 63
+                "order": 64
             }
         },
         {
@@ -2946,7 +2975,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 64
+                "order": 65
             }
         },
         {
@@ -2963,7 +2992,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 65
+                "order": 66
             }
         },
         {
@@ -2980,7 +3009,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 66
+                "order": 67
             }
         },
         {
@@ -2997,7 +3026,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 67
+                "order": 68
             }
         },
         {
@@ -3014,7 +3043,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 68
+                "order": 69
             }
         },
         {
@@ -3031,7 +3060,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 69
+                "order": 70
             }
         },
         {
@@ -3048,7 +3077,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 70
+                "order": 71
             }
         },
         {
@@ -3065,7 +3094,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 71
+                "order": 72
             }
         },
         {
@@ -3080,21 +3109,6 @@
             ],
             "console": "integratedTerminal",
             "justMyCode": false,
-            "presentation": {
-                "group": "13_pytest_validation",
-                "order": 72
-            }
-        },
-        {
-            "name": "🧩 Pytest: USER Namespace",
-            "type": "debugpy",
-            "request": "launch",
-            "module": "pytest",
-            "args": [
-                "tests/framework/user_namespace/",
-                "-v"
-            ],
-            "console": "integratedTerminal",
             "presentation": {
                 "group": "13_pytest_validation",
                 "order": 73
@@ -3128,7 +3142,7 @@
             "args": [
                 "run",
                 "--config",
-                "configs/autotrader_profiles/backtesting/deployment_continuity_test.json",
+                "configs/autotrader_profiles/mock/deployment_continuity_test.json",
                 "--display",
                 "--delay",
                 "1"
@@ -3148,7 +3162,7 @@
             "args": [
                 "run",
                 "--config",
-                "configs/autotrader_profiles/backtesting/diagnostics_probe_test.json",
+                "configs/autotrader_profiles/mock/diagnostics_probe_test.json",
                 "--display",
                 "--delay",
                 "1"
@@ -3168,7 +3182,7 @@
             "args": [
                 "run",
                 "--config",
-                "configs/autotrader_profiles/backtesting/duplicate_signal_guard_test.json",
+                "configs/autotrader_profiles/mock/duplicate_signal_guard_test.json",
                 "--display",
                 "--delay",
                 "1"
@@ -3188,7 +3202,7 @@
             "args": [
                 "run",
                 "--config",
-                "configs/autotrader_profiles/backtesting/event_channel_lifecycle.json",
+                "configs/autotrader_profiles/mock/event_channel_lifecycle.json",
                 "--display",
                 "--delay",
                 "1"
@@ -3208,7 +3222,7 @@
             "args": [
                 "run",
                 "--config",
-                "configs/autotrader_profiles/backtesting/margin_safety_test.json",
+                "configs/autotrader_profiles/mock/margin_safety_test.json",
                 "--display",
                 "--delay",
                 "1"
@@ -3228,7 +3242,7 @@
             "args": [
                 "run",
                 "--config",
-                "configs/autotrader_profiles/backtesting/market_data_outage_test.json",
+                "configs/autotrader_profiles/mock/market_data_outage_test.json",
                 "--display",
                 "--delay",
                 "1"
@@ -3248,7 +3262,7 @@
             "args": [
                 "run",
                 "--config",
-                "configs/autotrader_profiles/backtesting/minimal_warmup_test.json",
+                "configs/autotrader_profiles/mock/minimal_warmup_test.json",
                 "--display",
                 "--delay",
                 "1"
@@ -3268,7 +3282,7 @@
             "args": [
                 "run",
                 "--config",
-                "configs/autotrader_profiles/backtesting/mock_session_test.json",
+                "configs/autotrader_profiles/mock/mock_session_test.json",
                 "--display",
                 "--delay",
                 "1"
@@ -3288,7 +3302,7 @@
             "args": [
                 "run",
                 "--config",
-                "configs/autotrader_profiles/backtesting/partial_close_lifecycle.json",
+                "configs/autotrader_profiles/mock/partial_close_lifecycle.json",
                 "--display",
                 "--delay",
                 "1"
@@ -3308,7 +3322,7 @@
             "args": [
                 "run",
                 "--config",
-                "configs/autotrader_profiles/backtesting/tick_outage_stress_test.json",
+                "configs/autotrader_profiles/mock/tick_outage_stress_test.json",
                 "--display",
                 "--delay",
                 "1"
@@ -3328,7 +3342,7 @@
             "args": [
                 "run",
                 "--config",
-                "configs/autotrader_profiles/backtesting/sl_triggered_test.json",
+                "configs/autotrader_profiles/mock/sl_triggered_test.json",
                 "--display",
                 "--delay",
                 "1"
@@ -3348,7 +3362,7 @@
             "args": [
                 "run",
                 "--config",
-                "configs/autotrader_profiles/backtesting/btcusd_mock_safety.json",
+                "configs/autotrader_profiles/mock/btcusd_mock_safety.json",
                 "--display",
                 "--delay",
                 "1"
@@ -3368,7 +3382,7 @@
             "args": [
                 "run",
                 "--config",
-                "configs/autotrader_profiles/backtesting/sentiment_mock_test.json",
+                "configs/autotrader_profiles/mock/sentiment_mock_test.json",
                 "--display",
                 "--delay",
                 "1"
@@ -3388,7 +3402,7 @@
             "args": [
                 "run",
                 "--config",
-                "configs/autotrader_profiles/backtesting/sentiment_outage_test.json",
+                "configs/autotrader_profiles/mock/sentiment_outage_test.json",
                 "--display",
                 "--delay",
                 "1"
@@ -3408,7 +3422,7 @@
             "args": [
                 "run",
                 "--config",
-                "configs/autotrader_profiles/backtesting/tp_triggered_test.json",
+                "configs/autotrader_profiles/mock/tp_triggered_test.json",
                 "--display",
                 "--delay",
                 "1"
@@ -3428,7 +3442,7 @@
             "args": [
                 "run",
                 "--config",
-                "configs/autotrader_profiles/backtesting/trade_lifecycle_test.json",
+                "configs/autotrader_profiles/mock/trade_lifecycle_test.json",
                 "--display",
                 "--delay",
                 "1"
@@ -3878,7 +3892,7 @@
             "args": [
                 "run",
                 "--config",
-                "configs/autotrader_profiles/backtesting/dry_run_resting_probe.json",
+                "configs/autotrader_profiles/observation/dry_run_resting_probe.json",
                 "--display",
                 "--attended"
             ],
@@ -3910,14 +3924,14 @@
             }
         },
         {
-            "name": "🧪 AutoTrader: Field Study (Mock dress-rehearsal)",
+            "name": "🧪 AutoTrader: Field Study (mock session)",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/autotrader_cli.py",
             "args": [
                 "run",
                 "--config",
-                "configs/autotrader_profiles/backtesting/field_study_mock.json",
+                "configs/autotrader_profiles/mock/field_study_mock.json",
                 "--display",
                 "--delay",
                 "1"

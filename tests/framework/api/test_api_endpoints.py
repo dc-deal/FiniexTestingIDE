@@ -10,7 +10,7 @@ Happy path + one error case per endpoint as specified in #298.
 """
 
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -19,7 +19,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from python.api.api_app import create_app
-from python.api.api_contract import API_CONTRACT_VERSION
+from python.api.api_contract import API_CONTRACT_VERSION, CHANGES
 from python.configuration.app_config_manager import AppConfigManager
 from python.data_management.index.bars_index_manager import BarsIndexManager
 from python.framework.types.api.report_types import (
@@ -27,6 +27,7 @@ from python.framework.types.api.report_types import (
     RunInfo,
     RunResultRow,
 )
+from python.framework.validators.validation_check_catalog import VALIDATION_CHECKS_BY_ID
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -116,6 +117,13 @@ def _sample_bars_df() -> pd.DataFrame:
 
 class TestTimeframes:
 
+    def test_the_validation_checks_are_the_catalog(self, client):
+        body = client.get('/api/v1/validation-checks').json()
+        assert body['key'] == ['check']
+        served = {row['check']: row for row in body['checks']}
+        assert set(served) == set(VALIDATION_CHECKS_BY_ID)
+        assert served['warmup_quality']['title'] == VALIDATION_CHECKS_BY_ID['warmup_quality'].title
+
     def test_list_timeframes_structure(self, client):
         r = client.get('/api/v1/timeframes')
         assert r.status_code == 200
@@ -149,7 +157,26 @@ class TestHealth:
     def test_health_ok(self, client):
         r = client.get('/api/v1/health')
         assert r.status_code == 200
-        assert r.json() == {'status': 'ok', 'version': AppConfigManager().get_version()}
+        body = r.json()
+        assert set(body) == {'status', 'version', 'started_at', 'uptime_s'}
+        assert body['status'] == 'ok'
+        assert body['version'] == AppConfigManager().get_version()
+
+    def test_it_says_when_the_server_started_in_utc(self, client):
+        started = datetime.fromisoformat(client.get('/api/v1/health').json()['started_at'])
+        assert started.utcoffset() == timedelta(0)
+        assert started <= datetime.now(timezone.utc)
+
+    def test_the_uptime_runs_forward_and_a_restart_starts_again(self):
+        """The uptime never goes back within one server; a second server process is a new start."""
+        first_server = TestClient(create_app())
+        before = first_server.get('/api/v1/health').json()
+        after = first_server.get('/api/v1/health').json()
+        assert 0 <= before['uptime_s'] <= after['uptime_s']
+        assert after['started_at'] == before['started_at']
+        restarted = TestClient(create_app()).get('/api/v1/health').json()
+        assert datetime.fromisoformat(restarted['started_at']) >= datetime.fromisoformat(
+            before['started_at'])
 
 
 # ---------------------------------------------------------------------------
@@ -186,7 +213,7 @@ class TestSymbols:
         with patch('python.api.endpoints.broker_router.BarsIndexManager', return_value=_mock_index()):
             r = client.get('/api/v1/brokers/nonexistent/symbols')
         assert r.status_code == 404
-        assert r.json()['error'] == 'not_found'
+        assert r.json()['error'] == 'broker_not_found'
 
 
 # ---------------------------------------------------------------------------
@@ -210,7 +237,7 @@ class TestCoverage:
         with patch('python.api.endpoints.bars_router.BarsIndexManager', return_value=index):
             r = client.get('/api/v1/brokers/kraken_spot/symbols/UNKNOWN/coverage')
         assert r.status_code == 404
-        assert r.json()['error'] == 'not_found'
+        assert r.json()['error'] == 'symbol_not_found'
 
 
 # ---------------------------------------------------------------------------
@@ -377,7 +404,7 @@ class TestBars:
                 },
             )
         assert r.status_code == 404
-        assert r.json()['error'] == 'not_found'
+        assert r.json()['error'] == 'broker_not_found'
 
 
 # ---------------------------------------------------------------------------
@@ -388,7 +415,7 @@ class TestReportRuns:
 
     def test_list_runs(self, client):
         store = MagicMock()
-        store.list_runs.return_value = [
+        store.list_runs_with_results.return_value = [
             RunInfo(run_id='20260615_130000', group='autotrader', name='my_profile'),
             RunInfo(run_id='20260615_120000', group='scenario_sets', name='my_set'),
         ]
@@ -405,11 +432,11 @@ class TestReportRuns:
     def test_no_persisted_run_is_not_an_error(self, client):
         """An empty store is a legitimate empty index, never a 404."""
         store = MagicMock()
-        store.list_runs.return_value = []
+        store.list_runs_with_results.return_value = []
         with patch('python.api.endpoints.reports_router.ReportStore', return_value=store):
             r = client.get('/api/v1/reports/runs')
         assert r.status_code == 200
-        assert r.json() == {'key': ['run_id'], 'runs': [], 'count': 0}
+        assert r.json() == {'key': ['run_id'], 'results_key': ['currency'], 'runs': [], 'count': 0}
 
 
 class TestSweeps:
@@ -513,6 +540,28 @@ class TestTheContractSaysWhatItIs:
         # a version mismatch and a credential failure look alike from outside.
         assert client.get('/api/v1/contract').status_code == 200
 
+    def test_head_answers_where_get_does(self, client):
+        # HTTP answers HEAD wherever it answers GET (RFC 9110): same status, same headers.
+        # FastAPI alone refused it with a 405, and a consumer reading only the contract header
+        # asks exactly this way.
+        for path in ('/api/v1/contract', '/api/v1/health', '/api/v1/timeframes'):
+            head = client.head(path)
+            assert head.status_code == client.get(path).status_code == 200
+            assert head.headers['X-Api-Contract'] == str(API_CONTRACT_VERSION)
+
+    def test_a_restart_prints_the_contract_and_every_route_it_mounted(self, capsys):
+        # The overview a restarted server prints in its console. Its route count is held to the
+        # schema, which FastAPI derives from what is really mounted — a router the count missed
+        # would show here, not only as a wrong number on a screen.
+        app = create_app()
+        printed = capsys.readouterr().out
+        schema_paths = [path for path in TestClient(app).get('/openapi.json').json()['paths']
+                        if path.startswith('/api/v1')]
+
+        assert f'API contract {API_CONTRACT_VERSION} ·' in printed
+        assert f'{len(schema_paths)} routes under /api/v1' in printed
+        assert printed.count('\n     · ') == len(CHANGES)
+
     def test_the_log_opens_with_the_version_the_server_serves(self):
         # The server serves only the current version's lines; the log is the ONLY place the
         # older ones survive. A bump that skipped the log would leave a consumer several versions
@@ -531,7 +580,7 @@ class TestEveryListSaysWhatMakesARowUnique:
     """
     An unordered list of objects says nothing about its own identity, and the two cases here
     are both ones where the obvious key is wrong: a deployment row is one per (deployment x
-    currency), and `segment_no` repeats across the sessions of one deployment (§49).
+    currency), and `period_no` repeats across the sessions of one deployment (§49).
     """
 
     def test_the_deployment_list_names_the_currency_in_its_key(self, client):
@@ -554,7 +603,7 @@ class TestDeployments:
     directory, no artifacts. Its rows live in the ledger and nowhere else — which is why these
     routes read the ledger and only the ledger (one route, one store).
 
-    Before #539 the ledger's only reader filtered on `sweep_id`, which a live session does not
+    Before #539 the ledger's only reader filtered on `sweep_id`, which an AutoTrader session does not
     have, so every one of these rows was written and unreachable (§44).
     """
 
@@ -567,13 +616,13 @@ class TestDeployments:
                          run_timestamp='2026-09-01T06:00:00+00:00',
                          recorded_at_utc='2026-09-01T18:00:00+00:00',
                          currency='USD', deployment_id='deploy_1', bot_id='bot-a',
-                         scenario_set_name='dotusd_live', net_pnl=10.0,
+                         scenario_set_name='dotusd_production', net_pnl=10.0,
                          account_max_drawdown=5.0, account_max_drawdown_pct=1.0, status='ok'),
             RunResultRow(run_id='s2', param_hash='p1', profile_hash='o2',
                          run_timestamp='2026-09-02T06:00:00+00:00',
                          recorded_at_utc='2026-09-02T18:00:00+00:00',
                          currency='USD', deployment_id='deploy_1', bot_id='bot-a',
-                         scenario_set_name='dotusd_live', net_pnl=-4.0,
+                         scenario_set_name='dotusd_production', net_pnl=-4.0,
                          account_max_drawdown=9.0, account_max_drawdown_pct=1.8, status='ok'),
         ]
 
@@ -594,7 +643,7 @@ class TestDeployments:
         assert data['count'] == 1
         assert data['deployments'][0]['deployment_id'] == 'deploy_1'
         assert data['deployments'][0]['sessions'] == 2
-        assert data['deployments'][0]['bot'] == 'dotusd_live'
+        assert data['deployments'][0]['bot'] == 'dotusd_production'
 
     def test_a_deployments_pnl_sums_and_its_drawdown_does_not(self, client):
         """
@@ -680,12 +729,12 @@ class TestDeployments:
         def row(run_id, no, opened, closed, pnl, trades, reason='anchor'):
             return RunResultRow(
                 run_id=run_id, param_hash='p1', run_timestamp=opened, currency='USD',
-                deployment_id='deploy_1', scenario_set_name='dotusd_live', status='ok',
-                unit_name='dotusd_live', segment_no=no, segment_opened_at=opened,
-                segment_closed_at=closed, segment_close_reason=reason,
+                deployment_id='deploy_1', scenario_set_name='dotusd_production', status='ok',
+                unit_name='dotusd_production', period_no=no, period_opened_at=opened,
+                period_closed_at=closed, period_close_reason=reason,
                 total_trades=trades, net_pnl=pnl,
-                segment_min_equity=90.0, segment_max_equity=110.0,
-                segment_max_drawdown=5.0, final_equity=100.0 + pnl)
+                period_min_equity=90.0, period_max_equity=110.0,
+                period_max_drawdown=5.0, final_equity=100.0 + pnl)
 
         return [
             row('s1', 1, '2026-09-01T00:00:00+00:00', '2026-09-02T00:00:00+00:00', 12.0, 3),
@@ -697,7 +746,7 @@ class TestDeployments:
                 reason='session_end'),
             RunResultRow(run_id='s0', param_hash='p1', currency='USD',
                          run_timestamp='2026-08-01T00:00:00+00:00',
-                         deployment_id='deploy_1', scenario_set_name='dotusd_live',
+                         deployment_id='deploy_1', scenario_set_name='dotusd_production',
                          status='ok', net_pnl=99.0),
         ]
 
@@ -715,7 +764,7 @@ class TestDeployments:
 
     def test_every_period_names_the_session_that_booked_it(self, client):
         """
-        `segment_no` is a per-BOT counter and restarts wherever a session wrote no carry-over
+        `period_no` is a per-BOT counter and restarts wherever a session wrote no carry-over
         floor, so two periods of one deployment can both be #1. `run_id` is then the only
         thing that tells them apart — and it is the hinge into that run's report routes.
         """
@@ -724,7 +773,7 @@ class TestDeployments:
         with patch('python.api.endpoints.deployments_router._ledger', return_value=ledger):
             periods = client.get('/api/v1/deployments/deploy_1/booking-periods').json()['periods']
         assert [p['run_id'] for p in periods] == ['s1', 's1', 's2']
-        assert [p['segment_no'] for p in periods] == [1, 2, 1]
+        assert [p['period_no'] for p in periods] == [1, 2, 1]
 
     def test_a_row_that_books_no_period_is_skipped_and_counted(self, client):
         """
@@ -749,7 +798,7 @@ class TestDeployments:
         ledger.read_rows.return_value = self._period_rows()
         with patch('python.api.endpoints.deployments_router._ledger', return_value=ledger):
             first = client.get('/api/v1/deployments/deploy_1/booking-periods').json()['periods'][0]
-        assert first['max_drawdown'] == 5.0     # segment_max_drawdown, not account_max_drawdown
+        assert first['max_drawdown'] == 5.0     # period_max_drawdown, not account_max_drawdown
         assert (first['min_equity'], first['max_equity']) == (90.0, 110.0)
 
     def test_there_is_no_reconciliation_and_that_is_deliberate(self, client):
@@ -945,10 +994,10 @@ class TestRunConfigSnapshot:
     """
 
     def test_it_serves_the_snapshot_parsed(self, client):
-        info = RunInfo(run_id='r1', group='live', name='p', config_snapshot='autotrader_config.json',
+        info = RunInfo(run_id='r1', group='autotrader', name='p', config_snapshot='autotrader_config.json',
                        config_id='abc123')
         snapshot = RunConfigSnapshot(run_id='r1', config_snapshot='autotrader_config.json',
-                                     config_id='abc123', config={'name': 'p', 'symbol': 'BTCUSD'})
+                                     config_id='abc123', config={'profile_name': 'p', 'symbol': 'BTCUSD'})
         with patch('python.api.endpoints.reports_router.ReportStore') as store:
             store.return_value.get_config_snapshot.return_value = snapshot
             store.return_value.list_runs.return_value = [info]
@@ -969,7 +1018,7 @@ class TestRunConfigSnapshot:
     def test_a_declared_but_unfiled_snapshot_says_so(self, client):
         # The run EXISTS — it died between the header write and the copy, or its file logging
         # was off. Reading that as "unknown run" sends a consumer after the wrong fault.
-        info = RunInfo(run_id='r1', group='live', name='p', config_snapshot='autotrader_config.json')
+        info = RunInfo(run_id='r1', group='autotrader', name='p', config_snapshot='autotrader_config.json')
         with patch('python.api.endpoints.reports_router.ReportStore') as store:
             store.return_value.get_config_snapshot.return_value = None
             store.return_value.list_runs.return_value = [info]

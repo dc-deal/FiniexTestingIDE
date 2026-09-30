@@ -9,7 +9,6 @@
     "oos_split": 0.4
   },
   "global": {
-    "data_mode": "realistic",
     "strategy_config": {
       "decision_logic_type": "CORE/simple_consensus",
       "worker_instances": {
@@ -56,7 +55,7 @@
   },
   "scenarios": [
     {
-      "name": "ethusd_w1",
+      "scenario_name": "ethusd_w1",
       "symbol": "ETHUSD",
       "data_broker_type": "kraken_spot",
       "start_date": "2026-02-10T10:00:00+00:00",
@@ -64,7 +63,7 @@
       "role": "in_sample"
     },
     {
-      "name": "ethusd_w2",
+      "scenario_name": "ethusd_w2",
       "symbol": "ETHUSD",
       "data_broker_type": "kraken_spot",
       "start_date": "2026-02-10T12:00:00+00:00",
@@ -72,7 +71,7 @@
       "role": "in_sample"
     },
     {
-      "name": "ethusd_w3",
+      "scenario_name": "ethusd_w3",
       "symbol": "ETHUSD",
       "data_broker_type": "kraken_spot",
       "start_date": "2026-02-10T14:00:00+00:00",
@@ -80,7 +79,7 @@
       "role": "in_sample"
     },
     {
-      "name": "ethusd_w4",
+      "scenario_name": "ethusd_w4",
       "symbol": "ETHUSD",
       "data_broker_type": "kraken_spot",
       "start_date": "2026-02-10T16:00:00+00:00",
@@ -88,7 +87,7 @@
       "role": "out_of_sample"
     },
     {
-      "name": "ethusd_w5",
+      "scenario_name": "ethusd_w5",
       "symbol": "ETHUSD",
       "data_broker_type": "kraken_spot",
       "start_date": "2026-02-10T18:00:00+00:00",

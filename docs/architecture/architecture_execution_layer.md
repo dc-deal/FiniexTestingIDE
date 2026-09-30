@@ -1,4 +1,4 @@
-# Execution Layer Architecture: Simulation & Live Trading
+# Execution Layer Architecture: Simulation & Live Execution
 
 ## Overview
 
@@ -6,11 +6,11 @@ This document describes the architecture of the trade execution layer — the sy
 trading strategy (DecisionLogic) and the market. It explains the design principles, the
 Simulation/Live hybrid approach, and the reasoning behind each architectural decision.
 
-The core insight: **Backtesting and live trading share the same portfolio logic.** The only
+The core insight: **Backtesting and the live execution stack share the same portfolio logic.** The only
 difference is *how* orders reach the market and *how* fills are confirmed. Everything else —
 portfolio tracking, fee calculations, P&L accounting, margin checks — is identical.
 
-> **Tick flow comparison (Backtesting vs Live):** see [simulation_vs_live_flow.md](simulation_vs_live_flow.md)
+> **Tick flow comparison (Backtesting vs Live):** see [simulation_vs_autotrader_flow.md](simulation_vs_autotrader_flow.md)
 > **Live execution details (LiveTradeExecutor, broker polling, LiveRequestProcessor):** see [live_execution_architecture.md](live_execution_architecture.md)
 > **Pending order lifecycle (3 worlds: latency, limit, stop):** see [pending_order_architecture.md](pending_order_architecture.md)
 
@@ -18,7 +18,7 @@ portfolio tracking, fee calculations, P&L accounting, margin checks — is ident
 
 ## The Problem: Two Execution Modes, One Strategy
 
-A trading strategy should not know (or care) whether it's running in a backtest or live. The decision "buy 0.1 lots EURUSD" is the same regardless of execution mode. But the *execution* is fundamentally different:
+A trading strategy should not know (or care) whether it's running in a backtest or an AutoTrader session. The decision "buy 0.1 lots EURUSD" is the same regardless of execution mode. But the *execution* is fundamentally different:
 
 | Aspect | Simulation | Live |
 |--------|-----------|------|
@@ -122,7 +122,7 @@ Steps 1, 3 (structure), and 4 are **identical** between simulation and live. Onl
 
 ### Error Handling: Same Code, Both Modes
 
-Error handling is **not a live-only feature**. It belongs in AbstractTradeExecutor because both modes need it. The simulator needs it for stress testing, live needs it for reality. Same code, same paths.
+Error handling is **not a feature of the live execution stack only**. It belongs in AbstractTradeExecutor because both modes need it. The simulator needs it for stress testing, the live stack needs it for reality. Same code, same paths.
 
 **Two error sources, one handling path:**
 
@@ -154,7 +154,7 @@ Error handling is **not a live-only feature**. It belongs in AbstractTradeExecut
 
 **Live (implemented):** See [live_execution_architecture.md](live_execution_architecture.md) — same handling logic as simulation stress test, triggered by real broker errors/timeouts instead of seeded injection.
 
-The advantage: You can test your error-handling logic in the simulator before going live. "Reject every 3rd trade" validates your algorithm handles:
+The advantage: You can test your error-handling logic in the simulator before trading real money. "Reject every 3rd trade" validates your algorithm handles:
 - Rejections correctly (no duplicate order submissions)
 - Timeouts cleanly (no ghost positions in the pending cache)
 - Recovery to a consistent state after failures
@@ -189,7 +189,7 @@ no individual records are stored for normal outcomes.
 |---------|--------|-------------------|--------------|
 | `FILLED` | Normal fill after delay | No (aggregated only) | ticks (sim) / ms (live) |
 | `REJECTED` | Stress test or broker rejection | No (aggregated only) | ticks (sim) / ms (live) |
-| `TIMED_OUT` | Broker timeout (live only) | Yes (`anomaly_orders`) | ms |
+| `TIMED_OUT` | Broker timeout (live execution stack only) | Yes (`anomaly_orders`) | ms |
 | `FORCE_CLOSED` | `clear_pending()` for genuine stuck-in-pipeline orders at scenario end | Yes (`anomaly_orders`, with `reason`) | ticks (sim) / ms (live) |
 
 **Display locations:**
@@ -242,7 +242,7 @@ The full history remains in the scenario log file for post-analysis.
 
 **Design rationale**: For typical backtesting blocks (6-24h), these limits are never hit. Even
 aggressive scalping strategies produce ~200 order entries per 24h block. The limits protect against
-edge cases in very long live sessions or extreme multi-position strategies.
+edge cases in very long AutoTrader sessions or extreme multi-position strategies.
 
 ---
 
@@ -396,9 +396,9 @@ Two rules follow, and both were learned by getting them wrong:
   invisible from every side. Where the PIPELINE is the short side, say so in a comment beside a
   `True`; the intersection already refuses the order.
 - **An executor declares what its whole path can carry, not what one layer knows.** Before #500 the
-  live set was `{MARKET, LIMIT}` while Kraken declared STOP_LIMIT, so a strategy declaring
+  live executor's set was `{MARKET, LIMIT}` while Kraken declared STOP_LIMIT, so a strategy declaring
   STOP_LIMIT passed pre-flight (which read only the adapter) and had every order rejected at
-  submission — a checked-in live profile sat in that state. Widening a set is the LAST step of
+  submission — a checked-in profile sat in that state. Widening a set is the LAST step of
   routing a type, never the first: `open_order` used to hardcode `OrderType.LIMIT` on the non-MARKET
   path, so the payload builder's own refusal could not fire and a STOP would have gone out as a
   priceless limit.
@@ -461,7 +461,7 @@ The single source of truth for position state. Manages:
 - Position open/close with P&L realization
 - Trade history for post-run analysis
 
-Both simulation and live share the same PortfolioManager. In live mode, it acts as the **local shadow state** — see [live_execution_architecture.md](live_execution_architecture.md) for shadow state and reconciliation details.
+The simulation and the live execution stack share the same PortfolioManager. On the live stack it acts as the **local shadow state** — see [live_execution_architecture.md](live_execution_architecture.md) for shadow state and reconciliation details.
 
 ### PendingOrder (shared dataclass)
 Generic pending order representation used by both modes. Mode-specific fields are Optional:
@@ -494,8 +494,8 @@ The tick loop does not know (and should not know) whether it's driving a simulat
 
 In the previous design, the tick loop called two separate methods: `update_prices(tick)` and
 `process_pending_orders()`. This leaked implementation details — the loop "knew" that orders and
-prices were separate concerns inside the executor. When moving to live trading, this coupling would
-have required changes in the tick loop itself.
+prices were separate concerns inside the executor. When the live executor arrived, this coupling
+would have required changes in the tick loop itself.
 
 With `on_tick()`, the tick loop is a pure driver. The executor decides how to partition its work internally.
 
@@ -507,7 +507,7 @@ When an order is submitted, it doesn't execute instantly. There's a delay (simul
 
 The previous approach mixed pending orders into `get_open_positions()` as "pseudo-positions" (Position objects with `pending=True`). This was problematic:
 
-- **Behavior divergence**: Simulation returned pseudo-positions, live trading wouldn't
+- **Behavior divergence**: Simulation returned pseudo-positions, the live executor wouldn't
 - **Broken contracts**: `get_open_positions()` returned objects that weren't actually positions
 - **Strategy coupling**: Every strategy had to filter `if not position.pending` — mixing execution awareness into decision logic
 
@@ -520,14 +520,14 @@ The new design separates concerns completely:
 **`has_pending_orders()`** — Global check: "Is anything in flight across all worlds?" Concrete in
 `AbstractTradeExecutor` — combines `has_pipeline_orders()` + `_active_limit_orders` +
 `_active_stop_orders`. Used by market-only strategies (SimpleConsensus, AggressiveTrend,
-BacktestingDeterministic) as an early return guard:
+DeterministicProbe) as an early return guard:
 ```
 if self.trading_api.has_pending_orders():
     return None  # Wait for pending orders to resolve
 ```
 
 **`has_pipeline_orders()`** — Pipeline-only check: "Are orders still in transit (latency queue)?"
-Excludes broker-accepted orders waiting for price trigger (active limit/stop orders). Used by
+Excludes broker-accepted resting orders waiting for their price (active limit/stop orders). Used by
 strategies that place limit/stop orders and need to distinguish between "order underway" and "order
 waiting at broker for price":
 ```
@@ -536,7 +536,7 @@ if self.trading_api.has_pipeline_orders():
 # Active limit/stop orders are NOT blocking here
 ```
 
-**`is_pending_close(position_id)`** — Per-position check: "Is this specific position being closed?" Used by multi-position strategies (BacktestingMultiPosition, BacktestingMarginStress) to avoid duplicate close submissions:
+**`is_pending_close(position_id)`** — Per-position check: "Is this specific position being closed?" Used by multi-position strategies (MultiPositionProbe, MarginStressProbe) to avoid duplicate close submissions:
 ```
 if self.trading_api.is_pending_close(pos.position_id):
     continue  # Close already in flight
@@ -564,7 +564,7 @@ and `LiveTradeExecutor.open_order()` call it as their first step.
 **Why here and not in `DecisionTradingApi`:** broker price precision (`digits` / tick size) is an execution/broker concern, not an algo-API concern. Normalizing on the executor layer guarantees two things:
 
 1. **Local book == broker truth** — the PortfolioManager records the *same* rounded price the adapter sends, so reconciliation does not see a phantom divergence.
-2. **Sim == Live parity** — both executors round identically, so a backtest and a live run produce the same prices.
+2. **Sim == Live parity** — both executors round identically, so a backtest and an AutoTrader session produce the same prices.
 
 A raw computed float (e.g. a limit price from an offset percentage: `1900.53 × 0.998 = 1896.7294…`)
 is otherwise rejected by the broker — Kraken:
@@ -738,12 +738,12 @@ A close is a MARKET order today, so its exit fee is always the **taker** rate
 (`is_maker=False`). That stops being a constant when a venue-held exit order can fill as a maker
 (#503) — the value then has to come from the closing order rather than from this assumption.
 
-### Live Mode
+### Live Execution Stack
 
-In live mode, the broker handles limit order matching server-side. `LiveTradeExecutor.open_order()`
-passes the limit price to the broker adapter. When the broker returns PENDING, the order is added to
-`_active_limit_orders` as shadow state. Each tick, `_process_active_orders()` polls the broker for
-status updates:
+On the live execution stack, the broker handles limit order matching server-side.
+`LiveTradeExecutor.open_order()` passes the limit price to the broker adapter. When the broker
+returns PENDING, the order is added to `_active_limit_orders` as shadow state. Each tick,
+`_process_active_orders()` polls the broker for status updates:
 - **FILLED** → `_fill_open_order()` with broker's fill price
 - **Terminal** (REJECTED/CANCELLED/EXPIRED) → rejection recorded in `_order_history`
 - **PENDING** → keep polling
@@ -808,18 +808,19 @@ See [live_execution_architecture.md](live_execution_architecture.md): Reconcilia
 
 ## Glossary
 
+The project-wide terms — *pending order* (with its phases *in flight* and *resting*), *decision
+logic* (the one class that turns worker outputs into decisions) and *worker* — are defined in the
+[Glossary](../glossary.md). The entries below are specific to the execution layer.
+
 | Term | Meaning |
 |------|---------|
 | **Fill** | An order being executed and becoming a position |
-| **Fill Price** | The actual execution price — from tick (sim) or broker (live) |
-| **Pending Order** | An order submitted but not yet filled (PendingOrder dataclass, shared) |
+| **Fill Price** | The actual execution price — from tick (sim) or broker (live execution stack) |
 | **PendingOrderManager** | Abstract storage/query layer for pending orders (AbstractPendingOrderManager) |
 | **OrderLatencySimulator** | Simulation-specific pending order manager with seeded tick delays |
 | **LiveRequestProcessor** | Live-specific pending order manager — see [live_execution_architecture.md](live_execution_architecture.md) |
 | **Pseudo-Position** | (Removed) A fake position representing a pending order — now replaced by explicit API |
 | **Tick Loop** | The main processing loop that feeds ticks to all components |
-| **DecisionLogic** | Trading strategy that produces buy/sell/flat decisions |
-| **Worker** | Indicator calculator that feeds data to DecisionLogic |
 | **Order History** | Complete audit trail of all order outcomes (fills + rejections) from `_order_history` |
 | **BrokerResponse** | Standardized response from broker adapter — see [live_execution_architecture.md](live_execution_architecture.md) |
 | **MockBrokerAdapter** | Test adapter with configurable execution modes — see [live_execution_architecture.md](live_execution_architecture.md) |
@@ -830,8 +831,8 @@ See [live_execution_architecture.md](live_execution_architecture.md): Reconcilia
 | **OpenOrderRequest** | Internal pipeline dataclass bundling all order parameters (symbol, order_type, direction, lots, price, stop_loss, take_profit, comment, magic_number) |
 | **EntryType** | How a position was opened: MARKET or LIMIT — stored on TradeRecord for history |
 | **FillType** | How an order was filled: MARKET, LIMIT, or LIMIT_IMMEDIATE — stored in OrderResult.metadata |
-| **Active Limit Order** | A limit order waiting for price trigger — sits in `AbstractTradeExecutor._active_limit_orders`. Sim: passed latency, waiting for local trigger. Live: broker-accepted, tracked as shadow state, polled each tick |
-| **Active Stop Order** | A stop/stop-limit order waiting for trigger — sits in `AbstractTradeExecutor._active_stop_orders`. Both pipelines since #500: the simulation triggers it itself, live leaves the trigger to the venue and holds the entry as shadow state |
+| **Active Limit Order** | A resting limit order — sits in `AbstractTradeExecutor._active_limit_orders`. Sim: passed latency, waiting for local trigger. Live execution stack: broker-accepted, tracked as shadow state, polled each tick |
+| **Active Stop Order** | A resting stop/stop-limit order — sits in `AbstractTradeExecutor._active_stop_orders`. Both pipelines since #500: the simulation triggers it itself, the live execution stack leaves the trigger to the venue and holds the entry as shadow state |
 | **Pipeline Orders** | Orders in the latency/submission pipeline (not yet broker-accepted). Queried via `has_pipeline_orders()` — excludes active limit/stop orders |
 | **ActiveOrderSnapshot** | Dataclass exposing order_id, type, symbol, direction, lots, prices for active limit/stop orders in stats |
 | **History Limits** | Configurable `deque(maxlen)` caps on order_history, trade_history, bar_history — set via `app_config.json` |

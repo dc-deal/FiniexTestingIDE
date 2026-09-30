@@ -1,0 +1,62 @@
+{
+  "profile_name": "cautious_macd_mock",
+  "bot_id": "cmacd01",
+  "_comment": "Does not start in a mock session today: CautiousMacd rests its entry (STOP_LIMIT here, STOP without use_stop_limit) and the mock adapter carries market orders only, so the start is refused naming the mock. The startup-guard test uses this profile for its cold-start hook; it starts once the mock adapter rests orders (#556).",
+  "symbol": "BTCUSD",
+  "broker_type": "kraken_spot",
+  "adapter_type": "mock",
+  "deployment": {
+    "_comment": "Do this profile's sessions form ONE deployment whose ledger rows join into one history? MANDATORY — there is no safe default. Declare true only on a profile you are actually deploying; the CLI can narrow it (--one-off) but never widen it.",
+    "continuous": false
+  },
+  "strategy_config": {
+    "decision_logic_type": "CORE/cautious_macd",
+    "worker_instances": {
+      "macd_main": "CORE/macd",
+      "rsi_filter": "CORE/rsi"
+    },
+    "workers": {
+      "macd_main": {
+        "periods": {
+          "M5": 35
+        },
+        "fast_period": 12,
+        "slow_period": 26,
+        "signal_period": 9
+      },
+      "rsi_filter": {
+        "periods": {
+          "M5": 14
+        }
+      }
+    },
+    "decision_logic_config": {
+      "rsi_filter_buy": 85,
+      "rsi_filter_sell": 25,
+      "use_stop_limit": true,
+      "stop_limit_offset_pips": 2,
+      "pip_size": 1.0,
+      "stop_distance_pips": 50,
+      "sl_pips": 100,
+      "tp_pips": 200,
+      "break_even_trigger_pips": 75,
+      "min_histogram": 10,
+      "lot_size": 0.01,
+      "min_entry_capital": 1000
+    }
+  },
+  "tick_source": {
+    "type": "mock"
+  },
+  "display": {
+    "enabled": false
+  },
+  "scenario_settings": {
+    "start_date": "2026-01-25T02:19:46+00:00",
+    "end_date": "2026-01-26T02:14:00+00:00",
+    "balances": {
+      "USD": 10000.0,
+      "BTC": 0.0
+    }
+  }
+}

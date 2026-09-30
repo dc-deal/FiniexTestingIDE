@@ -224,6 +224,32 @@ def rank(
     return scoped
 
 
+def rank_per_currency(
+    rows: List[RunResultRow],
+    objective: str,
+    maximize: bool = True,
+) -> List[RunResultRow]:
+    """
+    Rank combinations by the objective WITHIN each account currency, currencies in order.
+
+    A money objective in two currencies is not one scale, so one list ranking EUR rows against
+    USD rows by `net_pnl` compares nothing. Each currency is ranked on its own and the lists are
+    joined, which keeps the served key (`run_id` × `currency`) and the order readable.
+
+    Args:
+        rows: Raw ledger rows of one sweep
+        objective: The RunResultRow KPI field to rank by
+        maximize: True → best first is highest
+
+    Returns:
+        The rows ranked within their currency, currencies in ascending order
+    """
+    currencies = sorted({row.currency for row in rows if row.currency})
+    return [ranked
+            for currency in currencies
+            for ranked in rank(rows, objective, maximize, objective_currency=currency)]
+
+
 def sensitivity(
     rows: List[RunResultRow],
     objective: str,

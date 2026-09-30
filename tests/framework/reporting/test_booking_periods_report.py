@@ -1,5 +1,5 @@
 """
-The Hauptbuch as a table, and the line that makes it trustworthy.
+The ledger entries as a table, and the line that makes it trustworthy.
 
 A period summary is believed because it can be recomputed from its records. A COLUMN of period
 summaries is believed because it agrees with the figure the run reports by a different route —
@@ -8,6 +8,8 @@ disagreement is reported rather than smoothed over.
 """
 
 from datetime import datetime, timedelta, timezone
+
+import pytest
 
 from python.framework.reporting.builders.booking_periods_report_builder import (
     build_booking_periods_report,
@@ -19,7 +21,7 @@ from python.framework.reporting.console.booking_periods_summary import (
 from python.framework.reporting.console.run_console_renderer import RunConsoleRenderer
 from python.framework.reporting.builders.run_unit import RunUnit
 from python.framework.types.api.report_types import RunSummary, RunSummaryCurrency
-from python.framework.types.run_results_types import BookingSegment, SegmentCloseReason
+from python.framework.types.run_results_types import BookingPeriod, PeriodCloseReason
 from python.framework.utils.console_renderer import ConsoleRenderer
 
 _MON = datetime(2026, 9, 21, tzinfo=timezone.utc)
@@ -35,22 +37,22 @@ def _figures(**overrides) -> RunSummaryCurrency:
     return RunSummaryCurrency(**base)
 
 
-def _segment(segment_no: int, day: int, net_pnl: float, trades: int,
+def _segment(period_no: int, day: int, net_pnl: float, trades: int,
              currency: str = 'USD',
-             reason: SegmentCloseReason = SegmentCloseReason.ANCHOR) -> BookingSegment:
+             reason: PeriodCloseReason = PeriodCloseReason.ANCHOR) -> BookingPeriod:
     """One sealed period on day `day` of the week starting Monday."""
-    return BookingSegment(
-        segment_no=segment_no, unit_name='session',
+    return BookingPeriod(
+        period_no=period_no, unit_name='session',
         opened_at=_MON + timedelta(days=day), closed_at=_MON + timedelta(days=day + 1),
         reason=reason, trade_count=trades,
         figures=_figures(currency=currency, net_pnl=net_pnl, total_trades=trades,
                          final_equity=10_000.0 + net_pnl),
-        segment_max_equity=10_050.0, segment_min_equity=9_960.0, segment_max_drawdown=40.0)
+        period_max_equity=10_050.0, period_min_equity=9_960.0, period_max_drawdown=40.0)
 
 
-def _units(*segments) -> list:
+def _units(*periods) -> list:
     """The run's one unit, carrying these periods."""
-    return [RunUnit(name='session', symbol='DOTUSD', booking_segments=list(segments))]
+    return [RunUnit(name='session', symbol='DOTUSD', booking_periods=list(periods))]
 
 
 def _summary(**overrides) -> RunSummary:
@@ -91,7 +93,7 @@ class TestWhatTheTableShows:
         report = build_booking_periods_report(
             'r', _units(_segment(2, 1, -10.0, 1), _segment(1, 0, 60.0, 2)),
             _summary(net_pnl=50.0, total_trades=3))
-        assert [row.segment_no for row in report.periods] == [1, 2]
+        assert [row.period_no for row in report.periods] == [1, 2]
 
     def test_the_drawdown_column_is_the_deepest_SINGLE_period(self):
         # Not the run's drawdown: a fall that crosses a period boundary is deeper than any one
@@ -102,18 +104,88 @@ class TestWhatTheTableShows:
             _summary(net_pnl=50.0, total_trades=3))
         assert report.deepest_period_drawdown == 40.0
 
-    def test_the_final_equity_is_the_last_period_s(self):
+    def test_one_unit_s_total_equity_is_its_last_period_s(self):
         report = build_booking_periods_report(
             'r', _units(_segment(1, 0, 60.0, 2), _segment(2, 1, -10.0, 1)),
             _summary(net_pnl=50.0, total_trades=3))
-        assert report.final_equity == 9_990.0
+        assert report.total_final_equity == 9_990.0
 
     def test_the_close_reason_survives_into_the_row(self):
         # Only a `session_end` on the last period says the books are complete.
         report = build_booking_periods_report(
-            'r', _units(_segment(1, 0, 60.0, 2, reason=SegmentCloseReason.SESSION_END)),
+            'r', _units(_segment(1, 0, 60.0, 2, reason=PeriodCloseReason.SESSION_END)),
             _summary(net_pnl=60.0, total_trades=2))
         assert report.periods[0].reason == 'session_end'
+
+
+class TestEachUnitIsFoldedIntoItsTotal:
+    """
+    A unit is one account, so its total is defined — its equity included. Folded by the
+    ledger's own reductions: the rates are rebuilt from their components, never averaged.
+    """
+
+    @staticmethod
+    def _two_units():
+        a = [_segment(1, 0, 60.0, 2), _segment(2, 1, -10.0, 1)]
+        b = [BookingPeriod(
+            period_no=1, unit_name='other', opened_at=_MON, closed_at=_MON + timedelta(days=1),
+            reason=PeriodCloseReason.SESSION_END, trade_count=1,
+            figures=_figures(net_pnl=-20.0, total_trades=1, losing_trades=1, gross_loss=20.0,
+                             final_equity=9_980.0),
+            period_opening_equity=10_000.0)]
+        return [RunUnit(name='session', symbol='DOTUSD', booking_periods=a),
+                RunUnit(name='other', symbol='ETHUSD', booking_periods=b)]
+
+    def test_there_is_one_total_per_unit_and_the_report_sums_their_equity(self):
+        report = build_booking_periods_report(
+            'r', self._two_units(), _summary(net_pnl=30.0, total_trades=4))
+
+        totals = {t.unit_name: t for t in report.unit_totals}
+        assert set(totals) == {'session', 'other'}
+        assert (totals['session'].period_count, totals['session'].net_pnl,
+                totals['session'].final_equity) == (2, 50.0, 9_990.0)
+        assert report.total_final_equity == pytest.approx(9_990.0 + 9_980.0)
+        assert report.keys['unit_totals'] == ['unit_name']
+
+    def test_a_rate_is_rebuilt_from_its_components(self):
+        periods = [
+            BookingPeriod(period_no=n, unit_name='session', opened_at=_MON + timedelta(days=n),
+                          closed_at=_MON + timedelta(days=n + 1), reason=PeriodCloseReason.ANCHOR,
+                          trade_count=t, figures=_figures(net_pnl=pnl, total_trades=t,
+                                                          winning_trades=w, losing_trades=t - w,
+                                                          gross_profit=gp, gross_loss=gl,
+                                                          win_rate=w / t, final_equity=10_000.0))
+            for n, t, w, gp, gl, pnl in ((1, 1, 1, 10.0, 0.0, 10.0), (2, 3, 0, 0.0, 30.0, -30.0))]
+        report = build_booking_periods_report(
+            'r', [RunUnit(name='session', symbol='DOTUSD', booking_periods=periods)],
+            _summary(net_pnl=-20.0, total_trades=4))
+
+        total = report.unit_totals[0]
+        # 1 winner in 4 trades — NOT the mean of 100 % and 0 %
+        assert total.win_rate == pytest.approx(0.25)
+        assert total.profit_factor == pytest.approx(10.0 / 30.0)
+
+    def test_the_opening_equity_is_the_first_period_s(self):
+        first = _segment(1, 0, 60.0, 2)
+        first.period_opening_equity = 10_000.0
+        second = _segment(2, 1, -10.0, 1)
+        second.period_opening_equity = 10_060.0
+        report = build_booking_periods_report(
+            'r', _units(first, second), _summary(net_pnl=50.0, total_trades=3))
+
+        assert [row.opening_equity for row in report.periods] == [10_000.0, 10_060.0]
+        assert report.unit_totals[0].opening_equity == 10_000.0
+
+    def test_an_unrecorded_first_opening_leaves_the_unit_s_opening_unknown(self):
+        # A later period's opening is a different instant's — it must not stand in for the
+        # unit's start. Measured: a stored session showed its SECOND period's 9924.18.
+        first = _segment(1, 0, 60.0, 2)
+        second = _segment(2, 1, -10.0, 1)
+        second.period_opening_equity = 10_060.0
+        report = build_booking_periods_report(
+            'r', _units(first, second), _summary(net_pnl=50.0, total_trades=3))
+
+        assert report.unit_totals[0].opening_equity is None
 
 
 class TestWhenThereIsNothingToShow:
@@ -133,7 +205,7 @@ class TestWhenThereIsNothingToShow:
 
     def test_the_default_filters_too_rather_than_summing_across_currencies(self):
         # The filter read `if not currency or …`, so an empty currency — which is what BOTH
-        # coordinators pass — admitted every segment. The sum then ran over USD AND BTC while
+        # coordinators pass — admitted every period. The sum then ran over USD AND BTC while
         # `run_net_pnl` was one currency's figure, and `reconciles` was false for a run in
         # which nothing was wrong (#539 audit).
         report = build_booking_periods_report(
@@ -176,14 +248,14 @@ class TestManyUnitsCollapse:
     def _multi_unit(units: int, periods_each: int):
         """A run of `units` scenarios, each booking `periods_each` periods."""
         return [
-            RunUnit(name=f'scenario_{u:02d}', symbol='DOTUSD', booking_segments=[
-                BookingSegment(
-                    segment_no=p + 1, unit_name=f'scenario_{u:02d}',
+            RunUnit(name=f'scenario_{u:02d}', symbol='DOTUSD', booking_periods=[
+                BookingPeriod(
+                    period_no=p + 1, unit_name=f'scenario_{u:02d}',
                     opened_at=_MON + timedelta(days=p), closed_at=_MON + timedelta(days=p + 1),
-                    reason=SegmentCloseReason.ANCHOR, trade_count=1,
+                    reason=PeriodCloseReason.ANCHOR, trade_count=1,
                     figures=_figures(net_pnl=1.0, total_trades=1, final_equity=10_001.0),
-                    segment_max_equity=10_010.0, segment_min_equity=9_990.0,
-                    segment_max_drawdown=20.0)
+                    period_max_equity=10_010.0, period_min_equity=9_990.0,
+                    period_max_drawdown=20.0)
                 for p in range(periods_each)])
             for u in range(units)
         ]
@@ -220,7 +292,7 @@ class TestManyUnitsCollapse:
         assert out.count('▸ scenario_') == 3
 
     def test_one_unit_gets_no_sub_heading(self, capsys):
-        # The live session and the comparison backtest the parity proof uses are both one unit,
+        # An AutoTrader session and the comparison backtest the parity proof uses are both one unit,
         # so the sub-heading would be the same string on every line.
         report = build_booking_periods_report(
             'r', _units(_segment(1, 0, 60.0, 2)), _summary(net_pnl=60.0, total_trades=2))

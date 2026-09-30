@@ -55,7 +55,7 @@ def make_provenance():
             scenario_set_name=scenario_set_name, app_version='1.3.1', git_commit='abc1234',
             git_branch='main', git_dirty=False,
             decision_logic_type='CORE/aggressive_trend', decision_version='1.0.0',
-            worker_versions={'rsi_fast': '1.0.0'}, config_snapshot='{}',
+            worker_versions={'rsi_fast': '1.0.0'}, strategy_config_json='{}',
             symbols=['BTCUSD'], data_broker_type='kraken_spot',
             sweep_id=sweep_id, sweep_params=sweep_params,
             sweep_objective=sweep_objective, sweep_maximize=sweep_maximize,

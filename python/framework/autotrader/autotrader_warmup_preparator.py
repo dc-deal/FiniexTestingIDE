@@ -1,19 +1,16 @@
 """
 FiniexTestingIDE - AutoTrader Warmup Preparator
-Loads warmup bars for AutoTrader sessions (mock from parquet, live from API).
+Loads warmup bars for AutoTrader sessions (a mock session from its prepared data package, a
+live-adapter session from the venue API).
 
 Two paths:
-- Mock: parquet bar files via BarsIndexManager (same data as backtesting)
-- Live: Kraken OHLC REST API (extensible to MT5 via ABC)
-
-Direct Bar object creation — no subprocess serialization round-trip.
+- Mock: the bars the shared mount prepared — exactly the bars a backtest of the same window warms
+  up on, selected and converted by the simulation's own functions
+- Live adapter: Kraken OHLC REST API (extensible to MT5 via ABC)
 """
 
 from typing import Dict, Iterable, List, Optional
 
-import pandas as pd
-
-from python.data_management.index.bars_index_manager import BarsIndexManager
 from python.framework.autotrader.kraken_ohlc_bar_fetcher import KrakenOhlcBarFetcher
 from python.framework.bars.bar_rendering_controller import BarRenderingController
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
@@ -25,7 +22,9 @@ from python.framework.types.autotrader_types.display_label_cache import DisplayL
 from python.framework.types.config_types.connection_policy_config_types import ConnectionPolicy
 from python.framework.types.connection_types import GiveUpAction
 from python.framework.types.market_types.market_data_types import Bar
+from python.framework.types.process_data_types import ProcessDataPackage
 from python.framework.utils.connection_ladder import ConnectionLadder, run_with_ladder
+from python.framework.utils.process_serialization_utils import deserialize_bars_batch
 from python.framework.utils.scenario_requirements import calculate_scenario_requirements
 from python.framework.workers.abstract_worker import AbstractWorker
 
@@ -34,7 +33,7 @@ class AutotraderWarmupPreparator:
     """
     Loads and injects warmup bars for AutoTrader sessions.
 
-    Mock path: reads pre-rendered bar parquet files via BarsIndexManager.
+    Mock path: the warmup bars in the session's prepared data package.
     Live path: fetches bars from broker API (Kraken OHLC).
 
     Both paths create Bar objects directly and inject via
@@ -53,6 +52,7 @@ class AutotraderWarmupPreparator:
         workers: List,
         bar_controller: BarRenderingController,
         connection_policy: Optional[ConnectionPolicy] = None,
+        package: Optional[ProcessDataPackage] = None,
     ) -> None:
         """
         Calculate warmup requirements, load bars, validate, and inject.
@@ -62,7 +62,9 @@ class AutotraderWarmupPreparator:
             workers: List of worker instances (with get_warmup_requirements())
             bar_controller: BarRenderingController to inject bars into
             connection_policy: Retry ladder for the broker's bar history (#473). Live
-                path only; the parquet path reads a local archive
+                path only; the mock path reads its prepared package
+            package: The mock session's prepared data package, whose warmup bars the shared
+                mount selected; None on the live path
         """
         # === Step 1: Calculate requirements from workers ===
         reqs = calculate_scenario_requirements(workers)
@@ -84,11 +86,7 @@ class AutotraderWarmupPreparator:
                 config.symbol, warmup_by_tf, connection_policy or ConnectionPolicy()
             )
         else:
-            bars_by_tf = self._load_bars_from_parquet(
-                broker_type=config.broker_type,
-                symbol=config.symbol,
-                warmup_by_tf=warmup_by_tf,
-            )
+            bars_by_tf = self._bars_from_package(config.symbol, package)
 
         # === Step 4: Validate completeness ===
         self._validate_warmup_bars(bars_by_tf, warmup_by_tf, live)
@@ -120,76 +118,36 @@ class AutotraderWarmupPreparator:
                 )
 
     # =========================================================================
-    # MOCK PATH — Parquet bar loading
+    # MOCK PATH — the bars the shared mount prepared
     # =========================================================================
 
-    def _load_bars_from_parquet(
+    def _bars_from_package(
         self,
-        broker_type: str,
         symbol: str,
-        warmup_by_tf: Dict[str, int],
+        package: Optional[ProcessDataPackage],
     ) -> Dict[str, List[Bar]]:
         """
-        Load warmup bars from pre-rendered bar parquet files.
+        The warmup bars the shared mount prepared for the replayed window.
 
-        Takes the last N bars from each parquet file — no time filter.
-        Mock sessions use available bar history regardless of tick start time.
+        The same bars a backtest of that window warms up on, chosen by the same rule — the last N
+        bars BEFORE the window's start (`SharedDataPreparator.prepare_bars`) — and converted by the
+        same deserializer the simulation uses. Reading the bar file here instead would take its
+        NEWEST bars whatever the window: a mock session replaying January would warm its
+        indicators on September, and start from a state no backtest of January can have.
 
         Args:
-            broker_type: Broker type identifier (e.g., 'kraken_spot')
-            symbol: Trading symbol (e.g., 'BTCUSD')
-            warmup_by_tf: Required bars per timeframe
+            symbol: The traded symbol
+            package: The mock session's prepared data; None yields no bars
 
         Returns:
             Dict[timeframe, List[Bar]]
         """
-        bar_index = BarsIndexManager(self._logger)
-        bar_index.build_index()
-
-        result: Dict[str, List[Bar]] = {}
-
-        for timeframe, warmup_count in warmup_by_tf.items():
-            bar_file = bar_index.get_bar_file(broker_type, symbol, timeframe)
-            if bar_file is None:
-                self._logger.warning(
-                    f'⚠️  No bar file for {symbol} {timeframe} — '
-                    f'warmup skipped for this timeframe'
-                )
-                continue
-
-            df = pd.read_parquet(bar_file)
-
-            # Column name fallback (same as SharedDataPreparator)
-            if 'timestamp' not in df.columns and 'time' in df.columns:
-                df['timestamp'] = df['time']
-
-            df['timestamp'] = pd.to_datetime(df['timestamp'], utc=True)
-
-            # Take last N bars from available history
-            warmup_df = df.tail(warmup_count)
-
-            bars = [
-                Bar(
-                    symbol=symbol,
-                    timeframe=timeframe,
-                    timestamp=row['timestamp'].isoformat(),
-                    open=float(row['open']),
-                    high=float(row['high']),
-                    low=float(row['low']),
-                    close=float(row['close']),
-                    volume=float(row['volume']),
-                    tick_count=int(row['tick_count']),
-                    is_complete=True,
-                )
-                for _, row in warmup_df.iterrows()
-            ]
-            result[timeframe] = bars
-
-            self._logger.debug(
-                f'  📊 {timeframe}: {len(bars)}/{warmup_count} bars loaded from parquet'
-            )
-
-        return result
+        if package is None:
+            return {}
+        return {
+            timeframe: list(deserialize_bars_batch(symbol, bars))
+            for (_, timeframe, _), bars in package.bars.items()
+        }
 
     # =========================================================================
     # LIVE PATH — Broker API bar fetching
@@ -197,7 +155,7 @@ class AutotraderWarmupPreparator:
 
     def _require_venue_can_serve(self, timeframes: Iterable[str]) -> None:
         """
-        Refuse a live session whose workers need a timeframe the venue cannot warm up from.
+        Refuse a live-adapter session whose workers need a timeframe the venue cannot warm up from.
 
         Args:
             timeframes: The timeframes the workers require
@@ -282,7 +240,7 @@ class AutotraderWarmupPreparator:
         self,
         decision_logic: AbstractDecisionLogic,
         workers: List[AbstractWorker],
-        sentiment_source: str = '',
+        data_sentiment_type: str = '',
     ) -> DisplayLabelCache:
         """
         Build the immutable display label cache from decision logic and
@@ -296,7 +254,7 @@ class AutotraderWarmupPreparator:
             decision_logic: Instantiated decision logic (for schema access
                 and current param value readback)
             workers: List of instantiated workers for the session
-            sentiment_source: Sentiment feed label (#431; '' = no feed)
+            data_sentiment_type: Sentiment feed label (#431; '' = no feed)
 
         Returns:
             Frozen DisplayLabelCache ready to be shared read-only between
@@ -343,7 +301,7 @@ class AutotraderWarmupPreparator:
             worker_display_output_keys=worker_display_output_keys,
             worker_output_labels=worker_output_labels,
             decision_output_labels=decision_output_labels,
-            sentiment_source=sentiment_source,
+            data_sentiment_type=data_sentiment_type,
         )
 
         self._logger.debug(

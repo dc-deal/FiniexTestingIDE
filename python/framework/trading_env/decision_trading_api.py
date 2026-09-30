@@ -24,8 +24,8 @@ ARCHITECTURE NOTE:
 FUTURE NOTES:
 - Tick→MS Migration: Currently delays are tick-based. Post-V1 will use millisecond-based
   timing with tick timestamp mapping for more realistic execution simulation.
-- FiniexAutoTrader Integration: This API serves as the interface layer for both simulated
-  and live trading. Decision Logics remain unchanged — only the executor is swapped:
+- FiniexAutoTrader Integration: This API serves as the interface layer for both the
+  simulation and the AutoTrader. Decision Logics remain unchanged — only the executor is swapped:
   Backtesting: TradeSimulator, AutoTrader: LiveTradeExecutor.
   Example: DecisionTradingApi(LiveTradeExecutor(broker_config, ...), required_types)
 """
@@ -160,7 +160,7 @@ class DecisionTradingApi:
             raise ValueError(
                 f"❌ Required order types cannot be carried on this pipeline!\n"
                 f"Required: {[t.value for t in required_types]}\n"
-                f"Venue '{self._executor.broker.adapter.get_broker_name()}' does not offer: "
+                f"{self._executor.broker.adapter.get_capability_label()} does not offer: "
                 f"{[t.value for t in venue_lacks]}\n"
                 f"{executor_name} has not implemented: {[t.value for t in pipeline_lacks]}\n"
                 f"Usable here (venue AND pipeline): {[t.value for t in supported_types]}\n"
@@ -454,18 +454,15 @@ class DecisionTradingApi:
 
     def has_pending_orders(self) -> bool:
         """
-        Are there any orders in flight (submitted but not yet filled)?
+        Are there any outstanding orders — in flight or resting — not yet filled?
 
         Includes ALL pending worlds: latency pipeline, active limit orders,
         active stop orders. Used by single-position strategies that need
-        to know about any outstanding order activity.
+        to know about any outstanding order activity — typically they return
+        early from the decision while this is True, waiting for the orders to resolve.
 
         Returns:
             True if any orders are pending (open or close)
-
-        Example:
-            if self.trading_api.has_pending_orders():
-                return  # Wait for pending orders to resolve
         """
         return self._executor.has_pending_orders()
 
@@ -729,12 +726,12 @@ class DecisionTradingApi:
         take_profit: Union[float, None, _UnsetType] = UNSET
     ) -> ModificationResult:
         """
-        Modify a pending limit order's price, SL, and/or TP.
+        Modify a resting limit order's price, SL, and/or TP.
 
         Only applies to active limit orders (post-latency, waiting for price trigger).
 
         Args:
-            order_id: Pending limit order ID
+            order_id: Resting limit order ID
             price: New limit price (UNSET=keep current)
             stop_loss: New SL price, None to remove, UNSET to keep current
             take_profit: New TP price, None to remove, UNSET to keep current
@@ -758,12 +755,12 @@ class DecisionTradingApi:
         take_profit: Union[float, None, _UnsetType] = UNSET
     ) -> ModificationResult:
         """
-        Modify a pending stop order's trigger price, limit price, SL, and/or TP.
+        Modify a resting stop order's trigger price, limit price, SL, and/or TP.
 
         Only applies to active stop orders (post-latency, waiting for trigger price).
 
         Args:
-            order_id: Pending stop order ID
+            order_id: Resting stop order ID
             stop_price: New trigger price (UNSET=keep current)
             price: New limit price for STOP_LIMIT (UNSET=keep current)
             stop_loss: New SL price, None to remove, UNSET to keep current

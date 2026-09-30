@@ -6,7 +6,7 @@ Which runs started and never reached their close.
 A run registers in the run index from its HEADER, written before anything can fail, and its
 ledger row is the LAST step of the report coordinator at close. Between those two moments a
 process can be killed, crash, or lose its machine — and the run then exists in one store and
-not the other, with nothing anywhere saying so. Measured 2026-09-18 on a live session stopped
+not the other, with nothing anywhere saying so. Measured 2026-09-18 on a live-adapter session stopped
 from the debugger: the index held it, the ledger did not, and the summary file was created and
 never filled.
 
@@ -73,8 +73,8 @@ def unfinished_by_group(
     """
     The same answer split by run group, because the two pipelines carry different consequence.
 
-    An unfinished SIMULATION is a batch somebody stopped; an unfinished LIVE session traded
-    real money and left no record of what it did.
+    An unfinished SIMULATION is a batch somebody stopped; an unfinished AUTOTRADER session may
+    have traded real money and left no record of what it did.
 
     Args:
         runs: Every run the index holds

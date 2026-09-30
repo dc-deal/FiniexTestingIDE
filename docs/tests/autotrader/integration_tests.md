@@ -2,7 +2,7 @@
 
 ## Purpose
 
-End-to-end validation of the AutoTrader mock pipeline and unit testing of AutoTrader components.
+End-to-end validation of AutoTrader mock sessions and unit testing of AutoTrader components.
 
 ## Test Files
 
@@ -12,7 +12,7 @@ Full pipeline integration: runs a complete session with deterministic parquet re
 
 | Test | What it validates |
 |------|-------------------|
-| `test_full_mock_session` | Normal shutdown + **exit code 0**, tick count (29782), 0 clipping, 0 warnings/errors, trades produced, stats collected |
+| `test_full_mock_session` | Normal shutdown + **exit code 0**, tick count (63412), 0 clipping, 0 warnings/errors, trades produced, stats collected |
 | `test_log_files_created` | Log directory structure: global, summary, session_logs/, events.csv |
 | `test_broker_report_written` | Broker report persisted (unified model) + rendered in the summary |
 | `test_safety_report_written` | The safety record reaches disk and names its baseline (#356 Phase C) — the end-to-end the unit tests cannot show: a chain of proven links is not a proven chain. Also pins that an unarmed limit reports `null`, not `0.0` |
@@ -22,7 +22,8 @@ Full pipeline integration: runs a complete session with deterministic parquet re
 `TestSessionExitCode` covers the outcome→exit-code projection the CLI calls
 (`AutoTraderResult.get_outcome()` / `get_exit_code()`, #372): a framework emergency → 2, a normal
 shutdown → 0, an **operator** Ctrl+C → 0, a #348 safety escalation *without* an `emergency_reason`
-→ still 2, and a normal session that logged errors → 3. The last one closes the §35 asymmetry and
+→ still 2, and a normal session that logged errors → 3. The last one closes the asymmetry with the
+simulation, which already graded logged errors, and
 replaces the pinned assertion that used to hold the old behaviour in place.
 
 The two that carry the most weight are the operator/safety pair: both arrive as
@@ -50,7 +51,7 @@ ended, into the next session's ledger row.
 
 | Test | What it validates |
 |------|-------------------|
-| `test_the_first_session_mints_one` | A continuous profile with nothing to inherit names itself |
+| `test_the_first_session_mints_one` | A profile declaring `deployment.continuous: true` with nothing to inherit names itself |
 | `test_the_second_session_inherits_it` | The carry-over reached the successor |
 | `test_both_ledger_rows_name_it` | It reached the RECORD, not only the running process |
 | `test_the_rows_read_back_as_one_history` | `build_deployment_histories` groups them, in order, with the gap |
@@ -58,23 +59,27 @@ ended, into the next session's ledger row.
 | `test_a_one_off_start_records_no_deployment` | `--one-off` writes `''` and joins no history |
 | `test_a_one_off_start_does_not_end_the_deployment` | It stays out of the history without destroying it |
 | `test_new_deployment_begins_a_second_history` | Two deployments over the same three rows |
-| `test_a_dry_run_session_leaves_no_carry_over` | The LIMIT of the mechanism, pinned rather than discovered live |
+| `test_a_dry_run_session_leaves_no_carry_over` | The LIMIT of the mechanism, pinned rather than discovered at a venue |
 
 **No arming, no patching.** These are ordinary mock sessions, which is possible because the
-carry-over's write gate is split by what each field CLAIMS: a dry run writes the deployment
+carry-over's write gate is split by what each field CLAIMS: a session whose `dry_run` resolves
+true writes the deployment
 identity and the risk records, never the session key or the open position book. Before that
 split the test had to resolve the session as armed, because `_is_dry_run` answers `True` for a
 mock adapter before it looks at anything else — so the chain is now exactly what an operator can
 run by hand.
 
-**Data Dependency:** `configs/autotrader_profiles/backtesting/deployment_continuity_test.json`
-— the only tracked profile declaring `deployment.continuous: true`. The carry-over goes to the
+**Data Dependency:** `configs/autotrader_profiles/mock/deployment_continuity_test.json`
+— the one MOCK profile declaring `deployment.continuous: true`. The carry-over goes to the
 test's own directory; the ledger is redirected for the whole suite by `tests/conftest.py`.
 
 **Runtime:** ~65 seconds — five sessions, chained in one module-scoped fixture because the
 properties are four questions about one sequence rather than four sequences.
 
-**Data Dependency:** Uses `configs/autotrader_profiles/backtesting/mock_session_test.json` with parquet file `data/processed/kraken_spot/ticks/BTCUSD/BTCUSD_20260124_141946.parquet`.
+**Data Dependency:** Uses `configs/autotrader_profiles/mock/mock_session_test.json`, replaying
+2026-01-25 02:19:46 → 2026-01-26 02:14:00 from the BTCUSD parquet files
+`BTCUSD_20260124_141946.parquet` and `BTCUSD_20260125_141348.parquet`. The window starts twelve
+hours into the archive so that its warmup bars exist, exactly as a backtest of it needs them.
 
 **Runtime:** ~6 seconds total (session shared across both tests via `scope='module'`).
 
@@ -82,11 +87,11 @@ properties are four questions about one sequence rather than four sequences.
 
 End-to-end validation of the `scenario_settings.data_sentiment_type` mock feed (#438): index
 resolution through the shared `MountPreparer`, provider injection into SIGNAL workers, decision
-fusion in a live mock session, and a deterministic signal outage via `stale_data_stress`.
+fusion in a mock session, and a deterministic signal outage via `stale_data_stress`.
 
 | Class | Tests | What it validates |
 |-------|-------|-------------------|
-| `TestSentimentMockSession` | 3 | Full session with index-resolved feed: normal shutdown, tick count (20000), clean pot; SIGNAL worker recomputed on snapshot crossings; portfolio report carries `sentiment_source` |
+| `TestSentimentMockSession` | 3 | Full session with index-resolved feed: normal shutdown, tick count (20000), clean pot; SIGNAL worker recomputed on snapshot crossings; portfolio report carries `data_sentiment_type` |
 | `TestSentimentOutageSession` | 3 | Deterministic signal outage (`stale_data_stress` carve of the sentiment series): the worker computes while fresh then goes `is_stale`, graceful degradation, no errors; the #434 `on_signal_stale` reaction surfaces exactly once in the warning pot |
 | `TestScenarioSettingsValidation` | 1 | Structural guard: a typo in `scenario_settings` hard-fails at load (Pydantic `extra='forbid'`) |
 
@@ -102,7 +107,7 @@ The #436 combined outage session (`market_data_outage_test.json`): the mock feed
 mid-replay (`freeze_after_ticks: 1500`, `freeze_duration_s: 2.0`, threshold 1 s) while the
 aged sentiment archive keeps the SIGNAL side stale — "runs fine → silence → notified →
 recovered", both staleness contracts in ONE fast session driven by the
-`CORE/backtesting/backtesting_outage_probe` decision logic.
+`CORE/test_probes/outage_probe` decision logic.
 
 | Test | What it validates |
 |------|-------------------|
@@ -117,9 +122,9 @@ recovered", both staleness contracts in ONE fast session driven by the
 ### test_tick_outage_stress.py
 
 The #444 drill (`tick_outage_stress_test.json`): a PLANNED stale window on the tick source,
-driven on the live loop by the same `StaleDataStressDriver` the simulation uses. Until #444
+driven on the AutoTrader loop by the same `StaleDataStressDriver` the simulation uses. Until #444
 such a window was expressible on an AutoTrader profile and driven by nobody — the only
-market-data drill the live loop could rehearse was the transport-real freeze.
+market-data drill the AutoTrader loop could rehearse was the transport-real freeze.
 
 The difference from the session above is the whole point: there the feed goes SILENT, here it
 keeps DELIVERING and only its status is flagged. Its own profile rather than a second window
@@ -131,19 +136,19 @@ so high that the wall clock cannot speak at all.
 |------|-------------------|
 | `test_session_completes_normally` | Normal shutdown, 3000 ticks, empty error pot |
 | `test_the_window_flipped_the_status_and_recovered` | Both edges once each — a window, not a permanent state |
-| `test_the_mandatory_hook_fired` | `on_market_data_stale` is rehearsable deterministically on the LIVE loop |
-| `test_the_guard_blocked_an_entry_inside_the_window` | The `STALE_MARKET_DATA` floor holds on the live path |
+| `test_the_mandatory_hook_fired` | `on_market_data_stale` is rehearsable deterministically on the AutoTrader loop |
+| `test_the_guard_blocked_an_entry_inside_the_window` | The `STALE_MARKET_DATA` floor holds on the AutoTrader path |
 | `test_the_ticks_kept_flowing_while_the_status_was_stale` | The contract, in one number: ticks are COUNTED as stale, not absent (a carve would show zero) |
 | `test_the_episode_is_recorded_as_injected` | Origin `STRESS_INJECTED` + the window label — a drill must never read as a venue fault |
-| `test_the_stress_config_reaches_the_session_validation_channel` | The Tier-1 advisory names the planned window (§35) |
+| `test_the_stress_config_reaches_the_session_validation_channel` | The Tier-1 advisory names the planned window |
 
 **Runtime:** ~20 seconds (one shared session).
 
 ### test_autotrader_trade_lifecycle.py
 
-Trade lifecycle validation through the AutoTrader mock pipeline. Uses `mock_session_test.json` (simple_consensus, parquet replay) which produces real fill prices — unlike dry-run live sessions where entry price is 0.
+Trade lifecycle validation in a mock session. Uses `mock_session_test.json` (simple_consensus, parquet replay), so every fill carries the replayed quote.
 
-One session is shared across all test classes (`scope='module'`) to avoid running 29782 ticks multiple times.
+One session is shared across all test classes (`scope='module'`) to avoid running 63412 ticks multiple times.
 
 | Class | Tests | What it validates |
 |-------|-------|-------------------|
@@ -153,7 +158,7 @@ One session is shared across all test classes (`scope='module'`) to avoid runnin
 | `TestSessionEndWithOpenPosition` | 3 | No exit is fabricated; an open position is reported and valued; the policy the session ran under is recorded (#492) |
 | `TestLogFiles` | 1 | All log files and directories created |
 
-**Data Dependency:** Uses `configs/autotrader_profiles/backtesting/trade_lifecycle_test.json` — same BTCUSD parquet, `max_ticks: 3000`, display off.
+**Data Dependency:** Uses `configs/autotrader_profiles/mock/trade_lifecycle_test.json` — same BTCUSD parquet, `max_ticks: 3000`, display off.
 
 **Runtime:** ~6 seconds total (session shared across 14 tests via `scope='module'`, LogFiles test runs own session).
 
@@ -169,7 +174,7 @@ Each class runs an independent session from its own profile. Sessions are module
 > named after a trigger that had never happened, and the tests asserted that the level was STORED.
 > They now assert that it ACTED.
 >
-> Two properties of the live close shape what they may assert. The exit goes through the
+> Two properties of the AutoTrader close shape what they may assert. The exit goes through the
 > asynchronous `close_position()`, so it lands at the broker's next price and **never at the level**
 > — one of the tests pins exactly that. And the number of exits is not a fixed 1: a close still in
 > flight at session end is recorded as an anomaly and cleared rather than filled (`clear_pending`),
@@ -185,14 +190,16 @@ Each class runs an independent session from its own profile. Sessions are module
 | `TestDuplicateSignalGuard` | 3 | Exactly 1 position opened despite 490 repeated BUY signals (hold_ticks=5000 > max_ticks=500); the session end fabricates no exit; no errors |
 | `TestMinimalWarmup` | 3 | Session completes without crash when bar_max_history=30 starves M30 workers; ticks processed; no errors |
 
-**Data Dependency:** All four profiles use BTCUSD parquet `BTCUSD_20260124_141946.parquet`. Profiles: `sl_triggered_test.json`, `tp_triggered_test.json`, `duplicate_signal_guard_test.json`, `minimal_warmup_test.json`.
+**Data Dependency:** All four profiles use BTCUSD parquet `BTCUSD_20260124_141946.parquet`, from
+windows that start twelve (the take profit: fourteen) hours into the archive so their warmup bars
+exist. The stop and target levels were measured on those windows. Profiles: `sl_triggered_test.json`, `tp_triggered_test.json`, `duplicate_signal_guard_test.json`, `minimal_warmup_test.json`.
 
 **Runtime:** ~6 seconds total across all 4 sessions.
 
 ### test_partial_close_live_pipeline.py
 
-Runs the `partial_close_lifecycle.json` profile (scripted `BacktestingMultiPosition` + mock adapter)
-end-to-end and verifies the multi-fill visibility paradigm (#330) on the live-pipeline side. Mirrors
+Runs the `partial_close_lifecycle.json` profile (scripted `MultiPositionProbe` + mock adapter)
+end-to-end and verifies the multi-fill visibility paradigm (#330) on the AutoTrader side. Mirrors
 what the sim partial_close suite validates for the sim path.
 
 | Class | Tests | What it validates |
@@ -202,7 +209,7 @@ what the sim partial_close suite validates for the sim path.
 | `TestSinglePositionIsolation` | 2 | pos_usdjpy_2 is a single FULL record; its entry trade_id does NOT appear in the pos_usdjpy_1 chain (no false-shared contamination) |
 | `TestEventStreamCsv` | 6 | events.csv exists; header matches `EVENT_FIELDS`; 2 ORDER_SUBMIT (one per open) + 4 CLOSE_SUBMIT (one per close) + 2 POSITION_OPEN + 4 POSITION_CLOSE; FILL count matches sum of entry_trades + exit_trades across all TradeRecords |
 
-**Data Dependency:** `configs/autotrader_profiles/backtesting/partial_close_lifecycle.json` — USDJPY+mt5+mock, parquet `data/processed/mt5/ticks/USDJPY/USDJPY_20250917_205834.parquet`, max_ticks 12000, display off.
+**Data Dependency:** `configs/autotrader_profiles/mock/partial_close_lifecycle.json` — USDJPY+mt5+mock, parquet `data/processed/mt5/ticks/USDJPY/USDJPY_20250917_205834.parquet`, max_ticks 12000, display off.
 
 **Runtime:** ~2 seconds (single session via `scope='module'`).
 
@@ -221,6 +228,23 @@ Unit tests for `LiveClippingMonitor` — no external dependencies, no tick data,
 
 **Runtime:** <0.5 seconds.
 
+### test_sim_at_parity.py
+
+A mock session prepares its data through the same shared mount a backtest uses. These tests hold
+it to that: the same ticks, the same signal sources and the same warmup bars for the same window,
+so no second preparation path can grow back beside the shared one.
+
+| Test | What it validates |
+|------|-------------------|
+| `test_mock_session_prepares_exactly_the_backtests_data` | Ticks, signal sources AND warmup bars equal those of a backtest over the same window |
+| `test_mock_session_warms_up_on_bars_before_its_window` | Every warmup bar lies before the replayed window's start — none from after it, which would be look-ahead |
+| `test_mock_session_records_the_price_basis_of_its_warmup_bars` | The consumption record carries the price basis of the bar files the warmup read, measured like a backtest's |
+
+**Data Dependency:** `configs/autotrader_profiles/mock/sentiment_mock_test.json` — BTCUSD, the
+`crypto_sentiment_mock` signal source, and an RSI on M5 that needs warmup bars.
+
+**Runtime:** ~30 seconds (the mock session's mount is prepared once per module, the backtest's once).
+
 ## Running the Tests
 
 ```bash
@@ -238,6 +262,5 @@ pytest tests/autotrader/integration/test_autotrader_trade_scenarios.py -v
 ```
 
 VS Code: `🧩 Pytest: AutoTrader Integration (All)` — runs all five files.
-VS Code: `🧩 Pytest: AutoTrader Trade Lifecycle` — trade lifecycle only.
 VS Code: `🧩 Pytest: Multi-Fill Visibility (#330)` — partial_close_live_pipeline + sim event-stream CSV checks.
 VS Code: `🧪 AutoTrader: SL Triggered` / `TP Triggered` / `Duplicate Signal Guard` / `Minimal Warmup` / `Partial Close Lifecycle` — individual scenario CLI runs with live display.

@@ -401,7 +401,7 @@ class AbstractLogger(ABC):
 
         Pulled rather than pushed: a pull covers every kind of pass that advances the clock —
         tick, heartbeat, and the timer/resolution events #375 adds — without a call site per
-        kind. The pushed variant is what left the live session log without a time column for
+        kind. The pushed variant is what left the AutoTrader session log without a time column for
         as long as it has existed.
 
         Returns:

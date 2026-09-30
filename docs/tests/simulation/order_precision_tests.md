@@ -6,7 +6,7 @@ showed that a raw computed limit price (e.g. an offset-percentage price like
 `1896.7294`) was sent to the broker unrounded and rejected (*"price can only be
 specified up to N decimals"*). Prices now snap to the symbol's `digits` before
 the local book records the order and before the adapter submits it — so
-simulation and live round identically.
+simulation and AutoTrader round identically.
 
 **Volume is intentionally not normalized:** a step-misaligned lot is a
 position-size change, left for `validate_order` to reject as `INVALID_LOT_SIZE`
@@ -24,8 +24,8 @@ The path tests run through a `TradeSimulator` on Kraken Spot (BTCUSD: `digits=1`
 via a zero-latency INSTANT_FILL mock.
 
 **Parity note:** the same helper runs identically in `LiveTradeExecutor`. The
-live broker path cannot be unit-tested, so the shared logic is proven here and
-inherited by live (and by MT5 once #209 populates `digits`).
+live-adapter path cannot be unit-tested, so the shared logic is proven here and
+inherited by the AutoTrader (and by MT5 once #209 populates `digits`).
 
 ## Run
 

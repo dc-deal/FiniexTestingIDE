@@ -186,7 +186,7 @@ class TestTheClockIsPulledNotPushed:
     """
     A pull covers every pass kind that advances the clock — tick, heartbeat, and the timer /
     resolution events #375 adds — with one attachment instead of a call site per kind. The push
-    variant is what left the live session log without a time column for as long as it existed.
+    variant is what left the AutoTrader session log without a time column for as long as it existed.
     """
 
     def test_a_logger_without_a_clock_records_no_event_time(self, tmp_path):

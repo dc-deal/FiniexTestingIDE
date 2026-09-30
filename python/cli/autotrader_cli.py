@@ -1,9 +1,9 @@
 """
 FiniexTestingIDE - AutoTrader CLI
-Command-line interface for FiniexAutoTrader live trading sessions.
+Command-line interface for FiniexAutoTrader sessions — mock, dry run or real orders.
 
 Usage:
-    python python/cli/autotrader_cli.py run --config configs/autotrader_profiles/backtesting/mock_session_test.json
+    python python/cli/autotrader_cli.py run --config configs/autotrader_profiles/mock/mock_session_test.json
 """
 
 import argparse
@@ -22,7 +22,7 @@ from python.framework.types.run_origin_types import RunChannel
 def main():
     """Main entry point."""
     parser = argparse.ArgumentParser(
-        description='FiniexAutoTrader — Live trading CLI',
+        description='FiniexAutoTrader — AutoTrader session CLI',
         formatter_class=argparse.RawDescriptionHelpFormatter
     )
 
@@ -32,13 +32,13 @@ def main():
     # RUN command
     # ─────────────────────────────────────────────────────────────────────────
     run_parser = subparsers.add_parser(
-        'run', help='Start an AutoTrader live session')
+        'run', help='Start an AutoTrader session')
     run_parser.add_argument(
         '--config', required=True,
-        help='Path to autotrader config JSON (e.g., configs/autotrader_profiles/backtesting/mock_session_test.json)')
+        help='Path to the AutoTrader profile JSON (e.g., configs/autotrader_profiles/mock/mock_session_test.json)')
     run_parser.add_argument(
         '--display', action='store_true',
-        help='Force enable live console dashboard (overrides config display.enabled)')
+        help='Force enable the console dashboard (overrides config display.enabled)')
     run_parser.add_argument(
         '--delay', type=int, metavar='MS',
         help='Override tick_delay_ms for mock tick source (e.g. --delay 1)')

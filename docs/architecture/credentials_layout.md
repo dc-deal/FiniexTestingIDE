@@ -27,8 +27,9 @@ Every file exists twice: a **tracked** copy under `configs/credentials/` whose s
 or switched off, and a **real** one under `user_configs/credentials/`, which is gitignored in
 full. The tracked copy is the schema and the example; it is never the credential.
 
-**No run record copies a credential.** A run from a dirty tree keeps its uncommitted code in
-`run_patches/` (#551), and a real key pasted into a tracked placeholder is exactly such a change.
+**No run record copies a credential.** A run from a dirty tree keeps its uncommitted code as a
+patch — in `run_patches/`, or inside a strategy's own repository (#551) — and a real key pasted
+into a tracked placeholder is exactly such a change.
 So every changed path under a directory named `credentials` is left out of that patch, at any
 depth and in any repository; the run header names the path in `patch_excluded`, and its diff hash
 records only that the file changed, never its content. Without this the key would be copied into

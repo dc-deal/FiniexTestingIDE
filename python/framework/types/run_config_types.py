@@ -44,7 +44,7 @@ class RunConfigEntry:
             `generate_config_fingerprint` that `param_hash` already uses
         kind: Which pipeline it starts
         frozen_file: The store's own copy, named after the id. The store owns these bytes: a
-            source may live in `user_algos/`, which is a separate repository we never write into
+            source may live in `user_algos/`, which is a separate repository
         source_name: The file name a caller asks for — the key the resolver looks up
         source_path: Where that file was last seen. A hint, not the identity: the frozen copy is
             what a run is reproducible from

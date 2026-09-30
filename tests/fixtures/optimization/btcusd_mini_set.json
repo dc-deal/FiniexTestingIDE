@@ -4,7 +4,6 @@
   "created": "2026-06-21T00:00:00+00:00",
   "description": "Tiny BTCUSD kraken_spot base set for the Parameter Optimization integration test (capped ticks).",
   "global": {
-    "data_mode": "realistic",
     "strategy_config": {
       "decision_logic_type": "CORE/aggressive_trend",
       "worker_instances": {
@@ -45,13 +44,12 @@
   },
   "scenarios": [
     {
-      "name": "BTCUSD_mini_01",
+      "scenario_name": "BTCUSD_mini_01",
       "symbol": "BTCUSD",
       "data_broker_type": "kraken_spot",
       "start_date": "2026-01-25T16:00:00+00:00",
       "end_date": "2026-01-26T00:00:00+00:00",
       "max_ticks": 4000,
-      "data_mode": "realistic",
       "enabled": true,
       "strategy_config": {},
       "execution_config": {},

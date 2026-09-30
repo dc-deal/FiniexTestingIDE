@@ -32,6 +32,7 @@ from python.configuration.api_auth.api_token_manager import ApiTokenManager
 from python.configuration.credential_guard import is_tracked_credential
 from python.framework.exceptions.api_errors import ApiConfigurationError
 from python.framework.types.api.api_identity_types import ApiConsumerIdentity
+from python.framework.types.api.directory_types import DirectoryListResponse
 from python.framework.types.config_types.api_auth_config_types import (
     AccountKind,
     ApiAccount,
@@ -44,6 +45,7 @@ _REQUIRED_ROUTES = (
     ('/api/v1/brokers/{broker}/symbols', 'get'),
     ('/api/v1/brokers/{broker}/symbols/{symbol}/bars', 'get'),
     ('/api/v1/deployments/{deployment_id}', 'get'),
+    ('/api/v1/directory/{file}', 'get'),
     ('/api/v1/reports/runs/{run_id}/trade-history', 'get'),
     ('/api/v1/sweeps/{sweep_id}', 'get'),
 )
@@ -198,6 +200,13 @@ class TestATokenIsRequired:
         client = _client(_token(token='t-full', grants=['*'], note='full'))
         assert client.get('/api/v1/brokers').status_code == 401
 
+    def test_head_is_refused_like_get(self):
+        # HEAD is served as the GET it asks about, so it passes the same gate — a HEAD that
+        # slipped past authentication would leak which routes and runs exist.
+        client = _client(_token(token='t-full', grants=['*'], note='full'))
+        assert client.head('/api/v1/brokers').status_code == 401
+        assert client.head('/api/v1/brokers', headers=_headers('t-full')).status_code == 200
+
     def test_the_refusal_says_which_scheme_to_retry_with(self):
         # Without WWW-Authenticate a client cannot tell a dead credential from a transport
         # fault — the same conversion §43 forbids one layer down.
@@ -304,6 +313,20 @@ class TestACollectionRouteIsGatedToo:
         assert client.get('/api/v1/reports/runs',
                           headers=_headers('t-rep')).status_code == 200
 
+    def test_the_config_directory_is_refused_without_a_directory_grant(self):
+        """It lists the operator's own configuration files by name (#554)."""
+        client = _client(_token(token='t-rep', grants=['reports:*', 'sweeps:*'],
+                                note='analyst'))
+        assert client.get('/api/v1/directory', headers=_headers('t-rep')).status_code == 403
+
+    def test_a_directory_grant_reaches_the_config_directory(self):
+        client = _client(_token(token='t-dir', grants=['directory:*'], note='viewer'))
+        listing = DirectoryListResponse(rows=[], count=0)
+        with patch('python.api.endpoints.directory_router._directory') as directory:
+            directory.return_value.list_configs.return_value = listing
+            response = client.get('/api/v1/directory', headers=_headers('t-dir'))
+        assert response.status_code == 200
+
     def test_a_symbol_list_is_refused_without_a_bars_grant(self):
         # The mirror image, so the floor is shown to cut both ways rather than to be one
         # surface's special case.
@@ -324,6 +347,8 @@ class TestTheAppLevelRoutesAreADecision:
       data about a venue or a run, and it is none of the surfaces a grant can name.
       Gating it would make a market-data grant the precondition for a list that reveals
       nothing about market data.
+    - `/validation-checks` is OPEN for the same reason: what a check id means is the app's own
+      declaration, not data.
     - `/brokers` requires a token. It names which venues this installation carries, which is
       a fact about the installation. It takes no grant, because it has no path parameter for
       one to be about.
@@ -332,6 +357,11 @@ class TestTheAppLevelRoutesAreADecision:
     def test_timeframes_is_open(self):
         client = _client(_token(token='t-any', grants=['bars:*'], note='c'))
         assert client.get('/api/v1/timeframes').status_code == 200
+
+    def test_the_validation_check_vocabulary_is_open(self):
+        """What a `check` id means is the app's own declaration, like the timeframes."""
+        client = _client(_token(token='t-any', grants=['bars:*'], note='c'))
+        assert client.get('/api/v1/validation-checks').status_code == 200
 
     def test_the_broker_list_requires_a_token(self):
         client = _client(_token(token='t-any', grants=['bars:*'], note='c'))

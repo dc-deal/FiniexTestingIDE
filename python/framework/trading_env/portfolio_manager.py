@@ -29,7 +29,11 @@ from python.framework.types.portfolio_types.portfolio_trade_record_types import 
     EntryType,
     TradeRecord,
 )
-from python.framework.types.portfolio_types.portfolio_types import Position, PositionStatus
+from python.framework.types.portfolio_types.portfolio_types import (
+    COMMISSION_FEE_TYPES,
+    Position,
+    PositionStatus,
+)
 from python.framework.types.trading_env_types.broker_trade_types import BrokerTrade
 from python.framework.types.trading_env_types.broker_types import (
     FeeType,
@@ -154,13 +158,18 @@ class PortfolioManager:
         self._total_short_trades = 0
         self._winning_trades = 0
         self._losing_trades = 0
+        # The fees of the trades this run CLOSED — the population every trade row, booking
+        # period and trade analytic sums, kept here because the trade history is a bounded
+        # deque and a long run drops its oldest records. What the run CHARGED, open positions
+        # included, is the cost tracking's `total_fees` (`fees_charged` in the stats).
+        self._closed_trade_fees = 0.0
         self._total_profit = 0.0
         self._total_loss = 0.0
         self._account_max_drawdown = 0.0
         self._max_equity = self.balance
         self._account_max_drawdown_pct = 0.0
         # Which period the three figures above describe (#497). Set only by
-        # `restore_drawdown_state`, i.e. only in a LIVE session that inherited a predecessor's
+        # `restore_drawdown_state`, i.e. only in an AutoTrader session that inherited a predecessor's
         # curve. A simulation starts at its scenario start by definition and never touches them.
         self._drawdown_carried_from = ''
         self._drawdown_restarts = 0
@@ -547,7 +556,7 @@ class PortfolioManager:
         del self.open_positions[position_id]
 
         # Update statistics
-        self._update_statistics(position, realized_pnl)
+        self._update_statistics(position, realized_pnl, trade_record.total_fees)
 
         return realized_pnl
 
@@ -611,6 +620,15 @@ class PortfolioManager:
 
         closed_net_pnl = closed_gross_pnl - closed_fees
 
+        # The exit fee is charged on the closed portion ALONE and never joins the position's
+        # fees, so the record's cost columns take it on top of their share — by its type, the
+        # way `total_fees` above already took it. Left out, `commission_cost + swap_cost` fell
+        # short of `total_fees` by exactly the exit fee on every partial close at a maker/taker
+        # venue (measured 2026-09-29).
+        exit_commission = (exit_fee.cost if exit_fee and exit_fee.fee_type in COMMISSION_FEE_TYPES
+                           else 0.0)
+        exit_swap = exit_fee.cost if exit_fee and exit_fee.fee_type == FeeType.SWAP else 0.0
+
         # --- Update balances ---
         if self._spot_mode:
             spec = self.broker_config.get_symbol_specification(position.symbol)
@@ -653,8 +671,8 @@ class PortfolioManager:
             contract_size=position.contract_size,
             spread_cost=position.spread_cost_for_partial(
                 close_ratio, exit_price, exit_bid, exit_ask, exit_tick_value),
-            commission_cost=position.get_commission_cost() * close_ratio,
-            swap_cost=position.get_swap_cost() * close_ratio,
+            commission_cost=position.get_commission_cost() * close_ratio + exit_commission,
+            swap_cost=position.get_swap_cost() * close_ratio + exit_swap,
             total_fees=closed_fees,
             gross_pnl=closed_gross_pnl,
             net_pnl=closed_net_pnl,
@@ -705,7 +723,7 @@ class PortfolioManager:
         position.unrealized_pnl = position.gross_pnl - position.get_total_fees()
 
         # Update statistics (partial close counts as a completed trade)
-        self._update_statistics(position, closed_net_pnl)
+        self._update_statistics(position, closed_net_pnl, trade_record.total_fees)
 
         return closed_net_pnl
 
@@ -1303,15 +1321,23 @@ class PortfolioManager:
             the number. A caller that measures risk must treat None as "cannot measure yet",
             never as zero
         """
-        # SPOT is answered from the BALANCES alone (`get_spot_equity` is O(1) and says so),
-        # so the position refresh below is not needed for the value — and in spot the swap
-        # accrual inside it is a no-op as well. Skipping it leaves the dirty flag standing
-        # for whoever actually needs marked positions, so the laziness is preserved rather
-        # than broken. This is what makes a per-tick drawdown affordable in the account
-        # model the 30-day run uses (#497).
+        # SPOT is answered from the BALANCES alone (`get_spot_equity` is O(1) and says so), so
+        # the value needs no position refresh — and with nothing open none happens, which is
+        # what keeps a per-tick drawdown affordable in the account model the 30-day run uses
+        # (#497). An OPEN position is marked below all the same, for its excursion.
         if self._spot_mode:
             if self._current_tick is None:
                 return None
+            # The VALUE needs no marked position — but an open position's excursion does: its
+            # MAE / MFE extremes are tracked where it is marked, so skipping the mark here left a
+            # spot trade's excursion measured at its entry and its close alone (measured
+            # 2026-09-29: 31 of 40 spot trades read MAE 0 on a gain). A position is re-marked
+            # only on a tick that takes its price past an extreme — two comparisons otherwise,
+            # where a mark on every tick measured +1.6 µs per tick per open position.
+            for position in self.open_positions.values():
+                prices = self._current_prices.get(position.symbol)
+                if prices and position.extends_excursion(*prices):
+                    self._remark_position(position)
             # The tick answers it (§31c): valuation reads the midpoint, and the sibling site
             # in get_account_info values the same holdings the same way.
             return self.get_spot_equity(self._current_tick.mid)
@@ -1325,7 +1351,7 @@ class PortfolioManager:
 
         NOTE the name overpromises and deliberately stays: no curve is retained. Two floats
         are carried, and nothing else — a retained series at tick cadence over thirty days is
-        unbounded memory and belongs to #476's fragments (#497).
+        unbounded memory and belongs to #476's day records (#497).
 
         Args:
             equity: A value the caller already holds, to avoid a second evaluation of the
@@ -1534,13 +1560,23 @@ class PortfolioManager:
     # Statistics ( & TYPED)
     # ============================================
 
-    def _update_statistics(self, position: Position, realized_pnl: float) -> None:
+    def _update_statistics(self, position: Position, realized_pnl: float,
+                           closed_fees: float) -> None:
         """
         Update trading statistics after position close.
 
-        Uses direct attributes instead of dict.
+        A trade that realised exactly nothing is neither a winner nor a loser — the rule the
+        trade analytics and the booking periods apply, so every surface counts one population.
+        It used to count as a loser here, which made `avg_loss` divide by a trade that lost
+        nothing and put a different `losing_trades` in the run summary than in its own periods.
+
+        Args:
+            position: The position (or the portion) that closed
+            realized_pnl: What the close realised, net of fees
+            closed_fees: The fees of the trade record the close produced
         """
         self._total_trades += 1
+        self._closed_trade_fees += closed_fees
 
         if position.direction == OrderDirection.LONG:
             self._total_long_trades += 1
@@ -1550,7 +1586,7 @@ class PortfolioManager:
         if realized_pnl > 0:
             self._winning_trades += 1
             self._total_profit += realized_pnl
-        else:
+        elif realized_pnl < 0:
             self._losing_trades += 1
             self._total_loss += abs(realized_pnl)
 
@@ -1608,7 +1644,8 @@ class PortfolioManager:
             total_swap=self._cost_tracking.total_swap,
             maker_fee=self._cost_tracking.maker_fee,
             taker_fee=self._cost_tracking.taker_fee,
-            total_fees=self._cost_tracking.total_fees,
+            total_fees=self._closed_trade_fees,
+            fees_charged=self._cost_tracking.total_fees,
             currency=self.account_currency,  # Account currency
             broker_name=self.broker_config.get_broker_name(),
             broker_type=self.broker_config.broker_type,
@@ -1638,6 +1675,7 @@ class PortfolioManager:
         self._total_short_trades = 0
         self._winning_trades = 0
         self._losing_trades = 0
+        self._closed_trade_fees = 0.0
         self._total_profit = 0.0
         self._total_loss = 0.0
         self._account_max_drawdown = 0.0

@@ -35,7 +35,7 @@ Readers that report failure as a *result* rather than by raising — the produce
 the case — raise `ConnectionAttemptFailedError(msg, terminal=…)` at their call site. Only
 that reader knows whether the answer was a refused credential.
 
-**A give-up is never silent.** It lands in the session error pot (§35) with a message naming
+**A give-up is never silent.** It lands in the session error pot with a message naming
 the system, because the reader's first question is whether the trading logic broke. Silence
 is worse than a ladder that never ran: "gave up" then looks exactly like "still trying".
 
@@ -206,7 +206,7 @@ a key we chose: `cl_ord_id`.
 
 ```
 internal (both pipelines, unchanged)   pos_btcusd_47
-wire key (live only)                   p1641_47      1641 = 4 chars of the run id's random half
+wire key (live stack only)             p1641_47      1641 = 4 chars of the run id's random half
 ```
 
 **The 18 characters are KRAKEN's limit, not the framework's.** The adapter contract carries a
@@ -221,7 +221,7 @@ not collide across a restart**: the internal counter restarts at 1 with the proc
 without a session discriminator a fresh order would carry the key of one still resting at
 the venue from last night, and boot adoption (#355) would match the wrong order.
 
-The **session** owns the key, not the run — a #476 day fragment mints its own run id and
+The **session** owns the key, not the run — a #476 day record mints its own run id and
 must not change it mid-session.
 
 An order the venue reports with *no* key of ours is not a defect: it is somebody else's
@@ -337,7 +337,7 @@ names, same defaults — into the config block that owns each domain:
 | AutoTrader profile → `tick_source` | 4 |
 | `configs/market_config.json` → `broker_transport.connection` | 5, 6, 7 |
 
-What is decided in one place is the classification and the vocabulary, not the values. §28's
+What is decided in one place is the classification and the vocabulary, not the values. The
 mirror rule applies per file: every default appears with the identical value in its config.
 
 **The policy lives framework-side, never inside an adapter.** #328 moves four of these

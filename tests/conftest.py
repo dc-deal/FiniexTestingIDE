@@ -23,6 +23,7 @@ must not bleed in. setdefault() allows manual override (e.g. for debugging a
 specific failing test against a user config).
 """
 
+import hashlib
 import os
 from copy import deepcopy
 
@@ -32,8 +33,10 @@ import pytest
 
 from python.configuration.app_config_manager import AppConfigManager
 from python.framework.store.abstract_store_index import store_index_filename
+from python.framework.store.run_patch_store import RunPatchStore
 from python.framework.types.config_types.file_logging_config_types import RunLogPaths
 from python.framework.types.store_types import StoreId
+from tests.shared.release_gate_session import is_release_gate_session
 
 
 @pytest.fixture(scope='session', autouse=True)
@@ -62,7 +65,7 @@ def _isolate_run_tree(tmp_path_factory):
     root = tmp_path_factory.mktemp('run_tree')
     real = AppConfigManager().get_file_logging_config_object()
     isolated = real.model_copy(update={
-        'run_logs': RunLogPaths(simulation=root / 'simulation', live=root / 'live'),
+        'run_logs': RunLogPaths(simulation=root / 'simulation', autotrader=root / 'autotrader'),
         # Same naming rule as production (#486): <store_id>_index.parquet
         'run_index': root / store_index_filename(StoreId.RUNS),
         'global_log_dir': root / 'global',
@@ -114,7 +117,22 @@ def _isolate_run_config_store(tmp_path_factory):
 
 
 @pytest.fixture(scope='session', autouse=True)
-def _isolate_run_patch_store(tmp_path_factory):
+def _isolate_config_directory(tmp_path_factory):
+    """
+    Redirect the config directory's cache (#554) to a throwaway dir for the whole session.
+
+    Added with the store: every test that lists the directory would otherwise write its reading
+    of the fixture tree into the operator's `data/runtime/config_directory/` (§34).
+    """
+    store_dir = tmp_path_factory.mktemp('config_directory')
+    mp = pytest.MonkeyPatch()
+    mp.setattr(AppConfigManager, 'get_config_directory_path', lambda self: str(store_dir))
+    yield
+    mp.undo()
+
+
+@pytest.fixture(scope='session', autouse=True)
+def _isolate_run_patch_store(tmp_path_factory, request):
     """
     Redirect the run-patch store to a throwaway dir for the whole test session.
 
@@ -122,12 +140,66 @@ def _isolate_run_patch_store(tmp_path_factory):
     that is dirty whenever somebody is working on it, so every test that captures a code identity
     with a patch sink would file the tree's diff in the OPERATOR's `run_patches/` — patches of
     code that was under test, not code that ran (§34).
+
+    The ONE exception is a session made of release gates alone (benchmark, live adapters, field
+    study, signal feed): their certificate is a committed operator record, and the patch it names
+    must resolve in the operator's store rather than in a directory pytest deletes (#551).
     """
+    if is_release_gate_session(request.session.items):
+        yield
+        return
     store_dir = tmp_path_factory.mktemp('run_patches')
     mp = pytest.MonkeyPatch()
     mp.setattr(AppConfigManager, 'get_run_patches_path', lambda self: str(store_dir))
     yield
     mp.undo()
+
+
+@pytest.fixture(scope='session', autouse=True)
+def _isolate_foreign_run_patches(tmp_path_factory):
+    """
+    Redirect every FOREIGN repository's run patches to a throwaway dir for the whole session.
+
+    A repository other than this one keeps its patches inside itself (#551) — and the operator's
+    `user_algos/` is such a repository, dirty whenever a strategy is being written. A test that
+    captured a component from it would file a patch INTO the operator's private repository. No
+    test does today; the fixture exists so that none can, the same reason as its sibling above.
+
+    Yields the REAL `inside_repository`, which `real_foreign_patch_homes` puts back for a test
+    working in throwaway repositories only.
+    """
+    homes = tmp_path_factory.mktemp('foreign_run_patches')
+    real = RunPatchStore.__dict__['inside_repository']
+
+    def redirected(cls, repository_root: str) -> RunPatchStore:
+        """
+        One throwaway home per repository, so two repositories never share one.
+
+        Args:
+            repository_root: The repository's top-level directory
+
+        Returns:
+            A self-ignoring store under the session's tmp dir
+        """
+        home = homes / hashlib.sha256(repository_root.encode('utf-8')).hexdigest()[:16]
+        return cls(home, self_ignoring=True)
+
+    mp = pytest.MonkeyPatch()
+    mp.setattr(RunPatchStore, 'inside_repository', classmethod(redirected))
+    yield real
+    mp.undo()
+
+
+@pytest.fixture
+def real_foreign_patch_homes(_isolate_foreign_run_patches, monkeypatch):
+    """
+    Put the real foreign patch home back for ONE test, whose repositories are all throwaway.
+
+    Args:
+        _isolate_foreign_run_patches: The real `inside_repository` the session fixture replaced
+        monkeypatch: Restores the redirect after the test
+    """
+    monkeypatch.setattr(RunPatchStore, 'inside_repository', _isolate_foreign_run_patches)
 
 
 @pytest.fixture(scope='session', autouse=True)

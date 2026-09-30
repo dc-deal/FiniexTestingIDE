@@ -22,7 +22,7 @@ from typing import Any, Dict, List, Optional
 from python.configuration.app_config_manager import AppConfigManager
 from python.framework.batch.batch_orchestrator import BatchOrchestrator
 from python.framework.types.api.report_types import RunReporting
-from python.framework.types.backtesting_metadata_types import BacktestingMetadata
+from python.framework.types.probe_metadata_types import ProbeMetadata
 from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.log_level import LogLevel
 from python.framework.types.portfolio_types.portfolio_aggregation_types import PortfolioStats
@@ -187,13 +187,13 @@ def extract_tick_loop_results(process_result: ProcessResult) -> ProcessTickLoopR
     return process_result.tick_loop_results
 
 
-def extract_backtesting_metadata(
+def extract_probe_metadata(
     tick_loop_results: ProcessTickLoopResult
-) -> BacktestingMetadata:
-    """Extract BacktestingMetadata from decision statistics."""
+) -> ProbeMetadata:
+    """Extract ProbeMetadata from decision statistics."""
     stats = tick_loop_results.decision_statistics
-    assert stats.backtesting_metadata, 'No backtesting metadata'
-    return stats.backtesting_metadata
+    assert stats.probe_metadata, 'No backtesting metadata'
+    return stats.probe_metadata
 
 
 def extract_portfolio_stats(

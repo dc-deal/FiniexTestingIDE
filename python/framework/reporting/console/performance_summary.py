@@ -158,10 +158,11 @@ class PerformanceSummary(AbstractBatchSummarySection):
                 # since the last compute (BAR_CLOSE serves a cached value in between).
                 total_ticks = unit.ticks_processed
                 if total_ticks > 0:
-                    cadence = (f'{w.compute_basis:9} {w.call_count:>5}/{total_ticks} '
+                    # `basis=` in front: bare, the compute basis `live` read as a live session.
+                    cadence = (f'basis={w.compute_basis:9} {w.call_count:>5}/{total_ticks} '
                                f'computes ({w.compute_ratio_pct:4.0f}%, {w.ticks_idle} idle)')
                 else:
-                    cadence = f'{w.compute_basis:9} {w.call_count:>5} computes'
+                    cadence = f'basis={w.compute_basis:9} {w.call_count:>5} computes'
                 print(f"      {renderer.blue(f'{w.worker_name:15}->{w.worker_type:15}')}  "
                       f"{cadence}  |  "
                       f"Avg: {w.avg_time_ms:>6.3f}ms  |  "

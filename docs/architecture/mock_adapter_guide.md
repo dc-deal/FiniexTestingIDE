@@ -2,7 +2,11 @@
 
 ## Overview
 
-The MockBrokerAdapter simulates broker responses for testing the LiveTradeExecutor pipeline **without** a real broker connection. It uses real Kraken symbol specifications (BTCUSD) and supports configurable execution behavior.
+The MockBrokerAdapter simulates broker responses for testing the LiveTradeExecutor pipeline
+**without** a real broker connection, with configurable execution behavior. Constructed without a
+config it uses a minimal Kraken-BTCUSD-shaped specification (the unit tests); a mock AutoTrader
+session passes the broker's own static JSON and reports that broker's type — so an MT5 mock
+session has forex pip sizes.
 
 **Key principle:** Same code pipeline as live trading, deterministic and local.
 
@@ -177,7 +181,7 @@ adapter.set_mode(MockExecutionMode.REJECT_ALL)
 - `len(order_history) >= orders_sent` (may include internal rejections)
 - `len(trade_history) <= orders_executed` (only completed round-trips)
 
-### 4. Sim vs Live Comparison (same shared core?)
+### 4. Simulation vs live execution stack (same shared core?)
 - Same order sequence through TradeSimulator and LiveTradeExecutor(Mock)
 - Compare: position count, execution stats, fee calculations
 - Proves the shared-core architecture works identically across modes
@@ -186,7 +190,7 @@ adapter.set_mode(MockExecutionMode.REJECT_ALL)
 
 ## Mock Symbol Configuration
 
-Default mock config uses real Kraken BTCUSD specification:
+Constructed without a config, the mock uses this minimal Kraken-BTCUSD-shaped specification:
 
 | Property | Value |
 |----------|-------|

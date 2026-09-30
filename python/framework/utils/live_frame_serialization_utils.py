@@ -29,7 +29,7 @@ def frame_to_json(
     frame itself an untouched runtime object.
 
     Args:
-        frame: A live-telemetry frame (sim progress / status or live session)
+        frame: A live-telemetry frame (sim progress / status or AutoTrader session)
 
     Returns:
         JSON-serializable dict mirroring the frame

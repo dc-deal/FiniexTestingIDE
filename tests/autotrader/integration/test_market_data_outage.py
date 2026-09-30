@@ -18,7 +18,7 @@ from python.framework.autotrader.autotrader_main import AutotraderMain
 from python.framework.types.log_level import LogLevel
 from tests.shared.fixture_helpers import logged_messages, remove_run_dir
 
-OUTAGE_PROFILE = 'configs/autotrader_profiles/backtesting/market_data_outage_test.json'
+OUTAGE_PROFILE = 'configs/autotrader_profiles/mock/market_data_outage_test.json'
 
 
 @pytest.fixture(scope='module')

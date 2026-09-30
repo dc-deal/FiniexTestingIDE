@@ -122,7 +122,7 @@ class TestBuild:
 
 class TestBuildFromSession:
     def test_single_broker_single_symbol_no_scenarios(self):
-        # live session: one broker + one symbol, no scenario grid
+        # AutoTrader session: one broker + one symbol, no scenario grid
         report = build_broker_report_from_session(_RUN_ID, _fake_config(['BTCUSD']), 'BTCUSD')
         assert len(report.units) == 1
         row = report.units[0]

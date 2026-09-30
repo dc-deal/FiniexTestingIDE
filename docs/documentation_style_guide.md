@@ -15,7 +15,7 @@ then what it does about it. A label tells the reader nothing they could not read
 
 Label — the reader still does not know why this exists:
 
-> This guide shows you how to create a custom trading bot with FiniexTestingIDE.
+> This guide shows you how to create a custom strategy with FiniexTestingIDE.
 
 Problem — `architecture/reporting_pipeline.md`:
 
@@ -116,6 +116,29 @@ A fact restated in a second document goes wrong the day the first one changes, a
 nobody edits is the one that decays. Link to the owner of the fact. This holds for
 configuration defaults, thresholds, file paths and counts alike.
 
+## 12. Explain a convention in words, never by a rule number
+
+"The error pot (§35)" tells a reader nothing: there is no numbered rulebook in this repository for
+them to open, so the reference answers no question and makes the sentence look as if it had. Where
+a document leans on a convention, it states the convention's reason in a sentence of its own — or
+links to the document that explains it, by that document's heading.
+
+## 13. Show the one key, link the whole configuration
+
+An inline example shows the few lines a paragraph is about — the key, its value, and what it
+does — and nothing around them:
+
+```json
+"scenario_settings": { "start_date": "2026-01-25T16:00:00+00:00", "max_ticks": 5000 }
+```
+
+A complete scenario set or profile never lives in a document. It is copied once, drifts from the
+schema the day a key is renamed, and nothing notices, because no program reads it. Link to a file
+the suite loads instead (`configs/scenario_sets/backtesting/…`, `configs/autotrader_profiles/mock/…`,
+`tests/fixtures/…`): a renamed key then turns a test red rather than a reader's run. The large
+documentation projects settle it the same way — code examples that are compiled or run as tests,
+or kept as files in the repository beside the page that shows an excerpt.
+
 ---
 
 ## Three audiences, three depths
@@ -140,3 +163,5 @@ abstraction and that is the bug to fix.
 - Is every number dated, and does every count refer to something that cannot grow?
 - One H1, headings named for their content, prose wrapped?
 - Is anything restated here that another document owns?
+- Does any sentence lean on a rule number (`§…`) instead of saying the rule?
+- Is every example either a few lines about one key, or a link to a file the suite loads?

@@ -8,6 +8,7 @@ compares. So both are asserted here.
 """
 
 import json
+import re
 from pathlib import Path
 
 import pandas as pd
@@ -21,6 +22,7 @@ from python.framework.store.abstract_store_index import (
     store_index_filename,
 )
 from python.framework.store.store_catalog import StoreCatalog
+from python.framework.store.store_descriptor import PURPOSE_MAX_LENGTH
 from python.framework.types.store_types import (
     RetrievalForm,
     StoreBackend,
@@ -46,6 +48,27 @@ class _ToyIndex(AbstractStoreIndex):
         return len(rows)
 
 
+def _heading_anchors(doc: Path) -> set:
+    """
+    The anchors GitHub derives from a document's headings, fenced code excluded.
+
+    Args:
+        doc: The Markdown file
+
+    Returns:
+        One anchor per heading: lower-cased, punctuation dropped, spaces turned into hyphens
+    """
+    anchors, fenced = set(), False
+    for line in doc.read_text(encoding='utf-8').splitlines():
+        if line.lstrip().startswith('```'):
+            fenced = not fenced
+            continue
+        heading = re.match(r'#{1,6}\s+(.+?)\s*$', line)
+        if heading and not fenced:
+            anchors.add(re.sub(r'[^\w\- ]', '', heading.group(1).lower()).replace(' ', '-'))
+    return anchors
+
+
 class TestCatalogCompleteness:
     """Every store is declared, and every declaration says enough to act on."""
 
@@ -69,6 +92,30 @@ class TestCatalogCompleteness:
             assert isinstance(descriptor.form, RetrievalForm)
             assert isinstance(descriptor.backend, StoreBackend)
             assert str(descriptor.root), f'{descriptor.store_id} has no root'
+
+    def test_every_store_says_what_it_is_for(self):
+        """The purpose is printed on the store's catalog row, so it is one clause that fits there."""
+        for descriptor in StoreCatalog().all():
+            purpose = descriptor.purpose
+            assert purpose.strip(), f'{descriptor.store_id} does not say what it is for'
+            assert '\n' not in purpose, f'{descriptor.store_id}: a purpose is one line'
+            assert len(purpose) <= PURPOSE_MAX_LENGTH, (
+                f'{descriptor.store_id}: {len(purpose)} > {PURPOSE_MAX_LENGTH} characters — the '
+                f'longer explanation belongs in `note` or in the linked document')
+
+    def test_every_help_link_reaches_a_real_heading(self):
+        """
+        A help link that points nowhere is a false map (§40): the file must exist, and an anchor
+        must name a heading in it. Renaming a heading therefore fails here, not in a reader's
+        browser.
+        """
+        for descriptor in StoreCatalog().all():
+            path, _, anchor = descriptor.doc.partition('#')
+            doc = Path(path)
+            assert doc.is_file(), f'{descriptor.store_id}: help link {path!r} is no file'
+            if anchor:
+                assert anchor in _heading_anchors(doc), (
+                    f'{descriptor.store_id}: {doc} has no heading with the anchor #{anchor}')
 
     def test_a_special_store_states_why_it_is_special(self):
         """SPECIAL is a declaration, not a loophole — it has to say what it is instead."""
@@ -147,7 +194,7 @@ class TestCatalogCompleteness:
             Path('configs/brokers'): 'hand-written broker seed configuration (§28)',
             Path('configs/credentials'): 'credential files (§29) — never indexed, never listed',
             Path('configs/scenario_sets'): 'hand-written scenario configuration',
-            Path('configs/autotrader_profiles'): 'hand-written live/backtest profiles',
+            Path('configs/autotrader_profiles'): 'hand-written AutoTrader profiles',
             Path('configs/discoveries'): 'hand-written discovery configuration',
             Path('configs/test_scenarios'): 'hand-written test scenario configuration',
             Path('configs/generator'): 'hand-written generator configuration + header template',
@@ -292,6 +339,34 @@ class TestStatus:
         assert len(rows) == len(list(StoreId))
         assert {r.store_id for r in rows} == set(StoreId)
 
+    def test_rebuild_all_covers_every_index_whose_rebuild_loses_nothing(self):
+        """
+        `rebuild --all` rebuilds every index of ours except those that declare a loss, and asks
+        no store that has none — the two lists together are exactly the stores with an index.
+        """
+        catalog = StoreCatalog()
+        lossless, lossy = catalog.lossless_rebuild_ids(), catalog.lossy_rebuild_ids()
+        assert set(lossless) | set(lossy) == {
+            d.store_id for d in catalog.all() if d.build_index() is not None}
+        assert not set(lossless) & set(lossy)
+        assert lossless, 'the model owns indexes'
+        assert all(catalog.get(store_id).rebuild_loses for store_id in lossy)
+
+    def test_the_run_config_rebuild_is_declared_lossy(self):
+        """
+        Its frozen copies carry the content; which file a version came from, when it was first
+        seen and how often it ran exist only in the index. Until #547 corrects that, the
+        declaration is what keeps `rebuild --all` from emptying every history.
+        """
+        catalog = StoreCatalog()
+        assert StoreId.RUN_CONFIGS in catalog.lossy_rebuild_ids()
+        assert 'first seen' in catalog.get(StoreId.RUN_CONFIGS).rebuild_loses
+
+    def test_a_lossy_rebuild_is_refused_unless_the_loss_is_accepted(self):
+        """The refusal comes before the index is touched, so asking the real catalog is safe."""
+        with pytest.raises(StoreCatalogError, match='--accept-loss'):
+            StoreCatalog().rebuild(StoreId.RUN_CONFIGS)
+
     def test_a_store_without_an_index_of_ours_reports_no_staleness(self):
         """`None` is the honest answer — the catalog cannot judge an index it does not own."""
         rows = {r.store_id: r for r in StoreCatalog().status()}
@@ -358,6 +433,9 @@ class TestOperatorSignal:
         assert rows[StoreId.RUN_LEDGER].self_healing is True
         assert rows[StoreId.RUNS].self_healing is False, (
             'the run index is written incrementally at run start and does NOT self-heal')
+        assert rows[StoreId.CONFIG_DIRECTORY].self_healing is True, (
+            'its rebuild deletes the file and the next read writes it again — reporting that as '
+            '"rebuild before trusting it" would send the operator round in a circle')
 
     def test_only_the_newest_certificate_of_a_family_can_expire_a_gate(self, tmp_path):
         """

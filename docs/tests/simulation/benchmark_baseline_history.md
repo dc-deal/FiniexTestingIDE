@@ -73,7 +73,7 @@ Measured with the benchmark's own per-operation instrumentation, milliseconds pe
 ### How it was attributed
 
 Fifty-one commits lie between the two measurements, so the obvious method was a bisect. A
-profile comparison was chosen instead because it names the FUNCTION rather than the commit, and
+profiler comparison was chosen instead because it names the FUNCTION rather than the commit, and
 because it needs no clean tree: the same one-scenario workload was profiled at four commits, each
 in its own `git worktree` with the real data archive symlinked in, so the main tree was never
 checked out. Every run processed **exactly 49,196 worker passes** — that identity is what makes
@@ -120,8 +120,8 @@ baseline is measured with it.**
 
 A note for whoever measures the next one: **cProfile cannot value a change like this and gets its
 sign wrong.** It charges per function call, so a loop's iterations are invisible to it while the
-numpy calls replacing them are counted — the profile reported the vectorised version as 4 %
-*slower* while the timed A/B showed it 5 % faster. Use a profile to locate, a timed A/B to value.
+numpy calls replacing them are counted — the profiler reported the vectorised version as 4 %
+*slower* while the timed A/B showed it 5 % faster. Use a profiler to locate, a timed A/B to value.
 
 ### What is still recoverable
 

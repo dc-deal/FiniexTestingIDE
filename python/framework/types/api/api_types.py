@@ -29,8 +29,21 @@ class ApiContractResponse(BaseModel):
 
 
 class HealthResponse(BaseModel):
+    """
+    Whether the server answers, and since when — open, so it carries nothing a stranger could use.
+
+    Args:
+        status: Always `ok` when it answers at all
+        version: The app version
+        started_at: When this server process started serving, ISO-8601 UTC — it changes on every
+            restart, so a consumer sees a restart instead of guessing at one
+        uptime_s: Seconds since then, measured by the server on its monotonic clock, so a
+            consumer needs no clock of its own to tell a fresh server from an old one
+    """
     status: str
     version: str
+    started_at: str
+    uptime_s: float
 
 
 class CallerResponse(BaseModel):
@@ -106,6 +119,27 @@ class TimeframeListResponse(BaseModel):
     # assert it rather than read it.
     key: list[str] = ['name']
     timeframes: list[TimeframeInfo]
+
+
+class ValidationCheckRow(BaseModel):
+    """
+    One validation check, as a reader needs it.
+
+    Args:
+        check: The stable id a finding carries (`run-summary.units_absent[].checks`,
+            `warnings-errors.warnings[].check`)
+        title: A short name, fit for a label or a filter facet
+        description: One sentence saying what the check asserts
+    """
+    check: str
+    title: str
+    description: str
+
+
+class ValidationCheckListResponse(BaseModel):
+    """Every check a finding can name — the vocabulary behind every `check` id served."""
+    key: list[str] = ['check']
+    checks: list[ValidationCheckRow]
 
 
 class IndicatorPointResponse(BaseModel):

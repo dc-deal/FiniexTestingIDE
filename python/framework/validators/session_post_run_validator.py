@@ -6,7 +6,7 @@ be known AFTER a session has run, and appends them to
 `AutoTraderResult.session_validation_result`. Runs once before the report coordinator, mirroring
 the sim order (batch_orchestrator → PostRunValidator → reporting).
 
-Only the checks a single live session can honestly answer live here. Most of the sim's post-run
+Only the checks a single AutoTrader session can honestly answer live here. Most of the sim's post-run
 checks need inputs a session does not have (profiling / coordination statistics, a tick budget,
 several scenarios, several currencies) — see docs/architecture/warnings_errors_tiers.md. One
 check is live-only in the other direction: clipping, which the sim judges against a CONFIGURED
@@ -47,7 +47,7 @@ _CLIPPING_CHECK = 'clipping'
 
 
 class SessionPostRunValidator:
-    """Emits the post-run advisory warnings of a live session into its validation channel."""
+    """Emits the post-run advisory warnings of an AutoTrader session into its validation channel."""
 
     def __init__(
         self,
@@ -92,7 +92,7 @@ class SessionPostRunValidator:
         settings = self._config.scenario_settings
         if settings is None:
             return
-        name = self._config.name or self._config.symbol
+        name = self._config.get_unit_name()
         finding = check_stress_test(
             [(name, settings.stress_test_config)], _SESSION_UNIT_LABEL)
         if finding is not None:

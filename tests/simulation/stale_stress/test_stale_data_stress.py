@@ -9,7 +9,7 @@ DATA SOURCES the scenario binds; asserted per scenario:
   REAL #434 chain
 - no-stress control → no events at all (no false positives)
 - disjoint window → overlap-guard warning ("data deviation"), zero events
-- unknown data_source → scenario excluded by preparation validation (§33)
+- unknown stale_data_source → scenario excluded by preparation validation (§33)
 """
 
 from pathlib import Path
@@ -48,7 +48,7 @@ def _received_events(summary, index: int):
     result = summary.process_result_list[index]
     assert result.success, (
         f'Scenario {index} failed: {result.error_message}')
-    return result.tick_loop_results.decision_statistics.backtesting_metadata.received_events
+    return result.tick_loop_results.decision_statistics.probe_metadata.received_events
 
 
 class TestMarketDataWindow:

@@ -69,6 +69,6 @@ class CarryOverIdentityCollisionError(FiniexError):
     own identity check asks whether a document belongs to THIS bot, which it does for both.
 
     Raised at startup rather than survived, because the state is genuinely ambiguous from that
-    moment on and a live session has no second chance (§35).
+    moment on and an AutoTrader session has no second chance (§35).
     """
     pass

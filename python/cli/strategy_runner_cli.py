@@ -4,8 +4,10 @@ Command-line interface for batch strategy testing
 
 Usage:
     python python/cli/strategy_runner_cli.py run eurusd_3_windows.json
-    python python/cli/strategy_runner_cli.py list
-    python python/cli/strategy_runner_cli.py list --full-details
+    python python/cli/strategy_runner_cli.py validate [file ...]
+
+Listing what can run is `config_directory_cli.py list` (#554) — a lean CLI, because this one
+imports the whole batch pipeline.
 """
 
 import argparse
@@ -14,12 +16,12 @@ import traceback
 from pathlib import Path
 from typing import List, Optional
 
+from python.framework.config_directory.config_directory_validation import validate_scenario_sets
 from python.framework.logging.bootstrap_logger import get_global_logger
+from python.framework.reporting.console.config_directory_summary import render_config_validation
 from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.run_origin_types import RunChannel
 from python.framework.types.run_outcome_types import RunOutcome
-from python.framework.utils.time_utils import format_duration
-from python.scenario.scenario_set_finder import ScenarioSetFinder
 from python.scenario.scenario_strategy_runner import run_profile_batch, run_scenario_batch
 
 vLog = get_global_logger()
@@ -29,12 +31,8 @@ class StrategyRunnerCli:
     """
     Command-line interface for strategy testing
 
-    Provides scenario set discovery and execution
+    Runs scenario sets and validates them; listing them is the config directory's job (#554)
     """
-
-    def __init__(self):
-        """Initialize CLI"""
-        self._finder = ScenarioSetFinder()
 
     def cmd_run(
         self,
@@ -101,106 +99,20 @@ class StrategyRunnerCli:
                 raise FileNotFoundError(f'Profile path not found: {path}')
         return resolved
 
-    def cmd_list(self, full_details: bool = False):
+    def cmd_validate(self, files: Optional[List[str]] = None) -> None:
         """
-        List available scenario sets
+        Run the loader over the scenario sets the config directory lists.
 
         Args:
-            full_details: If True, load and validate all configs (slow)
+            files: Only these file names; None validates every scenario set
         """
-        if full_details:
-            self._list_with_full_details()
-        else:
-            self._list_files_only()
-
-    def _list_files_only(self):
-        """Fast: List config filenames only"""
-        files = self._finder.list_available_files()
-
-        print('\n' + '='*80)
-        print('📋 Available Scenario Sets')
-        print('='*80)
-
-        if not files:
-            print('⚠️  No scenario set config files found')
-            print(f'   Location: {self._finder._config_path}')
-        else:
-            for file_path in files:
-                print(f'  • {file_path.name}')
-
-        print('='*80)
-        print(f'Total: {len(files)} config file(s)')
-        print("\nUse 'list --full-details' for detailed information")
-        print('='*80 + '\n')
-
-    def _list_with_full_details(self):
-        """Slow: Load all configs and show full metadata"""
-        print('\n' + '='*80)
-        print('📋 Available Scenario Sets (Full Details)')
-        print('='*80)
-        print('⏳ Loading and validating all configs...')
-        print('='*80 + '\n')
-
-        metadata_list = self._finder.list_all_with_details()
-
-        if not metadata_list:
-            print('⚠️  No valid scenario set config files found')
-            print(f'   Location: {self._finder._config_path}')
-            print('='*80 + '\n')
-            return
-
-        print('='*80)
-        print(f'Total: {len(metadata_list)} valid config file(s)')
-        print('='*80 + '\n')
-
-        for metadata in metadata_list:
-            print(f'📄 {metadata.filename}')
-            print(f'   Name:      {metadata.scenario_set_name}')
-            print(f'   Scenarios: {metadata.enabled_count} enabled')
-            print(f"   Symbols:   {', '.join(metadata.symbols)}")
-
-            # === TIME ANALYSIS ===
-            time_parts = []
-            if metadata.timespan_scenario_count > 0:
-                duration_str = format_duration(metadata.total_timespan_seconds)
-                time_parts.append(
-                    f"{duration_str} across {metadata.timespan_scenario_count} scenario{'s' if metadata.timespan_scenario_count > 1 else ''}"
-                )
-            if metadata.tick_scenario_count > 0:
-                time_parts.append(
-                    f"{metadata.total_ticks:,} ticks across {metadata.tick_scenario_count} scenario{'s' if metadata.tick_scenario_count > 1 else ''}"
-                )
-
-            if time_parts:
-                print(f"   In-Time:   {', '.join(time_parts)}")
-
-            # === STRATEGY INFO ===
-            logic_parts = []
-
-            # Decision logic
-            if metadata.is_mixed_decision_logic:
-                logic_parts.append('Mixed')
-            elif metadata.decision_logic_type:
-                logic_parts.append(metadata.decision_logic_type)
-
-            # Worker count
-            if metadata.is_mixed_workers:
-                logic_parts.append('Mixed Workers')
-            elif metadata.worker_count is not None:
-                worker_str = f"{metadata.worker_count} Worker{'s' if metadata.worker_count != 1 else ''}"
-                logic_parts.append(worker_str)
-
-            if logic_parts:
-                print(
-                    f"   Logic:     {' ('.join(logic_parts)}{')'if len(logic_parts) > 1 else ''}")
-
-            print()
+        render_config_validation(validate_scenario_sets(files))
 
 
 def main():
     """Main entry point."""
     parser = argparse.ArgumentParser(
-        description='Batch strategy testing CLI',
+        description='Backtesting CLI',
         formatter_class=argparse.RawDescriptionHelpFormatter
     )
 
@@ -218,17 +130,16 @@ def main():
         type=str,
         nargs='+',
         default=None,
-        help='Profile JSON file(s) or directory path(s) for Profile Run'
+        help='Generator-profile JSON file(s) or directories for a Profile Run'
     )
 
     # ─────────────────────────────────────────────────────────────────────────
-    # LIST command
+    # VALIDATE command
     # ─────────────────────────────────────────────────────────────────────────
-    list_parser = subparsers.add_parser(
-        'list', help='List available scenario set files')
-    list_parser.add_argument(
-        '--full-details', action='store_true', default=False,
-        help='Load and validate all configs (slow)')
+    validate_parser = subparsers.add_parser(
+        'validate', help='Run the loader over the scenario sets the config directory lists')
+    validate_parser.add_argument(
+        'files', nargs='*', help='Only these file names (default: every scenario set)')
 
     # ─────────────────────────────────────────────────────────────────────────
     # Parse and execute
@@ -249,8 +160,8 @@ def main():
             sys.exit(summary.get_exit_code() if summary
                      else RunOutcome.CRASHED.get_exit_code())
 
-        elif args.command == 'list':
-            cli.cmd_list(full_details=args.full_details)
+        elif args.command == 'validate':
+            cli.cmd_validate(args.files or None)
 
     except KeyboardInterrupt:
         print('\n\n👋 Interrupted by user')

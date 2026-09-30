@@ -11,7 +11,7 @@ Tests:
 
 from typing import Any, Dict, List
 
-from python.framework.types.backtesting_metadata_types import BacktestingMetadata
+from python.framework.types.probe_metadata_types import ProbeMetadata
 from python.framework.types.portfolio_types.portfolio_trade_record_types import TradeRecord
 from python.framework.types.trading_env_types.trading_env_stats_types import ExecutionStats
 
@@ -53,7 +53,7 @@ class TestLotSizeValidation:
 
     def test_invalid_lots_not_in_expected_trades(
         self,
-        backtesting_metadata: BacktestingMetadata,
+        probe_metadata: ProbeMetadata,
         edge_case_orders: list
     ):
         """Expected trades should not contain rejected lot validation orders."""
@@ -61,7 +61,7 @@ class TestLotSizeValidation:
             e['lot_size'] for e in edge_case_orders
             if e['type'] in ('invalid_lot_below_min', 'invalid_lot_above_max')
         }
-        for trade in backtesting_metadata.expected_trades:
+        for trade in probe_metadata.expected_trades:
             assert trade.get('lot_size') not in invalid_lots, (
                 f"Expected trade with lots={trade.get('lot_size')} "
                 f"should not exist (invalid lot)"
@@ -92,13 +92,13 @@ class TestPositionCloseErrors:
 
     def test_scenario_completes_despite_close_error(
         self,
-        backtesting_metadata: BacktestingMetadata,
+        probe_metadata: ProbeMetadata,
         scenario_config: Dict[str, Any]
     ):
         """Scenario should complete all ticks despite close errors."""
         expected_ticks = scenario_config['scenarios'][0]['max_ticks']
-        assert backtesting_metadata.tick_count == expected_ticks, (
-            f'Expected {expected_ticks} ticks, got {backtesting_metadata.tick_count}. '
+        assert probe_metadata.tick_count == expected_ticks, (
+            f'Expected {expected_ticks} ticks, got {probe_metadata.tick_count}. '
             f'Scenario may have crashed on close error.'
         )
 

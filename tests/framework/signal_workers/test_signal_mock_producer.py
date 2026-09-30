@@ -2,7 +2,7 @@
 FiniexTestingIDE - Signal Mock Producer
 The local stand-in that makes the transport's control codes visible (#468).
 
-Why it exists at all is the finding worth keeping: every mock run in this project mounts
+Why it exists at all is the finding worth keeping: every mock session in this project mounts
 its signal series from the archive, which is what makes a replay reproducible — and
 therefore opens no connection. So the whole transport, and above all the four control codes
 a healthy producer will never emit on request, is unreachable from a mock session by

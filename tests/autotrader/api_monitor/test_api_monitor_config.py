@@ -16,8 +16,8 @@ def _write_profile(tmp_path, extra: dict):
     profile = tmp_path / 'api_monitor_profile.json'
     # `deployment` is mandatory since #497 — the loader refuses a profile without it,
     # and a hand-built fixture is exactly where that is easy to forget.
-    base = {'broker_type': 'kraken_spot', 'adapter_type': 'mock',
-            'deployment': {'continuous': False}}
+    base = {'profile_name': 'api_monitor_profile', 'broker_type': 'kraken_spot',
+            'adapter_type': 'mock', 'deployment': {'continuous': False}}
     base.update(extra)
     profile.write_text(json.dumps(base))
     return str(profile)
@@ -30,7 +30,8 @@ def test_api_monitor_mock_auto_disabled(tmp_path):
 
 
 def test_api_monitor_live_enabled_by_default(tmp_path):
-    config = load_autotrader_config(_write_profile(tmp_path, {'adapter_type': 'live'}))
+    config = load_autotrader_config(_write_profile(
+        tmp_path, {'adapter_type': 'live', 'tick_source': {'type': 'kraken'}}))
     assert config.api_monitor.enabled is True
 
 

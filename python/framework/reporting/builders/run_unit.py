@@ -10,8 +10,10 @@ never re-iterates the run.
 """
 
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 
+from python.framework.types.api.report_types import AbsentUnitRow, UnitRoster
 from python.framework.types.autotrader_types.autotrader_result_types import AutoTraderResult
 from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.disturbance_episode_types import DisturbanceEpisode, MarketDataTickStats
@@ -23,7 +25,8 @@ from python.framework.types.performance_types.performance_stats_types import (
 from python.framework.types.portfolio_types.portfolio_aggregation_types import PortfolioStats
 from python.framework.types.portfolio_types.portfolio_trade_record_types import TradeRecord
 from python.framework.types.portfolio_types.portfolio_types import Position
-from python.framework.types.run_results_types import BookingSegment
+from python.framework.types.run_results_types import BookingPeriod
+from python.framework.types.scenario_types.scenario_set_types import SingleScenario
 from python.framework.types.signal_data_types import SignalResolutionStats
 from python.framework.types.trading_env_types.order_types import OrderResult
 from python.framework.types.trading_env_types.pending_order_stats_types import PendingOrderStats
@@ -32,6 +35,7 @@ from python.framework.types.trading_env_types.stress_test_types import (
     StressTestConfig,
 )
 from python.framework.types.trading_env_types.trading_env_stats_types import ExecutionStats
+from python.framework.types.validation_types import Severity
 
 
 @dataclass
@@ -39,10 +43,10 @@ class RunUnit:
     """One run unit's report source (sim: a scenario; live: the session)."""
     name: str
     symbol: str
-    data_source: str = ''           # broker key — sim: scenario.data_broker_type,
-                                    # live: config.broker_type. The key the data API is
-                                    # addressed by, so a consumer can link unit → chart.
-    sentiment_source: str = ''      # sentiment feed label (#429 sim scenario / #431 live profile; '' if none)
+    data_broker_type: str = ''      # the broker whose ticks the unit read — sim: the scenario's,
+                                    # AutoTrader: config.get_data_broker_type(). The key the data
+                                    # API is addressed by, so a consumer can link unit → chart.
+    data_sentiment_type: str = ''   # sentiment feed label (#429 sim scenario / #438 mock session; '' if none)
     has_error: bool = False         # hybrid: partial data + error (sim) / emergency (live)
     trade_history: List[TradeRecord] = field(default_factory=list)
     # Positions still OPEN when the unit ended (#492). A run end no longer flattens, so
@@ -56,8 +60,8 @@ class RunUnit:
     portfolio_stats: Optional[PortfolioStats] = None
     execution_stats: Optional[ExecutionStats] = None
     pending_stats: Optional[PendingOrderStats] = None
-    # Worker / decision performance (unified — both pipelines; #398). Coordination
-    # is sim-only (the live session has no worker coordinator) → Optional, None on live.
+    # Worker / decision performance (unified — both pipelines; #398), coordination included:
+    # the orchestrator counts the ticks that reach the algo path in both pipelines.
     worker_statistics: List[WorkerPerformanceStats] = field(default_factory=list)
     decision_statistics: Optional[DecisionLogicStats] = None
     coordination_statistics: Optional[WorkerCoordinatorPerformanceStats] = None
@@ -69,11 +73,22 @@ class RunUnit:
     disturbance_episodes: List[DisturbanceEpisode] = field(default_factory=list)
     market_data_tick_stats: Optional[MarketDataTickStats] = None
     planned_outages: List[StaleDataEvent] = field(default_factory=list)
-    # The unit's HAUPTBUCH (#537) — one entry per closed booking period. On the unit rather
+    # The unit's LEDGER entries (#537) — one per closed booking period. On the unit rather
     # than on the run, because a run's scenarios cover DIFFERENT windows (measured: 40
     # scenarios, 40 distinct ones), so "day 1 of the run" is not a thing and only "day 1 of
     # this unit" is.
-    booking_segments: List[BookingSegment] = field(default_factory=list)
+    booking_periods: List[BookingPeriod] = field(default_factory=list)
+    # The unit's TICK TIMESPAN — its first and last processed tick. The run's market time is the
+    # union of these, which only the units together can say (overlapping windows count once).
+    first_tick_time: Optional[datetime] = None
+    last_tick_time: Optional[datetime] = None
+
+
+# The reason a unit carries when it produced nothing and left no message saying why.
+_NO_RESULTS = 'produced no results'
+# The same absence as a CODE, in the vocabulary of `error_type` — which names a cause in
+# CamelCase: an exception class, `ValidationError`, `LoggedErrors`.
+_NO_RESULTS_CODE = 'NoResults'
 
 
 def run_units_from_batch(batch: BatchExecutionSummary) -> List[RunUnit]:
@@ -96,8 +111,8 @@ def run_units_from_batch(batch: BatchExecutionSummary) -> List[RunUnit]:
         units.append(RunUnit(
             name=result.scenario_name,
             symbol=scenario.symbol,
-            data_source=scenario.data_broker_type,
-            sentiment_source=scenario.data_sentiment_type,
+            data_broker_type=scenario.data_broker_type,
+            data_sentiment_type=scenario.data_sentiment_type,
             has_error=bool(result.error_type or result.error_message),
             trade_history=tick_loop.trade_history or [],
             open_positions=tick_loop.open_positions or [],
@@ -113,9 +128,81 @@ def run_units_from_batch(batch: BatchExecutionSummary) -> List[RunUnit]:
                 tick_loop.disturbance_episodes or [], result.scenario_name, scenario.symbol),
             market_data_tick_stats=tick_loop.market_data_tick_stats,
             planned_outages=_planned_outages(scenario.stress_test_config),
-            booking_segments=tick_loop.booking_segments or [],
+            first_tick_time=(tick_loop.tick_range_stats.first_tick_time
+                             if tick_loop.tick_range_stats else None),
+            last_tick_time=(tick_loop.tick_range_stats.last_tick_time
+                            if tick_loop.tick_range_stats else None),
+            booking_periods=tick_loop.booking_periods or [],
         ))
     return units
+
+
+def unit_roster_from_batch(batch: BatchExecutionSummary, disabled_count: int) -> UnitRoster:
+    """
+    Which scenarios a sim batch declared, and which of the attempted ones produced nothing.
+
+    `declared` is read from the configuration side — the scenarios the set enabled plus the ones
+    it switched off — and `absent` from the results side, so the roster's invariant compares two
+    sources rather than restating one. A result counts when it carries portfolio statistics — the
+    test the portfolio section applies, whose rows are what the summary's `unit_count` counts.
+
+    Args:
+        batch: The completed batch summary
+        disabled_count: Scenarios the set switched off (`enabled: false`), counted by the loader
+
+    Returns:
+        The roster; an absent scenario's reason is its error message, its code the result's
+        error type, and a refused one names the checks that refused it
+    """
+    absent = []
+    for result in batch.process_result_list:
+        tick_loop = getattr(result, 'tick_loop_results', None)
+        if tick_loop is not None and tick_loop.portfolio_stats is not None:
+            continue
+        absent.append(AbsentUnitRow(
+            name=result.scenario_name,
+            reason=result.error_message or result.error_type or _NO_RESULTS,
+            reason_code=result.error_type or _NO_RESULTS_CODE,
+            checks=_refusing_checks(batch.get_scenario_by_process_result(result))))
+    return UnitRoster(declared=len(batch.single_scenario_list) + disabled_count,
+                      disabled=disabled_count, absent=absent)
+
+
+def unit_roster_from_session(session: AutoTraderResult, name: str) -> UnitRoster:
+    """
+    An AutoTrader session's roster: one declared unit, the session itself — the simulation's shape.
+
+    Args:
+        session: The collected session result
+        name: The session's unit label, as its report rows name it
+
+    Returns:
+        One declared unit; absent, with the emergency cause, when the session produced no
+        portfolio statistics (a startup abort)
+    """
+    if session.portfolio_stats is not None:
+        return UnitRoster(declared=1)
+    return UnitRoster(declared=1, absent=[AbsentUnitRow(
+        name=name, reason=session.emergency_reason or _NO_RESULTS,
+        reason_code=session.emergency_error_type or _NO_RESULTS_CODE)])
+
+
+def _refusing_checks(scenario: SingleScenario) -> List[str]:
+    """
+    The stable ids of the checks that refused a scenario, in the order they were found.
+
+    Args:
+        scenario: The scenario, as the batch validated it
+
+    Returns:
+        Distinct check ids of its ERROR findings; empty for a scenario nothing refused
+    """
+    checks: List[str] = []
+    for result in scenario.validation_result:
+        for finding in result.findings:
+            if finding.severity is Severity.ERROR and finding.check not in checks:
+                checks.append(finding.check)
+    return checks
 
 
 def _stamp_unit(
@@ -160,21 +247,21 @@ def _planned_outages(
 
 def run_units_from_session(
     session: AutoTraderResult, name: str, symbol: str,
-    data_source: str = '',
-    sentiment_source: str = '',
+    data_broker_type: str = '',
+    data_sentiment_type: str = '',
     stress_test_config: Optional[Dict[str, Any]] = None) -> List[RunUnit]:
     """
-    The single run unit of a live session.
+    The single run unit of an AutoTrader session.
 
     Args:
         session: The collected session result
         name: Unit label (profile name / symbol)
         symbol: Traded symbol
-        data_source: The broker key the unit traded on — the same key the data API is addressed
-            by, so a consumer can link a unit to its chart
-        sentiment_source: The session's sentiment feed label (#431; '' if none)
+        data_broker_type: The broker whose ticks the unit read — the same key the data API is
+            addressed by, so a consumer can link a unit to its chart
+        data_sentiment_type: The session's sentiment feed label (#431; '' if none)
         stress_test_config: The mock session's stress config (#438) — the origin label
-            source for #451; a real live session has none
+            source for #451; a live-adapter session has none
 
     Returns:
         A one-element list with the session's RunUnit
@@ -182,8 +269,8 @@ def run_units_from_session(
     return [RunUnit(
         name=name,
         symbol=symbol,
-        data_source=data_source,
-        sentiment_source=sentiment_source,
+        data_broker_type=data_broker_type,
+        data_sentiment_type=data_sentiment_type,
         has_error=session.emergency_reason is not None,
         trade_history=session.trade_history or [],
         open_positions=session.open_positions or [],
@@ -199,5 +286,7 @@ def run_units_from_session(
             session.disturbance_episodes or [], name, symbol),
         market_data_tick_stats=session.market_data_tick_stats,
         planned_outages=_planned_outages(stress_test_config),
-        booking_segments=session.booking_segments or [],
+        booking_periods=session.booking_periods or [],
+        first_tick_time=session.first_tick_time,
+        last_tick_time=session.last_tick_time,
     )]

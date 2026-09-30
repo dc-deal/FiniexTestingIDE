@@ -77,7 +77,7 @@ class WarningsSummary(AbstractBatchSummarySection):
         """Build the per-unit errors block (the prominent red headline + per-unit detail)."""
         errors = self._report.errors
         lines = [renderer.red(renderer.bold(
-            f'❌ Scenario errors detected — {len(errors)} unit(s) with error(s)'))]
+            f'❌ Errors detected — {len(errors)} unit(s) with error(s)'))]
         for err in errors:
             lines.append(renderer.red(self._error_head(err)))
             # Validation failures carry the structured error list; a pure execution villain
@@ -93,7 +93,7 @@ class WarningsSummary(AbstractBatchSummarySection):
                 lines.append(renderer.yellow(f'      {detail}'))
             if err.logged_errors:
                 lines.append(renderer.yellow(
-                    f'      {len(err.logged_errors)} logged error(s) — see scenario log'))
+                    f"      {len(err.logged_errors)} logged error(s) — see the unit's log"))
         return '\n'.join(lines)
 
     def _error_head(self, err: UnitErrorRow) -> str:

@@ -88,7 +88,7 @@ class FeedStabilitySummary(AbstractBatchSummarySection):
         short ones, which is the reading this section exists to enable.
 
         The list collapses above `threshold` regardless of the run's detail setting: a
-        long live session accumulates hundreds of short outages, and an unbounded list
+        long live-adapter session accumulates hundreds of short outages, and an unbounded list
         would bury the per-source summary above it. The complete record always stays in
         `feed_stability.json` (and the run log), so nothing is lost by collapsing.
         """

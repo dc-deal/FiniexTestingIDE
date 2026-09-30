@@ -12,7 +12,7 @@ the batch `RequirementsCollector`.
 All tests run offline. The store is decoupled from the decision logic — it persists plain
 dicts — so the store tests use a tmp directory and crafted files directly; the pre-flight test
 uses a minimal decision-logic stub; the collector test registers test-double logics through the
-factory's public `register_logic()`. The full live lifecycle (restore before first decision,
+factory's public `register_logic()`. The full AutoTrader lifecycle (restore before first decision,
 save on shutdown) is exercised by a real AutoTrader run, not by this unit suite.
 
 ---

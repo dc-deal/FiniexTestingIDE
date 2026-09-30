@@ -25,7 +25,7 @@ Stress tests are configured via `stress_test_config` in scenario JSON files. The
   },
   "scenarios": [
     {
-      "name": "scenario_01",
+      "scenario_name": "scenario_01",
       "stress_test_config": {
         "reject_open_order": {
           "enabled": true,
@@ -70,7 +70,7 @@ Rejects open orders with seeded probability at fill time. Rejected orders appear
 ### `stale_data_stress` (#436)
 
 Planned, deterministic stale windows on the sim time axis — drills BOTH staleness
-contracts ([outage handling guide](user_guides/live_outage_handling_guide.md))
+contracts ([outage handling guide](user_guides/outage_handling_guide.md))
 without a live outage. Not probability-based: events fire at exact timestamps.
 
 ```json
@@ -79,11 +79,11 @@ without a live outage. Not probability-based: events fire at exact timestamps.
     "enabled": true,
     "events": [
       { "label": "sentiment feed dies 60min",
-        "data_source": "crypto_sentiment",
+        "stale_data_source": "crypto_sentiment",
         "stale_start_date": "2026-04-27T06:10:00+00:00",
         "stale_end_date":   "2026-04-27T07:10:00+00:00" },
       { "label": "market data freeze",
-        "data_source": "kraken_spot",
+        "stale_data_source": "kraken_spot",
         "stale_start_date": "2026-04-27T06:15:00+00:00",
         "stale_end_date":   "2026-04-27T06:25:00+00:00" }
     ]
@@ -92,10 +92,10 @@ without a live outage. Not probability-based: events fire at exact timestamps.
 ```
 
 **Events block DATA SOURCES — never bars or single workers.** An outage hits a
-feed, so every consumer of that source sees the same gap. `data_source` names a
+feed, so every consumer of that source sees the same gap. `stale_data_source` names a
 source the scenario binds — its `data_sentiment_type` or its `data_broker_type`
 — and the source kind decides the injection plane:
-- **Signal source** (`data_source` == the scenario's `data_sentiment_type`) —
+- **Signal source** (`stale_data_source` == the scenario's `data_sentiment_type`) —
   **data-plane carve**: the window is physically carved out of the refined
   signal series at preparation time (`StaleDataSlicer`), for ALL SIGNAL workers
   subscribed to that source. Lookups inside the window resolve as-of the last
@@ -104,7 +104,7 @@ source the scenario binds — its `data_sentiment_type` or its `data_broker_type
   dispatches. The window must therefore be LONGER than the worker's staleness
   threshold for the flip to happen inside it (per-worker flip times stay real:
   a 10-min worker flips before a 30-min worker on the same dead source).
-- **Tick source** (`data_source` == the scenario's `data_broker_type`) —
+- **Tick source** (`stale_data_source` == the scenario's `data_broker_type`) —
   **status-plane injection**: entering the window sets `MarketDataStatus`
   stale, warns to the scenario pot, and edge-dispatches `on_market_data_stale`;
   leaving restores fresh. **Ticks keep flowing** by
@@ -145,7 +145,7 @@ moment, that it is injecting:                worker only sees "nothing newer" �
        └──────────────►  feed_stability_report_builder._resolve_origin()  ◄─────────┘
                           · a capture-side label is never overruled
                           · otherwise: episode OVERLAPS a planned window
-                            of the same data_source → stress-injected
+                            of the same stale_data_source → stress-injected
 ```
 
 The AutoTrader mock side works the same way, and since #444 it drives BOTH planes rather
@@ -158,7 +158,7 @@ in one place. Its tick source additionally declares a transport-real silence via
 freeze means no tick ARRIVES, the planned window means the status is flagged while ticks keep
 coming. Both feed the same label join.
 
-**One rule the live loop needs and the simulation does not:** the AutoTrader has a second
+**One rule the AutoTrader loop needs and the simulation does not:** the AutoTrader has a second
 stale source — the wall-clock evaluation on its idle heartbeat (`market_data_stale_after_s`)
 — and both write the same status field. While a planned window is active that evaluation is
 SILENT, so a measurement cannot overwrite a deterministic drill. It says nothing new there
@@ -170,9 +170,9 @@ while the feed is genuinely quiet, the next heartbeat reports the real outage no
 configured span. Testing for overlap is what makes the join work at all. A consequence worth
 knowing: if a genuine outage happens to overlap a planned window, it is reported as injected.
 
-**Validation:** a `data_source` the scenario does not bind → config error
-(scenario excluded at preparation, batch continues, §33). Missing
-`data_source` / inverted window → config error. A window without (partial)
+**Validation:** a `stale_data_source` the scenario does not bind → config error
+(scenario excluded at preparation, batch continues). Missing
+`stale_data_source` / inverted window → config error. A window without (partial)
 overlap with the scenario's data range → warning `data deviation` (the event
 can never fire).
 
@@ -180,7 +180,7 @@ can never fire).
 `SharedDataPreparator`) · `StaleDataStressDriver` (per-tick state machine, driven by
 `process_tick_loop` in the simulation and by `autotrader_tick_loop` in the AutoTrader).
 Demo scenario: `EURGBP_stale_market_13` in the EURGBP stress set; AutoTrader profile:
-`tick_outage_stress_test.json`; probe logic: `CORE/backtesting/backtesting_outage_probe`.
+`tick_outage_stress_test.json`; probe logic: `CORE/test_probes/outage_probe`.
 
 **This is also how signal-quality test cases are produced.** The per-tick
 fresh / stale / blind counters (#433) are validated by carving the anomalies into

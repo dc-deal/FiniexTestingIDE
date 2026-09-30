@@ -1,11 +1,12 @@
 """
 FiniexTestingIDE - AutoTrader Trade Scenario Tests
 Validates SL/TP close paths, duplicate signal guard, and minimal warmup
-through the AutoTrader mock pipeline.
+through a mock AutoTrader session.
 
-Profile calibration (BTCUSD parquet, entry bid ~89308 at tick 10):
-  - SL=89200: bid drops below that level at tick ~1768
-  - TP=89350: bid rises above that level at tick ~270
+Profile calibration (BTCUSD parquet, a LONG entered at tick 10; each window starts far enough into
+the archive that a backtest of it has its warmup bars, so the levels were measured on the window):
+  - SL=88964 (from 2026-01-25 02:19:46, entry ~89073): bid drops to that level at tick ~786
+  - TP=88865 (from 2026-01-25 04:19:46, entry ~88825): bid rises to that level at tick ~151
 """
 
 
@@ -17,10 +18,10 @@ from python.framework.types.log_level import LogLevel
 from python.framework.types.portfolio_types.portfolio_trade_record_types import CloseReason
 from tests.shared.fixture_helpers import logged_messages, remove_run_dir
 
-_PROFILE_SL = 'configs/autotrader_profiles/backtesting/sl_triggered_test.json'
-_PROFILE_TP = 'configs/autotrader_profiles/backtesting/tp_triggered_test.json'
-_PROFILE_DUPLICATE = 'configs/autotrader_profiles/backtesting/duplicate_signal_guard_test.json'
-_PROFILE_WARMUP = 'configs/autotrader_profiles/backtesting/minimal_warmup_test.json'
+_PROFILE_SL = 'configs/autotrader_profiles/mock/sl_triggered_test.json'
+_PROFILE_TP = 'configs/autotrader_profiles/mock/tp_triggered_test.json'
+_PROFILE_DUPLICATE = 'configs/autotrader_profiles/mock/duplicate_signal_guard_test.json'
+_PROFILE_WARMUP = 'configs/autotrader_profiles/mock/minimal_warmup_test.json'
 
 
 def _make_session_fixture(profile: str):
@@ -95,8 +96,8 @@ class TestStopLossConfiguration:
         assert trade.entry_price > 0, (
             f'Position {trade.position_id}: entry_price is 0 — fill path broken')
         assert trade.exit_price > 0, 'A live exit carries the price it actually filled at'
-        assert trade.exit_price <= 89200.0, (
-            f'A LONG stop at 89200.0 cannot fill above itself, got {trade.exit_price}')
+        assert trade.exit_price <= 88964.0, (
+            f'A LONG stop at 88964.0 cannot fill above itself, got {trade.exit_price}')
 
     def test_no_session_errors(self, sl_session):
         assert len(logged_messages(sl_session, LogLevel.ERROR)) == 0, (
@@ -138,8 +139,8 @@ class TestTakeProfitConfiguration:
         trade = exits[0]
         assert trade.entry_price > 0, (
             f'Position {trade.position_id}: entry_price is 0 — fill path broken')
-        assert trade.exit_price >= 89350.0, (
-            f'A LONG target at 89350.0 cannot fill below itself, got {trade.exit_price}')
+        assert trade.exit_price >= 88865.0, (
+            f'A LONG target at 88865.0 cannot fill below itself, got {trade.exit_price}')
 
     def test_no_session_errors(self, tp_session):
         assert len(logged_messages(tp_session, LogLevel.ERROR)) == 0, (

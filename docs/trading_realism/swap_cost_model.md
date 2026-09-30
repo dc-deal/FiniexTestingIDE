@@ -190,7 +190,7 @@ deterministic (config + calendar) — safe for the algo to read at runtime.
 - **Sim/backtest only.** Live MT5 broker-reported swap reconciliation → #209.
 - **`POINTS` swap mode only** (the MT5 model); `NONE` is the swap-free case. `interest_*` /
   `percentage` modes are **not silently skipped** — a symbol declaring one is rejected before the
-  run (sim: the scenario is marked invalid and excluded; live: startup abort), so no run ever
+  run (sim: the scenario is marked invalid and excluded; AutoTrader: startup abort), so no run ever
   mis-reports financing. Validation: #407. Implementing the remaining modes: #408.
 - **Weekend-only calendar** — holiday-aware swap (extra value-date days around holidays) waits
   on the full holiday calendar (#370).

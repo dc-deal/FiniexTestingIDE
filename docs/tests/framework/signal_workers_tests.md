@@ -112,7 +112,7 @@ What the tests pin, and the second half matters as much as the first:
 
 ### test_signal_health_probe.py (#141 Part 2a)
 
-Which producer journal a live session consumed from. Same local-stub discipline as the
+Which producer journal a live-adapter session consumed from. Same local-stub discipline as the
 transport suites.
 
 The probe exists because **nothing on an envelope says which store it came from**. Two producer
@@ -131,7 +131,7 @@ resolved from a mapping on the producer's machine and may be renamed at any time
   producer's role may not read), distinct from "the probe has not run". Warned once, not on every
   cycle; an identity that arrives later is not treated as a change.
 - **Change** — the case the cyclic cadence exists for. The cursor built so far belongs to the
-  previous journal, so a change is reported as an **error** (reaching the session summary, §35) and
+  previous journal, so a change is reported as an **error** (reaching the session summary) and
   the flag is **sticky**: it describes the session, not the current answer. Losing an identity
   counts as a change too. An unchanged journal stays silent — half-hourly probes over a multi-week
   run must not narrate themselves.
@@ -153,7 +153,7 @@ path did not, so a worker whose first envelope lands *before the first tick* —
 case, the transport starts before the market does — never seeded on the tick path either and stayed
 invisible for the rest of the session.
 
-Measured on the first live observation run: the SIGNAL worker refreshed three times and the run
+Measured on the first observation dry run: the SIGNAL worker refreshed three times and the run
 report said **`0 computes`** while the log beside it showed all three arrivals. A number an operator
 reads must not contradict the log next to it.
 
@@ -169,7 +169,7 @@ Two properties decide whether the detection works, and both are counter-intuitiv
    (its retrieved set changes) — measured on one mock week: **2073 per row against 17 per envelope**.
 2. **The runtime series is projected to one symbol**, so a max over a projected snapshot's rows is
    that row's stamp. The importer therefore carries the envelope-level value alongside; without it
-   simulation and live disagree — measured: **237 against 17**.
+   a backtest and a live-adapter session disagree — measured: **237 against 17**.
 
 The tests pin the accessor's precedence, the flag on an overtaking pass, and — as importantly — the
 cases that must **not** flag: the first envelope, a gap, an envelope resting on no evidence, and the
@@ -232,7 +232,7 @@ pytest sets `FINIEX_CONFIG_ISOLATION`, so the workspace override that enables th
 never seen, and the CLI path was the one that broke:
 
 - a profile **without** a SIGNAL worker must not be aborted by the installation-wide switch (it
-  aborted 20 of 24 profiles, including four live trading profiles and both field-study release gates)
+  aborted 20 of 24 profiles, including four production profiles and both field-study release gates)
 - a **mounted** session must not open a live transport (it mounted the archive *and* polled the
   production producer, folding live envelopes into a replay whose purpose is determinism)
 
@@ -344,12 +344,12 @@ before: the OSError always arrived first, so the silence error could never fire 
 **Stopping while the producer hangs** has its own class for the same reason. A producer that accepts
 the connection and never sends a response head left `stop()` with nothing to shut down, because the
 socket handle was published only after the response was read — so a session end blocked for the whole
-watchdog, and in a live session that wait sits *ahead of closing open positions*. The test measures
+watchdog, and in a live-adapter session that wait sits *ahead of closing open positions*. The test measures
 that `stop()` returns in under two seconds against a six-second watchdog.
 
 ### test_signal_boot_bridge.py (#468)
 
-What a live session knows before its first envelope arrives. Without the bridge it knows nothing:
+What a live-adapter session knows before its first envelope arrives. Without the bridge it knows nothing:
 the workers start empty and the first decision waits out a full producer cadence. On a thirty-day
 unattended run that is every restart, and a restart at 03:00 is exactly when nobody is watching.
 
@@ -372,7 +372,7 @@ The local stand-in producer, driven by the REAL transport over a real socket.
 It exists because of a gap that is structural rather than accidental: every mock session in
 this project mounts its signal series from the archive, so the resolver answers MOUNTED and
 **no connection is ever opened**. Everything behind the inbox is therefore richly covered by
-mock runs and everything in front of it is unreachable from one — including four of the five
+mock sessions and everything in front of it is unreachable from one — including four of the five
 control codes, which a healthy producer will not emit on request.
 
 - **The stand-in speaks the contract** — a healthy stream goes live, delivers its snapshot and

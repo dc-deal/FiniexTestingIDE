@@ -42,6 +42,9 @@
    int  GetComputerNameA(uchar &lpBuffer[], uint &nSize);
 #import
 
+// The importer reads the ticks, the metadata and summary.total_ticks only. The error block,
+// summary.quality_metrics and the error_tracking settings stay in the raw file — nothing
+// downstream reads them.
 // Error-Severity-Enum
 enum ENUM_ERROR_SEVERITY
 {

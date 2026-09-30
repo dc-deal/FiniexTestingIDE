@@ -1,8 +1,8 @@
 """
 FiniexTestingIDE - Signal Boot Bridge
-What a live session knows before its first envelope arrives (#468).
+What a live-adapter session knows before its first envelope arrives (#468).
 
-Without this a live session starts BLIND: its SIGNAL workers hold nothing, and the first
+Without this a live-adapter session starts BLIND: its SIGNAL workers hold nothing, and the first
 decision waits for the producer's next pass — up to a full cadence. On a thirty-day
 unattended run that is not a corner case, it is every restart, and a restart at 03:00 is
 exactly when nobody is watching.
@@ -34,7 +34,7 @@ from python.framework.types.signal_data_types import (
 
 class SignalBootBridge:
     """
-    Builds the archive slice and the connect cursor a live session starts from.
+    Builds the archive slice and the connect cursor a live-adapter session starts from.
 
     Stateless: it reads what is on disk and returns a verdict. Mounting the series into
     the workers is the caller's job, the same way the resolver decides the mode and the

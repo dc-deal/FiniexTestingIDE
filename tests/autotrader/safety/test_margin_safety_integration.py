@@ -1,11 +1,11 @@
 """
 FiniexTestingIDE - Margin Safety Circuit Breaker Integration Tests
 
-End-to-end tests through the AutoTrader mock pipeline in margin mode.
+End-to-end tests through a mock AutoTrader session in margin mode.
 Validates that safety checks read the ACCOUNT VALUE (#356) correctly during
 a real tick loop session with mt5/EURUSD.
 
-Uses margin_safety_test.json as base profile (backtesting_margin_stress
+Uses margin_safety_test.json as base profile (margin_stress_probe
 decision logic with deterministic trade_sequence), overrides safety config
 programmatically. max_ticks=15000 ensures warmup completes and algo
 produces trades.
@@ -24,7 +24,7 @@ from python.framework.types.log_level import LogLevel
 from tests.shared.fixture_helpers import logged_messages, remove_run_dir
 
 # Base profile: margin (mt5), 15K ticks, display off, INSTANT_FILL mock adapter
-BASE_PROFILE = 'configs/autotrader_profiles/backtesting/margin_safety_test.json'
+BASE_PROFILE = 'configs/autotrader_profiles/mock/margin_safety_test.json'
 
 
 def _run_with_margin_safety(safety: SafetyConfig) -> AutoTraderResult:

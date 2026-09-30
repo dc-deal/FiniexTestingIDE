@@ -10,7 +10,7 @@ logging (failures + slow calls), thread-safety, and the config wiring.
 
 All tests run offline with a `MagicMock` logger (to assert logging) — no network,
 no real adapter. The live panel itself is validated by manual observation during a
-live run / the Field Study (#332).
+live-adapter session / the Field Study (#332).
 
 ---
 
@@ -20,7 +20,7 @@ live run / the Field Study (#332).
 tests/autotrader/api_monitor/
 ├── test_api_perf_monitor.py    ← aggregation, error/slow logging, shutdown summary
 ├── test_thread_safety.py       ← concurrent record() — no lost updates
-└── test_api_monitor_config.py  ← loader wiring (mock auto-disable / live default-on)
+└── test_api_monitor_config.py  ← loader wiring (mock auto-disable / live-adapter default-on)
 ```
 
 ---
@@ -31,7 +31,7 @@ tests/autotrader/api_monitor/
 |------|-------|
 | `test_api_perf_monitor.py` | `record()` aggregates count / avg / min / max / last per endpoint; **one row per endpoint** (a repeat call updates, a new endpoint adds); error counting + `last_error` + `total_errors`; **abnormal-only logging** — a failure logs `[API] … failed`, a call over `slow_call_threshold_ms` logs `[API] … slow` + increments `slow_count`, a fast clean call is silent; `shutdown()` emits a per-endpoint summary |
 | `test_thread_safety.py` | concurrent `record()` from many threads → no lost updates (count == total); mixed endpoints + errors stay consistent (the monitor is called from the tick-loop thread AND #319/#320/#327 worker threads) |
-| `test_api_monitor_config.py` | `load_autotrader_config`: mock auto-disabled (default), live enabled by default, mock + explicit `enabled` overrides the auto-disable, unknown key → `ValueError` |
+| `test_api_monitor_config.py` | `load_autotrader_config`: mock auto-disabled (default), live adapter enabled by default, mock + explicit `enabled` overrides the auto-disable, unknown key → `ValueError` |
 
 ---
 

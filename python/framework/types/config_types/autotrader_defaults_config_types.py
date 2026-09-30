@@ -236,7 +236,7 @@ class CapitalDefaults(StrictConfigModel):
 
 class SessionEndDefaults(StrictConfigModel):
     """
-    What a live session does with what it still holds when it ends (#492).
+    What an AutoTrader session does with what it still holds when it ends (#492).
 
     TWO decisions of very different weight, which one setting used to answer together:
     cancelling a resting order costs nothing but a missed fill, closing a position

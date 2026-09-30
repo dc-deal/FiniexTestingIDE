@@ -16,7 +16,7 @@ Every adapter lives in `python/framework/trading_env/adapters/` and extends `Abs
 
 | Tier | When active | What it provides |
 |------|-------------|------------------|
-| **Tier 1** — Config & Symbol Specs | Always (backtesting + live) | `get_symbol_specification`, `get_broker_specification`, `validate_order` |
+| **Tier 1** — Config & Symbol Specs | Always (backtesting + AutoTrader) | `get_symbol_specification`, `get_broker_specification`, `validate_order` |
 | **Tier 2** — Order Object Construction | Always | `create_market_order`, `create_limit_order`, `create_stop_limit_order`, `create_iceberg_order` |
 | **Tier 3** — Live Execution | After `enable_live()` | One `build_*_payload` / `do_request_*` / `parse_*_response` triple per operation — submit, query, cancel, modify, trades_query |
 
@@ -52,8 +52,8 @@ job.
 |---|---|---|
 | `submit` | Place a new order at the broker | `open_order(MARKET)`, `open_order(LIMIT)`, `close_position` |
 | `query` | Poll an existing order's status | `_process_pending_orders` Phase-1 / Phase-2 polling |
-| `cancel` | Withdraw a pending order | `cancel_limit_order` |
-| `modify` | Change a pending order's price / SL / TP | `modify_limit_order` |
+| `cancel` | Withdraw a resting order | `cancel_limit_order` |
+| `modify` | Change a resting order's price / SL / TP | `modify_limit_order` |
 
 ### Transport-Neutral Naming
 
@@ -229,7 +229,7 @@ removed. One authoritative copy, overridable through `user_configs/market_config
 ```
 
 Read it through `MarketConfigManager`, never by opening the file — that is what makes the
-user override and the §28 validation apply. `broker_transport` arrives as a
+user override and the loader's key and type validation apply. `broker_transport` arrives as a
 `BrokerTransportConfig` already:
 
 ```python
@@ -442,7 +442,7 @@ the venue accepts one, and read it back in `_parse_openorders_response` into
 It is what makes a submit whose answer was lost answerable at all: the venue's own
 reference is exactly what did not arrive. Without it a transport fault leaves an order that
 may be resting at the broker and cannot be attributed — an orphan. Mind the venue's length
-limit (Kraken: 18 ASCII characters) and truncate rather than let a live order be refused.
+limit (Kraken: 18 ASCII characters) and truncate rather than let the venue refuse an order.
 
 An order the venue reports with no key of ours is not a defect — it is somebody else's
 order, and that absence is the fact that tells it apart.
@@ -496,9 +496,10 @@ of it.
 **A refusal is not a fill and not a rejection.** Where the facts run out — no quote to compare
 against, or an order type nothing here models — the order stays PENDING and the response carries
 `undecided_reason`. The adapter has no logger by design, so the executor is what makes it visible,
-in the session channel (§35). Your adapter passes the quote through the PARSE layer
+in the session channel — the one whose errors reach the session summary rather than only the
+global log. Your adapter passes the quote through the PARSE layer
 (`parse_submit_response` / `parse_query_response` take it as an argument) and never through the
-payload: the payload is what goes on the wire, and a rehearsal detail must not reach a venue.
+payload: the payload is what goes on the wire, and a dry-run detail must not reach a venue.
 
 The Kraken adapter's pattern (sentinel-tagged raw from `do_request_*` recognized by `parse_*_response` and delegated to the simulator) is the canonical integration shape. Replicate it.
 
@@ -511,7 +512,7 @@ dry-run is real-mode-equivalent in behavior; only the source of the fill differs
 Every order flipped after two polls and a MARKET order filled at `0.0`, which with
 `poll_interval_ms = 5000` meant every resting order "filled" about ten seconds after placement at
 a price nobody chose. `dry_run: true` is the shipped default for kraken_spot, so the first
-rehearsal of any resting-order feature reported a stop that had fired at zero — a confident wrong
+dry run of any resting-order feature reported a stop that had fired at zero — a confident wrong
 answer, in the mode meant to make a feature safe to try.
 
 ---
@@ -550,7 +551,11 @@ Key rules:
 - Check the broker's minimum order cost (not just `volume_min`) — Kraken rejects orders below ~$5 even if `volume_min` is satisfied
 - The `live_adapter` mark and runner exclusion apply automatically via `tests/conftest.py`
 
-**Launch.json:** add a `🧩 Pytest: Live Adapters (All)` entry. No `🧪` entries needed — existing live profiles serve manual inspection.
+**Launch.json:** add entries in the release-gate group beside the Kraken ones
+(`🧩 Pytest: Live Adapters — 1 dry-run only (free, validate=true)`,
+`🧩 Pytest: Live Adapters — 2 generate certificate (real money)`,
+`🧩 Pytest: Live Adapters — 3 validate certificate`). No `🧪` entries needed — the existing
+live-adapter profiles serve manual inspection.
 
 ---
 
@@ -566,8 +571,11 @@ no config files. Use it as the structural template when implementing a new adapt
 
 The mock's `MockExecutionMode` (`INSTANT_FILL`, `DELAYED_FILL`, `REJECT_ALL`, `TIMEOUT`) exists to
 test the different broker behavior shapes that real adapters might exhibit. When writing your
-adapter's tests, leverage the equivalent shapes from the real broker (dry-run for instant-fill-like,
-real submit for delayed-fill-like, etc.).
+adapter's tests, find the equivalent shapes at the real broker — and a dry run is not the
+instant-fill one. In a dry run the venue validates the order (`validate=true`, nothing is placed)
+and the shared `DryRunOrderSimulator` keeps it PENDING until its poll counter is spent AND the
+market reaches its price: the fill rules of a backtest, on real quotes. A real fill, immediate or
+delayed, needs a real minimum-size submit, which only the release-gate adapter suite places.
 
 ---
 

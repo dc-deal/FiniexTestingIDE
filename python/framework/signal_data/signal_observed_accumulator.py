@@ -2,7 +2,7 @@
 FiniexTestingIDE - Signal Observed Accumulator
 Builds the observed plane of a live signal feed as envelopes arrive (#433 live half).
 
-A simulation reads its signal facts out of a finished archive; a live session has no
+A simulation reads its signal facts out of a finished archive; a live-adapter session has no
 archive to read, so the same facts have to be accumulated while they pass through. What
 comes out is the identical dataclass, which is what lets one report shape serve both
 pipelines instead of the live path growing a second one.

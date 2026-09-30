@@ -32,7 +32,8 @@ def _build_parser() -> argparse.ArgumentParser:
     source.add_argument('--jsonl', help='Path to the run field_study.jsonl')
     source.add_argument(
         '--latest', action='store_true',
-        help='Use the newest field_study.jsonl under logs/autotrader',
+        help='Use the newest field_study.jsonl under the AutoTrader run root '
+             '(file_logging.run_logs.autotrader)',
     )
     generate.add_argument(
         '--release-version', default='dev',
@@ -55,7 +56,9 @@ def main() -> None:
         if args.latest:
             latest = FieldStudyCertificate.find_latest_jsonl()
             if latest is None:
-                raise SystemExit('No field_study.jsonl found under logs/autotrader')
+                raise SystemExit(
+                    'No field_study.jsonl found under the AutoTrader run root '
+                    '(file_logging.run_logs.autotrader)')
             jsonl_path = str(latest)
 
         FieldStudyCertificate.generate(

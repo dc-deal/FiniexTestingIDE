@@ -21,7 +21,7 @@ from pathlib import Path
 from fastapi import APIRouter
 
 from python.configuration.app_config_manager import AppConfigManager
-from python.framework.exceptions.api_errors import ApiException
+from python.api.api_error_catalog import DEPLOYMENT_NOT_FOUND, api_error
 from python.framework.reporting.builders.booking_periods_report_builder import (
     booking_periods_from_ledger_rows,
 )
@@ -84,9 +84,7 @@ def get_deployment(deployment_id: str) -> DeploymentDetailResponse:
     # sweep filter, and its absence is why a live row was written and unreachable (§44).
     rows = _ledger().read_rows(deployment_id=deployment_id)
     if not rows:
-        raise ApiException(
-            status_code=404, error='deployment_not_found',
-            detail=f"No deployment '{deployment_id}' in the run-results ledger")
+        raise api_error(DEPLOYMENT_NOT_FOUND, deployment_id=deployment_id)
 
     histories = build_deployment_histories(rows)
     sessions = histories.get(deployment_id, [])
@@ -134,15 +132,13 @@ def get_deployment_booking_periods(deployment_id: str) -> DeploymentBookingPerio
     """
     rows = _ledger().read_rows(deployment_id=deployment_id)
     if not rows:
-        raise ApiException(
-            status_code=404, error='deployment_not_found',
-            detail=f"No deployment '{deployment_id}' in the run-results ledger")
+        raise api_error(DEPLOYMENT_NOT_FOUND, deployment_id=deployment_id)
 
     periods = booking_periods_from_ledger_rows(rows)
     # Counted over distinct RUNS, not rows: a run writes one row per period, so counting rows
     # would report a thirty-day session as thirty sessions. The second count is what keeps a
     # short list honest — a session whose row predates the booking journal books nothing.
-    booked = {row.run_id for row in rows if row.segment_opened_at}
+    booked = {row.run_id for row in rows if row.period_opened_at}
     return DeploymentBookingPeriodsResponse(
         deployment_id=deployment_id,
         periods=periods,

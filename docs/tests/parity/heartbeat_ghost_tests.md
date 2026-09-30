@@ -4,7 +4,7 @@
 
 Validates the simulation-side decision ghost-pass (#360 Stage 2): the sim pipeline drives
 ghost-passes in the simulated-time gap between two replayed data ticks, so an opt-in algo
-(`wants_heartbeat()`) reacts between ticks at the same relative point as live.
+(`wants_heartbeat()`) reacts between ticks at the same relative point as in an AutoTrader session.
 
 **Location:** `tests/parity/test_heartbeat_ghost_parity.py`
 
@@ -36,7 +36,7 @@ No ghost-passes are synthesized across a gap longer than `inter_tick_gap_thresho
 fabricate activity (and explode the pass count). This is a correctness boundary, not a feature cap.
 
 ### Parity intent
-The sim ghost-pass mirrors the live one (clock injection + cached worker results +
+The sim ghost-pass mirrors the AutoTrader one (clock injection + cached worker results +
 `execute_decision(tick=None)`), so a time-driven algo reacts at the same relative point in both
 pipelines — the foundation the #294 matrix extends for a heartbeat algo.
 

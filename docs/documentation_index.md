@@ -4,12 +4,14 @@
 
 | Document | Description |
 |----------|-------------|
-| [Quickstart Guide](user_guides/quickstart_guide.md) | Create your first trading bot (Worker + Decision Logic + Config) |
+| [Introduction to the IDE](introduction_to_the_ide.md) | The two pipelines, the kinds of run, and where each part is explained |
+| [Glossary](glossary.md) | What each term means — one meaning per word |
+| [Quickstart Guide](user_guides/quickstart_guide.md) | Create your first strategy (Worker + Decision Logic + Config) |
 | [CLI Tools Guide](cli_tools_guide.md) | All CLI commands with examples and workflow overview |
 | [Worker Naming](user_guides/worker_naming_doc.md) | Worker reference system, path-based loading, requirements contract |
 | [Algo State Persistence](user_guides/algo_state_persistence_guide.md) | Restart-safe algo memory — snapshot/restore hooks, staleness, JSON contract |
 | [Robustness Validation](user_guides/robustness_validation_guide.md) | Multi-window + In-Sample/Out-of-Sample overfit guard — roles, WFE, distribution, trust gate (#367) |
-| [Trend Channel Reference](user_guides/trend_channel_reference_guide.md) | Didactic full-order-surface reference strategy — LIMIT/STOP entries, SL/TP, trailing, partial, multi-position (#118) |
+| [Trend Channel Reference](user_guides/trend_channel_reference_guide.md) | Didactic full-order-surface reference strategy — LIMIT/STOP entries, SL/TP, trailing, partial close, multi-position (#118) |
 
 ## User Algo Workspace
 
@@ -27,28 +29,28 @@
 | [user_configs/ Override System](user_configs_override_system.md) | How `user_configs/` overrides `configs/` — content-merge vs file-replace, list-merge by identifier |
 | [Broker Config](broker_config_guide.md) | Multi-broker setup (MT5, Kraken), fees, symbol specifications |
 
-## AutoTrader (Live Trading)
+## AutoTrader
 
 | Document | Description |
 |----------|-------------|
 | [AutoTrader Architecture](autotrader/autotrader_architecture.md) | Start here — what it is, how a tick travels, where every file lives, and the map to the six documents below |
 | [AutoTrader Runtime Model](autotrader/autotrader_runtime_model.md) | Threading, tick source vs broker adapter, session lifecycle, what survives a restart |
 | [AutoTrader Configuration](autotrader/autotrader_configuration.md) | The profile cascade, the deployment declaration, the two fingerprints |
-| [AutoTrader Data Intake](autotrader/autotrader_data_intake.md) | Tick sources, sentiment feed, the staleness contract, live warmup |
+| [AutoTrader Data Intake](autotrader/autotrader_data_intake.md) | Tick sources, sentiment feed, the staleness contract, warmup from the venue |
 | [AutoTrader Capital and Safety](autotrader/autotrader_capital_and_safety.md) | What the bot may spend, committed funds, whose account it is, protective levels, the circuit breaker |
 | [AutoTrader Venue Integration](autotrader/autotrader_venue_integration.md) | Broker config acquisition, the Kraken execution tier, polling, drift audit, the connection ladder |
 | [AutoTrader Observability](autotrader/autotrader_observability.md) | The live console, the clipping monitor, the three log channels |
-| [Live Outage Handling](user_guides/live_outage_handling_guide.md) | Connection/feed outages — mandatory staleness hooks, escalation ladder, OrderGuard floor, outage drills (#434/#436) |
-| [Live Deployment & Ledger](user_guides/live_deployment_ledger_guide.md) | Reading a bot across its restarts — the mandatory `deployment` declaration, the history command, gaps and parameter changes (#497) |
+| [Outage Handling](user_guides/outage_handling_guide.md) | Connection/feed outages — mandatory staleness hooks, escalation ladder, OrderGuard floor, outage drills (#434/#436) |
+| [Deployment & Ledger](user_guides/deployment_ledger_guide.md) | Reading a bot across its restarts — the mandatory `deployment` declaration, the history command, gaps and parameter changes (#497) |
 | [Adapter Development Guide](user_guides/adapter/adapter_development_guide.md) | How to implement a new broker adapter (Tier 1/2/3, config files, credentials, test suite) |
-| [Kraken Adapter Setup](user_guides/adapter/setup_kraken_adapter.md) | API keys, broker settings, dry-run, first live run |
+| [Kraken Adapter Setup](user_guides/adapter/setup_kraken_adapter.md) | API keys, broker settings, dry run, first run |
 
 ## Architecture
 
 | Document | Description |
 |----------|-------------|
 | [Execution Layer](architecture/architecture_execution_layer.md) | Core Sim/Live hybrid architecture, shared portfolio logic |
-| [Simulation vs Live Flow](architecture/simulation_vs_live_flow.md) | Side-by-side tick flow comparison |
+| [Simulation vs Live Flow](architecture/simulation_vs_autotrader_flow.md) | Side-by-side tick flow comparison |
 | [Live Execution](architecture/live_execution_architecture.md) | LiveTradeExecutor, broker polling, LiveRequestProcessor |
 | [Pending Order Lifecycle](architecture/pending_order_architecture.md) | 3-world model (latency, limit, stop), trigger logic |
 | [Broker Trade Records](architecture/broker_trade_records.md) | Order ↔ executions pairing model, BrokerTrade type, Tier-3 trades-query layer |
@@ -63,11 +65,11 @@
 | [Drift Audit](architecture/drift_audit.md) | Read-only local-vs-broker drift telemetry (#327) — FEE / VOLUME / PRICE counters, async trades-query consumer, live-display footer |
 | [Decision Event Channel](architecture/decision_event_channel.md) | Typed ordered event channel — order/fill/cancel/partial-close/session-end hooks for decision logic, drain-at-boundary, request_session_end (#348) |
 | [Session End Policy](architecture/session_end_policy.md) | What a run leaves behind (#492): which order types rest, what the run end does with them, spot against margin, and the incoherent pair with cold start |
-| [Reporting Pipeline](architecture/reporting_pipeline.md) | One result model for console/file/API across sim + live — capture → derive (postprocessor) → present; trade-history / order-history / portfolio slices, section taxonomy, ReportStore, /reports endpoints (#391) |
+| [Reporting Pipeline](architecture/reporting_pipeline.md) | One result model for console/file/API across sim + AutoTrader — capture → derive (postprocessor) → present; trade-history / order-history / portfolio slices, section taxonomy, ReportStore, /reports endpoints (#391) |
 | [Parameter Optimization System](architecture/parameter_optimization_system.md) | Grid sweep over strategy params + run-results ledger (parquet) + objective ranking + one-factor sensitivity; sweep spec, dotted-path overrides, pluggable generator seam (#390) |
 | [Swap / Overnight-Funding Cost Model](trading_realism/swap_cost_model.md) | Overnight swap accrual — signed debit/credit, triple-swap (T+2), DST-aware rollover, MarketClock awareness, per-trade reporting (#365) |
 | [Live Telemetry Stream](architecture/live_telemetry_architecture.md) | The throttled live feed behind the console dashboards (LiveCoreSnapshot + frames), both pipelines, JSON groundwork for the viewer push (#400) — distinct from the report pipeline |
-| [Warnings & Errors Tiers](architecture/warnings_errors_tiers.md) | Tier taxonomy (errors / Tier-1 major → validators / Tier-2 log) + the "no decisions in reports" principle; pre-run vs post-run validators, sim/live channels (#395) |
+| [Warnings & Errors Tiers](architecture/warnings_errors_tiers.md) | Tier taxonomy (errors / Tier-1 major → validators / Tier-2 log) + the "no decisions in reports" principle; pre-run vs post-run validators, sim/AutoTrader channels (#395) |
 | [Release Certificates](architecture/release_certificates.md) | The four release-gate certificates (benchmark, live adapter, field study, signal feed), their shared CertificateIdentity, the version/dirty-tree guards and the observed-not-re-read rule |
 | [Mock Adapter Guide](architecture/mock_adapter_guide.md) | MockBrokerAdapter for deterministic pipeline testing |
 | [Order Guard](architecture/order_guard_architecture.md) | Pre-validation guard (SHORT+SPOT, rejection cooldown, async callback) |
@@ -119,24 +121,24 @@ Each test suite has its own documentation in [`tests/`](tests/).
 | [Benchmark Baseline History](tests/simulation/benchmark_baseline_history.md) | Why the throughput baseline is what it is — what a re-registration has to carry, and the evidence behind each change |
 | [Bar Parity Tests](tests/parity/bar_parity_tests.md) | Cross-pipeline parity: simulation vs. AutoTrader bar identity |
 | [Heartbeat Ghost-Pass Parity](tests/parity/heartbeat_ghost_tests.md) | Sim ghost-pass between ticks + weekend-gap gate (#360 Stage 2) |
-| [AutoTrader Config](tests/autotrader/config_tests.md) | What the live pipeline resolves before a session starts: `dry_run`, profile loadability, the account fee tier, the run origin, the uncommitted-code guard |
+| [AutoTrader Config](tests/autotrader/config_tests.md) | What the AutoTrader pipeline resolves before a session starts: `dry_run`, profile loadability, the account fee tier, the run origin, the uncommitted-code guard |
 | [AutoTrader Integration](tests/autotrader/integration_tests.md) | End-to-end mock session validation |
 | [Kraken Adapter Live Integration](tests/live_adapters/kraken_adapter_integration_tests.md) | Full order lifecycle against the real Kraken API — validate-only, real limit orders and a real fill round trip; funded account required, release-gate |
-| [Live Field Study](tests/live_field_study/field_study_guide.md) | End-to-end live acceptance test + PASS/FAIL certificate — operator-driven, release-gate (#332) |
+| [Live Field Study](tests/live_field_study/field_study_guide.md) | End-to-end real-money acceptance test + PASS/FAIL certificate — operator-driven, release-gate (#332) |
 | [Field Study Machine](tests/autotrader/field_study_machine_tests.md) | The offline state machine behind that run — every phase outcome reachable without spending money (#332) |
 | [Live Signal Feed Certificate](tests/live_signal_feed/signal_feed_certificate_guide.md) | Producer contract proof + PASS/FAIL certificate — operator-driven, release-gate (#466) |
 | [Safety Circuit Breaker](tests/autotrader/safety_tests.md) | Account-value safety, phantom drawdown fix, config split, the baseline across a restart, the hard flatten, and what the session recorded |
-| [Tick Sources](tests/autotrader/tick_source_tests.md) | What a live tick IS before anything sees it: the quote a trade executed against, two subscriptions on one connection (#520) |
+| [Tick Sources](tests/autotrader/tick_source_tests.md) | What a venue tick IS before anything sees it: the quote a trade executed against, two subscriptions on one connection (#520) |
 | [Live Executor](tests/autotrader/live_executor_tests.md) | LiveTradeExecutor pipeline |
 | [Loop Cadence](tests/autotrader/loop_cadence_tests.md) | Clock injection, heartbeat re-poll, decision ghost-pass (#360) |
 | [Algo State Persistence](tests/autotrader/state_persistence_tests.md) | Snapshot store, corrupt/stale policy, weekend-aware staleness, pre-flight (#354) |
 | [Order Guard](tests/autotrader/order_guard_tests.md) | Rejection cooldown, async callback |
 | [Cold Start](tests/autotrader/cold_start_tests.md) | Boot-time adoption of our own resting orders + the framework carry-over (#355) |
 | [Capital](tests/autotrader/capital_tests.md) | What the bot may actually spend (#489): committed funds on both check sites, the minimum-order boot refusal |
-| [Protective Levels](tests/autotrader/protective_level_tests.md) | Who enforces a declared stop or target (#500): the live check that did not exist, the in-flight guard, and the deliberate sim/live difference |
+| [Protective Levels](tests/autotrader/protective_level_tests.md) | Who enforces a declared stop or target (#500): the AutoTrader check that did not exist, the in-flight guard, and the deliberate sim/AutoTrader difference |
 | [Reconciliation](tests/autotrader/reconciliation_tests.md) | Broker truth-pull + Reconciler ALERT_ONLY (#151) |
 | [Session End](tests/autotrader/session_end_tests.md) | What a session leaves standing and how it is reported (#492): the two axes, the incoherent pair, realised vs valued, the phantom-drawdown guard |
-| [Session Validation](tests/autotrader/session_validation_tests.md) | The live Tier-1 channel: SessionPostRunValidator + the checks shared with the sim batch |
+| [Session Validation](tests/autotrader/session_validation_tests.md) | The AutoTrader Tier-1 channel: SessionPostRunValidator + the checks shared with the sim batch |
 | [API Monitor](tests/autotrader/api_monitor_tests.md) | Per-endpoint broker REST latency/error telemetry (#351) |
 | [Kraken Adapter](tests/autotrader/kraken_adapter_tests.md) | The adapter's pure layers, offline: nonce monotonicity (#332), the client order id on the wire (#473), and the stop / stop-limit price semantics in both directions (#500) |
 | [Test Taxonomy](tests/test_taxonomy.md) | The human-readable test map — which suite covers which pipeline domain |
@@ -157,7 +159,7 @@ Each test suite has its own documentation in [`tests/`](tests/).
 | [Parameter Optimization](tests/simulation/parameter_optimization_tests.md) | Grid expand, override, ledger, ranking, sensitivity, grid validation (#390) |
 | [Swap Cost Accrual](tests/simulation/swap_cost_tests.md) | Overnight swap accrual: debit/credit/triple, spot=0, determinism (#365) |
 | [Robustness Validation](tests/simulation/robustness_tests.md) | Multi-window + IS/OOS: roles, distribution, WFE, constancy guard, verdict (#367) |
-| [Trend Channel Reference](tests/simulation/trend_channel_reference_tests.md) | Didactic full-order-surface reference: LIMIT/STOP entries, SL/TP, trailing, partial, multi-position (#118) |
+| [Trend Channel Reference](tests/simulation/trend_channel_reference_tests.md) | Didactic full-order-surface reference: LIMIT/STOP entries, SL/TP, trailing, partial close, multi-position (#118) |
 | [Stale-Data Stress](tests/simulation/stale_stress_tests.md) | Planned stale windows drive both staleness contracts (#436) + per-tick signal resolution counters (#433) |
 | [Benchmark](tests/simulation/benchmark_tests.md) | Performance regression (environment-specific) |
 | [Import Pipeline](tests/data/import_pipeline_tests.md) | Tick/bar import pipeline |
@@ -170,26 +172,29 @@ Each test suite has its own documentation in [`tests/`](tests/).
 | [Config Tests (Cascade + Merge Utility + Loader Field Coverage)](tests/framework/config_cascade_tests.md) | execution_config 3-level cascade, nested sub-group merge, unknown-key safety net (#137), deep_merge list_merge_keys unit tests, every AutoTrader config-block field reachable from JSON, app_config strictness, what a producing instance's identity means here, and the installation's minted host identity |
 | [Worker Tests](tests/framework/worker_tests.md) | Worker framework validation |
 | [Live Telemetry Tests](tests/framework/live_telemetry_tests.md) | Frame serialization + the signal-transport block in the operator's CONNECTION panel |
-| [Reporting Pipeline Tests](tests/framework/reporting_tests.md) | Unified reporting (#391–#403): builders, IO/store, console renderers — including the two signal planes and what a live run may not claim |
+| [Reporting Pipeline Tests](tests/framework/reporting_tests.md) | Unified reporting (#391–#403): builders, IO/store, console renderers — including the two signal planes and what a live-adapter session may not claim |
 | [Logging Tests](tests/framework/logging_tests.md) | The log buffer carries records, not rendered lines: the fact survives, the rendering is reproduced character-identically, and a display setting cannot hide a report input |
 | [Signal Worker Tests](tests/framework/signal_workers_tests.md) | SIGNAL worker type (#141): types, provider, llm_sentiment, hybrid decision, orchestrator dispatch, live transports (#468) |
 | [Signal Coverage Tests](tests/framework/signal_coverage_tests.md) | Signal-series gap detection + scenario signal-window validation |
 | [Data Coverage Tests](tests/framework/data_coverage_tests.md) | Data format version spans — which collector schema produced which archive window |
 | [Normalizer Tests](tests/framework/normalizer_tests.md) | Central rescale/clamp/normalize apparatus |
 | [Account Value Tests](tests/framework/account_value_tests.md) | One account-value definition per account model — the input every circuit-breaker limit sits on, and why spot answers None rather than guessing |
+| [Round-Trip Fee Tests](tests/framework/round_trip_fees_tests.md) | What one completed trade costs in both account models, the two fee totals a run reports, the rule for a trade that realised nothing, and the excursion a spot trade records |
 | [Spot Entry Capital Tests](tests/framework/spot_entry_capital_tests.md) | How much capital a new entry may commit, per account model — why `free_margin` is not that number at spot, and that the margin answer is unchanged |
 | [Indicator Tests](tests/framework/indicator_tests.md) | The shared indicator library: what each name means, that the per-tick and bulk forms of one indicator agree, and how much history each average needs |
 | [Price Trigger Tests](tests/framework/price_trigger_tests.md) | The shared order-vs-quote predicate: has the market reached this price, and which side of the book does this direction trade at |
 | [Trading Day Anchor Tests](tests/framework/trading_day_anchor_tests.md) | Where a market flips its trading day, and which day an instant belongs to — DST-aware, one answer for the log rotation, the daily-loss baseline and the record seal |
+| [Time Utils UTC Tests](tests/framework/time_utils_tests.md) | Every parsed or normalised datetime comes back in UTC — also on a machine whose own zone is not UTC |
 | [Market Calendar / Swap Rollover](tests/framework/market_calendar_tests.md) | Swap-rollover + DST calendar helpers + MarketClock awareness (#365) |
 | [Diagnostics CSV Sink Tests](tests/framework/diagnostics_csv_sink_tests.md) | Strategy-owned diagnostics CSV channel + flush helper |
 | [Bar Rendering Consistency](tests/framework/bar_rendering_tests.md) | BarRenderer vs VectorizedBarRenderer equivalence |
 | [Tick Parquet Reader](tests/framework/tick_parquet_reader_tests.md) | Column normalization, volume chain integration |
 | [API Endpoint Tests](tests/framework/api_endpoint_tests.md) | Health, brokers, symbols, coverage, bars, caller, token accounts — mocked, no parquet required |
-| [Path-Based Loading](tests/framework/user_namespace_tests.md) | Worker/logic path loading, introspection, CORE integrity |
+| [Path-Based Loading](tests/framework/path_based_loading_tests.md) | Worker/logic path loading, introspection, CORE integrity |
 | [Market Compatibility](tests/framework/market_compatibility_tests.md) | Worker activity metric declaration, pre-flight scenario rejection |
-| [Algo Clock Convention](tests/framework/algo_clock_tests.md) | §9 wall-clock ban lint (decision logic/workers, CI plane) |
-| [Algo Clock Validator](tests/framework/algo_clock_validator_tests.md) | §9 runtime startup validator — AST scan of loaded algos (CORE + USER) + batch pre-flight |
+| [Algo Clock Convention](tests/framework/algo_clock_tests.md) | Wall-clock ban lint (decision logic/workers, CI plane) |
+| [Algo Clock Validator](tests/framework/algo_clock_validator_tests.md) | Wall-clock ban, runtime startup validator — AST scan of loaded algos (CORE + user) + batch pre-flight |
 | [Discovery Cache Validity](tests/framework/discovery_validity_tests.md) | The config-fingerprint comparison across all three cache families, and the single-open metadata reader behind it |
 | [Store Model Tests](tests/framework/store_tests.md) | Catalog completeness, the shared index base (atomic write, delete-and-rebuild, logic version), generic form-A retrieval, carry-over envelope |
-| [Static Analysis Tests](tests/framework/static_analysis_tests.md) | §40 undefined-name gate (pyflakes) + the measured ruff/vulture backlog tier |
+| [Config Directory Tests](tests/framework/config_directory_tests.md) | Every file that can start a run, read without running it — unreadable files as rows, precedence, the per-file cache, run figures |
+| [Static Analysis Tests](tests/framework/static_analysis_tests.md) | Undefined-name gate (pyflakes) + the measured ruff/vulture backlog tier |

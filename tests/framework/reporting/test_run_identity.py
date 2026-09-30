@@ -22,9 +22,15 @@ from python.framework.reporting.io.run_header_io import (
     write_run_header,
 )
 from python.framework.reporting.store.run_index import RunIndex
-from python.framework.types.api.report_types import ParentKind, RunHeader
+from python.framework.types.api.report_types import (
+    DataWindow,
+    OrdersTo,
+    ParentKind,
+    RunHeader,
+    TicksFrom,
+)
 from python.framework.types.config_types.file_logging_config_types import RunLogPaths
-from python.framework.types.log_layout_types import IO_SUBDIR, RUN_TYPE_LIVE, RUN_TYPE_SIMULATION
+from python.framework.types.log_layout_types import IO_SUBDIR, RUN_TYPE_AUTOTRADER, RUN_TYPE_SIMULATION
 from python.framework.utils.run_id_utils import mint_run_id
 
 _START = datetime(2026, 8, 30, 13, 20, 34, tzinfo=timezone.utc)
@@ -108,7 +114,7 @@ class TestTheIndexIsDerivedAndRebuildable:
 
     @staticmethod
     def _tree(root: Path) -> RunLogPaths:
-        return RunLogPaths(simulation=root / 'simulation', live=root / 'live')
+        return RunLogPaths(simulation=root / 'simulation', autotrader=root / 'autotrader')
 
     def test_rebuild_reproduces_what_the_appends_wrote(self, tmp_path):
         roots = self._tree(tmp_path)
@@ -117,8 +123,8 @@ class TestTheIndexIsDerivedAndRebuildable:
         planted = [
             (_header('20260830_132034_aaaaaaaa'),
              roots.simulation / 'my_set' / '20260830_132034_aaaaaaaa'),
-            (_header('20260830_132035_bbbbbbbb', RUN_TYPE_LIVE),
-             roots.live / 'my_profile' / '20260830_132035_bbbbbbbb'),
+            (_header('20260830_132035_bbbbbbbb', RUN_TYPE_AUTOTRADER),
+             roots.autotrader / 'my_profile' / '20260830_132035_bbbbbbbb'),
             # A sweep combination is a SIMULATION with a parent — nesting is not a type.
             (_header('20260830_132036_cccccccc', parent='sweep_20260830_132030',
                      parent_kind=ParentKind.SWEEP),
@@ -196,7 +202,7 @@ class TestTheParentIdSaysWhatKindOfParentItIs:
                     parent_kind=ParentKind.SWEEP),
             tmp_path / 'a')
         index.register_run(
-            _header('20260918_091413_dddddddd', RUN_TYPE_LIVE, parent='deploy_20260918_091413',
+            _header('20260918_091413_dddddddd', RUN_TYPE_AUTOTRADER, parent='deploy_20260918_091413',
                     parent_kind=ParentKind.DEPLOYMENT),
             tmp_path / 'b')
 
@@ -232,3 +238,35 @@ class TestTheParentIdSaysWhatKindOfParentItIs:
 
         assert header.parent_id == 'sweep_20260830_132030'
         assert header.parent_kind is None
+
+
+class TestTheRunSaysWhichKindItIs:
+    """
+    Contract 12: a run records where its ticks came from, where its orders went and which market
+    window each unit covers — so a consumer tells a backtest, a mock session, a dry run and a
+    real-money session apart from the run's own record rather than from a profile file that may
+    have changed since.
+    """
+
+    def test_the_kind_and_the_windows_survive_the_index_and_its_rebuild(self, tmp_path):
+        roots = TestTheIndexIsDerivedAndRebuildable._tree(tmp_path)
+        index = RunIndex(tmp_path / 'index.parquet', roots)
+        header = _header('20260830_132035_bbbbbbbb', RUN_TYPE_AUTOTRADER).model_copy(update={
+            'ticks_from': TicksFrom.VENUE, 'orders_to': OrdersTo.SIMULATED,
+            'data_windows': [DataWindow(unit_name='my_profile',
+                                        start_date='2026-08-30T13:20:35+00:00')]})
+        index.register_run(header, roots.autotrader / 'my_profile' / header.run_id)
+
+        for rows in (index.list_runs(), (index.rebuild(), index.list_runs())[1]):
+            row = rows[0]
+            assert (row.ticks_from, row.orders_to) == (TicksFrom.VENUE, OrdersTo.SIMULATED)
+            assert row.data_windows == header.data_windows
+            assert row.data_windows[0].end_date is None, 'a venue session is open until it ends'
+
+    def test_a_run_recorded_before_the_fields_reads_as_unknown(self, tmp_path):
+        """Unknown is None — never a kind guessed from `group`, which cannot tell mock from real."""
+        index = RunIndex(tmp_path / 'index.parquet')
+        index.register_run(_header('20260830_132034_aaaaaaaa'), tmp_path / 'run')
+
+        row = index.list_runs()[0]
+        assert (row.ticks_from, row.orders_to, row.data_windows) == (None, None, None)

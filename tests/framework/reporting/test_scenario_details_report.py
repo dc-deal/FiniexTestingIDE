@@ -29,6 +29,7 @@ from python.framework.types.scenario_types.scenario_set_types import SingleScena
 _RUN_ID = '20260830_120000_a1b2c3d4'
 
 _DT = datetime(2025, 10, 13, tzinfo=timezone.utc)
+_TWO_WORKERS = {'rsi_fast': 'CORE/rsi', 'bb_main': 'CORE/bollinger'}
 _DT2 = datetime(2025, 10, 13, 1, 0, 0, tzinfo=timezone.utc)
 
 
@@ -39,10 +40,12 @@ def _ws() -> WorkerPerformanceStats:
         worker_min_time_ms=0.0, worker_max_time_ms=0.0)
 
 
-def _tick_loop(buy=296, sell=263, flat=14441, trades=2, ticks=15000) -> ProcessTickLoopResult:
+def _tick_loop(buy=296, sell=263, flat=14441, trades=2, ticks=15000,
+               tracked=True) -> ProcessTickLoopResult:
     return ProcessTickLoopResult(
         decision_statistics=DecisionLogicStats(
-            buy_signals=buy, sell_signals=sell, flat_signals=flat, trades_requested=trades),
+            buy_signals=buy, sell_signals=sell, flat_signals=flat, trades_requested=trades,
+            tracked=tracked),
         coordination_statistics=WorkerCoordinatorPerformanceStats(ticks_processed=ticks),
         tick_range_stats=TickRangeStats(
             first_tick_time=_DT, last_tick_time=_DT2, tick_timespan_seconds=3600.0),
@@ -55,9 +58,11 @@ def _result(name, idx, tick_loop=None, error_type='', error_message='') -> Proce
         tick_loop_results=tick_loop, error_type=error_type, error_message=error_message)
 
 
-def _scenario(name, idx, symbol, account_currency='', explicit=False) -> SingleScenario:
+def _scenario(name, idx, symbol, account_currency='', explicit=False,
+              workers=None) -> SingleScenario:
     scenario = SingleScenario(
         name=name, scenario_index=idx, symbol=symbol, data_broker_type='mt5', start_date=_DT)
+    scenario.strategy_config = {'worker_instances': workers or {}}
     scenario.account_currency = account_currency
     if explicit:
         scenario.trade_simulator_config = {'account_currency': account_currency}
@@ -72,10 +77,11 @@ def _batch(results, scenarios) -> BatchExecutionSummary:
 
 class TestBuild:
     def test_success_row(self):
-        batch = _batch([_result('s1', 0, tick_loop=_tick_loop())], [_scenario('s1', 0, 'EURUSD')])
+        batch = _batch([_result('s1', 0, tick_loop=_tick_loop())],
+                       [_scenario('s1', 0, 'EURUSD', workers=_TWO_WORKERS)])
         row = build_scenario_details_report_from_batch(_RUN_ID, batch).units[0]
         assert row.status == 'success'
-        assert row.data_source == 'mt5' and row.symbol == 'EURUSD'
+        assert row.data_broker_type == 'mt5' and row.symbol == 'EURUSD'
         assert (row.buy_signals, row.sell_signals, row.flat_signals) == (296, 263, 14441)
         assert row.trades_requested == 2 and row.ticks_processed == 15000
         assert row.worker_count == 2
@@ -89,6 +95,31 @@ class TestBuild:
         assert row.status == 'failed'
         assert row.error_type == 'ValidationError' and row.error_message == 'start before data'
         assert row.ticks_processed == 0 and row.worker_count == 0
+
+    def test_uncounted_decisions_are_null_not_zero(self):
+        """The simulation's default: no decision tracker, so nothing was counted — not zero."""
+        batch = _batch([_result('s1', 0, tick_loop=_tick_loop(buy=0, sell=0, flat=0, trades=0,
+                                                              tracked=False))],
+                       [_scenario('s1', 0, 'EURUSD', workers=_TWO_WORKERS)])
+        row = build_scenario_details_report_from_batch(_RUN_ID, batch).units[0]
+        assert (row.buy_signals, row.sell_signals, row.flat_signals, row.trades_requested) == (
+            None, None, None, None)
+        assert row.ticks_processed == 15000       # what the run DID measure is still there
+
+    def test_the_worker_count_is_what_the_scenario_declares(self):
+        """Known from the configuration, timed or not — two declared, none timed, reads two."""
+        tick_loop = _tick_loop(tracked=False)
+        tick_loop.worker_statistics = []
+        batch = _batch([_result('s1', 0, tick_loop=tick_loop)],
+                       [_scenario('s1', 0, 'EURUSD', workers=_TWO_WORKERS)])
+        assert build_scenario_details_report_from_batch(_RUN_ID, batch).units[0].worker_count == 2
+
+    def test_a_refused_scenario_still_names_its_declared_workers(self):
+        batch = _batch(
+            [_result('bad', 0, error_type='ValidationError', error_message='start before data')],
+            [_scenario('bad', 0, 'BTCUSD', workers=_TWO_WORKERS)])
+        row = build_scenario_details_report_from_batch(_RUN_ID, batch).units[0]
+        assert row.worker_count == 2 and row.trades_requested is None
 
     def test_hybrid_row(self):
         batch = _batch(

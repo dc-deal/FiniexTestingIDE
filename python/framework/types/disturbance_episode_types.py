@@ -48,7 +48,7 @@ class DisturbanceEpisode:
         duration_seconds: Measured outage duration
         origin: Real outage or injected by the stress module
         label: The stress event's label (empty for a real outage)
-        unit_name: The run unit that observed it (sim scenario / live session)
+        unit_name: The run unit that observed it (sim scenario / AutoTrader session)
         symbol: The unit's symbol
     """
     source: str

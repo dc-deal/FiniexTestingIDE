@@ -3,7 +3,7 @@
 ## Overview
 
 The multi-position test suite validates overlapping position management in the FiniexTestingIDE
-backtesting framework. It uses a dedicated decision logic (`BacktestingMultiPosition`) that opens
+backtesting framework. It uses a dedicated decision logic (`MultiPositionProbe`) that opens
 multiple simultaneous positions, tests hedging (opposite directions on the same symbol), and
 validates selective per-position closing.
 
@@ -62,13 +62,13 @@ Each trade serves a specific validation purpose:
 
 ## Architecture: What Changed vs. Baseline
 
-### Decision Logic: BacktestingMultiPosition
+### Decision Logic: MultiPositionProbe
 
-The baseline uses `BacktestingDeterministic` which has a fundamental limitation: only one position can be open at a time (`len(open_positions) == 0` guard), and FLAT means "close all".
+The baseline uses `DeterministicProbe` which has a fundamental limitation: only one position can be open at a time (`len(open_positions) == 0` guard), and FLAT means "close all".
 
-`BacktestingMultiPosition` removes these constraints:
+`MultiPositionProbe` removes these constraints:
 
-| Aspect | BacktestingDeterministic | BacktestingMultiPosition |
+| Aspect | DeterministicProbe | MultiPositionProbe |
 |--------|-------------------------|--------------------------|
 | Active trades | Singular (`self.active_trade`) | Dict (`self._active_trades`) |
 | Open guard | Blocks if position exists | Opens regardless |
@@ -112,7 +112,7 @@ All fixture logic (run_scenario, extract_process_result, etc.) lives in `fixture
 | `batch_execution_summary` | session | Runs multi-position scenario once per test session |
 | `process_result` | session | First scenario's ProcessResult |
 | `tick_loop_results` | session | ProcessTickLoopResult with all execution data |
-| `backtesting_metadata` | session | BacktestingMetadata with expected_trades, warmup_errors |
+| `probe_metadata` | session | ProbeMetadata with expected_trades, warmup_errors |
 | `portfolio_stats` | session | PortfolioStats with P&L, trade counts, costs |
 | `trade_history` | session | List[TradeRecord] — full audit trail per trade |
 | `scenario_config` | session | Raw JSON config for assertion values |
@@ -207,7 +207,7 @@ Validates clean position opening after all previous positions are closed.
 
 #### TestMultiPositionMetadata
 
-Validates BacktestingMetadata tracking from the decision logic.
+Validates ProbeMetadata tracking from the decision logic.
 
 | Test | Description |
 |------|-------------|
@@ -256,7 +256,8 @@ pytest tests/ -v
 pytest tests/simulation/multi_position/test_multi_position.py::TestHedging -v
 ```
 
-**VS Code:** Use launch configuration `🧪 Pytest (multi_position)`.
+**VS Code:** Use launch configuration `🧩 Pytest: Multi Position (All)` (or `🧪 Simulation: Multi Position`
+for the scenario run with its full log).
 
 **Performance:** Full suite runs in ~2–4 seconds (scenario execution ~2s + 65 tests < 0.1s).
 
@@ -277,7 +278,7 @@ BatchExecutionSummary
             │    ├→ orders_sent: 4
             │    └→ orders_rejected: 0
             └→ decision_statistics: DecisionLogicStats
-                 └→ backtesting_metadata: BacktestingMetadata
+                 └→ probe_metadata: ProbeMetadata
                       ├→ expected_trades: [{signal_tick, direction, order_id, ...}, ...]
                       ├→ warmup_errors: []
                       └→ tick_count: 20500

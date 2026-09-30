@@ -4,7 +4,7 @@ A local stand-in for the producer, so the transport's own surface can be looked 
 
 Exists for one gap and no more. A mock AutoTrader session mounts its signal series from the
 archive, which is what makes a replay reproducible — so it opens no connection at all, and
-every mock run in this project therefore exercises everything BEHIND the inbox and nothing
+every mock session in this project therefore exercises everything BEHIND the inbox and nothing
 in front of it. The transport's failure surface, the five control codes above all, is
 reachable only from a real connection.
 

@@ -1,7 +1,7 @@
 """
 FiniexTestingIDE - AutoTrader Startup Guards (#503, finding 205)
 
-`setup_pipeline` is the one path every live session is obliged to walk, and until now no
+`setup_pipeline` is the one path every AutoTrader session is obliged to walk, and until now no
 test imported it. Its abort conditions — the ones that decide whether a session is allowed
 to start at all — were therefore unverified, including the three that predate this file.
 
@@ -26,8 +26,8 @@ from python.framework.decision_logic.abstract_decision_logic import AbstractDeci
 from python.framework.decision_logic.core.cautious_macd import CautiousMacd
 from python.framework.logging.scenario_logger import ScenarioLogger
 
-_MOCK_PROFILE = 'configs/autotrader_profiles/backtesting/aggressive_trend_mock.json'
-_CAUTIOUS_MACD_PROFILE = 'configs/autotrader_profiles/backtesting/cautious_macd_mock.json'
+_MOCK_PROFILE = 'configs/autotrader_profiles/mock/aggressive_trend_mock.json'
+_CAUTIOUS_MACD_PROFILE = 'configs/autotrader_profiles/mock/cautious_macd_mock.json'
 
 
 def _profile(tmp_path, **overrides) -> str:
@@ -69,6 +69,11 @@ def _logger(tmp_path) -> ScenarioLogger:
         log_root_override=tmp_path)
 
 
+# What turns the shipped MOCK profile into a live-adapter one: the adapter alone is not enough,
+# because a live adapter on replayed ticks — or with a replayed data window — is refused at load.
+_LIVE_WIRING = {'adapter_type': 'live', 'tick_source': {'type': 'kraken'}, 'scenario_settings': None}
+
+
 def _setup_error(tmp_path, **overrides) -> str:
     """
     Run setup_pipeline over the profile and return whatever it refused with.
@@ -96,7 +101,7 @@ class TestAVenueThatCannotHoldAProtectiveOrder:
     whole session — the bot would run, trade nothing, and each rejection would read as an
     isolated incident rather than as one wrong line in the profile.
 
-    But the refusal belongs to a LIVE session only. A mock session builds a
+    But the refusal belongs to a LIVE-ADAPTER session only. A mock session builds a
     MockBrokerAdapter whatever its profile's broker_type says, so it can never carry a
     protective order — refusing there would make an opted-in profile UNREHEARSABLE, which
     is the same mistake the simulation deliberately avoids by accepting the flag and
@@ -105,7 +110,7 @@ class TestAVenueThatCannotHoldAProtectiveOrder:
 
     def test_a_live_session_refuses_to_start(self, tmp_path):
         message = _setup_error(
-            tmp_path, broker_type='mt5', symbol='EURUSD', adapter_type='live',
+            tmp_path, broker_type='mt5', symbol='EURUSD', **_LIVE_WIRING,
             execution={'venue_held_protection': True})
 
         assert 'venue_held_protection' in message, (
@@ -114,7 +119,7 @@ class TestAVenueThatCannotHoldAProtectiveOrder:
     def test_the_refusal_names_both_sides(self, tmp_path):
         """The profile switch AND the broker — an operator has to know which to change."""
         message = _setup_error(
-            tmp_path, broker_type='mt5', symbol='EURUSD', adapter_type='live',
+            tmp_path, broker_type='mt5', symbol='EURUSD', **_LIVE_WIRING,
             execution={'venue_held_protection': True})
 
         assert 'execution.venue_held_protection' in message
@@ -142,7 +147,7 @@ class TestAVenueThatCannotHoldAProtectiveOrder:
         real money, so a session must never acquire the behaviour by accident.
         """
         message = _setup_error(
-            tmp_path, broker_type='mt5', symbol='EURUSD', adapter_type='live')
+            tmp_path, broker_type='mt5', symbol='EURUSD', **_LIVE_WIRING)
 
         assert 'venue_held_protection' not in message
 
@@ -186,14 +191,20 @@ class TestTheGuardsThatPredateThisFile:
         with pytest.raises(ValueError, match='on_cold_start'):
             setup_pipeline(config, _logger(tmp_path), 'run_startup_guards')
 
-    def test_and_the_same_profile_starts_with_it(self, tmp_path):
+    def test_and_the_same_profile_passes_the_cold_start_guard(self, tmp_path):
         """
         The other direction, so the refusal above cannot be read as "this profile is
-        broken". `CautiousMacd` declares STOP and overrides the hook — it must pass.
+        broken". `CautiousMacd` declares STOP and overrides the hook — the guard lets it pass.
+
+        It does not START in a mock session today, and the test says why instead of tolerating
+        any error: the profile rests a STOP_LIMIT entry and the mock adapter carries market
+        orders only, so the refusal that follows is the ORDER-TYPE one and names the mock. Once
+        the mock rests orders (#556) that refusal is gone, and this becomes the plain "it starts" it
+        was meant to be.
         """
         config = load_autotrader_config(_CAUTIOUS_MACD_PROFILE)
-        try:
+        with pytest.raises(ValueError) as refused:
             setup_pipeline(config, _logger(tmp_path), 'run_startup_guards')
-        except ValueError as error:
-            assert 'on_cold_start' not in str(error), (
-                f'A logic that DOES override the hook must not be refused for it: {error}')
+        assert 'on_cold_start' not in str(refused.value), (
+            f'A logic that DOES override the hook must not be refused for it: {refused.value}')
+        assert 'The mock adapter (standing in for' in str(refused.value)

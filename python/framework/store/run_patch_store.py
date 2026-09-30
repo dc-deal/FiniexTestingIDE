@@ -22,6 +22,14 @@ whose bytes differ from its name would tie a run to code it never ran.
 **No index.** A patch is opened by the key its header's `patch_ref` already names — a lookup by
 identity, never a search, which is the case §44 exempts.
 
+**One store class, two homes.** This repository's patches live in `run_patches/`. A FOREIGN
+repository — any other repository a strategy was loaded from, `user_algos/` is one — keeps its
+patches INSIDE ITSELF, under `.finiex_run_patches/`: a private strategy has a repository of its own
+precisely so its code never enters this project's tree, and a patch is a full copy of the
+uncommitted part of it. That directory writes its own `.gitignore` holding `*` (the `.pytest_cache`
+pattern), so nobody has to edit the repository's ignore rules, and keeping a patch never makes the
+tree it describes dirty.
+
 **No retention policy here.** How long a patch has to outlive the runs that name it is the
 lifetime question #535 owns; until it is answered, nothing in this store deletes anything.
 """
@@ -46,24 +54,47 @@ PATCH_SUFFIX = '.patch'
 # a file name, and a key that is not a digest could name a file outside the store.
 _PATCH_HASH_PATTERN = re.compile(r'[0-9a-f]{64}')
 
+# Where a FOREIGN repository keeps the patches of its own dirty trees — inside itself.
+FOREIGN_PATCH_DIR = '.finiex_run_patches'
+
+# What a store inside a foreign repository writes into its own `.gitignore`: everything, the file
+# itself included.
+_SELF_IGNORE_FILE = '.gitignore'
+_SELF_IGNORE = '*\n'
+
 
 class RunPatchStore:
     """
     The patches of dirty trees that runs ran from, keyed by the SHA256 of their bytes.
 
     Args:
-        root: The `run_patches` directory
+        root: The `run_patches` directory, or a foreign repository's patch directory
+        self_ignoring: Whether the store hides itself from the repository it lies in — True for a
+            foreign repository's home, whose tree must not turn dirty because a patch was kept
     """
 
-    def __init__(self, root: Path):
+    def __init__(self, root: Path, self_ignoring: bool = False):
         self._root = Path(root)
+        self._self_ignoring = self_ignoring
+
+    @classmethod
+    def inside_repository(cls, repository_root: str) -> 'RunPatchStore':
+        """
+        The store a FOREIGN repository keeps its own run patches in — inside itself, hidden there.
+
+        Args:
+            repository_root: The repository's top-level directory
+
+        Returns:
+            A self-ignoring store under `<repository_root>/.finiex_run_patches/`
+        """
+        return cls(Path(repository_root) / FOREIGN_PATCH_DIR, self_ignoring=True)
 
     def put(self, patch_hash: str, patch: bytes) -> str:
         """
         Keep one patch under its hash, and answer where it lies.
 
-        Shaped as the `PatchSink` the code identity builder takes, so a bound `put` is passed as
-        it is. Idempotent: an entry that already holds these bytes is left untouched.
+        Idempotent: an entry that already holds these bytes is left untouched.
 
         Args:
             patch_hash: The SHA256 hex digest of the patch bytes
@@ -77,6 +108,8 @@ class RunPatchStore:
         if actual != patch_hash:
             raise RunPatchHashMismatchError(patch_hash, actual)
 
+        if self._self_ignoring:
+            self._ensure_self_ignore()
         target = self._path_of(patch_hash)
         existing = self._read(target)
         if existing == patch:
@@ -113,6 +146,20 @@ class RunPatchStore:
         if actual != patch_hash:
             raise RunPatchCorruptError(patch_hash, path, actual)
         return patch
+
+    def _ensure_self_ignore(self) -> None:
+        """
+        Give a store inside a foreign repository the `.gitignore` that hides it there.
+
+        Checked on EVERY put and written before the patch, so no patch is ever visible to git as
+        an untracked file — one would make the tree dirty, and a real-money start from it refuse.
+        An existing file is left as it is: it is this store's own, and a changed one is somebody's
+        decision.
+        """
+        self._root.mkdir(parents=True, exist_ok=True)
+        marker = self._root / _SELF_IGNORE_FILE
+        if not marker.exists():
+            marker.write_text(_SELF_IGNORE, encoding='utf-8')
 
     def _path_of(self, patch_hash: str) -> Path:
         """

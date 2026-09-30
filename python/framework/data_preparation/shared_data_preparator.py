@@ -290,7 +290,7 @@ class SharedDataPreparator:
         """
         Parse + source-validate a scenario's stale_data_stress config (#436).
 
-        Every event blocks a DATA SOURCE the scenario binds — its data_source
+        Every event blocks a DATA SOURCE the scenario binds — its stale_data_source
         must match the scenario's data_broker_type or data_sentiment_type.
 
         Args:

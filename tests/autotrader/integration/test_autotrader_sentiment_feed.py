@@ -24,8 +24,8 @@ from python.framework.reporting.store.report_store import IO_SUBDIR
 from python.framework.types.log_level import LogLevel
 from tests.shared.fixture_helpers import logged_messages, remove_run_dir
 
-MOCK_PROFILE = 'configs/autotrader_profiles/backtesting/sentiment_mock_test.json'
-OUTAGE_PROFILE = 'configs/autotrader_profiles/backtesting/sentiment_outage_test.json'
+MOCK_PROFILE = 'configs/autotrader_profiles/mock/sentiment_mock_test.json'
+OUTAGE_PROFILE = 'configs/autotrader_profiles/mock/sentiment_outage_test.json'
 
 
 @pytest.fixture(scope='module')
@@ -112,13 +112,13 @@ class TestSentimentMockSession:
             f'Expected multiple snapshot-crossing computes, got {stats.worker_call_count}'
         )
 
-    def test_portfolio_report_carries_sentiment_source(self, sentiment_session):
+    def test_portfolio_report_carries_data_sentiment_type(self, sentiment_session):
         """The persisted portfolio report tags the session's sentiment feed (#438)."""
         _, run_dir = sentiment_session
         report = read_artifact(run_dir / IO_SUBDIR / PORTFOLIO_ARTIFACT.filename, PORTFOLIO_ARTIFACT)
-        assert report.units[0].sentiment_source == 'crypto_sentiment_mock', (
-            f"Expected sentiment_source 'crypto_sentiment_mock', "
-            f"got '{report.units[0].sentiment_source}'"
+        assert report.units[0].data_sentiment_type == 'crypto_sentiment_mock', (
+            f"Expected data_sentiment_type 'crypto_sentiment_mock', "
+            f"got '{report.units[0].data_sentiment_type}'"
         )
 
 

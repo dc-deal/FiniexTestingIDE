@@ -38,7 +38,7 @@ AGGREGATED_PORTFOLIO_ARTIFACT: ArtifactSpec[AggregatedPortfolioReport] = Artifac
     'aggregated_portfolio.json', AggregatedPortfolioReport)
 BLOCK_SPLITTING_ARTIFACT: ArtifactSpec[BlockSplittingReport] = ArtifactSpec(
     'block_splitting.json', BlockSplittingReport)
-# The run's Hauptbuch (#537). It was the one section that was derived and then thrown away —
+# The run's booking periods (#537). It was the one section that was derived and then thrown away —
 # rendered to the console and the summary log, persisted nowhere — so nothing but a human reading
 # that log could see it. Its RECONCILIATION is the reason persisting it matters rather than
 # re-deriving it later: the check compares the periods against the run's own independently

@@ -13,7 +13,7 @@ from typing import Any, Dict, List
 
 import pytest
 
-from python.framework.types.backtesting_metadata_types import BacktestingMetadata
+from python.framework.types.probe_metadata_types import ProbeMetadata
 from python.framework.types.portfolio_types.portfolio_aggregation_types import PortfolioStats
 from python.framework.types.portfolio_types.portfolio_trade_record_types import TradeRecord
 from python.framework.types.process_data_types import ProcessTickLoopResult
@@ -69,12 +69,12 @@ class TestMarginRecovery:
 
     def test_retry_succeeded(
         self,
-        backtesting_metadata: BacktestingMetadata,
+        probe_metadata: ProbeMetadata,
         retry_events: list
     ):
         """Retry after margin recovery should produce a successful trade."""
         retry_trades = [
-            t for t in backtesting_metadata.expected_trades
+            t for t in probe_metadata.expected_trades
             if t.get('event_type') == 'retry'
         ]
         assert len(retry_trades) == len(retry_events), (
@@ -82,10 +82,10 @@ class TestMarginRecovery:
             f'got {len(retry_trades)}'
         )
 
-    def test_retry_has_order_id(self, backtesting_metadata: BacktestingMetadata):
+    def test_retry_has_order_id(self, probe_metadata: ProbeMetadata):
         """Successful retry should have an order_id assigned."""
         retry_trades = [
-            t for t in backtesting_metadata.expected_trades
+            t for t in probe_metadata.expected_trades
             if t.get('event_type') == 'retry'
         ]
         for trade in retry_trades:

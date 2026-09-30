@@ -29,7 +29,7 @@ generator_cli ─▶ GenerationCoordinator ─▶ SplitterFactory ─▶ Abstrac
                                                                   (all use ContinuousRegionExtractor)
                                            split() ─▶ WindowSet  ◀── the model (single truth)
                                                          │
-                           WRITE: WindowSetSerializer ───┤── READ: ProfileLoader
+                           WRITE: WindowSetSerializer ───┤── READ: GeneratorProfileLoader
                              set-JSON | profile-JSON     │     profile-JSON → WindowSet
                                                          ▼
                                              WindowMaterializer
@@ -46,8 +46,8 @@ generator_cli ─▶ GenerationCoordinator ─▶ SplitterFactory ─▶ Abstrac
 | `WindowSet` / `GeneratedWindow` | the window model (pure data; no role, no strategy params) |
 | `WindowMaterializer` | `WindowSet` → scenarios; the single home for roles + quote-balance + regime/session + naming |
 | `WindowSetSerializer` | present-layer: `WindowSet` → set-JSON / profile-JSON (the swappable output stage) |
-| `ProfileLoader` | profile-JSON → `WindowSet` (the read side) |
-| `GenerationCoordinator` | orchestration; keeps the CLI to parameter reception (§13) |
+| `GeneratorProfileLoader` | profile-JSON → `WindowSet` (the read side) |
+| `GenerationCoordinator` | orchestration; keeps the CLI to parameter reception — a CLI file holds no logic |
 
 **Parameter-agnostic invariant:** a `WindowSet` describes only data / time / role — never strategy
 parameters. It is produced once and reused by every parameter combination of a sweep. This is what
@@ -90,7 +90,7 @@ only splits data into time blocks.
 **Evidence:** The warmup bar pipeline: `VectorizedBarRenderer (parquet)` →
 `SharedDataPreparator.prepare_bars()` → `ProcessDataPackage` →
 `BarRenderingController.inject_warmup_bars()` → `BarRenderer.initialize_historical_bars()`. Same
-data source, same rendering algorithm, same quality as live tick-by-tick bars.
+data source, same rendering algorithm, same quality as bars built tick by tick during a run.
 
 #### Structurally Unsolvable (inherent to subprocess isolation)
 
@@ -99,7 +99,7 @@ data source, same rendering algorithm, same quality as live tick-by-tick bars.
 | 2 | **Open positions** | Swing trades cut short — the edge's impact is UNREALISED, not an invented exit | A position open at the block edge stays open and is reported as open (#492 — [session_end_policy.md](../architecture/session_end_policy.md)). The disposition measures `open_at_boundary_*`: forcing the position closed produced a trade whose exit the strategy never chose, and it counted in every ranked KPI |
 | 3 | **Account balance** | No compounding across blocks | `initial_balance` reset is structural to subprocess isolation |
 | 4 | **Decision logic memory** | Cooldowns, sequences, state machines lost | No serialization mechanism for arbitrary decision logic state |
-| 5 | **Pending orders** | Limit orders near execution discarded | No cross-block transfer mechanism |
+| 5 | **Resting orders** | Limit orders near execution discarded | No cross-block transfer mechanism |
 
 No amount of warmup can fix these. The only solutions are: avoid splitting (continuous mode) or transfer state across blocks (complex, blocks must run sequentially).
 
@@ -206,12 +206,12 @@ but must not be manually edited (documented convention, not enforced via hash).
 ### CLI Usage
 
 ```bash
-# Generate a profile with ATR-minima splitting (single symbol)
+# Generate a generator profile with ATR-minima splitting (single symbol)
 python python/cli/generator_cli.py generate-profile mt5 EURUSD \
   --start 2025-09-01T00:00:00 --end 2025-10-01T00:00:00 \
   --mode volatility_split
 
-# Generate a continuous profile (one block per region)
+# Generate a continuous-mode generator profile (one block per data region)
 python python/cli/generator_cli.py generate-profile mt5 EURUSD \
   --start 2025-09-01T00:00:00 --end 2025-10-01T00:00:00 \
   --mode continuous
@@ -269,14 +269,14 @@ with globally unique `scenario_index` values. Scenario names follow the pattern
 header shows profile count and symbol count.
 
 **Profile directories** (`<mode>/<broker_type>/`):
-- `configs/generator_profiles/volatility_split/<broker_type>/` — ATR-minima split profiles
-- `configs/generator_profiles/continuous/<broker_type>/` — continuous (one block per region) profiles
+- `configs/generator_profiles/volatility_split/<broker_type>/` — ATR-minima split generator profiles
+- `configs/generator_profiles/continuous/<broker_type>/` — continuous-mode generator profiles (one block per data region)
 
 ### Generator Modes
 
 | Mode | Description | Use Case |
 |---|---|---|
-| **continuous** | Single block, full time range per symbol | P&L correctness, no splitting artifacts |
+| **continuous** | One block per continuous data region — no split inside a region | P&L correctness, no splitting artifacts |
 | **volatility_split** | Splits at ATR minima (low-volatility points) | Parallelism within symbol, minimal split cost |
 
 The generator **consumes** `VolatilityProfileAnalyzer` output (volatility profiles, ATR data from `discoveries_config.json`) — it does NOT compute volatility itself.
@@ -291,7 +291,7 @@ Blocks span across these gaps without splitting.
 **Block-start snapping (blocks mode).** A block may *span* a weekend, but it must never *begin*
 inside one — a `start_date` with no ticks fails scenario validation. `BlocksSplit` therefore snaps
 any block boundary that lands in a market-closed window (weekend / holiday) forward to the next
-market open via `MarketCalendar.next_market_open` (§37, the single source of truth for market time).
+market open via `MarketCalendar.next_market_open` (the single source of truth for market time).
 The boundary arithmetic (`region_start + k·block_size`) regularly lands on a weekend for multi-day
 Forex blocks, so this snap is what keeps generated robustness/blocks sets runnable.
 
@@ -356,11 +356,11 @@ When the disposition is MODERATE or worse, the root cause is almost always **too
 | **Switch to continuous mode** | Eliminates force-closes entirely | Low-frequency strategies (< 5 trades/block), swing trading |
 | **Increase `max_block_hours`** | Fewer blocks = fewer boundaries | Moderate-frequency strategies where some parallelism is still useful |
 | **Reduce time range** | Fewer blocks generated | When only a specific market period is relevant |
-| **Accept the result** | Use continuous as ground truth, volatility_split for parallelism | When you need speed and know the distortion range |
+| **Accept the result** | Use continuous mode as ground truth, volatility_split for parallelism | When you need speed and know the distortion range |
 
 **Key insight:** The disposition measures the fit between **block size** and **trade frequency**. A
 strategy averaging 3 trades per block will always show high disposition because nearly every block
-ends with an open trade. The same strategy on continuous mode (1 block) may show ~0%.
+ends with an open trade. The same strategy on continuous mode (one block per data region) may show ~0%.
 
 The disposition does NOT indicate a bad strategy — it indicates that the chosen splitting is too aggressive for the strategy's trading pace.
 

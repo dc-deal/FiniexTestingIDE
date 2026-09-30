@@ -1,5 +1,5 @@
 """
-Combining ledger rows — the ABSCHLUSS step, and the first caller of `COLUMN_REDUCTION`.
+Combining ledger rows — the CLOSING step, and the first caller of `COLUMN_REDUCTION`.
 
 A row is one booking period. Every question above that level is asked by folding rows, and the
 rule for folding them is declared per column. These tests pin that the declaration is FOLLOWED,
@@ -27,12 +27,12 @@ from python.framework.types.run_results_types import Reduction
 _RUN = '20260921_000000_a1b2c3d4'
 
 
-def _period(segment_no: int, closed: str, **figures) -> RunResultRow:
+def _period(period_no: int, closed: str, **figures) -> RunResultRow:
     """
     One booking-period row with sensible identity and overridable figures.
 
     Args:
-        segment_no: Its running number
+        period_no: Its running number
         closed: When the period closed — also the recency key
         figures: Whatever the case under test needs
 
@@ -42,8 +42,8 @@ def _period(segment_no: int, closed: str, **figures) -> RunResultRow:
     defaults = dict(
         run_id=_RUN, param_hash='hash', run_timestamp='2026-09-21T00:00:00+00:00',
         currency='USD', unit_name='session', scenario_set_name='bot',
-        segment_no=segment_no, segment_closed_at=closed,
-        segment_opened_at=closed,
+        period_no=period_no, period_closed_at=closed,
+        period_opened_at=closed,
     )
     defaults.update(figures)
     return RunResultRow(**defaults)
@@ -65,15 +65,40 @@ class TestEveryColumnClassIsFollowed:
                 _period(2, '2026-09-23', final_equity=10_050.0)]
         assert aggregate_ledger_rows(rows)[0].final_equity == 10_050.0
 
+    def test_a_stock_over_several_accounts_has_no_value(self):
+        # A backtest's scenarios are separate accounts. The latest reading belongs to whichever
+        # closed last, which says nothing about the run — measured, a sweep row carried one
+        # scenario's equity out of eight. Per unit it is exact.
+        rows = [_period(1, '2026-09-22', unit_name='a', final_equity=9_960.0,
+                        open_position_count=1, net_pnl=-40.0),
+                _period(1, '2026-09-23', unit_name='b', final_equity=10_020.0,
+                        open_position_count=0, net_pnl=20.0)]
+
+        run = aggregate_ledger_rows(rows)[0]
+        per_unit = {row.unit_name: row.final_equity
+                    for row in aggregate_ledger_rows(rows, by=('run_id', 'currency', 'unit_name'))}
+
+        assert (run.final_equity, run.open_position_count) == (None, None)
+        assert run.net_pnl == -20.0, 'a flow still adds up across accounts'
+        assert per_unit == {'a': 9_960.0, 'b': 10_020.0}
+
+    def test_counts_a_period_never_carried_stay_unmeasured(self):
+        # A booking-period row carries no order counts. Folded, the absence must stay an
+        # absence: a default of 0 made every run that booked periods read "0 orders sent".
+        rows = [_period(1, 'd1', net_pnl=1.0), _period(2, 'd2', net_pnl=2.0)]
+        folded = aggregate_ledger_rows(rows)[0]
+        assert (folded.orders_sent, folded.orders_executed, folded.sl_tp_triggered) == (
+            None, None, None)
+
     def test_a_cumulative_extremum_takes_the_largest_magnitude(self):
         rows = [_period(1, 'd1', account_max_drawdown=-10.0),
                 _period(2, 'd2', account_max_drawdown=-180.0)]
         assert aggregate_ledger_rows(rows)[0].account_max_drawdown == -180.0
 
     def test_a_trough_takes_the_smallest_value(self):
-        rows = [_period(1, 'd1', segment_min_equity=10_080.0),
-                _period(2, 'd2', segment_min_equity=9_900.0)]
-        assert aggregate_ledger_rows(rows)[0].segment_min_equity == 9_900.0
+        rows = [_period(1, 'd1', period_min_equity=10_080.0),
+                _period(2, 'd2', period_min_equity=9_900.0)]
+        assert aggregate_ledger_rows(rows)[0].period_min_equity == 9_900.0
 
     def test_a_set_is_unioned_and_keeps_its_type(self):
         # `symbols` parses back into a LIST on the typed row while the ledger stores it joined,
@@ -84,8 +109,8 @@ class TestEveryColumnClassIsFollowed:
     def test_a_span_takes_the_end_it_declares(self):
         rows = [_period(1, '2026-09-22'), _period(2, '2026-09-23')]
         combined = aggregate_ledger_rows(rows)[0]
-        assert combined.segment_closed_at == '2026-09-23'   # SPAN_END
-        assert combined.segment_opened_at == '2026-09-22'   # SPAN_START
+        assert combined.period_closed_at == '2026-09-23'   # SPAN_END
+        assert combined.period_opened_at == '2026-09-22'   # SPAN_START
 
 
 class TestTheDrawdownTrioTravelsTogether:
@@ -163,7 +188,7 @@ class TestTheControlTotalSurvives:
         rows = [_period(1, 'd1', total_trades=2),
                 _period(2, 'd2', total_trades=2)]
         combined = aggregate_ledger_rows(rows)[0]
-        # `total_trades` IS the control total of a period row — on a segment row it is the
+        # `total_trades` IS the control total of a period row — on a period row it is the
         # record count of the window its figures came from. The column that used to say the
         # same thing under a second name was removed: both were one `len(rows)` from one call,
         # so it could not disprove anything (#539 audit).
@@ -219,39 +244,39 @@ class TestTheIdentityClaimIsChecked:
 class TestTheDeepestDeclineSurvivesTheFold:
     """
     `MAX` here means "largest by MAGNITUDE" — `max(present, key=abs)` — which is what lets one
-    reduction serve a drawdown and a peak at once. `segment_max_drawdown` was stored signed
+    reduction serve a drawdown and a peak at once. `period_max_drawdown` was stored signed
     until #539 and holds a magnitude since; these pin that the fold answers the deepest fall
     under BOTH conventions, because that property is the whole reason the reduction is written
     that way and a plain `max()` would silently break it.
     """
 
     def test_the_deepest_magnitude_wins(self):
-        rows = [_period(1, 'd1', segment_max_drawdown=22000.12),
-                _period(2, 'd2', segment_max_drawdown=5.0)]
+        rows = [_period(1, 'd1', period_max_drawdown=22000.12),
+                _period(2, 'd2', period_max_drawdown=5.0)]
         combined = aggregate_ledger_rows(rows, by=('run_id',))[0]
-        assert combined.segment_max_drawdown == 22000.12
+        assert combined.period_max_drawdown == 22000.12
 
     def test_a_signed_value_folds_to_the_deepest_too(self):
         # A row written before #539 carries the negative form. A plain `max()` would answer
         # -5.00 here — the shallowest day, reported as the worst one.
-        rows = [_period(1, 'd1', segment_max_drawdown=-22000.12),
-                _period(2, 'd2', segment_max_drawdown=-5.0)]
+        rows = [_period(1, 'd1', period_max_drawdown=-22000.12),
+                _period(2, 'd2', period_max_drawdown=-5.0)]
         combined = aggregate_ledger_rows(rows, by=('run_id',))[0]
-        assert combined.segment_max_drawdown == -22000.12
+        assert combined.period_max_drawdown == -22000.12
 
     def test_the_declaration_names_the_magnitude_reading(self):
         # MAX_ABS exists because MAX used to mean both things, and the NAME is what a reader
         # goes by: seeing MAX they read `max()`, which is right for a peak and wrong for a fall.
-        for column in ('segment_max_drawdown', 'account_max_drawdown', 'largest_mae'):
+        for column in ('period_max_drawdown', 'account_max_drawdown', 'largest_mae'):
             assert COLUMN_REDUCTION[column] is Reduction.MAX_ABS
 
     def test_a_peak_keeps_the_plain_maximum(self):
-        # `segment_max_equity` is not a magnitude. Under MAX_ABS a negative equity would
+        # `period_max_equity` is not a magnitude. Under MAX_ABS a negative equity would
         # outrank a positive one — unreachable today, and the two meanings shared a name.
-        assert COLUMN_REDUCTION['segment_max_equity'] is Reduction.MAX
-        rows = [_period(1, 'd1', segment_max_equity=-500.0),
-                _period(2, 'd2', segment_max_equity=120.0)]
-        assert aggregate_ledger_rows(rows, by=('run_id',))[0].segment_max_equity == 120.0
+        assert COLUMN_REDUCTION['period_max_equity'] is Reduction.MAX
+        rows = [_period(1, 'd1', period_max_equity=-500.0),
+                _period(2, 'd2', period_max_equity=120.0)]
+        assert aggregate_ledger_rows(rows, by=('run_id',))[0].period_max_equity == 120.0
 
 
 class TestEveryDeclaredReductionCanBeApplied:
@@ -278,9 +303,9 @@ class TestEveryDeclaredReductionCanBeApplied:
 
     def test_the_two_maxima_do_different_things(self):
         # The one property that makes the split worth having, asserted directly.
-        signed = [_period(1, 'd1', segment_max_drawdown=-9.0),
-                  _period(2, 'd2', segment_max_drawdown=-1.0)]
-        assert aggregate_ledger_rows(signed, by=('run_id',))[0].segment_max_drawdown == -9.0
-        peaks = [_period(1, 'd1', segment_max_equity=-9.0),
-                 _period(2, 'd2', segment_max_equity=-1.0)]
-        assert aggregate_ledger_rows(peaks, by=('run_id',))[0].segment_max_equity == -1.0
+        signed = [_period(1, 'd1', period_max_drawdown=-9.0),
+                  _period(2, 'd2', period_max_drawdown=-1.0)]
+        assert aggregate_ledger_rows(signed, by=('run_id',))[0].period_max_drawdown == -9.0
+        peaks = [_period(1, 'd1', period_max_equity=-9.0),
+                 _period(2, 'd2', period_max_equity=-1.0)]
+        assert aggregate_ledger_rows(peaks, by=('run_id',))[0].period_max_equity == -1.0

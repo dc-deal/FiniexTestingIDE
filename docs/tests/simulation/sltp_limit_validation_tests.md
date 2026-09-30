@@ -369,7 +369,7 @@ Total ticks processed: ~85k (vs ~18.6k ticks in the old multi-day windows). Suit
 
 ### Modify Sequence
 
-The `modify_tp_trigger` scenario demonstrates `modify_sequence` — a BacktestingDeterministic config concept that calls `modify_position()` at a specific tick:
+The `modify_tp_trigger` scenario demonstrates `modify_sequence` — a DeterministicProbe config concept that calls `modify_position()` at a specific tick:
 
 ```json
 "modify_sequence": [
@@ -435,7 +435,7 @@ in the test file. Switching to different discovery windows only requires updatin
 adapt automatically.
 
 ### _started_trade_indices Guard
-After SL/TP closes a position, BacktestingDeterministic must not re-open it. The
+After SL/TP closes a position, DeterministicProbe must not re-open it. The
 `_started_trade_indices` set tracks which trades from `trade_sequence` have been submitted. Combined
 with an API state check (no pending orders, no open positions), this prevents the trade loop from
 triggering again.

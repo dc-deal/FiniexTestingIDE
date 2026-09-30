@@ -2,7 +2,7 @@
 FiniexTestingIDE - Signal Connect Check
 One-shot reachability and credential probe against the producer (#98 connect contract).
 
-Answers the question a live session cannot answer cheaply: does this address, with this
+Answers the question a live-adapter session cannot answer cheaply: does this address, with this
 token, actually reach the producer — and WHICH producer. It performs exactly the free reads
 the contract declares free (`/v1/health`, `/v1/pipelines`, `/v1/pipelines/{id}/latest`)
 and never the paid run route, so the check itself can never cost money.

@@ -8,6 +8,7 @@ from python.framework.optimization.optimization_analysis import (
     degenerate_ranking_advisory,
     mixed_logic_version_advisory,
     rank,
+    rank_per_currency,
     sensitivity,
     summarize_sweeps,
 )
@@ -36,6 +37,22 @@ def test_rank_maximize_best_first(sweep_rows):
     """Maximizing net_pnl puts the highest first."""
     ranked = rank(sweep_rows, 'net_pnl', maximize=True)
     assert [r.net_pnl for r in ranked] == [9.0, 4.0, -5.0, -10.0]
+
+
+def test_a_sweep_in_two_currencies_is_ranked_within_each(tmp_ledger, make_run_summary,
+                                                          make_provenance):
+    # net_pnl in EUR and in USD is not one scale: each currency is ranked on its own, and the
+    # EUR list comes first. One list over both would put EUR 9 above USD 5 as if comparable.
+    for i, (currency, pnl) in enumerate([('USD', 5.0), ('EUR', 9.0), ('USD', 7.0), ('EUR', 1.0)]):
+        tmp_ledger.append(
+            make_run_summary(currency=currency, net_pnl=pnl),
+            make_provenance(param_hash=f'h{i}', run_id=f'r{i}', scenario_set_name=f's__c{i:03d}',
+                            sweep_id='sweep_Y', sweep_params={'p': i}))
+
+    ranked = rank_per_currency(tmp_ledger.read_rows(sweep_id='sweep_Y'), 'net_pnl')
+
+    assert [(r.currency, r.net_pnl) for r in ranked] == [
+        ('EUR', 9.0), ('EUR', 1.0), ('USD', 7.0), ('USD', 5.0)]
 
 
 def test_rank_minimize(sweep_rows):
@@ -338,16 +355,16 @@ class TestASweepRanksCandidatesNotDays:
         from datetime import datetime, timedelta, timezone
 
         from python.framework.types.api.report_types import RunSummaryCurrency
-        from python.framework.types.run_results_types import BookingSegment, SegmentCloseReason
+        from python.framework.types.run_results_types import BookingPeriod, PeriodCloseReason
 
         start = datetime(2026, 9, 21, tzinfo=timezone.utc)
         for run, parts in (('rA', (10.0, -4.0, 6.0)), ('rB', (1.0, 1.0, 1.0))):
             segments = [
-                BookingSegment(
-                    segment_no=i + 1, unit_name='scenario',
+                BookingPeriod(
+                    period_no=i + 1, unit_name='scenario',
                     opened_at=start + timedelta(days=i),
                     closed_at=start + timedelta(days=i + 1),
-                    reason=SegmentCloseReason.ANCHOR, trade_count=1,
+                    reason=PeriodCloseReason.ANCHOR, trade_count=1,
                     figures=RunSummaryCurrency(
                         currency='USD', net_pnl=part, profit_factor=None, win_rate=0.0,
                         account_max_drawdown=0.0, total_fees=0.0, total_trades=1,

@@ -14,6 +14,8 @@ from datetime import datetime
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
+from python.framework.types.run_origin_types import CodeIdentity
+
 
 class CertificateStatus(str, Enum):
     """
@@ -74,6 +76,13 @@ class CertificateIdentity:
     invisible in the record — and on the throughput side it would read as a code improvement,
     since the benchmark compares against a baseline whose fingerprint never knew the version
     either.
+
+    `code_identity` is the same block a run header carries (#551), read through the same capture:
+    this repository's commit, its `diff_hash` and — on a dirty tree — the patch kept in
+    `run_patches/`, so a rehearsal measured on uncommitted code can be put back and measured
+    again. The flat `git_*` fields are DERIVED from it, never read a second time, and
+    `git_dirty` follows `CodeIdentity.is_dirty()`: a tree whose state could not be read counts,
+    exactly as it does for the live real-money guard.
     """
     record_kind: str
     release_version: str
@@ -88,6 +97,7 @@ class CertificateIdentity:
     comment: Optional[str] = None
     isolation_active: bool = False
     workspace_overrides: WorkspaceOverrides = field(default_factory=WorkspaceOverrides)
+    code_identity: Optional[CodeIdentity] = None
 
     def version_mismatch(self) -> Optional[str]:
         """
@@ -115,10 +125,18 @@ class CertificateIdentity:
         imprecise. A rehearsal ('dev') is exempt.
 
         Returns:
-            A warning naming the uncommitted count, or None when the tree is clean
+            A warning naming the uncommitted count — or saying that no commit could be read at
+            all — and None when the tree is clean
         """
         if self.release_version == 'dev' or not self.git_dirty:
             return None
+        if self.code_identity is not None:
+            framework = self.code_identity.framework
+            if (framework is None or framework.in_repository is not True
+                    or framework.commit is None):
+                return (f'TREE STATE UNKNOWN: certifying {self.release_version}, but no commit '
+                        f'could be read for this tree (git unavailable, refused, or no '
+                        f'repository) — nothing ties the artifact to the code that produced it.')
         return (f'DIRTY TREE: certifying {self.release_version} from a working tree with '
                 f'{self.uncommitted_count} uncommitted change(s). The recorded commit '
                 f'{self.git_commit} does not contain the code that produced this artifact.')
@@ -143,4 +161,6 @@ class CertificateIdentity:
             'comment': self.comment,
             'isolation_active': self.isolation_active,
             'workspace_overrides': self.workspace_overrides.to_dict(),
+            'code_identity': (self.code_identity.model_dump(mode='json')
+                              if self.code_identity is not None else None),
         }

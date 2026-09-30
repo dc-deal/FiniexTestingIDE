@@ -13,7 +13,7 @@
   },
   "scenarios": [
     {
-      "name": "w_is",
+      "scenario_name": "w_is",
       "symbol": "ETHUSD",
       "data_broker_type": "kraken_spot",
       "start_date": "2026-02-10T10:00:00+00:00",
@@ -21,7 +21,7 @@
       "role": "in_sample"
     },
     {
-      "name": "w_oos",
+      "scenario_name": "w_oos",
       "symbol": "ETHUSD",
       "data_broker_type": "kraken_spot",
       "start_date": "2026-02-10T12:00:00+00:00",

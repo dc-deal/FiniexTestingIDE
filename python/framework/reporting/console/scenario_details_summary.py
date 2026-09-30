@@ -57,7 +57,7 @@ class ScenarioDetailsSummary(AbstractBatchSummarySection):
     def _render_unit(self, unit: ScenarioDetailsRow, renderer: ConsoleRenderer) -> None:
         """Render one scenario's metadata block (linear)."""
         marker = renderer.red('❌ ') if unit.status != 'success' else ''
-        print(f'{marker}🔍 {renderer.bold(unit.name)} — {unit.data_source}/{unit.symbol}')
+        print(f'{marker}🔍 {renderer.bold(unit.name)} — {unit.data_broker_type}/{unit.symbol}')
 
         if unit.status == 'failed':
             print(renderer.red(f"   Error: {unit.error_type or 'Unknown'}"))
@@ -69,20 +69,23 @@ class ScenarioDetailsSummary(AbstractBatchSummarySection):
             hint = renderer.yellow(' (explicit)') if unit.account_currency_explicit else ''
             print(f'   Account currency: {unit.account_currency}{hint}')
 
-        duration = format_duration(unit.execution_time_ms)
+        duration = format_duration(unit.execution_time_ms / 1000.0)
         timespan = format_tick_timespan(
             self._parse(unit.first_tick_time), self._parse(unit.last_tick_time),
             unit.tick_timespan_seconds)
-        non_flat = unit.buy_signals + unit.sell_signals
-        nf_pct = (non_flat / unit.ticks_processed * 100) if unit.ticks_processed else 0.0
-        tr_pct = (unit.trades_requested / unit.ticks_processed * 100) if unit.ticks_processed else 0.0
-
         print(f'   Duration: {duration} | Ticks: {unit.ticks_processed:,} | {timespan}')
-        print(
-            f'   Non-Flat Sign.: {non_flat} ({nf_pct:.1f}%) | '
-            f'B/S/F: {unit.buy_signals}/{unit.sell_signals}/{unit.flat_signals} | '
-            f'Trades requested: {unit.trades_requested} ({tr_pct:.1f}%) | '
-            f'Worker: {unit.worker_count}')
+        if unit.trades_requested is None:
+            print(f'   Signals: not counted (decision tracking off) | Worker: {unit.worker_count}')
+        else:
+            non_flat = unit.buy_signals + unit.sell_signals
+            nf_pct = (non_flat / unit.ticks_processed * 100) if unit.ticks_processed else 0.0
+            tr_pct = ((unit.trades_requested / unit.ticks_processed * 100)
+                      if unit.ticks_processed else 0.0)
+            print(
+                f'   Non-Flat Sign.: {non_flat} ({nf_pct:.1f}%) | '
+                f'B/S/F: {unit.buy_signals}/{unit.sell_signals}/{unit.flat_signals} | '
+                f'Trades requested: {unit.trades_requested} ({tr_pct:.1f}%) | '
+                f'Worker: {unit.worker_count}')
         if unit.status == 'hybrid':
             print(renderer.red('   ⚠️ CRITICAL: Errors detected'))
 

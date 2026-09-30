@@ -20,7 +20,7 @@ plausible route into it is the one the profile layout now invites: copy a profil
 purpose folder and keep its name.
 
 NOTHING is excluded, and that correction is worth recording because the first version of this
-check got it backwards. `adapter_type: mock` selects the tick SOURCE, not the executor — every
+check got it backwards. `adapter_type: mock` selects the broker adapter, not the executor — every
 AutoTrader session runs a `LiveTradeExecutor` (the factory only demands `is_live_capable()`,
 which the mock adapter is), so every session builds both carry-over stores. Measured 2026-09-21:
 **15 of the 16 documents in `data/runtime/cold_start_state/` belong to mock profiles.** An
@@ -97,7 +97,7 @@ def validate_bot_id(profile_name: str, symbol: str, bot_id: str) -> None:
             f'holds\n'
             f'    the position.\n'
             f'\n'
-            f'    Add it to the profile, beside `name`:\n'
+            f'    Add it to the profile, beside `profile_name`:\n'
             f'\n'
             f'        "bot_id": "{suggestion}"\n'
             f'\n'
@@ -244,7 +244,7 @@ def _live_identities(roots: List[Path]) -> Dict[Path, str]:
             if not symbol:
                 continue
             identities[path] = carry_over_key(
-                raw.get('name') or symbol, symbol, raw.get('bot_id') or '')
+                raw.get('profile_name') or symbol, symbol, raw.get('bot_id') or '')
     return identities
 
 

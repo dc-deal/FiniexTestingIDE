@@ -125,7 +125,7 @@ class EventStreamWriter:
         Args:
             trade_history: All completed TradeRecord (full + partial closes)
             order_history: All OrderResult (multiple statuses per order_id)
-            run_dir: Session log directory (e.g. logs/autotrader/<name>/<ts>/)
+            run_dir: Session log directory (e.g. runs/autotrader/<name>/<run_id>/)
 
         Returns:
             EventStreamWriter ready to flush.
@@ -150,7 +150,7 @@ class EventStreamWriter:
         Args:
             trade_history: All TradeRecord from process_result.tick_loop_results
             order_history: All OrderResult from process_result.tick_loop_results
-            run_dir: Scenario set log directory (e.g. logs/scenario_sets/<set>/<ts>/)
+            run_dir: Scenario set log directory (e.g. runs/simulation/<set>/<run_id>/)
 
         Returns:
             EventStreamWriter ready to flush.

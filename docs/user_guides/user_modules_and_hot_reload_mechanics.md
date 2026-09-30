@@ -2,7 +2,7 @@
 
 ## Overview
 
-The `user_algos/` directory is the canonical workspace for user-authored algorithms. Each strategy lives in its own subdirectory with all related files co-located — worker, decision logic, and scenario config(s).
+The `user_algos/` directory is the canonical workspace for user-authored algorithms. Each strategy lives in its own subdirectory with all related files co-located — worker, decision logic, and scenario set(s).
 
 > For Worker vs DecisionLogic concepts, see [quickstart_guide.md](quickstart_guide.md).
 > For the reference system and contract model, see [worker_naming_doc.md](worker_naming_doc.md).
@@ -16,7 +16,7 @@ user_algos/                      ← user algo workspace (gitignored by default)
 └── my_algo/                     ← one directory per strategy
     ├── my_strategy.py           ← decision logic
     ├── my_range_worker.py       ← worker
-    └── my_algo_eurusd.json      ← scenario config
+    └── my_algo_eurusd.json      ← scenario set
 
 python/framework/
 ├── workers/core/                       ← CORE workers (read-only, framework)
@@ -32,7 +32,7 @@ python/framework/
 
 ## On-Demand Loading Flow
 
-Workers and decision logics are **not pre-scanned at startup**. They are loaded on-demand when their path appears in a scenario config.
+Workers and decision logics are **not pre-scanned at startup**. They are loaded on-demand when their path appears in a scenario set or AutoTrader profile.
 
 ```
 ┌──────────────────────────────────────────────────────────┐
@@ -91,7 +91,7 @@ Additional directories can be configured in `user_configs/app_config.json`:
 }
 ```
 
-`user_algo_dirs` is used by `ScenarioSetFinder` to discover scenario configs in these directories. Workers and decision logics are still loaded from the explicit paths in those configs — no directory scanning.
+`user_algo_dirs` is walked by the config directory (#554, `config_directory_cli.py list`, `GET /api/v1/directory`) to discover the scenario sets and AutoTrader profiles in these directories. Workers and decision logics are still loaded from the explicit paths in those configs — no directory scanning.
 
 The default value is `["user_algos/"]`.
 

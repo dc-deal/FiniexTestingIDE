@@ -35,13 +35,14 @@ class SingleScenario:
     # ============================================
     # Determines which tick/bar data collection to load from
     # Examples: "mt5", "kraken_spot"
-    # This is SEPARATE from broker_type (trading simulation config)
+    # A separate FIELD from broker_type, not a separate broker: broker_type is derived from it —
+    # the broker config this key names is the one the orders are simulated against
+    # (BrokerDataPreparator assigns it)
     data_broker_type: str  # REQUIRED - no default!
 
     start_date: datetime
     end_date: Optional[datetime] = None
     max_ticks: Optional[int] = None
-    data_mode: str = 'realistic'
     enabled: bool = True  # Default: enabled
 
     # ============================================
@@ -138,7 +139,7 @@ class SingleScenario:
         )
         return (
             f"Scenario: {self.name}\n"
-            f"  Data Source: {self.data_broker_type}\n"
+            f"  Data broker: {self.data_broker_type}\n"
             f"  Symbol: {self.symbol}\n"
             f"{sentiment_line}"
             f"  Period: {self.start_date} → {self.end_date}\n"
@@ -170,6 +171,10 @@ class LoadedScenarioConfig:
     generator_profile_paths: Optional[List[Path]] = None
     # Set-wide robustness mode (#367); None → disabled (treated as RobustnessConfig()).
     robustness: Optional[RobustnessConfig] = None
+    # Scenarios the set switched off (`enabled: false`). The loader drops them before anything
+    # else sees them, so this count is the only trace they leave — without it a run's summary
+    # cannot say how many it DECLARED, and the console's "(N disabled)" never fired.
+    disabled_count: int = 0
 
 
 @dataclass
@@ -179,32 +184,3 @@ class SignalScenarioUsage:
     symbol: str
     window_start: datetime
     window_end: Optional[datetime] = None
-
-
-@dataclass
-class ScenarioSetMetadata:
-    """
-    Metadata about a scenario set config file
-
-    Used for discovery and listing of available scenario sets
-    """
-    # Basic info
-    filename: str
-    scenario_set_name: str
-    total_count: int
-    enabled_count: int
-    disabled_count: int
-    symbols: list[str]
-    config_path: Path
-
-    # Time analysis
-    timespan_scenario_count: int
-    total_timespan_seconds: float
-    tick_scenario_count: int
-    total_ticks: int
-
-    # Strategy info
-    decision_logic_type: str | None
-    is_mixed_decision_logic: bool
-    worker_count: int | None
-    is_mixed_workers: bool

@@ -1,9 +1,11 @@
 # Live Execution Architecture
 
-Live trading execution via broker adapter API. This document covers all live-specific components, the broker polling flow, and the live-specific open issues.
+Order execution on the live execution stack — the `LiveTradeExecutor` every AutoTrader session
+runs, mock sessions included — via the broker adapter API. This document covers all components
+specific to that stack, the broker polling flow, and its open issues.
 
 For shared architecture (AbstractTradeExecutor, fill processing, portfolio, design decisions): see [architecture_execution_layer.md](architecture_execution_layer.md)
-For tick flow comparison (Backtesting vs Live): see [simulation_vs_live_flow.md](simulation_vs_live_flow.md)
+For tick flow comparison (Backtesting vs Live): see [simulation_vs_autotrader_flow.md](simulation_vs_autotrader_flow.md)
 
 ---
 
@@ -140,7 +142,7 @@ Error handling follows the same patterns as simulation, using the shared infrast
 4. Same handling logic as simulation stress test
 ```
 
-The advantage: Error-handling logic is tested in the simulator first (stress test: "reject every 3rd trade"), then runs identically in live with real broker errors.
+The advantage: Error-handling logic is tested in the simulator first (stress test: "reject every 3rd trade"), then runs identically in a live-adapter session with real broker errors.
 
 ---
 
@@ -152,7 +154,7 @@ The shared `PendingOrder` dataclass has optional fields for each mode. Live sets
 - `broker_ref: str` — Broker's order reference (MT5 ticket, Kraken order ID)
 - `timeout_at: datetime` — When to consider the order timed out
 
-Simulation fields (`placed_at_msc`, `broker_fill_msc`) remain None in live mode.
+Simulation fields (`placed_at_msc`, `broker_fill_msc`) remain None on the live execution stack.
 
 ---
 
@@ -166,7 +168,9 @@ Adapters that only serve backtesting (KrakenAdapter, Mt5Adapter) implement Tier 
 
 ### MockBrokerAdapter (extends AbstractAdapter, for testing)
 
-Mock adapter in `python/framework/testing/mock_broker_adapter.py`. Implements all three tiers with configurable behavior. Uses real Kraken BTCUSD symbol specification.
+Mock adapter in `python/framework/testing/mock_broker_adapter.py`. Implements all three tiers with configurable behavior. Constructed without a config it uses a
+minimal Kraken-BTCUSD-shaped specification (the unit tests); a mock AutoTrader session passes the
+broker's own static JSON and reports that broker's type.
 
 **Execution modes (MockExecutionMode):**
 - `INSTANT_FILL` — `execute_order()` returns FILLED immediately
@@ -180,7 +184,7 @@ Used by `MockOrderExecution` utility (`python/framework/testing/mock_order_execu
 
 ## Live Limit Order Modification
 
-`LiveTradeExecutor.modify_limit_order()` modifies pending limit orders at the broker via `adapter.modify_order()` and updates the local shadow state.
+`LiveTradeExecutor.modify_limit_order()` modifies resting limit orders at the broker via `adapter.modify_order()` and updates the local shadow state.
 
 ### Flow
 
@@ -224,9 +228,10 @@ Mock behavior:
 
 ---
 
-## PortfolioManager in Live Mode
+## PortfolioManager on the Live Execution Stack
 
-Both simulation and live share the same PortfolioManager. In live mode, it acts as the
+The simulation and the live execution stack share the same PortfolioManager. On the live stack it
+acts as the
 **local shadow state** — the system's internal view of what the broker should have. The shadow state
 is kept current by the fast fill path; the Reconciler (#151) verifies it against broker truth on a
 separate cadence (see *Fill Detection & Reconciliation* below).
@@ -235,7 +240,7 @@ separate cadence (see *Fill Detection & Reconciliation* below).
 
 ## Fill Detection & Reconciliation (Two Layers)
 
-Live state stays correct through two distinct layers — do not conflate them:
+The live stack's state stays correct through two distinct layers — do not conflate them:
 
 **Layer 1 — Fast fill path (primary truth source).** A fill is detected via the executor's order
 path: the broker response (poll today, #320 cadence) marks the order filled (`mark_filled` →
@@ -304,7 +309,7 @@ BOOT
  ├─ ALGO STATE PERSISTENCE (#354) the algo's own memory is restored FIRST, so the hook
  │                                below can read it
  ├─ COLD START (#355) — nothing is APPLIED until the boot is allowed to proceed
- │    ├─ pull the venue's open orders            (§43 ladder; unreachable → refuse to start)
+ │    ├─ pull the venue's open orders            (connection ladder; unreachable → refuse to start)
  │    ├─ decide what the note OFFERS             (spot only; margin comes from the venue)
  │    ├─ pull balances, cross-check the book     (report only, never adjust)
  │    ├─ split the orders by OWNERSHIP           (ours / unknown session / in flight / foreign)
@@ -395,13 +400,13 @@ unattended case it guards. Unattended running is a conscious `"auto"`.
 
 ## Canonical Clock & Idle Cadence (#360)
 
-`get_current_time()` is **loop-injected**, not derived from the last tick. `on_tick` sets
-the clock from the tick timestamp; on an idle heartbeat the loop injects the wall-clock via
-`set_current_time()`. The clock therefore advances continuously — it never freezes to the
-last tick and then jumps by the full gap — so phase/op timeouts track real elapsed time. This
-is the single place wall-clock is read in live; decision logic and workers only ever call
-`get_current_time()` (§9). In simulation the injected time is the simulated tick time, keeping
-backtests reproducible.
+`get_current_time()` is **loop-injected**, not derived from the last tick. `on_tick` sets the clock
+from the tick timestamp; on an idle heartbeat the loop injects the wall-clock via
+`set_current_time()`. The clock therefore advances continuously — it never freezes to the last tick
+and then jumps by the full gap — so phase/op timeouts track real elapsed time. This is the single
+place wall-clock is read in an AutoTrader session; decision logic and workers only ever call
+`get_current_time()`, the one canonical clock. In simulation the injected time is the simulated tick
+time, keeping backtests reproducible.
 
 The idle heartbeat (fired when no tick arrives within `heartbeat_interval_ms`, default 500 ms
 for the AutoTrader; 1000 ms is the simulation ghost-pass default)
@@ -436,8 +441,8 @@ consumer, no race. This is one concrete slice of the broader #361 order-lifecycl
 ## Order Lifecycle Matrix — submit → cancel (incl. failure cases)
 
 The map of every step a LIMIT order can pass through with a cancel in play. Two planes:
-**local** = `_active_limit_orders` + the worker queues (what we believe); **broker** = what is
-actually live at Kraken. The cancel needs the broker's `broker_ref` (txid), which arrives only with
+**local** = `_active_limit_orders` + the worker queues (what we believe); **broker** = what
+actually exists at Kraken. The cancel needs the broker's `broker_ref` (txid), which arrives only with
 the submit response — so during submit-in-flight the order is locally visible but un-actionable.
 
 | # | Step / event | Local state | Broker state (probable) | Handling (issue) |
@@ -460,11 +465,11 @@ the submit response — so during submit-in-flight the order is locally visible 
 | **Partial** | | | | |
 | 12 | Partial fill then cancel | filled portion = position, remainder | part filled, part resting → cancel kills the remainder | **#342** surfaces `PARTIALLY_FILLED`; today partly via volume reconcile |
 
-**Implemented + live-green:** #1 (defer) + #2 (fire on confirm). **Works today poll/reconcile-based,
-explicit machine pending:** #9 cancel-vs-fill (#361), #11 cancel-timeout, #4 submit-timeout orphan
-(#151 backstop; `cl_ord_id` cleaner, #355), #12 partial (#342). The common thread: wherever the
-broker state is "UNKNOWN", the **Reconciler (#151)** is the net and the **algo reacts** to the
-resolved event — it never pre-empts the race.
+**Implemented + green against the real venue:** #1 (defer) + #2 (fire on confirm). **Works today
+poll/reconcile-based, explicit machine pending:** #9 cancel-vs-fill (#361), #11 cancel-timeout, #4
+submit-timeout orphan (#151 backstop; `cl_ord_id` cleaner, #355), #12 partial (#342). The common
+thread: wherever the broker state is "UNKNOWN", the **Reconciler (#151)** is the net and the **algo
+reacts** to the resolved event — it never pre-empts the race.
 
 **Testing:** these cases are driven against `MockBrokerAdapter` (controllable: `INSTANT_FILL` /
 `DELAYED_FILL` / `REJECT_ALL` / `TIMEOUT`; extend for already-filled / unknown / partial), not real
@@ -484,11 +489,14 @@ Kraken. The real-broker contract is the separate `tests/live_adapters/` release 
 
 ---
 
-## Glossary (Live-Specific Terms)
+## Glossary (Live Execution Stack Terms)
+
+The project-wide vocabulary is in the [Glossary](../glossary.md); the terms below are specific to
+the live execution stack and are not repeated there.
 
 | Term | Meaning |
 |------|---------|
-| **LiveRequestProcessor** | Live-specific pending order manager with broker tracking |
+| **LiveRequestProcessor** | The live execution stack's pending-order manager, with broker tracking |
 | **Shadow State** | Local portfolio tracking what we believe the broker state to be |
 | **Reconciliation** | Comparing shadow state with actual broker state and resolving differences |
 | **BrokerResponse** | Standardized response from broker adapter (fill, rejection, status) |

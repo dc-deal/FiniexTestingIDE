@@ -227,7 +227,7 @@ class BatchOrchestrator:
         )
 
         # Mount preparer (#438) — the data-heavy + validation half of the batch, extracted so the
-        # AutoTrader-mock reuses the identical index/validation stack for its single scenario.
+        # mock session reuses the identical index/validation stack for its single scenario.
         self._mount_preparer = MountPreparer(
             logger=self._logger,
             app_config=self._app_config_manager,
@@ -494,8 +494,11 @@ class BatchOrchestrator:
         """
         for scenario in scenarios:
             index = scenario.scenario_index
-            if index not in mount.scenario_packages:
-                continue  # invalid / no data — not part of the mount
+            if index not in mount.scenario_packages or not scenario.is_valid():
+                # Invalid / no data — not part of the mount. Invalid covers a scenario the data
+                # quality phase rejected AFTER its package was built: it keeps the package but
+                # never received an identity, and it is not executed either.
+                continue
 
             expected = mount.data_identity.get(index)
             actual = DataIdentityKey.from_scenario(

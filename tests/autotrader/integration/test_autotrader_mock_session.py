@@ -27,14 +27,14 @@ from python.framework.types.log_record_types import LogRecord
 from python.framework.types.run_outcome_types import RunOutcome
 from tests.shared.fixture_helpers import logged_messages, remove_run_dir
 
-MOCK_PROFILE = 'configs/autotrader_profiles/backtesting/mock_session_test.json'
+MOCK_PROFILE = 'configs/autotrader_profiles/mock/mock_session_test.json'
 
 
 @pytest.fixture(scope='module')
 def mock_session():
     """
     Run one full mock session shared across all tests in this module.
-    Avoids running 29782 ticks twice.
+    Avoids running 63412 ticks twice.
     """
     config = load_autotrader_config(MOCK_PROFILE)
     trader = AutotraderMain(config)
@@ -45,7 +45,7 @@ def mock_session():
 
 class TestAutotraderMockSession:
     """
-    End-to-end integration test for AutoTrader mock pipeline.
+    End-to-end integration test for a mock AutoTrader session.
 
     Runs a full session with mock_session_test.json (parquet replay, ~30K ticks).
     Validates that the complete pipeline produces correct, deterministic results.
@@ -71,8 +71,10 @@ class TestAutotraderMockSession:
         )
 
         # === All ticks processed ===
-        assert result.ticks_processed == 29782, (
-            f'Expected 29782 ticks, got {result.ticks_processed}'
+        # The replayed window 2026-01-25 02:19:46 → 2026-01-26 02:14:00 holds exactly this many
+        # ticks — it starts twelve hours into the archive so its warmup bars exist.
+        assert result.ticks_processed == 63412, (
+            f'Expected 63412 ticks, got {result.ticks_processed}'
         )
 
         # === No clipping in replay mode ===
@@ -105,14 +107,14 @@ class TestAutotraderMockSession:
         assert result.execution_stats is not None, 'Missing execution stats'
 
         # === Clipping monitor reported ===
-        assert result.clipping_summary.total_ticks == 29782
+        assert result.clipping_summary.total_ticks == 63412
 
     def test_the_report_knows_how_many_ticks_reached_the_algo(self, mock_session):
         """
         What the loop counted and what the REPORT says must be the same number.
 
         They were not: the orchestrator counted every tick in both pipelines, and only the
-        simulation ever collected the result — so a live session reported 0 ticks beside its
+        simulation ever collected the result — so an AutoTrader session reported 0 ticks beside its
         real decision count, and the #420 per-worker compute ratio derived from that count
         read 0.0 % instead of reading as absent. Measured across six sessions before the fix.
         """
@@ -143,7 +145,7 @@ class TestAutotraderMockSession:
         _, run_dir = mock_session
 
         broker_artifact = run_dir / IO_SUBDIR / 'broker.json'
-        assert broker_artifact.exists(), 'broker.json not written for live session'
+        assert broker_artifact.exists(), 'broker.json not written for a mock session'
 
         report = read_artifact(broker_artifact, BROKER_ARTIFACT)
         assert len(report.units) == 1
@@ -167,14 +169,14 @@ class TestAutotraderMockSession:
         _, run_dir = mock_session
 
         safety_artifact = run_dir / IO_SUBDIR / 'safety.json'
-        assert safety_artifact.exists(), 'safety.json not written for a live session'
+        assert safety_artifact.exists(), 'safety.json not written for a mock session'
 
         report = read_artifact(safety_artifact, SAFETY_ARTIFACT)
         assert report.baseline is not None, (
             'the report was written without the record it exists to name')
         assert report.baseline_value > 0
         assert report.baseline_value == report.baseline.value
-        # The session ran through one UTC day of replayed ticks, so there is a day row and
+        # The session ran through one trading day of replayed ticks, so there is a day row and
         # it names the day rather than only carrying a number.
         assert report.days, 'no day row — a daily limit would have nothing to measure against'
         assert report.days[0].day
@@ -200,7 +202,7 @@ class TestTheSessionBooks:
         # produce MORE than the closing seal: the anchor one is the half that only fires if the
         # boundary check is wired into the loop at all.
         result, _ = mock_session
-        reasons = [segment.reason.value for segment in result.booking_segments]
+        reasons = [period.reason.value for period in result.booking_periods]
         assert len(reasons) >= 2
         assert reasons[:-1] == ['anchor'] * (len(reasons) - 1)
 
@@ -209,14 +211,14 @@ class TestTheSessionBooks:
         # died before its first boundary would otherwise book nothing at all, which is the hole
         # this feature exists to close.
         result, _ = mock_session
-        assert result.booking_segments[-1].reason.value == 'session_end'
+        assert result.booking_periods[-1].reason.value == 'session_end'
 
     def test_the_periods_partition_the_session_s_trades(self, mock_session):
         # The control total: each period's count is what its figures were derived from, so the
         # counts have to add up to the trades the session actually closed — no trade in two
         # periods, none in neither.
         result, _ = mock_session
-        booked = sum(segment.trade_count for segment in result.booking_segments)
+        booked = sum(period.trade_count for period in result.booking_periods)
         assert booked == len(result.trade_history or [])
 
     def test_the_numbers_run_without_a_gap(self, mock_session):
@@ -224,28 +226,28 @@ class TestTheSessionBooks:
         # runs, and the count CONTINUES across restarts by design. A hole would mean a seal
         # advanced the counter without filing its period.
         result, _ = mock_session
-        numbers = [segment.segment_no for segment in result.booking_segments]
+        numbers = [period.period_no for period in result.booking_periods]
         assert numbers == list(range(numbers[0], numbers[0] + len(numbers)))
 
     def test_every_period_is_bounded_and_named(self, mock_session):
         result, _ = mock_session
-        for segment in result.booking_segments:
-            assert segment.opened_at < segment.closed_at
-            assert segment.unit_name
+        for period in result.booking_periods:
+            assert period.opened_at < period.closed_at
+            assert period.unit_name
 
     def test_the_table_reaches_disk_with_its_reconciliation(self, mock_session):
-        # The Hauptbuch was the ONE report section that was derived and then thrown away —
-        # rendered to the console and the summary log, persisted nowhere — so nothing but a
-        # human reading that log could see it (#539). This is the half the console test cannot
+        # The booking-periods table was the ONE report section that was derived and then thrown
+        # away — rendered to the console and the summary log, persisted nowhere — so nothing but
+        # a human reading that log could see it (#539). This is the half the console test cannot
         # give: the artifact exists, and it carries the CHECK rather than only the rows.
         result, run_dir = mock_session
 
         artifact = run_dir / IO_SUBDIR / 'booking_periods.json'
-        assert artifact.exists(), 'booking_periods.json not written for a live session'
+        assert artifact.exists(), 'booking_periods.json not written for a mock session'
 
         report = read_artifact(artifact, BOOKING_PERIODS_ARTIFACT)
-        assert len(report.periods) == len(result.booking_segments)
-        assert report.total_trades == sum(s.trade_count for s in result.booking_segments)
+        assert len(report.periods) == len(result.booking_periods)
+        assert report.total_trades == sum(s.trade_count for s in result.booking_periods)
         # The reconciliation is why the report is stored rather than rebuilt from the ledger
         # later: it compares the periods against the run's own independently derived figure,
         # and that second figure exists only while the run does.

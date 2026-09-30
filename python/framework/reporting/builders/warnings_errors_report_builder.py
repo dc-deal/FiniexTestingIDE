@@ -45,6 +45,9 @@ def build_warnings_errors_report_from_batch(run_id: str, batch: BatchExecutionSu
     warnings = _batch_warnings(batch)
     errors = _batch_errors(batch)
     outcome = _batch_outcome(batch)
+    outcome.error_count = _log_pot_summary(batch, LogLevel.ERROR)[0]
+    outcome.warning_count = _tier_one_count(warnings)
+    outcome.log_warning_count = _log_pot_summary(batch, LogLevel.WARNING)[0]
     return WarningsErrorsReport(run_id=run_id, warnings=warnings, errors=errors, outcome=outcome)
 
 
@@ -52,7 +55,7 @@ def build_warnings_errors_report_from_session(
     run_id: str,
     result: AutoTraderResult, name: str, symbol: str) -> WarningsErrorsReport:
     """
-    Build the report for a live session.
+    Build the report for an AutoTrader session.
 
     Args:
         run_id: The run this report belongs to
@@ -70,12 +73,15 @@ def build_warnings_errors_report_from_session(
     for vr in result.session_validation_result:
         warnings.extend(_warning_rows(vr, 'run'))
 
+    tier_one_count = _tier_one_count(warnings)
+
     # Tier-2 — the session WARNING buffer. The message arrives unrendered from the LogRecord,
     # so there is nothing to strip. check/domain stay empty: no assertion decided this, and the
     # channel is already named by the tier.
+    logged_warnings = _log_entries(result.session_logger_buffer, LogLevel.WARNING)
     warnings.extend(
         WarningRow(tier=WarningTier.LOGGER_PRODUCED, scope=name, message=entry.message)
-        for entry in _log_entries(result.session_logger_buffer, LogLevel.WARNING))
+        for entry in logged_warnings)
 
     # Errors — the session ERROR buffer (pot) + the emergency villain
     logged_errors = _log_entries(result.session_logger_buffer, LogLevel.ERROR)
@@ -87,7 +93,7 @@ def build_warnings_errors_report_from_session(
             logged_errors=logged_errors))
 
     outcome = WarningsErrorsOutcome(
-        run_outcome=result.get_outcome().value,
+        run_outcome=result.get_outcome(),
         failed_count=1 if result.emergency_reason else 0,
         total_units=1,
         failed_unit_names=[name] if result.emergency_reason else [],
@@ -95,7 +101,10 @@ def build_warnings_errors_report_from_session(
         first_failure_error=result.emergency_reason or '',
         emergency_reason=result.emergency_reason or '',
         shutdown_mode=result.shutdown_mode,
-        operator_interrupted=result.operator_interrupted)
+        operator_interrupted=result.operator_interrupted,
+        error_count=len(logged_errors),
+        warning_count=tier_one_count,
+        log_warning_count=len(logged_warnings))
     return WarningsErrorsReport(run_id=run_id, warnings=warnings, errors=errors, outcome=outcome)
 
 
@@ -117,6 +126,19 @@ def _warning_rows(result: ValidationResult, scope: str) -> list:
         WarningRow(tier=WarningTier.VALIDATOR_PRODUCED, scope=finding.scope or scope,
                    message=finding.message, check=finding.check, domain=finding.domain.value)
         for finding in result.findings if finding.severity is Severity.WARNING]
+
+
+def _tier_one_count(warnings: list) -> int:
+    """
+    How many of the rows are Tier-1 findings.
+
+    Args:
+        warnings: The report's warning rows
+
+    Returns:
+        The number of validator-produced rows
+    """
+    return sum(1 for row in warnings if row.tier == WarningTier.VALIDATOR_PRODUCED)
 
 
 def _batch_warnings(batch: BatchExecutionSummary) -> list:
@@ -170,7 +192,7 @@ def _batch_outcome(batch: BatchExecutionSummary) -> WarningsErrorsOutcome:
     failed = [r for r in results if not r.success]
     first = failed[0] if failed else None
     return WarningsErrorsOutcome(
-        run_outcome=batch.get_outcome().value,
+        run_outcome=batch.get_outcome(),
         failed_count=len(failed),
         total_units=len(results),
         failed_unit_names=[r.scenario_name for r in failed],
@@ -184,7 +206,7 @@ def _log_entries(buffer: Optional[list], level: LogLevel) -> list[LogEntryRow]:
 
     Maps rather than reduces: the record reaches DERIVE with level, both times and scope intact,
     and dropping them here would make them unreachable for the artifact and the API alike (#391).
-    Shared by both pipelines — the sim hands its scenario buffer, the live session its own.
+    Shared by both pipelines — the sim hands its scenario buffer, the AutoTrader session its own.
 
     Args:
         buffer: The logger's records, or None when nothing was buffered

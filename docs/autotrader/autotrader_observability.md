@@ -132,14 +132,14 @@ The console prints the metrics; whether they are *bad* is decided by
 exceeds the configured share (default `0.05` in `app_config.json::autotrader.clipping_monitor`). A
 ratio can never exceed `1.0`, so that value disables the advisory.
 
-This is the **only** performance verdict a live session makes, and the reason is worth stating: the
-ratio is measured against *real tick arrival*, so it is grounded in what actually happened. A
-per-component millisecond threshold is not — 1.2 ms is fine at 50 ms between ticks and fatal at 2 ms
-— and an earlier check that tried it was removed as misinformation (see
-[Warnings & Errors — Tier Taxonomy](../architecture/warnings_errors_tiers.md)). Where exactly the
-line sits is a policy question, which is why it lives in config rather than in a constant.
+This is the **only** performance verdict an AutoTrader session makes, and the reason is worth
+stating: the ratio is measured against *real tick arrival*, so it is grounded in what actually
+happened. A per-component millisecond threshold is not — 1.2 ms is fine at 50 ms between ticks and
+fatal at 2 ms — and an earlier check that tried it was removed as misinformation (see [Warnings &
+Errors — Tier Taxonomy](../architecture/warnings_errors_tiers.md)). Where exactly the line sits is a
+policy question, which is why it lives in config rather than in a constant.
 
-The sim has no counterpart: it judges clipping against a *configured* `tick_processing_budget_ms` (the tick-budget advisories), while a live session has only what it observed.
+The sim has no counterpart: it judges clipping against a *configured* `tick_processing_budget_ms` (the tick-budget advisories), while an AutoTrader session has only what it observed.
 
 ### Phases
 
@@ -162,7 +162,7 @@ Three `ScenarioLogger` instances per session, each with a distinct purpose:
 | Session | `session_logs/autotrader_session_YYYYMMDD.log` | Per-tick processing, decisions, orders | Buffered (cleared before summary) |
 | Summary | `autotrader_summary.log` | Post-session report, statistics | Flushed to console at end |
 
-- Directory: `runs/live/<name>/<run_id>/` (from `file_logging.run_logs.live`)
+- Directory: `runs/autotrader/<profile_name>/<run_id>/` (from `file_logging.run_logs.autotrader`)
 - Separate from simulation runs (`runs/simulation/`); `logs/` holds only `global.log`
 - Session log **rotates daily** at this market's trading-day boundary (`trading_day_anchor`
   — the swap rollover for forex, midnight UTC for crypto), and rotated days older than
@@ -170,7 +170,7 @@ Three `ScenarioLogger` instances per session, each with a distinct purpose:
   guarantees live in [autotrader_architecture.md](autotrader_architecture.md) §Session logs
 
 ```
-runs/live/btcusd_mock/20260328_105127_a1b2c3d4/
+runs/autotrader/btcusd_mock/20260328_105127_a1b2c3d4/
   autotrader_global.log           Startup, shutdown, errors
   autotrader_summary.log          Post-session summary
   session_logs/
@@ -186,7 +186,8 @@ runs/live/btcusd_mock/20260328_105127_a1b2c3d4/
 
 The session log carries **two** times per line: the elapsed bracket is OBSERVATION time (how far
 into the session we were), the column after the level is EVENT time — the canonical clock, pulled
-through an injected `clock_fn`. §9's `ts_init` / `ts_event` pair, rendered.
+through an injected `clock_fn`. The observation / event pair every event carries (`ts_init` /
+`ts_event`), rendered.
 
 ```
 [  1s  26ms] DEBUG    | 2026-01-24 14:19:46.420 | NEW MAX: rsi_fast    0.20ms
@@ -195,15 +196,15 @@ through an injected `clock_fn`. §9's `ts_init` / `ts_event` pair, rendered.
 
 Only the session log carries the column: it is the tick-by-tick record. `autotrader_global.log`
 and `autotrader_summary.log` describe the session from outside a moment in it, so they do not.
-The filler appears before the executor exists — there is no session time yet to state, and §9
-forbids substituting wall-clock for it.
+The filler appears before the executor exists — there is no session time yet to state, and a
+missing event time is never replaced by a wall-clock reading.
 
-**In a mock replay session the column can show two different dates, and that is not a defect.**
+**In a mock session the column can show two different dates, and that is not a defect.**
 The canonical clock is bimodal there: a tick sets it to the tick's own (replayed) timestamp, while
 the idle heartbeat sets it to wall-clock so phase and operation timeouts keep tracking real elapsed
 time. A replay of January data on an August afternoon therefore stamps tick lines with January and
 idle-heartbeat lines with August. The property predates the column — the column only makes it
-visible. It does not arise in live trading, where both sources are the same clock, and it is
+visible. It does not arise in a live-adapter session, where both sources are the same clock, and it is
 harmless in replay because nothing decides on the log. Sessions driven at a low `--delay` rarely go
 idle at all and show only replay dates.
 

@@ -5,8 +5,8 @@ An index is DERIVED, and that is the property the whole store model rests on: it
 deleted or go stale without anything being lost, because `rebuild()` reconstructs it from the
 store's own contents. The store is the truth; the index is the read path.
 
-It is ONE file, never a fragment per entry. Measured on this project: reading 404 small parquet
-fragments costs 3.29 s while the same rows as a single file cost 0.008 s — 420x, and 99.6 % of
+It is ONE file, never a file per entry. Measured on this project: reading 404 small parquet
+files costs 3.29 s while the same rows as a single file cost 0.008 s — 420x, and 99.6 % of
 it is the file OPEN rather than the work.
 """
 

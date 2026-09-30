@@ -1,5 +1,5 @@
 """
-Whether a live session joins a deployment — who may say so, and who may only narrow it (#497).
+Whether an AutoTrader session joins a deployment — who may say so, and who may only narrow it (#497).
 
 A deployment is the span of one bot across its restarts. It is DECLARED in the profile and
 never inferred, and the command line can only take it away. The asymmetry is the design, and it
@@ -29,7 +29,7 @@ from python.framework.types.autotrader_types.autotrader_config_types import Depl
 from python.framework.types.persistence_types import ColdStartPayload
 
 PROFILE_ROOT = Path(__file__).resolve().parents[3] / 'configs' / 'autotrader_profiles'
-A_LOADABLE_PROFILE = PROFILE_ROOT / 'backtesting' / 'minimal_warmup_test.json'
+A_LOADABLE_PROFILE = PROFILE_ROOT / 'mock' / 'minimal_warmup_test.json'
 
 
 def write_profile(tmp_path: Path, deployment) -> str:
@@ -184,7 +184,7 @@ class TestTheCommandLineMayOnlyNarrow:
         assert 'deploy_20260901_060000_ab12' in message
         assert '--new-deployment' in message
         assert 'copy the profile' in message
-        assert 'BEFORE the first continuous start' in message
+        assert "BEFORE the deployment's first start" in message
 
     def test_new_deployment_begins_a_fresh_one_instead_of_inheriting(self):
         minted = resolve(continuous=True, carried='deploy_20260901_060000_ab12',

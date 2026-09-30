@@ -8,9 +8,10 @@ execution totals. The single object every consumer reads (sweep objective, conso
 API, live snapshot).
 """
 
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 
 from python.framework.reporting.builders.report_aggregators import aggregate_signal_fresh_ratio
+from python.framework.reporting.builders.run_unit import RunUnit
 from python.framework.types.api.report_types import (
     ExecutionStatsReport,
     FeedStabilityReport,
@@ -21,7 +22,9 @@ from python.framework.types.api.report_types import (
     SignalReport,
     TradeAnalytics,
     TradeHistoryReport,
+    UnitRoster,
 )
+from python.framework.utils.time_utils import covered_seconds
 
 
 def build_run_summary(
@@ -31,6 +34,8 @@ def build_run_summary(
     execution_report: ExecutionStatsReport,
     signal_report: Optional[SignalReport] = None,
     feed_stability_report: Optional[FeedStabilityReport] = None,
+    roster: Optional[UnitRoster] = None,
+    units: Optional[List[RunUnit]] = None,
 ) -> RunSummary:
     """
     Compose the run-wide KPI summary from the section reports.
@@ -44,6 +49,10 @@ def build_run_summary(
             None / no SIGNAL worker leaves the ratio unset
         feed_stability_report: The feed-stability report (#451) — supplies the run's
             disturbance totals for the executive line
+        roster: Which units the run declared and which produced nothing, built by the pipeline
+            from its own source; None counts every summed unit as declared — the case of a
+            summary over units a caller already selected, such as one robustness window
+        units: The run's units, for the market time they processed; None leaves it unset
 
     Returns:
         RunSummary with one KPI row per currency + the global order counts
@@ -55,6 +64,10 @@ def build_run_summary(
         for agg in portfolio_report.aggregates
     ]
     totals = execution_report.totals
+    unit_count = len(portfolio_report.units)
+    spans = [(u.first_tick_time, u.last_tick_time) for u in units or []
+             if u.first_tick_time and u.last_tick_time]
+    roster = roster or UnitRoster(declared=unit_count)
     return RunSummary(
         run_id=run_id,
         currencies=currencies,
@@ -62,7 +75,13 @@ def build_run_summary(
         orders_executed=totals.orders_executed,
         orders_rejected=totals.orders_rejected,
         sl_tp_triggered=totals.sl_tp_triggered,
-        unit_count=len(portfolio_report.units),
+        unit_count=unit_count,
+        tick_timespan_seconds=covered_seconds(spans) if spans else None,
+        tick_timespan_total_seconds=(
+            sum((last - first).total_seconds() for first, last in spans) if spans else None),
+        units_declared=roster.declared,
+        units_disabled=roster.disabled,
+        units_absent=list(roster.absent),
         signal_fresh_ratio=(
             aggregate_signal_fresh_ratio(signal_report) if signal_report else None),
         disturbance_episode_count=(
@@ -87,11 +106,16 @@ def _to_currency(
         account_max_drawdown=agg.account_max_drawdown,
         max_equity=agg.max_equity,
         account_max_dd_pct=agg.account_max_dd_pct,
+        account_max_drawdown_unit=agg.account_max_drawdown_unit,
         total_fees=agg.total_fees,
+        fees_charged=agg.fees_charged,
         gross_profit=agg.total_profit,
         gross_loss=agg.total_loss,
         unrealized_pnl=agg.unrealized_pnl,
         final_equity=agg.final_equity,
+        total_final_equity=agg.total_final_equity,
+        total_initial_balance=agg.total_initial_balance,
+        unit_count=agg.unit_count,
         open_position_count=agg.open_position_count,
         total_trades=agg.total_trades,
         winning_trades=agg.winning_trades,

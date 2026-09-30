@@ -28,7 +28,7 @@ def render_run_config_list(entries: List[RunConfigEntry], indent: str = '  ') ->
     print(f'\n{indent}📇 RUN CONFIGS — {len(entries)} registered version(s)')
     print(f'{indent}' + '─' * 104)
     if not entries:
-        print(f'{indent}  nothing registered yet — run or list a scenario set and it appears here')
+        print(f'{indent}  nothing registered yet — run a scenario set or a profile and it appears here')
         return
     print(f'{indent}{"config_id":<14} {"kind":<19} {"source":<38} {"first seen":<17} {"runs":>5}')
     print(f'{indent}' + '─' * 104)

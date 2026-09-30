@@ -136,20 +136,12 @@ class TradeHistorySummary(AbstractBatchSummarySection):
             f'Total P&L: {pnl_str}')
         print()
 
-        # Pre-compute entry execution trade_id frequency for the shared(Nx) annotation
-        # (#330). A partially-closed position's derived rows carry the SAME entry
-        # executions — the renderer flags the duplicates.
-        shared_counts: Dict[str, int] = {}
-        for r in sorted_rows:
-            for ex in r.entry_executions:
-                shared_counts[ex.trade_id] = shared_counts.get(ex.trade_id, 0) + 1
-
         # MAE/MFE column unit is constant per scenario (one symbol) — taken from the
         # source-stamped row (#167), never re-derived here.
         unit = (sorted_rows[0].price_unit if sorted_rows else '') or 'pip'
         self._print_table_header(renderer, unit)
         for idx, row in enumerate(sorted_rows, 1):
-            self._print_trade_row(idx, row, renderer, shared_counts)
+            self._print_trade_row(idx, row, renderer)
         self._print_table_footer(totals, renderer)
 
         self._render_scenario_rejections(scenario_name, renderer)
@@ -192,7 +184,6 @@ class TradeHistorySummary(AbstractBatchSummarySection):
         idx: int,
         row: TradeHistoryRow,
         renderer: ConsoleRenderer,
-        shared_counts: Dict[str, int]
     ) -> None:
         """Print single trade row plus per-execution sub-lines (#330)."""
         # Position direction (LONG/SHORT); the close-transaction side is in the sub-lines.
@@ -219,11 +210,13 @@ class TradeHistorySummary(AbstractBatchSummarySection):
             f'{row.mae_distance:>9.1f} | {row.mfe_distance:>9.1f} | {r_str} | {reason_str:>14}'
         )
 
-        # Per-execution sub-lines (#330) — from the model's ExecutionRows.
+        # Per-execution sub-lines (#330) — from the model's ExecutionRows, including how many
+        # rows share each fill: a partial close copies the position's entry fills onto every
+        # record it produces, and the builder counts that over the whole unit.
         for ex in row.entry_executions:
-            self._render_subline('in', ex, shared_counts.get(ex.trade_id, 1), renderer, row.lots)
+            self._render_subline('in', ex, ex.shared_by or 1, renderer, row.lots)
         for ex in row.exit_executions:
-            self._render_subline('out', ex, 1, renderer)
+            self._render_subline('out', ex, ex.shared_by or 1, renderer)
 
     def _render_subline(
         self,
@@ -277,8 +270,10 @@ class TradeHistorySummary(AbstractBatchSummarySection):
         long_trades = sum(1 for r in rows if r.direction == 'long')
         short_trades = total_trades - long_trades
 
+        # A trade that realised nothing is neither — the rule the portfolio counters, the trade
+        # analytics and the booking periods share (contract 18).
         winning_trades = [r for r in rows if r.net_pnl > 0]
-        losing_trades = [r for r in rows if r.net_pnl <= 0]
+        losing_trades = [r for r in rows if r.net_pnl < 0]
 
         # P&L totals come straight from the model aggregate — analytics is always present here
         # (one per currency; render_aggregated returns early when there are no trades).

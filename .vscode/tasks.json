@@ -6,6 +6,78 @@
             "type": "shell",
             "command": "autopep8 -r -i . && isort .",
             "problemMatcher": []
+        },
+        {
+            // The API as a long-running service rather than a debug session: started when the
+            // workspace opens, its log in a terminal of its own, and no debugger attached — a
+            // breakpoint elsewhere never freezes the API the viewer is reading.
+            // NO --reload: it serves the code of its last start, so a half-edited file never
+            // reaches a consumer. After a change: "Tasks: Restart Running Task".
+            // Stop it (Tasks: Terminate Task) before starting the debug entry — both bind :8000.
+            "label": "🚀 API Server (stable)",
+            "type": "shell",
+            "command": "python python/cli/api_server_cli.py",
+            "isBackground": true,
+            "runOptions": {
+                "runOn": "folderOpen",
+                "instanceLimit": 1
+            },
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated",
+                "group": "api-server",
+                "clear": true
+            },
+            "problemMatcher": {
+                "owner": "finiex-api",
+                "source": "API Server",
+                "fileLocation": "absolute",
+                // Every frame of OUR code in a traceback becomes a Problems entry — a failed boot
+                // or a 500 shows as a red badge and a click lands on the line.
+                "pattern": {
+                    "regexp": "^\\s+File \"(/app/python/[^\"]+)\", line (\\d+), in (.+)$",
+                    "file": 1,
+                    "line": 2,
+                    "message": 3
+                },
+                "background": {
+                    "activeBegin": true,
+                    "beginsPattern": "Started server process",
+                    "endsPattern": "Application startup complete"
+                }
+            }
+        },
+        {
+            // The same service, reloading on every save — for work ON the API. Every save restarts
+            // it and a consumer sees whatever is on disk at that moment, finished or not.
+            "label": "🚀 API Server (dev, reload)",
+            "type": "shell",
+            "command": "python python/cli/api_server_cli.py --reload",
+            "isBackground": true,
+            "runOptions": {
+                "instanceLimit": 1
+            },
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated",
+                "group": "api-server",
+                "clear": true
+            },
+            "problemMatcher": {
+                "owner": "finiex-api",
+                "source": "API Server",
+                "fileLocation": "absolute",
+                "pattern": {
+                    "regexp": "^\\s+File \"(/app/python/[^\"]+)\", line (\\d+), in (.+)$",
+                    "file": 1,
+                    "line": 2,
+                    "message": 3
+                },
+                "background": {
+                    "beginsPattern": "Started server process|Started reloader process|Reloading",
+                    "endsPattern": "Application startup complete"
+                }
+            }
         }
     ]
 }

@@ -142,7 +142,7 @@ class Bar:
         Convert Bar to dictionary for serialization.
 
         Used for:
-        - BacktestingMetadata bar snapshots
+        - ProbeMetadata bar snapshots
         - Cross-process data transfer
         - JSON serialization
 

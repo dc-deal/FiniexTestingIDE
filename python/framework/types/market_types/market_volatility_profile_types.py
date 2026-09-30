@@ -155,7 +155,7 @@ class SymbolVolatilityProfile:
     symbol: str
     timeframe: str
     market_type: MarketType
-    data_source: str
+    broker_type: str
 
     # Time range
     start_time: datetime

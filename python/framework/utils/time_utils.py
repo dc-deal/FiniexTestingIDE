@@ -4,7 +4,7 @@ Time utility functions for readable duration formatting
 
 
 from datetime import date, datetime, timedelta, timezone
-from typing import Optional
+from typing import Iterable, Optional, Tuple
 from zoneinfo import ZoneInfo
 
 from dateutil import parser
@@ -202,6 +202,37 @@ def format_tick_timespan(
         return f'{start_weekday} {start_time} → {end_weekday} {end_time} ({duration})'
 
 
+def covered_seconds(spans: Iterable[Tuple[datetime, datetime]]) -> float:
+    """
+    How much time a set of spans covers together — overlap counted ONCE.
+
+    The run-level tick timespan is this over the units' spans: two scenarios over one window
+    cover that window once, while their plain sum counts it twice (measured 2026-09-29: eight
+    scenarios in four pairs of identical windows, 928 h summed, 464 h covered).
+
+    Args:
+        spans: (start, end) pairs; an inverted pair covers nothing
+
+    Returns:
+        The covered seconds; 0.0 for no spans
+    """
+    covered = 0.0
+    current_start: Optional[datetime] = None
+    current_end: Optional[datetime] = None
+    for start, end in sorted(spans):
+        if end <= start:
+            continue
+        if current_end is None or start > current_end:
+            if current_end is not None:
+                covered += (current_end - current_start).total_seconds()
+            current_start, current_end = start, end
+        else:
+            current_end = max(current_end, end)
+    if current_end is not None:
+        covered += (current_end - current_start).total_seconds()
+    return covered
+
+
 def parse_datetime(dt_str: str) -> datetime:
     """
     Parse datetime string to UTC-aware datetime object.
@@ -247,17 +278,20 @@ def ensure_utc_aware(dt: datetime) -> datetime:
     """
     Ensure datetime is UTC-aware.
 
-    Project policy: All datetimes must be UTC-aware.
+    Project policy: All datetimes must be UTC-aware. A naive value is taken AS UTC; an aware one
+    is CONVERTED to UTC — never passed through. `dateutil` hands back `tzlocal()` for a string
+    whose offset matches the machine's zone and a fixed offset for any other, and both keep the
+    instant right while `.hour`, `.date()` and `.weekday()` answer in that zone, not in UTC.
 
     Args:
         dt: Datetime object (naive or aware)
 
     Returns:
-        UTC-aware datetime
+        UTC-aware datetime, `tzinfo` exactly `timezone.utc`
     """
     if dt.tzinfo is None:
         return dt.replace(tzinfo=timezone.utc)
-    return dt
+    return dt.astimezone(timezone.utc)
 
 
 def mt5_weekday_to_python(mt5_weekday: int) -> int:

@@ -14,7 +14,7 @@ tokens, and `get(run_id, BROKER_ARTIFACT)` is still statically a `BrokerReport`.
 from datetime import datetime
 from pathlib import Path
 import json
-from typing import List, Optional, TypeVar
+from typing import Any, Dict, List, Optional, TypeVar
 
 from pydantic import BaseModel, ValidationError
 
@@ -30,11 +30,13 @@ from python.framework.reporting.io.report_filters import (
     filter_trade_history_report,
 )
 from python.framework.reporting.store.run_index import RunIndex
+from python.framework.reporting.store.run_list_figures import get_run_list_figures
 from python.framework.store.run_config_store import RunConfigStore
 from python.framework.types.api.report_types import (
     OrderHistoryReport,
     RunConfigSnapshot,
     RunInfo,
+    RunListFigures,
     TradeHistoryReport,
 )
 from python.framework.types.log_layout_types import IO_SUBDIR
@@ -45,15 +47,18 @@ T = TypeVar('T', bound=BaseModel)
 class ReportStore:
     """Locates + serves persisted run-report artifacts (simulation + live runs)."""
 
-    def __init__(self, run_index_path: Optional[Path] = None):
+    def __init__(self, run_index_path: Optional[Path] = None, ledger_dir: Optional[Path] = None):
         """
         Args:
             run_index_path: The run index to read; from config when not given. Injectable so a
                 caller pointed at an isolated tree can be pointed at that tree's index too,
                 rather than asking the real one about runs that only exist in tmp
+            ledger_dir: The run-results ledger the run list joins its figures from; from config
+                when not given, injectable for the same reason
         """
         self._index = RunIndex(
             run_index_path or AppConfigManager().get_file_logging_config_object().run_index)
+        self._ledger_dir = Path(ledger_dir or AppConfigManager().get_run_ledger_path())
 
     def list_runs(self) -> List[RunInfo]:
         """Every indexed run, both types, newest first.
@@ -66,6 +71,23 @@ class ReportStore:
             One identity row per run — id, run type, owning set / profile, artifacts
         """
         return self._index.list_runs()
+
+    def list_runs_with_results(self) -> List[RunInfo]:
+        """
+        Every indexed run, with what the run-results ledger recorded it DID.
+
+        The index says what a run IS and the ledger what it did; the two are joined here on
+        `run_id`, once for the whole list. A run the ledger holds nothing for keeps `results`
+        None — it is still going, died before its close, or never reported.
+
+        Returns:
+            The runs of `list_runs`, each carrying its figures where the ledger has them
+        """
+        figures = get_run_list_figures(self._ledger_dir)
+        runs = self._index.list_runs()
+        return [run.model_copy(update=_figure_fields(figures[run.run_id]))
+                if run.run_id in figures else run
+                for run in runs]
 
     def get(self, run_id: str, spec: ArtifactSpec[T]) -> Optional[T]:
         """
@@ -199,3 +221,19 @@ class ReportStore:
             return None
         path = run_dir / IO_SUBDIR / artifact
         return path if path.exists() else None
+
+
+def _figure_fields(figures: RunListFigures) -> Dict[str, Any]:
+    """
+    The RunInfo fields one run's ledger figures fill.
+
+    Args:
+        figures: What the ledger recorded for the run
+
+    Returns:
+        Field name → value, the nested figures kept as models
+    """
+    return {'results': list(figures.results), 'run_outcome': figures.run_outcome,
+            'error_count': figures.error_count, 'warning_count': figures.warning_count,
+            'log_warning_count': figures.log_warning_count,
+            'tick_timespan_seconds': figures.tick_timespan_seconds}

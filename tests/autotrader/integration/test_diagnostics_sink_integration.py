@@ -3,7 +3,7 @@ FiniexTestingIDE - Diagnostics CSV Sink Integration (#376, AutoTrader)
 
 End-to-end proof that the AutoTrader pipeline flushes an algo-declared diagnostics
 sink to the run directory at session end. Uses a test-only probe decision logic
-(tests/fixtures/diagnostics/) that writes one row, run through the mock pipeline.
+(tests/fixtures/diagnostics/) that writes one row, run as a mock session.
 """
 
 import csv
@@ -14,7 +14,7 @@ from tests.shared.fixture_helpers import remove_run_dir
 from python.configuration.autotrader.autotrader_config_loader import load_autotrader_config
 from python.framework.autotrader.autotrader_main import AutotraderMain
 
-_PROFILE = 'configs/autotrader_profiles/backtesting/diagnostics_probe_test.json'
+_PROFILE = 'configs/autotrader_profiles/mock/diagnostics_probe_test.json'
 
 
 @pytest.fixture(scope='module')

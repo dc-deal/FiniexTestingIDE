@@ -3,7 +3,6 @@
   "scenario_set_name": "cascade_unknown_key_typo",
   "description": "Cascade test fixture — global execution_config carries an unknown typoed key. The loader must hard-fail with ValueError before any merge happens.",
   "global": {
-    "data_mode": "realistic",
     "strategy_config": {
       "decision_logic_type": "CORE/aggressive_trend",
       "worker_instances": {
@@ -24,7 +23,7 @@
   },
   "scenarios": [
     {
-      "name": "test_scenario",
+      "scenario_name": "test_scenario",
       "symbol": "EURUSD",
       "data_broker_type": "mt5",
       "start_date": "2025-09-23T00:00:00+00:00",

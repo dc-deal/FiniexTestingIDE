@@ -12,7 +12,6 @@
     "disposition_trust_pct": 25.0
   },
   "global": {
-    "data_mode": "realistic",
     "strategy_config": {
       "decision_logic_type": "CORE/aggressive_trend",
       "worker_instances": {
@@ -48,112 +47,102 @@
   },
   "scenarios": [
     {
-      "name": "ETHUSD_blocks_01",
+      "scenario_name": "ETHUSD_blocks_01",
       "symbol": "ETHUSD",
       "data_broker_type": "kraken_spot",
       "start_date": "2026-01-24T14:20:00+00:00",
       "end_date": "2026-01-24T20:20:00+00:00",
       "max_ticks": null,
-      "data_mode": "realistic",
       "enabled": true,
       "role": "in_sample"
     },
     {
-      "name": "ETHUSD_blocks_02",
+      "scenario_name": "ETHUSD_blocks_02",
       "symbol": "ETHUSD",
       "data_broker_type": "kraken_spot",
       "start_date": "2026-01-24T20:20:00+00:00",
       "end_date": "2026-01-25T02:20:00+00:00",
       "max_ticks": null,
-      "data_mode": "realistic",
       "enabled": true,
       "role": "in_sample"
     },
     {
-      "name": "ETHUSD_blocks_03",
+      "scenario_name": "ETHUSD_blocks_03",
       "symbol": "ETHUSD",
       "data_broker_type": "kraken_spot",
       "start_date": "2026-01-25T02:20:00+00:00",
       "end_date": "2026-01-25T08:20:00+00:00",
       "max_ticks": null,
-      "data_mode": "realistic",
       "enabled": true,
       "role": "in_sample"
     },
     {
-      "name": "ETHUSD_blocks_04",
+      "scenario_name": "ETHUSD_blocks_04",
       "symbol": "ETHUSD",
       "data_broker_type": "kraken_spot",
       "start_date": "2026-01-25T08:20:00+00:00",
       "end_date": "2026-01-25T14:20:00+00:00",
       "max_ticks": null,
-      "data_mode": "realistic",
       "enabled": true,
       "role": "in_sample"
     },
     {
-      "name": "ETHUSD_blocks_05",
+      "scenario_name": "ETHUSD_blocks_05",
       "symbol": "ETHUSD",
       "data_broker_type": "kraken_spot",
       "start_date": "2026-01-25T14:20:00+00:00",
       "end_date": "2026-01-25T20:20:00+00:00",
       "max_ticks": null,
-      "data_mode": "realistic",
       "enabled": true,
       "role": "in_sample"
     },
     {
-      "name": "ETHUSD_blocks_06",
+      "scenario_name": "ETHUSD_blocks_06",
       "symbol": "ETHUSD",
       "data_broker_type": "kraken_spot",
       "start_date": "2026-01-25T20:20:00+00:00",
       "end_date": "2026-01-26T02:20:00+00:00",
       "max_ticks": null,
-      "data_mode": "realistic",
       "enabled": true,
       "role": "in_sample"
     },
     {
-      "name": "ETHUSD_blocks_07",
+      "scenario_name": "ETHUSD_blocks_07",
       "symbol": "ETHUSD",
       "data_broker_type": "kraken_spot",
       "start_date": "2026-01-26T02:20:00+00:00",
       "end_date": "2026-01-26T08:20:00+00:00",
       "max_ticks": null,
-      "data_mode": "realistic",
       "enabled": true,
       "role": "in_sample"
     },
     {
-      "name": "ETHUSD_blocks_08",
+      "scenario_name": "ETHUSD_blocks_08",
       "symbol": "ETHUSD",
       "data_broker_type": "kraken_spot",
       "start_date": "2026-01-26T08:20:00+00:00",
       "end_date": "2026-01-26T14:20:00+00:00",
       "max_ticks": null,
-      "data_mode": "realistic",
       "enabled": true,
       "role": "out_of_sample"
     },
     {
-      "name": "ETHUSD_blocks_09",
+      "scenario_name": "ETHUSD_blocks_09",
       "symbol": "ETHUSD",
       "data_broker_type": "kraken_spot",
       "start_date": "2026-01-26T14:20:00+00:00",
       "end_date": "2026-01-26T20:20:00+00:00",
       "max_ticks": null,
-      "data_mode": "realistic",
       "enabled": true,
       "role": "out_of_sample"
     },
     {
-      "name": "ETHUSD_blocks_10",
+      "scenario_name": "ETHUSD_blocks_10",
       "symbol": "ETHUSD",
       "data_broker_type": "kraken_spot",
       "start_date": "2026-01-26T20:20:00+00:00",
       "end_date": "2026-01-27T02:20:00+00:00",
       "max_ticks": null,
-      "data_mode": "realistic",
       "enabled": true,
       "role": "out_of_sample"
     }

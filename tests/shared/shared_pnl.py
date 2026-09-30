@@ -161,9 +161,16 @@ class TestPnLCalculation:
         trade_history: List[TradeRecord],
         portfolio_stats: PortfolioStats
     ):
-        """Winning/losing trade counts should match."""
+        """
+        Winning/losing trade counts should match.
+
+        A trade that realised exactly nothing is neither — the rule every surface shares since
+        contract 18. The margin-validation scenario holds one such trade (closed at its entry
+        price on a broker with no per-side fee), which is what caught the counter still calling
+        it a loser.
+        """
         expected_winners = sum(1 for t in trade_history if t.net_pnl > 0)
-        expected_losers = sum(1 for t in trade_history if t.net_pnl <= 0)
+        expected_losers = sum(1 for t in trade_history if t.net_pnl < 0)
 
         assert expected_winners == portfolio_stats.winning_trades, (
             f'Expected {expected_winners} winners, got {portfolio_stats.winning_trades}'

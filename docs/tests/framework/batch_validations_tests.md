@@ -44,7 +44,7 @@ Phase 0 step that checks each scenario's symbol against the authoritative broker
 #### `TestValidateSwapModes`
 
 Phase 0 step (#407) rejecting a symbol whose `swap_mode` the swap engine does not model
-(`points` / `none` are supported; the rest fail per-scenario, §33 — the batch is not aborted).
+(`points` / `none` are supported; the rest fail per-scenario — the batch is not aborted).
 
 | Test | Description |
 |------|-------------|
@@ -60,7 +60,8 @@ Phase 0 step (#407) rejecting a symbol whose `swap_mode` the swap engine does no
 
 `DataCoverageReport` is constructed with `start_time` / `end_time` as `None` and keeps them when its
 analysis finds no files. Dereferencing that `None` raised an `AttributeError` that aborted the whole
-batch — a DATA condition escaping as a code crash, which §33 exists to prevent.
+batch — a DATA condition escaping as a code crash, which the split between a data error
+(the scenario is excluded) and a code crash (the run stops) exists to prevent.
 
 | Test | Description |
 |---|---|
@@ -222,7 +223,7 @@ symbols from invalid scenarios.
 schema drift in refreshed runtime cache files — both would silently produce wrong P&L
 calculations if base/quote currencies are mismatched against the symbol key.
 
-The two hashes provide the reproducibility anchor: batch summaries and the AutoTrader live
+The two hashes provide the reproducibility anchor: batch summaries and the AutoTrader live-display
 header show an 8-char id, so it is clear which specification a session ran against.
 `config_hash` covers the fee structure as well, because a rate change is a change to what the
 run produces — the narrower `symbols_hash` reported two differently-priced runs as identical.
@@ -250,7 +251,7 @@ collection of them, and `is_valid` / `errors` / `warnings` are **views** over th
 | `test_views_follow_a_finding_added_later` | The derived flag cannot drift from the list it summarizes |
 | `test_check_and_domain_survive_on_the_finding` | Origin is carried, not reconstructed |
 | `test_domain_is_a_closed_set` | `ValidationDomain` is an Enum — a free string would break filtering |
-| `test_a_rejected_scenario_stays_excluded` | The §33 execution gate reads the derived flag |
+| `test_a_rejected_scenario_stays_excluded` | The execution gate that excludes a rejected scenario reads the derived flag |
 
 ### `test_post_run_validator.py`
 
@@ -265,7 +266,7 @@ the structured finding rather than on printed text.
 | `test_a_strategy_under_no_version_control_is_warned_about` · `test_a_state_git_could_not_read_is_warned_about_as_unknown` · `test_committed_or_merely_dirty_code_is_not_warned_about` · `test_a_run_without_a_captured_identity_is_not_warned_about` | `unversioned_code` (#551): code in no repository — a `user_algos/` package before `git init` — or a state git could not read is a Tier-1 warning with the remedy; committed or merely dirty code is not, and a run that captured no identity claims nothing |
 | `test_no_advisory_for_any_declared_version` | A declared data format version is never flagged |
 | `test_unknown_version_advisory` / `test_unknown_counted_against_all_files` | A missing version IS flagged, and the count is against all files — the advisory claims only the field's absence, never anything about the data |
-| `test_stress_test` | An active stress config is surfaced, so a stressed run cannot read as clean (shared with the live session validator) |
+| `test_stress_test` | An active stress config is surfaced, so a stressed run cannot read as clean (shared with the AutoTrader session validator) |
 | `test_budget_granularity` | A budget below data granularity has no effect and says so |
 | `test_clean_batch_no_warnings` | The zero state — nothing invented |
 | `test_coordination_overhead` / `test_no_overhead_when_low` | Coordination cost above half the computation is flagged; below it is not |
@@ -302,14 +303,30 @@ matching the index as soon as one scenario is excluded.
 |------|-------------|
 | `test_each_scenario_gets_its_own_package_after_an_exclusion` | s0 excluded → s1 must still get pkg1, not None, and s2 must not get s1's data |
 | `test_no_exclusion_is_unaffected` | The case where position and index coincide keeps working |
-| `test_it_raises_rather_than_skipping_silently` | A hole raises `ScenarioPackageMissingError` — it can no longer be explained by an exclusion (§33) |
+| `test_it_raises_rather_than_skipping_silently` | A hole raises `ScenarioPackageMissingError` — it can no longer be explained by an exclusion |
+
+### `test_validation_check_catalog.py`
+
+The catalog that gives every `check` id a title and a sentence
+(`validators/validation_check_catalog.py`, served as `GET /api/v1/validation-checks`) is complete
+in both directions. The emitted ids are found by walking the SOURCE — a keyword `check='…'`, a
+`…_CHECK` constant, and the helpers that pass an id on (`_add`, `_finding`, `_as`) — so a new check
+fails the suite until it is declared, and an entry for a check the code no longer emits fails too.
+
+| Test | Description |
+|------|-------------|
+| `test_the_walk_found_the_checks` | the walk found a non-trivial number of ids, so the two below are not vacuous |
+| `test_every_emitted_check_is_declared` | an id the code emits with no entry is named with its file and line |
+| `test_every_declared_check_is_emitted_somewhere` | an entry no finding can carry any more |
+| `test_every_id_is_declared_once` | no id twice |
+| `test_every_entry_is_a_label_and_one_sentence_for_a_person` | a title and a one-line sentence, no backticks |
 
 ## Files
 
 - `tests/framework/batch_validations/test_scenario_validator.py`
 - `tests/framework/batch_validations/test_post_run_validator.py` — one of its checks
-  (`stress_test`) is **shared** with the live session validator via
-  `validators/shared_advisory_checks.py`; the live half is pinned in
+  (`stress_test`) is **shared** with the AutoTrader session validator via
+  `validators/shared_advisory_checks.py`; the AutoTrader half is pinned in
   [Session Validation tests](../autotrader/session_validation_tests.md)
 - `tests/framework/batch_validations/test_market_fit_advisory.py`
 - `tests/framework/batch_validations/test_validation_types.py`
@@ -319,6 +336,7 @@ matching the index as soon as one scenario is excluded.
 - `tests/framework/batch_validations/test_market_config_manager.py`
 - `tests/framework/batch_validations/test_broker_config_factory.py`
 - `tests/framework/batch_validations/test_kraken_config_fetcher.py`
+- `tests/framework/batch_validations/test_validation_check_catalog.py`
 
 ## Running the Tests
 

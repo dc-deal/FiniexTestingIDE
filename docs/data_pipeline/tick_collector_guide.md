@@ -17,6 +17,11 @@ Professional tick data collector for MetaTrader 5 with tiered error tracking and
 
 ## Error Classification System
 
+> **Not read downstream.** The importer takes the ticks, the metadata and `summary.total_ticks`
+> (a row-count check) from a file, nothing else. The error block, `summary.quality_metrics` and
+> the `error_tracking` settings stay in the raw file as the collector's own record; no setting
+> selects data by them. See [Data Import Pipeline](data_import_pipeline.md).
+
 ### Three-Tier Severity Model
 
 #### NEGLIGIBLE (Severity Level 0)
@@ -327,6 +332,11 @@ data format 1.3.0, the MT5 file 1.1.0.
 ---
 
 ## Data Quality Scoring System
+
+> **Not read downstream.** The importer takes the ticks, the metadata and `summary.total_ticks`
+> (a row-count check) from a file, nothing else. The error block, `summary.quality_metrics` and
+> the `error_tracking` settings stay in the raw file as the collector's own record; no setting
+> selects data by them. See [Data Import Pipeline](data_import_pipeline.md).
 
 ### Quality Metrics Calculation
 

@@ -81,7 +81,7 @@ The baseline `conftest.py` wraps shared helpers from `tests/shared/fixture_helpe
 | Fixture | Scope | Description |
 |---------|-------|-------------|
 | `portfolio_stats` | session | PortfolioStats with P&L, trade counts, and cost breakdown |
-| `backtesting_metadata` | session | BacktestingMetadata with snapshots, warmup errors, expected trades |
+| `probe_metadata` | session | ProbeMetadata with snapshots, warmup errors, expected trades |
 
 ### Trade Data Fixtures
 
@@ -166,7 +166,7 @@ Validates profit/loss calculations through internal consistency checks using Tra
 | `test_exit_after_entry` | Exit tick index must be greater than entry tick index |
 | `test_positive_lots` | Lot size must be positive for all trades |
 | `test_spread_cost_positive` | Spread cost must be non-negative |
-| `test_winning_losing_count` | Winners (net_pnl > 0) and losers (net_pnl ≤ 0) match portfolio counts |
+| `test_winning_losing_count` | Winners (net_pnl > 0) and losers (net_pnl < 0) match portfolio counts — a trade that realised exactly nothing is neither |
 | `test_direction_counts` | LONG and SHORT trade counts match portfolio totals |
 | `test_valid_prices` | Entry and exit prices must be positive |
 | `test_valid_tick_value` | Tick value must be positive |
@@ -224,7 +224,7 @@ Validates that warmup data was correctly loaded before tick processing.
 |------|-------------|
 | `test_no_warmup_errors` | No warmup validation errors occurred |
 | `test_warmup_errors_list_exists` | Warmup errors list is accessible (even if empty) |
-| `test_has_warmup_errors_method` | BacktestingMetadata provides has_warmup_errors() method |
+| `test_has_warmup_errors_method` | ProbeMetadata provides has_warmup_errors() method |
 
 ---
 
@@ -241,7 +241,8 @@ pytest tests/ -v
 pytest tests/simulation/baseline/test_baseline_pnl_calculation.py -v
 ```
 
-**VS Code:** Use launch configuration `🧪 Pytest (baseline)`.
+**VS Code:** Use launch configuration `🧩 Pytest: Baseline (All)` (or `🧪 Simulation: Baseline` for the
+scenario run with its full log).
 
 ---
 

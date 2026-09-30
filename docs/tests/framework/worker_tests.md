@@ -7,8 +7,8 @@ The worker test suite validates the parameter validation system, schema integrit
 **Test Location:** `tests/framework/worker_tests/`
 
 **Components Covered:**
-- 7 Workers: RsiWorker, BollingerWorker, MaTrendWorker, MacdWorker, ObvWorker, HeavyRsiWorker, BacktestingSampleWorker
-- 3 Decision Logics: SimpleConsensus, AggressiveTrend, BacktestingDeterministic
+- 7 Workers: RsiWorker, BollingerWorker, MaTrendWorker, MacdWorker, ObvWorker, HeavyRsiWorker, SampleProbeWorker
+- 3 Decision Logics: SimpleConsensus, AggressiveTrend, DeterministicProbe
 
 ---
 
@@ -57,7 +57,7 @@ Validates that every component's `get_parameter_schema()` returns well-formed, i
 |------|-------------|
 | `test_simple_consensus_has_rsi_thresholds` | SimpleConsensus has `rsi_oversold`, `rsi_overbought` with defaults |
 | `test_aggressive_trend_has_rsi_thresholds` | AggressiveTrend has `rsi_buy_threshold`, `rsi_sell_threshold` |
-| `test_backtesting_deterministic_has_trade_sequence` | BacktestingDeterministic has `trade_sequence` parameter |
+| `test_deterministic_probe_has_trade_sequence` | DeterministicProbe has `trade_sequence` parameter |
 | `test_all_logics_have_lot_size` | All non-backtesting decision logics declare `lot_size` |
 
 #### TestOutputSchemaStructure
@@ -176,7 +176,7 @@ Tests the `apply_defaults()` function that fills missing optional parameters fro
 | `test_macd_no_defaults_for_required` | — | MACD gets no defaults (all params REQUIRED) |
 | `test_simple_consensus_all_defaults` | — | SimpleConsensus fills all 10 parameters from defaults |
 | `test_aggressive_trend_all_defaults` | — | AggressiveTrend fills all 6 parameters from defaults |
-| `test_backtesting_sample_worker_default` | — | BacktestingSampleWorker fills `computation_weight` |
+| `test_sample_probe_worker_default` | — | SampleProbeWorker fills `computation_weight` |
 | `test_defaults_produce_valid_config` | ×10 | Defaults-only config passes `validate_parameters()` |
 
 ---
@@ -225,7 +225,7 @@ Tests end-to-end factory workflows: config → validation → instantiation for 
 | `test_create_simple_consensus` | SimpleConsensus created with explicit config values |
 | `test_create_aggressive_trend` | AggressiveTrend created with explicit thresholds |
 | `test_create_simple_consensus_defaults_only` | SimpleConsensus created with empty config (all defaults) |
-| `test_create_backtesting_deterministic` | BacktestingDeterministic created with trade sequence |
+| `test_create_deterministic_probe` | DeterministicProbe created with trade sequence |
 
 #### TestDecisionLogicFactoryBoundaryStrict
 
@@ -461,7 +461,7 @@ All 10 components tested across schema and defaults tests:
 | MacdWorker | Worker | `fast_period`, `slow_period`, `signal_period` |
 | ObvWorker | Worker | (no algorithm params) |
 | HeavyRsiWorker | Worker | `artificial_load_ms` |
-| BacktestingSampleWorker | Worker | `computation_weight` |
+| SampleProbeWorker | Worker | `computation_weight` |
 | SimpleConsensus | DecisionLogic | 10 parameters (RSI thresholds, Bollinger thresholds, lot_size, etc.) |
 | AggressiveTrend | DecisionLogic | 6 parameters (RSI thresholds, lot_size, etc.) |
-| BacktestingDeterministic | DecisionLogic | `trade_sequence`, `lot_size` |
+| DeterministicProbe | DecisionLogic | `trade_sequence`, `lot_size` |

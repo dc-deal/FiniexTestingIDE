@@ -172,9 +172,7 @@ class VolatilityProfileAnalyzer:
                 f'No bar data found for {broker_type}/{symbol} {tf}')
 
         # Get index metadata
-         # Get index metadata
         index_entry = self._bar_index.index[broker_type][symbol][tf]
-        data_source = index_entry.get('broker_type', broker_type)
 
         # Get market_type from MarketConfigManager (Single Source of Truth)
         market_config = MarketConfigManager()
@@ -235,7 +233,7 @@ class VolatilityProfileAnalyzer:
             symbol=symbol,
             timeframe=tf,
             market_type=market_type,
-            data_source=data_source,
+            broker_type=index_entry.get('broker_type', broker_type),
             start_time=start_time,
             end_time=end_time,
             total_days=total_days,

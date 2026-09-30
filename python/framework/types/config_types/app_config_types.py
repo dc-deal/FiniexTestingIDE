@@ -25,12 +25,15 @@ class SharedPaths(StrictConfigModel):
     run_ledger: str = 'runs/ledger'
     # Every configuration that can START a run, with an id, an index and a history (#538).
     # A RECORD store: it holds what a run was configured with, and it holds its OWN copy of
-    # those bytes — a source may live in `user_algos/`, a separate repository this project
-    # never writes into.
+    # those bytes — a source may live in `user_algos/`, a separate repository.
     run_configs: str = 'run_configs'
-    # The patch of every dirty tree a run ran from, keyed by its SHA256 (#551). A RECORD
-    # store: it is what lets a run from uncommitted code be restored to the code that ran.
+    # The patch of every dirty tree of THIS repository a run ran from, keyed by its SHA256
+    # (#551) — any other repository keeps its own inside itself. A RECORD store: it is what lets a
+    # run from uncommitted code be restored to the code that ran.
     run_patches: str = 'run_patches'
+    # The directory of every configuration that can start a run (#554). A DERIVED store: one
+    # cached reading per configuration file, deletable at any time.
+    config_directory: str = 'data/runtime/config_directory'
 
 
 class HistoryConfig(StrictConfigModel):

@@ -2,7 +2,7 @@
 FiniexTestingIDE - Mount Preparer (#438)
 
 The data-heavy + validation half of a batch, extracted so BOTH pipelines reuse it: the sim
-BatchOrchestrator delegates prepare_scenarios()/prepare_mount() here, and the AutoTrader-mock
+BatchOrchestrator delegates prepare_scenarios()/prepare_mount() here, and the mock session
 prepares a single scenario's data through the same index/validation stack. Loaders only — the
 sim subprocess/mount-reuse model and the AutoTrader session model stay uncoupled.
 """
@@ -36,7 +36,7 @@ class MountPreparer:
     """
     Prepares the reusable data mount (Phase 0 validation + Phases 1–5 load) for a scenario list.
 
-    Extracted from BatchOrchestrator so the AutoTrader-mock reuses the identical index/validation
+    Extracted from BatchOrchestrator so the mock session reuses the identical index/validation
     stack for a single scenario. Operates on the SingleScenario objects by reference — the
     validators mutate their validation_result exactly as in the batch, so a config/data error
     excludes that scenario (§33 in the sim; the single-session AutoTrader turns it into a hard abort).
@@ -161,7 +161,6 @@ class MountPreparer:
     def prepare_mount(
         self,
         scenarios: List[SingleScenario],
-        include_warmup_bars: bool = True,
     ) -> MountPackage:
         """
         Prepare the reusable data mount: data-identity validation + data load + packaging.
@@ -173,10 +172,11 @@ class MountPreparer:
         check owned by the caller (run() / the sweep runner).
 
         Args:
-            scenarios: The scenarios to prepare data for (mutated in place: validation_result)
-            include_warmup_bars: Prepare + validate warmup bars (sim default). The AutoTrader-mock
-                (#438) passes False: its adapter loads warmup bars itself (mock from the bar index,
-                live from the API), so the shared prepare skips bar preparation — ticks + signals only
+            scenarios: The scenarios to prepare data for (mutated in place: validation_result).
+                A backtest's scenarios and a mock session's one replayed scenario alike: both
+                get the same ticks, signals AND warmup bars — the last N bars before each
+                window's start — so a mock session warms up on exactly what a backtest of its
+                window warms up on
 
         Returns:
             MountPackage with the loaded per-scenario data and the data identity that keys it
@@ -244,11 +244,6 @@ class MountPreparer:
         requirements_map = self._requirements_collector.collect_and_validate(
             self._valid(scenarios))
 
-        # AutoTrader-mock path (#438): the adapter loads warmup bars itself (mock from the bar
-        # index, live from the API), so the shared prepare skips bar preparation entirely — no bar
-        # load (Phase 4) and no window-based warmup validation (Phase 5). Ticks + signals only.
-        if not include_warmup_bars:
-            requirements_map.bar_requirements = []
         warmup_phases.append(WarmupPhaseEntry('Requirements', time.time() - _phase_t))
 
         # ========================================================================

@@ -34,7 +34,7 @@ def print_volatility_profile(profile: SymbolVolatilityProfile) -> None:
           f"{profile.end_time.strftime('%Y-%m-%d')} ({profile.total_days} days)")
     print(f'Timeframe:      {profile.timeframe}')
     print(f'Market Type:    {profile.market_type.value}')
-    print(f'Data Source:    {profile.data_source}')
+    print(f'Broker:         {profile.broker_type}')
     if market_rules.session_bucketing:
         print('Sessions:       Yes')
     else:

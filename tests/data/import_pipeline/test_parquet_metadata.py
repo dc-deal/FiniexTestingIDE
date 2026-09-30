@@ -130,10 +130,9 @@ class TestSourceMetadata:
         settings = json.loads(meta['source_meta_collection_settings'])
         assert isinstance(settings, dict)
 
-        # error_tracking should be parseable JSON
-        assert 'source_meta_error_tracking' in meta
-        tracking = json.loads(meta['source_meta_error_tracking'])
-        assert isinstance(tracking, dict)
+        # error_tracking is the collector's quality-check configuration, which nothing reads:
+        # the raw file keeps it, the Parquet header does not
+        assert 'source_meta_error_tracking' not in meta
 
     def test_source_meta_symbol_info_content(self, tmp_path):
         """Parsed symbol_info should contain expected fields."""

@@ -1,7 +1,7 @@
 """
 FiniexTestingIDE - AutoTrader Account Model
 
-What the broker config and the profile together say about the account a live session trades:
+What the broker config and the profile together say about the account an AutoTrader session trades:
 which market, which trading model, and in which currency the books are kept.
 
 A bundle rather than five return values, for the reason its sibling

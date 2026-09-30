@@ -36,6 +36,13 @@ def _pf(name, currency='USD', symbol='EURUSD', spot=False, trades=2, win=1, lose
         profit=100.0, loss=40.0, max_dd=12.0, max_eq=1000.0, max_dd_pct=0.0, fees=5.0,
         spread=3.0, maker=0.0, taker=0.0, initial=1000.0, current=1060.0, long=1, short=1,
         balances=None, initial_balances=None, last_price=0.0) -> PortfolioUnitRow:
+    # A spot row is stamped the way the portfolio builder stamps it: the currency split from the
+    # broker config and the unit's own value estimate — never read back out of the symbol.
+    base, quote = (symbol[:-3], symbol[-3:]) if spot else ('', '')
+    balances, initial_balances = balances or {}, initial_balances or {}
+    est = (lambda held: held.get(quote, 0.0) + held.get(base, 0.0) * last_price)
+    spot_current = est(balances) if spot and last_price > 0 else 0.0
+    spot_initial = est(initial_balances) if spot and last_price > 0 else 0.0
     return PortfolioUnitRow(
         name=name, symbol=symbol, currency=currency, total_trades=trades,
         winning_trades=win, losing_trades=lose, win_rate=(win / trades if trades else 0.0),
@@ -44,8 +51,9 @@ def _pf(name, currency='USD', symbol='EURUSD', spot=False, trades=2, win=1, lose
         total_long_trades=long, total_short_trades=short, max_equity=max_eq,
         account_max_dd_pct=max_dd_pct,
         current_balance=current, initial_balance=initial, total_spread_cost=spread,
-        maker_fee=maker, taker_fee=taker,
-        balances=balances or {}, initial_balances=initial_balances or {}, last_price=last_price)
+        maker_fee=maker, taker_fee=taker, base_currency=base, quote_currency=quote,
+        spot_est_current=spot_current, spot_est_initial=spot_initial,
+        balances=balances, initial_balances=initial_balances, last_price=last_price)
 
 
 def _ex(name, sent=2, executed=2, rejected=0, sl_tp=0, symbol='EURUSD') -> ExecutionStatsRow:
@@ -111,6 +119,20 @@ class TestBuild:
         assert s.base_currency == 'BTC' and s.quote_currency == 'USD'
         assert s.has_base_holdings and s.est_current == 500.0 + 2.0 * 100.0  # 700
         assert c.spot_total_est_current == 700.0 and c.spot_has_base_holdings
+
+    def test_the_spot_split_is_the_stamped_one_not_the_symbol_string(self):
+        # `BTCUSDT` split three from the end reads base BTCU, quote SDT — the stamped split
+        # from the broker config is the only one (#265).
+        row = _pf('s1', symbol='BTCUSD', spot=True, last_price=100.0,
+                  balances={'USDT': 500.0, 'BTC': 2.0}, initial_balances={'USDT': 1000.0})
+        row = row.model_copy(update={'symbol': 'BTCUSDT', 'base_currency': 'BTC',
+                                     'quote_currency': 'USDT', 'spot_est_current': 700.0,
+                                     'spot_est_initial': 1000.0})
+
+        s = _build([row]).currencies[0].combined.spot_scenarios[0]
+
+        assert (s.base_currency, s.quote_currency) == ('BTC', 'USDT')
+        assert (s.quote_balance, s.base_balance, s.est_current) == (500.0, 2.0, 700.0)
 
     def test_mixed_currency_split(self):
         rep = _build([
@@ -184,10 +206,64 @@ class TestTheWorstDrawdownIsDescribedByOneScenario:
         row = _build([deepest, richest]).currencies[0].combined
 
         assert row.account_max_drawdown_scenario == 'deep'
-        assert row.max_equity_scenario == 'rich'
+        assert row.highest_equity_scenario == 'rich'
         assert row.account_max_dd_pct == pytest.approx(30.0), (
             'the old construction gave 300 / 9000 = 3.3 % — one scenario\'s decline over '
             'another scenario\'s peak, which describes neither of them')
+
+    def test_the_peak_beside_the_drawdown_is_that_accounts_and_the_highest_is_named_apart(self):
+        # Both figures were `max_equity`: the headline carried the deepest account's peak, the
+        # rich row the highest of any, and the console printed the second under the first's
+        # drawdown. One name, two numbers.
+        deepest = _pf('deep', max_dd=300.0, max_eq=1_000.0, max_dd_pct=30.0)
+        richest = _pf('rich', max_dd=50.0, max_eq=9_000.0, max_dd_pct=0.6)
+
+        row = _build([deepest, richest]).currencies[0].combined
+
+        assert (row.headline.max_equity, row.headline.account_max_drawdown_unit) == (
+            1_000.0, 'deep')
+        assert (row.highest_equity, row.highest_equity_scenario) == (9_000.0, 'rich')
+
+
+class TestSeveralAccountsAddUpOnlyAsATotal:
+    """
+    A backtest of several scenarios is several independent accounts. Their closing equities
+    add up to a total no account ever held, so the total is served as one — beside the
+    capital it started from — and the one-account figure has none to describe.
+    """
+
+    def test_the_sum_is_a_total_and_final_equity_is_left_undefined(self):
+        a = _pf('a', initial=10_000.0).model_copy(update={'final_equity': 9_950.0})
+        b = _pf('b', initial=10_000.0).model_copy(update={'final_equity': 10_020.0})
+
+        headline = _build([a, b]).currencies[0].combined.headline
+
+        assert headline.final_equity is None
+        assert (headline.total_final_equity, headline.total_initial_balance) == (
+            pytest.approx(19_970.0), pytest.approx(20_000.0))
+
+    def test_one_account_is_its_own_total(self):
+        a = _pf('a', initial=10_000.0).model_copy(update={'final_equity': 9_950.0})
+
+        headline = _build([a]).currencies[0].combined.headline
+
+        assert headline.final_equity == headline.total_final_equity == pytest.approx(9_950.0)
+
+    def test_the_recovery_factor_is_undefined_over_several_accounts(self):
+        # Their summed P&L over one account's decline is a quotient of two populations.
+        several = _build([_pf('a', max_dd=10.0), _pf('b', max_dd=20.0)]).currencies[0].combined
+        one = _build([_pf('a', max_dd=10.0)]).currencies[0].combined
+
+        assert several.recovery_factor is None
+        assert one.recovery_factor == pytest.approx(one.balance_pnl / 10.0)
+
+    def test_a_group_where_no_account_declined_still_names_an_account_and_its_peak(self):
+        # Every drawdown 0.0 is a tie: the first account wins it, as in the ledger fold. It used
+        # to answer max_equity 0.0 and no account while the unit rows held their real peaks.
+        headline = _build([_pf('a', max_dd=0.0, max_eq=10_000.0),
+                           _pf('b', max_dd=0.0, max_eq=12_000.0)]).currencies[0].combined.headline
+
+        assert (headline.max_equity, headline.account_max_drawdown_unit) == (10_000.0, 'a')
 
     def test_a_group_that_never_declined_reports_no_percentage(self):
         row = _build([_pf('a', max_dd=0.0, max_dd_pct=0.0)]).currencies[0].combined

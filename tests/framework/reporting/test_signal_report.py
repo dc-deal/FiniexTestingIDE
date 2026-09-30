@@ -286,7 +286,7 @@ class TestRender:
 
 
 # ============================================================================
-# The FEED plane — a live session has no archive to read its facts out of
+# The FEED plane — a live-adapter session has no archive to read its facts out of
 # ============================================================================
 
 def _feed(*seqs, trigger: str = 'scheduled', epoch: int = 1,
@@ -306,9 +306,9 @@ def _feed(*seqs, trigger: str = 'scheduled', epoch: int = 1,
 
 class TestFeedPlane:
     """
-    What a live session can say about its signal source — and what it must not.
+    What a live-adapter session can say about its signal source — and what it must not.
 
-    A live run consumed no archive, so there is no window it either covered or missed. The
+    A live-adapter session consumed no archive, so there is no window it either covered or missed. The
     first observation run (2026-08-23) rendered no signal section at all, because the
     builder gated on a scenario map that only the mock path ever fills.
     """

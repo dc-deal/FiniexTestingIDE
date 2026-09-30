@@ -48,7 +48,7 @@ def check_market_data_staleness_hook(decision_logic: Any) -> Optional[str]:
         f'override on_market_data_stale() — the market-outage reaction '
         f'(flat / wait-with-timeout / entries-block / deliberate pass) must '
         f'be programmed explicitly. See '
-        f'docs/user_guides/live_outage_handling_guide.md.'
+        f'docs/user_guides/outage_handling_guide.md.'
     )
 
 

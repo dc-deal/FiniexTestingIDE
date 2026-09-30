@@ -49,7 +49,7 @@ Create (or edit) `user_configs/app_config.json` to override the external paths. 
 }
 ```
 
-The container path (`/ext_algos`) must match the mount target from Step 1. The default value is `["user_algos/"]` — your override adds the external path alongside it so both locations are scanned for scenario configs.
+The container path (`/ext_algos`) must match the mount target from Step 1. The default value is `["user_algos/"]` — your override adds the external path alongside it so both locations are scanned for scenario sets and AutoTrader profiles.
 
 ## Step 3: VSCode Configuration
 

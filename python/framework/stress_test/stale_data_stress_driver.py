@@ -166,7 +166,7 @@ class StaleDataStressDriver:
 
 def build_stale_stress_driver(
     stress_config: Optional[StressTestConfig],
-    data_source: str,
+    data_broker_type: str,
     data_range: Optional[Tuple[datetime, datetime]],
     executor: AbstractTradeExecutor,
     decision_logic: AbstractDecisionLogic,
@@ -183,7 +183,8 @@ def build_stale_stress_driver(
 
     Args:
         stress_config: The run's parsed stress configuration, or None
-        data_source: The TICK data source to select events for (the broker type)
+        data_broker_type: The TICK data source to select events for — the broker whose
+            ticks the run reads
         data_range: First and last tick timestamp of the run, for the overlap guard.
             None means the run has no ticks — there is nothing to inject into, so no
             driver is built
@@ -203,7 +204,7 @@ def build_stale_stress_driver(
     warn_events_outside_range(
         stale_config.events, data_range[0], data_range[1], logger)
 
-    events = stale_config.get_events_for_source(data_source)
+    events = stale_config.get_events_for_source(data_broker_type)
     if not events:
         return None
     return StaleDataStressDriver(events, executor, decision_logic, logger)

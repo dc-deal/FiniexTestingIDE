@@ -2,8 +2,10 @@
 FiniexTestingIDE - Mock Broker Adapter
 Simulates broker responses for testing LiveTradeExecutor without a real broker.
 
-Extends AbstractAdapter with mock data (BTCUSD from real Kraken config)
-and configurable execution behavior (instant fill, delayed, reject, timeout).
+Extends AbstractAdapter with mock data and configurable execution behavior
+(instant fill, delayed, reject, timeout). Constructed without a config it uses a
+minimal Kraken-BTCUSD-shaped specification (the unit tests); a mock AutoTrader
+session passes the broker's own static JSON and its broker type.
 
 Implements the Tier-3 layers (_build/_do_request/_parse) natively — the
 "mock transport" lives in do_request_* and mutates internal mock state
@@ -139,6 +141,7 @@ class MockBrokerAdapter(AbstractAdapter):
         mode: MockExecutionMode = MockExecutionMode.INSTANT_FILL,
         broker_config: Optional[Dict[str, Any]] = None,
         trades_per_fill: int = 1,
+        broker_type: BrokerType = BrokerType.KRAKEN_SPOT,
     ):
         """
         Initialize mock adapter.
@@ -146,6 +149,10 @@ class MockBrokerAdapter(AbstractAdapter):
         Args:
             mode: Execution behavior (instant_fill, delayed_fill, reject_all, timeout)
             broker_config: Override config (default: BTCUSD mock config)
+            broker_type: The broker this mock stands in for. It decides the market's pip mode,
+                so a mock of an MT5 broker has to say so: answering KRAKEN_SPOT for every broker
+                gave an MT5 EURUSD session the crypto pip size (0.00001 instead of 0.0001). The
+                default serves the bare construction the unit tests use, whose config IS Kraken's
             trades_per_fill: How many BrokerTrade records to emit per fill (#326).
                 Default 1 = single trade for the full volume. > 1 splits the
                 fill volume evenly into N records with small price offsets —
@@ -158,6 +165,7 @@ class MockBrokerAdapter(AbstractAdapter):
 
         super().__init__(config)
 
+        self._broker_type = broker_type
         self._mode = mode
         self._order_counter = 0
         # Track pending orders for delayed_fill mode
@@ -212,8 +220,19 @@ class MockBrokerAdapter(AbstractAdapter):
         return self._broker_name
 
     def get_broker_type(self) -> BrokerType:
-        """Mock uses Kraken spot type."""
-        return BrokerType.KRAKEN_SPOT
+        """The broker this mock stands in for."""
+        return self._broker_type
+
+    def get_capability_label(self) -> str:
+        """
+        The mock carries market orders only, whatever the venue it stands in for offers, so a
+        refusal names the mock and never the venue. Measured 2026-09-29: "Venue 'Kraken' does not
+        offer: ['stop_limit']" sent the reader after a venue that offers it.
+
+        Returns:
+            The mock's own label, naming the venue it stands in for
+        """
+        return f"The mock adapter (standing in for '{self.get_broker_name()}')"
 
     def get_order_capabilities(self) -> OrderCapabilities:
         """Mock supports market orders only (feature gating). Trade-level
@@ -368,7 +387,7 @@ class MockBrokerAdapter(AbstractAdapter):
         return BrokerSpecification(
             company=self._broker_name,
             server='mock_test',
-            broker_type=BrokerType.KRAKEN_SPOT,
+            broker_type=self._broker_type,
             trade_mode='demo',
             leverage=1,
             margin_mode=MarginMode.NONE,

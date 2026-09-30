@@ -121,7 +121,7 @@ class TestReconcileHandoff:
         assert spy.applied == []
 
     def test_a_session_without_a_reconciler_is_a_no_op(self):
-        # Mock sessions auto-disable reconciliation, so this path runs on every mock run.
+        # Mock sessions auto-disable reconciliation, so this path runs in every mock session.
         spy = SpyExecutor()
 
         _loop(None, spy)._reconcile_if_due(7)

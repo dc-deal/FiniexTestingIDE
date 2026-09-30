@@ -1,17 +1,17 @@
-# Quickstart Guide: Create Your Trading Bot
+# Quickstart Guide: Create Your Strategy
 
-This guide shows you how to create a custom trading bot with FiniexTestingIDE.
+This guide shows you how to create a custom strategy with FiniexTestingIDE.
 
 ---
 
 ## Overview
 
-A trading bot consists of three parts:
+A strategy consists of three parts:
 
 ```
 ┌─────────────┐     ┌─────────────────┐     ┌────────────┐
 │   Workers   │ --> │  Decision Logic │ --> │   Config   │
-│  (Signals)  │     │    (Trading)    │     │   (JSON)   │
+│(Indicators) │     │    (Trading)    │     │   (JSON)   │
 └─────────────┘     └─────────────────┘     └────────────┘
      RSI              Buy/Sell/Flat         Scenarios
    Bollinger           Position Mgmt         Parameters
@@ -22,7 +22,7 @@ A trading bot consists of three parts:
 |-----------|----------------|------------|
 | **Worker** | Compute indicators from bar data | `AbstractIndicatorWorker` |
 | **Decision Logic** | Make trading decisions from worker results | `AbstractDecisionLogic` |
-| **Config** | Connect workers + decision + scenarios | JSON file |
+| **Config** | Connect workers + decision logic + scenarios | JSON file |
 
 > **Two worker types:** this guide builds an **INDICATOR** worker (computes from bars,
 > `AbstractIndicatorWorker`). The second type, **SIGNAL** (`AbstractSignalWorker`, looks up
@@ -314,7 +314,7 @@ class AggressiveTrend(AbstractDecisionLogic):
             ),
             'price': OutputParamDef(
                 param_type=float, min_val=0.0,
-                description='Price at decision time',
+                description='Price at decision time — traded where the venue prints one, else mid',
                 category='INFO',
             ),
         }
@@ -339,7 +339,7 @@ class AggressiveTrend(AbstractDecisionLogic):
                 outputs={
                     'confidence': 0.8,
                     'reason': f"RSI={rsi_value:.1f}",
-                    'price': tick.mid,
+                    'price': tick.price,
                 },
             )
 
@@ -350,7 +350,7 @@ class AggressiveTrend(AbstractDecisionLogic):
                 outputs={
                     'confidence': 0.8,
                     'reason': f"RSI={rsi_value:.1f}",
-                    'price': tick.mid,
+                    'price': tick.price,
                 },
             )
 
@@ -360,7 +360,7 @@ class AggressiveTrend(AbstractDecisionLogic):
             outputs={
                 'confidence': 0.5,
                 'reason': 'No signal',
-                'price': tick.mid,
+                'price': tick.price,
             },
         )
 
@@ -433,8 +433,8 @@ class AggressiveTrend(AbstractDecisionLogic):
 > **⏱ Time:** Need the current time in your decision logic? Use
 > `self.trading_api.get_current_time()` — **never** `datetime.now()`. It is the single
 > canonical clock the framework owns: simulated tick time in backtests (so runs are
-> reproducible) and the executor clock in live. Reading wall-clock directly breaks
-> backtest reproducibility and decouples your timing from the tick cadence.
+> reproducible) and the executor clock in an AutoTrader session. Reading wall-clock directly
+> breaks backtest reproducibility and decouples your timing from the tick cadence.
 > The rule is enforced at startup: every loaded decision logic and worker is scanned
 > for `datetime.now()` / `datetime.utcnow()` / `time.time()` — a violation excludes the
 > scenario (backtest) or aborts the session (AutoTrader) with the offending `file:line`.
@@ -448,7 +448,7 @@ and the Backtesting Live Progress — no log persistence, purely visual.
 ```python
 from python.framework.types.decision_logic_types import AwarenessLevel
 
-# Inside compute():
+# Inside compute_tick():
 self.notify_awareness(
     f"No edge — RSI {rsi_value:.1f}",
     AwarenessLevel.INFO,
@@ -465,7 +465,7 @@ Three levels control icon and color:
 | `ALERT` | `!!` | red bold | Unusual conditions |
 
 The call is optional — if your algo never calls `notify_awareness()`,
-no line is rendered and cost is zero. Place calls in `compute()`,
+no line is rendered and cost is zero. Place calls in `compute_tick()`,
 not in `_execute_decision_impl()` (execution-layer events go through
 OrderGuard, not the awareness channel).
 
@@ -473,7 +473,7 @@ OrderGuard, not the awareness channel).
 narration string. If you only update it on some terminal paths, the
 display will show stale text from an earlier tick whenever an
 un-narrated path is taken. Rule of thumb: **every terminal path in
-`compute()` — BUY, SELL, FLAT, and each blocked-signal branch — should
+`compute_tick()` — BUY, SELL, FLAT, and each blocked-signal branch — should
 call `notify_awareness()` at least once before returning.** That
 keeps the display synchronized with the current decision.
 
@@ -488,7 +488,7 @@ pushed out by newer events.
 ```python
 from python.framework.types.decision_logic_types import AwarenessLevel
 
-# Inside compute() or _execute_decision_impl():
+# Inside compute_tick() or _execute_decision_impl():
 if crossed_up:
     self.emit_event(
         f"MACD cross-UP hist={histogram:.4f}",
@@ -535,7 +535,6 @@ The JSON config connects everything together.
   "version": "1.0",
   "scenario_set_name": "my_strategy_test",
   "global": {
-    "data_mode": "realistic",
     "strategy_config": {
       "decision_logic_type": "CORE/aggressive_trend",
       "worker_instances": {
@@ -567,7 +566,7 @@ The JSON config connects everything together.
   },
   "scenarios": [
     {
-      "name": "GBPUSD_test_01",
+      "scenario_name": "GBPUSD_test_01",
       "symbol": "GBPUSD",
       "start_date": "2025-10-09T20:00:00+00:00",
       "end_date": "2025-10-09T23:59:00+00:00",
@@ -589,13 +588,13 @@ The JSON config connects everything together.
 | `trade_simulator_config` | Broker, balance, seeds, latency ranges |
 | `scenarios` | Time windows to test |
 
-> **Tip:** `app_config.json → default_trade_simulator_config` provides application-wide defaults
+> **Tip:** `app_config.json → backtesting.default_trade_simulator_config` provides application-wide defaults
 > (balance, currency, seeds, latency ranges). Scenario sets inherit these automatically — only
 > override what differs. See [Config Cascade Guide](../config_cascade_guide.md) for details.
 
 ---
 
-## Step 4: Deploy Your Bot
+## Step 4: Install Your Strategy
 
 Create a directory under `user_algos/` for your strategy and place your files there.
 
@@ -609,7 +608,9 @@ git add -A && git commit -m "my first strategy"
 ```
 
 Every run header then records the commit your strategy ran from, and a run from uncommitted work
-also stores a patch that restores it. Without a repository a backtest still runs, but its report
+also stores a patch that restores it — inside your repository, in `.finiex_run_patches/`, so your
+strategy code never leaves it. That directory ignores itself: it never shows up in `git status`
+and never needs a line in your `.gitignore`. Without a repository a backtest still runs, but its report
 carries a warning that it can never be reproduced — and a session that would place **real orders**
 refuses to start. Details: [Run Origin and Code Identity](../architecture/run_origin_and_code_identity.md).
 
@@ -646,8 +647,8 @@ Worker references in `get_required_workers()` are relative to the decision logic
 ```python
 def get_required_workers(self) -> Dict[str, WorkerRequirement]:
     return {
-        'custom_ind': 'my_indicator.py',   # same directory as this file
-        'rsi_filter': 'CORE/rsi',
+        'custom_ind': WorkerRequirement.all('my_indicator.py'),   # same directory as this file
+        'rsi_filter': WorkerRequirement.of('CORE/rsi', 'rsi_value'),
     }
 ```
 
@@ -663,7 +664,7 @@ Keep your strategies in a separate repo — add the root to `user_configs/app_co
 }
 ```
 
-Scenario configs inside those directories are discovered automatically. Workers and decision logics are loaded from the explicit paths in those configs.
+Scenario sets and AutoTrader profiles inside those directories are discovered automatically. Workers and decision logics are loaded from the explicit paths in those configs.
 
 ### Error Handling
 
@@ -705,12 +706,15 @@ Current limitations:
 
 | Rule | Description |
 |------|-------------|
-| **Order Types** | MARKET, STOP, STOP_LIMIT supported. LIMIT pending. |
-| **Full Close** | Close entire position (no partial fills yet) |
+| **Order Types** | MARKET, LIMIT, STOP, STOP_LIMIT supported. No native OCO, iceberg or trailing-stop order types yet. |
+| **Position Close** | Full or partial: `close_position(position_id, lots=None)` closes all, `lots=` a part |
+| **Partial Fills** | A broker-reported partial fill at a real venue is not yet surfaced as its own state |
 | **Margin Check** | Orders rejected if insufficient margin |
-| **Pending Mgmt** | `cancel_stop_order`, `modify_position` (SL/TP) available |
+| **Resting Order Mgmt** | `modify_limit_order`, `modify_stop_order`, `cancel_limit_order`, `cancel_stop_order`, `modify_position` (SL/TP) available |
 
-> **Multiple Positions:** The system supports multiple simultaneous positions, but this is **untested**. All included bots use single-position logic. Use at your own risk.
+> **Multiple Positions:** Multiple simultaneous positions on one symbol are supported and validated
+> by integration tests; the reference strategy (`CORE/trend_channel_reference`) stacks several.
+> Holding several *symbols* against one shared capital pool is not yet supported.
 
 > **Broker compatibility:** STOP orders are not supported by all brokers (e.g. Kraken requires
 > STOP_LIMIT). Use `get_required_order_types()` to declare order needs; the framework validates this
@@ -720,34 +724,31 @@ Current limitations:
 
 ## Available Workers (CORE)
 
-| Worker | Type | Description |
-|--------|------|-------------|
-| `CORE/rsi` | RSI | Relative Strength Index |
-| `CORE/bollinger` | Bollinger | Bollinger bands (`deviation`: 0.5–5.0, default 2.0; `ma_type`: sma/ema, default sma). Outputs `upper`/`middle`/`lower`/`position` (0–1), `position_raw` (unclamped, shows overshoot), `slope` (normalized midline slope), `width_pct` (relative band width) |
-| `CORE/ma_trend` | MA Trend | Higher-timeframe trend gate (`ma_type`: sma/ema, default ema; `neutral_band`: default 0.1). Outputs `direction` (up/down/neutral), `slope` (volatility-normalized), `ma_value`, `volatility_pct` (relative volatility) |
-| `CORE/macd` | MACD | Moving Average Convergence Divergence |
-| `CORE/obv` | OBV | On-Balance Volume (⚠️ Forex: volume always 0, works best with Crypto) |
-| `CORE/backtesting/heavy_rsi` | Heavy RSI | RSI with artificial delay (testing) |
-| `CORE/backtesting/backtesting_sample_worker` | Test-only: Mandatory worker for Decision Logic "backtesting_deterministic" |
+The CORE workers are the files in `python/framework/workers/core/`; the name a configuration uses
+(`CORE/rsi`, `CORE/bollinger`, …) is registered in `WorkerFactory`
+(`python/framework/factory/worker_factory.py`). Each worker declares its parameters in
+`get_parameter_schema()` and its outputs in `get_output_schema()` — read them there. The
+`backtesting/` subfolder holds test-only workers. `CORE/obv` reads volume, which is always 0 on
+forex (see Volume vs Tick Count above).
 
 ---
 
 ## Available Decision Logics (CORE)
 
-| Logic | Description |
-|-------|-------------|
-| `CORE/aggressive_trend` | OR-logic: RSI or Bollinger triggers trade (MARKET orders) |
-| `CORE/simple_consensus` | AND-logic: Both indicators must agree (MARKET orders) |
-| `CORE/cautious_macd` | MACD crossover + RSI filter, STOP/STOP_LIMIT entry, SL/TP, break-even |
-| `CORE/backtesting/backtesting_deterministic` | Test-only: Trades at fixed ticks |
+The CORE decision logics are the files in `python/framework/decision_logic/core/`, registered by
+name in `DecisionLogicFactory` (`python/framework/factory/decision_logic_factory.py`). Two are
+written to be copied from: `CORE/trend_channel_reference`
+([Trend Channel Reference](trend_channel_reference_guide.md)) and, for SIGNAL workers,
+`CORE/hybrid_sentiment_reference`. The `backtesting/` and `live_field_study/` subfolders hold
+test-only logics.
 
 ---
 
 ## Next Steps
 
-1. **Profile your data** - `📊 VOLATILITY PROFILE`
-2. **Generate scenarios** - `📊 Scenario Generator - Generate Blocks`
-3. **Run backtests** - `🔬 Run Scenario`
+1. **Build a volatility profile** - `🔍 Disc - Volatility Profile: mt5/EURUSD` and its siblings
+2. **Generate scenarios** - `⚡ Generator - 8 Blocks kraken_spot/BTCUSD`
+3. **Run backtests** - `🔬🧪 Run User Scenario Set (prompt)`
 4. **Review results** - Check trade history and P&L
 
 → See [CLI Tools Guide](../cli_tools_guide.md) for all commands.
@@ -762,7 +763,7 @@ declares its own and references it by file name.
 
 ```python
 # 1. Worker — saved as sma_worker.py beside the decision logic.
-#    The class name is derived from the file name.
+#    The class name is free — the factory finds the one AbstractIndicatorWorker subclass in the file.
 
 class SmaWorker(AbstractIndicatorWorker):
     def compute(self, tick, bar_history, current_bars):
@@ -796,8 +797,8 @@ The matching scenario config:
 ```json
 {
     "worker_instances": {
-        "sma_fast": "sma_worker.py",
-        "sma_slow": "sma_worker.py"
+        "sma_fast": "user_algos/my_strategy/sma_worker.py",
+        "sma_slow": "user_algos/my_strategy/sma_worker.py"
     },
     "workers": {
         "sma_fast": {"periods": {"M5": 10}},

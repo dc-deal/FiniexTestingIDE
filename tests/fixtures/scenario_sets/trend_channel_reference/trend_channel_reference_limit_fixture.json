@@ -4,7 +4,6 @@
   "created": "2026-06-26T00:00:00.000000",
   "description": "Test fixture \u2014 CORE/trend_channel_reference in limit_pullback mode (mt5 EURUSD). Drives resting LIMIT entries + SL/TP + trailing + partial close for behavior assertions.",
   "global": {
-    "data_mode": "realistic",
     "strategy_config": {
       "decision_logic_type": "CORE/trend_channel_reference",
       "worker_instances": {
@@ -48,12 +47,11 @@
   },
   "scenarios": [
     {
-      "name": "EURUSD_limit_w1",
+      "scenario_name": "EURUSD_limit_w1",
       "symbol": "EURUSD",
       "data_broker_type": "mt5",
       "start_date": "2026-01-05T00:00:00+00:00",
       "end_date": "2026-01-09T20:00:00+00:00",
-      "data_mode": "realistic",
       "enabled": true
     }
   ]

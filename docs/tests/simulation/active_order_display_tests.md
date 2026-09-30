@@ -2,7 +2,7 @@
 
 ## Overview
 
-The active order display test suite validates that unresolved pending orders (limit and stop) are correctly reported in `PendingOrderStats.active_limit_orders` and `active_stop_orders` at scenario end.
+The active order display test suite validates that resting limit and stop orders are correctly reported in `PendingOrderStats.active_limit_orders` and `active_stop_orders` at scenario end.
 
 **Test Configuration:** `backtesting/limit_stop_order_mock_scenario_test.json`
 - Symbol: GBPUSD

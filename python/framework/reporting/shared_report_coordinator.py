@@ -58,6 +58,7 @@ from python.framework.reporting.io.run_header_io import (
     read_run_header,
 )
 from python.framework.reporting.store.run_index import RunIndex
+from python.framework.types.api.report_types import UnitRoster
 from python.framework.types.signal_data_types import SignalObservedSeries
 
 
@@ -90,6 +91,7 @@ class SharedReportCoordinator:
         io_dir: Path,
         signal_scenario_map: Optional[Dict[Tuple[str, str], SignalScenarioInfo]] = None,
         observed_feed: Optional[SignalObservedSeries] = None,
+        roster: Optional[UnitRoster] = None,
     ) -> UnifiedReports:
         """
         Build + persist the units-derived report sections shared by both pipelines.
@@ -100,9 +102,12 @@ class SharedReportCoordinator:
             units: The run's units (sim: N scenarios; live: 1 session)
             io_dir: The run's io/ subfolder (created if missing)
             observed_feed: What a live transport accumulated while the session ran — the
-                live counterpart of the prepared map, since a live session has no archive
+                live-adapter counterpart of the prepared map, since such a session has no archive
             signal_scenario_map: The prepared signal sources (#433); both pipelines get it
                 from the same MountPreparer run. Empty / None = no SIGNAL source bound
+            roster: Which units the run declared and which produced nothing — each pipeline
+                builds it from its own source, since the units above are only the ones that
+                produced something
 
         Returns:
             The built models, for the caller's console + ledger reuse
@@ -142,7 +147,8 @@ class SharedReportCoordinator:
 
         # Run summary — cross-section KPIs composed from the section aggregates (#390 prework).
         run_summary = build_run_summary(
-            run_id, portfolio, trade_history, execution_stats, signal, feed_stability)
+            run_id, portfolio, trade_history, execution_stats, signal, feed_stability, roster,
+            units)
         write_artifact(run_summary, io_dir, RUN_SUMMARY_ARTIFACT)
 
         # Worker/decision — per-unit worker + decision performance (#398).

@@ -109,8 +109,8 @@ class TestToScenarioDicts:
         materializer = WindowMaterializer()
         dicts = materializer.to_scenario_dicts(
             make_window_set(2, strategy=GenerationStrategy.BLOCKS))
-        assert dicts[0]['name'] == 'ETHUSD_blocks_01'
-        assert dicts[1]['name'] == 'ETHUSD_blocks_02'
+        assert dicts[0]['scenario_name'] == 'ETHUSD_blocks_01'
+        assert dicts[1]['scenario_name'] == 'ETHUSD_blocks_02'
 
 
 # =============================================================================

@@ -88,16 +88,19 @@ pytest tests/live_adapters/test_kraken_adapter_order_lifecycle_dry.py -v
 pytest tests/live_adapters/test_kraken_adapter_order_lifecycle_live.py -v
 ```
 
-VS Code: **🧩 Pytest: Live Adapters (All)** in launch.json.
+VS Code, in launch.json:
+- `🧩 Pytest: Live Adapters — 1 dry-run only (free, validate=true)`
+- `🧩 Pytest: Live Adapters — 2 generate certificate (real money)`
+- `🧩 Pytest: Live Adapters — 3 validate certificate`
 
 ## Test Cases — Phase 1
 
 | Test | Order | Expected |
 |------|-------|----------|
-| `test_market_buy_dryrun` | MARKET LONG 0.001 ETHUSD | FILLED, ref `DRYRUN-*` |
-| `test_market_sell_dryrun` | MARKET SHORT 0.001 ETHUSD | FILLED, ref `DRYRUN-*` |
-| `test_limit_buy_dryrun` | LIMIT LONG 0.1 @ $100 | FILLED, ref `DRYRUN-*` |
-| `test_limit_buy_with_sltp_dryrun` | LIMIT LONG + stop_loss + take_profit | FILLED, ref `DRYRUN-*` |
+| `test_market_buy_dryrun` | MARKET LONG 0.001 ETHUSD | PENDING, ref `DRYRUN-*` |
+| `test_market_sell_dryrun` | MARKET SHORT 0.001 ETHUSD | PENDING, ref `DRYRUN-*` |
+| `test_limit_buy_dryrun` | LIMIT LONG 0.1 @ $100 | PENDING, ref `DRYRUN-*` |
+| `test_limit_buy_with_sltp_dryrun` | LIMIT LONG + stop_loss + take_profit | PENDING, ref `DRYRUN-*` |
 | `test_invalid_symbol_rejected` | MARKET 0.001 XXXUSD | REJECTED (Kraken API error) |
 | `test_below_minimum_lot_rejected` | MARKET 0.00001 ETHUSD | REJECTED (below volume_min) |
 
@@ -178,7 +181,7 @@ Commit this report alongside the benchmark report as release artifacts.
 This Kraken suite is the **reference implementation** for all future live adapter test suites.
 When adding a new broker (e.g. MT5, #209), mirror this three-file structure exactly:
 
-> **§26 note (docs):** the broker-agnostic methodology (this section + *Layer & Relation
+> **Note (docs):** the broker-agnostic methodology (this section + *Layer & Relation
 > to the Live Field Study* above) currently lives in this Kraken doc. When the **2nd
 > adapter (MT5, #209)** lands, extract it into
 > `docs/tests/live_adapters/adapter_integration_overview.md` (a wrapper/overview doc) and

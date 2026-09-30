@@ -105,9 +105,9 @@ class PortfolioSummary(AbstractBatchSummarySection):
         """Render a single scenario's portfolio block (linear)."""
         currency_disp = f'{unit.currency} [SPOT]' if unit.spot_mode else unit.currency
         broker = (unit.broker_name[:30] if unit.broker_name else '—')
-        data = f' | Data: {unit.data_source}' if unit.data_source else ''
-        if unit.sentiment_source:
-            data += f' · 📡 Sentiment: {unit.sentiment_source}'
+        data = f' | Data broker: {unit.data_broker_type}' if unit.data_broker_type else ''
+        if unit.data_sentiment_type:
+            data += f' · 📡 Sentiment: {unit.data_sentiment_type}'
         print(f'💰 {renderer.bold(unit.name)} — {broker} ({currency_disp}){data}')
         if unit.has_error:
             print(renderer.red('   ⚠️ CRITICAL: Errors detected'))
@@ -506,8 +506,9 @@ class PortfolioSummary(AbstractBatchSummarySection):
         print(f'      Max Drawdown (account, curve): '
               f'{renderer.pnl(force_negative(h.account_max_drawdown), currency)} '
               f'({row.account_max_dd_pct:.1f}%) - Scenario: {row.account_max_drawdown_scenario}')
-        print(f'      Max Equity: {renderer.pnl(force_positive(row.max_equity), currency)} '
-              f'- Scenario: {row.max_equity_scenario}')
+        # The highest peak ANY scenario reached — not the peak the drawdown above fell from.
+        print(f'      Highest Equity: {renderer.pnl(force_positive(row.highest_equity), currency)} '
+              f'- Scenario: {row.highest_equity_scenario}')
 
     @staticmethod
     def _render_pending_stats(

@@ -49,7 +49,7 @@ All tests use **synthetic parquet files** generated via `tmp_path` fixtures (no 
 
 ### Traded Price Across Its Boundaries (`test_traded_price_transport.py`)
 
-`TickData.price` resolves a venue's basis from the data itself — the traded price where there
+`TickData.price` resolves a venue's price basis from the data itself — the traded price where there
 is one, the midpoint where there is not. That rests on a single invariant: **an absent traded
 price arrives as `None`, never as `0.0`.** A zero is a price to everything downstream and
 would render an entire quote-driven archive at zero, since `dropna` drops NaN and not zeros.

@@ -14,18 +14,22 @@ from python.configuration.market_config_manager import MarketConfigManager
 from python.configuration.sentiment_config_manager import SentimentConfigManager
 from python.framework.autotrader.autotrader_account_model import AutotraderAccountModel
 from python.framework.autotrader.autotrader_broker_config_setup import create_broker_config
+from python.framework.autotrader.autotrader_data_preparer import build_scenario_from_config
 from python.framework.autotrader.autotrader_logger_bundle import AutotraderLoggerBundle
 from python.framework.autotrader.autotrader_pipeline_bundle import AutotraderPipelineBundle
 from python.framework.autotrader.autotrader_warmup_preparator import AutotraderWarmupPreparator
+from python.framework.autotrader.dry_run_resolver import resolve_dry_run
 from python.framework.autotrader.live_clipping_monitor import LiveClippingMonitor
 from python.framework.bars.bar_rendering_controller import BarRenderingController
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
+from python.framework.exceptions.live_execution_errors import DryRunConflictError
 from python.framework.factory.decision_logic_factory import DecisionLogicFactory
 from python.framework.factory.live_trade_executor_factory import build_live_executor
 from python.framework.factory.worker_factory import WorkerFactory
 from python.framework.logging.file_logger import FileLogger
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.process.process_startup_preparation import inject_signal_providers
+from python.framework.reporting.io.run_header_io import data_windows_of
 from python.framework.reporting.store.run_index import RunIndex
 from python.framework.signal_data.signal_data_provider import SignalDataProvider
 from python.framework.signal_data.signal_source_resolver import SignalSourceResolver
@@ -39,13 +43,19 @@ from python.framework.trading_env.broker_config import BrokerConfig
 from python.framework.trading_env.decision_trading_api import DecisionTradingApi
 from python.framework.trading_env.live.live_trade_executor import LiveTradeExecutor
 from python.framework.store.run_config_store import RunConfigStore
-from python.framework.types.api.report_types import ParentKind, RunHeader
+from python.framework.types.api.report_types import (
+    DataWindow,
+    OrdersTo,
+    ParentKind,
+    RunHeader,
+    TicksFrom,
+)
 from python.framework.types.run_config_types import RunConfigKind
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
 from python.framework.types.autotrader_types.display_label_cache import DisplayLabelCache
 from python.framework.types.config_types.connection_policy_config_types import ConnectionPolicy
 from python.framework.types.live_types.live_execution_types import TimeoutConfig
-from python.framework.types.log_layout_types import RUN_TYPE_LIVE
+from python.framework.types.log_layout_types import RUN_TYPE_AUTOTRADER
 from python.framework.types.market_types.market_data_types import Bar
 from python.framework.types.market_types.market_types import TradingContext
 from python.framework.types.process_data_types import ProcessDataPackage
@@ -59,6 +69,7 @@ from python.framework.types.trading_env_types.broker_types import BrokerType
 from python.framework.types.trading_env_types.order_types import OrderType
 from python.framework.types.trading_env_types.stress_test_types import StressTestConfig
 from python.framework.utils.git_info_utils import get_git_commit
+from python.framework.validators.adapter_wiring_validator import REPLAY_TICK_SOURCE
 from python.framework.utils.run_id_utils import mint_run_id, session_key_from_run_id
 from python.framework.validators.capital_validator import (
     check_account_sufficiency,
@@ -77,6 +88,54 @@ from python.framework.workers.worker_orchestrator import WorkerOrchestrator
 # usable, which is not this number's job.
 _DEGRADED_REPLAY_WINDOW_HOURS: float = 24.0
 
+
+
+def _ticks_from(config: AutoTraderConfig) -> TicksFrom:
+    """
+    Where this session's ticks come from.
+
+    Args:
+        config: The resolved AutoTrader configuration
+
+    Returns:
+        ARCHIVE for the replaying tick source, VENUE for every other
+    """
+    return TicksFrom.ARCHIVE if config.tick_source.type == REPLAY_TICK_SOURCE else TicksFrom.VENUE
+
+
+def _orders_to(config: AutoTraderConfig) -> Optional[OrdersTo]:
+    """
+    Where this session's orders go, by the one dry-run rule the broker setup arms the adapter with.
+
+    Args:
+        config: The resolved AutoTrader configuration
+
+    Returns:
+        SIMULATED or VENUE; None for a profile the dry-run rule refuses — the header goes down
+        before that refusal on purpose, so the refused session is still identifiable, and it
+        never trades
+    """
+    try:
+        return OrdersTo.SIMULATED if resolve_dry_run(config) else OrdersTo.VENUE
+    except DryRunConflictError:
+        return None
+
+
+def _data_windows(config: AutoTraderConfig, run_timestamp: datetime) -> List[DataWindow]:
+    """
+    The market window this session covers.
+
+    Args:
+        config: The resolved AutoTrader configuration
+        run_timestamp: The session start (UTC)
+
+    Returns:
+        A mock session's replayed window, by the same rule a backtest's scenarios use; a venue
+        session's own start with an open end
+    """
+    if config.scenario_settings is not None:
+        return data_windows_of([build_scenario_from_config(config)])
+    return [DataWindow(unit_name=config.get_unit_name(), start_date=run_timestamp.isoformat())]
 
 
 def _register_profile_config(source: Optional[Path]) -> str:
@@ -140,10 +199,12 @@ def create_autotrader_loggers(
     Returns:
         (global_logger, session_logger, summary_logger, run_dir, run_id)
     """
-    session_name = config.name or f'{config.symbol}_{config.adapter_type}'
-    # From config (file_logging.run_logs.live) — the same source the API reads,
+    # The unit name, by the one rule every report uses — the run directory once had a rule of
+    # its own (`<symbol>_<adapter>`) for a profile without a name, and that profile is refused now.
+    session_name = config.get_unit_name()
+    # From config (file_logging.run_logs.autotrader) — the same source the API reads,
     # so a moved log root cannot make a session invisible to the run index.
-    log_root = AppConfigManager().get_file_logging_config_object().run_logs.live
+    log_root = AppConfigManager().get_file_logging_config_object().run_logs.autotrader
 
     # Minted ONCE for all three loggers. Deriving it per logger would give three ids and
     # therefore three directories for one session — the trap this threading exists to avoid.
@@ -195,7 +256,7 @@ def create_autotrader_loggers(
         header = RunHeader(
             run_id=run_id,
             start_time=run_timestamp,
-            run_type=RUN_TYPE_LIVE,
+            run_type=RUN_TYPE_AUTOTRADER,
             run_name=session_name,
             # Which continuous DEPLOYMENT this session belongs to (#497). The same field a
             # sweep's combination uses for its sweep, and the same KIND of parent: an identity
@@ -215,10 +276,15 @@ def create_autotrader_loggers(
             config_id=_register_profile_config(config.config_path),
             app_version=AppConfigManager().get_version(),
             git_commit=get_git_commit(),
-            # Always both (#551): a live session always reports, so its code identity is always
-            # captured, and a session killed before its close still says which code it ran.
+            # Always both (#551): an AutoTrader session always reports, so its code identity is
+            # always captured, and a session killed before its close still says which code it ran.
             origin=origin,
             code_identity=code_identity,
+            # Which KIND of session this is, from the resolved configuration rather than the
+            # file: where the ticks come from and where the orders go (contract 12).
+            ticks_from=_ticks_from(config),
+            orders_to=_orders_to(config),
+            data_windows=_data_windows(config, run_timestamp),
         )
         RunIndex(AppConfigManager().get_file_logging_config_object().run_index).register_run(
             header, run_dir)
@@ -309,7 +375,8 @@ def setup_pipeline(
         run_id: This session's run id — its random half becomes the client-order-id
             discriminator every order carries to the venue (#473)
         package: Prepared scenario data package (#438, mock) — its signal series is injected
-            into SIGNAL workers; None for live
+            into SIGNAL workers and its warmup bars into the bar controller; None for a
+            live-adapter session
 
     Returns:
         The pipeline bundle — every object the session needs, wired
@@ -362,7 +429,7 @@ def setup_pipeline(
     # === Phase 9: Warmup + Display Label Cache ===
     display_label_cache = _run_warmup(
         config, logger, workers, bar_controller, connection_policy,
-        decision_logic, balances, account)
+        decision_logic, balances, account, package)
 
     # === Phase 10: LiveClippingMonitor ===
     clipping_monitor = LiveClippingMonitor(
@@ -421,10 +488,9 @@ def _build_stale_stress_driver(
         return None
     # The data source the events name is the one the ticks came FROM, which is what
     # build_scenario_from_config resolved — not the execution broker, which can differ.
-    data_source = settings.data_broker_type or config.broker_type
     return build_stale_stress_driver(
         StressTestConfig.from_dict(settings.stress_test_config),
-        data_source,
+        config.get_data_broker_type(),
         package.tick_ranges.get(config.symbol),
         executor, decision_logic, logger)
 
@@ -515,7 +581,7 @@ def _resolve_account_model(
     # Validate: balances must be resolved
     if not balances:
         raise ValueError(
-            f"Configuration error: AutoTrader profile '{config.name}' resolved no balances.\n"
+            f"Configuration error: AutoTrader profile '{config.profile_name}' resolved no balances.\n"
             f"Mock: set 'scenario_settings.balances' (e.g. {{ \"USD\": 10000.0 }}).\n"
             f"Live: the broker returned no balance for the symbol's currencies."
         )
@@ -576,7 +642,7 @@ def _build_executor(
             broker_config.get_order_capabilities().venue_held_protective_orders):
         if config.adapter_type == 'live':
             raise ValueError(
-                f"Configuration error: AutoTrader profile '{config.name}' sets "
+                f"Configuration error: AutoTrader profile '{config.profile_name}' sets "
                 f"execution.venue_held_protection, but "
                 f"'{broker_config.get_broker_name()}' cannot hold a protective order for a "
                 f"position.\n"
@@ -603,7 +669,7 @@ def _build_executor(
         poll_interval_ms=broker_entry.broker_transport.poll_interval_ms,
         connection_policy=connection_policy,
         # #473 — four characters of the run id's random half. The SESSION owns it: a #476
-        # day fragment mints its own run id and must not change the key mid-session, which
+        # day record mints its own run id and must not change the key mid-session, which
         # is why it is derived here and never re-derived downstream.
         session_key=session_key_from_run_id(run_id),
         # #503 — the profile's intent. A per-order override still wins over it, and the
@@ -657,7 +723,7 @@ def _build_workers(
     # snapshots came from. Two ways to give it one:
     #   mounted  — the mock's prepared series, injected exactly as the sim subprocess does;
     #   live     — an EMPTY provider that the signal transport fills as envelopes arrive.
-    # The empty case is not a degenerate mount: a live session legitimately starts knowing
+    # The empty case is not a degenerate mount: a live-adapter session legitimately starts knowing
     # nothing, and its first decision waits for the first arrival (the worker reports BLIND
     # until then, which the staleness contract already handles).
     # The mode is resolved ONCE here and carried on the orchestrator, because every later
@@ -760,6 +826,7 @@ def _run_warmup(
     decision_logic: AbstractDecisionLogic,
     balances: Dict[str, float],
     account: AutotraderAccountModel,
+    package: Optional[ProcessDataPackage],
 ) -> DisplayLabelCache:
     """
     Phase 9 — fill the workers' history, build the display labels, and refuse a session that
@@ -774,6 +841,8 @@ def _run_warmup(
         decision_logic: The decision logic from phase 7
         balances: The balances from phase 1
         account: The account model from phase 3
+        package: A mock session's prepared data, whose warmup bars fill the history; None
+            for a live-adapter session, which fetches them from the venue
 
     Returns:
         The pre-resolved display labels
@@ -784,14 +853,12 @@ def _run_warmup(
         workers=workers,
         bar_controller=bar_controller,
         connection_policy=connection_policy,
+        package=package,
     )
     display_label_cache = warmup_preparator.build_display_label_cache(
         decision_logic=decision_logic,
         workers=workers,
-        sentiment_source=(
-            config.scenario_settings.data_sentiment_type
-            if config.scenario_settings else ''
-        ),
+        data_sentiment_type=config.get_data_sentiment_type(),
     )
 
     # #489 — a bot that can fund no order at all has nothing to do, and the boot is where

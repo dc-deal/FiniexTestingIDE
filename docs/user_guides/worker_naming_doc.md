@@ -10,12 +10,13 @@ This document explains how the framework loads workers and decision logics, and 
 
 ## Reference System
 
-Components are referenced by type strings in scenario configs and in `get_required_workers()`.
+Components are referenced by type strings in scenario sets and AutoTrader profiles, and in
+`get_required_workers()`.
 
 | Format | Example | Resolves to |
 |--------|---------|-------------|
 | `CORE/name` | `CORE/rsi` | Framework worker/logic in `python/framework/workers/core/` or `python/framework/decision_logic/core/` |
-| Relative path | `user_algos/my_algo/my_range_worker.py` | Relative to **project root** (from scenario config) |
+| Relative path | `user_algos/my_algo/my_range_worker.py` | Relative to **project root** (from a scenario set or AutoTrader profile) |
 | Relative path | `my_range_worker.py` | Relative to the **decision logic file** (from `get_required_workers()`) |
 | Absolute path | `/home/user/algos/my_worker.py` | Used as-is |
 
@@ -27,13 +28,12 @@ Components are referenced by type strings in scenario configs and in `get_requir
 
 Pre-registered at factory startup. Always available.
 
-**Workers (INDICATOR):** `CORE/rsi`, `CORE/bollinger`, `CORE/ma_trend`, `CORE/macd`, `CORE/obv`, `CORE/heavy_rsi`
-
-**Workers (SIGNAL):** `CORE/llm_sentiment` (#141 — pre-collected sentiment lookup, see *Worker Types* below)
-
-**Decision Logics:** `CORE/simple_consensus`, `CORE/aggressive_trend`, `CORE/cautious_macd`, `CORE/trend_channel_reference`, `CORE/hybrid_sentiment_reference`
-
-Backtesting variants: `CORE/backtesting/backtesting_deterministic`, `CORE/backtesting/backtesting_margin_stress`, `CORE/backtesting/backtesting_multi_position`
+The registry is the source: `WorkerFactory` (`python/framework/factory/worker_factory.py`) and
+`DecisionLogicFactory` (`python/framework/factory/decision_logic_factory.py`) register each
+`CORE/` name, and the files live in `python/framework/workers/core/` and
+`python/framework/decision_logic/core/`. The `backtesting/` and `live_field_study/` subfolders
+hold test-only components. The one SIGNAL worker so far is `CORE/llm_sentiment` (#141 —
+pre-collected sentiment lookup, see *Worker Types* below).
 
 ---
 
@@ -52,11 +52,12 @@ no-look-ahead key) via an injected `SignalDataProvider`, and refreshes on two tr
 crosses into a new snapshot window, OR the served result's staleness flips (`_evaluate_stale` —
 the one staleness definition per worker; without the flip trigger a feed dying mid-session would
 stay fresh-flagged forever). The provider is built from the prepared signal series in the data
-package and injected by the framework (sim subprocess / live boot) — never constructed by the
+package and injected by the framework (sim subprocess / AutoTrader boot) — never constructed by the
 worker. Both types return a `WorkerResult`, so the decision logic sees no difference.
 
 The signal archive is resolved through the first-class `data_sentiment_type` data source
-(import → index → parquet; sim scenario field / AutoTrader `sentiment_source` block) — see the
+(import → index → parquet; the scenario's field in a backtest, `scenario_settings.data_sentiment_type`
+in a mock session) — see the
 signal data source doc. The worker's `data_path` param remains a dev-only override.
 
 ### Signal-outage contract (mandatory when consuming a SIGNAL worker)
@@ -90,12 +91,12 @@ pure-indicator mode (`_read_sentiment` reads the envelope).
 The session-level sibling: when the TICK STREAM itself goes blind, EVERY decision logic must
 have programmed its reaction — `on_market_data_stale(status)` is a **mandatory override for
 all decision logics** (startup-validated in both pipelines; an explicit `pass` is a conscious,
-written answer). It is dispatched by the LIVE loop's heartbeat evaluation
+written answer). It is dispatched by the AutoTrader loop's heartbeat evaluation
 (`execution.market_data_stale_after_s`, default 300 s) — never in sim (replay gaps are data),
 unless a planned `stale_data_stress` window drives it deterministically. The OrderGuard
 additionally blocks NEW entries while stale (framework floor). Instruments, escalation ladder,
 and the outage decision tree: **read
-[Live Outage Handling](live_outage_handling_guide.md)** before writing the override.
+[Outage Handling](outage_handling_guide.md)** before writing the override.
 
 ---
 
@@ -108,7 +109,7 @@ user_algos/
 └── my_algo/
     ├── my_strategy.py       ← decision logic
     ├── my_range_worker.py   ← worker
-    └── my_algo_eurusd.json  ← scenario config
+    └── my_algo_eurusd.json  ← scenario set
 ```
 
 **One rule:** each `.py` file must contain exactly **one class** inheriting from `AbstractWorker` or `AbstractDecisionLogic`. The class and file can have any name.
@@ -153,7 +154,8 @@ Two rules every worker must follow:
 
 **1. A worker is a pure function of its inputs.** `compute()` may read only `tick`,
 `bar_history`, and `current_bars`. NEVER read wall-clock time (`datetime.now()` /
-`time.time()` — use the injected clock, see project rule §9), and NEVER read external
+`time.time()` — a backtest must give the same result whenever it runs, and the startup
+validator refuses a component that reads the wall clock), and NEVER read external
 mutable state at runtime: caches, run artifacts, or the volatility / market-analysis
 **profiles**. Those profiles are **setup / scenario-generation information only** (the
 `discoveries` CLIs). Coupling a worker to them breaks reproducibility — new data
@@ -192,16 +194,16 @@ subscription** — that decides both *what* the worker computes on and *when* it
 
 | Basis | Computes on | Recompute | Character |
 |---|---|---|---|
-| **`LIVE`** | completed history **+ the forming bar** (`tick.mid`) | **every tick** | drifts intra-bar; reacts to events *within* a bar |
+| **`LIVE`** | completed history **+ the forming bar** (`tick.price`) | **every tick** | drifts intra-bar; reacts to events *within* a bar |
 | **`BAR_CLOSE`** | **completed bars only** | only when a required timeframe **closes** (cached in between) | stable, cheap; the institutional bar-indicator model (nautilus / LEAN / Backtrader) |
 
 **`BAR_CLOSE` is not a free speedup — it changes behavior.** It freezes the indicator between
 closes, so an intra-bar event that touches a level and reverts before the close is **invisible**
 to it. It is correct only for a consumer that **reads on the bar-close grid** (a swing strategy,
 a higher-timeframe gate). A tick-reactive consumer — anything reading a live value like Bollinger
-`position`/`position_raw` from `tick.mid` — needs `LIVE`.
+`position`/`position_raw` from `tick.price` — needs `LIVE`.
 
-A run config opts a worker **instance** into a basis (sibling of `periods`, one value — not
+A run config opts a worker **instance** into a compute basis (sibling of `periods`, one value — not
 per-timeframe; multi-timeframe needs separate instances):
 
 ```json
@@ -218,7 +220,7 @@ reads its band `position` live.
 - **Default is `LIVE`** for all CORE indicators — existing scenario sets run **bit-identical**
   (no re-baseline). `BAR_CLOSE` is a conscious opt-in.
 - **Telemetry.** Because a `BAR_CLOSE` worker computes far less than once per tick, the run
-  report's **WORKER DETAILS** shows the basis, the **compute / tick ratio**, and the **ticks
+  report's **WORKER DETAILS** shows the compute basis, the **compute / tick ratio**, and the **ticks
   idle** since the last compute (e.g. `bar_close 200/49196 computes (0%, 148 idle)`) — so a
   bar-cadence worker is not misread as "barely ran". The per-compute `Avg` ms is the real worker
   cost (cadence-independent); a `BAR_CLOSE` run is therefore not comparable to a `LIVE` baseline.
@@ -349,7 +351,7 @@ For CORE workers, use the `CORE/name` shorthand:
         }
 ```
 
-### 2. Scenario config must match
+### 2. Scenario set or AutoTrader profile must match
 
 ```json
 {
@@ -484,7 +486,7 @@ ValueError: Type mismatch for 'range_detector': DecisionLogic requires '...',
 ```
 ValueError: Missing 'rsi_fast' in worker_instances. DecisionLogic requires this instance.
 ```
-**Fix:** Add the instance name (with exact spelling) to `worker_instances` in your scenario config.
+**Fix:** Add the instance name (with exact spelling) to `worker_instances` in your scenario set or AutoTrader profile.
 
 ### ❌ Missing required parameters
 **Fix:** Check the worker's `get_parameter_schema()` for parameters with `default=REQUIRED` and provide them in `workers.<instance_name>`.

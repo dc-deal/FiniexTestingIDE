@@ -32,5 +32,6 @@ def test_no_wall_clock_in_decision_logic_or_workers():
             violations.extend(find_wall_clock_calls(py))
     assert not violations, (
         'Wall-clock read in decision logic / worker code — use '
-        'self.trading_api.get_current_time() (§9):\n  ' + '\n  '.join(violations)
+        'self.trading_api.get_current_time(), the run\'s own clock, so a backtest can be '
+        'reproduced:\n  ' + '\n  '.join(violations)
     )

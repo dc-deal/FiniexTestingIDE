@@ -142,7 +142,7 @@ class BrokerEntryConfig(StrictConfigModel):
     broker_type: str
     market_type: MarketType
     # How this VENUE forms its prices — deliberately REQUIRED, with no default. A default is
-    # how the next broker silently inherits the wrong bar basis, which is the defect this
+    # how the next broker silently inherits the wrong price basis, which is the defect this
     # field exists to remove; without one, StrictConfigModel refuses the load instead.
     price_formation: PriceFormation
     broker_config_path: str = ''

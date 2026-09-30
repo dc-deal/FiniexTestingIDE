@@ -75,7 +75,10 @@ BROKER = 'kraken_spot'
 PROFILE_PATH = Path('configs/autotrader_profiles/production/my_bot_live.json')
 _RUN_ID = '20260924_120000_a1b2c3d4'
 
-_ALGO_PATCH = f'run_patches/{"4e01" * 16}.patch'
+# A foreign repository keeps its patch inside itself, under a reference relative to its root —
+# and every message shows it joined to that root.
+_ALGO_PATCH = f'.finiex_run_patches/{"4e01" * 16}.patch'
+_ALGO_PATCH_SHOWN = f'user_algos/{_ALGO_PATCH}'
 
 CLEAN = CodeIdentity(
     framework=RepositoryState(root='/app', commit='151c9889'),
@@ -162,8 +165,8 @@ def _session(identity, profile_override, adapter_type='live', allow_dirty=False)
         The session
     """
     session = AutotraderMain.__new__(AutotraderMain)
-    session._config = SimpleNamespace(
-        name='my_bot_live', symbol='BTCUSD', broker_type=BROKER, bot_id='my-bot',
+    session._config = AutoTraderConfig(
+        profile_name='my_bot_live', symbol='BTCUSD', broker_type=BROKER, bot_id='my-bot',
         adapter_type=adapter_type, dry_run=profile_override, config_path=PROFILE_PATH)
     session._code_identity = identity
     session._allow_dirty = allow_dirty
@@ -184,7 +187,7 @@ def _guard(session, broker_default):
     Returns:
         The patched MarketConfigManager, for assertions on whether it was asked
     """
-    with patch('python.framework.autotrader.autotrader_main.MarketConfigManager') as manager:
+    with patch('python.framework.autotrader.dry_run_resolver.MarketConfigManager') as manager:
         manager.return_value.get_dry_run.return_value = broker_default
         session._guard_uncommitted_code()
     return manager
@@ -201,7 +204,7 @@ def _post_run_findings(session):
         The findings the session's validation channel received
     """
     result = AutoTraderResult()
-    config = AutoTraderConfig(name='my_bot_live', symbol='BTCUSD', broker_type=BROKER)
+    config = AutoTraderConfig(profile_name='my_bot_live', symbol='BTCUSD', broker_type=BROKER)
     SessionPostRunValidator(
         result, config,
         uncommitted_code_allowed=session._uncommitted_code_allowed,
@@ -367,7 +370,7 @@ class TestTheOverrideIsLoud:
 
         notices = [message for level, message in session._session_logger.lines
                    if 'REAL ORDERS FROM UNCOMMITTED CODE' in message]
-        assert len(notices) == 1 and _ALGO_PATCH in notices[0]
+        assert len(notices) == 1 and _ALGO_PATCH_SHOWN in notices[0]
         assert 'REAL ORDERS FROM UNCOMMITTED CODE' in capsys.readouterr().out
 
     def test_the_notice_is_not_a_second_warning(self):
@@ -406,17 +409,17 @@ class TestTheTier1Warning:
         [finding] = _post_run_findings(session)
         assert finding.severity is Severity.WARNING
         assert finding.domain is ValidationDomain.SETUP and finding.scope == 'run'
-        assert '--allow-dirty' in finding.message and _ALGO_PATCH in finding.message
+        assert '--allow-dirty' in finding.message and _ALGO_PATCH_SHOWN in finding.message
 
     def test_it_reaches_the_report_as_a_tier_1_row(self):
         session = _session(DIRTY, None, allow_dirty=True)
         _guard(session, broker_default=False)
         result = AutoTraderResult()
-        config = AutoTraderConfig(name='my_bot_live', symbol='BTCUSD', broker_type=BROKER)
+        config = AutoTraderConfig(profile_name='my_bot_live', symbol='BTCUSD', broker_type=BROKER)
         SessionPostRunValidator(result, config, uncommitted_code_allowed=True,
                                 code_identity=DIRTY).validate()
 
-        report = build_warnings_errors_report_from_session(_RUN_ID, result, config.name,
+        report = build_warnings_errors_report_from_session(_RUN_ID, result, config.profile_name,
                                                            config.symbol)
         major = [row for row in report.warnings if row.tier == WarningTier.VALIDATOR_PRODUCED]
         assert [row.check for row in major] == [UNCOMMITTED_CODE_CHECK]
@@ -424,7 +427,7 @@ class TestTheTier1Warning:
     def test_the_shutdown_hands_the_verdict_to_the_post_run_validation(self, monkeypatch):
         """The call site, not only the check: the verdict must survive to the session's end."""
         session = AutotraderMain(AutoTraderConfig(
-            name='my_bot_live', symbol='BTCUSD', broker_type=BROKER))
+            profile_name='my_bot_live', symbol='BTCUSD', broker_type=BROKER))
         session._uncommitted_code_allowed = True
         session._code_identity = DIRTY
         session._global_logger = _RecordingLogger()
@@ -466,7 +469,7 @@ class TestTheGuardIsPartOfStartup:
     def test_a_dirty_real_money_start_is_refused_there(self, monkeypatch):
         calls = []
         session = self._startup_session(monkeypatch, DIRTY, calls)
-        with patch('python.framework.autotrader.autotrader_main.MarketConfigManager') as manager:
+        with patch('python.framework.autotrader.dry_run_resolver.MarketConfigManager') as manager:
             manager.return_value.get_dry_run.return_value = False
             with pytest.raises(UncommittedCodeError):
                 session._validate_startup()
@@ -475,7 +478,7 @@ class TestTheGuardIsPartOfStartup:
     def test_a_clean_start_passes_on_to_the_next_check(self, monkeypatch):
         calls = []
         session = self._startup_session(monkeypatch, CLEAN, calls)
-        with patch('python.framework.autotrader.autotrader_main.MarketConfigManager') as manager:
+        with patch('python.framework.autotrader.dry_run_resolver.MarketConfigManager') as manager:
             manager.return_value.get_dry_run.return_value = False
             with pytest.raises(RuntimeError, match='swap-mode'):
                 session._validate_startup()
@@ -583,7 +586,7 @@ class TestTheGuardOverARealCapture:
 
         identity = build_code_identity(
             [{'decision_logic_type': 'CORE/simple_consensus', 'worker_instances': {}}],
-            patch_sink=store.put)
+            patch_sink=lambda root, key, patch: store.put(key, patch))
 
         with pytest.raises(UncommittedCodeError) as caught:
             validate_committed_code(identity, real_orders=True, allow_dirty=False,

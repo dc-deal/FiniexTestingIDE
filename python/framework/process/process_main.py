@@ -42,6 +42,9 @@ def process_main(
     """
     try:
         start_time = time.time()
+        # The duration runs on the MONOTONIC clock: two wall-clock readings can come out negative
+        # when NTP steps the clock. `start_time` above stays the wall-clock point the log names.
+        start_monotonic = time.perf_counter()
 
         # === STATUS: INIT_PROCESS ===
         send_status_update_process(
@@ -145,7 +148,7 @@ def process_main(
             success=success,
             scenario_name=config.name,
             scenario_index=config.scenario_index,
-            execution_time_ms=time.time() - start_time,
+            execution_time_ms=(time.perf_counter() - start_monotonic) * 1000.0,
             tick_loop_results=tick_loop_results,
             scenario_logger_buffer=log_buffer,
             error_type=error_type,

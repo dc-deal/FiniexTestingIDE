@@ -1,8 +1,9 @@
 # AutoTrader Architecture
 
-The AutoTrader is the live trading runner, and the claim the whole project rests on is that it
-runs the SAME algorithm classes as the backtest. A worker that could tell it was running live
-would break the parity proof before the first tick — so the runner and the executor change, and
+The AutoTrader is the runner of every AutoTrader session — mock, dry run or real money — and the
+claim the whole project rests on is that it runs the SAME algorithm classes as the backtest. A
+worker that could tell it was running in an AutoTrader session would break the parity proof before
+the first tick — so the runner and the executor change, and
 nothing above them does.
 
 This document is the entry point: what the thing is, how a tick travels through it, where every
@@ -10,18 +11,18 @@ file lives, and which document answers which question. **It is deliberately shor
 sits in the six documents below, because a single file of fifteen hundred lines is one nobody
 reads to the end.
 
-FiniexAutoTrader is the live equivalent of the backtesting `process_tick_loop`. It connects tick
+FiniexAutoTrader is the counterpart of the backtesting `process_tick_loop`. It connects tick
 sources through workers and decision logic to the `LiveTradeExecutor`, using the same algorithm
 classes as backtesting.
 
-**Design constraint:** Workers and DecisionLogic must not know they are running live. Same
-classes, same interfaces. Only the runner and the executor change.
+**Design constraint:** Workers and DecisionLogic must not know they are running in an AutoTrader
+session. Same classes, same interfaces. Only the runner and the executor change.
 
 ## From profile to running threads
 
 ```
     ┌─────────────────────┐
-    │  AutoTraderConfig    │  ← configs/autotrader_profiles/backtesting/mock_session_test.json
+    │  AutoTraderConfig    │  ← configs/autotrader_profiles/mock/mock_session_test.json
     └─────────┬───────────┘
               │
     ┌─────────▼───────────┐
@@ -57,23 +58,24 @@ classes, same interfaces. Only the runner and the executor change.
 |---|---|
 | [autotrader_runtime_model.md](autotrader_runtime_model.md) | which thread does what, why the tick source and the broker adapter are separate, how a session starts / runs / ends, what survives a restart |
 | [autotrader_configuration.md](autotrader_configuration.md) | the profile cascade, the deployment identity a restarted bot inherits, the two fingerprints |
-| [autotrader_data_intake.md](autotrader_data_intake.md) | tick sources, the sentiment feed, the staleness contract, live warmup |
+| [autotrader_data_intake.md](autotrader_data_intake.md) | tick sources, the sentiment feed, the staleness contract, warmup |
 | [autotrader_capital_and_safety.md](autotrader_capital_and_safety.md) | what the bot may spend, committed funds, whose account it is, protective levels, the circuit breaker |
 | [autotrader_venue_integration.md](autotrader_venue_integration.md) | broker config acquisition, the Kraken execution tier, polling, the drift audit, the connection ladder |
 | [autotrader_observability.md](autotrader_observability.md) | the live console, the clipping monitor, the three log channels |
 
 Outside this folder, and owned there rather than here: the execution layer
 ([architecture_execution_layer.md](../architecture/architecture_execution_layer.md)), the live
-order path ([live_execution_architecture.md](../architecture/live_execution_architecture.md)),
-the protective-level contract ([protective_levels.md](../architecture/protective_levels.md)),
-the session-end policy ([session_end_policy.md](../architecture/session_end_policy.md)) and the
+execution stack's order path
+([live_execution_architecture.md](../architecture/live_execution_architecture.md)), the
+protective-level contract ([protective_levels.md](../architecture/protective_levels.md)), the
+session-end policy ([session_end_policy.md](../architecture/session_end_policy.md)) and the
 external-connection policy
 ([external_connection_policy.md](../architecture/external_connection_policy.md)).
 
 ## Acceptance Testing — Live Field Study (#332)
 
-The Live Field Study is the live acceptance gate: an operator-driven, deterministic phase
-sequence (`CORE/live_field_study/live_field_study`) that drives the full live pipeline
+The Live Field Study is the real-money acceptance gate: an operator-driven, deterministic phase
+sequence (`CORE/live_field_study/live_field_study`) that drives the full live execution stack
 through every order type, modify/cancel path, rejection battery, partial close, and idle
 heartbeat against real Kraken Spot at min-lot. It records the run as analysis-ready JSONL
 (two planes — bot-observed via #348 + broker-truth via #151) and a post-run analyzer emits
@@ -95,7 +97,7 @@ python/framework/autotrader/
   autotrader_startup.py          Pipeline object creation, phase by phase
   autotrader_pipeline_bundle.py  What setup_pipeline hands back (named, not positional)
   autotrader_logger_bundle.py    The session's three log channels + run identity
-  autotrader_warmup_preparator.py  Warmup bar loading (mock: parquet, live: API)
+  autotrader_warmup_preparator.py  Warmup bar loading (mock: parquet, live adapter: API)
   kraken_ohlc_bar_fetcher.py     Kraken OHLC bar fetch (public API, no auth)
   live_clipping_monitor.py       Per-tick timing, clipping detection (#197)
   session_log_retention.py       Prunes rotated daily session logs (#357)
@@ -105,12 +107,12 @@ python/framework/autotrader/
   tick_sources/
     abstract_tick_source.py      AbstractTickSource ABC
     mock_tick_source.py          Scenario base-data replay (#438) tick source
-    kraken_tick_source.py        Kraken WS v2 live tick source (#232)
+    kraken_tick_source.py        Kraken WS v2 tick source (#232)
     kraken_tick_message_parser.py  WS JSON → TickData parser (#232)
 
 python/configuration/autotrader/
   autotrader_config_loader.py          JSON → AutoTraderConfig
-  abstract_broker_config_fetcher.py    ABC for live config fetchers
+  abstract_broker_config_fetcher.py    ABC for venue config fetchers
   kraken_config_fetcher.py             Kraken REST API fetch (symbol specs + balance)
 
 python/framework/types/autotrader_types/
@@ -128,18 +130,19 @@ python/cli/
 
 configs/autotrader_profiles/          One folder per PURPOSE — the parent holds no profile
   production/                        the ones that trade for real, unattended
-    ethusd_live.json                 ETHUSD, Kraken API
-    solusd_live.json                 SOLUSD, Kraken API
-    dashusd_live.json                DASHUSD, Kraken API
-    dotusd_live.json                 DOTUSD — binds no signal source, a data-independence proof
-  observation/                       real feed, dry_run pinned true, nothing reaches the venue
+    ethusd_production.json                 ETHUSD, Kraken API
+    solusd_production.json                 SOLUSD, Kraken API
+    dashusd_production.json                DASHUSD, Kraken API
+    dotusd_production.json                 DOTUSD — binds no signal source, a data-independence proof
+  observation/                       real feed, dry_run pinned true, nothing is placed at the venue
+    dry_run_resting_probe.json       resting-order probe in a dry run
   field_study/                       the real-money acceptance test (#332)
-  backtesting/                       mock replay, one per test suite
+  mock/                              mock sessions, one per test suite
     mock_session_test.json           Full mock session test (BTCUSD parquet replay)
     trade_lifecycle_test.json        Trade lifecycle test (BTCUSD, 15K ticks)
     btcusd_mock_safety.json          Safety circuit breaker test (aggressive thresholds)
 
-configs/credentials/
+configs/credentials/venues/
   kraken_credentials.json        Mock/default credentials (tracked)
 ```
 
@@ -172,7 +175,7 @@ still running, unattended, where there is nobody to ask.
 
 ```bash
 # CLI
-python python/cli/autotrader_cli.py run --config configs/autotrader_profiles/backtesting/mock_session_test.json
+python python/cli/autotrader_cli.py run --config configs/autotrader_profiles/mock/mock_session_test.json
 
 # VS Code launch.json
 # 🤖 AutoTrader: BTCUSD Mock
@@ -188,7 +191,7 @@ tree, never through the second — see
 
 | Step | Issue | Description | Status |
 |------|-------|-------------|--------|
-| 1a-α | #229 | Skeleton + Mock Pipeline | ✅ |
+| 1a-α | #229 | Skeleton + mock session | ✅ |
 | 1a-β | #230 | Live Broker Config (Kraken API) | ✅ |
 | 1b | #231 | Live Warmup (KrakenOhlcBarFetcher) | ✅ |
 | 3 | #133 | KrakenAdapter Tier 3 (execution, dry-run, broker settings) | ✅ |

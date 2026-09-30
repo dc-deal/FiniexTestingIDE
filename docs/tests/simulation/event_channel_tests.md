@@ -3,7 +3,7 @@
 Validates the [Decision Event Channel](../../architecture/decision_event_channel.md)
 end-to-end. Two layers: an isolated dispatcher unit test, and a **dual-world
 parity** proof that the channel delivers the identical event sequence through the
-simulation and AutoTrader-mock pipelines.
+simulation pipeline and an AutoTrader mock session.
 
 ## What Is Tested
 
@@ -20,8 +20,8 @@ fake executor + recording logic (no broker, no worker thread):
 
 ### Dual-world parity (full pipeline)
 
-A dedicated decision logic, `BacktestingEventProbe`
-(`CORE/backtesting/backtesting_event_probe`), runs the same deterministic plan in
+A dedicated decision logic, `EventProbe`
+(`CORE/test_probes/event_probe`), runs the same deterministic plan in
 both pipelines: open a MARKET position → partial-close it → `request_session_end`.
 It subscribes to every event and records the ordered sequence it receives. Both
 worlds must produce:
@@ -32,17 +32,17 @@ worlds must produce:
 
 | Pipeline | Test | Event log source |
 |---|---|---|
-| Simulation | `tests/simulation/event_channel/test_event_channel_sim.py` | `BacktestingMetadata.received_events` (cross-process) |
-| AutoTrader-mock | `tests/autotrader/integration/test_event_channel_live_pipeline.py` | `decision_logic.get_received_event_log()` (in-process) |
+| Simulation | `tests/simulation/event_channel/test_event_channel_sim.py` | `ProbeMetadata.received_events` (cross-process) |
+| Mock session | `tests/autotrader/integration/test_event_channel_live_pipeline.py` | `decision_logic.get_received_event_log()` (in-process) |
 
-The AutoTrader-mock test also exercises `request_session_end` end-to-end — the bot
+The mock-session test also exercises `request_session_end` end-to-end — the bot
 ends the session itself (no operator Ctrl+C), and `SESSION_END` is the last event
 delivered before teardown.
 
 ## Fixtures (conftest.py)
 
 - Simulation scenario set: `configs/scenario_sets/backtesting/event_channel_test.json`
-- AutoTrader-mock profile: `configs/autotrader_profiles/backtesting/event_channel_lifecycle.json`
+- AutoTrader mock profile: `configs/autotrader_profiles/mock/event_channel_lifecycle.json`
 
 Both reuse the USDJPY mt5 tick data of the partial-close suites; only the decision
 logic and its plan differ.
@@ -53,7 +53,7 @@ logic and its plan differ.
 # Dual-world (sim)
 pytest tests/simulation/event_channel/ -v
 
-# Dual-world (AutoTrader-mock)
+# Dual-world (mock session)
 pytest tests/autotrader/integration/test_event_channel_live_pipeline.py -v
 
 # Dispatcher unit

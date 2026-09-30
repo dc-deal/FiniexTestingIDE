@@ -250,7 +250,7 @@ profile_counts['trade_simulator'] += 1
 - `live_update` - Queue export (if enabled)
 
 > **Tick Processing Budget:** A configurable `tick_processing_budget_ms` can pre-filter ticks in the
-> main process before subprocess execution, simulating live clipping behavior. See
+> main process before subprocess execution, simulating the clipping of a live-adapter session. See
 > [Tick Processing Budget Guide](tick_processing_budget_guide.md) for details.
 
 ---
@@ -817,7 +817,7 @@ runs/simulation/<set_name>/<run_id>/
 
 Compare with AutoTrader (`session_logs/` instead of `scenario_logs/`):
 ```
-runs/live/<name>/<run_id>/
+runs/autotrader/<name>/<run_id>/
   autotrader_global.log
   autotrader_summary.log
   session_logs/

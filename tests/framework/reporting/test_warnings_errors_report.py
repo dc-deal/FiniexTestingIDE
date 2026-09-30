@@ -144,20 +144,20 @@ class TestBuildFromBatch:
         """
         clean = _batch([_result('ok', 0)], [_scenario('ok', 0, 'BTCUSD')])
         assert build_warnings_errors_report_from_batch(_RUN_ID, clean).outcome.run_outcome == \
-            RunOutcome.SUCCESS.value
+            RunOutcome.SUCCESS
 
         crashed = _batch(
             [_result('bad', 0, success=False, error_type='ValueError', error_message='boom')],
             [_scenario('bad', 0, 'BTCUSD')])
         assert build_warnings_errors_report_from_batch(_RUN_ID, crashed).outcome.run_outcome == \
-            RunOutcome.FAILED.value
+            RunOutcome.FAILED
 
         pot = _batch(
             [_result('noisy', 0, success=False, error_type=LOGGED_ERRORS_TYPE,
                      error_message='Scenario logged 2 ERROR(s)')],
             [_scenario('noisy', 0, 'BTCUSD')])
         assert build_warnings_errors_report_from_batch(_RUN_ID, pot).outcome.run_outcome == \
-            RunOutcome.FINISHED_WITH_ERRORS.value
+            RunOutcome.FINISHED_WITH_ERRORS
 
 
 class TestNoRenderingReachesTheArtifact:
@@ -240,9 +240,9 @@ class TestBuildFromSession:
             session_logger_buffer=[_record(LogLevel.WARNING, 'stale tick'),
                                    _record(LogLevel.WARNING, 'reconnect'),
                                    _record(LogLevel.ERROR, 'order rejected')])
-        report = build_warnings_errors_report_from_session(_RUN_ID, result, 'dotusd_live', 'DOTUSD')
+        report = build_warnings_errors_report_from_session(_RUN_ID, result, 'dotusd_production', 'DOTUSD')
         assert [w.tier for w in report.warnings] == ['minor', 'minor']
-        assert all(w.scope == 'dotusd_live' for w in report.warnings)
+        assert all(w.scope == 'dotusd_production' for w in report.warnings)
         assert len(report.errors) == 1
         assert report.errors[0].error_message == 'balance breach'
         assert [e.message for e in report.errors[0].logged_errors] == ['order rejected']
@@ -257,18 +257,18 @@ class TestBuildFromSession:
     def test_live_outcome_carries_the_canonical_grading(self):
         """The live half stamps the same field, so both pipelines answer identically."""
         clean = build_warnings_errors_report_from_session(_RUN_ID, AutoTraderResult(), 'p', 'BTCUSD')
-        assert clean.outcome.run_outcome == RunOutcome.SUCCESS.value
+        assert clean.outcome.run_outcome == RunOutcome.SUCCESS
 
         emergency = build_warnings_errors_report_from_session(_RUN_ID, 
             AutoTraderResult(shutdown_mode='emergency', emergency_reason='balance breach'),
             'p', 'BTCUSD')
-        assert emergency.outcome.run_outcome == RunOutcome.FAILED.value
+        assert emergency.outcome.run_outcome == RunOutcome.FAILED
 
         pot = build_warnings_errors_report_from_session(_RUN_ID, 
             AutoTraderResult(shutdown_mode='normal',
                              session_logger_buffer=[_record(LogLevel.ERROR, 'order rejected')]),
             'p', 'BTCUSD')
-        assert pot.outcome.run_outcome == RunOutcome.FINISHED_WITH_ERRORS.value
+        assert pot.outcome.run_outcome == RunOutcome.FINISHED_WITH_ERRORS
 
     def test_operator_stop_is_told_apart_from_a_crash(self):
         """Ctrl+C also arrives as 'emergency', so the outcome carries the discriminator."""
@@ -277,20 +277,55 @@ class TestBuildFromSession:
             'p', 'BTCUSD')
         assert interrupted.outcome.shutdown_mode == 'emergency'
         assert interrupted.outcome.operator_interrupted is True
-        assert interrupted.outcome.run_outcome == RunOutcome.SUCCESS.value
+        assert interrupted.outcome.run_outcome == RunOutcome.SUCCESS
         assert interrupted.outcome.emergency_reason == ''
 
         crashed = build_warnings_errors_report_from_session(_RUN_ID, 
             AutoTraderResult(shutdown_mode='emergency', emergency_reason='tick loop died'),
             'p', 'BTCUSD')
         assert crashed.outcome.operator_interrupted is False
-        assert crashed.outcome.run_outcome == RunOutcome.FAILED.value
+        assert crashed.outcome.run_outcome == RunOutcome.FAILED
 
     def test_sim_outcome_leaves_the_live_only_fields_empty(self):
         """shutdown_mode '' on a sim run means 'not applicable', not 'unknown'."""
         report = build_warnings_errors_report_from_batch(_RUN_ID, _batch([], []))
         assert report.outcome.shutdown_mode == ''
         assert report.outcome.operator_interrupted is False
+
+
+class TestTheCountsAreOneDefinition:
+    """
+    The outcome counts each channel once, the same way in both pipelines. The warning ROWS cannot
+    be counted instead: the simulation summarizes its whole log pot in one row, the AutoTrader
+    writes a row per entry — so the same pot reads as 1 row there and 2 here.
+    """
+
+    _POT = [_record(LogLevel.WARNING, 'w1'), _record(LogLevel.WARNING, 'w2'),
+            _record(LogLevel.ERROR, 'e1'), _record(LogLevel.INFO, 'i1')]
+
+    @staticmethod
+    def _advisory() -> ValidationResult:
+        return ValidationResult('run', [ValidationFinding(
+            severity=Severity.WARNING, check='debug_mode', domain=ValidationDomain.SETUP,
+            message='DEBUG MODE', scope='run')])
+
+    def test_the_same_pot_counts_alike_in_both_pipelines(self):
+        batch = build_warnings_errors_report_from_batch(_RUN_ID, _batch(
+            [_result('s1', 0, buffer=list(self._POT))], [_scenario('s1', 0, 'BTCUSD')],
+            batch_validation_result=[self._advisory()]))
+        session = build_warnings_errors_report_from_session(_RUN_ID, AutoTraderResult(
+            session_logger_buffer=list(self._POT),
+            session_validation_result=[self._advisory()]), 'p', 'BTCUSD')
+
+        counted = [(r.outcome.error_count, r.outcome.warning_count, r.outcome.log_warning_count)
+                   for r in (batch, session)]
+        assert counted == [(1, 1, 2), (1, 1, 2)]
+        assert len(batch.warnings) != len(session.warnings)   # why the rows are not the count
+
+    def test_a_clean_run_counts_zero_rather_than_nothing(self):
+        report = build_warnings_errors_report_from_session(_RUN_ID, AutoTraderResult(), 'p', 'BTCUSD')
+        assert (report.outcome.error_count, report.outcome.warning_count,
+                report.outcome.log_warning_count) == (0, 0, 0)
 
 
 class TestRender:
@@ -314,7 +349,7 @@ class TestRender:
             outcome=WarningsErrorsOutcome(failed_count=1))
         out = self._render(report)
         assert 'WARNINGS & ERRORS' in out
-        assert 'Scenario errors detected — 1 unit(s)' in out
+        assert 'Errors detected — 1 unit(s)' in out
         assert '✗ start before data' in out
         assert '1 logged error(s)' in out
         assert 'DEBUG MODE' in out

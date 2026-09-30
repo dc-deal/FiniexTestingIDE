@@ -49,7 +49,7 @@ class SignalSourceResolver:
         Args:
             workers: The session's worker instances (SIGNAL workers are picked out here)
             package: Prepared scenario data package — mock/simulation mounts its series
-                from this; None for a live session
+                from this; None for a live-adapter session
             sentiment_config: The installation's signal transport settings
 
         Returns:

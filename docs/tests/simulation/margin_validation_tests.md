@@ -3,7 +3,7 @@
 ## Overview
 
 The margin validation test suite validates margin exhaustion, recovery, order rejection, and edge
-case handling. It uses a dedicated decision logic (`BacktestingMarginStress`) that intentionally
+case handling. It uses a dedicated decision logic (`MarginStressProbe`) that intentionally
 exhausts margin, triggers rejections, recovers margin via explicit closes, and retries previously
 failed orders.
 
@@ -95,7 +95,7 @@ tests/
 | Fixture | Scope | Description |
 |---------|-------|-------------|
 | `portfolio_stats` | session | PortfolioStats (only successfully executed trades) |
-| `backtesting_metadata` | session | BacktestingMetadata with expected_trades, warmup errors |
+| `probe_metadata` | session | ProbeMetadata with expected_trades, warmup errors |
 | `execution_stats` | session | ExecutionStats with sent/executed/rejected counts |
 
 ### Trade Data Fixtures
@@ -237,7 +237,7 @@ Imported from `tests/shared/shared_pnl.py`. Validates P&L calculations for succe
 | `test_exit_after_entry` | Exit tick after entry tick |
 | `test_positive_lots` | Lot size positive |
 | `test_spread_cost_positive` | Spread cost non-negative |
-| `test_winning_losing_count` | Winner/loser counts match portfolio |
+| `test_winning_losing_count` | Winner/loser counts match portfolio; a trade that realised exactly nothing is neither — this scenario holds one, closed at its entry price on a broker with no per-side fee |
 | `test_direction_counts` | Long/short counts match portfolio |
 | `test_valid_prices` | Entry/exit prices positive |
 | `test_valid_tick_value` | Tick value positive |
@@ -286,16 +286,16 @@ python python/cli/strategy_runner_cli.py run backtesting/margin_validation_zero_
 
 **VS Code:** Use launch configurations:
 - `🧩 Pytest: Margin Validation (All)` — run all margin tests (including zero balance)
-- `🧪 Run (MARGIN_VALIDATION Scenario)` — run main scenario only
-- `🧪 Run (ZERO_BALANCE Scenario)` — run zero balance scenario only
+- `🧪 Simulation: Margin Validation` — run main scenario only
+- `🧪 Simulation: Zero Balance` — run zero balance scenario only
 
 ---
 
 ## Architecture
 
-### Decision Logic: BacktestingMarginStress
+### Decision Logic: MarginStressProbe
 
-Located at `python/framework/decision_logic/core/backtesting/backtesting_margin_stress.py`.
+Located at `python/framework/decision_logic/core/test_probes/margin_stress_probe.py`.
 
 Extends the multi-position pattern with four config-driven event types:
 
@@ -325,7 +325,7 @@ margin_required = (lots × contract_size × price) / leverage
 ### Key Data Flow
 
 ```
-BacktestingMarginStress.compute()
+MarginStressProbe.compute()
   ├→ trade_sequence entries     → send_order() → margin check → accept/reject
   ├→ edge_case_orders           → send_order() → lot validation → reject
   │                             → close_position() → not found → error
@@ -334,6 +334,6 @@ BacktestingMarginStress.compute()
 
 Results available via:
   ├→ execution_stats.orders_rejected     (all rejection types)
-  ├→ backtesting_metadata.expected_trades (successful opens only)
+  ├→ probe_metadata.expected_trades (successful opens only)
   └→ trade_history                        (closed trades only)
 ```

@@ -66,18 +66,21 @@ class _RecordingSink:
 
     def __init__(self):
         self.calls: List[Tuple[str, bytes]] = []
+        self.roots: List[str] = []
 
-    def __call__(self, patch_hash: str, patch: bytes) -> Optional[str]:
+    def __call__(self, root: str, patch_hash: str, patch: bytes) -> Optional[str]:
         """
         Record one stored patch.
 
         Args:
+            root: The repository the patch belongs to
             patch_hash: The key the builder stores the patch under
             patch: The patch bytes
 
         Returns:
             The reference the builder records
         """
+        self.roots.append(root)
         self.calls.append((patch_hash, patch))
         return f'memory/{patch_hash}'
 
@@ -203,6 +206,7 @@ class TestTheFrameworkRepositoryIsAlwaysStated:
         assert framework.changes == [' M app.py', '?? extra.py']
         assert framework.diff_hash and len(framework.diff_hash) == 64
         assert len(sink.calls) == 1
+        assert sink.roots == [str(framework_repo)], 'the sink learns whose patch it keeps'
         patch_hash, patch = sink.calls[0]
         assert patch_hash == hashlib.sha256(patch).hexdigest(), 'stored under its own bytes'
         assert framework.patch_ref == f'memory/{patch_hash}'
@@ -298,7 +302,8 @@ class TestTheDiffIdentifiesAndRestoresTheTree:
         (repo / 'README.md').unlink()
         store = RunPatchStore(tmp_path / 'run_patches')
 
-        identity = build_code_identity([_package_strategy(repo)], patch_sink=store.put)
+        identity = build_code_identity([_package_strategy(repo)],
+                                       patch_sink=lambda root, key, patch: store.put(key, patch))
         state = identity.repositories[0]
         assert state.dirty and state.diff_hash and state.patch_ref and state.restorable
 

@@ -1,6 +1,6 @@
 """
 FiniexTestingIDE - Live Telemetry Core Snapshot
-Shared core of the live-telemetry frames (simulation batch + live session).
+Shared core of the live-telemetry frames (simulation batch + AutoTrader session).
 """
 
 from dataclasses import dataclass
@@ -15,7 +15,7 @@ class LiveCoreSnapshot:
     The subset both live-telemetry frames share.
 
     Composed by LiveScenarioStats (simulation batch) and AutoTraderDisplayStats
-    (live session) so the common identity + portfolio basics live in one place
+    (AutoTrader session) so the common identity + portfolio basics live in one place
     and serialize identically for the viewer.
 
     Args:

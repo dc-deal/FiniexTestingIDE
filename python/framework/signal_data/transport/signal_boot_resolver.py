@@ -1,6 +1,7 @@
 """
 FiniexTestingIDE - Signal Boot Resolver
-What a live session knows about its signal source before it opens a connection (#468, #473).
+What a live-adapter session knows about its signal source before it opens a connection
+(#468, #473).
 
 One layer above SignalBootBridge: the bridge MOUNTS an archive slice, this decides what to
 mount and what to do when the producer cannot be reached at all. It lives in the signal
@@ -39,7 +40,7 @@ def prepare_live_signal_boot(
     logger: ScenarioLogger,
 ) -> SignalLiveBoot:
     """
-    Establish what a live session knows before it opens a connection (#468).
+    Establish what a live-adapter session knows before it opens a connection (#468).
 
     Two things happen here and both happen exactly once. The producer's registry is read,
     which is where the keep-alive interval and the replay window come from — served rather

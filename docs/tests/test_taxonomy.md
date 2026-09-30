@@ -83,11 +83,11 @@ tests/
 │   ├── reconciliation/    unit — broker truth-pull + Reconciler ALERT_ONLY (#151)
 │   ├── session_end/       unit — what a session leaves standing and how it is reported (#492):
 │   │                      the policy, the cleanup, realised-vs-valued, the phantom-drawdown guard
-│   ├── session_validation/ unit — SessionPostRunValidator: the live Tier-1 channel, shared stress/slow-component checks
+│   ├── session_validation/ unit — SessionPostRunValidator: the AutoTrader Tier-1 channel, shared stress/slow-component checks
 │   ├── api_monitor/       unit — broker REST latency/error telemetry (#351)
 │   ├── field_study_machine/  unit — Field Study phase state machine (#332)
 │   ├── kraken_adapter/    unit — Kraken private-call nonce monotonicity + lock (#332), client-order-id wire key + read-back (#473), dry-run fill rules (#505)
-│   └── tick_sources/      unit — the live tick before anything sees it: the quote a trade executed
+│   └── tick_sources/      unit — a venue tick before anything sees it: the quote a trade executed
 │                          against, two subscriptions on one connection, recorded Kraken frames (#520)
 │
 ├── parity/                parity — simulation vs. AutoTrader identical output (#294, #318, #326, #360 sim ghost-pass)
@@ -98,6 +98,7 @@ tests/
 │   ├── config/            unit — execution_config 3-level cascade (#137) · deep_merge list-merge ·
 │   │                      AutoTrader loader field coverage (every block field reachable from JSON)
 │   ├── connection_ladder/ unit — shared retry decision for every external connection: classification, backoff, jitter, budget, give-up (#473)
+│   ├── config_directory/  unit — every configuration that can start a run: what a file declares, unreadable files as rows, precedence, the per-file cache, run figures from the run index, and the console views over it (#554)
 │   ├── indicators/        unit — the shared indicator library: what each name means (Wilder vs EMA vs simple), the scalar/series parity, and the warmup each recursive average needs (#517)
 │   ├── worker_tests/      unit — worker computation, parameter schema, factory
 │   ├── signal_workers/    unit — SIGNAL worker type, provider, llm_sentiment, hybrid decision (#141), outage contract + episode capture (#434/#451)
@@ -105,18 +106,19 @@ tests/
 │   ├── signal_coverage/   unit — SignalCoverageReport gap detection + scenario signal-window validation
 │   ├── data_coverage/     unit — data format version spans (which collector schema produced which archive window, #453)
 │   ├── market_calendar/  unit — swap-rollover + DST calendar helpers + MarketClock awareness (#365)
-│   ├── test_price_trigger.py  unit — the shared order-vs-quote predicate: limit/stop reached, book side (§45, #505)
+│   ├── test_price_trigger.py  unit — the shared order-vs-quote predicate: limit/stop reached, book side (#505)
+│   ├── test_time_utils_utc.py  unit — every parsed or normalised datetime is UTC, also on a machine in another zone
 │   ├── market_compatibility/ unit — market activity metric, validator
 │   ├── tick_parquet_reader/  unit — parquet reader normalization
-│   ├── user_namespace/    unit — USER worker/decision discovery
+│   ├── path_based_loading/ unit — workers and decision logics loaded by CORE name or file path
 │   ├── api/               unit — REST API endpoints
 │   ├── live_telemetry/    unit — live-telemetry frame serializer (frame_to_json, #400)
 │   ├── field_study_recorder/ unit — Field Study JSONL recorder + certificate analyzer (#332)
-│   ├── algo_clock/        unit — §9 wall-clock ban lint (decision logic/workers, CI plane)
-│   ├── algo_clock_validator/ unit — §9 runtime startup validator: AST scan of loaded algos (CORE + USER) + batch pre-flight (#359)
+│   ├── algo_clock/        unit — wall-clock ban lint (decision logic/workers, CI plane)
+│   ├── algo_clock_validator/ unit — wall-clock ban, runtime startup validator: AST scan of loaded algos (CORE + user) + batch pre-flight (#359)
 │   ├── discovery_validity/ unit — the three discovery caches compare the config fingerprint they were already writing (#486 finding 57); a config change moves no bar file, so mtime alone kept serving a stale cache
-│   ├── static_analysis/   unit — §40 undefined-name gate (pyflakes) over python/ + tests/; the ruff/vulture backlog tier is measured, not gated
-│   └── store/             unit — §44 store catalog: completeness, the shared index base (atomic write, delete-and-rebuild, logic version), generic form-A retrieval, carry-over envelope (#486)
+│   ├── static_analysis/   unit — undefined-name gate (pyflakes) over python/ + tests/; the ruff/vulture backlog tier is measured, not gated
+│   └── store/             unit — the store catalog: completeness, what it prints, its two dated-claim advisories, the shared index base (atomic write, delete-and-rebuild, logic version), generic form-A retrieval, carry-over envelope (#486)
 │
 ├── data/
 │   ├── import_pipeline/   unit + integration — tick import, duplicate detection
@@ -156,7 +158,7 @@ Parity tests (`tests/parity/`) are the only tests that exercise **both** pipelin
 They prove that simulation and AutoTrader produce identical output given identical input. See
 [bar_parity_tests.md](parity/bar_parity_tests.md) for the full matrix.
 
-Parity tests complement shared code — they are not a substitute. See `docs/architecture/simulation_vs_live_flow.md` for the architectural rationale.
+Parity tests complement shared code — they are not a substitute. See `docs/architecture/simulation_vs_autotrader_flow.md` for the architectural rationale.
 
 ---
 

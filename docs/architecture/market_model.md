@@ -1,6 +1,6 @@
 # How a market is described: three independent axes
 
-A backtest that disagrees with a live session about what "the price" was is not a backtest.
+A backtest that disagrees with a live-adapter session about what "the price" was is not a backtest.
 Getting that right needs three separate facts about a venue, and the trap is that they look
 like one — this project trades exactly two venues, and those two happen to differ on all
 three axes at once.
@@ -36,7 +36,7 @@ gap.
 
 It is a property of the **venue**, not of the asset class and not of the account model. A
 crypto CFD at an MT5 broker is `crypto` + `margin` + `quote_driven`; Kraken spot is `crypto`
-+ `spot` + `order_driven`. Keying the bar basis off the asset class would render every bar of
++ `spot` + `order_driven`. Keying the price basis off the asset class would render every bar of
 that CFD at zero.
 
 The distinction was already present in the project twice before it had a name, which is the
@@ -63,7 +63,7 @@ opposite, which is why the axes look like one until you list them out.
 
 **Legend — each mark claims exactly what it says and nothing more:**
 
-- ✅ **Live-proven.** A real-money acceptance certificate exists for this combination.
+- ✅ **Real-money-proven.** A real-money acceptance certificate exists for this combination.
 - ◐ **Simulation-proven.** The backtesting pipeline runs it end to end; there is no live
   adapter yet.
 - ○ **Structurally ready.** The data model, the configuration and the import path carry it,
@@ -97,7 +97,7 @@ named the other.
 
 On an order-driven venue `bid` and `ask` are a real quote only where one was recorded. Kraken's
 trade channel alone reports executions, so a tick built from it carries `bid == ask`; the quote
-arrives on a separate channel, which the collector has read since format 1.6.0 and the live tick
+arrives on a separate channel, which the collector has read since format 1.6.0 and our Kraken tick
 source reads too (#520 step B). Before that boundary a Kraken tick has no spread to speak of, and
 that is a property of the recording rather than of the market.
 
@@ -118,18 +118,19 @@ checked or recorded, and never in the tick loop:
 - **At import.** A venue declared order-driven must deliver a traded price on every tick; a
   file that does not is refused by name rather than falling back quietly to the midpoint,
   which would change what its bars mean without anyone noticing.
-- **When a bar file is written.** The basis is stamped into the file and carried into the bar
+- **When a bar file is written.** The price basis is stamped into the file and carried into the bar
   index, so one file answers whether the whole archive was rendered consistently. The HTTP
-  API reports the basis from that stamp rather than from configuration — during a re-render,
+  API reports the price basis from that stamp rather than from configuration — during a re-render,
   configuration describes what a render *would* produce while half the files still hold the
   previous answer.
-- **When a run is recorded.** A finished run states which basis its bars were rendered from,
+- **When a run is recorded.** A finished run states which price basis its bars were rendered from,
   per scenario in the run report and per run in the results ledger. It reads the stamp, not
   the configuration, and a scenario that mounted no bar file records nothing rather than
-  borrowing the declaration. The one exception is a LIVE session: it renders its bars at
+  borrowing the declaration. The one exception is a live-adapter session: it renders its bars at
   runtime, so there is no file to stamp and the declaration is all there is — which is why the
   run record also says whether its input was an archive or a stream. Without that pair the
-  parity proof could not compare the live basis against the backtest's at all.
+  parity proof could not compare the live-adapter session's price basis against the backtest's at
+  all.
 
 ## Known limit
 

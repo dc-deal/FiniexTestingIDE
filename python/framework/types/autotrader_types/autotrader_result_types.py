@@ -4,6 +4,7 @@ Result data structures for live AutoTrader sessions.
 """
 
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import List, Optional
 
 from python.framework.types.autotrader_types.clipping_monitor_types import ClippingSessionSummary
@@ -12,7 +13,7 @@ from python.framework.types.autotrader_types.cold_start_types import (
     ColdStartVerdict,
 )
 from python.framework.types.autotrader_types.safety_session_types import SafetySessionRecord
-from python.framework.types.run_results_types import BookingSegment
+from python.framework.types.run_results_types import BookingPeriod
 from python.framework.types.disturbance_episode_types import DisturbanceEpisode, MarketDataTickStats
 from python.framework.types.log_level import LogLevel
 from python.framework.types.log_record_types import LogRecord
@@ -34,7 +35,7 @@ from python.framework.types.validation_types import ValidationResult
 @dataclass
 class AutoTraderResult:
     """
-    Complete result of an AutoTrader live session.
+    Complete result of an AutoTrader session.
 
     Collected after shutdown (normal or emergency).
 
@@ -42,6 +43,8 @@ class AutoTraderResult:
         session_duration_s: Total session duration in seconds
         ticks_processed: Total ticks processed
         ticks_clipped: Total ticks that experienced clipping
+        first_tick_time / last_tick_time: The first and the last tick the session processed —
+            its *tick timespan*; None when no tick arrived
         portfolio_stats: Portfolio performance statistics
         execution_stats: Order execution statistics
         trade_history: Completed trade records
@@ -64,6 +67,8 @@ class AutoTraderResult:
             Mirrors ProcessResult.scenario_logger_buffer, so both pipelines hand the reporting
             stage the same shape and the level filter lives at DERIVE, not here
         emergency_reason: Fatal cause when shutdown_mode == 'emergency' (None otherwise)
+        emergency_error_type: The class of the exception that caused it, None when no
+            exception did — the cause as a code, beside the sentence
         cold_start_situation: What the boot step found at the venue (#355 / #493). None for
             a simulation, a dry run and a Field Study — the three cases with nothing to find.
             Captured raw; the report model is derived from it
@@ -79,6 +84,8 @@ class AutoTraderResult:
     session_duration_s: float = 0.0
     ticks_processed: int = 0
     ticks_clipped: int = 0
+    first_tick_time: Optional[datetime] = None
+    last_tick_time: Optional[datetime] = None
     portfolio_stats: Optional[PortfolioStats] = None
     execution_stats: Optional[ExecutionStats] = None
     trade_history: List[TradeRecord] = field(default_factory=list)
@@ -98,14 +105,15 @@ class AutoTraderResult:
     shutdown_mode: str = 'normal'
     operator_interrupted: bool = False
     emergency_reason: Optional[str] = None
+    emergency_error_type: Optional[str] = None
     session_logger_buffer: List[LogRecord] = field(default_factory=list)
     cold_start_situation: Optional[ColdStartSituation] = None
     cold_start_verdict: Optional[ColdStartVerdict] = None
     safety_session: Optional[SafetySessionRecord] = None
-    # The session's HAUPTBUCH (#537) — one entry per closed booking period. Collected in the
+    # The session's LEDGER entries (#537) — one per closed booking period. Collected in the
     # loop and written by the report coordinator, so the parquet write stays off the measured
     # path and the simulation's subprocess can carry the same shape back over its bridge.
-    booking_segments: List[BookingSegment] = field(default_factory=list)
+    booking_periods: List[BookingPeriod] = field(default_factory=list)
     session_validation_result: List[ValidationResult] = field(default_factory=list)
 
     def add_session_validation_result(self, result: ValidationResult) -> None:

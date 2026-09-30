@@ -200,7 +200,7 @@ class TestTheFreezeDateIsReadableBack:
     A fee rate is a declared ASSUMPTION, so the seed records when it was frozen (#505
     follow-up) — and something has to be able to read that back, or the date is decoration.
 
-    Who needs it: a live session compares the declared rate against the venue on every start
+    Who needs it: a live-adapter session compares the declared rate against the venue on every start
     and warns on divergence. Someone running only BACKTESTS never sees that warning, and the
     seed can rot indefinitely for them. `store_cli.py catalog` asks this question for that
     reader, next to the expired release certificates — the same shape, because it is the same

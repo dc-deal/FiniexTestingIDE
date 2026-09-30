@@ -11,6 +11,7 @@ from python.configuration.app_config_manager import AppConfigManager
 from python.framework.store.run_config_store import RunConfigStore
 from python.scenario.scenario_set_resolver import resolve_scenario_set_path
 from python.framework.logging.bootstrap_logger import get_global_logger
+from python.framework.types.config_directory_types import ConfigKind
 from python.framework.types.config_types.autotrader_defaults_config_types import OrderGuardDefaults
 from python.framework.types.config_types.backtesting_config_types import (
     DefaultScenarioExecutionConfig,
@@ -28,6 +29,7 @@ from python.framework.types.scenario_types.window_set_types import WindowSet
 from python.framework.utils.config_merge_utils import check_unknown_keys, validate_merged_config
 from python.framework.utils.parameter_override_detector import ParameterOverrideDetector
 from python.framework.utils.time_utils import parse_datetime
+from python.framework.validators.config_name_validator import refuse_config_name_conflict
 from python.scenario.generator.window_materializer import WindowMaterializer
 from python.scenario.scenario_cascade import ScenarioCascade
 
@@ -88,10 +90,13 @@ class ScenarioConfigLoader:
             filename: Full path or config filename (e.g., "eurusd_3_windows.json")
 
         Returns:
-            Resolved Path
+            Resolved Path — refused when its name is also an AutoTrader profile's, because a run
+            records its configuration by file name alone
         """
-        return resolve_scenario_set_path(
+        path = resolve_scenario_set_path(
             filename, self._user_config_path, self._user_algo_dirs, self.config_path, self._store)
+        refuse_config_name_conflict(path.name, ConfigKind.SCENARIO_SET)
+        return path
 
     def load_config(self, config_file: str) -> LoadedScenarioConfig:
         """
@@ -148,16 +153,20 @@ class ScenarioConfigLoader:
 
         current_scenario_index = 0
         for scenario_data in config.get('scenarios', []):
+            # `scenario_name`, not `name`: a bare name is the word with five meanings, and the
+            # set itself already says `scenario_set_name`. A scenario without one is refused by
+            # the name check, which says which key it looked for.
+            scenario_name = scenario_data.get('scenario_name', '')
             # Filters out disabled scenarios during load
             is_enabled = scenario_data.get('enabled', True)  # Default: True
             if not is_enabled:
                 disabled_count += 1
                 vLog.debug(
-                    f"🔻 Skipping disabled scenario: {scenario_data['name']}")
+                    f'🔻 Skipping disabled scenario: {scenario_name}')
                 continue  # Skip disabled
 
             # Structural key validation — scenario level (pre-merge, full provenance)
-            _scenario_name = scenario_data.get('name', '<unnamed>')
+            _scenario_name = scenario_name or '<unnamed>'
             check_unknown_keys(f'scenario[{_scenario_name}].execution_config',       scenario_data.get('execution_config', {}),       _KNOWN_EXECUTION_KEYS)
             check_unknown_keys(f'scenario[{_scenario_name}].trade_simulator_config', scenario_data.get('trade_simulator_config', {}), _KNOWN_TRADE_SIM_KEYS)
             check_unknown_keys(f'scenario[{_scenario_name}].order_guard',            scenario_data.get('order_guard', {}),            _KNOWN_ORDER_GUARD_KEYS)
@@ -206,7 +215,7 @@ class ScenarioConfigLoader:
             # PARAMETER OVERRIDE DETECTION & WARNING (COMPLETE!)
             # ============================================
             ParameterOverrideDetector.detect_and_log_overrides(
-                scenario_name=scenario_data['name'],
+                scenario_name=scenario_name,
                 global_strategy=global_strategy,
                 global_execution=global_execution,
                 global_trade_simulator=global_trade_simulator,
@@ -225,13 +234,13 @@ class ScenarioConfigLoader:
             data_broker_type = scenario_data.get('data_broker_type')
             if not data_broker_type:
                 raise ValueError(
-                    f"Scenario '{scenario_data['name']}' missing required field 'data_broker_type'.\n"
+                    f"Scenario '{scenario_name}' missing required field 'data_broker_type'.\n"
                     f"\n"
                     f"This field specifies which data collection to load ticks/bars from.\n"
                     f"\n"
                     f"Add to your scenario:\n"
                     f"  {{\n"
-                    f"    \"name\": \"{scenario_data['name']}\",\n"
+                    f"    \"scenario_name\": \"{scenario_name}\",\n"
                     f"    \"data_broker_type\": \"mt5\",  <-- ADD THIS\n"
                     f"    \"symbol\": \"{scenario_data.get('symbol', 'SYMBOL')}\",\n"
                     f"    ...\n"
@@ -243,7 +252,7 @@ class ScenarioConfigLoader:
                 )
 
             scenario = SingleScenario(
-                name=scenario_data['name'],
+                name=scenario_name,
                 # important for data packages in parallel processing -> sub processes.
                 scenario_index=current_scenario_index,
                 symbol=scenario_data['symbol'],
@@ -253,7 +262,6 @@ class ScenarioConfigLoader:
                 start_date=parse_datetime(scenario_data['start_date']),
                 end_date=parse_datetime(scenario_data['end_date']) if scenario_data.get(
                     'end_date') else None,
-                data_mode=scenario_data.get('data_mode', 'realistic'),
                 max_ticks=scenario_data.get('max_ticks'),
                 strategy_config=scenario_strategy,
                 execution_config=scenario_execution,
@@ -281,6 +289,7 @@ class ScenarioConfigLoader:
             scenarios=scenarios,
             config_path=config_path,
             robustness=robustness,
+            disabled_count=disabled_count,
         )
 
     def load_from_profiles(

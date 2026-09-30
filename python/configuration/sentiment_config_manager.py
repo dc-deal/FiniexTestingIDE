@@ -6,7 +6,7 @@ The signal side's counterpart to MarketConfigManager: market_config.json holds m
 broker facts that a scenario points at with broker_type; this holds producer and pipeline
 facts that a scenario points at with data_sentiment_type. Both pipelines read it — a
 source's cadence and staleness describe the SOURCE, not the run, so a simulation needs
-them as much as a live session does.
+them as much as an AutoTrader session does.
 """
 
 import json

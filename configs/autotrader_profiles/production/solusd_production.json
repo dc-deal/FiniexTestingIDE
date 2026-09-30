@@ -1,0 +1,57 @@
+{
+  "_comment": "REAL MONEY. This is the only live profile that declares use_stop_limit, so it is the one whose behaviour changed when the live path learned STOP and STOP_LIMIT (#500): it used to be refused at STARTUP and now starts and places STOP_LIMIT entries at the venue. One value still needs an owner's eye: lot_size 2.0 SOL is the size of every entry. The entry gate was the other one and is settled - min_entry_capital is 0.0, i.e. OFF (#502). It used to read 1000 against free_margin, which at spot carries the holdings' unrealized P&L, so the floor moved with the market instead of with the cash and was loosest exactly when the account was most exposed. Holding back on a loss is a drawdown brake, and that belongs to the safety layer, not to an entry gate.",
+  "profile_name": "solusd_production",
+  "bot_id": "sollive01",
+  "symbol": "SOLUSD",
+  "broker_type": "kraken_spot",
+  "adapter_type": "live",
+  "deployment": {
+    "_comment": "Do this profile's sessions form ONE deployment whose ledger rows join into one history? MANDATORY — there is no safe default. Declare true only on a profile you are actually deploying; the CLI can narrow it (--one-off) but never widen it.",
+    "continuous": false
+  },
+  "strategy_config": {
+    "decision_logic_type": "CORE/cautious_macd",
+    "worker_instances": {
+      "macd_main": "CORE/macd",
+      "rsi_filter": "CORE/rsi"
+    },
+    "workers": {
+      "macd_main": {
+        "periods": {
+          "M5": 35
+        },
+        "fast_period": 12,
+        "slow_period": 26,
+        "signal_period": 9
+      },
+      "rsi_filter": {
+        "periods": {
+          "M5": 14
+        }
+      }
+    },
+    "decision_logic_config": {
+      "rsi_filter_buy": 85,
+      "rsi_filter_sell": 25,
+      "use_stop_limit": true,
+      "stop_limit_offset_pips": 2,
+      "pip_size": 1.0,
+      "stop_distance_pips": 50,
+      "sl_pips": 100,
+      "tp_pips": 200,
+      "break_even_trigger_pips": 75,
+      "min_histogram": 10,
+      "lot_size": 2.0,
+      "min_entry_capital": 0.0
+    }
+  },
+  "tick_source": {
+    "type": "kraken"
+  },
+  "safety": {
+    "enabled": true,
+    "min_balance": 8.0,
+    "min_equity": 8.0,
+    "max_drawdown_pct": 20.0
+  }
+}

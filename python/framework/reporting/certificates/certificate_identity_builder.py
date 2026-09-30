@@ -5,6 +5,10 @@ Builds the shared identity every release-gate certificate carries.
 Mirrors `run_provenance_builder.build_run_provenance()`: one function that reads the
 version-control state, the declared version and the environment, so the four certificate
 producers stop deriving it four times and disagreeing four ways.
+
+The version-control state is the run header's code identity (#551), captured through the same
+`capture_code_identity` a run uses: one answer to "is this code exactly one commit", shared with
+the live real-money guard, and a patch in `run_patches/` wherever the answer is no.
 """
 
 import platform
@@ -15,7 +19,7 @@ from typing import List, Optional, Tuple
 from python.configuration.app_config_manager import AppConfigManager
 from python.framework.types.certificate_types import CertificateIdentity, WorkspaceOverrides
 from python.framework.utils.config_merge_utils import is_config_isolation_active
-from python.framework.utils.git_info_utils import get_git_info
+from python.framework.utils.run_origin_builder import capture_code_identity
 
 # The shared validity backstop. One window for all four certificates: they answer questions
 # about the same release, so letting them expire on different dates would mean a release is
@@ -42,15 +46,16 @@ def build_certificate_identity(
         now: Capture moment; defaults to the current UTC time. Wall-clock is correct here —
             this measures when the artifact was produced, not a simulated event
         reports_dir: Where this run writes its certificate. Untracked files there do not
-            count as a dirty tree — otherwise a run is dirtied by the artifact of the
-            previous one, and a repeated release attempt fails for a reason that has
-            nothing to do with the code
+            count as a dirty tree and are not in the patch — otherwise a run is dirtied by the
+            artifact of the previous one, and a repeated release attempt fails for a reason
+            that has nothing to do with the code
 
     Returns:
         The identity, ready to spread into a certificate body
     """
     stamped = now or datetime.now(timezone.utc)
-    git = get_git_info(ignore_untracked_under=reports_dir)
+    code_identity = capture_code_identity([], ignore_untracked_under=reports_dir)
+    framework = code_identity.framework
     override_names, unnamed_count = workspace_override_files()
     isolation_active = is_config_isolation_active()
 
@@ -60,14 +65,16 @@ def build_certificate_identity(
         app_version=AppConfigManager().get_version(),
         timestamp=stamped,
         valid_until=stamped + timedelta(days=validity_days),
-        git_commit=git.commit if git else 'unknown',
+        git_commit=framework.commit or 'unknown',
         # Three parts only: a patch release is not a different interpreter for any purpose a
         # certificate serves, and the full string carries a build date that would make two
         # otherwise identical records differ.
         python_version=platform.python_version(),
-        git_branch=git.branch if git else None,
-        git_dirty=git.dirty if git else False,
-        uncommitted_count=git.uncommitted_count if git else 0,
+        git_branch=framework.branch,
+        # An unreadable tree counts as dirty — for a declared release it is refused, never
+        # certified as the commit nobody could read.
+        git_dirty=code_identity.is_dirty(),
+        uncommitted_count=framework.uncommitted_count,
         comment=comment,
         isolation_active=isolation_active,
         workspace_overrides=WorkspaceOverrides(
@@ -78,6 +85,7 @@ def build_certificate_identity(
             # facts and the certificate states both.
             applied=(not isolation_active
                      and bool(override_names or unnamed_count))),
+        code_identity=code_identity,
     )
 
 

@@ -41,15 +41,15 @@ tests/
 ├── simulation/       # Backtesting pipeline (baseline, margin_validation, benchmark, ...)
 ├── parity/           # Dual-pipeline parity tests — simulation vs. AutoTrader (#294)
 ├── data/             # Data pipeline (import_pipeline, data_integration, ...)
-├── framework/        # Framework mechanics (bar_rendering, worker_tests, user_namespace)
+├── framework/        # Framework mechanics (bar_rendering, worker_tests, path_based_loading)
 └── shared/           # Helper modules (not a suite — ignored)
 ```
 
 For the full test classification (marks, test types, suite map) see [test_taxonomy.md](test_taxonomy.md).
 
-Integration tests that use JSON profiles/scenario sets must reference the `backtesting/`
-subdirectory of the respective config source:
-- AutoTrader tests → `configs/autotrader_profiles/backtesting/`
+Integration tests that use JSON profiles/scenario sets must reference the test subdirectory of
+the respective config source:
+- AutoTrader tests → `configs/autotrader_profiles/mock/`
 - Simulation tests → `configs/scenario_sets/backtesting/`
 
 Each integration test suite has its own dedicated config file named after the test purpose
@@ -106,7 +106,7 @@ TOTAL: 39 passed  (22s)
 
 ## AutoTrader Mock Profiles & Display
 
-AutoTrader mock profiles under `configs/autotrader_profiles/backtesting/` default to
+AutoTrader mock profiles under `configs/autotrader_profiles/mock/` default to
 `"display": {"enabled": false}` — the live console dashboard would waste cycles during
 automated integration tests. When launching a mock profile interactively (e.g. via a
 `🧪 AutoTrader: ...` entry in `launch.json`), pass `--display` to the CLI to force the
@@ -114,7 +114,7 @@ dashboard on without editing the profile:
 
 ```bash
 python python/cli/autotrader_cli.py run \
-  --config configs/autotrader_profiles/backtesting/mock_session_test.json \
+  --config configs/autotrader_profiles/mock/mock_session_test.json \
   --display --delay 1
 ```
 
@@ -133,7 +133,7 @@ The two pipelines have different process architectures:
 
 ## Test Config Isolation
 
-Backtesting test scenarios (`configs/scenario_sets/backtesting/`) **must keep explicit values** for all parameters — seeds, balances, latency ranges, etc. They must **not** rely on `app_config.json → default_trade_simulator_config` inheritance.
+Backtesting test scenarios (`configs/scenario_sets/backtesting/`) **must keep explicit values** for all parameters — seeds, balances, latency ranges, etc. They must **not** rely on `app_config.json → backtesting.default_trade_simulator_config` inheritance.
 
 **Reason:** Tests assert against deterministic outcomes (trade counts, P&L values, latency ranges).
 If a test config inherits from `app_config.json` and someone changes an app default, all tests break
@@ -141,7 +141,7 @@ silently with wrong assertions rather than clear errors.
 
 **Rule:** Normal scenario sets can be slimmed down to inherit app defaults. Test scenario sets are pinned — they define their own truth.
 
-## Output Isolation — tests never write production data (§34)
+## Output Isolation — tests never write production data
 
 Autouse fixtures in `tests/conftest.py` redirect everything a run persists, for the whole test
 session. All of them are session-scoped and need no opt-in:
@@ -152,13 +152,15 @@ session. All of them are session-scoped and need no opt-in:
 | the run tree + its index | `_isolate_run_tree` | `tmp_path_factory` |
 | the cross-run results ledger | `_isolate_run_results_ledger` | `tmp_path_factory` |
 | the run-config store | `_isolate_run_config_store` | `tmp_path_factory` |
-| the run-patch store | `_isolate_run_patch_store` | `tmp_path_factory` |
+| the config directory's cache (#554) | `_isolate_config_directory` | `tmp_path_factory` |
+| the run-patch store — except in a session of release-gate suites alone, whose certificate names its patch (`tests/shared/release_gate_session.py`) | `_isolate_run_patch_store` | `tmp_path_factory` |
+| every strategy repository's own patch home (`.finiex_run_patches/`) | `_isolate_foreign_run_patches` — a test in throwaway repositories puts the real one back with `real_foreign_patch_homes` | `tmp_path_factory` |
 | both carry-over stores | `_isolate_carry_over_stores` | `tmp_path_factory` |
 
 **Why redirect rather than switch logging off.** Turning `file_logging.scenario.enabled` off
 would also produce a clean tree — no directory, no header, and therefore no index row. But it
 would take away what tests legitimately use: two integration tests read their own run directory
-to assert on artifacts, §36 diagnosis needs the log files, and a failing test's log is the first
+to assert on artifacts, diagnosing a run means reading every one of its log files, and a failing test's log is the first
 thing to look at. Redirecting keeps all of that and still leaves the operator's tree untouched.
 
 Measured 2026-08-30, before `_isolate_run_tree` existed: **134 of 138 rows** in the operator's
@@ -174,10 +176,12 @@ location and cleans it up:
 ├── run_tree0/                  ← _isolate_run_tree  (the trailing 0 is mktemp's counter)
 │   ├── runs_index.parquet
 │   ├── simulation/<set>/<run_id>/
-│   └── live/<profile>/<run_id>/
+│   └── autotrader/<profile>/<run_id>/
 ├── run_results_ledger0/        ← _isolate_run_results_ledger
 ├── run_configs0/               ← _isolate_run_config_store
+├── config_directory0/          ← _isolate_config_directory
 ├── run_patches0/               ← _isolate_run_patch_store
+├── foreign_run_patches0/       ← _isolate_foreign_run_patches
 └── carry_over0/                ← _isolate_carry_over_stores
 ```
 
@@ -190,7 +194,7 @@ location and cleans it up:
 - `--basetemp=<dir>` moves it, but pytest **deletes that directory if it exists** — never point it
   at anything worth keeping.
 - Side effect worth having: `/tmp` is the container's own filesystem, not the 9p mount the project
-  sits on (§42), so test output is written at ~2 µs per access instead of ~2.1 ms.
+  sits on, so test output is written at ~2 µs per access instead of ~2.1 ms.
 
 ## Files
 

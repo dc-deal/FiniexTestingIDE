@@ -45,28 +45,21 @@ def test_timing_and_identity():
 
 
 def test_disabled_and_profile_run():
+    """
+    The disabled count comes from the LOADER, which drops a disabled scenario before any batch
+    exists. This test used to plant one with `enabled = False` inside the batch — a state the
+    loader never produces — so the count it asserted was one production never reached: the
+    console's "(N disabled)" read 0 on every real run.
+    """
     s1, s2 = _scenario('s1', 0, 'GBPUSD'), _scenario('s2', 1, 'GBPUSD')
     s1.is_profile_run = True
-    s2.enabled = False
-    meta = build_run_meta_report_from_batch(_RUN_ID, _batch([s1, s2]))
+    meta = build_run_meta_report_from_batch(_RUN_ID, _batch([s1, s2]), disabled_count=1)
     assert meta.is_profile_run is True
     assert meta.disabled_count == 1
-
-
-def test_in_time_hours():
-    # Two 6-hour windows + one open-ended (no end_date → contributes nothing).
-    s1 = _scenario('s1', 0, 'GBPUSD')
-    s1.end_date = datetime(2025, 1, 1, 6, tzinfo=timezone.utc)
-    s2 = _scenario('s2', 1, 'GBPUSD')
-    s2.end_date = datetime(2025, 1, 1, 6, tzinfo=timezone.utc)
-    s3 = _scenario('s3', 2, 'USDJPY')   # start_date only, end_date None
-    meta = build_run_meta_report_from_batch(_RUN_ID, _batch([s1, s2, s3]))
-    assert meta.total_hours == 12.0          # 6 + 6 + 0
-    assert meta.total_days == 0.5
-    assert meta.avg_hours == 4.0             # 12 / 3 scenarios
+    assert meta.scenario_count == 2, 'a disabled scenario was never part of the batch'
 
 
 def test_empty_batch():
     meta = build_run_meta_report_from_batch(_RUN_ID, _batch([]))
     assert meta.scenario_count == 0 and meta.symbols == [] and meta.is_profile_run is False
-    assert meta.total_hours == 0.0 and not meta.worker_tracking_on and not meta.profiling_tracking_on
+    assert not meta.worker_tracking_on and not meta.profiling_tracking_on

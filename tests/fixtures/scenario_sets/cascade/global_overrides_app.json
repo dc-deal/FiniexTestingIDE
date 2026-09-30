@@ -3,7 +3,6 @@
   "scenario_set_name": "cascade_global_overrides_app",
   "description": "Cascade test fixture — global overrides app defaults (Level 2 wins over Level 1).",
   "global": {
-    "data_mode": "realistic",
     "strategy_config": {
       "decision_logic_type": "CORE/aggressive_trend",
       "worker_instances": {
@@ -25,7 +24,7 @@
   },
   "scenarios": [
     {
-      "name": "test_scenario",
+      "scenario_name": "test_scenario",
       "symbol": "EURUSD",
       "data_broker_type": "mt5",
       "start_date": "2025-09-23T00:00:00+00:00",

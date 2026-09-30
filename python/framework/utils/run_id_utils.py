@@ -12,7 +12,7 @@ from uuid import uuid4
 # (`order_guard.py`), so the project has one shape for "short unique suffix", not two.
 _SUFFIX_LEN: int = 8
 
-# Characters of that random half a live session stamps onto its client order ids (#473).
+# Characters of that random half an AutoTrader session stamps onto its client order ids (#473).
 # Four, because Kraken allows 18 ASCII characters for the whole key and a counter has to
 # fit beside it — and the requirement is uniqueness across the venue's OPEN orders, not
 # across all time.
@@ -61,7 +61,7 @@ def mint_run_id(start_time: datetime, owner_dir: Optional[Path] = None) -> str:
 
 def session_key_from_run_id(run_id: str) -> str:
     """
-    The short discriminator a live session stamps onto every client order id it sends.
+    The short discriminator an AutoTrader session stamps onto every client order id it sends.
 
     Reuses the run id's random half rather than minting a second identifier, so an
     unfamiliar order in the venue's own UI can be traced back to a run directory by eye:
@@ -84,7 +84,7 @@ def session_key_from_run_id(run_id: str) -> str:
 
 def build_client_order_id(session_key: str, order_id: str) -> Optional[str]:
     """
-    The key a live session sends to the venue for one internal order id.
+    The key an AutoTrader session sends to the venue for one internal order id.
 
     Two jobs. It survives a restart without colliding: the counter inside `order_id`
     restarts at 1 with the process, so an order still resting at the venue from the

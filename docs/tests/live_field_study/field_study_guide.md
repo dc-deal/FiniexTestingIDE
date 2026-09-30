@@ -1,13 +1,13 @@
 # Live Field Study — Operator Guide (#332)
 
-The Live Field Study is the **live acceptance gate**: an operator-driven, deterministic
-phase sequence that drives the full live pipeline against real Kraken Spot (real money,
+The Live Field Study is the **real-money acceptance gate**: an operator-driven, deterministic
+phase sequence that drives the full AutoTrader pipeline against real Kraken Spot (real money,
 min-lot), records everything as analysis-ready JSONL, and produces a **PASS/FAIL
-acceptance certificate**. It is the live equivalent of the plan-driven
-`backtesting_margin_stress` decision logic and the production-readiness gate before a
+acceptance certificate**. It is the real-money equivalent of the plan-driven
+`margin_stress_probe` decision logic and the production-readiness gate before a
 release tag.
 
-It is **operator-driven by design** — there is no pytest equivalent for the live run.
+It is **operator-driven by design** — there is no pytest equivalent for the real-money session.
 The exhaustive branch coverage lives in the mock tests; the Field Study proves the
 realism subset (real timing, fills, fees, slippage, broker_ref) that mocks cannot.
 
@@ -39,7 +39,7 @@ realism subset (real timing, fills, fees, slippage, broker_ref) that mocks canno
    balance is expected, not a contaminant). At the end the account returns to ~equilibrium
    minus fees. Security-guard behavior (rejections, circuit breaker) is **not** tested here
    — that is the separate security-component certification (#358).
-3. `dry_run = false` acknowledged (the profile runs live).
+3. `dry_run = false` acknowledged (the profile places real orders).
 4. Recent **benchmark** + **live-adapter** certificates green.
 5. `lot_size` in the profile matches the symbol's `volume_min`.
 
@@ -47,7 +47,7 @@ realism subset (real timing, fills, fees, slippage, broker_ref) that mocks canno
 
 ## Operator Workflow
 
-1. **Launch** via launch.json → `🧪 AutoTrader: Field Study (Kraken Spot ETHUSD)`
+1. **Launch** via launch.json → `🧪 AutoTrader: Field Study (Kraken Spot ETHUSD) - real money`
    (`--display --delay 1`).
 2. **Observe**: phase indicator, real-time JSONL, drift/slippage audit footer (#327/#340),
    reconcile status line (#151), API performance panel (#351).
@@ -85,7 +85,7 @@ Phases are config (`phase_sequence` in the profile) — the engine is generic. E
 | 14 | `stop_cancel_test` | STOP + cancel | LONG | the live STOP path (#500) — trigger on the wire, resting in the STOP world, cancelled there | cancelled | rests 3% ABOVE market, own `lots`; **a fill here fails** |
 | 15 | `multi_concurrent_limits` | 3× LIMIT | LONG | per-order throttle + in-flight isolation | all resting | far from market — submitted one per tick |
 | 16 | `multi_cancel_all` | cancel all | — | multi-cancel correctness | all cancelled | — |
-| 17 | `partial_close_test` | MARKET → 50% → rest | LONG | partial-close path end-to-end live | half, then flat | multi-step; lots-polling detects the partial |
+| 17 | `partial_close_test` | MARKET → 50% → rest | LONG | partial-close path end-to-end at the venue | half, then flat | multi-step; lots-polling detects the partial |
 | 18 | `idle_heartbeat_test` | IDLE | — | display pulse + heartbeat drain during a quiet period | pulse frame | no orders — wall-clock wait only |
 | 19 | `force_close_all` | force-close | — | kill-switch / safety cleanup | account flat | cancels resting + closes positions |
 | 20 | `final_summary` | session end | — | clean exit via `request_session_end` (#348) | session ends | no operator Ctrl+C needed |
@@ -122,7 +122,7 @@ re-arms toward the market; this one wants the opposite.
   it, so every certificate up to 2026-09-08 records `realized_cost = 0` — because the field could
   not carry a figure, not because the run was free. The cost is now read from the order history,
   which is the only list that carries every leg (a full close emits no decision event).
-- **Step mode** — `halt_after_phase: <phase_id>` ends the session cleanly after a named phase (for incremental, partial-cost dry runs).
+- **Step mode** — `halt_after_phase: <phase_id>` ends the session cleanly after a named phase (for incremental runs that spend only part of the budget).
 
 ## JSONL Schema
 
@@ -193,7 +193,7 @@ The certificate is written to `tests/live_field_study/reports/field_study_report
 **Informational (not pass-gating):** realized cost, slippage distribution, detected-via
 mix, reconciliation alert count.
 
-Validate a committed certificate (CI-friendly, no live run):
+Validate a committed certificate (CI-friendly, no real-money session):
 ```bash
 pytest tests/live_field_study/test_field_study_certificate.py -v
 ```

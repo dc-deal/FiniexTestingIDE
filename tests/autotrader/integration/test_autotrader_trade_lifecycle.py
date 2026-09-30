@@ -1,6 +1,6 @@
 """
 FiniexTestingIDE - AutoTrader Trade Lifecycle Tests
-Trade lifecycle validation through the AutoTrader mock pipeline.
+Trade lifecycle validation through a mock AutoTrader session.
 
 Uses trade_lifecycle_test.json (3000 ticks, display off) for fast execution.
 Validates fill prices, close reasons, portfolio integrity, and log output
@@ -16,7 +16,7 @@ from python.framework.types.log_level import LogLevel
 from python.framework.types.portfolio_types.portfolio_trade_record_types import CloseReason
 from tests.shared.fixture_helpers import logged_messages, remove_run_dir
 
-MOCK_PROFILE = 'configs/autotrader_profiles/backtesting/trade_lifecycle_test.json'
+MOCK_PROFILE = 'configs/autotrader_profiles/mock/trade_lifecycle_test.json'
 
 
 @pytest.fixture(scope='module')
@@ -64,7 +64,7 @@ class TestNormalCycle:
         """Every completed trade must have a real entry and exit price."""
         for trade in session_result.trade_history:
             assert trade.entry_price > 0, (
-                f'Trade {trade.position_id}: entry_price is 0 — dry-run artifact'
+                f'Trade {trade.position_id}: entry_price is 0 — no venue prices anything at zero'
             )
             assert trade.exit_price > 0, (
                 f'Trade {trade.position_id}: exit_price is 0'

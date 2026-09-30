@@ -32,7 +32,7 @@ from python.framework.types.portfolio_types.portfolio_trade_record_types import 
 from python.framework.types.portfolio_types.portfolio_types import Position
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
 from python.framework.types.signal_data_types import SignalResolutionStats, SignalSeries
-from python.framework.types.run_results_types import BookingSegment
+from python.framework.types.run_results_types import BookingPeriod
 from python.framework.types.trading_env_types.broker_types import BrokerType
 from python.framework.types.trading_env_types.order_types import OrderResult
 from python.framework.types.trading_env_types.pending_order_stats_types import PendingOrderStats
@@ -496,9 +496,9 @@ class TickRangeStats:
     """
         Tick time range (internal tick timestamps)
     """
-    tick_count: int = 0,
-    first_tick_time: Optional[datetime] = None,
-    last_tick_time: Optional[datetime] = None,
+    tick_count: int = 0
+    first_tick_time: Optional[datetime] = None
+    last_tick_time: Optional[datetime] = None
     tick_timespan_seconds: Optional[float] = None
 
 
@@ -512,11 +512,11 @@ class ProcessTickLoopResult:
     - worker_statistics: From WorkerPerformanceTracker (per worker)
     - coordination_statistics: From WorkerOrchestrator
     """
-    # The scenario's HAUPTBUCH (#537) — one entry per closed booking period. Carried over the
+    # The scenario's LEDGER entries (#537) — one per closed booking period. Carried over the
     # process bridge like every other result: a subprocess cannot write the ledger, so the
     # periods travel back and the batch coordinator writes them all at once. That is also what
     # keeps the parquet write out of what the throughput benchmark measures.
-    booking_segments: List[BookingSegment] = None
+    booking_periods: List[BookingPeriod] = None
 
     # Decision logic statistics (signals + performance)
     decision_statistics: DecisionLogicStats = None
@@ -589,6 +589,7 @@ class ProcessResult:
     scenario_index: int = ''
 
     # === EXECUTION TIME ===
+    # Milliseconds on the monotonic clock, from the subprocess's start to its result
     execution_time_ms: float = 0.0
 
     # === ERROR INFORMATION (success=False) ===

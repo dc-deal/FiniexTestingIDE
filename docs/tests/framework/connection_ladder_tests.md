@@ -18,7 +18,7 @@ than observed as duration.
 | `TestClassify` | registered transient / terminal types · **an unregistered type is TERMINAL** (an exception nobody declared is most likely our own defect) · `ConnectionAttemptFailedError` carries its own verdict · `INADMISSIBLE` passes through · terminal wins over transient on an overlapping subclass |
 | `TestNextDelay` | first retry uses the initial delay · doubles per attempt · capped at max · attempt 0 does not go below initial · jitter stays within `[0.5, 1.0)` of the delay and is not a constant |
 | `TestBudget` | budget 0 never exhausts (a long-lived connection's job is to come back) · exhausts exactly at the budget |
-| `TestGiveUp` | ABORT raises and names the SYSTEM ("not the trading logic") · DEGRADE returns and says so · INADMISSIBLE raises regardless of the rule · **every give-up reaches the error pot** (§35) |
+| `TestGiveUp` | ABORT raises and names the SYSTEM ("not the trading logic") · DEGRADE returns and says so · INADMISSIBLE raises regardless of the rule · **every give-up reaches the error pot** |
 | `TestRunWithLadder` | returns on first success without waiting · succeeds on the third attempt with the expected delay sequence · exhausted budget degrades to `None` · a TERMINAL failure stops immediately **without waiting** · ABORT propagates · every retry is announced |
 
 ## Why the unregistered-type test matters

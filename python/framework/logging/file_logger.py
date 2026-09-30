@@ -29,7 +29,7 @@ class FileLogger:
     File logger for a single log file (global or scenario-specific).
 
     File structure:
-        logs/scenario_sets/eurusd_3_windows/20251021_105359/
+        runs/simulation/eurusd_3_windows/<run_id>/
             global.log                           (all global logs + summary)
             config.json                          (config snapshot)
             scenario_0_GBPUSD_window_02.log     (scenario 0 logs)

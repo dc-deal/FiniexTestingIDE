@@ -16,6 +16,12 @@ from python.framework.utils.trading_math.pnl_math import gross_pnl_from_price_di
 from python.framework.utils.trading_math.price_trigger import mid_price
 
 
+# The fee types a trade record books as its COMMISSION — every charged per-side cost. Declared
+# once because two places classify a fee this way: the position's own total, and the exit fee a
+# partial close charges on top of its share of that total.
+COMMISSION_FEE_TYPES = (FeeType.COMMISSION, FeeType.MAKER_TAKER)
+
+
 class PositionStatus(Enum):
     """Position status"""
     OPEN = 'open'
@@ -184,6 +190,25 @@ class Position:
             self.mfe_pnl = gross_pnl
             self.mfe_price = self.current_price
 
+    def extends_excursion(self, bid: float, ask: float) -> bool:
+        """
+        Whether a quote takes the price this position would close at past one of its extremes.
+
+        The cheap test in front of a mark: MAE / MFE are measured on the mark, so a quote that
+        stays inside the prices already seen cannot move them. Exact where the tick value is
+        constant — a quote in the account currency, which every spot pair traded here is.
+
+        Args:
+            bid: The symbol's current bid
+            ask: The symbol's current ask
+
+        Returns:
+            True when the close price lies beyond the adverse or the favourable extreme
+        """
+        if self.direction == OrderDirection.LONG:
+            return bid < self.mae_price or bid > self.mfe_price
+        return ask > self.mae_price or ask < self.mfe_price
+
     def add_fee(self, fee: AbstractTradingFee) -> None:
         """Add fee to position"""
         self.fees.append(fee)
@@ -304,9 +329,7 @@ class Position:
         Returns:
             The sum of every charged per-side fee on this position
         """
-        charged = (self.get_fees_by_type(FeeType.COMMISSION)
-                   + self.get_fees_by_type(FeeType.MAKER_TAKER))
-        return sum(fee.cost for fee in charged)
+        return sum(fee.cost for fee in self.fees if fee.fee_type in COMMISSION_FEE_TYPES)
 
     def get_swap_cost(self) -> float:
         """Get total swap cost"""

@@ -67,7 +67,7 @@ class TradeSimulator(AbstractTradeExecutor):
     - Pending order lifecycle management (submit → latency delay → fill)
 
     Fill processing (_fill_open_order, _fill_close_order) is inherited
-    from the base class — identical logic for simulation and live trading.
+    from the base class — identical logic for simulation and the AutoTrader.
 
     CURRENCY HANDLING:
     - account_currency must be explicitly configured
@@ -720,13 +720,13 @@ class TradeSimulator(AbstractTradeExecutor):
         new_take_profit: Union[float, None, _UnsetType] = UNSET
     ) -> ModificationResult:
         """
-        Modify a pending limit order's price, SL, and/or TP.
+        Modify a resting limit order's price, SL, and/or TP.
 
         Searches _active_limit_orders (post-latency, waiting for price trigger).
         Validates SL/TP against the effective limit price, not current tick.
 
         Args:
-            order_id: Pending limit order ID
+            order_id: Resting limit order ID
             new_price: New limit price (UNSET=keep current)
             new_stop_loss: New SL level (UNSET=no change, None=remove)
             new_take_profit: New TP level (UNSET=no change, None=remove)
@@ -734,7 +734,7 @@ class TradeSimulator(AbstractTradeExecutor):
         Returns:
             ModificationResult with success status and rejection reason
         """
-        # Find pending limit order
+        # Find resting limit order
         pending = None
         for p in self._active_limit_orders:
             if p.pending_order_id == order_id:
@@ -912,14 +912,14 @@ class TradeSimulator(AbstractTradeExecutor):
         new_take_profit: Union[float, None, _UnsetType] = UNSET
     ) -> ModificationResult:
         """
-        Modify a pending stop order's trigger price, limit price, SL, and/or TP.
+        Modify a resting stop order's trigger price, limit price, SL, and/or TP.
 
         Searches _active_stop_orders (post-latency, waiting for trigger price).
         For STOP orders: SL/TP validated against stop_price (best fill approximation).
         For STOP_LIMIT orders: SL/TP validated against limit_price (actual fill price).
 
         Args:
-            order_id: Pending stop order ID
+            order_id: Resting stop order ID
             new_stop_price: New trigger price (UNSET=keep current)
             new_limit_price: New limit price for STOP_LIMIT (UNSET=keep current)
             new_stop_loss: New SL level (UNSET=no change, None=remove)
@@ -928,7 +928,7 @@ class TradeSimulator(AbstractTradeExecutor):
         Returns:
             ModificationResult with success status and rejection reason
         """
-        # Find pending stop order
+        # Find resting stop order
         pending = None
         for p in self._active_stop_orders:
             if p.pending_order_id == order_id:
@@ -1289,7 +1289,7 @@ class TradeSimulator(AbstractTradeExecutor):
         win rate and the profit factor — so where the data happened to stop decided part of
         every ranked KPI. An open position is now reported as open and valued instead,
         which is what LEAN, backtrader and zipline all do, and it keeps the reported figures
-        identical to a live session over the same data.
+        identical to an AutoTrader session over the same data.
 
         Args:
             cancel_orders: Accepted for the shared contract; a simulation always expires

@@ -5,7 +5,7 @@ Runtime domain types for the persistent run-results ledger (the substrate of the
 Parameter Optimization system). `RunProvenance` is the per-run provenance bundle
 written alongside the run's KPIs; `SweepContext` is the optional sweep tagging a
 combination carries into a batch so the ledger row can be grouped by sweep;
-`BookingSegment` is one closed booking period of a live deployment (#537).
+`BookingPeriod` is one closed booking period of a live deployment (#537).
 """
 
 from dataclasses import dataclass
@@ -14,6 +14,7 @@ from enum import Enum
 from typing import Any, Dict, List, Optional
 
 from python.framework.types.api.report_types import RunSummaryCurrency
+from python.framework.types.run_outcome_types import RunOutcome
 
 
 @dataclass
@@ -34,7 +35,7 @@ class RunProvenance:
     param_hash: str                 # fingerprint of the effective strategy_config (leading key)
     status: str                     # 'ok' | 'error' (from the canonical WarningsErrorsOutcome)
     error: Optional[str]            # failure reason when status == 'error', else None
-    run_id: str                     # run-timestamp dir name (join key → full run io/)
+    run_id: str                     # the run's id (join key → the run's io/)
     run_timestamp: datetime         # UTC
     scenario_set_name: str
     # The program version that produced the run. Git identity says WHICH CODE; this says
@@ -47,7 +48,7 @@ class RunProvenance:
     decision_logic_type: str
     decision_version: str
     worker_versions: Dict[str, str]     # worker instance name → ComponentMetadata.version
-    config_snapshot: str                # full resolved strategy_config (JSON string)
+    strategy_config_json: str           # full resolved strategy_config (JSON string)
     symbols: List[str]
     data_broker_type: str
     sweep_id: Optional[str] = None      # null for non-sweep runs
@@ -68,7 +69,7 @@ class RunProvenance:
     # They sit apart from `data_broker_type`, which they belong beside, only because a dataclass
     # puts every defaulted field after every undefaulted one.
     #
-    # `input_plane` is what keeps an empty value honest: a LIVE session consumes a socket and
+    # `input_plane` is what keeps an empty value honest: a LIVE-ADAPTER session consumes a socket and
     # has no archive input, so its three joined strings are empty BY CONSTRUCTION. Without this
     # field that emptiness would be indistinguishable from a sim run whose recording broke —
     # the same bytes for "nothing to read" and "we were not looking".
@@ -104,7 +105,7 @@ class RunProvenance:
     # threshold, a timeout, a guard). One value answering both would answer neither — a
     # changed stop level must not read as a different strategy.
     profile_hash: str = ''
-    # WHICH PIPELINE produced this run — 'simulation' | 'live', taken from the same constants
+    # WHICH PIPELINE produced this run — 'simulation' | 'autotrader', taken from the same constants
     # the run tree is laid out with (`log_layout_types.RUN_TYPE_*`) rather than a literal, so
     # the ledger, the run index and the directory on disk cannot drift into three vocabularies.
     run_type: str = ''
@@ -123,11 +124,18 @@ class RunProvenance:
     # the ledger is countable from the rows carrying this `sweep_id`, so the pair says whether
     # the search completed — the same self-checking shape as a control total (§48).
     trial_count: int = 1
+    # How the run ENDED and what its channels held — taken from the warnings-errors outcome, which
+    # counts them once for both pipelines. None when no report was handed over: not counted,
+    # never zero.
+    run_outcome: Optional[RunOutcome] = None
+    error_count: Optional[int] = None       # ERROR records in the error pot
+    warning_count: Optional[int] = None     # Tier-1 findings (validator-produced)
+    log_warning_count: Optional[int] = None # Tier-2 WARNING records in the log pot
 
 
-class SegmentCloseReason(Enum):
+class PeriodCloseReason(Enum):
     """
-    Why a booking segment was closed. Recorded, never inferred.
+    Why a booking period was closed. Recorded, never inferred.
 
     Without it a hand-triggered close is indistinguishable from a shifted day boundary once
     the run is over, and SESSION_END is load-bearing beyond readability: it is what tells a
@@ -136,20 +144,20 @@ class SegmentCloseReason(Enum):
     session books DURING its run (#537).
     """
     ANCHOR = 'anchor'               # the market's own trading-day boundary (§47)
-    SESSION_END = 'session_end'     # the session ended; the open segment is closed rather than dropped
+    SESSION_END = 'session_end'     # the session ended; the open period is closed rather than dropped
     OPERATOR = 'operator'           # a person asked for a close
 
 
 @dataclass
-class BookingSegment:
+class BookingPeriod:
     """
-    One closed booking period of one run unit — the HAUPTBUCH entry of this system.
+    One closed booking period of one run unit — the LEDGER entry of this system.
 
     The model is ordinary double-entry bookkeeping, and naming it that way is not decoration:
-    the trade records are the GRUNDBUCH (the journal of individual bookings, chronological),
-    a segment is the HAUPTBUCH entry (the period summary per account), and everything above
-    it — a deployment's total, a Sharpe ratio, a drawdown over a month — is the ABSCHLUSS
-    derived from those periods. The reason the construction is trustworthy is the same reason
+    the trade records are the JOURNAL (individual bookings, chronological), a period is the
+    LEDGER entry (the period summary per account), and everything above it — a deployment's
+    total, a Sharpe ratio, a drawdown over a month — is the CLOSING derived from those
+    periods. The reason the construction is trustworthy is the same reason
     it has been for centuries: the summary is believed because it can be RECOMPUTED from the
     entries behind it, and it carries a control total that lets it disprove itself (§48).
 
@@ -159,7 +167,7 @@ class BookingSegment:
     operator's period close. A date would force `2026-09-21_2` on the next person.
 
     Args:
-        segment_no: Running number within the UNIT, starting at 1. For a live session it
+        period_no: Running number within the UNIT, starting at 1. For an AutoTrader session it
             survives a restart through the cold-start carry-over, the same way the position
             counter does (#355); a simulation scenario starts at 1 every time, because a
             backtest has no history to inherit
@@ -171,33 +179,45 @@ class BookingSegment:
         closed_at: When it ended, same clock. Read from the record and never re-derived from
             config: during an anchor change the config describes what a run WOULD produce
             while existing rows still hold the previous answer (§31c makes the same argument
-            for the bar basis)
+            for the price basis)
         reason: What closed it
         trade_count: How many trade records the period's figures were derived from. This is a
             CONTROL TOTAL (§48), not a statistic: it is what lets a reader re-derive the row
             from the records and find out that it does not match
         figures: The period's KPIs for ONE account currency — the same shape a whole run
             reports, so a period and a run describe themselves with one vocabulary. A unit
-            trading two account currencies emits one segment per currency
-        segment_max_equity: The highest account value seen INSIDE this period
-        segment_min_equity: The lowest. Not derivable from the two above it — the peak and the
+            trading two account currencies emits one period per currency
+        period_max_equity: The highest account value seen INSIDE this period
+        period_min_equity: The lowest. Not derivable from the two above it — the peak and the
             trough belong to different moments, so `high - drawdown` is a different number
             from the low whenever the peak came after it
-        segment_max_drawdown: The deepest decline inside this period, against ITS OWN running
+        period_max_drawdown: The deepest decline inside this period, against ITS OWN running
             peak. Beside it, `figures.account_max_drawdown` carries the CUMULATIVE decline of
             the whole deployment, and both are needed: the cumulative one keeps `max()` correct
             over rows, the own one answers how far this single day fell
+        period_opening_equity: The account value the period OPENED with — the previous period's
+            close at the same instant, or a unit's first observed value for its first period.
+            None when nothing was observed. Stamped, never `final_equity - net_pnl`: net_pnl is
+            realised, while the equity also values what is still open
+        commission_cost / swap_cost / spread_cost: The period's costs split the way a trade row
+            splits them, summed over the same trades `figures.total_fees` is — the ones the
+            period CLOSED. `commission_cost + swap_cost` is `total_fees`; `spread_cost` is
+            measured and stands beside it, never inside it
     """
-    segment_no: int
+    period_no: int
     unit_name: str
     opened_at: datetime
     closed_at: datetime
-    reason: SegmentCloseReason
+    reason: PeriodCloseReason
     trade_count: int
     figures: RunSummaryCurrency
-    segment_max_equity: float = 0.0
-    segment_min_equity: float = 0.0
-    segment_max_drawdown: float = 0.0
+    period_max_equity: float = 0.0
+    period_min_equity: float = 0.0
+    period_max_drawdown: float = 0.0
+    period_opening_equity: Optional[float] = None
+    commission_cost: float = 0.0
+    swap_cost: float = 0.0
+    spread_cost: float = 0.0
 
 
 class Reduction(Enum):
@@ -217,15 +237,24 @@ class Reduction(Enum):
     MAX = 'max'             # a plain maximum: a peak, a high count. NEVER sum
     # The largest by MAGNITUDE, sign kept — for a figure whose worst value may be stored either
     # way round. A decline is the case: `account_max_drawdown` holds a magnitude,
-    # `segment_max_drawdown` held a negative until #539, and rows of both ages sit in one store.
+    # `period_max_drawdown` held a negative until #539, and rows of both ages sit in one store.
     # It was `MAX` doing this silently, and the name is why: a reader who sees MAX reads `max()`
     # and is right about the columns that mean a peak and wrong about the ones that mean a fall.
     # Measured 2026-09-22 — that misreading produced a defect report against correct code, and
-    # the same constant on `segment_max_equity` would have picked a NEGATIVE equity over a
+    # the same constant on `period_max_equity` would have picked a NEGATIVE equity over a
     # positive one, which nothing had noticed because no account has gone negative yet.
     MAX_ABS = 'max_abs'
     DERIVE = 'derive'       # a rate, a mean, a quotient: NOT combinable, re-derive from records
-    LAST = 'last'           # a stock read at an instant; the most recent row wins
+    # A stock read at an instant, of ONE account: the most recent row wins. Over the rows of
+    # several accounts — the scenarios of one backtest — it has no value at all, because no
+    # account ever held their latest readings together; the fold answers None rather than
+    # whichever account happened to close last (measured 2026-09-29: a sweep row carried one
+    # scenario's equity out of eight).
+    LAST = 'last'
+    # A stock read at the OPENING instant, of one account: the earliest ROW's value — the account
+    # a unit began its window with. Unlike LAST it does not skip an unmeasured row: when the
+    # earliest did not record it, the opening is unknown. Undefined over several accounts.
+    FIRST = 'first'
     IDENTITY = 'identity'   # must agree across the rows, or they were never comparable
     UNION = 'union'         # a comma-joined set: combine by union, never by concatenation
     MIN = 'min'             # a plain minimum — the trough, the mirror of MAX

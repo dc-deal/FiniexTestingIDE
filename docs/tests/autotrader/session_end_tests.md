@@ -1,12 +1,12 @@
 # Session-End Tests (#492)
 
-What a live session does with what it still holds when it ends — and, more importantly, what
+What an AutoTrader session does with what it still holds when it ends — and, more importantly, what
 it no longer *claims* to have done.
 
 | Item | Value |
 |---|---|
 | Suite path | [tests/autotrader/session_end/](../../../tests/autotrader/session_end/) |
-| Profile | [configs/autotrader_profiles/backtesting/session_end_test.json](../../../configs/autotrader_profiles/backtesting/session_end_test.json) |
+| Profile | [configs/autotrader_profiles/mock/session_end_test.json](../../../configs/autotrader_profiles/mock/session_end_test.json) |
 | Pytest mark | `autotrader` (auto-applied via path) |
 | Launch entries | `🧩 Pytest: Session End (#492)` · `🤖 AutoTrader: BTCUSD Mock - Session End (#492)` |
 | Architecture doc | [session_end_policy.md](../../architecture/session_end_policy.md) — the full treatment, with the order-type map |
@@ -148,7 +148,7 @@ nothing at all — and the case only became reachable once the run end stopped f
 | [tests/framework/reporting/test_block_splitting_report.py](../../../tests/framework/reporting/test_block_splitting_report.py) | `TestTheDispositionStillDistinguishes` — the block-edge disposition must keep ANSWERING, not just run: a flat block, a holding block, two symbols cutting differently, the unrealised P&L at the edge and an unvalued position all have to come out different, so a silently constant "GOOD" is caught. The block-edge cases moved here when `process_block_boundary` was retired |
 | [tests/autotrader/integration/](../../../tests/autotrader/integration/) | The rewritten session-level contracts — SL/TP read from the position, and `test_no_exit_is_fabricated_at_session_end` |
 | [tests/framework/config/](../../../tests/framework/config/) | The loader field-coverage guard added alongside this work |
-| [tests/framework/reporting/test_live_session_summary.py](../../../tests/framework/reporting/test_live_session_summary.py) | The closing block names an open position in the HEADLINE, and says nothing about one when the session ended flat |
+| [tests/framework/reporting/test_autotrader_session_summary.py](../../../tests/framework/reporting/test_autotrader_session_summary.py) | The closing block names an open position in the HEADLINE, and says nothing about one when the session ended flat |
 
 ## When to Touch This Suite
 

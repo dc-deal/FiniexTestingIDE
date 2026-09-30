@@ -51,7 +51,7 @@ Errors split into two channels at run time (this mirrors the error model in the 
 | Tier | What | Producer (source of truth) | Importance |
 |---|---|---|---|
 | **Errors** | every error matters | `ValidationResult.errors` (validation/preparation failures, `is_valid=False`) **+** the `ProcessResult` villain (`error_type`/`message`/`traceback`) **+** the log ERROR pot (`scenario_logger_buffer`) | always surfaced |
-| **Tier 1 — major warnings** | advisory but important: debug-mode, stress-test, data-version, market-fit, tick-budget (P5 / granularity / too-high), the account-currency / margin advisories, post-run profiling verdicts (overhead, bottleneck), real orders from uncommitted code under `--allow-dirty` (live), code under no version control (both pipelines) | **validators** → `ValidationResult.warnings` (per-scenario), the **batch-level** validation channel (run-scoped, e.g. debug-mode), and the **session** channel on the live side | surfaced in the report |
+| **Tier 1 — major warnings** | advisory but important: debug-mode, stress-test, data-version, market-fit, tick-budget (P5 / granularity / too-high), the account-currency / margin advisories, post-run profiling verdicts (overhead, bottleneck), real orders from uncommitted code under `--allow-dirty` (real-money session), code under no version control (both pipelines) | **validators** → `ValidationResult.warnings` (per-scenario), the **batch-level** validation channel (run-scoped, e.g. debug-mode), and the **session** channel on the AutoTrader side | surfaced in the report |
 | **Tier 2 — minor warnings** | anything at WARNING level floating in the log | the log WARNING pot (`scenario_logger_buffer`) | summarized ("N in log — see scenario logs"), ignorable |
 
 `ValidationResult` (`framework/types/validation_types.py`) is the **single structured producer** for
@@ -69,15 +69,15 @@ the secondary, unstructured channel.
   execution (tick-budget needs profiling/clipping; overhead/bottleneck need the timing breakdown).
   `PostRunValidator` runs once after the batch, appends `ValidationResult.warnings` per scenario, and
   writes batch-global notices (debug-mode) into the **batch-level** validation channel
-  (`BatchExecutionSummary.batch_validation_result`). `SessionPostRunValidator` is its live
+  (`BatchExecutionSummary.batch_validation_result`). `SessionPostRunValidator` is its AutoTrader
   counterpart, writing into `AutoTraderResult.session_validation_result`. The report builder then
   only reads — it never decides.
 
-## AutoTrader (live) — the same four channels
+## AutoTrader — the same four channels
 
-A live session has **no multi-scenario validation phase**, and startup/preflight validation still
-**aborts** rather than warns (one session, nothing to exclude). What it does have is a *post-run*
-validation channel, mirroring the batch one:
+An AutoTrader session has **no multi-scenario validation phase**, and startup/preflight validation
+still **aborts** rather than warns (one session, nothing to exclude). What it does have is a
+*post-run* validation channel, mirroring the batch one:
 
 - **Errors** → `AutoTraderResult.error_messages` (session ERROR buffer) + `emergency_reason` (the villain).
 - **Tier 2** → `AutoTraderResult.warning_messages` (session WARNING buffer).
@@ -91,21 +91,21 @@ validation channel, mirroring the batch one:
 The asymmetry is closed (#372): a normal session with pot errors is no longer graded as a clean run.
 Both pipelines now answer with the same `RunOutcome`, and the process exit code is that answer.
 
-### What the live validator checks, and what it deliberately does not
+### What the AutoTrader validator checks, and what it deliberately does not
 
 Exactly one of the sim's post-run checks can be answered by a single session, and it is
 **shared, not copied**: `validators/shared_advisory_checks.py` holds the formula, each validator
-supplies its own inputs and routes the finding into its own channel. The live-only checks run the
-other way round — the sim answers the same question differently, or never has to ask it:
+supplies its own inputs and routes the finding into its own channel. The AutoTrader-only checks run
+the other way round — the sim answers the same question differently, or never has to ask it:
 
-| Check | Live | Why |
+| Check | AutoTrader | Why |
 |---|---|---|
-| `stress_test` | ✅ | an active stress config is a Tier-1 warning in *both* pipelines — a stressed live session must not look clean |
-| `clipping` | ✅ live-only | the ratio is measured against real tick arrival, so it says how often the algo failed to keep up. Threshold: `autotrader.clipping_monitor.warn_above_ratio`. The sim has no counterpart — it judges against a CONFIGURED tick budget instead |
-| `uncommitted_code` | ✅ live-only | `--allow-dirty` let real orders run from uncommitted code (#551). Decided ONCE, by the startup guard, and handed to the validator as a verdict rather than derived again. The sim sends no orders, so it has nothing to guard — see [Run Origin and Code Identity](run_origin_and_code_identity.md#real-orders-from-uncommitted-code) |
-| `unversioned_code` | ✅ | the code a run executed lies in no repository — typically a strategy in `user_algos/` before `git init` — or git could not say (#551). Both pipelines, one shared check (`check_unversioned_code`); on the live side only where the `--allow-dirty` finding above did not already name it, so it is the dry-run and mock case |
-| overhead · bottleneck · parallel-penalty | — | need `profiling_data`, which a session does not collect. **`coordination_statistics` is no longer the missing half** — since 2026-09-24 a session collects it (it was being counted all along and simply never read), so a check needing only the tick count could be answered live |
-| the three tick-budget checks | — | they judge a CONFIGURED `tick_processing_budget_ms`; live has none, which is why it gets the observed-ratio check above instead |
+| `stress_test` | ✅ | an active stress config is a Tier-1 warning in *both* pipelines — a stressed mock session must not look clean |
+| `clipping` | ✅ AutoTrader only | the ratio is measured against real tick arrival, so it says how often the algo failed to keep up. Threshold: `autotrader.clipping_monitor.warn_above_ratio`. The sim has no counterpart — it judges against a CONFIGURED tick budget instead |
+| `uncommitted_code` | ✅ AutoTrader only | `--allow-dirty` let real orders run from uncommitted code (#551). Decided ONCE, by the startup guard, and handed to the validator as a verdict rather than derived again. The sim sends no orders, so it has nothing to guard — see [Run Origin and Code Identity](run_origin_and_code_identity.md#real-orders-from-uncommitted-code) |
+| `unversioned_code` | ✅ | the code a run executed lies in no repository — typically a strategy in `user_algos/` before `git init` — or git could not say (#551). Both pipelines, one shared check (`check_unversioned_code`); on the AutoTrader side only where the `--allow-dirty` finding above did not already name it, so it is the dry-run and mock case |
+| overhead · bottleneck · parallel-penalty | — | need `profiling_data`, which a session does not collect. **`coordination_statistics` is no longer the missing half** — since 2026-09-24 a session collects it (it was being counted all along and simply never read), so a check needing only the tick count could be answered in a session |
+| the three tick-budget checks | — | they judge a CONFIGURED `tick_processing_budget_ms`; an AutoTrader session has none, which is why it gets the observed-ratio check above instead |
 | multi-currency · time-divergence | — | one session, one currency, one span |
 | data-version · robustness · debug-mode | — | tick index, walk-forward and the batch serial mode are sim-only |
 
@@ -117,7 +117,7 @@ processing vs the data's own P5 interval). The two could contradict each other i
 sub-threshold workers together overran a 2 ms one. A relative measure (share of tick time) would
 be an honest replacement; an absolute one cannot be.
 
-Live got that honest replacement: the **clipping advisory** above. It is the same question —
+The AutoTrader got that honest replacement: the **clipping advisory** above. It is the same question —
 "is the algo keeping up?" — asked against a reference that exists (real tick arrival) instead
 of one invented (a millisecond constant).
 
@@ -126,8 +126,8 @@ section — the same intent/experience split the worked example above describes.
 them would collapse the two records the split exists to keep apart.
 
 The shared functions carry a `unit_label`, because the message names its units: the sim writes
-`Scenarios (3): …`, a session writes `Session (1): …`. Without it the live warning would use the
-sim's word.
+`Scenarios (3): …`, a session writes `Session (1): …`. Without it the AutoTrader warning would use
+the sim's word.
 
 ## The run outcome — the same question both pipelines answer
 
@@ -166,6 +166,12 @@ two levels still follows the console setting.
 the honest answer: no assertion decided a log line, and it belongs to no validator area. The
 channel is already named — by the tier itself.
 
+**Every `check` id is declared once, with a name and a sentence** —
+`python/framework/validators/validation_check_catalog.py`, served as
+`GET /api/v1/validation-checks`. A new check needs its entry in the same change: a test walks the
+source for every id a finding can carry and fails on one the catalog does not know, and on an
+entry no finding can carry any more.
+
 `WarningTier` is an Enum for that reason: it is the ORIGIN question, answered once.
 
 ```python
@@ -179,9 +185,10 @@ one. The VALUES stay as they are because they are the wire contract the API and 
 already consume — renaming them would be a consumer-facing change, renaming the members is not.
 
 The general rule this follows, so it does not drift again: **a closed set is an Enum, an open
-set is a string.** `tier` (2 channels) and `domain` (10 areas) are closed. `check` is open —
-every new assertion adds an id, and an Enum would have to be extended by whoever adds one, which
-is exactly the step that gets forgotten. `scope` is open too (any scenario or profile name).
+set is a string.** `tier` (the two channels) and `domain` (the areas of `ValidationDomain`) are
+closed. `check` is open — every new assertion adds an id, and an Enum would have to be extended by
+whoever adds one, which is exactly the step that gets forgotten. `scope` is open too (any scenario
+or profile name).
 
 The pot's messages are unrendered — the buffer carries `LogRecord`s, so nothing has to be
 stripped and no terminal escape code can reach the artifact. See
@@ -195,8 +202,9 @@ Every validator produces `ValidationFinding` (`framework/types/validation_types.
 to, and the `scope` it concerns.
 
 `ValidationResult.is_valid` / `.errors` / `.warnings` are **views over `findings`**, not stored
-state. A stored flag can disagree with the list it summarizes; a derived one cannot. The §33
-execution gate (`SingleScenario.is_valid()`) reads the derived flag, so this is what decides
+state. A stored flag can disagree with the list it summarizes; a derived one cannot. The
+execution gate that keeps an invalid scenario out of the run (`SingleScenario.is_valid()`) reads
+the derived flag, so this is what decides
 whether a scenario runs.
 
 Two properties matter for anyone adding a validator:
@@ -227,19 +235,28 @@ rendered to console / file / API identically:
   `observed_at` (when we recorded it), `event_time` (the run's own clock, absent where none was
   attached), `scope` and `message`. The record reaches DERIVE whole, so reducing it to a string
   here would put level, time and scope out of reach of the artifact, the API and the viewer
-  alike (§391). Both pipelines map through the same helper, so the sim's scenario pot and the
-  live session pot produce one shape.
+  alike (#391). Both pipelines map through the same helper, so the sim's scenario pot and the
+  AutoTrader session pot produce one shape.
   **Artifacts written before this carried bare strings and no longer validate.** Run output is
-  regenerated by every run and §27 rules out a compatibility layer, so they are not migrated —
-  but the read path names the condition (`ReportArtifactUnreadableError` → HTTP 409
-  `artifact_unreadable`) instead of letting a validation failure escape as an unexplained 500.
+  regenerated by every run and the project keeps no compatibility layer in the alpha, so they
+  are not migrated — but the read path names the condition (`ReportArtifactUnreadableError` →
+  HTTP 409 `artifact_unreadable`) instead of letting a validation failure escape as an
+  unexplained 500.
 - `outcome: WarningsErrorsOutcome` — `run_outcome` (the canonical grading, below) plus
   `failed_count` / `failed_unit_names` / `first_failure_*` (sim) and `emergency_reason` /
-  `shutdown_mode` / `operator_interrupted` (live). The Executive headline reads this — it does
-  not re-scan. `operator_interrupted` rides along for the reason given above: `shutdown_mode`
-  alone cannot separate a Ctrl+C from a crash, so a surface that carried only the mode would
-  show 'emergency' beside a run graded `SUCCESS` and have no way to explain it. The live-only
+  `shutdown_mode` / `operator_interrupted` (AutoTrader). The Executive headline reads this — it does
+  not re-scan. `operator_interrupted` rides along for the reason given above: `shutdown_mode` alone
+  cannot separate a Ctrl+C from a crash, so a surface that carried only the mode would show
+  'emergency' beside a run graded `SUCCESS` and have no way to explain it. The AutoTrader-only
   fields are `''` / `False` on a sim run — that means *not applicable*, never *unknown*.
+- The outcome also COUNTS the channels, once and the same way in both pipelines: `error_count` (ERROR
+  records in the error pot), `warning_count` (Tier-1 findings) and `log_warning_count` (Tier-2 WARNING
+  records). The rows cannot be counted instead — the simulation summarizes its whole Tier-2 pot in ONE
+  row, the AutoTrader writes one per entry, so the same pot reads as one row there and many here. None
+  only where nothing recorded them, never zero: the artifacts written before the counts existed were
+  back-filled from their own rows, with the definition the builder applies. The run-results ledger
+  carries the same four values, which is how the run list serves them — so a run answers the same
+  numbers on both routes.
 
 `run_outcome` is stamped once at DERIVE from the pipeline's own result object
 (`BatchExecutionSummary.get_outcome()` / `AutoTraderResult.get_outcome()`), so the grading a
@@ -247,6 +264,6 @@ supervisor reads as the exit code is the same one the artifact, the store and th
 surface that needs the verdict reads this field; none of them re-derives it from the counts.
 
 One deliberate exception remains: the run-results ledger (`run_provenance_builder._run_status`)
-error-flags only a **total** failure — a partial run keeps its usable data for ranking. That is a
-policy over the outcome, not a second grading, and it still needs `failed_count` / `total_units` to
-express it.
+error-flags only a **total** failure — a run in which only some units failed keeps its usable
+data for ranking. That is a policy over the outcome, not a second grading, and it still needs
+`failed_count` / `total_units` to express it.

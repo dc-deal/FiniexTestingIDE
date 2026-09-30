@@ -32,7 +32,7 @@ simply pass fixed or advanced timestamps instead of patching `datetime.now()`.
 
 ### Level 2 — Scenario Integration Tests
 
-End-to-end tests that run full backtesting scenarios through the DecisionTradingApi + OrderGuard + TradeSimulator pipeline. Uses `backtesting_margin_stress` decision logic with `trade_sequence` support.
+End-to-end tests that run full backtesting scenarios through the DecisionTradingApi + OrderGuard + TradeSimulator pipeline. Uses `margin_stress_probe` decision logic with `trade_sequence` support.
 
 | Class | Scenario Config | What it validates |
 |-------|-----------------|-------------------|

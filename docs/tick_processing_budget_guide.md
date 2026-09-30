@@ -4,10 +4,10 @@
 
 ## Overview
 
-In live trading, ticks that arrive while the algorithm is still processing the previous tick are **lost** (clipped). The backtesting simulation processes every tick sequentially — optimistically biased because no ticks are ever skipped.
+In a live-adapter session, ticks that arrive while the algorithm is still processing the previous tick are **lost** (clipped). The backtesting simulation processes every tick sequentially — optimistically biased because no ticks are ever skipped.
 
 The **Tick Processing Budget** bridges this gap by deterministically **flagging** ticks as clipped,
-simulating the clipping behavior of live trading. Flagged ticks still flow through the tick loop —
+simulating the clipping behavior of a live-adapter session. Flagged ticks still flow through the tick loop —
 the broker path (`trade_simulator.on_tick()`) and bar rendering see every tick, while the algo path
 (bar history, workers, decision logic) skips clipped ticks.
 
@@ -158,7 +158,7 @@ The "how to set" hint is only shown when no budget is currently configured.
 |-----------|-----------------|---------|
 | Budget < 1.0ms, 0 clipped | Profiling + Warnings & Notices | Below data granularity |
 | Budget > 2× P95 processing | Profiling + Warnings & Notices | Ticks clipped unnecessarily |
-| Avg processing > P5 interval | Profiling + Warnings & Notices | Risk of clipping in live |
+| Avg processing > P5 interval | Profiling + Warnings & Notices | Risk of clipping in a live-adapter session |
 | Pre-V1.3.0 data | Log output | Filtering skipped |
 
 ---

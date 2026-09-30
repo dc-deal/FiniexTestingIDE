@@ -12,6 +12,7 @@ Tests for all FiniexTestingIDE HTTP API endpoints. Uses `FastAPI TestClient` wit
 | `TestTimeframes` | `test_list_timeframes_structure` | Response has `timeframes` list, each entry has `name` and `minutes` |
 | `TestTimeframes` | `test_list_timeframes_contains_known_entries` | M1=1min, H1=60min, D1=1440min are present and correct |
 | `TestTimeframes` | `test_timeframes_sorted_ascending_by_minutes` | List is sorted from shortest to longest bar duration |
+| `TestTimeframes` | `test_the_validation_checks_are_the_catalog` | `/validation-checks` serves exactly the check catalog, keyed on `check` |
 | `TestHealth` | `test_health_ok` | Status + version in response |
 | `TestBrokers` | `test_list_brokers` | Broker list from mocked index |
 | `TestSymbols` | `test_list_symbols` | Symbols with correct `market_type` |
@@ -22,7 +23,7 @@ Tests for all FiniexTestingIDE HTTP API endpoints. Uses `FastAPI TestClient` wit
 | `TestBars` | `test_bars_carry_the_tick_count` | `tc` per bar — the activity measure on feeds whose volume is 0.0 |
 | `TestBars` | `test_a_cut_response_says_that_it_was_cut` | `X-Bar-Truncated` / `Count` / `Total` / `Limit` on a capped range |
 | `TestBars` | `test_a_complete_response_says_it_was_not_cut` | the same headers on an uncut range |
-| `TestBars` | `test_every_response_states_its_own_semantics` | `X-Bar-Time-Basis` `open` · `X-Bar-Timezone` `UTC` · `X-Bar-Price-Basis` `mid` |
+| `TestBars` | `test_every_response_states_its_own_semantics` | `X-Bar-Time-Basis` `open` · `X-Bar-Timezone` `UTC` · `X-Bar-Price-Basis` `order_driven` (the file's stamp) |
 | `TestBars` | `test_a_limit_above_the_cap_is_refused_rather_than_clamped` | 400 + `error: invalid_limit` |
 | `TestBars` | `test_a_limit_below_one_is_refused` | 400 + `error: invalid_limit` |
 | `TestBars` | `test_invalid_timeframe_returns_400` | 400 + `error: invalid_timeframe` |
@@ -45,7 +46,7 @@ is the one that gets forgotten.
 | `TestTheTokenFileIsRefusedWhenItIsTheTrackedOne` | Against real files at their real paths in a throwaway tree: a live token answering from the committed `inbound/` file refuses the boot, and that refusal comes BEFORE the missing-account one, the parse and the account binding — each of those would tell the operator to edit a file whose only right edit is moving the key out; the consumer is named and its token never is. An entry not declared off counts as live, a value the token model cannot read included; one declared off in any spelling the model reads passes. The workspace file is not mistaken for the tracked one, an inactive entry there is fine, which is what lets the placeholder carry examples, and the path the loader REALLY answers from under isolation is recognised. The earlier version passed a path string of the flat layout, so it stayed green while the check never fired on the real path |
 | `TestTheSurfaceVocabularyIsClosed` | An unknown surface fails when the token is parsed, not at request time; and the vocabulary is held to the same set as `api_app.ROUTER_SURFACES`, so a router mounted under a surface no token can name — or a surface no router serves — fails here rather than becoming a denial nobody can explain |
 | `TestACollectionRouteIsGatedToo` | The hole the walk cannot see: a route with no path parameter had nothing for a grant to be about, so `/reports/runs`, `/sweeps` and `/deployments` would answer any authenticated token. Refusal and admission are both named by hand — a new collection route needs its own pair or nothing looks at it |
-| `TestTheAppLevelRoutesAreADecision` | `/timeframes` open beside `/health`, `/brokers` requiring a token and taking no grant — pinned so neither drifts back to being accidental |
+| `TestTheAppLevelRoutesAreADecision` | `/timeframes` and `/validation-checks` open beside `/health`, `/brokers` requiring a token and taking no grant — pinned so none drifts back to being accidental |
 | `TestTheCallerRouteSaysWhoIsCalling` | `/caller` (#551): a valid token is answered with its client, account, account kind, display name, grants as a list and note; a wrong token is a 401 with `WWW-Authenticate: Bearer`, and so is no header; a token holding NOTHING still reaches it, because it is token-only like `/brokers`; with gating off it names nobody even for a valid token (`enforced: false`), and the real scaffold boot answers the same; the real boot from files on disk reaches the route; a verified consumer with no account is a 500 `identity_unbound`, not an anonymous caller; the route is on no grant surface; and it answers under contract 4 or later, which catches a forgotten bump |
 | `TestTheSchemaSurfaceIsOffWhereItCannotBeGuarded` | `/openapi.json`, `/docs` and `/redoc` are FastAPI's own routes at the APP ROOT — outside `/api/v1`, uncoverable by a router dependency, and outside the walk by construction (it filters on a path parameter). They are tied to the auth posture instead: present while nobody is configured, gone once somebody is, and a token does not bring them back |
 | `TestTheCorsPreflightIsNeverGated` | An `OPTIONS` without `Authorization` is not refused, and `WWW-Authenticate` / `Retry-After` are exposed — invisible from every seat but a browser's |
@@ -71,7 +72,7 @@ switched off where the case is about the workspace copy.
 | `TestTheAccountsFile` | No file is no account and not an error; the key is the id; an id named twice is refused (JSON keeps the last); the workspace copy takes precedence; the tracked placeholder holds none |
 | `TestEveryTokenNamesAnAccount` | Entries without an account are refused ALL AT ONCE with the command and the restart, and a switched-off entry is refused too — off is one flag from on; an unknown and a switched-off account are refused; a switched-off token may name an account that does not exist; a bound consumer carries its account and its grants as a list; the boot line names the account; `setup_api_auth` hands the identities to the bundle |
 | `TestTheTokenLoaderHonoursConfigIsolation` | Under isolation only the tracked copy answers, without it the workspace does |
-| `TestTheCommandsWriteNothing` | `account` prints the whole file when none exists and a fragment when one does, refuses an existing id and `operator`; `mint` carries its account, refuses an unknown or malformed one, says what the boot needs when no accounts file exists, and is a usage error without `--account`; neither changes a file |
+| `TestTheCommandsWriteNothing` | `account` prints the whole file when none exists and only the entry to paste when one does, refuses an existing id and `operator`; `mint` carries its account, refuses an unknown or malformed one, says what the boot needs when no accounts file exists, and is a usage error without `--account`; neither changes a file |
 
 ## Contract (`TestTheContractSaysWhatItIs`)
 
@@ -80,7 +81,52 @@ or when a field starts to mean something else. Every response carries `X-Api-Con
 included, so a saved fixture is self-describing; `/contract` names both clocks, agrees with the
 header and is open like `/health`. And the contract log's newest `## Version N` heading is held to
 `API_CONTRACT_VERSION`, newest first: the server serves only the current version's lines, so a bump
-that skipped the log would leave a gap no consumer could see.
+that skipped the log would leave a gap no consumer could see. The overview a starting server
+prints names the contract, previews each of its changes, and counts the routes it mounted — that
+count is held to the OpenAPI schema, so a router the count misses fails here.
+
+## Directory routes (`test_directory_endpoint.py`)
+
+`TestDirectory` pins the router's wiring over a directory double: the list serves its rows and
+declares `key = ["file"]` (a file that never ran is a row with `run_count: 0`), `refresh`
+reaches the directory, a known file's detail is served, and an unknown one is
+`config_file_not_found`. What a row SAYS is the config directory suite's
+([Config Directory Tests](config_directory_tests.md)). Gating: `/directory/{file}` is in the
+auth walk's required routes, and the collection route has its refused/admitted pair in
+`TestACollectionRouteIsGatedToo`.
+
+## Error vocabulary (`test_api_error_catalog.py`)
+
+Every error the API answers with is declared once in `python/api/api_error_catalog.py` (a
+declaration earns its place only with a test that it is complete). `TestTheCatalogIsOneVocabulary`
+holds the constants to `API_ERRORS`, keeps every code unique, refuses a bare `not_found` — a code
+that states the status and no cause — and fills every sentence from its own placeholders.
+`TestTheRoutesRaiseOnlyFromIt` walks the AST of every API module: no route builds an `ApiException`
+with a literal code (the auth error factory is the one exception, its codes are `finiex_auth`'s),
+and every entry is raised somewhere. `TestTheDocumentedTableIsTheVocabulary` holds the error table
+in `api_server_architecture.md` to the catalog plus `finiex_auth`'s `AuthErrorCode`, both ways.
+
+A missing report section names its cause from the run's index row —
+`TestAMissingSectionSaysWhy` in `test_reports_endpoint.py`: `reports_not_commissioned` for a run
+started with `reporting: none`, `run_not_completed` for one with no artifact yet,
+`artifact_not_produced` for a section the run did not write.
+
+## Row keys (`test_row_keys.py`)
+
+Every list the API serves says what makes one of its rows unique, and this file is what makes
+that declaration more than a comment. The lists are found by walking the MOUNTED routes — an
+optional list included — so a route added tomorrow is covered the day it exists.
+
+- `TestEveryServedListSaysWhatMakesARowUnique` — each list declares a key (`key` for a response
+  with one list, `keys` with one entry per list otherwise), and every part it names is a field of
+  that list's row. An EMPTY key is a declaration too — the row's identity is its position, as for
+  the warnings of `warnings-errors`. A run's report sections are exempt until they declare any key; once they do,
+  every list they serve needs one.
+- `test_a_response_with_several_lists_keys_each_one` — one `key` over two row types is refused.
+- `TestTheKeyActuallySeparatesTheRows` — adversarial rows that differ only in the part one would
+  be tempted to drop: a deployment's currency, a booking period's run, and a trade's unit and
+  closing tick (a partial close books several records of one position, and two scenarios of one
+  symbol both count from `pos_<symbol>_1`).
 
 ## Mocking Strategy
 
@@ -112,18 +158,18 @@ read the ledger and only the ledger.
 | Test | Description |
 |------|-------------|
 | `test_lists_recorded_deployments` | `/deployments` groups the ledger rows into one row per deployment |
-| `test_a_deployments_pnl_sums_and_its_drawdown_does_not` | The one arithmetic this view must not get wrong: each live row carries the RUNNING decline against the inherited peak, so the reduction is `max()` and a sum counts one decline once per session that was still inside it |
+| `test_a_deployments_pnl_sums_and_its_drawdown_does_not` | The one arithmetic this view must not get wrong: each AutoTrader row carries the RUNNING decline against the inherited peak, so the reduction is `max()` and a sum counts one decline once per session that was still inside it |
 | `test_no_deployment_is_not_an_error` | Nothing declared yet is a state, not a failure |
 | `test_sessions_read_forwards` | Oldest first — the opposite order to the console, deliberately |
 | `test_a_configuration_change_is_reported_before_the_table` | The advisory rides on the response rather than inside a row, so a client cannot render the table and drop the sentence that says whether the rows may be added up |
-| `test_a_session_that_never_reached_its_close_is_counted` | The ledger row is written last, so a killed session is absent from the list by construction (§44) |
+| `test_a_session_that_never_reached_its_close_is_counted` | The ledger row is written last, so a killed session is absent from the list by construction |
 | `test_unknown_deployment_is_a_404_and_not_an_empty_history` | An empty list would read as a deployment that ran and did nothing |
 | `test_the_detail_route_filters_in_the_store` | `read_rows(deployment_id=...)`, not a full read followed by a filter |
 | `test_the_periods_of_every_session_come_back_in_one_call` | `/deployments/{id}/booking-periods` — the thirty-day picture without walking the sessions |
-| `test_every_period_names_the_session_that_booked_it` | `segment_no` restarts wherever a session wrote no carry-over floor, so two periods of one deployment can both be #1; `run_id` is what tells them apart |
+| `test_every_period_names_the_session_that_booked_it` | `period_no` restarts wherever a session wrote no carry-over floor, so two periods of one deployment can both be #1; `run_id` is what tells them apart |
 | `test_a_row_that_books_no_period_is_skipped_and_counted` | Every row written before the booking journal is one of those — skipped, and its session counted, so an incomplete history is not read as a quiet one |
-| `test_the_periods_carry_their_own_band_not_the_cumulative_one` | `segment_max_drawdown`, not `account_max_drawdown` — the running figure would repeat the same number down the column |
-| `test_there_is_no_reconciliation_and_that_is_deliberate` | Pinned as an ABSENCE: across many runs no second, independently derived figure exists, so a check could only compare the rows with themselves (§48) |
+| `test_the_periods_carry_their_own_band_not_the_cumulative_one` | `period_max_drawdown`, not `account_max_drawdown` — the running figure would repeat the same number down the column |
+| `test_there_is_no_reconciliation_and_that_is_deliberate` | Pinned as an ABSENCE: across many runs no second, independently derived figure exists, so a check could only compare the rows with themselves |
 | `test_periods_of_an_unknown_deployment_are_a_404` | An id with no ledger rows |
 
 ## TestGaps — `/brokers/{broker}/symbols/{symbol}/gaps`

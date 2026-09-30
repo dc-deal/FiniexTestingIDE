@@ -26,7 +26,7 @@ from python.scenario.generator.splitters.splitter_factory import SplitterFactory
 from python.scenario.generator.splitters.volatility_split import VolatilitySplit
 from python.scenario.generator.splitters.walk_forward_split import WalkForwardSplit
 
-_PROFILE_CACHE_PATH = 'python.scenario.generator.splitters.abstract_profile_splitter'
+_PROFILE_CACHE_PATH = 'python.scenario.generator.splitters.abstract_volatility_profile_splitter'
 
 
 # =============================================================================

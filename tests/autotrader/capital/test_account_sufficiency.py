@@ -73,7 +73,7 @@ class TestTheUnjudgeableBuySide:
         """
         The boot proceeds rather than refusing over an invented number.
 
-        Guessing a price here would refuse a live session on arithmetic nobody supplied; the
+        Guessing a price here would refuse an AutoTrader session on arithmetic nobody supplied; the
         first order attempt refuses it instead, where a real price exists.
         """
         assert check_account_sufficiency(

@@ -107,7 +107,7 @@ def _resolve_source(episode: DisturbanceEpisode, unit: RunUnit) -> str:
     """
     if episode.source:
         return episode.source
-    return unit.sentiment_source or UNKNOWN_SIGNAL_SOURCE
+    return unit.data_sentiment_type or UNKNOWN_SIGNAL_SOURCE
 
 
 def _resolve_origin(
@@ -138,7 +138,7 @@ def _resolve_origin(
     # An episode that never recovered reaches to the run end — only its start bounds it.
     end = episode.stale_to
     for event in planned_outages:
-        if event.data_source != source:
+        if event.stale_data_source != source:
             continue
         if end is not None and event.stale_start_date >= end:
             continue
@@ -173,7 +173,7 @@ def _attach_counters(
                 tick_row.stale_ticks += stats.stale_ticks
 
         signal_row = rows.get(
-            (unit.sentiment_source or UNKNOWN_SIGNAL_SOURCE,
+            (unit.data_sentiment_type or UNKNOWN_SIGNAL_SOURCE,
              DisturbanceDomain.SIGNAL.value))
         if signal_row is None:
             continue

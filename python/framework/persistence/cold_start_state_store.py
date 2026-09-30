@@ -2,7 +2,7 @@
 FiniexTestingIDE - Cold-Start State Store (#355)
 
 The FRAMEWORK's carry-over, beside the algo's. One atomic JSON document per bot at
-`data/runtime/cold_start_state/<profile>_<symbol>.json`, wrapped in the shared
+`data/runtime/cold_start_state/<bot_id>_<symbol>.json`, wrapped in the shared
 CarryOverEnvelope (#486).
 
 Its own store rather than a second section inside the algo store (#354), and the reason is
@@ -97,7 +97,7 @@ class ColdStartStateStore:
         The resolved document path for this bot.
 
         Returns:
-            Path to <profile>_<symbol>.json under the configured root
+            Path to <bot_id>_<symbol>.json under the configured root
         """
         return self._path
 
@@ -163,7 +163,7 @@ class ColdStartStateStore:
         self,
         session_key: str,
         highest_position_counter: int,
-        highest_segment_no: int = 0,
+        highest_period_no: int = 0,
         keys_in_use: Optional[Set[str]] = None,
         open_positions: Optional[List[PositionCarryOver]] = None,
         risk_baseline: Optional[RiskBaseline] = None,
@@ -188,7 +188,7 @@ class ColdStartStateStore:
         Args:
             session_key: This session's client-order-id discriminator ('' when none is stamped)
             highest_position_counter: The largest position counter minted this session
-            highest_segment_no: The largest booking period sealed this session. A FLOOR like
+            highest_period_no: The largest booking period sealed this session. A FLOOR like
                 the counter above — the stored value is never lowered, so a session that sealed
                 nothing cannot reset a deployment's period count
             keys_in_use: Session halves the venue currently shows on orders of our shape.
@@ -238,8 +238,8 @@ class ColdStartStateStore:
         # The same floor, for the same reason (#537): a session that sealed nothing — or a dry
         # run, which writes 0 — must not lower a deployment's period count and hand its
         # successor a number already in the books.
-        payload.highest_segment_no = max(
-            payload.highest_segment_no, highest_segment_no)
+        payload.highest_period_no = max(
+            payload.highest_period_no, highest_period_no)
         if open_positions is not None:
             payload.open_positions = list(open_positions)
         if risk_baseline is not None:

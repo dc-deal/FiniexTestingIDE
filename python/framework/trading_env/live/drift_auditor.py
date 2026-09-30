@@ -50,7 +50,7 @@ if TYPE_CHECKING:
 
 class DriftAuditor:
     """
-    Read-only drift telemetry consumer for live trading sessions.
+    Read-only drift telemetry consumer for live-adapter sessions.
 
     Registers as a listener on the executor's outcome chain (#319) and a
     consumer on its trades-response fan-out (#327). Triggers post-fill

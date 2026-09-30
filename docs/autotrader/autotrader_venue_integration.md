@@ -1,6 +1,6 @@
 # AutoTrader Venue Integration
 
-A live session talks to a venue we do not control, over a network that fails, using a contract
+A live-adapter session talks to a venue we do not control, over a network that fails, using a contract
 their documentation describes and their servers implement — and the two are not always the same
 thing. Every answer this document gives was either measured against the venue or is marked as
 unmeasured.
@@ -17,7 +17,7 @@ to the books — `autotrader_capital_and_safety.md`.
 
 For `adapter_type='live'`, AutoTrader fetches broker config and account balance from the Kraken REST API at startup instead of relying solely on static JSON.
 
-### Startup Flow (Live Mode)
+### Startup Flow (Live Adapter)
 
 ```
 create_broker_config(config, logger)   (autotrader_broker_config_setup.py)
@@ -34,7 +34,7 @@ create_broker_config(config, logger)   (autotrader_broker_config_setup.py)
        auto_detect_fee_tier=true   → applied for this session
        auto_detect_fee_tier=false  → NOT applied; a divergence still WARNS, naming both rates
        fetcher cannot answer        → nothing happens, the declared rates stand
-  → POST /0/private/Balance → account balance (live: the profile declares none; fetched for the symbol's base/quote)
+  → POST /0/private/Balance → account balance (live adapter: the profile declares none; fetched for the symbol's base/quote)
   → BrokerConfigFactory.from_serialized_dict(config_dict)
   → adapter.enable_live(credentials_file, dry_run, transport)  ← Tier 3 activation
   → return BrokerConfig with live-enabled KrakenAdapter
@@ -43,25 +43,25 @@ create_broker_config(config, logger)   (autotrader_broker_config_setup.py)
 **Cache location:** `data/runtime/brokers/<broker_type>/` (gitignored, auto-refreshed weekly).  
 **Static seed:** `configs/brokers/kraken/kraken_spot_broker_config.json` — git-tracked, never
 auto-overwritten. Used by `config_mode=static` brokers, and its `fee_structure` is the declared rate
-for EVERY reader: a backtest takes it whole, and a dynamic live session starts from it before the
-venue is asked (#337).
-**Balance fetch failure** is **fatal** — a 0.0 balance in live mode is dangerous.
+for EVERY reader: a backtest takes it whole, and a dynamic live-adapter session starts from it before
+the venue is asked (#337).
+**Balance fetch failure** is **fatal** — a 0.0 balance in a live-adapter session is dangerous.
 
-**Mock mode**: Completely unchanged. No API calls, no credentials needed, `enable_live()` never called.
+**Mock session**: Completely unchanged. No API calls, no credentials needed, `enable_live()` never called.
 
 ### Account Currency & Balance Semantics
 
 For a **mock** session, `scenario_settings.balances` sets the starting capital (a scenario replay
-needs real balances, like the sim) and determines how P&L is denominated internally. For a **live**
-session there is no profile balances block — the broker's real balances are fetched at startup for
-the symbol's base/quote currencies (resolved authoritatively from the symbol spec, #265). The
-account currency is derived at startup from the balances keys matched against the symbol's
-base/quote currencies (quote currency preferred). An optional `scenario_settings.account_currency`
-override allows explicit control.
+needs real balances, like the sim) and determines how P&L is denominated internally. For a
+**live-adapter** session there is no profile balances block — the broker's real balances are fetched
+at startup for the symbol's base/quote currencies (resolved authoritatively from the symbol spec,
+#265). The account currency is derived at startup from the balances keys matched against the
+symbol's base/quote currencies (quote currency preferred). An optional
+`scenario_settings.account_currency` override allows explicit control.
 
 **Rules:**
 - At least one key in `scenario_settings.balances` must match either the **base** or **quote** currency of the traded symbol (mock).
-- Live balances come from the broker for the symbol's base/quote currencies — the profile declares none.
+- A live-adapter session's balances come from the broker for the symbol's base/quote currencies — the profile declares none.
 - Cross-currency accounts (e.g., `balances: {"EUR": 100}` with `SOLUSD`) are not supported and raise a `NotImplementedError` at startup.
 
 **Account currency derivation (in order):**
@@ -90,16 +90,16 @@ accumulates silently on the Kraken account. This is expected Spot behavior. The 
 
 ### Broker Connection Settings
 
-Broker-specific live settings are stored in `market_config.json` alongside the broker entry — not in the AutoTrader profile:
+Broker-specific connection settings are stored in `market_config.json` alongside the broker entry — not in the AutoTrader profile:
 
 ```
-Profile (production/ethusd_live.json)           ← Algorithm config (strategy, workers, symbol)
+Profile (production/ethusd_production.json)           ← Algorithm config (strategy, workers, symbol)
   "broker_type": "kraken_spot"
         |
 market_config.json → kraken_spot     ← Broker connection config
   "credentials_file", "dry_run", "broker_transport.{api_base_url, rate_limit_interval_s, ...}"
         |
-Credentials (kraken_credentials.json) ← Only API keys
+Credentials (venues/kraken_credentials.json) ← Only API keys
 ```
 
 To override connection settings (e.g., `dry_run: false` for live trading), create
@@ -111,10 +111,11 @@ details.
 
 Credentials follow the project-wide `configs/` → `user_configs/` override pattern:
 
-1. `user_configs/credentials/kraken_credentials.json` — user override (gitignored, real keys)
-2. `configs/credentials/kraken_credentials.json` — tracked default (mock values)
+1. `user_configs/credentials/venues/kraken_credentials.json` — user override (gitignored, real keys)
+2. `configs/credentials/venues/kraken_credentials.json` — tracked default (mock values)
 
-The `credentials_file` in broker settings is just the filename (e.g., `"kraken_credentials.json"`). The cascade is resolved automatically.
+The `credentials_file` in broker settings is the name below the credentials folder, subdirectory
+included (e.g., `"venues/kraken_credentials.json"`). The cascade is resolved automatically.
 
 ### API Authentication
 
@@ -124,7 +125,7 @@ Private Kraken endpoints use HMAC-SHA512 signing: `API-Sign = base64(HMAC-SHA512
 
 The declared rate lives in ONE place — the broker's git-tracked seed — and every other reader points
 at it (#337). A backtest reads it and nothing else, so a run stays reproducible from a commit; a
-live session starts from the same number, then asks the venue.
+live-adapter session starts from the same number, then asks the venue.
 
 Asking is `POST /0/private/TradeVolume`, and what happens with the answer is split in two on purpose:
 
@@ -156,7 +157,7 @@ rate_limit_interval_s, request_timeout_s, poll_interval_ms).
 |------|-------|---------------------|---------|
 | 1 | Config validation, broker/symbol specs | No | Backtesting + AutoTrader |
 | 2 | Order creation (MarketOrder, LimitOrder, etc.) | No | Backtesting + AutoTrader |
-| 3 | Live execution (AddOrder, QueryOrders, CancelOrder, AmendOrder) | Yes | AutoTrader (live mode) |
+| 3 | Live execution (AddOrder, QueryOrders, CancelOrder, AmendOrder) | Yes | AutoTrader, live adapter |
 
 ### Tier 3 API Mapping
 
@@ -171,11 +172,11 @@ rate_limit_interval_s, request_timeout_s, poll_interval_ms).
 
 Kraken Spot has no testnet/sandbox. Dry-run uses Kraken's native `validate=true` parameter on AddOrder — Kraken validates the order (pair, volume, balance, permissions) but **does not execute it**.
 
-Controlled by `dry_run` in `market_config.json` for the broker type (default: `true` — safe by default). Override in `user_configs/market_config.json` to go live. Console shows `Mode: DRY RUN (validate only)` or `Mode: LIVE TRADING` at startup.
+Controlled by `dry_run` in `market_config.json` for the broker type (default: `true` — safe by default). Override in `user_configs/market_config.json` to place real orders. A profile may only tighten it: `dry_run: true` wins over a live broker default; `false` against a dry-run default is refused at startup (`DryRunConflictError`). Console shows `Mode: DRY RUN (validate only)` or `Mode: LIVE TRADING` at startup.
 
 Dry-run behavior:
 - `execute_order()`: sends `validate=true`, returns synthetic `DRYRUN-NNNNNN` broker_ref
-- `check_order_status()` / `cancel_order()` / `modify_order()`: return synthetic responses (order doesn't exist at broker)
+- `check_order_status()` / `cancel_order()` / `modify_order()`: answered by `DryRunOrderSimulator`, which plays the lifecycle locally and fills an order when the market reaches its price (the order doesn't exist at broker)
 
 ### AmendOrder — In-Place Modify
 
@@ -254,7 +255,7 @@ Standard symbols (e.g., `BTCUSD`) are mapped to Kraken pair names (e.g., `XBTUSD
 
 ## External Connections — one ladder, one give-up rule (#473)
 
-A live session holds seven connections to things outside its own process. They now share
+A live-adapter session holds seven connections to things outside its own process. They now share
 one classification and one vocabulary; the full policy is
 [architecture/external_connection_policy.md](../architecture/external_connection_policy.md).
 Two consequences visible in this pipeline:

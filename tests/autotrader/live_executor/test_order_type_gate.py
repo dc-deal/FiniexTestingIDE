@@ -139,6 +139,19 @@ class TestPreFlightReadsTheIntersection:
 
         assert 'does not offer' in str(refused.value) and 'iceberg' in str(refused.value)
 
+    def test_a_mock_that_lacks_a_type_names_itself_not_the_venue(self):
+        """
+        The mock carries market orders only; the venue it stands in for may offer far more. A
+        refusal naming the venue sends the reader after the wrong party.
+        """
+        sim = _sim_with(MockBrokerAdapter(mode=MockExecutionMode.INSTANT_FILL))
+
+        with pytest.raises(ValueError) as refused:
+            DecisionTradingApi(sim, required_order_types=[OrderType.STOP_LIMIT])
+
+        assert 'The mock adapter (standing in for' in str(refused.value)
+        assert "Venue '" not in str(refused.value)
+
 
 class TestTheSubmissionGateReadsTheSameSet:
     """The gate in open_order() and the pre-flight cannot disagree — they read one set."""

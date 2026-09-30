@@ -14,10 +14,10 @@ import pytest
 from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.worker_types import WorkerResult, WorkerType
 from python.framework.workers.abstract_worker import AbstractWorker
-from python.framework.workers.core.backtesting.backtesting_sample_worker import (
-    BacktestingSampleWorker,
+from python.framework.workers.core.test_probes.sample_probe_worker import (
+    SampleProbeWorker,
 )
-from python.framework.workers.core.backtesting.heavy_rsi_worker import HeavyRsiWorker
+from python.framework.workers.core.test_probes.heavy_rsi_worker import HeavyRsiWorker
 from python.framework.workers.core.bollinger_worker import BollingerWorker
 from python.framework.workers.core.ma_trend_worker import MaTrendWorker
 from python.framework.workers.core.macd_worker import MacdWorker
@@ -30,7 +30,7 @@ CORE_WORKERS_EXPECTED_METRIC = {
     MaTrendWorker: None,
     MacdWorker: None,
     HeavyRsiWorker: None,
-    BacktestingSampleWorker: None,
+    SampleProbeWorker: None,
     ObvWorker: 'volume',
 }
 

@@ -165,8 +165,13 @@ def build_deployment_histories(rows: List[RunResultRow]) -> Dict[str, List[Deplo
 
         sessions: List[DeploymentSessionRow] = []
         previous: Optional[RunResultRow] = None
-        for position, row in enumerate(
-                sorted(by_session, key=lambda r: (r.currency, r.run_timestamp)), 1):
+        position = 0
+        for row in sorted(by_session, key=lambda r: (r.currency, r.run_timestamp)):
+            # Each currency is its own series: the first session of the next one has no
+            # predecessor, so no gap and no change mark is measured against the other currency.
+            if previous is not None and previous.currency != row.currency:
+                previous, position = None, 0
+            position += 1
             started = _parse(row.run_timestamp)
             # The gap runs from when the PREDECESSOR'S ROW WAS WRITTEN — i.e. from the end of
             # that session — to this one's start. Measuring start-to-start instead counts the

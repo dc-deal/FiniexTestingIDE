@@ -10,7 +10,7 @@ Strategy:
 - Entry via STOP order (breakout confirmation, not market fill)
 - SL/TP set directly at send_order time
 - Break-even via modify_position after configurable profit move
-- Cancel pending STOP order on counter-direction crossover only
+- Cancel resting STOP order on counter-direction crossover only
 - Exit open position on MACD counter-crossover
 
 State Machine:
@@ -225,7 +225,7 @@ class CautiousMacd(AbstractDecisionLogic):
             ),
             'price': OutputParamDef(
                 param_type=float, min_val=0.0,
-                description='Price at decision time',
+                description='Price at decision time — traded where the venue prints one, else mid',
                 category='INFO',
             ),
             'timestamp': OutputParamDef(
@@ -351,7 +351,7 @@ class CautiousMacd(AbstractDecisionLogic):
                 outputs={
                     'confidence': 0.0,
                     'reason': 'Missing worker results',
-                    'price': tick.mid,
+                    'price': tick.price,
                     'timestamp': tick.timestamp.isoformat(),
                 },
             )
@@ -423,7 +423,7 @@ class CautiousMacd(AbstractDecisionLogic):
                     outputs={
                         'confidence': confidence,
                         'reason': f'MACD cross-up hist={histogram:.4f}, RSI={rsi_value:.1f}, conf={confidence:.2f}',
-                        'price': tick.mid,
+                        'price': tick.price,
                         'timestamp': tick.timestamp.isoformat(),
                     },
                 )
@@ -462,7 +462,7 @@ class CautiousMacd(AbstractDecisionLogic):
                     outputs={
                         'confidence': confidence,
                         'reason': f'MACD cross-down hist={histogram:.4f}, RSI={rsi_value:.1f}, conf={confidence:.2f}',
-                        'price': tick.mid,
+                        'price': tick.price,
                         'timestamp': tick.timestamp.isoformat(),
                     },
                 )
@@ -482,7 +482,7 @@ class CautiousMacd(AbstractDecisionLogic):
             outputs={
                 'confidence': 0.5,
                 'reason': 'No MACD crossover or RSI filter blocked',
-                'price': tick.mid,
+                'price': tick.price,
                 'timestamp': tick.timestamp.isoformat(),
             },
         )

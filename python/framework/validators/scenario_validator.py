@@ -372,7 +372,7 @@ class ScenarioValidator:
                     ValidationFinding(
                         severity=Severity.ERROR, check='scenario_name_missing',
                         domain=ValidationDomain.CONFIG,
-                        message='Scenario has no name. Every scenario must have a unique name.', scope=f'<unnamed_{idx}>')])
+                        message='Scenario has no scenario_name. Every scenario must have a unique one.', scope=f'<unnamed_{idx}>')])
                 scenario.validation_result.append(validation_result)
                 logger.error(f'❌ Scenario at index {idx}: Missing name')
 

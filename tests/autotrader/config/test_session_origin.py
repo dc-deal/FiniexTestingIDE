@@ -1,7 +1,7 @@
 """
-Where a live session says it came from, and which code it runs (#551).
+Where an AutoTrader session says it came from, and which code it runs (#551).
 
-The live header site differs from the simulation's in one way that shapes everything here: the
+The AutoTrader header site differs from the simulation's in one way that shapes everything here: the
 code identity is captured BEFORE the header and KEPT, because the startup guard asks it whether
 real orders would run from uncommitted code — and that question must not depend on a run
 directory having been created. So these tests pin four things: the session captures over the
@@ -40,7 +40,7 @@ from python.framework.types.run_origin_types import (
     RunOrigin,
 )
 
-PROFILE = 'configs/autotrader_profiles/backtesting/mock_session_test.json'
+PROFILE = 'configs/autotrader_profiles/mock/mock_session_test.json'
 
 _IDENTITY = CodeIdentity(framework=RepositoryState(root='/app', commit='abc1234'))
 

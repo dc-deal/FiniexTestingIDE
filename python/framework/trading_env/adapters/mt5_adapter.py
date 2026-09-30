@@ -15,7 +15,7 @@ implemented here. The inherited NotImplementedError defaults from
 AbstractAdapter apply. `is_live_capable()` returns False (default).
 
 Live execution support is tracked separately in #209 (MT5 Live Adapter).
-Until then, attempting live trading with this adapter fails fast with a
+Until then, attempting a live-adapter session with this adapter fails fast with a
 clear NotImplementedError.
 """
 

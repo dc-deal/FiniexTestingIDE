@@ -18,15 +18,15 @@ from tests.framework.worker_tests.conftest import (
 )
 
 from python.framework.decision_logic.core.aggressive_trend import AggressiveTrend
-from python.framework.decision_logic.core.backtesting.backtesting_deterministic import (
-    BacktestingDeterministic,
+from python.framework.decision_logic.core.test_probes.deterministic_probe import (
+    DeterministicProbe,
 )
 from python.framework.decision_logic.core.simple_consensus import SimpleConsensus
 from python.framework.types.parameter_types import (
     InputParamDef,
     OutputParamDef,
 )
-from python.framework.workers.core.backtesting.heavy_rsi_worker import HeavyRsiWorker
+from python.framework.workers.core.test_probes.heavy_rsi_worker import HeavyRsiWorker
 from python.framework.workers.core.bollinger_worker import BollingerWorker
 from python.framework.workers.core.ma_trend_worker import MaTrendWorker
 from python.framework.workers.core.macd_worker import MacdWorker
@@ -253,9 +253,9 @@ class TestDecisionLogicSpecificSchemas:
         assert 'rsi_buy_threshold' in schema
         assert 'rsi_sell_threshold' in schema
 
-    def test_backtesting_deterministic_has_trade_sequence(self):
-        """BacktestingDeterministic must declare trade_sequence."""
-        schema = BacktestingDeterministic.get_parameter_schema()
+    def test_deterministic_probe_has_trade_sequence(self):
+        """DeterministicProbe must declare trade_sequence."""
+        schema = DeterministicProbe.get_parameter_schema()
         assert 'trade_sequence' in schema
         assert schema['trade_sequence'].param_type == list
 

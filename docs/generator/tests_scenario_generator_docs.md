@@ -24,9 +24,9 @@ The splitters create their data dependencies internally. Tests use `unittest.moc
 |-----------|-----------|--------------|
 | `DataCoverageReport` | `blocks_split` | Provides gaps, start/end times |
 | `TickIndexManager` | `blocks_split` | `build_index()` → no-op |
-| `DataCoverageReportCache` | `abstract_profile_splitter` | Region report for profile splitters |
-| `VolatilityProfileAnalyzerCache` | `abstract_profile_splitter` | Volatility periods |
-| `DiscoveryCacheManager` | `abstract_profile_splitter` | Discovery fingerprints |
+| `DataCoverageReportCache` | `abstract_volatility_profile_splitter` | Region report for profile splitters |
+| `VolatilityProfileAnalyzerCache` | `abstract_volatility_profile_splitter` | Volatility periods |
+| `DiscoveryCacheManager` | `abstract_volatility_profile_splitter` | Discovery fingerprints |
 
 ### Fixtures (`conftest.py`)
 
@@ -43,7 +43,7 @@ The splitters create their data dependencies internally. Tests use `unittest.moc
 
 ### Region Extraction (`ContinuousRegionExtractor`)
 - No gaps → single region (with `preceding_gap=None`)
-- SMALL/SHORT gaps → ignored (no split)
+- SHORT gaps → ignored (no split)
 - WEEKEND gap → allowed, no split (professional platform behavior)
 - MODERATE/LARGE gaps → region split (with `preceding_gap` tracking)
 - Multiple gaps → only non-allowed gaps split (weekend gaps span across)
@@ -77,7 +77,7 @@ The splitters create their data dependencies internally. Tests use `unittest.moc
 
 ### Gap-Aware Block Start
 - A block boundary landing in a weekend/holiday snaps forward to the next market open
-  (`MarketCalendar.next_market_open`, §37) → no window starts on a weekend day
+  (`MarketCalendar.next_market_open`) → no window starts on a weekend day
 
 ---
 
@@ -140,7 +140,7 @@ Quote-currency balance seeding + authoritative resolution from the broker config
 
 **Location:** `tests/test_config_fingerprint_utils.py`
 
-Tests for SHA256-based config fingerprinting used by discovery caches and profile freshness validation.
+Tests for SHA256-based config fingerprinting used by discovery caches and generator-profile freshness validation.
 
 - Deterministic output for same input
 - Different input → different fingerprint

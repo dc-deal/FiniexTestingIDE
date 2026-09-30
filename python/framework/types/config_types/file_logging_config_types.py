@@ -15,12 +15,12 @@ class RunLogPaths(StrictConfigModel):
     """
     Where each run type writes its logs — the ONE source for writers and readers alike.
 
-    Two roots, matching the two run types: a backtest and a live session are browsed
+    Two roots, matching the two run types: a backtest and an AutoTrader session are browsed
     differently, and they produce different artifact sets. The API reads these same paths to
     build its run index, so a path declared here cannot drift from where the runs actually land.
     """
     simulation: Path
-    live: Path
+    autotrader: Path
 
     @property
     def sweeps(self) -> Path:
@@ -46,13 +46,14 @@ class ScenarioFileLoggingConfig(StrictConfigModel):
 
 class SessionLogsConfig(StrictConfigModel):
     """
-    Retention for the live session's daily-rotated logs (#357).
+    Retention for the AutoTrader session's daily-rotated logs (#357).
 
-    A live session rotates `session_logs/autotrader_session_YYYYMMDD.log` at the trading-day
-    boundary and, until this existed, never removed one — so a month-long run accumulated one
-    file per day with nothing to stop it. The live counterpart of `scenario` above, which is
-    why it lives here rather than under `autotrader`: both describe how a run's log FILES are
-    written, and splitting the pair would put one answer in two sections.
+    An AutoTrader session rotates `session_logs/autotrader_session_YYYYMMDD.log` at the
+    trading-day boundary and, until this existed, never removed one — so a month-long run
+    accumulated one file per day with nothing to stop it. The AutoTrader counterpart of
+    `scenario` above, which is why it lives here rather than under `autotrader`: both describe
+    how a run's log FILES are written, and splitting the pair would put one answer in two
+    sections.
 
     Deliberately NOT the same question as the run TREE, which is pruned by a CLI the operator
     triggers. These files belong to a session that is still running, and nobody is there to

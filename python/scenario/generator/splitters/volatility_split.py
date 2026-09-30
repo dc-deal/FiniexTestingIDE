@@ -17,10 +17,10 @@ from python.framework.types.market_types.market_volatility_profile_types import 
 )
 from python.framework.types.scenario_types.scenario_generator_types import GenerationStrategy
 from python.framework.types.scenario_types.window_set_types import GeneratedWindow
-from python.scenario.generator.splitters.abstract_profile_splitter import AbstractProfileSplitter
+from python.scenario.generator.splitters.abstract_volatility_profile_splitter import AbstractVolatilityProfileSplitter
 
 
-class VolatilitySplit(AbstractProfileSplitter):
+class VolatilitySplit(AbstractVolatilityProfileSplitter):
     """ATR-minima splitter — cuts regions at low-volatility periods."""
 
     def _get_strategy(self) -> GenerationStrategy:

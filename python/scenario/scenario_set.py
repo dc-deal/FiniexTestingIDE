@@ -9,8 +9,8 @@ BUILDS it, never in `framework/types/` — and here it sits beside its loader.
 
 **What the move bought, measured 2026-09-22 (#395).** Because it lived among the dataclasses, it
 dragged the run index, the broker config, a scenario logger, the run-config store, the signal
-coverage report and git into every module that only wanted `ScenarioSetMetadata` — the pure
-dataclass the `list` command renders. That import cost 904 modules and 1.97 s against 232 and
+coverage report and git into every module that only wanted the scenario listing's pure metadata
+dataclass. That import cost 904 modules and 1.97 s against 232 and
 0.49 s for the data half alone, and on this tree the difference is nearly all OURS: 375 of our
 own files cost 13.48 ms each across the bridged mount, against 0.67 ms for a third-party module
 on the container's own disk (§42).
@@ -25,9 +25,16 @@ from python.configuration.app_config_manager import AppConfigManager
 from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.logging.system_info_writer import write_system_version_parameters
+from python.framework.reporting.io.run_header_io import data_windows_of
 from python.framework.reporting.store.run_index import RunIndex
 from python.framework.store.run_config_store import RunConfigStore
-from python.framework.types.api.report_types import ParentKind, RunHeader, RunReporting
+from python.framework.types.api.report_types import (
+    OrdersTo,
+    ParentKind,
+    RunHeader,
+    RunReporting,
+    TicksFrom,
+)
 from python.framework.types.config_types.robustness_config_types import RobustnessConfig
 from python.framework.types.log_layout_types import MOUNT_BUILD_LOG, RUN_TYPE_SIMULATION
 from python.framework.types.run_config_types import RunConfigKind
@@ -100,6 +107,7 @@ class ScenarioSet:
         self._generator_profiles = scenario_config.generator_profiles
         self._generator_profile_paths = scenario_config.generator_profile_paths
         self._robustness = scenario_config.robustness or RobustnessConfig()
+        self._disabled_count = scenario_config.disabled_count
         # Where this run's logs land, from config (file_logging.run_logs) — the same paths the
         # API reads. A sweep's combinations nest under their sweep id, a standalone run does
         # not: a directory level, while the run TYPE stays `simulation` for both.
@@ -165,6 +173,11 @@ class ScenarioSet:
                 reporting=reporting,
                 origin=origin,
                 code_identity=self._code_identity,
+                # A backtest replays the archive and simulates every fill — the same two answers
+                # for every simulation run, recorded so the run list needs no rule of its own.
+                ticks_from=TicksFrom.ARCHIVE,
+                orders_to=OrdersTo.SIMULATED,
+                data_windows=data_windows_of(self._scenarios),
             )
             RunIndex(app_config.get_file_logging_config_object().run_index).register_run(
                 header, self.logger.get_log_dir())
@@ -253,6 +266,15 @@ class ScenarioSet:
             List of WindowSet objects, or None for normal runs
         """
         return self._generator_profiles
+
+    def get_disabled_count(self) -> int:
+        """
+        How many scenarios the set switched off — the ones the loader never handed over.
+
+        Returns:
+            The count of `enabled: false` scenarios
+        """
+        return self._disabled_count
 
     def get_robustness_config(self) -> RobustnessConfig:
         """

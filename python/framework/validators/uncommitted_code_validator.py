@@ -112,10 +112,10 @@ def describe_uncommitted_code(code_identity: Optional[CodeIdentity]) -> str:
         code_identity: The code the session runs; None when it was not captured
 
     Returns:
-        One clause per blocking repository, `; `-separated — e.g.
-        `algo user_algos/ 2 changes · untracked: my_bot/ (patch run_patches/4e01….patch)`
+        One clause per blocking repository, `; `-separated — e.g. `algo user_algos/ 2 changes ·
+        untracked: my_bot/ (patch user_algos/.finiex_run_patches/4e01….patch)`
     """
-    clauses = [f'{label} {where} {text} ({_patch_text(kind, state)})'
+    clauses = [f'{label} {where} {text} ({_patch_text(kind, state, where)})'
                for label, where, text, kind, state in _repository_rows(code_identity)
                if kind is not None]
     return '; '.join(clauses)
@@ -402,19 +402,20 @@ def _unrestorable_reason(kind: str, state: Optional[RepositoryState]) -> str:
     return 'its patch could not be kept'
 
 
-def _patch_text(kind: str, state: Optional[RepositoryState]) -> str:
+def _patch_text(kind: str, state: Optional[RepositoryState], where: str) -> str:
     """
     Where a blocking repository's uncommitted code can be restored from, if anywhere.
 
     Args:
         kind: Why the repository blocks
         state: Its captured state, or None
+        where: How the repository's root is shown
 
     Returns:
         The patch reference, or why there is none
     """
     if state is not None and state.patch_ref:
-        text = f'patch {state.patch_ref}'
+        text = f'patch {_patch_location(state.patch_ref, where)}'
         if not state.restorable:
             text += ', incomplete: a nested repository is not in it'
         if state.patch_excluded:
@@ -429,6 +430,26 @@ def _patch_text(kind: str, state: Optional[RepositoryState]) -> str:
     if kind == _NOT_CAPTURED:
         return 'no patch: nothing was captured'
     return 'no patch: git produced none'
+
+
+def _patch_location(patch_ref: str, where: str) -> str:
+    """
+    A patch reference as the operator finds the file.
+
+    A relative reference resolves against its repository's root — which is how a foreign
+    repository names the patch it keeps inside itself — so it is shown joined to that root.
+
+    Args:
+        patch_ref: The recorded reference
+        where: How the repository's root is shown
+
+    Returns:
+        `user_algos/.finiex_run_patches/4e01….patch` for a foreign patch, `/app/run_patches/…` for
+        this repository's; an absolute reference as it is
+    """
+    if Path(patch_ref).is_absolute():
+        return patch_ref
+    return f'{where.rstrip("/")}/{patch_ref}'
 
 
 def _display_root(root: str, framework_root: Optional[str]) -> str:

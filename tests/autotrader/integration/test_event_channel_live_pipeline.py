@@ -1,7 +1,7 @@
 """
 FiniexTestingIDE - Decision Event Channel — AutoTrader Pipeline (#348)
 
-Runs the event-probe decision logic through the AutoTrader-mock pipeline and
+Runs the event-probe decision logic through a mock AutoTrader session and
 asserts the ordered decision-event sequence it received via the on_* hooks.
 Must match the simulation world (tests/simulation/event_channel/test_event_channel_sim.py)
 — this is the dual-world parity proof for the event channel.
@@ -18,7 +18,7 @@ from python.framework.autotrader.autotrader_main import AutotraderMain
 from python.framework.types.log_level import LogLevel
 from tests.shared.fixture_helpers import logged_messages, remove_run_dir
 
-MOCK_PROFILE = 'configs/autotrader_profiles/backtesting/event_channel_lifecycle.json'
+MOCK_PROFILE = 'configs/autotrader_profiles/mock/event_channel_lifecycle.json'
 
 # Must match the simulation world (test_event_channel_sim.py).
 EXPECTED_EVENT_SEQUENCE = ['order_filled', 'partial_close', 'session_end']

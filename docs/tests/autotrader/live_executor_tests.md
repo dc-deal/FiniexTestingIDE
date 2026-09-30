@@ -197,7 +197,7 @@ stop is accepted and rests.
 | Test | Description |
 |------|-------------|
 | `test_a_type_the_pipeline_has_not_built_is_rejected` | ICEBERG → ORDER_TYPE_NOT_SUPPORTED |
-| `test_a_stop_without_a_trigger_is_rejected_on_the_price` | INVALID_PRICE. Live had NO price validation of any kind before #500 — `order_guard` does not know the field — so a stop with no trigger would have reached the payload builder |
+| `test_a_stop_without_a_trigger_is_rejected_on_the_price` | INVALID_PRICE. The live path had NO price validation of any kind before #500 — `order_guard` does not know the field — so a stop with no trigger would have reached the payload builder |
 | `test_a_stop_limit_without_a_limit_price_is_rejected_too` | Both prices are required; the trigger alone is not enough |
 | `test_a_fully_formed_stop_is_accepted_and_rests` | The capability the issue exists for: it comes back PENDING and lands in the STOP world, not among the limits |
 
@@ -265,7 +265,7 @@ LIMIT submit is async post-#319 step 7 (`broker_ref=None` immediately after `ope
 | Test | Description |
 |------|-------------|
 | `test_modify_pending_order_price` | `modify_limit_order()` succeeds for LIMIT order in `_active_limit_orders` |
-| `test_modify_pending_order_sl_tp` | Modify SL and TP on pending LIMIT order |
+| `test_modify_pending_order_sl_tp` | Modify SL and TP on a resting LIMIT order |
 | `test_modify_with_unset_keeps_current` | UNSET parameters translated to None (no change) |
 
 #### TestModifyLimitOrderNotFound
@@ -633,7 +633,7 @@ asks about a protective order that may have fired while the process was down.
 |---|---|
 | `test_the_order_is_kept_rather_than_dropped` | Dropping on an absence is how an orphan is made — the venue may hold it after all |
 | `test_nothing_is_booked_off_it` | No position, no rejection, no fill: nothing was described to book |
-| `test_it_is_said_once_not_every_poll_cycle` | A re-poll gives the same non-answer, so the ERROR is said once per order (§35) |
+| `test_it_is_said_once_not_every_poll_cycle` | A re-poll gives the same non-answer, so the ERROR is said once per order |
 | `test_the_in_flight_query_flag_is_still_cleared` | The dispatched query IS resolved — an absence is an answer for that purpose |
 
 ---
@@ -779,7 +779,7 @@ transport error as the reason: the executor dropped the order from its books and
 the venue had refused it. If the request reached the venue and only the ANSWER was lost, that
 order is resting at the broker and we have forgotten it — we manufactured the very divergence
 #349 exists to resolve, out of our own error handling. A write is therefore never retried but
-**resolved by asking** (§43), and `UNRESOLVED` is the state that keeps it askable.
+**resolved by asking**, and `UNRESOLVED` is the state that keeps it askable.
 
 | Test | Description |
 |---|---|
@@ -792,7 +792,7 @@ order is resting at the broker and we have forgotten it — we manufactured the 
 | `test_unresolved_does_not_overwrite_the_broker_ref` | An existing reference is left intact |
 | `test_rejection_still_removes_the_pending_order` | A genuine rejection clears the pending as before |
 | `test_unresolved_timeout_reason_names_the_transport` | The timeout reason says transport, not refusal |
-| `test_failed_submit_reaches_the_error_pot` | A failed submit is an ERROR (§35 pot) — the operator must see it |
+| `test_failed_submit_reaches_the_error_pot` | A failed submit is an ERROR in the session's error pot — the operator must see it |
 | `test_failed_status_poll_is_only_a_warning` | A failed status poll is a WARNING; the next cadence retries |
 | `test_a_venue_answer_is_logged_by_neither` | A normal venue answer is neither error nor warning |
 
@@ -827,7 +827,7 @@ session.
 
 An adapter declares what the VENUE accepts; an executor declares what the PIPELINE has built.
 Kraken declares STOP_LIMIT, the live path carried MARKET and LIMIT — and a strategy declaring
-STOP_LIMIT passed pre-flight, then had every order rejected at submission. A checked-in live
+STOP_LIMIT passed pre-flight, then had every order rejected at submission. A checked-in production
 profile sat in exactly that state. Pre-flight now checks the INTERSECTION of both declarations,
 and `open_order()`'s gate reads the same set, so the two cannot drift apart.
 
@@ -843,7 +843,7 @@ contract here, never a particular type, and the tests say so in their own docstr
 | `test_a_venue_declared_type_the_pipeline_lacks_is_refused_before_trading` | ICEBERG: venue yes, pipeline no → refused at STARTUP, message names the pipeline side |
 | `test_a_type_both_sides_carry_passes` | STOP_LIMIT on the sim: declared and routed → allowed |
 | `test_a_type_the_venue_lacks_is_named_as_the_venue_side` | The message distinguishes "venue does not offer" from "pipeline has not implemented" |
-| `test_the_live_path_rejects_what_it_does_not_declare` | A fully-formed ICEBERG on live → `ORDER_TYPE_NOT_SUPPORTED`. It carries a price on purpose, so the price gate cannot be what refused it |
+| `test_the_live_path_rejects_what_it_does_not_declare` | A fully-formed ICEBERG on the live path → `ORDER_TYPE_NOT_SUPPORTED`. It carries a price on purpose, so the price gate cannot be what refused it |
 | `test_every_declared_type_is_one_the_gate_lets_through` | The consistency property, strengthened to ACCEPTANCE. Each type is given the prices ITS shape needs — with `price=None` for everything, a STOP comes back INVALID_PRICE and the old "not ORDER_TYPE_NOT_SUPPORTED" assertion would still have held, so the test would have passed while proving nothing |
 | `test_a_type_the_builder_cannot_map_raises_instead_of_becoming_a_limit` | The wire-side line behind the gate: Kraken's payload builder raises for a type it cannot map, instead of silently sending it as a LIMIT — offline, through the processor's public submit |
 
@@ -870,8 +870,8 @@ dropping `market=job.market` in the worker dispatcher left the entire suite gree
 dry-run resting order refused for the rest of the session. Each hand-off is now pinned
 separately, and each was verified by removing it and watching exactly one test go red.
 
-**Why the refusal is an ERROR and not a warning:** a rehearsal that exercised nothing looks
-exactly like one that passed. Grading the session `FINISHED_WITH_ERRORS` (§35) is the intended
+**Why the refusal is an ERROR and not a warning:** a dry run that exercised nothing looks
+exactly like one that passed. Grading the session `FINISHED_WITH_ERRORS` is the intended
 consequence — the operator is meant to notice that the run proved less than it appears to.
 
 
@@ -911,7 +911,7 @@ high-water mark honest, so a restart cannot re-issue it.
 
 **It is recorded, not re-derived.** The reconciler rebuilt the key from `pending_order_id`, which
 held only while every key was a function of its id. A re-derived key misses a close in flight and
-drops it into the abandoned bucket — the false alarm measured twice in five live field-study runs.
+drops it into the abandoned bucket — the false alarm measured twice in five field-study runs.
 `PendingOrder.client_order_id` now holds what actually went on the wire.
 
 | Class | Description |

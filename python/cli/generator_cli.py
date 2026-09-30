@@ -87,7 +87,7 @@ def main():
     # ─────────────────────────────────────────────────────────────────────────
     profile_parser = subparsers.add_parser(
         'generate-profile',
-        help='Generate a profile artifact with ATR-minima splitting'
+        help='Generate a generator-profile artifact (volatility_split or continuous mode)'
     )
     profile_parser.add_argument(
         'broker_type',
@@ -128,7 +128,7 @@ def main():
     # ─────────────────────────────────────────────────────────────────────────
     all_profiles_parser = subparsers.add_parser(
         'generate-all-profiles',
-        help='Generate profiles for all symbols across all brokers'
+        help='Generate generator profiles for all symbols across all brokers'
     )
     all_profiles_parser.add_argument(
         '--mt5-start',

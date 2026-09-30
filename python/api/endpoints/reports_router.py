@@ -11,6 +11,16 @@ from typing import Optional
 
 from fastapi import APIRouter, Query
 
+from python.api.api_error_catalog import (
+    ARTIFACT_NOT_PRODUCED,
+    ARTIFACT_UNREADABLE,
+    CONFIG_SNAPSHOT_MISSING,
+    INVALID_TIMESTAMP,
+    REPORTS_NOT_COMMISSIONED,
+    RUN_NOT_COMPLETED,
+    RUN_NOT_FOUND,
+    api_error,
+)
 from python.framework.exceptions.api_errors import ApiException
 from python.framework.exceptions.report_artifact_errors import ReportArtifactUnreadableError
 from python.framework.reporting.io.artifact_specs import (
@@ -42,6 +52,7 @@ from python.framework.types.api.report_types import (
     RunConfigSnapshot,
     RunInfo,
     RunListResponse,
+    RunReporting,
     RunSummary,
     ScenarioDetailsReport,
     SignalReport,
@@ -53,15 +64,45 @@ from python.framework.types.api.report_types import (
 router = APIRouter()
 
 
+def _missing_artifact(run_id: str, section: str) -> ApiException:
+    """
+    The 404 for a report section a run does not have — naming WHY, never only "not found".
+
+    One absence has four causes, and a consumer renders each differently: the run is unknown; it
+    was started without reports; it has produced none YET — still running, or it ended before
+    its report phase, which look the same from here (§44); or it produced others but not this
+    one, because its pipeline does not write the section or its outcome left nothing to write.
+    All four are read from the run's index row, which already records `reporting` and the
+    artifacts the run persisted — no directory is walked to answer.
+
+    Args:
+        run_id: The run asked for
+        section: The report section's route name
+
+    Returns:
+        The 404 to raise, with one error code per cause
+    """
+    run = next((info for info in ReportStore().list_runs() if info.run_id == run_id), None)
+    if run is None:
+        return api_error(RUN_NOT_FOUND, run_id=run_id)
+    if run.reporting == RunReporting.NONE:
+        return api_error(REPORTS_NOT_COMMISSIONED, run_id=run_id)
+    if not run.artifacts:
+        return api_error(RUN_NOT_COMPLETED, run_id=run_id)
+    return api_error(ARTIFACT_NOT_PRODUCED, run_id=run_id,
+                     artifact_count=len(run.artifacts), section=section)
+
+
 @router.get('/reports/runs', response_model=RunListResponse)
 def list_runs() -> RunListResponse:
     """
-    Index of runs carrying persisted report artifacts, newest first.
+    Index of runs carrying persisted report artifacts, newest first, each with what the
+    run-results ledger recorded it did.
 
     Returns:
         The RunListResponse (empty list when no run has been persisted yet)
     """
-    runs: list[RunInfo] = ReportStore().list_runs()
+    runs: list[RunInfo] = ReportStore().list_runs_with_results()
     return RunListResponse(runs=runs, count=len(runs))
 
 
@@ -78,7 +119,7 @@ def get_trade_history(
     Trade-history report for a run, filtered by the query parameters.
 
     Args:
-        run_id: The run-timestamp directory name
+        run_id: The run's id (<timestamp>_<hash>), resolved through the run index
         symbol / close_reason / start / end: Optional filters
 
     Returns:
@@ -92,9 +133,7 @@ def get_trade_history(
         end=_parse_iso(end, 'end'),
     )
     if report is None:
-        raise ApiException(
-            404, 'run_not_found',
-            f"No trade-history artifact for run '{run_id}'")
+        raise _missing_artifact(run_id, 'trade-history')
     return report
 
 
@@ -109,7 +148,7 @@ def get_order_history(
     Order-history report for a run, filtered by the query parameters.
 
     Args:
-        run_id: The run-timestamp directory name
+        run_id: The run's id (<timestamp>_<hash>), resolved through the run index
         symbol / status: Optional filters
 
     Returns:
@@ -117,9 +156,7 @@ def get_order_history(
     """
     report = ReportStore().get_order_history(run_id, symbol=symbol, status=status)
     if report is None:
-        raise ApiException(
-            404, 'run_not_found',
-            f"No order-history artifact for run '{run_id}'")
+        raise _missing_artifact(run_id, 'order-history')
     return report
 
 
@@ -129,16 +166,14 @@ def get_portfolio(run_id: str) -> PortfolioReport:
     Portfolio headline report for a run (per-unit rows + per-currency aggregates).
 
     Args:
-        run_id: The run-timestamp directory name
+        run_id: The run's id (<timestamp>_<hash>), resolved through the run index
 
     Returns:
         The PortfolioReport (404 if the run has no portfolio artifact)
     """
     report = ReportStore().get(run_id, PORTFOLIO_ARTIFACT)
     if report is None:
-        raise ApiException(
-            404, 'run_not_found',
-            f"No portfolio artifact for run '{run_id}'")
+        raise _missing_artifact(run_id, 'portfolio')
     return report
 
 
@@ -148,16 +183,14 @@ def get_execution_stats(run_id: str) -> ExecutionStatsReport:
     Execution-stats report for a run (per-unit order counts + summed totals).
 
     Args:
-        run_id: The run-timestamp directory name
+        run_id: The run's id (<timestamp>_<hash>), resolved through the run index
 
     Returns:
         The ExecutionStatsReport (404 if the run has no execution-stats artifact)
     """
     report = ReportStore().get(run_id, EXECUTION_STATS_ARTIFACT)
     if report is None:
-        raise ApiException(
-            404, 'run_not_found',
-            f"No execution-stats artifact for run '{run_id}'")
+        raise _missing_artifact(run_id, 'execution-stats')
     return report
 
 
@@ -167,16 +200,14 @@ def get_pending_orders(run_id: str) -> PendingOrdersReport:
     Pending-orders report for a run (per-unit lifecycle + latency + active orders).
 
     Args:
-        run_id: The run-timestamp directory name
+        run_id: The run's id (<timestamp>_<hash>), resolved through the run index
 
     Returns:
         The PendingOrdersReport (404 if the run has no pending-orders artifact)
     """
     report = ReportStore().get(run_id, PENDING_ORDERS_ARTIFACT)
     if report is None:
-        raise ApiException(
-            404, 'run_not_found',
-            f"No pending-orders artifact for run '{run_id}'")
+        raise _missing_artifact(run_id, 'pending-orders')
     return report
 
 
@@ -186,16 +217,14 @@ def get_scenario_details(run_id: str) -> ScenarioDetailsReport:
     Scenario-details report for a run (per-scenario execution + signal metadata, sim-only).
 
     Args:
-        run_id: The run-timestamp directory name
+        run_id: The run's id (<timestamp>_<hash>), resolved through the run index
 
     Returns:
         The ScenarioDetailsReport (404 if the run has no scenario-details artifact)
     """
     report = ReportStore().get(run_id, SCENARIO_DETAILS_ARTIFACT)
     if report is None:
-        raise ApiException(
-            404, 'run_not_found',
-            f"No scenario-details artifact for run '{run_id}'")
+        raise _missing_artifact(run_id, 'scenario-details')
     return report
 
 
@@ -205,16 +234,14 @@ def get_run_summary(run_id: str) -> RunSummary:
     Cross-section KPI summary for a run (per-currency KPIs + global order counts).
 
     Args:
-        run_id: The run-timestamp directory name
+        run_id: The run's id (<timestamp>_<hash>), resolved through the run index
 
     Returns:
         The RunSummary (404 if the run has no run-summary artifact)
     """
     report = ReportStore().get(run_id, RUN_SUMMARY_ARTIFACT)
     if report is None:
-        raise ApiException(
-            404, 'run_not_found',
-            f"No run-summary artifact for run '{run_id}'")
+        raise _missing_artifact(run_id, 'run-summary')
     return report
 
 
@@ -224,16 +251,14 @@ def get_worker_decision(run_id: str) -> WorkerDecisionReport:
     Worker/decision report for a run (per-unit worker + decision performance, unified).
 
     Args:
-        run_id: The run-timestamp directory name
+        run_id: The run's id (<timestamp>_<hash>), resolved through the run index
 
     Returns:
         The WorkerDecisionReport (404 if the run has no worker-decision artifact)
     """
     report = ReportStore().get(run_id, WORKER_DECISION_ARTIFACT)
     if report is None:
-        raise ApiException(
-            404, 'run_not_found',
-            f"No worker-decision artifact for run '{run_id}'")
+        raise _missing_artifact(run_id, 'worker-decision')
     return report
 
 
@@ -243,16 +268,14 @@ def get_profiling(run_id: str) -> ProfilingReport:
     Profiling report for a run (per-scenario operation timing + inter-tick + clipping + warmup, sim-only).
 
     Args:
-        run_id: The run-timestamp directory name
+        run_id: The run's id (<timestamp>_<hash>), resolved through the run index
 
     Returns:
         The ProfilingReport (404 if the run has no profiling artifact)
     """
     report = ReportStore().get(run_id, PROFILING_ARTIFACT)
     if report is None:
-        raise ApiException(
-            404, 'run_not_found',
-            f"No profiling artifact for run '{run_id}'")
+        raise _missing_artifact(run_id, 'profiling')
     return report
 
 
@@ -262,16 +285,14 @@ def get_aggregated_portfolio(run_id: str) -> AggregatedPortfolioReport:
     Aggregated per-currency portfolio report for a run (the rich detail view, sim).
 
     Args:
-        run_id: The run-timestamp directory name
+        run_id: The run's id (<timestamp>_<hash>), resolved through the run index
 
     Returns:
         The AggregatedPortfolioReport (404 if the run has no aggregated-portfolio artifact)
     """
     report = ReportStore().get(run_id, AGGREGATED_PORTFOLIO_ARTIFACT)
     if report is None:
-        raise ApiException(
-            404, 'run_not_found',
-            f"No aggregated-portfolio artifact for run '{run_id}'")
+        raise _missing_artifact(run_id, 'aggregated-portfolio')
     return report
 
 
@@ -281,7 +302,7 @@ def get_warnings_errors(run_id: str) -> WarningsErrorsReport:
     Warnings & errors report for a run (tiered warnings + per-unit errors + outcome, both pipelines).
 
     Args:
-        run_id: The run-timestamp directory name
+        run_id: The run's id (<timestamp>_<hash>), resolved through the run index
 
     Returns:
         The WarningsErrorsReport (404 if the run has no warnings-errors artifact)
@@ -289,11 +310,9 @@ def get_warnings_errors(run_id: str) -> WarningsErrorsReport:
     try:
         report = ReportStore().get(run_id, WARNINGS_ERRORS_ARTIFACT)
     except ReportArtifactUnreadableError as e:
-        raise ApiException(409, 'artifact_unreadable', str(e)) from e
+        raise api_error(ARTIFACT_UNREADABLE, reason=str(e)) from e
     if report is None:
-        raise ApiException(
-            404, 'run_not_found',
-            f"No warnings-errors artifact for run '{run_id}'")
+        raise _missing_artifact(run_id, 'warnings-errors')
     return report
 
 
@@ -303,16 +322,14 @@ def get_broker(run_id: str) -> BrokerReport:
     Broker-configuration report for a run (per-broker spec + scenarios + symbols, sim-only).
 
     Args:
-        run_id: The run-timestamp directory name
+        run_id: The run's id (<timestamp>_<hash>), resolved through the run index
 
     Returns:
         The BrokerReport (404 if the run has no broker artifact)
     """
     report = ReportStore().get(run_id, BROKER_ARTIFACT)
     if report is None:
-        raise ApiException(
-            404, 'run_not_found',
-            f"No broker artifact for run '{run_id}'")
+        raise _missing_artifact(run_id, 'broker')
     return report
 
 
@@ -323,16 +340,14 @@ def get_signal(run_id: str) -> SignalReport:
     decision basis (fresh / stale / blind ticks per scenario).
 
     Args:
-        run_id: The run-timestamp directory name
+        run_id: The run's id (<timestamp>_<hash>), resolved through the run index
 
     Returns:
         The SignalReport (404 if the run has no signal artifact)
     """
     report = ReportStore().get(run_id, SIGNAL_ARTIFACT)
     if report is None:
-        raise ApiException(
-            404, 'run_not_found',
-            f"No signal artifact for run '{run_id}'")
+        raise _missing_artifact(run_id, 'signal')
     return report
 
 
@@ -343,23 +358,21 @@ def get_feed_stability(run_id: str) -> FeedStabilityReport:
     across both staleness domains (tick stream + signal sources).
 
     Args:
-        run_id: The run-timestamp directory name
+        run_id: The run's id (<timestamp>_<hash>), resolved through the run index
 
     Returns:
         The FeedStabilityReport (404 if the run has no feed-stability artifact)
     """
     report = ReportStore().get(run_id, FEED_STABILITY_ARTIFACT)
     if report is None:
-        raise ApiException(
-            404, 'run_not_found',
-            f"No feed-stability artifact for run '{run_id}'")
+        raise _missing_artifact(run_id, 'feed-stability')
     return report
 
 
 @router.get('/reports/runs/{run_id}/booking-periods', response_model=BookingPeriodsReport)
 def get_booking_periods(run_id: str) -> BookingPeriodsReport:
     """
-    The run's Hauptbuch (#537): one summary per booking period, and whether they add up.
+    The run's ledger entries (#537): one summary per booking period, and whether they add up.
 
     Served from the stored artifact rather than rebuilt from the ledger, and the reconciliation
     is the reason. It compares the periods against the figure the run reports by its own
@@ -368,7 +381,7 @@ def get_booking_periods(run_id: str) -> BookingPeriodsReport:
     construction and can never fail.
 
     Args:
-        run_id: The run-timestamp directory name
+        run_id: The run's id (<timestamp>_<hash>), resolved through the run index
 
     Returns:
         The BookingPeriodsReport (404 if the run has no booking-periods artifact — every run
@@ -376,9 +389,7 @@ def get_booking_periods(run_id: str) -> BookingPeriodsReport:
     """
     report = ReportStore().get(run_id, BOOKING_PERIODS_ARTIFACT)
     if report is None:
-        raise ApiException(
-            404, 'run_not_found',
-            f"No booking-periods artifact for run '{run_id}'")
+        raise _missing_artifact(run_id, 'booking-periods')
     return report
 
 
@@ -389,8 +400,7 @@ def _parse_iso(value: Optional[str], field: str) -> Optional[datetime]:
     try:
         return datetime.fromisoformat(value)
     except ValueError:
-        raise ApiException(
-            400, 'invalid_timestamp', f"'{field}' must be ISO-8601, got '{value}'")
+        raise api_error(INVALID_TIMESTAMP, field=field, value=value)
 
 @router.get('/reports/runs/{run_id}/config', response_model=RunConfigSnapshot)
 def get_run_config(run_id: str) -> RunConfigSnapshot:
@@ -408,7 +418,7 @@ def get_run_config(run_id: str) -> RunConfigSnapshot:
     run" would send a consumer looking for the wrong fault.
 
     Args:
-        run_id: The run-timestamp directory name
+        run_id: The run's id (<timestamp>_<hash>), resolved through the run index
 
     Returns:
         The snapshot, parsed, with the name and content id the index attributes to this run
@@ -417,9 +427,6 @@ def get_run_config(run_id: str) -> RunConfigSnapshot:
     if snapshot is None:
         known = any(r.run_id == run_id for r in ReportStore().list_runs())
         if not known:
-            raise ApiException(
-                404, 'run_not_found', f"No run '{run_id}' in the run index")
-        raise ApiException(
-            404, 'config_snapshot_missing',
-            f"Run '{run_id}' declares a configuration snapshot that was never filed")
+            raise api_error(RUN_NOT_FOUND, run_id=run_id)
+        raise api_error(CONFIG_SNAPSHOT_MISSING, run_id=run_id)
     return snapshot

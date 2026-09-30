@@ -681,7 +681,7 @@ class TestStoppingWhileTheProducerHangs:
         The hung-upstream case: the connection is ACCEPTED and the response head never
         comes. The socket handle is published before the response is read precisely so
         there is something to shut down — without it a session end blocks for the whole
-        watchdog, and in a live session that wait sits AHEAD of closing open positions.
+        watchdog, and in a live-adapter session that wait sits AHEAD of closing open positions.
         """
         server = MockStreamServer([MockStreamReply(stall_s=6.0)])
         server.start()

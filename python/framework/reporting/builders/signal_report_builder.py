@@ -7,7 +7,7 @@ Joins the two planes a signal source has:
 - RUNTIME (what the strategy actually decided on): the per-tick fresh/stale/blind counters
   the SIGNAL workers captured (#433 Part C), carried on the RunUnits.
 
-Unified across both pipelines: sim batch and AutoTrader-mock session run through the SAME
+Unified across both pipelines: sim batch and mock session run through the SAME
 MountPreparer, so both hand in the same signal scenario map and one entry point serves both.
 Reads the map directly — NOT via RunUnit — because it is a source-keyed data snapshot, not a
 per-unit record (same pattern as the broker section).
@@ -40,9 +40,9 @@ def build_signal_report(
     Build the signal report from the prepared signal map + the run's units.
 
     Two entry paths, because a signal source reaches a run two ways. A scenario map means
-    an archive was prepared and analysed — the sim batch and the AutoTrader-mock session.
-    An observed feed means the envelopes arrived while the session ran, which is the live
-    case: there is no archive to analyse, only what the feed stated about itself.
+    an archive was prepared and analysed — the sim batch and the mock session.
+    An observed feed means the envelopes arrived while the session ran, which is the
+    live-adapter case: there is no archive to analyse, only what the feed stated about itself.
 
     Args:
         run_id: The run this report belongs to
@@ -187,7 +187,7 @@ def _to_feed_row(
 
     Args:
         observed: What the transport accumulated while the session ran
-        units: The run's units — a live session has exactly one
+        units: The run's units — an AutoTrader session has exactly one
 
     Returns:
         SignalSourceRow marked as feed-backed
@@ -221,7 +221,7 @@ def _to_feed_usage_row(
     stats_index: Dict[Tuple[str, str], SignalResolutionStats],
 ) -> SignalUsageRow:
     """
-    Map a live session's consumption of a feed: its span + the decision-basis counters.
+    Map a live-adapter session's consumption of a feed: its span + the decision-basis counters.
 
     `coverage_ratio` stays None — there is no archive window to have covered.
 

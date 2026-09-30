@@ -45,7 +45,7 @@ still hold as long as the merged result is correct.
 ## Fixtures (conftest.py)
 
 Each fixture is a self-contained scenario-set JSON with one scenario. The
-scenario carries the minimum required fields (`name`, `symbol`, `data_broker_type`,
+scenario carries the minimum required fields (`scenario_name`, `symbol`, `data_broker_type`,
 date range) but no real tick data — the loader only merges, it does not load market
 data. This keeps fixtures small and review-friendly.
 
@@ -115,7 +115,7 @@ reachable from JSON.** Tests live in
 [`test_autotrader_loader_field_coverage.py`](../../../tests/framework/config/test_autotrader_loader_field_coverage.py).
 
 The gap it closes is invisible from outside. A field can be declared in the Pydantic model,
-mirrored in `app_config.json` (§28), allowed through `check_unknown_keys` and read at runtime
+mirrored in `app_config.json`, allowed through `check_unknown_keys` and read at runtime
 — and still never be transferred by the loader. A profile that sets it then passes validation
 and is silently ignored. Two fields were in exactly that state, each since its own feature
 shipped: `cold_start.book_drift_interval_ticks` and `clipping_monitor.warn_above_ratio`. Both
@@ -141,7 +141,7 @@ boolean, a shifted number, a suffixed string.
 
 `price_formation` decides whether a traded price exists and therefore what a bar is rendered
 from. It is a **required** field on every broker entry with no default, because a default is
-how the next broker silently inherits the wrong basis — which is the defect the field exists
+how the next broker silently inherits the wrong price basis — which is the defect the field exists
 to remove.
 
 That only holds while nothing supplies one by accident, so it is asserted rather than trusted.
@@ -206,7 +206,7 @@ configured and validation passes. Same shape as the `market_config.json` gap tha
 | Group | What it pins |
 |------|-------------|
 | `TestEveryAppConfigModelRefusesAnUnknownKey` | every model reachable from `AppConfig` forbids extras; a misspelled section and a misspelled nested key both raise; the real config still loads |
-| `TestAConfigFileMayStillExplainItself` | `_comment` and `_comment_<what>` pass at every level — §28 makes them how a config file documents itself |
+| `TestAConfigFileMayStillExplainItself` | `_comment` and `_comment_<what>` pass at every level — they are how a config file documents itself |
 
 Two properties are deliberate and will look like omissions otherwise. The model tree is **walked**,
 never listed, because a fixture naming today's models would be the maintenance trap the suite

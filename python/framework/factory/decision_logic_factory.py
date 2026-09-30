@@ -25,20 +25,20 @@ from typing import Any, Dict, Optional, Tuple, Type
 
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.decision_logic.core.aggressive_trend import AggressiveTrend
-from python.framework.decision_logic.core.backtesting.backtesting_deterministic import (
-    BacktestingDeterministic,
+from python.framework.decision_logic.core.test_probes.deterministic_probe import (
+    DeterministicProbe,
 )
-from python.framework.decision_logic.core.backtesting.backtesting_event_probe import (
-    BacktestingEventProbe,
+from python.framework.decision_logic.core.test_probes.event_probe import (
+    EventProbe,
 )
-from python.framework.decision_logic.core.backtesting.backtesting_margin_stress import (
-    BacktestingMarginStress,
+from python.framework.decision_logic.core.test_probes.margin_stress_probe import (
+    MarginStressProbe,
 )
-from python.framework.decision_logic.core.backtesting.backtesting_multi_position import (
-    BacktestingMultiPosition,
+from python.framework.decision_logic.core.test_probes.multi_position_probe import (
+    MultiPositionProbe,
 )
-from python.framework.decision_logic.core.backtesting.backtesting_outage_probe import (
-    BacktestingOutageProbe,
+from python.framework.decision_logic.core.test_probes.outage_probe import (
+    OutageProbe,
 )
 from python.framework.decision_logic.core.cautious_macd import CautiousMacd
 from python.framework.decision_logic.core.hybrid_sentiment_reference import HybridSentimentReference
@@ -92,11 +92,11 @@ class DecisionLogicFactory:
             self._registry['CORE/cautious_macd'] = (CautiousMacd, None)
             self._registry['CORE/trend_channel_reference'] = (TrendChannelReference, None)
             self._registry['CORE/hybrid_sentiment_reference'] = (HybridSentimentReference, None)
-            self._registry['CORE/backtesting/backtesting_deterministic'] = (BacktestingDeterministic, None)
-            self._registry['CORE/backtesting/backtesting_margin_stress'] = (BacktestingMarginStress, None)
-            self._registry['CORE/backtesting/backtesting_multi_position'] = (BacktestingMultiPosition, None)
-            self._registry['CORE/backtesting/backtesting_event_probe'] = (BacktestingEventProbe, None)
-            self._registry['CORE/backtesting/backtesting_outage_probe'] = (BacktestingOutageProbe, None)
+            self._registry['CORE/test_probes/deterministic_probe'] = (DeterministicProbe, None)
+            self._registry['CORE/test_probes/margin_stress_probe'] = (MarginStressProbe, None)
+            self._registry['CORE/test_probes/multi_position_probe'] = (MultiPositionProbe, None)
+            self._registry['CORE/test_probes/event_probe'] = (EventProbe, None)
+            self._registry['CORE/test_probes/outage_probe'] = (OutageProbe, None)
             self._registry['CORE/live_field_study/live_field_study'] = (LiveFieldStudy, None)
 
             self.logger.debug(

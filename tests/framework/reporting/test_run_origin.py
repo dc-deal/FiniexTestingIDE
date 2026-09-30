@@ -6,13 +6,15 @@ this repository it ran. The first was answerable by memory while there was one o
 console; the second was not answerable at all for a strategy living in its own repository. This
 suite pins where the two new blocks are written and where they are read:
 
-- both header sites — the scenario set and the live session — always state an origin, and state
+- both header sites — the scenario set and the AutoTrader session — always state an origin, and state
   a code identity for a run that reports;
 - every entry point DECLARES its channel; code that does not say keeps `direct`;
 - the run index projects both blocks into flat columns, identically on append and on rebuild;
 - the ledger reads its versions, dirty flag and commit from the header — in the run directory the
   caller holds, never through the derived run index — instead of deriving them again;
-- a broken host identity refuses a simulation cleanly, as a configuration error.
+- a broken host identity refuses a simulation cleanly, as a configuration error;
+- a dirty tree's patch is kept beside its code: this repository's in the run-patch store, a
+  strategy repository's inside that repository.
 
 The git reads behind a real capture are pinned against temporary repositories in
 `test_code_identity.py`; here the capture is mostly replaced, because what is under test is the
@@ -49,12 +51,13 @@ from python.framework.reporting.store.run_provenance_builder import (
     build_run_provenance,
     build_run_provenance_from_session,
 )
+from python.framework.store.run_patch_store import FOREIGN_PATCH_DIR
 from python.framework.types.api.report_types import RunHeader, RunReporting
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
 from python.framework.types.config_types.file_logging_config_types import RunLogPaths
 from python.framework.types.config_types.host_identity_config_types import TEST_HOST_ID
 from python.framework.types.git_info_types import GitInfo
-from python.framework.types.log_layout_types import RUN_TYPE_LIVE, RUN_TYPE_SIMULATION
+from python.framework.types.log_layout_types import RUN_TYPE_AUTOTRADER, RUN_TYPE_SIMULATION
 from python.framework.types.run_origin_types import (
     CONSOLE_CLIENT,
     OPERATOR_PERSON,
@@ -82,7 +85,7 @@ _MINI_GRID = 'tests/fixtures/optimization/btcusd_mini_grid.json'
 _DECISION = 'user_algos/my_bot/my_strategy.py'
 _STRATEGY = {'decision_logic_type': _DECISION,
              'worker_instances': {'rsi_fast': 'CORE/rsi', 'trend': 'CORE/ma_trend'}}
-_PROFILE = 'configs/autotrader_profiles/backtesting/mock_session_test.json'
+_PROFILE = 'configs/autotrader_profiles/mock/mock_session_test.json'
 
 
 class _RecordingLogger:
@@ -335,15 +338,15 @@ class TestTheIndexProjectsBothBlocks:
 
     @staticmethod
     def _plant(tmp_path: Path):
-        roots = RunLogPaths(simulation=tmp_path / 'simulation', live=tmp_path / 'live')
+        roots = RunLogPaths(simulation=tmp_path / 'simulation', autotrader=tmp_path / 'autotrader')
         index = RunIndex(tmp_path / 'runs_index.parquet', roots)
         planted = [
             (_header('20260924_080000_aaaaaaaa', origin=_origin(),
                      code_identity=_identity(algos_dirty=True)),
              roots.simulation / 'my_set' / '20260924_080000_aaaaaaaa'),
-            (_header('20260924_080001_bbbbbbbb', RUN_TYPE_LIVE,
+            (_header('20260924_080001_bbbbbbbb', RUN_TYPE_AUTOTRADER,
                      origin=_origin(RunChannel.DIRECT), code_identity=_identity()),
-             roots.live / 'my_profile' / '20260924_080001_bbbbbbbb'),
+             roots.autotrader / 'my_profile' / '20260924_080001_bbbbbbbb'),
             # Commissioned not to report: an origin, and no code identity.
             (_header('20260924_080002_cccccccc', origin=_origin(RunChannel.DIRECT)),
              roots.simulation / 'my_set' / '20260924_080002_cccccccc'),
@@ -428,13 +431,13 @@ class TestTheLedgerReadsItsProvenanceFromTheHeader:
             The run directory
         """
         run_dir = tmp_path / run_id
-        write_run_header(_header(run_id, RUN_TYPE_LIVE, origin=_origin(),
+        write_run_header(_header(run_id, RUN_TYPE_AUTOTRADER, origin=_origin(),
                                  code_identity=code_identity), run_dir)
         return run_dir
 
     @staticmethod
     def _config() -> AutoTraderConfig:
-        return AutoTraderConfig(name='my_profile', symbol='BTCUSD', broker_type='kraken_spot',
+        return AutoTraderConfig(profile_name='my_profile', symbol='BTCUSD', broker_type='kraken_spot',
                                 strategy_config=dict(_STRATEGY))
 
     def _provenance(self, run_id: str, run_dir, logger=None):
@@ -761,3 +764,95 @@ class TestARealCaptureReachesTheLedger:
                                      'user_w': self._PATH_WORKER_VERSION}
         # Every repository is committed, so the code that ran is reproducible from commits.
         assert p.git_dirty is False
+
+
+class TestEachPatchStaysWithItsRepository:
+    """
+    A dirty tree's patch is kept beside the code it describes (#551): this repository's in the
+    run-patch store, a strategy repository's INSIDE that repository — so private strategy code
+    never enters this project's tree, not even as a copy in its data directory.
+
+    The framework is redirected at `get_framework_root` as above; both repositories are throwaway,
+    which is why this is the one place the real foreign patch home is put back.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _fresh_caches(self):
+        """Every read here is cached per process; clear before AND after (§42)."""
+        clear_git_caches()
+        clear_package_digest_cache()
+        yield
+        clear_git_caches()
+        clear_package_digest_cache()
+
+    @pytest.fixture
+    def dirty_repos(self, tmp_path, monkeypatch, real_foreign_patch_homes):
+        """
+        A framework repository and an algo repository holding a path worker — both dirty.
+
+        Returns:
+            (framework repo, algo repo, path worker file)
+        """
+        framework = _committed_repo(tmp_path / 'framework', {'app.py': 'VALUE = 1\n'})
+        worker_source = Path('python/framework/workers/core/rsi_worker.py').read_text(
+            encoding='utf-8')
+        algos = _committed_repo(tmp_path / 'algos', {
+            '.gitignore': '__pycache__/\n', 'my_worker/my_worker.py': worker_source})
+        (framework / 'app.py').write_text('VALUE = 2\n', encoding='utf-8')
+        worker = algos / 'my_worker' / 'my_worker.py'
+        worker.write_text(worker_source + '\n# tuned\n', encoding='utf-8')
+
+        utils_dir = str(Path(git_info_utils.__file__).resolve().parent)
+        real_toplevel = git_info_utils.get_repo_toplevel
+        monkeypatch.setattr(git_info_utils, 'get_repo_toplevel',
+                            lambda path: str(framework) if path == utils_dir
+                            else real_toplevel(path))
+        return framework, algos, worker
+
+    @staticmethod
+    def _capture(worker: Path) -> CodeIdentity:
+        """
+        Capture a strategy running one CORE decision and the path worker.
+
+        Args:
+            worker: The path worker's file
+
+        Returns:
+            The captured code identity
+        """
+        return capture_code_identity([{'decision_logic_type': 'CORE/simple_consensus',
+                                       'worker_instances': {'user_w': str(worker)}}])
+
+    def test_the_strategy_repositorys_patch_stays_inside_it(self, dirty_repos):
+        framework, algos, worker = dirty_repos
+
+        [state] = self._capture(worker).repositories
+
+        assert state.root == str(algos) and state.dirty is True and state.restorable is True
+        assert state.patch_ref.startswith(f'{FOREIGN_PATCH_DIR}/'), 'relative to its own root'
+        assert b'+# tuned' in (algos / state.patch_ref).read_bytes()
+        store = Path(AppConfigManager().get_run_patches_path())
+        assert not (store / Path(state.patch_ref).name).exists(), 'no copy in this project'
+
+    def test_this_repositorys_patch_goes_to_the_run_patch_store(self, dirty_repos):
+        framework, algos, worker = dirty_repos
+
+        identity = self._capture(worker)
+
+        kept = Path(identity.framework.patch_ref)
+        assert kept.parent == Path(AppConfigManager().get_run_patches_path())
+        assert b'+VALUE = 2' in kept.read_bytes()
+        assert not (framework / FOREIGN_PATCH_DIR).exists()
+
+    def test_a_foreign_home_that_cannot_be_written_costs_its_patch_and_nothing_else(
+            self, dirty_repos):
+        framework, algos, worker = dirty_repos
+        (algos / FOREIGN_PATCH_DIR).write_text('a file where the directory belongs\n',
+                                               encoding='utf-8')
+
+        identity = self._capture(worker)
+
+        [state] = identity.repositories
+        assert state.dirty is True and state.diff_hash, 'the run stays identifiable'
+        assert state.patch_ref is None and state.restorable is False
+        assert identity.framework.patch_ref is not None, 'the other repository is unaffected'

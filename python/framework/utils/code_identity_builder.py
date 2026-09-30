@@ -33,6 +33,7 @@ from python.framework.types.run_origin_types import (
 )
 from python.framework.utils.git_info_utils import (
     clear_git_caches,
+    drop_untracked_under,
     get_framework_root,
     get_repo_patch,
     get_repo_status,
@@ -40,6 +41,7 @@ from python.framework.utils.git_info_utils import (
     git_available,
     list_ignored_files,
     list_repo_files,
+    untracked_under,
 )
 
 # How many porcelain lines a state keeps — enough for a refusal to name what is uncommitted,
@@ -68,23 +70,29 @@ _LAST_DIGESTS: Dict[str, Optional[str]] = {}
 # location (python/framework/utils/ → the root), so a refusal can still name a path.
 _MODULE_CHECKOUT = Path(__file__).resolve().parents[3]
 
-# Receives (patch hash, patch bytes) and answers where the patch was stored — or None when it
-# could not be, which leaves the diff hash recorded and the patch reference empty.
-PatchSink = Callable[[str, bytes], Optional[str]]
+# Receives (repository root, patch hash, patch bytes) and answers where the patch was stored — or
+# None when it could not be, which leaves the diff hash recorded and the patch reference empty. The
+# root is what lets the sink keep a patch beside the code it describes.
+PatchSink = Callable[[str, str, bytes], Optional[str]]
 
 
 def build_code_identity(
     strategy_configs: List[Dict],
     patch_sink: Optional[PatchSink] = None,
+    ignore_untracked_under: Optional[str] = None,
 ) -> CodeIdentity:
     """
     Capture which code a run is about to run.
 
     Args:
         strategy_configs: Every strategy_config the run will execute (one per scenario in a
-            simulation, one for a live session) — the union of their components is recorded
+            simulation, one for an AutoTrader session) — the union of their components is recorded
         patch_sink: Stores the patch of a dirty repository and returns its reference; None
             records the diff hash without storing the patch
+        ignore_untracked_under: A directory of THIS repository whose untracked files are not
+            code — a certificate's own reports directory, which every earlier certificate run
+            left an artifact in. Those files are neither a change, nor in the digest, nor in
+            the patch; a modified tracked file there still is
 
     Returns:
         The run's code identity
@@ -129,7 +137,7 @@ def build_code_identity(
     repositories += [RepositoryState(root=directory, in_repository=membership)
                      for directory, membership in outside.items()]
     return CodeIdentity(
-        framework=_framework_state(framework_root, have_git, patch_sink),
+        framework=_framework_state(framework_root, have_git, patch_sink, ignore_untracked_under),
         repositories=repositories,
         components=components,
     )
@@ -168,7 +176,8 @@ def verify_component_digests(identity: CodeIdentity) -> List[ComponentIdentity]:
 
 
 def _framework_state(framework_root: Optional[str], have_git: bool,
-                     patch_sink: Optional[PatchSink]) -> RepositoryState:
+                     patch_sink: Optional[PatchSink],
+                     ignore_untracked_under: Optional[str] = None) -> RepositoryState:
     """
     This repository's state — never None, so a refusal can always name where the code came from.
 
@@ -176,13 +185,14 @@ def _framework_state(framework_root: Optional[str], have_git: bool,
         framework_root: The repository's top level, None when git could not resolve it
         have_git: Whether a git binary runs at all
         patch_sink: Stores the patch, or None
+        ignore_untracked_under: Directory whose untracked files are not code, or None
 
     Returns:
         The state; unknown (in_repository None) where git does not run or refuses the checkout,
         unversioned outside any repository
     """
     if framework_root is not None:
-        return _repository_state(framework_root, patch_sink)
+        return _repository_state(framework_root, patch_sink, ignore_untracked_under)
     root, membership = _membership(str(_MODULE_CHECKOUT), have_git)
     return RepositoryState(root=root, in_repository=membership)
 
@@ -217,13 +227,15 @@ def _membership(directory: str, have_git: bool) -> Tuple[str, Optional[bool]]:
     return directory, None if not have_git else False
 
 
-def _repository_state(root: str, patch_sink: Optional[PatchSink]) -> RepositoryState:
+def _repository_state(root: str, patch_sink: Optional[PatchSink],
+                      ignore_untracked_under: Optional[str] = None) -> RepositoryState:
     """
     One repository's state; when it is dirty, its delta digested and its patch stored.
 
     Args:
         root: The repository's top-level directory
         patch_sink: Stores the patch, or None
+        ignore_untracked_under: Directory whose untracked files are not code, or None
 
     Returns:
         The repository's state; `commit` None when git could not read it
@@ -231,31 +243,40 @@ def _repository_state(root: str, patch_sink: Optional[PatchSink]) -> RepositoryS
     status = get_repo_status(root)
     if status is None:
         return RepositoryState(root=root, commit=None)
+    # Artifacts are dropped before anything reads the delta, so the count, the digest and the
+    # patch all describe the same set of paths.
+    artifacts: set = set()
+    lines = list(status.status_lines)
+    if ignore_untracked_under:
+        artifacts = set(untracked_under(status, ignore_untracked_under))
+        lines = drop_untracked_under(lines, ignore_untracked_under)
+    changed = [path for path in status.changed_paths if path not in artifacts]
+    dirty = bool(lines)
     state = RepositoryState(
         root=root,
         commit=status.commit,
         branch=status.branch,
-        dirty=status.dirty,
-        uncommitted_count=len(status.status_lines),
-        changes=status.status_lines[:_MAX_CHANGES],
-        restorable=not status.dirty and status.commit is not None,
+        dirty=dirty,
+        uncommitted_count=len(lines),
+        changes=lines[:_MAX_CHANGES],
+        restorable=not dirty and status.commit is not None,
     )
-    if not status.dirty:
+    if not dirty:
         return state
 
-    excluded = sorted(path for path in status.changed_paths if _is_credential_path(path))
+    excluded = sorted(path for path in changed if _is_credential_path(path))
     state.patch_excluded = excluded
-    state.diff_hash = _delta_digest(root, status.changed_paths, set(excluded))
-    patch = get_repo_patch(root, tuple(excluded))
+    state.diff_hash = _delta_digest(root, changed, set(excluded))
+    patch = get_repo_patch(root, tuple(excluded) + tuple(sorted(artifacts)))
     if patch is None or patch_sink is None:
         return state
-    state.patch_ref = patch_sink(hashlib.sha256(patch).hexdigest(), patch)
+    state.patch_ref = patch_sink(root, hashlib.sha256(patch).hexdigest(), patch)
     # A nested repository shows as one directory entry — untracked with a trailing slash, or a
     # submodule's gitlink without one (its patch hunk is a `Subproject commit …-dirty` line); its
     # content cannot be in the patch, so a tree dirty through one is recorded, never claimed
     # restorable.
     nested = any(path.endswith('/') or _is_directory(Path(root) / path)
-                 for path in status.changed_paths)
+                 for path in changed)
     state.restorable = state.patch_ref is not None and not nested
     return state
 

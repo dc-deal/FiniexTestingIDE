@@ -3,7 +3,7 @@
 ## Overview
 
 The partial close test suite validates fractional position closing in the FiniexTestingIDE
-backtesting framework. It uses `BacktestingMultiPosition` with a `partial_close_sequence` parameter
+backtesting framework. It uses `MultiPositionProbe` with a `partial_close_sequence` parameter
 that triggers `close_position(position_id, lots=close_lots)` at configured tick numbers.
 
 This suite proves that `PortfolioManager.partial_close_position()` and the routing logic in
@@ -62,7 +62,7 @@ New method in `python/framework/trading_env/portfolio_manager.py`:
 | Aspect | Full Close | Partial Close |
 |--------|-----------|---------------|
 | P&L | Entire position | Proportional: `close_ratio = close_lots / position.lots` |
-| Fees | All fees on position | Remaining fees `*= remaining_ratio`; the CLOSED portion additionally carries the exit fee on `close_lots` (maker/taker only, #506) |
+| Fees | All fees on position | Remaining fees `*= remaining_ratio`; the CLOSED portion additionally carries the exit fee on `close_lots` (maker/taker only, #506) — in its `commission_cost` as well as its `total_fees`, so `commission_cost + swap_cost == total_fees` on every record (`tests/framework/test_round_trip_fees.py::TestTheCostColumnsAddUpToTheFees`, full and partial, margin and spot) |
 | Position | Deleted from `open_positions` | Mutated: reduced lots, PARTIALLY_CLOSED status |
 | TradeRecord | Via `_create_trade_record()` | Built manually with `CloseType.PARTIAL` |
 | `original_lots` | = lots (immutable) | Preserved across partial closes |
@@ -118,7 +118,7 @@ requested size as merely too small would send a caller looking for a size that i
 
 Lot subtraction uses `round(position.lots - close_lots, 8)` to prevent IEEE 754 drift (e.g., `0.03 - 0.01 = 0.019999999999999997`). The volume_min comparison uses `1e-9` tolerance.
 
-### Decision Logic: BacktestingMultiPosition Extension
+### Decision Logic: MultiPositionProbe Extension
 
 New parameter `partial_close_sequence` (list of `{tick_number, position_index, close_lots}`). Processed in `_process_partial_closes()` between close-expired and open-new steps.
 
@@ -141,7 +141,7 @@ PARTIAL_CLOSE_CONFIG = "backtesting/partial_close_test.json"
 | `batch_execution_summary` | session | Runs partial close scenario once per session |
 | `process_result` | session | First scenario's ProcessResult |
 | `tick_loop_results` | session | ProcessTickLoopResult with all execution data |
-| `backtesting_metadata` | session | BacktestingMetadata |
+| `probe_metadata` | session | ProbeMetadata |
 | `portfolio_stats` | session | PortfolioStats with P&L, trade counts, costs |
 | `trade_history` | session | List[TradeRecord] — 4 records (2 partial + 2 full) |
 | `scenario_config` | session | Raw JSON config |

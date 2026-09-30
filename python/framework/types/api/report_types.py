@@ -19,6 +19,7 @@ from pydantic import BaseModel, Field, computed_field
 # row type would be a hand-maintained copy of it, and a copy is what silently drops a field.
 from python.framework.types.persistence_types import RiskBaseline
 from python.framework.types.run_origin_types import CodeIdentity, RunOrigin
+from python.framework.types.run_outcome_types import RunOutcome
 
 
 # WHAT MAKES ONE ROW of each deployment view unique. Declared once, read by the response model
@@ -37,14 +38,14 @@ DEPLOYMENT_KEY = ('deployment_id', 'currency')
 #
 # Four parts because the store holds TWO row shapes and one key has to separate both:
 #
-#     aggregate row   run_id=...  currency=USD  unit_name=''         segment_no=None
-#     period row      run_id=...  currency=USD  unit_name='btc_run'  segment_no=3
+#     aggregate row   run_id=...  currency=USD  unit_name=''         period_no=None
+#     period row      run_id=...  currency=USD  unit_name='btc_run'  period_no=3
 #
 # `currency` is not redundant beside `unit_name`: a unit has exactly one account currency, but an
 # AGGREGATE row carries no unit at all and is one per (run x currency).
-LEDGER_ROW_KEY = ('run_id', 'currency', 'unit_name', 'segment_no')
+LEDGER_ROW_KEY = ('run_id', 'currency', 'unit_name', 'period_no')
 SESSION_KEY = ('run_id', 'currency')
-BOOKING_PERIOD_KEY = ('run_id', 'unit_name', 'segment_no')
+BOOKING_PERIOD_KEY = ('run_id', 'unit_name', 'period_no')
 
 
 class ExecutionRow(BaseModel):
@@ -57,6 +58,12 @@ class ExecutionRow(BaseModel):
     fee_currency: str
     liquidity: str          # 'maker' | 'taker'
     timestamp: str          # ISO-8601 UTC, '' if absent
+    # How many trade rows of the SAME unit carry this execution — 1 is only its own. A partial
+    # close copies the position's entry fills onto every record it produces, so several rows
+    # show one fill; `volume` is the fill's, the row's own share is its `lots`. Counted when the
+    # report is built, over the whole unit, so it holds on a filtered list too. None on an
+    # artifact written before contract 17.
+    shared_by: int | None = None
 
 
 class TradeHistoryRow(BaseModel):
@@ -152,7 +159,7 @@ class TradeAnalytics(BaseModel):
     #
     # It carries a warning with it: this figure is NOT combinable across groups, and it is the
     # one KPI here where the obvious reduction is wrong. A streak can cross a period boundary, so
-    # `max()` of two periods understates the truth — 2 and 3 adjacent segments can be a run of 5.
+    # `max()` of two periods understates the truth — 2 and 3 adjacent periods can be a run of 5.
     # Its ledger column is therefore `DERIVE`, never `MAX`.
     max_consecutive_wins: int = 0
     max_consecutive_losses: int = 0
@@ -191,6 +198,15 @@ class TradeHistoryReport(RunScopedReport):
     symbols: list[str]      # distinct symbols present (filter UX)
     analytics: list[TradeAnalytics]  # one entry per account currency (no cross-currency mixing)
     scenario_totals: list[TradeScenarioTotals] = []  # per-scenario footer totals (no re-sum)
+    # What makes one row of each list unique (§49). A trade is NOT its position: a partial close
+    # books several records of one position, and two scenarios of one symbol each count from
+    # `pos_<symbol>_1` — so the key needs the unit and the tick the record closed on. Measured
+    # 2026-09-27: `position_id` alone repeats in 3 of 11 runs on disk, this key in none.
+    keys: dict[str, list[str]] = {
+        'trades': ['scenario_name', 'position_id', 'exit_tick_index'],
+        'analytics': ['currency'],
+        'scenario_totals': ['scenario_name', 'currency'],
+    }
 
 
 class OrderHistoryRow(BaseModel):
@@ -285,18 +301,22 @@ class PortfolioUnitRow(BaseModel):
     # excursion is `TradeRecord.mae_pnl` (#389) and is a different number.
     account_max_drawdown: float
     account_max_dd_pct: float = 0.0   # worst decline over the peak it fell FROM, per tick
-    # WHICH PERIOD the two figures above describe (#497). A live session inherits its
+    # WHICH PERIOD the two figures above describe (#497). An AutoTrader session inherits its
     # predecessor's curve through the cold-start carry-over, so the drawdown may span a month
     # of restarts — and nothing in the number itself says so. Empty stamp = this session began
     # its own curve, which is always the case in the simulation.
     drawdown_carried_from: str = ''
     drawdown_restarts: int = 0
     drawdown_started_at: str = ''   # when the curve began, not when it was last handed over
+    # The fees of the trades the unit CLOSED — what every trade row, booking period and trade
+    # analytic sums. `fees_charged` is everything the run charged, open positions included;
+    # the two differ by the fees of what is still open (contract 18).
     total_fees: float
+    fees_charged: float = 0.0
     # Full projection — the per-scenario linear block renders purely from these (defaulted:
     # additive columns; the per-currency aggregated section stays on PortfolioAggregator).
-    data_source: str = ''       # the scenario's data broker type (box line "Data: …")
-    sentiment_source: str = ''  # the scenario's data_sentiment_type, if any (#429; box line "· Sentiment: …")
+    data_broker_type: str = ''     # the broker whose ticks the unit read (box line "Data broker: …")
+    data_sentiment_type: str = ''  # the unit's sentiment source, if any (#429; box line "· Sentiment: …")
     broker_name: str = ''
     spot_mode: bool = False
     total_long_trades: int = 0
@@ -367,11 +387,21 @@ class PortfolioAggregateRow(BaseModel):
     # aggregate: amount, percentage and the unit they describe travel together.
     max_equity: float = 0.0
     account_max_dd_pct: float = 0.0
-    total_fees: float
+    # WHICH account the three above describe. A backtest of several scenarios is several
+    # independent accounts, and the trio is the deepest one's — named, so it does not read as
+    # the run's own.
+    account_max_drawdown_unit: str = ''
+    total_fees: float               # Σ the units' closed-trade fees
+    fees_charged: float = 0.0       # Σ what the units charged, open positions included
     # #492 — the wealth view beside the realised one. Summed across the currency's units,
     # never folded into net_profit.
     unrealized_pnl: float = 0.0
-    final_equity: float = 0.0
+    # The closing equity of the ONE account this row describes; None when the currency spans
+    # several (a backtest of several scenarios), because no account ever held their sum. The
+    # sum is `total_final_equity`, beside the capital it started from.
+    final_equity: float | None = 0.0
+    total_final_equity: float = 0.0
+    total_initial_balance: float = 0.0
     open_position_count: int = 0
 
 
@@ -382,6 +412,9 @@ class PortfolioReport(RunScopedReport):
     """
     units: list[PortfolioUnitRow]
     aggregates: list[PortfolioAggregateRow]
+    # What makes one row of each list unique (§49). `units` shares its key with the roster in
+    # `scenario-details` and with `run-summary.units_absent`: that is the join, and it is meant.
+    keys: dict[str, list[str]] = {'units': ['name'], 'aggregates': ['currency']}
 
 
 class ExecutionStatsRow(BaseModel):
@@ -452,7 +485,11 @@ class ScenarioDetailsRow(BaseModel):
     """Per-scenario execution + signal metadata (sim batch — the SCENARIO DETAILS section)."""
     name: str
     symbol: str
-    data_source: str = ''           # data broker type ("Symbol: <data_source>/<symbol>")
+    data_broker_type: str = ''      # the scenario's data_broker_type ("<data_broker_type>/<symbol>")
+    # What that broker IS, on the row a consumer filters — resolved once in DERIVE from its
+    # authoritative owner, the same answer the `data_brokers` roll-up carries, so no reader has
+    # to join the two to learn whether a scenario traded crypto or forex.
+    market_type: str = ''
     # WHICH DATA this one scenario read (#518), beside the broker key it read it from. The
     # ledger records the same answer per RUN; this is the grain that says WHICH scenario, and
     # a set mixing brokers or eras is exactly where the run-level roll-up stops being enough.
@@ -466,23 +503,31 @@ class ScenarioDetailsRow(BaseModel):
     account_currency: str = ''      # resolved P&L denomination currency
     account_currency_explicit: bool = False  # True when set in config (not auto-derived)
     status: str = 'success'         # 'success' | 'failed' | 'hybrid' (partial + error)
+    # Wall time the scenario's subprocess took, preparation to result, in MILLISECONDS
+    # (monotonic clock)
     execution_time_ms: float = 0.0
     ticks_processed: int = 0
     first_tick_time: str = ''       # ISO-8601 UTC, '' if none
     last_tick_time: str = ''
     tick_timespan_seconds: float = 0.0
-    buy_signals: int = 0
-    sell_signals: int = 0
-    flat_signals: int = 0
-    trades_requested: int = 0
+    # What the decision logic did — None = NOT COUNTED: the decision tracker was off, which is
+    # the simulation's default (`performance_tracking.worker_decision_tracking`). A 0 here is a
+    # count. Before contract 9 an uncounted scenario read 0 on all four (#137 kept the tracker
+    # off the hot path; the row served its defaults as figures).
+    buy_signals: int | None = None
+    sell_signals: int | None = None
+    flat_signals: int | None = None
+    trades_requested: int | None = None
+    # The workers the scenario DECLARES, read from its configuration — known whether or not
+    # anything was timed, and for a scenario refused before it ran as well.
     worker_count: int = 0
     error_type: str = ''
     error_message: str = ''
 
 
-class DataSourceRow(BaseModel):
+class DataBrokerRow(BaseModel):
     """
-    One data source a run read from, with what that source IS and what was read over it.
+    One data broker a run read ticks from, with what that broker IS and what was read over it.
 
     An AGGREGATE and therefore its own stage: it is derived once and serves every surface,
     rather than being rebuilt by whichever renderer happens to want it. The console used to
@@ -496,11 +541,11 @@ class DataSourceRow(BaseModel):
     a render would produce today are two questions that disagree for as long as a re-render is
     unfinished.
     """
-    broker_type: str
+    data_broker_type: str
     market_type: str        # resolved once in DERIVE, never in a renderer
     scenario_count: int
     symbols: list[str]      # sorted, distinct
-    price_bases: str = ''   # distinct, sorted, comma-joined across this source's scenarios
+    price_bases: str = ''   # distinct, sorted, comma-joined across this broker's scenarios
 
 
 class ScenarioDetailsReport(RunScopedReport):
@@ -509,9 +554,14 @@ class ScenarioDetailsReport(RunScopedReport):
     failed ones** (the section's job is the full scenario status grid).
     """
     units: list[ScenarioDetailsRow]
-    # The per-source roll-up over those rows. On the model so the console, the artifact and
+    # The per-broker roll-up over those rows. On the model so the console, the artifact and
     # the API read one derivation instead of three.
-    data_sources: list[DataSourceRow] = []
+    data_brokers: list[DataBrokerRow] = []
+    # What makes one row of each list unique (§49). A scenario is its name within its set — the
+    # validator refuses a set naming one twice, and then lists BOTH refused copies, the one case
+    # the key does not separate (their reason says why). `units` is the roster the per-unit
+    # figures of `portfolio` join onto, on this key.
+    keys: dict[str, list[str]] = {'units': ['name'], 'data_brokers': ['data_broker_type']}
 
 
 class RunReporting(StrEnum):
@@ -535,12 +585,55 @@ class ParentKind(StrEnum):
     apart by.
 
     Deriving it from `run_type` would be right today and silently wrong later: a simulation's
-    parent is a sweep and a live session's is a deployment ONLY until #476 gives a live day
-    fragment a parent that is itself a SESSION. A rule that expires without saying so is worse
+    parent is a sweep and an AutoTrader session's is a deployment ONLY until #476 gives a day
+    record a parent that is itself a SESSION. A rule that expires without saying so is worse
     than a column.
     """
     SWEEP = 'sweep'
     DEPLOYMENT = 'deployment'
+
+
+class TicksFrom(StrEnum):
+    """
+    Where a run's ticks came from — one of the two axes that tell the kinds of run apart.
+
+    ARCHIVE: replayed from the tick archive — every backtest, and a mock session
+    VENUE: read from the venue as they happened — a dry run or a real-money session
+    """
+    ARCHIVE = 'archive'
+    VENUE = 'venue'
+
+
+class OrdersTo(StrEnum):
+    """
+    Where a run's orders went — the other axis. Together with `run_type` the two say which kind
+    of run this is (`docs/introduction_to_the_ide.md`), so no reader has to derive it.
+
+    SIMULATED: filled by a simulator — every backtest, a mock session, and a dry run
+    VENUE: placed at the venue — a real-money session, and only that
+    """
+    SIMULATED = 'simulated'
+    VENUE = 'venue'
+
+
+class DataWindow(BaseModel):
+    """
+    The market window one unit of a run was DECLARED to cover — the date filter's axis.
+
+    Declared, not measured: the header is written at the start, before a tick is read. What a
+    scenario actually processed is on `scenario-details` (`first_tick_time` / `last_tick_time`).
+    One window per unit and never one span over all of them — a span over several scenarios would
+    cover the gaps between them and claim a run touched a week none of its scenarios read.
+
+    Args:
+        unit_name: The unit the window belongs to (scenario name, or the session's unit name)
+        start_date: Where the window starts, ISO-8601 UTC
+        end_date: Where it ends, ISO-8601 UTC; None when it is open — a tick-limited scenario, or
+            a venue session, whose window is recorded at its start and stays open on the record
+    """
+    unit_name: str
+    start_date: str
+    end_date: Optional[str] = None
 
 
 class RunHeader(BaseModel):
@@ -559,11 +652,11 @@ class RunHeader(BaseModel):
         run_id: The run's identity — also its directory name
         start_time: When the run began (UTC, tz-aware)
         run_type: Its category, the same value the API serves as `RunInfo.group`
-        run_name: The owning scenario set (sim) or profile (live)
+        run_name: The owning scenario set (sim) or profile (AutoTrader)
         parent_id: What this run belongs to, or None when it stands alone — a sweep's id for one
             of its combinations, a deployment's id for one of its sessions. Named `parent_id`
             and not `parent_run_id` on purpose: a sweep is NOT itself a run (it has no header —
-            it is defined by the runs naming it), while the daily fragments of #476 will point
+            it is defined by the runs naming it), while the day records of #476 will point
             at a parent that IS one. One field, several kinds of parent, and the name has to
             stay true for all of them
         parent_kind: WHICH kind of parent `parent_id` names. Written together with it and never
@@ -592,6 +685,12 @@ class RunHeader(BaseModel):
             came from, and one entry per component (#551). Captured only for a run that is
             COMMISSIONED to report: the capture costs a `git status` (~1.8 s on this tree,
             §42), which the ledger used to pay at the end anyway and now reads from here
+        ticks_from: Where its ticks came from, from the RESOLVED configuration. None on a run
+            written before the field existed — unknown, never guessed from a profile file that
+            may have changed since
+        orders_to: Where its orders went, from the RESOLVED dry-run rule. None as above, and on
+            a session whose profile the dry-run rule refuses (it never trades)
+        data_windows: The market window each unit was declared to cover; None as above
     """
     run_id: str
     start_time: datetime
@@ -606,6 +705,9 @@ class RunHeader(BaseModel):
     reporting: RunReporting = RunReporting.EXPECTED
     origin: Optional[RunOrigin] = None
     code_identity: Optional[CodeIdentity] = None
+    ticks_from: Optional[TicksFrom] = None
+    orders_to: Optional[OrdersTo] = None
+    data_windows: Optional[list[DataWindow]] = None
 
 
 class RunConfigSnapshot(BaseModel):
@@ -635,16 +737,46 @@ class RunConfigSnapshot(BaseModel):
     config: Dict[str, Any]
 
 
+class RunResultFigures(BaseModel):
+    """What one run earned and did in ONE account currency, folded from its booking periods."""
+    currency: str
+    net_pnl: float
+    total_trades: int
+
+
+class RunListFigures(BaseModel):
+    """
+    What a run DID, as the run-results ledger recorded it at the run's close — the part of a run
+    list row that comes from the ledger rather than from the run index.
+
+    Each figure is folded from the run's booking periods by the ledger's own declared reductions
+    (`COLUMN_REDUCTION`), never summed here, and never across currencies.
+    """
+    # One entry per account currency. EMPTY when the run closed without figures — every scenario
+    # refused before it ran leaves only the ledger's one figureless error row.
+    results: list[RunResultFigures] = Field(default_factory=list)
+    # How the run ended and what its channels held; None on a row recorded before contract 15 —
+    # not recorded, never a clean run.
+    run_outcome: Optional[RunOutcome] = None
+    error_count: Optional[int] = None
+    warning_count: Optional[int] = None
+    log_warning_count: Optional[int] = None
+    # The market time the run processed, overlap counted once (contract 17); None where not
+    # recorded.
+    tick_timespan_seconds: Optional[float] = None
+
+
 class RunInfo(BaseModel):
-    """One discoverable run in the report store — identity only, no report content."""
+    """One discoverable run in the report store — identity, plus what the ledger says it did."""
     run_id: str
     # The run's TYPE, which is also where its logs live (file_logging.run_logs):
-    # 'simulation' (a backtest — standalone, or one combination of a sweep) | 'live' (an
-    # AutoTrader session). Nesting is NOT part of the type: `parent_id` carries it.
+    # 'simulation' (a backtest — standalone, or one combination of a sweep) | 'autotrader' (an
+    # AutoTrader session: mock, dry run or real orders). Nesting is NOT part of the type:
+    # `parent_id` carries it.
     group: str
-    name: str               # scenario-set name (sim) | profile name (live)
+    name: str               # scenario-set name (sim) | profile name (AutoTrader)
     # Every report artifact this run persisted, by file name — 'portfolio.json',
-    # 'trade_history.csv', … The two pipelines produce DIFFERENT sets (a live session has no
+    # 'trade_history.csv', … The two pipelines produce DIFFERENT sets (an AutoTrader session has no
     # scenario_details / profiling / run_meta / aggregated_portfolio), so a consumer that
     # guessed would get a 404 for the difference. Empty = the run exists as logs alone, which
     # a test session legitimately does; such a run is listed rather than hidden, because an
@@ -654,7 +786,7 @@ class RunInfo(BaseModel):
     # instead of making a consumer open each run to find out.
     start_time: str = ''
     # The run this one belongs to: a sweep for one of its combinations, a deployment for one of
-    # its sessions, and — once the daily cycle lands (#476) — the session a day fragment was cut
+    # its sessions, and — once the daily cycle lands (#476) — the session a day record was cut
     # from. None means it stands alone. `parent_kind` says WHICH of those the id is; read the
     # two together, because the ids are indistinguishable by shape. None on a row indexed before
     # the discriminator existed, where the kind is genuinely unknown rather than absent.
@@ -676,6 +808,28 @@ class RunInfo(BaseModel):
     # indistinguishable here on purpose, because both mean "no figure was recorded", and a
     # consumer showing it says UNKNOWN rather than inventing an empty run.
     size_bytes: int = 0
+    # WHICH KIND of run this is, as the run recorded it at its start (contract 12): where its
+    # ticks came from and where its orders went. With `group` the two separate a backtest, a
+    # mock session, a dry run and a real-money session without a consumer deriving anything.
+    # None on a run indexed before the fields existed — unknown, never a guess.
+    ticks_from: Optional[TicksFrom] = None
+    orders_to: Optional[OrdersTo] = None
+    # The market window each unit was DECLARED to cover — what a date filter asks, where
+    # `start_time` is only when the run was executed. None as above.
+    data_windows: Optional[list[DataWindow]] = None
+    # What the run DID, joined from the run-results ledger (contract 15) so the list needs no
+    # request per run. `results` has THREE states: None — the ledger holds nothing for this run
+    # (still going, died before its close, or never commissioned to report; read it with
+    # `reporting`); [] — it closed without figures; a list — one entry per account currency,
+    # keyed by `currency`. The outcome and the counts are None where not recorded.
+    results: Optional[list[RunResultFigures]] = None
+    run_outcome: Optional[RunOutcome] = None
+    error_count: Optional[int] = None       # ERROR records in the error pot
+    warning_count: Optional[int] = None     # Tier-1 findings (validator-produced)
+    log_warning_count: Optional[int] = None # Tier-2 WARNING records in the log pot
+    # The market time the run processed — its units' tick timespans covered together, so a
+    # stretch two scenarios share counts once (contract 17). None where not recorded.
+    tick_timespan_seconds: Optional[float] = None
 
     @computed_field
     @property
@@ -700,6 +854,9 @@ class RunListResponse(BaseModel):
     field folds rows together silently, in the direction that loses data (§49).
     """
     key: list[str] = ['run_id']
+    # What makes one entry of a run's `results` unique — a run with two account currencies has
+    # two entries, and they must never be folded into one.
+    results_key: list[str] = ['currency']
     runs: list[RunInfo]
     count: int
 
@@ -721,10 +878,15 @@ class RunSummaryCurrency(BaseModel):
     # a live row is cumulative over its deployment and a reader comparing rows needs both.
     max_equity: float = 0.0
     account_max_dd_pct: float = 0.0
-    total_fees: float       # ← PortfolioAggregateRow.total_fees
+    # ← PortfolioAggregateRow.account_max_drawdown_unit; '' on a booking period, which is one
+    # unit's own row.
+    account_max_drawdown_unit: str = ''
+    total_fees: float       # ← PortfolioAggregateRow.total_fees (closed trades)
+    # ← PortfolioAggregateRow.fees_charged; None on a booking period, whose costs are its trades'
+    fees_charged: float | None = None
     # The two halves `profit_factor` is the quotient OF. Carried because a rate cannot be
     # folded out of two rows while its COMPONENTS can be summed on any level: without these,
-    # a session's profit factor is not recoverable from its booking segments and a
+    # a session's profit factor is not recoverable from its booking periods and a
     # deployment's is not recoverable from its sessions (#537, CLAUDE.md §48). `win_rate`
     # already had this property through winning_trades / total_trades; this gives it to the
     # second rate. Appended, so older fragments read back as 0.0.
@@ -737,7 +899,13 @@ class RunSummaryCurrency(BaseModel):
     # variant still HOLDING a winner below one that closed it, which is the same distortion
     # the force-close used to cause in the other direction.
     unrealized_pnl: float = 0.0
-    final_equity: float = 0.0
+    # The closing equity of ONE account — a booking period's always, the run's only when it has
+    # one account in this currency, None otherwise. The sum over several accounts is
+    # `total_final_equity`; how many there were is `unit_count` (None on a booking period).
+    final_equity: float | None = 0.0
+    total_final_equity: float | None = None
+    total_initial_balance: float | None = None
+    unit_count: int | None = None
     open_position_count: int = 0
     expectancy: float       # ← TradeAnalytics.expectancy (mean R) — the sweep objective
     avg_win_r: float | None     # ← TradeAnalytics (None = no R-defined winner)
@@ -760,14 +928,14 @@ class RunSummaryCurrency(BaseModel):
 
 class BookingPeriodRow(BaseModel):
     """
-    One booking period as the report renders it — the Hauptbuch, one line per entry.
+    One booking period as the report renders it — the booking-periods table, one line per entry.
 
     Deliberately NOT the ledger row: this carries what a reader compares down a column, not what
     a ranking needs. The ledger keeps the full figure set; this keeps the ones that make a period
     legible beside its neighbours.
     """
     unit_name: str
-    segment_no: int
+    period_no: int
     opened_at: str
     closed_at: str
     reason: str
@@ -775,14 +943,60 @@ class BookingPeriodRow(BaseModel):
     trade_count: int
     net_pnl: float
     total_fees: float
+    # The costs split the way a trade row splits them, over the same trades `total_fees` is
+    # summed from — the ones the period CLOSED. `commission_cost + swap_cost` is `total_fees`;
+    # `spread_cost` is measured and stands beside it, never inside it. None on a period recorded
+    # before contract 17.
+    commission_cost: float | None = None
+    swap_cost: float | None = None
+    spread_cost: float | None = None
     win_rate: float
     profit_factor: float | None
+    # What the account stood at when the period OPENED — the previous period's close, or a
+    # unit's first observed value. None where it was not recorded.
+    opening_equity: float | None = None
     final_equity: float
     # The period's OWN band and decline, not the cumulative ones: on this table the question is
     # what each period did, and the running figure would repeat the same number down the column.
     min_equity: float
     max_equity: float
     max_drawdown: float
+
+
+class BookingUnitTotalRow(BaseModel):
+    """
+    One unit's booking periods folded into its total, by the ledger's own declared reductions.
+
+    A unit is one account, so every figure here is defined — its equity included, which no row
+    over SEVERAL accounts can say. The rates are rebuilt from their summed components rather
+    than averaged, the band is the widest one, and a decline is the deepest SINGLE period's: a
+    fall that runs across a boundary is deeper than any period's own, and the account's curve
+    decline beside it is the figure that carries that.
+    """
+    unit_name: str
+    currency: str
+    period_count: int
+    opened_at: str
+    closed_at: str
+    trade_count: int
+    net_pnl: float
+    total_fees: float
+    commission_cost: float | None = None
+    swap_cost: float | None = None
+    spread_cost: float | None = None
+    gross_profit: float = 0.0
+    gross_loss: float = 0.0
+    win_rate: float
+    profit_factor: float | None
+    opening_equity: float | None = None
+    final_equity: float | None = None
+    min_equity: float | None = None
+    max_equity: float | None = None
+    deepest_period_drawdown: float | None = None
+    # The account's curve decline and the share it was, as the ledger records it — cumulative
+    # from the unit's start, and for a session in a deployment from the deployment's (#497).
+    account_max_drawdown: float = 0.0
+    account_max_dd_pct: float | None = None
 
 
 class BookingPeriodsReport(RunScopedReport):
@@ -800,9 +1014,13 @@ class BookingPeriodsReport(RunScopedReport):
     (§12: reports calculate and render, they do not judge).
     """
     # Run-scoped, so `run_id` is the report's own and not a column: the pair below is what
-    # separates the rows WITHIN it.
-    key: list[str] = ['unit_name', 'segment_no']
+    # separates the rows WITHIN it. Two lists, so one key each (§49); both are of the one
+    # currency the report is about.
+    keys: dict[str, list[str]] = {'periods': ['unit_name', 'period_no'],
+                                  'unit_totals': ['unit_name']}
     periods: list[BookingPeriodRow] = Field(default_factory=list)
+    # Each unit's periods folded into its total — one account each, so its equity is defined.
+    unit_totals: list[BookingUnitTotalRow] = Field(default_factory=list)
     # Which currency the TOTALS are about, and every currency the ROWS carry. They differ on a
     # multi-currency run, where a sum across them would not be a number — so the rows keep
     # everything and the totals name their one currency (#539 audit).
@@ -822,7 +1040,50 @@ class BookingPeriodsReport(RunScopedReport):
     # The deepest single-period decline and the band across all of them — the column's own
     # extremes, which is what a reader scanning the table is comparing against.
     deepest_period_drawdown: float = 0.0
-    final_equity: float = 0.0
+    # The sum of the units' closing equities: a TOTAL over separate accounts, defined the same
+    # way `run-summary` defines it. It used to be the last row's own figure, i.e. one scenario
+    # of several. None when a unit's closing equity was not recorded.
+    total_final_equity: float | None = None
+
+
+class AbsentUnitRow(BaseModel):
+    """
+    One unit a run ATTEMPTED that produced nothing — and the reason, so the absence speaks.
+
+    Args:
+        name: The unit's name — the same key the roster and the portfolio rows carry
+        reason: The sentence, for a person
+        reason_code: The cause, for a program — the vocabulary of `scenario-details`'
+            `error_type`: `ValidationError` for a refusal before the run, the exception's class
+            for a crash (an AutoTrader session's too), `NoResults` when nothing failed and nothing
+            was produced
+        checks: For a refusal, the stable ids of the checks that refused it (`warmup_quality`,
+            `tick_stretch_gap`, …) — what lets a reader ask "which scenarios did warmup cost me"
+    """
+    name: str
+    reason: str = ''
+    reason_code: str = ''
+    checks: list[str] = []
+
+
+class UnitRoster(BaseModel):
+    """
+    Which units a run declared, and what became of each one that is not counted.
+
+    Built by each pipeline from its own source — the simulation from its batch and its loaded
+    configuration, an AutoTrader session from itself — and folded into `RunSummary`. `declared` comes
+    from the configuration and `absent` from the results, so the invariant
+    `declared == disabled + len(absent) + unit_count` compares two sources rather than restating
+    one (CLAUDE.md §48).
+
+    Args:
+        declared: Every unit the configuration names — `enabled: false` ones included
+        disabled: The ones switched off, never attempted
+        absent: The attempted ones that produced nothing, with the reason
+    """
+    declared: int
+    disabled: int = 0
+    absent: list[AbsentUnitRow] = []
 
 
 class RunSummary(RunScopedReport):
@@ -837,6 +1098,19 @@ class RunSummary(RunScopedReport):
     orders_rejected: int = 0
     sl_tp_triggered: int = 0
     unit_count: int = 0     # sim: N scenarios | live: 1
+    # The market time the run processed, as its units' TICK TIMESPANS: covered together (a
+    # stretch two scenarios share counts once) and summed (the work, each scenario simulating
+    # its own). None where no unit recorded one.
+    tick_timespan_seconds: float | None = None
+    tick_timespan_total_seconds: float | None = None
+    # Which units are MISSING from the figures above, and why (contract 6). Before these, a run
+    # of ten scenarios with two rejected read as a run of eight, with nothing on the response
+    # saying so. `units_declared == units_disabled + len(units_absent) + unit_count` wherever
+    # they are stated. None = NOT STATED: a run recorded before contract 6 never counted them,
+    # and a 0 there would be a figure the equation then disproves (contract 9).
+    units_declared: int | None = None
+    units_disabled: int | None = None
+    units_absent: list[AbsentUnitRow] | None = None
     # Weakest SIGNAL channel of the run (#433): min fresh ratio over all usages. None = no
     # SIGNAL worker was involved — deliberately NOT 1.0, which would claim a perfect feed.
     # Rides into the run-results ledger so a sweep/robustness ranking carries the data
@@ -848,6 +1122,9 @@ class RunSummary(RunScopedReport):
     disturbance_stale_seconds: float = 0.0
     disturbance_source_count: int = 0
     disturbance_stress_injected: int = 0
+    # What makes one row of each list unique (§49). An absent unit is keyed like every other
+    # per-unit row, so it can be matched against the roster in `scenario-details`.
+    keys: dict[str, list[str]] = {'currencies': ['currency'], 'units_absent': ['name']}
 
 
 class RunResultRow(BaseModel):
@@ -878,7 +1155,7 @@ class RunResultRow(BaseModel):
     decision_logic_type: str = ''
     decision_version: str = ''
     worker_versions: dict[str, str] = {}
-    config_snapshot: str = ''                    # full resolved strategy_config (JSON string)
+    strategy_config_json: str = ''               # full resolved strategy_config (JSON string)
     symbols: list[str] = []
     data_broker_type: str = ''
     # WHICH DATA the row was produced over (#518) and WHICH PRICE its bars were rendered from
@@ -900,7 +1177,7 @@ class RunResultRow(BaseModel):
     # deployment; only this answers "is this the same bot as the row above" across both.
     bot_id: str = ''
     profile_hash: str = ''
-    # 'simulation' | 'live'; '' on a fragment written before the column existed, which means
+    # 'simulation' | 'autotrader'; '' on a fragment written before the column existed, which means
     # UNKNOWN and never a guess.
     run_type: str = ''
     # When this row was written — within seconds of the run's end. '' on an older fragment,
@@ -911,6 +1188,14 @@ class RunResultRow(BaseModel):
     # distinction is the whole point of the field, because a result picked as the best of 500 and
     # a result nobody compared cannot be discounted alike.
     trial_count: int | None = None
+    # How the run ENDED and what its channels held, stamped at its close from the warnings-errors
+    # outcome — the same value on every row of one run. None on a fragment written before the
+    # columns existed: not recorded, never a clean run.
+    run_outcome: RunOutcome | None = None
+    error_count: int | None = None          # ERROR records in the error pot
+    warning_count: int | None = None        # Tier-1 findings (validator-produced)
+    log_warning_count: int | None = None    # Tier-2 WARNING records in the log pot
+    tick_timespan_seconds: float | None = None   # the run's covered market time (contract 17)
     # WHEN this row's run directory was deleted by a prune, empty while it was not. The row
     # outlives its evidence on purpose; this is what stops it from silently claiming its figures
     # can still be checked against the records they came from (§48).
@@ -920,14 +1205,18 @@ class RunResultRow(BaseModel):
     # what closed it. `None` / '' on a row that books no period, which is what every row
     # written before this version is — absent, never a made-up period zero.
     unit_name: str = ''
-    segment_no: int | None = None
-    segment_opened_at: str = ''
-    segment_closed_at: str = ''
-    segment_close_reason: str = ''
+    period_no: int | None = None
+    period_opened_at: str = ''
+    period_closed_at: str = ''
+    period_close_reason: str = ''
     # The period's own equity band and its own decline, beside the cumulative trio above.
-    segment_max_equity: float | None = None
-    segment_min_equity: float | None = None
-    segment_max_drawdown: float | None = None
+    period_max_equity: float | None = None
+    period_min_equity: float | None = None
+    period_max_drawdown: float | None = None
+    period_opening_equity: float | None = None
+    period_commission_cost: float | None = None
+    period_swap_cost: float | None = None
+    period_spread_cost: float | None = None
     # What a period looks like beyond its net result.
     avg_mae_winners: float | None = None
     avg_mae_losers: float | None = None
@@ -971,10 +1260,13 @@ class RunResultRow(BaseModel):
     # declared on disk, dropped on the way in.
     r_win_count: int | None = None
     r_loss_count: int | None = None
-    orders_sent: int = 0
-    orders_executed: int = 0
-    orders_rejected: int = 0
-    sl_tp_triggered: int = 0
+    # None where not measured — a booking-period row carries no order counts (they are
+    # monotonic executor totals with no time argument, so a period's share is not derivable),
+    # and a default of 0 turned that absence into a measured zero on every folded row.
+    orders_sent: int | None = None
+    orders_executed: int | None = None
+    orders_rejected: int | None = None
+    sl_tp_triggered: int | None = None
     # Weakest SIGNAL channel of the run (#433); None = no SIGNAL worker was involved
     signal_fresh_ratio: float | None = None
 
@@ -1037,10 +1329,10 @@ class SweepDetailResponse(BaseModel):
     Ranked, not alphabetical: the question a sweep answers is which combination won, and each
     row carries its `run_id` so a consumer can open that run through the report routes.
     """
-    # Ledger rows, unaggregated — and since #537 a run writes one row per BOOKING PERIOD, so
-    # this is finer than one row per combination whenever a scenario window spans more than one
-    # trading day. See the ranking note in the sweeps router.
-    key: list[str] = list(LEDGER_ROW_KEY)
+    # One row per combination and account currency: the ranking FOLDS each run's booking periods
+    # back into one row per run × currency before it sorts (`optimization_analysis._scope`), so
+    # the rows are keyed by the session key, not by the ledger's per-period row key.
+    key: list[str] = list(SESSION_KEY)
     sweep_id: str
     objective: str
     maximize: bool
@@ -1206,9 +1498,9 @@ class DeploymentBookingPeriodRow(BookingPeriodRow):
     A booking period seen from a DEPLOYMENT, which needs one field more than a run does.
 
     Inside a run report `run_id` would be redundant — the report is run-scoped and says it
-    once. Across a deployment it is the only thing that tells two periods apart: `segment_no`
+    once. Across a deployment it is the only thing that tells two periods apart: `period_no`
     is a per-BOT counter carried through the cold-start state, and a session that writes no
-    carry-over (a dry run, a mock) leaves the floor at zero, so its successor starts at 1
+    carry-over (a dry run, a mock session) leaves the floor at zero, so its successor starts at 1
     again. Three sessions of such a deployment then produce three rows numbered 1 — measured
     2026-09-22 on the only deployment in this tree.
 
@@ -1227,7 +1519,7 @@ class DeploymentBookingPeriodsResponse(BaseModel):
 
     The thirty-day picture: one entry per booking period — a trading day, or the stretch a
     session actually covered — for a bot that restarted a dozen times. `/reports/runs/{run_id}/
-    booking-periods` answers the same shape for ONE run, so a consumer renders both with one
+    booking periods` answers the same shape for ONE run, so a consumer renders both with one
     component and this route saves it the N+1 walk over the sessions.
 
     Read from the LEDGER, which is the only store that holds a deployment's periods together.
@@ -1272,10 +1564,6 @@ class RunMetaReport(RunScopedReport):
     tickrun_time_s: float = 0.0
     pickle_time_s: float = 0.0
     pickle_sample_mb: float = 0.0
-    # In-time (simulated market time) — derived from the scenario config date windows
-    total_hours: float = 0.0
-    total_days: float = 0.0
-    avg_hours: float = 0.0
     # #137 performance-tracking layer presence (any scenario): A = worker stats, B = tick-loop profiling
     worker_tracking_on: bool = False
     profiling_tracking_on: bool = False
@@ -1338,9 +1626,9 @@ class WorkerStatRow(BaseModel):
 
 class WorkerDecisionUnitRow(BaseModel):
     """
-    Per-unit worker + decision performance (#398, **unified** — sim scenario / live session).
-    Coordination fields are sim-only (the live session has no worker coordinator) and stay at
-    their defaults on live.
+    Per-unit worker + decision performance (#398, **unified** — sim scenario / AutoTrader
+    session). Coordination fields included: both pipelines' orchestrators count the ticks that
+    reach the algo path.
     """
     name: str
     symbol: str
@@ -1356,7 +1644,7 @@ class WorkerDecisionUnitRow(BaseModel):
     decision_avg_time_ms: float = 0.0
     decision_min_time_ms: float = 0.0
     decision_max_time_ms: float = 0.0
-    # coordination (sim-only)
+    # coordination (both pipelines)
     ticks_processed: int = 0
     parallel_workers: bool = False
     parallel_time_saved_ms: float = 0.0
@@ -1511,6 +1799,8 @@ class BrokerReport(RunScopedReport):
     session one unit for its own broker + traded symbol (no scenario grid).
     """
     units: list[BrokerInfoRow]
+    # One unit per broker (§49).
+    key: list[str] = ['broker_type']
 
 
 
@@ -1615,9 +1905,10 @@ class ColdStartReport(RunScopedReport):
         attended: Whether a human declared they were watching the start
         carry_over_present: Whether a carry-over document was found
         carry_over_saved_at: When it was written, ISO-8601 UTC (provenance)
-        algo_name: The decision logic that was asked, empty when none was
-        algo_accounted_for: What it answered; None when it was not asked or answered wrongly
-        algo_note: Its reason, in its own words
+        decision_logic_class: The decision logic that was asked, empty when none was
+        decision_logic_accounted_for: What it answered; None when it was not asked or answered
+            wrongly
+        decision_logic_note: Its reason, in its own words
     """
     symbol: str = ''
     applied: bool = False
@@ -1630,9 +1921,9 @@ class ColdStartReport(RunScopedReport):
     attended: bool = False
     carry_over_present: bool = False
     carry_over_saved_at: str = ''
-    algo_name: str = ''
-    algo_accounted_for: Optional[bool] = None
-    algo_note: str = ''
+    decision_logic_class: str = ''
+    decision_logic_accounted_for: Optional[bool] = None
+    decision_logic_note: str = ''
 
 
 class SafetyLimits(BaseModel):
@@ -1678,10 +1969,10 @@ class SafetyLimits(BaseModel):
 
 class SafetyDayRow(BaseModel):
     """
-    One UTC trading day, its own denominator, and the worst loss measured against it.
+    One trading day, its own denominator, and the worst loss measured against it.
 
     Args:
-        day: The UTC date, YYYY-MM-DD
+        day: The trading day, YYYY-MM-DD — the date it opened, in the anchor's timezone
         baseline: The DAY_START record, so this row's percentage names its denominator
         baseline_value: That record's value, 0.0 when the day never took one
         worst_loss_abs: The deepest drop below it during the day
@@ -1746,9 +2037,9 @@ class SafetyReport(RunScopedReport):
         blocked_at_end: Whether new entries were still blocked when the session ended
         reason_at_end: The breaker's reason at that moment, empty when it was not blocked
         limits: What was armed
-        days: One row per UTC day the session ran through
+        days: One row per trading day the session ran through
         days_limit_hit: How many of those days tripped a daily limit
-        worst_day: The UTC date of the deepest daily loss, empty when no day took a
+        worst_day: The trading day of the deepest daily loss, empty when no day took a
             baseline. Derived here rather than in a renderer: thirty rows do not belong on
             a console, and a renderer that picks the maximum out of them has built its own
             aggregate, which is how two surfaces come to disagree about the same figure
@@ -1857,7 +2148,7 @@ class SignalReport(RunScopedReport):
     """
     Signal configuration view (#433): one unit per signal source, each with its archive
     provenance and the scenarios consuming it. Unified — both pipelines build it from the
-    same shared data preparation, so sim batch and AutoTrader-mock session render identically.
+    same shared data preparation, so sim batch and mock session render identically.
     """
     units: list[SignalSourceRow]
 
@@ -1966,10 +2257,10 @@ class UnitErrorRow(BaseModel):
 
 class WarningsErrorsOutcome(BaseModel):
     """Run-level outcome (#395) — the Executive headline reads this, it does not re-scan."""
-    # The canonical grading (#372), stamped once at DERIVE from the pipeline's own result object
-    # (RunOutcome value). Every surface — console, artifact, API — reads this instead of
-    # re-deriving a verdict from the counts below.
-    run_outcome: str = ''
+    # The canonical grading (#372), stamped once at DERIVE from the pipeline's own result object.
+    # Every surface — console, artifact, API — reads this instead of re-deriving a verdict from the
+    # counts below. None only where no grading was stamped.
+    run_outcome: Optional[RunOutcome] = None
     failed_count: int = 0
     total_units: int = 0
     failed_unit_names: list[str] = []
@@ -1980,6 +2271,15 @@ class WarningsErrorsOutcome(BaseModel):
     # An operator Ctrl+C also arrives as shutdown_mode='emergency', so the mode alone cannot
     # separate a deliberate stop from a crash — this flag is the discriminator get_outcome() uses.
     operator_interrupted: bool = False
+    # How many entries each channel held, counted HERE the same way in both pipelines — the rows
+    # above cannot be counted instead, because the simulation summarizes its whole log pot in ONE
+    # warning row while the AutoTrader writes a row per entry. None only where nothing recorded
+    # them — never zero. The artifacts written before the counts existed were back-filled from
+    # their own rows (`python/experiments/backfill_run_counts.py`), which is why a stored run
+    # answers the same three numbers here as in the run list.
+    error_count: int | None = None          # ERROR records in the error pot
+    warning_count: int | None = None        # Tier-1 findings (validator-produced)
+    log_warning_count: int | None = None    # Tier-2 WARNING records in the log pot
 
 
 class WarningsErrorsReport(RunScopedReport):
@@ -1992,6 +2292,11 @@ class WarningsErrorsReport(RunScopedReport):
     warnings: list[WarningRow] = []
     errors: list[UnitErrorRow] = []
     outcome: WarningsErrorsOutcome = WarningsErrorsOutcome()
+    # What makes one row of each list unique (§49). An error row is one per unit. A warning has
+    # NO identity beyond its place in the list, and the empty key says exactly that: warnings are
+    # events, nothing collapses them, and a session that logs one twice has two rows with the
+    # same text — keyed on anything but position, they would fold into one.
+    keys: dict[str, list[str]] = {'errors': ['name'], 'warnings': []}
 
 
 class AggregatedPortfolioSpotScenarioRow(BaseModel):
@@ -2031,12 +2336,16 @@ class AggregatedPortfolioRow(BaseModel):
     avg_initial: float = 0.0
     balance_pnl: float = 0.0        # final_balance - initial_balance (executive "Total P&L")
     balance_pnl_pct: float = 0.0
-    # Risk
-    recovery_factor: float = 0.0
+    # Risk. The recovery factor is None over several accounts: their summed P&L over one
+    # account's drawdown is a quotient of two different populations.
+    recovery_factor: float | None = 0.0
     account_max_dd_pct: float = 0.0
     account_max_drawdown_scenario: str = ''
-    max_equity: float = 0.0
-    max_equity_scenario: str = ''
+    # The highest peak ANY account reached, with its scenario — not the peak the drawdown above
+    # fell from, which is `headline.max_equity`. One name for both was how the console printed
+    # one scenario's decline beside another's peak.
+    highest_equity: float = 0.0
+    highest_equity_scenario: str = ''
     # Cost split
     total_spread_cost: float = 0.0
     total_commission: float = 0.0

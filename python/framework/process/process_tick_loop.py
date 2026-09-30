@@ -28,8 +28,8 @@ from python.framework.bars.bar_rendering_controller import BarRenderingControlle
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.process.market_data_episode_tracker import MarketDataEpisodeTracker
-from python.framework.reporting.booking_segment_recorder import (
-    BookingSegmentRecorder,
+from python.framework.reporting.booking_period_recorder import (
+    BookingPeriodRecorder,
     snapshot_from_portfolio,
 )
 from python.framework.process.process_live_export import process_live_export, process_live_setup
@@ -53,7 +53,10 @@ from python.framework.types.process_data_types import (
     ProcessTickLoopResult,
 )
 from python.framework.types.trading_env_types.currency_codes import format_currency_simple
-from python.framework.utils.process_debug_info_utils import get_tick_range_stats
+from python.framework.utils.process_debug_info_utils import (
+    get_tick_range_stats,
+    processed_tick_range_stats,
+)
 from python.framework.workers.worker_orchestrator import WorkerOrchestrator
 
 
@@ -65,7 +68,7 @@ def _run_sim_heartbeats(
     worker_coordinator: WorkerOrchestrator,
     decision_logic: AbstractDecisionLogic,
     decision_event_dispatcher: Optional[DecisionEventDispatcher],
-    booking: BookingSegmentRecorder,
+    booking: BookingPeriodRecorder,
     seal_source,
 ) -> bool:
     """
@@ -176,6 +179,9 @@ def execute_tick_loop(
         prev_interval_msc: int = 0
 
         tick_range_stats = get_tick_range_stats(scenario_logger, trade_simulator, ticks)
+        # How many ticks reached the broker path — measured again after the loop, so a session
+        # that ended early reports the market time it processed rather than the time it loaded.
+        processed_count = 0
 
         live_setup = process_live_setup(
             scenario_logger, config, ticks, live_queue)
@@ -185,17 +191,17 @@ def execute_tick_loop(
         current_bars = {}
         current_tick = None
 
-        # === BOOKING SEGMENTS (#537) — this scenario's Hauptbuch ===
+        # === BOOKING PERIODS (#537) — this scenario's ledger entries ===
         # Per SCENARIO and not per run: a run's scenarios cover different windows (measured:
         # 40 scenarios, 40 distinct ones), so "day 1 of the run" is not a thing and only
-        # "day 1 of this unit" is. The recorder is the same one the live loop uses — that loop
+        # "day 1 of this unit" is. The recorder is the same one the AutoTrader loop uses — that loop
         # is a class and this one is a function, and a recorder each would be two
         # implementations of one rule (§19).
         #
         # No floor is carried in: a backtest has no predecessor to inherit a period count from,
         # so every scenario counts from 1. Resolved inside the try, so a market that declares no
         # anchor fails THIS scenario rather than the batch (§33).
-        booking = BookingSegmentRecorder(
+        booking = BookingPeriodRecorder(
             unit_name=config.name,
             # None when the scenario declares no broker: it has no market, so it has no
             # trading day, and it books nothing. A real scenario always declares one — this is
@@ -280,6 +286,7 @@ def execute_tick_loop(
             # all operate on the full tick stream.
             if profiling_enabled: t1 = time.perf_counter()
             trade_simulator.on_tick(tick)
+            processed_count = tick_idx + 1
             if profiling_enabled:
                 profile_times['trade_simulator'] += (time.perf_counter() - t1) * 1000
                 profile_counts['trade_simulator'] += 1
@@ -464,6 +471,7 @@ def execute_tick_loop(
         scenario_logger.debug('✅ Coordinator cleanup completed')
 
         # === GET RESULTS ===
+        tick_range_stats = processed_tick_range_stats(ticks, processed_count)
         # Collect statistics from Algorithm section
         decision_statistics = decision_logic.get_statistics()
         worker_statistics = worker_coordinator.get_worker_statistics()
@@ -489,7 +497,7 @@ def execute_tick_loop(
             config.symbol)
         portfolio_stats.base_currency = _symbol_spec.base_currency
         portfolio_stats.quote_currency = _symbol_spec.quote_currency
-        # #489 — the same claim the live session stamps, from the same shared executor
+        # #489 — the same claim an AutoTrader session stamps, from the same shared executor
         # method, so both pipelines report the figure identically.
         portfolio_stats.committed_funds = {
             _symbol_spec.quote_currency: trade_simulator.get_committed_funds(
@@ -517,10 +525,10 @@ def execute_tick_loop(
 
         # Seals the period that was still running, so the final and necessarily incomplete one
         # is filed like every other rather than dropped for having no successor (#537).
-        booking_segments = booking.close(trade_simulator.get_current_time(), seal_source)
+        booking_periods = booking.close(trade_simulator.get_current_time(), seal_source)
 
         return ProcessTickLoopResult(
-            booking_segments=booking_segments,
+            booking_periods=booking_periods,
             decision_statistics=decision_statistics,
             worker_statistics=worker_statistics,
             signal_statistics=signal_statistics,

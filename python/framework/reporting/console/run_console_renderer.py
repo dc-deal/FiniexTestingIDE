@@ -2,7 +2,7 @@
 Run console renderer (#403 Phase 2) — the one ordered end-of-run console both pipelines share.
 
 The canonical section order lives here ONCE; each coordinator feeds the sub-presenters it has.
-A slot left `None` is skipped (render-if-present) — so the live session omits the sim-only
+A slot left `None` is skipped (render-if-present) — so an AutoTrader session omits the sim-only
 sections (run-meta header, scenario details, profiling, worker-decision breakdown, block-splitting)
 automatically. The per-currency AGGREGATE blocks render only for a multi-unit run
 (`unit_count > 1`): they are redundant for a single-scenario sim run and for the always-single live
@@ -34,7 +34,11 @@ from python.framework.utils.console_renderer import ConsoleRenderer
 
 
 class ClosingBlock(Protocol):
-    """The pipeline-specific closing section (sim: SimExecutiveSummary, live: LiveSessionSummary)."""
+    """
+    The pipeline-specific closing section.
+
+    SimExecutiveSummary in the simulation, AutotraderSessionSummary in the AutoTrader pipeline.
+    """
 
     def render(self, renderer: ConsoleRenderer) -> None: ...
 
@@ -97,7 +101,7 @@ class RunConsoleRenderer:
             summary_detail: True → also render the per-scenario detail blocks
         """
         # Cross-unit sections (per-currency aggregates + the "worst across scenarios" bottleneck
-        # analysis) are redundant for a single unit (1-scenario sim run / the live session).
+        # analysis) are redundant for a single unit (1-scenario sim run / an AutoTrader session).
         is_multi_unit = self._unit_count > 1
         compact = not summary_detail
 
@@ -184,7 +188,7 @@ class RunConsoleRenderer:
         if self._closing_block:
             self._closing_block.render(renderer)
 
-        # The run's Hauptbuch (#537), after the closing block because it is the RECORD rather
+        # The run's booking periods (#537), after the closing block because it is the RECORD rather
         # than the report — a reader scanning the console wants the summary, a reader checking
         # the books wants this. It renders HERE rather than after each coordinator's capture,
         # which is where it used to sit: a section printed outside the capture reaches the

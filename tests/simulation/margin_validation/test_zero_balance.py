@@ -11,13 +11,13 @@ from typing import Any, Dict, List
 
 import pytest
 
-from python.framework.types.backtesting_metadata_types import BacktestingMetadata
+from python.framework.types.probe_metadata_types import ProbeMetadata
 from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.portfolio_types.portfolio_trade_record_types import TradeRecord
 from python.framework.types.process_data_types import ProcessResult, ProcessTickLoopResult
 from python.framework.types.trading_env_types.trading_env_stats_types import ExecutionStats
 from tests.shared.fixture_helpers import (
-    extract_backtesting_metadata,
+    extract_probe_metadata,
     extract_process_result,
     extract_tick_loop_results,
     extract_trade_history,
@@ -66,11 +66,11 @@ def zb_trade_history(zb_tick_loop_results: ProcessTickLoopResult) -> List[TradeR
 
 
 @pytest.fixture(scope='module')
-def zb_backtesting_metadata(
+def zb_probe_metadata(
     zb_tick_loop_results: ProcessTickLoopResult
-) -> BacktestingMetadata:
+) -> ProbeMetadata:
     """Extract backtesting metadata."""
-    return extract_backtesting_metadata(zb_tick_loop_results)
+    return extract_probe_metadata(zb_tick_loop_results)
 
 
 @pytest.fixture(scope='module')
@@ -95,13 +95,13 @@ class TestZeroBalanceRejection:
 
     def test_scenario_completes(
         self,
-        zb_backtesting_metadata: BacktestingMetadata,
+        zb_probe_metadata: ProbeMetadata,
         zb_scenario_config: Dict[str, Any]
     ):
         """Scenario should process all ticks despite all rejections."""
         expected_ticks = zb_scenario_config['scenarios'][0]['max_ticks']
-        assert zb_backtesting_metadata.tick_count == expected_ticks, (
-            f'Expected {expected_ticks} ticks, got {zb_backtesting_metadata.tick_count}. '
+        assert zb_probe_metadata.tick_count == expected_ticks, (
+            f'Expected {expected_ticks} ticks, got {zb_probe_metadata.tick_count}. '
             f'Scenario may have crashed on rejection.'
         )
 
@@ -137,15 +137,15 @@ class TestZeroBalanceRejection:
 
     def test_submitted_but_none_in_trade_history(
         self,
-        zb_backtesting_metadata: BacktestingMetadata,
+        zb_probe_metadata: ProbeMetadata,
         zb_trade_history: List[TradeRecord],
         zb_trade_sequence: list
     ):
         """Orders are submitted (PENDING) but rejected at fill time due to margin.
         expected_trades tracks submissions, trade_history tracks fills."""
-        assert len(zb_backtesting_metadata.expected_trades) == len(zb_trade_sequence), (
+        assert len(zb_probe_metadata.expected_trades) == len(zb_trade_sequence), (
             f'Expected {len(zb_trade_sequence)} submitted orders in metadata, '
-            f'got {len(zb_backtesting_metadata.expected_trades)}'
+            f'got {len(zb_probe_metadata.expected_trades)}'
         )
         assert len(zb_trade_history) == 0, (
             f'No orders should have filled, but trade_history has '

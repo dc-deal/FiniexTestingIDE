@@ -57,7 +57,7 @@ class TestMultiSymbolAssembly:
         symbols = [s['symbol'] for s in config['scenarios']]
         assert symbols.count('EURUSD') == 4
         assert symbols.count('GBPUSD') == 3
-        names = [s['name'] for s in config['scenarios']]
+        names = [s['scenario_name'] for s in config['scenarios']]
         assert len(names) == len(set(names))  # unique across symbols
 
     def test_roles_assigned_per_symbol(self, _mock_quote):

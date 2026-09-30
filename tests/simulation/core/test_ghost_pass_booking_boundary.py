@@ -7,7 +7,7 @@ instant — checked once before them it runs on the clock the PREVIOUS tick alre
 which is no check at all, and a fill resolved in a ghost pass after a rollover is then booked
 into the day before it.
 
-These pin the call, not the seal: whether a day flip seals is `BookingSegmentRecorder`'s own
+These pin the call, not the seal: whether a day flip seals is `BookingPeriodRecorder`'s own
 question and is tested there. What can only be seen here is WHEN the loop asks.
 """
 

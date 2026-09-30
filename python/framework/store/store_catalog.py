@@ -50,16 +50,41 @@ class StoreCatalog:
         if store_id not in self._stores:
             raise StoreCatalogError(
                 f'No store registered under {store_id!r}. Every persistent write path is '
-                f'declared in store_registrations.py — add it there (CLAUDE.md §44).'
+                f'declared in store_registrations.py — add it there; a store that is not '
+                f'registered is one nothing can find.'
             )
         return self._stores[store_id]
 
-    def rebuild(self, store_id: StoreId) -> int:
+    def lossless_rebuild_ids(self) -> List[StoreId]:
+        """
+        Every store whose index this model owns and a rebuild fully restores — what
+        `rebuild --all` rebuilds.
+
+        Returns:
+            Their ids, in registration order
+        """
+        return [d.store_id for d in self.all()
+                if d.index_factory is not None and not d.rebuild_loses]
+
+    def lossy_rebuild_ids(self) -> List[StoreId]:
+        """
+        Every store whose index a rebuild cannot fully restore — left out of `rebuild --all`.
+
+        Returns:
+            Their ids, in registration order
+        """
+        return [d.store_id for d in self.all() if d.index_factory is not None and d.rebuild_loses]
+
+    def rebuild(self, store_id: StoreId, accept_loss: bool = False) -> int:
         """
         Rebuild one store's index from the store's own contents.
 
+        A store that declares what its rebuild loses is refused unless the caller accepts that
+        loss: the information is in the index and nowhere else, so a rebuild is a deletion.
+
         Args:
             store_id: Which store
+            accept_loss: Rebuild even when the store declares that a rebuild loses information
 
         Returns:
             How many entries were indexed
@@ -70,6 +95,11 @@ class StoreCatalog:
             raise StoreCatalogError(
                 f'Store {store_id!r} has no index this model owns — nothing to rebuild here. '
                 f'{descriptor.note or "It carries no index."}'
+            )
+        if descriptor.rebuild_loses and not accept_loss:
+            raise StoreCatalogError(
+                f'A rebuild of {store_id.value} loses {descriptor.rebuild_loses} — none of it '
+                f'exists outside the index. Pass --accept-loss to rebuild it anyway.'
             )
         return index.rebuild()
 
@@ -94,6 +124,8 @@ class StoreCatalog:
             rows.append(StoreStatus(
                 store_id=descriptor.store_id,
                 kind=descriptor.kind,
+                purpose=descriptor.purpose,
+                doc=descriptor.doc,
                 root=str(descriptor.root),
                 key=descriptor.key,
                 form=descriptor.form,
@@ -105,6 +137,7 @@ class StoreCatalog:
                 exists=descriptor.root.exists(),
                 stale_reason=index.staleness_reason() if index is not None else None,
                 self_healing=descriptor.self_healing,
+                rebuild_loses=descriptor.rebuild_loses,
             ))
         return rows
 

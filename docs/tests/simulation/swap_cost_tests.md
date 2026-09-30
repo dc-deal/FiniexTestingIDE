@@ -28,4 +28,4 @@ The `SwapMode.is_implemented` property + `SwapModeNotImplementedError` that both
 | `test_points_and_none_are_implemented` | `POINTS` and `NONE` are modeled (validation passes) |
 | `test_other_modes_not_implemented` | `INTEREST_CURRENT` / `INTEREST_OPEN` / `PERCENTAGE` / `UNKNOWN` are not modeled |
 | `test_exception_names_symbol_and_mode` | the error names the symbol + the offending mode |
-| `test_exception_is_finiex_and_value_error` | multiple inheritance (§10) — catchable as `ValueError` |
+| `test_exception_is_finiex_and_value_error` | multiple inheritance (`FiniexError` + `ValueError`) — catchable as `ValueError` |

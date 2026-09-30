@@ -4,7 +4,7 @@ FiniexTestingIDE - Live Field Study Decision Logic (#332, CORE)
 Operator-driven acceptance-test decision logic: drives the full live pipeline
 through a deterministic, wall-clock phase sequence (every order type, modify/cancel
 path, rejection battery, partial close, idle heartbeat) against a real broker. It is
-the live equivalent of the plan-driven BacktestingMarginStress.
+the live equivalent of the plan-driven MarginStressProbe.
 
 The phase logic lives in FieldStudyPhaseMachine (a pure state machine). This class is
 the AbstractDecisionLogic adapter: it builds the per-tick observation, asks the machine
@@ -204,7 +204,7 @@ class LiveFieldStudy(AbstractDecisionLogic):
     @classmethod
     def get_required_order_types(cls, decision_logic_config: Dict[str, Any]) -> List[OrderType]:
         # MARKET is always needed; LIMIT only if the configured phase sequence uses a
-        # limit phase — so a limit-free sequence (e.g. the mock dress-rehearsal) can run
+        # limit phase — so a limit-free sequence (e.g. the mock session) can run
         # against a MARKET-only adapter.
         types = [OrderType.MARKET]
         for raw in decision_logic_config.get('phase_sequence', []):
@@ -274,7 +274,9 @@ class LiveFieldStudy(AbstractDecisionLogic):
                 param_type=str, description='Human-readable phase narration', category='INFO',
             ),
             'price': OutputParamDef(
-                param_type=float, min_val=0.0, description='Price at decision time', category='INFO',
+                param_type=float, min_val=0.0,
+                description='Price at decision time — traded where the venue prints one, else mid',
+                category='INFO',
             ),
         }
 

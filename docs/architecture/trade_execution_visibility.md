@@ -140,7 +140,7 @@ The number of `entry_trades` and `exit_trades` on a TradeRecord are unrelated to
 | 1 | N | Single entry, exit broker-split into N (e.g. partial-fill on close LIMIT) |
 | N | M | Multi-fill on both sides |
 
-In V1.3 sim and current Kraken live, both lists are 1-element. The data model is ready for #143 (order-book sim) and #342 (Kraken partial-fill detection) — both will populate N-element lists without further data-model changes.
+In V1.3 sim and in current Kraken live-adapter sessions, both lists are 1-element. The data model is ready for #143 (order-book sim) and #342 (Kraken partial-fill detection) — both will populate N-element lists without further data-model changes.
 
 ## Propagation Points
 

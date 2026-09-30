@@ -1,5 +1,5 @@
 """
-Ledger aggregation (#537) — the ABSCHLUSS step, and the first caller of `COLUMN_REDUCTION`.
+Ledger aggregation (#537) — the CLOSING step, and the first caller of `COLUMN_REDUCTION`.
 
 A ledger row is one booking period of one unit. Every question above that level — what did this
 session earn, what did this deployment do, how does this parameter combination rank — is asked
@@ -11,7 +11,7 @@ which is the state §49 warns about: a declaration with no caller is a comment t
 it summarised, and neither the deployment history (which SUMS rows) nor the sweep ranking (which
 SORTS them) could tell a summary from its own evidence. Derived here instead, the total is
 recomputed on demand and cannot drift from the rows it comes from — the same argument that makes
-a Hauptbuch trustworthy in the first place (§48).
+a ledger trustworthy in the first place (§48).
 
 **A DERIVE column is not folded, it is REBUILT**, and each one needs its own domain knowledge:
 a win rate comes from the summed counts, a profit factor from the summed components, a mean from
@@ -30,9 +30,9 @@ from python.framework.types.api.report_types import RunResultRow
 from python.framework.types.run_results_types import Reduction
 
 # How a row is ordered when a column asks for "the most recent". The first stamp a row actually
-# carries wins: a booking period is closed at `segment_closed_at`, a row that books no period was
+# carries wins: a booking period is closed at `period_closed_at`, a row that books no period was
 # written at `recorded_at_utc`, and everything older than that column has only its run timestamp.
-_RECENCY_KEYS = ('segment_closed_at', 'recorded_at_utc', 'run_timestamp')
+_RECENCY_KEYS = ('period_closed_at', 'recorded_at_utc', 'run_timestamp')
 
 
 def aggregate_ledger_rows(
@@ -105,12 +105,14 @@ def _combine(rows: List[RunResultRow]) -> RunResultRow:
         The combined row
     """
     ordered = sorted(rows, key=_recency)
+    # One account per unit: a backtest's scenarios each trade their own balance.
+    one_account = len({row.unit_name for row in rows}) <= 1
     combined: Dict[str, Any] = {}
     for column in LEDGER_COLUMNS:
         reduction = COLUMN_REDUCTION[column]
         if reduction is Reduction.DERIVE or reduction is Reduction.COMPANION:
             continue                            # both need the folded values below
-        combined[column] = _fold(column, reduction, rows, ordered)
+        combined[column] = _fold(column, reduction, rows, ordered, one_account)
     _apply_companions(combined, rows)
     _apply_derived(combined, rows)
     return RunResultRow(**{k: v for k, v in combined.items() if v is not None})
@@ -121,6 +123,7 @@ def _fold(
     reduction: Reduction,
     rows: List[RunResultRow],
     ordered: List[RunResultRow],
+    one_account: bool,
 ) -> Any:
     """
     Apply one column's declared reduction.
@@ -130,9 +133,10 @@ def _fold(
         reduction: Its declared class
         rows: The group
         ordered: The same group, oldest first
+        one_account: Whether every row belongs to one unit — a stock is only defined then
 
     Returns:
-        The combined value, or None when nothing was measured
+        The combined value, or None when nothing was measured or it is undefined here
     """
     values = [_get(row, column) for row in rows]
     present = [v for v in values if v is not None and v != '']
@@ -148,7 +152,15 @@ def _fold(
     if reduction is Reduction.MIN:
         return min(present) if present else None
     if reduction is Reduction.LAST:
-        return _last_present(ordered, column)
+        return _last_present(ordered, column) if one_account else None
+    if reduction is Reduction.FIRST:
+        # The OLDEST row's own value, and nothing later in its place: an opening is a fact about
+        # the first instant, so when the first row did not record it the group's opening is
+        # unknown — a later row's opening would be a different instant's.
+        if not one_account or not ordered:
+            return None
+        value = _get(ordered[0], column)
+        return None if value == '' else value
     if reduction is Reduction.IDENTITY:
         return present[0] if present else None
     if reduction is Reduction.UNION:

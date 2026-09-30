@@ -176,7 +176,7 @@ class AggressiveTrend(AbstractDecisionLogic):
             ),
             'price': OutputParamDef(
                 param_type=float, min_val=0.0,
-                description='Price at decision time',
+                description='Price at decision time — traded where the venue prints one, else mid',
                 category='INFO',
             ),
             'timestamp': OutputParamDef(
@@ -403,7 +403,7 @@ class AggressiveTrend(AbstractDecisionLogic):
                 outputs={
                     'confidence': 0.0,
                     'reason': 'Missing worker results',
-                    'price': tick.mid,
+                    'price': tick.price,
                     'timestamp': tick.timestamp.isoformat(),
                 },
             )
@@ -438,7 +438,7 @@ class AggressiveTrend(AbstractDecisionLogic):
                     outputs={
                         'confidence': confidence,
                         'reason': reason,
-                        'price': tick.mid,
+                        'price': tick.price,
                         'timestamp': tick.timestamp.isoformat(),
                     },
                 )
@@ -476,7 +476,7 @@ class AggressiveTrend(AbstractDecisionLogic):
                     outputs={
                         'confidence': confidence,
                         'reason': reason,
-                        'price': tick.mid,
+                        'price': tick.price,
                         'timestamp': tick.timestamp.isoformat(),
                     },
                 )
@@ -492,7 +492,7 @@ class AggressiveTrend(AbstractDecisionLogic):
             outputs={
                 'confidence': 0.5,
                 'reason': 'No extreme indicator values',
-                'price': tick.mid,
+                'price': tick.price,
                 'timestamp': tick.timestamp.isoformat(),
             },
         )
