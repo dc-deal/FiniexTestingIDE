@@ -187,14 +187,20 @@ no individual records are stored for normal outcomes.
 
 | Outcome | Source | Individual Record | Latency Unit |
 |---------|--------|-------------------|--------------|
-| `FILLED` | Normal fill after delay | No (aggregated only) | ticks (sim) / ms (live) |
-| `REJECTED` | Stress test or broker rejection | No (aggregated only) | ticks (sim) / ms (live) |
+| `FILLED` | Normal fill after delay | No (aggregated only) | ms |
+| `REJECTED` | Stress test or broker rejection | No (aggregated only) | ms |
 | `TIMED_OUT` | Broker timeout (live execution stack only) | Yes (`anomaly_orders`) | ms |
-| `FORCE_CLOSED` | `clear_pending()` for genuine stuck-in-pipeline orders at scenario end | Yes (`anomaly_orders`, with `reason`) | ticks (sim) / ms (live) |
+| `FORCE_CLOSED` | `clear_pending()` for genuine stuck-in-pipeline orders at scenario end | Yes (`anomaly_orders`, with `reason`) | ms |
+
+The unit is milliseconds in both pipelines, but the two measure different things. In simulation
+it is the modelled delay on the market clock — `broker_fill_msc − placed_at_msc`, and for a
+force-close the time the order sat until the scenario ended. In an AutoTrader session it is the
+measured time since submission. Min, max and average cover every resolved outcome, not fills
+only.
 
 **Display locations:**
 
-- **Portfolio Grid Boxes**: Green latency line `"Latency: avg 4.7t (3-8)"`, yellow `"X forced"` / `"X timeout"` if anomalies
+- **Portfolio Grid Boxes**: Green latency line `"Pending: avg 60ms (60-60)"`, yellow `"X forced"` / `"X timeout"` if anomalies
 - **Aggregated Portfolio (ORDER EXECUTION)**: Resolved breakdown with filled/rejected/timed_out/force-closed counts + latency stats
 - **Executive Summary**: Green latency line per scenario, yellow `"X force-closed"` / `"X timed out"` breakdown
 
