@@ -22,6 +22,7 @@ from python.framework.reporting.console.run_config_summary import (
     render_run_config_list,
 )
 from python.framework.store.run_config_store import RunConfigStore
+from python.framework.types.run_config_types import RunConfigKind
 
 
 class RunConfigCli:
@@ -76,10 +77,15 @@ class RunConfigCli:
         frozen = self._store.frozen_path_of(entry.config_id)
         print(f'\n  config_id   {entry.config_id}')
         print(f'  kind        {entry.kind}')
-        print(f'  source      {entry.source_name}  ({entry.source_path})')
+        if entry.kind.has_source_file():
+            print(f'  source      {entry.source_name}  ({entry.source_path})')
+        else:
+            print('  source      —  frozen from content; the run that names this id is its origin')
         print(f'  frozen      {frozen}')
-        print(f'  param_hash  {entry.param_hash}')
-        print(f'  scope_hash  {entry.scope_hash or "—  (a profile has no scenario list)"}')
+        print(f'  param_hash  {entry.param_hash or "—"}')
+        no_scope = ('—  (a profile has no scenario list)'
+                    if entry.kind is RunConfigKind.AUTOTRADER_PROFILE else '—')
+        print(f'  scope_hash  {entry.scope_hash or no_scope}')
         print(f'  first seen  {entry.first_seen}')
         print(f'  runs        {entry.run_count}\n')
         return 0

@@ -26,6 +26,26 @@ fails to parse.
 The server serves the current version's lines and this log keeps every version. A test holds the
 newest heading here to `API_CONTRACT_VERSION`, so step 3 cannot be skipped unnoticed.
 
+## Version 19 — 2026-10-01 (#547, viewer#21)
+
+A session now records the broker configuration it traded with, and one more list says what keys
+its rows.
+
+- `GET /api/v1/reports/runs/{run_id}/broker`: every unit carries `broker_config_id` beside
+  `config_hash`. It is the run-config store id of the broker configuration an AutoTrader session
+  froze at its start — the symbol specifications from the venue's cache, the seed's fee structure
+  and the fee tier the venue reported — which `config_hash` only digests in eight characters. A
+  later backtest of the same window reads that frozen copy instead of whatever the cache holds by
+  then. Empty for a simulation unit, which reads the archive's broker files when it runs, and on a
+  session recorded before the freeze existed.
+- `GET /api/v1/reports/runs/{run_id}/pending-orders` declares `key: ["name"]` for `units` — the
+  unit name, which a scenario set cannot repeat (it is refused at validation) and an AutoTrader
+  session has once. The nested `active_limit_orders` / `active_stop_orders` lists and
+  `order-history` declare no key yet; both come with #557. Old runs serve the key too: the
+  default fills in on read, nothing to re-fetch.
+
+Both are additions with a default; no existing field changed.
+
 ## Version 18 — 2026-09-29 (viewer#21, #557)
 
 The numbers the aggregate inventory for #557 found wrong, each corrected before that refactor

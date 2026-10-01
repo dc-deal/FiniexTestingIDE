@@ -20,12 +20,10 @@ one, because the ledger row cannot tell that state apart from a dirty tree by it
 """
 
 import json
-from dataclasses import fields, is_dataclass
+from dataclasses import fields
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
-
-from pydantic import BaseModel
 
 from python.configuration.app_config_manager import AppConfigManager
 from python.configuration.market_config_manager import MarketConfigManager
@@ -47,7 +45,7 @@ from python.framework.types.run_origin_types import CodeIdentity, ComponentRole
 from python.framework.types.run_results_types import RunProvenance, SweepContext
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
 from python.scenario.scenario_set import ScenarioSet
-from python.framework.utils.config_fingerprint_utils import generate_config_fingerprint
+from python.framework.utils.config_fingerprint_utils import generate_config_fingerprint, to_plain
 from python.framework.utils.git_info_utils import get_git_info
 
 
@@ -264,40 +262,11 @@ def _profile_fingerprint(config: AutoTraderConfig) -> str:
         SHA256 hex digest over the operational sections
     """
     operational = {
-        field.name: _plain(getattr(config, field.name))
+        field.name: to_plain(getattr(config, field.name))
         for field in fields(config)
         if field.name not in _NON_OPERATIONAL_FIELDS
     }
     return generate_config_fingerprint(operational)
-
-
-def _plain(value: Any) -> Any:
-    """
-    Reduce one config value to something JSON can fingerprint deterministically.
-
-    The blocks come in BOTH shapes — §6 puts config schemas on Pydantic while a few settings
-    bundles stay dataclasses — so both are projected rather than one being assumed. Anything
-    else falls back to `repr`, which is the one case worth stating: a value whose repr carries
-    an address would make the fingerprint differ between two identical runs, so the fallback
-    exists to keep the function total and not because such a value is expected here.
-
-    Args:
-        value: A config field's value — a scalar, a Pydantic block, or a settings dataclass
-
-    Returns:
-        A JSON-serialisable projection of it
-    """
-    if isinstance(value, BaseModel):
-        return value.model_dump(mode='json')
-    if is_dataclass(value) and not isinstance(value, type):
-        return {f.name: _plain(getattr(value, f.name)) for f in fields(value)}
-    if isinstance(value, (list, tuple)):
-        return [_plain(v) for v in value]
-    if isinstance(value, dict):
-        return {k: _plain(v) for k, v in sorted(value.items())}
-    if isinstance(value, (str, int, float, bool)) or value is None:
-        return value
-    return repr(value)
 
 
 # What `profile_hash` deliberately leaves out. `strategy_config` belongs to `param_hash`

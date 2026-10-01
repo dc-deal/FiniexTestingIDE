@@ -217,6 +217,13 @@ the rebuild finds every frozen copy while leaving `source_name` empty, because `
 `source_path` were observations made at registration and exist nowhere else. The rebuild says so
 by leaving them blank rather than inventing them.
 
+**A document without a file is frozen by content** (#547) — the rendered profile and the broker
+configuration an AutoTrader session records at its start. The same document is one entry and one
+copy in its own subdirectory; a changed one mints a new id; a source kind is refused from content;
+a rebuild finds both kinds by their directory. And the one property the design hangs on: a
+document NEVER answers a lookup by file name — its source columns stay empty, so the profile's
+`history()` and `resolve()` keep returning the profile and not its own rendering.
+
 ## `test_run_patch_store.py`
 
 The patch of every dirty tree a run ran from, keyed by the SHA256 of its bytes — not by the run

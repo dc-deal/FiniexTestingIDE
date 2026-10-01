@@ -33,7 +33,9 @@ def render_run_config_list(entries: List[RunConfigEntry], indent: str = '  ') ->
     print(f'{indent}{"config_id":<14} {"kind":<19} {"source":<38} {"first seen":<17} {"runs":>5}')
     print(f'{indent}' + '─' * 104)
     for e in entries:
-        print(f'{indent}{e.config_id[:12]:<14} {str(e.kind):<19} {e.source_name[:38]:<38} '
+        # A document frozen from content has no file to name; a blank column would read as lost.
+        source = e.source_name if e.kind.has_source_file() else '— frozen from content'
+        print(f'{indent}{e.config_id[:12]:<14} {str(e.kind):<19} {source[:38]:<38} '
               f'{_stamp(e.first_seen):<17} {e.run_count:>5}')
     print(f'{indent}' + '─' * 104)
 

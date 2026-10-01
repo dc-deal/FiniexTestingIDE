@@ -35,6 +35,8 @@ RUN_CONFIG_INDEX_FILE = store_index_filename(StoreId.RUN_CONFIGS)
 FROZEN_SUBDIR: Dict[RunConfigKind, str] = {
     RunConfigKind.SCENARIO_SET: 'scenario_sets',
     RunConfigKind.AUTOTRADER_PROFILE: 'autotrader_profiles',
+    RunConfigKind.AUTOTRADER_RENDERED: 'autotrader_rendered',
+    RunConfigKind.BROKER_CONFIG: 'broker_configs',
 }
 
 

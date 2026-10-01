@@ -162,11 +162,40 @@ run_configs/
   run_configs_index.parquet
   scenario_sets/<config_id>.json
   autotrader_profiles/<config_id>.json
+  autotrader_rendered/<config_id>.json     what a session RAN with (#547)
+  broker_configs/<config_id>.json          the broker configuration it traded with (#547)
 ```
 
 That is not tidiness. A source may live in `user_algos/`, a separate repository, and an index
-whose entries lived outside its own root could not die with its store. The per-run snapshot in each run directory stays: it is the evidence, and an id that
-cannot be resolved back to bytes is not one.
+whose entries lived outside its own root could not die with its store. The per-run copy of the
+config that each run directory once held was retired with #546: the frozen copy here is the
+evidence, and a run names it by `config_id`.
+
+**A source is what a run was GIVEN; the two rendered kinds are what it RAN with (#547).** A
+profile file is the input to a cascade — the `app_config.autotrader` defaults lie under it, and
+every parameter it leaves unset gets its schema default only when the factory builds the
+component — and a month in which `app_config.json` or a default changes could prove the
+configuration moved and never say what it was. So an AutoTrader session freezes two more
+documents at its start:
+
+| kind | what it holds | named by |
+|---|---|---|
+| `autotrader_rendered` | the merged profile blocks, the strategy with every schema default filled (through the factories' own `resolve_parameters`), and the broker's `market_config.json` entry with its local override | the run header's `rendered_config_id`, written before the session can fail |
+| `broker_config` | the broker configuration the session trades with: symbol specs from the runtime cache, the seed's fee structure, the detected fee tier | the run's broker section (`broker_config_id`, beside `config_hash`) and a session-log line at startup |
+
+The broker configuration needs the log line because the run's broker section is written at the
+END: a session killed before its report still says, in `autotrader_session.log`, where its
+configuration was frozen.
+
+Both are frozen from CONTENT, so a session that restarts on an unchanged configuration names the
+same id and writes nothing new. Their source columns stay empty on purpose — those mean "the file
+a caller asks for", and a rendered document must never come back from `resolve()` or `history()`
+as the newest version of the profile it was rendered from. And both are RECORDS, never schemas: a
+later version of an algo may rename or drop a parameter, and an old document stays exactly as
+true as it was — nothing reads it back into a factory. A private profile's documents are frozen
+here too, like its source: the store is gitignored, nothing leaves the machine, and a
+configuration has to stay readable without the foreign repository checked out at the right
+commit — which a patch needs anyway, and a configuration must not.
 
 **Several rows per source file are NORMAL here, unlike every other store.** Each row is one
 version, and the accumulation IS the history — which is why validity is not a row count against a

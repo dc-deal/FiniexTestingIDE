@@ -25,6 +25,10 @@ from python.framework.autotrader.autotrader_tick_loop import AutotraderTickLoop
 from python.framework.autotrader.cold_start_setup import ColdStartSetup, setup_cold_start
 from python.framework.autotrader.dry_run_resolver import resolve_dry_run
 from python.framework.autotrader.live_clipping_monitor import LiveClippingMonitor
+from python.framework.autotrader.rendered_profile_builder import (
+    assert_rendered_parameters_match,
+    render_autotrader_profile,
+)
 from python.framework.autotrader.reporting.autotrader_report_coordinator import (
     AutotraderReportCoordinator,
 )
@@ -172,6 +176,9 @@ class AutotraderMain:
         # Which code this session runs — captured at the start of run(), before the header, and
         # kept because the startup guard reads it (#551).
         self._code_identity: Optional[CodeIdentity] = None
+        # What the session runs with, rendered before the header (#547); None until then, and when
+        # it could not be rendered.
+        self._rendered_profile: Optional[Dict[str, Any]] = None
         # The startup guard's verdict: True once `--allow-dirty` has let real orders through from
         # uncommitted code. Read by the post-run validation, which reports it as a Tier-1 warning.
         self._uncommitted_code_allowed = False
@@ -301,12 +308,20 @@ class AutotraderMain:
         # handling below, once the header exists to record the session.
         capture_failure = self._capture_code_identity()
 
+        # === RENDERED CONFIGURATION (#547) ===
+        # What this session RUNS with, not only what it was given: the app_config layer merged
+        # in, every schema default filled. Before the loggers for the same reason as the code
+        # identity — the header names it and has no update path. A failure is held, never
+        # raised: the session can still trade, and its log says the record is incomplete.
+        render_failure = self._render_profile()
+
         # === LOGGERS ===
         loggers = create_autotrader_loggers(
             self._config, run_timestamp,
             origin=origin,
             code_identity=self._code_identity,
-            deployment_id=deployment_id)
+            deployment_id=deployment_id,
+            rendered_profile=self._rendered_profile)
         self._deployment_id = deployment_id
         self._global_logger = loggers.global_logger
         self._session_logger = loggers.session_logger
@@ -334,6 +349,12 @@ class AutotraderMain:
             self._session_logger.info(
                 '🔗 One-off session — its ledger row names no deployment. '
                 'Declare `deployment.continuous` in the profile to group a bot\'s restarts.')
+
+        if render_failure is not None:
+            self._session_logger.warning(
+                f'⚠️  The configuration this session runs with could not be rendered '
+                f'({type(render_failure).__name__}: {render_failure}) — the run header names '
+                f'its profile but not what it ran with (#547).')
 
         try:
             # === CODE IDENTITY NOT CAPTURED (#551) ===
@@ -377,6 +398,12 @@ class AutotraderMain:
             self._bar_controller = pipeline.bar_controller
             self._worker_orchestrator = pipeline.worker_orchestrator
             self._decision_logic = pipeline.decision_logic
+            # The record must say what the components were BUILT with, not what was planned
+            # (#547): a defect between the two refuses the session here, at STARTUP.
+            if self._rendered_profile is not None:
+                assert_rendered_parameters_match(
+                    self._rendered_profile, self._decision_logic,
+                    self._worker_orchestrator.workers)
             self._clipping_monitor = pipeline.clipping_monitor
             self._trading_model = pipeline.trading_model
             self._display_label_cache = pipeline.display_label_cache
@@ -662,6 +689,26 @@ class AutotraderMain:
         if warning is not None:
             self._session_logger.warning(f'⚠️  {warning}')
             print(f'  ⚠️  {warning}')
+
+    def _render_profile(self) -> Optional[Exception]:
+        """
+        Render what this session runs with, and hold a failure instead of raising it (#547).
+
+        Runs before the loggers, like the code identity capture, so a raise here would escape
+        `run()` with no header at all. A profile that cannot be rendered most likely names a
+        component that cannot be resolved, and the pipeline build refuses that a moment later
+        with its own message.
+
+        Returns:
+            None when the document was rendered; otherwise the exception, logged once the
+            session log exists
+        """
+        try:
+            self._rendered_profile = render_autotrader_profile(self._config)
+        except Exception as error:
+            self._rendered_profile = None
+            return error
+        return None
 
     def _capture_code_identity(self) -> Optional[Exception]:
         """

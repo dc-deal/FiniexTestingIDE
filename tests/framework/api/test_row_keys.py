@@ -34,6 +34,8 @@ from python.framework.types.api.report_types import (
     DeploymentBookingPeriodRow,
     DeploymentSessionRow,
     DeploymentSummary,
+    PendingOrdersReport,
+    PendingOrdersUnitRow,
     TradeHistoryReport,
     TradeHistoryRow,
 )
@@ -239,6 +241,14 @@ class TestTheKeyActuallySeparatesTheRows:
         ]
         assert _distinct(rows, key) == 3
         assert _distinct(rows, ('position_id',)) == 1                  # what it would collapse to
+
+    def test_a_pending_orders_unit_is_its_name(self):
+        # One unit per scenario, and scenario names are unique within a set — a repeat is
+        # refused at validation (`scenario_name_duplicate`). The run-scoped walk above exempts
+        # every report route, so this case is what holds the declaration (contract 19).
+        key = PendingOrdersReport.model_fields['key'].default
+        assert key == ['name']
+        assert set(key) <= set(PendingOrdersUnitRow.model_fields)
 
 
 def _distinct(rows, key) -> int:

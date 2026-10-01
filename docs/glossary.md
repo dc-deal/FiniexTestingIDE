@@ -68,6 +68,12 @@ numbered from 1; the ledger holds one row per booking period and currency. In co
 `market_config.json` (`kraken_spot`, `mt5`). Not the same as the venue. The broker whose ticks a
 unit read is its *data broker*. See [Broker Config](broker_config_guide.md).
 
+**broker configuration** (`broker_config_id`) — The symbol specifications and fee structure a run
+trades with, assembled from the broker's files at its start: for a live Kraken session the
+runtime cache's specs, the seed's fees and the detected fee tier. `config_hash` digests it; an
+AutoTrader session also freezes the content in the run-config store and names it as
+`broker_config_id` in its broker section. See [Data Storage Layout](architecture/data_storage_layout.md).
+
 **cache** — A derived store of computed results. Deleting it loses nothing; a "cache" whose
 deletion loses data is misfiled. See [Data Storage Layout](architecture/data_storage_layout.md).
 
@@ -242,6 +248,13 @@ where tick-processing time goes.
 
 **real-money session** — A live-adapter session with `dry_run` false: its orders are placed at the
 venue and move the account.
+
+**rendered configuration** (`rendered_config_id`) — What an AutoTrader session RAN with, as
+opposed to the profile file it was GIVEN: the profile with the `app_config.autotrader` layer merged
+in, every parameter's schema default filled, and the broker's `market_config.json` entry. Frozen
+in the run-config store at the session's start and named by its header. A record of what ran, not
+a schema — a later algo version may drop a parameter and the document stays true. See
+[Data Storage Layout](architecture/data_storage_layout.md).
 
 **replay** — Feeding archived data through a pipeline in recorded order: a backtest replays its
 scenarios, a mock session its window. The producer's *replay window* — envelopes re-sent after a

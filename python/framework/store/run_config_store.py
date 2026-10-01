@@ -116,6 +116,50 @@ class RunConfigStore:
         self._index.upsert(entry)
         return entry
 
+    def register_document(self, content: Dict[str, Any], kind: RunConfigKind) -> RunConfigEntry:
+        """
+        Record a document the run produced rather than read — a rendered profile, a broker
+        configuration — freezing it if its content is new.
+
+        Content-addressed like `register`, so a session that restarts on an unchanged
+        configuration names the same id and writes no second copy. The source columns stay
+        EMPTY on purpose: they mean "the file a caller asks for", and a rendered document must
+        never answer a lookup by file name — `resolve()` and `history()` would otherwise hand it
+        back as the newest version of the profile it was rendered from. It is found by its id,
+        which the run's header or its broker section names.
+
+        Args:
+            content: The document, JSON-serialisable
+            kind: One of the kinds that has no source file
+
+        Returns:
+            The entry for this content
+        """
+        if kind.has_source_file():
+            raise ValueError(f'{kind.value} is registered from its file, not from content')
+        config_id = generate_config_fingerprint(content)
+        now = datetime.now(timezone.utc)
+
+        frozen = self._frozen_path(config_id, kind)
+        if not frozen.exists():
+            self._freeze(content, frozen)
+
+        known = self._index.by_id(config_id)
+        entry = RunConfigEntry(
+            config_id=config_id,
+            kind=kind,
+            frozen_file=frozen.name,
+            source_name='',
+            source_path='',
+            source_mtime=0.0,
+            source_size=0,
+            first_seen=known.first_seen if known else now,
+            last_seen=now,
+            run_count=known.run_count if known else 0,
+        )
+        self._index.upsert(entry)
+        return entry
+
     def resolve(self, source_name: str) -> Optional[Path]:
         """
         Where a config file lives, without walking the tree.

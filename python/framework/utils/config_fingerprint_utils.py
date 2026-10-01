@@ -10,10 +10,12 @@ during profile generation.
 
 import hashlib
 import json
+from dataclasses import fields, is_dataclass
 from pathlib import Path
 from typing import Any, Dict, Optional
 
 import pyarrow.parquet as pq
+from pydantic import BaseModel
 
 
 def read_cache_metadata(cache_path: Path) -> Optional[Dict[str, str]]:
@@ -76,3 +78,36 @@ def generate_config_fingerprint(config_section: Dict[str, Any]) -> str:
     """
     normalized = json.dumps(config_section, sort_keys=True, separators=(',', ':'))
     return hashlib.sha256(normalized.encode('utf-8')).hexdigest()
+
+
+def to_plain(value: Any) -> Any:
+    """
+    Reduce one config value to something JSON can serialise and fingerprint deterministically.
+
+    The blocks come in BOTH shapes — config schemas are Pydantic while a few settings bundles stay
+    dataclasses — so both are projected rather than one being assumed. Anything else falls back
+    to `repr`, which is the one case worth stating: a value whose repr carries an address would
+    make the fingerprint differ between two identical runs, so the fallback exists to keep the
+    function total and not because such a value is expected here.
+
+    ONE projection for the fingerprint and for the document it describes: the live profile's
+    operational hash and the rendered configuration a session freezes both go through here, so
+    the hash can be recomputed from the document and the two cannot drift apart.
+
+    Args:
+        value: A config field's value — a scalar, a Pydantic block, or a settings dataclass
+
+    Returns:
+        A JSON-serialisable projection of it
+    """
+    if isinstance(value, BaseModel):
+        return value.model_dump(mode='json')
+    if is_dataclass(value) and not isinstance(value, type):
+        return {f.name: to_plain(getattr(value, f.name)) for f in fields(value)}
+    if isinstance(value, (list, tuple)):
+        return [to_plain(v) for v in value]
+    if isinstance(value, dict):
+        return {k: to_plain(v) for k, v in sorted(value.items())}
+    if isinstance(value, (str, int, float, bool)) or value is None:
+        return value
+    return repr(value)

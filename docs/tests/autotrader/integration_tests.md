@@ -41,6 +41,13 @@ control total (the periods partition the session's trades), that the numbering c
 restarts without a hole, and — since #539 — that the table reaches DISK as `io/booking_periods.json`
 carrying its reconciliation, not only the console.
 
+`TestTheSessionRecordsWhatItRan` is the same kind of proof for #547: a real session started, and
+both documents it froze resolve from what the run left behind. The header's `rendered_config_id`
+names a document the store holds, that hashes back to its id and equals a fresh rendering of the
+profile; the broker section's `broker_config_id` names a frozen broker configuration carrying the
+very `config_hash` the section reports; and `autotrader_session.log` names it too — the one record
+a session killed before its report still keeps.
+
 ### test_deployment_continuity.py
 
 The only end-to-end run of the deployment mechanism (#497). Four sessions through ONE carry-over

@@ -479,6 +479,10 @@ class PendingOrdersReport(RunScopedReport):
     (the live AutoTraderResult carries no pending stats → empty units live).
     """
     units: list[PendingOrdersUnitRow]
+    # What makes one row unique — a served list declares it. The unit name: a scenario set whose
+    # names repeat is refused at validation (`scenario_name_duplicate`), and an AutoTrader
+    # session is one unit.
+    key: list[str] = ['name']
 
 
 class ScenarioDetailsRow(BaseModel):
@@ -667,8 +671,15 @@ class RunHeader(BaseModel):
         config_id: The registered identity of that configuration (#538) — SHA256 over its
             normalised content, so two runs naming the same id ran the same configuration and a
             changed file mints a new one. Empty on a run that started before the store existed,
-            and on one whose config could not be registered; the per-run snapshot beside it is
-            the evidence either way, and this is what makes it FINDABLE
+            and on one whose config could not be registered. It names the INPUT to the cascade —
+            what the run was given, not what it ran with
+        rendered_config_id: What an AutoTrader session RAN with (#547): the run-config store's
+            id of the rendered profile — the `app_config` layer merged in, every schema default
+            filled, the broker's `market_config` entry beside it. Rendered before this header is
+            written, so a session that dies at its first tick still names it. Empty on a
+            simulation run (its half is not built yet), on a run written before the field
+            existed, and on a session whose profile could not be rendered — that last case says
+            so in its session log
         app_version: The app version that produced it
         git_commit: The commit it ran from, when the working tree exposes one
         reporting: Whether this run was COMMISSIONED to write report artifacts. Declared at
@@ -700,6 +711,7 @@ class RunHeader(BaseModel):
     parent_kind: Optional[ParentKind] = None
     config_snapshot: str = ''
     config_id: str = ''
+    rendered_config_id: str = ''
     app_version: str = ''
     git_commit: Optional[str] = None
     reporting: RunReporting = RunReporting.EXPECTED
@@ -719,16 +731,18 @@ class RunConfigSnapshot(BaseModel):
     WHAT moved, because both the file name and the content id are POINTERS and nothing served
     what they point at.
 
-    `config` is the snapshot PARSED. The bytes are copied verbatim into the run directory, so a
-    raw form would also be defensible; parsed is served because every other route on this API
-    answers with a model, and because a consumer comparing two runs wants the difference in the
-    VALUES rather than in the whitespace.
+    `config` is the snapshot PARSED, read from the run-config store's frozen copy under
+    `config_id` — the per-run copy in the run directory was retired (#546). Parsed is served
+    because every other route on this API answers with a model, and because a consumer comparing
+    two runs wants the difference in the VALUES rather than in the whitespace. It is the SOURCE
+    the run was given; what an AutoTrader session ran with is the rendered profile its header
+    names under `rendered_config_id` (#547), which this route does not serve.
     """
     run_id: str
-    # The file name the run's header DECLARED, which is not always a file that exists: the
-    # header is written at run start and the copy happens later, so a session that died in
-    # between — or one whose file logging was switched off — declares a snapshot it never
-    # filed. That case is a 404 naming the snapshot, never a 404 naming the run.
+    # The file name the run's header DECLARED, which is not always a configuration the store
+    # holds: a run whose config could not be registered, or one that predates the store, names a
+    # snapshot nothing can resolve. That case is a 404 naming the snapshot, never a 404 naming
+    # the run.
     config_snapshot: str
     # The content fingerprint the run-config store minted (#538). Served so a consumer can
     # assert the bytes it received are the ones the index attributes to this run, rather than
@@ -1788,6 +1802,12 @@ class BrokerInfoRow(BaseModel):
     stopout_level: float = 0.0
     hedging_allowed: bool = False
     config_hash: str = ''
+    # Where the session's broker configuration was frozen (#547) — the run-config store id of
+    # the content `config_hash` only digests: symbol specs, fee structure, detected tier. Read
+    # it back to give a later backtest the configuration this session had. Empty for a
+    # simulation unit, which reads the archive's broker files at run time, and on a session
+    # recorded before the freeze existed.
+    broker_config_id: str = ''
     scenarios: list[str] = []
     symbols: list[BrokerSymbolRow] = []
 

@@ -59,14 +59,19 @@ class _FakeBrokerConfig:
     Typed test double for BrokerConfig: hands back REAL specs (the payloads the builder
     maps are real domain types; only this thin container is a local stand-in). Attribute
     + method names mirror the real BrokerConfig contract the builder uses
-    (`broker_type` enum, `config_hash`, `get_broker_specification`, `get_symbol_specification`).
+    (`broker_type` enum, `config_hash`, `get_broker_specification`, `get_symbol_specification`,
+    `get_frozen_config_id`).
     """
 
-    def __init__(self, broker_type, broker_spec, symbol_specs, config_hash):
+    def __init__(self, broker_type, broker_spec, symbol_specs, config_hash, frozen_config_id=''):
         self.broker_type = broker_type
         self._broker_spec = broker_spec
         self._symbol_specs = symbol_specs
         self.config_hash = config_hash
+        self._frozen_config_id = frozen_config_id
+
+    def get_frozen_config_id(self) -> str:
+        return self._frozen_config_id
 
     def get_broker_specification(self) -> BrokerSpecification:
         return self._broker_spec
@@ -75,10 +80,10 @@ class _FakeBrokerConfig:
         return self._symbol_specs[symbol]
 
 
-def _fake_config(symbols, config_hash='abcd1234') -> _FakeBrokerConfig:
+def _fake_config(symbols, config_hash='abcd1234', frozen_config_id='') -> _FakeBrokerConfig:
     symbol_specs = {sym: _symbol_spec(sym, sym[:3], sym[3:]) for sym in symbols}
     return _FakeBrokerConfig(
-        BrokerType.KRAKEN_SPOT, _broker_spec(), symbol_specs, config_hash)
+        BrokerType.KRAKEN_SPOT, _broker_spec(), symbol_specs, config_hash, frozen_config_id)
 
 
 def _batch(symbols, scenarios, config_hash='abcd1234') -> BatchExecutionSummary:
@@ -132,6 +137,13 @@ class TestBuildFromSession:
         assert row.scenarios == []
         assert [s.symbol for s in row.symbols] == ['BTCUSD']
         assert row.symbols[0].base_currency == 'BTC' and row.symbols[0].quote_currency == 'USD'
+        assert row.broker_config_id == ''
+
+    def test_the_row_names_where_the_session_froze_its_configuration(self):
+        # #547: the content `config_hash` only digests, readable again by this id.
+        config = _fake_config(['BTCUSD'], frozen_config_id='8d41e0' + '0' * 58)
+        row = build_broker_report_from_session(_RUN_ID, config, 'BTCUSD').units[0]
+        assert row.broker_config_id == '8d41e0' + '0' * 58
 
 
 class TestRender:

@@ -148,13 +148,8 @@ class WorkerFactory:
         for warning in warnings:
             self._logger.warning(f'⚠️ {warning}')
 
-        merged_params = apply_defaults(
-            worker_config, worker_class.get_parameter_schema()
-        )
-
-        # Inject resolved worker_type for performance tracking
-        resolved_key = self._resolve_key(worker_type, base_path)
-        merged_params['worker_type'] = resolved_key
+        merged_params = self._parameters_with_defaults(
+            worker_class, worker_type, worker_config, base_path)
 
         validated_params = ValidatedParameters(merged_params)
 
@@ -171,6 +166,59 @@ class WorkerFactory:
         )
 
         return worker_instance
+
+    def resolve_parameters(
+        self,
+        worker_type: str,
+        worker_config: Dict[str, Any] = None,
+        base_path: Optional[Path] = None,
+    ) -> Dict[str, Any]:
+        """
+        The parameters a worker of this type is constructed with — without constructing it.
+
+        The same rule `create_worker` applies, from the same helper: the schema's defaults filled
+        in, and the resolved `worker_type` injected. What a record of a run says a worker ran with
+        is therefore what it was built with, by construction.
+
+        Args:
+            worker_type: Worker reference — "CORE/rsi" or a file path
+            worker_config: User-provided parameters for this worker
+            base_path: Base directory for resolving relative file paths
+
+        Returns:
+            The full parameter dict, defaults included
+        """
+        worker_class, _ = self.resolve_worker_class(worker_type, base_path)
+        return self._parameters_with_defaults(
+            worker_class, worker_type, worker_config or {}, base_path)
+
+    def _parameters_with_defaults(
+        self,
+        worker_class: Type[AbstractWorker],
+        worker_type: str,
+        worker_config: Dict[str, Any],
+        base_path: Optional[Path],
+    ) -> Dict[str, Any]:
+        """
+        Fill a worker's parameters with its schema's defaults and inject its resolved type.
+
+        Args:
+            worker_class: The resolved worker class
+            worker_type: The worker reference as the configuration names it
+            worker_config: User-provided parameters
+            base_path: Base directory for resolving relative file paths
+
+        Returns:
+            The full parameter dict
+        """
+        merged_params = apply_defaults(
+            worker_config, worker_class.get_parameter_schema()
+        )
+
+        # Inject resolved worker_type for performance tracking
+        resolved_key = self._resolve_key(worker_type, base_path)
+        merged_params['worker_type'] = resolved_key
+        return merged_params
 
     def create_workers_from_config(
         self,

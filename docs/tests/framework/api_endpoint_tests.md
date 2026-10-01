@@ -126,7 +126,9 @@ optional list included — so a route added tomorrow is covered the day it exist
 - `TestTheKeyActuallySeparatesTheRows` — adversarial rows that differ only in the part one would
   be tempted to drop: a deployment's currency, a booking period's run, and a trade's unit and
   closing tick (a partial close books several records of one position, and two scenarios of one
-  symbol both count from `pos_<symbol>_1`).
+  symbol both count from `pos_<symbol>_1`). Plus the pending-orders unit, keyed by its name
+  (contract 19): the run-scoped walk exempts every report route, so that case is what holds the
+  declaration.
 
 ## Mocking Strategy
 

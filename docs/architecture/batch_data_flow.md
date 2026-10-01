@@ -86,7 +86,10 @@ Each run writes a `header.json` at its START — id, start time, category, owner
 belongs to (a sweep or a deployment today; a session once #476's day records exist). At the start
 rather than the end, because a run that crashes is exactly the run somebody needs to identify. The
 same header states where the run came from and, for a run that reports, which code it ran — see
-[Run Origin and Code Identity](run_origin_and_code_identity.md).
+[Run Origin and Code Identity](run_origin_and_code_identity.md). It names the configuration
+twice: `config_id`, the source file it was given, and — for an AutoTrader session —
+`rendered_config_id`, what it ran with once the `app_config` layer and every schema default were
+applied (see [Data Storage Layout](data_storage_layout.md)).
 
 `runs/runs_index.parquet` is ONE compacted file DERIVED from those headers, and it is what the API
 reads. Derived is the point: it may be deleted or go stale without anything being lost —
