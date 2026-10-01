@@ -34,8 +34,8 @@ Both managers share the same PendingOrder dataclass and the same
 storage/query interface. The TradeExecutor subclasses delegate
 has_pending_orders() and is_pending_close() to their respective manager.
 """
+import time
 from abc import ABC
-from datetime import datetime, timezone
 from typing import Dict, List, Optional
 
 from python.framework.logging.abstract_logger import AbstractLogger
@@ -192,6 +192,27 @@ class AbstractPendingOrderManager(ABC):
         """
         return self._pending_stats
 
+    @staticmethod
+    def calculate_pending_latency_ms(pending: PendingOrder) -> Optional[float]:
+        """
+        Calculate a live order's pending duration in milliseconds, from submission to now.
+
+        Measured on the MONOTONIC clock, never on the wall clock: NTP can step the
+        wall clock backwards inside the submit-to-fill window, and the resulting
+        negative latency lands in a min/max aggregate where it reads like a venue
+        fault. A missing stamp yields None rather than a wall-clock substitute — an
+        unmeasurable duration is reported as unmeasured, not as a wrong number.
+
+        Args:
+            pending: Pending order carrying the submission stamps
+
+        Returns:
+            Latency in ms, or None when the order carries no monotonic stamp
+        """
+        if pending.timing.submitted_monotonic is None:
+            return None
+        return (time.monotonic() - pending.timing.submitted_monotonic) * 1000
+
     # ============================================
     # Cleanup
     # ============================================
@@ -212,7 +233,7 @@ class AbstractPendingOrderManager(ABC):
 
         Args:
             current_msc: Current millisecond timestamp for latency calculation (simulation).
-                         None for live mode (uses wall-clock time).
+                         None for live mode (measured on the monotonic clock).
             reason: Why the force-close happened (e.g. "scenario_end", "manual_abort")
         """
         if not self._pending_orders:
@@ -231,10 +252,9 @@ class AbstractPendingOrderManager(ABC):
             if pending.timing.placed_at_msc is not None and current_msc is not None:
                 latency_ms = current_msc - pending.timing.placed_at_msc
 
-            # Live: time-based latency
+            # Live: monotonic duration since submission — None when it cannot be measured
             if pending.timing.submitted_at is not None:
-                elapsed = datetime.now(timezone.utc) - pending.timing.submitted_at
-                latency_ms = elapsed.total_seconds() * 1000
+                latency_ms = self.calculate_pending_latency_ms(pending)
 
             self.record_outcome(
                 pending_order=pending,

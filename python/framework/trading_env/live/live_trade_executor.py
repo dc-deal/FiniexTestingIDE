@@ -33,6 +33,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Callable, Dict, FrozenSet, List, Optional, Set, Tuple, Union
 
 from python.framework.logging.abstract_logger import AbstractLogger
+from python.framework.trading_env.abstract_pending_order_manager import AbstractPendingOrderManager
 from python.framework.trading_env.abstract_trade_executor import AbstractTradeExecutor, ExecutorMode
 from python.framework.trading_env.broker_config import BrokerConfig
 from python.framework.trading_env.live.live_request_processor import LiveRequestProcessor
@@ -668,7 +669,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
                 return
 
             # Record pending outcome (latency = time from submission to fill)
-            latency_ms = self._calculate_pending_latency_ms(filled)
+            latency_ms = AbstractPendingOrderManager.calculate_pending_latency_ms(filled)
             self._request_processor.record_outcome(
                 filled, PendingOrderOutcome.FILLED, latency_ms=latency_ms)
 
@@ -689,7 +690,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
                 return
 
             # Record pending outcome
-            latency_ms = self._calculate_pending_latency_ms(rejected)
+            latency_ms = AbstractPendingOrderManager.calculate_pending_latency_ms(rejected)
             self._request_processor.record_outcome(
                 rejected, PendingOrderOutcome.REJECTED, latency_ms=latency_ms)
 
@@ -757,7 +758,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
                 )
 
         # Record pending outcome as TIMED_OUT
-        latency_ms = self._calculate_pending_latency_ms(pending)
+        latency_ms = AbstractPendingOrderManager.calculate_pending_latency_ms(pending)
         self._request_processor.record_outcome(
             pending, PendingOrderOutcome.TIMED_OUT, latency_ms=latency_ms)
 
@@ -3534,31 +3535,6 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         stats.latency_queue_count = self._request_processor.get_pending_count()
         self._populate_active_order_snapshots(stats)
         return stats
-
-    # ============================================
-    # Helpers
-    # ============================================
-
-    @staticmethod
-    def _calculate_pending_latency_ms(pending: PendingOrder) -> Optional[float]:
-        """
-        Calculate pending duration in milliseconds, from submission to now.
-
-        Measured on the MONOTONIC clock, never on the wall clock: NTP can step the
-        wall clock backwards inside the submit-to-fill window, and the resulting
-        negative latency lands in a min/max aggregate where it reads like a venue
-        fault. A missing stamp yields None rather than a wall-clock substitute — an
-        unmeasurable duration is reported as unmeasured, not as a wrong number.
-
-        Args:
-            pending: Pending order carrying the submission stamps
-
-        Returns:
-            Latency in ms, or None when the order carries no monotonic stamp
-        """
-        if pending.timing.submitted_monotonic is None:
-            return None
-        return (time.monotonic() - pending.timing.submitted_monotonic) * 1000
 
     # ============================================
     # Cleanup
