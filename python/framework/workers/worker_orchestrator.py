@@ -3,7 +3,6 @@ FiniexTestingIDE - Worker Coordinator ()
 Coordinates multiple workers and delegates decision-making to DecisionLogic
 """
 
-import re
 import time
 import traceback
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -191,7 +190,7 @@ class WorkerOrchestrator:
                 )
                 worker.set_performance_logger(perf_tracker)
 
-            decision_logic_type = self._extract_decision_logic_type(decision_logic)
+            decision_logic_type = decision_logic.get_decision_logic_type()
             decision_perf_tracker = DecisionLogicPerformanceTracker(
                 decision_logic_type=decision_logic_type,
                 decision_logic_name=decision_logic.name
@@ -226,29 +225,6 @@ class WorkerOrchestrator:
         # Fallback: Use class name
         class_name = worker.__class__.__name__.replace('Worker', '').lower()
         return f'CORE/{class_name}'
-
-    def _extract_decision_logic_type(self, decision_logic: AbstractDecisionLogic) -> str:
-        """
-        Extract decision logic type from instance.
-
-        Tries to get it from config or falls back to class name.
-
-        Args:
-            decision_logic: Decision logic instance
-
-        Returns:
-            Decision logic type string (e.g., "CORE/simple_consensus")
-        """
-        # Try to get from config
-        if hasattr(decision_logic, 'config') and isinstance(decision_logic.config, dict):
-            if 'decision_logic_type' in decision_logic.config:
-                return decision_logic.config['decision_logic_type']
-
-        # Fallback: Use class name
-        class_name = decision_logic.__class__.__name__
-        # Convert CamelCase to snake_case
-        snake_case = re.sub(r'(?<!^)(?=[A-Z])', '_', class_name).lower()
-        return f'CORE/{snake_case}'
 
     def _normalize_worker_ref(self, type_str: str, base_path: Optional[Path] = None) -> str:
         """

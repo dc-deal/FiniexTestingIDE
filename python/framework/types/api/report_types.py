@@ -1659,9 +1659,11 @@ class WorkerStatRow(BaseModel):
     max_time_ms: float = 0.0
     compute_basis: str = 'live'     # #420 cadence basis (live / bar_close)
     last_compute_tick: int = -1     # #420 tick index of the last real compute (idle telemetry)
-    # Cadence, derived here so every surface reads the same figure
-    compute_ratio_pct: float = 0.0  # call_count / the unit's ticks_processed
-    ticks_idle: int = 0             # ticks since the last real compute
+    # Cadence, derived here so every surface reads the same figure. Null where it is not
+    # defined: no tick processed (no ratio), a worker that never computed (no idle distance),
+    # and on the run-level totals, which span several units' tick counts
+    compute_ratio_pct: Optional[float] = None   # call_count / the unit's ticks_processed
+    ticks_idle: Optional[int] = None            # ticks since the last real compute
 
 
 class WorkerDecisionUnitRow(BaseModel):
@@ -1669,21 +1671,28 @@ class WorkerDecisionUnitRow(BaseModel):
     Per-unit worker + decision performance (#398, **unified** — sim scenario / AutoTrader
     session). Coordination fields included: both pipelines' orchestrators count the ticks that
     reach the algo path.
+
+    The decision counters and timings exist only where the unit tracked them
+    (`worker_decision_tracked`; the simulation's default is off, because the tracker sits on
+    the hot path). Untracked they are null — a zero would claim that the logic decided nothing.
+    The coordination fields are always counted.
     """
     name: str
     symbol: str
-    # decision logic
-    decision_logic_type: str = ''
-    decision_logic_name: str = ''
-    decision_count: int = 0
-    buy_signals: int = 0
-    sell_signals: int = 0
-    flat_signals: int = 0
-    trades_requested: int = 0
-    decision_total_time_ms: float = 0.0
-    decision_avg_time_ms: float = 0.0
-    decision_min_time_ms: float = 0.0
-    decision_max_time_ms: float = 0.0
+    # decision logic — named whether or not anything was counted; null only where the unit
+    # produced no decision statistics at all (a session that ended at startup)
+    decision_logic_type: Optional[str] = None
+    decision_logic_name: Optional[str] = None
+    worker_decision_tracked: bool = False
+    decision_count: Optional[int] = None
+    buy_signals: Optional[int] = None
+    sell_signals: Optional[int] = None
+    flat_signals: Optional[int] = None
+    trades_requested: Optional[int] = None
+    decision_total_time_ms: Optional[float] = None
+    decision_avg_time_ms: Optional[float] = None
+    decision_min_time_ms: Optional[float] = None
+    decision_max_time_ms: Optional[float] = None
     # coordination (both pipelines)
     ticks_processed: int = 0
     parallel_workers: bool = False

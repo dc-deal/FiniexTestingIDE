@@ -23,7 +23,7 @@ from typing import List
 
 # One monotonic integer. Not a date and not the app version: a consumer compares it for
 # equality, and equality is the only question they have.
-API_CONTRACT_VERSION = 20
+API_CONTRACT_VERSION = 21
 
 # Every response carries it, so a saved fixture carries it too.
 CONTRACT_HEADER = 'X-Api-Contract'
@@ -31,20 +31,11 @@ CONTRACT_HEADER = 'X-Api-Contract'
 # What moved INTO the current version. One line per change, written for someone who cannot
 # read this repository.
 CHANGES: List[str] = [
-    'reports/runs/{run_id}/order-history: a rejected row states its side (`action`), its '
-    '`symbol`, `direction` and `requested_lots`, and when it was refused — `?symbol=` no longer '
-    'drops rejections. Runs recorded before carry the symbol and the side; direction, size and '
-    'time stay null there',
-    'order-history: `execution_time` is renamed `event_time` — when the row\'s event happened '
-    '(the fill, the refusal, the expiry) on the run\'s clock; every other `execution_time` in the '
-    'API is a duration',
-    'order-history: an absent value is null, never an empty string or 0.0 — position_id, '
-    'direction, action, requested_lots, executed_lots, executed_price, event_time, '
-    'rejection_reason, rejection_message. `direction`, `action`, `status` and `rejection_reason` '
-    'are enums in the schema; their values are unchanged',
-    'order-history: an expired row states its direction and requested lots, and the expiry of a '
-    'close-side order (a protective stop) says `close` instead of `open`',
-    'reports/runs/{run_id}/pending-orders: an active order\'s `order_type` and `direction` are '
-    'enums in the schema. The active-order lists hold the orders still resting when the unit\'s '
-    'data ended — in a backtest the same orders are recorded `expired` in order-history',
+    'reports/runs/{run_id}/worker-decision: every unit says whether it counted its decisions and '
+    'timed its workers — `worker_decision_tracked` (off by default in a backtest). Untracked, '
+    'the decision counters and timings are null instead of 0, and the unit still names its '
+    'logic; runs recorded before carry the flag and the nulls, their logic name stays null',
+    'worker-decision: a worker\'s `compute_ratio_pct` is null when no tick was processed, '
+    '`ticks_idle` null when the worker never computed (it read 0, "just computed"), and both are '
+    'null on `worker_totals`, which span several units',
 ]

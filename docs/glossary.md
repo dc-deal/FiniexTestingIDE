@@ -369,3 +369,9 @@ and ticks, a SIGNAL from pre-collected external data. See [Worker Naming](user_g
 instance name (`rsi_fast`) to its type string (`CORE/rsi`), and the instance's parameters sit under
 `workers.<instance name>`. One strategy may use the same worker type twice under two names. See
 [Worker Naming](user_guides/worker_naming_doc.md).
+
+**worker/decision tracking** (`worker_decision_tracked`; the switch is
+`performance_tracking.worker_decision_tracking`) — Whether a run unit timed its workers and counted
+its decisions. Off by default in a backtest, because the tracker sits on the hot path. Untracked,
+those counters are null in every report — the logic still decided on every tick, nobody counted
+it — while the logic's name and the processed ticks are known either way.

@@ -241,6 +241,12 @@ Tests end-to-end factory workflows: config → validation → instantiation for 
 |------|-------------|
 | `test_consensus_oversold_too_high_warns` | Non-strict mode warns but creates logic with out-of-range value |
 
+#### TestAnUntrackedLogicNamesItself
+
+| Test | Description |
+|------|-------------|
+| `test_the_type_and_name_come_back_without_a_tracker` | Without a performance tracker (the simulation's default) `get_statistics()` still names the logic's type and name, unflagged as tracked — so a report can name it and mark its counters as not counted |
+
 ---
 
 ### worker_computation_tests/

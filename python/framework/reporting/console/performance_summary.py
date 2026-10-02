@@ -46,7 +46,9 @@ class PerformanceSummary(AbstractBatchSummarySection):
         Args:
             worker_decision_report: The unified worker/decision report (#398)
         """
-        self._units: List[WorkerDecisionUnitRow] = worker_decision_report.units
+        # Only a tracked unit has figures to show; an untracked one carries null counters.
+        self._units: List[WorkerDecisionUnitRow] = [
+            unit for unit in worker_decision_report.units if unit.worker_decision_tracked]
 
     def _layer_a_has_data(self) -> bool:
         """
@@ -157,10 +159,11 @@ class PerformanceSummary(AbstractBatchSummarySection):
                 # Cadence telemetry (#420): actual computes vs ticks + ticks idle
                 # since the last compute (BAR_CLOSE serves a cached value in between).
                 total_ticks = unit.ticks_processed
-                if total_ticks > 0:
+                if total_ticks > 0 and w.compute_ratio_pct is not None:
                     # `basis=` in front: bare, the compute basis `live` read as a live session.
                     cadence = (f'basis={w.compute_basis:9} {w.call_count:>5}/{total_ticks} '
-                               f'computes ({w.compute_ratio_pct:4.0f}%, {w.ticks_idle} idle)')
+                               f'computes ({w.compute_ratio_pct:4.0f}%, '
+                               f"{w.ticks_idle if w.ticks_idle is not None else '—'} idle)")
                 else:
                     cadence = f'basis={w.compute_basis:9} {w.call_count:>5} computes'
                 print(f"      {renderer.blue(f'{w.worker_name:15}->{w.worker_type:15}')}  "
@@ -181,7 +184,7 @@ class PerformanceSummary(AbstractBatchSummarySection):
                   f'Status: {status}')
 
         # Decision logic
-        if unit.decision_logic_name or unit.decision_count:
+        if unit.worker_decision_tracked:
             print(
                 f"\n{renderer.bold('   🧠 DECISION LOGIC:')} {unit.decision_logic_name} ({unit.decision_logic_type})")
             print(f'      Decisions: {unit.decision_count}  |  '

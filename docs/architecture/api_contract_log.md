@@ -26,6 +26,27 @@ fails to parse.
 The server serves the current version's lines and this log keeps every version. A test holds the
 newest heading here to `API_CONTRACT_VERSION`, so step 3 cannot be skipped unnoticed.
 
+## Version 21 — 2026-10-02 (#555, viewer#21)
+
+The worker-decision report says "not counted" instead of zero.
+
+- `GET /api/v1/reports/runs/{run_id}/worker-decision`: every unit carries `worker_decision_tracked`
+  — whether it counted its decisions and timed its workers. A backtest leaves it off by default,
+  because the tracker sits on the hot path. Untracked, `decision_count`, `buy_signals`,
+  `sell_signals`, `flat_signals`, `trades_requested` and the four `decision_*_time_ms` are null;
+  they read 0, so a logic that decided on 2,737 ticks said it decided nothing. The unit still names
+  its logic (`decision_logic_type`, `decision_logic_name`), which an untracked unit left empty, and
+  `ticks_processed` is counted either way. `workers` stays empty when untracked — that empty list is
+  true.
+- `worker-decision`: a worker row's `compute_ratio_pct` is null when no tick was processed, and
+  `ticks_idle` is null when the worker never computed — it read 0, which says "just computed". On
+  `worker_totals`, which span several units' tick counts, both are null.
+
+Every stored run was carried over: a unit with no logic type was not tracked — a tracker stamps the
+type on every unit it counts — so its counters are null now; a unit with one is marked tracked and
+keeps its figures. The logic name of an old untracked unit stays null, because only a new run
+stamps it.
+
 ## Version 20 — 2026-10-02 (viewer#21, #557)
 
 A refused order now says what was refused, and the order history says "absent" as null.
