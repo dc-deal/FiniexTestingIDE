@@ -78,7 +78,7 @@ def filter_order_history_report(
     for row in report.orders:
         if symbol is not None and row.symbol != symbol:
             continue
-        if status is not None and row.status != status:
+        if status is not None and row.status.value != status:
             continue
         rows.append(row)
 

@@ -133,7 +133,7 @@ class TestTradesQueryAsyncRoundtrip:
         request_processor.set_executor_hooks(
             fill_open=lambda p, fp: None,
             fill_close=lambda p, fp: None,
-            on_rejection=lambda d, r: None,
+            on_rejection=lambda pending, reason, message: None,
             trades_response=lambda resp: captured.append(resp),
         )
         request_processor.start_worker()
@@ -170,7 +170,7 @@ class TestTradesQueryAsyncRoundtrip:
         request_processor.set_executor_hooks(
             fill_open=lambda p, fp: None,
             fill_close=lambda p, fp: None,
-            on_rejection=lambda d, r: None,
+            on_rejection=lambda pending, reason, message: None,
             trades_response=lambda resp: captured.append(resp),
         )
         request_processor.start_worker()
@@ -194,7 +194,7 @@ class TestTradesQueryAsyncRoundtrip:
         request_processor.set_executor_hooks(
             fill_open=lambda p, fp: None,
             fill_close=lambda p, fp: None,
-            on_rejection=lambda d, r: None,
+            on_rejection=lambda pending, reason, message: None,
             trades_response=lambda resp: captured.append(resp),
         )
         request_processor.start_worker()

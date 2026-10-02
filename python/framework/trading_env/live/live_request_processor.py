@@ -80,10 +80,8 @@ from python.framework.types.trading_env_types.latency_simulator_types import (
 from python.framework.types.trading_env_types.order_types import (
     RESTING_ORDER_TYPES,
     OrderDirection,
-    OrderResult,
     OrderType,
     RejectionReason,
-    create_rejection_result,
 )
 from python.framework.types.trading_env_types.submission_metadata_types import SubmissionMetadata
 from python.framework.utils.connection_ladder import ConnectionLadder
@@ -153,7 +151,7 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         # the executor's _active_*_orders / portfolio (Hybrid pattern).
         self._fill_open_hook: Optional[Callable[[PendingOrder, float], None]] = None
         self._fill_close_hook: Optional[Callable[[PendingOrder, float], None]] = None
-        self._rejection_hook: Optional[Callable[[OrderDirection, OrderResult], None]] = None
+        self._rejection_hook: Optional[Callable[[PendingOrder, RejectionReason, str], None]] = None
         self._resting_response_hook: Optional[Callable[[str, 'BrokerResponse'], None]] = None
         self._modify_response_hook: Optional[Callable[[str, 'BrokerResponse'], None]] = None
         self._cancel_response_hook: Optional[Callable[[str, 'BrokerResponse'], None]] = None
@@ -708,7 +706,7 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         self,
         fill_open: Callable[[PendingOrder, float], None],
         fill_close: Callable[[PendingOrder, float], None],
-        on_rejection: Callable[[OrderDirection, OrderResult], None],
+        on_rejection: Callable[[PendingOrder, RejectionReason, str], None],
         resting_response: Optional[Callable[[str, BrokerResponse], None]] = None,
         modify_response: Optional[Callable[[str, BrokerResponse], None]] = None,
         cancel_response: Optional[Callable[[str, BrokerResponse], None]] = None,
@@ -730,9 +728,11 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
                        MARKET OPEN fills (portfolio add, history append)
             fill_close: _fill_close_order(pending, fill_price) — handles
                         MARKET CLOSE fills (portfolio close, history append)
-            on_rejection: _record_async_rejection(direction, OrderResult) —
+            on_rejection: _record_processor_rejection(pending, reason, message) —
                           handles MARKET broker-side rejection (counter,
-                          history, listener notification)
+                          history, listener notification). The executor builds
+                          the record: it owns the canonical clock the
+                          rejection is stamped with, and this processor does not
             resting_response: Optional — _handle_resting_submit_response(order_id,
                             broker_response). Invoked for LIMIT / STOP / STOP_LIMIT
                             submit responses so the executor can update its
@@ -1305,12 +1305,9 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
                 self._broker_ref_index.pop(pending.broker_ref, None)
 
             if self._rejection_hook is not None:
-                rejection = create_rejection_result(
-                    order_id=item.order_id,
-                    reason=RejectionReason.BROKER_ERROR,
-                    message=f"Broker rejected: {response.rejection_reason or 'unknown'}",
-                )
-                self._rejection_hook(pending.direction, rejection)
+                self._rejection_hook(
+                    pending, RejectionReason.BROKER_ERROR,
+                    f"Broker rejected: {response.rejection_reason or 'unknown'}")
             return
 
         # Non-rejected: confirm broker_ref and update index

@@ -33,6 +33,12 @@ several is a *total* that says so. See *total final equity*.
 balance plus margin arithmetic). Configured as `trading_model`, read at runtime as `spot_mode`.
 See [Market Model](architecture/market_model.md).
 
+**active orders** (`active_limit_orders`, `active_stop_orders` on the pending-orders report) — The
+orders still resting when a run unit's data ended. In a backtest the same orders are recorded as
+*expired* in that same step, so the lists say what was waiting at the end, never that it is still
+open. A LIMIT sits in the limit list, a STOP or STOP_LIMIT whose trigger was not reached in the stop
+list. See *resting*.
+
 **adapter** (broker adapter) — The code that speaks one venue's API behind one interface the rest
 of the framework uses. Chosen by `adapter_type`: `mock` for the broker-neutral `MockBrokerAdapter`,
 `live` for a real venue's adapter. See [Adapter Development](user_guides/adapter/adapter_development_guide.md).
@@ -148,9 +154,15 @@ See [AutoTrader Configuration](autotrader/autotrader_configuration.md).
 without logging an error shows in the *run outcome*, not here. See
 [Warnings & Errors](architecture/warnings_errors_tiers.md).
 
+**event time** (`event_time` on an order-history row) — When that row's event happened, on the
+run's *canonical clock*: the fill on an `executed` row, the refusal on a `rejected` one, the expiry
+on an `expired` one; null on a `pending` row. A point in time — not the *execution time*, which is
+a duration.
+
 **execution time** — How long a run or one of its units took on the *wall clock*:
 `execution_time_ms` for a scenario, `execution_time_s` for a whole backtest run. It says nothing
-about how much market time was processed — that is the *tick timespan*.
+about how much market time was processed — that is the *tick timespan* — and it is never a point
+in time: when an order's event happened is its *event time*.
 
 **fees charged** · **total fees** (`fees_charged`, `total_fees`) — Two fee totals of one run.
 *Total fees* are the fees of the trades it CLOSED — the population every trade row, booking period
@@ -215,6 +227,12 @@ ignorable by design. Not the *warning count*. See [Warnings & Errors](architectu
 previous period's close, read at the same instant, or a unit's first observed value. Stamped, never
 `final_equity − net_pnl`, which would drop what was still open. See
 [Accounting Periods](architecture/accounting_periods.md).
+
+**order history** — The run's order-lifecycle records: one row per EVENT of an order, not one per
+order. An order appears as `pending` when it enters the pipeline, `executed` when it fills, and a
+`close` row per close; a refused order as `rejected`, stating its side and symbol like any other
+row. Rows are in the order they happened within their unit, and that position is their identity —
+the order id repeats.
 
 **orders to** (`orders_to`) — Where a run's orders went: `simulated` or `venue`. Recorded on every
 run header. See [Introduction](introduction_to_the_ide.md#the-kinds-of-run).

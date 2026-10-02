@@ -82,7 +82,6 @@ from python.framework.types.trading_env_types.order_types import (
     OrderStatus,
     OrderType,
     RejectionReason,
-    create_rejection_result,
 )
 from python.framework.types.trading_env_types.pending_order_stats_types import PendingOrderStats
 from python.framework.types.trading_env_types.submission_metadata_types import SubmissionMetadata
@@ -277,7 +276,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         self._request_processor.set_executor_hooks(
             fill_open=self._fill_open_order,
             fill_close=self._fill_close_order,
-            on_rejection=self._record_async_rejection,
+            on_rejection=self._record_processor_rejection,
             resting_response=self._handle_resting_submit_response,
             modify_response=self._handle_modify_response,
             cancel_response=self._handle_cancel_response,
@@ -696,8 +695,8 @@ class LiveTradeExecutor(AbstractTradeExecutor):
 
             # Record rejection in order history
             self._orders_rejected += 1
-            rejection = create_rejection_result(
-                order_id=rejected.pending_order_id,
+            rejection = self._rejection_for_pending(
+                rejected,
                 reason=RejectionReason.BROKER_ERROR,
                 message=f"Broker rejected: {response.rejection_reason or 'unknown'}",
             )
@@ -728,6 +727,9 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             # resolution being able to RUN, because it needs the canonical clock. Before the
             # first event there is none, and suppressing the timeout for a resolution that
             # cannot start would leave the order with no exit at all.
+            # The give-up below needs the clock as well — its rejection is stamped with it
+            # and raises without it. Every caller runs after the loop injected it: a tick
+            # sets it, and the loop sets it one line before every heartbeat.
             return
 
         self._book_order_given_up(pending)
@@ -781,8 +783,8 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         unresolved = (
             pending.execution_state.in_flight_operation is PendingOperation.PENDING_SUBMIT)
         self._orders_rejected += 1
-        rejection = create_rejection_result(
-            order_id=pending.pending_order_id,
+        rejection = self._rejection_for_pending(
+            pending,
             reason=(RejectionReason.BROKER_UNREACHABLE if unresolved
                     else RejectionReason.BROKER_ERROR),
             message=(
@@ -829,6 +831,26 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         self._check_order_history_limit()
         self._order_history.append(rejection)
         self._notify_outcome(direction, rejection, None)
+
+    def _record_processor_rejection(
+        self,
+        pending: PendingOrder,
+        reason: RejectionReason,
+        message: str,
+    ) -> None:
+        """
+        Build and record a rejection the request processor reported for an async submit.
+
+        The processor names the refused order and why; the record is built HERE because
+        it is stamped with the canonical clock, which only the executor holds.
+
+        Args:
+            pending: The refused order, as the processor held it
+            reason: Why the broker refused it
+            message: The human sentence beside the reason
+        """
+        self._record_async_rejection(
+            pending.direction, self._rejection_for_pending(pending, reason, message))
 
     def _handle_resting_submit_response(
         self,
@@ -887,8 +909,8 @@ class LiveTradeExecutor(AbstractTradeExecutor):
                     f"{response.rejection_reason or 'unknown'}. The position is open and "
                     f'its stop is enforced by THIS PROCESS ONLY — it does not survive a '
                     f'restart.')
-            rejection = create_rejection_result(
-                order_id=order_id,
+            rejection = self._rejection_for_pending(
+                pending,
                 reason=RejectionReason.BROKER_ERROR,
                 message=(f'Broker rejected {order_label}: '
                          f"{response.rejection_reason or 'unknown'}"),
@@ -1105,8 +1127,8 @@ class LiveTradeExecutor(AbstractTradeExecutor):
                 f"Broker rejected modify for {order_id}: "
                 f"{response.rejection_reason or 'unknown'}"
             )
-            rejection = create_rejection_result(
-                order_id=order_id,
+            rejection = self._rejection_for_pending(
+                pending,
                 reason=RejectionReason.BROKER_ERROR,
                 message=f"Modify rejected: {response.rejection_reason or 'unknown'}",
             )
@@ -1806,8 +1828,8 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         self._request_processor.discard_order(
             order_id=order_id, reason='resolved absent at the venue (#487)')
 
-        rejection = create_rejection_result(
-            order_id=order_id,
+        rejection = self._rejection_for_pending(
+            pending,
             reason=RejectionReason.BROKER_ERROR,
             message='The venue never took this order — resolved after a lost answer',
         )
@@ -2030,8 +2052,8 @@ class LiveTradeExecutor(AbstractTradeExecutor):
                     f'{broker_response.status.value} at the venue without filling. The '
                     f'position is open and its stop is enforced by THIS PROCESS ONLY.')
             self._orders_rejected += 1
-            rejection = create_rejection_result(
-                order_id=order_id,
+            rejection = self._rejection_for_pending(
+                pending,
                 reason=RejectionReason.BROKER_ERROR,
                 message=f"Broker {broker_response.status.value}: "
                         f"{broker_response.rejection_reason or 'unknown'}",
@@ -2577,8 +2599,8 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             return None
 
         self._orders_rejected += 1
-        result = create_rejection_result(
-            order_id=order_id,
+        result = self._rejection_for_request(
+            request, order_id,
             reason=RejectionReason.ORDER_TYPE_NOT_SUPPORTED,
             message=(
                 f'venue_held_protection was requested, but '
@@ -2611,8 +2633,8 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         # Feature gate — reads the declaration below, so pre-flight and this check agree.
         if request.order_type not in self.get_supported_order_types():
             self._orders_rejected += 1
-            result = create_rejection_result(
-                order_id=order_id,
+            result = self._rejection_for_request(
+                request, order_id,
                 reason=RejectionReason.ORDER_TYPE_NOT_SUPPORTED,
                 message=f'Order type {request.order_type.value} not supported in live',
             )
@@ -2625,8 +2647,8 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             request.symbol, request.lots)
         if not is_valid:
             self._orders_rejected += 1
-            result = create_rejection_result(
-                order_id=order_id,
+            result = self._rejection_for_request(
+                request, order_id,
                 reason=RejectionReason.INVALID_LOT_SIZE,
                 message=error,
             )
@@ -2822,8 +2844,10 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         # Check position exists in portfolio
         position = self.portfolio.get_position(position_id)
         if not position:
-            return create_rejection_result(
+            return self._rejection_for_close(
                 order_id=f'close_{position_id}',
+                position=None,
+                lots=lots,
                 reason=RejectionReason.BROKER_ERROR,
                 message=f'Position {position_id} not found',
             )
@@ -2953,8 +2977,10 @@ class LiveTradeExecutor(AbstractTradeExecutor):
                 f'❌ The close of {position.position_id} was NOT sent: its protective '
                 f'order {order_id} could not be cancelled first, and closing beside a '
                 f'live stop can fill twice. The position stays open and protected.')
-            return create_rejection_result(
+            return self._rejection_for_close(
                 order_id=f'close_{position.position_id}',
+                position=position,
+                lots=lots,
                 reason=RejectionReason.BROKER_ERROR,
                 message=('protective order could not be cancelled first — close withheld '
                          'rather than raced against it'),

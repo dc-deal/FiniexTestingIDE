@@ -202,6 +202,32 @@ class EventStreamWriter:
 # Event reconstruction
 # ============================================
 
+def _reject_event(order_id: str, rejected: OrderResult) -> TradeEvent:
+    """
+    The ORDER_REJECT event of one refused order.
+
+    Its time is the refusal's own, on the run's clock. It used to fall back to the wall
+    clock when the record carried none, which every rejection did — so the rejections of a backtest
+    or a mock session were stamped with the moment the report was written, months after the
+    market time around them, and sorted to the end of the stream.
+
+    Args:
+        order_id: The id the event is filed under
+        rejected: The REJECTED OrderResult
+
+    Returns:
+        The ORDER_REJECT event
+    """
+    return TradeEvent(
+        ts=rejected.execution_time,
+        event_type=EventType.ORDER_REJECT,
+        order_id=order_id,
+        status=rejected.status.value if rejected.status else '',
+        close_reason=rejected.rejection_reason.value if rejected.rejection_reason else '',
+        notes=rejected.rejection_message or '',
+    )
+
+
 def _build_events(
     trade_history: List[TradeRecord],
     order_history: List[OrderResult],
@@ -235,20 +261,17 @@ def _build_events(
         # legacy or constructor sites that haven't set it explicitly.
         action = order.action if order.action is not None else OrderAction.OPEN
         if action != OrderAction.OPEN:
-            continue  # closes are handled by the trade_history walk
+            # Closes are handled by the trade_history walk — except a REFUSED close,
+            # which produced no trade and would otherwise leave no event at all.
+            if order.is_rejected:
+                events.append(_reject_event(order.order_id, order))
+            continue
         open_groups.setdefault(order.order_id, []).append(order)
 
     for order_id, orders in open_groups.items():
         rejected = next((o for o in orders if o.is_rejected), None)
         if rejected:
-            events.append(TradeEvent(
-                ts=rejected.execution_time or datetime.now(timezone.utc),
-                event_type=EventType.ORDER_REJECT,
-                order_id=order_id,
-                status=rejected.status.value if rejected.status else '',
-                close_reason=rejected.rejection_reason.value if rejected.rejection_reason else '',
-                notes=rejected.rejection_message or '',
-            ))
+            events.append(_reject_event(order_id, rejected))
             continue
 
         # Earliest valid timestamp across PENDING/EXECUTED stages. Sim opens

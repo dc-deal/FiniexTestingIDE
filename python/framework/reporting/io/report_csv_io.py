@@ -69,7 +69,8 @@ def write_order_history_csv(report: OrderHistoryReport, run_dir: Path) -> Path:
         writer = csv.DictWriter(handle, fieldnames=columns)
         writer.writeheader()
         for row in report.orders:
-            writer.writerow({'run_id': report.run_id, **row.model_dump()})
+            # JSON mode: an enum is written as its value and an absent field as an empty cell.
+            writer.writerow({'run_id': report.run_id, **row.model_dump(mode='json')})
     return path
 
 

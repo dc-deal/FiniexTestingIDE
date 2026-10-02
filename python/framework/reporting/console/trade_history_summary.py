@@ -22,6 +22,7 @@ from python.framework.types.api.report_types import (
     TradeHistoryRow,
     TradeScenarioTotals,
 )
+from python.framework.types.trading_env_types.order_types import OrderStatus
 from python.framework.utils.console_renderer import ConsoleRenderer
 
 # EntryType.value → compact table glyph
@@ -113,7 +114,7 @@ class TradeHistorySummary(AbstractBatchSummarySection):
                 renderer.print_separator(width=120, char='·')
 
         # Rejections are currency-agnostic — render once.
-        rejections = [o for o in self._order_report.orders if o.status == 'rejected']
+        rejections = [o for o in self._order_report.orders if o.status is OrderStatus.REJECTED]
         if rejections:
             self._render_aggregated_rejections(rejections, renderer)
         print()
@@ -151,7 +152,7 @@ class TradeHistorySummary(AbstractBatchSummarySection):
         """Render rejected orders for a scenario (from the order-history model)."""
         rejections = [
             o for o in self._order_report.orders
-            if o.status == 'rejected' and o.scenario_name == scenario_name
+            if o.status is OrderStatus.REJECTED and o.scenario_name == scenario_name
         ]
         if not rejections:
             return
@@ -162,8 +163,8 @@ class TradeHistorySummary(AbstractBatchSummarySection):
         print(renderer.gray(header))
         print(renderer.gray('   ' + '-' * 100))
         for idx, rej in enumerate(rejections, 1):
-            reason_str = rej.rejection_reason or 'unknown'
-            row = f'   {idx:>3} | {rej.order_id:<20} | {reason_str:<25} | {rej.rejection_message}'
+            reason_str = rej.rejection_reason.value if rej.rejection_reason else 'unknown'
+            row = f'   {idx:>3} | {rej.order_id:<20} | {reason_str:<25} | {rej.rejection_message or ""}'
             print(renderer.yellow(row))
 
     def _print_table_header(self, renderer: ConsoleRenderer, unit: str) -> None:
@@ -380,7 +381,7 @@ class TradeHistorySummary(AbstractBatchSummarySection):
         """Render aggregated rejection breakdown by reason."""
         reason_counts: Dict[str, int] = {}
         for rej in rejections:
-            reason = rej.rejection_reason or 'unknown'
+            reason = rej.rejection_reason.value if rej.rejection_reason else 'unknown'
             reason_counts[reason] = reason_counts.get(reason, 0) + 1
 
         print(f"\n   {renderer.bold('Rejected Orders:')}")

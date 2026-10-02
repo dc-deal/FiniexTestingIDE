@@ -43,7 +43,7 @@ def _assemble(
     for row in rows:
         if symbol is not None and row.symbol != symbol:
             continue
-        if status is not None and row.status != status:
+        if status is not None and row.status.value != status:
             continue
         filtered.append(row)
     symbols = sorted({row.symbol for row in filtered if row.symbol})
@@ -51,22 +51,35 @@ def _assemble(
 
 
 def _to_row(order: OrderResult, scenario_name: str = '') -> OrderHistoryRow:
-    """Map one OrderResult to a renderable row (None-safe for optional fields)."""
+    """
+    Map one OrderResult to a renderable row.
+
+    What the record does not have stays None and serializes as null — never '' or 0.0, which
+    a reader takes for a value. A zero executed size or price is the record's way of saying
+    nothing executed, and is carried as None for the same reason.
+
+    Args:
+        order: The order-lifecycle record
+        scenario_name: The run unit it belongs to
+
+    Returns:
+        The row
+    """
     return OrderHistoryRow(
         order_id=order.order_id,
         scenario_name=scenario_name,
-        position_id=order.position_id or '',
+        position_id=order.position_id or None,
         symbol=order.symbol or '',
-        direction=order.direction.value if order.direction else '',
-        action=order.action.value if order.action else '',
-        status=order.status.value,
-        requested_lots=order.requested_lots or 0.0,
-        executed_lots=order.executed_lots or 0.0,
-        executed_price=order.executed_price or 0.0,
-        execution_time=order.execution_time.isoformat() if order.execution_time else '',
+        direction=order.direction,
+        action=order.action,
+        status=order.status,
+        requested_lots=order.requested_lots or None,
+        executed_lots=order.executed_lots or None,
+        executed_price=order.executed_price or None,
+        event_time=order.execution_time.isoformat() if order.execution_time else None,
         commission=order.commission,
         swap=order.swap,
         slippage_points=order.slippage_points,
-        rejection_reason=order.rejection_reason.value if order.rejection_reason else '',
-        rejection_message=order.rejection_message,
+        rejection_reason=order.rejection_reason,
+        rejection_message=order.rejection_message or None,
     )

@@ -21,7 +21,12 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from python.framework.exceptions.connection_errors import ConnectionAttemptFailedError
+from python.framework.testing.mock_broker_adapter import MockExecutionMode
+from python.framework.testing.mock_order_execution import MockOrderExecution
 from python.framework.trading_env.live.live_request_processor import LiveRequestProcessor
+from python.framework.types.config_types.autotrader_defaults_config_types import (
+    UnresolvedResolutionDefaults,
+)
 from python.framework.types.live_types.live_execution_types import (
     BrokerOrderStatus,
     TimeoutConfig,
@@ -135,7 +140,7 @@ class TestPendingSurvives:
         processor.set_executor_hooks(
             fill_open=lambda p, price: None,
             fill_close=lambda p, price: None,
-            on_rejection=lambda d, r: notified.append(r),
+            on_rejection=lambda pending, reason, message: notified.append(reason),
         )
 
         order_id = self._register(processor)
@@ -228,6 +233,24 @@ class TestATimedOutUnresolvedOrderLeavesTheTracker:
     again.
     """
 
+    @pytest.fixture
+    def executor_timeout(self):
+        """
+        The TIMEOUT executor with the unresolved-write resolution (#487) switched off.
+
+        These tests exercise the plain timeout path. With the canonical clock set — as the
+        loop always sets it — the resolution owns an unanswered submit instead, so they
+        switch it off explicitly. They used to reach the path only because a never-set
+        clock disabled the resolution as a side effect.
+
+        Returns:
+            LiveTradeExecutor whose timeouts give up rather than resolve
+        """
+        return MockOrderExecution(
+            mode=MockExecutionMode.TIMEOUT,
+            resolution_config=UnresolvedResolutionDefaults(enabled=False),
+        ).create_executor()
+
     def _expired_unresolved_open(self, executor) -> str:
         """
         Register an unanswered submit whose timeout has already passed.
@@ -254,7 +277,7 @@ class TestATimedOutUnresolvedOrderLeavesTheTracker:
     def test_the_pending_is_gone_after_its_timeout(self, executor_timeout):
         self._expired_unresolved_open(executor_timeout)
 
-        executor_timeout.heartbeat()
+        _heartbeat_as_the_loop_does(executor_timeout)
 
         assert not executor_timeout.get_request_processor().has_pending_orders()
 
@@ -263,7 +286,7 @@ class TestATimedOutUnresolvedOrderLeavesTheTracker:
         self._expired_unresolved_open(executor_timeout)
         assert len(processor.check_timeouts()) == 1, 'the order must time out at all'
 
-        executor_timeout.heartbeat()
+        _heartbeat_as_the_loop_does(executor_timeout)
 
         assert processor.check_timeouts() == [], (
             'a timeout that keeps firing repeats the rejection at the algo for the rest of '
@@ -280,7 +303,7 @@ class TestATimedOutUnresolvedOrderLeavesTheTracker:
         pending.timing.timeout_at = datetime.now(timezone.utc) - timedelta(seconds=1)
         assert executor_timeout.is_pending_close('pos_btcusd_1')
 
-        executor_timeout.heartbeat()
+        _heartbeat_as_the_loop_does(executor_timeout)
 
         assert not executor_timeout.is_pending_close('pos_btcusd_1')
 
@@ -298,11 +321,25 @@ class TestATimedOutUnresolvedOrderLeavesTheTracker:
         pending = processor.get_pending_orders()[0]
         pending.timing.timeout_at = datetime.now(timezone.utc) - timedelta(seconds=1)
 
-        executor_timeout.heartbeat()
+        _heartbeat_as_the_loop_does(executor_timeout)
 
         assert not processor.has_pending_orders()
         assert processor.mark_filled(broker_ref='TX-42', fill_price=1.0,
                                      filled_lots=0.01) is None
+
+
+def _heartbeat_as_the_loop_does(executor) -> None:
+    """
+    Run one heartbeat the way the tick loop does: inject the clock first, then resolve.
+
+    A rejection is stamped with the canonical clock, so a heartbeat on a never-set clock
+    raises — the loop always sets it one line before.
+
+    Args:
+        executor: Live executor under test
+    """
+    executor.set_current_time(datetime.now(timezone.utc))
+    executor.heartbeat()
 
 
 class LevelRecorder:

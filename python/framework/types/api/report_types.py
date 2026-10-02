@@ -20,6 +20,13 @@ from pydantic import BaseModel, Field, computed_field
 from python.framework.types.persistence_types import RiskBaseline
 from python.framework.types.run_origin_types import CodeIdentity, RunOrigin
 from python.framework.types.run_outcome_types import RunOutcome
+from python.framework.types.trading_env_types.order_types import (
+    OrderAction,
+    OrderDirection,
+    OrderStatus,
+    OrderType,
+    RejectionReason,
+)
 
 
 # WHAT MAKES ONE ROW of each deployment view unique. Declared once, read by the response model
@@ -210,23 +217,35 @@ class TradeHistoryReport(RunScopedReport):
 
 
 class OrderHistoryRow(BaseModel):
-    """One order-lifecycle record (the resting/filled/rejected order list)."""
+    """
+    One order-lifecycle record (the resting/filled/rejected order list).
+
+    A row is an EVENT in an order's life, not the order: one order appears as `pending`, then
+    `executed`, then a `close` row per close. Rows are in append order within their unit, and
+    that position is their identity — no field combination is unique by construction.
+
+    A value that does not exist is null, never '' or 0.0: an empty string read as a value and a
+    zero price is a price downstream. The closed vocabularies are enums, so the schema lists
+    their values.
+    """
     order_id: str
     scenario_name: str = '' # owning run unit (sim: scenario; live: session) — #393 grouping
-    position_id: str        # '' if not yet/never tied to a position
+    position_id: Optional[str] = None           # null until a position exists
     symbol: str
-    direction: str          # 'long' | 'short' | '' (unknown)
-    action: str             # 'open' | 'close' | '' (unknown)
-    status: str             # 'executed' | 'rejected' | 'cancelled' | ...
-    requested_lots: float
-    executed_lots: float
-    executed_price: float
-    execution_time: str     # ISO-8601 UTC, '' if never executed
+    direction: Optional[OrderDirection] = None  # open: requested; close: the position's
+    action: Optional[OrderAction] = None
+    status: OrderStatus
+    requested_lots: Optional[float] = None      # null where the order did not know it
+    executed_lots: Optional[float] = None       # null unless something executed
+    executed_price: Optional[float] = None      # null unless something executed
+    event_time: Optional[str] = None            # ISO-8601 UTC, on the run's canonical clock —
+                                                # when this row's event happened: the fill, the
+                                                # refusal, the expiry. Null on a `pending` row
     commission: float
     swap: float
     slippage_points: float
-    rejection_reason: str   # '' if not rejected
-    rejection_message: str
+    rejection_reason: Optional[RejectionReason] = None  # null unless rejected
+    rejection_message: Optional[str] = None             # null unless rejected
 
 
 class OrderHistoryReport(RunScopedReport):
@@ -445,10 +464,17 @@ class ExecutionStatsReport(RunScopedReport):
 
 
 class ActiveOrderRow(BaseModel):
-    """One active (untriggered) limit/stop order at run end."""
+    """
+    One limit/stop order still resting when its unit's data ended.
+
+    In a backtest the same order is recorded `expired` (reason scenario_end) in that same step:
+    this snapshot is taken BEFORE the expiry, never after, so it says the order was resting
+    when the data ended — not that it is still open. A LIMIT sits in the limit list; a STOP
+    or STOP_LIMIT whose trigger was not reached in the stop list.
+    """
     order_id: str
-    order_type: str         # 'limit' | 'stop' | 'stop_limit'
-    direction: str          # 'long' | 'short'
+    order_type: OrderType   # limit · stop · stop_limit
+    direction: OrderDirection
     lots: float
     entry_price: float      # limit price (LIMIT) / trigger price (STOP/STOP_LIMIT)
     limit_price: float | None = None    # STOP_LIMIT only

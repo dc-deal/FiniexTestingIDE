@@ -296,9 +296,8 @@ def _order_row(order_id: str, symbol: str, status: str) -> OrderHistoryRow:
         order_id=order_id, position_id=f'pos_{order_id}', symbol=symbol,
         direction='long', action='open', status=status,
         requested_lots=0.1, executed_lots=0.1, executed_price=1.10,
-        execution_time='2025-10-13T08:00:00+00:00',
+        event_time='2025-10-13T08:00:00+00:00',
         commission=0.2, swap=0.0, slippage_points=1.0,
-        rejection_reason='', rejection_message='',
     )
 
 

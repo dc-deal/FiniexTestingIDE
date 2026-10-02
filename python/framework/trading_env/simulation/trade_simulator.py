@@ -45,7 +45,6 @@ from python.framework.types.trading_env_types.order_types import (
     OrderStatus,
     OrderType,
     RejectionReason,
-    create_rejection_result,
 )
 from python.framework.types.trading_env_types.pending_order_stats_types import PendingOrderStats
 from python.framework.types.trading_env_types.stress_test_types import (
@@ -365,7 +364,8 @@ class TradeSimulator(AbstractTradeExecutor):
         Delegates to StressTestRejection module (config-driven, seeded probability).
         Returns True if order was rejected (and handled).
         """
-        rejection = self._stress_test_rejection.should_reject(pending_order)
+        rejection = self._stress_test_rejection.should_reject(
+            pending_order, self.get_current_time())
         if rejection is None:
             return False
 
@@ -405,10 +405,10 @@ class TradeSimulator(AbstractTradeExecutor):
             request.symbol, request.lots)
         if not is_valid:
             self._orders_rejected += 1
-            result = create_rejection_result(
-                order_id=order_id,
+            result = self._rejection_for_request(
+                request, order_id,
                 reason=RejectionReason.INVALID_LOT_SIZE,
-                message=error
+                message=error,
             )
             self._check_order_history_limit()
             self._order_history.append(result)
@@ -417,10 +417,10 @@ class TradeSimulator(AbstractTradeExecutor):
         # Check symbol tradeable
         if not self.broker.is_symbol_tradeable(request.symbol):
             self._orders_rejected += 1
-            result = create_rejection_result(
-                order_id=order_id,
+            result = self._rejection_for_request(
+                request, order_id,
                 reason=RejectionReason.SYMBOL_NOT_TRADEABLE,
-                message=f'Symbol {request.symbol} not tradeable'
+                message=f'Symbol {request.symbol} not tradeable',
             )
             self._check_order_history_limit()
             self._order_history.append(result)
@@ -519,10 +519,10 @@ class TradeSimulator(AbstractTradeExecutor):
         else:
             # Unsupported order types (TRAILING_STOP, ICEBERG, etc.)
             self._orders_rejected += 1
-            result = create_rejection_result(
-                order_id=order_id,
+            result = self._rejection_for_request(
+                request, order_id,
                 reason=RejectionReason.ORDER_TYPE_NOT_SUPPORTED,
-                message=f'Order type {request.order_type} not supported in simulation'
+                message=f'Order type {request.order_type} not supported in simulation',
             )
 
         # Store in order history
@@ -557,10 +557,12 @@ class TradeSimulator(AbstractTradeExecutor):
         # Check if position exists
         position = self.portfolio.get_position(position_id)
         if not position:
-            return create_rejection_result(
+            return self._rejection_for_close(
                 order_id=f'close_{position_id}',
+                position=None,
+                lots=lots,
                 reason=RejectionReason.BROKER_ERROR,
-                message=f'Position {position_id} not found'
+                message=f'Position {position_id} not found',
             )
 
         # #507 — the size rules are answered HERE, not at the fill. A partial whose remainder

@@ -82,13 +82,16 @@ def _live_executor(
     adapter = (_VenueHoldsProtectionMock(mode=MockExecutionMode.INSTANT_FILL)
                if venue_can_hold
                else MockBrokerAdapter(mode=MockExecutionMode.INSTANT_FILL))
-    return LiveTradeExecutor(
+    executor = LiveTradeExecutor(
         broker_config=BrokerConfig(BrokerType.KRAKEN_SPOT, adapter),
         initial_balance=100000.0,
         account_currency='USD',
         logger=GlobalLogger('VenueHeldProtection'),
         venue_held_protection=profile_default,
     )
+    # A refusal is stamped with the canonical clock, which the loop always injects first.
+    executor.set_current_time(datetime.now(timezone.utc))
+    return executor
 
 
 def _market_request(venue_held_protection=None) -> OpenOrderRequest:

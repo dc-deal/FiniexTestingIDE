@@ -55,7 +55,8 @@ class TestBuild:
         rows = report.units[0].active_limit_orders
         assert len(rows) == 1
         a = rows[0]
-        assert a.order_id == 'L1' and a.order_type == 'limit' and a.direction == 'long'
+        assert a.order_id == 'L1' and a.order_type is OrderType.LIMIT
+        assert a.direction is OrderDirection.LONG
         assert a.entry_price == 1.1000 and a.stop_loss == 1.0980 and a.take_profit == 1.1040
 
     def test_skips_units_without_activity(self):

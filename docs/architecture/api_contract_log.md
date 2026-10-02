@@ -26,6 +26,35 @@ fails to parse.
 The server serves the current version's lines and this log keeps every version. A test holds the
 newest heading here to `API_CONTRACT_VERSION`, so step 3 cannot be skipped unnoticed.
 
+## Version 20 — 2026-10-02 (viewer#21, #557)
+
+A refused order now says what was refused, and the order history says "absent" as null.
+
+- `GET /api/v1/reports/runs/{run_id}/order-history`: a rejected row states its side (`action`), its
+  `symbol`, its `direction` and its `requested_lots`, and when it was refused. Every rejection used
+  to leave them empty, so `?symbol=` dropped all of them without a word — 12 rows with 2 rejections
+  unfiltered, 10 rows and none with the filter. A rejection can be on either side: a partial close
+  below the symbol's minimum is refused on the close side. Runs recorded before this contract carry
+  the symbol and the side, taken from their own records; their direction, size and time stay null,
+  because the records never had them.
+- `order-history`: `execution_time` is renamed `event_time`. On these rows it is a point in time —
+  when the row's event happened, on the run's clock: the fill, the refusal, the expiry; null on a
+  `pending` row. Every other `execution_time` in the API is how long something ran.
+- `order-history`: a value that does not exist is null, never an empty string or `0.0` —
+  `position_id`, `direction`, `action`, `requested_lots`, `executed_lots`, `executed_price`,
+  `event_time`, `rejection_reason`, `rejection_message`. A zero price reads as a price. `direction`,
+  `action`, `status` and `rejection_reason` are enums, so the schema lists their values; the values
+  themselves are unchanged.
+- `order-history`: an expired row states its direction and its requested lots, and the expiry of a
+  close-side order — a protective stop — says `close`; it said `open` for every expiry.
+- `GET /api/v1/reports/runs/{run_id}/pending-orders`: an active order's `order_type` (`limit`,
+  `stop`, `stop_limit`) and `direction` are enums. The two active-order lists hold the orders still
+  resting when the unit's data ended; in a backtest the same orders are recorded `expired` in
+  `order-history` in that same step, so they are not open. A STOP or STOP_LIMIT whose trigger was not
+  reached sits in the stop list; a STOP_LIMIT whose stop triggered becomes a limit order.
+
+Every stored run was carried over to this shape, so an old run answers like a new one.
+
 ## Version 19 — 2026-10-01 (#547, viewer#21)
 
 A session now records the broker configuration it traded with, and one more list says what keys
