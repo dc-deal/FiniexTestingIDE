@@ -244,7 +244,7 @@ Comprehensive test suite covering integration tests, black-box tests, and white-
 python python/cli/test_runner_cli.py
 ```
 
-Individual suites can be run separately: `pytest tests/<suite>/ -v`
+Individual suites can be run separately: `pytest tests/<group>/<suite>/ -v`
 
 Configuration: `configs/test_config.json` (excluded suites, fail-fast behavior). Each test suite has its own documentation in [`docs/tests/`](docs/tests/).
 
