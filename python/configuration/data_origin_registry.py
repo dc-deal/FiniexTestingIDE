@@ -68,8 +68,9 @@ class DataOriginRegistry:
         into the instance.
 
         Args:
-            config_path: The tracked registry, carrying the schema and development entries
-            user_config_path: The workspace override, carrying production entries
+            config_path: The tracked registry — what it carries is stated in its own _comment
+            user_config_path: The workspace override, which adds identities and replaces the
+                attestation list
         """
         self._config_path = config_path or _CONFIG_PATH
         self._user_config_path = user_config_path or _USER_CONFIG_PATH
@@ -241,8 +242,8 @@ class DataOriginRegistry:
         """
         Load and merge the tracked registry with the workspace override.
 
-        The workspace file ADDS origins rather than replacing them, so the tracked development
-        entries need no second copy. Its attestation list replaces the tracked one outright,
+        The workspace file ADDS origins rather than replacing them, so the tracked entries need
+        no second copy. Its attestation list replaces the tracked one outright,
         which is right: the tracked list is an example and the real claims are the operator's.
 
         Returns:

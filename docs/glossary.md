@@ -254,6 +254,14 @@ envelope*: the signal producer answered for some symbols only.
 and while a modify or a cancel of a resting order is on its way, that operation is in flight too.
 See [Pending Orders](architecture/pending_order_architecture.md).
 
+**pending-order counters** (`total_resolved`, `total_filled`, `total_rejected`, `total_timed_out`,
+`total_force_closed` on the pending-orders report) — How the unit's orders left the in-flight
+queue. *Resolved* is every order that left it. *Filled* is NOT a fill count today: in a backtest it
+counts every exit that was not refused, so it is the number of orders that *arrived* — a market or
+close order fills on arrival, while a limit, stop or stop-limit order only begins *resting* there,
+and is counted whether it later fills, expires at data end or is cancelled by the strategy. An
+AutoTrader session counts reported fills. #362 separates arrival from fill.
+
 **price · mid · last** — `tick.price` is what the market trades at: the traded price where the
 venue prints one, else the mid. The *mid* is `(bid + ask) / 2`; *last* is the traded price, absent
 (never zero) where the venue prints none. Strategies read the price, valuation reads the mid. See

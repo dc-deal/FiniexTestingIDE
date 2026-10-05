@@ -183,8 +183,9 @@ class TestTheRegistryRefusesAFileItCannotTrust:
 class TestTheTrackedFileIsSafeByItself:
 
     def test_the_repository_registry_admits_nothing_for_measurement(self):
-        # The tracked copy carries the schema and development examples only. A fresh clone that
-        # silently admitted production data would be the one failure this file must not have.
+        # The tracked attestation is a placeholder that matches no file, so a fresh clone never
+        # vouches for a file that states no identity — that claim is the operator's, made in the
+        # workspace copy. What the tracked copy does carry is stated in its own _comment.
         registry = DataOriginRegistry(user_config_path='user_configs/absent_on_purpose.json')
         for version in ('1.0.0', '1.5.0', '1.6.0', '2.0.0'):
             result = registry.resolve(None, version, broker_type='kraken_spot')

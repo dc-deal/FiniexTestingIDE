@@ -187,7 +187,7 @@ no individual records are stored for normal outcomes.
 
 | Outcome | Source | Individual Record | Latency Unit |
 |---------|--------|-------------------|--------------|
-| `FILLED` | Normal fill after delay | No (aggregated only) | ms |
+| `FILLED` | Simulation: the order arrived after its delay — a market or close order fills then, but a limit, stop or stop-limit order that starts resting is counted here too, whether it later fills, expires at data end or is cancelled by the strategy. AutoTrader: the venue reported the fill | No (aggregated only) | ms |
 | `REJECTED` | Stress test or broker rejection | No (aggregated only) | ms |
 | `TIMED_OUT` | Broker timeout (live execution stack only) | Yes (`anomaly_orders`) | ms |
 | `FORCE_CLOSED` | `clear_pending()` for genuine stuck-in-pipeline orders at scenario end | Yes (`anomaly_orders`, with `reason`) | ms |
@@ -195,8 +195,13 @@ no individual records are stored for normal outcomes.
 The unit is milliseconds in both pipelines, but the two measure different things. In simulation
 it is the modelled delay on the market clock — `broker_fill_msc − placed_at_msc`, and for a
 force-close the time the order sat until the scenario ended. In an AutoTrader session it is the
-measured time since submission. Min, max and average cover every resolved outcome, not fills
-only.
+measured time since submission — for a resting order that includes the time it rested, because it
+resolves at its fill. Min, max and average cover every resolved outcome, not fills only.
+
+So `FILLED`, its counter `total_filled` and the latency mean different things in the two pipelines
+for an order that rests: the simulation resolves it when it ARRIVES, an AutoTrader session when it
+FILLS. A backtest's resting order that later expires at the end of its data is therefore counted
+as filled. This is a known defect, not a design.
 
 **Display locations:**
 
