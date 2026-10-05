@@ -234,6 +234,13 @@ order. An order appears as `pending` when it enters the pipeline, `executed` whe
 row. Rows are in the order they happened within their unit, and that position is their identity —
 the order id repeats.
 
+**order id** (`order_id` on an order-history row) — Not an order's own id: the id of the POSITION
+the order belongs to, minted when the position opens and carried by every later order of it, so
+it repeats across that position's rows. An open the run refused still consumed its number, so no
+id is used twice within a run unit. A close refused before it was sent says `close_<position id>`,
+a guard refusal `guard_…`. With its `scenario_name` it names the same position as a trade's
+`position_id`.
+
 **orders to** (`orders_to`) — Where a run's orders went: `simulated` or `venue`. Recorded on every
 run header. See [Introduction](introduction_to_the_ide.md#the-kinds-of-run).
 
@@ -345,6 +352,11 @@ every run header. See [Introduction](introduction_to_the_ide.md#the-kinds-of-run
 **total final equity** (`total_final_equity`) — The closing equities of several *accounts* added
 up, beside `total_initial_balance`: a total no single account held. On a run with one account it
 equals that account's `final_equity`.
+
+**trade** — One close of a position, as the trade history records it: a full close books one, each
+partial close one more, so a trade is not its position. Its key is the unit, the position and the
+tick it closed on (`scenario_name`, `position_id`, `exit_tick_index`). The order history's `close`
+row and the trade are made in the same step; the row does not carry the trade's tick yet.
 
 **trade window basis** — Whether a trade is placed in a window by its entry or its exit.
 
