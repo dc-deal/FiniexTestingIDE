@@ -100,14 +100,15 @@ class OrderRejectedEvent:
 
     Args:
         order_id: Internal order id
-        direction: Position direction (LONG/SHORT)
+        direction: Position direction (LONG/SHORT) — for a close, the direction of the
+            position it closes; None when that position is no longer held
         reason: Machine-readable rejection reason; None for an undelivered order
         message: Human-readable rejection message
         result: Full OrderResult for detailed access
         tick_time: Tick timestamp at delivery (sim time / wall-clock)
     """
     order_id: str
-    direction: OrderDirection
+    direction: Optional[OrderDirection]
     reason: Optional[RejectionReason]
     message: str
     result: OrderResult
@@ -120,21 +121,25 @@ class OrderUnaccountedEvent:
     The framework stopped asking about an order the venue may still hold. Delivered to on_order_unaccounted().
 
     Live only. It fires when an order's answer never came and the venue could not be asked what
-    became of it — at its fill timeout, or when the resolution ran out of attempts — and for an
-    order still unconfirmed when the session ends. It may have filled: nothing was booked, and
-    what the account holds now is the reconciliation's to establish. A strategy that sizes from
-    its own open positions should treat the order as possibly filled.
+    became of it — at its fill timeout, or when the resolution ran out of attempts. It may have
+    filled: no fill was booked, and what the account holds now is the reconciliation's to
+    establish. A strategy that sizes from its own open positions should treat the order as
+    possibly filled.
+
+    Not at the end of the session: an order still unconfirmed then is booked `unaccounted` in
+    the order history, but the session's last pass has run by that point, and no hook is called
+    after it.
 
     Args:
         order_id: Internal order id
-        direction: Position direction (LONG/SHORT)
-        end_reason: Why the framework stopped asking — the timeout, the resolution ceiling or
-            the end of the session
+        direction: Position direction (LONG/SHORT) — for a close, the direction of the
+            position it closes; None when that position is no longer held
+        end_reason: Why the framework stopped asking — the timeout or the resolution ceiling
         result: Full OrderResult for detailed access
         tick_time: Tick timestamp at delivery (sim time / wall-clock)
     """
     order_id: str
-    direction: OrderDirection
+    direction: Optional[OrderDirection]
     end_reason: Optional[OrderEndReason]
     result: OrderResult
     tick_time: Optional[datetime] = None

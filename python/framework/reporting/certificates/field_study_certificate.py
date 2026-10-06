@@ -20,8 +20,8 @@ PASS criteria (hard):
 Informational (not pass-gating): realized cost (read from the run's own stamp, with its
 source named — a reconstruction from per-event commissions cannot see a full close), the
 account delta (venue-side movement between the first and the session-end snapshot, which is
-the only figure that can contradict our booking), slippage distribution, detected-via mix,
-reconciliation alert count.
+the only figure that can contradict our booking), slippage — not measured until #566, so no
+figure rather than a zero — detected-via mix, reconciliation alert count.
 """
 
 import json

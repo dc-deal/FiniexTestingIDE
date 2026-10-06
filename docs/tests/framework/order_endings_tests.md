@@ -48,10 +48,21 @@ currency, per run, per ledger row — carries all of them.
 | `test_a_strategy_cancel_ends_cancelled_by_the_strategy` | the cancel gets its closing row, and the cancellation event carries it |
 | `test_the_data_end_expires_resting_and_travelling_orders_alike` | an order still in the latency queue when the data ends used to end without any row |
 
+### `TestAProtectiveExitInTheSimulation`
+
+The simulation fills a breached stop-loss or take-profit with a synthetic close at the level.
+That close is an order in the backtest as live's is in a session, and it waits as live's does.
+
+| Test | Description |
+|------|-------------|
+| `test_it_counts_as_a_submitted_order` | counted as submitted where live counts it — uncounted, a backtest whose exits were stops reported more orders executed than submitted |
+| `test_it_stands_aside_while_the_strategys_close_is_on_its_way` | a breach while the strategy's close is in the latency queue fills nothing; the close arrives and fills at the market, as live's would. Filling the level beneath it made the position vanish under the close, which then arrived to a `rejected` row live can never produce |
+
 ### `TestEveryEndingHasARowLive`
 
 | Test | Description |
 |------|-------------|
 | `test_a_strategy_cancel_ends_cancelled_by_the_strategy` | the same row as in the simulation, from the venue's confirmation |
 | `test_an_order_the_venue_ended_unasked_is_the_venues` | a status read that finds a resting order cancelled or expired, with no cancel of ours behind it, books the venue as the initiator — and the venue's own word decides between the two statuses |
+| `test_an_order_ended_after_a_partial_fill_ends_as_that_fill` | what the order executed is its fill and the rest never happened — one `executed` row and no `order_cancelled`, where a second, `cancelled` row used to repeat the executed size |
 | `test_an_order_still_travelling_at_the_session_end_is_unaccounted` | the venue may hold it — it used to end without any row |

@@ -125,10 +125,10 @@ heartbeat() / _process_pending_orders()
                 ├── read the status ─► filled / rejected / cancelled / expired
                 │                        └── booked by _handle_broker_response
                 ├── still working ─► cancel, and READ the cancel's answer
-                │       ├── cancelled, nothing executed ─► given up: BROKER_ERROR "timed out"
+                │       ├── cancelled, nothing executed ─► booked cancelled (framework, order_timeout)
                 │       └── refused ("Unknown order") or executed in part ─► read again, book it
                 └── no answer ─► handed to the #487 resolution, once per order
-                        └── unanswerable the second time ─► given up: BROKER_UNREACHABLE
+                        └── unanswerable the second time ─► booked unaccounted — it may have filled
 ```
 
 A status read that FAILS is never an answer about the order: `_failure_response` makes every
@@ -475,8 +475,8 @@ the submit response — so during submit-in-flight the order is locally visible 
 | 1 | Submit in-flight | in list, `broker_ref=None`, `PENDING_SUBMIT` | maybe not received yet | counts as active; **not cancellable**; a cancel here → **deferred** (parked, fired on confirm) ✓ |
 | 2 | Submit resp = PENDING + txid | `broker_ref` set, RESTING; a parked cancel **fires now** | order resting (open) | normal; poll for fills |
 | 3 | Submit resp = REJECTED | removed, rejection recorded, `_rejected_flag` | never created | algo sees reject (sync / #348); parked cancel = no-op (order gone) |
-| 4a | Submit unanswered — **MARKET/CLOSE** (latency queue) | in the processor's dict, `broker_ref=None`, `PENDING_SUBMIT` | **UNKNOWN** — may exist | times out after `order_timeout_seconds` → **BROKER_UNREACHABLE** (the transport is blamed, not the venue). The truth pull can never attribute it: `get_active_orders()` does not carry it. Resolution needs a targeted query (**#487**) |
-| 4b | Submit unanswered — **resting LIMIT** (World 2) | in `_active_limit_orders`, `broker_ref=None`, `PENDING_SUBMIT` | **UNKNOWN** — may exist | **no fill timeout** — it stays, deliberately (#473: a lost answer is not a refusal). It is not silent either: after `unresolved_report_after_s` it is reported ONCE into the session error pot as a standing condition (#505). The truth pull either ATTRIBUTES it by `cl_ord_id` (reference restored, polling resumes, a parked cancel is issued) or reports it as `unconfirmed` (**#355**). Since the reconciler also counts it as in-flight while its reference is missing, an ordinary submit round trip no longer reads as "placed and forgotten" |
+| 4a | Submit unanswered — **MARKET/CLOSE** (latency queue) | in the processor's dict, `broker_ref=None`, `PENDING_SUBMIT` | **UNKNOWN** — may exist | handed to the **#487** resolution, which asks the venue for it: named → the reference is restored and polling resumes; never taken → booked **`undelivered`**; still unknown at the ceiling → booked **`unaccounted`**, removed from the tracker, and new entries are blocked for the session. Nothing blames the venue for a lost answer (#362). The truth pull can never attribute it: `get_active_orders()` does not carry it |
+| 4b | Submit unanswered — **resting LIMIT** (World 2) | in `_active_limit_orders`, `broker_ref=None`, `PENDING_SUBMIT` | **UNKNOWN** — may exist | **no fill timeout** — it stays, deliberately (#473: a lost answer is not a refusal). It is not silent either: after `unresolved_report_after_s` it is reported ONCE into the session error pot as a standing condition (#505). The truth pull either ATTRIBUTES it by `cl_ord_id` (reference restored, polling resumes, a parked cancel is issued) or reports it as `unconfirmed` (**#355**); the #487 resolution may name it first, with the same consequences. Since the reconciler also counts it as in-flight while its reference is missing, an ordinary submit round trip no longer reads as "placed and forgotten" |
 | **Resting** | | | | |
 | 5 | Resting, no cancel | RESTING, polled | resting, may fill anytime | poll → fill |
 | 6 | Fill detected (poll/push) | removed as FILLED, position, `on_order_filled` #348 | closed (filled) | algo reacts to the position |

@@ -156,9 +156,9 @@ without logging an error shows in the *run outcome*, not here. See
 [Warnings & Errors](architecture/warnings_errors_tiers.md).
 
 **event time** (`event_time` on an order-history row) — When that row's event happened, on the
-run's *canonical clock*: the fill on an `executed` row, the refusal on a `rejected` one, the expiry
-on an `expired` one; null on a `pending` row. A point in time — not the *execution time*, which is
-a duration.
+run's *canonical clock*: the submission on a `pending` row, the fill on an `executed` one, and on
+every other row the moment the order ended without a fill — refused, cancelled, expired,
+undelivered or unaccounted. A point in time — not the *execution time*, which is a duration.
 
 **execution time** — How long a run or one of its units took on the *wall clock*:
 `execution_time_ms` for a scenario, `execution_time_s` for a whole backtest run. It says nothing

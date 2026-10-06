@@ -538,6 +538,11 @@ class TestMultiPositionMetadata:
         assert exec_stats.orders_rejected == 0, (
             f'Rejected orders: {exec_stats.orders_rejected}'
         )
+        # A refusal before anything is sent — a size rule, funds at submission — is a denial
+        # since #362, counted apart from the venue's rejections
+        assert exec_stats.orders_denied == 0, (
+            f'Denied orders: {exec_stats.orders_denied}'
+        )
 
     def test_tick_count_matches_config(
         self,

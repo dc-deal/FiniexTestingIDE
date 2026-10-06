@@ -332,7 +332,8 @@ class LiveFieldStudy(AbstractDecisionLogic):
         self._rejected_flag = True
         if self._recorder:
             self._recorder.record_order_event(
-                'order_rejected', order_id=event.order_id, side=event.direction.name,
+                'order_rejected', order_id=event.order_id,
+                side=event.direction.name if event.direction else None,
                 status=event.result.status.value,
                 extra={
                     'reason': event.reason.value if event.reason else None,
@@ -354,7 +355,8 @@ class LiveFieldStudy(AbstractDecisionLogic):
         self._rejected_flag = True
         if self._recorder:
             self._recorder.record_order_event(
-                'order_unaccounted', order_id=event.order_id, side=event.direction.name,
+                'order_unaccounted', order_id=event.order_id,
+                side=event.direction.name if event.direction else None,
                 status=event.result.status.value,
                 extra={'end_reason': event.end_reason.value if event.end_reason else None},
             )
@@ -381,7 +383,8 @@ class LiveFieldStudy(AbstractDecisionLogic):
             self._recorder.record_order_event(
                 'order_cancelled', order_id=event.order_id,
                 side=event.direction.name if event.direction else None,
-                status='cancelled',
+                # The row's own status: the venue letting an order run out is `expired`
+                status=event.result.status.value,
             )
 
     def on_partial_close(self, event: PartialCloseEvent) -> None:
@@ -583,8 +586,8 @@ class LiveFieldStudy(AbstractDecisionLogic):
             comment=f'FieldStudy {action.phase_id}',
         )
         if result is not None and result.is_refused:
-            # Synchronous rejection (invalid lot, immediate broker reject) — the #348
-            # channel only carries async outcomes, so surface it to the machine directly.
+            # Refused before anything was sent (a denial: invalid lot, the order guard) — the
+            # #348 channel only carries async outcomes, so surface it to the machine directly.
             self._rejected_flag = True
         elif order_type != OrderType.MARKET and result is not None and result.order_id:
             # Every RESTING type needs its order id remembered — the phase cancels by id.

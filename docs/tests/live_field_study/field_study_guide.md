@@ -135,14 +135,16 @@ One JSON object per line, append-only, flushed per event (crash-safe, tail-able 
 
 **Every event — stable core keys** (`ts_utc`, `seq`, `plane`, `event_type`, `phase`,
 `phase_index`) plus per-event fields (`order_id`, `broker_ref`, `side`, `lots`, `price`,
-`status`, `detected_via`) and typed sub-blocks (`slippage` #340, `reconcile` #151,
-`api_perf` #351, `extra`). None fields are omitted.
+`status`, `detected_via`) and typed sub-blocks (`reconcile` #151, `api_perf` #351, `extra`).
+None fields are omitted. The `slippage` sub-block (#340) is no longer written: the figure it
+copied was never filled, and a measured one arrives with #566.
 
 - `plane` = `bot` (bot-observed via #348) or `broker_truth` (pulled from the broker).
   The two planes join on `phase` + `order_id`.
 - `event_type` includes: `phase_start`, `order_filled`, `order_rejected`,
-  `order_cancelled`, `partial_close`, `phase_result`, `broker_snapshot`,
-  `reconcile_alert`, `api_perf`, `session_end`.
+  `order_unaccounted`, `order_cancelled`, `partial_close`, `phase_result`, `broker_snapshot`,
+  `reconcile_alert`, `api_perf`, `session_end`. `order_rejected` and `order_cancelled` carry the
+  order's own status — `undelivered` beside `rejected`, `expired` beside `cancelled`.
 
 ---
 
@@ -191,8 +193,9 @@ The certificate is written to `tests/live_field_study/reports/field_study_report
   flatness (not a zero base balance) is the criterion; what the account actually MOVED is the
   certificate's `account_delta`, derived from the two snapshots rather than asserted in prose
 
-**Informational (not pass-gating):** realized cost, slippage distribution, detected-via
-mix, reconciliation alert count.
+**Informational (not pass-gating):** realized cost, slippage — reported as not measured (count
+0, no figure, never a zero) until #566 records a measured one — detected-via mix,
+reconciliation alert count.
 
 Validate a committed certificate (CI-friendly, no real-money session):
 ```bash

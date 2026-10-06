@@ -360,13 +360,17 @@ class AbstractTradeExecutor(ABC):
         resolve, live cancel-response). Keeps event-type construction in the
         base class so subclasses only call this helper.
 
+        The direction is the row's: for a close — a protective order among them — that is
+        the direction of the POSITION it closes, where the order's own is the opposite
+        trading side. An open's row carries the order's own.
+
         Args:
             pending: The cancelled PendingOrder
             result: Its booked row — which says who ended it and why (#362)
         """
         self._emit_decision_event(OrderCancelledEvent(
             order_id=pending.pending_order_id,
-            direction=pending.direction,
+            direction=result.direction,
             result=result,
             tick_time=self.get_current_time(),
         ))
@@ -572,25 +576,35 @@ class AbstractTradeExecutor(ABC):
         the exit lands at whatever the venue gives us a round trip later. A backtest
         therefore reports protected exits slightly better than live can deliver them.
 
+        What both pipelines share is standing aside while a close for the position is already
+        on its way, and counting the exit as a submitted order: live sends it through the real
+        close, and the simulation's synthetic close is the same order in the backtest (#362).
+
         Args:
             position: The position whose level was breached
             level: The level itself — the simulation's deterministic fill price
             close_reason: SL_TRIGGERED or TP_TRIGGERED, recorded on the trade
         """
+        # A close takes a round trip in both pipelines. Live, without this the next tick —
+        # which in a breach is usually moving further the wrong way — would submit a second
+        # close for the same position, and the double close is exactly what the old early
+        # return was (wrongly) protecting against. In the simulation the close in flight is
+        # the strategy's, sitting in the latency queue: filling the level under it made the
+        # position vanish beneath it, and the close then arrived to find nothing — an exit
+        # and a refusal live can never produce, because live stands aside here (#362).
+        if self.is_pending_close(position.position_id):
+            return
+
         if self._executor_mode == ExecutorMode.SIMULATION:
             synthetic = PendingOrder(
                 pending_order_id=position.position_id,
                 order_action=PendingOrderAction.CLOSE
             )
+            # Counted as submitted where live counts it, in close_position — without it a
+            # backtest whose exits are stops reported more orders executed than submitted
+            self._orders_submitted += 1
             self._fill_close_order(synthetic, fill_price=level, close_reason=close_reason)
             self._sl_tp_triggered += 1
-            return
-
-        # A live close takes a round trip. Without this the next tick — which in a breach
-        # is usually moving further the wrong way — would submit a second close for the
-        # same position, and the double close is exactly what the old early return was
-        # (wrongly) protecting against.
-        if self.is_pending_close(position.position_id):
             return
 
         result = self.close_position(position.position_id, close_reason=close_reason)
@@ -1574,12 +1588,14 @@ class AbstractTradeExecutor(ABC):
                 f'⚠️ Close order {pending_order.pending_order_id} failed: '
                 f'Position {position_id} not found'
             )
-            # In a backtest the simulated venue refuses a close whose position is gone — it
-            # was closed while this close was on its way. That used to leave no row at all.
-            # No outcome notification, as for every close: the strategy heard of the
-            # position's end from the close that ended it. Live, the venue has already
-            # executed this close, so there is no refusal to record; the book and the venue
-            # disagree, and resolving that belongs to reconciliation (#349).
+            # In a backtest the simulated venue refuses a close whose position is gone. No
+            # path is known to reach it any more: a second close joins the one in flight,
+            # and the stop-loss and take-profit check stands aside while a close is on its
+            # way, as live does (#362). Should one appear, the close still ends with a row
+            # rather than with none, as it once did. No outcome notification: the strategy
+            # heard of the position's end from whatever ended it. Live, the venue has
+            # already executed this close, so there is no refusal to record; the book and
+            # the venue disagree, and resolving that belongs to reconciliation (#349).
             if self._executor_mode == ExecutorMode.SIMULATION:
                 self._book_order_result(self._rejection_for_pending(
                     pending_order,

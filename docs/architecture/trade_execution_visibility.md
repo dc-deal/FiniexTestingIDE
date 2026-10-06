@@ -181,8 +181,11 @@ Compact — sub-rows fire only when non-trivial:
 - **TRADE HISTORY** — per-side sub-row when entry or exit has > 1 fill
 - **TRADE HISTORY Reason column** — when the underlying `close_reason` is MANUAL (empty string), the renderer surfaces the partial nature:
   - `PARTIAL` close_type → `partial`
-  - `FULL` close_type where `entry_trade.volume > trade.lots` (= remainder of a partial chain) → `remain`
-  - `FULL` standalone (`entry_trade.volume == trade.lots`) → no marker
+  - `FULL` close_type where the position opened larger than this close (`trade.entry_lots > trade.lots`, the remainder of a partial chain) → `remain`
+  - `FULL` standalone (the close took the whole position) → no marker
+  - `entry_lots` is the position's size at entry, stamped on the trade record. The first entry
+    fill's volume said the same only while a position opened in one fill; with several it is a
+    slice
   - Non-MANUAL reasons (`sl_triggered`, `tp_triggered`, `scenario_end`) → keep the real reason value; the partial nature is then visible via the lots column (`lots < original_lots`)
 - **ORDERS** — three-level rendering for LIMIT (Trigger → BrokerOrder → Fills) is wired but stays dormant until #342 surfaces real `PARTIALLY_FILLED` state from the Kraken parser
 
@@ -211,14 +214,16 @@ submission_tick_mid_price, submission_tick_time_msc, notes
 `direction` and `side` are mutually exclusive per row (see "Trade-Event Side vs Position Direction" above):
 - POSITION_OPEN / POSITION_CLOSE rows carry `direction` (long/short), `side` is empty
 - FILL rows carry `side` (buy/sell), `direction` is empty
-- ORDER_SUBMIT / CLOSE_SUBMIT / ORDER_REJECT rows carry neither (algo lifecycle markers, no per-execution payload)
+- ORDER_SUBMIT / CLOSE_SUBMIT / ORDER_REJECT / ORDER_CANCEL / ORDER_END rows carry neither (algo lifecycle markers, no per-execution payload)
 
 ### Event Types
 
 | Event | When | Source |
 |---|---|---|
-| `ORDER_SUBMIT` | Algo sent an OPEN trigger | `order_history` walk (`action=OPEN`) |
-| `ORDER_REJECT` | An open or a close was refused — by the broker, the guard, a size rule | `order_history` walk, both sides: a refused close leaves no trade, so it is taken from the order history like a refused open. Stamped with the refusal's own time on the run's clock |
+| `ORDER_SUBMIT` | Algo sent an OPEN trigger | `order_history` walk (`action=OPEN`), stamped with the `pending` row's submission time. An open the venue refused keeps it — it was sent; a `denied` one has none — it never was |
+| `ORDER_REJECT` | An open or a close was refused — by the venue (status `rejected`), or here before it was sent (`denied`: the guard, a size rule) | `order_history` walk, both sides: a refused close leaves no trade, so it is taken from the order history like a refused open. Stamped with the refusal's own time on the run's clock; the reason in `close_reason` |
+| `ORDER_CANCEL` | An open or a close was cancelled — by the strategy, the framework or the venue | `order_history` walk, both sides. The row's `end_reason` in `close_reason` |
+| `ORDER_END` | Any other ending without a fill: `expired`, `undelivered`, `unaccounted` — the `status` column says which | `order_history` walk, both sides. The row's `end_reason` in `close_reason` |
 | `CLOSE_SUBMIT` | Algo sent a CLOSE trigger (one per TradeRecord) | `trade_history` walk — 1:1 with TradeRecord |
 | `FILL` | One `BrokerTrade` (atomic execution) | `entry_trades` + `exit_trades` on each TradeRecord |
 | `POSITION_OPEN` | `_fill_open_order` finalized | First TradeRecord of a `position_id` in trade_history |
@@ -234,19 +239,24 @@ partial closes of the same position would collapse to one CLOSE_SUBMIT. Building
 ### First-class fields vs the metadata bag on OrderResult
 
 The genuine order dimensions are typed first-class fields (`action` since #330; `symbol`,
-`direction`, `requested_lots`, `close_type` since #343) — consumers read `order.symbol`
-instead of `order.metadata.get('symbol')`, and presence is consistent across all
-construction sites. The writer routes ORDER_SUBMIT vs CLOSE_SUBMIT on `order.action`.
+`direction`, `requested_lots`, `close_type` since #343; `order_type`, `initiator`, `end_reason`
+since #362) — consumers read `order.symbol` instead of `order.metadata.get('symbol')`, and
+presence is consistent across all construction sites. The writer routes ORDER_SUBMIT vs
+CLOSE_SUBMIT on `order.action`.
 
 `metadata` retains only diagnostic / order-type-specific keys: `fee_cost`, `fee_type`,
 `fill_type`, `submitted_at_tick`, `filled_at_tick`, `realized_pnl`, `awaiting_fill`,
-`broker_ref`, `reason` (EXPIRED), `order_type` (EXPIRED), `limit_price`, `stop_price`.
+`broker_ref`, `entry_price` (an unfilled ending), `limit_price`, `stop_price`.
 
-Construction sites are inventoried at:
+Where an `OrderResult` is constructed:
 
-- `live_trade_executor.py` — 3 sites (MARKET open, LIMIT open, close)
-- `trade_simulator.py` — 5 sites (MARKET, LIMIT, STOP, STOP_LIMIT opens + close)
-- `abstract_trade_executor.py` — 4 sites (EXECUTED open, EXECUTED close, EXPIRED limit, EXPIRED stop)
+- the `pending` result of each submission — `open_order` and `close_position` in
+  `live_trade_executor.py` and `trade_simulator.py`
+- the `executed` row of a fill — `_fill_open_order` and `_fill_close_order` in
+  `abstract_trade_executor.py`
+- every ending without a fill, through the builders beside them — `_denial_for_request`,
+  `_refusal_for_close`, `_rejection_for_pending` and `_ending_for_pending` — and booked through
+  `_book_order_result`, the one place a row is appended and counted (#362)
 
 ## File Locations
 

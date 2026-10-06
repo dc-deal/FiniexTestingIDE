@@ -207,7 +207,7 @@ Partial-close specific tests organized in 7 groups.
 | `test_portfolio_pnl_is_sum_of_trades` | Σ(trade.net_pnl) = portfolio total P&L |
 | `test_portfolio_fees_is_sum_of_trade_fees` | Σ(trade.spread_cost) = portfolio spread cost |
 | `test_total_trades_count` | portfolio.total_trades = 4 |
-| `test_no_rejected_orders` | 0 rejected orders |
+| `test_no_rejected_orders` | No order was refused — neither rejected by the venue nor denied here |
 
 #### TestChronologicalOrder
 
@@ -272,6 +272,16 @@ A refused order built by the rejection factory itself, one on each side — no s
 |------|-------------|
 | `test_a_refused_close_is_not_lost` | A refused close gets its ORDER_REJECT, although closes are otherwise taken from the trade history, where a refused one never lands |
 | `test_a_rejection_carries_its_own_time_never_the_wall_clock` | The event is stamped with the refusal's own time; it used to fall back to the moment the report was written |
+
+#### TestUnfilledEndEvents
+
+Every way an order ends without a fill leaves an event with its status and reason (#362) — built
+from rows as the executors book them, no scenario run.
+
+| Test | Description |
+|------|-------------|
+| `test_cancel_and_unaccounted_get_their_own_events` | A cancel is ORDER_CANCEL and an unaccounted order ORDER_END, each with its status and end reason |
+| `test_a_venue_refusal_keeps_its_submission_and_a_denial_has_none` | An order the venue refused was sent, so its ORDER_SUBMIT stays beside its ORDER_REJECT; a denial never left this process and has none |
 
 #### TestSubmitTimes
 

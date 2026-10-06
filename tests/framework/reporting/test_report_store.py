@@ -6,6 +6,7 @@ the shared filter. Tested against a temporary logs directory with fixture artifa
 no run required.
 """
 
+import csv
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -60,6 +61,7 @@ from python.framework.types.api.report_types import (
     WarningsErrorsReport,
 )
 from python.framework.types.config_types.file_logging_config_types import RunLogPaths
+from python.framework.types.trading_env_types.order_types import CloseType
 from python.framework.types.log_layout_types import (
     RUN_TYPE_AUTOTRADER,
     RUN_TYPE_SIMULATION,
@@ -289,6 +291,17 @@ class TestCsv:
         assert len(lines) == 1 + 3                 # header + 3 rows
         assert all(line.startswith(_RUN_ID + ',') for line in lines[1:])
         assert 'EURUSD' in lines[1]
+
+    def test_an_enum_cell_holds_its_value(self, tmp_path):
+        # The CSV is read beside the JSON and the API, which say `partial` — a cell saying
+        # `CloseType.PARTIAL` is found by no filter on the served value
+        report = _report()
+        report.trades[0].close_type = CloseType.PARTIAL
+        write_trade_history_csv(report, tmp_path)
+        with (tmp_path / 'trade_history.csv').open(newline='', encoding='utf-8') as handle:
+            rows = list(csv.DictReader(handle))
+        assert rows[0]['close_type'] == 'partial'
+        assert rows[1]['close_type'] == ''
 
 
 def _order_row(order_id: str, symbol: str, status: str) -> OrderHistoryRow:

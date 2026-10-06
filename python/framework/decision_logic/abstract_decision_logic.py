@@ -548,7 +548,8 @@ class AbstractDecisionLogic(ABC):
         React to an order nobody could account for. No-op unless overridden.
 
         Live only: the framework stopped asking about an order the venue may still hold —
-        possibly filled. Nothing was booked for it.
+        possibly filled. No fill was booked for it; its row in the order history says
+        `unaccounted`.
 
         Args:
             event: Detail (order id, direction, why the framework stopped asking, full result)

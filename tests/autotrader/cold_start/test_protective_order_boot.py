@@ -154,6 +154,22 @@ class TestAStopThatFiredOvernight:
         assert not any('short' in message.lower() for message in logger.errors), (
             f'A closed position cannot be short of anything: {logger.errors}')
 
+    def test_and_its_close_counts_as_a_submitted_order(self, spot_executor, store, logger):
+        """
+        Sent by an earlier session, its fill booked in this one (#362). Uncounted, the session
+        reported more orders executed than it submitted.
+        """
+        store.save(session_key='paa53', highest_position_counter=1,
+                   open_positions=[_carried_long()])
+        _boot(spot_executor, store, logger, _answer(BrokerOrderStatus.FILLED, 0.01, 49000.0))
+
+        spot_executor.on_tick(TickData(
+            timestamp=parse_datetime('2026-09-10T06:00:01+00:00'),
+            symbol='BTCUSD', bid=49000.0, ask=49001.0, volume=1.0))
+
+        stats = spot_executor.get_execution_stats()
+        assert (stats.orders_submitted, stats.orders_executed) == (1, 1)
+
 
 class TestAStopStillResting:
     """Adopted back, or it rests at the venue with no session aware of it."""
@@ -173,6 +189,18 @@ class TestAStopStillResting:
             'Unadopted it cannot be amended when the level moves, cannot be cancelled '
             'before a close, and comes back at the next boot as a stranger')
         assert adopted[0].broker_ref == _PROTECTIVE_REF
+
+    def test_it_counts_as_a_submitted_order(self, spot_executor, store, logger):
+        """
+        Sent by an earlier session, it ends in this one — counted for the reason an adopted
+        resting entry is (#362), or its fill or release is an ending with no submission.
+        """
+        store.save(session_key='paa53', highest_position_counter=1,
+                   open_positions=[_carried_long()])
+
+        _boot(spot_executor, store, logger, _answer(BrokerOrderStatus.PENDING))
+
+        assert spot_executor.get_execution_stats().orders_submitted == 1
 
     def test_it_brings_its_wire_key_back_rather_than_a_new_one(
         self, spot_executor, store, logger

@@ -50,7 +50,7 @@ python python/cli/docs_search_cli.py search pending order counters
 
 It uses the same ranking as the API's own search (`/api/v1/docs/search`), but over the whole tree:
 the API searches only the documents it serves, because those are written for readers who cannot
-open this repository. In VS Code the `🔍 Docs: Search` entry, first in the list, asks for the term.
+open this repository. In VS Code the `📚 Docs: Search` entry, first in the list, asks for the term.
 
 **Searching further collections.** `app_config.json::docs_search.extra_commands` lists commands the
 search runs afterwards, each with the search term appended as its last argument — for material a

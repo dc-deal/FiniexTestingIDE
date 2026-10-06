@@ -13,6 +13,7 @@ Uses DELAYED_FILL mode so orders stay resting (broker_ref tracked).
 
 from python.framework.testing.mock_broker_adapter import MockExecutionMode
 from python.framework.testing.mock_order_execution import MockOrderExecution
+from python.framework.types.trading_env_types.latency_simulator_types import PendingOperation
 from python.framework.types.trading_env_types.order_types import (
     ModificationRejectionReason,
     ModificationStatus,
@@ -153,10 +154,13 @@ class TestModifyLimitOrderBrokerRejection:
         rows_before = len(executor.get_order_history())
         mod_result = executor.modify_limit_order(
             order_id=order_id, new_price=51000.0)
+        pending = next(o for o in executor.get_active_orders()
+                       if o.pending_order_id == order_id)
 
         # Initial async accept — modification is queued, not yet rejected
         assert mod_result.success is True
         assert mod_result.status == ModificationStatus.PENDING
+        assert pending.execution_state.in_flight_operation is PendingOperation.PENDING_MODIFY
 
         # Drain delivers the broker's refusal of the AMEND on next tick. The order itself was
         # not refused — it keeps working at its old price — so it is no rejected order: no
@@ -165,6 +169,12 @@ class TestModifyLimitOrderBrokerRejection:
         assert executor.get_execution_stats().orders_rejected == 0
         assert not [r for r in executor.get_order_history()[rows_before:]
                     if r.order_id == order_id and r.is_refused]
+        # And the answer WAS delivered: the amend is no longer in flight and its price was
+        # never written. Without these the two absences above hold just as well when the
+        # answer is never drained at all — the async-delivery defect this class exists for.
+        assert pending.execution_state.in_flight_operation is PendingOperation.NONE
+        assert pending.execution_state.pending_modification is None
+        assert pending.entry_price == 49000.0
 
 
 class TestModifyLimitOrderAdapterException:
@@ -193,6 +203,8 @@ class TestModifyLimitOrderAdapterException:
         rows_before = len(executor_delayed.get_order_history())
         mod_result = executor_delayed.modify_limit_order(
             order_id=order_id, new_price=51000.0)
+        pending = next(o for o in executor_delayed.get_active_orders()
+                       if o.pending_order_id == order_id)
 
         # Initial async accept
         assert mod_result.success is True
@@ -205,6 +217,10 @@ class TestModifyLimitOrderAdapterException:
         assert executor_delayed.get_execution_stats().orders_rejected == 0
         assert not [r for r in executor_delayed.get_order_history()[rows_before:]
                     if r.order_id == order_id and r.is_refused]
+        # And the answer WAS delivered — see the broker-rejection case above
+        assert pending.execution_state.in_flight_operation is PendingOperation.NONE
+        assert pending.execution_state.pending_modification is None
+        assert pending.entry_price == 49000.0
 
 
 class TestGetBrokerRefReverseLookup:

@@ -171,6 +171,7 @@ venue holds a different one or none — which is why each ends in the session ch
 | `test_a_refused_cancel_withholds_the_close_and_says_so` | **D3.** No `reduce_only` at spot: a close beside a resting stop can fill twice. Without a confirmed cancel the close does NOT go out and the position stays open AND protected |
 | `test_a_partial_close_re_places_at_the_remaining_size` · `test_a_full_close_leaves_nothing_to_protect` | **D4.** The remainder is protected again at its NEW size; a full close invents nothing |
 | `test_the_released_stop_ends_cancelled_by_the_framework` | The protective order a close waited for ends with its own row: `cancelled`, by the framework, `protection_released` — it used to end with no record of how |
+| `test_its_cancel_event_names_the_position_it_protected` | Its `order_cancelled` event states the POSITION's direction, as its row does — the stop protecting a LONG is a sell, and the event used to say SHORT beside a row saying LONG |
 | `test_it_is_exempt_from_the_cancel_policy` | **D5.** The only pair a session can start with today would otherwise cancel the protection exactly when the bot stops looking |
 | `test_the_repeat_request_sends_nothing` · `test_and_the_waiting_close_still_goes_out_when_the_cancel_confirms` | **D3's other half.** A deferred close registers nothing with the request processor, so `is_pending_close` and `has_pending_orders` both stay False and the local level check calls in again on every tick — a repeat request JOINS the waiting close instead of overtaking it, and the waiting one still goes out when the cancel confirms |
 | `test_the_position_hears_about_it` | A broker reference arrives in THREE places, and the reconcile attribution is the third. A protective order reclaimed there without stamping its position leaves the position reading LOCAL for a stop the venue holds — two enforcers, and a carry-over with no reference for the next boot |
@@ -197,7 +198,10 @@ Both are narrow, both are real, and neither is a defect to be fixed by loosening
 
 - **A close is already in flight.** The guard matches any close on the position, so a
   strategy's partial close holds the stop off until it resolves. Letting both fly would ask
-  the venue for more lots than the position holds.
+  the venue for more lots than the position holds. The simulation stands aside the same way
+  since #362: filling the level beneath a close still in its latency queue made the position
+  vanish under that close, which then arrived to find nothing — an exit and a refusal an
+  AutoTrader session can never produce.
 - **A protective close was refused.** The pending is gone, so the next tick triggers again.
   That is the right answer for a transient refusal and a tight loop for a permanent one; the
   refusal is logged as an ERROR into the session pot each time, so it cannot pass unnoticed.
@@ -261,7 +265,8 @@ again, while the framework's own stop check re-requests the close on every tick.
 | Test class | Pins |
 |---|---|
 | `TestAnUnresolvedCancelBooksNothing` | the order stays in its resting list, the stamp stays, the deferred close is NOT released and no close reaches the venue, the operation stays in flight so nothing races it, and the resolution is asking |
-| `TestTheCeilingEndsTheWait` | at the ceiling the close is ABANDONED rather than left hanging, the operation is released so the order is not stuck for the session, and the order itself is still not dropped |
+| `TestTheCeilingEndsTheWait` | at the ceiling the close is ABANDONED rather than left hanging, the operation is released so the order is not stuck for the session, the order itself is still not dropped, and the abandoned close ends with a `denied` · `close_withheld` row — the one it gets when it is withheld at the request (#362) |
+| `TestACancelAnswerNamingNothingBooksNothing` | a cancel answered UNKNOWN — the venue answered and named nothing it cancelled — is treated as the open question it is: the stop and its stamp stay, the close keeps waiting, the operation stays in flight and the resolution asks. Kraken raises instead of answering this way (measured 2026-09-13), so it is the second adapter's case (#209) |
 | `TestAnUnresolvedAmendWritesNoProvisionalValue` | the shadow price does not move, the provisional values stay parked, and the one-outstanding-amend guard stays closed |
 
 Abandoning rather than releasing is the safe direction: the position stays open and, because the

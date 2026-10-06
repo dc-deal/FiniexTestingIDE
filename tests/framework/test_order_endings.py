@@ -14,7 +14,7 @@ to its count is held complete in both directions.
 
 from dataclasses import fields
 from datetime import datetime, timezone
-from typing import List
+from typing import List, Optional
 
 import pytest
 
@@ -38,6 +38,7 @@ from python.framework.types.live_types.live_execution_types import (
 )
 from python.framework.types.live_types.live_request_types import QueryResponse
 from python.framework.types.market_types.market_data_types import TickData
+from python.framework.types.portfolio_types.portfolio_trade_record_types import CloseReason
 from python.framework.types.run_results_types import Reduction
 from python.framework.types.trading_env_types.broker_types import BrokerType
 from python.framework.types.trading_env_types.order_types import (
@@ -97,17 +98,19 @@ def _simulator(spot_mode: bool, latency_ms: int = 0,
     return sim
 
 
-def _tick(sim: TradeSimulator, msc: int) -> None:
+def _tick(sim: TradeSimulator, msc: int, bid: float = _BID, ask: float = _ASK) -> None:
     """
-    One BTCUSD tick at the harness prices.
+    One BTCUSD tick, at the harness prices unless told otherwise.
 
     Args:
         sim: The simulator
         msc: The tick's millisecond stamp
+        bid: The bid
+        ask: The ask
     """
     sim.on_tick(TickData(
         timestamp=datetime.fromtimestamp(msc / 1000.0, tz=timezone.utc),
-        symbol='BTCUSD', bid=_BID, ask=_ASK, collected_msc=msc, time_msc=msc,
+        symbol='BTCUSD', bid=bid, ask=ask, collected_msc=msc, time_msc=msc,
     ))
 
 
@@ -117,10 +120,10 @@ def _limit(price: float = _RESTING_BUY) -> OpenOrderRequest:
                             direction=OrderDirection.LONG, lots=0.01, price=price)
 
 
-def _market(lots: float = 0.01) -> OpenOrderRequest:
-    """A market BUY."""
+def _market(lots: float = 0.01, stop_loss: Optional[float] = None) -> OpenOrderRequest:
+    """A market BUY, with a stop-loss where one is given."""
     return OpenOrderRequest(symbol='BTCUSD', order_type=OrderType.MARKET,
-                            direction=OrderDirection.LONG, lots=lots)
+                            direction=OrderDirection.LONG, lots=lots, stop_loss=stop_loss)
 
 
 def _ended(history: List[OrderResult]) -> List[OrderResult]:
@@ -235,6 +238,41 @@ class TestEveryEndingHasARowInTheSimulation:
         assert sim.get_execution_stats().orders_expired == 2
 
 
+class TestAProtectiveExitInTheSimulation:
+    """The simulation's stop-loss exit is an order as live's is, and it waits as live's does."""
+
+    _STOP = 49000.0
+    _BREACH = {'bid': 48900.0, 'ask': 48902.0}
+
+    def test_it_counts_as_a_submitted_order(self):
+        sim = _simulator(spot_mode=False)
+        sim.open_order(_market(stop_loss=self._STOP))
+        _tick(sim, msc=1001)                                  # the entry fills
+        _tick(sim, msc=1002, **self._BREACH)                  # the stop is breached
+
+        stats = sim.get_execution_stats()
+        assert (stats.orders_submitted, stats.orders_executed, stats.sl_tp_triggered) == (
+            2, 2, 1), 'the exit was counted executed and never submitted — 2/1 executed'
+
+    def test_it_stands_aside_while_the_strategys_close_is_on_its_way(self):
+        sim = _simulator(spot_mode=False, latency_ms=500)
+        sim.open_order(_market(stop_loss=self._STOP))
+        _tick(sim, msc=1600)                                  # the entry arrives and fills
+        sim.close_position(sim.get_open_positions()[0].position_id)   # arrives at 2100
+        _tick(sim, msc=1700, **self._BREACH)                  # the stop is breached meanwhile
+
+        assert sim.get_open_positions(), 'the level was filled beneath the close on its way'
+
+        _tick(sim, msc=2200, **self._BREACH)                  # the close arrives
+        assert [(t.close_reason, t.exit_price) for t in sim.get_trade_history()] == [
+            (CloseReason.MANUAL, self._BREACH['bid'])], 'live closes at the market here too'
+        assert not [r for r in sim.get_order_history() if r.is_refused], (
+            'the close arrived to find its position gone — a refusal live never produces')
+        stats = sim.get_execution_stats()
+        assert (stats.orders_submitted, stats.orders_executed, stats.sl_tp_triggered) == (
+            2, 2, 0)
+
+
 class TestEveryEndingHasARowLive:
     """Live, a cancel names its initiator, and what the session leaves unconfirmed is unaccounted."""
 
@@ -275,6 +313,37 @@ class TestEveryEndingHasARowLive:
         ended = _ended(executor.get_order_history())
         assert [(r.status, r.initiator, r.end_reason) for r in ended] == [
             (expected[0], OrderInitiator.VENUE, expected[1])]
+
+    def test_an_order_ended_after_a_partial_fill_ends_as_that_fill(self):
+        """
+        What was executed is the order's fill; the rest never happened — one row (#362).
+
+        A second, `cancelled` row used to follow, stating the executed size again, so one order
+        counted as executed and as cancelled. Its pipeline twin booked the fill alone already.
+        """
+        mock = MockOrderExecution(mode=MockExecutionMode.TIMEOUT)
+        executor = mock.create_executor()
+        events: List[DecisionEvent] = []
+        executor.set_decision_event_sink(events.append)
+        mock.feed_tick(executor, bid=_BID, ask=_ASK)
+        order_id = executor.open_order(_limit()).order_id
+        mock.await_submit_confirmation(executor)
+        resting = executor.get_active_orders()[0]
+
+        executor._handle_query_response(QueryResponse(
+            order_id=order_id,
+            broker_response=BrokerResponse(
+                broker_ref=resting.broker_ref, status=BrokerOrderStatus.CANCELLED,
+                filled_lots=0.004, fill_price=_RESTING_BUY,
+                timestamp=datetime(2026, 1, 1, tzinfo=timezone.utc)),
+        ))
+
+        ended = _ended(executor.get_order_history())
+        assert [(r.status, r.executed_lots) for r in ended] == [(OrderStatus.EXECUTED, 0.004)]
+        assert not [e for e in events if isinstance(e, OrderCancelledEvent)]
+        assert executor.get_active_orders() == []
+        stats = executor.get_execution_stats()
+        assert (stats.orders_executed, stats.orders_cancelled) == (1, 0)
 
     def test_an_order_still_travelling_at_the_session_end_is_unaccounted(self):
         mock = MockOrderExecution(mode=MockExecutionMode.TIMEOUT)

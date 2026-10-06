@@ -48,7 +48,9 @@ def write_trade_history_csv(report: TradeHistoryReport, run_dir: Path) -> Path:
         writer = csv.DictWriter(handle, fieldnames=columns)
         writer.writeheader()
         for row in report.trades:
-            writer.writerow({'run_id': report.run_id, **row.model_dump(exclude=nested)})
+            # JSON mode: an enum is written as its value (`partial`, not `CloseType.PARTIAL`)
+            writer.writerow({'run_id': report.run_id,
+                             **row.model_dump(mode='json', exclude=nested)})
     return path
 
 

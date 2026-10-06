@@ -39,14 +39,19 @@ No guessing: each event delivers one typed payload to one hook.
 | `DecisionEventType` | Payload (typed fields) | Hook |
 |---|---|---|
 | `ORDER_FILLED` | `OrderFilledEvent` — order_id, position_id, direction, fill_price, lots, result | `on_order_filled` |
-| `ORDER_REJECTED` | `OrderRejectedEvent` — order_id, direction, reason, message, result | `on_order_rejected` |
-| `ORDER_CANCELLED` | `OrderCancelledEvent` — order_id, direction | `on_order_cancelled` |
+| `ORDER_REJECTED` | `OrderRejectedEvent` — order_id, direction, reason, message, result. The venue refused the order (`rejected`) or confirmed it never received it (`undelivered`); `result.status` says which. A refusal before sending (`denied`) never arrives here — `send_order()` returns it | `on_order_rejected` |
+| `ORDER_UNACCOUNTED` | `OrderUnaccountedEvent` — order_id, direction, end_reason, result. Live only: the framework stopped asking about an order the venue may still hold. Not called at the session's end | `on_order_unaccounted` |
+| `ORDER_CANCELLED` | `OrderCancelledEvent` — order_id, direction, result: the order's booked row, saying who ended it (`initiator`) and why (`end_reason`); `result.status` is `expired` where the venue let it run out | `on_order_cancelled` |
 | `PARTIAL_CLOSE` | `PartialCloseEvent` — position_id, direction, closed_lots, remaining_lots, fill_price, result | `on_partial_close` |
 | `POSITION_CLOSED` | `PositionClosedEvent` — position_id, direction, close_reason, requested_locally, fill_price, lots | `on_position_closed` |
 | `SESSION_END` | `SessionEndEvent` — reason, severity | `on_session_end` |
 
 Every payload also carries `tick_time` — the canonical clock: sim time in backtests; in an
 AutoTrader session the tick time, advanced by the wall clock between ticks.
+
+`direction` is the POSITION's on every payload. For a close — a protective order included,
+whose own trading side is the opposite — that is the direction of the position it closes, and
+on a rejected or unaccounted close it is None once that position is gone.
 
 ## Architecture
 

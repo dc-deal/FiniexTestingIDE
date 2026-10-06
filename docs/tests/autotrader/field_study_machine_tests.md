@@ -14,6 +14,7 @@ produce and therefore never exercises.
 |---|---|
 | `test_state_machine.py` | one case per phase type, plus the outcomes each one can end in |
 | `test_cancel_orchestration.py` | the cancel bookkeeping across a re-arm |
+| `test_order_event_recording.py` | what the study's order hooks write into its record: a close ending with no direction — its position is gone — is recorded rather than raised on, and a cancel event records its row's own status, so a venue expiry reads `expired` |
 
 ## What the outcomes mean
 

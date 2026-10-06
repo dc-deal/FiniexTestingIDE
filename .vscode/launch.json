@@ -2,12 +2,12 @@
     "version": "0.2.0",
     "configurations": [
         // ====================================================
-        // 🔍 SEARCH
+        // 📚 SEARCH
         // ====================================================
         // The whole documentation tree, ranked; then every extra search set up for this
         // installation in app_config.json::docs_search (empty in a fresh clone).
         {
-            "name": "🔍 Docs: Search",
+            "name": "📚 Docs: Search",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/docs_search_cli.py",

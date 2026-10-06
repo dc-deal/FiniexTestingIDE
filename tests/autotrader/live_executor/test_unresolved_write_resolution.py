@@ -37,6 +37,7 @@ from python.framework.types.trading_env_types.order_types import (
     OpenOrderRequest,
     OrderDirection,
     OrderEndReason,
+    OrderInitiator,
     OrderStatus,
     OrderType,
     RejectionReason,
@@ -206,6 +207,39 @@ class TestTheVenueNamesIt:
 
         refusals = [o for o in executor_instant.get_order_history() if o.is_refused]
         assert not refusals, 'nothing was refused — the answer was merely late'
+
+    def test_a_cancel_parked_while_the_reference_was_missing_is_sent(
+        self, executor_instant, mock_instant
+    ):
+        """
+        The resolution is a place the reference arrives, so it owes the parked cancel (#361).
+
+        The submit answer and the reconcile attribution both send it; the resolution restored
+        the reference and stopped there. The limit the algo had cancelled kept resting and
+        could fill, and a close parked behind a protective order's cancel waited for the rest
+        of the session.
+        """
+        pending = _unresolved_limit(executor_instant, mock_instant)
+        assert executor_instant.cancel_limit_order(pending.pending_order_id)
+        assert pending.execution_state.cancel_requested, 'parked: there is no reference yet'
+        adapter = executor_instant.broker.adapter
+        adapter.set_transport_fault('submit', None)
+        adapter.set_broker_orders([BrokerOrder(
+            broker_ref='MOCK-RECOVERED', symbol='BTCUSD',
+            direction=OrderDirection.LONG, order_type=OrderType.LIMIT, lots=0.001,
+            status=BrokerOrderStatus.PENDING, price=40000.0,
+            client_order_id=pending.client_order_id,
+        )])
+
+        _drive_resolution(executor_instant, mock_instant, pending)
+        mock_instant.await_submit_confirmation(executor_instant)   # the cancel's answer
+
+        assert 'MOCK-RECOVERED' in adapter.get_cancelled_refs(), 'the parked cancel was never sent'
+        assert pending not in executor_instant._active_limit_orders
+        ended = [o for o in executor_instant.get_order_history()
+                 if o.order_id == pending.pending_order_id and o.status is OrderStatus.CANCELLED]
+        assert [(o.initiator, o.end_reason) for o in ended] == [
+            (OrderInitiator.STRATEGY, OrderEndReason.CANCEL_REQUESTED)]
 
 
 class TestTheVenueNamesNothing:

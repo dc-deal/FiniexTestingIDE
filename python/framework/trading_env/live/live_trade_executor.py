@@ -478,12 +478,12 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         A reference that is already set is never overwritten. That would be a genuine
         correction, and correction is #349's decision, not this one.
 
-        This is the SECOND place a broker_ref goes from None to set, and it therefore owes
-        the same duty as the first (_handle_resting_submit_response): a cancel the algo asked
-        for while the reference was missing was PARKED, not refused (#361), and the missing
-        reference was the only reason it could not be sent. Restoring the reference without
-        issuing it would hand the order back to the poll path as if nothing had been asked —
-        and a resting order the algo cancelled can still fill.
+        This is one of the places a broker_ref goes from None to set, and it therefore owes
+        the duty all of them owe (_issue_parked_cancel): a cancel the algo asked for while
+        the reference was missing was PARKED, not refused (#361), and the missing reference
+        was the only reason it could not be sent. Restoring the reference without issuing it
+        would hand the order back to the poll path as if nothing had been asked — and a
+        resting order the algo cancelled can still fill.
 
         Args:
             attributions: (local pending, broker order) pairs matched by client order id
@@ -521,18 +521,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
                 self._stamp_protective_confirmation(pending)
 
             if pending.execution_state.cancel_requested:
-                pending.execution_state.cancel_requested = False
-                pending.execution_state.in_flight_operation = PendingOperation.PENDING_CANCEL
-                self._request_processor.submit_cancel_order_async(
-                    order_id=pending.pending_order_id,
-                    broker_ref=pending.broker_ref,
-                    adapter=self.broker.adapter,
-                )
-                self._stamp_write_moment(pending)
-                self.logger.info(
-                    f'❌ Limit order {pending.pending_order_id} deferred cancel issued '
-                    f'after attribution (broker_ref={pending.broker_ref})'
-                )
+                self._issue_parked_cancel(pending, 'after attribution')
                 continue
 
             pending.execution_state.in_flight_operation = PendingOperation.NONE
@@ -1165,20 +1154,38 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             # Deferred cancel (#361): a cancel was requested while this submit was
             # in-flight (broker_ref=None). Now confirmed → issue it. The CancelResponse
             # resolves via _handle_cancel_response (removes from _active_limit_orders).
-            pending.execution_state.cancel_requested = False
-            pending.execution_state.in_flight_operation = PendingOperation.PENDING_CANCEL
-            self._request_processor.submit_cancel_order_async(
-                order_id=order_id,
-                broker_ref=pending.broker_ref,
-                adapter=self.broker.adapter,
-            )
-            self._stamp_write_moment(pending)
-            self.logger.info(
-                f'❌ {order_label} order {order_id} deferred cancel issued '
-                f'(broker_ref={pending.broker_ref})'
-            )
+            self._issue_parked_cancel(pending, 'on the submit answer')
         # else: PENDING — pending stays in its resting list,
         # _process_active_orders Phase 2 polls it for fills.
+
+    def _issue_parked_cancel(self, pending: PendingOrder, how: str) -> None:
+        """
+        Send the cancel the algo asked for while the order had no venue reference yet (#361).
+
+        Such a cancel is PARKED, not refused: the missing reference is the only reason it
+        cannot be sent. So every place the reference arrives owes it this call — the submit
+        answer, the truth pull's attribution, and the resolution by query (#487). The last one
+        did not make it, and a reference restored without it hands the order back to the poll
+        path as if nothing had been asked: a cancelled limit could still fill, and a close
+        parked behind a protective order's cancel waited for the rest of the session.
+
+        Args:
+            pending: The resting order whose reference has just arrived
+            how: What brought the reference, for the log line
+        """
+        pending.execution_state.cancel_requested = False
+        pending.execution_state.in_flight_operation = PendingOperation.PENDING_CANCEL
+        self._request_processor.submit_cancel_order_async(
+            order_id=pending.pending_order_id,
+            broker_ref=pending.broker_ref,
+            adapter=self.broker.adapter,
+        )
+        self._stamp_write_moment(pending)
+        order_label = pending.order_type.value if pending.order_type else 'resting'
+        self.logger.info(
+            f'❌ {order_label} order {pending.pending_order_id} deferred cancel issued '
+            f'{how} (broker_ref={pending.broker_ref})'
+        )
 
     # ============================================
     # Async Modify / Cancel / Position-Modify Drain Handlers (#318)
@@ -1362,7 +1369,8 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             # positions, worst burst 20 in 39 ticks, and two rejections blocked EVERY new
             # order in that direction for 60 s — the replacement protective order included.
             # What the strategy reads stays true: the order keeps the values the venue holds.
-            # The order-event stream records the refused amend itself.
+            # The warning above is the refused amend's only record until the order-event
+            # stream #362 builds exists to hold it.
             if pending.closes_position_id:
                 self.logger.error(
                     f'❌ The venue refused an amend of the protective order for '
@@ -1419,6 +1427,8 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         On rejection: most often a race condition (order filled before cancel
         reached broker). Surface as informational — the regular poll cycle
         will pick up the actual terminal state (FILLED).
+        An answer that was lost, or that names nothing cancelled, books nothing: the order
+        stays as it was and is resolved by asking (#487).
         """
         pending = self._find_active_order(order_id)
         if pending is None:
@@ -1437,6 +1447,16 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             # keeps WAITING rather than being released or abandoned — the resolution
             # decides which, and its ceiling abandons it with an error the operator sees.
             self._keep_unresolved_write(pending, 'Cancel')
+            return
+
+        if response.is_unknown:
+            # The same case reached the other way: the venue ANSWERED and named nothing it
+            # cancelled. Whether it still works the order is as open as after a lost answer,
+            # and booking it cancelled would release the close beside a stop that may still
+            # rest. Kraken cannot produce it — it raises for an order that is gone (measured
+            # 2026-09-13, see its parse_cancel_response) — so the second adapter (#209) is
+            # what reaches this.
+            self._keep_unresolved_write(pending, 'Cancel', answered=True)
             return
 
         if response.is_rejected:
@@ -1468,6 +1488,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         self,
         pending: PendingOrder,
         venue_status: BrokerOrderStatus = BrokerOrderStatus.CANCELLED,
+        book_ending: bool = True,
     ) -> None:
         """
         The venue no longer holds this resting order: take it out, book its end, send what waited.
@@ -1486,6 +1507,9 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             pending: The resting order that is gone at the venue
             venue_status: How the venue reports the order ended — CANCELLED, or EXPIRED
                 where it let the order run out
+            book_ending: False when the order executed part of its size first — that fill
+                is then its ending, already booked and already heard by the strategy, and
+                no cancelled row or order_cancelled follows it (#362)
         """
         self._drop_active_order(pending)
         if pending.closes_position_id:
@@ -1500,14 +1524,15 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             f'❌ Order {pending.pending_order_id} cancel resolved '
             f'(broker_ref={pending.broker_ref})'
         )
-        state = pending.execution_state
-        if state.cancel_initiator is not None:
-            ended = self._ending_for_pending(
-                pending, OrderStatus.CANCELLED,
-                initiator=state.cancel_initiator, end_reason=state.cancel_end_reason)
-        else:
-            ended = self._venue_ended_row(pending, venue_status)
-        self._emit_order_cancelled(pending, self._book_order_result(ended))
+        if book_ending:
+            state = pending.execution_state
+            if state.cancel_initiator is not None:
+                ended = self._ending_for_pending(
+                    pending, OrderStatus.CANCELLED,
+                    initiator=state.cancel_initiator, end_reason=state.cancel_end_reason)
+            else:
+                ended = self._venue_ended_row(pending, venue_status)
+            self._emit_order_cancelled(pending, self._book_order_result(ended))
         if pending.closes_position_id:
             # #503 — and THIS is what a close was waiting for. Released after the line
             # above so the log reads in the order the events happened; a reader tracing a
@@ -1926,7 +1951,12 @@ class LiveTradeExecutor(AbstractTradeExecutor):
                 continue
             self._dispatch_resolution(pending, now)
 
-    def _keep_unresolved_write(self, pending: PendingOrder, operation: str) -> None:
+    def _keep_unresolved_write(
+        self,
+        pending: PendingOrder,
+        operation: str,
+        answered: bool = False,
+    ) -> None:
         """
         A write whose answer was lost books NOTHING and starts being asked about (#487).
 
@@ -1940,17 +1970,24 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         second write races the first, and the resolution is armed. The ceiling is what ends
         it — and un-sticks the operation, because nothing else would.
 
+        An answer that names nothing (UNKNOWN) leaves the same question open and takes the
+        same route; only the log line differs, because "the venue did not answer" would be
+        untrue of it.
+
         Args:
             pending: The order whose write was not answered
             operation: What was attempted, for the log line
+            answered: True when the venue did answer, and its answer named nothing
         """
         now = self.get_current_time_if_set()
         if now is not None:
             self._arm_resolution(pending, now)
+        what = ('UNKNOWN — the venue answered and named nothing it carried out'
+                if answered else 'UNRESOLVED — the broker did not answer')
         self.logger.error(
-            f'📡 {operation} of {pending.pending_order_id} UNRESOLVED — the broker did not '
-            f'answer. NOTHING is booked: the venue may or may not have carried it out, and '
-            f'acting on either guess is worse than asking. Resolution by query (#487).')
+            f'📡 {operation} of {pending.pending_order_id} {what}. NOTHING is booked: the '
+            f'venue may or may not have carried it out, and acting on either guess is worse '
+            f'than asking. Resolution by query (#487).')
 
     def _stamp_write_moment(self, pending: Optional[PendingOrder]) -> None:
         """
@@ -2114,6 +2151,9 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         how to turn a fill or a terminal state into a record. A second booking route for
         the same facts is how two paths come to disagree about one order.
 
+        What IS sent is a cancel the algo asked for while the reference was missing — the
+        duty every place owes where a reference arrives (_issue_parked_cancel).
+
         Args:
             pending: The order in resolution
             response: The venue's answer, carrying its reference and status
@@ -2148,6 +2188,16 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             # left set, every later cancel and amend would be refused as busy.
             self._release_stuck_operation(
                 pending, why='the venue still lists the order as working')
+        if pending.execution_state.cancel_requested:
+            if final:
+                # The venue ended the order before the parked cancel could be sent, so that
+                # cancel explains nothing: how it ended is the venue's word, and the poll
+                # books it without our request's initiator on it.
+                pending.execution_state.cancel_requested = False
+                pending.execution_state.cancel_initiator = None
+                pending.execution_state.cancel_end_reason = None
+            elif pending.broker_ref:
+                self._issue_parked_cancel(pending, 'after the resolution named it')
         if final:
             # The venue knows how the order ended; the ordinary poll books it on the next
             # pass instead of after a full poll interval.
@@ -2484,6 +2534,10 @@ class LiveTradeExecutor(AbstractTradeExecutor):
 
         What the order executed before it ended is booked first, because that volume moved;
         then the cancel is confirmed exactly as a cancel answer would have confirmed it.
+        An order that executed anything ends as that fill and gets no second row (#362):
+        what was executed is its fill, the rest never happened — the same as its pipeline
+        twin, _book_venue_ended_pipeline_order. That it was partly filled and then ended is
+        a sequence, which a row cannot hold and the order-event stream #362 builds will.
 
         Args:
             pending: The resting order the venue reports ended
@@ -2516,7 +2570,8 @@ class LiveTradeExecutor(AbstractTradeExecutor):
                     f'❌ The protective STOP for {pending.closes_position_id} ended as '
                     f'{broker_response.status.value} at the venue. The position is open and '
                     f'its stop is enforced by THIS PROCESS ONLY.')
-        self._confirm_cancel(pending, venue_status=broker_response.status)
+        self._confirm_cancel(
+            pending, venue_status=broker_response.status, book_ending=executed <= 0)
 
     # ============================================
     # Order Submission (live-specific)
@@ -2630,6 +2685,9 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             position = self.portfolio.get_position(position_id)
             if position is None:
                 continue
+            # Sent by a predecessor of this session, and its fill is booked here — counted
+            # as submitted for the reason adopt_resting_orders gives (#362)
+            self._orders_submitted += 1
             protective = PendingOrder(
                 pending_order_id=(position.protective_order_id
                                   or f'protect_{position_id}'),
@@ -2715,6 +2773,9 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         )
         self._active_stop_orders.append(protective)
         position.protective_order_id = order_id
+        # Sent by a predecessor of this session, and it ends in this one — counted as
+        # submitted for the reason adopt_resting_orders gives (#362)
+        self._orders_submitted += 1
         self.logger.info(
             f'🛡️ Cold start: the venue is still holding the stop for '
             f'{position.position_id} (broker_ref={position.protective_broker_ref}) — '
@@ -3488,19 +3549,30 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         """
         Drop a close that can no longer be sent safely (#503).
 
-        The position stays OPEN and, because the cancel did not go through, still
-        protected — the safe end of the two outcomes, and the operator has to know the
-        close they asked for did not happen.
+        The position stays OPEN — the safe end of the two outcomes, and the operator has to
+        know the close they asked for did not happen. Where the venue refused the cancel, its
+        protective order is still there; where the venue never held one, the local check has
+        the level back. The close ends with the row the same close gets when it is withheld
+        at the request (#362) — it used to end with none.
 
         Args:
             position_id: The position whose close was waiting
             why: What stopped it
         """
-        if self._deferred_closes.pop(position_id, None) is None:
+        deferred = self._deferred_closes.pop(position_id, None)
+        if deferred is None:
             return
         self.logger.error(
             f'❌ The close of {position_id} was withheld and is now abandoned: {why}. '
-            f'The position is STILL OPEN and its protective order is still at the venue.')
+            f'The position is STILL OPEN.')
+        self._book_order_result(self._refusal_for_close(
+            order_id=f'close_{position_id}',
+            position=self.portfolio.get_position(position_id),
+            lots=deferred.lots,
+            status=OrderStatus.DENIED,
+            reason=RejectionReason.CLOSE_WITHHELD,
+            message=f'close withheld and abandoned: {why}',
+        ))
 
     def modify_position(
         self,
@@ -3882,7 +3954,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
                 continue
             if pending.broker_ref is None:
                 # Submit still in-flight: defer the cancel (#361) — park the intent and
-                # auto-issue it once _handle_resting_submit_response confirms the broker_ref.
+                # auto-issue it wherever the broker_ref arrives (_issue_parked_cancel).
                 # Dropping it here orphaned the order (#13/#15 cert blocker, proven live).
                 pending.execution_state.cancel_requested = True
                 self._note_cancel_origin(pending, initiator, end_reason)

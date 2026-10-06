@@ -798,7 +798,7 @@ pattern. `order_history` crosses subprocess boundary via `ProcessTickLoopResult`
 ### Baseline Tests: order_history Coverage
 **Problem:** Baseline tests validate `execution_stats` counters but don't assert on `order_history`
 contents. Tests correctly detect stress test rejections (test_no_rejected_orders,
-test_orders_sent_equals_executed fail when enabled), but no dedicated fixture/assertions for
+test_orders_submitted_equals_executed fail when enabled), but no dedicated fixture/assertions for
 order_history data.
 - Affects: Baseline test suite, test fixtures
 

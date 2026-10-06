@@ -290,9 +290,11 @@ worth answering explicitly. It has three exits, and the second one is why this m
 
 1. **The venue does hold it.** The reconcile truth pull joins on the client order id, finds
    the resting order, and the executor restores the `broker_ref`
-   (`apply_order_attributions`). World 2 polling resumes. A cancel the algo PARKED while the
-   reference was missing (#361) is issued at that same moment — the missing reference was
-   its only obstacle, so the repair owes it the same duty the normal confirmation path does.
+   (`apply_order_attributions`) — or the #487 resolution names it first, with the same
+   consequences. World 2 polling resumes. A cancel the algo PARKED while the reference was
+   missing (#361) is issued at that same moment — the missing reference was its only
+   obstacle, so every place a reference arrives owes it the same duty the normal confirmation
+   path does (`_issue_parked_cancel`).
 2. **The venue does not show it — and that resolves nothing.** It may never have been
    accepted, or it may have filled. The order is therefore neither dropped nor confirmed,
    and it stays in its world. **A World-2 pending has no timeout at all** (`check_timeouts`
@@ -302,12 +304,13 @@ worth answering explicitly. It has three exits, and the second one is why this m
    each such order ONCE into the session error pot: the session must not grade green.
    Deciding it needs the closed-order / trades channel (#487).
 3. **A MARKET or CLOSE order in the latency queue times out** after `order_timeout_seconds`
-   and is recorded as `BROKER_UNREACHABLE` — blaming the transport, not the venue. That
-   timeout fires exactly ONCE, because the removal is keyed by `pending_order_id` through
-   `discard_order()` and not by a broker reference the order never received. Keying it by
+   and, where nobody can say what became of it, is booked `unaccounted` — the venue may hold
+   it, and nothing blames the venue (#362). That timeout fires exactly ONCE, because the
+   removal is keyed by `pending_order_id` through `discard_order()` and not by a broker
+   reference the order never received. Keying it by
    reference meant the removal found nothing and returned before removing, so the same order
    timed out again on every heartbeat and every tick for the rest of the session — and for a
-   CLOSE that held `is_pending_close` true, which made the position unclosable. The reason
+   CLOSE that held `is_pending_close` true, which made the position unclosable. The ending
    also arms the order cooldown, which gates ENTRIES only; that pair has a hard ordering,
    described in `external_connection_policy.md`.
 
@@ -341,9 +344,9 @@ window could finish, and for World 1 that timeout was the only exit there was.
 
 **At the ceiling the two worlds part company.** A World-2 resting order stays — the truth pull
 sees it every cadence and reports it. A World-1 pending is outside that pull's reach, so it
-takes the disposition the timeout already defines: recorded `BROKER_UNREACHABLE`, removed from
-the tracker so it stops gating the algo, and never called a venue refusal. The entry block
-does NOT clear when the order leaves: being booked unreachable is not being accounted for.
+takes the disposition the timeout already defines: booked `unaccounted`, removed from the
+tracker so it stops gating the algo, and never called a venue refusal. The entry block does
+NOT clear when the order leaves: being booked unaccounted is not being accounted for.
 
 **It covers all four writes, and three of them used to collapse.** A cancel, an amend and a
 position modify each branched on `is_rejected` alone, so an unresolved answer ran the whole

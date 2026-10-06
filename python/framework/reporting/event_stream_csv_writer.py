@@ -21,7 +21,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from python.framework.types.portfolio_types.portfolio_trade_record_types import TradeRecord
 from python.framework.types.trading_env_types.broker_trade_types import BrokerTrade
@@ -274,8 +274,7 @@ def _build_events(
     # (each close = one algo decision). This avoids the dedup problem where
     # 3 partial closes on the same position_id would collapse to one
     # CLOSE_SUBMIT if we keyed on (order_id, action) alone.
-    from collections import OrderedDict
-    open_groups: 'OrderedDict[str, List[OrderResult]]' = OrderedDict()
+    open_groups: Dict[str, List[OrderResult]] = {}
     for order in order_history:
         # action is first-class field on OrderResult; default to OPEN for
         # legacy or constructor sites that haven't set it explicitly.
@@ -289,18 +288,16 @@ def _build_events(
         open_groups.setdefault(order.order_id, []).append(order)
 
     for order_id, orders in open_groups.items():
-        refused = next((o for o in orders if o.is_refused), None)
-        if refused:
-            events.append(_end_event(order_id, refused))
-            continue
-        # Any other unfilled end follows the submission it ends
         ended = next((o for o in orders if o.status in _UNFILLED_ENDINGS), None)
         if ended:
             events.append(_end_event(order_id, ended))
+        if ended is not None and ended.status is OrderStatus.DENIED:
+            # Refused before it was sent, so there is no submission to record. Every other
+            # ending — a venue refusal included — follows the submission it ends (#362).
+            continue
 
-        # Earliest valid timestamp across PENDING/EXECUTED stages. Sim opens
-        # store PENDING with execution_time=None and only set it on EXECUTED;
-        # live behaves similarly. Skip if no source available rather than
+        # Earliest valid timestamp across the order's rows — the `pending` row carries the
+        # submission time in both pipelines. Skip if no source is available rather than
         # planting a wallclock-now that lands at session end.
         ts = next((o.execution_time for o in orders if o.execution_time), None)
         if ts is None:

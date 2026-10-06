@@ -14,6 +14,7 @@ cannot slip through:
 Tracked by #321.
 """
 
+import time
 from datetime import datetime, timezone
 
 from python.framework.testing.mock_broker_adapter import MockExecutionMode
@@ -237,7 +238,7 @@ class TestAsyncSubmitShutdown:
 
 
 class TestAsyncSubmitTimeout:
-    """TIMEOUT-mode pending eventually triggers timeout rejection via check_timeouts."""
+    """A TIMEOUT-mode pending reaches its fill timeout and is cancelled by the framework."""
 
     def test_async_submit_timeout_mode(self):
         """Submit in TIMEOUT mode stays pending; tick-driven check_timeouts cancels it."""
@@ -254,7 +255,6 @@ class TestAsyncSubmitTimeout:
         assert executor.has_pending_orders()
 
         # Wait past the timeout window
-        import time
         time.sleep(0.15)
 
         mock.feed_tick(executor, bid=49999.0, ask=50001.0)

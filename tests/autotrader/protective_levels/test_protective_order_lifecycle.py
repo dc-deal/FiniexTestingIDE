@@ -18,6 +18,7 @@ from python.framework.testing.mock_broker_adapter import MockExecutionMode
 from python.framework.testing.mock_order_execution import MockOrderExecution
 from python.framework.trading_env.broker_config import BrokerConfig
 from python.framework.trading_env.live.live_trade_executor import LiveTradeExecutor
+from python.framework.types.decision_event_types import OrderCancelledEvent
 from python.framework.types.live_types.live_execution_types import (
     BrokerOrderStatus,
     BrokerResponse,
@@ -183,6 +184,26 @@ class TestWhatSurvivesAPartialCloseIsProtectedAgain:
                  if r.order_id == protective.pending_order_id and r.status is not OrderStatus.PENDING]
         assert [(r.status, r.initiator, r.end_reason) for r in ended] == [
             (OrderStatus.CANCELLED, OrderInitiator.FRAMEWORK, OrderEndReason.PROTECTION_RELEASED)]
+
+    def test_its_cancel_event_names_the_position_it_protected(self):
+        """
+        The event states the POSITION's direction, as the row it carries does (#362).
+
+        The stop protecting a LONG is a sell. The event used to name the order's own side, so
+        it said SHORT while its own row said LONG.
+        """
+        mock, executor, position, protective = _protected_position()
+        events = []
+        executor.set_decision_event_sink(events.append)
+
+        executor.close_position(position.position_id)
+        mock.feed_tick(executor, symbol=_SYMBOL, bid=50000.0, ask=50001.0)
+        mock.feed_tick(executor, symbol=_SYMBOL, bid=50000.0, ask=50001.0)
+
+        cancels = [e for e in events if isinstance(e, OrderCancelledEvent)
+                   and e.order_id == protective.pending_order_id]
+        assert [(e.direction, e.result.direction) for e in cancels] == [
+            (OrderDirection.LONG, OrderDirection.LONG)]
 
     def test_a_full_close_leaves_nothing_to_protect(self):
         mock, executor, position, protective = _protected_position(lots=0.10)

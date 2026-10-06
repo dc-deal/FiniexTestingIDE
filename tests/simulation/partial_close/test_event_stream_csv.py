@@ -289,6 +289,41 @@ class TestUnfilledEndEvents:
             'pos_ethusd_8': ('ORDER_END', 'unaccounted', 'order_timeout'),
         }
 
+    def test_a_venue_refusal_keeps_its_submission_and_a_denial_has_none(self):
+        """
+        An order the venue refused was SENT, so its ORDER_SUBMIT stays beside its ORDER_REJECT
+        (#362); a denial never left this process and has none. Both used to lose it alike, so
+        the submit events no longer matched the submitted count.
+        """
+        sent = OrderResult(
+            order_id='pos_ethusd_9', status=OrderStatus.PENDING, execution_time=self._AT,
+            action=OrderAction.OPEN, symbol='ETHUSD', direction=OrderDirection.LONG,
+            requested_lots=0.01, order_type=OrderType.MARKET)
+        refused = create_refusal_result(
+            order_id='pos_ethusd_9', reason=RejectionReason.INSUFFICIENT_MARGIN,
+            status=OrderStatus.REJECTED, execution_time=self._AT, action=OrderAction.OPEN,
+            symbol='ETHUSD', direction=OrderDirection.LONG, requested_lots=0.01,
+            order_type=OrderType.MARKET)
+        denied = create_refusal_result(
+            order_id='guard_1', reason=RejectionReason.INVALID_LOT_SIZE,
+            status=OrderStatus.DENIED, execution_time=self._AT, action=OrderAction.OPEN,
+            symbol='ETHUSD', direction=OrderDirection.LONG, requested_lots=1e-9,
+            order_type=OrderType.MARKET)
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp)
+            EventStreamWriter.from_sim_result(
+                trade_history=[], order_history=[sent, refused, denied], run_dir=run_dir,
+            ).flush('events.csv')
+            with open(run_dir / 'events.csv') as f:
+                rows = list(csv.reader(f))[1:]
+        events_of = {}
+        for row in rows:
+            events_of.setdefault(row[2], set()).add(row[1])
+        assert events_of == {
+            'pos_ethusd_9': {'ORDER_SUBMIT', 'ORDER_REJECT'},
+            'guard_1': {'ORDER_REJECT'},
+        }
+
 
 class TestSubmitTimes:
     """A submit event carries the moment the order was asked for, not the moment it filled."""

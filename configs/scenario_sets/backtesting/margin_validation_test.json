@@ -84,7 +84,7 @@
                         "tick_number": 800,
                         "type": "close_nonexistent",
                         "position_id": "FAKE_POS_999",
-                        "_comment": "Close non-existent position → BROKER_ERROR rejection"
+                        "_comment": "Close non-existent position → denied, position_not_found (refused before sending)"
                     }
                 ],
                 "lot_size": 1.0

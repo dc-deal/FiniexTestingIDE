@@ -154,11 +154,17 @@ class DecisionEventDispatcher:
         an order nobody could account for as UNACCOUNTED. Close fills do not reach the outcome
         fan-out (see _fill_close_order) — partial closes arrive via the sink instead.
 
+        The event's direction is the row's wherever the row has one. A close in the live
+        pipeline carries no direction of its own, so the fan-out hands over None for it,
+        while its row states the direction of the position it closes — None only once that
+        position is gone.
+
         Args:
-            direction: Position direction
+            direction: Position direction, as the fan-out has it
             result: Terminal OrderResult
             pending: PendingOrder reference at outcome time (unused here)
         """
+        direction = result.direction or direction
         tick_time = self._executor.get_current_time()
         if result.status == OrderStatus.EXECUTED:
             self.submit(OrderFilledEvent(

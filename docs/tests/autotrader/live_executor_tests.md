@@ -294,13 +294,13 @@ LIMIT submit is async post-#319 step 7 (`broker_ref=None` immediately after `ope
 
 | Test | Description |
 |------|-------------|
-| `test_broker_rejects_modify` | Async (#318): initial PENDING accept; the broker's refusal of the amend arrives via drain on next tick — and books no row and no count, because the order itself was not refused (#362) |
+| `test_broker_rejects_modify` | Async (#318): initial PENDING accept; the broker's refusal of the amend arrives via drain on next tick — and books no row and no count, because the order itself was not refused (#362). That the answer WAS drained is asserted too: the amend is no longer in flight and its price was never written, without which the two absences hold just as well for an answer that never arrives |
 
 #### TestModifyLimitOrderAdapterException
 
 | Test | Description |
 |------|-------------|
-| `test_adapter_exception_handled` | Async (#318): exception raised in worker thread, surfaced as a refused amend via drain — no row, no count |
+| `test_adapter_exception_handled` | Async (#318): exception raised in worker thread, surfaced as a refused amend via drain — no row, no count, and the amend's answer drained (no longer in flight, price unchanged) |
 
 #### TestGetBrokerRefReverseLookup
 
@@ -780,6 +780,8 @@ NEXT drain, so a hook that reacts by placing an order cannot extend the pass it 
 | `test_create_if_subscribed_wires_executor` | With subscriptions → the dispatcher is wired to the executor |
 | `test_executed_outcome_maps_to_order_filled` | An executed order outcome arrives as `ORDER_FILLED` |
 | `test_rejected_outcome_maps_to_order_rejected` | A rejected outcome arrives as `ORDER_REJECTED` |
+| `test_a_close_outcome_carries_the_direction_its_row_states` | A live close carries no direction of its own; its rejected and unaccounted events take the row's — the position's — instead of the None the fan-out hands over, which crashed the field study's handler |
+| `test_a_close_whose_position_is_gone_arrives_without_a_direction` | No position, no direction: the event says None rather than inventing one |
 | `test_unsubscribed_event_is_filtered` | An event type nobody subscribed to never reaches a hook |
 | `test_fifo_ordering_across_sources` | Buffered events reach the hooks in arrival order |
 | `test_drain_is_reentrancy_safe` | An event emitted inside a hook lands in the next drain, not the current one |
@@ -953,7 +955,7 @@ of these and books nothing — the venue did not answer, so the next pass asks a
 |---|---|
 | `TestTheStateUnderTestCanBeProduced` | a transient submit fault leaves the order in flight; a TERMINAL one is a rejection instead — the injector's `terminal` flag is the whole difference |
 | `TestTheAskFiresFromTheEvent` | the resolution is armed by the lost answer, its window is `max_window_seconds` rather than `order_timeout_seconds`, and the fill timer stops applying to a MARKET order — without which the resolution would be unreachable for the only world that has no other exit |
-| `TestTheVenueNamesIt` | the reference comes back, the order survives, and the algo is never told it was rejected |
+| `TestTheVenueNamesIt` | the reference comes back, the order survives, and the algo is never told it was rejected; a cancel the algo asked for while the reference was missing is sent now and ends the order `cancelled` by the strategy — the resolution is a place the reference arrives, and it used to restore the reference and stop there |
 | `TestTheVenueNamesNothing` | inside the settle window nothing is booked; after it, exactly one `undelivered` row — the venue refused nothing, it never received the order |
 | `TestTheCeiling` | the order is kept, entries stop with `RejectionReason.UNACCOUNTED_ORDER`, and an empty set refuses nothing |
 | `TestTheTwoWorldsEndDifferentlyAtTheCeiling` | a MARKET pending leaves the tracker recorded `unaccounted` (`resolution_ceiling`) rather than gating the algo forever, and the entry block outlives the order |

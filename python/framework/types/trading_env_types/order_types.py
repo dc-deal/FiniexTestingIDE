@@ -479,8 +479,8 @@ class OrderResult:
     action: Optional[OrderAction] = None
 
     # Order dimensions promoted from the metadata bag (#343) — typed,
-    # consistently present on PENDING/EXECUTED results, and on rejections as far as
-    # the refused order knew them (create_rejection_result makes every caller say).
+    # consistently present on PENDING/EXECUTED results, and on refusals as far as
+    # the refused order knew them (create_refusal_result makes every caller say).
     # A rejection without its symbol was dropped by every symbol filter.
     # direction: the position direction the order refers to (open: requested
     #   direction; close: direction of the position being closed).
