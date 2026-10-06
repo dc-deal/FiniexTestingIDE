@@ -241,9 +241,11 @@ data format 1.3.0, the MT5 file 1.1.0.
 ```
 
 **Tick Fields:**
-- `timestamp`: Human-readable time (broker server time, truncated to the second). Redundant — derivable from `time_msc` with the broker UTC offset. Kept for backward compatibility.
-- `time_msc`: Broker matching engine timestamp (Unix epoch ms) — the **event** time. UTC-converted
-  by importer (offset applied). Non-decreasing: measured across the full archive, 0 regressions in
+- `timestamp`: Human-readable time (broker server time, truncated to the second). Redundant — the same moment as `time_msc` at second resolution; the importer converts both together. Kept for backward compatibility.
+- `time_msc`: The **event** time — the broker server's wall clock as epoch milliseconds, **not**
+  UTC. The importer converts it through the broker's server clock rule (`server_clock` in
+  `configs/market_config.json`): New York time + 7 h for our MT5 server, so UTC+2 in US winter and
+  UTC+3 in US summer. Non-decreasing: measured across the full archive, 0 regressions in
   251 M consecutive deltas. Ties are normal and carry meaning — a market order sweeping the book
   produces several fills in one millisecond (measured: 43 % of consecutive Kraken ticks share a
   `time_msc`, 0.06 % on MT5).
@@ -655,7 +657,9 @@ FiniexTestingIDE
 
 ### Import Configuration
 
-UTC offsets are defined in `configs/import_config.json` (offset registry per broker_type). No CLI parameters needed — the config is leading. User overrides via `user_configs/import_config.json`.
+Each broker's server clock rule is declared on its entry in `configs/market_config.json`
+(`server_clock`), and the importer converts every timestamp through it. No CLI parameters needed —
+the config is leading.
 
 See [Data Import Pipeline](data_import_pipeline.md) for full configuration details.
 
@@ -784,8 +788,9 @@ if (Symbol() == "EURUSD") {
 
 Add in OnTick():
 ```cpp
-// Only collect during London session (8:00-16:00 UTC)
+// Only collect during London session (8:00-16:00 UTC) — TimeGMT(), not TimeCurrent(),
+// which is the broker server's clock (UTC+2 or UTC+3 depending on the US season)
 MqlDateTime dt;
-TimeCurrent(dt);
+TimeGMT(dt);
 if (dt.hour < 8 || dt.hour >= 16) return;
 ```

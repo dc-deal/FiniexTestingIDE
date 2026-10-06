@@ -131,6 +131,8 @@ dmypy.json
 data/runtime/
 data/raw/*.json
 data/raw/*.jsonl
+# A member the re-import tool was still streaming when it stopped
+data/raw/*.json.part
 # Signal source raw JSONL (nested per pipeline_id) — #429
 data/raw/signals/*
 !data/raw/signals/.gitkeep

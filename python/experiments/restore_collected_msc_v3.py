@@ -45,6 +45,9 @@ sys.path.insert(0, os.path.normpath(
     os.path.join(os.path.dirname(__file__), '..', '..')))
 
 from python.configuration.import_config_manager import ImportConfigManager
+from python.configuration.market_config_manager import MarketConfigManager
+from python.framework.types.config_types.market_config_types import ServerClockConfig
+from python.framework.utils.time_utils import server_clock_to_utc_ms
 from python.framework.validators.tick_import_validator import (
     PLAUSIBLE_LAG_WINDOW_MS,
     split_anchor_segments,
@@ -197,7 +200,26 @@ def _plan_segment(lag_ms: int) -> Tuple[int, str]:
     return -lag_ms, 'min_filter'
 
 
-def scan_file(path: str, offsets: Dict[str, int]) -> FilePlan:
+def _utc_event(time_msc: np.ndarray, clocks: Dict[str, ServerClockConfig],
+               broker_type: str) -> np.ndarray:
+    """
+    Convert a file's server wall-clock event times to UTC through its broker's rule.
+
+    Args:
+        time_msc: Event times as the collector wrote them (server wall clock, epoch ms)
+        clocks: Each broker's server clock rule, from the market config
+        broker_type: The file's broker; an unknown one is taken as UTC
+
+    Returns:
+        UTC epoch milliseconds
+    """
+    clock = clocks.get(broker_type)
+    if clock is None:
+        return time_msc
+    return server_clock_to_utc_ms(time_msc, clock.timezone, clock.hours_ahead)
+
+
+def scan_file(path: str, clocks: Dict[str, ServerClockConfig]) -> FilePlan:
     """
     Read one file and describe its anchor segments — no decision yet.
 
@@ -206,7 +228,7 @@ def scan_file(path: str, offsets: Dict[str, int]) -> FilePlan:
 
     Args:
         path: Path to the tick JSON
-        offsets: Broker offset hours from the import registry
+        clocks: Each broker's server clock rule, from the market config
 
     Returns:
         FilePlan with raw segments; shifts are filled in by plan_shifts()
@@ -236,10 +258,10 @@ def scan_file(path: str, offsets: Dict[str, int]) -> FilePlan:
                             f"{len(collected)} collected_msc")
         return plan
 
-    # time_msc is broker-local epoch; the registry offset converts it to UTC,
-    # exactly as the importer does it.
-    offset_ms = offsets.get(broker_type, 0) * HOUR_MS
-    utc_event = time_msc + offset_ms
+    # time_msc is the broker server's wall clock as an epoch; the server clock rule
+    # converts it to UTC, exactly as the importer does it. (Until 2026-10 this read a
+    # fixed offset, which aligned every US-winter MT5 file one hour early — #562.)
+    utc_event = _utc_event(time_msc, clocks, broker_type)
     plan.first_event = int(time_msc[0])
 
     for start, end in split_anchor_segments(collected):
@@ -394,13 +416,13 @@ def apply_plan(plan: FilePlan) -> None:
     os.replace(temp_path, plan.path)
 
 
-def verify_file(path: str, offsets: Dict[str, int]) -> Tuple[bool, str]:
+def verify_file(path: str, clocks: Dict[str, ServerClockConfig]) -> Tuple[bool, str]:
     """
     Re-scan a repaired file and confirm the invariant now holds.
 
     Args:
         path: Path to the tick JSON
-        offsets: Broker offset hours from the import registry
+        clocks: Each broker's server clock rule, from the market config
 
     Returns:
         Tuple of (ok, detail) — detail is empty when ok
@@ -412,8 +434,7 @@ def verify_file(path: str, offsets: Dict[str, int]) -> Tuple[bool, str]:
     if len(collected) == 0:
         return True, ''
 
-    offset_ms = offsets.get(broker_type, 0) * HOUR_MS
-    utc_event = time_msc + offset_ms
+    utc_event = _utc_event(time_msc, clocks, broker_type)
 
     backwards = int((np.diff(collected) < 0).sum()) if len(collected) > 1 else 0
     if backwards:
@@ -537,8 +558,9 @@ def main() -> None:
 
     config = ImportConfigManager()
     source_dir = args.dir or config.get_data_raw_path()
-    offsets = {bt: config.get_default_offset(bt)
-               for bt in config.get_offset_registry()}
+    market_config = MarketConfigManager()
+    clocks = {bt: market_config.get_server_clock(bt)
+              for bt in market_config.get_all_broker_types()}
 
     if not os.path.isdir(source_dir):
         print(f"Directory not found: {source_dir}")
@@ -551,14 +573,15 @@ def main() -> None:
     mode = 'APPLY — writing changes' if args.apply else 'DRY RUN (use --apply to write)'
     print(f"V3 collected_msc restoration — {mode}")
     print(f"source: {source_dir}  ·  {len(files)} files")
-    print(f"broker offsets: " + ', '.join(f"{bt} {off:+d}h" for bt, off in offsets.items()))
+    print("server clocks: " + ', '.join(
+        f"{bt} {clock.timezone}+{clock.hours_ahead}h" for bt, clock in clocks.items()))
 
     plans: List[FilePlan] = []
     failures: List[str] = []
 
     print("\nscanning …")
     for index, name in enumerate(files, 1):
-        plans.append(scan_file(os.path.join(source_dir, name), offsets))
+        plans.append(scan_file(os.path.join(source_dir, name), clocks))
         if index % 250 == 0:
             print(f"  … {index}/{len(files)}")
 
@@ -595,7 +618,7 @@ def main() -> None:
                 failures.append(str(error))
                 continue
 
-            ok, detail = verify_file(plan.path, offsets)
+            ok, detail = verify_file(plan.path, clocks)
             if not ok:
                 failures.append(f"{plan.name}: {detail}")
 

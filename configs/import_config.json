@@ -16,16 +16,6 @@
         "import_output": "data/processed/signals",
         "data_finished": "data/finished/signals"
     },
-    "offset_registry": {
-        "mt5": {
-            "default_offset_hours": -3,
-            "description": "MetaTrader 5 brokers typically report GMT+3"
-        },
-        "kraken_spot": {
-            "default_offset_hours": 0,
-            "description": "Kraken reports in UTC natively"
-        }
-    },
     "processing": {
         "move_processed_files": true,
         "auto_render_bars": true,

@@ -28,7 +28,7 @@ class TestModifyLimitOrderSuccess:
 
     LIMIT submit is async (#319 step 7): open_order returns PENDING with
     broker_ref=None. An additional feed_tick is needed so drain_inbox
-    confirms the broker_ref via _handle_limit_submit_response before
+    confirms the broker_ref via _handle_resting_submit_response before
     modify_limit_order can find it.
     """
 

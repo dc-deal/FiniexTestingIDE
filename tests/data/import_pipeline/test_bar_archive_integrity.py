@@ -110,7 +110,6 @@ class TestScopedImportLeavesProductionAlone:
             source_dir=str(source),
             target_dir=str(target),
             auto_render_bars=True,
-            offset_registry={'kraken_spot': 0},
         )
         importer.process_all_exports()
 
@@ -132,7 +131,6 @@ class TestScopedImportLeavesProductionAlone:
             source_dir=str(source),
             target_dir=str(target),
             auto_render_bars=True,
-            offset_registry={'kraken_spot': 0},
         )
         importer.process_all_exports()
 

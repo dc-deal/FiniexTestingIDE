@@ -18,8 +18,8 @@ Data Collectors (JSON)
        ↓
   TickDataImporter
   ├─ Validate JSON schema
-  ├─ Detect duplicates (hash-based)
-  ├─ Apply UTC offset (from offset registry)
+  ├─ Detect duplicates (by source file name)
+  ├─ Convert the server clock to UTC (the broker's rule, market_config.json)
   ├─ Recalculate sessions (UTC-based)
   ├─ Quality checks (prices, spreads)
   └─ Write Parquet (with source metadata)
@@ -63,7 +63,7 @@ The MQL5 JSON tick export has two top-level keys: `metadata` and `ticks`.
 |-------|------|-------------|
 | `broker` | string | Broker company name |
 | `server` | string | Server identifier |
-| `broker_utc_offset_hours` | int | Broker's UTC offset (informational) |
+| `broker_utc_offset_hours` | int | Always 0 — written by MT5 collectors 1.0.5–1.3.0 from a formula that could only yield 0; never read |
 | `local_device_time` | string | Device time at collection start |
 | `broker_server_time` | string | Server time at collection start |
 | `start_time_unix` | int | Unix timestamp of start_time |
@@ -79,38 +79,24 @@ The MQL5 JSON tick export has two top-level keys: `metadata` and `ticks`.
 
 ### Metadata Timestamp Architecture
 
-Four metadata fields capture temporal context at collection start. Their timezone semantics differ by broker:
+Four metadata fields describe the moment a file was opened. **None of them is a UTC anchor for
+MT5**, and none is used by the pipeline:
 
-| Field | MT5 | Kraken | Purpose |
-|-------|-----|--------|---------|
-| `start_time` | Broker time (GMT+3) | UTC | Collection start as formatted string |
-| `start_time_unix` | UTC epoch (seconds) | UTC epoch (seconds) | Absolute UTC anchor |
-| `local_device_time` | Collector machine local time (GMT+1) | Collector machine local time (GMT+1) | Device clock at start |
-| `broker_server_time` | Broker time (GMT+3) | UTC | Exchange/broker server time |
+| Field | MT5 | Kraken |
+|-------|-----|--------|
+| `start_time` | The server's wall clock (New York time + 7 h — UTC+2 in US winter, UTC+3 in US summer) | UTC |
+| `start_time_unix` | That same wall clock read as if it were UTC — **not** a UTC instant | UTC epoch (seconds) |
+| `local_device_time` | The collector machine's clock. **Synthesized** for every file before 2026-03-08 by an early restoration (`start_time − 2 h`), not measured | The collector machine's clock |
+| `broker_server_time` | The server's wall clock; before 2026-03-08 copied from `start_time` by the same restoration | UTC |
 
-**Key invariant**: `start_time_unix` is always a UTC epoch timestamp regardless of broker. It serves as the absolute reference point.
+So no timezone can be derived from these fields for MT5. Example: `start_time_unix` 1773002406 read
+as UTC is 2026-03-08 20:40:06 — the server's wall clock, which ran at UTC+3 that day, so the file
+opened at 17:40:06 UTC.
 
-**Deriving the collector timezone** from any file:
-
-```
-collector_utc_offset = local_device_time - epoch_to_datetime(start_time_unix)
-```
-
-Example (MT5, real data):
-```
-start_time_unix:     1773002406  → 2026.03.08 17:40:06 UTC
-local_device_time:   "2026.03.08 18:40:06"
-                     18:40:06 - 17:40:06 = +1h → GMT+1
-```
-
-Example (Kraken, real data):
-```
-start_time_unix:     1772991694  → 2026.03.08 17:41:34 UTC
-local_device_time:   "2026.03.08 18:41:34"
-                     18:41:34 - 17:41:34 = +1h → GMT+1
-```
-
-> **Note**: These metadata timestamps are informational only — they are preserved in Parquet metadata but never used in pipeline calculations. Actual tick timing relies exclusively on `time_msc` and `collected_msc` (epoch-based, unambiguous).
+> **Tick timing relies exclusively on `time_msc` and `collected_msc`.** `time_msc` is the server's
+> wall clock as epoch milliseconds and is converted at import through the broker's server clock
+> rule (see *Server Clock* below). `collected_msc` is the arrival time in UTC: written so by the MT5
+> collector from format 1.5.0, restored into UTC for older files by one-time migrations.
 
 ### Optional Tick Fields
 
@@ -231,7 +217,9 @@ migration in `python/experiments/`.
 | Row count disagrees with `summary.total_ticks` | File rejected |
 | `bid ≤ 0`, `ask ≤ 0`, or `ask < bid` | File rejected |
 | `timestamp` and `time_msc` disagree by more than 1 s | File rejected |
-| `collected_msc` further than ±5 min from the tick's UTC event time | File rejected; the message names the migration for legacy files, or reports a collector defect for files declaring `collected_msc_timebase: "utc"` |
+| `collected_msc` further than ±5 min from the tick's UTC event time | File rejected; the message names the migration for legacy files, names a clock conversion when the distance is a whole number of hours (two clocks a whole hour apart, not a late delivery), and otherwise reports a collector defect for files declaring `collected_msc_timebase: "utc"` |
+| A week that opens inside the file (Friday close, a 40–56 h gap) opens a whole number of hours away from the market's day anchor (17:00 New York for forex) | File rejected — the server clock was converted by the wrong number of hours. A late open that is no whole hour (a holiday, a feed gap) is only a warning. Markets without weekends are not checked |
+| A tick inside the hour a daylight saving change repeats or skips | File rejected — that wall-clock time has no single UTC time (forex is closed then, so the archive has none) |
 | Wide spread within the file's declared `max_spread_percent` | Warning, import continues |
 | `collected_msc` absent or zero throughout | Warning, import continues (pre-V1.3.0 data has no arrival clock) |
 | Ticks sharing an arrival millisecond | Metric only, never a verdict — bursts are legitimate |
@@ -292,16 +280,6 @@ Import configuration lives in `configs/import_config.json` with optional user ov
         "import_output": "data/test/import/processed",
         "data_finished": "data/test/import/finished"
     },
-    "offset_registry": {
-        "mt5": {
-            "default_offset_hours": -3,
-            "description": "MetaTrader 5 brokers typically report GMT+3"
-        },
-        "kraken_spot": {
-            "default_offset_hours": 0,
-            "description": "Kraken reports in UTC natively"
-        }
-    },
     "processing": {
         "move_processed_files": true,
         "auto_render_bars": true,
@@ -318,24 +296,31 @@ Import configuration lives in `configs/import_config.json` with optional user ov
 > (`BrokenProcessPool`). Until memory-aware worker scheduling lands, `bar_render_workers`
 > stays at a conservative default of `2`. Raise it only for small datasets or RAM-rich systems.
 
-### Offset Registry
+### Server Clock
 
-Each broker type has a registered UTC offset. During import, the offset is looked up per-file based on the `broker_type` in the JSON metadata:
+The importer turns a venue's own timestamps into UTC through the broker's **server clock rule**,
+declared on its entry in `configs/market_config.json` — a property of the venue, like its price
+formation, so the import, the coverage report and a live adapter read the same rule:
 
-- **mt5:** `-3` hours (MT5 brokers typically report GMT+3, so subtract 3h for UTC)
-- **kraken_spot:** `0` hours (already UTC)
-
-To add a new broker or override an offset, create `user_configs/import_config.json`:
 ```json
-{
-    "offset_registry": {
-        "my_broker": {
-            "default_offset_hours": -2,
-            "description": "My broker reports GMT+2"
-        }
-    }
-}
+"mt5":         { "server_clock": { "timezone": "America/New_York", "hours_ahead": 7 } }
+"kraken_spot": { "server_clock": { "timezone": "UTC",              "hours_ahead": 0 } }
 ```
+
+A rule rather than a number, because an MT5 server on New York close time follows New York's
+daylight saving changes. One rule, two offsets:
+
+| Server wall clock | Season | UTC |
+|---|---|---|
+| 2026-01-09 15:30 | US standard time — server UTC+2 | 13:30 (the US payroll release, 08:30 New York) |
+| 2026-04-03 15:30 | US daylight time — server UTC+3 | 12:30 (the same release) |
+| Monday 00:00 | winter / summer | Sunday 22:00 / 21:00 — the forex week opening at 17:00 New York |
+
+The conversion is `time_utils.server_clock_to_utc_ms()`, per tick, so a file spanning a season change
+would resolve both offsets. The field is required: a broker without a declared clock refuses to load.
+
+Until 2026-10 this was a fixed `-3` hours in `import_config.json`. Everything MT5 recorded in US winter
+(2025-11-02 → 2026-03-08) was therefore stored one hour early until it was re-imported.
 
 ### Test Paths
 
@@ -357,8 +342,6 @@ data/test/import/
 
 | Method | Returns |
 |--------|---------|
-| `get_default_offset(broker_type)` | Offset hours for broker (0 if unknown) |
-| `get_offset_registry()` | Full `{broker_type: hours}` dict |
 | `get_data_raw_path()` | Source directory path |
 | `get_import_output_path()` | Output directory path |
 | `get_data_finished_path()` | Finished directory path |
@@ -383,14 +366,17 @@ Each output Parquet file includes metadata in the file header:
 | `importer_version` | TickDataImporter.VERSION |
 | `tick_count` | Number of ticks |
 | `data_format_version` | Schema version |
-| `utc_conversion_applied` | "true"/"false" |
-| `user_time_offset_hours` | Applied offset (e.g. "-3") |
+| `utc_conversion_applied` | "true" when the broker's server clock is not UTC |
+| `server_clock_rule` | The rule that converted the file (e.g. "America/New_York+7h", "UTC+0h"); absent on files imported before 2026-10 |
+| `user_time_offset_hours` | The UTC offset(s) the rule resolved to for this file — "-2" for MT5 in US winter, "-3" in summer, comma-joined across a season change, "0" for a UTC clock |
 
 ### Source Metadata (preserved from JSON)
 
 Original MQL5 metadata is preserved with `source_meta_` prefix:
 - Flat scalars: `source_meta_broker_type`, `source_meta_data_format_version`, etc.
-- Nested objects stored as JSON strings: `source_meta_symbol_info`, `source_meta_collection_settings`
+- Nested objects stored as JSON strings: `source_meta_symbol_info`, `source_meta_collection_settings`,
+  `source_meta_origin`, and the records of one-time repairs to the arrival time
+  (`source_meta_collected_msc_restoration`, `source_meta_collected_msc_server_clock_correction`)
   (a file imported before 2026-09-28 also carries `source_meta_error_tracking`, which nothing reads)
 
 ### Data Format Version Tracking
@@ -433,23 +419,23 @@ how a field was obtained. See [discovery_system.md](../discovery_system.md).
 ## CLI Usage
 
 ```bash
-# Standard import (reads offset registry from config)
+# Standard import — each broker's server clock (market_config.json) converts its times to UTC
 python -m python.cli.data_index_cli import
 
 # Override mode (re-import existing files)
 python -m python.cli.data_index_cli import --override
 ```
 
-The CLI displays the active offset registry on startup:
+The importer names the server clock of every configured broker when a batch starts:
 ```
-════════════════════════════════════════
-📥 Tick Data Import
-════════════════════════════════════════
 Override Mode: DISABLED
-Offset Registry:
-   mt5:            -3h (MetaTrader 5 brokers typically report GMT+3)
-   kraken_spot:     0h (Kraken reports in UTC natively)
-════════════════════════════════════════
+Server clock: mt5 → America/New_York+7h
+Server clock: kraken_spot → UTC+0h
+```
+
+and, in its summary, how many files each resolved offset converted:
+```
+✅ UTC offsets applied: mt5: -2h × 12 file(s) · -3h × 40 file(s)
 ```
 
 ---
@@ -542,7 +528,9 @@ These fields exist in Parquet but are **not** transported to subprocesses:
 The importer stores each source file's **name** in the parquet metadata (`source_file`) and, before
 writing, searches every collector directory for a parquet claiming the same name. On a match it
 raises `ArtificialDuplicateException` — a warning, the file is skipped, the batch continues. Use
-`--override` to delete the existing parquet and re-import.
+`--override` to delete the existing parquet and re-import. A file the structural validation refuses
+is refused before this step, so `--override` deletes nothing for it: its old parquet stays — which is
+why a re-import is checked by more than count and names (see *Re-importing from the raw archive*).
 
 **It compares NAMES, not content.** This is worth stating plainly because the guarantee is narrower
 than it looks: a file renamed between two exports is imported twice, and a file whose name is reused
@@ -553,6 +541,33 @@ directory, which is why the search is cross-collector.
 The signal importer has no equivalent check: it decides on the presence of the target parquet
 (`SignalAlreadyImportedError`, also a warning + skip), because a signal day's file name IS its date
 and the projection is per day.
+
+---
+
+## Re-importing from the raw archive
+
+A change to what the importer EXTRACTS from a raw file — a corrected time conversion, a new column —
+reaches the data already imported only through a re-import. The raw files are kept unchanged in zip
+archives under `data/finished/Archives/`, and
+`python/experiments/raw_archive_reimport/raw_archive_reimport.py` prepares a re-import and proves it
+complete:
+
+```
+plan      which members a scope selects — by the member's own name, never the zip's — the disk it
+          needs, and whether extract may start                                  (reads only)
+extract   streams the selected members into data/raw/ and writes a manifest beside them
+          ... a migration the change needs runs on these extracted copies, never inside a zip
+import    python python/cli/data_index_cli.py import --override
+verify    count · names · inbox · rewritten — exit code 0 only when all four pass (reads only)
+clean     deletes each moved copy that is byte-identical to its archived member; keeps one that
+          differs, which then awaits archiving
+```
+
+**Count and names are not enough.** The importer refuses a defective file before `--override`
+deletes its old parquet, so a refused file keeps its old parquet under the same name, and the
+archive and the index still agree file for file. `verify` therefore also checks that no selected file
+is left in the inbox and that every selected parquet was written after its member was extracted. The
+tool's own docstring has the details; it has no entry point in `python/cli/` on purpose.
 
 ---
 

@@ -45,7 +45,7 @@ class DataIndexCli:
     def cmd_import(self, override: bool = False):
         """
         Import tick data from JSON to Parquet with UTC conversion.
-        Offsets are applied automatically per broker_type from import_config.json.
+        Each broker's server clock rule (market_config.json) converts its times to UTC.
 
         Args:
             override: If True, overwrite existing Parquet files
@@ -59,34 +59,12 @@ class DataIndexCli:
         print(
             f"Auto Bars:      {'YES' if self._import_config.get_auto_render_bars() else 'NO'}")
 
-        # Display offset registry
-        registry = self._import_config.get_offset_registry()
-        if registry:
-            print('Offset Registry:')
-            for bt, entry in registry.items():
-                offset = entry.get('default_offset_hours', 0)
-                desc = entry.get('description', '')
-                if offset != 0:
-                    print(f'   {bt}: {offset:+d}h — {desc}')
-                    print(f'   ⚠️  Times for {bt} will be converted to UTC!')
-                else:
-                    print(f'   {bt}: {offset:+d}h — {desc}')
-        else:
-            print('Offset Registry: EMPTY (no offsets configured)')
-
         print('='*80 + '\n')
-
-        # Build offset registry as flat dict {broker_type: offset_hours}
-        offset_flat = {
-            bt: entry.get('default_offset_hours', 0)
-            for bt, entry in registry.items()
-        }
 
         importer = TickDataImporter(
             source_dir=self._import_config.get_data_raw_path(),
             target_dir=self._import_config.get_import_output_path(),
             override=override,
-            offset_registry=offset_flat,
             move_processed_files=self._import_config.get_move_processed_files(),
             finished_dir=self._import_config.get_data_finished_path(),
             auto_render_bars=self._import_config.get_auto_render_bars(),

@@ -14,8 +14,13 @@ from python.framework.discoveries.data_coverage.gap_file_attribution import (
     attribute_gaps_to_files,
     parse_file_open_time,
 )
+from python.framework.types.config_types.market_config_types import ServerClockConfig
 from python.framework.types.coverage_report_types import Gap
 from python.framework.utils.market_calendar import GapCategory
+
+# Kraken's clock is UTC; the MT5 server runs on New York close time (New York + 7 h).
+UTC_CLOCK = ServerClockConfig(timezone='UTC', hours_ahead=0)
+NEW_YORK_CLOSE = ServerClockConfig(timezone='America/New_York', hours_ahead=7)
 
 
 def _entry(file_name, start, end):
@@ -58,17 +63,26 @@ class TestOpenTimeParsing:
 
     def test_utc_collector_name(self):
         """Kraken writes UTC, so the name needs no correction."""
-        opened = parse_file_open_time('ADAUSD_20260728_233104.parquet', 0)
+        opened = parse_file_open_time('ADAUSD_20260728_233104.parquet', UTC_CLOCK)
         assert opened == pd.Timestamp('2026-07-28 23:31:04', tz='UTC')
 
     def test_server_time_name_is_shifted(self):
-        """MT5 writes broker server time — the offset registry brings it to UTC."""
-        opened = parse_file_open_time('EURUSD_20260819_173456.parquet', -3)
+        """MT5 writes broker server time — in US summer the server is three hours ahead."""
+        opened = parse_file_open_time('EURUSD_20260819_173456.parquet', NEW_YORK_CLOSE)
         assert opened == pd.Timestamp('2026-08-19 14:34:56', tz='UTC')
+
+    def test_a_winter_name_is_shifted_by_two_hours(self):
+        """In US winter the same server is two hours ahead — a fixed offset gets this wrong."""
+        opened = parse_file_open_time('EURUSD_20260112_114911.parquet', NEW_YORK_CLOSE)
+        assert opened == pd.Timestamp('2026-01-12 09:49:11', tz='UTC')
+
+    def test_a_name_inside_a_changed_hour_yields_nothing(self):
+        """The repeated hour has no single UTC time — no guess, the same as a missing stamp."""
+        assert parse_file_open_time('EURUSD_20251102_083000.parquet', NEW_YORK_CLOSE) is None
 
     def test_name_without_timestamp(self):
         """A name that carries no stamp yields nothing, never a guess."""
-        assert parse_file_open_time('EURUSD.parquet', 0) is None
+        assert parse_file_open_time('EURUSD.parquet', UTC_CLOCK) is None
 
 
 class TestAttribution:
@@ -80,7 +94,7 @@ class TestAttribution:
                           '2026-07-28T23:31:04+00:00', '2026-08-02T09:30:53+00:00')]
         gaps = [_gap('2026-07-29T15:33:54+00:00', '2026-07-29T20:43:12+00:00')]
 
-        attribute_gaps_to_files(gaps, entries, 0)
+        attribute_gaps_to_files(gaps, entries, UTC_CLOCK)
 
         assert gaps[0].file_before == 'BTC_20260728_233104.parquet'
         assert gaps[0].file_after == 'BTC_20260728_233104.parquet'
@@ -96,7 +110,7 @@ class TestAttribution:
         ]
         gaps = [_gap('2026-07-29T15:33:54+00:00', '2026-07-29T20:43:12+00:00')]
 
-        attribute_gaps_to_files(gaps, entries, 0)
+        attribute_gaps_to_files(gaps, entries, UTC_CLOCK)
 
         assert gaps[0].file_before == 'BTC_20260728_000000.parquet'
         assert gaps[0].file_after == 'BTC_20260729_153354.parquet'
@@ -112,7 +126,7 @@ class TestAttribution:
         ]
         gaps = [_gap('2025-09-26T20:56:41+00:00', '2025-10-12T21:01:00+00:00')]
 
-        attribute_gaps_to_files(gaps, entries, -3)
+        attribute_gaps_to_files(gaps, entries, NEW_YORK_CLOSE)
 
         # Opened 2025-10-10 20:56:59 UTC — 14 days after the last tick, inside the gap
         assert gaps[0].next_file_opened_after_s == 14 * 24 * 3600 + 18
@@ -134,7 +148,7 @@ class TestAttribution:
         # after the first file ended and before the second one started.
         gaps = [_gap('2025-09-28T22:00:00+00:00', '2025-10-03T20:00:00+00:00')]
 
-        attribute_gaps_to_files(gaps, entries, -3)
+        attribute_gaps_to_files(gaps, entries, NEW_YORK_CLOSE)
 
         assert gaps[0].file_before == 'EUR_20250926_194306.parquet'
         assert gaps[0].file_after == 'EUR_20251010_235659.parquet'
@@ -146,7 +160,7 @@ class TestAttribution:
                           '2026-07-28T00:00:00+00:00', '2026-07-29T00:00:00+00:00')]
         gaps = [_gap('2026-07-01T00:00:00+00:00', '2026-07-02T00:00:00+00:00')]
 
-        attribute_gaps_to_files(gaps, entries, 0)
+        attribute_gaps_to_files(gaps, entries, UTC_CLOCK)
 
         assert gaps[0].file_before is None
         assert gaps[0].file_after is None
@@ -155,7 +169,7 @@ class TestAttribution:
         """An unindexed symbol must not crash the report."""
         gaps = [_gap('2026-07-29T15:33:54+00:00', '2026-07-29T20:43:12+00:00')]
 
-        attribute_gaps_to_files(gaps, [], 0)
+        attribute_gaps_to_files(gaps, [], UTC_CLOCK)
 
         assert gaps[0].file_before is None
 
@@ -169,7 +183,7 @@ class TestAttribution:
         ]
         gaps = [_gap('2026-07-29T15:33:54+00:00', '2026-07-29T20:43:12+00:00')]
 
-        attribute_gaps_to_files(gaps, entries, 0)
+        attribute_gaps_to_files(gaps, entries, UTC_CLOCK)
 
         assert gaps[0].file_before == 'BTC_20260728_000000.parquet'
         assert gaps[0].file_after == 'BTC_20260729_153354.parquet'

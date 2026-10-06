@@ -160,6 +160,22 @@ real spread arrives, and then change every bar at once.
 
 Background: [Market Model](../../architecture/market_model.md).
 
+## Server Clock Declared (`test_server_clock_declared.py`)
+
+`server_clock` is the rule the importer converts a venue's own timestamps to UTC with. It is
+required on every broker entry for the same reason as `price_formation`: a default is how the next
+broker's ticks would be converted by another venue's clock. MT5's clock stood in the import config
+as a fixed number for months, and every tick recorded in US winter was stored one hour early.
+
+| Test | What it verifies |
+|---|---|
+| `test_an_entry_without_it_is_refused` | Price formation alone does not load — the clock has to be stated too |
+| `test_a_clock_needs_both_halves` | A zone without its hours, or hours without a zone, is not a rule |
+| `test_every_broker_resolves_to_a_clock` | Every configured broker declares one, read through the manager the way the importer reads it |
+| `test_the_two_shipped_venues_are_declared_correctly` | Kraken `UTC`/0, MT5 `America/New_York`/7, pinned by name |
+
+The conversion itself is tested in [Server Clock Tests](server_clock_tests.md).
+
 ### When to Touch This Suite
 
 - **A new config block on `AutoTraderConfig`** — nothing to do; it is discovered automatically

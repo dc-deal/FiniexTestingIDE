@@ -2696,6 +2696,23 @@
             }
         },
         {
+            "name": "🧩 Pytest: Raw Archive Re-import (All)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/data/raw_archive_reimport/",
+                "-v",
+                "--tb=short"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "13_pytest_validation",
+                "order": 49
+            }
+        },
+        {
             "name": "🧩 Pytest: Reconciliation (#151)",
             "type": "debugpy",
             "request": "launch",
@@ -2709,7 +2726,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 49
+                "order": 50
             }
         },
         {
@@ -2726,7 +2743,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 50
+                "order": 51
             }
         },
         {
@@ -2743,7 +2760,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 51
+                "order": 52
             }
         },
         {
@@ -2754,7 +2771,7 @@
             "console": "integratedTerminal",
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 52
+                "order": 53
             }
         },
         {
@@ -2771,7 +2788,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 53
+                "order": 54
             }
         },
         {
@@ -2788,7 +2805,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 54
+                "order": 55
             }
         },
         {
@@ -2805,7 +2822,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 55
+                "order": 56
             }
         },
         {
@@ -2822,7 +2839,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 56
+                "order": 57
             }
         },
         {
@@ -2839,7 +2856,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 57
+                "order": 58
             }
         },
         {
@@ -2856,7 +2873,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 58
+                "order": 59
             }
         },
         {
@@ -2873,7 +2890,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 59
+                "order": 60
             }
         },
         {
@@ -2890,7 +2907,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 60
+                "order": 61
             }
         },
         {
@@ -2907,7 +2924,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 61
+                "order": 62
             }
         },
         {
@@ -2924,7 +2941,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 62
+                "order": 63
             }
         },
         {
@@ -2941,7 +2958,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 63
+                "order": 64
             }
         },
         {
@@ -2958,7 +2975,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 64
+                "order": 65
             }
         },
         {
@@ -2975,7 +2992,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 65
+                "order": 66
             }
         },
         {
@@ -2992,7 +3009,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 66
+                "order": 67
             }
         },
         {
@@ -3009,7 +3026,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 67
+                "order": 68
             }
         },
         {
@@ -3026,7 +3043,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 68
+                "order": 69
             }
         },
         {
@@ -3043,7 +3060,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 69
+                "order": 70
             }
         },
         {
@@ -3060,7 +3077,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 70
+                "order": 71
             }
         },
         {
@@ -3077,7 +3094,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 71
+                "order": 72
             }
         },
         {
@@ -3094,7 +3111,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 72
+                "order": 73
             }
         },
         {
@@ -3111,7 +3128,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 73
+                "order": 74
             }
         },
         {
@@ -3128,7 +3145,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 74
+                "order": 75
             }
         },
         // ====================================================
@@ -3637,7 +3654,7 @@
             "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
             "args": [
                 "run",
-                "backtesting/sltp_limit_validation_test.json"
+                "tests/fixtures/scenario_sets/sltp_limit_validation/sltp_limit_validation_test.json"
             ],
             "console": "integratedTerminal",
             "justMyCode": false,

@@ -38,6 +38,7 @@ _CONFIG_STATIC_AND_DYNAMIC = {
             'broker_type': 'mt5_forex',
             'market_type': 'forex',
             'price_formation': 'quote_driven',
+            'server_clock': {'timezone': 'America/New_York', 'hours_ahead': 7},
             'broker_config_path': 'configs/brokers/mt5/mt5_forex_broker_config.json',
             'trading_model': 'margin',
         },
@@ -45,6 +46,7 @@ _CONFIG_STATIC_AND_DYNAMIC = {
             'broker_type': 'kraken_spot',
             'market_type': 'crypto',
             'price_formation': 'order_driven',
+            'server_clock': {'timezone': 'UTC', 'hours_ahead': 0},
             'broker_config_path': 'configs/brokers/kraken/kraken_spot_broker_config.json',
             'trading_model': 'spot',
             'config_mode': 'dynamic',
@@ -131,7 +133,8 @@ class TestATypoInMarketConfigIsRefused:
             The broker entry dict
         """
         entry = {'broker_type': 'kraken_spot', 'market_type': 'crypto',
-                 'price_formation': 'order_driven'}
+                 'price_formation': 'order_driven',
+                 'server_clock': {'timezone': 'UTC', 'hours_ahead': 0}}
         entry.update(overrides)
         return entry
 

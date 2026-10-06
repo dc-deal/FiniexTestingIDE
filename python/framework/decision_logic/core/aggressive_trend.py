@@ -240,7 +240,8 @@ class AggressiveTrend(AbstractDecisionLogic):
         3. Opposite direction signal → Close old, open new (reversal)
         4. New signal with no position → Open position (entry)
 
-        Note: get_open_positions() automatically excludes positions being closed.
+        Note: get_open_positions() still lists a position whose close is in flight — the
+        has_pending_orders() check below is what keeps a second order away.
         Latency simulation is handled internally by TradeSimulator.
 
         Args:

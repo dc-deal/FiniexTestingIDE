@@ -17,6 +17,7 @@ from python.framework.types.config_types.market_config_types import (
     BrokerEntryConfig,
     MarketType,
     PriceFormation,
+    ServerClockConfig,
 )
 
 
@@ -26,7 +27,11 @@ class TestTheFieldIsRequired:
     def test_an_entry_without_it_is_refused(self):
         """The refusal is the whole mechanism — without it the field would be advisory."""
         with pytest.raises(ValidationError):
-            BrokerEntryConfig(broker_type='somevenue', market_type=MarketType.CRYPTO)
+            BrokerEntryConfig(
+                broker_type='somevenue',
+                market_type=MarketType.CRYPTO,
+                server_clock=ServerClockConfig(timezone='UTC', hours_ahead=0),
+            )
 
     def test_an_entry_with_it_loads(self):
         """And a declared entry carries the value through untouched."""
@@ -34,6 +39,7 @@ class TestTheFieldIsRequired:
             broker_type='somevenue',
             market_type=MarketType.CRYPTO,
             price_formation=PriceFormation.ORDER_DRIVEN,
+            server_clock=ServerClockConfig(timezone='UTC', hours_ahead=0),
         )
 
         assert entry.price_formation is PriceFormation.ORDER_DRIVEN
@@ -45,6 +51,7 @@ class TestTheFieldIsRequired:
                 broker_type='somevenue',
                 market_type=MarketType.CRYPTO,
                 price_formation='order-driven',  # hyphen, not underscore
+                server_clock=ServerClockConfig(timezone='UTC', hours_ahead=0),
             )
 
 

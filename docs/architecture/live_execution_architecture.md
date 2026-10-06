@@ -429,7 +429,7 @@ orphans the order (the order rests once the submit confirms, with no cancel ever
 the Field Study `#13`/`#15` cert blocker).
 
 `cancel_limit_order` therefore **defers** such a cancel: it parks the intent on the PendingOrder
-(`cancel_requested=True`) and returns `True` (accepted). When `_handle_limit_submit_response`
+(`cancel_requested=True`) and returns `True` (accepted). When `_handle_resting_submit_response`
 confirms the `broker_ref`, it auto-issues the parked cancel (`PENDING_CANCEL` → `submit_cancel_order_async`),
 which resolves via `_handle_cancel_response` and removes the order. **FILLED-precedence:** if the
 submit response is a sync-fill, the fill wins and the deferred cancel is discarded (a filled order
@@ -461,12 +461,13 @@ the submit response — so during submit-in-flight the order is locally visible 
 | 8 | Cancel resp = SUCCESS | removed, `on_order_cancelled` #348 | open order gone | clean; `active_limits → 0` ✓ |
 | 9 | Cancel resp = "already filled" | stays in list, in-flight cleared → query → FILLED | filled (cancel too late) | FILLED-precedence → `on_order_filled` #348; cancel-vs-fill (**#361**) |
 | 10 | Cancel resp = "unknown order" | in-flight cleared, stays for poll | not (yet) existing / already terminal | poll resolves real state; benign (the stale-QueryResponse warnings) |
-| 11 | Cancel TIMEOUT | stuck in `PENDING_CANCEL` | **UNKNOWN** — cancel may/may not have applied | `check_timeouts` net; **Reconciler #151** backstop |
+| 11 | Cancel TIMEOUT | stuck in `PENDING_CANCEL` | **UNKNOWN** — cancel may/may not have applied | asked about until the resolution ceiling (#487), which abandons a parked close — `check_timeouts` never sees a resting order; **Reconciler #151** backstop. A read that answers `canceled` before the ceiling is booked as a rejection today, and a parked close then stays parked |
 | **Partial** | | | | |
 | 12 | Partial fill then cancel | filled portion = position, remainder | part filled, part resting → cancel kills the remainder | **#342** surfaces `PARTIALLY_FILLED`; today partly via volume reconcile |
 
 **Implemented + green against the real venue:** #1 (defer) + #2 (fire on confirm). **Works today
-poll/reconcile-based, explicit machine pending:** #9 cancel-vs-fill (#361), #11 cancel-timeout, #4
+poll/reconcile-based, explicit machine pending:** #9 cancel-vs-fill (#361), #11 cancel-timeout
+(except the read-first case in its row), #4
 submit-timeout orphan (#151 backstop; `cl_ord_id` cleaner, #355), #12 partial (#342). The common
 thread: wherever the broker state is "UNKNOWN", the **Reconciler (#151)** is the net and the **algo
 reacts** to the resolved event — it never pre-empts the race.

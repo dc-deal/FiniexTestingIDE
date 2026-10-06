@@ -20,11 +20,14 @@ from typing import Any, Dict, List, Optional
 
 from python.data_management.index.tick_index_manager import TickIndexManager
 
+import numpy as np
 import pytest
 
 from python.configuration.import_config_manager import ImportConfigManager
 from python.configuration.data_origin_registry import DataOriginRegistry
+from python.configuration.market_config_manager import MarketConfigManager
 from python.data_management.importers.tick_data_importer import TickDataImporter
+from python.framework.utils.time_utils import server_clock_to_utc_ms
 
 # =============================================================================
 # SYNTHETIC DATA BUILDERS
@@ -109,11 +112,12 @@ def build_minimal_tick_json(
         base_msc = int(datetime.strptime(
             start_time, '%Y.%m.%d %H:%M:%S').replace(tzinfo=timezone.utc).timestamp() * 1000)
 
-        # time_msc is broker-local; collected_msc is UTC (post-restoration and
-        # from collector 1.5.0 onwards). The registry offset is what separates
-        # them, so a fixture models a healthy file for any broker_type.
-        collected_offset_ms = ImportConfigManager().get_default_offset(
-            broker_type) * 3_600_000
+        # time_msc is the server's wall clock; collected_msc is UTC (post-restoration and
+        # from collector 1.5.0 onwards). The broker's server clock rule is what separates
+        # them, so a fixture models a healthy file for any broker_type and either season.
+        clock = MarketConfigManager().get_server_clock(broker_type)
+        server_msc = np.array([base_msc + i * 1000 for i in range(tick_count)], dtype=np.int64)
+        collected_msc = server_clock_to_utc_ms(server_msc, clock.timezone, clock.hours_ahead)
 
         ticks = []
         for i in range(tick_count):
@@ -135,7 +139,7 @@ def build_minimal_tick_json(
                 'spread_pct': 0.01,
                 'tick_flags': 'BUY',
                 'session': '24h',
-                'collected_msc': tick_msc + collected_offset_ms
+                'collected_msc': int(collected_msc[i])
             })
 
     return {'metadata': metadata, 'ticks': ticks}
@@ -228,18 +232,17 @@ def populate_persistent_test_output():
 
     # Generate reference data into raw/ (authentic pipeline: raw → processed)
     fixtures = [
-        ('BTCUSD', 'kraken_spot', 0),
-        ('ETHUSD', 'kraken_spot', 0),
-        ('EURUSD', 'mt5', -3),
-        ('GBPUSD', 'mt5', -3),
+        ('BTCUSD', 'kraken_spot'),
+        ('ETHUSD', 'kraken_spot'),
+        ('EURUSD', 'mt5'),
+        ('GBPUSD', 'mt5'),
     ]
 
-    for symbol, broker_type, offset in fixtures:
+    for symbol, broker_type in fixtures:
         data = build_minimal_tick_json(
             symbol=symbol,
             broker_type=broker_type,
             tick_count=20,
-            broker_utc_offset_hours=offset,
         )
         write_json_fixture(raw_dir, f'{symbol}_ticks.json', data)
 
@@ -247,7 +250,6 @@ def populate_persistent_test_output():
     importer = TickDataImporter(
         source_dir=str(raw_dir),
         target_dir=str(processed_dir),
-        offset_registry={'mt5': -3, 'kraken_spot': 0},
         move_processed_files=True,
         finished_dir=str(finished_dir),
         auto_render_bars=False,

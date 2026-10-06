@@ -3,7 +3,7 @@ FiniexTestingIDE - Pending Stats Test Fixtures
 Suite-specific fixtures for pending_stats_validation_test.json
 
 Tests pending order statistics:
-- Synthetic close path (no false force-closed)
+- No false force-closed from the scenario end
 - Real force-closed detection (stuck-in-pipeline)
 - Latency stats population
 - Anomaly records with reason

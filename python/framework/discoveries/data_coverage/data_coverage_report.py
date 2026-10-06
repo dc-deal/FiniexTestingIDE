@@ -10,7 +10,6 @@ from typing import Dict, List
 import pandas as pd
 
 from python.configuration.discoveries_config_loader import DiscoveriesConfigLoader
-from python.configuration.import_config_manager import ImportConfigManager
 from python.configuration.market_config_manager import MarketConfigManager
 from python.data_management.index.bars_index_manager import BarsIndexManager
 from python.data_management.index.tick_index_manager import TickIndexManager
@@ -292,8 +291,8 @@ class DataCoverageReport:
         tick_index.build_index()
         entries = tick_index.get_symbol_entries(self.broker_type, self.symbol)
 
-        offset_hours = ImportConfigManager().get_default_offset(self.broker_type)
-        attribute_gaps_to_files(self.gaps, entries, offset_hours)
+        server_clock = MarketConfigManager().get_server_clock(self.broker_type)
+        attribute_gaps_to_files(self.gaps, entries, server_clock)
 
     def _gap_extent(self, gap: Gap) -> str:
         """

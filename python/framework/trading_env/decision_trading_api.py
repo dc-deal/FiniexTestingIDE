@@ -527,11 +527,6 @@ class DecisionTradingApi:
 
         Returns:
             True if a close order is in flight for this position
-
-        Example:
-            for pos in positions:
-                if not self.trading_api.is_pending_close(pos.position_id):
-                    self.trading_api.close_position(pos.position_id)
         """
         return self._executor.is_pending_close(position_id)
 

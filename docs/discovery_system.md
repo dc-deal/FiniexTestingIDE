@@ -125,7 +125,7 @@ The filter uses `DataCoverageReportCache` to load the gap report for the broker/
 ## Data Coverage Details
 
 Detects gaps via timestamp jumps between consecutive bars at the configured granularity (default: M1):
-- **Weekend**: Expected closure (Fri 21:00 - Sun 21:00 UTC)
+- **Weekend**: Expected closure (Friday 17:00 - Sunday 17:00 New York: 21:00 UTC in summer, 22:00 in winter)
 - **Holiday**: Dec 25, Jan 1
 - **Short**: < 30min (MT5 restarts)
 - **Moderate**: 30min - 4h
@@ -172,11 +172,11 @@ so a boundary can fall inside a running session purely by coincidence — measur
 97 of 178 boundary gaps were such rollovers. The implication only runs one way: a collector that was
 down always produces a boundary, but a boundary does not imply a collector that was down.
 
-What separates them is the **file's open time**, taken from the file name and converted with the
-same offset registry the importer uses (MT5 names carry broker server time, Kraken names carry UTC).
+What separates them is the **file's open time**, taken from the file name and converted through the
+same server clock rule the importer uses (MT5 names carry broker server time, Kraken names carry UTC).
 A file that opened at the previous file's last tick rolled over; one that opened inside the gap marks
 the moment collection resumed. The metadata's `start_time_unix` is not an alternative — it is the
-server wall-clock converted as if it were UTC, so for MT5 it is off by the broker offset.
+server wall-clock read as if it were UTC, so for MT5 it is off by the server's offset.
 
 The report states the observation and stops there. Whether a pause was the venue or the operator is
 a judgment, and it stays with the reader.

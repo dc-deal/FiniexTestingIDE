@@ -211,7 +211,7 @@ Three gates on the scheduler, all silent skips:
 
 | Gate | Reason |
 |------|--------|
-| `broker_ref is None` | Submit still in flight at the broker — wait for `_handle_limit_submit_response` |
+| `broker_ref is None` | Submit still in flight at the broker — wait for `_handle_resting_submit_response` |
 | `pending.in_flight_query is True` | A previous QueryJob has not returned yet |
 | `now_ms - pending.last_polled_at_ms < poll_interval_ms` | Inside the per-order throttle window |
 

@@ -161,7 +161,7 @@ The recorder holds a period's state while it is open, and `check_boundary` runs 
 BOTH event sources. The suite has two halves because that fact has two consequences.
 
 The BEHAVIOUR half pins that a day flip seals exactly once and at the market's own boundary: a
-forex day flips at 21:00 UTC (17:00 New York) and NOT at the midnight three hours later, a feed
+forex day flips at 17:00 New York (21:00 UTC in summer, 22:00 in winter) and NOT at midnight, a feed
 that goes quiet for two days still seals on the tick that returns, and a unit with no anchor books
 nothing at all.
 

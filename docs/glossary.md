@@ -84,9 +84,10 @@ AutoTrader session also freezes the content in the run-config store and names it
 deletion loses data is misfiled. See [Data Storage Layout](architecture/data_storage_layout.md).
 
 **canonical clock** — The one clock a decision logic, a worker and the execution layer read:
-`get_current_time()`. In a backtest and a mock session it is the time of the replayed tick; in a
-live-adapter session the time of the event being processed. It is market time, never the machine's
-clock — see *wall clock*.
+`get_current_time()`. In a backtest it is the time of the replayed tick. In an AutoTrader session a
+tick sets it to the tick's own time and an idle heartbeat to the machine's UTC clock, so timeouts
+keep tracking real elapsed time: in a live-adapter session the two are one clock, in a mock session
+it moves between replay time and the present. See *wall clock*.
 
 **carry-over** — What one session hands the next session of the same bot: the algo's memory, and
 the framework's record of keys, positions and the risk baseline. Keyed by the bot, overwritten, and
@@ -260,7 +261,8 @@ queue. *Resolved* is every order that left it. *Filled* is NOT a fill count toda
 counts every exit that was not refused, so it is the number of orders that *arrived* — a market or
 close order fills on arrival, while a limit, stop or stop-limit order only begins *resting* there,
 and is counted whether it later fills, expires at data end or is cancelled by the strategy. An
-AutoTrader session counts reported fills. #362 separates arrival from fill.
+AutoTrader session counts only the market and close orders a status poll saw filled, and its report
+carries no counters at all. #362 separates arrival from fill.
 
 **price · mid · last** — `tick.price` is what the market trades at: the traded price where the
 venue prints one, else the mid. The *mid* is `(bid + ask) / 2`; *last* is the traded price, absent
@@ -315,6 +317,12 @@ three field names. See [API Server](architecture/api_server_architecture.md).
 **scenario** · **scenario set** — A scenario is one symbol over one market window with its merged
 configuration (`scenario_name` in the file). A scenario set is the file holding a `global` block and
 the scenarios (`scenario_set_name`). See [Process Execution](process_execution_guide.md).
+
+**server clock** (`server_clock`) — The clock a venue stamps its own data with, declared per broker
+in `market_config.json` as an IANA zone and the whole hours the server runs ahead of it. The MT5
+server is `America/New_York` + 7 — UTC+2 in US winter, UTC+3 in summer — so its times are converted
+per tick by that rule, never by one fixed offset. Not the *canonical clock* and not a collector
+machine's own clock. See [Data Import Pipeline](data_pipeline/data_import_pipeline.md).
 
 **session** — Never used for a backtest. An *AutoTrader session* is one start of a profile; a
 *market session* is Sydney, Tokyo, London or New York.

@@ -1164,7 +1164,8 @@ class LiveTradeExecutor(AbstractTradeExecutor):
                 if mod.new_take_profit is not None:
                     pending.order_kwargs['take_profit'] = mod.new_take_profit
 
-            # Kraken EditOrder returns a new broker_ref on success
+            # A venue that re-mints the reference on an amend returns the new one here.
+            # Kraken's AmendOrder keeps the txid, so this is the second adapter's path (#209)
             if response.broker_ref and response.broker_ref != pending.broker_ref:
                 self._request_processor.update_broker_ref(
                     old_ref=pending.broker_ref, new_ref=response.broker_ref,

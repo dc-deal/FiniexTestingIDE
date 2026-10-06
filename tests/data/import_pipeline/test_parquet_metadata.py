@@ -17,12 +17,11 @@ from tests.data.import_pipeline.conftest import (
 )
 
 
-def _import_and_get_metadata(tmp_path, offset_registry=None, **kwargs):
+def _import_and_get_metadata(tmp_path, **kwargs):
     """Helper: import a JSON file and return its Parquet metadata as dict.
 
     Args:
         tmp_path: Pytest tmp_path fixture
-        offset_registry: Optional offset registry for TickDataImporter
         **kwargs: Passed to build_minimal_tick_json()
 
     Returns:
@@ -37,7 +36,6 @@ def _import_and_get_metadata(tmp_path, offset_registry=None, **kwargs):
         source_dir=str(source),
         target_dir=str(target),
         auto_render_bars=False,
-        offset_registry=offset_registry or {},
     )
     importer.process_all_exports()
 
@@ -83,25 +81,25 @@ class TestCoreMetadata:
         assert meta['tick_count'] == '7'
 
     def test_utc_conversion_flag_true_when_offset(self, tmp_path):
-        """utc_conversion_applied should be 'true' when offset is applied."""
+        """utc_conversion_applied should be 'true' for a server clock that is not UTC."""
         meta = _import_and_get_metadata(
-            tmp_path, symbol='EURUSD', broker_type='mt5',
-            offset_registry={'mt5': -3})
+            tmp_path, symbol='EURUSD', broker_type='mt5')
         assert meta['utc_conversion_applied'] == 'true'
 
     def test_utc_conversion_flag_false_when_no_offset(self, tmp_path):
-        """utc_conversion_applied should be 'false' when no offset."""
+        """utc_conversion_applied should be 'false' for a server clock that is UTC."""
         meta = _import_and_get_metadata(
-            tmp_path, symbol='BTCUSD2', broker_type='kraken_spot',
-            offset_registry={'kraken_spot': 0})
+            tmp_path, symbol='BTCUSD2', broker_type='kraken_spot')
         assert meta['utc_conversion_applied'] == 'false'
+        assert meta['server_clock_rule'] == 'UTC+0h'
+        assert meta['user_time_offset_hours'] == '0'
 
     def test_user_time_offset_hours_correct(self, tmp_path):
-        """user_time_offset_hours should match applied offset."""
+        """user_time_offset_hours is the offset the rule resolved to — US winter on the 15th."""
         meta = _import_and_get_metadata(
-            tmp_path, symbol='GBPUSD', broker_type='mt5',
-            offset_registry={'mt5': -3})
-        assert meta['user_time_offset_hours'] == '-3'
+            tmp_path, symbol='GBPUSD', broker_type='mt5', start_time='2026.01.15 10:00:00')
+        assert meta['user_time_offset_hours'] == '-2'
+        assert meta['server_clock_rule'] == 'America/New_York+7h'
 
 
 class TestSourceMetadata:

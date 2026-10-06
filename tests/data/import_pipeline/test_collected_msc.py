@@ -133,12 +133,13 @@ class TestCollectedMscValues:
         assert list(df['collected_msc']) == expected_values
 
     def test_collected_msc_not_affected_by_offset(self, tmp_path):
-        """collected_msc should NOT be shifted by time offset."""
+        """collected_msc should NOT be shifted by the server clock conversion."""
         source = tmp_path / 'source'
         target = tmp_path / 'target'
 
-        # collected_msc is UTC; time_msc 1768489200000 is broker time (GMT+3)
-        original_collected = 1768478400500
+        # collected_msc is UTC; time_msc 1768489200000 is the server's wall clock, which is
+        # UTC+2 on 2026-01-15 (US winter) — so the healthy arrival sits at 13:00:00.5 UTC
+        original_collected = 1768482000500
         data = build_minimal_tick_json(
             symbol='EURUSD', broker_type='mt5',
             tick_count=0,
@@ -154,11 +155,11 @@ class TestCollectedMscValues:
 
         importer = TickDataImporter(
             source_dir=str(source), target_dir=str(target),
-            offset_registry={'mt5': -3}, auto_render_bars=False)
+            auto_render_bars=False)
         importer.process_all_exports()
 
         df = pd.read_parquet(find_tick_parquets(target)[0])
-        # collected_msc must remain unchanged despite -3h offset
+        # collected_msc must remain unchanged by the -2h conversion
         assert df['collected_msc'].iloc[0] == original_collected
 
 
@@ -166,7 +167,7 @@ class TestTimeMscOffset:
     """Verify time_msc is offset-corrected consistently with timestamp."""
 
     def test_time_msc_shifted_with_offset(self, tmp_path):
-        """time_msc should be shifted by the same offset as timestamp."""
+        """time_msc should be shifted by the same server clock offset as timestamp."""
         source = tmp_path / 'source'
         target = tmp_path / 'target'
 
@@ -186,11 +187,12 @@ class TestTimeMscOffset:
 
         importer = TickDataImporter(
             source_dir=str(source), target_dir=str(target),
-            offset_registry={'mt5': -3}, auto_render_bars=False)
+            auto_render_bars=False)
         importer.process_all_exports()
 
         df = pd.read_parquet(find_tick_parquets(target)[0])
-        expected_time_msc = original_time_msc + (-3 * 3_600_000)
+        # 2026-01-15 is US winter: the server runs UTC+2
+        expected_time_msc = original_time_msc + (-2 * 3_600_000)
         assert df['time_msc'].iloc[0] == expected_time_msc
 
     def test_time_msc_not_shifted_without_offset(self, tmp_path):
@@ -214,7 +216,7 @@ class TestTimeMscOffset:
 
         importer = TickDataImporter(
             source_dir=str(source), target_dir=str(target),
-            offset_registry={'kraken_spot': 0}, auto_render_bars=False)
+            auto_render_bars=False)
         importer.process_all_exports()
 
         df = pd.read_parquet(find_tick_parquets(target)[0])
@@ -225,7 +227,7 @@ class TestTimeMscOffset:
         source = tmp_path / 'source'
         target = tmp_path / 'target'
 
-        # 15:00:00 broker time (GMT+3) = 12:00:00 UTC
+        # 15:00:00 server time (UTC+2 in US winter) = 13:00:00 UTC
         # time_msc must match the timestamp string for consistency check
         broker_time_msc = 1768489200000  # epoch ms for 2026-01-15 15:00:00
         data = build_minimal_tick_json(
@@ -243,12 +245,12 @@ class TestTimeMscOffset:
 
         importer = TickDataImporter(
             source_dir=str(source), target_dir=str(target),
-            offset_registry={'mt5': -3}, auto_render_bars=False)
+            auto_render_bars=False)
         importer.process_all_exports()
 
         df = pd.read_parquet(find_tick_parquets(target)[0])
 
-        # Both should now be offset by -3h
+        # Both should now be converted by -2h
         ts_epoch_ms = int(df['timestamp'].iloc[0].timestamp() * 1000)
         time_msc = df['time_msc'].iloc[0]
 

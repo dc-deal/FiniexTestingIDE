@@ -204,7 +204,8 @@ Canonical column order ([event_stream_csv_writer.py:EVENT_FIELDS](../../python/f
 ```
 ts, event_type, order_id, position_id, trade_id,
 broker_ref, direction, side, lots, price, fee, fee_currency,
-status, close_type, close_reason, is_maker, notes
+status, close_type, close_reason, is_maker,
+submission_tick_mid_price, submission_tick_time_msc, notes
 ```
 
 `direction` and `side` are mutually exclusive per row (see "Trade-Event Side vs Position Direction" above):

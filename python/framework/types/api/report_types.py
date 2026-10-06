@@ -467,10 +467,10 @@ class ActiveOrderRow(BaseModel):
     """
     One limit/stop order still resting when its unit's data ended.
 
-    In a backtest the same order is recorded `expired` (reason scenario_end) in that same step:
-    this snapshot is taken BEFORE the expiry, never after, so it says the order was resting
-    when the data ended — not that it is still open. A LIMIT sits in the limit list; a STOP
-    or STOP_LIMIT whose trigger was not reached in the stop list.
+    In a backtest the same order is recorded `expired` (reason scenario_end) in that same step.
+    The snapshot is read after the expiry, from the lists the expiry deliberately leaves intact,
+    so it says the order was resting when the data ended — not that it is still open. A LIMIT
+    sits in the limit list; a STOP or STOP_LIMIT whose trigger was not reached in the stop list.
     """
     order_id: str
     order_type: OrderType   # limit · stop · stop_limit

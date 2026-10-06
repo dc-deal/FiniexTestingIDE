@@ -2,7 +2,7 @@
 
 ## Overview
 
-The pending stats test suite validates the pending order statistics system — latency tracking, outcome counting, synthetic close path, and force-closed anomaly detection.
+The pending stats test suite validates the pending order statistics system — latency tracking, outcome counting, and force-closed anomaly detection.
 
 **Test Configuration:** `backtesting/pending_stats_validation_test.json`
 - Symbol: USDJPY
@@ -59,7 +59,9 @@ Validates that pending stats are correctly populated after scenario execution.
 | `test_latency_avg_in_range` | avg is between min and max |
 
 ### TestSyntheticCloseNotCounted
-Validates that end-of-scenario position closes via synthetic orders do NOT produce false force-closed counts.
+Validates that the end of the scenario does not inflate the force-closed count. The scenario end
+closes no position (#492), so only an order genuinely stuck in the pipeline is force-closed. The
+class name is older than that change.
 
 | Test | Validates |
 |------|-----------|
@@ -87,23 +89,21 @@ The test scenario is specifically designed to trigger both code paths:
 - Both open and close orders flow through the latency pipeline normally
 - Validates: filled counts, latency stats
 
-**Trade 2 (close order stuck in the pipeline):**
-- Opens at tick 4990, hold_ticks=3, close signal at tick 4993
-- With ~5 tick latency, the close order is still in the pipeline when the scenario ends at tick 5000
-- The POSITION stays open — the scenario end no longer force-closes it (#492), and it is
-  reported as open and valued instead of as an exit the strategy never chose
-- `clear_pending()` catches the stuck close ORDER and records it as FORCE_CLOSED with reason="scenario_end"
+**Trade 2 (open order stuck in the pipeline):**
+- Signals its entry on tick 5000 — the scenario's last tick (`max_ticks` 5000)
+- The open order is still in the latency pipeline when the scenario ends: no later tick can deliver
+  it, so no position is opened
+- `clear_pending()` catches the stuck OPEN order and records it as FORCE_CLOSED with reason="scenario_end"
 - Validates: force-closed detection on the pipeline order, anomaly records, reason field
 
 ---
 
 ## Key Design Decisions
 
-### Synthetic Close Path
-End-of-scenario position closes use `create_synthetic_close_order()` which bypasses the latency pipeline entirely. This ensures:
-- No false FORCE_CLOSED in statistics
-- Portfolio P&L is correct (positions are properly closed)
-- Only genuine stuck-in-pipeline orders appear as anomalies
+### No Close at the Scenario End
+The scenario end closes no position (#492): a position still open is reported as open and valued,
+not closed by an order the strategy never sent. So the scenario end adds nothing to the counters,
+and only a genuinely stuck pipeline order appears as an anomaly.
 
 ### Reason Field
 Each FORCE_CLOSED anomaly record includes a `reason` field (e.g., "scenario_end", "manual_abort") to distinguish the cause. This is critical for future stress tests where extreme latencies will produce more force-closed orders.

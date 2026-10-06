@@ -104,10 +104,11 @@ tests/
 │   ├── signal_workers/    unit — SIGNAL worker type, provider, llm_sentiment, hybrid decision (#141), outage contract + episode capture (#434/#451)
 │   ├── reporting/         unit — report builders, aggregators, IO/store, console renderers (#391/#433/#451)
 │   ├── signal_coverage/   unit — SignalCoverageReport gap detection + scenario signal-window validation
-│   ├── data_coverage/     unit — data format version spans (which collector schema produced which archive window, #453)
+│   ├── data_coverage/     unit — data format version spans (#453), which file a gap falls in (open times through the server clock, #562), how long a gap reads
 │   ├── market_calendar/  unit — swap-rollover + DST calendar helpers + MarketClock awareness (#365)
 │   ├── test_price_trigger.py  unit — the shared order-vs-quote predicate: limit/stop reached, book side (#505)
 │   ├── test_time_utils_utc.py  unit — every parsed or normalised datetime is UTC, also on a machine in another zone
+│   ├── test_server_clock.py  unit — a broker server's wall clock to UTC through the zone's daylight saving rules: both seasons, the changed hours refused (#562)
 │   ├── market_compatibility/ unit — market activity metric, validator
 │   ├── tick_parquet_reader/  unit — parquet reader normalization
 │   ├── path_based_loading/ unit — workers and decision logics loaded by CORE name or file path
@@ -124,6 +125,9 @@ tests/
 │   ├── import_pipeline/   unit + integration — tick import, duplicate detection
 │   ├── data_integration/  integration — volume integrity
 │   ├── inter_tick_interval/   unit — interval stats
+│   ├── raw_archive_reimport/  unit — the raw-archive re-import tool over a temp archive: selection
+│   │                          by member name, broker resolution, extract, verify's checks, clean's
+│   │                          SHA-256 proof (#562)
 │   ├── scenario_generator/    unit — block generation
 │   ├── signal_import/     unit — signal JSONL→parquet import, index, projected reader, v0 parity (#429)
 │   └── tick_processing_budget/ unit — budget filtering

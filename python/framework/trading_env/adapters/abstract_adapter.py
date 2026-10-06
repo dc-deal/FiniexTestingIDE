@@ -724,9 +724,10 @@ class AbstractAdapter(ABC):
         """
         Convert a raw broker modify response into a BrokerResponse.
 
-        Pure — no I/O, no state mutation. Some brokers (e.g. Kraken EditOrder)
-        return a NEW broker_ref that replaces the original; the caller is
-        responsible for swapping the reference in any tracking index.
+        Pure — no I/O, no state mutation. Some brokers return a NEW broker_ref
+        that replaces the original (Kraken's AmendOrder does not — it keeps the
+        txid); the caller is responsible for swapping the reference in any
+        tracking index.
 
         Args:
             raw: Raw broker response dict

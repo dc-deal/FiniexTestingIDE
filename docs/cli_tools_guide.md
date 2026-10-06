@@ -71,17 +71,16 @@ Tick data is collected by the **TickCollector** (MQL5 Expert Advisor) and export
 | **CLI** | `python python/cli/data_index_cli.py import [--override]` |
 | **Purpose** | Convert JSON tick files to Parquet, render bars |
 
-Each broker's UTC offset comes from the offset registry in `import_config.json` (see
-[Data Import Pipeline](data_pipeline/data_import_pipeline.md)); `--override` re-imports files that
+Each broker's timestamps are converted to UTC through its server clock rule in `market_config.json`
+(see [Data Import Pipeline](data_pipeline/data_import_pipeline.md)); `--override` re-imports files that
 already have a Parquet. After import, bars are automatically rendered for all timeframes (M1, M5, M15, M30, H1, H4, D1).
 
 ```
 📄 Processing: EURGBP_20251128_235635_ticks.json
-   Detected Offset: GMT+0
-   User Offset:     +3 hours → ALL TIMES WILL BE UTC!
-   🕐 Time Offset Applied: +3 hours
-      Original: 2025-12-01 00:00:00 → 2025-12-01 11:46:58
-      UTC:      2025-11-30 21:00:00 → 2025-12-01 08:46:58
+   🕐 Server clock converted: -2 hours
+      Server: 2025-12-01 00:00:00 → 2025-12-01 11:46:58
+      UTC:    2025-11-30 22:00:00 → 2025-12-01 09:46:58
+   ✅ Server clock America/New_York+7h → UTC offset -2h (broker_type=mt5)
    ✅ Sessions recalculated based on UTC time
 ✅ mt5/ticks/EURGBP/EURGBP_20251128_235635.parquet: 50,000 Ticks (UTC), Compression 20.0:1
 
@@ -353,7 +352,7 @@ Use 'show BROKER_TYPE SYMBOL' for detailed gap analysis
 | **Purpose** | Detailed gap analysis for a symbol |
 
 Classifies gaps automatically:
-- ✅ **Weekend** - Expected market closure (Fri 21:00 → Sun 21:00 UTC)
+- ✅ **Weekend** - Expected market closure (Friday 17:00 → Sunday 17:00 New York: 21:00 UTC in summer, 22:00 in winter)
 - ✅ **Holiday** - Holidays (Christmas, New Year)
 - ⚠️ **Short** - Small gaps < 30min (MT5 restarts, connection drops)
 - ⚠️ **Moderate** - 30min to 4h
