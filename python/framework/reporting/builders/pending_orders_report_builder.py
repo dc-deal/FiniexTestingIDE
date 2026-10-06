@@ -70,8 +70,8 @@ def _active_rows(snapshots: List[ActiveOrderSnapshot]) -> List[ActiveOrderRow]:
     return [
         ActiveOrderRow(
             order_id=s.order_id,
-            order_type=s.order_type.value if s.order_type else '',
-            direction=s.direction.value if s.direction else '',
+            order_type=s.order_type,
+            direction=s.direction,
             lots=s.lots,
             entry_price=s.entry_price,
             limit_price=s.limit_price,

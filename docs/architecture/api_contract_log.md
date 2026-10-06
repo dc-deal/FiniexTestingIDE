@@ -26,6 +26,76 @@ fails to parse.
 The server serves the current version's lines and this log keeps every version. A test holds the
 newest heading here to `API_CONTRACT_VERSION`, so step 3 cannot be skipped unnoticed.
 
+## Version 21 — 2026-10-02 (#555, viewer#21)
+
+The worker-decision report says "not counted" instead of zero.
+
+- `GET /api/v1/reports/runs/{run_id}/worker-decision`: every unit carries `worker_decision_tracked`
+  — whether it counted its decisions and timed its workers. A backtest leaves it off by default,
+  because the tracker sits on the hot path. Untracked, `decision_count`, `buy_signals`,
+  `sell_signals`, `flat_signals`, `trades_requested` and the four `decision_*_time_ms` are null;
+  they read 0, so a logic that decided on 2,737 ticks said it decided nothing. The unit still names
+  its logic (`decision_logic_type`, `decision_logic_name`), which an untracked unit left empty, and
+  `ticks_processed` is counted either way. `workers` stays empty when untracked — that empty list is
+  true.
+- `worker-decision`: a worker row's `compute_ratio_pct` is null when no tick was processed, and
+  `ticks_idle` is null when the worker never computed — it read 0, which says "just computed". On
+  `worker_totals`, which span several units' tick counts, both are null.
+
+Every stored run was carried over: a unit with no logic type was not tracked — a tracker stamps the
+type on every unit it counts — so its counters are null now; a unit with one is marked tracked and
+keeps its figures. The logic name of an old untracked unit stays null, because only a new run
+stamps it.
+
+## Version 20 — 2026-10-02 (viewer#21, #557)
+
+A refused order now says what was refused, and the order history says "absent" as null.
+
+- `GET /api/v1/reports/runs/{run_id}/order-history`: a rejected row states its side (`action`), its
+  `symbol`, its `direction` and its `requested_lots`, and when it was refused. Every rejection used
+  to leave them empty, so `?symbol=` dropped all of them without a word — 12 rows with 2 rejections
+  unfiltered, 10 rows and none with the filter. A rejection can be on either side: a partial close
+  below the symbol's minimum is refused on the close side. Runs recorded before this contract carry
+  the symbol and the side, taken from their own records; their direction, size and time stay null,
+  because the records never had them.
+- `order-history`: `execution_time` is renamed `event_time`. On these rows it is a point in time —
+  when the row's event happened, on the run's clock: the fill, the refusal, the expiry; null on a
+  `pending` row. Every other `execution_time` in the API is how long something ran.
+- `order-history`: a value that does not exist is null, never an empty string or `0.0` —
+  `position_id`, `direction`, `action`, `requested_lots`, `executed_lots`, `executed_price`,
+  `event_time`, `rejection_reason`, `rejection_message`. A zero price reads as a price. `direction`,
+  `action`, `status` and `rejection_reason` are enums, so the schema lists their values; the values
+  themselves are unchanged.
+- `order-history`: an expired row states its direction and its requested lots, and the expiry of a
+  close-side order — a protective stop — says `close`; it said `open` for every expiry.
+- `GET /api/v1/reports/runs/{run_id}/pending-orders`: an active order's `order_type` (`limit`,
+  `stop`, `stop_limit`) and `direction` are enums. The two active-order lists hold the orders still
+  resting when the unit's data ended; in a backtest the same orders are recorded `expired` in
+  `order-history` in that same step, so they are not open. A STOP or STOP_LIMIT whose trigger was not
+  reached sits in the stop list; a STOP_LIMIT whose stop triggered becomes a limit order.
+
+Every stored run was carried over to this shape, so an old run answers like a new one.
+
+## Version 19 — 2026-10-01 (#547, viewer#21)
+
+A session now records the broker configuration it traded with, and one more list says what keys
+its rows.
+
+- `GET /api/v1/reports/runs/{run_id}/broker`: every unit carries `broker_config_id` beside
+  `config_hash`. It is the run-config store id of the broker configuration an AutoTrader session
+  froze at its start — the symbol specifications from the venue's cache, the seed's fee structure
+  and the fee tier the venue reported — which `config_hash` only digests in eight characters. A
+  later backtest of the same window reads that frozen copy instead of whatever the cache holds by
+  then. Empty for a simulation unit, which reads the archive's broker files when it runs, and on a
+  session recorded before the freeze existed.
+- `GET /api/v1/reports/runs/{run_id}/pending-orders` declares `key: ["name"]` for `units` — the
+  unit name, which a scenario set cannot repeat (it is refused at validation) and an AutoTrader
+  session has once. The nested `active_limit_orders` / `active_stop_orders` lists and
+  `order-history` declare no key yet; both come with #557. Old runs serve the key too: the
+  default fills in on read, nothing to re-fetch.
+
+Both are additions with a default; no existing field changed.
+
 ## Version 18 — 2026-09-29 (viewer#21, #557)
 
 The numbers the aggregate inventory for #557 found wrong, each corrected before that refactor

@@ -79,6 +79,7 @@ def _to_broker_row(
         stopout_level=spec.stopout_level,
         hedging_allowed=spec.hedging_allowed,
         config_hash=broker_config.config_hash or '',
+        broker_config_id=broker_config.get_frozen_config_id(),
         scenarios=scenarios,
         symbols=[_to_symbol_row(broker_config.get_symbol_specification(s)) for s in symbols],
     )

@@ -20,6 +20,13 @@ from pydantic import BaseModel, Field, computed_field
 from python.framework.types.persistence_types import RiskBaseline
 from python.framework.types.run_origin_types import CodeIdentity, RunOrigin
 from python.framework.types.run_outcome_types import RunOutcome
+from python.framework.types.trading_env_types.order_types import (
+    OrderAction,
+    OrderDirection,
+    OrderStatus,
+    OrderType,
+    RejectionReason,
+)
 
 
 # WHAT MAKES ONE ROW of each deployment view unique. Declared once, read by the response model
@@ -210,23 +217,35 @@ class TradeHistoryReport(RunScopedReport):
 
 
 class OrderHistoryRow(BaseModel):
-    """One order-lifecycle record (the resting/filled/rejected order list)."""
+    """
+    One order-lifecycle record (the resting/filled/rejected order list).
+
+    A row is an EVENT in an order's life, not the order: one order appears as `pending`, then
+    `executed`, then a `close` row per close. Rows are in append order within their unit, and
+    that position is their identity — no field combination is unique by construction.
+
+    A value that does not exist is null, never '' or 0.0: an empty string read as a value and a
+    zero price is a price downstream. The closed vocabularies are enums, so the schema lists
+    their values.
+    """
     order_id: str
     scenario_name: str = '' # owning run unit (sim: scenario; live: session) — #393 grouping
-    position_id: str        # '' if not yet/never tied to a position
+    position_id: Optional[str] = None           # null until a position exists
     symbol: str
-    direction: str          # 'long' | 'short' | '' (unknown)
-    action: str             # 'open' | 'close' | '' (unknown)
-    status: str             # 'executed' | 'rejected' | 'cancelled' | ...
-    requested_lots: float
-    executed_lots: float
-    executed_price: float
-    execution_time: str     # ISO-8601 UTC, '' if never executed
+    direction: Optional[OrderDirection] = None  # open: requested; close: the position's
+    action: Optional[OrderAction] = None
+    status: OrderStatus
+    requested_lots: Optional[float] = None      # null where the order did not know it
+    executed_lots: Optional[float] = None       # null unless something executed
+    executed_price: Optional[float] = None      # null unless something executed
+    event_time: Optional[str] = None            # ISO-8601 UTC, on the run's canonical clock —
+                                                # when this row's event happened: the fill, the
+                                                # refusal, the expiry. Null on a `pending` row
     commission: float
     swap: float
     slippage_points: float
-    rejection_reason: str   # '' if not rejected
-    rejection_message: str
+    rejection_reason: Optional[RejectionReason] = None  # null unless rejected
+    rejection_message: Optional[str] = None             # null unless rejected
 
 
 class OrderHistoryReport(RunScopedReport):
@@ -445,10 +464,17 @@ class ExecutionStatsReport(RunScopedReport):
 
 
 class ActiveOrderRow(BaseModel):
-    """One active (untriggered) limit/stop order at run end."""
+    """
+    One limit/stop order still resting when its unit's data ended.
+
+    In a backtest the same order is recorded `expired` (reason scenario_end) in that same step.
+    The snapshot is read after the expiry, from the lists the expiry deliberately leaves intact,
+    so it says the order was resting when the data ended — not that it is still open. A LIMIT
+    sits in the limit list; a STOP or STOP_LIMIT whose trigger was not reached in the stop list.
+    """
     order_id: str
-    order_type: str         # 'limit' | 'stop' | 'stop_limit'
-    direction: str          # 'long' | 'short'
+    order_type: OrderType   # limit · stop · stop_limit
+    direction: OrderDirection
     lots: float
     entry_price: float      # limit price (LIMIT) / trigger price (STOP/STOP_LIMIT)
     limit_price: float | None = None    # STOP_LIMIT only
@@ -479,6 +505,10 @@ class PendingOrdersReport(RunScopedReport):
     (the live AutoTraderResult carries no pending stats → empty units live).
     """
     units: list[PendingOrdersUnitRow]
+    # What makes one row unique — a served list declares it. The unit name: a scenario set whose
+    # names repeat is refused at validation (`scenario_name_duplicate`), and an AutoTrader
+    # session is one unit.
+    key: list[str] = ['name']
 
 
 class ScenarioDetailsRow(BaseModel):
@@ -667,8 +697,15 @@ class RunHeader(BaseModel):
         config_id: The registered identity of that configuration (#538) — SHA256 over its
             normalised content, so two runs naming the same id ran the same configuration and a
             changed file mints a new one. Empty on a run that started before the store existed,
-            and on one whose config could not be registered; the per-run snapshot beside it is
-            the evidence either way, and this is what makes it FINDABLE
+            and on one whose config could not be registered. It names the INPUT to the cascade —
+            what the run was given, not what it ran with
+        rendered_config_id: What an AutoTrader session RAN with (#547): the run-config store's
+            id of the rendered profile — the `app_config` layer merged in, every schema default
+            filled, the broker's `market_config` entry beside it. Rendered before this header is
+            written, so a session that dies at its first tick still names it. Empty on a
+            simulation run (its half is not built yet), on a run written before the field
+            existed, and on a session whose profile could not be rendered — that last case says
+            so in its session log
         app_version: The app version that produced it
         git_commit: The commit it ran from, when the working tree exposes one
         reporting: Whether this run was COMMISSIONED to write report artifacts. Declared at
@@ -700,6 +737,7 @@ class RunHeader(BaseModel):
     parent_kind: Optional[ParentKind] = None
     config_snapshot: str = ''
     config_id: str = ''
+    rendered_config_id: str = ''
     app_version: str = ''
     git_commit: Optional[str] = None
     reporting: RunReporting = RunReporting.EXPECTED
@@ -719,16 +757,18 @@ class RunConfigSnapshot(BaseModel):
     WHAT moved, because both the file name and the content id are POINTERS and nothing served
     what they point at.
 
-    `config` is the snapshot PARSED. The bytes are copied verbatim into the run directory, so a
-    raw form would also be defensible; parsed is served because every other route on this API
-    answers with a model, and because a consumer comparing two runs wants the difference in the
-    VALUES rather than in the whitespace.
+    `config` is the snapshot PARSED, read from the run-config store's frozen copy under
+    `config_id` — the per-run copy in the run directory was retired (#546). Parsed is served
+    because every other route on this API answers with a model, and because a consumer comparing
+    two runs wants the difference in the VALUES rather than in the whitespace. It is the SOURCE
+    the run was given; what an AutoTrader session ran with is the rendered profile its header
+    names under `rendered_config_id` (#547), which this route does not serve.
     """
     run_id: str
-    # The file name the run's header DECLARED, which is not always a file that exists: the
-    # header is written at run start and the copy happens later, so a session that died in
-    # between — or one whose file logging was switched off — declares a snapshot it never
-    # filed. That case is a 404 naming the snapshot, never a 404 naming the run.
+    # The file name the run's header DECLARED, which is not always a configuration the store
+    # holds: a run whose config could not be registered, or one that predates the store, names a
+    # snapshot nothing can resolve. That case is a 404 naming the snapshot, never a 404 naming
+    # the run.
     config_snapshot: str
     # The content fingerprint the run-config store minted (#538). Served so a consumer can
     # assert the bytes it received are the ones the index attributes to this run, rather than
@@ -1619,9 +1659,11 @@ class WorkerStatRow(BaseModel):
     max_time_ms: float = 0.0
     compute_basis: str = 'live'     # #420 cadence basis (live / bar_close)
     last_compute_tick: int = -1     # #420 tick index of the last real compute (idle telemetry)
-    # Cadence, derived here so every surface reads the same figure
-    compute_ratio_pct: float = 0.0  # call_count / the unit's ticks_processed
-    ticks_idle: int = 0             # ticks since the last real compute
+    # Cadence, derived here so every surface reads the same figure. Null where it is not
+    # defined: no tick processed (no ratio), a worker that never computed (no idle distance),
+    # and on the run-level totals, which span several units' tick counts
+    compute_ratio_pct: Optional[float] = None   # call_count / the unit's ticks_processed
+    ticks_idle: Optional[int] = None            # ticks since the last real compute
 
 
 class WorkerDecisionUnitRow(BaseModel):
@@ -1629,21 +1671,28 @@ class WorkerDecisionUnitRow(BaseModel):
     Per-unit worker + decision performance (#398, **unified** — sim scenario / AutoTrader
     session). Coordination fields included: both pipelines' orchestrators count the ticks that
     reach the algo path.
+
+    The decision counters and timings exist only where the unit tracked them
+    (`worker_decision_tracked`; the simulation's default is off, because the tracker sits on
+    the hot path). Untracked they are null — a zero would claim that the logic decided nothing.
+    The coordination fields are always counted.
     """
     name: str
     symbol: str
-    # decision logic
-    decision_logic_type: str = ''
-    decision_logic_name: str = ''
-    decision_count: int = 0
-    buy_signals: int = 0
-    sell_signals: int = 0
-    flat_signals: int = 0
-    trades_requested: int = 0
-    decision_total_time_ms: float = 0.0
-    decision_avg_time_ms: float = 0.0
-    decision_min_time_ms: float = 0.0
-    decision_max_time_ms: float = 0.0
+    # decision logic — named whether or not anything was counted; null only where the unit
+    # produced no decision statistics at all (a session that ended at startup)
+    decision_logic_type: Optional[str] = None
+    decision_logic_name: Optional[str] = None
+    worker_decision_tracked: bool = False
+    decision_count: Optional[int] = None
+    buy_signals: Optional[int] = None
+    sell_signals: Optional[int] = None
+    flat_signals: Optional[int] = None
+    trades_requested: Optional[int] = None
+    decision_total_time_ms: Optional[float] = None
+    decision_avg_time_ms: Optional[float] = None
+    decision_min_time_ms: Optional[float] = None
+    decision_max_time_ms: Optional[float] = None
     # coordination (both pipelines)
     ticks_processed: int = 0
     parallel_workers: bool = False
@@ -1788,6 +1837,12 @@ class BrokerInfoRow(BaseModel):
     stopout_level: float = 0.0
     hedging_allowed: bool = False
     config_hash: str = ''
+    # Where the session's broker configuration was frozen (#547) — the run-config store id of
+    # the content `config_hash` only digests: symbol specs, fee structure, detected tier. Read
+    # it back to give a later backtest the configuration this session had. Empty for a
+    # simulation unit, which reads the archive's broker files at run time, and on a session
+    # recorded before the freeze existed.
+    broker_config_id: str = ''
     scenarios: list[str] = []
     symbols: list[BrokerSymbolRow] = []
 

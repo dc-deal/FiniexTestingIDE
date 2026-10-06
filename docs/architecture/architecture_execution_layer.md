@@ -187,14 +187,27 @@ no individual records are stored for normal outcomes.
 
 | Outcome | Source | Individual Record | Latency Unit |
 |---------|--------|-------------------|--------------|
-| `FILLED` | Normal fill after delay | No (aggregated only) | ticks (sim) / ms (live) |
-| `REJECTED` | Stress test or broker rejection | No (aggregated only) | ticks (sim) / ms (live) |
+| `FILLED` | Simulation: the order arrived after its delay — a market or close order fills then, but a limit, stop or stop-limit order that starts resting is counted here too, whether it later fills, expires at data end or is cancelled by the strategy. AutoTrader: a status poll saw a market or close order filled — a resting order is never counted, nor a fill or refusal that arrives in the answer to the submission | No (aggregated only) | ms |
+| `REJECTED` | Stress test or broker rejection | No (aggregated only) | ms |
 | `TIMED_OUT` | Broker timeout (live execution stack only) | Yes (`anomaly_orders`) | ms |
-| `FORCE_CLOSED` | `clear_pending()` for genuine stuck-in-pipeline orders at scenario end | Yes (`anomaly_orders`, with `reason`) | ticks (sim) / ms (live) |
+| `FORCE_CLOSED` | `clear_pending()` for genuine stuck-in-pipeline orders at scenario end | Yes (`anomaly_orders`, with `reason`) | ms |
+
+The unit is milliseconds in both pipelines, but the two measure different things. In simulation
+it is the modelled delay on the market clock — `broker_fill_msc − placed_at_msc`, and for a
+force-close the time the order sat until the scenario ended. In an AutoTrader session it is the
+measured time from submission to the status poll that saw the fill, for market and close orders
+only. Min, max and average cover every resolved outcome, not fills only.
+
+So `FILLED`, its counter `total_filled` and the latency mean different things in the two pipelines.
+The simulation resolves every order when it ARRIVES, so a backtest's resting order that later
+expires at the end of its data is counted as filled. An AutoTrader session counts only the market
+and close orders a poll saw filled — a resting order resolves in no counter — and the session's
+counters reach the live display but no report, because its result does not carry them. This is a
+known defect, not a design (#362).
 
 **Display locations:**
 
-- **Portfolio Grid Boxes**: Green latency line `"Latency: avg 4.7t (3-8)"`, yellow `"X forced"` / `"X timeout"` if anomalies
+- **Portfolio Grid Boxes**: Green latency line `"Pending: avg 60ms (60-60)"`, yellow `"X forced"` / `"X timeout"` if anomalies
 - **Aggregated Portfolio (ORDER EXECUTION)**: Resolved breakdown with filled/rejected/timed_out/force-closed counts + latency stats
 - **Executive Summary**: Green latency line per scenario, yellow `"X force-closed"` / `"X timed out"` breakdown
 
@@ -470,7 +483,7 @@ Generic pending order representation used by both modes. Mode-specific fields ar
   `direction`, `lots`, `entry_price` (limit price for LIMIT, 0 for MARKET), `order_kwargs` (built
   from explicit params: stop_loss, take_profit, comment, magic_number)
 - **Simulation fields:** `placed_at_msc`, `broker_fill_msc` (ms-timestamp delay tracking)
-- **Live fields:** `submitted_at`, `broker_ref`, `timeout_at` — see [live_execution_architecture.md](live_execution_architecture.md)
+- **Live fields:** `submitted_at`, `broker_ref`, `order_timeout_deadline_monotonic` — see [live_execution_architecture.md](live_execution_architecture.md)
 
 Each mode sets the fields it needs. The other mode's fields remain None.
 
@@ -821,7 +834,7 @@ logic* (the one class that turns worker outputs into decisions) and *worker* —
 | **LiveRequestProcessor** | Live-specific pending order manager — see [live_execution_architecture.md](live_execution_architecture.md) |
 | **Pseudo-Position** | (Removed) A fake position representing a pending order — now replaced by explicit API |
 | **Tick Loop** | The main processing loop that feeds ticks to all components |
-| **Order History** | Complete audit trail of all order outcomes (fills + rejections) from `_order_history` |
+| **Order History** | The run's record of order outcomes from `_order_history` — submissions, fills, rejections, expiries. Capped by `order_history_max`, and a cancel the strategy issues leaves no row yet (#362) |
 | **BrokerResponse** | Standardized response from broker adapter — see [live_execution_architecture.md](live_execution_architecture.md) |
 | **MockBrokerAdapter** | Test adapter with configurable execution modes — see [live_execution_architecture.md](live_execution_architecture.md) |
 | **Error Seeds** | Seeded fault injection in simulation for stress testing error-handling paths |

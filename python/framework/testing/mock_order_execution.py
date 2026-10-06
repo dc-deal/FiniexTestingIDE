@@ -33,6 +33,9 @@ from python.framework.logging.global_logger import GlobalLogger
 from python.framework.testing.mock_broker_adapter import MockBrokerAdapter, MockExecutionMode
 from python.framework.trading_env.broker_config import BrokerConfig
 from python.framework.trading_env.live.live_trade_executor import LiveTradeExecutor
+from python.framework.types.config_types.autotrader_defaults_config_types import (
+    UnresolvedResolutionDefaults,
+)
 from python.framework.types.live_types.live_execution_types import TimeoutConfig
 from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.trading_env_types.broker_types import BrokerType
@@ -55,6 +58,7 @@ class MockOrderExecution:
         spot_mode: bool = False,
         initial_balances: Optional[Dict[str, float]] = None,
         session_key: str = 'mock',
+        resolution_config: Optional[UnresolvedResolutionDefaults] = None,
     ):
         """
         Initialize mock execution environment.
@@ -71,6 +75,9 @@ class MockOrderExecution:
             session_key: Discriminator for the wire keys this mock session sends (#473).
                 Set by default, because an empty one mints no client order id at all — and
                 a suite that never mints one cannot see anything the key path does
+            resolution_config: How a write whose answer was lost is resolved (#487); None
+                keeps the executor's default. Switched off only by a test that exercises
+                the plain timeout path, which the resolution otherwise owns
         """
         self._mode = mode
         self._initial_balance = initial_balance
@@ -81,6 +88,7 @@ class MockOrderExecution:
         self._session_key = session_key
         self._spot_mode = spot_mode
         self._initial_balances = initial_balances
+        self._resolution_config = resolution_config
         self._tick_counter = 0
 
     def create_executor(self) -> LiveTradeExecutor:
@@ -104,6 +112,7 @@ class MockOrderExecution:
             spot_mode=self._spot_mode,
             initial_balances=self._initial_balances,
             session_key=self._session_key,
+            resolution_config=self._resolution_config,
         )
 
     def await_submit_confirmation(self, executor: LiveTradeExecutor) -> None:

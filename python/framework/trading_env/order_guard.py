@@ -48,6 +48,7 @@ from uuid import uuid4
 from python.framework.types.trading_env_types.market_data_status_types import MarketDataStatus
 from python.framework.types.trading_env_types.order_types import (
     OpenOrderRequest,
+    OrderAction,
     OrderDirection,
     OrderResult,
     RejectionReason,
@@ -114,8 +115,8 @@ class OrderGuard:
             and market_data_status is not None
             and market_data_status.is_stale
         ):
-            return create_rejection_result(
-                order_id=self._make_order_id(),
+            return self._refuse(
+                request, now,
                 reason=RejectionReason.STALE_MARKET_DATA,
                 message=(
                     f'Entry blocked: market data stale '
@@ -132,8 +133,8 @@ class OrderGuard:
         # position are untouched. A LATCH, not a cooldown — the condition does not expire
         # with time, it ends when the order is finally accounted for.
         if unresolved_at_ceiling:
-            return create_rejection_result(
-                order_id=self._make_order_id(),
+            return self._refuse(
+                request, now,
                 reason=RejectionReason.UNRESOLVED_WRITE,
                 message=(
                     f'Entry blocked: {len(unresolved_at_ceiling)} order(s) sent and never '
@@ -145,8 +146,8 @@ class OrderGuard:
         cooldown_until = self._cooldown_until.get(request.direction)
         if cooldown_until is not None and cooldown_until > now:
             remaining = (cooldown_until - now).total_seconds()
-            return create_rejection_result(
-                order_id=self._make_order_id(),
+            return self._refuse(
+                request, now,
                 reason=RejectionReason.REJECTION_COOLDOWN,
                 message=(
                     f'{request.direction.value.upper()} blocked by rejection cooldown '
@@ -155,6 +156,36 @@ class OrderGuard:
             )
 
         return None
+
+    def _refuse(
+        self,
+        request: OpenOrderRequest,
+        now: datetime,
+        reason: RejectionReason,
+        message: str,
+    ) -> OrderResult:
+        """
+        A guard rejection stating the entry it blocked, stamped at the guard's own time.
+
+        Args:
+            request: The blocked request
+            now: The time the guard decided at
+            reason: Which rule blocked it
+            message: The human sentence beside the reason
+
+        Returns:
+            The REJECTED OrderResult
+        """
+        return create_rejection_result(
+            order_id=self._make_order_id(),
+            reason=reason,
+            message=message,
+            execution_time=now,
+            action=OrderAction.OPEN,
+            symbol=request.symbol,
+            direction=request.direction,
+            requested_lots=request.lots,
+        )
 
     # ============================================
     # State updates (called by DecisionTradingApi)

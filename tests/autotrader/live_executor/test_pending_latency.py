@@ -16,7 +16,7 @@ from unittest.mock import patch
 
 import pytest
 
-from python.framework.trading_env.live.live_trade_executor import LiveTradeExecutor
+from python.framework.trading_env.abstract_pending_order_manager import AbstractPendingOrderManager
 from python.framework.types.trading_env_types.latency_simulator_types import (
     PendingOrder,
     PendingOrderTiming,
@@ -50,9 +50,9 @@ class TestTheLatencyIsMeasuredOnTheMonotonicClock:
         """A 0.25 s monotonic difference is reported as 250 ms."""
         pending = _pending(submitted_monotonic=1000.0)
 
-        with patch('python.framework.trading_env.live.live_trade_executor.time.monotonic',
+        with patch('python.framework.trading_env.abstract_pending_order_manager.time.monotonic',
                    return_value=1000.25):
-            latency = LiveTradeExecutor._calculate_pending_latency_ms(pending)
+            latency = AbstractPendingOrderManager.calculate_pending_latency_ms(pending)
 
         assert latency == 250.0
 
@@ -66,9 +66,9 @@ class TestTheLatencyIsMeasuredOnTheMonotonicClock:
         submitted_at = datetime.now(timezone.utc) + timedelta(seconds=30)
         pending = _pending(submitted_at=submitted_at, submitted_monotonic=500.0)
 
-        with patch('python.framework.trading_env.live.live_trade_executor.time.monotonic',
+        with patch('python.framework.trading_env.abstract_pending_order_manager.time.monotonic',
                    return_value=500.4):
-            latency = LiveTradeExecutor._calculate_pending_latency_ms(pending)
+            latency = AbstractPendingOrderManager.calculate_pending_latency_ms(pending)
 
         # approx, because 500.4 - 500.0 is not exact in binary — the same arithmetic
         # this file's sibling concern is about.
@@ -80,10 +80,10 @@ class TestTheLatencyIsMeasuredOnTheMonotonicClock:
         early = _pending(datetime(2020, 1, 1, tzinfo=timezone.utc), submitted_monotonic=10.0)
         late = _pending(datetime(2030, 1, 1, tzinfo=timezone.utc), submitted_monotonic=10.0)
 
-        with patch('python.framework.trading_env.live.live_trade_executor.time.monotonic',
+        with patch('python.framework.trading_env.abstract_pending_order_manager.time.monotonic',
                    return_value=11.0):
-            assert (LiveTradeExecutor._calculate_pending_latency_ms(early)
-                    == LiveTradeExecutor._calculate_pending_latency_ms(late)
+            assert (AbstractPendingOrderManager.calculate_pending_latency_ms(early)
+                    == AbstractPendingOrderManager.calculate_pending_latency_ms(late)
                     == 1000.0)
 
 
@@ -94,11 +94,11 @@ class TestAnUnmeasurableLatencyIsReportedAsUnmeasured:
         """A wall-clock stamp alone is not enough to measure a duration."""
         pending = _pending(submitted_at=datetime.now(timezone.utc))
 
-        assert LiveTradeExecutor._calculate_pending_latency_ms(pending) is None
+        assert AbstractPendingOrderManager.calculate_pending_latency_ms(pending) is None
 
     def test_an_order_with_no_stamps_at_all_is_None(self):
         """The pre-submission state carries neither stamp."""
-        assert LiveTradeExecutor._calculate_pending_latency_ms(_pending()) is None
+        assert AbstractPendingOrderManager.calculate_pending_latency_ms(_pending()) is None
 
 
 class TestEveryLiveSubmissionCarriesTheStamp:
@@ -116,4 +116,51 @@ class TestEveryLiveSubmissionCarriesTheStamp:
 
         pending = request_processor.get_by_broker_ref('MOCK-MONO-1')
         assert pending.timing.submitted_monotonic is not None
-        assert LiveTradeExecutor._calculate_pending_latency_ms(pending) >= 0.0
+        assert AbstractPendingOrderManager.calculate_pending_latency_ms(pending) >= 0.0
+
+
+class TestAForceClosedOrderIsMeasuredTheSameWay:
+    """The session-end cleanup records stuck orders with the same clock as every other outcome."""
+
+    def _register(self, request_processor) -> PendingOrder:
+        """Registers one live order and returns it as the processor holds it.
+
+        Args:
+            request_processor: The processor under test.
+
+        Returns:
+            The registered PendingOrder.
+        """
+        request_processor.register_pending_open(
+            order_id='ORD-FC-1',
+            symbol='BTCUSD',
+            direction=OrderDirection.LONG,
+            lots=0.001,
+            broker_ref='MOCK-FC-1',
+        )
+        return request_processor.get_by_broker_ref('MOCK-FC-1')
+
+    def test_a_wall_clock_that_stepped_BACKWARDS_cannot_produce_a_negative_force_close(
+            self, request_processor):
+        """The cleanup used to subtract two wall-clock readings and could go negative."""
+        pending = self._register(request_processor)
+        pending.timing.submitted_at = datetime.now(timezone.utc) + timedelta(seconds=30)
+
+        request_processor.clear_pending(reason='scenario_end')
+
+        stats = request_processor.get_pending_stats()
+        assert stats.total_force_closed == 1
+        assert stats.anomaly_orders[0].latency_ms >= 0.0
+        assert stats.min_latency_ms >= 0.0
+
+    def test_without_a_monotonic_stamp_the_force_close_is_unmeasured(self, request_processor):
+        """No stamp means no number in the anomaly record and none in the aggregate."""
+        pending = self._register(request_processor)
+        pending.timing.submitted_monotonic = None
+
+        request_processor.clear_pending(reason='scenario_end')
+
+        stats = request_processor.get_pending_stats()
+        assert stats.total_force_closed == 1
+        assert stats.anomaly_orders[0].latency_ms is None
+        assert stats.min_latency_ms is None

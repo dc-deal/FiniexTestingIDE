@@ -99,6 +99,25 @@ the session's loggers exist.
 | `test_an_untrusted_host_identity_file_refuses_before_any_capture` | The same through the real `AutotraderMain.run()`, with a broken identity file and isolation lifted for the host identity alone: exit code 2, the file named, no stack trace — and neither the capture nor the header is reached, so no git work is paid and no patch stored for a session that never starts |
 | `test_a_capture_that_fails_ends_as_startup_failed_with_a_record` | A capture raising before the loggers exist ends as `STARTUP FAILED`, exit code 2, no stack trace on the console; the header is written with its origin and no code identity, and the global log holds the stack trace |
 
+### `test_rendered_profile.py` (#547)
+
+What an AutoTrader session records as the configuration it RAN with. The profile file is the
+input to a cascade: the `app_config.autotrader` defaults lie under it, and every parameter it
+leaves unset gets its schema default only when the factory builds the component. The rendered
+document is the result, frozen before the header names it — so it is built without constructing
+anything, and these tests hold it to what construction then produces.
+
+| Test | What it verifies |
+|---|---|
+| `test_a_default_no_file_sets_is_in_the_document` | A decision-logic parameter the profile leaves out appears with its schema default |
+| `test_the_app_config_layer_is_merged_into_the_blocks` | A block the profile sets in part and one it leaves out entirely both appear complete — the rest can only have come from `app_config`; the file location and the raw strategy are not blocks |
+| `test_every_type_key_is_the_one_the_factory_injects` | `decision_logic_type` and each worker's `worker_type` are the resolved keys the factories inject |
+| `test_the_broker_entry_is_recorded_with_its_resolved_values` | The broker's `market_config.json` entry is in the document, `dry_run` and `config_mode` included |
+| `test_the_operational_hash_can_be_recomputed_from_the_document` | The ledger's `profile_hash` comes out of the document's blocks: one projection (`to_plain`) for the hash and the record, so the two cannot drift apart |
+| `test_the_same_profile_renders_the_same_document` | Rendering is deterministic and JSON-serialisable — the precondition for a content id |
+| `test_the_rendered_strategy_matches_the_constructed_components` | Over EVERY shipped mock profile: what the renderer records equals what `create_logic` / `create_workers_from_config` build — both go through the factories' one helper, and this is what notices a drift |
+| `test_a_parameter_that_moved_after_rendering_refuses_the_session` · `test_a_worker_the_record_does_not_name_refuses_the_session` | The startup check refuses, naming the parameter or the worker set — a record that misstates a real-money session is worse than none |
+
 ### `test_uncommitted_code_guard.py` (#551)
 
 A session whose EFFECTIVE `dry_run` resolves to false refuses to start while any repository it

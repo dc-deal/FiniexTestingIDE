@@ -16,7 +16,7 @@ line-length = 100
 target-version = "py312"
 
 exclude = [
-    "python/experiments",     # single-use migration tools (§27), not permanent code paths
+    "python/experiments",     # migrations, venue probes, the raw-archive re-import tool: run by hand, imported by nothing
     "**/__pycache__",
 ]
 

@@ -34,43 +34,10 @@ class ImportConfigManager:
         """Print import config status on first load."""
         move_files = self.get_move_processed_files()
         auto_bars = self.get_auto_render_bars()
-        registry = self.get_offset_registry()
-        offsets = ', '.join(
-            f"{bt}: {e.get('default_offset_hours', 0):+d}h"
-            for bt, e in registry.items()
-        )
         print(
             f'📥 Import config loaded — '
-            f'MOVE_FILES: {move_files}, AUTO_BARS: {auto_bars}, '
-            f'OFFSETS: [{offsets}]'
+            f'MOVE_FILES: {move_files}, AUTO_BARS: {auto_bars}'
         )
-
-    # ============================================
-    # Offset Registry
-    # ============================================
-
-    def get_offset_registry(self) -> Dict[str, Any]:
-        """
-        Get complete offset registry.
-
-        Returns:
-            Dict mapping broker_type to offset config entry
-        """
-        return self._config.get('offset_registry', {})
-
-    def get_default_offset(self, broker_type: str) -> int:
-        """
-        Get default time offset for a broker_type.
-
-        Args:
-            broker_type: Normalized broker type identifier (e.g. "mt5", "kraken_spot")
-
-        Returns:
-            Default offset in hours (0 if broker_type not in registry)
-        """
-        registry = self.get_offset_registry()
-        entry = registry.get(broker_type, {})
-        return entry.get('default_offset_hours', 0)
 
     # ============================================
     # Paths — Production

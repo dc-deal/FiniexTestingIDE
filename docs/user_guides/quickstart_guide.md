@@ -707,7 +707,7 @@ Current limitations:
 | Rule | Description |
 |------|-------------|
 | **Order Types** | MARKET, LIMIT, STOP, STOP_LIMIT supported. No native OCO, iceberg or trailing-stop order types yet. |
-| **Position Close** | Full or partial: `close_position(position_id, lots=None)` closes all, `lots=` a part |
+| **Position Close** | Full or partial: `close_position(position_id, lots=None)` closes all, `lots=` a part. A second close while one is in flight joins it rather than sending another — `is_pending_close(position_id)` says whether one is |
 | **Partial Fills** | A broker-reported partial fill at a real venue is not yet surfaced as its own state |
 | **Margin Check** | Orders rejected if insufficient margin |
 | **Resting Order Mgmt** | `modify_limit_order`, `modify_stop_order`, `cancel_limit_order`, `cancel_stop_order`, `modify_position` (SL/TP) available |

@@ -22,15 +22,34 @@ from typing import List, Optional
 
 class RunConfigKind(StrEnum):
     """
-    Which pipeline a registered config starts.
+    What a registered document is.
 
-    The two are kept apart for the same reason §31 keeps them apart everywhere else: a scenario
-    set cascades and holds many scenarios, a profile is flat and holds one symbol. They share a
-    store because they answer the same question — what was this run configured with — and nothing
-    beyond that.
+    The two SOURCE kinds are kept apart for the same reason the two pipelines are kept apart
+    everywhere else: a scenario set cascades and holds many scenarios, a profile is flat and holds
+    one symbol. They share a store because they answer the same question — what was this run
+    configured with — and nothing beyond that.
+
+    The two RENDERED kinds (#547) answer the question a source cannot: what the run actually RAN
+    with. A source file is the input to a cascade; the rendered profile is its result, with the
+    `app_config` layer merged in and every schema default filled, and the broker configuration is
+    what the venue's cache, the seed's fees and the detected fee tier added up to at session start.
+    Neither has a file of its own to point at, so both are frozen from content. They are records of
+    what ran, never schemas: a later version of an algo may rename or drop a parameter, and an old
+    rendered document stays exactly as true as it was — it is never fed back into a factory.
     """
     SCENARIO_SET = 'scenario_set'
     AUTOTRADER_PROFILE = 'autotrader_profile'
+    AUTOTRADER_RENDERED = 'autotrader_rendered'
+    BROKER_CONFIG = 'broker_config'
+
+    def has_source_file(self) -> bool:
+        """
+        Whether documents of this kind are registered from a file a caller can name.
+
+        Returns:
+            True for the two source kinds; False for the documents frozen from content
+        """
+        return self in (RunConfigKind.SCENARIO_SET, RunConfigKind.AUTOTRADER_PROFILE)
 
 
 @dataclass

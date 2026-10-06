@@ -151,11 +151,12 @@ class TestTheAskFiresFromTheEvent:
         ))
         mock.await_submit_confirmation(executor)
         pending = executor.get_request_processor().get_pending_orders()[0]
-        assert pending.timing.timeout_at is not None, 'fixture: the fill timer was never set'
+        assert pending.timing.order_timeout_deadline_monotonic is not None, (
+            'fixture: the fill timer was never set')
 
         executor.heartbeat()
 
-        assert pending.timing.timeout_at is None, (
+        assert pending.timing.order_timeout_deadline_monotonic is None, (
             'the fill timer still owns an order whose answer never came')
         assert executor.get_request_processor().get_order(
             pending.pending_order_id) is not None, (

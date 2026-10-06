@@ -44,6 +44,10 @@ def read_tick_parquet(path: Path) -> pd.DataFrame:
     """
     df = pd.read_parquet(path)
 
+    # A quote-driven venue reports no traded volume, so its rows carry 0.0 here — an absence,
+    # not a measurement. It cannot be misread downstream: the one worker that reads volume
+    # (OBV) declares volume as its activity metric, and a scenario on a market whose activity
+    # metric is not volume is refused before the run.
     if 'real_volume' in df.columns and 'volume' not in df.columns:
         df = df.rename(columns={'real_volume': 'volume'})
     elif 'real_volume' not in df.columns and 'volume' not in df.columns:

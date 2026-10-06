@@ -112,8 +112,7 @@ class VectorizedBarRenderer:
         Steps:
         1. Calculate mid-price from bid/ask
         2. Ensure timestamp is datetime (critical!)
-        3. Set timestamp as index
-        4. Sort chronologically
+        3. Sort into event order and set timestamp as index
 
         Args:
             ticks_df: Raw tick DataFrame
@@ -150,12 +149,15 @@ class VectorizedBarRenderer:
         if df['timestamp'].dt.tz is None:
             df['timestamp'] = df['timestamp'].dt.tz_localize('UTC')
 
-        # === 3. SET AS INDEX ===
-        # resample() requires timestamp as index
-        df = df.set_index('timestamp')
-
-        # === 4. SORT ===
-        df = df.sort_index()
+        # === 3. EVENT ORDER, THEN SET AS INDEX ===
+        # By event time, not by the second alone: 'timestamp' has second resolution and many
+        # ticks share one, so an unstable sort on it scrambles their order — and with it the
+        # open and close of every bar whose edge second holds several ticks. The backtest loader
+        # orders the same way (#385), so a rendered bar and a replayed one see one sequence.
+        # A frame without time_msc keeps its row order within a second (the sort is stable).
+        # resample() requires timestamp as index.
+        order = ['timestamp', 'time_msc'] if 'time_msc' in df.columns else ['timestamp']
+        df = df.sort_values(order, kind='stable').set_index('timestamp')
 
         return df
 

@@ -67,7 +67,7 @@ tests/
 ├── margin_validation/
 │   ├── conftest.py               ← MARGIN_VALIDATION_CONFIG = "backtesting/margin_validation_test.json"
 │   ├── test_margin_validation.py ← Exhaustion, recovery, execution stats
-│   ├── test_order_rejection.py   ← Lot validation, close errors, rejection tracking
+│   ├── test_order_rejection.py   ← Lot validation, close errors, rejection tracking, the rejection record
 │   ├── test_zero_balance.py      ← Zero balance scenario (own fixtures, separate config)
 │   ├── test_margin_validation_pnl_calculation.py   ← Shared import
 │   └── test_margin_validation_tick_count.py        ← Shared import
@@ -186,6 +186,17 @@ Tests lot size validation, position close errors, and rejection tracking.
 | `test_orders_sent_includes_rejected` | orders_sent > orders_executed when rejections occur |
 | `test_rejected_orders_not_in_trade_history` | Rejected orders absent from trade history |
 | `test_all_rejections_accounted_for` | Total rejections match expected count |
+
+#### TestRejectionRecords
+
+Over the real executor path, not a hand-built fixture — the unit tests had built their rejection
+WITH a symbol, a shape production never produced, which is why a symbol filter dropping every
+rejection went unseen.
+
+| Test | Description |
+|------|-------------|
+| `test_every_rejection_states_its_side_symbol_size_and_time` | No rejection leaves its side, symbol, direction, lots or time empty |
+| `test_the_symbol_filter_keeps_the_rejections` | Filtering the order history by its symbol drops no rejected row |
 
 ---
 

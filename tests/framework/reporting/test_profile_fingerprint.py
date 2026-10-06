@@ -20,7 +20,8 @@ from pathlib import Path
 import pytest
 
 from python.configuration.autotrader.autotrader_config_loader import load_autotrader_config
-from python.framework.reporting.store.run_provenance_builder import _plain, _profile_fingerprint
+from python.framework.reporting.store.run_provenance_builder import _profile_fingerprint
+from python.framework.utils.config_fingerprint_utils import to_plain
 
 PROFILE_ROOT = Path(__file__).resolve().parents[3] / 'configs' / 'autotrader_profiles'
 BASE_PROFILE = PROFILE_ROOT / 'mock' / 'minimal_warmup_test.json'
@@ -118,30 +119,30 @@ class TestWhatItDeliberatelyIgnores:
 
 
 class TestTheProjection:
-    """`_plain` has to survive both config shapes §6 allows, plus what sits inside them."""
+    """`to_plain` has to survive both config shapes §6 allows, plus what sits inside them."""
 
     def test_a_pydantic_block_is_projected_by_value(self, make_config):
-        projected = _plain(make_config().execution)
+        projected = to_plain(make_config().execution)
         assert isinstance(projected, dict)
         assert 'bar_max_history' in projected
 
     def test_a_settings_dataclass_is_projected_field_by_field(self, make_config):
-        projected = _plain(make_config().safety)
+        projected = to_plain(make_config().safety)
         assert isinstance(projected, dict)
         assert 'max_drawdown_pct' in projected
 
     def test_scalars_and_containers_pass_through(self):
-        assert _plain('x') == 'x'
-        assert _plain(3) == 3
-        assert _plain(None) is None
-        assert _plain([1, 'a']) == [1, 'a']
+        assert to_plain('x') == 'x'
+        assert to_plain(3) == 3
+        assert to_plain(None) is None
+        assert to_plain([1, 'a']) == [1, 'a']
 
     def test_a_dict_is_ordered_so_the_digest_is_not_insertion_dependent(self):
         """
         Two configs that differ only in the order their keys were written must fingerprint
         alike — otherwise a reformatted JSON file would read as a changed profile.
         """
-        assert list(_plain({'b': 1, 'a': 2})) == ['a', 'b']
+        assert list(to_plain({'b': 1, 'a': 2})) == ['a', 'b']
 
     def test_the_whole_result_is_json_serialisable(self, make_config):
         """
@@ -152,4 +153,4 @@ class TestTheProjection:
         """
         config = make_config()
         for field_name in ('execution', 'safety', 'order_guard', 'capital', 'tick_source'):
-            json.dumps(_plain(getattr(config, field_name)))
+            json.dumps(to_plain(getattr(config, field_name)))

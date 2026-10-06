@@ -12,6 +12,7 @@ BatchReportCoordinator so we exercise EventStreamWriter directly.
 
 import csv
 import tempfile
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import List
 
@@ -19,7 +20,13 @@ import pytest
 
 from python.framework.reporting.event_stream_csv_writer import EVENT_FIELDS, EventStreamWriter
 from python.framework.types.portfolio_types.portfolio_trade_record_types import TradeRecord
-from python.framework.types.trading_env_types.order_types import OrderResult
+from python.framework.types.trading_env_types.order_types import (
+    OrderAction,
+    OrderDirection,
+    OrderResult,
+    RejectionReason,
+    create_rejection_result,
+)
 
 
 @pytest.fixture(scope='session')
@@ -194,3 +201,43 @@ class TestSideAndDirectionColumns:
                 f'FILL pos={pid} direction={direction} is_entry={is_entry} '
                 f'expected side={expected!r}, got {side!r}'
             )
+
+
+class TestRejectEvents:
+    """A refused order leaves an ORDER_REJECT at the moment it was refused — open or close."""
+
+    _OPEN_AT = datetime(2026, 1, 24, 14, 20, 50, tzinfo=timezone.utc)
+    _CLOSE_AT = datetime(2026, 1, 24, 15, 5, 12, tzinfo=timezone.utc)
+
+    def _rows(self) -> List[List[str]]:
+        """Flush one refused open and one refused close, return the parsed rows."""
+        refused_open = create_rejection_result(
+            order_id='pos_ethusd_5', reason=RejectionReason.INVALID_LOT_SIZE,
+            message='Lot size below minimum', execution_time=self._OPEN_AT,
+            action=OrderAction.OPEN, symbol='ETHUSD', direction=OrderDirection.LONG,
+            requested_lots=0.00001)
+        refused_close = create_rejection_result(
+            order_id='close_pos_ethusd_1', reason=RejectionReason.REMAINDER_BELOW_MINIMUM,
+            message='Partial close refused', execution_time=self._CLOSE_AT,
+            action=OrderAction.CLOSE, symbol='ETHUSD', direction=OrderDirection.LONG,
+            requested_lots=0.0015)
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp)
+            EventStreamWriter.from_sim_result(
+                trade_history=[], order_history=[refused_open, refused_close],
+                run_dir=run_dir,
+            ).flush('events.csv')
+            with open(run_dir / 'events.csv') as f:
+                return list(csv.reader(f))
+
+    def test_a_refused_close_is_not_lost(self):
+        """Closes are otherwise taken from the trade history, where a refused one never lands."""
+        order_idx = EVENT_FIELDS.index('order_id')
+        rejected = [r[order_idx] for r in self._rows()[1:] if r[1] == 'ORDER_REJECT']
+        assert rejected == ['pos_ethusd_5', 'close_pos_ethusd_1']
+
+    def test_a_rejection_carries_its_own_time_never_the_wall_clock(self):
+        """It used to be stamped with the moment the report was written."""
+        stamps = [r[0] for r in self._rows()[1:] if r[1] == 'ORDER_REJECT']
+        assert stamps == [self._OPEN_AT.isoformat(), self._CLOSE_AT.isoformat()]
+

@@ -17,6 +17,7 @@ from python.framework.types.config_types.market_config_types import (
     MarketType,
     PipMode,
     ProfileDefaultsConfig,
+    ServerClockConfig,
     SwapRolloverConfig,
     TradingModel,
 )
@@ -240,6 +241,22 @@ class MarketConfigManager:
             PriceFormation declared for that broker
         """
         return self.get_broker_entry(broker_type).price_formation
+
+    def get_server_clock(self, broker_type: str) -> ServerClockConfig:
+        """
+        Get the rule that turns this venue's own timestamps into UTC.
+
+        A property of the VENUE's server, like the price formation above: the import, the
+        coverage report's file attribution and a live adapter reading the same server all
+        resolve it here, so the clock exists once.
+
+        Args:
+            broker_type: Broker type identifier
+
+        Returns:
+            ServerClockConfig declared for that broker
+        """
+        return self.get_broker_entry(broker_type).server_clock
 
     def get_config_mode(self, broker_type: str) -> ConfigMode:
         """

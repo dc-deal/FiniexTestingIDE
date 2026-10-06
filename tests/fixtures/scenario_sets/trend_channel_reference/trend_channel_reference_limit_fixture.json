@@ -50,8 +50,8 @@
       "scenario_name": "EURUSD_limit_w1",
       "symbol": "EURUSD",
       "data_broker_type": "mt5",
-      "start_date": "2026-01-05T00:00:00+00:00",
-      "end_date": "2026-01-09T20:00:00+00:00",
+      "start_date": "2026-01-05T01:00:00+00:00",
+      "end_date": "2026-01-09T21:00:00+00:00",
       "enabled": true
     }
   ]

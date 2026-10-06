@@ -2,10 +2,10 @@
 
 ## Overview
 
-The import pipeline test suite validates the full tick data import lifecycle: JSON schema validation, Parquet conversion, UTC offset application, metadata preservation, duplicate detection, structural validation, and file management.
+The import pipeline test suite validates the full tick data import lifecycle: JSON schema validation, Parquet conversion, the server clock conversion to UTC, metadata preservation, duplicate detection, structural validation, and file management.
 
 **Test Location:** `tests/data/import_pipeline/`
-**Config Source:** `configs/import_config.json` (offset registry, paths, processing)
+**Config Source:** `configs/import_config.json` (paths, processing) and `configs/market_config.json` (each broker's `server_clock`)
 ---
 
 ## Fixtures (conftest.py)
@@ -77,22 +77,28 @@ Validates end-to-end conversion from JSON to Parquet.
 
 ### test_offset_application.py
 
-Validates UTC offset handling and session recalculation.
+Validates the conversion of a venue's own timestamps to UTC through the broker's server clock rule,
+and the session labels that follow from it. The MT5 server runs on New York time + 7 h, so the one
+rule takes two hours off a winter tick and three off a summer tick.
 
-**TestOffsetCorrectness:**
-- Offset applied when registry has nonzero value for broker_type
-- Offset not applied when registry value is 0
-- Offset not applied when broker_type not in registry
-- Offset direction correct (-3h means subtract 3 hours)
+**TestTheRuleNotANumber:**
+- A winter MT5 tick (15:00 on the server) becomes 13:00 UTC; a summer one becomes 12:00
+- The payroll anchor: 2026-01-09 15:30 on the server is 13:30 UTC — the archive held it at 12:30
+  while a fixed offset stood here
+- Kraken (`UTC+0h`) stays as it is
+- `time_msc` moves by the same per-tick amount as `timestamp`
+
+**TestTheChangedHour:**
+- A tick in the hour a daylight saving change repeats refuses the file — no parquet is written
+
+**TestTheHeaderSaysWhatWasApplied:**
+- A winter file states `user_time_offset_hours` `-2` and `server_clock_rule` `America/New_York+7h`;
+  a summer file states `-3`
 
 **TestSessionRecalculation:**
-- Session recalculated after offset application
-- Boundary test: 00:00 GMT+3 → 21:00 UTC maps to correct session
-- Session preserved when no offset applied
-
-**TestImportConfigOffsetRegistry:**
-- ImportConfigManager returns correct offset for known brokers
-- Returns 0 for unknown broker_type
+- Server midnight in summer is 21:00 UTC — the transition hour; in winter it is 22:00 — already the
+  Asian session
+- A UTC clock keeps the collector's label
 
 ---
 
@@ -106,8 +112,8 @@ Validates Parquet file header metadata.
 - `broker_type` matches input
 - `importer_version` matches TickDataImporter.VERSION
 - `tick_count` matches actual row count
-- `utc_conversion_applied` flag correct based on offset
-- `user_time_offset_hours` correct
+- `utc_conversion_applied` flag correct for a server clock that is or is not UTC
+- `user_time_offset_hours` is the offset the rule resolved to (`-2` on a winter date), beside `server_clock_rule`
 
 **TestSourceMetadata:**
 - `source_meta_` flat fields present (e.g., `source_meta_broker_type`)
@@ -148,12 +154,12 @@ Tests for the `collected_msc` field (V1.3.0), `time_msc` offset consistency, tic
 
 **TestCollectedMscValues:**
 - V1.3.0 data preserves `collected_msc` values through import
-- `collected_msc` not affected by time offset (stays unchanged)
+- `collected_msc` not affected by the server clock conversion (stays unchanged)
 
 **TestTimeMscOffset:**
-- `time_msc` shifted by same offset as `timestamp`
-- `time_msc` unchanged when no offset applied
-- `timestamp` and `time_msc` consistent (same UTC moment) after offset
+- `time_msc` shifted by the same server clock offset as `timestamp` (−2 h on a winter date)
+- `time_msc` unchanged for a UTC clock
+- `timestamp` and `time_msc` consistent (same UTC moment) after the conversion
 
 **TestTickOrderPreservation:**
 - Parquet row order matches JSON array order — a burst of three ticks sharing one `time_msc`, distinguishable only by their arrival stamp, with bid values as position markers. Their JSON order *is* the arrival order, so any re-sort would lose it
@@ -191,7 +197,10 @@ constants it enforces are measured values; each test names the measurement it re
 **TestRejectionReasons:**
 - Backwards `collected_msc` step
 - Timezone-offset `collected_msc` (class A) — message names the migration
-- Same defect in a file declaring `collected_msc_timebase: "utc"` — message names a collector defect instead
+- A late arrival in a file declaring `collected_msc_timebase: "utc"` — message names a collector defect instead
+- A whole hour between arrival and event in such a file — message names a clock conversion, not the
+  collector: two clocks a whole hour apart, the shape every US-winter MT5 file took once its event
+  time was converted right while its arrival time still followed the old fixed offset
 - `2^64`-scale anchor overflow (class C) — split into two segments
 - Row count disagreeing with `summary.total_ticks`
 - Inverted spread (`ask < bid`)
@@ -205,6 +214,13 @@ constants it enforces are measured values; each test names the measurement it re
 
 **TestMissingColumns:**
 - Missing or all-zero `collected_msc` warns, never rejects (pre-V1.3.0 data has no arrival clock)
+
+**TestWeekendOpen:**
+- A regular winter open (Sunday 17:01 New York = 22:01 UTC) passes; the same in summer at 21:01 UTC
+- An open one hour early (21:01 UTC on a winter Sunday) refuses the file, naming `-1 h` and the
+  server clock
+- A late open that is no whole hour (2 h 31 min) only warns — a holiday or a feed gap
+- A market without weekends is not checked; a gap far longer than a weekend is not read as one
 
 **TestArchiveOrdering:**
 - An ordered archive produces no findings
@@ -255,7 +271,7 @@ assert what was REPORTED rather than what was returned.
 - Tests are **fully isolated** — each test creates temporary directories, no shared state
 - Uses `TickDataImporter` directly (not via CLI) for precise control
 - `auto_render_bars=False` in most tests to skip bar rendering overhead — `test_bar_archive_integrity.py` deliberately sets it `True`, because the scope of the bar render is what it examines
-- Synthetic data covers both `kraken_spot` (offset 0) and `mt5` (offset -3) broker types
+- Synthetic data covers both `kraken_spot` (server clock `UTC+0h`) and `mt5` (`America/New_York+7h`) broker types; the default fixture date, 2026-01-15, lies in US winter
 - No production data required — all test data generated by `build_minimal_tick_json()`
 - **DUPLICATE AT LAST** — persistent session fixture imports first; duplicate detection tests use `tmp_path` isolation but must conceptually run after reference data is established
 

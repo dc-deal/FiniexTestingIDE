@@ -8,12 +8,14 @@ needed, so no data file is opened.
 
 import re
 from bisect import bisect_left, bisect_right
-from datetime import timedelta
+from datetime import datetime
 from typing import Dict, List, Optional
 
 import pandas as pd
 
+from python.framework.types.config_types.market_config_types import ServerClockConfig
 from python.framework.types.coverage_report_types import Gap
+from python.framework.utils.time_utils import server_clock_to_utc
 
 # A file that rolls over while the collector runs opens at the instant the previous
 # one closed. Measured over all 5216 archive transitions: 97.5% land within 60 s
@@ -25,37 +27,41 @@ ROLLOVER_TOLERANCE_S = 60
 _OPEN_TIME_RE = re.compile(r'_(\d{8})_(\d{6})')
 
 
-def parse_file_open_time(file_name: str, offset_hours: int) -> Optional[pd.Timestamp]:
+def parse_file_open_time(file_name: str,
+                         server_clock: ServerClockConfig) -> Optional[pd.Timestamp]:
     """
     Read the collector's file-open time from a file name and convert it to UTC.
 
     The stamp is written in the collector's own clock — broker server time for
-    MT5, UTC for Kraken — so it needs the same offset the importer applies to
-    the tick times. The metadata's `start_time_unix` is NOT an alternative: it
-    is the server wall-clock converted as if it were UTC, so for MT5 it is off
-    by the broker offset.
+    MT5, UTC for Kraken — so it goes through the same server clock rule the importer
+    applies to the tick times. The metadata's `start_time_unix` is NOT an alternative:
+    it is the server wall-clock read as if it were UTC, so for MT5 it is off by the
+    server's offset.
 
     Args:
         file_name: Parquet or JSON file name carrying the timestamp
-        offset_hours: Broker offset from the import offset registry (UTC = local + offset)
+        server_clock: The broker's server clock rule (market_config.json)
 
     Returns:
-        The open time in UTC, or None if the name carries no timestamp
+        The open time in UTC, or None if the name carries no timestamp or names a time
+        inside an hour a daylight saving change repeats or skips
     """
     match = _OPEN_TIME_RE.search(file_name)
     if not match:
         return None
 
-    day, clock = match.group(1), match.group(2)
-    opened = pd.Timestamp(
-        f'{day} {clock[:2]}:{clock[2:4]}:{clock[4:]}', tz='UTC')
-    return opened + timedelta(hours=offset_hours)
+    opened = datetime.strptime(f'{match.group(1)}{match.group(2)}', '%Y%m%d%H%M%S')
+    try:
+        return pd.Timestamp(server_clock_to_utc(
+            opened, server_clock.timezone, server_clock.hours_ahead))
+    except ValueError:
+        return None
 
 
 def attribute_gaps_to_files(
     gaps: List[Gap],
     entries: List[Dict],
-    offset_hours: int
+    server_clock: ServerClockConfig
 ) -> None:
     """
     Stamp each gap with the file holding the data before it, the file holding the
@@ -68,7 +74,7 @@ def attribute_gaps_to_files(
     Args:
         gaps: Gaps to attribute (modified in place)
         entries: Tick index entries for one broker/symbol
-        offset_hours: Broker offset from the import offset registry
+        server_clock: The broker's server clock rule, for the open time in each file name
     """
     if not gaps or not entries:
         return
@@ -100,7 +106,7 @@ def attribute_gaps_to_files(
         if before is after:
             continue
 
-        opened = parse_file_open_time(after[2], offset_hours)
+        opened = parse_file_open_time(after[2], server_clock)
         if opened is None:
             continue
 

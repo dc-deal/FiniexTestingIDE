@@ -313,9 +313,6 @@ class BaseOrder:
     take_profit: Optional[float] = None
     comment: str = ''
 
-    # Metadata
-    created_at: datetime = field(default_factory=datetime.now)
-
     def validate(self, min_lot: float, max_lot: float, lot_step: float) -> bool:
         """Validate lot size against broker limits"""
         if self.lots < min_lot or self.lots > max_lot:
@@ -364,7 +361,7 @@ class StopOrder(BaseOrder):
     """
     Stop Order - Becomes market order when price reaches stop level
 
-    Extended feature (Tier 2) - MT5: yes, Kraken: no
+    Extended feature (Tier 2) — a venue declares it on OrderCapabilities.stop_orders
     """
     order_type: OrderType = field(default=OrderType.STOP, init=False)
 
@@ -432,13 +429,14 @@ class OrderResult:
     # First-class action discriminator (#330). Distinguishes open and close
     # OrderResults that share the same order_id (= position_id). The
     # EventStreamWriter routes ORDER_SUBMIT vs CLOSE_SUBMIT based on this.
-    # Defaults to None for legacy / EXPIRED / rejection paths where the
-    # distinction does not apply.
+    # A rejection carries it too: a close can be refused as well as an open, and an
+    # empty side hid which one it was. None only where a constructor has not set it.
     action: Optional[OrderAction] = None
 
     # Order dimensions promoted from the metadata bag (#343) — typed,
-    # consistently present on PENDING/EXECUTED results. None on rejection
-    # paths where the dimension does not apply.
+    # consistently present on PENDING/EXECUTED results, and on rejections as far as
+    # the refused order knew them (create_rejection_result makes every caller say).
+    # A rejection without its symbol was dropped by every symbol filter.
     # direction: the position direction the order refers to (open: requested
     #   direction; close: direction of the position being closed).
     # requested_lots: lots the algo asked for (vs executed_lots = filled).
@@ -501,14 +499,45 @@ class OrderResult:
 def create_rejection_result(
     order_id: str,
     reason: RejectionReason,
-    message: str = ''
+    message: str = '',
+    *,
+    execution_time: datetime,
+    action: OrderAction,
+    symbol: Optional[str],
+    direction: Optional[OrderDirection],
+    requested_lots: Optional[float],
 ) -> OrderResult:
-    """Create standardized rejection result"""
+    """
+    Create a standardized rejection result that states what was refused, and when.
+
+    The order's dimensions are keyword-only and have no default on purpose: a caller
+    cannot forget one, and where a value is genuinely unknown (a close for a position
+    that does not exist has no symbol) it says None explicitly. The time is the
+    canonical clock at the refusal — the event stream orders records by it.
+
+    Args:
+        order_id: The refused order's id
+        reason: Why it was refused
+        message: The human sentence beside the reason
+        execution_time: When it was refused, on the canonical clock
+        action: Which side was refused — an open or a close
+        symbol: The order's symbol, or None when the refused order had none
+        direction: Open: the requested direction; close: the direction of the position
+        requested_lots: The lots asked for, or None when unknown (a close of everything)
+
+    Returns:
+        OrderResult with status REJECTED
+    """
     return OrderResult(
         order_id=order_id,
         status=OrderStatus.REJECTED,
+        execution_time=execution_time,
         rejection_reason=reason,
-        rejection_message=message
+        rejection_message=message,
+        action=action,
+        symbol=symbol,
+        direction=direction,
+        requested_lots=requested_lots,
     )
 
 

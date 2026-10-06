@@ -7,7 +7,7 @@ Mirrors process_startup_preparation.py for backtesting.
 
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from python.configuration.app_config_manager import AppConfigManager
 from python.configuration.market_config_manager import MarketConfigManager
@@ -68,6 +68,7 @@ from python.framework.types.signal_data_types import (
 from python.framework.types.trading_env_types.broker_types import BrokerType
 from python.framework.types.trading_env_types.order_types import OrderType
 from python.framework.types.trading_env_types.stress_test_types import StressTestConfig
+from python.framework.utils.config_fingerprint_utils import to_plain
 from python.framework.utils.git_info_utils import get_git_commit
 from python.framework.validators.adapter_wiring_validator import REPLAY_TICK_SOURCE
 from python.framework.utils.run_id_utils import mint_run_id, session_key_from_run_id
@@ -142,8 +143,8 @@ def _register_profile_config(source: Optional[Path]) -> str:
     """
     Record which profile content this session is starting from, and return its identity.
 
-    Never fatal, and never a reason not to trade: the per-session snapshot beside the header is
-    the evidence either way, so a store that cannot be written costs a join key and nothing else.
+    Never fatal, and never a reason not to trade: a store that cannot be written costs the run a
+    join key, and the session itself is unaffected.
 
     Args:
         source: The profile file this session was commissioned with, or None
@@ -164,12 +165,37 @@ def _register_profile_config(source: Optional[Path]) -> str:
         return ''
 
 
+def _register_rendered_profile(rendered_profile: Optional[Dict[str, Any]]) -> str:
+    """
+    Freeze what this session RUNS with, and return its identity (#547).
+
+    Never fatal, for the same reason as the profile itself: the header and the session survive a
+    store that cannot be written, and the header then says nothing rather than something untrue.
+
+    Args:
+        rendered_profile: The rendered document, or None when it could not be rendered
+
+    Returns:
+        The registered content id, or an empty string
+    """
+    if rendered_profile is None:
+        return ''
+    try:
+        store = RunConfigStore(Path(AppConfigManager().get_run_configs_path()))
+        entry = store.register_document(rendered_profile, RunConfigKind.AUTOTRADER_RENDERED)
+        store.note_run(entry.config_id)
+        return entry.config_id
+    except (OSError, ValueError, KeyError):
+        return ''
+
+
 def create_autotrader_loggers(
     config: AutoTraderConfig,
     run_timestamp: datetime,
     origin: RunOrigin,
     code_identity: Optional[CodeIdentity],
     deployment_id: str = '',
+    rendered_profile: Optional[Dict[str, Any]] = None,
 ) -> AutotraderLoggerBundle:
     """
     Create all loggers for an AutoTrader session.
@@ -195,6 +221,9 @@ def create_autotrader_loggers(
             caller, because the startup guard needs it too and must not depend on a header
             being written; None when the capture failed, which the header then records as
             unknown before the session refuses to start
+        deployment_id: The continuous deployment this session joins; empty for a one-off
+        rendered_profile: What the session runs with, rendered before this call (#547) — frozen
+            here and named by the header; None when it could not be rendered
 
     Returns:
         (global_logger, session_logger, summary_logger, run_dir, run_id)
@@ -274,6 +303,11 @@ def create_autotrader_loggers(
             # like the header itself, and never fatal: a profile the store cannot record is a
             # profile the session can still trade with.
             config_id=_register_profile_config(config.config_path),
+            # What the session RUNS with (#547): the profile above with the app_config layer
+            # merged in and every schema default filled. Frozen here, at the start, because
+            # this header has no update path and a session that dies at its first tick is the
+            # one whose configuration somebody will want to read.
+            rendered_config_id=_register_rendered_profile(rendered_profile),
             app_version=AppConfigManager().get_version(),
             git_commit=get_git_commit(),
             # Always both (#551): an AutoTrader session always reports, so its code identity is
@@ -520,7 +554,44 @@ def _resolve_broker_and_balances(
         balances = {}
         explicit_account_currency = None
     broker_config = create_broker_config(config, logger, balances)
+    _freeze_broker_config(broker_config, logger)
     return balances, explicit_account_currency, broker_config
+
+
+def _freeze_broker_config(broker_config: BrokerConfig, logger: ScenarioLogger) -> None:
+    """
+    Freeze the broker configuration this session trades with, as it stands at the start (#547).
+
+    What a live session trades with is assembled at boot — symbol specs from the runtime cache,
+    which a later start overwrites and nothing versions, the seed's fee structure, and the fee
+    tier the venue reports when its detection is on. Only an 8-character hash of it ever reached
+    the run; a backtest of the same window a month later would read whatever the cache holds by
+    then. The frozen copy is what makes the two comparable.
+
+    The header is already written at this point, so the id travels on the configuration object
+    into the run's broker section, and into the session log right now — the one record that
+    survives a session killed before its report.
+
+    Never fatal: a store that cannot be written costs the record, not the session.
+
+    Args:
+        broker_config: The configuration `create_broker_config` returned
+        logger: The session logger
+    """
+    try:
+        store = RunConfigStore(Path(AppConfigManager().get_run_configs_path()))
+        entry = store.register_document(
+            to_plain(broker_config.adapter.broker_config), RunConfigKind.BROKER_CONFIG)
+        store.note_run(entry.config_id)
+    except (OSError, ValueError, KeyError) as error:
+        logger.warning(
+            f'⚠️  The broker configuration could not be frozen ({type(error).__name__}: {error})'
+            f' — a backtest of this window cannot be given the configuration this session had.')
+        return
+    broker_config.set_frozen_config_id(entry.config_id)
+    logger.info(
+        f'🏦 Broker configuration frozen as broker_config {entry.config_id[:12]} '
+        f'(config_hash {broker_config.config_hash or "—"})')
 
 
 def _resolve_order_requirements(

@@ -724,9 +724,10 @@ class AbstractAdapter(ABC):
         """
         Convert a raw broker modify response into a BrokerResponse.
 
-        Pure — no I/O, no state mutation. Some brokers (e.g. Kraken EditOrder)
-        return a NEW broker_ref that replaces the original; the caller is
-        responsible for swapping the reference in any tracking index.
+        Pure — no I/O, no state mutation. A venue that re-mints the reference on
+        a modification returns the NEW broker_ref here, replacing the original;
+        the caller is responsible for swapping the reference in any tracking
+        index. Whether a venue does so is the adapter's to declare (#328).
 
         Args:
             raw: Raw broker response dict
@@ -1189,6 +1190,8 @@ class AbstractAdapter(ABC):
         leverage = self.get_leverage()
 
         # Check margin_currency to determine if price conversion needed
+        # Margin gap (2026-10-06, #209): the result is in the QUOTE currency while callers
+        # compare it in the ACCOUNT currency, and this first branch drops the price
         if symbol_spec.margin_currency == symbol_spec.quote_currency:
             # Margin already in quote currency, no conversion needed
             position_value = lots * contract_size

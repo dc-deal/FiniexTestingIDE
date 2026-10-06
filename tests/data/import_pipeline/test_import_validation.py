@@ -10,7 +10,10 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from python.framework.types.config_types.market_config_types import PriceFormation
+from python.framework.types.config_types.market_config_types import (
+    DayAnchorConfig,
+    PriceFormation,
+)
 from python.framework.validators.tick_import_validator import (
     PLAUSIBLE_LAG_WINDOW_MS,
     SEGMENT_SPLIT_FORWARD_MS,
@@ -110,13 +113,29 @@ class TestRejectionReasons:
         assert any('restore_collected_msc_v3' in e for e in result.errors)
 
     def test_utc_declaring_file_gets_collector_verdict(self, validator):
-        """A file declaring the UTC timebase has no legacy excuse."""
+        """A file declaring the UTC timebase has no legacy excuse — twenty minutes is late."""
         result = validator.validate_file(
-            build_frame(lag_ms=HOUR_MS), 'class_a_utc.json',
+            build_frame(lag_ms=20 * 60_000), 'class_a_utc.json',
             collected_msc_is_utc=True)
 
         assert not result.is_valid
         assert any('collector defect' in e for e in result.errors)
+
+    def test_a_whole_hour_on_a_utc_file_names_the_clock(self, validator):
+        """
+        Exactly one hour is not a late delivery, it is two clocks an hour apart.
+
+        Measured 2026-10-05: every US-winter MT5 file would have arrived here once its event
+        time was converted right, because its arrival time had been restored under the old
+        fixed offset. Blaming the collector would have sent the reader the wrong way.
+        """
+        result = validator.validate_file(
+            build_frame(lag_ms=-HOUR_MS), 'restored_under_old_rule.json',
+            collected_msc_is_utc=True)
+
+        assert not result.is_valid
+        assert any('clock conversion' in e for e in result.errors)
+        assert not any('collector defect' in e for e in result.errors)
 
     def test_anchor_overflow_is_split_into_segments(self, validator):
         """Class C: the 2^64-scale jump measured in 96 archive files."""
@@ -423,3 +442,95 @@ class TestArchiveOrdering:
         ]}}
 
         assert validator.validate_archive_ordering(entries) == []
+
+
+# The forex day anchor: 17:00 New York — 22:00 UTC in US winter, 21:00 UTC in summer.
+FOREX_ANCHOR = DayAnchorConfig(local_time='17:00', timezone='America/New_York')
+
+
+def build_weekend_frame(friday_close: str, sunday_open: str) -> pd.DataFrame:
+    """
+    Build a frame that closes on a Friday and reopens after the weekend, times in UTC.
+
+    Args:
+        friday_close: Last tick before the weekend, ISO UTC
+        sunday_open: First tick after it, ISO UTC
+
+    Returns:
+        DataFrame with two ticks before the gap and two after, healthy arrival times
+    """
+    close_ms = int(pd.Timestamp(friday_close, tz='UTC').timestamp() * 1000)
+    open_ms = int(pd.Timestamp(sunday_open, tz='UTC').timestamp() * 1000)
+    time_msc = np.array([close_ms - 1000, close_ms, open_ms, open_ms + 1000], dtype='int64')
+    return pd.DataFrame({
+        'timestamp': pd.to_datetime(time_msc, unit='ms'),
+        'time_msc': time_msc,
+        'collected_msc': time_msc + 100,
+        'bid': np.full(4, 1.16000),
+        'ask': np.full(4, 1.16020),
+    })
+
+
+class TestWeekendOpen:
+    """
+    A week that opens inside a file must open at the market's day anchor.
+
+    The one check that sees a wrong server clock on a file whose arrival time was restored
+    from its own event time — there the arrival check is blind, because both carry the error.
+    """
+
+    def test_a_regular_winter_open_passes(self, validator):
+        """Friday 16:57 New York close, Sunday 17:01 New York open — 21:57 and 22:01 UTC."""
+        result = validator.validate_file(
+            build_weekend_frame('2026-01-16 21:57:00', '2026-01-18 22:01:00'),
+            'winter_week.json', weekend_anchor=FOREX_ANCHOR)
+
+        assert result.is_valid
+        assert result.metrics['weekend_opens_checked'] == 1.0
+
+    def test_an_open_one_hour_early_is_refused(self, validator):
+        """
+        21:01 UTC on a winter Sunday is 16:01 New York — what a fixed −3 h made of the
+        MT5 server's 00:01 for four months of the archive.
+        """
+        result = validator.validate_file(
+            build_weekend_frame('2026-01-16 20:57:00', '2026-01-18 21:01:00'),
+            'winter_week_old_rule.json', weekend_anchor=FOREX_ANCHOR)
+
+        assert not result.is_valid
+        assert any('-1 h' in e and 'server_clock' in e for e in result.errors)
+
+    def test_a_summer_open_at_21_utc_passes(self, validator):
+        """The same New York time in summer is an hour earlier in UTC — and correct."""
+        result = validator.validate_file(
+            build_weekend_frame('2026-06-05 20:57:00', '2026-06-07 21:01:00'),
+            'summer_week.json', weekend_anchor=FOREX_ANCHOR)
+
+        assert result.is_valid
+
+    def test_a_late_open_that_is_no_whole_hour_only_warns(self, validator):
+        """Two and a half hours late is a holiday or a feed gap, not a clock — reported only."""
+        result = validator.validate_file(
+            build_weekend_frame('2026-01-16 21:57:00', '2026-01-19 00:31:00'),
+            'late_week.json', weekend_anchor=FOREX_ANCHOR)
+
+        assert result.is_valid
+        assert any('later than a regular open' in w for w in result.warnings)
+
+    def test_a_market_without_weekends_is_not_checked(self, validator):
+        """Crypto trades around the clock — no anchor is handed in, nothing is checked."""
+        result = validator.validate_file(
+            build_weekend_frame('2026-01-16 20:57:00', '2026-01-18 21:01:00'),
+            'crypto.json')
+
+        assert result.is_valid
+        assert 'weekend_opens_checked' not in result.metrics
+
+    def test_a_long_outage_is_not_read_as_a_weekend(self, validator):
+        """A gap far longer than a weekend ends wherever the feed came back — no verdict."""
+        result = validator.validate_file(
+            build_weekend_frame('2026-01-16 21:57:00', '2026-01-26 14:00:00'),
+            'outage.json', weekend_anchor=FOREX_ANCHOR)
+
+        assert result.is_valid
+        assert 'weekend_opens_checked' not in result.metrics

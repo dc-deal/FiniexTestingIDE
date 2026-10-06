@@ -65,12 +65,13 @@ class TestBuild:
                 decision_logic_type='CORE/aggressive_trend', decision_logic_name='aggressive_trend',
                 buy_signals=5, sell_signals=3, flat_signals=92, trades_requested=2,
                 decision_total_time_ms=20.0, decision_avg_time_ms=0.02,
-                decision_min_time_ms=0.01, decision_max_time_ms=0.5),
+                decision_min_time_ms=0.01, decision_max_time_ms=0.5, tracked=True),
             coordination=WorkerCoordinatorPerformanceStats(
                 parallel_workers=True, ticks_processed=1000, parallel_time_saved_ms=5.0))
         row = build_worker_decision_report(_RUN_ID, [u]).units[0]
         assert row.name == 's1' and row.symbol == 'EURUSD'
         assert row.decision_logic_name == 'aggressive_trend'
+        assert row.worker_decision_tracked is True
         assert (row.buy_signals, row.sell_signals, row.flat_signals) == (5, 3, 92)
         assert row.decision_total_time_ms == 20.0
         assert row.decision_min_time_ms == 0.01 and row.decision_max_time_ms == 0.5
@@ -99,12 +100,13 @@ class TestBuild:
         rather than divide by a tick count it does not have.
         """
         u = _unit('no-run', symbol='BTCUSD', workers=[_ws('bollinger', 10.0)],
-                  decision=DecisionLogicStats(decision_total_time_ms=2.0))
+                  decision=DecisionLogicStats(decision_total_time_ms=2.0, tracked=True))
         row = build_worker_decision_report(_RUN_ID, [u]).units[0]
         assert row.ticks_processed == 0 and row.parallel_workers is False
         assert row.decision_total_time_ms == 2.0
-        assert row.workers[0].compute_ratio_pct == 0.0
-        assert row.workers[0].ticks_idle == 0
+        # No tick processed: a ratio over zero ticks and an idle distance are not defined.
+        assert row.workers[0].compute_ratio_pct is None
+        assert row.workers[0].ticks_idle is None
 
     def test_a_live_session_unit_carries_its_tick_count(self):
         """
@@ -114,9 +116,11 @@ class TestBuild:
         hand-made `_unit` above — the defect was not in the mapping but in what the session
         handed it, so a fixture that sets the field by hand could not have caught it.
         """
+        worker = _ws('bollinger', 10.0, calls=750)
+        worker.worker_last_compute_tick = 2990
         session = AutoTraderResult(
-            worker_statistics=[_ws('bollinger', 10.0, calls=750)],
-            decision_statistics=DecisionLogicStats(decision_total_time_ms=2.0),
+            worker_statistics=[worker],
+            decision_statistics=DecisionLogicStats(decision_total_time_ms=2.0, tracked=True),
             coordination_statistics=WorkerCoordinatorPerformanceStats(
                 parallel_workers=False, ticks_processed=3000, parallel_time_saved_ms=0.0))
 
@@ -127,12 +131,30 @@ class TestBuild:
         # The two figures the tick count exists for (#420): how often the worker actually
         # computed against the ticks that arrived, and how far it has been idle since.
         assert row.workers[0].compute_ratio_pct == pytest.approx(25.0)
-        assert row.workers[0].ticks_idle >= 0
+        assert row.workers[0].ticks_idle == 10
 
     def test_unit_without_decision_stats(self):
-        # decision_statistics None → decision fields at defaults
+        # decision_statistics None → nothing is known about the logic, not a zero
         row = build_worker_decision_report(_RUN_ID, [_unit(workers=[_ws('bollinger', 5.0)], decision=None)]).units[0]
-        assert row.decision_total_time_ms == 0.0 and row.decision_logic_name == ''
+        assert row.decision_total_time_ms is None and row.decision_logic_name is None
+        assert row.worker_decision_tracked is False
+
+    def test_uncounted_decisions_are_null_not_zero(self):
+        # The simulation's default: no tracker, so the logic decided on every tick and counted
+        # none of it. The row names the logic and says the counters are unknown.
+        u = _unit(decision=DecisionLogicStats(
+                      decision_logic_type='CORE/aggressive_trend',
+                      decision_logic_name='aggressive_trend'),
+                  coordination=WorkerCoordinatorPerformanceStats(ticks_processed=2737))
+        row = build_worker_decision_report(_RUN_ID, [u]).units[0]
+        assert row.worker_decision_tracked is False
+        assert row.decision_logic_type == 'CORE/aggressive_trend'
+        assert row.decision_count is None and row.buy_signals is None
+        assert row.trades_requested is None and row.decision_avg_time_ms is None
+        assert row.ticks_processed == 2737
+        assert row.workers == []
+        dumped = row.model_dump(mode='json')
+        assert dumped['decision_count'] is None and dumped['decision_logic_name'] == 'aggressive_trend'
 
     def test_empty(self):
         report = build_worker_decision_report(_RUN_ID, [])
@@ -145,7 +167,8 @@ class TestPerformanceRender:
     def _report(self) -> WorkerDecisionReport:
         unit = WorkerDecisionUnitRow(
             name='GBPUSD_w01', symbol='GBPUSD', decision_logic_name='aggressive_trend',
-            decision_logic_type='CORE/aggressive_trend', decision_count=559,
+            decision_logic_type='CORE/aggressive_trend', worker_decision_tracked=True,
+            decision_count=559,
             decision_total_time_ms=269.0, decision_avg_time_ms=0.018,
             decision_min_time_ms=0.005, decision_max_time_ms=0.9,
             ticks_processed=15000, parallel_workers=False,
@@ -220,9 +243,19 @@ class TestCadenceDerivedInBuilder:
         assert row.workers[0].ticks_idle == 100                          # 1000 - 900
         assert row.parallel_avg_saved_per_tick_ms == pytest.approx(0.005)
 
-    def test_no_ticks_leaves_the_derived_fields_at_zero(self):
-        """Live units carry no coordination stats — the cadence figures stay absent."""
+    def test_no_ticks_leaves_the_cadence_undefined(self):
+        """A unit with no coordination stats has no tick count — the cadence figures are null."""
         row = build_worker_decision_report(_RUN_ID, [_unit(workers=[_ws('rsi', 100.0)])]).units[0]
-        assert row.workers[0].compute_ratio_pct == 0.0
-        assert row.workers[0].ticks_idle == 0
+        assert row.workers[0].compute_ratio_pct is None
+        assert row.workers[0].ticks_idle is None
         assert row.parallel_avg_saved_per_tick_ms == 0.0
+
+    def test_a_worker_that_never_computed_has_no_idle_distance(self):
+        """It read 0 — "just computed" — for a worker that never ran."""
+        worker = _ws('rsi', total=0.0, calls=1)
+        worker.worker_last_compute_tick = -1
+        row = build_worker_decision_report(_RUN_ID, [_unit(
+            workers=[worker],
+            coordination=WorkerCoordinatorPerformanceStats(ticks_processed=1000))]).units[0]
+        assert row.workers[0].ticks_idle is None
+        assert row.workers[0].compute_ratio_pct == pytest.approx(0.1)

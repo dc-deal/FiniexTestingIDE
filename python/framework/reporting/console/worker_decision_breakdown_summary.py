@@ -136,7 +136,9 @@ class WorkerDecisionBreakdownSummary(AbstractBatchSummarySection):
         }
 
         # Get decision logic time
-        decision_logic_ms = row.decision_total_time_ms
+        # Null when the unit did not track its decisions — nothing was timed, so nothing is
+        # taken out of the profiled total.
+        decision_logic_ms = row.decision_total_time_ms or 0.0
 
         # Calculate coordination overhead (profiling total minus the model components)
         coordination_overhead_ms = max(

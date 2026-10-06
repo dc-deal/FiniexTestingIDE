@@ -13,7 +13,7 @@ import json
 import re
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, Optional, Set
+from typing import Dict, Optional, Set, Tuple
 
 import pandas as pd
 import pyarrow as pa
@@ -31,15 +31,31 @@ from python.framework.exceptions.data_quality_errors import (
 )
 from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.reporting.duplicate_report import DuplicateReport
+from python.framework.types.config_types.market_config_types import ServerClockConfig
 from python.framework.types.import_schema_types import (
     ALREADY_CAPTURED_METADATA_KEYS,
     DISCARDED_METADATA_KEYS,
     NESTED_METADATA_KEYS,
 )
+from python.framework.types.validation_types import TickFileValidationResult
 from python.framework.utils.market_session_utils import get_session_from_utc_hour
+from python.framework.utils.time_utils import server_clock_to_utc_ms
 from python.framework.validators.tick_import_validator import TickImportValidator
 
 vLog = get_global_logger()
+
+
+def _server_clock_label(server_clock: ServerClockConfig) -> str:
+    """
+    Render a server clock rule the way logs and parquet headers state it.
+
+    Args:
+        server_clock: The broker's server clock rule
+
+    Returns:
+        The rule as text, e.g. 'America/New_York+7h' or 'UTC+0h'
+    """
+    return f'{server_clock.timezone}+{server_clock.hours_ahead}h'
 
 
 class TickDataImporter:
@@ -49,26 +65,19 @@ class TickDataImporter:
     Main features:
     - JSON → Parquet conversion (10:1 compression)
     - Datatype optimization for performance
-    - UTC timezone conversion with manual offset
+    - UTC conversion through each broker's server clock rule (market_config.json)
     - Session recalculation based on UTC
     - Structural validation (refuses defective files, never repairs)
     - Batch processing with error handling
     - Duplicate prevention with override option
     - Hierarchical directory structure
     - Market type detection (v1.4+)
-
-    Args:
-        source_dir (str): Directory with JSON files
-        target_dir (str): Target directory for Parquet output
-        override (bool): If True, overwrite existing files
-        time_offset (int): Manual UTC offset in hours (e.g., -3 for GMT+3)
     """
 
     VERSION = '1.6'
 
     def __init__(self, source_dir: str, target_dir: str,
                  override: bool = False,
-                 offset_registry: Optional[Dict[str, int]] = None,
                  move_processed_files: bool = True,
                  finished_dir: Optional[str] = None,
                  auto_render_bars: bool = True):
@@ -79,7 +88,6 @@ class TickDataImporter:
             source_dir: MQL5 JSON export directory
             target_dir: Parquet target directory (import_output)
             override: Overwrite existing files
-            offset_registry: Per-broker offset mapping {broker_type: offset_hours}
             move_processed_files: Move JSON to finished_dir after import
             finished_dir: Directory for processed JSON files
             auto_render_bars: Automatically render bars after tick import
@@ -89,7 +97,9 @@ class TickDataImporter:
         self.target_dir.mkdir(parents=True, exist_ok=True)
 
         self.override = override
-        self._offset_registry: Dict[str, int] = offset_registry or {}
+        # Per broker: how many files resolved to each UTC offset — the summary's evidence that
+        # a season boundary was crossed rather than one constant applied to everything.
+        self._applied_offsets: Dict[str, Dict[str, int]] = {}
         self._move_processed_files = move_processed_files
         self._finished_dir = Path(finished_dir) if finished_dir else None
         self._auto_render_bars = auto_render_bars
@@ -139,14 +149,10 @@ class TickDataImporter:
         vLog.info(f'Found: {len(json_files)} JSON files')
         vLog.info(
             f"Override Mode: {'ENABLED' if self.override else 'DISABLED'}")
-        if self._offset_registry:
-            for bt, offset in self._offset_registry.items():
-                if offset != 0:
-                    vLog.info(f'Offset: {bt} → {offset:+d}h (UTC conversion)')
-                else:
-                    vLog.info(f'Offset: {bt} → 0h (no conversion)')
-        else:
-            vLog.info('Offset Registry: EMPTY (no offsets configured)')
+        market_config = MarketConfigManager()
+        for broker_type in market_config.get_all_broker_types():
+            clock = market_config.get_server_clock(broker_type)
+            vLog.info(f'Server clock: {broker_type} → {_server_clock_label(clock)}')
         vLog.info('=' * 80 + '\n')
 
         # Sequential processing with error recovery
@@ -313,24 +319,35 @@ class TickDataImporter:
             df['timestamp'] = pd.to_datetime(df['timestamp'])
 
         # ===========================================
-        # 4. APPLY TIME OFFSET (from registry)
+        # 4. CONVERT THE SERVER CLOCK TO UTC (the broker's rule)
         # ===========================================
         broker_type_normalized = self._validate_broker_type(
             metadata)
 
-        # Resolve offset for this file's broker_type from registry
-        file_offset = self._offset_registry.get(broker_type_normalized, 0)
-        should_apply_offset = file_offset != 0
+        server_clock = MarketConfigManager().get_server_clock(broker_type_normalized)
+        clock_label = _server_clock_label(server_clock)
+        should_apply_offset = not (server_clock.timezone == 'UTC'
+                                   and server_clock.hours_ahead == 0)
+        file_offset = '0'
 
         if should_apply_offset:
-            df = self._apply_time_offset(df, file_offset)
+            try:
+                df, file_offset = self._apply_server_clock(df, server_clock)
+            except ValueError as e:
+                # A stamp in the hour a daylight saving change repeats or skips has no single
+                # UTC time — a property of this file, so it is refused like any other defect.
+                refusal = TickFileValidationResult(is_valid=True, file_name=json_file.name)
+                refusal.add_error(f'Server clock {clock_label}: {e}')
+                raise TickFileValidationException(refusal) from e
             df = self._recalculate_sessions(df)
             vLog.info(
-                f'   ✅ Time offset {file_offset:+d}h applied (broker_type={broker_type_normalized})')
+                f'   ✅ Server clock {clock_label} → UTC offset {file_offset}h '
+                f'(broker_type={broker_type_normalized})')
             vLog.info('   ✅ Sessions recalculated based on UTC time')
         else:
             vLog.info(
-                f'   ℹ️  No offset for broker_type={broker_type_normalized} (0h in registry)')
+                f'   ℹ️  Server clock {clock_label} for broker_type={broker_type_normalized} '
+                f'— already UTC')
 
         # ===========================================
         # 6. VALIDATION
@@ -362,7 +379,14 @@ class TickDataImporter:
             # exactly one place reads the block — the same reason the resolution below is
             # done once and stamped.
             data_format_version=data_format_version,
-            stated_instance_id=DataOriginRegistry.read_nested_instance_id(metadata)
+            stated_instance_id=DataOriginRegistry.read_nested_instance_id(metadata),
+            # A week that opens inside the file must open at the market's day anchor — the
+            # one check that sees a wrong server clock on a file whose arrival time was
+            # restored from its own event time. Markets without a weekend skip it.
+            weekend_anchor=(
+                MarketConfigManager().get_trading_day_anchor(broker_type_normalized)
+                if MarketConfigManager().has_weekend_closure(broker_type_normalized)
+                else None),
         )
         for warning in validation.warnings:
             vLog.warning(f'   ⚠️  {warning}')
@@ -411,7 +435,10 @@ class TickDataImporter:
             'processed_at': datetime.now(timezone.utc).isoformat(),
             'tick_count': str(len(df)),
             'importer_version': self.VERSION,
-            'user_time_offset_hours': str(file_offset),
+            # The UTC offset(s) the rule resolved to for THIS file's ticks — '-2' for an MT5
+            # file in US winter, '-3' in summer, both comma-joined across a season change.
+            'user_time_offset_hours': file_offset,
+            'server_clock_rule': clock_label,
             'utc_conversion_applied': 'true' if should_apply_offset else 'false',
             'origin_instance_id': origin.instance_id or '',
             'origin_class': origin.origin_class.value,
@@ -484,6 +511,8 @@ class TickDataImporter:
                 vLog.info(f'→ Moved {json_file.name} to finished/')
 
             self.total_ticks += len(df)
+            offset_counts = self._applied_offsets.setdefault(broker_type_normalized, {})
+            offset_counts[file_offset] = offset_counts.get(file_offset, 0) + 1
 
             time_suffix = ' (UTC)' if should_apply_offset else ''
             vLog.info(
@@ -501,44 +530,52 @@ class TickDataImporter:
             vLog.error(f'Error Type: {type(e)}')
             raise
 
-    def _apply_time_offset(self, df: pd.DataFrame, offset_hours: int) -> pd.DataFrame:
+    def _apply_server_clock(self, df: pd.DataFrame,
+                            server_clock: ServerClockConfig) -> Tuple[pd.DataFrame, str]:
         """
-        Applies time offset to timestamps for UTC conversion.
+        Convert the server wall-clock stamps of one file to UTC, tick by tick.
+
+        `time_msc` carries the server's wall clock as epoch milliseconds; the rule resolves its
+        UTC offset per stamp, so a file in US winter and one in summer get different offsets
+        from the same rule. `timestamp` moves by the same per-tick amount, which keeps the two
+        columns describing one moment. A file without `time_msc` is resolved from its
+        `timestamp` alone.
 
         Args:
-            df: DataFrame with 'timestamp' column
-            offset_hours: Hours to add (e.g. -3 for GMT+3 → UTC subtracts 3h)
+            df: Tick DataFrame with 'timestamp' (and 'time_msc') in server wall-clock time
+            server_clock: The broker's server clock rule
 
         Returns:
-            DataFrame with adjusted timestamps
+            The converted DataFrame, and the distinct UTC offsets in hours it resolved to,
+            comma-joined ('-2', or '-3,-2' across a season change)
         """
-        if offset_hours == 0:
-            return df
+        if 'timestamp' not in df.columns or df.empty:
+            return df, '0'
 
-        if 'timestamp' not in df.columns:
-            return df
+        has_time_msc = 'time_msc' in df.columns
+        if has_time_msc:
+            server_ms = df['time_msc'].to_numpy(dtype='int64')
+        else:
+            server_ms = df['timestamp'].to_numpy().astype('datetime64[ms]').astype('int64')
+        utc_ms = server_clock_to_utc_ms(
+            server_ms, server_clock.timezone, server_clock.hours_ahead)
+        shift_ms = utc_ms - server_ms
 
-        # Store original for logging
         original_first = df['timestamp'].iloc[0]
         original_last = df['timestamp'].iloc[-1]
 
-        # Apply offset (e.g. offset=-3 → subtract 3h from timestamp)
-        offset_timedelta = pd.Timedelta(hours=offset_hours)
-        df['timestamp'] = df['timestamp'] + offset_timedelta
+        if has_time_msc:
+            df['time_msc'] = utc_ms
+        df['timestamp'] = df['timestamp'] + pd.to_timedelta(shift_ms, unit='ms')
 
-        # Apply same offset to time_msc (broker epoch → UTC epoch)
-        if 'time_msc' in df.columns:
-            offset_ms = offset_hours * 3_600_000
-            df['time_msc'] = df['time_msc'] + offset_ms
+        offset_label = ','.join(
+            f'{shift / 3_600_000:+g}' for shift in sorted(set(shift_ms.tolist())))
 
-        utc_first = df['timestamp'].iloc[0]
-        utc_last = df['timestamp'].iloc[-1]
+        vLog.info(f'   🕐 Server clock converted: {offset_label} hours')
+        vLog.info(f'      Server: {original_first} → {original_last}')
+        vLog.info(f"      UTC:    {df['timestamp'].iloc[0]} → {df['timestamp'].iloc[-1]}")
 
-        vLog.info(f'   🕐 Time Offset Applied: {offset_hours:+d} hours')
-        vLog.info(f'      Original: {original_first} → {original_last}')
-        vLog.info(f'      UTC:      {utc_first} → {utc_last}')
-
-        return df
+        return df, offset_label
 
     def _recalculate_sessions(self, df: pd.DataFrame) -> pd.DataFrame:
         """
@@ -681,12 +718,10 @@ class TickDataImporter:
         vLog.info('=' * 80)
         vLog.info(f'✅ Processed files: {self.processed_files}')
         vLog.info(f'✅ Total ticks: {self.total_ticks:,}')
-        active_offsets = {bt: off for bt,
-                          off in self._offset_registry.items() if off != 0}
-        if active_offsets:
-            offsets_str = ', '.join(
-                f'{bt}: {off:+d}h' for bt, off in active_offsets.items())
-            vLog.info(f'✅ Offsets applied: {offsets_str} (UTC converted)')
+        for broker_type, offset_counts in self._applied_offsets.items():
+            counts_str = ' · '.join(
+                f'{offset}h × {count} file(s)' for offset, count in sorted(offset_counts.items()))
+            vLog.info(f'✅ UTC offsets applied: {broker_type}: {counts_str}')
         vLog.info(f'⚠️  Warnings: {len(self.warnings)}')
         vLog.info(f'❌ Errors: {len(self.errors)}')
 

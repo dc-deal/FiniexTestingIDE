@@ -264,6 +264,15 @@ to tempdir — the partial_close test fixtures don't go through `BatchReportCoor
 | `test_both_event_types_emitted` | ORDER_SUBMIT and CLOSE_SUBMIT both appear |
 | `test_open_and_close_share_order_id_but_different_events` | Same `order_id` produces both event types (close keyed on metadata.action='close') |
 
+#### TestRejectEvents
+
+A refused order built by the rejection factory itself, one on each side — no scenario run.
+
+| Test | Description |
+|------|-------------|
+| `test_a_refused_close_is_not_lost` | A refused close gets its ORDER_REJECT, although closes are otherwise taken from the trade history, where a refused one never lands |
+| `test_a_rejection_carries_its_own_time_never_the_wall_clock` | The event is stamped with the refusal's own time; it used to fall back to the moment the report was written |
+
 ---
 
 ## Running the Tests

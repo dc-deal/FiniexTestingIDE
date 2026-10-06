@@ -69,20 +69,32 @@ class TestMapping:
     def test_filled_row_fields_mapped(self):
         report = build_order_history_report(_RUN_ID, _units([_order()]))
         row = report.orders[0]
-        assert row.direction == 'long'                 # enum → value
-        assert row.action == 'open'
-        assert row.status == 'executed'
+        assert row.direction is OrderDirection.LONG    # the enum, serialized as its value
+        assert row.action is OrderAction.OPEN
+        assert row.status is OrderStatus.EXECUTED
         assert row.executed_price == 1.1000
-        assert row.execution_time.endswith('+00:00')   # ISO-8601 UTC
-        assert row.rejection_reason == ''
+        assert row.event_time.endswith('+00:00')       # ISO-8601 UTC
+        assert row.rejection_reason is None
 
-    def test_rejected_row_is_none_safe(self):
+    def test_rejected_row_says_absent_as_null(self):
+        # What a rejection does not have is null, never '' or 0.0 — a zero price is a price
+        # downstream, and an empty string reads as a value.
         row = build_order_history_report(_RUN_ID, _units([_rejected()])).orders[0]
-        assert row.status == 'rejected'
-        assert row.rejection_reason == 'insufficient_margin'
+        assert row.status is OrderStatus.REJECTED
+        assert row.rejection_reason is RejectionReason.INSUFFICIENT_MARGIN
         assert row.rejection_message == 'not enough margin'
-        assert row.executed_price == 0.0               # None → 0.0
-        assert row.execution_time == ''                # None → ''
+        assert row.executed_price is None
+        assert row.executed_lots is None
+        assert row.position_id is None
+
+    def test_the_json_carries_values_and_nulls(self):
+        dumped = build_order_history_report(
+            _RUN_ID, _units([_rejected()])).orders[0].model_dump(mode='json')
+        assert dumped['status'] == 'rejected'
+        assert dumped['direction'] == 'short'
+        assert dumped['rejection_reason'] == 'insufficient_margin'
+        assert dumped['executed_price'] is None
+        assert dumped['position_id'] is None
 
 
 class TestFilters:

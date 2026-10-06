@@ -244,3 +244,54 @@ class TestARunIsCountedAgainstItsConfiguration:
 
     def test_an_unknown_id_is_ignored_rather_than_raising(self, store):
         store.note_run('not_a_registered_id')
+
+
+class TestADocumentWithoutAFileIsFrozenByContent:
+    """
+    The rendered profile and the broker configuration (#547) have no source file: they are what a
+    session ran with, assembled at its start. Frozen by content like everything else, and found
+    by their id only — never by a file name, or a profile's history would hand back its own
+    rendering as its newest version.
+    """
+
+    _DOC = {'kind': 'autotrader_rendered', 'blocks': {'symbol': 'BTCUSD'}, 'strategy_config': {}}
+
+    def test_the_same_document_is_one_entry_and_one_copy(self, store):
+        first = store.register_document(self._DOC, RunConfigKind.AUTOTRADER_RENDERED)
+        second = store.register_document(dict(self._DOC), RunConfigKind.AUTOTRADER_RENDERED)
+
+        assert first.config_id == second.config_id
+        assert first.first_seen == second.first_seen
+        frozen = store.frozen_path_of(first.config_id)
+        assert frozen.parent.name == 'autotrader_rendered'
+        assert json.loads(frozen.read_text()) == self._DOC
+
+    def test_a_changed_document_mints_a_new_id(self, store):
+        first = store.register_document(self._DOC, RunConfigKind.BROKER_CONFIG)
+        changed = {**self._DOC, 'blocks': {'symbol': 'ETHUSD'}}
+        second = store.register_document(changed, RunConfigKind.BROKER_CONFIG)
+
+        assert first.config_id != second.config_id
+        assert store.frozen_path_of(second.config_id).parent.name == 'broker_configs'
+
+    def test_a_document_never_answers_a_lookup_by_file_name(self, store, tmp_path):
+        profile = _write(tmp_path / 'bot.json', {'strategy_config': {'workers': {}}})
+        source = store.register(profile, RunConfigKind.AUTOTRADER_PROFILE)
+        rendered = store.register_document(self._DOC, RunConfigKind.AUTOTRADER_RENDERED)
+
+        assert (rendered.source_name, rendered.source_path) == ('', '')
+        assert [v.config_id for v in store.history('bot.json').versions] == [source.config_id]
+        assert store.resolve('bot.json') == profile
+
+    def test_a_source_kind_is_refused_from_content(self, store):
+        with pytest.raises(ValueError, match='registered from its file'):
+            store.register_document(self._DOC, RunConfigKind.AUTOTRADER_PROFILE)
+
+    def test_a_rebuild_finds_the_documents_by_their_directory(self, store):
+        rendered = store.register_document(self._DOC, RunConfigKind.AUTOTRADER_RENDERED)
+        broker = store.register_document({'symbols': {}}, RunConfigKind.BROKER_CONFIG)
+
+        assert store.get_index().rebuild() == 2
+        kinds = {e.config_id: e.kind for e in store.get_index().entries()}
+        assert kinds == {rendered.config_id: RunConfigKind.AUTOTRADER_RENDERED,
+                         broker.config_id: RunConfigKind.BROKER_CONFIG}

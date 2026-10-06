@@ -124,13 +124,12 @@ def _order_report() -> OrderHistoryReport:
         OrderHistoryRow(
             order_id='o1', position_id='p1', symbol='EURUSD', direction='long',
             action='open', status='executed', requested_lots=0.1, executed_lots=0.1,
-            executed_price=1.10, execution_time='2025-10-13T08:00:00+00:00',
-            commission=0.2, swap=0.0, slippage_points=1.0,
-            rejection_reason='', rejection_message=''),
+            executed_price=1.10, event_time='2025-10-13T08:00:00+00:00',
+            commission=0.2, swap=0.0, slippage_points=1.0),
         OrderHistoryRow(
-            order_id='o2', position_id='', symbol='GBPUSD', direction='short',
-            action='open', status='rejected', requested_lots=0.5, executed_lots=0.0,
-            executed_price=0.0, execution_time='', commission=0.0, swap=0.0,
+            order_id='o2', symbol='GBPUSD', direction='short',
+            action='open', status='rejected', requested_lots=0.5,
+            event_time='2025-10-13T08:05:00+00:00', commission=0.0, swap=0.0,
             slippage_points=0.0, rejection_reason='insufficient_margin',
             rejection_message='not enough margin'),
     ]

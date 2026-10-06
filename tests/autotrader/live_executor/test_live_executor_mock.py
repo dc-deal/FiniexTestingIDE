@@ -358,6 +358,8 @@ class TestValidation:
 
     def test_close_nonexistent_position_rejected(self, mock_instant, executor_instant):
         """Closing non-existent position returns REJECTED."""
+        # The rejection is stamped on the canonical clock, which the loop always injects.
+        mock_instant.feed_tick(executor_instant, bid=49999.0, ask=50001.0)
         result = executor_instant.close_position('NONEXISTENT-POS')
 
         assert result.status == OrderStatus.REJECTED

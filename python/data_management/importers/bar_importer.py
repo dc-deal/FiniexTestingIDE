@@ -71,7 +71,7 @@ def _render_symbol_worker(
     data_path = Path(data_dir)
 
     try:
-        start_time = time.time()
+        start_time = time.monotonic()
 
         # === 1. BUILD OWN TICK INDEX ===
         tick_index = TickIndexManager(data_dir=data_dir)
@@ -121,7 +121,7 @@ def _render_symbol_worker(
                 bars_written += len(bars_df)
 
         # === 5. LOG STATISTICS ===
-        elapsed = time.time() - start_time
+        elapsed = time.monotonic() - start_time
         log_buffer.append(
             f'  └─ ✅ {broker_type}/{symbol}: {bars_written:,} bars across '
             f'{len(all_bars)} timeframes in {elapsed:.2f}s'
@@ -193,10 +193,9 @@ def _load_all_ticks_for_symbol(
     if not dfs:
         return pd.DataFrame()
 
-    combined = pd.concat(dfs, ignore_index=True)
-    combined = combined.sort_values('timestamp').reset_index(drop=True)
-
-    return combined
+    # Not sorted here: the renderer puts the ticks in event order itself, so the rule that
+    # decides a bar's open and close exists in one place.
+    return pd.concat(dfs, ignore_index=True)
 
 
 def _write_bar_file(

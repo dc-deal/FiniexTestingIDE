@@ -7,6 +7,7 @@ This layer is separate from worker coordination - it focuses purely
 on decision-making strategy AND trade execution, not on worker management.
 """
 
+import re
 from abc import ABC, abstractmethod
 from collections import deque
 from pathlib import Path
@@ -117,7 +118,7 @@ class AbstractDecisionLogic(ABC):
         else:
             self.params = ValidatedParameters(config or {})
 
-        # Raw dict access preserved for WorkerOrchestrator._extract_decision_logic_type()
+        # Raw dict access preserved for get_decision_logic_type()
         # which reads: decision_logic.config['decision_logic_type']
         self.config = self.params.as_dict()
 
@@ -766,10 +767,31 @@ class AbstractDecisionLogic(ABC):
             DecisionLogicStats with all metrics
         """
         if not self.performance_logger:
-            # Fallback for tests without performance logger
-            return DecisionLogicStats()
+            # Untracked — the simulation's default (worker_decision_tracking off). Nothing was
+            # counted, but the logic still says which one it is, so a report can name it and
+            # mark its counters as not counted rather than serve the defaults as figures.
+            return DecisionLogicStats(
+                decision_logic_type=self.get_decision_logic_type(),
+                decision_logic_name=self.name)
 
         return self.performance_logger.get_stats()
+
+    def get_decision_logic_type(self) -> str:
+        """
+        The type string this logic was configured under — `CORE/<name>` or a file path.
+
+        Read from the configuration; a logic built without one (a test constructing it
+        directly) is named after its class.
+
+        Returns:
+            Decision logic type string (e.g., "CORE/simple_consensus")
+        """
+        if isinstance(self.config, dict) and 'decision_logic_type' in self.config:
+            return self.config['decision_logic_type']
+
+        # Fallback: the class name, CamelCase to snake_case
+        snake_case = re.sub(r'(?<!^)(?=[A-Z])', '_', self.__class__.__name__).lower()
+        return f'CORE/{snake_case}'
 
     def set_performance_logger(self, performance_logger: DecisionLogicPerformanceTracker) -> None:
         """

@@ -334,3 +334,24 @@ class TestDecisionLogicFactoryBoundaryNonStrict:
         )
         assert logic is not None
         mock_logger.warning.assert_called()
+
+
+class TestAnUntrackedLogicNamesItself:
+    """
+    Without a performance tracker — the simulation's default — a logic counts nothing, and its
+    statistics still say which logic it is, so a report can name it and mark the counters as
+    not counted instead of serving the defaults of an empty object.
+    """
+
+    def test_the_type_and_name_come_back_without_a_tracker(self, strict_logic_factory, mock_logger):
+        logic = strict_logic_factory.create_logic(
+            logic_type='CORE/aggressive_trend',
+            logger=mock_logger,
+            logic_config={'rsi_buy_threshold': 35, 'rsi_sell_threshold': 65},
+        )
+
+        stats = logic.get_statistics()
+
+        assert stats.tracked is False
+        assert stats.decision_logic_type == 'CORE/aggressive_trend'
+        assert stats.decision_logic_name == logic.name

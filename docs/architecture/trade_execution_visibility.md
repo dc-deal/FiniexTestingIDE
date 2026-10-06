@@ -204,7 +204,8 @@ Canonical column order ([event_stream_csv_writer.py:EVENT_FIELDS](../../python/f
 ```
 ts, event_type, order_id, position_id, trade_id,
 broker_ref, direction, side, lots, price, fee, fee_currency,
-status, close_type, close_reason, is_maker, notes
+status, close_type, close_reason, is_maker,
+submission_tick_mid_price, submission_tick_time_msc, notes
 ```
 
 `direction` and `side` are mutually exclusive per row (see "Trade-Event Side vs Position Direction" above):
@@ -217,7 +218,7 @@ status, close_type, close_reason, is_maker, notes
 | Event | When | Source |
 |---|---|---|
 | `ORDER_SUBMIT` | Algo sent an OPEN trigger | `order_history` walk (`action=OPEN`) |
-| `ORDER_REJECT` | Broker / guard rejected pre-submit | `order_history` walk |
+| `ORDER_REJECT` | An open or a close was refused — by the broker, the guard, a size rule | `order_history` walk, both sides: a refused close leaves no trade, so it is taken from the order history like a refused open. Stamped with the refusal's own time on the run's clock |
 | `CLOSE_SUBMIT` | Algo sent a CLOSE trigger (one per TradeRecord) | `trade_history` walk — 1:1 with TradeRecord |
 | `FILL` | One `BrokerTrade` (atomic execution) | `entry_trades` + `exit_trades` on each TradeRecord |
 | `POSITION_OPEN` | `_fill_open_order` finalized | First TradeRecord of a `position_id` in trade_history |

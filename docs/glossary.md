@@ -33,6 +33,12 @@ several is a *total* that says so. See *total final equity*.
 balance plus margin arithmetic). Configured as `trading_model`, read at runtime as `spot_mode`.
 See [Market Model](architecture/market_model.md).
 
+**active orders** (`active_limit_orders`, `active_stop_orders` on the pending-orders report) — The
+orders still resting when a run unit's data ended. In a backtest the same orders are recorded as
+*expired* in that same step, so the lists say what was waiting at the end, never that it is still
+open. A LIMIT sits in the limit list, a STOP or STOP_LIMIT whose trigger was not reached in the stop
+list. See *resting*.
+
 **adapter** (broker adapter) — The code that speaks one venue's API behind one interface the rest
 of the framework uses. Chosen by `adapter_type`: `mock` for the broker-neutral `MockBrokerAdapter`,
 `live` for a real venue's adapter. See [Adapter Development](user_guides/adapter/adapter_development_guide.md).
@@ -68,13 +74,20 @@ numbered from 1; the ledger holds one row per booking period and currency. In co
 `market_config.json` (`kraken_spot`, `mt5`). Not the same as the venue. The broker whose ticks a
 unit read is its *data broker*. See [Broker Config](broker_config_guide.md).
 
+**broker configuration** (`broker_config_id`) — The symbol specifications and fee structure a run
+trades with, assembled from the broker's files at its start: for a live Kraken session the
+runtime cache's specs, the seed's fees and the detected fee tier. `config_hash` digests it; an
+AutoTrader session also freezes the content in the run-config store and names it as
+`broker_config_id` in its broker section. See [Data Storage Layout](architecture/data_storage_layout.md).
+
 **cache** — A derived store of computed results. Deleting it loses nothing; a "cache" whose
 deletion loses data is misfiled. See [Data Storage Layout](architecture/data_storage_layout.md).
 
 **canonical clock** — The one clock a decision logic, a worker and the execution layer read:
-`get_current_time()`. In a backtest and a mock session it is the time of the replayed tick; in a
-live-adapter session the time of the event being processed. It is market time, never the machine's
-clock — see *wall clock*.
+`get_current_time()`. In a backtest it is the time of the replayed tick. In an AutoTrader session a
+tick sets it to the tick's own time and an idle heartbeat to the machine's UTC clock, so timeouts
+keep tracking real elapsed time: in a live-adapter session the two are one clock, in a mock session
+it moves between replay time and the present. See *wall clock*.
 
 **carry-over** — What one session hands the next session of the same bot: the algo's memory, and
 the framework's record of keys, positions and the risk baseline. Keyed by the bot, overwritten, and
@@ -142,9 +155,15 @@ See [AutoTrader Configuration](autotrader/autotrader_configuration.md).
 without logging an error shows in the *run outcome*, not here. See
 [Warnings & Errors](architecture/warnings_errors_tiers.md).
 
+**event time** (`event_time` on an order-history row) — When that row's event happened, on the
+run's *canonical clock*: the fill on an `executed` row, the refusal on a `rejected` one, the expiry
+on an `expired` one; null on a `pending` row. A point in time — not the *execution time*, which is
+a duration.
+
 **execution time** — How long a run or one of its units took on the *wall clock*:
 `execution_time_ms` for a scenario, `execution_time_s` for a whole backtest run. It says nothing
-about how much market time was processed — that is the *tick timespan*.
+about how much market time was processed — that is the *tick timespan* — and it is never a point
+in time: when an order's event happened is its *event time*.
 
 **fees charged** · **total fees** (`fees_charged`, `total_fees`) — Two fee totals of one run.
 *Total fees* are the fees of the trades it CLOSED — the population every trade row, booking period
@@ -210,6 +229,19 @@ previous period's close, read at the same instant, or a unit's first observed va
 `final_equity − net_pnl`, which would drop what was still open. See
 [Accounting Periods](architecture/accounting_periods.md).
 
+**order history** — The run's order-lifecycle records: one row per EVENT of an order, not one per
+order. An order appears as `pending` when it enters the pipeline, `executed` when it fills, and a
+`close` row per close; a refused order as `rejected`, stating its side and symbol like any other
+row. Rows are in the order they happened within their unit, and that position is their identity —
+the order id repeats.
+
+**order id** (`order_id` on an order-history row) — Not an order's own id: the id of the POSITION
+the order belongs to, minted when the position opens and carried by every later order of it, so
+it repeats across that position's rows. An open the run refused still consumed its number, so no
+id is used twice within a run unit. A close refused before it was sent says `close_<position id>`,
+a guard refusal `guard_…`. With its `scenario_name` it names the same position as a trade's
+`position_id`.
+
 **orders to** (`orders_to`) — Where a run's orders went: `simulated` or `venue`. Recorded on every
 run header. See [Introduction](introduction_to_the_ide.md#the-kinds-of-run).
 
@@ -222,6 +254,15 @@ envelope*: the signal producer answered for some symbols only.
 **pending order** — Any order that is not yet finished. Its phases: *in flight*, then *resting* —
 and while a modify or a cancel of a resting order is on its way, that operation is in flight too.
 See [Pending Orders](architecture/pending_order_architecture.md).
+
+**pending-order counters** (`total_resolved`, `total_filled`, `total_rejected`, `total_timed_out`,
+`total_force_closed` on the pending-orders report) — How the unit's orders left the in-flight
+queue. *Resolved* is every order that left it. *Filled* is NOT a fill count today: in a backtest it
+counts every exit that was not refused, so it is the number of orders that *arrived* — a market or
+close order fills on arrival, while a limit, stop or stop-limit order only begins *resting* there,
+and is counted whether it later fills, expires at data end or is cancelled by the strategy. An
+AutoTrader session counts only the market and close orders a status poll saw filled, and its report
+carries no counters at all. #362 separates arrival from fill.
 
 **price · mid · last** — `tick.price` is what the market trades at: the traded price where the
 venue prints one, else the mid. The *mid* is `(bid + ask) / 2`; *last* is the traded price, absent
@@ -242,6 +283,13 @@ where tick-processing time goes.
 
 **real-money session** — A live-adapter session with `dry_run` false: its orders are placed at the
 venue and move the account.
+
+**rendered configuration** (`rendered_config_id`) — What an AutoTrader session RAN with, as
+opposed to the profile file it was GIVEN: the profile with the `app_config.autotrader` layer merged
+in, every parameter's schema default filled, and the broker's `market_config.json` entry. Frozen
+in the run-config store at the session's start and named by its header. A record of what ran, not
+a schema — a later algo version may drop a parameter and the document stays true. See
+[Data Storage Layout](architecture/data_storage_layout.md).
 
 **replay** — Feeding archived data through a pipeline in recorded order: a backtest replays its
 scenarios, a mock session its window. The producer's *replay window* — envelopes re-sent after a
@@ -269,6 +317,12 @@ three field names. See [API Server](architecture/api_server_architecture.md).
 **scenario** · **scenario set** — A scenario is one symbol over one market window with its merged
 configuration (`scenario_name` in the file). A scenario set is the file holding a `global` block and
 the scenarios (`scenario_set_name`). See [Process Execution](process_execution_guide.md).
+
+**server clock** (`server_clock`) — The clock a venue stamps its own data with, declared per broker
+in `market_config.json` as an IANA zone and the whole hours the server runs ahead of it. The MT5
+server is `America/New_York` + 7 — UTC+2 in US winter, UTC+3 in summer — so its times are converted
+per tick by that rule, never by one fixed offset. Not the *canonical clock* and not a collector
+machine's own clock. See [Data Import Pipeline](data_pipeline/data_import_pipeline.md).
 
 **session** — Never used for a backtest. An *AutoTrader session* is one start of a profile; a
 *market session* is Sydney, Tokyo, London or New York.
@@ -315,6 +369,11 @@ every run header. See [Introduction](introduction_to_the_ide.md#the-kinds-of-run
 up, beside `total_initial_balance`: a total no single account held. On a run with one account it
 equals that account's `final_equity`.
 
+**trade** — One close of a position, as the trade history records it: a full close books one, each
+partial close one more, so a trade is not its position. Its key is the unit, the position and the
+tick it closed on (`scenario_name`, `position_id`, `exit_tick_index`). The order history's `close`
+row and the trade are made in the same step; the row does not carry the trade's tick yet.
+
 **trade window basis** — Whether a trade is placed in a window by its entry or its exit.
 
 **venue** — The real marketplace behind a broker entry: Kraken, an MT5 broker.
@@ -338,3 +397,9 @@ and ticks, a SIGNAL from pre-collected external data. See [Worker Naming](user_g
 instance name (`rsi_fast`) to its type string (`CORE/rsi`), and the instance's parameters sit under
 `workers.<instance name>`. One strategy may use the same worker type twice under two names. See
 [Worker Naming](user_guides/worker_naming_doc.md).
+
+**worker/decision tracking** (`worker_decision_tracked`; the switch is
+`performance_tracking.worker_decision_tracking`) — Whether a run unit timed its workers and counted
+its decisions. Off by default in a backtest, because the tracker sits on the hot path. Untracked,
+those counters are null in every report — the logic still decided on every tick, nobody counted
+it — while the logic's name and the processed ticks are known either way.

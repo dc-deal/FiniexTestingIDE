@@ -12,19 +12,26 @@ from pathlib import Path
 
 import pytest
 
+from python.configuration.app_config_manager import AppConfigManager
 from python.configuration.autotrader.autotrader_config_loader import load_autotrader_config
 from python.framework.autotrader.autotrader_main import AutotraderMain
+from python.framework.autotrader.rendered_profile_builder import render_autotrader_profile
 from python.framework.reporting.io.artifact_specs import (
     BOOKING_PERIODS_ARTIFACT,
     BROKER_ARTIFACT,
     SAFETY_ARTIFACT,
 )
 from python.framework.reporting.io.report_artifact_io import read_artifact
+from python.framework.reporting.io.run_header_io import RUN_HEADER_ARTIFACT, read_run_header
 from python.framework.reporting.store.report_store import IO_SUBDIR
+from python.framework.store.run_config_index import FROZEN_SUBDIR
+from python.framework.store.run_config_store import RunConfigStore
 from python.framework.types.autotrader_types.autotrader_result_types import AutoTraderResult
 from python.framework.types.log_level import LogLevel
 from python.framework.types.log_record_types import LogRecord
+from python.framework.types.run_config_types import RunConfigKind
 from python.framework.types.run_outcome_types import RunOutcome
+from python.framework.utils.config_fingerprint_utils import generate_config_fingerprint
 from tests.shared.fixture_helpers import logged_messages, remove_run_dir
 
 MOCK_PROFILE = 'configs/autotrader_profiles/mock/mock_session_test.json'
@@ -184,6 +191,47 @@ class TestAutotraderMockSession:
         # than "used none of it" — the two are different statements and 0.0 conflates them.
         assert report.soft_limit_used_pct is None
         assert report.worst_drawdown_abs >= 0.0
+
+
+class TestTheSessionRecordsWhatItRan:
+    """
+    The run names what it RAN with, not only what it was given (#547), and the names resolve.
+
+    The unit suites pin the renderer, the store and the broker freeze one by one; this is the
+    chain: a real session started, and both documents are readable from what the run left behind.
+    """
+
+    def test_the_header_names_a_rendered_profile_the_store_holds(self, mock_session):
+        _, run_dir = mock_session
+        header = read_run_header(run_dir / RUN_HEADER_ARTIFACT)
+        assert header.rendered_config_id and header.rendered_config_id != header.config_id
+
+        store = RunConfigStore(Path(AppConfigManager().get_run_configs_path()))
+        rendered = json.loads(store.frozen_path_of(header.rendered_config_id).read_text())
+        assert generate_config_fingerprint(rendered) == header.rendered_config_id
+        expected = render_autotrader_profile(load_autotrader_config(MOCK_PROFILE))
+        assert rendered == expected
+
+    def test_the_broker_section_names_the_frozen_broker_configuration(self, mock_session):
+        _, run_dir = mock_session
+        unit = read_artifact(run_dir / IO_SUBDIR / 'broker.json', BROKER_ARTIFACT).units[0]
+        assert unit.broker_config_id
+
+        store = RunConfigStore(Path(AppConfigManager().get_run_configs_path()))
+        frozen = json.loads(store.frozen_path_of(unit.broker_config_id).read_text())
+        # The frozen content carries the very digest the section reports — the same
+        # `_config_meta` `BrokerConfig.config_hash` reads, so the two cannot name different things.
+        meta = frozen['_config_meta']
+        assert (meta.get('config_hash') or meta.get('symbols_hash')) == unit.config_hash
+        assert (store.frozen_path_of(unit.broker_config_id).parent.name
+                == FROZEN_SUBDIR[RunConfigKind.BROKER_CONFIG])
+
+    def test_the_session_log_names_it_too(self, mock_session):
+        # The broker section is written at the END; the log line is what a killed session keeps.
+        _, run_dir = mock_session
+        unit = read_artifact(run_dir / IO_SUBDIR / 'broker.json', BROKER_ARTIFACT).units[0]
+        session_log = (run_dir / 'autotrader_session.log').read_text()
+        assert f'frozen as broker_config {unit.broker_config_id[:12]}' in session_log
 
 
 class TestTheSessionBooks:

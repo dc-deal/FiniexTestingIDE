@@ -95,10 +95,10 @@ class TestHeartbeat:
         ))
         mock_timeout.await_submit_confirmation(executor_timeout)
 
-        # Force timeout: backdate timeout_at on every pending order
-        past = datetime.now(timezone.utc) - timedelta(seconds=60)
+        # Force timeout: backdate the deadline on every pending order
+        past = time.monotonic() - 60.0
         for pending in executor_timeout._request_processor.get_pending_orders():
-            pending.timing.timeout_at = past
+            pending.timing.order_timeout_deadline_monotonic = past
 
         rejected_before = executor_timeout.get_execution_stats().orders_rejected
         executor_timeout.heartbeat()

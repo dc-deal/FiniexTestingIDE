@@ -28,9 +28,10 @@ If the renderers diverge, backtesting results won't match imported data, and Aut
 | `test_gap_handling_m1` | 5-minute gap at M1 granularity |
 | `test_boundary_ticks` | Ticks exactly on bar boundaries assigned correctly |
 | `test_single_tick_per_bar` | One tick per bar: OHLC all equal |
-| `test_all_timeframes_bar_count` | Bar count matches across all 7 timeframes (M1-D1) |
+| `test_all_timeframes_bar_count` | Bar count matches on every timeframe up to H4 — D1 is skipped (one bar in 8.3 hours of ticks) |
 | `test_volume_aggregation` | Volume sums match, total equals input |
 | `test_forex_zero_volume` | Zero-volume forex ticks handled consistently |
+| `test_open_and_close_follow_time_msc_not_row_order` | Ticks sharing one second render in event order, not in row order (see below) |
 
 ## Test Data
 
@@ -52,6 +53,19 @@ For each bar, the test verifies exact match of:
 - **OHLC** values (with `rel=1e-10` tolerance)
 - **Volume** (aggregated sum)
 - **Tick count**
+
+## Event Order Within One Second (`TestEventOrderWithinOneSecond`)
+
+A tick's `timestamp` has second resolution, and a liquid symbol prints many trades inside one
+second, so the order there is carried by `time_msc` alone. The vectorized renderer puts its ticks
+into event order itself — `timestamp`, then `time_msc`, with a stable sort — the same order the
+backtest loader replays them in. The test hands the renderer four trades of one second in
+scrambled rows and asserts that the bar opens at the first trade and closes at the last.
+
+Before this order existed, the renderer sorted by the second alone with an unstable sort: over the
+BTCUSD history 39,588 of 340,399 M1 bars opened, and 34,339 closed, at a different tick than the
+event-ordered render (measured 2026-10-05). High and low cannot change that way, which is why no
+structural check ever noticed.
 
 ## Price Basis (`test_price_basis.py`)
 

@@ -59,7 +59,18 @@ never called.
 |---|---|
 | `test_the_simulation_refuses_the_second_order_too` | The SIMULATION executor, same account and orders, refuses identically — the shared code path is a reading here, not a claim |
 | `test_the_simulation_passes_it_without_a_resting_order` | The sim-side regression guard |
-| `test_the_fill_site_reads_others_claims_and_excludes_the_filling_order` | The figure the fill-time check reads: the other orders' claims, never its own — asserted on the query with both orders in flight, because the mock fills a LIMIT regardless of price and cannot hold one resting while another fills. A fill-time *refusal* is not producible here at all — submission and fill compute the same figure, only an outside balance change could separate them |
+| `test_the_fill_site_reads_others_claims_and_excludes_the_filling_order` | The figure the fill-time check reads: the other orders' claims, never its own — asserted on the query with both orders in flight, because the mock fills a LIMIT regardless of price and cannot hold one resting while another fills |
+
+#### `TestAFillTheVenueMadeIsBooked` — the fill-time check decides only where the executor IS the venue
+
+Submission and fill compute the same figure only at the same price. 0.0195 BTC at the ask of 50001
+costs 977.56 USD with the taker fee, which a 1000 USD account can pay; the order fills 3 % higher,
+at 1006.88 USD.
+
+| Test | What it verifies |
+|---|---|
+| `test_live_books_it_despite_our_shortfall` | A live session books the fill the venue made and reports the disagreement as an error, in both account models — refusing to book it left the venue holding coins the book did not. The margin case needs the market to move with the fill, because the margin check prices the current tick and the spot check the fill itself |
+| `test_the_simulation_still_refuses_it` | The simulation plays the venue, and a venue refuses an order it cannot fund |
 
 ### `test_account_sufficiency.py` — a boot that can fund nothing
 

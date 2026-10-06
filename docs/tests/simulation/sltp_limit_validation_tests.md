@@ -7,7 +7,7 @@ limit order fills, maker fees, close reason propagation, and order modifications
 real USDJPY extreme move time windows from the Discovery system to guarantee triggers/fills within
 the data range.
 
-**Test Configuration:** `backtesting/sltp_limit_validation_test.json`
+**Test Configuration:** `tests/fixtures/scenario_sets/sltp_limit_validation/sltp_limit_validation_test.json`
 - Symbol: USDJPY (mt5)
 - Account Currency: JPY
 - 17 scenarios: 5 SL/TP + 4 limit order + 7 stop order + 1 cancel limit, each opening 1 trade at tick 10
@@ -307,8 +307,11 @@ trigger/fill scenarios.
 
 | Window | Discovery Source | Start | End | Entry Price | Extreme | Ticks |
 |--------|-----------------|-------|-----|-------------|---------|-------|
-| Uptrend | LONG #28 (+49.7 pips) | 2026-01-05T18:55 | 2026-01-05T23:00 | ~156.209 | 156.706 | 7,786 |
+| Uptrend | LONG #28 (+49.7 pips) | 2026-01-05T19:55 | 2026-01-06T00:00 | ~156.209 | 156.706 | 7,786 |
 | Downtrend | SHORT #28 (-37.8 pips) | 2025-10-21T20:55 | 2025-10-22T01:00 | ~151.924 | 151.546 | 10,845 |
+
+The Uptrend window was found as 18:55 → 23:00 while MT5 times in US winter were still stored one
+hour early; it moved by +1 h with the corrected import (#562), so it holds the same ticks.
 
 Scenario-to-window mapping:
 

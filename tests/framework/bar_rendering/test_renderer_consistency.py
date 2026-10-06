@@ -314,7 +314,7 @@ class TestRendererConsistency:
         all_vec_bars = renderer_vec.render_all_timeframes(df)
 
         # Skip D1 — 8.3 hours only produces 1 bar, not meaningful for count comparison
-        for timeframe in ['M1', 'M5', 'M15', 'M30', 'H1', 'H4']:
+        for timeframe in ['M1', 'M5', 'M10', 'M15', 'M30', 'H1', 'H4']:
             br_bars = _render_with_bar_renderer(ticks, timeframe)
             vec_count = len(all_vec_bars[timeframe])
 
@@ -364,3 +364,37 @@ class TestRendererConsistency:
         # All volumes should be zero
         for bar in tick_bars:
             assert bar['volume'] == 0.0
+
+class TestEventOrderWithinOneSecond:
+    """
+    Ticks that share one second are rendered in event order, not in row order.
+
+    'timestamp' has second resolution and a liquid symbol prints many trades per second, so
+    the order inside a second is carried by time_msc alone. The renderer once sorted by the
+    second with an unstable sort; over the BTCUSD history about one M1 bar in nine then opened
+    or closed at a different tick than the event-ordered replay the backtest loader produces.
+    """
+
+    def test_open_and_close_follow_time_msc_not_row_order(self) -> None:
+        """Rows handed over in scrambled order still give the first and the last trade."""
+        second = pd.Timestamp('2026-05-01 10:00:00', tz='UTC')
+        base_msc = int(second.timestamp() * 1000)
+        # (milliseconds into the second, traded price), in EVENT order
+        events = [(100, 101.0), (250, 99.0), (400, 103.0), (900, 102.0)]
+        rows = [{
+            'timestamp': second,
+            'time_msc': base_msc + offset,
+            'bid': price,
+            'ask': price,
+            'last': price,
+            'price': price,
+            'volume': 0.1,
+        } for offset, price in events]
+        scrambled = pd.DataFrame([rows[2], rows[0], rows[3], rows[1]])
+
+        bar = VectorizedBarRenderer('BTCUSD').render_all_timeframes(scrambled)['M1'].iloc[0]
+
+        assert bar['open'] == 101.0
+        assert bar['close'] == 102.0
+        assert bar['high'] == 103.0
+        assert bar['low'] == 99.0

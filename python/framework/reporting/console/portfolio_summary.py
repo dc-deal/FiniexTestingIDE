@@ -390,8 +390,8 @@ class PortfolioSummary(AbstractBatchSummarySection):
             sl_str = f'{order.stop_loss:.2f}' if order.stop_loss else '—'
             tp_str = f'{order.take_profit:.2f}' if order.take_profit else '—'
             line = (
-                f'   {order.order_id:<16} {order.order_type.upper():<12} '
-                f'{order.direction.upper():<6} '
+                f'   {order.order_id:<16} {order.order_type.value.upper():<12} '
+                f'{order.direction.value.upper():<6} '
                 f'{order.entry_price:>12.2f} {limit_str:>12} '
                 f'{order.lots:>10g} {sl_str}/{tp_str}'
             )

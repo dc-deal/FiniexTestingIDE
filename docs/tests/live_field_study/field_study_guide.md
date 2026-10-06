@@ -182,7 +182,8 @@ The certificate is written to `tests/live_field_study/reports/field_study_report
 `git_commit`, `timestamp`, `valid_until`).
 
 **PASS criteria (hard):**
-- every phase reached a non-failing outcome (`pass` / `expected_rejection` / `skipped`)
+- every phase reached a non-failing outcome (`pass` / `expected_rejection` / `skipped` /
+  `inconclusive` — the last a market-dependent non-fill, not a mechanical failure)
 - no phase is missing a result (a missing result means the run aborted mid-sequence)
 - **no resting orders at session end** — read from the broker-truth snapshot of the `session_end`
   PHASE, never simply the last one recorded: a session-end snapshot that failed to be written would

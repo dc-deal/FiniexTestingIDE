@@ -82,7 +82,12 @@ class OrderFilledEvent:
 @dataclass(frozen=True, slots=True)
 class OrderRejectedEvent:
     """
-    An order was rejected (at submission or at fill time). Delivered to on_order_rejected().
+    An order was rejected after send_order() returned it as pending. Delivered to on_order_rejected().
+
+    Three sources: the venue refused it (live), the simulation's funds or margin check refused
+    it at the fill, or the framework gave up waiting for the venue's answer (live). A refusal
+    send_order() returns directly — order guard, lot size, funds at submission — never arrives
+    here: that return value is the answer.
 
     Args:
         order_id: Internal order id

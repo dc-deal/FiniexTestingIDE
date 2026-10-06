@@ -15,17 +15,23 @@ or an outage is a verdict and belongs to the coverage layer
 against MarketCalendar.
 """
 
+from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional, Tuple
+from zoneinfo import ZoneInfo
 
 import numpy as np
 import pandas as pd
 
-from python.framework.types.config_types.market_config_types import PriceFormation
+from python.framework.types.config_types.market_config_types import (
+    DayAnchorConfig,
+    PriceFormation,
+)
 from python.framework.types.data_origin_types import (
     ORIGIN_BLOCK_REQUIRED_FROM,
     origin_block_is_required,
 )
 from python.framework.types.validation_types import TickFileValidationResult
+from python.framework.utils.trading_day_anchor import boundary_opening
 
 # Largest tolerated distance between collected_msc and the tick's UTC event time.
 # This is not the receive lag alone. For repaired files it also carries the
@@ -44,6 +50,19 @@ SEGMENT_SPLIT_FORWARD_MS = 7 * 24 * 3_600_000
 
 # Tolerance between the timestamp string (second resolution) and time_msc.
 TIMESTAMP_CONSISTENCY_TOLERANCE_MS = 1_000
+
+_HOUR_MS = 3_600_000
+
+# A weekend closure seen inside one file: the last tick before the gap falls on a Friday in
+# the market's own timezone and the gap lasts about two days. Measured on the MT5 archive:
+# 47-49 h, the extremes being the weekends of a season change. A longer gap is an outage or
+# a holiday, where the next tick says nothing about the server's clock.
+WEEKEND_GAP_MIN_MS = 40 * _HOUR_MS
+WEEKEND_GAP_MAX_MS = 56 * _HOUR_MS
+
+# How far from the market's day anchor a regular week opens. Measured on the MT5 archive:
+# 0-3 min after 17:00 New York, in both seasons, once the server clock is converted right.
+WEEKEND_OPEN_TOLERANCE_MS = 30 * 60_000
 
 
 def split_anchor_segments(collected: np.ndarray) -> List[Tuple[int, int]]:
@@ -83,6 +102,7 @@ class TickImportValidator:
     - the declared tick count matches the delivered rows
     - prices are positive and not inverted
     - the timestamp string agrees with time_msc
+    - a week that opens inside a file opens at the market's day anchor, not hours off it
     - across files of one symbol, coverage never overlaps
     """
 
@@ -94,7 +114,8 @@ class TickImportValidator:
         collected_msc_is_utc: bool = False,
         price_formation: Optional[PriceFormation] = None,
         data_format_version: str = '',
-        stated_instance_id: Optional[str] = None
+        stated_instance_id: Optional[str] = None,
+        weekend_anchor: Optional[DayAnchorConfig] = None
     ) -> TickFileValidationResult:
         """
         Validate one imported tick file.
@@ -115,6 +136,8 @@ class TickImportValidator:
                 missing identity is a defect rather than history; below it, nothing is asked
             stated_instance_id: The identity read out of the file's `origin` block, or None
                 when the block is absent or carries none
+            weekend_anchor: Where the market's day flips, for a market that closes on
+                weekends; None for one that trades around the clock, which skips the check
 
         Returns:
             TickFileValidationResult carrying errors, warnings and metrics
@@ -141,6 +164,7 @@ class TickImportValidator:
         self._check_monotonic(df, result)
         self._check_timestamp_consistency(df, result)
         self._check_collected_msc_lag(df, collected_msc_is_utc, result)
+        self._check_weekend_open(df, weekend_anchor, result)
         self._collect_burst_metrics(df, result)
 
         return result
@@ -365,7 +389,19 @@ class TickImportValidator:
         if len(segments) > 1:
             detail += f', across {len(segments)} anchor segments'
 
-        if collected_msc_is_utc:
+        whole_hours = int(round(worst_lag / _HOUR_MS))
+        if collected_msc_is_utc and whole_hours and \
+                abs(worst_lag - whole_hours * _HOUR_MS) <= PLAUSIBLE_LAG_WINDOW_MS:
+            # Late delivery is never this exact. Two clocks a whole hour apart are: the event
+            # time went through one conversion and the arrival time through another.
+            result.add_error(
+                f"{detail}. That is {whole_hours:+d} h almost exactly, which is a clock "
+                f"conversion, not a late delivery: the event time and the arrival time were "
+                f"converted by rules a whole hour apart. Check the broker's server_clock in "
+                f"market_config.json, or whether the arrival time was restored under an older "
+                f"rule."
+            )
+        elif collected_msc_is_utc:
             result.add_error(
                 f"{detail}. The file declares collected_msc_timebase 'utc', so "
                 f"this is a collector defect, not a legacy conversion gap."
@@ -375,6 +411,71 @@ class TickImportValidator:
                 f'{detail}. Legacy timing — run the collected_msc restoration '
                 f'(python/experiments/restore_collected_msc_v3.py) before importing.'
             )
+
+    def _check_weekend_open(
+        self,
+        df: pd.DataFrame,
+        weekend_anchor: Optional[DayAnchorConfig],
+        result: TickFileValidationResult
+    ) -> None:
+        """
+        Verify that a week opening inside this file opens at the market's day anchor.
+
+        The only check that sees a wrong server clock on a file whose arrival time was
+        restored from its own event time — there the arrival check cannot, because both
+        times carry the same error. A regular week opens a few minutes after the anchor
+        (17:00 New York for forex); a first tick a whole number of hours away from it is a
+        clock conversion off by those hours and refuses the file. An open that is late by
+        anything else — a holiday, a feed gap — is only reported.
+
+        Args:
+            df: Tick DataFrame, time_msc already converted to UTC
+            weekend_anchor: Where the market's day flips; None skips the check
+            result: Result to record findings on
+        """
+        if weekend_anchor is None or len(df) < 2:
+            return
+
+        time_msc = df['time_msc'].to_numpy().astype('int64')
+        gaps = np.diff(time_msc)
+        candidates = np.where(
+            (gaps >= WEEKEND_GAP_MIN_MS) & (gaps <= WEEKEND_GAP_MAX_MS))[0]
+        if not len(candidates):
+            return
+
+        zone = ZoneInfo(weekend_anchor.timezone)
+        checked = 0
+        for index in candidates:
+            closed = datetime.fromtimestamp(int(time_msc[index]) / 1000, tz=timezone.utc)
+            if closed.astimezone(zone).weekday() != 4:
+                continue
+            checked += 1
+            opened = datetime.fromtimestamp(int(time_msc[index + 1]) / 1000, tz=timezone.utc)
+            local_day = opened.astimezone(zone).date()
+            anchor = min(
+                (boundary_opening(local_day + timedelta(days=step), weekend_anchor)
+                 for step in (-1, 0, 1)),
+                key=lambda boundary: abs((opened - boundary).total_seconds()))
+            deviation_ms = int((opened - anchor).total_seconds() * 1000)
+            if abs(deviation_ms) <= WEEKEND_OPEN_TOLERANCE_MS:
+                continue
+
+            stated = (f'The week opens at {opened:%Y-%m-%d %H:%M} UTC, '
+                      f'{deviation_ms / 60_000:+.0f} min from its anchor '
+                      f'({weekend_anchor.local_time} {weekend_anchor.timezone} = '
+                      f'{anchor:%H:%M} UTC)')
+            whole_hours = int(round(deviation_ms / _HOUR_MS))
+            if whole_hours and \
+                    abs(deviation_ms - whole_hours * _HOUR_MS) <= PLAUSIBLE_LAG_WINDOW_MS:
+                result.add_error(
+                    f"{stated}: {whole_hours:+d} h almost exactly, so the server clock was "
+                    f"converted by the wrong number of hours. Check the broker's server_clock "
+                    f"in market_config.json.")
+            else:
+                result.add_warning(
+                    f'{stated} — later than a regular open (a holiday or a feed gap)')
+
+        result.metrics['weekend_opens_checked'] = float(checked)
 
     def _collect_burst_metrics(
         self,

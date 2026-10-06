@@ -190,11 +190,7 @@ class DecisionLogicFactory:
         for warning in warnings:
             self.logger.warning(f'⚠️ {warning}')
 
-        logic_config = apply_defaults(logic_config, schema)
-
-        # Inject resolved logic_type for performance tracking
-        resolved_key = self._resolve_key(logic_type, base_path)
-        logic_config['decision_logic_type'] = resolved_key
+        logic_config = self._config_with_defaults(logic_type, logic_config, schema, base_path)
 
         logic_name = self._extract_logic_name(logic_type)
 
@@ -216,6 +212,59 @@ class DecisionLogicFactory:
         )
 
         return logic_instance
+
+    def resolve_parameters(
+        self,
+        logic_type: str,
+        logic_config: Dict[str, Any] = None,
+        base_path: Optional[Path] = None,
+    ) -> Dict[str, Any]:
+        """
+        The configuration a decision logic of this type is constructed with — without
+        constructing it.
+
+        The same rule `create_logic` applies, from the same helper: the schema's defaults filled
+        in, and the resolved `decision_logic_type` injected. `create_logic` may tighten the
+        `lot_size` floor to the venue's minimum, which changes what is VALIDATED, never a
+        default — so the two return the same configuration.
+
+        Args:
+            logic_type: Logic reference — "CORE/simple_consensus" or a file path
+            logic_config: Configuration dict for the logic
+            base_path: Base directory for resolving relative file paths
+
+        Returns:
+            The full configuration dict, defaults included
+        """
+        logic_class, _ = self.resolve_logic_class(logic_type, base_path)
+        return self._config_with_defaults(
+            logic_type, logic_config or {}, logic_class.get_parameter_schema(), base_path)
+
+    def _config_with_defaults(
+        self,
+        logic_type: str,
+        logic_config: Dict[str, Any],
+        schema: Dict[str, InputParamDef],
+        base_path: Optional[Path],
+    ) -> Dict[str, Any]:
+        """
+        Fill a decision logic's configuration with its schema's defaults and inject its type.
+
+        Args:
+            logic_type: The logic reference as the configuration names it
+            logic_config: Configuration dict for the logic
+            schema: The parameter schema the defaults come from
+            base_path: Base directory for resolving relative file paths
+
+        Returns:
+            The full configuration dict
+        """
+        logic_config = apply_defaults(logic_config, schema)
+
+        # Inject resolved logic_type for performance tracking
+        resolved_key = self._resolve_key(logic_type, base_path)
+        logic_config['decision_logic_type'] = resolved_key
+        return logic_config
 
     def _resolve_key(self, logic_type: str, base_path: Optional[Path] = None) -> str:
         """

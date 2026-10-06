@@ -7,6 +7,7 @@ from datetime import date, datetime, timedelta, timezone
 from typing import Iterable, Optional, Tuple
 from zoneinfo import ZoneInfo
 
+import numpy as np
 from dateutil import parser
 
 # Typed weekday abbreviations constant
@@ -333,3 +334,66 @@ def local_time_to_utc(day: date, local_hhmm: str, tz_name: str) -> datetime:
         day.year, day.month, day.day, hour, minute, tzinfo=ZoneInfo(tz_name)
     )
     return local_dt.astimezone(timezone.utc)
+
+
+_MINUTE_MS = 60_000
+_HOUR_MS = 3_600_000
+_EPOCH_NAIVE = datetime(1970, 1, 1)
+
+
+def server_clock_to_utc_ms(server_ms: np.ndarray, tz_name: str, hours_ahead: int) -> np.ndarray:
+    """
+    Convert a broker server's wall-clock epoch milliseconds to UTC epoch milliseconds.
+
+    The server's clock runs `hours_ahead` whole hours ahead of the wall clock of `tz_name`, so
+    each stamp is moved back by those hours and resolved through that zone's own daylight saving
+    rules: an MT5 server on New York close time ('America/New_York', 7) is 2 h ahead of UTC while
+    New York keeps standard time and 3 h ahead while it keeps daylight time. A fixed offset is
+    right for half the year only. Resolved once per distinct minute, so a file of ticks costs a
+    few hundred zone lookups. A stamp in a minute the zone repeats or skips has no single UTC
+    answer and is refused with a ValueError.
+
+    Args:
+        server_ms: Server wall-clock stamps as epoch milliseconds (an MT5 `time_msc` is one)
+        tz_name: IANA zone whose daylight saving rules the server clock follows
+        hours_ahead: Whole hours the server clock runs ahead of that zone's wall clock
+
+    Returns:
+        UTC epoch milliseconds, same order and length
+    """
+    stamps = np.asarray(server_ms, dtype=np.int64)
+    if tz_name == 'UTC' and hours_ahead == 0:
+        return stamps
+
+    wall_ms = stamps - hours_ahead * _HOUR_MS
+    minutes, inverse = np.unique(wall_ms // _MINUTE_MS, return_inverse=True)
+    zone = ZoneInfo(tz_name)
+    offsets_ms = np.empty(len(minutes), dtype=np.int64)
+    for index, minute in enumerate(minutes):
+        wall = _EPOCH_NAIVE + timedelta(minutes=int(minute))
+        earlier = wall.replace(tzinfo=zone, fold=0).utcoffset()
+        later = wall.replace(tzinfo=zone, fold=1).utcoffset()
+        if earlier != later:
+            raise ValueError(
+                f'{wall:%Y-%m-%d %H:%M} on the wall clock of {tz_name} lies in an hour the zone '
+                f'repeats or skips at a daylight saving change, so it has no single UTC time')
+        offsets_ms[index] = int(earlier.total_seconds()) * 1000
+    return wall_ms - offsets_ms[inverse.reshape(-1)]
+
+
+def server_clock_to_utc(server_dt: datetime, tz_name: str, hours_ahead: int) -> datetime:
+    """
+    Convert one broker-server wall-clock time to UTC. The single-value form of
+    `server_clock_to_utc_ms`, which it calls, so the two cannot disagree.
+
+    Args:
+        server_dt: Naive server wall-clock time (the open time in a collector file name is one)
+        tz_name: IANA zone whose daylight saving rules the server clock follows
+        hours_ahead: Whole hours the server clock runs ahead of that zone's wall clock
+
+    Returns:
+        Timezone-aware UTC datetime
+    """
+    server_ms = (server_dt.replace(tzinfo=None) - _EPOCH_NAIVE) // timedelta(milliseconds=1)
+    utc_ms = server_clock_to_utc_ms(np.array([server_ms], dtype=np.int64), tz_name, hours_ahead)
+    return datetime.fromtimestamp(int(utc_ms[0]) / 1000, tz=timezone.utc)

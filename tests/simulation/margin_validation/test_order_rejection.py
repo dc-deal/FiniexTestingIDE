@@ -11,8 +11,14 @@ Tests:
 
 from typing import Any, Dict, List
 
+from python.framework.reporting.builders.order_history_report_builder import (
+    build_order_history_report,
+)
+from python.framework.reporting.builders.run_unit import RunUnit
+from python.framework.types.process_data_types import ProcessTickLoopResult
 from python.framework.types.probe_metadata_types import ProbeMetadata
 from python.framework.types.portfolio_types.portfolio_trade_record_types import TradeRecord
+from python.framework.types.trading_env_types.order_types import OrderStatus
 from python.framework.types.trading_env_types.trading_env_stats_types import ExecutionStats
 
 
@@ -150,3 +156,43 @@ class TestRejectionTracking:
             f'Expected {expected_rejections} total rejections, '
             f'got {execution_stats.orders_rejected}'
         )
+
+
+class TestRejectionRecords:
+    """A rejection states what was refused and when — over the real executor path."""
+
+    def test_every_rejection_states_its_side_symbol_size_and_time(
+        self,
+        tick_loop_results: ProcessTickLoopResult,
+    ):
+        """No rejection leaves its side, symbol, direction, lots or time empty."""
+        rejections = [o for o in tick_loop_results.order_history if o.is_rejected]
+        assert rejections, 'the scenario must produce rejections for this test to mean anything'
+        for rejection in rejections:
+            assert rejection.action is not None, rejection.order_id
+            assert rejection.symbol, rejection.order_id
+            assert rejection.direction is not None, rejection.order_id
+            assert rejection.requested_lots is not None, rejection.order_id
+            assert rejection.execution_time is not None, rejection.order_id
+
+    def test_the_symbol_filter_keeps_the_rejections(
+        self,
+        tick_loop_results: ProcessTickLoopResult,
+    ):
+        """
+        Filtering the order history by its symbol drops no rejected row.
+
+        The defect this pins: every rejection carried an empty symbol, so a symbol filter
+        removed all of them while the unfiltered list still showed them.
+        """
+        orders = tick_loop_results.order_history
+        symbol = next(o.symbol for o in orders if o.symbol)
+        units = [RunUnit(name='scenario', symbol=symbol, order_history=orders)]
+
+        unfiltered = build_order_history_report('run', units)
+        filtered = build_order_history_report('run', units, symbol=symbol)
+
+        rejected = sum(1 for row in unfiltered.orders if row.status is OrderStatus.REJECTED)
+        assert rejected > 0
+        assert sum(1 for row in filtered.orders if row.status is OrderStatus.REJECTED) == rejected
+

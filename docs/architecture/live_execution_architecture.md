@@ -25,11 +25,20 @@ logic, zero duplication.
 1. `open_order()` — Validates, calls `adapter.execute_order()`, routes by type:
    - **MARKET** → `LiveRequestProcessor` (short-lived pipeline tracking)
    - **LIMIT** → `_active_limit_orders` (shadow state, inherited from base)
-2. `_process_pending_orders()` — Two-phase polling:
+2. `_process_pending_orders()` — Two-phase polling on a tick:
    - **Phase 1**: Polls `LiveRequestProcessor` for MARKET order fills/rejections/timeouts
    - **Phase 2**: `_process_active_orders()` — polls broker for active LIMIT order fills
-3. `_handle_broker_response()` — Dispatches FILLED → `_fill_open_order()`, REJECTED → `_order_history`
-4. `_handle_timeout()` — Cancels at broker, records BROKER_ERROR rejection
+
+   The heartbeat asks about both kinds as well, asynchronously: resting orders through
+   `_process_active_orders()`, MARKET orders and closes through `_process_pipeline_orders()`.
+   A market order at Kraken is answered with a reference alone and its fill shows only to a
+   later read, so a status read on ticks only would never see a fill made in a quiet feed.
+3. `_handle_broker_response()` — Dispatches FILLED → `_fill_open_order()`, REJECTED → `_order_history`;
+   CANCELLED or EXPIRED by the venue books what executed and otherwise drops the order as cancelled —
+   never as a rejection
+4. `_handle_timeout()` — Asks the venue before it books anything: a final answer is booked by the
+   ordinary route, an order still working is cancelled and given up, and an order nobody could ask
+   about is handed to the #487 resolution once (see *Timeout Detection* below)
 5. `cancel_limit_order()` — Cancels at broker + removes from `_active_limit_orders`
 
 **Feature gating:** MARKET, LIMIT, STOP and STOP_LIMIT supported (#500). TRAILING_STOP and ICEBERG
@@ -47,11 +56,11 @@ Live-specific pending order manager. Adds broker reference tracking, timeout det
 **Internal state:** `_broker_ref_index: Dict[str, str]` maps broker_ref → order_id for O(1) lookup when broker responds.
 
 **Live-specific methods:**
-- `submit_order(order_id, symbol, direction, lots, broker_ref, order_kwargs=None)` — Creates PendingOrder with `submitted_at`, `broker_ref`, `timeout_at`. Indexes by broker_ref.
+- `submit_order(order_id, symbol, direction, lots, broker_ref, order_kwargs=None)` — Creates PendingOrder with `submitted_at`, `broker_ref` and a fill-timeout deadline on the monotonic clock. Indexes by broker_ref.
 - `submit_close_order(position_id, broker_ref, close_lots)` — Same pattern for close orders
 - `mark_filled(broker_ref, fill_price, filled_lots)` — Removes from pending, returns PendingOrder for fill processing
 - `mark_rejected(broker_ref, reason)` — Removes from pending, returns PendingOrder for rejection recording
-- `check_timeouts()` — Returns orders past `timeout_at` (does not remove — caller decides)
+- `check_timeouts()` — Returns orders past their `order_timeout_deadline_monotonic` (does not remove — caller decides)
 - `get_by_broker_ref(broker_ref)` — O(1) lookup via broker reference index
 - `clear_pending()` — Override: clears both pending orders and broker_ref index
 
@@ -105,14 +114,26 @@ live_executor.on_tick(tick)
 
 ### 3. Timeout Detection
 
+A timeout does not decide an order's fate — the venue does. Before anything is booked the
+order's status is read, because an order may well have filled while no read reached the venue:
+in a quiet feed, or through a REST outage that outlasted the timeout.
+
 ```
-_process_pending_orders()
-    └── timed_out = order_tracker.check_timeouts()
+heartbeat() / _process_pending_orders()
+    └── timed_out = order_tracker.check_timeouts()        # monotonic deadline
         └── for pending in timed_out:
-                ├── adapter.cancel_order(pending.broker_ref)   # try to cancel at broker
-                ├── order_tracker.mark_rejected(broker_ref, reason="order_timeout")
-                └── rejection → _order_history (BROKER_ERROR)
+                ├── read the status ─► filled / rejected / cancelled / expired
+                │                        └── booked by _handle_broker_response
+                ├── still working ─► cancel, and READ the cancel's answer
+                │       ├── cancelled, nothing executed ─► given up: BROKER_ERROR "timed out"
+                │       └── refused ("Unknown order") or executed in part ─► read again, book it
+                └── no answer ─► handed to the #487 resolution, once per order
+                        └── unanswerable the second time ─► given up: BROKER_UNREACHABLE
 ```
+
+A status read that FAILS is never an answer about the order: `_failure_response` makes every
+read failure UNRESOLVED, whatever the connection ladder calls it, and only the log level follows
+the ladder. A write is different — "Insufficient funds" on a submit is the venue refusing it.
 
 ### 4. Immediate Fill (Synchronous Broker)
 
@@ -152,7 +173,7 @@ The shared `PendingOrder` dataclass has optional fields for each mode. Live sets
 
 - `submitted_at: datetime` — UTC timestamp when order was sent to broker
 - `broker_ref: str` — Broker's order reference (MT5 ticket, Kraken order ID)
-- `timeout_at: datetime` — When to consider the order timed out
+- `order_timeout_deadline_monotonic: float` — When to consider the order timed out: a `time.monotonic()` reading plus `order_timeout_seconds`. A timeout is a duration, so it reads neither the wall clock nor the canonical clock, which a mock session splits between replay time and the present
 
 Simulation fields (`placed_at_msc`, `broker_fill_msc`) remain None on the live execution stack.
 
@@ -411,8 +432,9 @@ time, keeping backtests reproducible.
 The idle heartbeat (fired when no tick arrives within `heartbeat_interval_ms`, default 500 ms
 for the AutoTrader; 1000 ms is the simulation ghost-pass default)
 runs the cadence work on the **single main-loop consumer** — no second mutating thread:
-`heartbeat()` drains the inbox, checks timeouts, and **re-polls active orders** (the
-fill/cancel-confirm query fires during idle, not only on a tick); the Reconciler pulls broker
+`heartbeat()` drains the inbox, checks timeouts, and **re-polls resting orders and the MARKET
+orders and closes the venue has acknowledged** (the fill/cancel-confirm query fires during idle,
+not only on a tick); the Reconciler pulls broker
 truth if due; and a decision **ghost-pass** runs (`tick=None`, cached worker results) for logics
 that opt in via `wants_heartbeat()`. No synthetic market tick is fed into the pipeline and no
 tick state is mutated (the #320 contract). The per-order `poll_interval_ms` and the reconcile
@@ -429,7 +451,7 @@ orphans the order (the order rests once the submit confirms, with no cancel ever
 the Field Study `#13`/`#15` cert blocker).
 
 `cancel_limit_order` therefore **defers** such a cancel: it parks the intent on the PendingOrder
-(`cancel_requested=True`) and returns `True` (accepted). When `_handle_limit_submit_response`
+(`cancel_requested=True`) and returns `True` (accepted). When `_handle_resting_submit_response`
 confirms the `broker_ref`, it auto-issues the parked cancel (`PENDING_CANCEL` → `submit_cancel_order_async`),
 which resolves via `_handle_cancel_response` and removes the order. **FILLED-precedence:** if the
 submit response is a sync-fill, the fill wins and the deferred cancel is discarded (a filled order
@@ -461,7 +483,7 @@ the submit response — so during submit-in-flight the order is locally visible 
 | 8 | Cancel resp = SUCCESS | removed, `on_order_cancelled` #348 | open order gone | clean; `active_limits → 0` ✓ |
 | 9 | Cancel resp = "already filled" | stays in list, in-flight cleared → query → FILLED | filled (cancel too late) | FILLED-precedence → `on_order_filled` #348; cancel-vs-fill (**#361**) |
 | 10 | Cancel resp = "unknown order" | in-flight cleared, stays for poll | not (yet) existing / already terminal | poll resolves real state; benign (the stale-QueryResponse warnings) |
-| 11 | Cancel TIMEOUT | stuck in `PENDING_CANCEL` | **UNKNOWN** — cancel may/may not have applied | `check_timeouts` net; **Reconciler #151** backstop |
+| 11 | Cancel TIMEOUT | stuck in `PENDING_CANCEL` | **UNKNOWN** — cancel may/may not have applied | asked about until the resolution ceiling (#487), which abandons a parked close — `check_timeouts` never sees a resting order; **Reconciler #151** backstop. A status read that finds the order `canceled` confirms the cancel exactly as its answer would have — `order_cancelled`, the parked close is sent; a resolution that names the order still resting ends the operation and abandons the close |
 | **Partial** | | | | |
 | 12 | Partial fill then cancel | filled portion = position, remainder | part filled, part resting → cancel kills the remainder | **#342** surfaces `PARTIALLY_FILLED`; today partly via volume reconcile |
 

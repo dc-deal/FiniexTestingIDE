@@ -21,6 +21,7 @@ from python.framework.logging.global_logger import GlobalLogger
 from python.framework.testing.mock_broker_adapter import MockBrokerAdapter, MockExecutionMode
 from python.framework.testing.mock_order_execution import MockOrderExecution
 from python.framework.trading_env.broker_config import BrokerConfig
+from python.framework.trading_env.live.live_trade_executor import LiveTradeExecutor
 from python.framework.trading_env.simulation.trade_simulator import TradeSimulator
 from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.trading_env_types.broker_types import BrokerType
@@ -282,9 +283,9 @@ class TestBothPipelinesAgree:
     about parity that rests on where the code sits is a claim, and this class turns it into
     a reading. The fill-time site is exercised in its POSITIVE direction: it must count the
     other orders' claims and exclude its own, so a fill the account can afford goes through.
-    A fill-time REFUSAL cannot be produced here — submission and fill compute the same figure,
-    so only a balance change from outside (another actor, a fee on a third fill) can open a
-    gap between them, and the harness has no such actor.
+    Submission and fill compute the same figure only at the same PRICE: a market order that
+    fills above the ask it was submitted at opens a gap between them, and
+    TestAFillTheVenueMadeIsBooked below produces one.
     """
 
     def test_the_simulation_refuses_the_second_order_too(self):
@@ -335,3 +336,95 @@ class TestBothPipelinesAgree:
         assert 0.0 < seen_by_resting < 0.01 * _ASK * 1.02
         # … and together they are exactly the sum: nothing counted twice, nothing dropped.
         assert both == pytest.approx(seen_by_market + seen_by_resting)
+
+
+class _VenueThatFillsHigher(MockBrokerAdapter):
+    """A venue whose market fills land 3 % above the price the order was submitted at."""
+
+    def _resolve_market_fill_price(self, symbol, direction, expected_price):
+        """
+        The mock's own fill price, moved against the buyer.
+
+        Args:
+            symbol: Trading symbol
+            direction: LONG or SHORT
+            expected_price: Optional explicit override
+
+        Returns:
+            The fill price, 3 % worse for a buy
+        """
+        price = super()._resolve_market_fill_price(symbol, direction, expected_price)
+        return price * 1.03 if direction == OrderDirection.LONG else price
+
+    def calculate_margin_required(self, symbol, lots, tick, direction):
+        """
+        The full notional at the current ask — an unleveraged margin account.
+
+        The stock mock declares its margin in the quote currency and so prices a BTCUSD
+        position at its lot count; that answer can never exceed a balance.
+
+        Args:
+            symbol: Trading symbol
+            lots: Order size
+            tick: Current tick data
+            direction: LONG or SHORT
+
+        Returns:
+            The margin in the quote currency
+        """
+        return lots * tick.ask
+
+
+class TestAFillTheVenueMadeIsBooked:
+    """
+    The fill-time funds check decides only where the executor IS the venue.
+
+    0.0195 BTC at the ask of 50001 costs 977.56 USD with the taker fee, which a 1000 USD
+    account can pay, so the order passes submission. It fills 3 % higher: 1006.88 USD. The
+    simulation plays the venue and refuses that fill, as a venue would. A live session cannot
+    refuse it — the venue already executed it — and refusing to BOOK it left the venue holding
+    coins our book did not.
+    """
+
+    @pytest.mark.parametrize('spot_mode', [False, True], ids=['margin', 'spot'])
+    def test_live_books_it_despite_our_shortfall(self, spot_mode):
+        from_venue = _VenueThatFillsHigher(mode=MockExecutionMode.INSTANT_FILL)
+        executor = LiveTradeExecutor(
+            broker_config=BrokerConfig(BrokerType.KRAKEN_SPOT, from_venue),
+            initial_balance=1000.0,
+            account_currency='USD',
+            logger=GlobalLogger('VenueFillIsBooked'),
+            spot_mode=spot_mode,
+            initial_balances={'USD': 1000.0, 'BTC': 0.0} if spot_mode else None,
+            session_key='test',
+        )
+        mock = MockOrderExecution(mode=MockExecutionMode.INSTANT_FILL)
+        mock.feed_tick(executor, symbol='BTCUSD', bid=_BID, ask=_ASK)
+
+        submitted = executor.open_order(_market(OrderDirection.LONG, 0.0195))
+        # The market moved with the fill: the margin check prices the CURRENT tick, the spot
+        # check the fill itself, so both see the shortfall only when both have moved.
+        mock.feed_tick(executor, symbol='BTCUSD', bid=_BID * 1.03, ask=_ASK * 1.03)
+
+        assert submitted.status == OrderStatus.PENDING, 'fixture: submission must pass'
+        positions = executor.get_open_positions()
+        assert len(positions) == 1 and positions[0].lots == pytest.approx(0.0195), (
+            'the venue executed the buy and the book refused to follow it')
+        assert executor.get_execution_stats().orders_rejected == 0
+
+    def test_the_simulation_still_refuses_it(self):
+        sim = _spot_simulator(usd=1000.0)
+        sim.open_order(_market(OrderDirection.LONG, 0.0195))
+
+        higher_ask = _ASK * 1.03
+        sim.on_tick(TickData(
+            timestamp=datetime.fromtimestamp(1.001, tz=timezone.utc),
+            symbol='BTCUSD', bid=higher_ask - 2.0, ask=higher_ask,
+            collected_msc=1001, time_msc=1001,
+        ))
+
+        assert not sim.get_open_positions()
+        rejections = [r for r in sim.get_order_history() if r.status == OrderStatus.REJECTED]
+        assert len(rejections) == 1
+        assert rejections[0].rejection_reason == RejectionReason.INSUFFICIENT_FUNDS
+

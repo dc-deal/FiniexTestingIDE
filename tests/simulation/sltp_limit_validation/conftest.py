@@ -14,6 +14,7 @@ Config design:
 - Seeds: inbound_latency=12345
 """
 
+from pathlib import Path
 from typing import Any, Dict, List
 
 import pytest
@@ -38,7 +39,8 @@ from tests.shared.fixture_helpers import (
 # =============================================================================
 # CONFIG: Which scenario set does this suite run?
 # =============================================================================
-SLTP_LIMIT_VALIDATION_CONFIG = 'backtesting/sltp_limit_validation_test.json'
+_FIXTURE_DIR = Path(__file__).resolve().parents[2] / 'fixtures' / 'scenario_sets' / 'sltp_limit_validation'
+SLTP_LIMIT_VALIDATION_CONFIG = str(_FIXTURE_DIR / 'sltp_limit_validation_test.json')
 
 
 # =============================================================================

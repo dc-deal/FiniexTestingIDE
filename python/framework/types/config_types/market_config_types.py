@@ -125,6 +125,20 @@ class MarketRulesConfig(StrictConfigModel):
     trading_day_anchor: Optional[DayAnchorConfig] = None
 
 
+class ServerClockConfig(StrictConfigModel):
+    """
+    How a broker's server clock relates to UTC: the IANA zone whose daylight saving rules it
+    follows, and how many whole hours it runs ahead of that zone's wall clock.
+
+    A rule rather than a number, because a server on New York close time ('America/New_York',
+    7) is UTC+2 while New York keeps standard time and UTC+3 in daylight time — one fixed offset
+    is right for half the year. No defaults: a clock nobody declared is a clock nobody checked.
+    Resolved per stamp via `time_utils.server_clock_to_utc_ms`.
+    """
+    timezone: str
+    hours_ahead: int
+
+
 class BrokerTransportConfig(StrictConfigModel):
     """Per-broker transport-layer tuning (HTTP endpoint, rate limits, polling cadence)."""
     api_base_url: str = ''
@@ -145,6 +159,9 @@ class BrokerEntryConfig(StrictConfigModel):
     # how the next broker silently inherits the wrong price basis, which is the defect this
     # field exists to remove; without one, StrictConfigModel refuses the load instead.
     price_formation: PriceFormation
+    # What the venue's own timestamps mean — REQUIRED for the same reason as price_formation:
+    # a default would let the next broker's ticks be converted by someone else's clock.
+    server_clock: ServerClockConfig
     broker_config_path: str = ''
     trading_model: TradingModel = TradingModel.MARGIN
     config_mode: ConfigMode = ConfigMode.STATIC

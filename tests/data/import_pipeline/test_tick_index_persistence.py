@@ -47,7 +47,6 @@ def _import_ticks(tmp_path, symbol='BTCUSD', data_format_version='1.3.0',
         source_dir=str(source),
         target_dir=str(target),
         auto_render_bars=False,
-        offset_registry={'kraken_spot': 0},
     )
     importer.process_all_exports()
 

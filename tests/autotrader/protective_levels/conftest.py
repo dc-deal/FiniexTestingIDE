@@ -13,9 +13,11 @@ test file because two suites need the same venue.
 """
 
 from dataclasses import replace
-from typing import Any, Dict
+from typing import Any, Dict, Optional, Tuple
 
+from python.framework.exceptions.connection_errors import ConnectionAttemptFailedError
 from python.framework.testing.mock_broker_adapter import MockBrokerAdapter
+from python.framework.types.live_types.live_execution_types import BrokerOrderStatus
 from python.framework.types.trading_env_types.order_types import (
     OrderCapabilities,
     OrderType,
@@ -29,13 +31,21 @@ class VenueHoldsProtectionMock(MockBrokerAdapter):
     Two capabilities, and they answer different questions: `venue_held_protective_orders`
     decides whether the framework may ask for a venue-held level at all,
     `stop_orders` whether this venue would accept the STOP that carries one.
+
+    It can also END a stop the way the venue does without being heard: a cancel it carries
+    out and whose answer is then lost, or a cancel or expiry nobody asked for.
     """
+
+    _STATUS_MAP = {**MockBrokerAdapter._STATUS_MAP, 'EXPIRED': BrokerOrderStatus.EXPIRED}
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         # The refs this mock is holding as resting stops. Without a book it cannot tell
         # "an order I minted" from "an order I never heard of", and answers the second.
         self._resting_stops = set()
+        # Stops that ended at the venue: ref → (status, executed lots, price)
+        self._ended_stops: Dict[str, Tuple[str, float, Optional[float]]] = {}
+        self.lose_next_cancel_answer = False
 
     def get_order_capabilities(self) -> OrderCapabilities:
         return replace(super().get_order_capabilities(),
@@ -85,6 +95,11 @@ class VenueHoldsProtectionMock(MockBrokerAdapter):
         self._raise_injected_fault('query')
         if payload.get('broker_ref') in self._resting_stops:
             return {'status': 'PENDING', 'broker_ref': payload['broker_ref']}
+        ended = self._ended_stops.get(payload.get('broker_ref'))
+        if ended is not None:
+            status, lots, price = ended
+            return {'status': status, 'broker_ref': payload['broker_ref'],
+                    'filled_lots': lots, 'fill_price': price}
         return super().do_request_query(payload)
 
     def do_request_cancel(self, payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -104,5 +119,30 @@ class VenueHoldsProtectionMock(MockBrokerAdapter):
         broker_ref = payload.get('broker_ref')
         if broker_ref in self._resting_stops:
             self._resting_stops.discard(broker_ref)
+            self._ended_stops[broker_ref] = ('CANCELLED', 0.0, None)
+            if self.lose_next_cancel_answer:
+                # Carried out at the venue — only the answer does not come back
+                self.lose_next_cancel_answer = False
+                raise ConnectionAttemptFailedError('read timeout after CancelOrder',
+                                                   terminal=False)
             return {'status': 'CANCELLED', 'broker_ref': broker_ref}
         return super().do_request_cancel(payload)
+
+    def end_at_venue(
+        self,
+        broker_ref: str,
+        status: str = 'CANCELLED',
+        filled_lots: float = 0.0,
+        fill_price: Optional[float] = None,
+    ) -> None:
+        """
+        End a resting stop the way the venue does on its own — nobody asked this bot.
+
+        Args:
+            broker_ref: The stop's reference
+            status: 'CANCELLED' or 'EXPIRED'
+            filled_lots: What it executed before it ended
+            fill_price: At what price
+        """
+        self._resting_stops.discard(broker_ref)
+        self._ended_stops[broker_ref] = (status, filled_lots, fill_price)

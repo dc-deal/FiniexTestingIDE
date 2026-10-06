@@ -55,9 +55,10 @@ carrier never overwrites it.
 
 ## What this side decides
 
-The registry is `configs/data_origins.json`, with the usual cascade to `user_configs/`. The
-tracked copy carries the schema and development entries; production entries belong in the
-workspace copy, because a name describes topology.
+The registry is `configs/data_origins.json`, with the usual cascade to `user_configs/`. What the
+tracked copy carries, and why it ships, is stated once — in that file's own `_comment`. The
+workspace copy adds identities and replaces the attestation list, because the claims about legacy
+files are the operator's.
 
 ```json
 {
@@ -347,8 +348,6 @@ re-run the benchmark, and a release re-runs it anyway.
 - **A backfill of the identity into old files.** A value invented for an old file is
   indistinguishable from one that was measured, which is the property this exists to protect. A
   claim may be written — but only where the record says it is a claim.
-- **The signal archive.** Its `data_origin` field already separates generated from live envelopes,
-  and no signal producer states an identity yet. The columns follow when one does.
 
 **One known limit, recorded because a consumer depends on it.** Where a producer derives its
 identity rather than minting one, the derivation has to distinguish the thing that WRITES, not the

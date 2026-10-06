@@ -9,9 +9,9 @@ Cross-pipeline parity tests verify that the simulation pipeline (`execute_tick_l
 | `tests/parity/test_bar_parity_kraken_spot_btcusd.py` | `(kraken_spot, BTCUSD)` | bar parity, trade parity |
 | `tests/parity/test_bar_parity_kraken_spot_ethusd.py` | `(kraken_spot, ETHUSD)` | bar parity, trade parity |
 
-**Current matrix: 4 tests, ~4s.**
+Each pair has one bar parity and one trade parity test, and each test takes well under a second.
 
-Feeds 1000 synthetic BTCUSD ticks through both pipelines and asserts that M1 bar history is identical: bar count, OHLC, volume, tick_count, and timestamp per bar.
+The bar parity test feeds 1000 synthetic ticks of its pair through both pipelines and asserts that M1 bar history is identical: bar count, OHLC, volume, tick_count, and timestamp per bar.
 
 ## Fixture Design
 

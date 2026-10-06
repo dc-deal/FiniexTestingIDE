@@ -6,7 +6,7 @@ the MetaTrader 5 EA and the Kraken collector.
 Defines mandatory and optional fields for import validation.
 """
 
-from typing import Dict, List, TypedDict
+from typing import List, TypedDict
 
 
 class SymbolInfoSchema(TypedDict, total=False):
@@ -209,6 +209,10 @@ NESTED_METADATA_KEYS: List[str] = [
     # and stays readable as such, beside the class this side resolved from it. Keeping both is
     # the point — a resolved class can be re-derived later only if the identity survived.
     'origin',
+    # What the one-time repairs of the arrival time did to this raw file — kept as JSON so the
+    # record of a repair stays readable rather than landing as a Python repr.
+    'collected_msc_restoration',
+    'collected_msc_server_clock_correction',
 ]
 
 # Metadata a collector still writes that nothing downstream reads: the settings of the collector's
@@ -261,21 +265,6 @@ class ImportTestPathsSchema(TypedDict):
     data_finished: str
 
 
-class OffsetRegistryEntrySchema(TypedDict):
-    """
-    Single broker offset entry in the offset registry.
-
-    Args:
-        default_offset_hours: Hours to subtract from broker timestamps for UTC conversion
-        description: Human-readable explanation of the offset
-
-    Returns:
-        N/A (TypedDict - used for type checking only)
-    """
-    default_offset_hours: int
-    description: str
-
-
 class ProcessingConfigSchema(TypedDict):
     """
     Import processing behavior configuration.
@@ -300,7 +289,6 @@ class ImportConfigSchema(TypedDict):
         description: Human-readable config description
         paths: Import pipeline path configuration
         test_paths: Isolated test environment paths
-        offset_registry: Per-broker UTC offset defaults
         processing: Import behavior settings
 
     Returns:
@@ -310,5 +298,4 @@ class ImportConfigSchema(TypedDict):
     description: str
     paths: ImportConfigPathsSchema
     test_paths: ImportTestPathsSchema
-    offset_registry: Dict[str, OffsetRegistryEntrySchema]
     processing: ProcessingConfigSchema
