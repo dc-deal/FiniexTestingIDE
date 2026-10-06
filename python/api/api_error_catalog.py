@@ -82,6 +82,18 @@ SWEEP_NOT_FOUND = ApiErrorKind(
 CONFIG_FILE_NOT_FOUND = ApiErrorKind(
     404, 'config_file_not_found', "No configuration file '{file}' in the directory")
 
+# --- Documentation: the served documents and the search over them -----------------------------
+
+DOCUMENT_NOT_FOUND = ApiErrorKind(
+    404, 'document_not_found',
+    "No document '{name}' on this server. GET /api/v1/docs lists the ones it carries")
+EMPTY_QUERY = ApiErrorKind(
+    400, 'empty_query', "'q' must not be empty — it is what gets searched for")
+QUERY_TOO_LONG = ApiErrorKind(
+    400, 'query_too_long',
+    "'q' must be at most {maximum} characters, got {length} — a search is a few words, and a "
+    'longer one is scored against every section for nothing')
+
 # --- Identity ---------------------------------------------------------------------------------
 
 IDENTITY_UNBOUND = ApiErrorKind(
@@ -97,6 +109,7 @@ API_ERRORS: Tuple[ApiErrorKind, ...] = (
     INVALID_PERIOD, INVALID_RANGE, MARKET_TYPE_NOT_CONFIGURED,
     DEPLOYMENT_NOT_FOUND, SWEEP_NOT_FOUND,
     CONFIG_FILE_NOT_FOUND,
+    DOCUMENT_NOT_FOUND, EMPTY_QUERY, QUERY_TOO_LONG,
     IDENTITY_UNBOUND,
 )
 

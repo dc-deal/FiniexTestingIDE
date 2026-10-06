@@ -21,19 +21,24 @@ from fastapi.responses import JSONResponse
 from fastapi.routing import APIRoute
 
 from python.api.api_auth_setup import setup_api_auth
-from python.api.api_contract import API_CONTRACT_VERSION, CHANGES, CONTRACT_HEADER
+from python.api.api_contract import API_CONTRACT_VERSION, API_PREFIX, CHANGES, CONTRACT_HEADER
 from python.api.api_error_catalog import IDENTITY_UNBOUND, api_error
+from python.api.api_route_documents import describes
 from python.api.head_request_middleware import HeadRequestMiddleware
+from python.api.link_header_middleware import LinkHeaderMiddleware
 from python.api.endpoints import (
     bars_router,
     broker_router,
     deployments_router,
     directory_router,
+    docs_router,
     reports_router,
     sweeps_router,
 )
 from python.configuration.app_config_manager import AppConfigManager
 from python.data_management.index.bars_index_manager import BarsIndexManager
+from python.framework.docs_search.docs_corpus import DOCS_ROOT
+from python.framework.docs_search.docs_search_index import docs_search_index
 from python.framework.exceptions.api_errors import ApiException
 from python.framework.types.api.api_identity_types import ApiConsumerIdentity
 from python.framework.types.api.api_types import (
@@ -63,9 +68,18 @@ ROUTER_SURFACES = (
     (bars_router.router, 'bars'),
     (deployments_router.router, 'deployments'),
     (directory_router.router, 'directory'),
+    (docs_router.router, 'docs'),
     (reports_router.router, 'reports'),
     (sweeps_router.router, 'sweeps'),
 )
+
+# The bar routes answer with a bare array, so everything a consumer needs ABOUT the rows travels
+# as a header. A browser hides every response header that is not CORS-safelisted, which made all
+# seven invisible to the one consumer that is a browser — including the three that cannot be
+# inferred from the rows at all (the time basis, the timezone and the price basis).
+_BAR_HEADERS = ('X-Bar-Count', 'X-Bar-Total', 'X-Bar-Limit', 'X-Bar-Truncated',
+                'X-Bar-Time-Basis', 'X-Bar-Timezone', 'X-Bar-Price-Basis')
+_INDICATOR_HEADERS = ('X-Indicator-Smoothing', 'X-Indicator-Period', 'X-Indicator-Timeframe')
 
 # How much of one CHANGES line the boot overview shows: the route and the gist. The full
 # sentence is what `/api/v1/contract` serves.
@@ -198,8 +212,13 @@ def create_app() -> FastAPI:
         # a cross-origin client sees the STATUS of a 401 or 429 and neither the scheme to
         # retry with nor how long to wait. Measured by the package's author against their own
         # client; invisible from here, because our other consumer is server-side.
-        expose_headers=['WWW-Authenticate', 'Retry-After', CONTRACT_HEADER],
+        expose_headers=['WWW-Authenticate', 'Retry-After', 'Link', CONTRACT_HEADER,
+                        *_BAR_HEADERS, *_INDICATOR_HEADERS],
     )
+    # Added BEFORE the HEAD middleware so it ends up INSIDE it: the outermost middleware is the
+    # one added last, and the HEAD middleware passes a copy of the scope, so anything wrapped
+    # around it would find no matched route on a HEAD request.
+    app.add_middleware(LinkHeaderMiddleware)
     # Every GET route answers HEAD too, the way HTTP expects — a consumer reading only the
     # contract header asks with HEAD, and FastAPI alone refuses that with a 405.
     app.add_middleware(HeadRequestMiddleware)
@@ -226,7 +245,8 @@ def create_app() -> FastAPI:
             headers=exc.headers,
         )
 
-    @app.get('/api/v1/health', response_model=HealthResponse)
+    @app.get('/api/v1/health', response_model=HealthResponse,
+             openapi_extra=describes('server'))
     def health() -> HealthResponse:
         return HealthResponse(status='ok', version=app_version,
                               started_at=started_at.isoformat(),
@@ -239,12 +259,14 @@ def create_app() -> FastAPI:
     # Open beside /health for the same reason: a consumer has to be able to ask which contract
     # they are talking to BEFORE they hold a token, or a version mismatch and a credential
     # failure look alike from outside.
-    @app.get('/api/v1/contract', response_model=ApiContractResponse)
+    @app.get('/api/v1/contract', response_model=ApiContractResponse,
+             openapi_extra=describes('contract-log'))
     def api_contract() -> ApiContractResponse:
         return ApiContractResponse(
             contract=API_CONTRACT_VERSION, app_version=app_version, changes=CHANGES)
 
-    @app.get('/api/v1/timeframes', response_model=TimeframeListResponse)
+    @app.get('/api/v1/timeframes', response_model=TimeframeListResponse,
+             openapi_extra=describes('server'))
     def list_timeframes() -> TimeframeListResponse:
         return TimeframeListResponse(timeframes=[
             TimeframeInfo(name=tf, minutes=TimeframeConfig.get_minutes(tf))
@@ -253,7 +275,8 @@ def create_app() -> FastAPI:
 
     # Open beside /timeframes for the same reason: the check vocabulary is the app's own static
     # declaration — what an id MEANS — and says nothing about a venue, a run or an account.
-    @app.get('/api/v1/validation-checks', response_model=ValidationCheckListResponse)
+    @app.get('/api/v1/validation-checks', response_model=ValidationCheckListResponse,
+             openapi_extra=describes('server'))
     def list_validation_checks() -> ValidationCheckListResponse:
         return ValidationCheckListResponse(checks=[
             ValidationCheckRow(check=info.check, title=info.title, description=info.description)
@@ -261,7 +284,7 @@ def create_app() -> FastAPI:
         ])
 
     @app.get('/api/v1/brokers', response_model=BrokerListResponse,
-             dependencies=guarded)
+             dependencies=guarded, openapi_extra=describes('market-data'))
     def list_brokers() -> BrokerListResponse:
         index = BarsIndexManager()
         index.load_index()
@@ -271,16 +294,28 @@ def create_app() -> FastAPI:
     # CALLER, and there is no path parameter for a grant to name. Deliberately not in
     # ROUTER_SURFACES — a surface here would be a grant a token needs in order to ask what it
     # holds.
-    @app.get('/api/v1/caller', response_model=CallerResponse, dependencies=guarded)
+    @app.get('/api/v1/caller', response_model=CallerResponse, dependencies=guarded,
+             openapi_extra=describes('server'))
     def caller(request: Request) -> CallerResponse:
         return _describe_caller(request, auth.bearer is not None, auth.identities)
 
     for router, surface in ROUTER_SURFACES:
         app.include_router(
             router,
-            prefix='/api/v1',
+            prefix=API_PREFIX,
             dependencies=guarded + [Security(auth.grant, scopes=[surface])],
         )
 
+    # Read the served documents HERE rather than on the first request that asks for one.
+    # Building the index is almost entirely file reading, and these documents ship with the
+    # server: a change to them is a deployment, and a deployment restarts this process.
+    documents = docs_search_index(DOCS_ROOT)
+    # Generate the schema here for the same reason. It is the only enumeration that descends
+    # into the included routers, so the document index reads which routes name each document
+    # from it — 323 ms on the first call and nothing on every later one, measured 2026-10-06.
+    app.openapi()
+
     print('\n'.join(_describe_the_api(app, app_version)))
+    print(f'   {len(documents.get_names())} document(s) served, '
+          f'{documents.get_passage_count()} passage(s) searchable')
     return app

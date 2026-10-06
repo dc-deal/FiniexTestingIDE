@@ -251,6 +251,11 @@ run header. See [Introduction](introduction_to_the_ide.md#the-kinds-of-run).
 of an order was executed. *Partially failed batch*: some scenarios of a backtest failed. *Partial
 envelope*: the signal producer answered for some symbols only.
 
+**passage** — In the documentation search, one chunk of a served document: the text under one
+heading, which is what a hit names and what the ranking scores. Deliberately not *section*, which
+in this project means one section of a run report. See
+[Reading the documentation from the API](consumer/docs.md).
+
 **pending order** — Any order that is not yet finished. Its phases: *in flight*, then *resting* —
 and while a modify or a cancel of a resting order is on its way, that operation is in flight too.
 See [Pending Orders](architecture/pending_order_architecture.md).
@@ -305,6 +310,12 @@ session. See [Batch Data Flow](architecture/batch_data_flow.md).
 `finished_with_errors` (it completed, but errors were logged), `failed` (units failed, or the session
 ended in an emergency) or `crashed` (the process did not complete). The exit code says the same. See
 [Warnings & Errors](architecture/warnings_errors_tiers.md).
+
+**report section** (served as a route segment and in a run's `artifacts`) — One part of a run's
+report: `trade-history`, `portfolio`, `booking-periods` and the rest. Which sections a run holds
+depends on its pipeline, so `artifacts` is read before a section is asked for. Not to be confused
+with a *passage*, the unit the documentation search returns. See
+[Reporting Pipeline](architecture/reporting_pipeline.md).
 
 **run type** (`run_type`, served as `group`) — The pipeline that produced a run: `simulation` or
 `autotrader`.

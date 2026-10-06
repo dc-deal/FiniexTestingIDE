@@ -6,6 +6,7 @@ GET /api/v1/brokers/{broker}/symbols
 
 from fastapi import APIRouter
 
+from python.api.api_route_documents import describes
 from python.configuration.market_config_manager import MarketConfigManager
 from python.data_management.index.bars_index_manager import BarsIndexManager
 from python.api.api_error_catalog import (
@@ -18,7 +19,8 @@ from python.framework.types.api.api_types import SymbolInfo, SymbolListResponse
 router = APIRouter()
 
 
-@router.get('/brokers/{broker}/symbols', response_model=SymbolListResponse)
+@router.get('/brokers/{broker}/symbols', response_model=SymbolListResponse,
+            openapi_extra=describes('market-data'))
 def list_symbols(broker: str) -> SymbolListResponse:
     """List all symbols available for a broker, including market type."""
     index = BarsIndexManager()

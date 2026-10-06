@@ -14,6 +14,7 @@ from pathlib import Path
 
 from fastapi import APIRouter
 
+from python.api.api_route_documents import describes
 from python.configuration.app_config_manager import AppConfigManager
 from python.api.api_error_catalog import SWEEP_NOT_FOUND, api_error
 from python.framework.optimization.optimization_analysis import rank_per_currency, summarize_sweeps
@@ -28,7 +29,8 @@ def _ledger() -> RunResultsLedger:
     return RunResultsLedger(Path(AppConfigManager().get_run_ledger_path()))
 
 
-@router.get('/sweeps', response_model=SweepListResponse)
+@router.get('/sweeps', response_model=SweepListResponse,
+            openapi_extra=describes('sweeps'))
 def list_sweeps() -> SweepListResponse:
     """
     Every recorded parameter sweep, newest first.
@@ -42,7 +44,8 @@ def list_sweeps() -> SweepListResponse:
     return SweepListResponse(sweeps=sweeps, count=len(sweeps))
 
 
-@router.get('/sweeps/{sweep_id}', response_model=SweepDetailResponse)
+@router.get('/sweeps/{sweep_id}', response_model=SweepDetailResponse,
+            openapi_extra=describes('sweeps'))
 def get_sweep(sweep_id: str) -> SweepDetailResponse:
     """
     One sweep's combinations, ranked by the objective the sweep declared.

@@ -138,7 +138,7 @@ class ConsumerToken(ConsumerTokenBase):
     """
 
     GRANT_SURFACES: ClassVar[Tuple[str, ...]] = (
-        'bars', 'brokers', 'deployments', 'directory', 'reports', 'sweeps')
+        'bars', 'brokers', 'deployments', 'directory', 'docs', 'reports', 'sweeps')
 
     account: str
 

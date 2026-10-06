@@ -21,6 +21,7 @@ from python.api.api_error_catalog import (
     RUN_NOT_FOUND,
     api_error,
 )
+from python.api.api_route_documents import describes
 from python.framework.exceptions.api_errors import ApiException
 from python.framework.exceptions.report_artifact_errors import ReportArtifactUnreadableError
 from python.framework.reporting.io.artifact_specs import (
@@ -93,20 +94,25 @@ def _missing_artifact(run_id: str, section: str) -> ApiException:
                      artifact_count=len(run.artifacts), section=section)
 
 
-@router.get('/reports/runs', response_model=RunListResponse)
+@router.get('/reports/runs', response_model=RunListResponse,
+            openapi_extra=describes('runs'))
 def list_runs() -> RunListResponse:
     """
-    Index of runs carrying persisted report artifacts, newest first, each with what the
-    run-results ledger recorded it did.
+    Every indexed run, newest first, each with what the run-results ledger recorded it did.
+
+    Every run is here, whether or not it produced a report: a run with no artifacts exists as
+    logs only, and `artifacts` being empty beside `reporting` is what separates a run that died
+    before its report phase from one that was never commissioned to write any.
 
     Returns:
-        The RunListResponse (empty list when no run has been persisted yet)
+        The RunListResponse (empty list when nothing has been indexed yet)
     """
     runs: list[RunInfo] = ReportStore().list_runs_with_results()
     return RunListResponse(runs=runs, count=len(runs))
 
 
-@router.get('/reports/runs/{run_id}/trade-history', response_model=TradeHistoryReport)
+@router.get('/reports/runs/{run_id}/trade-history', response_model=TradeHistoryReport,
+            openapi_extra=describes('trade-history'))
 def get_trade_history(
     run_id: str,
     symbol: Optional[str] = Query(None, description='Filter by symbol'),
@@ -137,7 +143,8 @@ def get_trade_history(
     return report
 
 
-@router.get('/reports/runs/{run_id}/order-history', response_model=OrderHistoryReport)
+@router.get('/reports/runs/{run_id}/order-history', response_model=OrderHistoryReport,
+            openapi_extra=describes('order-history'))
 def get_order_history(
     run_id: str,
     symbol: Optional[str] = Query(None, description='Filter by symbol'),
@@ -160,7 +167,8 @@ def get_order_history(
     return report
 
 
-@router.get('/reports/runs/{run_id}/portfolio', response_model=PortfolioReport)
+@router.get('/reports/runs/{run_id}/portfolio', response_model=PortfolioReport,
+            openapi_extra=describes('portfolio'))
 def get_portfolio(run_id: str) -> PortfolioReport:
     """
     Portfolio headline report for a run (per-unit rows + per-currency aggregates).
@@ -177,7 +185,8 @@ def get_portfolio(run_id: str) -> PortfolioReport:
     return report
 
 
-@router.get('/reports/runs/{run_id}/execution-stats', response_model=ExecutionStatsReport)
+@router.get('/reports/runs/{run_id}/execution-stats', response_model=ExecutionStatsReport,
+            openapi_extra=describes('execution-stats'))
 def get_execution_stats(run_id: str) -> ExecutionStatsReport:
     """
     Execution-stats report for a run (per-unit order counts + summed totals).
@@ -194,7 +203,8 @@ def get_execution_stats(run_id: str) -> ExecutionStatsReport:
     return report
 
 
-@router.get('/reports/runs/{run_id}/pending-orders', response_model=PendingOrdersReport)
+@router.get('/reports/runs/{run_id}/pending-orders', response_model=PendingOrdersReport,
+            openapi_extra=describes('pending-orders'))
 def get_pending_orders(run_id: str) -> PendingOrdersReport:
     """
     Pending-orders report for a run (per-unit lifecycle + latency + active orders).
@@ -211,7 +221,8 @@ def get_pending_orders(run_id: str) -> PendingOrdersReport:
     return report
 
 
-@router.get('/reports/runs/{run_id}/scenario-details', response_model=ScenarioDetailsReport)
+@router.get('/reports/runs/{run_id}/scenario-details', response_model=ScenarioDetailsReport,
+            openapi_extra=describes('scenario-details'))
 def get_scenario_details(run_id: str) -> ScenarioDetailsReport:
     """
     Scenario-details report for a run (per-scenario execution + signal metadata, sim-only).
@@ -228,7 +239,8 @@ def get_scenario_details(run_id: str) -> ScenarioDetailsReport:
     return report
 
 
-@router.get('/reports/runs/{run_id}/run-summary', response_model=RunSummary)
+@router.get('/reports/runs/{run_id}/run-summary', response_model=RunSummary,
+            openapi_extra=describes('run-summary'))
 def get_run_summary(run_id: str) -> RunSummary:
     """
     Cross-section KPI summary for a run (per-currency KPIs + global order counts).
@@ -245,7 +257,8 @@ def get_run_summary(run_id: str) -> RunSummary:
     return report
 
 
-@router.get('/reports/runs/{run_id}/worker-decision', response_model=WorkerDecisionReport)
+@router.get('/reports/runs/{run_id}/worker-decision', response_model=WorkerDecisionReport,
+            openapi_extra=describes('worker-decision'))
 def get_worker_decision(run_id: str) -> WorkerDecisionReport:
     """
     Worker/decision report for a run (per-unit worker + decision performance, unified).
@@ -262,7 +275,8 @@ def get_worker_decision(run_id: str) -> WorkerDecisionReport:
     return report
 
 
-@router.get('/reports/runs/{run_id}/profiling', response_model=ProfilingReport)
+@router.get('/reports/runs/{run_id}/profiling', response_model=ProfilingReport,
+            openapi_extra=describes('profiling'))
 def get_profiling(run_id: str) -> ProfilingReport:
     """
     Profiling report for a run (per-scenario operation timing + inter-tick + clipping + warmup, sim-only).
@@ -279,7 +293,8 @@ def get_profiling(run_id: str) -> ProfilingReport:
     return report
 
 
-@router.get('/reports/runs/{run_id}/aggregated-portfolio', response_model=AggregatedPortfolioReport)
+@router.get('/reports/runs/{run_id}/aggregated-portfolio', response_model=AggregatedPortfolioReport,
+            openapi_extra=describes('aggregated-portfolio'))
 def get_aggregated_portfolio(run_id: str) -> AggregatedPortfolioReport:
     """
     Aggregated per-currency portfolio report for a run (the rich detail view, sim).
@@ -296,7 +311,8 @@ def get_aggregated_portfolio(run_id: str) -> AggregatedPortfolioReport:
     return report
 
 
-@router.get('/reports/runs/{run_id}/warnings-errors', response_model=WarningsErrorsReport)
+@router.get('/reports/runs/{run_id}/warnings-errors', response_model=WarningsErrorsReport,
+            openapi_extra=describes('warnings-errors'))
 def get_warnings_errors(run_id: str) -> WarningsErrorsReport:
     """
     Warnings & errors report for a run (tiered warnings + per-unit errors + outcome, both pipelines).
@@ -316,7 +332,8 @@ def get_warnings_errors(run_id: str) -> WarningsErrorsReport:
     return report
 
 
-@router.get('/reports/runs/{run_id}/broker', response_model=BrokerReport)
+@router.get('/reports/runs/{run_id}/broker', response_model=BrokerReport,
+            openapi_extra=describes('broker'))
 def get_broker(run_id: str) -> BrokerReport:
     """
     Broker-configuration report for a run (per-broker spec + scenarios + symbols, sim-only).
@@ -333,7 +350,8 @@ def get_broker(run_id: str) -> BrokerReport:
     return report
 
 
-@router.get('/reports/runs/{run_id}/signal', response_model=SignalReport)
+@router.get('/reports/runs/{run_id}/signal', response_model=SignalReport,
+            openapi_extra=describes('signal'))
 def get_signal(run_id: str) -> SignalReport:
     """
     Signal-configuration report for a run (#433): per-source provenance + the run's
@@ -351,7 +369,8 @@ def get_signal(run_id: str) -> SignalReport:
     return report
 
 
-@router.get('/reports/runs/{run_id}/feed-stability', response_model=FeedStabilityReport)
+@router.get('/reports/runs/{run_id}/feed-stability', response_model=FeedStabilityReport,
+            openapi_extra=describes('feed-stability'))
 def get_feed_stability(run_id: str) -> FeedStabilityReport:
     """
     Feed-stability report for a run (#451): the observed disturbance episodes per source
@@ -369,7 +388,8 @@ def get_feed_stability(run_id: str) -> FeedStabilityReport:
     return report
 
 
-@router.get('/reports/runs/{run_id}/booking-periods', response_model=BookingPeriodsReport)
+@router.get('/reports/runs/{run_id}/booking-periods', response_model=BookingPeriodsReport,
+            openapi_extra=describes('booking-periods'))
 def get_booking_periods(run_id: str) -> BookingPeriodsReport:
     """
     The run's ledger entries (#537): one summary per booking period, and whether they add up.
@@ -402,7 +422,8 @@ def _parse_iso(value: Optional[str], field: str) -> Optional[datetime]:
     except ValueError:
         raise api_error(INVALID_TIMESTAMP, field=field, value=value)
 
-@router.get('/reports/runs/{run_id}/config', response_model=RunConfigSnapshot)
+@router.get('/reports/runs/{run_id}/config', response_model=RunConfigSnapshot,
+            openapi_extra=describes('config'))
 def get_run_config(run_id: str) -> RunConfigSnapshot:
     """
     The configuration a run was commissioned with.

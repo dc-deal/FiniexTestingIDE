@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 import pandas as pd
 from fastapi import APIRouter, Query, Response
 
+from python.api.api_route_documents import describes
 from python.data_management.index.bars_index_manager import BarsIndexManager
 from python.framework.discoveries.data_coverage.data_coverage_report_cache import (
     DataCoverageReportCache,
@@ -100,7 +101,8 @@ def _utc(dt: datetime) -> datetime:
     return dt.astimezone(timezone.utc)
 
 
-@router.get('/brokers/{broker}/symbols/{symbol}/coverage', response_model=CoverageResponse)
+@router.get('/brokers/{broker}/symbols/{symbol}/coverage', response_model=CoverageResponse,
+            openapi_extra=describes('market-data'))
 def get_coverage(broker: str, symbol: str) -> CoverageResponse:
     """Return available date range and timeframes for a broker/symbol pair."""
     index = _load_index()
@@ -120,7 +122,8 @@ def get_coverage(broker: str, symbol: str) -> CoverageResponse:
     )
 
 
-@router.get('/brokers/{broker}/symbols/{symbol}/bars', response_model=list[BarResponse])
+@router.get('/brokers/{broker}/symbols/{symbol}/bars', response_model=list[BarResponse],
+            openapi_extra=describes('market-data'))
 def get_bars(
     response: Response,
     broker: str,
@@ -199,7 +202,8 @@ def get_bars(
     ]
 
 
-@router.get('/brokers/{broker}/symbols/{symbol}/gaps', response_model=CoverageGapsResponse)
+@router.get('/brokers/{broker}/symbols/{symbol}/gaps', response_model=CoverageGapsResponse,
+            openapi_extra=describes('gaps'))
 def get_gaps(broker: str, symbol: str) -> CoverageGapsResponse:
     """
     Return every interruption in a symbol's archive, with what each one was.
@@ -247,6 +251,7 @@ def get_gaps(broker: str, symbol: str) -> CoverageGapsResponse:
 @router.get(
     '/brokers/{broker}/symbols/{symbol}/indicators/atr',
     response_model=list[IndicatorPointResponse],
+    openapi_extra=describes('market-data'),
 )
 def get_atr(
     response: Response,

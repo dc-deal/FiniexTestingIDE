@@ -16,9 +16,9 @@ Tests for all FiniexTestingIDE HTTP API endpoints. Uses `FastAPI TestClient` wit
 | `TestHealth` | `test_health_ok` | Status + version in response |
 | `TestBrokers` | `test_list_brokers` | Broker list from mocked index |
 | `TestSymbols` | `test_list_symbols` | Symbols with correct `market_type` |
-| `TestSymbols` | `test_unknown_broker_returns_404` | 404 + `error: not_found` |
+| `TestSymbols` | `test_unknown_broker_returns_404` | 404 + `error: broker_not_found` |
 | `TestCoverage` | `test_coverage_ok` | start/end/timeframes fields present |
-| `TestCoverage` | `test_unknown_symbol_returns_404` | 404 + `error: not_found` |
+| `TestCoverage` | `test_unknown_symbol_returns_404` | 404 + `error: symbol_not_found` |
 | `TestBars` | `test_bars_ok` | OHLCV shape, correct field names |
 | `TestBars` | `test_bars_carry_the_tick_count` | `tc` per bar — the activity measure on feeds whose volume is 0.0 |
 | `TestBars` | `test_a_cut_response_says_that_it_was_cut` | `X-Bar-Truncated` / `Count` / `Total` / `Limit` on a capped range |
@@ -28,7 +28,7 @@ Tests for all FiniexTestingIDE HTTP API endpoints. Uses `FastAPI TestClient` wit
 | `TestBars` | `test_a_limit_below_one_is_refused` | 400 + `error: invalid_limit` |
 | `TestBars` | `test_invalid_timeframe_returns_400` | 400 + `error: invalid_timeframe` |
 | `TestBars` | `test_from_after_to_returns_400` | 400 + `error: invalid_range` |
-| `TestBars` | `test_unknown_broker_returns_404` | 404 + `error: not_found` |
+| `TestBars` | `test_unknown_broker_returns_404` | 404 + `error: broker_not_found` |
 | `TestReportRuns` | `test_list_runs` | Run index: `count`, newest-first order, `group` + `name` per row |
 | `TestReportRuns` | `test_no_persisted_run_is_not_an_error` | Empty store returns `200` with an empty index, not 404 |
 

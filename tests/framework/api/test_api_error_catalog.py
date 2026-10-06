@@ -25,7 +25,9 @@ _CATALOG = _API_DIR / 'api_error_catalog.py'
 # The one other place an ApiException may be built: the error factory the shared auth package
 # raises through, whose codes are that package's own closed vocabulary.
 _AUTH_FACTORY = _API_DIR / 'api_auth_setup.py'
-_DOC = Path('docs/architecture/api_server_architecture.md')
+# The error table lives in the document the API SERVES, because the people who branch on these
+# codes are the ones who cannot read this repository.
+_DOC = Path('docs/consumer/errors.md')
 
 
 def _catalog_names() -> dict:
@@ -52,14 +54,13 @@ def _route_sources() -> dict:
 
 def _documented_codes() -> set:
     """
-    The codes the error table of the API architecture document lists.
+    The codes the served error document lists.
 
     Returns:
         The backticked codes in the table's second column
     """
-    section = _DOC.read_text(encoding='utf-8').split('### Error Responses', 1)[1]
-    section = section.split('\n## ', 1)[0]
-    return set(re.findall(r'^\| \d{3} \| `([a-z_]+)` \|', section, flags=re.M))
+    return set(re.findall(r'^\| \d{3} \| `([a-z_]+)` \|',
+                          _DOC.read_text(encoding='utf-8'), flags=re.M))
 
 
 class TestTheCatalogIsOneVocabulary:

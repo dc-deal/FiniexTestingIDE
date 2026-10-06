@@ -18,7 +18,7 @@ possible: a real-money session does not start from uncommitted code.
 how the patch of a dirty tree is stored and restored (see
 [Data Storage Layout](data_storage_layout.md#run-patches-keep-the-code-a-dirty-tree-ran-551)),
 what the API serves and when its contract changed (see
-[API Contract Log](api_contract_log.md)), and the run header's other fields (see
+[API Contract Log](../consumer/contract-log.md)), and the run header's other fields (see
 [Reporting Pipeline](reporting_pipeline.md) and
 [API Server Architecture](api_server_architecture.md)).
 
@@ -262,7 +262,7 @@ ledger's `git_dirty` on `GET /api/v1/sweeps/{sweep_id}`, which kept its shape an
 meaning as described above — it covers every repository a component of the run came from, and
 reads true where the code state could not be determined. A consumer that read it as "this
 repository had uncommitted changes" now sees true for more runs, correctly. Details in the
-[API Contract Log](api_contract_log.md#version-4--2026-09-24-551).
+[API Contract Log](../consumer/contract-log.md#versions-17-and-earlier).
 
 ## What it costs
 
