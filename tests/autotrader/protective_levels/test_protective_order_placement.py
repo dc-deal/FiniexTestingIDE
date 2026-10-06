@@ -220,7 +220,7 @@ class TestTheWindowBeforeTheVenueAnswers:
 
         assert position.position_id in executor._deferred_closes, (
             'A close inside the window must still go behind the cancel')
-        assert result.status != OrderStatus.REJECTED
+        assert not result.is_refused
         assert executor.get_open_positions(), 'nothing closed yet'
 
     def test_its_wire_key_cannot_collide_with_the_next_entry(self):

@@ -21,8 +21,11 @@ from python.framework.types.persistence_types import RiskBaseline
 from python.framework.types.run_origin_types import CodeIdentity, RunOrigin
 from python.framework.types.run_outcome_types import RunOutcome
 from python.framework.types.trading_env_types.order_types import (
+    CloseType,
     OrderAction,
     OrderDirection,
+    OrderEndReason,
+    OrderInitiator,
     OrderStatus,
     OrderType,
     RejectionReason,
@@ -127,6 +130,13 @@ class TradeHistoryRow(BaseModel):
     exit_slippage: float | None = None
     entry_slippage_pct: float | None = None
     exit_slippage_pct: float | None = None
+    # What belongs to the TRADE rather than to one of its fills. `lots` is what this record
+    # closed; `entry_lots` is the position's size when it opened, and `position_closes` how
+    # many records the position produced in its unit — counted before any filter, so a filter
+    # never changes it. Null where an older record carries no such figure.
+    close_type: CloseType | None = None
+    position_closes: int | None = None
+    entry_lots: float | None = None
 
 
 class TradeAnalytics(BaseModel):
@@ -239,13 +249,18 @@ class OrderHistoryRow(BaseModel):
     executed_lots: Optional[float] = None       # null unless something executed
     executed_price: Optional[float] = None      # null unless something executed
     event_time: Optional[str] = None            # ISO-8601 UTC, on the run's canonical clock —
-                                                # when this row's event happened: the fill, the
-                                                # refusal, the expiry. Null on a `pending` row
+                                                # when this row's event happened: the submission
+                                                # on a `pending` row, else the fill, the refusal,
+                                                # the cancel, the expiry
     commission: float
-    swap: float
-    slippage_points: float
-    rejection_reason: Optional[RejectionReason] = None  # null unless rejected
-    rejection_message: Optional[str] = None             # null unless rejected
+    order_type: Optional[OrderType] = None      # the type the order was ASKED as, refusals
+                                                # included; a close is `market`
+    close_type: Optional[CloseType] = None      # full / partial — close rows only
+    rejection_reason: Optional[RejectionReason] = None  # null unless denied or rejected
+    rejection_message: Optional[str] = None             # null unless denied or rejected
+    initiator: Optional[OrderInitiator] = None  # who ended it — cancelled, expired and
+                                                # unaccounted rows only
+    end_reason: Optional[OrderEndReason] = None  # why it ended — the same rows
 
 
 class OrderHistoryReport(RunScopedReport):
@@ -437,12 +452,24 @@ class PortfolioReport(RunScopedReport):
 
 
 class ExecutionStatsRow(BaseModel):
-    """Order-execution counts of one run unit (sim: a scenario; live: the session)."""
+    """
+    Order-execution counts of one run unit (sim: a scenario; live: the session).
+
+    Each count carries the name of what it counts (#362): `orders_submitted` the orders handed
+    to the venue — opens, closes and protective orders; every other `orders_<status>` the
+    order-history rows that ended with that status. A refusal made here never reached the
+    venue, so it is denied and not submitted.
+    """
     name: str               # scenario name (sim) / profile/session label (live)
     symbol: str
-    orders_sent: int
-    orders_executed: int
+    orders_submitted: int
+    orders_executed: int    # open and close fills
+    orders_denied: int
     orders_rejected: int
+    orders_cancelled: int
+    orders_expired: int
+    orders_undelivered: int
+    orders_unaccounted: int
     sl_tp_triggered: int    # closes triggered by stop-loss / take-profit
 
 
@@ -451,9 +478,14 @@ class ExecutionStatsTotals(BaseModel):
     Order counts summed across all units. Counts are currency-agnostic, so this is
     ONE object (no per-currency split, unlike the portfolio roll-up).
     """
-    orders_sent: int = 0
+    orders_submitted: int = 0
     orders_executed: int = 0
+    orders_denied: int = 0
     orders_rejected: int = 0
+    orders_cancelled: int = 0
+    orders_expired: int = 0
+    orders_undelivered: int = 0
+    orders_unaccounted: int = 0
     sl_tp_triggered: int = 0
 
 
@@ -1133,9 +1165,14 @@ class RunSummary(RunScopedReport):
     console headline, API, live snapshot, dashboard — composed once off the section aggregates.
     """
     currencies: list[RunSummaryCurrency]
-    orders_sent: int = 0
+    orders_submitted: int = 0
     orders_executed: int = 0
+    orders_denied: int = 0
     orders_rejected: int = 0
+    orders_cancelled: int = 0
+    orders_expired: int = 0
+    orders_undelivered: int = 0
+    orders_unaccounted: int = 0
     sl_tp_triggered: int = 0
     unit_count: int = 0     # sim: N scenarios | live: 1
     # The market time the run processed, as its units' TICK TIMESPANS: covered together (a
@@ -1303,9 +1340,14 @@ class RunResultRow(BaseModel):
     # None where not measured — a booking-period row carries no order counts (they are
     # monotonic executor totals with no time argument, so a period's share is not derivable),
     # and a default of 0 turned that absence into a measured zero on every folded row.
-    orders_sent: int | None = None
+    orders_submitted: int | None = None
     orders_executed: int | None = None
+    orders_denied: int | None = None
     orders_rejected: int | None = None
+    orders_cancelled: int | None = None
+    orders_expired: int | None = None
+    orders_undelivered: int | None = None
+    orders_unaccounted: int | None = None
     sl_tp_triggered: int | None = None
     # Weakest SIGNAL channel of the run (#433); None = no SIGNAL worker was involved
     signal_fresh_ratio: float | None = None
@@ -2409,11 +2451,16 @@ class AggregatedPortfolioRow(BaseModel):
     taker_fee: float = 0.0
     avg_spread: float = 0.0
     # Execution (per currency)
-    orders_sent: int = 0
+    orders_submitted: int = 0
     orders_executed: int = 0
+    orders_denied: int = 0
     orders_rejected: int = 0
+    orders_cancelled: int = 0
+    orders_expired: int = 0
+    orders_undelivered: int = 0
+    orders_unaccounted: int = 0
     sl_tp_triggered: int = 0
-    execution_rate_pct: float = 0.0     # orders_executed / orders_sent
+    execution_rate_pct: float = 0.0     # orders_executed / orders_submitted
     # Pending
     pending_total_resolved: int = 0
     pending_total_filled: int = 0

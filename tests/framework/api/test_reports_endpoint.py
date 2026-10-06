@@ -125,12 +125,12 @@ def _order_report() -> OrderHistoryReport:
             order_id='o1', position_id='p1', symbol='EURUSD', direction='long',
             action='open', status='executed', requested_lots=0.1, executed_lots=0.1,
             executed_price=1.10, event_time='2025-10-13T08:00:00+00:00',
-            commission=0.2, swap=0.0, slippage_points=1.0),
+            commission=0.2),
         OrderHistoryRow(
             order_id='o2', symbol='GBPUSD', direction='short',
             action='open', status='rejected', requested_lots=0.5,
-            event_time='2025-10-13T08:05:00+00:00', commission=0.0, swap=0.0,
-            slippage_points=0.0, rejection_reason='insufficient_margin',
+            event_time='2025-10-13T08:05:00+00:00', commission=0.0,
+            rejection_reason='insufficient_margin',
             rejection_message='not enough margin'),
     ]
     return OrderHistoryReport(run_id=_RUN_ID, orders=rows, count=2, symbols=['EURUSD', 'GBPUSD'])
@@ -150,10 +150,11 @@ def _portfolio_report() -> PortfolioReport:
 
 def _execution_stats_report() -> ExecutionStatsReport:
     unit = ExecutionStatsRow(
-        name='s1', symbol='EURUSD', orders_sent=5, orders_executed=4,
-        orders_rejected=1, sl_tp_triggered=2)
+        name='s1', symbol='EURUSD', orders_submitted=5, orders_executed=4, orders_denied=0,
+        orders_rejected=1, orders_cancelled=0, orders_expired=0, orders_undelivered=0,
+        orders_unaccounted=0, sl_tp_triggered=2)
     totals = ExecutionStatsTotals(
-        orders_sent=5, orders_executed=4, orders_rejected=1, sl_tp_triggered=2)
+        orders_submitted=5, orders_executed=4, orders_rejected=1, sl_tp_triggered=2)
     return ExecutionStatsReport(run_id=_RUN_ID, units=[unit], totals=totals)
 
 
@@ -183,7 +184,7 @@ def _run_summary() -> RunSummary:
             currency='USD', net_pnl=60.0, profit_factor=2.5, win_rate=0.6, account_max_drawdown=12.0,
             total_fees=5.0, total_trades=10, winning_trades=6, losing_trades=4,
             expectancy=0.5, avg_win_r=2.0, avg_loss_r=-1.0, r_trade_count=4)],
-        orders_sent=5, orders_executed=4, orders_rejected=1, sl_tp_triggered=2, unit_count=1)
+        orders_submitted=5, orders_executed=4, orders_rejected=1, sl_tp_triggered=2, unit_count=1)
 
 
 def _broker_report() -> BrokerReport:

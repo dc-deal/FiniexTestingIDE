@@ -30,6 +30,7 @@ from python.framework.types.decision_event_types import (
     OrderCancelledEvent,
     OrderFilledEvent,
     OrderRejectedEvent,
+    OrderUnaccountedEvent,
     PartialCloseEvent,
     PositionClosedEvent,
     SessionEndEvent,
@@ -542,12 +543,24 @@ class AbstractDecisionLogic(ABC):
         """
         pass
 
+    def on_order_unaccounted(self, event: OrderUnaccountedEvent) -> None:
+        """
+        React to an order nobody could account for. No-op unless overridden.
+
+        Live only: the framework stopped asking about an order the venue may still hold —
+        possibly filled. Nothing was booked for it.
+
+        Args:
+            event: Detail (order id, direction, why the framework stopped asking, full result)
+        """
+        pass
+
     def on_order_cancelled(self, event: OrderCancelledEvent) -> None:
         """
         React to an order cancellation. No-op unless overridden.
 
         Args:
-            event: Cancellation detail (order id, direction)
+            event: Cancellation detail (order id, direction, the booked row — who ended it and why)
         """
         pass
 

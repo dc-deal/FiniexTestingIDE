@@ -32,7 +32,7 @@ _DT = datetime(2025, 10, 13, tzinfo=timezone.utc)
 def _stats(sent: int = 5, executed: int = 4, rejected: int = 1, sl_tp: int = 2) -> ExecutionStats:
     """A real counts-only ExecutionStats fixture."""
     return ExecutionStats(
-        orders_sent=sent, orders_executed=executed,
+        orders_submitted=sent, orders_executed=executed,
         orders_rejected=rejected, sl_tp_triggered=sl_tp)
 
 
@@ -74,12 +74,12 @@ class TestBatch:
     def test_unit_counts_mapped(self):
         report = build_execution_stats_report(_RUN_ID, run_units_from_batch(_batch()))
         row = report.units[0]
-        assert (row.orders_sent, row.orders_executed, row.orders_rejected, row.sl_tp_triggered) \
+        assert (row.orders_submitted, row.orders_executed, row.orders_rejected, row.sl_tp_triggered) \
             == (5, 4, 1, 2)
 
     def test_totals_sum_currency_agnostic(self):
         report = build_execution_stats_report(_RUN_ID, run_units_from_batch(_batch()))
-        assert report.totals.orders_sent == 8
+        assert report.totals.orders_submitted == 8
         assert report.totals.orders_executed == 7
         assert report.totals.orders_rejected == 1
         assert report.totals.sl_tp_triggered == 3
@@ -109,4 +109,4 @@ class TestSession:
         report = build_execution_stats_report(_RUN_ID, 
             run_units_from_session(AutoTraderResult(execution_stats=None), 'p', 'BTCUSD'))
         assert report.units == []
-        assert report.totals.orders_sent == 0
+        assert report.totals.orders_submitted == 0

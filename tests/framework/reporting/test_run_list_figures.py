@@ -33,7 +33,7 @@ def _currency(currency: str, net_pnl: float, total_trades: int) -> RunSummaryCur
 
 
 def _summary(run_id: str, *currencies: RunSummaryCurrency) -> RunSummary:
-    return RunSummary(run_id=run_id, currencies=list(currencies), orders_sent=0,
+    return RunSummary(run_id=run_id, currencies=list(currencies), orders_submitted=0,
                       orders_executed=0, orders_rejected=0, sl_tp_triggered=0, unit_count=1)
 
 

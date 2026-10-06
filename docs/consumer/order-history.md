@@ -57,17 +57,23 @@ matching their contents.
 | `requested_lots` | what the strategy asked for |
 | `executed_lots` · `executed_price` | what was actually filled, and at what price |
 | `event_time` | when this row's event happened |
-| `commission` · `swap` · `slippage_points` | the record's own figures for this event |
+| `order_type` | the type the order was asked as — on every row, a refusal included |
+| `close_type` | on a close row: whether it closed all of the position or part of it |
+| `commission` | the fee this event cost |
 | `rejection_reason` · `rejection_message` | why it was refused, as a code and as a sentence |
 
 `event_time` runs on the run's own clock, so in a backtest it is the replayed market time and not
-the time the backtest was executed. It is the moment of the event this row records — the fill, the
-refusal, the expiry.
+the time the backtest was executed. It is the moment of the event this row records — the
+submission on a `pending` row, else the fill, the refusal, the expiry.
 
-`direction`, `action`, `status` and `rejection_reason` are closed vocabularies and appear in the
-schema with their values.
+`order_type` is the type that was REQUESTED: a stop-limit order stays `stop_limit` after its stop
+triggered, a close is `market`, and an exit through a protective order the venue held carries that
+order's type.
 
-## What is null, and the three fields that never are
+`direction`, `action`, `status`, `order_type`, `close_type` and `rejection_reason` are closed
+vocabularies and appear in the schema with their values.
+
+## What is null, and the one field that never is
 
 A value that does not exist here is **null** — never an empty string and never `0.0`. A zero price
 read as a price is a mistake that cannot be undone further down.
@@ -77,13 +83,13 @@ read as a price is a mistake that cannot be undone further down.
 | `position_id` | no position exists yet |
 | `requested_lots` | the order did not know the size |
 | `executed_lots` · `executed_price` | nothing executed |
-| `event_time` | the row is a `pending` row — the order's creation, not an event at the venue |
+| `close_type` | the row is not a close, or the close did not execute |
 | `rejection_reason` · `rejection_message` | the order was not rejected |
-| `direction` · `action` | the record did not carry them |
+| `direction` · `action` · `order_type` | the record did not carry them |
 
-The exceptions are `commission`, `swap` and `slippage_points`: they are plain numbers and are
-present on every row. For the cost of a *closed trade*, read the itemised fees in
-[trade history](/api/v1/docs/trade-history) rather than summing these.
+The exception is `commission`: it is a plain number and present on every row. For the cost of a
+*closed trade*, read the itemised fees in [trade history](/api/v1/docs/trade-history) rather than
+summing these.
 
 See [nulls](/api/v1/docs/nulls) for how to render an absence.
 

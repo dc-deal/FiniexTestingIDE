@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Optional
 
 from python.framework.reporting.console.feed_stability_summary import format_disturbance_line
+from python.framework.reporting.console.order_counts_line import order_endings_text
 from python.framework.types.api.report_types import (
     ColdStartReport,
     RunSummary,
@@ -226,9 +227,10 @@ class AutotraderSessionSummary:
                          if result.session_end_policy else ''))
 
         if result.execution_stats:
-            print(f'  Orders:         {result.execution_stats.orders_sent} sent, '
-                  f'{result.execution_stats.orders_executed} executed, '
-                  f'{result.execution_stats.orders_rejected} rejected')
+            endings = order_endings_text(result.execution_stats, renderer)
+            print(f'  Orders:         {result.execution_stats.orders_submitted} submitted · '
+                  f'{result.execution_stats.orders_executed} executed'
+                  + (f' · {endings}' if endings else ''))
 
         # Trade analytics (#389/#393) — model-sourced, one line per account currency.
         for a in (self._trade_report.analytics if self._trade_report else []):

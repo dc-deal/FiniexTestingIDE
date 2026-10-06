@@ -412,7 +412,7 @@ class MultiPositionProbe(AbstractDecisionLogic):
                 comment=f'MultiPos #{seq_idx} {direction.value}'
             )
 
-            if order_result and not order_result.is_rejected:
+            if order_result and not order_result.is_refused:
                 # Track active trade for selective close
                 self._active_trades[order_result.order_id] = {
                     'close_tick': self.tick_count + hold_ticks,
@@ -433,7 +433,7 @@ class MultiPositionProbe(AbstractDecisionLogic):
                     'order_id': order_result.order_id
                 })
 
-            elif order_result and order_result.is_rejected:
+            elif order_result and order_result.is_refused:
                 self.logger.error(
                     f'❌ Multi-position order rejected at tick {self.tick_count}: '
                     f'{order_result.rejection_message}'

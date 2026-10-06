@@ -36,6 +36,8 @@ from python.framework.types.trading_env_types.latency_simulator_types import Pen
 from python.framework.types.trading_env_types.order_types import (
     OpenOrderRequest,
     OrderDirection,
+    OrderEndReason,
+    OrderStatus,
     OrderType,
     RejectionReason,
 )
@@ -202,8 +204,8 @@ class TestTheVenueNamesIt:
 
         _drive_resolution(executor_instant, mock_instant, pending)
 
-        rejections = [o for o in executor_instant.get_order_history() if o.is_rejected]
-        assert not rejections, 'nothing was refused — the answer was merely late'
+        refusals = [o for o in executor_instant.get_order_history() if o.is_refused]
+        assert not refusals, 'nothing was refused — the answer was merely late'
 
 
 class TestTheVenueNamesNothing:
@@ -224,7 +226,7 @@ class TestTheVenueNamesNothing:
         assert pending in executor_instant._active_limit_orders, (
             'the empty answer was read as a refusal while the venue was still catching up')
 
-    def test_after_the_settle_window_it_is_a_rejection_once(
+    def test_after_the_settle_window_it_is_undelivered_once(
         self, executor_instant, mock_instant
     ):
         pending = _unresolved_limit(executor_instant, mock_instant)
@@ -237,8 +239,11 @@ class TestTheVenueNamesNothing:
         _drive_resolution(executor_instant, mock_instant, pending)
 
         assert pending not in executor_instant._active_limit_orders
-        rejections = [o for o in executor_instant.get_order_history() if o.is_rejected]
-        assert len(rejections) == 1, f'expected exactly one rejection, got {len(rejections)}'
+        history = executor_instant.get_order_history()
+        undelivered = [o for o in history if o.status is OrderStatus.UNDELIVERED]
+        assert len(undelivered) == 1, f'expected exactly one ending, got {len(undelivered)}'
+        assert not [o for o in history if o.is_refused], (
+            'the venue refused nothing — it never received the order (#362)')
 
 
 class TestTheCeiling:
@@ -270,7 +275,7 @@ class TestTheCeiling:
         )
 
         assert refusal is not None
-        assert refusal.rejection_reason == RejectionReason.UNRESOLVED_WRITE
+        assert refusal.rejection_reason == RejectionReason.UNACCOUNTED_ORDER
 
     def test_an_empty_set_refuses_nothing(self, executor_instant, mock_instant):
         """The guard must not block the ordinary case it sits next to."""
@@ -317,18 +322,20 @@ class TestTheTwoWorldsEndDifferentlyAtTheCeiling:
         assert not executor.get_request_processor().has_pending_orders(), (
             'nothing will ever look at this pending again, and it gates the algo while it '
             'sits there')
-        rejections = [o for o in executor.get_order_history() if o.is_rejected]
-        assert len(rejections) == 1
-        assert rejections[0].rejection_reason == RejectionReason.BROKER_UNREACHABLE, (
-            'the venue never spoke — calling it a broker error puts our transport fault on '
+        history = executor.get_order_history()
+        assert not [o for o in history if o.is_refused], (
+            'the venue never spoke — calling it a refusal puts our transport fault on '
             'their account')
+        unaccounted = [o for o in history if o.status is OrderStatus.UNACCOUNTED]
+        assert len(unaccounted) == 1
+        assert unaccounted[0].end_reason is OrderEndReason.RESOLUTION_CEILING
 
     def test_and_the_entry_block_outlives_the_order(self):
         """
         The latch does not clear because the pending left.
 
-        Being booked BROKER_UNREACHABLE is not being accounted for: we still do not know
-        whether the venue holds that order, and that is exactly what blocks new entries.
+        Being booked unaccounted is not being accounted for: we still do not know whether
+        the venue holds that order, and that is exactly what blocks new entries.
         """
         mock = MockOrderExecution(mode=MockExecutionMode.INSTANT_FILL)
         executor = mock.create_executor()
@@ -361,8 +368,8 @@ class TestNothingIsEverReSent:
 
         _exhaust_resolution(executor_instant, pending)
 
-        assert executor_instant._orders_sent == 1, (
-            f'{executor_instant._orders_sent} orders left this process for one decision')
+        submitted = executor_instant.get_execution_stats().orders_submitted
+        assert submitted == 1, f'{submitted} orders left this process for one decision'
         assert before is not None
 
 

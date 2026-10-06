@@ -79,6 +79,8 @@ from python.framework.types.trading_env_types.order_types import (
     OpenOrderRequest,
     OrderAction,
     OrderDirection,
+    OrderEndReason,
+    OrderInitiator,
     OrderResult,
     OrderStatus,
     OrderType,
@@ -450,9 +452,9 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             else:
                 self._active_limit_orders.append(pending)
             # An adopted order was SENT — by a predecessor of this session, but sent. Counting
-            # it keeps the executed/sent ratio meaningful; without it a fill would raise the
-            # execution rate above 100 %.
-            self._orders_sent += 1
+            # it keeps the executed/submitted ratio meaningful; without it a fill would raise
+            # the execution rate above 100 %.
+            self._orders_submitted += 1
             self.logger.info(
                 f'🧬 Adopted resting {broker_order.order_type.value} order {order_id} from '
                 f'broker truth (client_order_id={broker_order.client_order_id}, '
@@ -710,14 +712,11 @@ class LiveTradeExecutor(AbstractTradeExecutor):
                 rejected, PendingOrderOutcome.REJECTED, latency_ms=latency_ms)
 
             # Record rejection in order history
-            self._orders_rejected += 1
-            rejection = self._rejection_for_pending(
+            rejection = self._book_order_result(self._rejection_for_pending(
                 rejected,
                 reason=RejectionReason.BROKER_ERROR,
                 message=f"Broker rejected: {response.rejection_reason or 'unknown'}",
-            )
-            self._check_order_history_limit()
-            self._order_history.append(rejection)
+            ))
             self._notify_outcome(rejected.direction, rejection, rejected)
 
         elif response.status in (BrokerOrderStatus.CANCELLED, BrokerOrderStatus.EXPIRED):
@@ -782,7 +781,35 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         self.logger.warning(
             f'🛑 Order {order_id} was {response.status.value} by the venue without '
             f'executing anything (broker_ref={pending.broker_ref}) — nothing is booked.')
-        self._emit_order_cancelled(pending)
+        ended = self._book_order_result(self._venue_ended_row(pending, response.status))
+        self._emit_order_cancelled(pending, ended)
+
+    def _venue_ended_row(
+        self,
+        pending: PendingOrder,
+        venue_status: BrokerOrderStatus,
+    ) -> OrderResult:
+        """
+        The row of an order the venue ended on its own, without being asked (#362).
+
+        The venue's own word decides the status: an order it let run out is expired, every
+        other end is a cancel. Either way the initiator is the venue — a cancel in its own
+        interface today, an OCO sibling (#164) or a DAY expiry (#210) later.
+
+        Args:
+            pending: The order the venue ended
+            venue_status: The venue's answer, CANCELLED or EXPIRED
+
+        Returns:
+            The unbooked row
+        """
+        if venue_status == BrokerOrderStatus.EXPIRED:
+            return self._ending_for_pending(
+                pending, OrderStatus.EXPIRED,
+                initiator=OrderInitiator.VENUE, end_reason=OrderEndReason.VENUE_EXPIRED)
+        return self._ending_for_pending(
+            pending, OrderStatus.CANCELLED,
+            initiator=OrderInitiator.VENUE, end_reason=OrderEndReason.VENUE_CANCELLED)
 
     def _handle_timeout(self, pending: PendingOrder) -> None:
         """
@@ -904,9 +931,10 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         pending: PendingOrder,
         cancel_answered: bool = False,
         venue_unreachable: bool = False,
+        at_ceiling: bool = False,
     ) -> None:
         """
-        Remove a pending nobody will answer for, and record why — never as a venue refusal.
+        Remove a pending nobody will answer for, and record how it ended — never as a venue refusal.
 
         Two callers reach this and both mean the same thing: we stopped waiting. The fill
         timeout reaches it for an order that is merely unanswered, and #487's resolution
@@ -914,12 +942,20 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         because the two disagreeing about how a give-up is recorded is how a report and a
         record come to describe different sessions.
 
+        Two endings (#362). CANCELLED when the venue confirmed our cancel of an order a status
+        read had just shown working and unexecuted — then we know it ended, and how. Every
+        other give-up is UNACCOUNTED: the venue may hold the order, filled or not, and we
+        stopped asking. Both used to be booked as a rejection, which told the strategy and
+        the counters that the venue had refused an order it may well have executed.
+
         Args:
             pending: The order being given up on
             cancel_answered: True when the caller already cancelled it and the venue
-                confirmed — then no second cancel is sent
+                confirmed — then no second cancel is sent, and the order ends cancelled
             venue_unreachable: True when the venue acknowledged the order but could not be
-                asked what became of it — recorded as unreachable, never as a broker error
+                asked what became of it
+            at_ceiling: True when the resolution ran out of attempts (#487), rather than
+                the fill timeout
         """
         # Try to cancel at broker via Tier-3-decoupled sync orchestrator
         if pending.broker_ref and not cancel_answered:
@@ -949,11 +985,23 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             reason='order_timeout',
         )
 
-        # Record timeout as rejection. #473 — an order that went UNRESOLVED never got an
-        # answer, so BROKER_ERROR would blame the venue for our transport fault. The venue
-        # may still hold it; because the submit carried our client order id, the reconcile
-        # pull can now attribute that resting order to us, and #349 decides what to do
-        # about it.
+        if cancel_answered:
+            # The framework's own cancel, at the fill timeout: not a refusal, and no reason
+            # for the cooldown — the strategy hears it as a cancellation.
+            cancelled = self._book_order_result(self._ending_for_pending(
+                pending, OrderStatus.CANCELLED,
+                initiator=OrderInitiator.FRAMEWORK,
+                end_reason=OrderEndReason.ORDER_TIMEOUT))
+            self.logger.warning(
+                f'Order {pending.pending_order_id} timed out after '
+                f'{self._timeout_config.order_timeout_seconds}s without a fill and was '
+                f'cancelled at the venue (broker_ref={pending.broker_ref})')
+            self._emit_order_cancelled(pending, cancelled)
+            return
+
+        # #473 — an order that went UNRESOLVED never got an answer, so the venue may still
+        # hold it; because the submit carried our client order id, the reconcile pull can
+        # attribute that resting order to us, and #349 decides what to do about it.
         unresolved = (
             pending.execution_state.in_flight_operation is PendingOperation.PENDING_SUBMIT)
         # Acknowledged, then never answerable — the timeout asked and got nothing, here or
@@ -961,31 +1009,25 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         unanswerable = (venue_unreachable
                         or pending.execution_state.timeout_handed_to_resolution)
         if unresolved:
-            message = (
-                f'Order unresolved for {self._timeout_config.order_timeout_seconds}s — the '
-                f'broker never answered. It may hold this order; reconciliation matches it '
-                f'by client order id.')
+            why = (f'unresolved for {self._timeout_config.order_timeout_seconds}s — the broker '
+                   f'never answered. It may hold this order; reconciliation matches it by '
+                   f'client order id.')
         elif unanswerable:
-            message = (
-                f'The venue acknowledged this order (broker_ref={pending.broker_ref}) and '
-                f'could not be asked what became of it — it may have filled. Recorded as '
-                f'unreachable, not refused; reconciliation reads the account.')
+            why = (f'acknowledged (broker_ref={pending.broker_ref}) and the venue could not be '
+                   f'asked what became of it — it may have filled; reconciliation reads the '
+                   f'account.')
         else:
-            message = f'Order timed out after {self._timeout_config.order_timeout_seconds}s'
-        self._orders_rejected += 1
-        rejection = self._rejection_for_pending(
-            pending,
-            reason=(RejectionReason.BROKER_UNREACHABLE if unresolved or unanswerable
-                    else RejectionReason.BROKER_ERROR),
-            message=message,
-        )
-        self._check_order_history_limit()
-        self._order_history.append(rejection)
-        self._notify_outcome(pending.direction, rejection, pending)
+            why = (f'no fill reported within {self._timeout_config.order_timeout_seconds}s '
+                   f'(broker_ref={pending.broker_ref}).')
+        unaccounted = self._book_order_result(self._ending_for_pending(
+            pending, OrderStatus.UNACCOUNTED,
+            initiator=OrderInitiator.FRAMEWORK,
+            end_reason=(OrderEndReason.RESOLUTION_CEILING if at_ceiling
+                        else OrderEndReason.ORDER_TIMEOUT)))
+        self._notify_outcome(pending.direction, unaccounted, pending)
 
         self.logger.warning(
-            f'Order {pending.pending_order_id} timed out '
-            f'(broker_ref={pending.broker_ref})'
+            f'Order {pending.pending_order_id} is UNACCOUNTED for — {why}'
         )
 
     # ============================================
@@ -1010,11 +1052,10 @@ class LiveTradeExecutor(AbstractTradeExecutor):
 
         Args:
             direction: Order direction (LONG/SHORT) of the rejected order
-            rejection: The OrderResult with status=REJECTED
+            rejection: The OrderResult — REJECTED, or UNDELIVERED for an order the venue
+                never received
         """
-        self._orders_rejected += 1
-        self._check_order_history_limit()
-        self._order_history.append(rejection)
+        self._book_order_result(rejection)
         self._notify_outcome(direction, rejection, None)
 
     def _record_processor_rejection(
@@ -1314,29 +1355,19 @@ class LiveTradeExecutor(AbstractTradeExecutor):
                 f"Broker rejected modify for {order_id}: "
                 f"{response.rejection_reason or 'unknown'}"
             )
-            rejection = self._rejection_for_pending(
-                pending,
-                reason=RejectionReason.BROKER_ERROR,
-                message=f"Modify rejected: {response.rejection_reason or 'unknown'}",
-            )
-            # Record without removing from active list — the order is still
-            # working at the broker, just the modify failed.
-            self._orders_rejected += 1
-            self._check_order_history_limit()
-            self._order_history.append(rejection)
+            # No row, no count, no cooldown, no rejection hook (#362): the ORDER was not
+            # refused — it is still working at the broker with its previous values, only
+            # the amend failed. Booked as a rejected order it was counted as one and armed
+            # the cooldown. Measured on the trailing stop (#503): 378 amends over 62
+            # positions, worst burst 20 in 39 ticks, and two rejections blocked EVERY new
+            # order in that direction for 60 s — the replacement protective order included.
+            # What the strategy reads stays true: the order keeps the values the venue holds.
+            # The order-event stream records the refused amend itself.
             if pending.closes_position_id:
-                # #503 — a refused amend of a PROTECTIVE order must not feed the
-                # OrderGuard cooldown. Measured on the trailing stop: 378 amends over 62
-                # positions, worst burst 20 in 39 ticks, and two rejections block EVERY
-                # new order in that direction for 60 s — the replacement protective order
-                # included. The refusal stays visible in the log and the order history; it
-                # simply is not a new-order rejection, because no new order was attempted.
                 self.logger.error(
                     f'❌ The venue refused an amend of the protective order for '
                     f'{pending.closes_position_id}: '
                     f"{response.rejection_reason or 'unknown'}")
-            else:
-                self._notify_outcome(pending.direction, rejection, pending)
         else:
             # Success — apply provisional values to local shadow state
             if mod is not None:
@@ -1383,8 +1414,8 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         """
         Drain-inbox hook for CancelResponse.
 
-        On success: remove the order from its active list, fire EXPIRED-style
-        outcome notification (algo learns the order is gone).
+        On success: remove the order from its active list, book its cancelled row and
+        emit order_cancelled (algo learns the order is gone).
         On rejection: most often a race condition (order filled before cancel
         reached broker). Surface as informational — the regular poll cycle
         will pick up the actual terminal state (FILLED).
@@ -1416,6 +1447,10 @@ class LiveTradeExecutor(AbstractTradeExecutor):
                 f"Broker rejected cancel for {order_id}: "
                 f"{response.rejection_reason or 'unknown'} (cancel-race possible)"
             )
+            # The request is answered, so it no longer explains a later end: if the venue
+            # ends this order afterwards, that is the venue's doing (#362).
+            pending.execution_state.cancel_initiator = None
+            pending.execution_state.cancel_end_reason = None
             if pending.closes_position_id:
                 self._abandon_deferred_close(
                     pending.closes_position_id,
@@ -1424,15 +1459,18 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             pending.execution_state.in_flight_operation = PendingOperation.NONE
             return
 
-        # Success — remove from active list. No order_history append: the
-        # algo's discipline pattern (has_pending_orders / has_in_flight_operation)
-        # observes the state transition naturally. Order_history is reserved
-        # for EXECUTED / REJECTED-by-broker, not for algo-initiated cancels.
+        # Success — remove from active list and book the row that ends the order (#362).
+        # There used to be none: the order simply stopped appearing, and a cancel was the
+        # one way an order could end without leaving a record of how.
         self._confirm_cancel(pending)
 
-    def _confirm_cancel(self, pending: PendingOrder) -> None:
+    def _confirm_cancel(
+        self,
+        pending: PendingOrder,
+        venue_status: BrokerOrderStatus = BrokerOrderStatus.CANCELLED,
+    ) -> None:
         """
-        The venue no longer holds this resting order: take it out, and send what waited.
+        The venue no longer holds this resting order: take it out, book its end, send what waited.
 
         One routine for every way a cancel is learned. The cancel's own answer is the usual
         one; a status read that finds the order cancelled is the other — when the answer
@@ -1440,8 +1478,14 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         used to book a broker REJECTION instead, which never emitted `order_cancelled` and
         never sent the close parked behind the cancel (#503).
 
+        The row says who ended it (#362). A cancel requested here carries its initiator and
+        reason from the request; without one the venue ended the order on its own, and its
+        own word decides between cancelled and expired.
+
         Args:
             pending: The resting order that is gone at the venue
+            venue_status: How the venue reports the order ended — CANCELLED, or EXPIRED
+                where it let the order run out
         """
         self._drop_active_order(pending)
         if pending.closes_position_id:
@@ -1456,7 +1500,14 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             f'❌ Order {pending.pending_order_id} cancel resolved '
             f'(broker_ref={pending.broker_ref})'
         )
-        self._emit_order_cancelled(pending)
+        state = pending.execution_state
+        if state.cancel_initiator is not None:
+            ended = self._ending_for_pending(
+                pending, OrderStatus.CANCELLED,
+                initiator=state.cancel_initiator, end_reason=state.cancel_end_reason)
+        else:
+            ended = self._venue_ended_row(pending, venue_status)
+        self._emit_order_cancelled(pending, self._book_order_result(ended))
         if pending.closes_position_id:
             # #503 — and THIS is what a close was waiting for. Released after the line
             # above so the log reads in the order the events happened; a reader tracing a
@@ -2107,17 +2158,19 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         """
         RESOLVED_ABSENT — the venue has settled and it never took this order.
 
-        Only NOW is it a genuine rejection, and it is the one verdict that is safe to book:
-        the venue named nothing after its read plane had time to catch up, so there is no
-        order out there to forget.
+        It is the one verdict that is safe to book: the venue named nothing after its read
+        plane had time to catch up, so there is no order out there to forget. Booked
+        UNDELIVERED rather than as a rejection (#362) — the venue refused nothing, it never
+        received the order — while the strategy and the cooldown hear of it as they hear of
+        a refusal.
 
         Args:
             pending: The order in resolution
         """
         order_id = pending.pending_order_id
         self.logger.warning(
-            f'📡 Order {order_id} resolved: the venue never took it — the lost answer was '
-            f'a refusal after all. Recorded as a rejection once.')
+            f'📡 Order {order_id} resolved: the venue never took it — the lost answer means '
+            f'the order never arrived. Recorded as undelivered once.')
         self._disarm_resolution(pending)
         self._drop_active_order(pending)
         if pending.closes_position_id:
@@ -2132,12 +2185,8 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         self._request_processor.discard_order(
             order_id=order_id, reason='resolved absent at the venue (#487)')
 
-        rejection = self._rejection_for_pending(
-            pending,
-            reason=RejectionReason.BROKER_ERROR,
-            message='The venue never took this order — resolved after a lost answer',
-        )
-        self._record_async_rejection(pending.direction, rejection)
+        self._record_async_rejection(pending.direction, self._ending_for_pending(
+            pending, OrderStatus.UNDELIVERED, initiator=None, end_reason=None))
 
     def _escalate_unresolved(self, pending: PendingOrder) -> None:
         """
@@ -2176,12 +2225,12 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         # reports it, so keeping it costs a true `has_pending_orders()` and buys a standing
         # record. A MARKET or CLOSE pending is out of that pull's reach entirely — nothing
         # would ever look at it again — so it takes the disposition the timeout already
-        # defines: recorded BROKER_UNREACHABLE, removed from the tracker so it stops gating
+        # defines: recorded UNACCOUNTED, removed from the tracker so it stops gating
         # the algo, and never called a venue refusal. The latch is what carries "we still do
         # not know" forward, and it does not clear with the order.
         if self._request_processor.get_order(order_id) is None:
             return
-        self._book_order_given_up(pending)
+        self._book_order_given_up(pending, at_ceiling=True)
 
     def _release_stuck_operation(self, pending: PendingOrder, why: str) -> None:
         """
@@ -2369,15 +2418,12 @@ class LiveTradeExecutor(AbstractTradeExecutor):
                     f'❌ The protective STOP for {pending.closes_position_id} ended as '
                     f'{broker_response.status.value} at the venue without filling. The '
                     f'position is open and its stop is enforced by THIS PROCESS ONLY.')
-            self._orders_rejected += 1
-            rejection = self._rejection_for_pending(
+            rejection = self._book_order_result(self._rejection_for_pending(
                 pending,
                 reason=RejectionReason.BROKER_ERROR,
                 message=f"Broker {broker_response.status.value}: "
                         f"{broker_response.rejection_reason or 'unknown'}",
-            )
-            self._check_order_history_limit()
-            self._order_history.append(rejection)
+            ))
             self._notify_outcome(pending.direction, rejection, pending)
             self.logger.warning(
                 f'Active limit order {order_id} '
@@ -2470,7 +2516,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
                     f'❌ The protective STOP for {pending.closes_position_id} ended as '
                     f'{broker_response.status.value} at the venue. The position is open and '
                     f'its stop is enforced by THIS PROCESS ONLY.')
-        self._confirm_cancel(pending)
+        self._confirm_cancel(pending, venue_status=broker_response.status)
 
     # ============================================
     # Order Submission (live-specific)
@@ -2725,7 +2771,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         self._stamp_write_moment(protective)
         self._active_stop_orders.append(protective)
         position.protective_order_id = order_id
-        self._orders_sent += 1
+        self._orders_submitted += 1
         self._request_processor.submit_open_order_async(
             order_id=order_id,
             symbol=position.symbol,
@@ -2991,8 +3037,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         if self.broker.get_order_capabilities().venue_held_protective_orders:
             return None
 
-        self._orders_rejected += 1
-        result = self._rejection_for_request(
+        return self._book_order_result(self._denial_for_request(
             request, order_id,
             reason=RejectionReason.ORDER_TYPE_NOT_SUPPORTED,
             message=(
@@ -3000,10 +3045,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
                 f'{self.get_broker_name()} cannot hold a protective order for a '
                 f'position. Turn it off in the profile (execution.venue_held_protection) '
                 f'or pass venue_held_protection=False on this order.'),
-        )
-        self._check_order_history_limit()
-        self._order_history.append(result)
-        return result
+        ))
 
     def open_order(self, request: OpenOrderRequest) -> OrderResult:
         """
@@ -3016,38 +3058,29 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             request: OpenOrderRequest with all order parameters
 
         Returns:
-            OrderResult with PENDING, EXECUTED, or REJECTED status
+            OrderResult with PENDING status, or DENIED when a check here refused it
         """
         request = self._normalize_order_request(request)
-        self._orders_sent += 1
         self._order_counter += 1
         order_id = self.portfolio.get_next_position_id(request.symbol)
 
         # Feature gate — reads the declaration below, so pre-flight and this check agree.
         if request.order_type not in self.get_supported_order_types():
-            self._orders_rejected += 1
-            result = self._rejection_for_request(
+            return self._book_order_result(self._denial_for_request(
                 request, order_id,
                 reason=RejectionReason.ORDER_TYPE_NOT_SUPPORTED,
                 message=f'Order type {request.order_type.value} not supported in live',
-            )
-            self._check_order_history_limit()
-            self._order_history.append(result)
-            return result
+            ))
 
         # Validate order parameters
         is_valid, error = self.broker.validate_order(
             request.symbol, request.lots)
         if not is_valid:
-            self._orders_rejected += 1
-            result = self._rejection_for_request(
+            return self._book_order_result(self._denial_for_request(
                 request, order_id,
                 reason=RejectionReason.INVALID_LOT_SIZE,
                 message=error,
-            )
-            self._check_order_history_limit()
-            self._order_history.append(result)
-            return result
+            ))
 
         # Funds, net of what this bot's own unfilled orders already claim (#489). The venue
         # reserves at placement, so this must refuse here rather than take the rejection
@@ -3110,6 +3143,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
                 submission=self._current_submission(),
                 venue_held_protection=venue_held_protection,
                 client_order_id=client_key,
+                entry_time=self.get_current_time(),
             )
             self._stamp_write_moment(self._request_processor.get_order(order_id))
             self._request_processor.submit_open_order_async(
@@ -3122,22 +3156,23 @@ class LiveTradeExecutor(AbstractTradeExecutor):
                 client_order_id=client_key,
                 **order_kwargs,
             )
+            self._orders_submitted += 1
             result = OrderResult(
                 order_id=order_id,
                 status=OrderStatus.PENDING,
+                execution_time=self.get_current_time(),
                 position_id=None,
                 action=OrderAction.OPEN,
                 symbol=request.symbol,
                 direction=request.direction,
                 requested_lots=request.lots,
+                order_type=request.order_type,
                 submission=self._current_submission(),
                 metadata={
                     'broker_ref': None,
                 },
             )
-            self._check_order_history_limit()
-            self._order_history.append(result)
-            return result
+            return self._book_order_result(result)
 
         # RESTING (LIMIT / STOP / STOP_LIMIT): async submit via the processor worker
         # thread. Storage is the matching list in the executor (Hybrid pattern shared with
@@ -3193,24 +3228,25 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             client_order_id=client_key,
             **order_kwargs,
         )
+        self._orders_submitted += 1
 
         # 3) Return PENDING immediately; broker_ref set later by drain
         result = OrderResult(
             order_id=order_id,
             status=OrderStatus.PENDING,
+            execution_time=self.get_current_time(),
             position_id=None,
             action=OrderAction.OPEN,
             symbol=request.symbol,
             direction=request.direction,
             requested_lots=request.lots,
+            order_type=request.order_type,
             submission=self._current_submission(),
             metadata={
                 'broker_ref': None,
             },
         )
-        self._check_order_history_limit()
-        self._order_history.append(result)
-        return result
+        return self._book_order_result(result)
 
     # ============================================
     # Close Commands (live-specific)
@@ -3232,28 +3268,26 @@ class LiveTradeExecutor(AbstractTradeExecutor):
                 fill, since the two are a round trip apart (#500)
 
         Returns:
-            OrderResult with PENDING or REJECTED status
+            OrderResult with PENDING status, or DENIED when a check here refused it
         """
         # Check position exists in portfolio
         position = self.portfolio.get_position(position_id)
         if not position:
-            return self._rejection_for_close(
+            return self._book_order_result(self._refusal_for_close(
                 order_id=f'close_{position_id}',
                 position=None,
                 lots=lots,
-                reason=RejectionReason.BROKER_ERROR,
+                status=OrderStatus.DENIED,
+                reason=RejectionReason.POSITION_NOT_FOUND,
                 message=f'Position {position_id} not found',
-            )
+            ))
 
         # #507 — BEFORE the deferral below, not after: a deferred close carries its `lots`
         # through the cancel and comes back here as an order, so a check placed later would
         # be bypassed by exactly the path that needs it most.
         refusal = self.refuse_unresolvable_close(position, lots)
         if refusal is not None:
-            self._orders_rejected += 1
-            self._check_order_history_limit()
-            self._order_history.append(refusal)
-            return refusal
+            return self._book_order_result(refusal)
 
         # #503 — cancel BEFORE closing, never beside it. At spot there is no reduce_only,
         # and a market close goes through — measured — while a protective stop still rests
@@ -3328,6 +3362,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             adapter=self.broker.adapter,
             client_order_id=client_key,
         )
+        self._orders_submitted += 1
 
         return OrderResult(
             order_id=position_id,
@@ -3339,6 +3374,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             symbol=position.symbol,
             direction=position.direction,
             requested_lots=close_lots,
+            order_type=OrderType.MARKET,
             submission=self._current_submission(),
             metadata={'awaiting_fill': True, 'broker_ref': None},
         )
@@ -3370,20 +3406,22 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         """
         order_id = position.protective_order_id
         scheduled = bool(order_id) and self._cancel_resting_order(
-            order_id, self._active_stop_orders, 'protective stop')
+            order_id, self._active_stop_orders, 'protective stop',
+            OrderInitiator.FRAMEWORK, OrderEndReason.PROTECTION_RELEASED)
         if not scheduled:
             self.logger.error(
                 f'❌ The close of {position.position_id} was NOT sent: its protective '
                 f'order {order_id} could not be cancelled first, and closing beside a '
                 f'live stop can fill twice. The position stays open and protected.')
-            return self._rejection_for_close(
+            return self._book_order_result(self._refusal_for_close(
                 order_id=f'close_{position.position_id}',
                 position=position,
                 lots=lots,
-                reason=RejectionReason.BROKER_ERROR,
+                status=OrderStatus.DENIED,
+                reason=RejectionReason.CLOSE_WITHHELD,
                 message=('protective order could not be cancelled first — close withheld '
                          'rather than raced against it'),
-            )
+            ))
 
         # A partial close leaves a position behind, and that remainder needs protecting
         # again at its new size. Kraken can amend a volume; our modify path cannot, so
@@ -3413,6 +3451,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             action=OrderAction.CLOSE,
             symbol=position.symbol,
             direction=position.direction,
+            order_type=OrderType.MARKET,
             submission=self._current_submission(),
         )
 
@@ -3439,7 +3478,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         # survives, its protection was cancelled to let this close through, nothing
         # re-places it, and the caller was told PENDING at the original request. That state
         # has to reach the operator (§35) rather than being dropped on the floor.
-        if result.status == OrderStatus.REJECTED:
+        if result.is_refused:
             self.logger.error(
                 f'❌ The close of {position_id} was refused after its protective order had '
                 f'already been cancelled: {result.rejection_message} The position is STILL '
@@ -3683,7 +3722,8 @@ class LiveTradeExecutor(AbstractTradeExecutor):
 
         if position.stop_loss is None:
             self._cancel_resting_order(
-                order_id, self._active_stop_orders, 'protective stop')
+                order_id, self._active_stop_orders, 'protective stop',
+                OrderInitiator.FRAMEWORK, OrderEndReason.PROTECTION_RELEASED)
             self.logger.info(
                 f'🛡️ The stop for {position_id} was withdrawn — cancelling the order the '
                 f'venue was holding for it')
@@ -3811,6 +3851,8 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         order_id: str,
         orders: List[PendingOrder],
         label: str,
+        initiator: OrderInitiator,
+        end_reason: OrderEndReason,
     ) -> bool:
         """
         Schedule cancellation of one resting order via the async pattern (#318).
@@ -3828,6 +3870,8 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             order_id: Order ID to cancel
             orders: The resting list to search (limit world or stop world)
             label: What to call the order in the log
+            initiator: Who asks — written on the cancelled row once the venue confirms
+            end_reason: Why — written on the cancelled row once the venue confirms
 
         Returns:
             True if the cancellation was scheduled or deferred. False if the order is not in
@@ -3841,6 +3885,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
                 # auto-issue it once _handle_resting_submit_response confirms the broker_ref.
                 # Dropping it here orphaned the order (#13/#15 cert blocker, proven live).
                 pending.execution_state.cancel_requested = True
+                self._note_cancel_origin(pending, initiator, end_reason)
                 self.logger.debug(
                     f'[CANCEL_DEFER] order={order_id} reason=broker_ref_in_flight')
                 return True
@@ -3850,6 +3895,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
                     f'op={pending.execution_state.in_flight_operation.name} scheduled=0')
                 return False  # busy
 
+            self._note_cancel_origin(pending, initiator, end_reason)
             pending.execution_state.in_flight_operation = PendingOperation.PENDING_CANCEL
             self._request_processor.submit_cancel_order_async(
                 order_id=order_id,
@@ -3868,6 +3914,26 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             f'[CANCEL_SKIP] order={order_id} reason=not_in_active_{label.lower()}s scheduled=0')
         return False
 
+    @staticmethod
+    def _note_cancel_origin(
+        pending: PendingOrder,
+        initiator: OrderInitiator,
+        end_reason: OrderEndReason,
+    ) -> None:
+        """
+        Record who asked for a cancel and why, for the row that ends the order (#362).
+
+        Recorded on the request and read on the confirmation — which can be a status read
+        long after this cancel's own answer was lost.
+
+        Args:
+            pending: The order whose cancel is requested
+            initiator: Who asks
+            end_reason: Why
+        """
+        pending.execution_state.cancel_initiator = initiator
+        pending.execution_state.cancel_end_reason = end_reason
+
     def cancel_limit_order(self, order_id: str) -> bool:
         """
         Schedule cancellation of an active limit order via async pattern (#318).
@@ -3878,7 +3944,9 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         Returns:
             True if cancellation was scheduled or deferred. False if order not found or busy.
         """
-        return self._cancel_resting_order(order_id, self._active_limit_orders, 'Limit')
+        return self._cancel_resting_order(
+            order_id, self._active_limit_orders, 'Limit',
+            OrderInitiator.STRATEGY, OrderEndReason.CANCEL_REQUESTED)
 
     def cancel_stop_order(self, order_id: str) -> bool:
         """
@@ -3898,7 +3966,9 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             True if cancellation was scheduled or deferred. False if the order is not resting
             here, or it is busy with another operation.
         """
-        return self._cancel_resting_order(order_id, self._active_stop_orders, 'Stop')
+        return self._cancel_resting_order(
+            order_id, self._active_stop_orders, 'Stop',
+            OrderInitiator.STRATEGY, OrderEndReason.CANCEL_REQUESTED)
 
     # ============================================
     # Pending Order Awareness
@@ -3988,12 +4058,13 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         Finish the session's orders — the venue keeps whatever it still holds (#492).
 
         Three phases:
-        1. Resting orders: cancelled AT THE BROKER and expired locally, or left standing
-           when the policy says so. Left standing means left in both places — a live order
-           must not be recorded as expired while it can still fill.
+        1. Resting orders: cancelled AT THE BROKER and booked cancelled — or unaccounted
+           where the venue did not confirm the cancel — or left standing when the policy
+           says so. Left standing means left in both places — a live order must not be
+           recorded as ended while it can still fill.
         2. clear_pending() catches genuine stuck-in-pipeline orders (e.g. the broker has
-           not confirmed a fill yet when the session ends). These ARE real anomalies and
-           are correctly recorded as FORCE_CLOSED with reason="scenario_end".
+           not confirmed a fill yet when the session ends). These ARE real anomalies,
+           recorded as FORCE_CLOSED with reason="scenario_end" and booked unaccounted.
         3. The request worker is stopped.
 
         Open POSITIONS are deliberately untouched. This method used to direct-fill them
@@ -4086,13 +4157,34 @@ class LiveTradeExecutor(AbstractTradeExecutor):
                     self.logger.error(
                         f'❌ Session end: the venue did NOT confirm the cancel of {label} '
                         f'{pending.pending_order_id} (broker_ref={pending.broker_ref}): '
-                        f'{reason}. It may still be working at the broker — it is NOT recorded '
-                        f'as expired, and the next session will find it.')
-            self._expire_active_orders(
-                skip={p.pending_order_id for p, _, _ in unconfirmed})
+                        f'{reason}. It may still be working at the broker — it is recorded as '
+                        f'unaccounted, and the next session will find it.')
+            # What the venue confirmed is CANCELLED, by us, at the session end; what it did
+            # not is UNACCOUNTED (#362). Both used to be booked EXPIRED, or not at all —
+            # and EXPIRED is a claim about the VENUE: an order whose cancel was not
+            # confirmed may still be working there, and recording it as expired is how a
+            # live order becomes invisible to the next session's boot adoption.
+            # The lists are NOT cleared — preserved for get_pending_stats() snapshots.
+            not_confirmed = {p.pending_order_id for p, _, _ in unconfirmed}
+            for pending in resting:
+                if pending.pending_order_id in not_confirmed:
+                    self._book_order_result(self._ending_for_pending(
+                        pending, OrderStatus.UNACCOUNTED,
+                        initiator=OrderInitiator.FRAMEWORK,
+                        end_reason=OrderEndReason.SESSION_END))
+                else:
+                    self._book_order_result(self._ending_for_pending(
+                        pending, OrderStatus.CANCELLED,
+                        initiator=OrderInitiator.FRAMEWORK,
+                        end_reason=OrderEndReason.SESSION_END))
 
-        # Phase 2: Catch genuine stuck-in-pipeline orders (real anomalies)
-        self._request_processor.clear_pending(reason='scenario_end')
+        # Phase 2: Catch genuine stuck-in-pipeline orders (real anomalies). Sent and never
+        # answered for before the session ended: the venue may hold each one, filled or not.
+        for pending in self._request_processor.clear_pending(reason='scenario_end'):
+            self._book_order_result(self._ending_for_pending(
+                pending, OrderStatus.UNACCOUNTED,
+                initiator=OrderInitiator.FRAMEWORK,
+                end_reason=OrderEndReason.SESSION_END))
 
         # #318 — clear pending position modifications (live tracker)
         if self._pending_position_modifications:

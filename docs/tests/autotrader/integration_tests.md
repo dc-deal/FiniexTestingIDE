@@ -121,7 +121,7 @@ recovered", both staleness contracts in ONE fast session driven by the
 | `test_session_completes_normally` | Normal shutdown, 3000 ticks, empty error pot despite the outage |
 | `test_stale_episode_reaches_the_pot_with_span` | Exactly one flip warning + one recovery line with the from–to span (the v0 stale protocol) |
 | `test_decision_hook_fired_once` | `on_market_data_stale` edge-dispatched exactly once per episode |
-| `test_guard_blocked_the_stale_entry` | The probe's deliberate ghost-pass entry was rejected (`STALE_MARKET_DATA` floor) |
+| `test_guard_blocked_the_stale_entry` | The probe's deliberate ghost-pass entry was refused by the guard (`STALE_MARKET_DATA` floor) and counted as a denial — nothing was sent |
 | `test_signal_side_fired_too` | `on_signal_stale` fired once (aged archive) — both contracts in one session |
 
 **Runtime:** ~10 seconds (one shared session; includes the 2 s deliberate freeze).

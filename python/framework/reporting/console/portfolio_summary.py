@@ -12,6 +12,7 @@ from typing import Dict, List, Optional
 from python.framework.reporting.console.abstract_batch_summary_section import (
     AbstractBatchSummarySection,
 )
+from python.framework.reporting.console.order_counts_line import order_endings_text
 from python.framework.types.api.report_types import (
     ActiveOrderRow,
     AggregatedPortfolioCurrency,
@@ -327,9 +328,10 @@ class PortfolioSummary(AbstractBatchSummarySection):
         """Order execution counts line (from the execution-stats model)."""
         if execution is None:
             return ''
-        line = f'Orders: {execution.orders_executed}/{execution.orders_sent} executed'
-        if execution.orders_rejected > 0:
-            line += f" | {renderer.yellow(f'Rej: {execution.orders_rejected}')}"
+        line = f'Orders: {execution.orders_executed}/{execution.orders_submitted} executed'
+        endings = order_endings_text(execution, renderer)
+        if endings:
+            line += f' | {endings}'
         return line
 
     @staticmethod
@@ -480,12 +482,13 @@ class PortfolioSummary(AbstractBatchSummarySection):
         print(f'      Profit Factor: {pf_str}')
 
         print(f"\n{renderer.bold('   ORDER EXECUTION:')}")
-        print(f'      Orders Sent: {row.orders_sent}  |  '
-              f'Executed: {row.orders_executed}  |  '
-              f'Rejected: {row.orders_rejected}')
+        endings = order_endings_text(row, renderer)
+        print(f'      Orders Submitted: {row.orders_submitted}  |  '
+              f'Executed: {row.orders_executed}'
+              + (f'  |  {endings}' if endings else ''))
 
-        if row.orders_sent > 0:
-            print(f'      Execution Rate: {row.orders_executed / row.orders_sent:.1%}')
+        if row.orders_submitted > 0:
+            print(f'      Execution Rate: {row.execution_rate_pct:.1f}%')
 
         # Pending order statistics (green)
         self._render_pending_stats(renderer, row)

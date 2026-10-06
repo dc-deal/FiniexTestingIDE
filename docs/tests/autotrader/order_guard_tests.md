@@ -76,7 +76,7 @@ This is the critical path that was fixed by the callback mechanism — previousl
 Guard rejections flow through `AbstractTradeExecutor.record_guard_rejection()` into `_order_history`. Scenario tests verify that:
 - Guard rejections appear in order history with correct `RejectionReason`
 - All guard rejections carry the `guard_` order ID prefix
-- `execution_stats.orders_rejected` includes guard rejections
+- `execution_stats.orders_denied` counts the guard's refusals, `orders_rejected` the broker's
 
 ---
 

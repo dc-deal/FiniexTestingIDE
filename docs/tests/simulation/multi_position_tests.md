@@ -275,8 +275,9 @@ BatchExecutionSummary
             │    └→ total_spread_cost
             ├→ trade_history: List[TradeRecord]  ← 4 records with full audit trail
             ├→ execution_stats: ExecutionStats
-            │    ├→ orders_sent: 4
-            │    └→ orders_rejected: 0
+            │    ├→ orders_submitted: 8  (4 opens + 4 closes)
+            │    ├→ orders_executed: 8
+            │    └→ orders_rejected: 0 · orders_denied: 0
             └→ decision_statistics: DecisionLogicStats
                  └→ probe_metadata: ProbeMetadata
                       ├→ expected_trades: [{signal_tick, direction, order_id, ...}, ...]

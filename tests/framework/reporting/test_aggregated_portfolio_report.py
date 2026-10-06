@@ -58,8 +58,9 @@ def _pf(name, currency='USD', symbol='EURUSD', spot=False, trades=2, win=1, lose
 
 def _ex(name, sent=2, executed=2, rejected=0, sl_tp=0, symbol='EURUSD') -> ExecutionStatsRow:
     return ExecutionStatsRow(
-        name=name, symbol=symbol, orders_sent=sent, orders_executed=executed,
-        orders_rejected=rejected, sl_tp_triggered=sl_tp)
+        name=name, symbol=symbol, orders_submitted=sent, orders_executed=executed,
+        orders_denied=0, orders_rejected=rejected, orders_cancelled=0, orders_expired=0,
+        orders_undelivered=0, orders_unaccounted=0, sl_tp_triggered=sl_tp)
 
 
 def _pe(name, resolved=2, filled=2, avg=None, mn=None, mx=None, count=0, symbol='EURUSD') -> PendingOrdersUnitRow:
@@ -69,7 +70,7 @@ def _pe(name, resolved=2, filled=2, avg=None, mn=None, mx=None, count=0, symbol=
 
 
 _ZERO_TOTALS = ExecutionStatsTotals(
-    orders_sent=0, orders_executed=0, orders_rejected=0, sl_tp_triggered=0)
+    orders_submitted=0, orders_executed=0, orders_rejected=0, sl_tp_triggered=0)
 
 
 def _build(pf_rows, ex_rows=None, pe_rows=None):
@@ -93,7 +94,7 @@ class TestBuild:
         assert c.headline.total_trades == 4 and c.headline.total_profit == 160.0
         assert c.initial_balance == 2000.0 and c.final_balance == 2100.0
         assert c.balance_pnl == 100.0 and round(c.balance_pnl_pct, 2) == 5.0
-        assert c.orders_sent == 5 and c.orders_executed == 4 and c.orders_rejected == 1
+        assert c.orders_submitted == 5 and c.orders_executed == 4 and c.orders_rejected == 1
         # avg win/loss as amounts; recovery = pnl / |worst-dd|
         assert c.avg_win == 160.0 / 2 and c.avg_loss == 60.0 / 2
 
@@ -183,7 +184,7 @@ class TestExecutionRateDerived:
         report = _build([_pf('s1')], ex_rows=[_ex('s1', sent=8, executed=6)])
         assert report.currencies[0].combined.execution_rate_pct == pytest.approx(75.0)
 
-    def test_zero_orders_sent_is_zero_not_a_division(self):
+    def test_zero_orders_submitted_is_zero_not_a_division(self):
         report = _build([_pf('s1')], ex_rows=[_ex('s1', sent=0, executed=0)])
         assert report.currencies[0].combined.execution_rate_pct == 0.0
 

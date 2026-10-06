@@ -31,21 +31,23 @@ The test scenario is designed to produce a specific sequence of outcomes:
 ```
 Tick  100: Open LONG #0 (1.0 lot)  → SUCCESS   margin_used ≈ 28,800 JPY
 Tick  200: Open LONG #1 (1.0 lot)  → SUCCESS   margin_used ≈ 57,600 JPY, free ≈ 22,400
-Tick  400: Open LONG #2 (1.0 lot)  → REJECTED  needs 28,800 > 22,400 free
-Tick  600: Open LONG 0.001 lots    → REJECTED  below volume_min (0.01)
-Tick  650: Open LONG 0.015 lots    → REJECTED  not aligned with volume_step (0.01)
-Tick  700: Open LONG 200.0 lots    → REJECTED  above volume_max (100)
-Tick  800: Close "FAKE_POS_999"    → ERROR     position not found (no crash)
+Tick  400: Open LONG #2 (1.0 lot)  → REJECTED  needs 28,800 > 22,400 free (at the fill)
+Tick  600: Open LONG 0.001 lots    → DENIED    below volume_min (0.01)
+Tick  650: Open LONG 0.015 lots    → DENIED    not aligned with volume_step (0.01)
+Tick  700: Open LONG 200.0 lots    → DENIED    above volume_max (100)
+Tick  800: Close "FAKE_POS_999"    → DENIED    position_not_found (no crash)
 Tick 5000: Close Trade #1          → SUCCESS   margin freed, free ≈ 50,000+
 Tick 5200: Retry LONG (1.0 lot)    → SUCCESS   margin recovery confirmed
 Tick 7200: Close Retry (hold_ticks expires)
 Tick 8100: Close Trade #0 (hold_ticks expires)
 ```
 
-**Expected execution statistics:**
-- orders_sent: 7 (3 trade_sequence + 1 retry + 3 lot edge cases)
-- orders_executed: 3 (trade #0, #1, retry)
-- orders_rejected: 4 (trade #2 margin, lot_below_min, lot_step, lot_above_max)
+**Expected execution statistics** (each count names what it counts — #362):
+- orders_submitted: 7 (3 trade_sequence + 1 retry + 3 closes) — what reached the simulated venue
+- orders_executed: 6 (trade #0, #1 and the retry opened, and each of them closed)
+- orders_denied: 4 (lot_below_min, lot_step, lot_above_max, and the close of `FAKE_POS_999`) —
+  refused before anything was sent
+- orders_rejected: 1 (trade #2 — the simulated venue's margin check at the fill)
 
 ---
 
@@ -74,7 +76,7 @@ tests/
 ```
 
 **Why exclude TestTradeExecution and TestLatencyDeterminism?**
-- `TestTradeExecution` asserts `orders_rejected == 0` — this suite expects rejections
+- `TestTradeExecution` asserts that every submitted order executed — this suite expects rejections
 - `TestLatencyDeterminism.test_fill_tick_calculation` assumes all trade_sequence entries succeed — here trade #2 is rejected after latency
 
 ---
@@ -113,8 +115,9 @@ tests/
 | Fixture | Scope | Description |
 |---------|-------|-------------|
 | `expected_successful_trades` | session | Count of trades expected to succeed (non-rejected sequence + retries) |
-| `expected_rejections` | session | Count of expected rejections (margin + lot validation) |
-| `expected_orders_sent` | session | Total open order attempts (excludes close_nonexistent) |
+| `expected_rejections` | session | Count of expected rejections — the margin check at the fill |
+| `expected_denials` | session | Count of expected denials — the lot edge cases and the close of a missing position |
+| `expected_orders_submitted` | session | Orders that reached the simulated venue: the sequence, the retries, and every close |
 
 ### Delay Generator Fixtures
 
@@ -136,7 +139,8 @@ Tests margin exhaustion, recovery after closing a position, and execution statis
 | Test | Description |
 |------|-------------|
 | `test_has_rejected_orders` | At least one order was rejected due to margin exhaustion |
-| `test_rejection_count_matches_expected` | Rejected order count matches expected (margin + lot rejections) |
+| `test_rejection_count_matches_expected` | Rejected order count matches the margin refusals at the fill |
+| `test_denial_count_matches_expected` | Denied order count matches the refusals made before anything was sent — lot edge cases and the close of a missing position |
 | `test_no_position_created_after_rejection` | Trade history only contains successfully opened trades |
 | `test_successful_trades_count` | Portfolio total_trades matches expected successful opens |
 
@@ -152,10 +156,10 @@ Tests margin exhaustion, recovery after closing a position, and execution statis
 
 | Test | Description |
 |------|-------------|
-| `test_orders_sent_count` | orders_sent counts all open order attempts |
-| `test_orders_executed_count` | orders_executed counts only successfully opened positions |
-| `test_sent_equals_executed_plus_rejected` | orders_sent = orders_executed + orders_rejected |
-| `test_trade_history_excludes_rejections` | Trade history length matches orders_executed |
+| `test_orders_submitted_count` | orders_submitted counts the orders handed to the venue — never a denied one |
+| `test_orders_executed_count` | orders_executed counts every fill — the successful opens and their closes |
+| `test_sent_equals_executed_plus_rejected` | orders_submitted = orders_executed + orders_rejected: every submitted order ended one of the two ways |
+| `test_trade_history_excludes_rejections` | Trade history holds one record per executed close |
 
 ---
 
@@ -167,10 +171,10 @@ Tests lot size validation, position close errors, and rejection tracking.
 
 | Test | Description |
 |------|-------------|
-| `test_lot_validation_rejections_counted` | Lot validation rejections included in orders_rejected |
+| `test_lot_validation_rejections_counted` | Lot validation refusals are counted as orders_denied — refused before anything was sent |
 | `test_invalid_lots_not_in_trade_history` | Trades with invalid lot sizes absent from trade history |
 | `test_invalid_lots_not_in_expected_trades` | Expected trades don't contain rejected lot validation orders |
-| `test_lot_step_misalignment_rejected` | Lot not aligned with volume_step (e.g., 0.015 with step 0.01) rejected |
+| `test_lot_step_misalignment_rejected` | Lot not aligned with volume_step (e.g., 0.015 with step 0.01) is denied |
 
 #### TestPositionCloseErrors
 
@@ -183,7 +187,7 @@ Tests lot size validation, position close errors, and rejection tracking.
 
 | Test | Description |
 |------|-------------|
-| `test_orders_sent_includes_rejected` | orders_sent > orders_executed when rejections occur |
+| `test_orders_submitted_includes_rejected` | orders_submitted > orders_executed when a submitted order is rejected at the fill |
 | `test_rejected_orders_not_in_trade_history` | Rejected orders absent from trade history |
 | `test_all_rejections_accounted_for` | Total rejections match expected count |
 
@@ -195,7 +199,7 @@ rejection went unseen.
 
 | Test | Description |
 |------|-------------|
-| `test_every_rejection_states_its_side_symbol_size_and_time` | No rejection leaves its side, symbol, direction, lots or time empty |
+| `test_every_rejection_states_its_side_symbol_size_and_time` | No refusal leaves its side, symbol, direction, lots or time empty — except the close of a position this bot does not hold, which names only the id it was asked for and states its side and time |
 | `test_the_symbol_filter_keeps_the_rejections` | Filtering the order history by its symbol drops no rejected row |
 
 ---
@@ -215,7 +219,7 @@ defined within the test file itself (not in conftest.py).
 | `test_no_orders_executed` | Zero executed orders |
 | `test_no_trades_in_history` | Trade history empty |
 | `test_submitted_but_none_in_trade_history` | Orders submitted (PENDING) but all rejected at fill — none in trade_history |
-| `test_orders_sent_equals_rejected` | orders_sent == orders_rejected (all fail) |
+| `test_orders_submitted_equals_rejected` | orders_submitted == orders_rejected (all fail at the fill) |
 
 **Zero Balance Scenario:**
 
@@ -225,7 +229,7 @@ Tick  200: Open SHORT 0.01 lot → REJECTED  insufficient margin (balance=0)
 ```
 
 **Expected execution statistics:**
-- orders_sent: 2
+- orders_submitted: 2
 - orders_executed: 0
 - orders_rejected: 2
 
@@ -344,7 +348,8 @@ MarginStressProbe.compute()
   └→ retry_events               → send_order() → margin check → accept
 
 Results available via:
-  ├→ execution_stats.orders_rejected     (all rejection types)
+  ├→ execution_stats.orders_denied       (refused before sending: lot size, missing position)
+  ├→ execution_stats.orders_rejected     (refused by the simulated venue: margin at the fill)
   ├→ probe_metadata.expected_trades (successful opens only)
   └→ trade_history                        (closed trades only)
 ```

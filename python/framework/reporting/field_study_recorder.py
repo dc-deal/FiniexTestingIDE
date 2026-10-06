@@ -144,7 +144,8 @@ class FieldStudyRecorder:
         Record a bot-observed order/lifecycle event (fill, rejection, cancel, partial).
 
         Args:
-            event_type: 'order_filled' / 'order_rejected' / 'order_cancelled' / 'partial_close'
+            event_type: 'order_filled' / 'order_rejected' / 'order_unaccounted' /
+                'order_cancelled' / 'partial_close'
             order_id: Internal order/position id
             side: 'LONG'/'SHORT'
             lots: Executed/observed lots

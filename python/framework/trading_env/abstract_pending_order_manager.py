@@ -221,7 +221,7 @@ class AbstractPendingOrderManager(ABC):
         self,
         current_msc: Optional[int] = None,
         reason: str = 'scenario_end'
-    ) -> None:
+    ) -> List[PendingOrder]:
         """
         Clear all pending orders. Records remaining orders as FORCE_CLOSED.
 
@@ -235,9 +235,12 @@ class AbstractPendingOrderManager(ABC):
             current_msc: Current millisecond timestamp for latency calculation (simulation).
                          None for live mode (measured on the monotonic clock).
             reason: Why the force-close happened (e.g. "scenario_end", "manual_abort")
+
+        Returns:
+            The orders cleared, so the executor can book how each one ended
         """
         if not self._pending_orders:
-            return
+            return []
 
         count = len(self._pending_orders)
         self.logger.warning(
@@ -263,4 +266,6 @@ class AbstractPendingOrderManager(ABC):
                 reason=reason,
             )
 
+        cleared = list(self._pending_orders.values())
         self._pending_orders.clear()
+        return cleared

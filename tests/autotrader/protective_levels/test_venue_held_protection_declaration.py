@@ -150,7 +150,7 @@ class TestTheResolutionMatrix:
         executor = _live_executor(profile_default=profile_default, venue_can_hold=False)
         result = executor.open_order(_market_request(venue_held_protection=override))
 
-        refused = result.status == OrderStatus.REJECTED
+        refused = result.status == OrderStatus.DENIED
         assert refused == expect_refused, (
             f'profile={profile_default} override={override} resolved to '
             f'{"refused" if refused else "accepted"}')
@@ -166,7 +166,7 @@ class TestARefusalNamesTheShortSide:
         executor = _live_executor(profile_default=True, venue_can_hold=False)
         result = executor.open_order(_market_request())
 
-        assert result.status == OrderStatus.REJECTED
+        assert result.status == OrderStatus.DENIED
         assert result.rejection_reason == RejectionReason.ORDER_TYPE_NOT_SUPPORTED
         assert 'venue_held_protection' in result.rejection_message
         assert executor.get_broker_name() in result.rejection_message
@@ -175,7 +175,7 @@ class TestARefusalNamesTheShortSide:
         executor = _live_executor(profile_default=True, venue_can_hold=True)
         result = executor.open_order(_market_request())
 
-        assert result.status != OrderStatus.REJECTED, (
+        assert not result.is_refused, (
             f'The venue declares it can hold a protective order: {result.rejection_message}')
 
     def test_an_order_without_a_level_is_never_refused_for_this(self):
@@ -191,7 +191,7 @@ class TestARefusalNamesTheShortSide:
         request.stop_loss = None
         result = executor.open_order(request)
 
-        assert result.status != OrderStatus.REJECTED, result.rejection_message
+        assert not result.is_refused, result.rejection_message
 
 
 class TestTheStampSaysWhoHoldsIt:
@@ -286,7 +286,7 @@ class TestTheSimulationAcceptsAndIgnores:
         simulator.on_tick(_tick(50000.0, 50001.0))
         result = simulator.open_order(_market_request(venue_held_protection=True))
 
-        assert result.status != OrderStatus.REJECTED, result.rejection_message
+        assert not result.is_refused, result.rejection_message
 
     def test_the_backtest_still_answers_local(self):
         simulator = TradeSimulator(

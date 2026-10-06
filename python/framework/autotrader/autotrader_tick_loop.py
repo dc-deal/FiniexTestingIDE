@@ -720,7 +720,7 @@ class AutotraderTickLoop:
             order_result: Result of the executed decision (may be None / non-rejected)
             decision: The decision that produced the order (for the side label)
         """
-        if not (order_result and order_result.is_rejected):
+        if not (order_result and order_result.is_refused):
             return
         reason = order_result.rejection_reason.value if order_result.rejection_reason else 'unknown'
         self._rejection_count += 1

@@ -498,7 +498,7 @@ class MarginStressProbe(AbstractDecisionLogic):
                 'tick': self.tick_count,
                 'type': 'close_nonexistent',
                 'position_id': position_id,
-                'rejected': result.is_rejected if result else True,
+                'rejected': result.is_refused if result else True,
                 'rejection_reason': (
                     result.rejection_reason.value if result and result.rejection_reason else None
                 ),
@@ -533,7 +533,7 @@ class MarginStressProbe(AbstractDecisionLogic):
                 f"{'[EXPECT_REJECT]' if expect_rejection else ''}"
             )
 
-            if order_result and not order_result.is_rejected:
+            if order_result and not order_result.is_refused:
                 # Track active trade
                 trade_info = {
                     'sequence_index': seq_idx,
@@ -577,7 +577,7 @@ class MarginStressProbe(AbstractDecisionLogic):
                         f'Expected rejection but order succeeded at tick {self.tick_count}'
                     )
 
-            elif order_result and order_result.is_rejected:
+            elif order_result and order_result.is_refused:
                 self._rejection_events.append({
                     'tick': self.tick_count,
                     'sequence_index': seq_idx,

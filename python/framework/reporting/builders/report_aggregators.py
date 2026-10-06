@@ -31,6 +31,7 @@ from python.framework.types.api.report_types import (
     WorkerStatRow,
 )
 from python.framework.types.scenario_types.scenario_set_performance_types import EXPECTED_OPERATIONS
+from python.framework.types.trading_env_types.trading_env_stats_types import EXECUTION_COUNT_FIELDS
 
 # --- Trade analytics (per account currency) -------------------------------------------
 
@@ -150,12 +151,21 @@ def aggregate_trade_scenario_totals(rows: List[TradeHistoryRow]) -> List[TradeSc
 
 def aggregate_execution_totals(rows: List[ExecutionStatsRow]) -> ExecutionStatsTotals:
     """Sum the per-unit order counts (currency-agnostic) into one totals object."""
-    return ExecutionStatsTotals(
-        orders_sent=sum(r.orders_sent for r in rows),
-        orders_executed=sum(r.orders_executed for r in rows),
-        orders_rejected=sum(r.orders_rejected for r in rows),
-        sl_tp_triggered=sum(r.sl_tp_triggered for r in rows),
-    )
+    return ExecutionStatsTotals(**_summed_execution_counts(rows))
+
+
+def _summed_execution_counts(rows: List[ExecutionStatsRow]) -> Dict[str, int]:
+    """
+    Every execution count summed over the rows — the one place the set is spelled out.
+
+    Args:
+        rows: Per-unit execution rows
+
+    Returns:
+        Each count field mapped to its sum
+    """
+    return {field_name: sum(getattr(r, field_name) for r in rows)
+            for field_name in EXECUTION_COUNT_FIELDS}
 
 
 # --- Portfolio roll-up (per account currency) -----------------------------------------
@@ -294,8 +304,8 @@ def aggregate_full_portfolio(
     lat = [p for p in pend if p.avg_latency_ms is not None]
     lat_count = sum(p.latency_count for p in lat)
 
-    orders_sent = sum(e.orders_sent for e in ex)
-    orders_executed = sum(e.orders_executed for e in ex)
+    counts = _summed_execution_counts(ex)
+    submitted = counts['orders_submitted']
 
     return AggregatedPortfolioRow(
         headline=headline,
@@ -323,11 +333,8 @@ def aggregate_full_portfolio(
         maker_fee=sum(r.maker_fee for r in rows),
         taker_fee=sum(r.taker_fee for r in rows),
         avg_spread=total_spread / total_trades if total_trades > 0 else 0.0,
-        orders_sent=orders_sent,
-        orders_executed=orders_executed,
-        orders_rejected=sum(e.orders_rejected for e in ex),
-        sl_tp_triggered=sum(e.sl_tp_triggered for e in ex),
-        execution_rate_pct=(orders_executed / orders_sent * 100) if orders_sent > 0 else 0.0,
+        **counts,
+        execution_rate_pct=(counts['orders_executed'] / submitted * 100) if submitted > 0 else 0.0,
         pending_total_resolved=sum(p.total_resolved for p in pend),
         pending_total_filled=sum(p.total_filled for p in pend),
         pending_total_rejected=sum(p.total_rejected for p in pend),

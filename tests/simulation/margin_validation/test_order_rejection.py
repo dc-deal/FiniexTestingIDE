@@ -18,7 +18,7 @@ from python.framework.reporting.builders.run_unit import RunUnit
 from python.framework.types.process_data_types import ProcessTickLoopResult
 from python.framework.types.probe_metadata_types import ProbeMetadata
 from python.framework.types.portfolio_types.portfolio_trade_record_types import TradeRecord
-from python.framework.types.trading_env_types.order_types import OrderStatus
+from python.framework.types.trading_env_types.order_types import OrderStatus, RejectionReason
 from python.framework.types.trading_env_types.trading_env_stats_types import ExecutionStats
 
 
@@ -30,15 +30,14 @@ class TestLotSizeValidation:
         execution_stats: ExecutionStats,
         edge_case_orders: list
     ):
-        """Lot validation rejections should be included in orders_rejected."""
+        """Lot validation refusals are counted as denials — refused before anything was sent."""
         lot_edge_cases = sum(
             1 for e in edge_case_orders
             if e['type'] in ('invalid_lot_below_min', 'invalid_lot_above_max', 'invalid_lot_step')
         )
-        # orders_rejected includes both margin and lot rejections
-        assert execution_stats.orders_rejected >= lot_edge_cases, (
-            f'Expected at least {lot_edge_cases} rejections from lot validation, '
-            f'orders_rejected={execution_stats.orders_rejected}'
+        assert execution_stats.orders_denied >= lot_edge_cases, (
+            f'Expected at least {lot_edge_cases} denials from lot validation, '
+            f'orders_denied={execution_stats.orders_denied}'
         )
 
     def test_invalid_lots_not_in_trade_history(
@@ -86,10 +85,10 @@ class TestLotSizeValidation:
         assert len(step_edge_cases) > 0, (
             'Config must include at least one invalid_lot_step edge case'
         )
-        # Step misalignment rejections are included in orders_rejected
-        assert execution_stats.orders_rejected >= len(step_edge_cases), (
-            f'Expected at least {len(step_edge_cases)} rejections from lot step '
-            f'misalignment, orders_rejected={execution_stats.orders_rejected}'
+        # Step misalignment refusals are denials — the executor refuses before sending
+        assert execution_stats.orders_denied >= len(step_edge_cases), (
+            f'Expected at least {len(step_edge_cases)} denials from lot step '
+            f'misalignment, orders_denied={execution_stats.orders_denied}'
         )
 
 
@@ -123,13 +122,13 @@ class TestPositionCloseErrors:
 class TestRejectionTracking:
     """Validates that all rejection types are correctly tracked."""
 
-    def test_orders_sent_includes_rejected(
+    def test_orders_submitted_includes_rejected(
         self,
         execution_stats: ExecutionStats
     ):
-        """orders_sent should include rejected orders in the count."""
-        assert execution_stats.orders_sent > execution_stats.orders_executed, (
-            f'orders_sent ({execution_stats.orders_sent}) should be > '
+        """A rejection at the fill was submitted first, so submissions outnumber executions."""
+        assert execution_stats.orders_submitted > execution_stats.orders_executed, (
+            f'orders_submitted ({execution_stats.orders_submitted}) should be > '
             f'orders_executed ({execution_stats.orders_executed}) '
             f'when rejections occur'
         )
@@ -137,14 +136,14 @@ class TestRejectionTracking:
     def test_rejected_orders_not_in_trade_history(
         self,
         trade_history: List[TradeRecord],
-        execution_stats: ExecutionStats
+        tick_loop_results: ProcessTickLoopResult,
     ):
-        """Rejected orders should not appear in trade history."""
-        assert len(trade_history) == execution_stats.orders_executed, (
-            f'Trade history ({len(trade_history)}) should match '
-            f'orders_executed ({execution_stats.orders_executed}), '
-            f'not orders_sent ({execution_stats.orders_sent})'
-        )
+        """Rejected orders should not appear in trade history — no trade is a rejected order's."""
+        rejected_ids = {o.order_id for o in tick_loop_results.order_history
+                        if o.status is OrderStatus.REJECTED}
+        assert rejected_ids, 'the scenario must produce rejections for this test to mean anything'
+        traded = [t.position_id for t in trade_history if t.position_id in rejected_ids]
+        assert not traded, f'trades recorded for rejected orders: {traded}'
 
     def test_all_rejections_accounted_for(
         self,
@@ -166,14 +165,19 @@ class TestRejectionRecords:
         tick_loop_results: ProcessTickLoopResult,
     ):
         """No rejection leaves its side, symbol, direction, lots or time empty."""
-        rejections = [o for o in tick_loop_results.order_history if o.is_rejected]
+        rejections = [o for o in tick_loop_results.order_history if o.is_refused]
         assert rejections, 'the scenario must produce rejections for this test to mean anything'
         for rejection in rejections:
             assert rejection.action is not None, rejection.order_id
+            assert rejection.execution_time is not None, rejection.order_id
+            if rejection.rejection_reason is RejectionReason.POSITION_NOT_FOUND:
+                # The close of a position this bot does not hold names only the id it was asked
+                # for: no symbol, no direction and no size exist to state. It used to leave no row
+                # at all, which is why this exemption is new.
+                continue
             assert rejection.symbol, rejection.order_id
             assert rejection.direction is not None, rejection.order_id
             assert rejection.requested_lots is not None, rejection.order_id
-            assert rejection.execution_time is not None, rejection.order_id
 
     def test_the_symbol_filter_keeps_the_rejections(
         self,

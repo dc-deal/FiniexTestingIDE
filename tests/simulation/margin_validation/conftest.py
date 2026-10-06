@@ -139,36 +139,44 @@ def expected_successful_trades(trade_sequence: list, retry_events: list) -> int:
 
 
 @pytest.fixture(scope='session')
-def expected_rejections(trade_sequence: list, edge_case_orders: list) -> int:
-    """Count of expected order rejections (margin + lot validation)."""
-    margin_rejections = sum(
-        1 for t in trade_sequence if t.get('expect_rejection', False)
-    )
-    lot_rejections = sum(
-        1 for e in edge_case_orders
-        if e['type'] in ('invalid_lot_below_min', 'invalid_lot_above_max', 'invalid_lot_step')
-    )
-    return margin_rejections + lot_rejections
+def expected_rejections(trade_sequence: list) -> int:
+    """
+    Count of expected rejections — the simulated venue's margin check at the fill.
+
+    A lot-validation refusal is no rejection: the executor refuses it before anything is
+    sent, so it is denied (#362).
+    """
+    return sum(1 for t in trade_sequence if t.get('expect_rejection', False))
 
 
 @pytest.fixture(scope='session')
-def expected_orders_sent(
+def expected_denials(edge_case_orders: list) -> int:
+    """
+    Count of expected denials — the lot edge cases, and the close of a missing position.
+
+    All refused before anything is sent; the close of a missing position used to leave no row
+    and no count at all.
+    """
+    return sum(
+        1 for e in edge_case_orders
+        if e['type'] in ('invalid_lot_below_min', 'invalid_lot_above_max', 'invalid_lot_step',
+                         'close_nonexistent')
+    )
+
+
+@pytest.fixture(scope='session')
+def expected_orders_submitted(
     trade_sequence: list,
     retry_events: list,
-    edge_case_orders: list
+    trade_history: List[TradeRecord],
 ) -> int:
-    """Count of total orders sent (all open_order_with_latency calls)."""
-    # All trade_sequence entries go through send_order
-    from_sequence = len(trade_sequence)
-    # All retry events go through send_order
-    from_retries = len(retry_events)
-    # Only lot validation edge cases go through send_order
-    # (close_nonexistent goes through close_position, not send_order)
-    from_edge_cases = sum(
-        1 for e in edge_case_orders
-        if e['type'] in ('invalid_lot_below_min', 'invalid_lot_above_max', 'invalid_lot_step')
-    )
-    return from_sequence + from_retries + from_edge_cases
+    """
+    Count of the orders handed to the simulated venue — opens and closes.
+
+    Every trade_sequence entry and every retry passes the submission checks (the margin check
+    refuses at the FILL); every close that went out produced one trade record.
+    """
+    return len(trade_sequence) + len(retry_events) + len(trade_history)
 
 
 # =============================================================================

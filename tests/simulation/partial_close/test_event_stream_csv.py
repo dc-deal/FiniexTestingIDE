@@ -23,9 +23,13 @@ from python.framework.types.portfolio_types.portfolio_trade_record_types import 
 from python.framework.types.trading_env_types.order_types import (
     OrderAction,
     OrderDirection,
+    OrderEndReason,
+    OrderInitiator,
     OrderResult,
+    OrderStatus,
+    OrderType,
     RejectionReason,
-    create_rejection_result,
+    create_refusal_result,
 )
 
 
@@ -211,16 +215,18 @@ class TestRejectEvents:
 
     def _rows(self) -> List[List[str]]:
         """Flush one refused open and one refused close, return the parsed rows."""
-        refused_open = create_rejection_result(
+        refused_open = create_refusal_result(
             order_id='pos_ethusd_5', reason=RejectionReason.INVALID_LOT_SIZE,
-            message='Lot size below minimum', execution_time=self._OPEN_AT,
+            message='Lot size below minimum', status=OrderStatus.DENIED,
+            execution_time=self._OPEN_AT,
             action=OrderAction.OPEN, symbol='ETHUSD', direction=OrderDirection.LONG,
-            requested_lots=0.00001)
-        refused_close = create_rejection_result(
+            requested_lots=0.00001, order_type=OrderType.MARKET)
+        refused_close = create_refusal_result(
             order_id='close_pos_ethusd_1', reason=RejectionReason.REMAINDER_BELOW_MINIMUM,
-            message='Partial close refused', execution_time=self._CLOSE_AT,
+            message='Partial close refused', status=OrderStatus.DENIED,
+            execution_time=self._CLOSE_AT,
             action=OrderAction.CLOSE, symbol='ETHUSD', direction=OrderDirection.LONG,
-            requested_lots=0.0015)
+            requested_lots=0.0015, order_type=OrderType.MARKET)
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = Path(tmp)
             EventStreamWriter.from_sim_result(
@@ -240,4 +246,62 @@ class TestRejectEvents:
         """It used to be stamped with the moment the report was written."""
         stamps = [r[0] for r in self._rows()[1:] if r[1] == 'ORDER_REJECT']
         assert stamps == [self._OPEN_AT.isoformat(), self._CLOSE_AT.isoformat()]
+
+    def test_the_status_column_says_who_refused(self):
+        """A denial and a venue rejection are both ORDER_REJECT; the status tells them apart."""
+        status_idx = EVENT_FIELDS.index('status')
+        statuses = [r[status_idx] for r in self._rows()[1:] if r[1] == 'ORDER_REJECT']
+        assert statuses == ['denied', 'denied']
+
+
+class TestUnfilledEndEvents:
+    """Every other way an order ends without a fill leaves an event, with its status and reason."""
+
+    _AT = datetime(2026, 1, 24, 16, 0, 0, tzinfo=timezone.utc)
+
+    def _ended(self, order_id: str, status: OrderStatus, initiator: OrderInitiator,
+               end_reason: OrderEndReason, action: OrderAction) -> OrderResult:
+        """An unfilled ending as an executor books it."""
+        return OrderResult(
+            order_id=order_id, status=status, execution_time=self._AT, action=action,
+            symbol='ETHUSD', direction=OrderDirection.LONG, requested_lots=0.01,
+            order_type=OrderType.MARKET, initiator=initiator, end_reason=end_reason)
+
+    def test_cancel_and_unaccounted_get_their_own_events(self):
+        cancelled = self._ended('pos_ethusd_7', OrderStatus.CANCELLED, OrderInitiator.STRATEGY,
+                                OrderEndReason.CANCEL_REQUESTED, OrderAction.OPEN)
+        unaccounted = self._ended('pos_ethusd_8', OrderStatus.UNACCOUNTED,
+                                  OrderInitiator.FRAMEWORK, OrderEndReason.ORDER_TIMEOUT,
+                                  OrderAction.CLOSE)
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp)
+            EventStreamWriter.from_sim_result(
+                trade_history=[], order_history=[cancelled, unaccounted], run_dir=run_dir,
+            ).flush('events.csv')
+            with open(run_dir / 'events.csv') as f:
+                rows = list(csv.reader(f))[1:]
+        status_idx = EVENT_FIELDS.index('status')
+        reason_idx = EVENT_FIELDS.index('close_reason')
+        ends = {r[2]: (r[1], r[status_idx], r[reason_idx]) for r in rows
+                if r[1] in ('ORDER_CANCEL', 'ORDER_END')}
+        assert ends == {
+            'pos_ethusd_7': ('ORDER_CANCEL', 'cancelled', 'cancel_requested'),
+            'pos_ethusd_8': ('ORDER_END', 'unaccounted', 'order_timeout'),
+        }
+
+
+class TestSubmitTimes:
+    """A submit event carries the moment the order was asked for, not the moment it filled."""
+
+    def test_a_close_submit_is_stamped_at_its_submission_tick(self, events_csv_rows):
+        header = events_csv_rows[0]
+        ts_at = header.index('ts')
+        type_at = header.index('event_type')
+        msc_at = header.index('submission_tick_time_msc')
+        closes = [row for row in events_csv_rows[1:]
+                  if row[type_at] == 'CLOSE_SUBMIT' and row[msc_at]]
+        assert closes
+        for row in closes:
+            submitted = datetime.fromtimestamp(int(float(row[msc_at])) / 1000.0, tz=timezone.utc)
+            assert datetime.fromisoformat(row[ts_at]) == submitted
 

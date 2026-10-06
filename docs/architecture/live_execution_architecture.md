@@ -269,9 +269,11 @@ path: the broker response (poll today, #320 cadence) marks the order filled (`ma
 **immediately** through the #348 Decision Event Channel — drained each tick and during idle
 heartbeats. This is where the bot learns the truth and the algo reacts.
 
-**Layer 2 — Reconciler (trust net).** The Reconciler (#151) pulls broker truth (`get_broker_orders`
-/ `get_broker_balances` / `get_broker_positions`) on a separate hybrid cadence (every N ticks OR M
-seconds) and diffs it against the shadow state. It does **not** learn the fill first — it verifies
+**Layer 2 — Reconciler (trust net).** The Reconciler (#151) pulls broker truth (`get_broker_orders`,
+and `get_broker_positions` on a margin account) on a separate hybrid cadence (every N ticks OR M
+seconds) and diffs it against the shadow state. That cadence never reads the balances: the venue's
+balance sheet is read only at boot and at shutdown — by the field study (through the reconciler's
+flatness check) and by the cold-start cross-check. It does **not** learn the fill first — it verifies
 after the fact and reports divergence (`ghost` / `orphan` / `stale`). Today it runs **ALERT_ONLY**
 (detect + log + SESSION panel), validated on real money.
 

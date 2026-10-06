@@ -5,7 +5,7 @@ Detailed trade-by-trade history rendering for P&L verification
 Renders (purely from the unified report model, #393):
 - Per-scenario trade tables (chronological by entry_tick_index) + #330 execution sub-lines
 - Entry/exit prices, SL/TP, fees, P&L, MAE/MFE/R (#389) columns
-- Aggregated trade statistics + the #389 analytics block + rejection breakdown
+- Aggregated trade statistics + the #389 analytics block + failed-order breakdown
 """
 
 from typing import Dict, List
@@ -22,7 +22,7 @@ from python.framework.types.api.report_types import (
     TradeHistoryRow,
     TradeScenarioTotals,
 )
-from python.framework.types.trading_env_types.order_types import OrderStatus
+from python.framework.types.trading_env_types.order_types import FAILED_ORDER_STATUSES
 from python.framework.utils.console_renderer import ConsoleRenderer
 
 # EntryType.value → compact table glyph
@@ -114,7 +114,7 @@ class TradeHistorySummary(AbstractBatchSummarySection):
                 renderer.print_separator(width=120, char='·')
 
         # Rejections are currency-agnostic — render once.
-        rejections = [o for o in self._order_report.orders if o.status is OrderStatus.REJECTED]
+        rejections = [o for o in self._order_report.orders if o.status in FAILED_ORDER_STATUSES]
         if rejections:
             self._render_aggregated_rejections(rejections, renderer)
         print()
@@ -149,23 +149,42 @@ class TradeHistorySummary(AbstractBatchSummarySection):
 
     def _render_scenario_rejections(
         self, scenario_name: str, renderer: ConsoleRenderer) -> None:
-        """Render rejected orders for a scenario (from the order-history model)."""
+        """Render the failed orders of a scenario (from the order-history model)."""
         rejections = [
             o for o in self._order_report.orders
-            if o.status is OrderStatus.REJECTED and o.scenario_name == scenario_name
+            if o.status in FAILED_ORDER_STATUSES and o.scenario_name == scenario_name
         ]
         if not rejections:
             return
 
         print()
-        print(renderer.yellow(f'   Rejected Orders: {len(rejections)}'))
-        header = f"   {'#':>3} | {'Order ID':<20} | {'Reason':<25} | {'Message'}"
+        print(renderer.yellow(f'   Failed Orders: {len(rejections)}'))
+        header = (f"   {'#':>3} | {'Order ID':<20} | {'Status':<11} | {'Reason':<25} | "
+                  f"{'Message'}")
         print(renderer.gray(header))
-        print(renderer.gray('   ' + '-' * 100))
+        print(renderer.gray('   ' + '-' * 114))
         for idx, rej in enumerate(rejections, 1):
-            reason_str = rej.rejection_reason.value if rej.rejection_reason else 'unknown'
-            row = f'   {idx:>3} | {rej.order_id:<20} | {reason_str:<25} | {rej.rejection_message or ""}'
+            row = (f'   {idx:>3} | {rej.order_id:<20} | {rej.status.value:<11} | '
+                   f'{self._reason_label(rej):<25} | {rej.rejection_message or ""}')
             print(renderer.yellow(row))
+
+    @staticmethod
+    def _reason_label(order: OrderHistoryRow) -> str:
+        """
+        The reason column of a failed order.
+
+        Args:
+            order: The order's row
+
+        Returns:
+            Its rejection reason when refused, its end reason when not — or the status
+            alone, which for an undelivered order is the whole statement
+        """
+        if order.rejection_reason is not None:
+            return order.rejection_reason.value
+        if order.end_reason is not None:
+            return order.end_reason.value
+        return order.status.value
 
     def _print_table_header(self, renderer: ConsoleRenderer, unit: str) -> None:
         """Print trade table header. unit labels the MAE/MFE columns ('pip' / 'tick', #167)."""
@@ -378,14 +397,14 @@ class TradeHistorySummary(AbstractBatchSummarySection):
 
     def _render_aggregated_rejections(
         self, rejections: List[OrderHistoryRow], renderer: ConsoleRenderer) -> None:
-        """Render aggregated rejection breakdown by reason."""
+        """Render the breakdown of the failed orders, by status and reason."""
         reason_counts: Dict[str, int] = {}
         for rej in rejections:
-            reason = rej.rejection_reason.value if rej.rejection_reason else 'unknown'
+            reason = f'{rej.status.value} · {self._reason_label(rej)}'
             reason_counts[reason] = reason_counts.get(reason, 0) + 1
 
-        print(f"\n   {renderer.bold('Rejected Orders:')}")
-        print(f'      Total Rejections: {len(rejections)}')
+        print(f"\n   {renderer.bold('Failed Orders:')}")
+        print(f'      Total: {len(rejections)}')
         for reason, count in sorted(reason_counts.items(), key=lambda x: -x[1]):
             print(renderer.yellow(f'      {reason}: {count}'))
 

@@ -22,6 +22,9 @@ from python.framework.types.portfolio_types.portfolio_trade_record_types import 
 from python.framework.types.trading_env_types.order_types import (
     OpenOrderRequest,
     OrderDirection,
+    OrderEndReason,
+    OrderInitiator,
+    OrderStatus,
     OrderType,
 )
 
@@ -170,29 +173,34 @@ class TestOrdersAxis:
             'fixture failed to place a resting order')
         return mock, executor
 
-    def test_cancel_expires_the_order_locally(self):
+    def test_cancel_books_the_order_cancelled_by_the_framework(self):
+        """
+        The venue confirmed the cancel, so the order ended CANCELLED — by us, at the session end.
+
+        It used to be recorded EXPIRED, which is a claim the venue never made (#362).
+        """
         mock, executor = self._executor_with_resting_order()
 
         executor.finish_remaining_orders(cancel_orders=True)
 
-        expired = [o for o in executor.get_order_history()
-                   if getattr(o.status, 'value', o.status) == 'expired']
-        assert expired, 'a cancelled resting order must leave an EXPIRED record'
+        cancelled = [o for o in executor.get_order_history() if o.status is OrderStatus.CANCELLED]
+        assert len(cancelled) == 1, 'a cancelled resting order must leave a CANCELLED record'
+        assert cancelled[0].initiator is OrderInitiator.FRAMEWORK
+        assert cancelled[0].end_reason is OrderEndReason.SESSION_END
 
-    def test_leave_does_not_expire_it(self):
+    def test_leave_does_not_end_it(self):
         """
         Left standing means left in BOTH places.
 
-        An order that can still fill must not be recorded as expired — the record would say
+        An order that can still fill must not be recorded as ended — the record would say
         the order is finished while the venue still has it working.
         """
         mock, executor = self._executor_with_resting_order()
 
         executor.finish_remaining_orders(cancel_orders=False)
 
-        expired = [o for o in executor.get_order_history()
-                   if getattr(o.status, 'value', o.status) == 'expired']
-        assert not expired, f'an order left at the venue was recorded as expired: {expired}'
+        ended = [o for o in executor.get_order_history() if o.status is not OrderStatus.PENDING]
+        assert not ended, f'an order left at the venue was recorded as ended: {ended}'
 
 
 class TestAStopIsNotAnAfterthought:
@@ -234,7 +242,7 @@ class TestAStopIsNotAnAfterthought:
         assert counts['active_limits'] == 0, 'the empty limit list IS the fixture'
         return mock, executor
 
-    def test_cancel_reaches_the_venue_and_expires_it_locally(self):
+    def test_cancel_reaches_the_venue_and_ends_it_locally(self):
         """
         Both halves, and the venue half is the one that used to be missing silently.
 
@@ -249,9 +257,8 @@ class TestAStopIsNotAnAfterthought:
         cancelled = executor.broker.adapter.get_cancelled_refs()
         assert resting.broker_ref in cancelled, (
             f'the stop was not cancelled at the venue — refs seen: {cancelled}')
-        expired = [o for o in executor.get_order_history()
-                   if getattr(o.status, 'value', o.status) == 'expired']
-        assert expired, 'a cancelled resting stop must leave an EXPIRED record'
+        cancelled = [o for o in executor.get_order_history() if o.status is OrderStatus.CANCELLED]
+        assert cancelled, 'a cancelled resting stop must leave a CANCELLED record'
 
     def test_leave_keeps_it_in_both_places(self):
         mock, executor = self._executor_with_resting_stop()
@@ -260,14 +267,16 @@ class TestAStopIsNotAnAfterthought:
 
         assert not executor.broker.adapter.get_cancelled_refs(), (
             'a stop left standing by policy must not be cancelled at the venue')
-        expired = [o for o in executor.get_order_history()
-                   if getattr(o.status, 'value', o.status) == 'expired']
-        assert not expired, f'a stop left at the venue was recorded as expired: {expired}'
+        ended = [o for o in executor.get_order_history() if o.status is not OrderStatus.PENDING]
+        assert not ended, f'a stop left at the venue was recorded as ended: {ended}'
 
 
 class TestAnUnconfirmedCancelIsNotAnExpiry:
     """
     EXPIRED is a claim about the VENUE, and it was being made without asking.
+
+    Since #362 such an order is booked UNACCOUNTED — we stopped asking, the venue may hold it —
+    and a confirmed cancel CANCELLED, by the framework at the session end.
 
     `cancel_order_sync` catches its own transport fault and returns a failure RESPONSE rather
     than raising, so the `except` this loop relied on could never fire — and the expiry ran
@@ -291,17 +300,18 @@ class TestAnUnconfirmedCancelIsNotAnExpiry:
         assert executor.get_pending_stats().active_limit_orders, 'fixture placed no order'
         return mock, executor
 
-    def test_a_refused_cancel_leaves_no_expired_record(self):
+    def test_a_refused_cancel_leaves_an_unaccounted_record(self):
         mock, executor = self._executor_with_resting_order()
         executor.broker.adapter.set_transport_fault(
             'cancel', 'venue unreachable at shutdown', terminal=True)
 
         executor.finish_remaining_orders(cancel_orders=True)
 
-        expired = [o for o in executor.get_order_history()
-                   if getattr(o.status, 'value', o.status) == 'expired']
-        assert not expired, (
-            f'an order the venue never confirmed cancelled was recorded EXPIRED: {expired}')
+        history = executor.get_order_history()
+        ended = [o.status for o in history if o.status is not OrderStatus.PENDING]
+        assert ended == [OrderStatus.UNACCOUNTED], (
+            f'an order the venue never confirmed cancelled was recorded as {ended}')
+        assert history[-1].end_reason is OrderEndReason.SESSION_END
 
     def test_a_refused_cancel_is_reported_as_an_error(self, capsys):
         """
@@ -326,15 +336,14 @@ class TestAnUnconfirmedCancelIsNotAnExpiry:
         assert 'may still be working at the broker' in printed, (
             'the message has to say what the operator should now expect to find')
 
-    def test_a_confirmed_cancel_still_expires_normally(self):
+    def test_a_confirmed_cancel_is_booked_cancelled(self):
         """The counter-case, so the guard cannot have silenced the ordinary path."""
         mock, executor = self._executor_with_resting_order()
 
         executor.finish_remaining_orders(cancel_orders=True)
 
-        expired = [o for o in executor.get_order_history()
-                   if getattr(o.status, 'value', o.status) == 'expired']
-        assert expired, 'a confirmed cancel must still leave an EXPIRED record'
+        cancelled = [o for o in executor.get_order_history() if o.status is OrderStatus.CANCELLED]
+        assert cancelled, 'a confirmed cancel must leave a CANCELLED record'
 
 
 class TestTheEmergencyIsNotFoldedIn:

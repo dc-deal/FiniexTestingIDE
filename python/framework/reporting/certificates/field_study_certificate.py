@@ -174,10 +174,13 @@ class FieldStudyCertificate:
             'account_delta': account_delta,
             'realized_cost': realized_cost,
             'realized_cost_source': realized_cost_source,
+            # Nothing writes a slippage figure into the record any more — the field it copied
+            # was never filled, so every certificate read max 0.0. Until the record carries a
+            # measured one (#566), no figure is NOT MEASURED, never a zero.
             'slippage_points': {
                 'count': len(slip_points),
-                'max': max(slip_points) if slip_points else 0.0,
-                'avg': (sum(slip_points) / len(slip_points)) if slip_points else 0.0,
+                'max': max(slip_points) if slip_points else None,
+                'avg': (sum(slip_points) / len(slip_points)) if slip_points else None,
             },
             'detected_via': detected_via,
             'reconcile_alert_count': len(reconcile_alerts),

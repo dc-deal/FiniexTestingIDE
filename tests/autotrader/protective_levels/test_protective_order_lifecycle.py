@@ -33,8 +33,11 @@ from python.framework.types.trading_env_types.order_types import (
     OpenOrderRequest,
     OrderDirection,
     OrderStatus,
+    OrderEndReason,
+    OrderInitiator,
     OrderType,
     ProtectiveLevelEnforcement,
+    RejectionReason,
 )
 from tests.autotrader.protective_levels.conftest import VenueHoldsProtectionMock
 
@@ -140,7 +143,8 @@ class TestACloseWaitsForTheCancel:
         result = executor.close_position(position.position_id)
 
         printed = capsys.readouterr().out
-        assert result.is_rejected, 'the close must not go out beside a live stop'
+        assert result.status is OrderStatus.DENIED, 'the close must not go out beside a live stop'
+        assert result.rejection_reason is RejectionReason.CLOSE_WITHHELD
         assert executor.get_open_positions(), (
             'the position stays OPEN — and protected, which is the safe end of the two')
         assert 'stays open and protected' in printed
@@ -166,6 +170,19 @@ class TestWhatSurvivesAPartialCloseIsProtectedAgain:
                  if p.closes_position_id == remaining.position_id]
         assert len(fresh) == 1, 'the remainder is protected again'
         assert fresh[0].close_lots == 0.06, 'and at its NEW size, not the old one'
+
+    def test_the_released_stop_ends_cancelled_by_the_framework(self):
+        """The protective order the close waited for ends with a row saying who ended it, and why."""
+        mock, executor, position, protective = _protected_position()
+
+        executor.close_position(position.position_id)
+        mock.feed_tick(executor, symbol=_SYMBOL, bid=50000.0, ask=50001.0)
+        mock.feed_tick(executor, symbol=_SYMBOL, bid=50000.0, ask=50001.0)
+
+        ended = [r for r in executor.get_order_history()
+                 if r.order_id == protective.pending_order_id and r.status is not OrderStatus.PENDING]
+        assert [(r.status, r.initiator, r.end_reason) for r in ended] == [
+            (OrderStatus.CANCELLED, OrderInitiator.FRAMEWORK, OrderEndReason.PROTECTION_RELEASED)]
 
     def test_a_full_close_leaves_nothing_to_protect(self):
         mock, executor, position, protective = _protected_position(lots=0.10)
@@ -198,12 +215,13 @@ class TestSessionEndLeavesItStanding:
             'It protects an open position while nothing is running')
 
 
-class TestARefusedProtectiveAmendDoesNotArmTheCooldown:
+class TestARefusedAmendDoesNotArmTheCooldown:
     """
     D6. Measured on the trailing stop: 378 amends over 62 positions, worst burst 20 in 39
     ticks. Two rejections arm a 60-second block on every new order in that direction —
     the REPLACEMENT protective order included. A refused amend is not a new-order
-    rejection, because no new order was attempted.
+    rejection, because no new order was attempted. It began as an exemption for protective
+    orders; since #362 it holds for every order, because the order itself was not refused.
     """
 
     def _refuse_a_modify(self, executor, pending):
@@ -235,8 +253,8 @@ class TestARefusedProtectiveAmendDoesNotArmTheCooldown:
         assert 'refused an amend of the protective order' in capsys.readouterr().out, (
             'It stays VISIBLE — it simply does not count as a new-order rejection')
 
-    def test_an_ordinary_order_still_arms_it(self):
-        """The other direction, so the exemption cannot be read as "never notify"."""
+    def test_an_ordinary_order_does_not_arm_it_either(self):
+        """An entry's refused amend leaves the entry working — no refusal to announce."""
         mock, executor, position, protective = _protected_position()
         # An ENTRY that rests. Built directly because this test is about the outcome
         # fan-out, not about the submit path — and the mock fills a limit on arrival.
@@ -257,7 +275,9 @@ class TestARefusedProtectiveAmendDoesNotArmTheCooldown:
 
         self._refuse_a_modify(executor, ordinary)
 
-        assert len(outcomes) == 1
+        assert not outcomes
+        assert not [r for r in executor.get_order_history() if r.order_id == 'ord_entry_1'], (
+            'a refused amend is no ending of the order, so it books no row')
 
 
 class TestAnOrphanIsNotExemptAtSessionEnd:

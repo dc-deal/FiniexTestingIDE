@@ -548,7 +548,7 @@ class DeterministicProbe(AbstractDecisionLogic):
                     take_profit=take_profit,
                     comment=f'Backtest LONG at tick {self.tick_count}'
                 )
-                if (order_response.is_rejected == True):
+                if (order_response.is_refused == True):
                     self.logger.error(order_response.rejection_message)
                 # Track pending order ID for modify sequences
                 if order_type == OrderType.LIMIT and order_response.order_id:
@@ -574,7 +574,7 @@ class DeterministicProbe(AbstractDecisionLogic):
                     take_profit=take_profit,
                     comment=f'Backtest SHORT at tick {self.tick_count}'
                 )
-                if (order_response.is_rejected == True):
+                if (order_response.is_refused == True):
                     self.logger.error(order_response.rejection_message)
                 # Track pending order ID for modify sequences
                 if order_type == OrderType.LIMIT and order_response.order_id:

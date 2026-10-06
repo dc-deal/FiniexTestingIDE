@@ -37,9 +37,10 @@ from python.framework.types.trading_env_types.broker_types import BrokerType
 from python.framework.types.trading_env_types.order_types import (
     OpenOrderRequest,
     OrderDirection,
+    OrderEndReason,
+    OrderInitiator,
     OrderStatus,
     OrderType,
-    RejectionReason,
 )
 from tests.autotrader.live_executor.conftest import AcknowledgingVenueMock, LevelRecorder
 
@@ -117,6 +118,11 @@ def _expire_fill_timeout(executor: LiveTradeExecutor, order_id: str) -> None:
 def _rejections(executor: LiveTradeExecutor) -> List:
     """Every rejection row in the order history."""
     return [r for r in executor.get_order_history() if r.status == OrderStatus.REJECTED]
+
+
+def _rows(executor: LiveTradeExecutor, status: OrderStatus) -> List:
+    """Every row of one status in the order history."""
+    return [r for r in executor.get_order_history() if r.status is status]
 
 
 class TestTheHeartbeatSeesTheFill:
@@ -249,7 +255,7 @@ class TestTheTimeoutAsksBeforeItBooks:
         assert not _rejections(executor)
 
     @ACCOUNT_MODELS
-    def test_a_second_unanswerable_timeout_gives_the_order_up_as_unreachable(
+    def test_a_second_unanswerable_timeout_gives_the_order_up_as_unaccounted(
             self, spot_mode):
         venue = AcknowledgingVenueMock()
         executor = _executor(venue, spot_mode)
@@ -267,14 +273,16 @@ class TestTheTimeoutAsksBeforeItBooks:
         _heartbeat(executor)
 
         assert executor.get_request_processor().get_order(order_id) is None
-        rejections = _rejections(executor)
-        assert len(rejections) == 1
-        assert rejections[0].rejection_reason == RejectionReason.BROKER_UNREACHABLE, (
+        assert not _rejections(executor), (
             'an order the venue acknowledged and nobody could ask about was blamed on '
             'the venue')
+        unaccounted = _rows(executor, OrderStatus.UNACCOUNTED)
+        assert len(unaccounted) == 1
+        assert unaccounted[0].initiator is OrderInitiator.FRAMEWORK
+        assert unaccounted[0].end_reason is OrderEndReason.ORDER_TIMEOUT
 
     @ACCOUNT_MODELS
-    def test_a_working_order_is_cancelled_and_given_up_as_before(self, spot_mode):
+    def test_a_working_order_is_cancelled_and_booked_as_a_cancel(self, spot_mode):
         venue = AcknowledgingVenueMock()
         venue.fill_market_orders = False
         executor = _executor(venue, spot_mode)
@@ -286,9 +294,11 @@ class TestTheTimeoutAsksBeforeItBooks:
 
         assert executor.get_request_processor().get_order(order_id) is None
         assert venue.cancels == [ref], 'the confirmed cancel was sent twice'
-        rejections = _rejections(executor)
-        assert len(rejections) == 1
-        assert rejections[0].rejection_reason == RejectionReason.BROKER_ERROR
+        assert not _rejections(executor), 'the venue refused nothing — we cancelled it'
+        cancelled = _rows(executor, OrderStatus.CANCELLED)
+        assert len(cancelled) == 1
+        assert cancelled[0].initiator is OrderInitiator.FRAMEWORK
+        assert cancelled[0].end_reason is OrderEndReason.ORDER_TIMEOUT
 
     @ACCOUNT_MODELS
     def test_a_cancel_refused_because_the_order_filled_books_the_fill(self, spot_mode):

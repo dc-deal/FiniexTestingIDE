@@ -39,13 +39,21 @@ class EventType(Enum):
     """Discriminator for event-stream CSV rows."""
     ORDER_SUBMIT = 'ORDER_SUBMIT'        # Trigger sent (algo decision)
     ORDER_ACCEPT = 'ORDER_ACCEPT'        # Broker assigned broker_ref (LIMIT/STOP)
-    ORDER_REJECT = 'ORDER_REJECT'        # Broker or guard rejected
+    ORDER_REJECT = 'ORDER_REJECT'        # Refused — by us (status denied) or by the venue (rejected)
     FILL = 'FILL'                        # One BrokerTrade — atomic execution
     POSITION_OPEN = 'POSITION_OPEN'      # _fill_open_order finalized
     CLOSE_SUBMIT = 'CLOSE_SUBMIT'        # Close trigger sent
     POSITION_CLOSE = 'POSITION_CLOSE'    # _fill_close_order finalized (full or partial)
     ORDER_CANCEL = 'ORDER_CANCEL'        # Active order cancelled
+    ORDER_END = 'ORDER_END'              # Ended unfilled and unrefused: expired, undelivered, unaccounted — the status says which
     ORDER_MODIFY = 'ORDER_MODIFY'        # Active order modified
+
+
+# The statuses that end an order without a fill — each gets an event of its own (#362)
+_UNFILLED_ENDINGS = frozenset({
+    OrderStatus.DENIED, OrderStatus.REJECTED, OrderStatus.CANCELLED, OrderStatus.EXPIRED,
+    OrderStatus.UNDELIVERED, OrderStatus.UNACCOUNTED,
+})
 
 
 # Canonical column order. Stable contract for downstream consumers.
@@ -202,29 +210,41 @@ class EventStreamWriter:
 # Event reconstruction
 # ============================================
 
-def _reject_event(order_id: str, rejected: OrderResult) -> TradeEvent:
+def _end_event(order_id: str, ended: OrderResult) -> TradeEvent:
     """
-    The ORDER_REJECT event of one refused order.
+    The event of one order that ended without a fill — refused, cancelled, or otherwise ended.
 
-    Its time is the refusal's own, on the run's clock. It used to fall back to the wall
+    A refusal is ORDER_REJECT, a cancel ORDER_CANCEL, every other unfilled end ORDER_END; the
+    status column says which status, and the reason column why (#362). An undelivered or
+    unaccounted order used to arrive here as a rejection, which is how it was told apart from
+    nothing else.
+
+    Its time is the ending's own, on the run's clock. It used to fall back to the wall
     clock when the record carried none, which every rejection did — so the rejections of a backtest
     or a mock session were stamped with the moment the report was written, months after the
     market time around them, and sorted to the end of the stream.
 
     Args:
         order_id: The id the event is filed under
-        rejected: The REJECTED OrderResult
+        ended: The OrderResult that ended the order
 
     Returns:
-        The ORDER_REJECT event
+        The event
     """
+    if ended.is_refused:
+        event_type = EventType.ORDER_REJECT
+        reason = ended.rejection_reason.value if ended.rejection_reason else ''
+    else:
+        event_type = (EventType.ORDER_CANCEL if ended.status is OrderStatus.CANCELLED
+                      else EventType.ORDER_END)
+        reason = ended.end_reason.value if ended.end_reason else ''
     return TradeEvent(
-        ts=rejected.execution_time,
-        event_type=EventType.ORDER_REJECT,
+        ts=ended.execution_time,
+        event_type=event_type,
         order_id=order_id,
-        status=rejected.status.value if rejected.status else '',
-        close_reason=rejected.rejection_reason.value if rejected.rejection_reason else '',
-        notes=rejected.rejection_message or '',
+        status=ended.status.value if ended.status else '',
+        close_reason=reason,
+        notes=ended.rejection_message or '',
     )
 
 
@@ -235,21 +255,21 @@ def _build_events(
     """
     Reconstruct the event stream from terminal-state lists.
 
-    Order-history walk emits SUBMIT / FILL / REJECT events. Trade-history
-    walk emits POSITION_OPEN / POSITION_CLOSE events plus per-execution
-    FILL events from entry_trades / exit_trades. The terminal state is
-    enough — no inline emission required.
+    Order-history walk emits SUBMIT events and one event per unfilled ending
+    (REJECT / CANCEL / END). Trade-history walk emits POSITION_OPEN /
+    POSITION_CLOSE events plus per-execution FILL events from entry_trades /
+    exit_trades. The terminal state is enough — no inline emission required.
 
     Args:
         trade_history: Completed TradeRecord list
-        order_history: All OrderResult states (PENDING + EXECUTED + REJECTED)
+        order_history: All OrderResult states (PENDING, EXECUTED and every ending)
 
     Returns:
         Unsorted event list. Caller sorts at flush.
     """
     events: List[TradeEvent] = []
 
-    # Order-history walk — ORDER_SUBMIT (opens only) + ORDER_REJECT. Close
+    # Order-history walk — ORDER_SUBMIT (opens only) + the unfilled endings. Close
     # submissions are emitted from trade_history below: 1:1 with TradeRecord
     # (each close = one algo decision). This avoids the dedup problem where
     # 3 partial closes on the same position_id would collapse to one
@@ -261,18 +281,22 @@ def _build_events(
         # legacy or constructor sites that haven't set it explicitly.
         action = order.action if order.action is not None else OrderAction.OPEN
         if action != OrderAction.OPEN:
-            # Closes are handled by the trade_history walk — except a REFUSED close,
-            # which produced no trade and would otherwise leave no event at all.
-            if order.is_rejected:
-                events.append(_reject_event(order.order_id, order))
+            # Closes are handled by the trade_history walk — except one that ended
+            # without a fill, which produced no trade and would otherwise leave no event.
+            if order.status in _UNFILLED_ENDINGS:
+                events.append(_end_event(order.order_id, order))
             continue
         open_groups.setdefault(order.order_id, []).append(order)
 
     for order_id, orders in open_groups.items():
-        rejected = next((o for o in orders if o.is_rejected), None)
-        if rejected:
-            events.append(_reject_event(order_id, rejected))
+        refused = next((o for o in orders if o.is_refused), None)
+        if refused:
+            events.append(_end_event(order_id, refused))
             continue
+        # Any other unfilled end follows the submission it ends
+        ended = next((o for o in orders if o.status in _UNFILLED_ENDINGS), None)
+        if ended:
+            events.append(_end_event(order_id, ended))
 
         # Earliest valid timestamp across PENDING/EXECUTED stages. Sim opens
         # store PENDING with execution_time=None and only set it on EXECUTED;
@@ -332,11 +356,14 @@ def _build_events(
                 notes='vwap' if len(trade.entry_trades) > 1 else '',
             ))
 
-        # CLOSE_SUBMIT — one per TradeRecord (algo-decided close moment).
-        # Slight negative offset so chronological sort places it before the
-        # FILLs and POSITION_CLOSE that share the same exit_time in sim.
+        # CLOSE_SUBMIT — one per TradeRecord (algo-decided close moment), stamped with
+        # the SUBMISSION's tick time where the record kept one, so it reads as when the
+        # close was asked for rather than when it filled. A record without a submission
+        # tick (a cleanup close) falls back to the fill, which is what it carried before.
+        close_submitted = trade.exit_submission.tick_time_msc
         events.append(TradeEvent(
-            ts=trade.exit_time,
+            ts=(datetime.fromtimestamp(close_submitted / 1000.0, tz=timezone.utc)
+                if close_submitted is not None else trade.exit_time),
             event_type=EventType.CLOSE_SUBMIT,
             order_id=trade.position_id,
             position_id=trade.position_id,

@@ -42,6 +42,20 @@ silently lost on exactly the requests a consumer uses to read headers cheaply.
 | `TestTheRefusals` | empty and blank `q` · an overlong `q` · a `limit` outside its range · an unknown name · a name that tries to leave the served set |
 | `TestTheAnswersMatchTheirModels` | both answers parse as their models · an unknown word comes back in `terms_not_matched` · `passages_searched` is stated · a row names the routes it describes |
 
+## The terminal search
+
+The same ranking also runs from a terminal over the whole documentation tree, followed by any
+extra search command an installation sets up for itself. Two things can go wrong silently there:
+a document in a sub-folder that is never read, and an extra search whose output lands above the
+documentation hits or whose missing command ends the search with a traceback.
+
+**Suite:** `tests/framework/api/test_docs_search_console.py`
+
+| Class | Validates |
+|---|---|
+| `TestTheWholeTreeIsSearchable` | a nested document is found and named by its path below the root · the served set still reads one level · a nested document reads back by that name |
+| `TestTheExtraSearches` | each command gets the term as its last argument, after the documentation hits · a command that cannot start is reported, not raised · a fresh clone sets up no extra search |
+
 ## Why a hit's key carries its line
 
 The document and the heading alone do **not** separate two hits. A passage longer than the

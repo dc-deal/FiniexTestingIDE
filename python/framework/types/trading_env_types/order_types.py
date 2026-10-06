@@ -140,14 +140,54 @@ def direction_to_side(direction: 'OrderDirection', action: OrderAction) -> 'Orde
 
 
 class OrderStatus(Enum):
-    """Order execution status"""
-    PENDING = 'pending'          # Order created, not yet sent
-    SUBMITTED = 'submitted'      # Sent to broker
-    EXECUTED = 'executed'        # Fully filled
-    PARTIALLY_FILLED = 'partial'  # Partially filled (large orders)
-    REJECTED = 'rejected'        # Broker rejected
-    CANCELLED = 'cancelled'      # User cancelled
-    EXPIRED = 'expired'          # Time-based expiration
+    """
+    Where an order stands: PENDING while it has not ended, and one status per way it can end.
+
+    Each ending has its own word because each is acted on differently. A DENIED order never
+    left this process; a REJECTED one was refused by the venue; an UNACCOUNTED one may still
+    be working there. They used to share `rejected`, so a counter, a cooldown and a report
+    could not tell a typo in a lot size from an order the venue may hold.
+    """
+    PENDING = 'pending'          # Submitted and not ended — in flight, or resting at the venue
+    EXECUTED = 'executed'        # Filled
+    DENIED = 'denied'            # Refused here and never sent: the order guard, the lot size, the funds at submission, a missing position, a close withheld
+    REJECTED = 'rejected'        # Refused by the venue — the simulated one included: its funds or margin check at the fill, the stress test
+    CANCELLED = 'cancelled'      # The cancel took effect; `initiator` and `end_reason` say who and why
+    EXPIRED = 'expired'          # Ran out without filling — the end of the data, or the venue's own expiry
+    UNDELIVERED = 'undelivered'  # The venue confirms it never received the order
+    UNACCOUNTED = 'unaccounted'  # We stopped asking: the venue may still hold it, filled or not
+
+
+# The endings an order did not plan for: refused here or by the venue, never received, or
+# unaccounted for. A cancel and an expiry are ordinary ends; these are the ones a reader acts
+# on, and a report lists them together as failed orders (#362).
+FAILED_ORDER_STATUSES = frozenset({
+    OrderStatus.DENIED, OrderStatus.REJECTED, OrderStatus.UNDELIVERED, OrderStatus.UNACCOUNTED,
+})
+
+
+class OrderInitiator(Enum):
+    """
+    Who ended an order that did not fill — on a cancelled, expired or unaccounted row.
+
+    A cancel the strategy asked for and one the framework sent at a timeout look the same at the
+    venue, and a strategy reading its own history has to tell them apart.
+    """
+    STRATEGY = 'strategy'        # The decision logic asked for the cancel
+    FRAMEWORK = 'framework'      # We ended it: a timeout, the end of the run, a protective order released
+    VENUE = 'venue'              # The venue ended it without being asked
+
+
+class OrderEndReason(Enum):
+    """Why an order ended without filling — beside `initiator` on the same row."""
+    CANCEL_REQUESTED = 'cancel_requested'        # The strategy asked for the cancel
+    PROTECTION_RELEASED = 'protection_released'  # A protective order the position no longer needs at the venue: its close is going out, or its stop was withdrawn
+    ORDER_TIMEOUT = 'order_timeout'              # No fill within the order timeout
+    RESOLUTION_CEILING = 'resolution_ceiling'    # Its answer was lost, and the venue never named it however long we asked
+    SESSION_END = 'session_end'                  # The live session ended with the order still out
+    SCENARIO_END = 'scenario_end'                # The backtest's data ended with the order still out
+    VENUE_CANCELLED = 'venue_cancelled'          # The venue cancelled it on its own
+    VENUE_EXPIRED = 'venue_expired'              # The venue let it expire
 
 
 class FillType(Enum):
@@ -177,7 +217,12 @@ class FillType(Enum):
 
 
 class RejectionReason(Enum):
-    """Reasons why orders get rejected"""
+    """
+    Why an order was refused — on a denied row (refused here) or a rejected one (by the venue).
+
+    The status says WHO refused, this says why; the two are separate fields because the same
+    reason — insufficient funds — can come from our own check at submission or from the venue.
+    """
     INSUFFICIENT_MARGIN = 'insufficient_margin'
     INSUFFICIENT_FUNDS = 'insufficient_funds'
     INVALID_LOT_SIZE = 'invalid_lot_size'
@@ -188,14 +233,16 @@ class RejectionReason(Enum):
     BROKER_ERROR = 'broker_error'
     REJECTION_COOLDOWN = 'rejection_cooldown'
     STALE_MARKET_DATA = 'stale_market_data'
-    # #473 — we never reached the venue, so it never refused anything. Recorded when an
-    # order that went UNRESOLVED runs out its timeout: the venue may still hold it, and
-    # calling that a broker error would put our transport fault on their account.
-    BROKER_UNREACHABLE = 'broker_unreachable'
     # #487 — we asked the venue as long as we said we would and it never named an order we
     # sent, neither open nor closed. It may be resting there. New ENTRIES stop while that
     # is true; closing and protecting what is already held do not.
-    UNRESOLVED_WRITE = 'unresolved_write'
+    UNACCOUNTED_ORDER = 'unaccounted_order'
+    # A close for a position this bot does not hold. The simulation's venue also refuses a
+    # close whose position was closed while the close was on its way.
+    POSITION_NOT_FOUND = 'position_not_found'
+    # #503 — the close was held back because the protective order resting over the position
+    # could not be cancelled first, and a close beside a working stop can fill twice.
+    CLOSE_WITHHELD = 'close_withheld'
     # #507 — the requested size is fine, the LEFTOVER is not: closing it would strand a
     # remainder below the symbol's volume_min, which can never be sold afterwards. Its own
     # reason rather than INVALID_LOT_SIZE, because the lots asked for are valid and a caller
@@ -418,8 +465,6 @@ class OrderResult:
     execution_time: Optional[datetime] = None
 
     commission: float = 0.0
-    swap: float = 0.0
-    slippage_points: float = 0.0
 
     rejection_reason: Optional[RejectionReason] = None
     rejection_message: str = ''
@@ -446,6 +491,18 @@ class OrderResult:
     requested_lots: Optional[float] = None
     close_type: Optional[CloseType] = None
 
+    # The order type the algo ASKED for, on every result a refusal included: a refusal that
+    # says why but not what was refused cannot be read. A stop-limit stays `stop_limit` after
+    # its stop triggered; a close, and a stop-loss or take-profit exit the framework performs,
+    # is `market`; an exit through a protective order held at the venue carries that order's
+    # type. None only where a constructor has not set it.
+    order_type: Optional[OrderType] = None
+
+    # Who ended an order that did not fill, and why — on a cancelled, expired or unaccounted
+    # row; None on every other status.
+    initiator: Optional[OrderInitiator] = None
+    end_reason: Optional[OrderEndReason] = None
+
     # Submission slippage audit (#340) — algo's trade-channel mid price at
     # the submission moment, propagated from PendingOrder. Surfaced in the
     # event-stream CSV (ORDER_SUBMIT / CLOSE_SUBMIT rows) so downstream
@@ -457,11 +514,20 @@ class OrderResult:
 
     @property
     def is_success(self) -> bool:
-        return self.status in [OrderStatus.EXECUTED, OrderStatus.PARTIALLY_FILLED]
+        return self.status is OrderStatus.EXECUTED
 
     @property
-    def is_rejected(self) -> bool:
-        return self.status == OrderStatus.REJECTED
+    def is_refused(self) -> bool:
+        """
+        Whether the order was refused — here (denied) or by the venue (rejected).
+
+        The question a caller usually means by "did it go through". Ask the status itself
+        where it matters who refused it.
+
+        Returns:
+            True for a denied or rejected result
+        """
+        return self.status in (OrderStatus.DENIED, OrderStatus.REJECTED)
 
     def to_dict(self) -> dict:
         """Convert to dictionary for serialization"""
@@ -474,8 +540,6 @@ class OrderResult:
             'execution_time': self.execution_time.isoformat() if self.execution_time else None,
 
             'commission': self.commission,
-            'swap': self.swap,
-            'slippage_points': self.slippage_points,
 
             'rejection_reason': self.rejection_reason.value if self.rejection_reason else None,
             'rejection_message': self.rejection_message,
@@ -487,6 +551,9 @@ class OrderResult:
             'direction': self.direction.value if self.direction else None,
             'requested_lots': self.requested_lots,
             'close_type': self.close_type.value if self.close_type else None,
+            'order_type': self.order_type.value if self.order_type else None,
+            'initiator': self.initiator.value if self.initiator else None,
+            'end_reason': self.end_reason.value if self.end_reason else None,
 
             'metadata': serialize_value(self.metadata),
         }
@@ -496,41 +563,50 @@ class OrderResult:
 # Helper Functions
 # ============================================
 
-def create_rejection_result(
+def create_refusal_result(
     order_id: str,
     reason: RejectionReason,
     message: str = '',
     *,
+    status: OrderStatus,
     execution_time: datetime,
     action: OrderAction,
     symbol: Optional[str],
     direction: Optional[OrderDirection],
     requested_lots: Optional[float],
+    order_type: Optional[OrderType],
 ) -> OrderResult:
     """
-    Create a standardized rejection result that states what was refused, and when.
+    Create a standardized refusal result that states who refused what, and when.
 
     The order's dimensions are keyword-only and have no default on purpose: a caller
     cannot forget one, and where a value is genuinely unknown (a close for a position
-    that does not exist has no symbol) it says None explicitly. The time is the
-    canonical clock at the refusal — the event stream orders records by it.
+    that does not exist has no symbol) it says None explicitly. The same holds for the
+    status — whether WE refused it or the venue did is the one thing a reader of the
+    refusal acts on, so no caller gets it by default. The time is the canonical clock at
+    the refusal — the event stream orders records by it.
 
     Args:
         order_id: The refused order's id
         reason: Why it was refused
         message: The human sentence beside the reason
+        status: DENIED when it was refused here and never sent, REJECTED when the venue
+            refused it — the simulated venue included
         execution_time: When it was refused, on the canonical clock
         action: Which side was refused — an open or a close
         symbol: The order's symbol, or None when the refused order had none
         direction: Open: the requested direction; close: the direction of the position
         requested_lots: The lots asked for, or None when unknown (a close of everything)
+        order_type: The type the refused order was asked as (a close is a market order)
 
     Returns:
-        OrderResult with status REJECTED
+        OrderResult with status DENIED or REJECTED
     """
+    if status not in (OrderStatus.DENIED, OrderStatus.REJECTED):
+        raise ValueError(f'A refusal is denied or rejected, not {status.value}')
     return OrderResult(
         order_id=order_id,
-        status=OrderStatus.REJECTED,
+        status=status,
         execution_time=execution_time,
         rejection_reason=reason,
         rejection_message=message,
@@ -538,6 +614,7 @@ def create_rejection_result(
         symbol=symbol,
         direction=direction,
         requested_lots=requested_lots,
+        order_type=order_type,
     )
 
 

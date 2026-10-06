@@ -82,13 +82,15 @@ from python.framework.types.trading_env_types.order_types import (
     OpenOrderRequest,
     OrderAction,
     OrderDirection,
+    OrderEndReason,
+    OrderInitiator,
     OrderResult,
     OrderSide,
     OrderStatus,
     OrderType,
     ProtectiveLevelEnforcement,
     RejectionReason,
-    create_rejection_result,
+    create_refusal_result,
     direction_to_side,
 )
 from python.framework.types.trading_env_types.pending_order_stats_types import (
@@ -96,6 +98,7 @@ from python.framework.types.trading_env_types.pending_order_stats_types import (
     PendingOrderStats,
 )
 from python.framework.types.trading_env_types.trading_env_stats_types import (
+    EXECUTION_STATS_FIELD_BY_STATUS,
     AccountInfo,
     ExecutionStats,
     FreeAssetFunds,
@@ -189,10 +192,10 @@ class AbstractTradeExecutor(ABC):
         )
         self._order_history_limit_warned = False
 
-        # Execution statistics
-        self._orders_sent = 0
-        self._orders_executed = 0
-        self._orders_rejected = 0
+        # Execution statistics — the rows are counted by status where they are booked
+        # (`_book_order_result`), the submissions where an order is handed to the venue
+        self._orders_submitted = 0
+        self._order_status_counts: Dict[OrderStatus, int] = {status: 0 for status in OrderStatus}
         self._sl_tp_triggered = 0
 
         # Active limit orders waiting for price trigger (post-pipeline)
@@ -249,6 +252,26 @@ class AbstractTradeExecutor(ABC):
                 f'Oldest entries will be discarded. Full history available in scenario log.'
             )
 
+    def _book_order_result(self, result: OrderResult) -> OrderResult:
+        """
+        Append one row to the order history and count it by its status — the one place both happen.
+
+        They used to be written as a pair at every site, two dozen times, and the pairs
+        drifted: a refused amend was counted as a rejected order, a refused close was counted
+        nowhere and left no row. Counting here, as the row is booked, is also what keeps the
+        counts right once the capped history starts dropping its oldest rows.
+
+        Args:
+            result: The row to book
+
+        Returns:
+            The same row, so a caller can book and return it in one statement
+        """
+        self._order_status_counts[result.status] += 1
+        self._check_order_history_limit()
+        self._order_history.append(result)
+        return result
+
     # ============================================
     # Order Outcome Callback
     # ============================================
@@ -283,13 +306,15 @@ class AbstractTradeExecutor(ABC):
         """
         Notify all registered listeners of an async order outcome.
 
-        Called at every point where an order reaches a terminal state
-        (filled or rejected) after the initial PENDING return. Iterates
-        over all registered listeners in registration order.
+        Called where an order reaches a terminal state after the initial PENDING return:
+        filled, rejected by the venue, never received by it, or unaccounted for (#362). Not
+        for a cancel — that rides the decision-event sink — and never for a denial, which
+        send_order() returns directly. Iterates over all registered listeners in
+        registration order.
 
         Args:
             direction: Order direction (LONG/SHORT)
-            result: The terminal OrderResult (EXECUTED or REJECTED)
+            result: The terminal OrderResult (EXECUTED, REJECTED, UNDELIVERED or UNACCOUNTED)
             pending: The PendingOrder reference at the outcome moment, or None
                 for pre-submit rejections (no PendingOrder existed yet).
         """
@@ -327,7 +352,7 @@ class AbstractTradeExecutor(ABC):
             return
         self._decision_event_sink(event)
 
-    def _emit_order_cancelled(self, pending: PendingOrder) -> None:
+    def _emit_order_cancelled(self, pending: PendingOrder, result: OrderResult) -> None:
         """
         Emit an ORDER_CANCELLED decision event for a resolved cancellation (#348).
 
@@ -337,10 +362,12 @@ class AbstractTradeExecutor(ABC):
 
         Args:
             pending: The cancelled PendingOrder
+            result: Its booked row — which says who ended it and why (#362)
         """
         self._emit_decision_event(OrderCancelledEvent(
             order_id=pending.pending_order_id,
             direction=pending.direction,
+            result=result,
             tick_time=self.get_current_time(),
         ))
 
@@ -567,7 +594,7 @@ class AbstractTradeExecutor(ABC):
             return
 
         result = self.close_position(position.position_id, close_reason=close_reason)
-        if result.status == OrderStatus.REJECTED:
+        if result.is_refused:
             self.logger.error(
                 f'❗ Protective close REFUSED for {position.position_id} '
                 f'({close_reason.value} @ {level:.5f}): {result.rejection_message}. '
@@ -650,7 +677,7 @@ class AbstractTradeExecutor(ABC):
             lots: The requested size, or None for a full close
 
         Returns:
-            A REJECTED OrderResult naming the rule that was broken, or None when the request
+            A DENIED OrderResult naming the rule that was broken, or None when the request
             may proceed
         """
         # A full close leaves nothing behind, so it has no remainder to judge. `lots` above
@@ -674,10 +701,11 @@ class AbstractTradeExecutor(ABC):
         # requested remainder is deliberately NOT quoted — it may be perfectly valid, and
         # naming it would point the reader at the one number that is fine.
         if position.lots < 2 * minimum - _CLOSE_LOT_EPSILON:
-            return self._rejection_for_close(
+            return self._refusal_for_close(
                 order_id=f'close_{position.position_id}',
                 position=position,
                 lots=lots,
+                status=OrderStatus.DENIED,
                 reason=RejectionReason.REMAINDER_BELOW_MINIMUM,
                 message=(
                     f'{refused}: the position holds {position.lots:.8f} lots and volume_min '
@@ -687,10 +715,11 @@ class AbstractTradeExecutor(ABC):
             )
 
         if lots < minimum - _CLOSE_LOT_EPSILON:
-            return self._rejection_for_close(
+            return self._refusal_for_close(
                 order_id=f'close_{position.position_id}',
                 position=position,
                 lots=lots,
+                status=OrderStatus.DENIED,
                 reason=RejectionReason.INVALID_LOT_SIZE,
                 message=(
                     f'{refused}: below the symbol minimum {minimum:.8f} lots. The venue would '
@@ -699,10 +728,11 @@ class AbstractTradeExecutor(ABC):
             )
 
         if remaining < minimum - _CLOSE_LOT_EPSILON:
-            return self._rejection_for_close(
+            return self._refusal_for_close(
                 order_id=f'close_{position.position_id}',
                 position=position,
                 lots=lots,
+                status=OrderStatus.DENIED,
                 reason=RejectionReason.REMAINDER_BELOW_MINIMUM,
                 message=(
                     f'{refused}: the position holds {position.lots:.8f} lots and volume_min '
@@ -713,14 +743,14 @@ class AbstractTradeExecutor(ABC):
         return None
 
     # ============================================
-    # Rejection records — what was refused, and when
+    # Ending records — what ended, how, and when
     # ============================================
-    # One builder per thing a refusal can be about. Each states the side, the symbol,
+    # One builder per thing an ending can be about. Each states the side, the symbol,
     # the direction and the lots, and stamps the canonical clock: a rejection without
     # its symbol fell out of every symbol filter, and one without a time was stamped
     # with the wall clock when the event stream was written.
 
-    def _rejection_for_request(
+    def _denial_for_request(
         self,
         request: OpenOrderRequest,
         order_id: str,
@@ -728,7 +758,10 @@ class AbstractTradeExecutor(ABC):
         message: str,
     ) -> OrderResult:
         """
-        A rejection of an order the algo asked to OPEN, stating what it asked for.
+        A refusal of an order the algo asked to OPEN, made here before anything was sent.
+
+        Every check on an open request runs before the submission, so its refusal is a
+        denial: the venue never saw the order.
 
         Args:
             request: The refused request
@@ -737,53 +770,62 @@ class AbstractTradeExecutor(ABC):
             message: The human sentence beside the reason
 
         Returns:
-            The REJECTED OrderResult, stamped on the canonical clock
+            The DENIED OrderResult, stamped on the canonical clock
         """
-        return create_rejection_result(
+        return create_refusal_result(
             order_id=order_id,
             reason=reason,
             message=message,
+            status=OrderStatus.DENIED,
             execution_time=self.get_current_time(),
             action=OrderAction.OPEN,
             symbol=request.symbol,
             direction=request.direction,
             requested_lots=request.lots,
+            order_type=request.order_type,
         )
 
-    def _rejection_for_close(
+    def _refusal_for_close(
         self,
         order_id: str,
         position: Optional[Position],
         lots: Optional[float],
+        status: OrderStatus,
         reason: RejectionReason,
         message: str,
         symbol: Optional[str] = None,
+        order_type: OrderType = OrderType.MARKET,
     ) -> OrderResult:
         """
-        A rejection of a CLOSE, stating the position it was meant for.
+        A refusal of a CLOSE, stating the position it was meant for.
 
         Args:
             order_id: The close's id
             position: The position to be closed, or None when it is not held
             lots: The lots asked for, or None for a full close
+            status: DENIED when it was refused here, REJECTED when the venue refused it
             reason: Why it was refused
             message: The human sentence beside the reason
             symbol: The order's own symbol, where it carries one; else the position's
+            order_type: The refused order's type — a close the algo asks for is a market
+                order, a protective order held at the venue carries its own
 
         Returns:
-            The REJECTED OrderResult, stamped on the canonical clock
+            The refusal, stamped on the canonical clock
         """
         if lots is None and position is not None:
             lots = position.lots
-        return create_rejection_result(
+        return create_refusal_result(
             order_id=order_id,
             reason=reason,
             message=message,
+            status=status,
             execution_time=self.get_current_time(),
             action=OrderAction.CLOSE,
             symbol=symbol or (position.symbol if position is not None else None),
             direction=position.direction if position is not None else None,
             requested_lots=lots,
+            order_type=order_type,
         )
 
     def _joined_close_result(
@@ -829,6 +871,7 @@ class AbstractTradeExecutor(ABC):
             symbol=position.symbol,
             direction=position.direction,
             requested_lots=close_lots,
+            order_type=self._requested_order_type(in_flight),
             submission=in_flight.submission,
             metadata={
                 'awaiting_fill': True,
@@ -844,7 +887,10 @@ class AbstractTradeExecutor(ABC):
         message: str,
     ) -> OrderResult:
         """
-        A rejection of an order already in the pipeline — an open or a close.
+        A rejection of an order already sent — an open or a close — by the venue.
+
+        Always REJECTED: an order in the pipeline has left this process, so only the venue
+        can refuse it — in a backtest the simulated one, at the fill.
 
         A close in the pipeline carries no direction or lots of its own, only the position
         it closes (`closes_position_id` for a protective order, its own id for a market
@@ -860,24 +906,96 @@ class AbstractTradeExecutor(ABC):
         """
         closes = self._closed_position_id(pending)
         if closes is not None:
-            return self._rejection_for_close(
+            return self._refusal_for_close(
                 order_id=pending.pending_order_id,
                 position=self.portfolio.get_position(closes),
                 lots=pending.close_lots,
+                status=OrderStatus.REJECTED,
                 reason=reason,
                 message=message,
                 symbol=pending.symbol,
+                order_type=self._requested_order_type(pending),
             )
-        return create_rejection_result(
+        return create_refusal_result(
             order_id=pending.pending_order_id,
             reason=reason,
             message=message,
+            status=OrderStatus.REJECTED,
             execution_time=self.get_current_time(),
             action=OrderAction.OPEN,
             symbol=pending.symbol,
             direction=pending.direction,
             requested_lots=pending.lots,
+            order_type=self._requested_order_type(pending),
         )
+
+    def _ending_for_pending(
+        self,
+        pending: PendingOrder,
+        status: OrderStatus,
+        initiator: Optional[OrderInitiator],
+        end_reason: Optional[OrderEndReason],
+    ) -> OrderResult:
+        """
+        The row of a sent order that ended without a fill and without a refusal.
+
+        Cancelled, expired, undelivered or unaccounted. A close states the direction of the
+        POSITION it closes (the field's contract), which for a protective order is the
+        opposite of the order's own trading direction.
+
+        Args:
+            pending: The order that ended
+            status: CANCELLED, EXPIRED, UNDELIVERED or UNACCOUNTED
+            initiator: Who ended it, or None where nobody did (undelivered)
+            end_reason: Why it ended, or None where the status says it all (undelivered)
+
+        Returns:
+            The row, stamped on the canonical clock
+        """
+        closes = self._closed_position_id(pending)
+        closed = self.portfolio.get_position(closes) if closes is not None else None
+        # A market close carries neither its symbol nor its size of a full close; the
+        # position it closes does, while it is still held — the same fallback a refusal uses
+        if closes is None:
+            requested_lots = pending.lots
+        else:
+            requested_lots = pending.close_lots or (closed.lots if closed is not None else None)
+        return OrderResult(
+            order_id=pending.pending_order_id,
+            status=status,
+            execution_time=self.get_current_time(),
+            action=OrderAction.CLOSE if closes is not None else OrderAction.OPEN,
+            symbol=pending.symbol or (closed.symbol if closed is not None else None),
+            direction=(pending.direction if closes is None
+                       else closed.direction if closed is not None else None),
+            requested_lots=requested_lots,
+            order_type=self._requested_order_type(pending),
+            initiator=initiator,
+            end_reason=end_reason,
+            submission=pending.submission,
+            metadata={
+                'entry_price': pending.entry_price,
+            },
+        )
+
+    @staticmethod
+    def _requested_order_type(pending: PendingOrder) -> OrderType:
+        """
+        The order type the algo asked for, which is what a row reports.
+
+        A stop-limit becomes a limit order once its stop triggers — the simulation rewrites the
+        pending order's type and marks it `_from_stop_limit` — but the row describes the order
+        that was submitted. A close carries no type of its own and is a market order.
+
+        Args:
+            pending: The order as it stands now
+
+        Returns:
+            The type it was submitted as
+        """
+        if (pending.order_kwargs or {}).get('_from_stop_limit'):
+            return OrderType.STOP_LIMIT
+        return pending.order_type or OrderType.MARKET
 
     @staticmethod
     def _closed_position_id(pending: PendingOrder) -> Optional[str]:
@@ -1029,22 +1147,18 @@ class AbstractTradeExecutor(ABC):
     def _record_price_rejection(
             self, request: OpenOrderRequest, order_id: str, message: str) -> OrderResult:
         """
-        Count, record and return an INVALID_PRICE rejection.
+        Book and return an INVALID_PRICE denial.
 
         Args:
             request: The refused order
-            order_id: The id the rejection is recorded under
+            order_id: The id the denial is recorded under
             message: What was wrong with the price
 
         Returns:
-            The rejection result, already appended to the order history
+            The denial, already booked in the order history
         """
-        self._orders_rejected += 1
-        result = self._rejection_for_request(
-            request, order_id, RejectionReason.INVALID_PRICE, message)
-        self._check_order_history_limit()
-        self._order_history.append(result)
-        return result
+        return self._book_order_result(self._denial_for_request(
+            request, order_id, RejectionReason.INVALID_PRICE, message))
 
     def _reject_if_funds_committed(
         self,
@@ -1093,8 +1207,7 @@ class AbstractTradeExecutor(ABC):
             return None
 
         side = 'BUY' if request.direction == OrderDirection.LONG else 'SELL'
-        self._orders_rejected += 1
-        rejection = self._rejection_for_request(
+        rejection = self._book_order_result(self._denial_for_request(
             request, order_id,
             reason=RejectionReason.INSUFFICIENT_FUNDS,
             message=(
@@ -1102,9 +1215,7 @@ class AbstractTradeExecutor(ABC):
                 f'available: {available:.6f} {currency} '
                 f'(balance {balance:.6f}, committed by unfilled orders {committed:.6f})'
             )
-        )
-        self._check_order_history_limit()
-        self._order_history.append(rejection)
+        ))
         self.logger.warning(
             f'Order {order_id} rejected at submission: {side} requires '
             f'{required:.6f} {currency}, available {available:.6f} '
@@ -1246,14 +1357,11 @@ class AbstractTradeExecutor(ABC):
             if margin_required > free_margin and self._shortfall_refuses_fill(
                     pending_order,
                     f'margin {margin_required:.2f} required, {free_margin:.2f} free'):
-                self._orders_rejected += 1
-                rejection = self._rejection_for_pending(
+                rejection = self._book_order_result(self._rejection_for_pending(
                     pending_order,
                     reason=RejectionReason.INSUFFICIENT_MARGIN,
                     message=f'Required margin {margin_required:.2f} exceeds free margin {free_margin:.2f}'
-                )
-                self._check_order_history_limit()
-                self._order_history.append(rejection)
+                ))
                 self._notify_outcome(pending_order.direction, rejection, pending_order)
                 self.logger.warning(
                     f'Order {pending_order.pending_order_id} rejected: '
@@ -1276,8 +1384,7 @@ class AbstractTradeExecutor(ABC):
                         pending_order,
                         f'{required:.6f} {symbol_spec.quote_currency} required, '
                         f'{available:.6f} available'):
-                    self._orders_rejected += 1
-                    rejection = self._rejection_for_pending(
+                    rejection = self._book_order_result(self._rejection_for_pending(
                         pending_order,
                         reason=RejectionReason.INSUFFICIENT_FUNDS,
                         message=(
@@ -1286,9 +1393,7 @@ class AbstractTradeExecutor(ABC):
                             f'(balance {balance:.6f}, committed by unfilled orders '
                             f'{committed:.6f})'
                         )
-                    )
-                    self._check_order_history_limit()
-                    self._order_history.append(rejection)
+                    ))
                     self._notify_outcome(pending_order.direction, rejection, pending_order)
                     self.logger.warning(
                         f'Order {pending_order.pending_order_id} rejected: '
@@ -1307,8 +1412,7 @@ class AbstractTradeExecutor(ABC):
                         pending_order,
                         f'{pending_order.lots:.6f} {symbol_spec.base_currency} required, '
                         f'{available:.6f} available'):
-                    self._orders_rejected += 1
-                    rejection = self._rejection_for_pending(
+                    rejection = self._book_order_result(self._rejection_for_pending(
                         pending_order,
                         reason=RejectionReason.INSUFFICIENT_FUNDS,
                         message=(
@@ -1317,9 +1421,7 @@ class AbstractTradeExecutor(ABC):
                             f'(balance {balance:.6f}, committed by unfilled orders '
                             f'{committed:.6f})'
                         )
-                    )
-                    self._check_order_history_limit()
-                    self._order_history.append(rejection)
+                    ))
                     self._notify_outcome(pending_order.direction, rejection, pending_order)
                     self.logger.warning(
                         f'Order {pending_order.pending_order_id} rejected: '
@@ -1389,6 +1491,7 @@ class AbstractTradeExecutor(ABC):
             symbol=pending_order.symbol,
             direction=pending_order.direction,
             requested_lots=pending_order.lots,
+            order_type=self._requested_order_type(pending_order),
             submission=pending_order.submission,
             metadata={
                 'fee_cost': entry_fee.cost if entry_fee else 0.0,
@@ -1402,10 +1505,7 @@ class AbstractTradeExecutor(ABC):
         self.logger.verbose(
             f'OPEN_ORDER_RESULT: {json.dumps(result.to_dict(), indent=2)}')
 
-        # Update statistics
-        self._orders_executed += 1
-        self._check_order_history_limit()
-        self._order_history.append(result)
+        self._book_order_result(result)
         self._notify_outcome(pending_order.direction, result, pending_order)
 
     def _fill_close_order(
@@ -1474,6 +1574,18 @@ class AbstractTradeExecutor(ABC):
                 f'⚠️ Close order {pending_order.pending_order_id} failed: '
                 f'Position {position_id} not found'
             )
+            # In a backtest the simulated venue refuses a close whose position is gone — it
+            # was closed while this close was on its way. That used to leave no row at all.
+            # No outcome notification, as for every close: the strategy heard of the
+            # position's end from the close that ended it. Live, the venue has already
+            # executed this close, so there is no refusal to record; the book and the venue
+            # disagree, and resolving that belongs to reconciliation (#349).
+            if self._executor_mode == ExecutorMode.SIMULATION:
+                self._book_order_result(self._rejection_for_pending(
+                    pending_order,
+                    reason=RejectionReason.POSITION_NOT_FOUND,
+                    message=f'Position {position_id} was closed while this close was on its way',
+                ))
             return 0.0
 
         # Get current price (needed for tick_value calculation regardless)
@@ -1656,7 +1768,9 @@ class AbstractTradeExecutor(ABC):
             action=OrderAction.CLOSE,
             symbol=position.symbol,
             direction=position.direction,
+            requested_lots=pending_order.close_lots or executed_lots,
             close_type=CloseType.PARTIAL if is_partial else CloseType.FULL,
+            order_type=self._requested_order_type(pending_order),
             submission=pending_order.submission,
             metadata={
                 'realized_pnl': realized_pnl,
@@ -1667,8 +1781,7 @@ class AbstractTradeExecutor(ABC):
         self.logger.verbose(
             f'CLOSE_FILL_ORDER: {json.dumps(result.to_dict(), indent=2)}')
 
-        self._check_order_history_limit()
-        self._order_history.append(result)
+        self._book_order_result(result)
 
         # Partial-close event (#348) carries the delta; a full close emits
         # POSITION_CLOSED (#503). Until then a full close emitted nothing at all and the
@@ -2455,54 +2568,34 @@ class AbstractTradeExecutor(ABC):
             for p in self._active_stop_orders
         ]
 
-    def _expire_active_orders(self, skip: Optional[Set[str]] = None) -> None:
+    def _expire_active_orders(self) -> None:
         """
-        Record EXPIRED status for never-triggered active orders at session end.
+        Record EXPIRED status for never-triggered active orders at the end of the data.
 
-        Creates OrderResult(status=EXPIRED) entries in _order_history for the resting orders
-        of BOTH worlds. Lists are NOT cleared — preserved for get_pending_stats() snapshots.
-
-        `skip` exists because EXPIRED is a claim about the VENUE, not about our bookkeeping.
-        An order whose cancellation the broker did not confirm may still be working there, and
-        recording it as expired is how a live order becomes invisible to the next session's
-        boot adoption.
-
-        Args:
-            skip: Order ids the venue did not confirm as cancelled; None expires everything
+        Books one expired row (`scenario_end`) per resting order of BOTH worlds. Lists are
+        NOT cleared — preserved for get_pending_stats() snapshots. The simulation's ending
+        only: a live session ends its resting orders by cancelling them at the venue, and
+        books what the venue answered.
         """
-        skipped = skip or set()
         for pending in self._active_limit_orders + self._active_stop_orders:
-            if pending.pending_order_id in skipped:
-                continue
-            # A close states the direction of the POSITION it closes (the field's contract),
-            # which is the opposite of the protective order's own trading direction.
-            closes = self._closed_position_id(pending)
-            closed = self.portfolio.get_position(closes) if closes is not None else None
-            result = OrderResult(
-                order_id=pending.pending_order_id,
-                status=OrderStatus.EXPIRED,
-                execution_time=self.get_current_time(),
-                action=OrderAction.CLOSE if closes is not None else OrderAction.OPEN,
-                symbol=pending.symbol,
-                direction=(pending.direction if closes is None
-                           else closed.direction if closed is not None else None),
-                requested_lots=(pending.close_lots if closes is not None else pending.lots),
-                metadata={
-                    'reason': 'scenario_end',
-                    'order_type': pending.order_type.value if pending.order_type else 'resting',
-                    'entry_price': pending.entry_price,
-                }
-            )
-            self._check_order_history_limit()
-            self._order_history.append(result)
+            self._book_order_result(self._ending_for_pending(
+                pending, OrderStatus.EXPIRED,
+                initiator=OrderInitiator.FRAMEWORK,
+                end_reason=OrderEndReason.SCENARIO_END))
 
     def get_execution_stats(self) -> ExecutionStats:
-        """Get order execution statistics."""
+        """
+        Get order execution statistics.
+
+        Returns:
+            The submissions, and the booked rows counted by status
+        """
         return ExecutionStats(
-            orders_sent=self._orders_sent,
-            orders_executed=self._orders_executed,
-            orders_rejected=self._orders_rejected,
-            sl_tp_triggered=self._sl_tp_triggered
+            orders_submitted=self._orders_submitted,
+            sl_tp_triggered=self._sl_tp_triggered,
+            **{field_name: self._order_status_counts[status]
+               for status, field_name in EXECUTION_STATS_FIELD_BY_STATUS.items()
+               if field_name is not None},
         )
 
     def get_order_history(self) -> List[OrderResult]:
@@ -2511,18 +2604,15 @@ class AbstractTradeExecutor(ABC):
 
     def record_guard_rejection(self, result: OrderResult) -> None:
         """
-        Record a pre-validation (OrderGuard) rejection in the order history.
+        Record a pre-validation (OrderGuard) refusal in the order history.
 
-        Guard rejections never reach the broker but should appear in batch
-        reporting alongside real rejections. Counts towards orders_rejected
-        so execution stats stay consistent with broker-side rejections.
+        Guard refusals never reach the broker, so they are denials — booked and counted
+        as orders_denied, beside the executor's own denials.
 
         Args:
-            result: Rejected OrderResult from OrderGuard.validate()
+            result: The DENIED OrderResult from OrderGuard.validate()
         """
-        self._orders_rejected += 1
-        self._check_order_history_limit()
-        self._order_history.append(result)
+        self._book_order_result(result)
 
     def get_trade_history(self) -> List[TradeRecord]:
         """Get all completed trades with full audit trail."""
@@ -2550,9 +2640,8 @@ class AbstractTradeExecutor(ABC):
         self._current_prices.clear()
         self._order_counter = 0
         self._order_history.clear()
-        self._orders_sent = 0
-        self._orders_executed = 0
-        self._orders_rejected = 0
+        self._orders_submitted = 0
+        self._order_status_counts = {status: 0 for status in OrderStatus}
         self._sl_tp_triggered = 0
         self._active_limit_orders.clear()
         self._active_stop_orders.clear()

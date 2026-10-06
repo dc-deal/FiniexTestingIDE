@@ -17,8 +17,10 @@ from python.framework.types.trading_env_types.latency_simulator_types import Pen
 from python.framework.types.trading_env_types.order_types import (
     OrderAction,
     OrderResult,
+    OrderStatus,
+    OrderType,
     RejectionReason,
-    create_rejection_result,
+    create_refusal_result,
 )
 from python.framework.types.trading_env_types.stress_test_types import StressTestRejectOrderConfig
 from python.framework.utils.seeded_generators.seeded_probability_filter import (
@@ -77,16 +79,18 @@ class StressTestRejection:
 
         self._rejection_count += 1
 
-        rejection = create_rejection_result(
+        rejection = create_refusal_result(
             order_id=pending_order.pending_order_id,
             reason=RejectionReason.BROKER_ERROR,
             message=f'[STRESS TEST] Seeded rejection #{self._rejection_count} '
             f'(probability: {self._config.probability:.0%})',
+            status=OrderStatus.REJECTED,
             execution_time=now,
             action=OrderAction.OPEN,
             symbol=pending_order.symbol,
             direction=pending_order.direction,
             requested_lots=pending_order.lots,
+            order_type=pending_order.order_type or OrderType.MARKET,
         )
 
         self._logger.warning(

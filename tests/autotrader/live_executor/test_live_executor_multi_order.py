@@ -179,13 +179,13 @@ class TestStatsConsistency:
     """Execution stats stay consistent across multiple operations."""
 
     def test_sent_equals_executed_plus_rejected(self):
-        """orders_sent == orders_executed + orders_rejected (all modes, async-aware)."""
+        """orders_submitted == orders_executed + orders_rejected; a denial is never submitted."""
         mock = MockOrderExecution(mode=MockExecutionMode.INSTANT_FILL)
         executor = mock.create_executor()
 
         mock.feed_tick(executor, bid=49999.0, ask=50001.0)
 
-        # 2 successful + 1 rejected (STOP)
+        # 2 successful + 1 denied (a STOP without its trigger, refused before sending)
         executor.open_order(OpenOrderRequest(
             symbol='BTCUSD', order_type=OrderType.MARKET, direction=OrderDirection.LONG, lots=0.001))
         executor.open_order(OpenOrderRequest(
@@ -196,4 +196,5 @@ class TestStatsConsistency:
         mock.feed_tick(executor, bid=49999.0, ask=50001.0)
 
         stats = executor.get_execution_stats()
-        assert stats.orders_sent == stats.orders_executed + stats.orders_rejected
+        assert stats.orders_submitted == stats.orders_executed + stats.orders_rejected
+        assert (stats.orders_submitted, stats.orders_executed, stats.orders_denied) == (2, 2, 1)

@@ -40,17 +40,20 @@ class TestTradeExecution:
         )
 
     def test_no_rejected_orders(self, tick_loop_results: ProcessTickLoopResult):
-        """All orders should be executed without rejection."""
+        """All orders should be executed without a refusal — by the venue or by us."""
         exec_stats = tick_loop_results.execution_stats
         assert exec_stats.orders_rejected == 0, (
             f'Orders rejected: {exec_stats.orders_rejected}'
         )
+        assert exec_stats.orders_denied == 0, (
+            f'Orders denied: {exec_stats.orders_denied}'
+        )
 
-    def test_orders_sent_equals_executed(self, tick_loop_results: ProcessTickLoopResult):
-        """All sent orders should be executed."""
+    def test_orders_submitted_equals_executed(self, tick_loop_results: ProcessTickLoopResult):
+        """All submitted orders should be executed — opens and closes alike."""
         exec_stats = tick_loop_results.execution_stats
-        assert exec_stats.orders_sent == exec_stats.orders_executed, (
-            f'Sent: {exec_stats.orders_sent}, Executed: {exec_stats.orders_executed}'
+        assert exec_stats.orders_submitted == exec_stats.orders_executed, (
+            f'Sent: {exec_stats.orders_submitted}, Executed: {exec_stats.orders_executed}'
         )
 
     def test_trade_directions_match(

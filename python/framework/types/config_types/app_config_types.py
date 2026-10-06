@@ -12,6 +12,7 @@ from python.framework.types.config_types.autotrader_defaults_config_types import
 )
 from python.framework.types.config_types.backtesting_config_types import BacktestingConfig
 from python.framework.types.config_types.console_logging_config_types import ConsoleLoggingConfig
+from python.framework.types.config_types.docs_search_config_types import DocsSearchConfig
 from python.framework.types.config_types.file_logging_config_types import FileLoggingConfig
 
 
@@ -56,6 +57,7 @@ class AppConfig(StrictConfigModel):
       - development, console_logging, file_logging: shared
       - paths, history: shared between both pipelines
       - api: HTTP API posture (whether a token is required)
+      - docs_search: what the terminal search covers beyond the documentation
       - autotrader: AutoTrader pipeline defaults
       - backtesting: Backtesting pipeline settings
     """
@@ -67,5 +69,6 @@ class AppConfig(StrictConfigModel):
     paths: SharedPaths
     history: HistoryConfig = HistoryConfig()
     api: ApiAuthConfig = ApiAuthConfig()
+    docs_search: DocsSearchConfig = DocsSearchConfig()
     autotrader: AutotraderDefaultsConfig = AutotraderDefaultsConfig()
     backtesting: BacktestingConfig = BacktestingConfig()

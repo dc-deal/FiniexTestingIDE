@@ -59,10 +59,10 @@ no exit at all.
 | `test_a_policy_left_position_is_not_an_error` | Without this, every clean session end grades `FINISHED_WITH_ERRORS` and exits 3 |
 | `test_an_unexpected_survivor_is_still_an_error` | Where flatness was expected, "orphaned" is still the right word |
 | `test_a_flat_session_is_clean_either_way` | — |
-| `test_cancel_expires_the_order_locally` | A cancelled resting order leaves an EXPIRED record |
-| `test_leave_does_not_expire_it` | Left standing means left in BOTH places — an order that can still fill is not expired |
-| `test_cancel_reaches_the_venue_and_expires_it_locally` | The same for a resting STOP, and read from the mock's own cancellation record rather than from our book — a cleanup that only forgot the order locally looks identical from our side |
-| `test_leave_keeps_it_in_both_places` | A stop left standing by policy is neither cancelled at the venue nor expired here |
+| `test_cancel_books_the_order_cancelled_by_the_framework` | A resting order the venue confirms cancelled ends `cancelled`, by the framework, at the session end — it used to be recorded `expired`, a claim the venue never made |
+| `test_leave_does_not_end_it` | Left standing means left in BOTH places — an order that can still fill is not recorded as ended |
+| `test_cancel_reaches_the_venue_and_ends_it_locally` | The same for a resting STOP, and read from the mock's own cancellation record rather than from our book — a cleanup that only forgot the order locally looks identical from our side |
+| `test_leave_keeps_it_in_both_places` | A stop left standing by policy is neither cancelled at the venue nor ended here |
 | `test_the_cleanup_does_not_take_a_shutdown_mode` | The #356 scope boundary, pinned structurally |
 | `test_the_shutdown_check_only_asks_about_flatness` | — |
 

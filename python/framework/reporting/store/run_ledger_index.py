@@ -116,7 +116,14 @@ class RunLedgerIndex(AbstractStoreIndex):
     # 14 → 15 (contract 17): `period_opening_equity` and the period's cost split appended —
     # what a period opened with, and commission / swap / spread beside `total_fees`. An older
     # fragment answers None, which the back-fill fills where the value is exactly derivable.
-    LOGIC_VERSION: int = 15
+    # 15 → 16 (contract 23, #362): the order counts follow the ways an order can end.
+    # `orders_sent` is `orders_submitted`, and `orders_denied`, `orders_cancelled`,
+    # `orders_expired`, `orders_undelivered` and `orders_unaccounted` join `orders_executed` and
+    # `orders_rejected`. A rename AND a change of meaning: `orders_executed` counts close fills
+    # too, `orders_rejected` only what the venue refused. A fragment written before this version
+    # keeps those two under their old meaning — its `logic_version` says which — and answers
+    # None for the new ones; its old counts are not re-derivable, so nothing is carried over.
+    LOGIC_VERSION: int = 16
 
     def __init__(self, ledger_dir: Path, columns: List[str]):
         super().__init__(Path(ledger_dir) / LEDGER_INDEX_FILE)

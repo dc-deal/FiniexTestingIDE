@@ -28,7 +28,7 @@ def make_run_summary():
     """Factory: a RunSummary with one currency row carrying the given KPIs."""
     def _make(currency='USD', net_pnl=0.0, expectancy=0.0, profit_factor=0.0,
               win_rate=0.0, max_drawdown=0.0, total_trades=0,
-              orders_sent=0, orders_executed=0, winning_trades=0,
+              orders_submitted=0, orders_executed=0, winning_trades=0,
               gross_profit=0.0, gross_loss=0.0):
         return RunSummary(run_id=_RUN_ID,
             currencies=[RunSummaryCurrency(
@@ -37,7 +37,7 @@ def make_run_summary():
                 gross_profit=gross_profit, gross_loss=gross_loss,
                 total_trades=total_trades, winning_trades=winning_trades, losing_trades=0,
                 expectancy=expectancy, avg_win_r=0.0, avg_loss_r=0.0, r_trade_count=0)],
-            orders_sent=orders_sent, orders_executed=orders_executed,
+            orders_submitted=orders_submitted, orders_executed=orders_executed,
             orders_rejected=0, sl_tp_triggered=0, unit_count=1)
     return _make
 

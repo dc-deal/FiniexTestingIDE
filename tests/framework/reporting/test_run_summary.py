@@ -58,7 +58,7 @@ def _analytics(currency='USD', expectancy=0.5) -> TradeAnalytics:
 
 def _exec(sent=5, ex=4, rej=1, sltp=2) -> ExecutionStatsReport:
     return ExecutionStatsReport(run_id=_RUN_ID, units=[], totals=ExecutionStatsTotals(
-        orders_sent=sent, orders_executed=ex, orders_rejected=rej, sl_tp_triggered=sltp))
+        orders_submitted=sent, orders_executed=ex, orders_rejected=rej, sl_tp_triggered=sltp))
 
 
 class TestBuild:
@@ -72,7 +72,7 @@ class TestBuild:
         assert (c.net_pnl, c.profit_factor, c.win_rate) == (60.0, 2.5, 0.6)
         assert (c.account_max_drawdown, c.total_fees) == (12.0, 5.0)
         assert (c.expectancy, c.avg_win_r, c.r_trade_count) == (0.5, 2.0, 4)
-        assert (rs.orders_sent, rs.orders_executed, rs.sl_tp_triggered) == (5, 4, 2)
+        assert (rs.orders_submitted, rs.orders_executed, rs.sl_tp_triggered) == (5, 4, 2)
         assert rs.unit_count == 1
 
     def test_currency_without_analytics_defaults_r(self):

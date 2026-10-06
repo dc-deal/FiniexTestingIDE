@@ -150,7 +150,7 @@ class TestModifyLimitOrderBrokerRejection:
         # Switch adapter to reject_all mode before modify
         executor.broker.adapter.set_mode(MockExecutionMode.REJECT_ALL)
 
-        rejected_before = executor.get_execution_stats().orders_rejected
+        rows_before = len(executor.get_order_history())
         mod_result = executor.modify_limit_order(
             order_id=order_id, new_price=51000.0)
 
@@ -158,10 +158,13 @@ class TestModifyLimitOrderBrokerRejection:
         assert mod_result.success is True
         assert mod_result.status == ModificationStatus.PENDING
 
-        # Drain delivers the broker rejection on next tick
+        # Drain delivers the broker's refusal of the AMEND on next tick. The order itself was
+        # not refused — it keeps working at its old price — so it is no rejected order: no
+        # refusal row, no count (#362). The mock may fill the order on the same pass.
         mock.feed_tick(executor, bid=49999.0, ask=50001.0)
-        rejected_after = executor.get_execution_stats().orders_rejected
-        assert rejected_after == rejected_before + 1
+        assert executor.get_execution_stats().orders_rejected == 0
+        assert not [r for r in executor.get_order_history()[rows_before:]
+                    if r.order_id == order_id and r.is_refused]
 
 
 class TestModifyLimitOrderAdapterException:
@@ -187,7 +190,7 @@ class TestModifyLimitOrderAdapterException:
 
         executor_delayed.broker.adapter.do_request_modify = raise_on_modify
 
-        rejected_before = executor_delayed.get_execution_stats().orders_rejected
+        rows_before = len(executor_delayed.get_order_history())
         mod_result = executor_delayed.modify_limit_order(
             order_id=order_id, new_price=51000.0)
 
@@ -195,10 +198,13 @@ class TestModifyLimitOrderAdapterException:
         assert mod_result.success is True
         assert mod_result.status == ModificationStatus.PENDING
 
-        # Drain surfaces the connection error as REJECTED
+        # Drain surfaces the connection error as a refused AMEND: the order keeps working at
+        # its old price, and it is no rejected order (#362). The mock may fill it on the
+        # same pass.
         mock_delayed.feed_tick(executor_delayed, bid=49999.0, ask=50001.0)
-        rejected_after = executor_delayed.get_execution_stats().orders_rejected
-        assert rejected_after == rejected_before + 1
+        assert executor_delayed.get_execution_stats().orders_rejected == 0
+        assert not [r for r in executor_delayed.get_order_history()[rows_before:]
+                    if r.order_id == order_id and r.is_refused]
 
 
 class TestGetBrokerRefReverseLookup:

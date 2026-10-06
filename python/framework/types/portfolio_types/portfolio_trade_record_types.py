@@ -115,6 +115,11 @@ class TradeRecord:
     take_profit: Optional[float] = None
     comment: str = ''
 
+    # The position's size when it OPENED — `lots` is what this record closed, which on a
+    # partially closed position is only a slice of it. Stamped from the position at the
+    # record's creation; None only where a constructor has not set it.
+    entry_lots: Optional[float] = None
+
     # === Trade Analytics (#389) ===
     # MAE/MFE = max adverse / favorable excursion over the position's life (price +
     # gross-P&L). initial_risk = gross loss had the SL been hit (account currency);

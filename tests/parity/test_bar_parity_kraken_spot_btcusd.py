@@ -171,7 +171,7 @@ def _run_autotrader(ticks):
     executor.is_session_end_requested.return_value = False
 
     order_result = MagicMock()
-    order_result.is_rejected = False
+    order_result.is_refused = False
     decision_logic = MagicMock()
     decision_logic.execute_decision.return_value = order_result
     decision_logic.performance_logger = None

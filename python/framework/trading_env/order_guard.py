@@ -21,10 +21,10 @@ Current rules:
   order_guard.block_stale_market_data.
 
 The guard sits inside DecisionTradingApi.send_order() and returns a fully-formed
-OrderResult(REJECTED) on block — the executor is never called for blocked orders.
-Guard rejections are recorded in the executor's order history via
+OrderResult(DENIED) on block — the executor is never called for blocked orders.
+Guard refusals are recorded in the executor's order history via
 AbstractTradeExecutor.record_guard_rejection() so batch reports see them
-alongside real broker rejections.
+beside the executor's own denials.
 
 Time source:
 - The guard is clock-agnostic — all time-dependent methods take an explicit
@@ -51,8 +51,9 @@ from python.framework.types.trading_env_types.order_types import (
     OrderAction,
     OrderDirection,
     OrderResult,
+    OrderStatus,
     RejectionReason,
-    create_rejection_result,
+    create_refusal_result,
 )
 
 
@@ -106,7 +107,7 @@ class OrderGuard:
                 ordinary live case
 
         Returns:
-            OrderResult(REJECTED) if blocked, None otherwise
+            OrderResult(DENIED) if blocked, None otherwise
         """
         # Stale-market-data block (#436): never open new positions on blind
         # data. Only AutoTrader sessions can be stale; sim status is always fresh.
@@ -135,7 +136,7 @@ class OrderGuard:
         if unresolved_at_ceiling:
             return self._refuse(
                 request, now,
-                reason=RejectionReason.UNRESOLVED_WRITE,
+                reason=RejectionReason.UNACCOUNTED_ORDER,
                 message=(
                     f'Entry blocked: {len(unresolved_at_ceiling)} order(s) sent and never '
                     f'accounted for by the venue '
@@ -165,7 +166,7 @@ class OrderGuard:
         message: str,
     ) -> OrderResult:
         """
-        A guard rejection stating the entry it blocked, stamped at the guard's own time.
+        A guard refusal stating the entry it blocked, stamped at the guard's own time.
 
         Args:
             request: The blocked request
@@ -174,17 +175,19 @@ class OrderGuard:
             message: The human sentence beside the reason
 
         Returns:
-            The REJECTED OrderResult
+            The DENIED OrderResult — the order never left this process
         """
-        return create_rejection_result(
+        return create_refusal_result(
             order_id=self._make_order_id(),
             reason=reason,
             message=message,
+            status=OrderStatus.DENIED,
             execution_time=now,
             action=OrderAction.OPEN,
             symbol=request.symbol,
             direction=request.direction,
             requested_lots=request.lots,
+            order_type=request.order_type,
         )
 
     # ============================================

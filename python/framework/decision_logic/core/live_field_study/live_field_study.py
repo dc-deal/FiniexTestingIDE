@@ -40,6 +40,7 @@ from python.framework.types.decision_event_types import (
     OrderCancelledEvent,
     OrderFilledEvent,
     OrderRejectedEvent,
+    OrderUnaccountedEvent,
     PartialCloseEvent,
     SessionEndEvent,
     SessionEndSeverity,
@@ -289,6 +290,7 @@ class LiveFieldStudy(AbstractDecisionLogic):
         return {
             DecisionEventType.ORDER_FILLED,
             DecisionEventType.ORDER_REJECTED,
+            DecisionEventType.ORDER_UNACCOUNTED,
             DecisionEventType.ORDER_CANCELLED,
             DecisionEventType.PARTIAL_CLOSE,
             DecisionEventType.SESSION_END,
@@ -323,7 +325,6 @@ class LiveFieldStudy(AbstractDecisionLogic):
             self._recorder.record_order_event(
                 'order_filled', order_id=event.order_id, side=event.direction.name,
                 lots=event.lots, price=event.fill_price, status='filled',
-                slippage={'slippage_points': event.result.slippage_points},
                 extra={'commission': event.result.commission},
             )
 
@@ -332,11 +333,30 @@ class LiveFieldStudy(AbstractDecisionLogic):
         if self._recorder:
             self._recorder.record_order_event(
                 'order_rejected', order_id=event.order_id, side=event.direction.name,
-                status='rejected',
+                status=event.result.status.value,
                 extra={
                     'reason': event.reason.value if event.reason else None,
                     'message': event.message,
                 },
+            )
+
+    def on_order_unaccounted(self, event: OrderUnaccountedEvent) -> None:
+        """
+        An order the framework stopped asking about — the phase fails, as it did before #362.
+
+        Such an order used to arrive as a rejection, and the phase machine failed the phase on
+        it; it still does, through the same flag, while the record names the status it ended
+        with. The machine gets a word of its own for it with #566.
+
+        Args:
+            event: The unaccounted order
+        """
+        self._rejected_flag = True
+        if self._recorder:
+            self._recorder.record_order_event(
+                'order_unaccounted', order_id=event.order_id, side=event.direction.name,
+                status=event.result.status.value,
+                extra={'end_reason': event.end_reason.value if event.end_reason else None},
             )
 
     def on_session_end(self, event: SessionEndEvent) -> None:
@@ -562,7 +582,7 @@ class LiveFieldStudy(AbstractDecisionLogic):
             stop_loss=action.stop_loss,
             comment=f'FieldStudy {action.phase_id}',
         )
-        if result is not None and result.is_rejected:
+        if result is not None and result.is_refused:
             # Synchronous rejection (invalid lot, immediate broker reject) — the #348
             # channel only carries async outcomes, so surface it to the machine directly.
             self._rejected_flag = True

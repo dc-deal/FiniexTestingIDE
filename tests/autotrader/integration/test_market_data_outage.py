@@ -65,7 +65,8 @@ class TestMarketDataOutage:
         """The deliberate ghost-pass entry was rejected (framework floor)."""
         result = outage_session
         assert _count(result, '[PROBE] stale entry rejected') == 1
-        assert result.execution_stats.orders_rejected >= 1
+        # The guard refuses before anything is sent, so the entry is a denial, not a rejection
+        assert result.execution_stats.orders_denied >= 1
 
     def test_signal_side_fired_too(self, outage_session):
         """Aged archive → #434 signal hook on the first result (both sides)."""

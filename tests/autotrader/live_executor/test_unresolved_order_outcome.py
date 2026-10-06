@@ -35,6 +35,7 @@ from python.framework.types.trading_env_types.latency_simulator_types import Pen
 from python.framework.types.trading_env_types.order_types import (
     OpenOrderRequest,
     OrderDirection,
+    OrderStatus,
     OrderType,
 )
 from tests.autotrader.live_executor.conftest import LevelRecorder
@@ -210,14 +211,13 @@ class TestPendingSurvives:
 class TestTimeoutTellsTheTruth:
     """An unresolved order that runs out its clock is not 'the broker rejected it'."""
 
-    def test_unresolved_timeout_reason_names_the_transport(self, logger):
-        from python.framework.types.trading_env_types.order_types import RejectionReason
-
-        # The distinction matters on the record, not only in prose: BROKER_ERROR would put
+    def test_unresolved_timeout_is_not_a_refusal(self, logger):
+        # The distinction matters on the record, not only in prose: a rejection would put
         # our own transport fault on the venue's account, and the venue may still be
-        # holding the order.
-        assert RejectionReason.BROKER_UNREACHABLE.value == 'broker_unreachable'
-        assert RejectionReason.BROKER_UNREACHABLE is not RejectionReason.BROKER_ERROR
+        # holding the order. Since #362 it is no refusal of any kind: the order ends
+        # unaccounted, a status of its own.
+        assert OrderStatus.UNACCOUNTED.value == 'unaccounted'
+        assert OrderStatus.UNACCOUNTED not in (OrderStatus.DENIED, OrderStatus.REJECTED)
 
 
 class TestATimedOutUnresolvedOrderLeavesTheTracker:

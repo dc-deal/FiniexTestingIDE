@@ -37,7 +37,7 @@ def _currency(currency='USD', net_pnl=6.0, win_rate=0.6667, winners=2, losers=1,
 
 def _summary(currencies, sent=5, executed=5, rejected=0, sl_tp=0, units=5) -> RunSummary:
     return RunSummary(run_id=_RUN_ID, 
-        currencies=currencies, orders_sent=sent, orders_executed=executed,
+        currencies=currencies, orders_submitted=sent, orders_executed=executed,
         orders_rejected=rejected, sl_tp_triggered=sl_tp, unit_count=units)
 
 

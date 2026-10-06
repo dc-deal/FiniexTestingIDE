@@ -173,7 +173,7 @@ class TestTheSubmissionRefusal:
 
         second = executor.open_order(_market(OrderDirection.LONG, 0.01))
 
-        assert second.status == OrderStatus.REJECTED
+        assert second.status == OrderStatus.DENIED
         assert second.rejection_reason == RejectionReason.INSUFFICIENT_FUNDS
         # The message separates the two numbers, so an empty account and a fully-claimed
         # one cannot read the same.
@@ -186,7 +186,7 @@ class TestTheSubmissionRefusal:
 
         result = executor.open_order(_market(OrderDirection.LONG, 0.01))
 
-        assert result.status != OrderStatus.REJECTED
+        assert not result.is_refused
 
     def test_a_sell_is_refused_against_committed_base(self):
         _, executor = _spot_executor(btc=0.03)
@@ -194,7 +194,7 @@ class TestTheSubmissionRefusal:
 
         second = executor.open_order(_market(OrderDirection.SHORT, 0.02))
 
-        assert second.status == OrderStatus.REJECTED
+        assert second.status == OrderStatus.DENIED
         assert second.rejection_reason == RejectionReason.INSUFFICIENT_FUNDS
 
     def test_the_refusal_is_returned_and_announces_nothing(self):
@@ -213,7 +213,7 @@ class TestTheSubmissionRefusal:
 
         refused = executor.open_order(_market(OrderDirection.LONG, 0.01))
 
-        assert refused.status == OrderStatus.REJECTED
+        assert refused.status == OrderStatus.DENIED
         assert seen == []
 
     def test_the_refusal_is_recorded_in_the_order_history(self):
@@ -296,7 +296,7 @@ class TestBothPipelinesAgree:
 
         second = sim.open_order(_market(OrderDirection.LONG, 0.01))
 
-        assert second.status == OrderStatus.REJECTED
+        assert second.status == OrderStatus.DENIED
         assert second.rejection_reason == RejectionReason.INSUFFICIENT_FUNDS
         assert 'committed' in second.rejection_message
 
@@ -306,7 +306,7 @@ class TestBothPipelinesAgree:
 
         result = sim.open_order(_market(OrderDirection.LONG, 0.01))
 
-        assert result.status != OrderStatus.REJECTED
+        assert not result.is_refused
 
     def test_the_fill_site_reads_others_claims_and_excludes_the_filling_order(self):
         """
@@ -323,7 +323,7 @@ class TestBothPipelinesAgree:
         resting = executor.open_order(_limit(OrderDirection.LONG, 0.006, _RESTING_BUY_PRICE))
         market = executor.open_order(_market(OrderDirection.LONG, 0.01))
 
-        assert market.status != OrderStatus.REJECTED       # 1000 − 294 covers ~501
+        assert not market.is_refused       # 1000 − 294 covers ~501
 
         # What the fill site reads for each order: everyone else's claim, not its own.
         seen_by_market = executor.get_committed_funds('USD', exclude_order_id=market.order_id)

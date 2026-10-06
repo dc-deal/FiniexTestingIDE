@@ -19,7 +19,12 @@ from typing import Dict, List, Optional
 
 from python.framework.types.portfolio_types.portfolio_trade_record_types import CloseReason
 from python.framework.types.trading_env_types.broker_trade_types import BrokerTrade
-from python.framework.types.trading_env_types.order_types import OrderDirection, OrderType
+from python.framework.types.trading_env_types.order_types import (
+    OrderDirection,
+    OrderEndReason,
+    OrderInitiator,
+    OrderType,
+)
 from python.framework.types.trading_env_types.submission_metadata_types import SubmissionMetadata
 from python.framework.utils.process_serialization_utils import serialize_value
 
@@ -162,6 +167,12 @@ class PendingOrderExecutionState:
     pending_modification: Optional[ModificationRequest] = None
     cancel_apply_at_msc: Optional[int] = None
     cancel_requested: bool = False
+    # Who asked for this order's cancel, and why (#362) — set where the cancel is requested
+    # and read where it is confirmed, which live can be a status read long after the cancel's
+    # own answer was lost. None while nobody here has asked: a cancel the venue reports then
+    # was the venue's own.
+    cancel_initiator: Optional[OrderInitiator] = None
+    cancel_end_reason: Optional[OrderEndReason] = None
     in_flight_query: bool = False
     last_polled_at_ms: float = 0.0
     # How much of a VENUE-HELD protective order is already written into the position book

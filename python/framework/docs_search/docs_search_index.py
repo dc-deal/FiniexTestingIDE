@@ -93,10 +93,13 @@ class DocsSearchIndex:
 
     Args:
         root: The directory holding the served documents
+        recursive: Whether documents in sub-folders are indexed too — the served set is flat, the
+            whole documentation tree a maintainer searches is not
     """
 
-    def __init__(self, root: Path):
+    def __init__(self, root: Path, recursive: bool = False):
         self._root = root
+        self._recursive = recursive
         self._passages: List[DocPassage] = []
         self._listing: List[Tuple[str, str, str]] = []
         self._frequency: List[collections.Counter] = []
@@ -107,7 +110,7 @@ class DocsSearchIndex:
 
     def _build(self) -> None:
         """Read the documents and compute what scoring needs, once."""
-        self._passages, self._listing = read_corpus(self._root)
+        self._passages, self._listing = read_corpus(self._root, self._recursive)
         tokenized = [_tokenize(passage.text) for passage in self._passages]
         self._frequency = [collections.Counter(terms) for terms in tokenized]
         self._lengths = [len(terms) for terms in tokenized]

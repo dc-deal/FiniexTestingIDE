@@ -48,6 +48,17 @@ the session in a live run — and it is the join into every other section.
 | `entry_tick_index` · `exit_tick_index` | the chronological sort key within the unit |
 | `stop_loss` · `take_profit` | the levels that were set, null where none was |
 | `currency` | the account currency every money figure on the row is in |
+| `close_type` | `full` or `partial` — whether this row closed all of the position or part of it |
+| `entry_lots` | the position's size when it opened |
+| `position_closes` | how many rows the position produced in this unit |
+
+### What belongs to the trade, and what to this row
+
+A position closed in parts produces one row per close, and `lots` is only the part this row
+closed. `entry_lots` is the size the position was opened at and `position_closes` how many rows it
+produced, so a reader can say "the second of three closes of a 0.1 position" without adding up the
+fills. `position_closes` is counted over the whole unit when the report is built, so a filter that
+hides some of those rows does not change it.
 
 ## The money on a row, and the figure that stands outside it
 

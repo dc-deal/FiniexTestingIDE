@@ -689,7 +689,7 @@ class CautiousMacd(AbstractDecisionLogic):
                     AwarenessLevel.INFO,
                     'stop_order_placed',
                 )
-            elif order_result.is_rejected:
+            elif order_result.is_refused:
                 self.logger.warning(
                     f"✗ {_mode} order rejected: "
                     f"{order_result.rejection_reason.value if order_result.rejection_reason else 'Unknown'} - "

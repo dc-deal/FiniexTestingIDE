@@ -71,7 +71,8 @@ def build_trade_history_report(
     rows = []
     for unit in units:
         shared = _execution_counts(unit.trade_history)
-        rows.extend(_to_row(trade, unit.name, shared) for trade in unit.trade_history)
+        closes = Counter(trade.position_id for trade in unit.trade_history)
+        rows.extend(_to_row(trade, unit.name, shared, closes) for trade in unit.trade_history)
     return _assemble(run_id, rows, symbol, close_reason, start, end, window_basis)
 
 
@@ -131,7 +132,8 @@ def _assemble(
 
 
 def _to_row(trade: TradeRecord, scenario_name: str = '',
-            shared: Optional[Counter] = None) -> TradeHistoryRow:
+            shared: Optional[Counter] = None,
+            closes: Optional[Counter] = None) -> TradeHistoryRow:
     """
     Map one closed TradeRecord to a renderable row (the full #393 projection).
 
@@ -139,6 +141,8 @@ def _to_row(trade: TradeRecord, scenario_name: str = '',
         trade: The record
         scenario_name: Its unit
         shared: Its unit's execution counts (`_execution_counts`); None counts each fill once
+        closes: Its unit's records per position, counted before any filter; None leaves
+            `position_closes` unset
 
     Returns:
         The row
@@ -191,6 +195,9 @@ def _to_row(trade: TradeRecord, scenario_name: str = '',
         exit_slippage=exit_slip,
         entry_slippage_pct=entry_slip_pct,
         exit_slippage_pct=exit_slip_pct,
+        close_type=trade.close_type,
+        position_closes=closes[trade.position_id] if closes is not None else None,
+        entry_lots=trade.entry_lots,
     )
 
 

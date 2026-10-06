@@ -324,7 +324,7 @@ class TestAnOrderIdThatCarriesNoReference:
 
         result = spot_executor.close_position('pos_btcusd_1')
 
-        assert not result.is_rejected, (
+        assert not result.is_refused, (
             f'Withheld behind a cancel that can never be scheduled: {result.message}')
 
 class TestTheVenueAlsoLISTSTheProtectiveOrder:

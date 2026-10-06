@@ -58,6 +58,10 @@
     "_comment": "require_auth false is the rollout state in which tokens may exist while nothing is gated yet - a consumer needs its token before it can start sending the header. Set true once every consumer confirms it sends one.",
     "require_auth": false
   },
+  "docs_search": {
+    "_comment": "The terminal search (docs_search_cli.py) searches the documentation tree. Each entry here is one more command it runs afterwards, with the search term appended as the last argument - for collections a maintainer keeps outside the repository. Empty in a fresh clone.",
+    "extra_commands": []
+  },
   "autotrader": {
     "tick_source": {
       "_comment": "How ticks are DELIVERED. A profile overrides any of these; the mock-only and kraken-only fields sit together because one block per concern beats two that a reader has to join. quote_channel_enabled subscribes to Kraken's ticker channel beside trades, so a live tick carries the real bid/ask it executed against - the same thing an archived tick has carried since collector format 1.6.0.",

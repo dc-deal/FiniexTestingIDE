@@ -180,12 +180,21 @@ def document_summary(text: str) -> str:
     return ' '.join(paragraph)
 
 
-def read_corpus(root: Path) -> Tuple[List[DocPassage], List[Tuple[str, str, str]]]:
+def read_corpus(
+    root: Path,
+    recursive: bool = False,
+) -> Tuple[List[DocPassage], List[Tuple[str, str, str]]]:
     """
     Every served document, split into passages, with what the index route lists.
 
+    The served set is one flat folder, so the API reads one level. A maintainer searching the
+    whole documentation tree from a terminal reads every level; a document is then named by its
+    path below the root (`architecture/live_execution_architecture`), which is still the name
+    `read_document` resolves.
+
     Args:
-        root: The directory holding the served documents
+        root: The directory holding the documents
+        recursive: Whether documents in sub-folders are read too
 
     Returns:
         The passages of every document, and one (name, title, summary) per document, by name
@@ -194,9 +203,10 @@ def read_corpus(root: Path) -> Tuple[List[DocPassage], List[Tuple[str, str, str]
     listing: List[Tuple[str, str, str]] = []
     if not root.is_dir():
         return passages, listing
-    for path in sorted(root.glob('*.md')):
+    paths = root.rglob('*.md') if recursive else root.glob('*.md')
+    for path in sorted(paths):
         text = path.read_text(encoding='utf-8')
-        name = path.stem
+        name = path.relative_to(root).with_suffix('').as_posix()
         passages.extend(read_passages(name, text))
         listing.append((name, document_title(text) or name, document_summary(text)))
     return passages, listing

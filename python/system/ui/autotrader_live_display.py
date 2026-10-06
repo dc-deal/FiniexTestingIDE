@@ -755,14 +755,16 @@ class AutoTraderLiveDisplay:
             # connected. Non-MANUAL reasons (SL/TP/scenario_end) keep their
             # value — close_type is then deducible from the lots column.
             #   PARTIAL              → 'partial'
-            #   FULL remainder of a  → 'remain'   (entry volume > this close)
-            #     partial chain
+            #   FULL remainder of a  → 'remain'   (the position opened larger than
+            #     partial chain                     this close)
             #   FULL standalone      → empty (today's behavior)
+            # The size at entry is the record's own `entry_lots`. The first entry FILL said the
+            # same only while a position opened in one fill; with several it was a slice.
             reason_text = trade.close_reason.value[:8]
             if not reason_text:
                 if trade.close_type == CloseType.PARTIAL:
                     reason_text = 'partial'
-                elif trade.entry_trades and trade.entry_trades[0].volume > trade.lots:
+                elif trade.entry_lots is not None and trade.entry_lots > trade.lots:
                     reason_text = 'remain'
 
             table.add_row(

@@ -26,6 +26,36 @@ FiniexTestingIDE provides a collection of CLI tools for the complete workflow fr
 | `discoveries_cli.py` | Volatility Profiles, Discoveries & Data Coverage | volatility-profile, extreme-moves, data-coverage (build/show/validate/status/clear), signal-coverage (validate/show), cache (rebuild-all/status) |
 | `generator_cli.py` | Block & Generator-Profile Generation | generate-blocks, generate-profile, generate-all-profiles |
 | `strategy_runner_cli.py` | Backtesting | run, run --generator-profile, validate |
+| `docs_search_cli.py` | Search the whole documentation tree | search |
+
+---
+
+## Searching the documentation
+
+A question about how something works usually has an answer somewhere under `docs/`, and the file
+it sits in is the part nobody remembers. The terminal search ranks every passage of every document
+in the tree and prints the best ones, each with the line to open:
+
+```bash
+python python/cli/docs_search_cli.py search pending order counters
+```
+
+```
+🔍 Documentation — 2615 passages, best 8 for 'pending order counters'
+
+   11.2  docs/glossary.md:263  § Glossary
+         **pending-order counters** (`total_resolved`, … on the pending-orders report) — How the unit's …
+   10.2  docs/architecture/architecture_execution_layer.md:178  § Pending Order Statistics
+```
+
+It uses the same ranking as the API's own search (`/api/v1/docs/search`), but over the whole tree:
+the API searches only the documents it serves, because those are written for readers who cannot
+open this repository. In VS Code the `🔍 Docs: Search` entry, first in the list, asks for the term.
+
+**Searching further collections.** `app_config.json::docs_search.extra_commands` lists commands the
+search runs afterwards, each with the search term appended as its last argument — for material a
+maintainer keeps outside the repository. Empty in a fresh clone; set it in your own
+`user_configs/app_config.json`.
 
 ---
 

@@ -297,6 +297,7 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         submission: Optional[SubmissionMetadata] = None,
         venue_held_protection: bool = False,
         client_order_id: Optional[str] = None,
+        entry_time: Optional[datetime] = None,
     ) -> str:
         """
         Track a submitted OPEN order with broker reference.
@@ -322,6 +323,9 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
                         order at the venue (#503) — resolved at submit, read at fill
             client_order_id: The wire key this order is sent under (#487). Recorded so the
                         reconciler and the resolution path read it instead of re-deriving it
+            entry_time: The submission on the canonical clock, which only the executor holds.
+                        It is an event time, so the wall-clock reading beside it is never a
+                        substitute; None leaves it unset
 
         Returns:
             order_id for chaining
@@ -342,7 +346,7 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
             symbol=symbol,
             direction=direction,
             lots=lots,
-            entry_time=now,
+            entry_time=entry_time,
             order_kwargs=order_kwargs or {},
             submission=submission if submission else SubmissionMetadata(),
             venue_held_protection=venue_held_protection,
@@ -693,10 +697,20 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         self,
         current_msc: Optional[int] = None,
         reason: str = 'scenario_end',
-    ) -> None:
-        """Clear all pending orders and the broker_ref index."""
-        super().clear_pending(current_msc=current_msc, reason=reason)
+    ) -> List[PendingOrder]:
+        """
+        Clear all pending orders and the broker_ref index.
+
+        Args:
+            current_msc: Not used in live mode (latency is measured on the monotonic clock)
+            reason: Why the force-close happened
+
+        Returns:
+            The orders cleared, so the executor can book how each one ended
+        """
+        cleared = super().clear_pending(current_msc=current_msc, reason=reason)
         self._broker_ref_index.clear()
+        return cleared
 
     # ============================================
     # Worker Thread — Async Dispatch Infrastructure
