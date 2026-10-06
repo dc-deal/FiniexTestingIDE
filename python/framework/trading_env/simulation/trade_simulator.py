@@ -574,6 +574,12 @@ class TradeSimulator(AbstractTradeExecutor):
             self._order_history.append(refusal)
             return refusal
 
+        # A close already in the latency queue is joined, never replaced — the queue keys a
+        # close by its position id, as live does.
+        in_flight = self.latency_simulator.get_order(position_id)
+        if in_flight is not None and in_flight.order_action == PendingOrderAction.CLOSE:
+            return self._joined_close_result(position, in_flight, lots, close_reason)
+
         # Submit close order to latency simulator
         order_id = self.latency_simulator.submit_close_order(
             position_id=position_id,

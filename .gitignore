@@ -220,8 +220,15 @@ docker-compose.override.yml
 CLAUDE.md
 
 # GitHub issues export (local reference only)
-github_issues/
+# Read-only snapshot of the GitHub issues, refreshed by the script below.
+_github_issues/
 export_github_issues.sh
+# Reference corpus with its conversion and search tools.
+_books/
+# Internal documents kept for the record.
+_internal_archive/
+# Foreign trading strategies kept for study — not project code.
+_external_algos/
 
 # Generated project analysis snapshot (local only, regenerate on demand)
 project_analysis_detailed.txt

@@ -54,6 +54,16 @@ class BrokerOrderStatus(Enum):
     UNKNOWN = 'unknown'
 
 
+# The statuses that say how an order ENDED. Neither UNRESOLVED nor UNKNOWN is one —
+# see BrokerResponse.is_terminal for why each of them still calls for asking.
+TERMINAL_ORDER_STATUSES = frozenset({
+    BrokerOrderStatus.FILLED,
+    BrokerOrderStatus.REJECTED,
+    BrokerOrderStatus.CANCELLED,
+    BrokerOrderStatus.EXPIRED,
+})
+
+
 @dataclass
 class BrokerResponse:
     """
@@ -118,12 +128,7 @@ class BrokerResponse:
         cancel or an expiry off an empty answer invents a fact about an order the venue
         did not describe.
         """
-        return self.status in (
-            BrokerOrderStatus.FILLED,
-            BrokerOrderStatus.REJECTED,
-            BrokerOrderStatus.CANCELLED,
-            BrokerOrderStatus.EXPIRED,
-        )
+        return self.status in TERMINAL_ORDER_STATUSES
 
 
 @dataclass

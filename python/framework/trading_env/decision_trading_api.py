@@ -66,7 +66,7 @@ _COOLDOWN_REJECTION_REASONS = frozenset({
     RejectionReason.INSUFFICIENT_FUNDS,
     RejectionReason.BROKER_ERROR,
     RejectionReason.BROKER_UNREACHABLE,
-    RejectionReason.MARKET_CLOSED,
+    RejectionReason.MARKET_CLOSED,  # nothing produces it yet — MT5's retcode 10018 will (#209)
 })
 
 
@@ -104,8 +104,9 @@ class DecisionTradingApi:
         self._executor = executor
         self._capabilities = executor.broker.get_order_capabilities()
         # What the PIPELINE implements, beside what the VENUE accepts. A type must pass both:
-        # Kraken declares STOP_LIMIT, the live path does not carry it, and before this check
-        # such a logic passed pre-flight and had every order rejected (#500 sibling).
+        # a venue may declare a type the live path has not built (STOP_LIMIT was one until
+        # #500), and before this check such a logic passed pre-flight and had every order
+        # rejected.
         self._executor_supports = executor.get_supported_order_types()
 
         # CRITICAL: Validate order types BEFORE scenario starts!
@@ -520,13 +521,16 @@ class DecisionTradingApi:
         Is this specific position currently being closed?
 
         Used by multi-position strategies to avoid duplicate close
-        submissions for the same position.
+        submissions for the same position. A second close sent anyway joins the
+        one in flight rather than replacing it.
 
         Args:
             position_id: Position to check
 
         Returns:
-            True if a close order is in flight for this position
+            True if a close order is in flight for this position — in a live
+            session also while it waits for the venue to cancel the position's
+            protective order
         """
         return self._executor.is_pending_close(position_id)
 
@@ -543,7 +547,9 @@ class DecisionTradingApi:
             lots: Lots to close (None = close all)
 
         Returns:
-            OrderResult with close execution details
+            OrderResult with close execution details. While a close for this position
+            is already in flight, the request joins it: PENDING, describing that close,
+            with `joined_in_flight_close` in its metadata
         """
         return self._executor.close_position(position_id, lots)
     # ============================================

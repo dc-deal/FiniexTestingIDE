@@ -131,10 +131,10 @@ class EditJob:
     Args:
         order_id: Internal order identifier (links back to the PendingOrder
                   with in_flight_operation == PENDING_MODIFY)
-        broker_ref: Current broker order reference at dispatch time. Some
-                    brokers (Kraken EditOrder) return a NEW ref in the
+        broker_ref: Current broker order reference at dispatch time. A venue
+                    that re-mints references returns a NEW ref in the
                     response — the drain handler swaps refs in that case.
-        symbol: Trading symbol (some brokers need this on modify, e.g. Kraken)
+        symbol: Trading symbol (some brokers need this on modify)
         order_type: What kind of order is being amended. A venue needs it to know what
                     `new_price` MEANS: for a triggered type it is the trigger, for a limit
                     it is the limit price, and the two go to different API fields
@@ -172,7 +172,7 @@ class EditResponse:
         order_id: Internal order identifier (matches EditJob.order_id)
         broker_response: Parsed BrokerResponse from the adapter. On success
                          the broker_ref field may differ from EditJob.broker_ref
-                         (Kraken EditOrder semantic — caller must swap refs
+                         (a venue that re-mints references — caller must swap refs
                          via processor.update_broker_ref)
     """
     order_id: str
@@ -319,8 +319,8 @@ class QueryJob:
     Args:
         order_id: Internal order identifier (primary routing key in drain)
         broker_ref: Broker order reference at dispatch time. May be stale by
-                    the time the response arrives (Kraken EditOrder flips
-                    refs) — the executor guards via broker_ref comparison.
+                    the time the response arrives (an amend can re-mint the
+                    ref) — the executor guards via broker_ref comparison.
         adapter: Live-capable adapter
         market: The quote when the poll was DECIDED, stamped on the main thread — the same
                 discipline as `ts_init`: an observation belongs to the moment it was made,
@@ -344,7 +344,7 @@ class QueryResponse:
     cycle re-polls).
 
     Stale-response guard: if broker_response.broker_ref != pending.broker_ref
-    (e.g. after EditOrder flipped the ref), the state mutation is skipped.
+    (e.g. after an amend re-minted the ref), the state mutation is skipped.
 
     Args:
         order_id: Internal order identifier (matches QueryJob.order_id)
@@ -366,7 +366,7 @@ class TradesQueryResponse:
     triggers _fill_open_order with the aggregated values.
 
     Stale-response guard: if response.broker_ref != pending.broker_ref at
-    drain time (e.g. after an EditOrder flipped the ref), the response is
+    drain time (e.g. after an amend re-minted the ref), the response is
     discarded.
 
     Args:

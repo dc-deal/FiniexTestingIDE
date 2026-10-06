@@ -190,9 +190,10 @@ new ref on modify, but it is not exercised by Kraken.
 
 Configurable via `broker_transport.rate_limit_interval_s` in broker settings (default: 1.0s). Simple time-based throttle — minimum interval between private API calls. Conservative but safe for personal use.
 
-Enforced inside the adapter's `_enforce_rate_limit()` (called from every private HTTP call). Because
-all broker I/O is funneled through a single worker thread, this gate also serializes async polling
-against submits/edits/cancels — no risk of two private API calls landing under the rate window.
+Enforced inside the adapter's `_enforce_rate_limit()` (called from every private HTTP call). Every
+private call passes the adapter's lock and this gate — the worker thread's async requests and the
+few synchronous reads the main thread still makes (the market-order status poll, the timeout's
+cancel, the cold-start read) — so no two private API calls land under the rate window.
 
 ### Polling Cadence (#320)
 
@@ -207,15 +208,21 @@ The scheduler runs on the tick path (`on_tick`) **and** on the idle heartbeat (`
 arrives. The per-order throttle (`poll_interval_ms`) still gates the actual broker I/O, so a faster
 heartbeat does not multiply API calls.
 
+MARKET orders and closes get the same treatment on the heartbeat (`_process_pipeline_orders`):
+Kraken answers a market order with a txid alone, and its fill shows only to a later QueryOrders.
+Before, that read ran on a tick only, so a fill made in a quiet feed was never read and the fill
+timeout gave the order up. The tick path still reads them synchronously in Phase 1, and skips an
+order whose heartbeat question is in flight.
+
 Three gates on the scheduler, all silent skips:
 
 | Gate | Reason |
 |------|--------|
 | `broker_ref is None` | Submit still in flight at the broker — wait for `_handle_resting_submit_response` |
 | `pending.in_flight_query is True` | A previous QueryJob has not returned yet |
-| `now_ms - pending.last_polled_at_ms < poll_interval_ms` | Inside the per-order throttle window |
+| `now_ms - pending.last_polled_at_ms < poll_interval_ms` | Inside the per-order throttle window — measured on the monotonic clock; a stamp of 0.0 means never polled |
 
-Pathological "stuck in-flight" cases (worker dead, network hung) are caught by the existing `check_timeouts()` mechanism — when `pending.timeout_at` passes, the order is rejected via `_handle_timeout`.
+Pathological "stuck in-flight" cases (worker dead, network hung) are NOT caught by `check_timeouts()` — it walks the request processor's store, which a resting order never enters. The resolution introduced by #487 asks the venue about such an order, and its ceiling ends the wait.
 
 `_handle_query_response` ALWAYS clears `pending.in_flight_query` (the query is resolved either way),
 then applies a stale-broker_ref guard before any state mutation. The guard was built for the legacy

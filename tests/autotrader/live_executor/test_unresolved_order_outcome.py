@@ -37,6 +37,7 @@ from python.framework.types.trading_env_types.order_types import (
     OrderDirection,
     OrderType,
 )
+from tests.autotrader.live_executor.conftest import LevelRecorder
 
 
 @pytest.fixture
@@ -271,7 +272,7 @@ class TestATimedOutUnresolvedOrderLeavesTheTracker:
         )
         pending = processor.get_pending_orders()[0]
         pending.execution_state.in_flight_operation = PendingOperation.PENDING_SUBMIT
-        pending.timing.timeout_at = datetime.now(timezone.utc) - timedelta(seconds=1)
+        pending.timing.order_timeout_deadline_monotonic = time.monotonic() - 1.0
         return order_id
 
     def test_the_pending_is_gone_after_its_timeout(self, executor_timeout):
@@ -300,7 +301,7 @@ class TestATimedOutUnresolvedOrderLeavesTheTracker:
         processor.register_pending_close(position_id='pos_btcusd_1', broker_ref=None)
         pending = processor.get_pending_orders()[0]
         pending.execution_state.in_flight_operation = PendingOperation.PENDING_SUBMIT
-        pending.timing.timeout_at = datetime.now(timezone.utc) - timedelta(seconds=1)
+        pending.timing.order_timeout_deadline_monotonic = time.monotonic() - 1.0
         assert executor_timeout.is_pending_close('pos_btcusd_1')
 
         _heartbeat_as_the_loop_does(executor_timeout)
@@ -319,7 +320,7 @@ class TestATimedOutUnresolvedOrderLeavesTheTracker:
             broker_ref='TX-42',
         )
         pending = processor.get_pending_orders()[0]
-        pending.timing.timeout_at = datetime.now(timezone.utc) - timedelta(seconds=1)
+        pending.timing.order_timeout_deadline_monotonic = time.monotonic() - 1.0
 
         _heartbeat_as_the_loop_does(executor_timeout)
 
@@ -340,23 +341,6 @@ def _heartbeat_as_the_loop_does(executor) -> None:
     """
     executor.set_current_time(datetime.now(timezone.utc))
     executor.heartbeat()
-
-
-class LevelRecorder:
-    """Logger stand-in that only remembers which level each line was written at."""
-
-    def __init__(self):
-        self.levels = []
-
-    def verbose(self, message): self.levels.append('verbose')
-
-    def debug(self, message): self.levels.append('debug')
-
-    def info(self, message): self.levels.append('info')
-
-    def warning(self, message): self.levels.append('warning')
-
-    def error(self, message): self.levels.append('error')
 
 
 class TestLogLevelMatchesConsequence:

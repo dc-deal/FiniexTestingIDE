@@ -84,7 +84,7 @@ there until the venue acknowledges it.
 
 | Sub-type | Field | Holds | Introduced by |
 |---|---|---|---|
-| `PendingOrderTiming` | `pending.timing` | `placed_at_msc`, `broker_fill_msc` (sim); `submitted_at`, `timeout_at` (live) | original |
+| `PendingOrderTiming` | `pending.timing` | `placed_at_msc`, `broker_fill_msc` (sim); `submitted_at`, `order_timeout_deadline_monotonic` (live) | original |
 | `PendingOrderExecutionState` | `pending.execution_state` | `in_flight_operation`, `pending_modification`, `cancel_apply_at_msc`, `cancel_requested`, `in_flight_query`, `last_polled_at_ms` | #318, #320, #361 |
 | `PendingOrderFills` | `pending.fills` | `trades`, `cumulative_*` aggregates, `append_trade()` | #326 |
 | `SubmissionMetadata` | `pending.submission` | `tick_mid_price`, `tick_time_msc` at the submission moment | #340 |

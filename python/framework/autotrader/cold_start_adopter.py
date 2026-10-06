@@ -588,7 +588,8 @@ class ColdStartAdopter:
 
         Anything else — cancelled without filling, expired, unknown — leaves the position
         with no protection at the venue, and the stamp is left unset so the local check
-        watches it from the first tick.
+        watches it from the first tick. A read that FAILED is not one of those: it says
+        nothing about the order, so the order is adopted as resting and asked about again.
 
         Args:
             protection: What the venue answered, keyed by position id
@@ -603,6 +604,18 @@ class ColdStartAdopter:
                     response.fill_price)
                 continue
             if response.status == BrokerOrderStatus.PENDING:
+                self._executor.adopt_carried_protective_order(position)
+                continue
+            if response.status == BrokerOrderStatus.UNRESOLVED:
+                # The read failed — the venue said nothing about the order. Clearing the
+                # reference here would orphan a stop the venue may still hold: no session
+                # could cancel it any more, and the next close would race it. Adopted
+                # instead, so the ordinary poll asks again and books whatever it learns.
+                self._logger.error(
+                    f'❌ Cold start: the protective order {position.protective_broker_ref} '
+                    f'for {position_id} could not be read ({response.rejection_reason}). It is '
+                    f'kept as still resting and asked about again on the ordinary cadence — '
+                    f"until an answer comes, the venue's stop is the only protection.")
                 self._executor.adopt_carried_protective_order(position)
                 continue
             position.protective_broker_ref = None

@@ -84,6 +84,13 @@ tests/autotrader/live_executor/
 | `executor_reject` | function | LiveTradeExecutor with reject-all adapter |
 | `executor_timeout` | function | LiveTradeExecutor with TIMEOUT adapter (orders never fill) |
 
+### Test Doubles
+
+| Class | Description |
+|---------|-------------|
+| `AcknowledgingVenueMock` | A venue shaped like Kraken: a market order is answered with a reference alone and filled at once, whatever happens to the answer. It can lose a submit answer after executing, fail every status read (`query_fault`), keep orders working (`fill_market_orders=False`), refuse a cancel for an order that has ended (`EOrder:Unknown order`), and move an order on its own (`set_venue_status`). The stock mock cannot reach these paths: its injected faults raise before anything changes at the venue |
+| `LevelRecorder` | Logger stand-in that keeps only the level of each line, for the tests that pin which failures reach the error pot |
+
 ---
 
 ## Test Files
@@ -104,7 +111,7 @@ inherited `AbstractPendingOrderManager` storage layer extended with broker-ref t
 | `test_register_pending_returns_order_id` | `register_pending_open()` returns order_id for chaining |
 | `test_broker_ref_lookup` | Broker ref index provides O(1) lookup with correct fields |
 | `test_unknown_broker_ref_returns_none` | Unknown broker_ref returns None |
-| `test_pending_order_has_live_fields` | Registered order has submitted_at, broker_ref, timeout_at |
+| `test_pending_order_has_live_fields` | Registered order has submitted_at, broker_ref and a monotonic timeout deadline |
 | `test_pending_order_action_is_open` | Open order has action=OPEN |
 
 #### TestMarkFilled
@@ -128,7 +135,7 @@ inherited `AbstractPendingOrderManager` storage layer extended with broker-ref t
 | Test | Description |
 |------|-------------|
 | `test_no_timeouts_within_window` | Orders within timeout window are not flagged |
-| `test_timeout_detected_after_expiry` | Orders past timeout_at are detected (0s timeout) |
+| `test_timeout_detected_after_expiry` | Orders past their timeout deadline are detected (0s timeout) |
 | `test_timeout_does_not_remove_order` | `check_timeouts()` returns but does NOT remove orders |
 
 #### TestCloseOrderTracking
@@ -590,7 +597,7 @@ of scope).
 | Test | Description |
 |---|---|
 | `test_heartbeat_drains_inbox_without_tick_state` | `heartbeat()` drains async responses without bumping `_tick_counter` or replacing `_current_tick` |
-| `test_heartbeat_processes_timeouts` | A pending order whose `timeout_at` is in the past becomes REJECTED on the next `heartbeat()` |
+| `test_heartbeat_processes_timeouts` | A pending order whose timeout deadline is in the past, and which the venue still holds as working, is cancelled and becomes REJECTED on the next `heartbeat()` |
 | `test_heartbeat_sim_is_noop` | `TradeSimulator` inherits the default no-op `heartbeat()` — no errors, no state mutation |
 
 #### TestThrottle
@@ -947,3 +954,21 @@ of these and books nothing — the venue did not answer, so the next pass asks a
 **Why the settle window.** An order accepted a moment ago may not be indexed yet, so an answer
 that names nothing is not yet evidence that nothing was taken. Promoting it immediately would turn
 the venue's read lag into a rejection.
+
+## test_timeout_asks_the_venue.py — the book follows what the venue answers
+
+Kraken answers a market order with a reference alone; the fill shows only to a later status read.
+Three rules keep the book on the venue's side of that gap, each against the real
+`LiveTradeExecutor` and `AcknowledgingVenueMock`, and every money case in both account models.
+Before them, the fill timeout booked a filled close as `rejected · broker_error` and discarded it:
+the venue had sold, the book still held the position, and the next close was refused for
+insufficient funds.
+
+| Class | Description |
+|---|---|
+| `TestTheHeartbeatSeesTheFill` | a market open and a close filled while no tick follows are booked by the heartbeat's asynchronous poll; the tick does not ask again while that question is in flight; a fill the #487 resolution learned after a lost submit answer is booked without a tick |
+| `TestTheTimeoutAsksBeforeItBooks` | a timed-out order is read first: filled is booked as executed; no answer hands it to the #487 resolution, which then books the fill; a second unanswerable timeout gives it up as `broker_unreachable`; an order still working is cancelled and given up as before, with exactly one cancel; a cancel refused because the order filled meanwhile is followed by a read that books the fill |
+| `TestAFailedReadIsNotARejection` | a status read refused with `EAPI:Invalid nonce` keeps the market order and the resting order alike; the failure is an error, reported once per order |
+| `TestTheTimeoutRunsOnTheMonotonicClock` | a timeout re-armed by the resolution survives a canonical clock months in the past — the shape of a mock session's tick |
+| `TestAnOrderTheVenueEnded` | a market order the venue cancels without executing is dropped and reported cancelled, never rejected; what an expired order executed is booked as its fill |
+

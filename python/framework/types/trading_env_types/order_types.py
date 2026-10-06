@@ -313,9 +313,6 @@ class BaseOrder:
     take_profit: Optional[float] = None
     comment: str = ''
 
-    # Metadata
-    created_at: datetime = field(default_factory=datetime.now)
-
     def validate(self, min_lot: float, max_lot: float, lot_step: float) -> bool:
         """Validate lot size against broker limits"""
         if self.lots < min_lot or self.lots > max_lot:
@@ -364,7 +361,7 @@ class StopOrder(BaseOrder):
     """
     Stop Order - Becomes market order when price reaches stop level
 
-    Extended feature (Tier 2) - MT5: yes, Kraken: no
+    Extended feature (Tier 2) — a venue declares it on OrderCapabilities.stop_orders
     """
     order_type: OrderType = field(default=OrderType.STOP, init=False)
 

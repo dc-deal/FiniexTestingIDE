@@ -272,6 +272,28 @@ message, terminal=False)` raises a CLASSIFIED transient fault; a plain `Connecti
 classified TERMINAL and produces REJECTED instead, so a test written against the old injector
 would have asserted the wrong state while passing.
 
+## When the venue carried the cancel out and only the answer was lost
+
+`test_lost_cancel_answer.py`, the sibling of the section above. There the cancel never reached the
+venue; here the venue cancelled the stop and the answer went missing. The next status read finds
+the stop cancelled — and that read used to be booked as a broker REJECTION: a rejection row, the
+cooldown, `on_order_rejected`, never `order_cancelled`, and the close parked behind the cancel was
+never sent. Reproduced before the fix: five minutes on, stop-loss and take-profit both breached,
+the position was open and no close had been submitted. The same branch booked a cancel or expiry
+the venue made on its own as a rejection too.
+
+The mock gains two venue behaviours for it: `lose_next_cancel_answer` carries the cancel out and
+then raises a transient fault, and `end_at_venue()` ends a stop nobody asked to end, with or
+without executed volume. Every class runs in both account models.
+
+| Test class | Pins |
+|---|---|
+| `TestTheReadThatFindsTheStopCancelled` | no rejection is booked; the strategy hears `order_cancelled`; the parked close is sent exactly once and the position closes; the resolution stops asking; and when it is the resolution that names the stop cancelled, the ordinary poll books it at once |
+| `TestTheCancelNeverArrived` | a resolution that names the stop still resting ends the operation and abandons the close, keeping the stop and its stamp; an ordinary poll answering "resting" changes nothing, because a query queued before the cancel may legitimately say so |
+| `TestTheVenueEndedTheStop` | a cancel or expiry nobody asked for is booked as cancelled, the level goes back to the local check, and what the stop executed before it ended is booked |
+| `TestAParkedCloseIsACloseOnItsWay` | `is_pending_close` answers true while the close waits, so a breached level is not counted as a new trigger on every tick |
+| `TestACancelStampsItsOwnWrite` | `last_write_at` is the cancel's moment, so the settle window of a lost cancel answer runs from the cancel, not from the stop's submission |
+
 ## Running it
 
 ```bash

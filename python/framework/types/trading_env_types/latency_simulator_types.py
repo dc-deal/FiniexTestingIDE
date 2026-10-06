@@ -9,7 +9,7 @@ Used by both simulation (OrderLatencySimulator) and live (LiveTradeExecutor).
 Mode-specific fields are Optional — each mode uses what it needs:
 
 Simulation fields: placed_at_msc, broker_fill_msc (millisecond timestamps)
-Live fields:       submitted_at, broker_ref, timeout_at
+Live fields:       submitted_at, broker_ref, order_timeout_deadline_monotonic
 """
 
 from dataclasses import dataclass, field
@@ -110,12 +110,19 @@ class PendingOrderTiming:
     Mode-specific timing fields (#345 sub-concern).
 
     Simulation uses ms timestamps (placed_at_msc, broker_fill_msc);
-    live uses datetimes (submitted_at, timeout_at).
+    live uses a datetime (submitted_at) and monotonic readings for everything it measures
+    a duration with.
     """
     placed_at_msc: Optional[int] = None
     broker_fill_msc: Optional[int] = None
     submitted_at: Optional[datetime] = None
-    timeout_at: Optional[datetime] = None
+    # When the order stops being merely slow and is handled as timed out: a MONOTONIC
+    # reading plus `order_timeout_seconds`. A timeout is a duration, so it never reads the
+    # wall clock, and never the canonical clock either — in a mock session the canonical
+    # clock is the replayed tick's time on a tick and the machine's on an idle heartbeat,
+    # so a deadline set from the one and checked against the other expires at once.
+    # None while the #487 resolution owns the order.
+    order_timeout_deadline_monotonic: Optional[float] = None
     # The same submission moment read from the MONOTONIC clock, and it exists for one
     # reason: `submitted_at` is a point in time and must stay a wall-clock reading, but a
     # DURATION must not be computed from two wall-clock readings. NTP can step that clock
@@ -147,8 +154,9 @@ class PendingOrderExecutionState:
       confirms (live; #361 cancel-vs-submit-in-flight) — never dropped.
     in_flight_query: True while a QueryJob for this order is en route to
       the broker (skip-flag for the next throttle cycle, #320 live-only).
-    last_polled_at_ms: wall-clock ms when the last QueryJob was dispatched.
-      Throttle gate in _process_active_orders.
+    last_polled_at_ms: monotonic ms when the last QueryJob was dispatched; 0.0 means
+      never, which is also how an immediate poll is requested. Throttle gate for both
+      the resting poll and the pipeline poll.
     """
     in_flight_operation: PendingOperation = PendingOperation.NONE
     pending_modification: Optional[ModificationRequest] = None
@@ -180,6 +188,10 @@ class PendingOrderExecutionState:
     # reads the venue's open orders by the same wire key — and since #487 the closed ones
     # too, so it can also see what a restart would otherwise never learn.
     resolution_in_flight: bool = False
+    # Set when the fill timeout found no answer and handed this order to the resolution.
+    # Once per order: the resolution re-arms the timeout when the venue names the order,
+    # and a second hand-over from that timeout would never end.
+    timeout_handed_to_resolution: bool = False
 
 
 @dataclass

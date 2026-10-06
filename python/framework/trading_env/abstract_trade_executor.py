@@ -786,6 +786,57 @@ class AbstractTradeExecutor(ABC):
             requested_lots=lots,
         )
 
+    def _joined_close_result(
+        self,
+        position: Position,
+        in_flight: PendingOrder,
+        lots: Optional[float],
+        close_reason: CloseReason,
+    ) -> OrderResult:
+        """
+        What a second close request for a position hears while its first close is in flight.
+
+        It JOINS the first, in both pipelines. Both stores key a close by its position id, so
+        a second submission used to replace the first: live lost the only record of the
+        first close's reference, whose fill was then never read, and the simulation sent the
+        second in place of the first. Refusing instead would write a rejection row and make
+        the stop-loss path report the position unprotected, which would be false.
+
+        Args:
+            position: The position being closed
+            in_flight: The close already on its way
+            lots: The lots the second request asked for, or None for all
+            close_reason: Why the second request was made
+
+        Returns:
+            A PENDING result describing the close already in flight
+        """
+        close_lots = in_flight.close_lots if in_flight.close_lots else position.lots
+        requested = lots if lots else position.lots
+        first_reason = in_flight.close_reason or CloseReason.MANUAL
+        if requested != close_lots or close_reason != first_reason:
+            self.logger.info(
+                f'🔁 Close of {position.position_id} requested again ({requested} lots, '
+                f'{close_reason.name.lower()}) while one is in flight ({close_lots} lots, '
+                f'{first_reason.name.lower()}) — it joins the close already sent')
+        return OrderResult(
+            order_id=position.position_id,
+            status=OrderStatus.PENDING,
+            executed_lots=close_lots,
+            execution_time=self.get_current_time(),
+            position_id=position.position_id,
+            action=OrderAction.CLOSE,
+            symbol=position.symbol,
+            direction=position.direction,
+            requested_lots=close_lots,
+            submission=in_flight.submission,
+            metadata={
+                'awaiting_fill': True,
+                'broker_ref': in_flight.broker_ref,
+                'joined_in_flight_close': True,
+            },
+        )
+
     def _rejection_for_pending(
         self,
         pending: PendingOrder,
@@ -1065,6 +1116,32 @@ class AbstractTradeExecutor(ABC):
     # Fill Processing (concrete — shared by all modes)
     # ============================================
 
+    def _shortfall_refuses_fill(self, pending_order: PendingOrder, shortfall: str) -> bool:
+        """
+        Whether a funds or margin shortfall found at the FILL refuses the fill.
+
+        In the simulation it does: the simulation plays the venue, and a venue refuses an
+        order it cannot fund. In a live session the fill has already HAPPENED — the venue
+        reported it — and refusing to book it left the venue holding a position our book did
+        not. Example: a market buy sized to nearly all of the quote balance passes submission
+        at the ask and fills a little higher. Live books the venue's fill and reports, as an
+        error, that our arithmetic disagreed.
+
+        Args:
+            pending_order: The order being filled
+            shortfall: Our two figures, for the line the operator reads
+
+        Returns:
+            True when the fill is refused (simulation); False when it is booked anyway (live)
+        """
+        if self._executor_mode == ExecutorMode.SIMULATION:
+            return True
+        self.logger.error(
+            f'❗ Booking and venue disagree: the venue filled {pending_order.pending_order_id} '
+            f'(broker_ref={pending_order.broker_ref}), while our books show {shortfall}. The '
+            f'fill is booked as the venue reported it — check the account against the book.')
+        return False
+
     def _fill_open_order(
         self,
         pending_order: PendingOrder,
@@ -1166,7 +1243,9 @@ class AbstractTradeExecutor(ABC):
             free_margin = self.portfolio.get_free_margin(
                 pending_order.direction)
 
-            if margin_required > free_margin:
+            if margin_required > free_margin and self._shortfall_refuses_fill(
+                    pending_order,
+                    f'margin {margin_required:.2f} required, {free_margin:.2f} free'):
                 self._orders_rejected += 1
                 rejection = self._rejection_for_pending(
                     pending_order,
@@ -1193,7 +1272,10 @@ class AbstractTradeExecutor(ABC):
                     exclude_order_id=pending_order.pending_order_id)
                 balance, committed, available = (
                     funds.balance, funds.committed, funds.available)
-                if required > available:
+                if required > available and self._shortfall_refuses_fill(
+                        pending_order,
+                        f'{required:.6f} {symbol_spec.quote_currency} required, '
+                        f'{available:.6f} available'):
                     self._orders_rejected += 1
                     rejection = self._rejection_for_pending(
                         pending_order,
@@ -1221,7 +1303,10 @@ class AbstractTradeExecutor(ABC):
                     exclude_order_id=pending_order.pending_order_id)
                 balance, committed, available = (
                     funds.balance, funds.committed, funds.available)
-                if pending_order.lots > available:
+                if pending_order.lots > available and self._shortfall_refuses_fill(
+                        pending_order,
+                        f'{pending_order.lots:.6f} {symbol_spec.base_currency} required, '
+                        f'{available:.6f} available'):
                     self._orders_rejected += 1
                     rejection = self._rejection_for_pending(
                         pending_order,

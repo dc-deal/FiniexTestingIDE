@@ -483,7 +483,7 @@ Generic pending order representation used by both modes. Mode-specific fields ar
   `direction`, `lots`, `entry_price` (limit price for LIMIT, 0 for MARKET), `order_kwargs` (built
   from explicit params: stop_loss, take_profit, comment, magic_number)
 - **Simulation fields:** `placed_at_msc`, `broker_fill_msc` (ms-timestamp delay tracking)
-- **Live fields:** `submitted_at`, `broker_ref`, `timeout_at` — see [live_execution_architecture.md](live_execution_architecture.md)
+- **Live fields:** `submitted_at`, `broker_ref`, `order_timeout_deadline_monotonic` — see [live_execution_architecture.md](live_execution_architecture.md)
 
 Each mode sets the fields it needs. The other mode's fields remain None.
 

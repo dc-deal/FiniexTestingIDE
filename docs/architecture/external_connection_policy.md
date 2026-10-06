@@ -68,6 +68,18 @@ submit → transport fault
       └─ the truth pull resolves it, keyed by our own client order id
 ```
 
+**A failed READ is no answer about the order either.** The three outcomes decide what a failure
+means for the connection; for a status query that is all they decide. A query that fails is
+UNRESOLVED whatever the ladder calls it, and the ladder only sets the level — a transient fault
+is a warning, anything else an error, said once per order. Kraken raises every API-level error
+as a plain `ConnectionError`, which the ladder classifies terminal: right for a write, where
+"Insufficient funds" is the venue refusing it, and wrong for a read. `EAPI:Invalid nonce`
+refused the QUESTION; booked as the order's rejection, it dropped a market order the venue had
+filled and cleared the stamp of a stop the venue still held.
+
+The fill timeout follows the same rule. It reads the order's status before it books anything,
+and an order nobody could ask about goes to the resolution (#487) instead of out of the book.
+
 **Who does the asking, and what is still missing (#355 Phase 1 / #487).** The reconcile
 truth pull now joins on the client order id before `broker_ref`, so a resting order
 carrying THIS session's key is matched to the pending that lost its answer, and the

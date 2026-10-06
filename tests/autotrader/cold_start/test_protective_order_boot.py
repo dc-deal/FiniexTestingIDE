@@ -239,6 +239,30 @@ class TestAReferenceTheVenueDoesNotRecognise:
             f'An absence has to reach the operator, not a debug line: {logger.errors}')
 
 
+class TestAReadThatFailed:
+    """
+    A failed read is not an answer. Treated as one, it cleared the reference of a stop the
+    venue may still hold: no later session could cancel it, and the next close would race it.
+    """
+
+    def test_the_stop_is_adopted_and_its_reference_kept(self, spot_executor, store, logger):
+        store.save(session_key='paa53', highest_position_counter=1,
+                   open_positions=[_carried_long()])
+
+        assert _boot(spot_executor, store, logger, BrokerResponse(
+            broker_ref=_PROTECTIVE_REF, status=BrokerOrderStatus.UNRESOLVED,
+            rejection_reason='EAPI:Invalid nonce',
+            timestamp=parse_datetime('2026-09-10T06:00:00+00:00'))) is True
+
+        position = spot_executor.get_open_positions()[0]
+        assert position.protective_broker_ref == _PROTECTIVE_REF
+        adopted = [p for p in spot_executor._active_stop_orders
+                   if p.closes_position_id == position.position_id]
+        assert len(adopted) == 1 and adopted[0].broker_ref == _PROTECTIVE_REF, (
+            'adopted, the ordinary poll asks again and books whatever it learns')
+        assert any('could not be read' in message for message in logger.errors)
+
+
 class TestABookWithoutProtection:
     """The unchanged case — nothing carried a reference, nothing is asked."""
 

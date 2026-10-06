@@ -71,7 +71,7 @@ class TestSubmitAndQuery:
         assert result is None
 
     def test_pending_order_has_live_fields(self, request_processor):
-        """Registered order has submitted_at, broker_ref, timeout_at set."""
+        """Registered order has submitted_at, broker_ref and its timeout deadline set."""
         request_processor.register_pending_open(
             order_id='ORD-004',
             symbol='BTCUSD',
@@ -83,8 +83,9 @@ class TestSubmitAndQuery:
         pending = request_processor.get_by_broker_ref('MOCK-000004')
         assert pending.timing.submitted_at is not None
         assert pending.broker_ref == 'MOCK-000004'
-        assert pending.timing.timeout_at is not None
-        assert pending.timing.timeout_at > pending.timing.submitted_at
+        assert pending.timing.order_timeout_deadline_monotonic is not None
+        assert (pending.timing.order_timeout_deadline_monotonic
+                > pending.timing.submitted_monotonic)
 
     def test_pending_order_action_is_open(self, request_processor):
         """Registered open order has action=OPEN."""
@@ -216,7 +217,7 @@ class TestTimeoutDetection:
         assert len(timed_out) == 0
 
     def test_timeout_detected_after_expiry(self, logger):
-        """Orders past timeout_at are detected by check_timeouts()."""
+        """Orders past their timeout deadline are detected by check_timeouts()."""
         # Use 0-second timeout so order is immediately expired
         fast_timeout = TimeoutConfig(order_timeout_seconds=0.0)
         processor = LiveRequestProcessor(logger=logger, timeout_config=fast_timeout)
