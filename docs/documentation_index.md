@@ -84,7 +84,19 @@
 | [Component Metadata](architecture/component_metadata.md) | Author-declared version, doc link, recommended markets/instruments; soft market-fit warning |
 | [Generator & Block Splitting](generator/generator_block_splitting_architecture.md) | Block splitting analysis, Generator Profile system, Correctness Metric |
 | [API Server Architecture](architecture/api_server_architecture.md) | FastAPI foundation, CORS, endpoint guide, cache integration note |
-| [API Contract Log](architecture/api_contract_log.md) | Every contract version newest first — what moved in each, for a consumer whose fixtures are several versions behind |
+| [API Contract Log](consumer/contract-log.md) | Every contract version newest first — what moved in each, for a consumer whose fixtures are several versions behind |
+
+## Served to API Consumers
+
+| Document | Description |
+|----------|-------------|
+| [Reading the documentation from the API](consumer/docs.md) | The three documentation routes, the ranked search, and the `Link` header every answer carries |
+| [Why a field is null](consumer/nulls.md) | The three causes of a null — not applicable, not measured, not recorded — and what to render for each |
+| [What makes one row unique](consumer/row-keys.md) | The declared row key, the several-lists form, and the one-unit-four-names join |
+| [Which kind of run this is](consumer/run-kinds.md) | `group`, `ticks_from` and `orders_to`; which combination means money moved |
+| [What a refusal says](consumer/errors.md) | The error vocabulary, and why one absence has four codes |
+| [API Contract Log](consumer/contract-log.md) | Every contract version newest first |
+| [One document per route family](consumer/) | Served at `/api/v1/docs`, which lists them at runtime |
 
 ## Data Pipeline
 

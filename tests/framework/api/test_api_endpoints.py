@@ -568,7 +568,7 @@ class TestTheContractSaysWhatItIs:
         # behind with a gap nobody can see — so its newest heading is held to the constant, and
         # the headings must read newest first.
         log = (Path(__file__).resolve().parents[3]
-               / 'docs' / 'architecture' / 'api_contract_log.md').read_text()
+               / 'docs' / 'consumer' / 'contract-log.md').read_text()
         versions = [int(n) for n in re.findall(r'^## Version (\d+)\b', log, re.MULTILINE)]
 
         assert versions, 'no "## Version N" heading in the contract log'

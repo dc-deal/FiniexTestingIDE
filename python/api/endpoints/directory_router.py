@@ -13,6 +13,7 @@ names its file and its origin, not where on disk it lies.
 from fastapi import APIRouter, Query
 
 from python.api.api_error_catalog import CONFIG_FILE_NOT_FOUND, api_error
+from python.api.api_route_documents import describes
 from python.framework.config_directory.config_directory import ConfigDirectory
 from python.framework.types.api.directory_types import (
     DirectoryDetailResponse,
@@ -27,7 +28,8 @@ def _directory() -> ConfigDirectory:
     return ConfigDirectory()
 
 
-@router.get('/directory', response_model=DirectoryListResponse)
+@router.get('/directory', response_model=DirectoryListResponse,
+            openapi_extra=describes('directory'))
 def list_directory(
     refresh: bool = Query(False, description='Walk the roots now instead of serving a directory '
                                              'refreshed within the last few seconds'),
@@ -44,7 +46,8 @@ def list_directory(
     return _directory().list_configs(refresh=refresh)
 
 
-@router.get('/directory/{file}', response_model=DirectoryDetailResponse)
+@router.get('/directory/{file}', response_model=DirectoryDetailResponse,
+            openapi_extra=describes('directory'))
 def get_directory_entry(file: str) -> DirectoryDetailResponse:
     """
     One configuration file: its row, its scenarios and the runs started from it.

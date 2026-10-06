@@ -1,7 +1,7 @@
 # Documentation Style Guide
 
-How documentation is written in this project. Eleven rules, each with an example from this
-tree — none invented.
+How documentation is written in this project. Each rule carries an example from this tree —
+none invented.
 
 The premise: **documentation is read far more often than it is written, and the reader is
 usually in a hurry and slightly lost.** Every rule below follows from that.
@@ -141,7 +141,7 @@ or kept as files in the repository beside the page that shows an excerpt.
 
 ---
 
-## Three audiences, three depths
+## Who is reading, and how deep
 
 Documentation here serves readers at different depths, and mixing them serves none of them:
 
@@ -150,9 +150,16 @@ Documentation here serves readers at different depths, and mixing them serves no
 | **Quickstart** (`docs/user_guides/`) | writing their first algorithm | the contract their code sees, and a worked example. No internals. |
 | **Architecture** (`docs/architecture/`, `docs/autotrader/`) | debugging, optimising, or contributing | what happens between the call and the broker — classes, threads, queues, storages |
 | **Integration** (`docs/user_guides/adapter/`) | building a broker adapter | the contract to satisfy, the reference implementation, the pitfalls |
+| **Consumer** (`docs/consumer/`) | calling the HTTP API from outside | what a field means, what a null means, which refusal to branch on. **No repository at all.** |
 
 The cross-layer rule: a quickstart never explains internals. If it has to, the API has a leaky
 abstraction and that is the bug to fix.
+
+The consumer layer has a sharper version of that rule, because the API **serves these documents**
+(`/api/v1/docs`) to readers who cannot open this repository. A file path, a class name, an issue
+number or a rule number in one of them points at something the reader has no way to reach, so it
+answers nothing and makes the sentence look as though it had. Say the thing instead, or link to
+another served document by its route.
 
 ---
 

@@ -20,6 +20,7 @@ from pathlib import Path
 
 from fastapi import APIRouter
 
+from python.api.api_route_documents import describes
 from python.configuration.app_config_manager import AppConfigManager
 from python.api.api_error_catalog import DEPLOYMENT_NOT_FOUND, api_error
 from python.framework.reporting.builders.booking_periods_report_builder import (
@@ -48,7 +49,8 @@ def _ledger() -> RunResultsLedger:
     return RunResultsLedger(Path(AppConfigManager().get_run_ledger_path()))
 
 
-@router.get('/deployments', response_model=DeploymentListResponse)
+@router.get('/deployments', response_model=DeploymentListResponse,
+            openapi_extra=describes('deployments'))
 def list_deployments() -> DeploymentListResponse:
     """
     Every recorded deployment, newest first.
@@ -68,7 +70,8 @@ def list_deployments() -> DeploymentListResponse:
     return DeploymentListResponse(deployments=summaries, count=len(summaries))
 
 
-@router.get('/deployments/{deployment_id}', response_model=DeploymentDetailResponse)
+@router.get('/deployments/{deployment_id}', response_model=DeploymentDetailResponse,
+            openapi_extra=describes('deployments'))
 def get_deployment(deployment_id: str) -> DeploymentDetailResponse:
     """
     One deployment's sessions, oldest first — a life reads forwards.
@@ -109,7 +112,8 @@ def get_deployment(deployment_id: str) -> DeploymentDetailResponse:
 
 
 @router.get('/deployments/{deployment_id}/booking-periods',
-            response_model=DeploymentBookingPeriodsResponse)
+            response_model=DeploymentBookingPeriodsResponse,
+            openapi_extra=describes('booking-periods'))
 def get_deployment_booking_periods(deployment_id: str) -> DeploymentBookingPeriodsResponse:
     """
     Every booking period this deployment booked, across all of its sessions.

@@ -46,6 +46,7 @@ _REQUIRED_ROUTES = (
     ('/api/v1/brokers/{broker}/symbols/{symbol}/bars', 'get'),
     ('/api/v1/deployments/{deployment_id}', 'get'),
     ('/api/v1/directory/{file}', 'get'),
+    ('/api/v1/docs/{name}', 'get'),
     ('/api/v1/reports/runs/{run_id}/trade-history', 'get'),
     ('/api/v1/sweeps/{sweep_id}', 'get'),
 )
