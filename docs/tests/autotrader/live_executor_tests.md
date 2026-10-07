@@ -956,9 +956,10 @@ of these and books nothing — the venue did not answer, so the next pass asks a
 | `TestTheStateUnderTestCanBeProduced` | a transient submit fault leaves the order in flight; a TERMINAL one is a rejection instead — the injector's `terminal` flag is the whole difference |
 | `TestTheAskFiresFromTheEvent` | the resolution is armed by the lost answer, its window is `max_window_seconds` rather than `order_timeout_seconds`, and the fill timer stops applying to a MARKET order — without which the resolution would be unreachable for the only world that has no other exit |
 | `TestTheVenueNamesIt` | the reference comes back, the order survives, and the algo is never told it was rejected; a cancel the algo asked for while the reference was missing is sent now and ends the order `cancelled` by the strategy — the resolution is a place the reference arrives, and it used to restore the reference and stop there |
-| `TestTheVenueNamesNothing` | inside the settle window nothing is booked; after it, exactly one `undelivered` row — the venue refused nothing, it never received the order |
+| `TestTheVenueNamesNothing` | inside the settle window nothing is booked; after it, exactly one `undelivered` row — the venue refused nothing, it never received the order; and two orders under our key are a FAILED read, asked about again — never an absence, never a guess between them |
 | `TestTheCeiling` | the order is kept, entries stop with `RejectionReason.UNACCOUNTED_ORDER`, and an empty set refuses nothing |
 | `TestTheTwoWorldsEndDifferentlyAtTheCeiling` | a MARKET pending leaves the tracker recorded `unaccounted` (`resolution_ceiling`) rather than gating the algo forever, and the entry block outlives the order |
+| `TestTwoClosesOfOnePosition` | the ceiling tells a position's closes apart by submission, since they share its order id: a second close at the ceiling ends `unaccounted` too instead of standing forever, and a second close that fills does not lift the block the first one still holds |
 | `TestNothingIsEverReSent` | one decision, one order out of this process — in every branch |
 
 **Why the settle window.** An order accepted a moment ago may not be indexed yet, so an answer
@@ -977,7 +978,7 @@ insufficient funds.
 | Class | Description |
 |---|---|
 | `TestTheHeartbeatSeesTheFill` | a market open and a close filled while no tick follows are booked by the heartbeat's asynchronous poll; the tick does not ask again while that question is in flight; a fill the #487 resolution learned after a lost submit answer is booked without a tick |
-| `TestTheTimeoutAsksBeforeItBooks` | a timed-out order is read first: filled is booked as executed; no answer hands it to the #487 resolution, which then books the fill; a second unanswerable timeout gives it up as `unaccounted`; an order still working is cancelled and booked `cancelled` by the framework, with exactly one cancel; a cancel refused because the order filled meanwhile is followed by a read that books the fill |
+| `TestTheTimeoutAsksBeforeItBooks` | a timed-out order is read first: filled is booked as executed; no answer hands it to the #487 resolution, which then books the fill; a second unanswerable timeout gives it up as `unaccounted`; an order still working is cancelled and booked `cancelled` by the framework, with exactly one cancel; a cancel refused because the order filled meanwhile is followed by a read that books the fill; a part that executed while the cancel travelled is booked as its fill rather than as a clean cancel — the read before the cancel is older than the cancel |
 | `TestAFailedReadIsNotARejection` | a status read refused with `EAPI:Invalid nonce` keeps the market order and the resting order alike; the failure is an error, reported once per order |
 | `TestTheTimeoutRunsOnTheMonotonicClock` | a timeout re-armed by the resolution survives a canonical clock months in the past — the shape of a mock session's tick |
 | `TestAnOrderTheVenueEnded` | a market order the venue cancels without executing is dropped and reported cancelled, never rejected; what an expired order executed is booked as its fill |

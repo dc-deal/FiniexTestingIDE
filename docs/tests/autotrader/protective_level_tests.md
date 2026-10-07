@@ -157,6 +157,7 @@ whole feature is in that separation:
 | `test_no_opt_in_places_nothing` · `test_an_entry_without_a_stop_places_nothing` | The gate in both directions |
 | `test_the_local_check_still_watches_before_confirmation` | Between sending and hearing back nobody at the venue holds anything |
 | `test_a_confirmation_hands_the_stop_over` · `test_and_then_the_local_check_leaves_that_stop_alone` | And only then does it stand down |
+| `TestItClaimsNoFunds` | The resting stop reserves nothing of the account, and a second buy beside it is not refused — in both account models. The venue holds nothing against a resting exit, and a backtest's stop-loss is no order at all; read as a close in its own trading direction, a sell stop held its position's value in quote |
 
 ### `test_protective_order_lifecycle.py` (#503, stages D2-D6)
 
@@ -244,6 +245,29 @@ and the acceptance it was standing in for was taken at the venue instead, by the
 time-ranged closed-order route that can also be narrowed to one wire key, and it was measured
 against Kraken before it was written. That closes the gap this section described for the boot
 resolver, and it is the read on which "the venue never took this order" rests.
+
+## A close waiting behind a protective order always ends
+
+`test_waiting_close_settles.py`. A close requested while the position's protective order is at
+the venue is parked until the venue confirms that order's cancel — a close racing a resting stop
+can fill twice. It used to end in exactly three ways: the cancel confirmed, the close released, the
+close abandoned. Every other way the protective order could stop resting left the close parked for
+the rest of the session, and while it waited every new close joined it and the local stop check
+stood aside: the position could be neither closed nor protected.
+
+| Test class | Pins |
+|---|---|
+| `TestTheProtectiveOrderEndsBeforeItRests` | refused at submission → the waiting close goes out; filled in its own submit answer → the waiting close is dropped, nothing stays pending; never held by the venue while its cancel was still parked (the resolution, by our own key, after the settle window) → booked `undelivered`, and the close goes out |
+| `TestTheVenueEndsTheProtectiveOrderAfterItRested` | a status read finds it rejected → the close goes out; rejected after closing part → the part is booked and the close goes out for the rest |
+
+The window these tests need — the protective order sent, its answer not yet read — exists in the
+live executor only between two drains, and the mock's worker thread answers as fast as it is
+asked. The file therefore holds the venue's answer to the STOP submit until the test releases it;
+without that the window opened by luck of scheduling — in the first run, two of the five tests
+found the order already confirmed.
+
+What still abandons the close is where the stop may rest after all — a refused cancel, the
+resolution's ceiling, an absence read by reference — and that stays pinned below.
 
 ## When the answer to a protective write never arrives (#487)
 

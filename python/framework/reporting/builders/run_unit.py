@@ -28,6 +28,7 @@ from python.framework.types.portfolio_types.portfolio_types import Position
 from python.framework.types.run_results_types import BookingPeriod
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
 from python.framework.types.signal_data_types import SignalResolutionStats
+from python.framework.types.trading_env_types.order_event_types import OrderEvent
 from python.framework.types.trading_env_types.order_types import OrderResult
 from python.framework.types.trading_env_types.pending_order_stats_types import PendingOrderStats
 from python.framework.types.trading_env_types.stress_test_types import (
@@ -57,6 +58,10 @@ class RunUnit:
     # a scenario has no policy, its data simply ends.
     session_end_policy: str = ''
     order_history: List[OrderResult] = field(default_factory=list)
+    # Every order transition of the unit (#362) — uncapped, where the order history is
+    # capped. A backtest carries them back from its scenario. A live session writes its own
+    # stream while it runs and its unit carries none: no report reads them from here yet.
+    order_events: List[OrderEvent] = field(default_factory=list)
     portfolio_stats: Optional[PortfolioStats] = None
     execution_stats: Optional[ExecutionStats] = None
     pending_stats: Optional[PendingOrderStats] = None
@@ -117,6 +122,7 @@ def run_units_from_batch(batch: BatchExecutionSummary) -> List[RunUnit]:
             trade_history=tick_loop.trade_history or [],
             open_positions=tick_loop.open_positions or [],
             order_history=tick_loop.order_history or [],
+            order_events=tick_loop.order_events or [],
             portfolio_stats=tick_loop.portfolio_stats,
             execution_stats=tick_loop.execution_stats,
             pending_stats=tick_loop.pending_stats,

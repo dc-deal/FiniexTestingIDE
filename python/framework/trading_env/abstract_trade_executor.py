@@ -35,14 +35,14 @@ import json
 from abc import ABC, abstractmethod
 from collections import deque
 from datetime import datetime
-from enum import Enum
-from typing import Callable, Dict, FrozenSet, List, Optional, Set, Tuple, Union
+from typing import Any, Callable, Dict, FrozenSet, List, Optional, Set, Tuple, Union
 
 from python.framework.exceptions.algo_clock_errors import ClockNotInjectedError
 from python.framework.factory.trading_fee_factory import (
     create_maker_taker_fee,
 )
 from python.framework.logging.abstract_logger import AbstractLogger
+from python.framework.trading_env.abstract_pending_order_manager import AbstractPendingOrderManager
 from python.framework.trading_env.abstract_trading_fee import AbstractTradingFee
 from python.framework.trading_env.broker_config import BrokerConfig
 from python.framework.trading_env.market_clock import MarketClock
@@ -68,12 +68,18 @@ from python.framework.types.portfolio_types.portfolio_trade_record_types import 
 )
 from python.framework.types.trading_env_types.broker_trade_types import BrokerTrade
 from python.framework.types.trading_env_types.broker_types import FeeType, SymbolSpecification
+from python.framework.types.trading_env_types.executor_mode_types import ExecutorMode
 from python.framework.types.trading_env_types.latency_simulator_types import (
     PendingOperation,
     PendingOrder,
     PendingOrderAction,
 )
 from python.framework.types.trading_env_types.market_data_status_types import MarketDataStatus
+from python.framework.types.trading_env_types.order_event_types import (
+    ORDER_EVENT_BY_STATUS,
+    OrderEvent,
+    OrderEventType,
+)
 from python.framework.types.trading_env_types.order_types import (
     RESTING_ORDER_TYPES,
     CloseType,
@@ -97,6 +103,7 @@ from python.framework.types.trading_env_types.pending_order_stats_types import (
     ActiveOrderSnapshot,
     PendingOrderStats,
 )
+from python.framework.types.trading_env_types.submission_metadata_types import SubmissionMetadata
 from python.framework.types.trading_env_types.trading_env_stats_types import (
     EXECUTION_STATS_FIELD_BY_STATUS,
     AccountInfo,
@@ -109,11 +116,14 @@ from python.framework.utils.trading_math.price_trigger import mid_price
 # sit well below one step while still absorbing IEEE 754 drift from a subtraction.
 _CLOSE_LOT_EPSILON = 1e-9
 
+# How many endings the executor keeps to explain an answer that arrives after its order is gone.
+# A late answer trails its order by a poll or a resolution round, never by hundreds of orders.
+_RECENT_ENDINGS_KEPT = 256
 
-class ExecutorMode(Enum):
-    """Execution mode for trade executors."""
-    SIMULATION = 'simulation'
-    LIVE = 'live'
+# The events that end an order's life in a unit — what a late answer is told about. Derived
+# from the declared map, so a new ending status cannot be left out of it.
+_ENDING_EVENT_TYPES = frozenset(
+    event for event in ORDER_EVENT_BY_STATUS.values() if event is not None)
 
 
 class AbstractTradeExecutor(ABC):
@@ -193,10 +203,20 @@ class AbstractTradeExecutor(ABC):
         self._order_history_limit_warned = False
 
         # Execution statistics — the rows are counted by status where they are booked
-        # (`_book_order_result`), the submissions where an order is handed to the venue
+        # (`_book_order_result`), the submissions where an order is handed to the venue, the
+        # adoptions where a previous session's order is taken over
         self._orders_submitted = 0
+        self._orders_adopted = 0
         self._order_status_counts: Dict[OrderStatus, int] = {status: 0 for status in OrderStatus}
         self._sl_tp_triggered = 0
+
+        # Order-event stream (#362) — one record per order transition, numbered within the
+        # unit, handed to every registered listener (the run's stream writer among them)
+        self._order_event_seq = 0
+        self._order_event_listeners: List[Callable[[OrderEvent], None]] = []
+        # The latest endings, so an answer arriving for an order that is gone can say how it
+        # ended. Bounded: it explains a late answer, it is not a record
+        self._recent_endings: Dict[str, OrderEvent] = {}
 
         # Active limit orders waiting for price trigger (post-pipeline)
         self._active_limit_orders: List[PendingOrder] = []
@@ -252,17 +272,35 @@ class AbstractTradeExecutor(ABC):
                 f'Oldest entries will be discarded. Full history available in scenario log.'
             )
 
-    def _book_order_result(self, result: OrderResult) -> OrderResult:
+    def _book_order_result(
+        self,
+        result: OrderResult,
+        pending: Optional[PendingOrder] = None,
+        event_type: Optional[OrderEventType] = None,
+        **event_fields: Any,
+    ) -> OrderResult:
         """
-        Append one row to the order history and count it by its status — the one place both happen.
+        Append one row to the order history, count it by its status, and record its event.
 
         They used to be written as a pair at every site, two dozen times, and the pairs
         drifted: a refused amend was counted as a rejected order, a refused close was counted
         nowhere and left no row. Counting here, as the row is booked, is also what keeps the
         counts right once the capped history starts dropping its oldest rows.
 
+        The order-event stream takes every booked ENDING from here (#362), so no row exists
+        without its event: the event type comes from the row's status (ORDER_EVENT_BY_STATUS).
+        The stream also holds steps no row records — the ending after a partial fill. A fill
+        is preceded by the order's acceptance where nothing recorded one yet — the venue took
+        every order it fills, whether or not its answer said so before the fill. A refusal of
+        an order the venue never took answers its submission, and carries how long that took.
+
         Args:
             result: The row to book
+            pending: The order it ends, where one exists — its submission is the event's join key
+            event_type: Overrides the event the status maps to — `partially_filled` for the
+                executed part of an order the venue then ended
+            **event_fields: Further OrderEvent fields the row cannot carry — the venue's own
+                reason for a refusal
 
         Returns:
             The same row, so a caller can book and return it in one statement
@@ -270,7 +308,330 @@ class AbstractTradeExecutor(ABC):
         self._order_status_counts[result.status] += 1
         self._check_order_history_limit()
         self._order_history.append(result)
+        recorded_as = event_type or ORDER_EVENT_BY_STATUS[result.status]
+        if recorded_as is None:
+            return result
+        if pending is not None and recorded_as in (
+                OrderEventType.FILLED, OrderEventType.PARTIALLY_FILLED):
+            # What the order was is on the row — a close's position is already gone here
+            self._record_acceptance(pending, **{key: value for key, value in (
+                ('symbol', result.symbol),
+                ('direction', result.direction),
+                ('lots', result.requested_lots or result.executed_lots),
+            ) if value is not None})
+        if (recorded_as is OrderEventType.REJECTED and pending is not None
+                and pending.accepted_seq is None and 'in_flight_ms' not in event_fields):
+            event_fields['in_flight_ms'] = self._submission_answer_ms(pending)
+        self._record_order_event(recorded_as, pending=pending, result=result, **event_fields)
         return result
+
+    # ============================================
+    # Order-Event Stream (#362)
+    # ============================================
+
+    def add_order_event_listener(self, listener: Callable[[OrderEvent], None]) -> None:
+        """
+        Register a listener for every order-event record.
+
+        The run's stream writer is one; a session's own observers may be others. Listeners
+        are called in registration order, on the thread that records the event — the main
+        thread in both pipelines.
+
+        Args:
+            listener: Function receiving each OrderEvent as it is recorded
+        """
+        self._order_event_listeners.append(listener)
+
+    def describe_recent_ending(self, order_id: str) -> str:
+        """
+        How an order that is no longer tracked ended — for the log line about an answer that
+        arrives after it.
+
+        Args:
+            order_id: The order an answer names
+
+        Returns:
+            A clause naming its ending and that ending's `seq`, or '' when it is not among
+            the latest endings
+        """
+        ending = self._recent_endings.get(order_id)
+        if ending is None:
+            return ''
+        return f' — it had already ended as {ending.event_type.value} (seq {ending.seq})'
+
+    def _current_submission(self) -> SubmissionMetadata:
+        """
+        Snapshot the current tick as submission metadata (#340/#345).
+
+        Returns:
+            SubmissionMetadata from the current tick, or empty when no tick
+            is in scope (cold-start, heartbeat-only path)
+        """
+        if self._current_tick is None:
+            return SubmissionMetadata()
+        return SubmissionMetadata(
+            tick_mid_price=self._current_tick.mid,
+            tick_time_msc=self._current_tick.time_msc,
+        )
+
+    def _receipt_time(self) -> Optional[datetime]:
+        """
+        When this process saw an event, for the record's `ts_init`.
+
+        None here: a backtest has to stay reproducible, so nothing it records may read the
+        wall clock. The live executor answers with the wall clock.
+
+        Returns:
+            None
+        """
+        return None
+
+    def _record_order_event(
+        self,
+        event_type: OrderEventType,
+        pending: Optional[PendingOrder] = None,
+        result: Optional[OrderResult] = None,
+        **fields: Any,
+    ) -> OrderEvent:
+        """
+        Write one transition to the order-event stream and hand it to the listeners (#362).
+
+        The record takes what it can from the pending order and the row, then the explicit
+        fields, which win. Runs inside fills and drains, so it formats nothing; its time is the
+        canonical clock's, and live adds the wall-clock receipt stamp.
+
+        A submission and an adoption open an order's life in this unit: their own `seq`
+        becomes the order's join key for every later event about it.
+
+        Args:
+            event_type: What happened
+            pending: The order it happened to, where one exists
+            result: The row booked for it, where one was
+            **fields: Further OrderEvent fields, overriding the derived ones
+
+        Returns:
+            The recorded event
+        """
+        self._order_event_seq += 1
+        values = self._order_event_basis(pending, result)
+        values.update(fields)
+        if event_type in (OrderEventType.SUBMITTED, OrderEventType.ADOPTED):
+            values['submitted_seq'] = self._order_event_seq
+            if pending is not None:
+                pending.submitted_seq = self._order_event_seq
+        event = OrderEvent(
+            seq=self._order_event_seq,
+            event_type=event_type,
+            event_time=self.get_current_time_if_set(),
+            ts_init=self._receipt_time(),
+            **values,
+        )
+        if event_type in _ENDING_EVENT_TYPES:
+            self._remember_ending(event)
+        for listener in self._order_event_listeners:
+            listener(event)
+        return event
+
+    def _order_event_basis(
+        self,
+        pending: Optional[PendingOrder],
+        result: Optional[OrderResult],
+    ) -> Dict[str, Any]:
+        """
+        The fields an event inherits from its order and its row.
+
+        A close states the POSITION's direction, as its row does — for a protective order the
+        opposite of its own trading side — and takes symbol and size from the position while
+        it is held. The row wins where it states a value: it was built for exactly this ending.
+
+        Args:
+            pending: The order, or None
+            result: The booked row, or None
+
+        Returns:
+            OrderEvent keyword arguments
+        """
+        basis: Dict[str, Any] = {}
+        if pending is not None:
+            closes = self._closed_position_id(pending)
+            kwargs = pending.order_kwargs or {}
+            order_type = self._requested_order_type(pending)
+            basis.update(
+                order_id=pending.pending_order_id,
+                submitted_seq=pending.submitted_seq,
+                position_id=closes if closes is not None else pending.pending_order_id,
+                action=OrderAction.CLOSE if closes is not None else OrderAction.OPEN,
+                order_type=order_type,
+                symbol=pending.symbol,
+                direction=pending.direction if closes is None else None,
+                client_order_id=pending.client_order_id,
+                broker_ref=pending.broker_ref,
+                lots=pending.close_lots if closes is not None else pending.lots,
+            )
+            # Prices by the type the order HAS — a triggered stop-limit rests as a limit, its
+            # stop already overwritten: `entry_price` is a limit's limit and a stop's trigger
+            # in both pipelines, a stop-limit's limit rides in `order_kwargs`
+            if pending.order_type is OrderType.LIMIT:
+                basis['limit_price'] = pending.entry_price
+            elif pending.order_type in (OrderType.STOP, OrderType.STOP_LIMIT):
+                basis['trigger_price'] = pending.entry_price
+                basis['limit_price'] = kwargs.get('limit_price')
+            if closes is not None:
+                position = self.portfolio.get_position(closes)
+                if position is not None:
+                    basis['direction'] = position.direction
+                    basis['symbol'] = basis['symbol'] or position.symbol
+                    if basis['lots'] is None:
+                        basis['lots'] = position.lots
+        if result is not None:
+            stated = {
+                'order_id': result.order_id,
+                'position_id': result.position_id,
+                'action': result.action,
+                'order_type': result.order_type,
+                'symbol': result.symbol,
+                'direction': result.direction,
+                'initiator': result.initiator,
+                'end_reason': result.end_reason,
+                'rejection_reason': result.rejection_reason,
+                'message': result.rejection_message or None,
+            }
+            basis.update({key: value for key, value in stated.items() if value is not None})
+            if result.status is OrderStatus.EXECUTED:
+                basis['lots'] = result.executed_lots
+                basis['fill_price'] = result.executed_price
+                basis['fee'] = result.commission
+                basis['fee_currency'] = self.portfolio.account_currency
+                if pending is not None and len(pending.fills.trades) == 1:
+                    basis['trade_id'] = pending.fills.trades[0].trade_id
+            elif result.requested_lots is not None:
+                basis['lots'] = result.requested_lots
+        return basis
+
+    def _remember_ending(self, event: OrderEvent) -> None:
+        """
+        Keep an ending for the late answer that may still name its order.
+
+        Args:
+            event: The ending just recorded
+        """
+        # Re-inserted rather than updated: an id repeats across a position's orders, and an
+        # update keeps its old place, where it would be the next to be evicted
+        self._recent_endings.pop(event.order_id, None)
+        self._recent_endings[event.order_id] = event
+        if len(self._recent_endings) > _RECENT_ENDINGS_KEPT:
+            del self._recent_endings[next(iter(self._recent_endings))]
+
+    def _record_submission(self, pending: PendingOrder) -> None:
+        """
+        Count one order handed to the venue and record its submission — one statement for both.
+
+        The submitted count is thereby the number of `submitted` events, which is what the
+        pending-order counters will be derived from (#362).
+
+        Args:
+            pending: The order just handed over
+        """
+        self._orders_submitted += 1
+        self._record_order_event(
+            OrderEventType.SUBMITTED,
+            pending=pending,
+            submission_mid=pending.submission.tick_mid_price,
+            submission_time_msc=pending.submission.tick_time_msc,
+        )
+
+    def _record_adoption(self, pending: PendingOrder) -> None:
+        """
+        Count and record an order a previous session sent, taken over by this one.
+
+        The venue accepted it in that session, so no acceptance of this unit's follows: its
+        first fill here is a fill, not a second taking of the order.
+
+        Args:
+            pending: The order taken over
+        """
+        self._orders_adopted += 1
+        event = self._record_order_event(
+            OrderEventType.ADOPTED,
+            pending=pending,
+            cum_lots=pending.fills.cumulative_filled_lots or None,
+        )
+        pending.accepted_seq = event.seq
+
+    def _record_acceptance(
+        self,
+        pending: PendingOrder,
+        answered: bool = True,
+        **fields: Any,
+    ) -> None:
+        """
+        Record that the venue took this order — once, before anything else it does with it.
+
+        Args:
+            pending: The order taken
+            answered: True when the acceptance came in the answer to its submission. A late
+                one — learned by asking after the answer was lost — carries no latency: the
+                span measured would be the asking, not the venue
+            **fields: Further OrderEvent fields, where the order alone cannot state them
+        """
+        if pending.accepted_seq is not None:
+            return
+        event = self._record_order_event(
+            OrderEventType.ACCEPTED,
+            pending=pending,
+            in_flight_ms=self._submission_answer_ms(pending) if answered else None,
+            **fields,
+        )
+        pending.accepted_seq = event.seq
+
+    def _record_overtaken_operation(self, pending: PendingOrder) -> None:
+        """
+        Answer a cancel or amend the market overtook — the order executes before it applies.
+
+        A venue answers such a request with a refusal once the order has filled, and the stream
+        says so in both pipelines (#567): the refused request, then the fill. In a backtest the
+        request used to vanish because the fill takes the order off its list before the request
+        is due; live, the refusal arrives after the fill and finds no order to name.
+
+        Args:
+            pending: The order about to fill, or to trigger and fill
+        """
+        state = pending.execution_state
+        if state.in_flight_operation is PendingOperation.PENDING_CANCEL:
+            self._record_order_event(
+                OrderEventType.CANCEL_REJECTED, pending=pending,
+                message='the market reached the order before the cancel took effect')
+        elif state.in_flight_operation is PendingOperation.PENDING_MODIFY:
+            self._record_order_event(
+                OrderEventType.MODIFY_REJECTED, pending=pending,
+                message='the market reached the order before the amend took effect')
+        else:
+            return
+        state.in_flight_operation = PendingOperation.NONE
+        state.pending_modification = None
+
+    @staticmethod
+    def _submission_answer_ms(pending: PendingOrder) -> Optional[float]:
+        """
+        How long the answer to a submission took.
+
+        A backtest's is the modelled delay, from the latency queue's own stamps; a live one is
+        measured on the monotonic clock from the submission. Neither stamp — the simulation's
+        stop-loss exit, which waits for nothing — yields None, never a zero. So does an answer
+        that arrived after the first one was lost: that span measures the asking.
+
+        Args:
+            pending: The answered order
+
+        Returns:
+            Milliseconds, or None when there is no venue answer to measure
+        """
+        if pending.submit_answer_lost:
+            return None
+        timing = pending.timing
+        if timing.broker_fill_msc is not None and timing.placed_at_msc is not None:
+            return float(timing.broker_fill_msc - timing.placed_at_msc)
+        return AbstractPendingOrderManager.calculate_pending_latency_ms(pending)
 
     # ============================================
     # Order Outcome Callback
@@ -596,13 +957,18 @@ class AbstractTradeExecutor(ABC):
             return
 
         if self._executor_mode == ExecutorMode.SIMULATION:
+            # The position's own symbol and market moment travel on the order, so its events
+            # name what they close even once the position is gone
             synthetic = PendingOrder(
                 pending_order_id=position.position_id,
-                order_action=PendingOrderAction.CLOSE
+                order_action=PendingOrderAction.CLOSE,
+                order_type=OrderType.MARKET,
+                symbol=position.symbol,
+                submission=self._current_submission(),
             )
             # Counted as submitted where live counts it, in close_position — without it a
             # backtest whose exits are stops reported more orders executed than submitted
-            self._orders_submitted += 1
+            self._record_submission(synthetic)
             self._fill_close_order(synthetic, fill_price=level, close_reason=close_reason)
             self._sl_tp_triggered += 1
             return
@@ -829,7 +1195,7 @@ class AbstractTradeExecutor(ABC):
         """
         if lots is None and position is not None:
             lots = position.lots
-        return create_refusal_result(
+        refusal = create_refusal_result(
             order_id=order_id,
             reason=reason,
             message=message,
@@ -841,6 +1207,9 @@ class AbstractTradeExecutor(ABC):
             requested_lots=lots,
             order_type=order_type,
         )
+        # The position exists, so the row names it — null only where none is held
+        refusal.position_id = position.position_id if position is not None else None
+        return refusal
 
     def _joined_close_result(
         self,
@@ -1272,7 +1641,8 @@ class AbstractTradeExecutor(ABC):
         pending_order: PendingOrder,
         fill_price: Optional[float] = None,
         entry_type: EntryType = EntryType.MARKET,
-        fill_type: FillType = FillType.MARKET
+        fill_type: FillType = FillType.MARKET,
+        fill_event: OrderEventType = OrderEventType.FILLED,
     ) -> None:
         """
         Process a confirmed OPEN order — update portfolio, fees, stats.
@@ -1290,6 +1660,8 @@ class AbstractTradeExecutor(ABC):
                         current tick (ask for LONG, bid for SHORT).
             entry_type: How the position was opened (MARKET or LIMIT)
             fill_type: How the order was filled (MARKET, LIMIT, LIMIT_IMMEDIATE)
+            fill_event: How the order-event stream records the fill — `partially_filled`
+                for the executed part of an order the venue then ended (#362)
         """
         self.logger.info(
             f'📋 Fill open order: {pending_order.pending_order_id} '
@@ -1337,6 +1709,7 @@ class AbstractTradeExecutor(ABC):
             lots=pending_order.lots,
             entry_price=entry_price,
             tick_value=tick_value,
+            timestamp=self.get_current_time(),
             is_maker=is_maker
         )
 
@@ -1375,7 +1748,7 @@ class AbstractTradeExecutor(ABC):
                     pending_order,
                     reason=RejectionReason.INSUFFICIENT_MARGIN,
                     message=f'Required margin {margin_required:.2f} exceeds free margin {free_margin:.2f}'
-                ))
+                ), pending_order)
                 self._notify_outcome(pending_order.direction, rejection, pending_order)
                 self.logger.warning(
                     f'Order {pending_order.pending_order_id} rejected: '
@@ -1407,7 +1780,7 @@ class AbstractTradeExecutor(ABC):
                             f'(balance {balance:.6f}, committed by unfilled orders '
                             f'{committed:.6f})'
                         )
-                    ))
+                    ), pending_order)
                     self._notify_outcome(pending_order.direction, rejection, pending_order)
                     self.logger.warning(
                         f'Order {pending_order.pending_order_id} rejected: '
@@ -1435,7 +1808,7 @@ class AbstractTradeExecutor(ABC):
                             f'(balance {balance:.6f}, committed by unfilled orders '
                             f'{committed:.6f})'
                         )
-                    ))
+                    ), pending_order)
                     self._notify_outcome(pending_order.direction, rejection, pending_order)
                     self.logger.warning(
                         f'Order {pending_order.pending_order_id} rejected: '
@@ -1519,7 +1892,7 @@ class AbstractTradeExecutor(ABC):
         self.logger.verbose(
             f'OPEN_ORDER_RESULT: {json.dumps(result.to_dict(), indent=2)}')
 
-        self._book_order_result(result)
+        self._book_order_result(result, pending_order, event_type=fill_event)
         self._notify_outcome(pending_order.direction, result, pending_order)
 
     def _fill_close_order(
@@ -1527,7 +1900,8 @@ class AbstractTradeExecutor(ABC):
         pending_order: PendingOrder,
         fill_price: Optional[float] = None,
         close_reason: CloseReason = CloseReason.MANUAL,
-        exit_trades: Optional[List[BrokerTrade]] = None
+        exit_trades: Optional[List[BrokerTrade]] = None,
+        fill_event: OrderEventType = OrderEventType.FILLED,
     ) -> float:
         """
         Process a confirmed CLOSE order — update portfolio, record PnL.
@@ -1552,6 +1926,9 @@ class AbstractTradeExecutor(ABC):
                 venue-held protective order booked in two steps passes the UNBOOKED
                 slice, so the second close does not report the first partial's
                 executions a second time (#503)
+            fill_event: How the order-event stream records the fill — `partially_filled`
+                for part of a protective order that is still working, or of one the venue
+                then ended (#362)
 
         Returns:
             The lots actually booked — 0.0 where nothing was. Since #507 this is the size
@@ -1595,13 +1972,21 @@ class AbstractTradeExecutor(ABC):
             # rather than with none, as it once did. No outcome notification: the strategy
             # heard of the position's end from whatever ended it. Live, the venue has
             # already executed this close, so there is no refusal to record; the book and
-            # the venue disagree, and resolving that belongs to reconciliation (#349).
+            # the venue disagree, and resolving that belongs to reconciliation (#349). The
+            # order-event stream records what the venue did all the same (#362): a fill with
+            # no row, which is the divergence reconciliation will have to explain.
             if self._executor_mode == ExecutorMode.SIMULATION:
                 self._book_order_result(self._rejection_for_pending(
                     pending_order,
                     reason=RejectionReason.POSITION_NOT_FOUND,
                     message=f'Position {position_id} was closed while this close was on its way',
-                ))
+                ), pending_order)
+            else:
+                self._record_acceptance(pending_order)
+                self._record_order_event(
+                    fill_event, pending=pending_order, fill_price=fill_price,
+                    message=f'the venue executed this close; position {position_id} is no '
+                            f'longer held here, so nothing was booked')
             return 0.0
 
         # Get current price (needed for tick_value calculation regardless)
@@ -1681,6 +2066,7 @@ class AbstractTradeExecutor(ABC):
             symbol_spec=symbol_spec,
             lots=executed_lots,
             exit_price=close_price,
+            timestamp=self.get_current_time(),
             is_maker=False,
         )
 
@@ -1797,7 +2183,7 @@ class AbstractTradeExecutor(ABC):
         self.logger.verbose(
             f'CLOSE_FILL_ORDER: {json.dumps(result.to_dict(), indent=2)}')
 
-        self._book_order_result(result)
+        self._book_order_result(result, pending_order, event_type=fill_event)
 
         # Partial-close event (#348) carries the delta; a full close emits
         # POSITION_CLOSED (#503). Until then a full close emitted nothing at all and the
@@ -1982,7 +2368,8 @@ class AbstractTradeExecutor(ABC):
         Mirrors the fill's OUTFLOW exactly, because an inflow needs no reserve:
 
             OPEN  LONG   → quote, lots * price + fee     OPEN  SHORT  → base,  lots
-            CLOSE LONG   → base,  close_lots             CLOSE SHORT  → quote, lots * price + fee
+
+        A CLOSE claims nothing — see `_pending_outflow`.
 
         Derived on demand and never stored: the claim is a running fact about the order
         book, and a cached one would need invalidating on every fill, cancel and modify.
@@ -2089,24 +2476,21 @@ class AbstractTradeExecutor(ABC):
         direction: OrderDirection,
         lots: Optional[float],
         order_type: Optional[OrderType],
-        price: Optional[float],
-        is_close: bool = False
+        price: Optional[float]
     ) -> Tuple[Optional[str], float]:
         """
-        Which asset an order will SPEND, and how much — the one calculation both sides use.
+        Which asset an opening order will SPEND, and how much — the one calculation both sides use.
 
         Fee and tick value come from the same helpers the fill uses, so a reserve and the
         eventual charge cannot drift apart. Where no price is given, the current ask prices
-        it: the quote side is spent only when we are BUYING (an OPEN LONG, or a CLOSE of a
-        SHORT), and buying pays the ask.
+        it: the quote side is spent only when we are BUYING, and buying pays the ask.
 
         Args:
             symbol: The instrument
-            direction: LONG or SHORT — for a CLOSE this is the POSITION's direction
+            direction: LONG buys with the quote, SHORT sells the base
             lots: Size, or None
             order_type: MARKET / LIMIT / STOP / STOP_LIMIT, for the maker-taker fee side
             price: The price the order will pay, or None to take it from the current tick
-            is_close: True when the order closes a position rather than opening one
 
         Returns:
             (currency, amount), or (None, 0.0) when nothing can be priced yet — an
@@ -2116,10 +2500,7 @@ class AbstractTradeExecutor(ABC):
             return None, 0.0
 
         symbol_spec = self.broker.get_symbol_specification(symbol)
-        # A CLOSE reverses its position's direction: closing a LONG sells the base.
-        spends_quote = (direction == OrderDirection.SHORT) if is_close \
-            else (direction == OrderDirection.LONG)
-        if not spends_quote:
+        if direction != OrderDirection.LONG:
             return symbol_spec.base_currency, lots
 
         if price is None:
@@ -2135,9 +2516,11 @@ class AbstractTradeExecutor(ABC):
             # is the lower one, so a taker fill reserves slightly less than it spends,
             # bounded by the fee difference on one order.
             is_maker = order_type in (OrderType.LIMIT, OrderType.STOP_LIMIT)
+            # The clock is set whenever a tick is: on_tick sets both.
             entry_fee = self._create_entry_fee(
                 symbol_spec=symbol_spec, lots=lots, entry_price=price,
-                tick_value=tick_value, is_maker=is_maker)
+                tick_value=tick_value, timestamp=self.get_current_time(),
+                is_maker=is_maker)
             fee_cost = entry_fee.cost if entry_fee else 0.0
         return symbol_spec.quote_currency, lots * price + fee_cost
 
@@ -2150,25 +2533,33 @@ class AbstractTradeExecutor(ABC):
         STOP_LIMIT carries its limit in `order_kwargs`, and a MARKET order in transit has
         none yet.
 
+        A CLOSE claims nothing. A market close carries no direction in either pipeline, so it
+        never did; a protective order — the one close that carries one, the side it TRADES —
+        must not. The venue reserves nothing against a resting exit (measured 2026-09-07, as
+        the protective-levels architecture document records), and a backtest's
+        counterpart, the position's own stop-loss, is no order at all. Read as a close of a
+        position in its own trading direction, a protective sell stop held the whole position's
+        value in the quote currency, and a live session refused a buy the backtest filled.
+
         Args:
             pending: The unfilled order
 
         Returns:
-            (currency, amount), or (None, 0.0) when it cannot be priced
+            (currency, amount), or (None, 0.0) when it cannot be priced or is a close
         """
+        if pending.order_action == PendingOrderAction.CLOSE:
+            return None, 0.0
         if not pending.symbol or not pending.direction:
             return None, 0.0
 
-        is_close = pending.order_action == PendingOrderAction.CLOSE
         price = (pending.order_kwargs or {}).get('limit_price') \
             if pending.order_type == OrderType.STOP_LIMIT else pending.entry_price
         return self._outflow_for(
             symbol=pending.symbol,
             direction=pending.direction,
-            lots=pending.close_lots if is_close else pending.lots,
+            lots=pending.lots,
             order_type=pending.order_type,
             price=price,
-            is_close=is_close,
         )
 
     # ============================================
@@ -2423,9 +2814,11 @@ class AbstractTradeExecutor(ABC):
         The canonical clock for OBSERVATION surfaces, or None before the loop injected one.
 
         Deliberately narrow: this exists for surfaces that must RENDER "not known yet" rather
-        than fail — today the log line's event-time column. Everything that DECIDES or that
-        stamps an event record uses get_current_time(), which raises, because §9 forbids a
-        silent substitute there.
+        than fail — the log line's event-time column, and the order-event stream's `event_time`,
+        which stays empty for an order adopted at boot before the first market data (#362).
+        Everything that DECIDES or that stamps a booked record uses get_current_time(), which
+        raises: a silent substitute there is a wall-clock reading in a record that has to
+        come out the same on every run.
 
         It is NOT mirrored on DecisionTradingApi, which is the only clock surface an algo can
         reach. That is what keeps the §9 contract intact: no decision path can reach this.
@@ -2597,7 +2990,7 @@ class AbstractTradeExecutor(ABC):
             self._book_order_result(self._ending_for_pending(
                 pending, OrderStatus.EXPIRED,
                 initiator=OrderInitiator.FRAMEWORK,
-                end_reason=OrderEndReason.SCENARIO_END))
+                end_reason=OrderEndReason.SCENARIO_END), pending)
 
     def get_execution_stats(self) -> ExecutionStats:
         """
@@ -2608,6 +3001,7 @@ class AbstractTradeExecutor(ABC):
         """
         return ExecutionStats(
             orders_submitted=self._orders_submitted,
+            orders_adopted=self._orders_adopted,
             sl_tp_triggered=self._sl_tp_triggered,
             **{field_name: self._order_status_counts[status]
                for status, field_name in EXECUTION_STATS_FIELD_BY_STATUS.items()
@@ -2657,8 +3051,11 @@ class AbstractTradeExecutor(ABC):
         self._order_counter = 0
         self._order_history.clear()
         self._orders_submitted = 0
+        self._orders_adopted = 0
         self._order_status_counts = {status: 0 for status in OrderStatus}
         self._sl_tp_triggered = 0
+        self._order_event_seq = 0
+        self._recent_endings.clear()
         self._active_limit_orders.clear()
         self._active_stop_orders.clear()
 
@@ -2734,6 +3131,7 @@ class AbstractTradeExecutor(ABC):
         lots: float,
         entry_price: float,
         tick_value: float,
+        timestamp: datetime,
         is_maker: bool = False
     ) -> Optional[AbstractTradingFee]:
         """
@@ -2762,6 +3160,7 @@ class AbstractTradeExecutor(ABC):
             lots: Position size
             entry_price: Fill price
             tick_value: Current tick value for spread calculation
+            timestamp: When the fee is charged — the canonical clock
             is_maker: True for limit orders (maker fee), False for market (taker fee)
 
         Returns:
@@ -2774,6 +3173,7 @@ class AbstractTradeExecutor(ABC):
                 entry_price=entry_price,
                 maker_rate=self.broker.adapter.get_maker_fee(),
                 taker_rate=self.broker.adapter.get_taker_fee(),
+                timestamp=timestamp,
                 is_maker=is_maker
             )
 
@@ -2785,6 +3185,7 @@ class AbstractTradeExecutor(ABC):
         symbol_spec: SymbolSpecification,
         lots: float,
         exit_price: float,
+        timestamp: datetime,
         is_maker: bool = False
     ) -> Optional[AbstractTradingFee]:
         """
@@ -2806,6 +3207,7 @@ class AbstractTradeExecutor(ABC):
             lots: Lots being closed — the PARTIAL amount on a partial close, never the
                   position size, or the fee would be charged on volume that stays open
             exit_price: The price the close filled at
+            timestamp: When the fee is charged — the canonical clock
             is_maker: True when the closing order provided liquidity
 
         Returns:
@@ -2820,6 +3222,7 @@ class AbstractTradeExecutor(ABC):
             entry_price=exit_price,
             maker_rate=self.broker.adapter.get_maker_fee(),
             taker_rate=self.broker.adapter.get_taker_fee(),
+            timestamp=timestamp,
             is_maker=is_maker
         )
 

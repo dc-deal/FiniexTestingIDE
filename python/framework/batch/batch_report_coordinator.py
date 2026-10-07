@@ -65,6 +65,7 @@ from python.framework.reporting.io.artifact_specs import (
     SCENARIO_DETAILS_ARTIFACT,
     WARNINGS_ERRORS_ARTIFACT,
 )
+from python.framework.reporting.io.order_event_stream_io import write_order_event_stream
 from python.framework.reporting.io.report_artifact_io import write_artifact
 from python.framework.reporting.shared_report_coordinator import SharedReportCoordinator
 from python.framework.reporting.store.report_store import IO_SUBDIR
@@ -273,6 +274,11 @@ class BatchReportCoordinator:
         # Robustness artifact only when robustness mode is enabled (#367).
         if robustness_report.enabled:
             write_artifact(robustness_report, io_dir, ROBUSTNESS_ARTIFACT)
+        # The order-event stream (#362): a backtest's scenarios carried their events back, and
+        # they are written here at once. Not in the shared coordinator — a live session writes its
+        # own stream while it runs, and a report written over it would replace that record.
+        write_order_event_stream(
+            io_dir, run_id, ((unit.name, unit.order_events) for unit in units))
 
         # Every artifact of this run is on disk now — the index records WHICH, so a consumer
         # knows what it can fetch instead of discovering it by 404 (#475).

@@ -367,7 +367,8 @@ class TestPortfolio:
 
 def _execution_stats_report() -> ExecutionStatsReport:
     unit = ExecutionStatsRow(
-        name='s1', symbol='EURUSD', orders_submitted=5, orders_executed=4, orders_denied=0,
+        name='s1', symbol='EURUSD', orders_submitted=5, orders_adopted=0, orders_executed=4,
+        orders_denied=0,
         orders_rejected=1, orders_cancelled=0, orders_expired=0, orders_undelivered=0,
         orders_unaccounted=0, sl_tp_triggered=2)
     totals = ExecutionStatsTotals(

@@ -291,6 +291,17 @@ class PendingOrder:
     # field rather than a passenger in `order_kwargs`: that dict is splatted onto the
     # adapter call, so anything added to it goes on the wire.
     venue_held_protection: bool = False
+    # The order-event stream's join key (#362): the `seq` of this order's submission — or
+    # of its adoption, for an order a previous session sent. Every later event about the
+    # order carries it, because `order_id` repeats across the closes of one position.
+    submitted_seq: Optional[int] = None
+    # The `seq` of the event that recorded the venue taking this order, once one did. It is
+    # what keeps a fill from recording a second acceptance.
+    accepted_seq: Optional[int] = None
+    # Set when the answer to this order's submission was lost. Whatever answers afterwards —
+    # the asking, the truth pull — carries no latency: that span would measure the asking,
+    # not the venue.
+    submit_answer_lost: bool = False
 
     # === Composed sub-concerns (#345) ===
     timing: PendingOrderTiming = field(default_factory=PendingOrderTiming)

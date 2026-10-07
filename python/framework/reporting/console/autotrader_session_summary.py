@@ -227,9 +227,11 @@ class AutotraderSessionSummary:
                          if result.session_end_policy else ''))
 
         if result.execution_stats:
-            endings = order_endings_text(result.execution_stats, renderer)
-            print(f'  Orders:         {result.execution_stats.orders_submitted} submitted · '
-                  f'{result.execution_stats.orders_executed} executed'
+            stats = result.execution_stats
+            endings = order_endings_text(stats, renderer)
+            print(f'  Orders:         {stats.orders_submitted} submitted · '
+                  + (f'{stats.orders_adopted} adopted · ' if stats.orders_adopted else '')
+                  + f'{stats.orders_executed} executed'
                   + (f' · {endings}' if endings else ''))
 
         # Trade analytics (#389/#393) — model-sourced, one line per account currency.

@@ -25,6 +25,7 @@ from python.framework.autotrader.autotrader_tick_loop import AutotraderTickLoop
 from python.framework.autotrader.cold_start_setup import ColdStartSetup, setup_cold_start
 from python.framework.autotrader.dry_run_resolver import resolve_dry_run
 from python.framework.autotrader.live_clipping_monitor import LiveClippingMonitor
+from python.framework.autotrader.order_event_stream_setup import open_order_event_stream
 from python.framework.autotrader.rendered_profile_builder import (
     assert_rendered_parameters_match,
     render_autotrader_profile,
@@ -49,6 +50,7 @@ from python.framework.persistence.algo_state_store import AlgoStateStore
 from python.framework.persistence.cold_start_state_store import ColdStartStateStore
 from python.framework.reporting.api_perf_monitor import ApiPerfMonitor
 from python.framework.reporting.field_study_recorder import FieldStudyRecorder
+from python.framework.reporting.io.order_event_stream_writer import OrderEventStreamWriter
 from python.framework.signal_data.signal_observed_accumulator import SignalObservedAccumulator
 from python.framework.signal_data.transport.abstract_signal_transport import (
     AbstractSignalTransport,
@@ -258,6 +260,10 @@ class AutotraderMain:
         # #332 — Field Study recorder (set when the decision logic is LiveFieldStudy)
         self._field_study_recorder: Optional[FieldStudyRecorder] = None
 
+        # #362 — the session's order-event stream, written as the steps happen. None until
+        # the pipeline exists, so an abort before that point has nothing to close.
+        self._order_event_stream: Optional[OrderEventStreamWriter] = None
+
         # Loggers (created during run())
         self._global_logger: Optional[ScenarioLogger] = None
         self._session_logger: Optional[ScenarioLogger] = None
@@ -413,6 +419,12 @@ class AutotraderMain:
             self._validate_startup()
 
             self._wire_observability()
+
+            # === ORDER-EVENT STREAM (#362) ===
+            # Before the cold start: an order the boot takes over is the first step a session
+            # records.
+            self._order_event_stream = open_order_event_stream(
+                self._executor, self._run_dir, self._run_id, self._config.get_unit_name())
 
             self._restore_algo_state()
 
@@ -974,6 +986,15 @@ class AutotraderMain:
                 self._executor.check_clean_shutdown(expect_flat=not leave_positions)
             except Exception as e:
                 self._session_logger.error(f'Error during order cleanup: {e}')
+
+        # #362 — the stream ends after the order cleanup, whose cancels are steps of their
+        # own. Its own try: a stream that cannot close must not keep the report from being
+        # written.
+        if self._order_event_stream:
+            try:
+                self._order_event_stream.close()
+            except Exception as e:
+                self._session_logger.error(f'Error closing the order-event stream: {e}')
 
         # #327 — Drift auditor cleanup (surfaces unfinished audits + final summary)
         if self._drift_auditor:

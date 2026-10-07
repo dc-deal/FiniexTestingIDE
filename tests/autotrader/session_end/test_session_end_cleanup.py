@@ -15,10 +15,13 @@ import inspect
 
 import pytest
 
+from python.framework.logging.global_logger import GlobalLogger
 from python.framework.testing.mock_broker_adapter import MockExecutionMode
 from python.framework.testing.mock_order_execution import MockOrderExecution
+from python.framework.trading_env.broker_config import BrokerConfig
 from python.framework.trading_env.live.live_trade_executor import LiveTradeExecutor
 from python.framework.types.portfolio_types.portfolio_trade_record_types import CloseReason
+from python.framework.types.trading_env_types.broker_types import BrokerType
 from python.framework.types.trading_env_types.order_types import (
     OpenOrderRequest,
     OrderDirection,
@@ -26,7 +29,12 @@ from python.framework.types.trading_env_types.order_types import (
     OrderInitiator,
     OrderStatus,
     OrderType,
+    RejectionReason,
 )
+from tests.autotrader.live_executor.conftest import AcknowledgingVenueMock
+from tests.autotrader.protective_levels.conftest import VenueHoldsProtectionMock
+
+ACCOUNT_MODELS = pytest.mark.parametrize('spot_mode', [False, True], ids=['margin', 'spot'])
 
 
 def _executor_with_open_position(spot: bool = False):
@@ -271,6 +279,21 @@ class TestAStopIsNotAnAfterthought:
         assert not ended, f'a stop left at the venue was recorded as ended: {ended}'
 
 
+def _venue_unreachable_at_shutdown(executor: LiveTradeExecutor) -> None:
+    """
+    Make the venue refuse the session-end cancel and fail the read that follows a refusal.
+
+    A refused cancel is followed by one read, which books how the order ended; only when
+    that read cannot be answered either does the order stay unaccounted.
+
+    Args:
+        executor: The live executor
+    """
+    for operation in ('cancel', 'query'):
+        executor.broker.adapter.set_transport_fault(
+            operation, 'venue unreachable at shutdown', terminal=True)
+
+
 class TestAnUnconfirmedCancelIsNotAnExpiry:
     """
     EXPIRED is a claim about the VENUE, and it was being made without asking.
@@ -302,8 +325,7 @@ class TestAnUnconfirmedCancelIsNotAnExpiry:
 
     def test_a_refused_cancel_leaves_an_unaccounted_record(self):
         mock, executor = self._executor_with_resting_order()
-        executor.broker.adapter.set_transport_fault(
-            'cancel', 'venue unreachable at shutdown', terminal=True)
+        _venue_unreachable_at_shutdown(executor)
 
         executor.finish_remaining_orders(cancel_orders=True)
 
@@ -324,8 +346,7 @@ class TestAnUnconfirmedCancelIsNotAnExpiry:
         what an operator acts on.
         """
         mock, executor = self._executor_with_resting_order()
-        executor.broker.adapter.set_transport_fault(
-            'cancel', 'venue unreachable at shutdown', terminal=True)
+        _venue_unreachable_at_shutdown(executor)
 
         executor.finish_remaining_orders(cancel_orders=True)
 
@@ -344,6 +365,145 @@ class TestAnUnconfirmedCancelIsNotAnExpiry:
 
         cancelled = [o for o in executor.get_order_history() if o.status is OrderStatus.CANCELLED]
         assert cancelled, 'a confirmed cancel must leave a CANCELLED record'
+
+
+def _live_executor(venue, spot_mode: bool) -> LiveTradeExecutor:
+    """
+    A live executor over the given mock venue, holding protection at the venue when asked.
+
+    Args:
+        venue: The mock venue
+        spot_mode: Which account model the portfolio keeps
+
+    Returns:
+        The executor, with one tick fed
+    """
+    executor = LiveTradeExecutor(
+        broker_config=BrokerConfig(BrokerType.KRAKEN_SPOT, venue),
+        initial_balance=100000.0,
+        account_currency='USD',
+        logger=GlobalLogger('SessionEndCancel'),
+        venue_held_protection=True,
+        session_key='test',
+        spot_mode=spot_mode,
+        initial_balances={'USD': 100000.0, 'BTC': 0.0} if spot_mode else None,
+    )
+    MockOrderExecution().feed_tick(executor, bid=59999.0, ask=60001.0)
+    return executor
+
+
+def _resting_limit(executor: LiveTradeExecutor) -> str:
+    """
+    Place one LIMIT buy below the market and let the venue acknowledge it.
+
+    Args:
+        executor: The live executor
+
+    Returns:
+        The order's id
+    """
+    order_id = executor.open_order(OpenOrderRequest(
+        symbol='BTCUSD', order_type=OrderType.LIMIT,
+        direction=OrderDirection.LONG, lots=0.01, price=50000.0)).order_id
+    MockOrderExecution().await_submit_confirmation(executor)
+    assert executor.get_pending_stats().active_limit_orders, 'fixture placed no order'
+    return order_id
+
+
+def _broker_ref(executor: LiveTradeExecutor, order_id: str) -> str:
+    """
+    The venue's reference for one resting order.
+
+    Args:
+        executor: The live executor
+        order_id: The order's id
+
+    Returns:
+        Its broker reference
+    """
+    return next(p.broker_ref for p in executor.get_active_orders()
+                if p.pending_order_id == order_id)
+
+
+def _endings(executor: LiveTradeExecutor):
+    """Every row of the order history that is not a submission."""
+    return [o for o in executor.get_order_history() if o.status is not OrderStatus.PENDING]
+
+
+class TestACancelAlreadyOnItsWay:
+    """
+    The session end reads what an earlier cancel did instead of cancelling a second time.
+
+    Measured before the fix: the strategy's cancel reached the venue and its answer was
+    still waiting to be read when the session ended. The session sent a second cancel, the
+    venue refused it for an order it had just cancelled, and the order was recorded
+    unaccounted — or, where a venue confirms twice, as the framework's own cancel.
+    """
+
+    def test_the_strategys_cancel_is_not_sent_twice(self):
+        venue = AcknowledgingVenueMock()
+        executor = _live_executor(venue, spot_mode=False)
+        order_id = _resting_limit(executor)
+        ref = _broker_ref(executor, order_id)
+
+        assert executor.cancel_limit_order(order_id)
+        executor.get_request_processor().flush_outbox()   # carried out; the answer is unread
+
+        executor.finish_remaining_orders(cancel_orders=True)
+
+        assert venue.cancels == [ref], 'a second cancel went out for an order already cancelled'
+        endings = _endings(executor)
+        assert [o.status for o in endings] == [OrderStatus.CANCELLED]
+        assert endings[0].initiator is OrderInitiator.STRATEGY, (
+            'the strategy asked for this cancel — the session end did not')
+
+    @ACCOUNT_MODELS
+    def test_an_order_filled_before_its_session_end_cancel_is_booked_filled(self, spot_mode):
+        """The venue refuses the cancel of an order it has filled; a read says so."""
+        venue = AcknowledgingVenueMock()
+        executor = _live_executor(venue, spot_mode)
+        order_id = _resting_limit(executor)
+        ref = _broker_ref(executor, order_id)
+        venue.set_venue_status(ref, 'FILLED', filled_lots=0.01, fill_price=50000.0)
+
+        executor.finish_remaining_orders(cancel_orders=True)
+
+        assert [o.status for o in _endings(executor)] == [OrderStatus.EXECUTED], (
+            'the venue bought the coin — an unaccounted record would leave it off the books')
+        assert len(executor.get_open_positions()) == 1
+
+    @ACCOUNT_MODELS
+    def test_a_close_waiting_for_its_protective_cancel_is_abandoned(self, spot_mode):
+        """
+        Positions are left to the next session, and nothing would read a close sent now.
+
+        The protective order's cancel was carried out and its answer is read at the end — it
+        must not release the close that waited for it.
+        """
+        venue = VenueHoldsProtectionMock(mode=MockExecutionMode.INSTANT_FILL)
+        executor = _live_executor(venue, spot_mode)
+        executor.open_order(OpenOrderRequest(
+            symbol='BTCUSD', order_type=OrderType.MARKET, direction=OrderDirection.LONG,
+            lots=0.01, stop_loss=55000.0))
+        mock = MockOrderExecution()
+        mock.feed_tick(executor, bid=59999.0, ask=60001.0)
+        mock.await_submit_confirmation(executor)
+        position = executor.get_open_positions()[0]
+        assert position.protective_broker_ref, 'fixture: the venue holds the stop'
+        executor.close_position(position.position_id)
+        executor.get_request_processor().flush_outbox()   # carried out; the answer is unread
+        submitted = executor.get_execution_stats().orders_submitted
+
+        executor.finish_remaining_orders(cancel_orders=True)
+
+        assert executor.get_execution_stats().orders_submitted == submitted, (
+            'a close was sent while the session ended')
+        assert len(executor.get_open_positions()) == 1
+        withheld = [o for o in executor.get_order_history()
+                    if o.rejection_reason is RejectionReason.CLOSE_WITHHELD]
+        assert len(withheld) == 1, 'the close that was asked for ends with a row'
+        protective = [o for o in _endings(executor) if o.status is OrderStatus.CANCELLED]
+        assert len(protective) == 1, 'the protective order ended at the venue, and says so'
 
 
 class TestTheEmergencyIsNotFoldedIn:

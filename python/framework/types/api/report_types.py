@@ -20,6 +20,11 @@ from pydantic import BaseModel, Field, computed_field
 from python.framework.types.persistence_types import RiskBaseline
 from python.framework.types.run_origin_types import CodeIdentity, RunOrigin
 from python.framework.types.run_outcome_types import RunOutcome
+from python.framework.types.trading_env_types.order_event_types import (
+    OrderEventPlane,
+    OrderEventType,
+    OrderOperation,
+)
 from python.framework.types.trading_env_types.order_types import (
     CloseType,
     OrderAction,
@@ -270,6 +275,65 @@ class OrderHistoryReport(RunScopedReport):
     symbols: list[str]      # distinct symbols present (filter UX)
 
 
+class OrderEventRow(BaseModel):
+    """
+    One transition in an order's life — a line of the run's order-event stream (#362).
+
+    Where the order history keeps one row per ENDING, this keeps every step: the submission, the
+    venue taking the order, a stop triggering, each cancel and amend asked for and its answer, an
+    answer that was lost and the asking that settled it. `seq` orders the stream within its unit
+    and `submitted_seq` ties every event to the submission it belongs to — one `order_id` repeats
+    across the closes of a position. A value that does not exist is null.
+    """
+    scenario_name: str                          # owning run unit (sim: scenario; live: session)
+    seq: int                                    # strictly increasing within the unit — THE order
+    event_type: OrderEventType
+    order_id: str
+    submitted_seq: Optional[int] = None         # null only on `denied`, which was never submitted
+    record_plane: OrderEventPlane = OrderEventPlane.BOT
+    position_id: Optional[str] = None
+    action: Optional[OrderAction] = None
+    order_type: Optional[OrderType] = None      # the type the order was ASKED as; null if unknown
+    symbol: Optional[str] = None
+    direction: Optional[OrderDirection] = None  # the POSITION's — a close's is the closed position's
+    client_order_id: Optional[str] = None       # our wire key (live)
+    broker_ref: Optional[str] = None            # the venue's handle (live)
+    previous_broker_ref: Optional[str] = None   # the handle an amend replaced
+    trade_id: Optional[str] = None
+    lots: Optional[float] = None
+    cum_lots: Optional[float] = None
+    fill_price: Optional[float] = None
+    limit_price: Optional[float] = None
+    trigger_price: Optional[float] = None
+    fee: Optional[float] = None
+    fee_currency: Optional[str] = None
+    submission_mid: Optional[float] = None
+    submission_time_msc: Optional[int] = None
+    in_flight_ms: Optional[float] = None        # the answer to a submission: modelled / measured
+    event_time: Optional[str] = None            # ISO-8601 UTC, the run's canonical clock
+    ts_init: Optional[str] = None               # ISO-8601 UTC, when this process saw it — live only
+    initiator: Optional[OrderInitiator] = None
+    end_reason: Optional[OrderEndReason] = None
+    rejection_reason: Optional[RejectionReason] = None
+    venue_reason: Optional[str] = None          # the venue's own code, passed through unread
+    message: Optional[str] = None
+    lost_request: Optional[OrderOperation] = None  # on unresolved / resolved: which request
+
+
+class OrderEventsReport(RunScopedReport):
+    """
+    The run's order-event stream as one list, every unit's events in their own order.
+
+    `truncated_tail` says the stream's last line was cut off — a session killed while writing it.
+    The line is left out rather than guessed at; everything before it is complete.
+    """
+    events: list[OrderEventRow]
+    count: int
+    truncated_tail: bool = False
+    # What makes one row unique — a served list declares it: `seq` is unique within a unit.
+    key: list[str] = ['scenario_name', 'seq']
+
+
 class OpenPositionRow(BaseModel):
     """
     One position still OPEN at run end (#492) — the counterpart to ActiveOrderRow.
@@ -456,13 +520,15 @@ class ExecutionStatsRow(BaseModel):
     Order-execution counts of one run unit (sim: a scenario; live: the session).
 
     Each count carries the name of what it counts (#362): `orders_submitted` the orders handed
-    to the venue — opens, closes and protective orders; every other `orders_<status>` the
+    to the venue — opens, closes and protective orders; `orders_adopted` the orders a previous
+    session sent and this one took over at boot; every other `orders_<status>` the
     order-history rows that ended with that status. A refusal made here never reached the
     venue, so it is denied and not submitted.
     """
     name: str               # scenario name (sim) / profile/session label (live)
     symbol: str
     orders_submitted: int
+    orders_adopted: int     # taken over at boot — live only; a backtest starts with none
     orders_executed: int    # open and close fills
     orders_denied: int
     orders_rejected: int
@@ -479,6 +545,7 @@ class ExecutionStatsTotals(BaseModel):
     ONE object (no per-currency split, unlike the portfolio roll-up).
     """
     orders_submitted: int = 0
+    orders_adopted: int = 0
     orders_executed: int = 0
     orders_denied: int = 0
     orders_rejected: int = 0
@@ -854,6 +921,11 @@ class RunInfo(BaseModel):
     # a test session legitimately does; such a run is listed rather than hidden, because an
     # index that silently omits runs is its own surprise.
     artifacts: list[str] = Field(default_factory=list)
+    # The STREAMS the run wrote while it ran, by file name — 'order_events.jsonl' (#362). Kept
+    # apart from `artifacts` on purpose: a live session writes its stream from its first order,
+    # so a session that died before its report HAS one, and counting it as an artifact would make
+    # that session read as reported. A stream is served while the run is still going.
+    stream_files: list[str] = Field(default_factory=list)
     # Straight from the run's header (#475) — the list answers "what was this run" on its own,
     # instead of making a consumer open each run to find out.
     start_time: str = ''
@@ -1166,6 +1238,7 @@ class RunSummary(RunScopedReport):
     """
     currencies: list[RunSummaryCurrency]
     orders_submitted: int = 0
+    orders_adopted: int = 0
     orders_executed: int = 0
     orders_denied: int = 0
     orders_rejected: int = 0
@@ -1341,6 +1414,7 @@ class RunResultRow(BaseModel):
     # monotonic executor totals with no time argument, so a period's share is not derivable),
     # and a default of 0 turned that absence into a measured zero on every folded row.
     orders_submitted: int | None = None
+    orders_adopted: int | None = None
     orders_executed: int | None = None
     orders_denied: int | None = None
     orders_rejected: int | None = None
@@ -2452,6 +2526,7 @@ class AggregatedPortfolioRow(BaseModel):
     avg_spread: float = 0.0
     # Execution (per currency)
     orders_submitted: int = 0
+    orders_adopted: int = 0
     orders_executed: int = 0
     orders_denied: int = 0
     orders_rejected: int = 0
@@ -2460,7 +2535,7 @@ class AggregatedPortfolioRow(BaseModel):
     orders_undelivered: int = 0
     orders_unaccounted: int = 0
     sl_tp_triggered: int = 0
-    execution_rate_pct: float = 0.0     # orders_executed / orders_submitted
+    execution_rate_pct: float = 0.0     # orders_executed / (orders_submitted + orders_adopted)
     # Pending
     pending_total_resolved: int = 0
     pending_total_filled: int = 0

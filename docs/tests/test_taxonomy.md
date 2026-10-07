@@ -108,6 +108,7 @@ tests/
 │   ├── market_calendar/  unit — swap-rollover + DST calendar helpers + MarketClock awareness (#365)
 │   ├── test_price_trigger.py  unit — the shared order-vs-quote predicate: limit/stop reached, book side (#505)
 │   ├── test_order_endings.py  unit — one status per way an order ends, in both pipelines, and the counts declared from them (#362)
+│   ├── order_events/      unit — every order transition as one event in both pipelines: the declared vocabulary held to the source, each order life step by step, the stream file, its run-index listing (#362)
 │   ├── test_time_utils_utc.py  unit — every parsed or normalised datetime is UTC, also on a machine in another zone
 │   ├── test_server_clock.py  unit — a broker server's wall clock to UTC through the zone's daylight saving rules: both seasons, the changed hours refused (#562)
 │   ├── market_compatibility/ unit — market activity metric, validator

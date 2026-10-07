@@ -111,6 +111,12 @@ A missing report section names its cause from the run's index row —
 started with `reporting: none`, `run_not_completed` for one with no artifact yet,
 `artifact_not_produced` for a section the run did not write.
 
+The order-event stream (#362) is served from the run's stream file —
+`TestTheOrderEventStream` in `test_reports_endpoint.py`: every step in stream order with its
+declared key, the served names a consumer keys on (`record_plane`, `lost_request`), the unit and
+order filters, a line cut off mid-write left out and reported, a damaged stream answered
+`artifact_unreadable` rather than a server error, and a run without one naming why.
+
 ## Row keys (`test_row_keys.py`)
 
 Every list the API serves says what makes one of its rows unique, and this file is what makes

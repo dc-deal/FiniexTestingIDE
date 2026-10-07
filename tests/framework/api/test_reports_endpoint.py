@@ -21,6 +21,7 @@ from python.framework.reporting.io.artifact_specs import (
     BROKER_ARTIFACT,
     EXECUTION_STATS_ARTIFACT,
     FEED_STABILITY_ARTIFACT,
+    ORDER_EVENTS_STREAM,
     ORDER_HISTORY_ARTIFACT,
     PENDING_ORDERS_ARTIFACT,
     PORTFOLIO_ARTIFACT,
@@ -30,6 +31,7 @@ from python.framework.reporting.io.artifact_specs import (
     TRADE_HISTORY_ARTIFACT,
     WARNINGS_ERRORS_ARTIFACT,
 )
+from python.framework.reporting.io.order_event_stream_io import write_order_event_stream
 from python.framework.reporting.io.report_artifact_io import write_artifact
 from python.framework.reporting.store.report_store import IO_SUBDIR, ReportStore
 from python.framework.reporting.store.run_index import RunIndex
@@ -78,6 +80,11 @@ from python.framework.types.api.report_types import (
 )
 from python.framework.types.config_types.file_logging_config_types import RunLogPaths
 from python.framework.types.log_layout_types import RUN_TYPE_AUTOTRADER, RUN_TYPE_SIMULATION
+from python.framework.types.trading_env_types.order_event_types import (
+    OrderEvent,
+    OrderEventType,
+    OrderOperation,
+)
 
 # Every report artifact names its run (#475); the value is opaque to these tests.
 _RUN_ID = '20260830_120000_a1b2c3d4'
@@ -150,7 +157,8 @@ def _portfolio_report() -> PortfolioReport:
 
 def _execution_stats_report() -> ExecutionStatsReport:
     unit = ExecutionStatsRow(
-        name='s1', symbol='EURUSD', orders_submitted=5, orders_executed=4, orders_denied=0,
+        name='s1', symbol='EURUSD', orders_submitted=5, orders_adopted=0, orders_executed=4,
+        orders_denied=0,
         orders_rejected=1, orders_cancelled=0, orders_expired=0, orders_undelivered=0,
         orders_unaccounted=0, sl_tp_triggered=2)
     totals = ExecutionStatsTotals(
@@ -618,3 +626,102 @@ class TestTheRunListSaysWhichKindARunIs:
         assert run['data_windows'] == [{'unit_name': 'my_profile',
                                         'start_date': '2026-08-11T00:00:00+00:00',
                                         'end_date': '2026-08-14T00:00:00+00:00'}]
+
+
+class TestTheOrderEventStream:
+    """
+    Every step in an order's life, served from the stream a run writes as it goes (#362) — so a
+    run that is still going, or one that died before its report, is readable all the same.
+    """
+
+    _URL = f'/api/v1/reports/runs/{_RUN}/order-events'
+
+    @staticmethod
+    def _plant_stream(tmp_path: Path, tail: str = '') -> None:
+        """
+        A two-unit stream in the fixture run's io/ folder.
+
+        Args:
+            tmp_path: The fixture's tmp tree
+            tail: Text appended after the last complete line — a line cut off mid-write
+        """
+        io_dir = _run_logs(tmp_path).simulation / 'my_set' / _RUN / IO_SUBDIR
+        moment = datetime(2026, 6, 15, 12, 0, tzinfo=timezone.utc)
+        write_order_event_stream(io_dir, _RUN_ID, [
+            ('btc_run', [
+                OrderEvent(seq=1, event_type=OrderEventType.SUBMITTED, order_id='pos_btcusd_1',
+                           submitted_seq=1, event_time=moment),
+                OrderEvent(seq=2, event_type=OrderEventType.ACCEPTED, order_id='pos_btcusd_1',
+                           submitted_seq=1, in_flight_ms=40.0, event_time=moment),
+            ]),
+            ('eth_run', [
+                OrderEvent(seq=1, event_type=OrderEventType.DENIED, order_id='pos_ethusd_1',
+                           event_time=moment),
+            ]),
+        ])
+        if tail:
+            with open(io_dir / ORDER_EVENTS_STREAM, 'a', encoding='utf-8') as handle:
+                handle.write(tail)
+
+    def test_every_step_is_served_in_stream_order_with_its_key(self, client, tmp_path):
+        self._plant_stream(tmp_path)
+
+        body = client.get(self._URL).json()
+
+        assert [(e['scenario_name'], e['seq'], e['event_type']) for e in body['events']] == [
+            ('btc_run', 1, 'submitted'), ('btc_run', 2, 'accepted'), ('eth_run', 1, 'denied')]
+        assert body['count'] == 3
+        assert body['key'] == ['scenario_name', 'seq']
+        assert body['truncated_tail'] is False
+
+    def test_the_served_names_are_the_contract(self, client, tmp_path):
+        """
+        The names a consumer keys on, as they arrive: each carries the qualifier that tells it
+        apart from a served word with another meaning — the strategy and valuation planes, the
+        profiling report's `operation`.
+        """
+        io_dir = _run_logs(tmp_path).simulation / 'my_set' / _RUN / IO_SUBDIR
+        write_order_event_stream(io_dir, _RUN_ID, [('btc_run', [
+            OrderEvent(seq=1, event_type=OrderEventType.UNRESOLVED, order_id='pos_btcusd_1',
+                       submitted_seq=1, lost_request=OrderOperation.MODIFY),
+        ])])
+
+        event = client.get(self._URL).json()['events'][0]
+
+        assert (event['record_plane'], event['lost_request']) == ('bot', 'modify')
+        assert 'plane' not in event and 'operation' not in event
+
+    def test_it_narrows_to_one_unit_or_one_order(self, client, tmp_path):
+        self._plant_stream(tmp_path)
+
+        by_unit = client.get(self._URL, params={'scenario_name': 'eth_run'}).json()
+        by_order = client.get(self._URL, params={'order_id': 'pos_btcusd_1'}).json()
+
+        assert [e['order_id'] for e in by_unit['events']] == ['pos_ethusd_1']
+        assert [e['seq'] for e in by_order['events']] == [1, 2]
+
+    def test_a_line_cut_off_mid_write_is_left_out_and_said(self, client, tmp_path):
+        self._plant_stream(tmp_path, tail='{"scenario_name": "btc_run", "seq": 3')
+
+        body = client.get(self._URL).json()
+
+        assert body['count'] == 3
+        assert body['truncated_tail'] is True
+
+    def test_a_damaged_stream_is_unreadable_not_a_server_error(self, client, tmp_path):
+        self._plant_stream(tmp_path)
+        path = _run_logs(tmp_path).simulation / 'my_set' / _RUN / IO_SUBDIR / ORDER_EVENTS_STREAM
+        lines = path.read_text(encoding='utf-8').splitlines()
+        lines.insert(2, '{"broken')
+        path.write_text('\n'.join(lines) + '\n', encoding='utf-8')
+
+        response = client.get(self._URL)
+
+        assert response.status_code == 409
+        assert response.json()['error'] == 'artifact_unreadable'
+
+    def test_a_run_without_a_stream_names_why(self, client):
+        response = client.get(self._URL)
+
+        assert response.status_code == 404
+        assert response.json()['error'] != 'run_not_found', 'the run is right there'

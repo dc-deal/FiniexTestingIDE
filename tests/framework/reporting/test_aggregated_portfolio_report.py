@@ -58,7 +58,8 @@ def _pf(name, currency='USD', symbol='EURUSD', spot=False, trades=2, win=1, lose
 
 def _ex(name, sent=2, executed=2, rejected=0, sl_tp=0, symbol='EURUSD') -> ExecutionStatsRow:
     return ExecutionStatsRow(
-        name=name, symbol=symbol, orders_submitted=sent, orders_executed=executed,
+        name=name, symbol=symbol, orders_submitted=sent, orders_adopted=0,
+        orders_executed=executed,
         orders_denied=0, orders_rejected=rejected, orders_cancelled=0, orders_expired=0,
         orders_undelivered=0, orders_unaccounted=0, sl_tp_triggered=sl_tp)
 

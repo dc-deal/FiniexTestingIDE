@@ -329,6 +329,9 @@ class PortfolioSummary(AbstractBatchSummarySection):
         if execution is None:
             return ''
         line = f'Orders: {execution.orders_executed}/{execution.orders_submitted} executed'
+        if execution.orders_adopted:
+            # An adopted order that fills is executed here without having been submitted here
+            line += f' · {execution.orders_adopted} adopted'
         endings = order_endings_text(execution, renderer)
         if endings:
             line += f' | {endings}'
@@ -484,10 +487,11 @@ class PortfolioSummary(AbstractBatchSummarySection):
         print(f"\n{renderer.bold('   ORDER EXECUTION:')}")
         endings = order_endings_text(row, renderer)
         print(f'      Orders Submitted: {row.orders_submitted}  |  '
-              f'Executed: {row.orders_executed}'
+              + (f'Adopted: {row.orders_adopted}  |  ' if row.orders_adopted else '')
+              + f'Executed: {row.orders_executed}'
               + (f'  |  {endings}' if endings else ''))
 
-        if row.orders_submitted > 0:
+        if row.orders_submitted > 0 or row.orders_adopted > 0:
             print(f'      Execution Rate: {row.execution_rate_pct:.1f}%')
 
         # Pending order statistics (green)

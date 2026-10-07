@@ -321,6 +321,37 @@ class TestTheTimeoutAsksBeforeItBooks:
         assert not _rejections(executor)
 
 
+    @ACCOUNT_MODELS
+    def test_a_part_executed_while_the_cancel_travelled_is_booked(self, spot_mode):
+        """
+        The read before the cancel is older than the cancel.
+
+        0.004 of 0.01 executes between our read and our cancel; the venue then cancels the
+        rest and confirms. Decided from the first read, that was a clean cancel and the
+        0.004 the venue bought was missing from the book.
+        """
+        class ExecutesWhileTheCancelTravels(AcknowledgingVenueMock):
+            def do_request_cancel(self, payload):
+                self.set_venue_status(
+                    payload['broker_ref'], 'PENDING', filled_lots=0.004, fill_price=_ASK)
+                return super().do_request_cancel(payload)
+
+        venue = ExecutesWhileTheCancelTravels()
+        venue.fill_market_orders = False
+        executor = _executor(venue, spot_mode)
+        order_id = _acknowledged_open(executor)
+        _expire_fill_timeout(executor, order_id)
+
+        _heartbeat(executor)
+
+        positions = executor.get_open_positions()
+        assert len(positions) == 1, 'the executed part is a position the venue opened'
+        assert positions[0].lots == pytest.approx(0.004)
+        assert not _rows(executor, OrderStatus.CANCELLED), (
+            'one row per order: the fill of what executed, not a clean cancel')
+        assert executor.get_request_processor().get_order(order_id) is None
+
+
 class TestAFailedReadIsNotARejection:
     """A status read that fails refused the QUESTION, not the order."""
 

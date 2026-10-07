@@ -34,6 +34,7 @@ from python.framework.types.scenario_types.scenario_set_types import SingleScena
 from python.framework.types.signal_data_types import SignalResolutionStats, SignalSeries
 from python.framework.types.run_results_types import BookingPeriod
 from python.framework.types.trading_env_types.broker_types import BrokerType
+from python.framework.types.trading_env_types.order_event_types import OrderEvent
 from python.framework.types.trading_env_types.order_types import OrderResult
 from python.framework.types.trading_env_types.pending_order_stats_types import PendingOrderStats
 from python.framework.types.trading_env_types.stress_test_types import StressTestConfig
@@ -546,6 +547,10 @@ class ProcessTickLoopResult:
 
     # Order history (all orders including rejections)
     order_history: List[OrderResult] = None
+
+    # Every order transition of the scenario (#362) — uncapped, unlike the order history.
+    # The report writes them; the subprocess cannot write a run artifact itself
+    order_events: Optional[List[OrderEvent]] = None
 
     # Pending order statistics (latency, outcomes, anomalies)
     pending_stats: PendingOrderStats = None

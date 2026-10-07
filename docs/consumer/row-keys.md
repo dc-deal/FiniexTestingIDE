@@ -14,6 +14,7 @@ So every list says what makes one of its rows unique:
 { "key": ["deployment_id", "currency"],        "deployments": [ ... ] }
 { "key": ["run_id", "currency"],               "sessions":    [ ... ] }
 { "key": ["run_id", "unit_name", "period_no"], "periods":     [ ... ] }
+{ "key": ["scenario_name", "seq"],             "events":      [ ... ] }
 ```
 
 It is machine-readable on purpose. You can assert against it rather than read it, and a key that

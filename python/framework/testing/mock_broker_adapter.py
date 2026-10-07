@@ -27,7 +27,7 @@ Usage:
 import copy
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 from python.framework.exceptions.connection_errors import ConnectionAttemptFailedError
 from python.framework.trading_env.adapters.abstract_adapter import AbstractAdapter
@@ -174,6 +174,9 @@ class MockBrokerAdapter(AbstractAdapter):
         # without a record of it a test can only observe that our own book forgot the order
         # — which is exactly what a cleanup that never reached the venue also looks like.
         self._cancelled_refs: List[str] = []
+        # What a cancel found still working. A venue keeps a cancelled order readable, so a
+        # read after the cancel answers CANCELLED rather than naming no such order.
+        self._venue_cancelled: Set[str] = set()
         # Injected transport faults, per operation ('submit' / 'query' / 'cancel' /
         # 'modify') → (message, terminal). A test cannot otherwise produce the state #487
         # is about: the sync paths catch their own exception and return a failure RESPONSE,
@@ -577,13 +580,16 @@ class MockBrokerAdapter(AbstractAdapter):
     def do_request_query(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         """
         Simulate broker query transport. DELAYED_FILL flips PENDING→FILLED
-        on first query; TIMEOUT keeps the order PENDING forever. Unknown
-        broker_ref yields a REJECTED tag.
+        on first query; TIMEOUT keeps the order PENDING forever. An order a
+        cancel found working reads CANCELLED. Unknown broker_ref yields a
+        REJECTED tag.
         """
         self._raise_injected_fault('query')
         broker_ref = payload['broker_ref']
 
         if broker_ref not in self._mock_pending:
+            if broker_ref in self._venue_cancelled:
+                return {'status': 'CANCELLED', 'broker_ref': broker_ref}
             return {
                 'status': 'REJECTED',
                 'broker_ref': broker_ref,
@@ -623,7 +629,8 @@ class MockBrokerAdapter(AbstractAdapter):
         # still holds the order.
         self._raise_injected_fault('cancel')
         broker_ref = payload['broker_ref']
-        self._mock_pending.pop(broker_ref, None)
+        if self._mock_pending.pop(broker_ref, None) is not None:
+            self._venue_cancelled.add(broker_ref)
         self._cancelled_refs.append(broker_ref)
         return {
             'status': 'CANCELLED',

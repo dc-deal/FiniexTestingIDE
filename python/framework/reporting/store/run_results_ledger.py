@@ -72,7 +72,7 @@ LEDGER_COLUMNS: List[str] = [
     # #362 — one count per thing counted: the submissions, then the rows by the status they
     # ended with. The list is EXECUTION_COUNT_FIELDS, spelled out here because column order is
     # part of the fragment layout.
-    'orders_submitted', 'orders_executed', 'orders_denied', 'orders_rejected',
+    'orders_submitted', 'orders_adopted', 'orders_executed', 'orders_denied', 'orders_rejected',
     'orders_cancelled', 'orders_expired', 'orders_undelivered', 'orders_unaccounted',
     'sl_tp_triggered',
     'signal_fresh_ratio',
@@ -241,6 +241,7 @@ COLUMN_REDUCTION: Dict[str, Reduction] = {
     'r_win_count': Reduction.SUM,
     'r_loss_count': Reduction.SUM,
     'orders_submitted': Reduction.SUM,
+    'orders_adopted': Reduction.SUM,
     'orders_executed': Reduction.SUM,
     'orders_denied': Reduction.SUM,
     'orders_rejected': Reduction.SUM,

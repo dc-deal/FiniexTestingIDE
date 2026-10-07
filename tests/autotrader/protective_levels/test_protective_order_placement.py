@@ -17,6 +17,8 @@ the declaration rather than on the confirmation would leave the level with neith
 defect #500 exists to prevent, reinstated at the exact moment it is hardest to notice.
 """
 
+import pytest
+
 from python.framework.logging.global_logger import GlobalLogger
 from python.framework.testing.mock_broker_adapter import MockExecutionMode
 from python.framework.testing.mock_order_execution import MockOrderExecution
@@ -243,3 +245,66 @@ class TestTheWindowBeforeTheVenueAnswers:
         assert protective_id.rsplit('_', 1)[-1] != next_entry_id.rsplit('_', 1)[-1], (
             f'{protective_id} and {next_entry_id} share a trailing counter, so they '
             f'produce the same wire key and the venue refuses the second')
+
+
+ACCOUNT_MODELS = pytest.mark.parametrize('spot_mode', [False, True], ids=['margin', 'spot'])
+
+
+def _small_protected_account(spot_mode: bool) -> LiveTradeExecutor:
+    """
+    A 1,000 USD account holding one protected LONG of 0.01 BTC, its stop resting at the venue.
+
+    About 500 USD is spent on the entry, so a claim of the stop's value would leave too
+    little for a second buy of 0.005 BTC.
+
+    Args:
+        spot_mode: Which account model the portfolio keeps
+
+    Returns:
+        The executor
+    """
+    mock = MockOrderExecution(mode=MockExecutionMode.INSTANT_FILL)
+    executor = LiveTradeExecutor(
+        broker_config=BrokerConfig(
+            BrokerType.KRAKEN_SPOT,
+            VenueHoldsProtectionMock(mode=MockExecutionMode.INSTANT_FILL)),
+        initial_balance=1000.0,
+        account_currency='USD',
+        logger=GlobalLogger('ProtectiveClaim'),
+        venue_held_protection=True,
+        session_key='test',
+        spot_mode=spot_mode,
+        initial_balances={'USD': 1000.0, 'BTC': 0.0} if spot_mode else None,
+    )
+    _open_protected_long(executor, mock)
+    mock.await_submit_confirmation(executor)
+    return executor
+
+
+class TestItClaimsNoFunds:
+    """
+    A protective order reserves nothing of the account.
+
+    The venue holds nothing against a resting exit, and a backtest's counterpart, the
+    position's own stop-loss, is no order at all. Measured before the fix: the stop's own
+    trading side was read as a close of a SHORT, so a sell stop held its position's value in
+    USD — 4,912.74 for a 0.1 BTC stop — and a live session refused a buy the backtest fills.
+    """
+
+    @ACCOUNT_MODELS
+    def test_a_resting_protective_stop_claims_no_currency(self, spot_mode):
+        executor = _small_protected_account(spot_mode)
+        assert _protective_orders(executor), 'fixture: the stop rests at the venue'
+
+        assert executor.get_committed_funds('USD') == 0.0
+        assert executor.get_committed_funds('BTC') == 0.0
+
+    @ACCOUNT_MODELS
+    def test_a_second_buy_beside_it_is_not_refused(self, spot_mode):
+        executor = _small_protected_account(spot_mode)
+
+        second = executor.open_order(OpenOrderRequest(
+            symbol=_SYMBOL, order_type=OrderType.MARKET, direction=OrderDirection.LONG,
+            lots=0.005))
+
+        assert not second.is_refused, second.rejection_message

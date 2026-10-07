@@ -81,6 +81,15 @@ has the three cases side by side.
 A run with no artifacts at all exists as logs only, which is a legitimate state and not an
 omission.
 
+## `stream_files` — the run's streams
+
+`stream_files` names the run's streams: today the [order events](/api/v1/docs/order-events). A
+live session writes them as it runs, a backtest with its report. They are kept out of `artifacts`
+on purpose. A live
+session writes its stream from its first order, so a session that ended without its report still
+has one — counted as an artifact, it would read as reported. Ask for a stream whenever it is
+listed, whatever `artifacts` says.
+
 ## What the run did
 
 The figures come from the run-results ledger, joined into this same request — so listing runs

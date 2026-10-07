@@ -126,7 +126,11 @@ class RunLedgerIndex(AbstractStoreIndex):
     # meaning — its `logic_version` says which — and answers None for every other count,
     # `orders_submitted` included: its old counts are not re-derivable, so nothing is carried
     # over.
-    LOGIC_VERSION: int = 16
+    # 16 → 17 (contract 23, #362): `orders_adopted` — the orders a session took over at boot
+    # from a previous one — beside `orders_submitted`, which until now counted them as its own.
+    # A fragment written before this version answers None for it, and its `orders_submitted`
+    # still holds the adoptions.
+    LOGIC_VERSION: int = 17
 
     def __init__(self, ledger_dir: Path, columns: List[str]):
         super().__init__(Path(ledger_dir) / LEDGER_INDEX_FILE)

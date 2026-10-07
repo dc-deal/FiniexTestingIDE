@@ -14,8 +14,7 @@ Each Position contains List[AbstractTradingFee] that accumulate over time.
 """
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import datetime
 
 from python.framework.trading_env.abstract_trading_fee import AbstractTradingFee
 from python.framework.types.trading_env_types.broker_types import FeeStatus, FeeType
@@ -57,8 +56,8 @@ class SpreadFee(AbstractTradingFee):
         ask: float,
         lots: float,
         tick_value: float,
-        digits: int = 5,
-        timestamp: Optional[datetime] = None
+        timestamp: datetime,
+        digits: int = 5
     ):
         """
         Initialize spread fee from live tick data.
@@ -68,13 +67,13 @@ class SpreadFee(AbstractTradingFee):
             ask: Current ask price
             lots: Order size
             tick_value: Value per tick per lot
+            timestamp: Fee timestamp, from the executor's canonical clock
             digits: Symbol decimal places
-            timestamp: Fee timestamp (defaults to now)
         """
         super().__init__(
             fee_type=FeeType.SPREAD,
             status=FeeStatus.APPLIED,  # Spread is immediate
-            timestamp=timestamp or datetime.now(timezone.utc)
+            timestamp=timestamp
         )
 
         self.bid = bid
@@ -151,7 +150,7 @@ class SwapFee(AbstractTradingFee):
         days_held: int,
         tick_value: float,
         lots: float,
-        timestamp: Optional[datetime] = None
+        timestamp: datetime
     ):
         """
         Initialize swap fee for one accrued rollover crossing.
@@ -166,7 +165,7 @@ class SwapFee(AbstractTradingFee):
         super().__init__(
             fee_type=FeeType.SWAP,
             status=FeeStatus.APPLIED,  # Charged at the rollover instant
-            timestamp=timestamp or datetime.now(timezone.utc)
+            timestamp=timestamp
         )
 
         self.swap_rate_points = swap_rate_points
@@ -235,9 +234,9 @@ class CommissionFee(AbstractTradingFee):
         commission_mode: str,
         commission_rate: float,
         lots: float,
+        timestamp: datetime,
         order_value: float = 0.0,
-        side: str = 'entry',
-        timestamp: Optional[datetime] = None
+        side: str = 'entry'
     ):
         """
         Initialize commission fee (calculation deferred).
@@ -246,14 +245,14 @@ class CommissionFee(AbstractTradingFee):
             commission_mode: "per_lot" or "percentage"
             commission_rate: Commission amount or percentage
             lots: Order size
+            timestamp: Fee timestamp, from the executor's canonical clock
             order_value: Order value in account currency (for percentage)
             side: "entry", "exit", or "both"
-            timestamp: Fee timestamp
         """
         super().__init__(
             fee_type=FeeType.COMMISSION,
             status=FeeStatus.PENDING,
-            timestamp=timestamp or datetime.now(timezone.utc)
+            timestamp=timestamp
         )
 
         self.commission_mode = commission_mode
@@ -326,7 +325,7 @@ class MakerTakerFee(AbstractTradingFee):
         maker_rate: float,
         taker_rate: float,
         order_value: float,
-        timestamp: Optional[datetime] = None
+        timestamp: datetime
     ):
         """
             Initialize maker/taker fee.
@@ -336,12 +335,12 @@ class MakerTakerFee(AbstractTradingFee):
                 maker_rate: Maker fee percentage
                 taker_rate: Taker fee percentage
                 order_value: Order value in account currency
-                timestamp: Fee timestamp
+                timestamp: Fee timestamp, from the executor's canonical clock
             """
         super().__init__(
             fee_type=FeeType.MAKER_TAKER,
             status=FeeStatus.APPLIED,  # Fee applied immediately on fill
-            timestamp=timestamp or datetime.now(timezone.utc)
+            timestamp=timestamp
         )
 
         self.is_maker = is_maker

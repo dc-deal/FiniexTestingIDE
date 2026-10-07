@@ -53,6 +53,7 @@ from python.framework.types.process_data_types import (
     ProcessTickLoopResult,
 )
 from python.framework.types.trading_env_types.currency_codes import format_currency_simple
+from python.framework.types.trading_env_types.order_event_types import OrderEvent
 from python.framework.utils.process_debug_info_utils import (
     get_tick_range_stats,
     processed_tick_range_stats,
@@ -164,6 +165,12 @@ def execute_tick_loop(
     market_data_tracker = MarketDataEpisodeTracker(
         source=config.broker_type.value if config.broker_type else '',
         logger=scenario_logger)
+
+    # #362 — the scenario's order-event stream, collected here and carried back with the
+    # result: a scenario subprocess writes no run artifact itself. Registered before the first
+    # order, and it holds what the order history may drop — that list is capped, this is not.
+    order_events: List[OrderEvent] = []
+    trade_simulator.add_order_event_listener(order_events.append)
 
     try:
         portfolio = trade_simulator.portfolio
@@ -540,6 +547,7 @@ def execute_tick_loop(
             cost_breakdown=cost_breakdown,
             trade_history=trade_history,
             order_history=order_history,
+            order_events=order_events,
             pending_stats=pending_stats,
             open_positions=open_positions,
             profiling_data=ProcessProfileData(

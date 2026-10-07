@@ -43,7 +43,6 @@ State updates flow through two paths:
 
 from datetime import datetime, timedelta
 from typing import Dict, Optional, Set
-from uuid import uuid4
 
 from python.framework.types.trading_env_types.market_data_status_types import MarketDataStatus
 from python.framework.types.trading_env_types.order_types import (
@@ -82,6 +81,7 @@ class OrderGuard:
         self._block_stale_market_data = block_stale_market_data
         self._rejection_counts: Dict[OrderDirection, int] = {}
         self._cooldown_until: Dict[OrderDirection, datetime] = {}
+        self._denials_issued = 0
 
     # ============================================
     # Validation
@@ -239,7 +239,14 @@ class OrderGuard:
     # Internals
     # ============================================
 
-    @staticmethod
-    def _make_order_id() -> str:
-        """Distinct prefix makes guard rejections identifiable in logs."""
-        return f'guard_{uuid4().hex[:8]}'
+    def _make_order_id(self) -> str:
+        """
+        The id of the next denial: a distinct prefix makes guard rejections identifiable in
+        logs, and a COUNTER rather than a random suffix makes two identical backtests record
+        identical ids — the order-event stream of one has to equal the other's (#362).
+
+        Returns:
+            `guard_<n>`, unique within this guard's unit
+        """
+        self._denials_issued += 1
+        return f'guard_{self._denials_issued}'

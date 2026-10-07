@@ -26,6 +26,8 @@ def build_live_executor(
     balances: dict[str, float],
     account_currency: str,
     logger: AbstractLogger,
+    order_history_max: int,
+    trade_history_max: int,
     timeout_config: Optional[TimeoutConfig] = None,
     spot_mode: bool = False,
     poll_interval_ms: int = 5000,
@@ -45,6 +47,9 @@ def build_live_executor(
         balances: Asset balances (e.g., {'USD': 10000} or {'USD': 50.0, 'ETH': 0.0})
         account_currency: Account currency (e.g., 'USD')
         logger: Logger instance
+        order_history_max: Max order history entries (0=unlimited). Sourced from
+            app_config.json::history, the same block the simulation reads.
+        trade_history_max: Max trade history entries (0=unlimited), same source.
         timeout_config: Order timeout thresholds (default: 30s timeout)
         spot_mode: Enable spot trading mode
         poll_interval_ms: Per-order async poll throttle in ms (#320, default 5000).
@@ -99,4 +104,6 @@ def build_live_executor(
         venue_read_settle_seconds=venue_read_settle_seconds,
         session_key=session_key,
         venue_held_protection=venue_held_protection,
+        order_history_max=order_history_max,
+        trade_history_max=trade_history_max,
     )

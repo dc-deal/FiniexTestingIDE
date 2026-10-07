@@ -142,10 +142,10 @@ class TestTheStatusMapIsComplete:
             if field_name is not None:
                 assert field_name == f'orders_{status.value}'
 
-    def test_every_order_count_is_a_status_or_the_submissions(self):
+    def test_every_order_count_is_a_status_a_submission_or_an_adoption(self):
         counted = {name for name in EXECUTION_STATS_FIELD_BY_STATUS.values() if name}
         order_counts = {f.name for f in fields(ExecutionStats) if f.name.startswith('orders_')}
-        assert order_counts == counted | {'orders_submitted'}
+        assert order_counts == counted | {'orders_submitted', 'orders_adopted'}
 
     @pytest.mark.parametrize('model', [
         ExecutionStatsRow, ExecutionStatsTotals, RunSummary, RunResultRow,

@@ -53,6 +53,7 @@
 | [Simulation vs Live Flow](architecture/simulation_vs_autotrader_flow.md) | Side-by-side tick flow comparison |
 | [Live Execution](architecture/live_execution_architecture.md) | LiveTradeExecutor, broker polling, LiveRequestProcessor |
 | [Pending Order Lifecycle](architecture/pending_order_architecture.md) | 3-world model (latency, limit, stop), trigger logic |
+| [Order-Event Stream](architecture/order_event_stream.md) | One record per order transition in both pipelines — the vocabulary and who writes it, where each step is recorded, the stream on disk and in the run index, determinism (#362) |
 | [Broker Trade Records](architecture/broker_trade_records.md) | Order ↔ executions pairing model, BrokerTrade type, Tier-3 trades-query layer |
 | [Trade Execution Visibility](architecture/trade_execution_visibility.md) | Trigger / BrokerOrder / Fills three-level model, Position.entry_trades + TradeRecord.entry_trades / exit_trades propagation, sub-line rendering, long-format event-stream CSV (#330) |
 | [Market Model](architecture/market_model.md) | The three independent axes describing a venue — asset class, how a position is financed, and how prices come about — all eight combinations with what this project supports, and which price the strategy plane reads against the valuation plane |
@@ -198,6 +199,7 @@ Each test suite has its own documentation in [`tests/`](tests/).
 | [Indicator Tests](tests/framework/indicator_tests.md) | The shared indicator library: what each name means, that the per-tick and bulk forms of one indicator agree, and how much history each average needs |
 | [Price Trigger Tests](tests/framework/price_trigger_tests.md) | The shared order-vs-quote predicate: has the market reached this price, and which side of the book does this direction trade at |
 | [Order Endings Tests](tests/framework/order_endings_tests.md) | One status per way an order ends, in both pipelines — who refused it, who cancelled it, what the end of a run leaves — and the counts declared from them |
+| [Order Events Tests](tests/framework/order_events_tests.md) | Every order transition as one event in both pipelines — the declared vocabulary held to the source, each order life step by step, the stream file, the run index and the route |
 | [Trading Day Anchor Tests](tests/framework/trading_day_anchor_tests.md) | Where a market flips its trading day, and which day an instant belongs to — DST-aware, one answer for the log rotation, the daily-loss baseline and the record seal |
 | [Time Utils UTC Tests](tests/framework/time_utils_tests.md) | Every parsed or normalised datetime comes back in UTC — also on a machine whose own zone is not UTC |
 | [Server Clock Tests](tests/framework/server_clock_tests.md) | A broker server's wall clock to UTC through the zone's own daylight saving rules — both seasons, the payroll and weekly-open anchors, the changed hours refused |

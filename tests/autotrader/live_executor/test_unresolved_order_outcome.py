@@ -142,7 +142,7 @@ class TestPendingSurvives:
         processor.set_executor_hooks(
             fill_open=lambda p, price: None,
             fill_close=lambda p, price: None,
-            on_rejection=lambda pending, reason, message: notified.append(reason),
+            on_rejection=lambda pending, reason, message, venue_reason=None: notified.append(reason),
         )
 
         order_id = self._register(processor)

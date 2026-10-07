@@ -305,7 +305,9 @@ def aggregate_full_portfolio(
     lat_count = sum(p.latency_count for p in lat)
 
     counts = _summed_execution_counts(ex)
-    submitted = counts['orders_submitted']
+    # The orders whose endings the units count: the ones they sent, and the ones they took
+    # over at boot — an adopted order that fills is executed without having been submitted here
+    handled = counts['orders_submitted'] + counts['orders_adopted']
 
     return AggregatedPortfolioRow(
         headline=headline,
@@ -334,7 +336,7 @@ def aggregate_full_portfolio(
         taker_fee=sum(r.taker_fee for r in rows),
         avg_spread=total_spread / total_trades if total_trades > 0 else 0.0,
         **counts,
-        execution_rate_pct=(counts['orders_executed'] / submitted * 100) if submitted > 0 else 0.0,
+        execution_rate_pct=(counts['orders_executed'] / handled * 100) if handled > 0 else 0.0,
         pending_total_resolved=sum(p.total_resolved for p in pend),
         pending_total_filled=sum(p.total_filled for p in pend),
         pending_total_rejected=sum(p.total_rejected for p in pend),

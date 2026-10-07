@@ -227,6 +227,7 @@ class OrderLatencySimulator(AbstractPendingOrderManager):
         self,
         position_id: str,
         tick: TickData,
+        symbol: Optional[str] = None,
         close_lots: Optional[float] = None,
         close_reason: Optional[CloseReason] = None
     ) -> str:
@@ -238,6 +239,8 @@ class OrderLatencySimulator(AbstractPendingOrderManager):
         Args:
             position_id: Position to close
             tick: Current tick data (for timestamp extraction)
+            symbol: The position's symbol — carried on the order, so what it ends with still
+                names its instrument once the position is gone (#362)
             close_lots: Lots to close (None = close all)
             close_reason: Why the close was requested, or None for a plain strategy
                 close — it rides on the PendingOrder to the fill (#500)
@@ -259,6 +262,8 @@ class OrderLatencySimulator(AbstractPendingOrderManager):
                 broker_fill_msc=broker_fill_msc,
             ),
             order_action=PendingOrderAction.CLOSE,
+            order_type=OrderType.MARKET,
+            symbol=symbol,
             close_reason=close_reason,
             close_lots=close_lots,
             submission=SubmissionMetadata(

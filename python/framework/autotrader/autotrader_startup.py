@@ -753,6 +753,11 @@ def _build_executor(
             order_timeout_seconds=config.execution.order_timeout_seconds),
         resolution_config=config.execution.unresolved_resolution,
         venue_read_settle_seconds=config.execution.venue_read_settle_seconds,
+        # The history caps are the app's, not the profile's — the simulation reads the same
+        # block, and a live session that silently kept its constructor defaults would cap
+        # at a number no file states.
+        order_history_max=AppConfigManager().get_order_history_max(),
+        trade_history_max=AppConfigManager().get_trade_history_max(),
     )
     # The session log's event-time column pulls from the canonical clock. Attachable only
     # HERE: the logger goes INTO build_live_executor above, so it necessarily exists first.

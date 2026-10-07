@@ -77,6 +77,7 @@ from python.framework.types.trading_env_types.latency_simulator_types import (
     PendingOrderAction,
     PendingOrderTiming,
 )
+from python.framework.types.trading_env_types.order_event_types import OrderOperation
 from python.framework.types.trading_env_types.order_types import (
     RESTING_ORDER_TYPES,
     OrderDirection,
@@ -154,7 +155,8 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         # the executor's _active_*_orders / portfolio (Hybrid pattern).
         self._fill_open_hook: Optional[Callable[[PendingOrder, float], None]] = None
         self._fill_close_hook: Optional[Callable[[PendingOrder, float], None]] = None
-        self._rejection_hook: Optional[Callable[[PendingOrder, RejectionReason, str], None]] = None
+        self._rejection_hook: Optional[
+            Callable[[PendingOrder, RejectionReason, str, Optional[str]], None]] = None
         self._resting_response_hook: Optional[Callable[[str, 'BrokerResponse'], None]] = None
         self._modify_response_hook: Optional[Callable[[str, 'BrokerResponse'], None]] = None
         self._cancel_response_hook: Optional[Callable[[str, 'BrokerResponse'], None]] = None
@@ -172,6 +174,13 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         # said about a write whose answer was lost, so the executor can clear the in-flight
         # flag and decide RESOLVED_RESTING / RESOLVED_ABSENT / keep asking.
         self._order_resolve_hook: Optional[Callable[[OrderResolveResponse], None]] = None
+        # #362: order-event hooks — the venue took a MARKET order or close, its submit answer
+        # was lost, and how an order that is gone ended (for an answer that names it later).
+        # The executor records; this processor has no clock and no stream of its own.
+        self._accepted_hook: Optional[Callable[[PendingOrder], None]] = None
+        self._unresolved_hook: Optional[
+            Callable[[PendingOrder, OrderOperation, Optional[str]], None]] = None
+        self._describe_ending_hook: Optional[Callable[[str], str]] = None
 
     # ============================================
     # High-Level Orchestrators (sync in V1, async post-step-6)
@@ -372,6 +381,7 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         submission: Optional[SubmissionMetadata] = None,
         close_reason: Optional[CloseReason] = None,
         client_order_id: Optional[str] = None,
+        symbol: Optional[str] = None,
     ) -> str:
         """
         Track a submitted CLOSE order with broker reference.
@@ -393,6 +403,8 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
             client_order_id: The wire key this close is sent under (#487). It is NOT
                           derivable from position_id any more — a close mints its own
                           counter so an entry and its close stop sharing one key.
+            symbol: The position's symbol — so an ending recorded after the position is
+                          gone still names it (#362)
 
         Returns:
             position_id for chaining
@@ -410,6 +422,7 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
                 submitted_monotonic=submitted_monotonic),
             broker_ref=broker_ref,
             client_order_id=client_order_id,
+            symbol=symbol,
             close_lots=close_lots,
             close_reason=close_reason,
             submission=submission if submission else SubmissionMetadata(),
@@ -728,7 +741,7 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         self,
         fill_open: Callable[[PendingOrder, float], None],
         fill_close: Callable[[PendingOrder, float], None],
-        on_rejection: Callable[[PendingOrder, RejectionReason, str], None],
+        on_rejection: Callable[[PendingOrder, RejectionReason, str, Optional[str]], None],
         resting_response: Optional[Callable[[str, BrokerResponse], None]] = None,
         modify_response: Optional[Callable[[str, BrokerResponse], None]] = None,
         cancel_response: Optional[Callable[[str, BrokerResponse], None]] = None,
@@ -736,6 +749,10 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         trades_response: Optional[Callable[[TradesQueryResponse], None]] = None,
         query_response: Optional[Callable[[QueryResponse], None]] = None,
         order_resolve: Optional[Callable[[OrderResolveResponse], None]] = None,
+        on_accepted: Optional[Callable[[PendingOrder], None]] = None,
+        on_unresolved: Optional[
+            Callable[[PendingOrder, OrderOperation, Optional[str]], None]] = None,
+        describe_ending: Optional[Callable[[str], str]] = None,
     ) -> None:
         """
         Register executor callbacks for async outcomes.
@@ -750,8 +767,8 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
                        MARKET OPEN fills (portfolio add, history append)
             fill_close: _fill_close_order(pending, fill_price) — handles
                         MARKET CLOSE fills (portfolio close, history append)
-            on_rejection: _record_processor_rejection(pending, reason, message) —
-                          handles MARKET broker-side rejection (counter,
+            on_rejection: _record_processor_rejection(pending, reason, message,
+                          venue_reason) — handles MARKET broker-side rejection (counter,
                           history, listener notification). The executor builds
                           the record: it owns the canonical clock the
                           rejection is stamped with, and this processor does not
@@ -785,6 +802,12 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
             order_resolve: _handle_order_resolve_response(response) — invoked for
                             OrderResolveResponse so the executor can clear the
                             resolution in-flight flag and apply the verdict (#487).
+            on_accepted: _record_acceptance(pending) — the venue answered a MARKET order or
+                            close with its reference (#362)
+            on_unresolved: _record_unresolved(pending, operation, message) — the answer to
+                            a MARKET submit was lost (#362)
+            describe_ending: describe_recent_ending(order_id) — how an order that is no
+                            longer tracked ended, for the warning about a late answer
         """
         self._fill_open_hook = fill_open
         self._fill_close_hook = fill_close
@@ -796,6 +819,9 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         self._trades_response_hook = trades_response
         self._query_response_hook = query_response
         self._order_resolve_hook = order_resolve
+        self._accepted_hook = on_accepted
+        self._unresolved_hook = on_unresolved
+        self._describe_ending_hook = describe_ending
 
     def start_worker(self) -> None:
         """
@@ -1150,13 +1176,26 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
                 ))
                 return
 
-            match = self._find_by_client_key(
+            matches = self._orders_with_client_key(
                 job.adapter.get_broker_orders(), job.client_order_id)
-            if match is None:
-                match = self._find_by_client_key(
+            if not matches:
+                matches = self._orders_with_client_key(
                     job.adapter.get_closed_broker_orders(
                         job.range_start, job.range_end, job.client_order_id),
                     job.client_order_id)
+            if len(matches) > 1:
+                # Several orders carry our key. Picking one would be a guess about which, and
+                # answering "none" would read as "the venue never took it" — a verdict that
+                # books the order undelivered and sends a close parked behind it. A FAILED read
+                # is what this is: the resolution asks again, and its ceiling ends the question.
+                self._http_inbox.put(OrderResolveResponse(
+                    order_id=job.order_id,
+                    success=False,
+                    error_message=(f'{len(matches)} orders at the venue carry client order id '
+                                   f'{job.client_order_id} — not guessing which'),
+                ))
+                return
+            match = matches[0] if matches else None
 
             self._http_inbox.put(OrderResolveResponse(
                 order_id=job.order_id,
@@ -1172,27 +1211,28 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
             ))
 
     @staticmethod
-    def _find_by_client_key(
+    def _orders_with_client_key(
         orders: List[BrokerOrder],
         client_order_id: str,
-    ) -> Optional[BrokerOrder]:
+    ) -> List[BrokerOrder]:
         """
-        The one order carrying this wire key, or None when the answer names none.
+        Every order in a venue answer that carries this wire key.
 
-        Returns None when SEVERAL carry it as well, and that is deliberate. One key naming
-        two orders was the measured state before a close minted its own counter, and
-        picking one of them would be a guess about which — a resolution that guesses is
-        worse than one that keeps asking.
+        One key naming two orders was the measured state before a close minted its own
+        counter, and picking one of them would be a guess about which — a resolution that
+        guesses is worse than one that keeps asking. So the caller reads more than one as a
+        question it cannot answer yet. This used to return None for several matches, and the
+        caller read that None as "the venue names nothing", which is an answer: the order was
+        then booked undelivered.
 
         Args:
             orders: What the venue reported
             client_order_id: The key we sent
 
         Returns:
-            The single matching BrokerOrder, or None
+            The matching orders, in the venue's order
         """
-        matches = [o for o in orders if o.client_order_id == client_order_id]
-        return matches[0] if len(matches) == 1 else None
+        return [o for o in orders if o.client_order_id == client_order_id]
 
     def _dispatch_trades_query_job(self, job: TradesQueryJob) -> None:
         """
@@ -1326,8 +1366,10 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         # MARKET path: processor owns the storage in _pending_orders
         pending = self._pending_orders.get(item.order_id)
         if pending is None:
+            ended = (self._describe_ending_hook(item.order_id)
+                     if self._describe_ending_hook is not None else '')
             self.logger.warning(
-                f'drain_inbox: SubmitResponse for unknown order_id {item.order_id}'
+                f'drain_inbox: SubmitResponse for unknown order_id {item.order_id}{ended}'
             )
             return
 
@@ -1339,6 +1381,9 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
             # and the algo must not be told the venue refused something it never saw.
             # The pending stays, marked in-flight, and the query path resolves it.
             pending.execution_state.in_flight_operation = PendingOperation.PENDING_SUBMIT
+            if self._unresolved_hook is not None:
+                self._unresolved_hook(
+                    pending, OrderOperation.SUBMIT, response.rejection_reason)
             self.logger.error(
                 f'📡 Order {item.order_id} UNRESOLVED — the broker did not answer '
                 f'({response.rejection_reason}). Keeping it in flight; the venue may hold '
@@ -1355,7 +1400,8 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
             if self._rejection_hook is not None:
                 self._rejection_hook(
                     pending, RejectionReason.BROKER_ERROR,
-                    f"Broker rejected: {response.rejection_reason or 'unknown'}")
+                    f"Broker rejected: {response.rejection_reason or 'unknown'}",
+                    response.rejection_reason)
             return
 
         # Non-rejected: confirm broker_ref and update index
@@ -1367,6 +1413,8 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         # pending, and which one it is must not depend on ordering luck.
         pending.execution_state.resolution_deadline = None
         pending.execution_state.resolution_next_at = None
+        if self._accepted_hook is not None:
+            self._accepted_hook(pending)
 
         if response.is_filled:
             # The submit answer already carries the fill (today only the mock's INSTANT_FILL)

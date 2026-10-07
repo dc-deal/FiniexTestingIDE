@@ -90,8 +90,9 @@ class ExecutionStats:
     they live in CostBreakdown, the single cost source owned by the PortfolioManager.
 
     Each count carries the name of what it counts (#362). `orders_submitted` counts the
-    orders handed to the venue — opens, closes and protective orders; every other
-    `orders_<status>` counts the order-history rows that ended with that status, as
+    orders this unit handed to the venue — opens, closes and protective orders;
+    `orders_adopted` the orders a previous session sent and this one took over at boot; every
+    other `orders_<status>` counts the order-history rows that ended with that status, as
     `EXECUTION_STATS_FIELD_BY_STATUS` declares. A refusal made here never reached the
     venue, so it is denied and not submitted. They are counted where each row is booked,
     never re-counted from the history afterwards: the history is capped and drops its
@@ -99,6 +100,8 @@ class ExecutionStats:
 
     Attributes:
         orders_submitted: Orders handed to the venue — opens, closes, protective orders
+        orders_adopted: Orders a previous session sent, taken over at boot — they end here,
+            so an execution rate divides by both
         orders_executed: Rows `executed` — open and close fills
         orders_denied: Rows `denied` — refused here, never sent
         orders_rejected: Rows `rejected` — refused by the venue, the simulated one included
@@ -109,6 +112,7 @@ class ExecutionStats:
         sl_tp_triggered: Closes triggered by stop-loss / take-profit
     """
     orders_submitted: int = 0
+    orders_adopted: int = 0
     orders_executed: int = 0
     orders_denied: int = 0
     orders_rejected: int = 0

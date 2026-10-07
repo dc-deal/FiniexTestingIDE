@@ -36,9 +36,14 @@ from python.framework.types.trading_env_types.order_types import (
 
 
 class EventType(Enum):
-    """Discriminator for event-stream CSV rows."""
+    """
+    Discriminator for event-stream CSV rows.
+
+    Built from the finished trade and order records, so it holds what those records hold. An
+    order's acceptance by the venue and its amends are not among them — they are steps in the
+    order-event stream (#362), which records every transition as it happens.
+    """
     ORDER_SUBMIT = 'ORDER_SUBMIT'        # Trigger sent (algo decision)
-    ORDER_ACCEPT = 'ORDER_ACCEPT'        # Broker assigned broker_ref (LIMIT/STOP)
     ORDER_REJECT = 'ORDER_REJECT'        # Refused — by us (status denied) or by the venue (rejected)
     FILL = 'FILL'                        # One BrokerTrade — atomic execution
     POSITION_OPEN = 'POSITION_OPEN'      # _fill_open_order finalized
@@ -46,7 +51,6 @@ class EventType(Enum):
     POSITION_CLOSE = 'POSITION_CLOSE'    # _fill_close_order finalized (full or partial)
     ORDER_CANCEL = 'ORDER_CANCEL'        # Active order cancelled
     ORDER_END = 'ORDER_END'              # Ended unfilled and unrefused: expired, undelivered, unaccounted — the status says which
-    ORDER_MODIFY = 'ORDER_MODIFY'        # Active order modified
 
 
 # The statuses that end an order without a fill — each gets an event of its own (#362)

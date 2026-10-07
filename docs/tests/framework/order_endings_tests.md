@@ -29,7 +29,7 @@ currency, per run, per ledger row — carries all of them.
 |------|-------------|
 | `test_every_status_is_counted_or_declared_uncounted` | the map's keys are the whole enum |
 | `test_every_status_count_names_its_status` | `orders_<status>` — the name IS the mapping |
-| `test_every_order_count_is_a_status_or_the_submissions` | no `orders_*` field counts something undeclared |
+| `test_every_order_count_is_a_status_a_submission_or_an_adoption` | no `orders_*` field counts something undeclared — beside the statuses only the submissions and the orders taken over at boot |
 | `test_every_model_passing_the_counts_on_carries_every_count` | parametrized over the report models |
 | `test_the_ledger_has_a_summed_column_for_every_count` | a count with no column is dropped at the ledger, one with the wrong reduction is folded wrong |
 

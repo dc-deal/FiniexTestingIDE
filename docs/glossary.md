@@ -24,6 +24,11 @@ run fit together; the linked documents explain the rest.
 
 ---
 
+**accepted** (an order event) — The venue took the order: it answered with its reference, the
+order started resting, or it filled in its answer. Recorded once per order, before its first fill;
+in a backtest when the order arrives at the simulated venue. Not an order-history status — the order
+history records how orders end. See [Order-Event Stream](architecture/order_event_stream.md).
+
 **account** — One run unit's own balance. A backtest has one per scenario, each started from its
 own capital; an AutoTrader session has one. A figure that means one account's value (`final_equity`,
 `max_equity`, the drawdown) is null wherever it would have to speak for several, and a sum over
@@ -42,6 +47,11 @@ list. See *resting*.
 **adapter** (broker adapter) — The code that speaks one venue's API behind one interface the rest
 of the framework uses. Chosen by `adapter_type`: `mock` for the broker-neutral `MockBrokerAdapter`,
 `live` for a real venue's adapter. See [Adapter Development](user_guides/adapter/adapter_development_guide.md).
+
+**adopted** (`adopted` order event, `orders_adopted`) — An order a previous session sent and this
+one took over at its start: a resting order found at the venue under this bot's key, or a protective
+order carried over with its position. Counted apart from `orders_submitted`, which is what this
+session sent; an execution rate divides by both. See *carry-over*.
 
 **algo** — The user-authored code of a strategy, kept in `user_algos/`. See
 [User Algo Workspace](user_guides/user_modules_and_hot_reload_mechanics.md).
@@ -98,6 +108,9 @@ set's `global` block, then the scenario. For an AutoTrader profile: `app_config.
 defaults under the profile. The `user_configs/` override is a separate mechanism, not a level.
 See [Config Cascade](config_cascade_guide.md).
 
+**close type** (`close_type` on an order-history row and a trade) — Whether a close took the whole
+position (`full`) or part of it (`partial`). Set once the close fills; empty on every other row.
+
 **combination** — One point of a sweep's parameter grid, run as one ordinary backtest. See
 [Parameter Optimization](architecture/parameter_optimization_system.md).
 
@@ -142,6 +155,10 @@ header): a start, and an end unless it is open. Not a span over several units.
 **decision logic** — The one class that turns worker outputs into decisions. See
 [Quickstart](user_guides/quickstart_guide.md).
 
+**denied** (an order status and an order event) — Refused HERE, before anything was sent: a lot
+size the venue would not take, funds already committed, the order guard. Never submitted, so a
+denied order event carries no `submitted_seq`. A refusal the venue made is *rejected*.
+
 **deployment** — The sessions of one bot joined into one history by a `deployment_id`, because its
 profile declares `deployment.continuous: true`. Not itself a run. See
 [Deployment Ledger](user_guides/deployment_ledger_guide.md).
@@ -151,14 +168,21 @@ every order validated by the venue and never placed, fills simulated locally. A 
 called a dry run, although the `dry_run` flag reads true for it too. To be renamed *paper* (#304).
 See [AutoTrader Configuration](autotrader/autotrader_configuration.md).
 
+**end reason** (`end_reason`) — Why an order ended without filling: the strategy's cancel, a
+protective order released, the order timeout, the resolution ceiling, the end of the session or of
+the backtest's data, or the venue's own cancel or expiry. Stands beside *initiator* on the same row
+or event.
+
 **error count** (`error_count`) — The ERROR records in a run's error pot. A unit that failed
 without logging an error shows in the *run outcome*, not here. See
 [Warnings & Errors](architecture/warnings_errors_tiers.md).
 
-**event time** (`event_time` on an order-history row) — When that row's event happened, on the
-run's *canonical clock*: the submission on a `pending` row, the fill on an `executed` one, and on
-every other row the moment the order ended without a fill — refused, cancelled, expired,
-undelivered or unaccounted. A point in time — not the *execution time*, which is a duration.
+**event time** (`event_time` on an order-history row and an order event) — When that row's event
+happened, on the run's *canonical clock*: the submission on a `pending` row, the fill on an
+`executed` one, and on every other row the moment the order ended without a fill — refused,
+cancelled, expired, undelivered or unaccounted. On an order event, when that step happened; empty
+only for an order adopted before the session's first market data. A point in time — not the
+*execution time*, which is a duration.
 
 **execution time** — How long a run or one of its units took on the *wall clock*:
 `execution_time_ms` for a scenario, `execution_time_s` for a whole backtest run. It says nothing
@@ -176,11 +200,16 @@ a release certificate. See [Field Study](tests/live_field_study/field_study_guid
 **fragment** — One ledger file, written per run. Nothing else is called a fragment.
 
 **in flight** — A pending order that was sent and not yet acknowledged: in a backtest the latency
-simulator still holds it, in a session the venue has not yet answered. See
+simulator still holds it, in a session the venue has not yet answered. `in_flight_ms` on an order
+event is how long that took, on the acceptance or refusal that answers the submission — the modelled
+delay in a backtest, measured live, and empty where the answer was learned by asking. See
 [Pending Orders](architecture/pending_order_architecture.md).
 
 **index** — A derived single file, `<store>_index.parquet`, at the root of its store and rebuilt
 from the store's own entries. See [Data Storage Layout](architecture/data_storage_layout.md).
+
+**initiator** (`initiator`) — Who ended an order that did not fill — `strategy`, `framework` or
+`venue` — and, on a cancel request in the order-event stream, who asked for it. See *end reason*.
 
 **journal · ledger · closing** — The three bookkeeping levels. The *journal* is every booking in
 order (the trade records); the *ledger* holds the period summaries (one row per booking period and
@@ -211,6 +240,11 @@ archive. See [Signal Data Source](data_pipeline/signal_data_source.md).
 **log warning count** (`log_warning_count`) — The WARNING records in a run's log pot, Tier 2 —
 ignorable by design. Not the *warning count*. See [Warnings & Errors](architecture/warnings_errors_tiers.md).
 
+**lost request** (`lost_request` on an order event) — Which request's answer an `unresolved` or
+`resolved` event is about: `submit`, `cancel`, `modify`, or `status_read` — the read with which an
+order that waited too long for its fill is asked about. See [Order
+events](consumer/order-events.md).
+
 **market clock** — Not a term here: see *canonical clock* for the clock a decision reads, and
 *tick timespan* for the market time a unit processed.
 
@@ -218,6 +252,10 @@ ignorable by design. Not the *warning count*. See [Warnings & Errors](architectu
 `scenario_settings` window from the archive through the whole AutoTrader stack against the
 `MockBrokerAdapter`, places nothing, and is reported like every AutoTrader session. See
 [Mock Adapter](architecture/mock_adapter_guide.md).
+
+**modify · amend** — *Modify* is this project's word for changing a working order's price or
+size: `modify_requested`, `modified`, `modify_rejected`, and `modify` as a lost request. *Amend* is
+one venue's name for the same request and stays inside that venue's adapter.
 
 **observation** — A dry run whose profile pins `dry_run: true`, kept in
 `configs/autotrader_profiles/observation/`.
@@ -228,6 +266,13 @@ ignorable by design. Not the *warning count*. See [Warnings & Errors](architectu
 previous period's close, read at the same instant, or a unit's first observed value. Stamped, never
 `final_equity − net_pnl`, which would drop what was still open. See
 [Accounting Periods](architecture/accounting_periods.md).
+
+**order event** · **order-event stream** — One step in an order's life — submitted, accepted,
+triggered, a cancel or modification asked for and how it was answered, an answer lost and the
+asking that settled it, the fill or the ending — and the run's file that holds them,
+`io/order_events.jsonl`: written as the steps happen in a live session, with the report in a
+backtest. The *order history* keeps a row for each submission and for each way an order ended;
+the stream keeps every step. See [Order-Event Stream](architecture/order_event_stream.md).
 
 **order history** — The run's order-lifecycle records: one row per EVENT of an order, not one per
 order. An order appears as `pending` when it enters the pipeline, `executed` when it fills, and a
@@ -269,6 +314,12 @@ and is counted whether it later fills, expires at data end or is cancelled by th
 AutoTrader session counts only the market and close orders a status poll saw filled, and its report
 carries no counters at all. #362 separates arrival from fill.
 
+**plane** — Never used alone. *Strategy plane* and *valuation plane*: which price a site reads on
+a venue with a spread — the traded price for bars and decisions, the mid for equity and risk (see
+[Market Model](architecture/market_model.md)). *Record plane* (`record_plane` on an order
+event): whose account a record is — `bot`, what this process did and was told, or `broker_truth`,
+what the venue reported when it was asked.
+
 **price · mid · last** — `tick.price` is what the market trades at: the traded price where the
 venue prints one, else the mid. The *mid* is `(bid + ask) / 2`; *last* is the traded price, absent
 (never zero) where the venue prints none. Strategies read the price, valuation reads the mid. See
@@ -300,6 +351,13 @@ a schema — a later algo version may drop a parameter and the document stays tr
 scenarios, a mock session its window. The producer's *replay window* — envelopes re-sent after a
 reconnect — is a different thing.
 
+**resolved · unresolved** — Three meanings, told apart by where they stand. On an order event,
+`unresolved` is a request whose answer was lost or named nothing, and `resolved` the asking that
+settled it — the request is in `lost_request`. On a broker answer, `UNRESOLVED` is a transport
+fault: the venue could not be reached, so the answer says nothing about the order. Among the
+pending-order counters, `total_resolved` counts every order that left the in-flight queue, however
+it ended.
+
 **resting** — A pending order the venue (or the trade simulator) has accepted and that waits for its
 price: a resting limit, a resting stop. See [Pending Orders](architecture/pending_order_architecture.md).
 
@@ -329,6 +387,12 @@ three field names. See [API Server](architecture/api_server_architecture.md).
 configuration (`scenario_name` in the file). A scenario set is the file holding a `global` block and
 the scenarios (`scenario_set_name`). See [Process Execution](process_execution_guide.md).
 
+**seq** · **submitted_seq** (on an order event) — `seq` numbers a run unit's order events and IS the
+order of the stream; never sort by time instead, because several steps often carry the same instant.
+`submitted_seq` is the `seq` of the submission an event belongs to — of the adoption, for an adopted
+order — and is how the steps of one order are grouped, since the *order id* repeats across a
+position's orders.
+
 **server clock** (`server_clock`) — The clock a venue stamps its own data with, declared per broker
 in `market_config.json` as an IANA zone and the whole hours the server runs ahead of it. The MT5
 server is `America/New_York` + 7 — UTC+2 in US winter, UTC+3 in summer — so its times are converted
@@ -355,6 +419,10 @@ external, pre-collected data such as sentiment. See [Signal Data Source](data_pi
 
 **strategy** — A decision logic with its workers and all their parameters: exactly what
 `strategy_config` holds. A *bot* is a strategy bound to one AutoTrader profile.
+
+**stream files** (`stream_files` on the run list) — The files a run writes as it runs rather than
+at its end — today the order-event stream. Kept apart from `artifacts`, whose emptiness marks a run
+that never reached its report. Not the producer's stream (see *stream state*).
 
 **stream state** — The producer's stream: `replay` while missed envelopes catch up, `live` once
 they arrive as they happen.
@@ -386,6 +454,18 @@ tick it closed on (`scenario_name`, `position_id`, `exit_tick_index`). The order
 row and the trade are made in the same step; the row does not carry the trade's tick yet.
 
 **trade window basis** — Whether a trade is placed in a window by its entry or its exit.
+
+**ts_init** (on an order event) — When this process saw the step, on the *wall clock*. Live only;
+empty in a backtest, which has to come out the same every time it runs. Kept beside the step's own
+time on the *canonical clock*, never in its place.
+
+**unaccounted** (an order status and an order event) — We stopped asking about an order and do not
+know how it ended: its answer was lost and the venue was asked until the resolution ran out, or the
+session ended with it unconfirmed. The venue may still hold it, filled or not. Never a refusal.
+
+**undelivered** (an order status and an order event) — The venue confirms it never received the
+order: its answer was lost, and asking by our own key after the venue's records had settled found
+nothing. Never a refusal — the venue refused nothing.
 
 **venue** — The real marketplace behind a broker entry: Kraken, an MT5 broker.
 

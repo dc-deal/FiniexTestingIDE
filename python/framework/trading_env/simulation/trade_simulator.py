@@ -13,7 +13,6 @@ Key Simulation Features:
 - Pending order lifecycle: PENDING → EXECUTED with realistic timing
 - Fill processing: Inherited from AbstractTradeExecutor (shared with live)
 """
-from datetime import datetime, timezone
 from typing import Dict, FrozenSet, List, Optional, Union
 
 from python.framework.logging.abstract_logger import AbstractLogger
@@ -33,7 +32,9 @@ from python.framework.types.trading_env_types.latency_simulator_types import (
     PendingOrderAction,
     PendingOrderOutcome,
 )
+from python.framework.types.trading_env_types.order_event_types import OrderEventType
 from python.framework.types.trading_env_types.order_types import (
+    RESTING_ORDER_TYPES,
     FillType,
     ModificationRejectionReason,
     ModificationResult,
@@ -197,6 +198,7 @@ class TradeSimulator(AbstractTradeExecutor):
                     continue
 
                 if self._is_limit_price_reached(pending):
+                    self._record_overtaken_operation(pending)
                     # Determine entry type: STOP_LIMIT if converted from stop, else LIMIT
                     is_from_stop = pending.order_kwargs.get(
                         '_from_stop_limit', False)
@@ -228,6 +230,8 @@ class TradeSimulator(AbstractTradeExecutor):
                 if self._is_stop_price_reached(pending):
                     if pending.order_type == OrderType.STOP:
                         # STOP triggered → fill at current market price
+                        self._record_overtaken_operation(pending)
+                        self._record_order_event(OrderEventType.TRIGGERED, pending=pending)
                         self._fill_open_order(
                             pending,
                             entry_type=EntryType.STOP,
@@ -269,6 +273,13 @@ class TradeSimulator(AbstractTradeExecutor):
                             latency_ms=latency_ms)
                         continue
 
+                    # A resting type is taken by the simulated venue on arrival — before it
+                    # triggers, rests or fills. A market order's arrival IS its fill, so its
+                    # acceptance is recorded with the fill, and a fill-time refusal is only
+                    # that, as a venue would refuse it on receipt (#362).
+                    if pending_order.order_type in RESTING_ORDER_TYPES:
+                        self._record_acceptance(pending_order)
+
                     # Limit orders: check immediate fill or queue for price monitoring
                     if pending_order.order_type == OrderType.LIMIT:
                         if self._is_limit_price_reached(pending_order):
@@ -294,6 +305,8 @@ class TradeSimulator(AbstractTradeExecutor):
                     elif pending_order.order_type == OrderType.STOP:
                         if self._is_stop_price_reached(pending_order):
                             # Stop already triggered during latency → fill at market
+                            self._record_order_event(
+                                OrderEventType.TRIGGERED, pending=pending_order)
                             self._fill_open_order(
                                 pending_order,
                                 entry_type=EntryType.STOP,
@@ -376,7 +389,7 @@ class TradeSimulator(AbstractTradeExecutor):
         if rejection is None:
             return False
 
-        self._book_order_result(rejection)
+        self._book_order_result(rejection, pending_order)
         self._notify_outcome(pending_order.direction, rejection, pending_order)
         return True
 
@@ -531,7 +544,7 @@ class TradeSimulator(AbstractTradeExecutor):
 
         # A PENDING result is an order handed to the simulated venue
         if result.status is OrderStatus.PENDING:
-            self._orders_submitted += 1
+            self._record_submission(self.latency_simulator.get_order(order_id))
 
         # Store in order history
         return self._book_order_result(result)
@@ -587,10 +600,11 @@ class TradeSimulator(AbstractTradeExecutor):
         order_id = self.latency_simulator.submit_close_order(
             position_id=position_id,
             tick=self._current_tick,
+            symbol=position.symbol,
             close_lots=lots,
             close_reason=close_reason
         )
-        self._orders_submitted += 1
+        self._record_submission(self.latency_simulator.get_order(order_id))
 
         # Return PENDING result (order not filled yet!)
         return OrderResult(
@@ -669,13 +683,38 @@ class TradeSimulator(AbstractTradeExecutor):
             pending: STOP_LIMIT PendingOrder with order_kwargs["limit_price"]
         """
         limit_price = pending.order_kwargs.get('limit_price', 0)
+        # Decided before the order changes, so the events below still carry the stop price
+        fills_now = is_limit_reached(
+            pending.direction, limit_price, self._current_tick.bid, self._current_tick.ask)
+        if fills_now:
+            # The limit fills in this pass: the market overtook a request on its way
+            self._record_overtaken_operation(pending)
+        elif pending.execution_state.in_flight_operation is PendingOperation.PENDING_MODIFY:
+            modification = pending.execution_state.pending_modification
+            if modification.new_price != pending.entry_price:
+                # The amend moves a stop that has fired. It is one request, as it is sent to a
+                # venue, and the trigger it names no longer exists, so all of it is refused —
+                # applied anyway, it wrote the new trigger into the limit price. A cancel on
+                # its way stays: Phase 0 cancels the limit the order has become.
+                self._record_order_event(
+                    OrderEventType.MODIFY_REJECTED, pending=pending,
+                    message='the stop triggered before the amend took effect')
+                pending.execution_state.in_flight_operation = PendingOperation.NONE
+                pending.execution_state.pending_modification = None
+            else:
+                # The amend leaves the stop alone, so it still applies to the limit the order
+                # becomes, whose price is its limit from here on
+                modification.new_price = (modification.new_limit_price
+                                          if modification.new_limit_price is not None
+                                          else limit_price)
+        self._record_order_event(OrderEventType.TRIGGERED, pending=pending)
 
         # Mutate pending: becomes a LIMIT order at limit_price
         pending.entry_price = limit_price
         pending.order_type = OrderType.LIMIT
         pending.order_kwargs['_from_stop_limit'] = True
 
-        if self._is_limit_price_reached(pending):
+        if fills_now:
             # Limit price already reached → fill immediately
             self._fill_open_order(
                 pending,
@@ -718,6 +757,10 @@ class TradeSimulator(AbstractTradeExecutor):
             current_msc = self._get_current_msc()
             pending.execution_state.in_flight_operation = PendingOperation.PENDING_CANCEL
             pending.execution_state.cancel_apply_at_msc = current_msc + self._modify_cancel_delay_msc
+            # Only the strategy cancels in a backtest, as the cancelled row says
+            self._record_order_event(
+                OrderEventType.CANCEL_REQUESTED, pending=pending,
+                initiator=OrderInitiator.STRATEGY, end_reason=OrderEndReason.CANCEL_REQUESTED)
             self.logger.info(
                 f'❌ Limit order {order_id} cancel scheduled '
                 f'(apply_at_msc={pending.execution_state.cancel_apply_at_msc})'
@@ -808,9 +851,10 @@ class TradeSimulator(AbstractTradeExecutor):
             new_price=effective_price,
             new_stop_loss=effective_sl,
             new_take_profit=effective_tp,
-            submitted_at=datetime.now(timezone.utc),
             apply_at_msc=current_msc + self._modify_cancel_delay_msc,
         )
+        self._record_order_event(
+            OrderEventType.MODIFY_REQUESTED, pending=pending, limit_price=effective_price)
 
         self.logger.info(
             f'✏️ Limit order {order_id} modify scheduled — '
@@ -909,6 +953,10 @@ class TradeSimulator(AbstractTradeExecutor):
             current_msc = self._get_current_msc()
             pending.execution_state.in_flight_operation = PendingOperation.PENDING_CANCEL
             pending.execution_state.cancel_apply_at_msc = current_msc + self._modify_cancel_delay_msc
+            # Only the strategy cancels in a backtest, as the cancelled row says
+            self._record_order_event(
+                OrderEventType.CANCEL_REQUESTED, pending=pending,
+                initiator=OrderInitiator.STRATEGY, end_reason=OrderEndReason.CANCEL_REQUESTED)
             self.logger.info(
                 f'❌ Stop order {order_id} cancel scheduled '
                 f'(apply_at_msc={pending.execution_state.cancel_apply_at_msc})'
@@ -1029,9 +1077,11 @@ class TradeSimulator(AbstractTradeExecutor):
             new_limit_price=effective_limit if is_stop_limit else None,
             new_stop_loss=effective_sl,
             new_take_profit=effective_tp,
-            submitted_at=datetime.now(timezone.utc),
             apply_at_msc=current_msc + self._modify_cancel_delay_msc,
         )
+        self._record_order_event(
+            OrderEventType.MODIFY_REQUESTED, pending=pending, trigger_price=effective_stop,
+            limit_price=effective_limit if is_stop_limit else None)
 
         self.logger.info(
             f"✏️ Stop order {order_id} modify scheduled — "
@@ -1113,7 +1163,6 @@ class TradeSimulator(AbstractTradeExecutor):
         self._pending_position_modifications[position_id] = ModificationRequest(
             new_stop_loss=effective_sl,
             new_take_profit=effective_tp,
-            submitted_at=datetime.now(timezone.utc),
             apply_at_msc=current_msc + self._modify_cancel_delay_msc,
         )
 
@@ -1182,7 +1231,7 @@ class TradeSimulator(AbstractTradeExecutor):
                 cancelled = self._book_order_result(self._ending_for_pending(
                     pending, OrderStatus.CANCELLED,
                     initiator=OrderInitiator.STRATEGY,
-                    end_reason=OrderEndReason.CANCEL_REQUESTED))
+                    end_reason=OrderEndReason.CANCEL_REQUESTED), pending)
                 self._emit_order_cancelled(pending, cancelled)
 
         # Position-level: SL/TP modifications (when native_position_sl_tp=True)
@@ -1230,6 +1279,7 @@ class TradeSimulator(AbstractTradeExecutor):
 
         pending.execution_state.pending_modification = None
         pending.execution_state.in_flight_operation = PendingOperation.NONE
+        self._record_order_event(OrderEventType.MODIFIED, pending=pending)
 
         self.logger.info(
             f'✏️ Order {pending.pending_order_id} modification resolved — '
@@ -1337,7 +1387,7 @@ class TradeSimulator(AbstractTradeExecutor):
             self._book_order_result(self._ending_for_pending(
                 pending, OrderStatus.EXPIRED,
                 initiator=OrderInitiator.FRAMEWORK,
-                end_reason=OrderEndReason.SCENARIO_END))
+                end_reason=OrderEndReason.SCENARIO_END), pending)
 
         # #318 — clear pending position modifications (sim-only tracker for
         # the native_position_sl_tp=True path). Other in_flight_operation state
