@@ -508,13 +508,11 @@ class TestNothingIsEverReSent:
         pending = _unresolved_limit(executor_instant, mock_instant)
         adapter = executor_instant.broker.adapter
         adapter.set_transport_fault('submit', None)
-        before = executor_instant.get_active_orders_snapshot()
 
         _exhaust_resolution(executor_instant, pending)
 
         submitted = executor_instant.get_execution_stats().orders_submitted
         assert submitted == 1, f'{submitted} orders left this process for one decision'
-        assert before is not None
 
 
 def _drive_resolution(executor, mock, pending) -> None:

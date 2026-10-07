@@ -519,36 +519,36 @@ class ProcessTickLoopResult:
     # process bridge like every other result: a subprocess cannot write the ledger, so the
     # periods travel back and the batch coordinator writes them all at once. That is also what
     # keeps the parquet write out of what the throughput benchmark measures.
-    booking_periods: List[BookingPeriod] = None
+    booking_periods: Optional[List[BookingPeriod]] = None
 
     # Decision logic statistics (signals + performance)
-    decision_statistics: DecisionLogicStats = None
+    decision_statistics: Optional[DecisionLogicStats] = None
 
     # Worker statistics (list of per-worker stats)
-    worker_statistics: List[WorkerPerformanceStats] = None
+    worker_statistics: Optional[List[WorkerPerformanceStats]] = None
 
     # Signal resolution counters (per SIGNAL worker; #433 Part C)
-    signal_statistics: List[SignalResolutionStats] = None
+    signal_statistics: Optional[List[SignalResolutionStats]] = None
 
     # Observed outage episodes of both staleness domains (#451)
-    disturbance_episodes: List[DisturbanceEpisode] = None
+    disturbance_episodes: Optional[List[DisturbanceEpisode]] = None
 
     # Market-data resolution counters — the tick-domain twin (#451 Part 4)
     market_data_tick_stats: Optional[MarketDataTickStats] = None
 
     # Coordination statistics (parallel execution, ticks processed)
-    coordination_statistics: WorkerCoordinatorPerformanceStats = None
+    coordination_statistics: Optional[WorkerCoordinatorPerformanceStats] = None
 
     # Trading results
-    portfolio_stats: PortfolioStats = None
-    execution_stats: ExecutionStats = None
-    cost_breakdown: CostBreakdown = None
+    portfolio_stats: Optional[PortfolioStats] = None
+    execution_stats: Optional[ExecutionStats] = None
+    cost_breakdown: Optional[CostBreakdown] = None
 
     # Trade-by-trade history for P&L verification
-    trade_history: List[TradeRecord] = None
+    trade_history: Optional[List[TradeRecord]] = None
 
     # Order history (all orders including rejections)
-    order_history: List[OrderResult] = None
+    order_history: Optional[List[OrderResult]] = None
 
     # Every order transition of the scenario (#362) — uncapped, unlike the order history.
     # The report writes them; the subprocess cannot write a run artifact itself
@@ -558,8 +558,8 @@ class ProcessTickLoopResult:
     active_orders: Optional[ActiveOrdersSnapshot] = None
 
     # Profiling data
-    profiling_data: ProcessProfileData = None
-    tick_range_stats: TickRangeStats = None
+    profiling_data: Optional[ProcessProfileData] = None
+    tick_range_stats: Optional[TickRangeStats] = None
 
     # Positions still OPEN when the scenario's data ran out (#492). The scenario end no
     # longer force-closes them, so this is where the block edge's impact now lives — the
