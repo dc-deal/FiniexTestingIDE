@@ -15,6 +15,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from python.api.api_app import create_app
+from python.framework.logging.global_logger import GlobalLogger
 from python.framework.reporting.io.artifact_specs import (
     AGGREGATED_PORTFOLIO_ARTIFACT,
     BOOKING_PERIODS_ARTIFACT,
@@ -32,6 +33,7 @@ from python.framework.reporting.io.artifact_specs import (
     WARNINGS_ERRORS_ARTIFACT,
 )
 from python.framework.reporting.io.order_event_stream_io import write_order_event_stream
+from python.framework.reporting.io.order_event_stream_writer import OrderEventStreamWriter
 from python.framework.reporting.io.report_artifact_io import write_artifact
 from python.framework.reporting.store.report_store import IO_SUBDIR, ReportStore
 from python.framework.reporting.store.run_index import RunIndex
@@ -79,6 +81,11 @@ from python.framework.types.api.report_types import (
     WarningsErrorsReport,
 )
 from python.framework.types.config_types.file_logging_config_types import RunLogPaths
+from python.framework.types.live_types.broker_truth_types import (
+    BrokerTruthReadReason,
+    BrokerTruthRecord,
+    BrokerTruthSnapshot,
+)
 from python.framework.types.log_layout_types import RUN_TYPE_AUTOTRADER, RUN_TYPE_SIMULATION
 from python.framework.types.trading_env_types.order_event_types import (
     OrderEvent,
@@ -671,7 +678,9 @@ class TestTheOrderEventStream:
         assert [(e['scenario_name'], e['seq'], e['event_type']) for e in body['events']] == [
             ('btc_run', 1, 'submitted'), ('btc_run', 2, 'accepted'), ('eth_run', 1, 'denied')]
         assert body['count'] == 3
-        assert body['key'] == ['scenario_name', 'seq']
+        assert body['keys'] == {'events': ['scenario_name', 'seq'],
+                                'broker_truth': ['scenario_name', 'seq']}
+        assert body['broker_truth'] == [], 'a backtest asks no venue'
         assert body['truncated_tail'] is False
 
     def test_the_served_names_are_the_contract(self, client, tmp_path):
@@ -690,6 +699,31 @@ class TestTheOrderEventStream:
 
         assert (event['record_plane'], event['lost_request']) == ('bot', 'modify')
         assert 'plane' not in event and 'operation' not in event
+
+    def test_a_live_sessions_broker_truth_is_served_beside_its_steps(self, client, tmp_path):
+        """
+        What the venue reported, in its own list on the same counter — and left out when the
+        stream is narrowed to one order, since no such line is a step of one order.
+        """
+        io_dir = _run_logs(tmp_path).simulation / 'my_set' / _RUN / IO_SUBDIR
+        io_dir.mkdir(parents=True, exist_ok=True)
+        writer = OrderEventStreamWriter(io_dir, _RUN_ID, 'btc_session',
+                                        GlobalLogger('ReportsEndpointTest'))
+        writer.write_broker_truth(BrokerTruthRecord(
+            seq=1, read_reason=BrokerTruthReadReason.SESSION_START,
+            snapshot=BrokerTruthSnapshot(venue_orders=[], venue_balances={'USD': 812.4})))
+        writer(OrderEvent(seq=2, event_type=OrderEventType.SUBMITTED, order_id='pos_btcusd_1',
+                          submitted_seq=2))
+        writer.close()
+
+        body = client.get(self._URL).json()
+        by_order = client.get(self._URL, params={'order_id': 'pos_btcusd_1'}).json()
+
+        assert [(t['seq'], t['read_reason'], t['venue_balances'], t['record_plane'])
+                for t in body['broker_truth']] == [(1, 'session_start', {'USD': 812.4},
+                                                    'broker_truth')]
+        assert [e['seq'] for e in body['events']] == [2]
+        assert by_order['broker_truth'] == [] and [e['seq'] for e in by_order['events']] == [2]
 
     def test_it_narrows_to_one_unit_or_one_order(self, client, tmp_path):
         self._plant_stream(tmp_path)

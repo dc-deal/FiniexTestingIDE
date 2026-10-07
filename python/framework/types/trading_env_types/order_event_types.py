@@ -54,8 +54,8 @@ class OrderEventType(Enum):
 class OrderEventPlane(Enum):
     """Whose account of an order a record is."""
     BOT = 'bot'                    # What this process did and was told
-    # What the venue reports when it is asked. Not written yet: a live session's read of the
-    # venue's own account of its orders writes it, in this same stream (#362)
+    # What the venue reports when a live session asks it — a BrokerTruthRecord, in this same
+    # stream and under the same seq (broker_truth_types, #362)
     BROKER_TRUTH = 'broker_truth'
 
 

@@ -4,7 +4,8 @@
 order ENDED. What happened in between is missing there: when the venue took the order, when a stop
 triggered, every cancel and modification that was asked for and how it was answered, an answer that
 never came and the asking that settled it. This stream keeps all of it — one line per step in an
-order's life, in the order the steps happened.
+order's life, in the order the steps happened. A live session's stream also holds what the venue
+reported each time the session asked it, in a second list on the same counter.
 
 **Routes**
 
@@ -19,9 +20,11 @@ refused are in [execution stats](/api/v1/docs/execution-stats).
 
 ## One line per step, keyed by unit and `seq`
 
-`seq` counts the events of one unit — a scenario in a backtest, the session in a live run — and
-never repeats inside it. The list declares its key as `["scenario_name", "seq"]`; see
-[row keys](/api/v1/docs/row-keys). Within a unit, `seq` IS the order of the stream. Do not sort
+`seq` counts the lines of one unit — a scenario in a backtest, the session in a live run — and
+never repeats inside it, across both lists. The answer declares a key per list in `keys`: both
+`events` and `broker_truth` are keyed `["scenario_name", "seq"]`; see
+[row keys](/api/v1/docs/row-keys). Within a unit, `seq` IS the order of the stream, and merging
+the two lists by it gives the order they were written in. Do not sort
 by time: several steps often carry the same instant — a backtest's market order is taken and
 filled at once — and a sort by time leaves their order to chance.
 
@@ -60,9 +63,9 @@ submitted and carries none.
 `initiator` and `end_reason` say who ended an order and why, `rejection_reason` why it was refused.
 `venue_reason` is the venue's own code where it gave one, passed on as it came. `lost_request` is
 one of `submit`, `cancel`, `modify` and `status_read` — the read with which an order that waited
-too long for its fill is asked about. `record_plane` says whose account a line is: `bot`, what the
-session did and was told, on every line today; `broker_truth`, the venue's own account when it is
-asked, is reserved for it.
+too long for its fill is asked about. `record_plane` says whose account a line is: `bot` — what the
+session did and was told — on every line of `events`, `broker_truth` on every line of the second
+list, below.
 
 ## Two flows, as they read
 
@@ -80,11 +83,51 @@ Live session, market buy
 A backtest's market order is taken and filled in one instant. A live venue answers with its
 reference first, and the fill shows up later.
 
+## What the venue said — `broker_truth`
+
+A live session asks its venue what it holds, and each answer is one line of `broker_truth`: the
+venue's whole account at that moment, never a step of one order. A backtest has none — its venue
+is its own book.
+
+| `read_reason` | When | What the line holds |
+|---|---|---|
+| `session_start` | before the session's first market data | the venue's open orders, its balances, and on a margin account its positions |
+| `session_end` | after the session handled its own orders at the end | the same |
+| `reconcile` | the session's comparison with the venue changed its picture | the open orders and positions of that comparison; the balances only when the picture turned between clean and divergent |
+
+- `venue_orders` are the orders the venue reports as open — all of them, also orders this session
+  did not place — each with the venue's `broker_ref`, our `client_order_id` where it carries one,
+  its size, what has executed (`filled_lots`), its prices and its status. `venue_balances` is the
+  venue's balance sheet, every asset, the quote currency included. `venue_positions` exist on a
+  margin account only.
+- **A part has three states.** A value — an empty one included — says what the venue holds: `[]`
+  is "no open order". `null` with the part named in `unread_parts` says the venue could not be read.
+  `null` without the name says this line does not read it: positions on a spot account, balances on
+  a `reconcile` line that did not turn.
+- A `reconcile` line says `reconcile_state` — `clean` or `divergent` — and, when divergent, names
+  the members in `divergence`: venue references of orders the session cannot place
+  (`ghost_orders`, `abandoned_orders`, `foreign_session_orders`), the session's order ids the venue
+  does not show (`orphan_orders`, `unconfirmed_orders`) or shows differently (`stale_orders`), and
+  positions as counts. Two such lines keep a configured distance — five minutes unless the session
+  sets another: a change inside it is written once it has passed, if it still holds, so the list
+  ends with the latest picture.
+- Asked for one order (`order_id=`), this list is empty — no line in it is about one order.
+
+```
+seq 1    broker_truth  session_start  venue_orders []  venue_balances {USD 812.40, BTC 0.0031}
+seq 2    submitted     pos_btcusd_1
+...
+seq 57   broker_truth  reconcile      divergent  ghost_orders [OQ3V2K-…]
+seq 61   broker_truth  reconcile      clean                         ← at least five minutes later
+...
+seq 212  broker_truth  session_end    venue_balances null  unread_parts [venue_balances]
+```
+
 ## Times and durations
 
 - `event_time` is when the step happened on the run's own clock: the replayed market time in a
-  backtest, the session's clock live. It is null only for an `adopted` order taken over before the
-  session's first market data.
+  backtest, the session's clock live. It is null only on a line written before the session's first
+  market data — an `adopted` order taken over at the start, and the `session_start` line.
 - `ts_init` is when the session saw the step, on the machine's clock — live only, and null in a
   backtest, which has to come out the same every time it is run.
 - `in_flight_ms` is on the `accepted` or `rejected` that answers a submission: how long the answer
@@ -112,4 +155,5 @@ session was stopped while a line was being written, that last line is left out a
 
 A run from before the stream existed has none, and a backtest whose scenarios never placed an
 order writes none. The answer is a 404 that names the cause, as for every section — see
-[errors](/api/v1/docs/errors).
+[errors](/api/v1/docs/errors). A stream written in an earlier form of the stream — before the
+venue's lines — is answered as unreadable (409) until its run is run again.

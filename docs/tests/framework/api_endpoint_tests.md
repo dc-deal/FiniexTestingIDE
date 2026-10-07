@@ -112,10 +112,12 @@ started with `reporting: none`, `run_not_completed` for one with no artifact yet
 `artifact_not_produced` for a section the run did not write.
 
 The order-event stream (#362) is served from the run's stream file —
-`TestTheOrderEventStream` in `test_reports_endpoint.py`: every step in stream order with its
-declared key, the served names a consumer keys on (`record_plane`, `lost_request`), the unit and
-order filters, a line cut off mid-write left out and reported, a damaged stream answered
-`artifact_unreadable` rather than a server error, and a run without one naming why.
+`TestTheOrderEventStream` in `test_reports_endpoint.py`: every step in stream order with the keys
+declared for both lists, the served names a consumer keys on (`record_plane`, `lost_request`), a
+live session's broker-truth lines in their own list on the same counter and left out when the
+stream is narrowed to one order, the unit and order filters, a line cut off mid-write left out and
+reported, a damaged stream answered `artifact_unreadable` rather than a server error, and a run
+without one naming why.
 
 ## Row keys (`test_row_keys.py`)
 

@@ -59,7 +59,17 @@ from python.framework.types.decision_event_types import (
     PositionClosedEvent,
     SessionEndSeverity,
 )
-from python.framework.types.live_types.reconciliation_types import BrokerOrder
+from python.framework.types.live_types.broker_truth_types import (
+    BrokerTruthReadReason,
+    BrokerTruthRecord,
+    BrokerTruthSnapshot,
+)
+from python.framework.types.live_types.reconciliation_types import (
+    BrokerOrder,
+    ReconcileDivergence,
+    ReconcileState,
+    ReconciliationResult,
+)
 from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.portfolio_types.portfolio_trade_record_types import (
     CloseReason,
@@ -210,6 +220,9 @@ class AbstractTradeExecutor(ABC):
         # unit, handed to every registered listener (the run's stream writer among them)
         self._order_event_seq = 0
         self._order_event_listeners: List[Callable[[OrderEvent], None]] = []
+        # The venue's own account of the session, numbered on the same counter so both planes
+        # read in the order they were written — live only, the simulation has nobody to ask
+        self._broker_truth_listeners: List[Callable[[BrokerTruthRecord], None]] = []
         # The latest endings, so an answer arriving for an order that is gone can say how it
         # ended. Bounded: it explains a late answer, it is not a record
         self._recent_endings: Dict[str, OrderEvent] = {}
@@ -338,6 +351,15 @@ class AbstractTradeExecutor(ABC):
         """
         self._order_event_listeners.append(listener)
 
+    def add_broker_truth_listener(self, listener: Callable[[BrokerTruthRecord], None]) -> None:
+        """
+        Register a listener for every broker-truth record — live only, nothing else writes one.
+
+        Args:
+            listener: Function receiving each BrokerTruthRecord as it is recorded
+        """
+        self._broker_truth_listeners.append(listener)
+
     def describe_recent_ending(self, order_id: str) -> str:
         """
         How an order that is no longer tracked ended — for the log line about an answer that
@@ -408,15 +430,15 @@ class AbstractTradeExecutor(ABC):
         Returns:
             The recorded event
         """
-        self._order_event_seq += 1
+        seq = self._next_order_event_seq()
         values = self._order_event_basis(pending, result)
         values.update(fields)
         if event_type in (OrderEventType.SUBMITTED, OrderEventType.ADOPTED):
-            values['submitted_seq'] = self._order_event_seq
+            values['submitted_seq'] = seq
             if pending is not None:
-                pending.submitted_seq = self._order_event_seq
+                pending.submitted_seq = seq
         event = OrderEvent(
-            seq=self._order_event_seq,
+            seq=seq,
             event_type=event_type,
             event_time=self.get_current_time_if_set(),
             ts_init=self._receipt_time(),
@@ -427,6 +449,51 @@ class AbstractTradeExecutor(ABC):
         for listener in self._order_event_listeners:
             listener(event)
         return event
+
+    def _next_order_event_seq(self) -> int:
+        """
+        The next position in the unit's stream — one counter for both planes.
+
+        Returns:
+            The new seq
+        """
+        self._order_event_seq += 1
+        return self._order_event_seq
+
+    def _record_broker_truth(
+        self,
+        read_reason: BrokerTruthReadReason,
+        snapshot: BrokerTruthSnapshot,
+        reconcile_state: Optional[ReconcileState] = None,
+        divergence: Optional[ReconcileDivergence] = None,
+    ) -> BrokerTruthRecord:
+        """
+        Write what the venue answered to the order-event stream and hand it to the listeners.
+
+        Numbered on the order events' counter and stamped like them: the canonical clock where it
+        has been set, the wall clock as the receipt time.
+
+        Args:
+            read_reason: Why the venue was asked
+            snapshot: What it answered
+            reconcile_state: On a reconcile record, where the cycle left the two books
+            divergence: On a divergent reconcile record, the picture by identity
+
+        Returns:
+            The recorded record
+        """
+        record = BrokerTruthRecord(
+            seq=self._next_order_event_seq(),
+            read_reason=read_reason,
+            snapshot=snapshot,
+            reconcile_state=reconcile_state,
+            divergence=divergence,
+            event_time=self.get_current_time_if_set(),
+            ts_init=self._receipt_time(),
+        )
+        for listener in self._broker_truth_listeners:
+            listener(record)
+        return record
 
     def _order_event_basis(
         self,
@@ -841,6 +908,42 @@ class AbstractTradeExecutor(ABC):
             attributions: (local pending, broker order) pairs matched by client order id
         """
         return
+
+    def record_session_truth(
+        self,
+        read_reason: BrokerTruthReadReason,
+    ) -> Optional[BrokerTruthRecord]:
+        """
+        Ask the venue what it holds and write the answer to the order-event stream (#362).
+
+        Called by the session at its start and at its end. Default no-op for executors without
+        broker truth: the simulator's book IS the venue, so there is nobody to ask.
+
+        Args:
+            read_reason: SESSION_START or SESSION_END
+
+        Returns:
+            The recorded record, or None where nothing was asked
+        """
+        return None
+
+    def record_reconcile_truth(
+        self,
+        result: ReconciliationResult,
+    ) -> Optional[BrokerTruthRecord]:
+        """
+        Write a reconciliation cycle whose picture changed to the order-event stream (#362).
+
+        Called by the live tick loop when the Reconciler marks a record due. Default no-op for
+        executors without broker truth, as above.
+
+        Args:
+            result: The cycle, with the venue's orders and positions it read
+
+        Returns:
+            The recorded record, or None where nothing was recorded
+        """
+        return None
 
     # ============================================
     # SL/TP Trigger Detection (per-tick, BOTH pipelines since #500)

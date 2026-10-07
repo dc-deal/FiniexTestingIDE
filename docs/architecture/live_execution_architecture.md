@@ -271,9 +271,11 @@ heartbeats. This is where the bot learns the truth and the algo reacts.
 
 **Layer 2 — Reconciler (trust net).** The Reconciler (#151) pulls broker truth (`get_broker_orders`,
 and `get_broker_positions` on a margin account) on a separate hybrid cadence (every N ticks OR M
-seconds) and diffs it against the shadow state. That cadence never reads the balances: the venue's
-balance sheet is read only at boot and at shutdown — by the field study (through the reconciler's
-flatness check) and by the cold-start cross-check. It does **not** learn the fill first — it verifies
+seconds) and diffs it against the shadow state. That cadence reads the balances only when its
+picture crosses between clean and divergent, for the broker-truth line it then writes (#362);
+otherwise the venue's balance sheet is read at boot and at shutdown — by every live session's
+broker-truth reads, by the field study (through the reconciler's flatness check) and by the
+cold-start cross-check. It does **not** learn the fill first — it verifies
 after the fact and reports divergence (`ghost` / `orphan` / `stale`). Today it runs **ALERT_ONLY**
 (detect + log + SESSION panel), validated on real money.
 
@@ -299,6 +301,14 @@ the targeted status query in #487.
 **The Reconciler still writes nothing.** An attribution is applied by the executor
 (`apply_order_attributions`), called by the tick loop with what the cycle matched, and it only ever
 fills a `broker_ref` that is `None` — overwriting a settled one would be correction, which is #349.
+
+**A changed picture is written to the order-event stream (#362).** A cycle marks itself
+`broker_truth_due` when its picture — clean, or the divergence by identity — differs from the one
+last written and `broker_truth_min_interval_seconds` have passed since; a change inside that
+distance waits for the next cycle after it. The tick loop hands a due cycle to the executor, which
+numbers the line on the stream's counter. A clean cycle forgets the last divergence, so one that
+returns is warned and written again rather than called unchanged. See
+[Order-Event Stream](order_event_stream.md#what-the-venue-said--broker-truth).
 
 **Detection source is transparent to the algo.** Poll today (#320); WebSocket push (#331) becomes
 the V1.4 primary, with polling demoted to a resilience fallback. Both feed the same executor hooks

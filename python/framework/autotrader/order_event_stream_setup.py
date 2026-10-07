@@ -31,7 +31,8 @@ def open_order_event_stream(
     unit_name: str,
 ) -> OrderEventStreamWriter:
     """
-    Open the stream a session writes its order transitions into, as they happen.
+    Open the stream a session writes its order transitions into, as they happen — and what the
+    venue reports when the session asks it, on the same counter.
 
     Opened once the executor exists — it is what records — and before the cold start, whose
     adoptions are the first steps a session can record. The run index learns of the stream in
@@ -50,6 +51,7 @@ def open_order_event_stream(
     # The executor's logger is the session channel, where a failed write has to be heard
     writer = OrderEventStreamWriter(run_dir / IO_SUBDIR, run_id, unit_name, executor.logger)
     executor.add_order_event_listener(writer)
+    executor.add_broker_truth_listener(writer.write_broker_truth)
     RunIndex(AppConfigManager().get_file_logging_config_object().run_index) \
         .record_streams(run_id, run_dir)
     return writer
@@ -57,7 +59,8 @@ def open_order_event_stream(
 
 def read_back_order_event_stream(run_dir: Path, logger: AbstractLogger) -> List[OrderEvent]:
     """
-    The events a session wrote, read back once it has ended (#362).
+    The order events a session wrote, read back once it has ended (#362) — its broker-truth lines
+    are left aside: nothing derived here reads them, the route serves them.
 
     What the pending-order counters and the check that the stream holds every submission are
     derived from. A stream that cannot be read yields nothing, and says why on the session's
@@ -74,7 +77,7 @@ def read_back_order_event_stream(run_dir: Path, logger: AbstractLogger) -> List[
     if not path.exists():
         return []
     try:
-        rows, truncated = read_order_event_stream(path)
+        rows, _, truncated = read_order_event_stream(path)
     except ReportArtifactUnreadableError as e:
         logger.error(f'❌ The order-event stream could not be read back: {e}')
         return []

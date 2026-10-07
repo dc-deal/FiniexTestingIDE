@@ -79,13 +79,28 @@ What the stream records where answers cross, time out or come back late.
 | Test | Description |
 |------|-------------|
 | `TestTheFile` | the header names the schema once; an event is on disk before the next is recorded; empty fields are left out; a failed write is said once and ends the stream without ending the fill; a backtest writes its units one after the other, and none at all when no order was placed |
-| `TestReadingItBack` | a cut-off last line is left out and reported; a broken line in the middle, an unknown schema, a line that is not a JSON object and a byte that is not UTF-8 are unreadable |
+| `TestReadingItBack` | a cut-off last line is left out and reported; a broken line in the middle, an unknown schema, the previous schema, a line that is not a JSON object and a byte that is not UTF-8 are unreadable |
+| `TestBrokerTruthLines` | the venue's lines and the order events read back as two lists on one counter; a venue order is projected, its raw payload left with the adapter; the three states of a part survive the file; a divergent reconcile line names its members |
 | `TestTheSharedWriter` | one compact line per record, nothing after close, and the field study's lines unchanged by the move onto the shared writer |
 | `TestTheRunIndexListsItAsAStream` | the stream is named while the run is going and never counted among the artifacts |
 
-The route itself — every step in stream order with its key, the two filters, a cut-off line, a
-damaged file, a run without a stream — is in the API suite, `TestTheOrderEventStream` in
-`tests/framework/api/test_reports_endpoint.py`.
+### `test_broker_truth_records.py`
+
+What a live session writes when it asks the venue (#362), against the mock venue.
+
+| Test | Description |
+|------|-------------|
+| `TestTheDeclaration` | every part is a field of the served line and every `venue_` field a part; every read reason has a place in the session or the executors that writes it |
+| `TestTheSessionRead` | the venue's orders and balances are written; positions on a margin account only; a part the venue does not give is unread, never empty; a ladder that aborts ends neither the read nor the session |
+| `TestItsPlaceInTheStream` | one counter with the order events, no gap; before the first tick only the receipt time; a backtest asks no venue |
+| `TestAReconcileRecord` | the cycle's own orders, never a second read; balances on a crossing between clean and divergent only; a failed balance read inside the tick loop does not wait |
+
+The route itself — every step in stream order with its keys, the venue's lines beside them and
+gone when narrowed to one order, the two filters, a cut-off line, a damaged file, a run without a
+stream — is in the API suite, `TestTheOrderEventStream` in
+`tests/framework/api/test_reports_endpoint.py`. When a reconcile cycle is due for a line is in the
+[reconciliation tests](../autotrader/reconciliation_tests.md); the session's start and end lines in
+a real mock session and at its shutdown are in the integration and session-end suites.
 
 ## Running
 

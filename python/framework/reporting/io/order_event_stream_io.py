@@ -3,8 +3,10 @@ FiniexTestingIDE - Order-Event Stream IO (#362)
 
 The run's order-event stream on disk: `io/order_events.jsonl`, one transition per line. A header
 line comes first and carries the schema version once — DDIA's answer for a file of many records
-written by one writer. Every later line is an OrderEventRow, the same model the API serves, so
-the file and the route cannot describe an event differently.
+written by one writer. Every later line is an OrderEventRow or, in a live session, a
+BrokerTruthRow — what the venue reported when asked — told apart by `record_plane` and numbered
+on one counter. Both are the models the API serves, so the file and the route cannot describe a
+line differently.
 
 Live, the session writes each event the moment it is recorded (OrderEventStreamWriter); a backtest
 carries its events back from the scenario subprocesses and the report writes them all at once. Either way the reader
@@ -22,11 +24,22 @@ from pydantic import ValidationError
 from python.framework.exceptions.report_artifact_errors import ReportArtifactUnreadableError
 from python.framework.reporting.io.artifact_specs import ORDER_EVENTS_STREAM
 from python.framework.reporting.io.jsonl_stream_writer import JsonlStreamWriter
-from python.framework.types.api.report_types import OrderEventRow
-from python.framework.types.trading_env_types.order_event_types import OrderEvent
+from python.framework.types.api.report_types import (
+    BrokerTruthRow,
+    OrderEventRow,
+    ReconcileDivergenceRow,
+    VenueOrderRow,
+    VenuePositionRow,
+)
+from python.framework.types.live_types.broker_truth_types import BrokerTruthRecord
+from python.framework.types.live_types.reconciliation_types import BrokerOrder, BrokerPosition
+from python.framework.types.trading_env_types.order_event_types import (
+    OrderEvent,
+    OrderEventPlane,
+)
 from python.framework.utils.time_utils import parse_datetime
 
-ORDER_EVENTS_SCHEMA_VERSION = 1
+ORDER_EVENTS_SCHEMA_VERSION = 2
 _HEADER_KIND = 'header'
 
 
@@ -64,6 +77,84 @@ def order_event_row(event: OrderEvent, scenario_name: str) -> OrderEventRow:
         moment: Optional[datetime] = values[stamp]
         values[stamp] = moment.isoformat() if moment is not None else None
     return OrderEventRow(scenario_name=scenario_name, **values)
+
+
+def broker_truth_row(record: BrokerTruthRecord, scenario_name: str) -> BrokerTruthRow:
+    """
+    One broker-truth record as the row the file holds and the API serves.
+
+    The venue's objects are projected, never copied whole: their raw payload is the adapter's
+    and stays there.
+
+    Args:
+        record: The executor's record
+        scenario_name: The unit it belongs to
+
+    Returns:
+        The row
+    """
+    snapshot = record.snapshot
+    return BrokerTruthRow(
+        scenario_name=scenario_name,
+        seq=record.seq,
+        record_plane=record.record_plane,
+        read_reason=record.read_reason,
+        reconcile_state=record.reconcile_state,
+        divergence=(ReconcileDivergenceRow(**asdict(record.divergence))
+                    if record.divergence is not None else None),
+        venue_orders=([_venue_order_row(order) for order in snapshot.venue_orders]
+                      if snapshot.venue_orders is not None else None),
+        venue_balances=(dict(snapshot.venue_balances)
+                        if snapshot.venue_balances is not None else None),
+        venue_positions=([_venue_position_row(position) for position in snapshot.venue_positions]
+                         if snapshot.venue_positions is not None else None),
+        unread_parts=list(snapshot.unread_parts),
+        event_time=record.event_time.isoformat() if record.event_time is not None else None,
+        ts_init=record.ts_init.isoformat() if record.ts_init is not None else None,
+    )
+
+
+def _venue_order_row(order: BrokerOrder) -> VenueOrderRow:
+    """
+    One venue order as served.
+
+    Args:
+        order: As the adapter parsed it
+
+    Returns:
+        The row — `price` becomes `limit_price`, the price the order would fill at
+    """
+    return VenueOrderRow(
+        broker_ref=order.broker_ref,
+        client_order_id=order.client_order_id,
+        symbol=order.symbol,
+        direction=order.direction,
+        order_type=order.order_type,
+        lots=order.lots,
+        filled_lots=order.filled_lots,
+        limit_price=order.price,
+        stop_price=order.stop_price,
+        status=order.status,
+    )
+
+
+def _venue_position_row(position: BrokerPosition) -> VenuePositionRow:
+    """
+    One venue position as served.
+
+    Args:
+        position: As the adapter parsed it
+
+    Returns:
+        The row
+    """
+    return VenuePositionRow(
+        symbol=position.symbol,
+        direction=position.direction,
+        lots=position.lots,
+        entry_price=position.entry_price,
+        broker_ref=position.broker_ref,
+    )
 
 
 def order_event_from_row(row: OrderEventRow) -> OrderEvent:
@@ -113,7 +204,9 @@ def write_order_event_stream(
     return writer.get_path()
 
 
-def read_order_event_stream(path: Path) -> Tuple[List[OrderEventRow], bool]:
+def read_order_event_stream(
+    path: Path,
+) -> Tuple[List[OrderEventRow], List[BrokerTruthRow], bool]:
     """
     Read a stream back.
 
@@ -128,7 +221,8 @@ def read_order_event_stream(path: Path) -> Tuple[List[OrderEventRow], bool]:
         path: The stream's file
 
     Returns:
-        (the rows in file order, whether the last line was cut off)
+        (the order events in file order, the broker-truth lines in file order, whether the last
+        line was cut off)
     """
     try:
         raw = Path(path).read_text(encoding='utf-8')
@@ -140,6 +234,7 @@ def read_order_event_stream(path: Path) -> Tuple[List[OrderEventRow], bool]:
     if complete_tail:
         lines = lines[:-1]
     rows: List[OrderEventRow] = []
+    truths: List[BrokerTruthRow] = []
     truncated = False
     for index, line in enumerate(lines):
         if not line.strip():
@@ -157,11 +252,14 @@ def read_order_event_stream(path: Path) -> Tuple[List[OrderEventRow], bool]:
                         f"schema_version {record.get('schema_version')!r}, this reader knows "
                         f'{ORDER_EVENTS_SCHEMA_VERSION}')
                 continue
-            rows.append(OrderEventRow.model_validate(record))
+            if record.get('record_plane') == OrderEventPlane.BROKER_TRUTH.value:
+                truths.append(BrokerTruthRow.model_validate(record))
+            else:
+                rows.append(OrderEventRow.model_validate(record))
         except (json.JSONDecodeError, ValidationError) as e:
             if is_last and not complete_tail:
                 truncated = True
                 continue
             raise ReportArtifactUnreadableError(
                 ORDER_EVENTS_STREAM, str(path), f'line {index + 1}: {e}') from e
-    return rows, truncated
+    return rows, truths, truncated

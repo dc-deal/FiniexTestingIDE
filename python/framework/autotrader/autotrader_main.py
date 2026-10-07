@@ -73,6 +73,7 @@ from python.framework.types.config_types.autotrader_defaults_config_types import
 )
 from python.framework.types.config_types.market_config_types import TradingModel
 from python.framework.types.decision_event_types import SessionEndSeverity
+from python.framework.types.live_types.broker_truth_types import BrokerTruthReadReason
 from python.framework.types.live_types.reconciliation_types import FlatCheckResult
 from python.framework.types.persistence_types import (
     AccountDrawdownCarryOver,
@@ -538,6 +539,11 @@ class AutotraderMain:
             # === SIGNAL TRANSPORT (#141 Part 2a) ===
             self._setup_signal_transport()
 
+            # === BROKER TRUTH AT START (#362) ===
+            # What the venue holds once the cold start is resolved, before the first tick —
+            # the venue's half of the order-event stream begins here.
+            self._executor.record_session_truth(BrokerTruthReadReason.SESSION_START)
+
             # === TICK SOURCE ===
             self._print_startup_phase('Starting tick source...')
             _symbol_spec = self._executor.broker.adapter.get_symbol_specification(
@@ -990,6 +996,14 @@ class AutotraderMain:
             except Exception as e:
                 self._session_logger.error(f'Error during order cleanup: {e}')
 
+        # #362 — what the venue holds once the session's orders are handled, written before
+        # the stream closes. Its own try: a read that fails must never keep the stream open.
+        if self._executor and self._order_event_stream:
+            try:
+                self._executor.record_session_truth(BrokerTruthReadReason.SESSION_END)
+            except Exception as e:
+                self._session_logger.error(f'Broker truth at session end not recorded: {e}')
+
         # #362 — the stream ends after the order cleanup, whose cancels are steps of their
         # own. Its own try: a stream that cannot close must not keep the report from being
         # written.
@@ -1029,14 +1043,19 @@ class AutotraderMain:
             except Exception as e:
                 self._session_logger.error(f'Error during algo state shutdown: {e}')
 
-        # #332 — Field Study recorder: final broker-truth snapshot + close
+        # #332 — Field Study recorder: final broker-truth snapshot + close. Two guards: the
+        # snapshot reads the venue, and a read that fails must never keep the file open (#362)
         if self._field_study_recorder:
             try:
                 flat = self._reconciler.is_account_flat() if self._reconciler else None
                 self._record_field_study_broker_truth('session_end', flat)
+            except Exception as e:
+                self._session_logger.error(
+                    f'Field Study broker truth at session end not recorded: {e}')
+            try:
                 self._field_study_recorder.close('session end')
             except Exception as e:
-                self._session_logger.error(f'Error during Field Study recorder shutdown: {e}')
+                self._session_logger.error(f'Error closing the Field Study recorder: {e}')
 
         # Collect → grade → report, the same order the sim batch runs (batch_orchestrator:
         # PostRunValidator, then BatchReportCoordinator over a finished result).

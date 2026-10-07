@@ -111,6 +111,16 @@ position and must be cancelled by hand once the position is gone.
 | `test_the_equity_is_not_called_marked_to_market_when_nothing_was_marked` | Two lines that used to contradict each other |
 | `test_it_is_called_marked_to_market_when_it_is_one` | The other direction, so the label is not simply removed |
 
+### `test_broker_truth_at_session_end.py` — the venue's account at the end (#362)
+
+Drives `AutotraderMain._shutdown` with its collaborators replaced, so the ORDER of the steps is what
+is checked.
+
+| Test | What it verifies |
+|---|---|
+| `TestTheEndRead` | The venue is asked after the session's orders are handled and before the order-event stream closes; a read that fails — a refused credential here — is logged and never keeps the stream open |
+| `TestTheFieldStudysEnd` | The field study's recorder closes even when its own end snapshot fails |
+
 ## The two guards worth knowing about
 
 **The phantom drawdown.** The run-end equity sample must use the SPOT portfolio value, not the

@@ -175,9 +175,12 @@ class ReportStore:
         a session that died before its report has one, which is when it is worth the most. A
         cut-off last line is left out and reported on the report rather than failing the read.
 
+        Narrowed to one order, the broker-truth lines drop out: each one is the venue's whole
+        account at a moment, never a step of one order.
+
         Args:
             run_id: The run's identity
-            scenario_name: Keep only this unit's events
+            scenario_name: Keep only this unit's lines
             order_id: Keep only this order's events
 
         Returns:
@@ -186,13 +189,16 @@ class ReportStore:
         path = self._resolve(run_id, ORDER_EVENTS_STREAM)
         if path is None:
             return None
-        rows, truncated = read_order_event_stream(path)
+        rows, truths, truncated = read_order_event_stream(path)
         if scenario_name is not None:
             rows = [row for row in rows if row.scenario_name == scenario_name]
+            truths = [truth for truth in truths if truth.scenario_name == scenario_name]
         if order_id is not None:
             rows = [row for row in rows if row.order_id == order_id]
+            truths = []
         return OrderEventsReport(
-            run_id=run_id, events=rows, count=len(rows), truncated_tail=truncated)
+            run_id=run_id, events=rows, count=len(rows), broker_truth=truths,
+            truncated_tail=truncated)
 
     def get_config_snapshot(self, run_id: str) -> Optional[RunConfigSnapshot]:
         """

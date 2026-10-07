@@ -50,9 +50,13 @@ class SpyExecutor:
 
     def __init__(self):
         self.applied: List[List[Tuple[PendingOrder, BrokerOrder]]] = []
+        self.truth_records: List[ReconciliationResult] = []
 
     def apply_order_attributions(self, attributions) -> None:
         self.applied.append(list(attributions))
+
+    def record_reconcile_truth(self, result: ReconciliationResult) -> None:
+        self.truth_records.append(result)
 
 
 def _pair() -> Tuple[PendingOrder, BrokerOrder]:
@@ -127,6 +131,22 @@ class TestReconcileHandoff:
         _loop(None, spy)._reconcile_if_due(7)
 
         assert spy.applied == []
+
+    def test_a_cycle_marked_due_is_written_by_the_executor(self):
+        """#362: the Reconciler decides a changed picture is due; the executor numbers the line."""
+        result = ReconciliationResult(timestamp=_STAMP, is_clean=False, broker_truth_due=True)
+        spy = SpyExecutor()
+
+        _loop(StubReconciler(result), spy)._reconcile_if_due(7)
+
+        assert spy.truth_records == [result]
+
+    def test_a_cycle_not_due_writes_no_broker_truth(self):
+        spy = SpyExecutor()
+
+        _loop(StubReconciler(ReconciliationResult(timestamp=_STAMP)), spy)._reconcile_if_due(7)
+
+        assert spy.truth_records == []
 
     def test_the_tick_counter_reaches_the_reconciler(self):
         reconciler = StubReconciler(ReconciliationResult(timestamp=_STAMP))

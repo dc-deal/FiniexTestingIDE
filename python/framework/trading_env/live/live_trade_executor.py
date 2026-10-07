@@ -32,6 +32,7 @@ import time
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Dict, FrozenSet, List, Optional, Set, Tuple, Union
 
+from python.framework.exceptions.connection_errors import ConnectionGaveUpError
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.trading_env.abstract_trade_executor import AbstractTradeExecutor
 from python.framework.trading_env.broker_config import BrokerConfig
@@ -41,6 +42,13 @@ from python.framework.types.config_types.autotrader_defaults_config_types import
     UnresolvedResolutionDefaults,
 )
 from python.framework.types.config_types.connection_policy_config_types import ConnectionPolicy
+from python.framework.types.connection_types import ConnectionOutcome
+from python.framework.types.live_types.broker_truth_types import (
+    BrokerTruthPart,
+    BrokerTruthReadReason,
+    BrokerTruthRecord,
+    BrokerTruthSnapshot,
+)
 from python.framework.types.live_types.live_execution_types import (
     TERMINAL_ORDER_STATUSES,
     BrokerOrderStatus,
@@ -53,7 +61,11 @@ from python.framework.types.live_types.live_request_types import (
     QueryResponse,
     TradesQueryResponse,
 )
-from python.framework.types.live_types.reconciliation_types import BrokerOrder
+from python.framework.types.live_types.reconciliation_types import (
+    BrokerOrder,
+    ReconcileState,
+    ReconciliationResult,
+)
 from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.portfolio_types.portfolio_trade_record_types import (
     CloseReason,
@@ -345,6 +357,111 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         """
         return run_with_ladder(
             self.broker.adapter.get_broker_balances, self.get_rest_ladder())
+
+    def read_broker_truth(self) -> BrokerTruthSnapshot:
+        """
+        Everything the venue holds for this account, each part under the shared REST ladder (§43).
+
+        For the reads OUTSIDE the tick loop — the session's start and its end — where waiting
+        between attempts is allowed. Positions only on a margin account: on spot a holding is a
+        balance, and the venue has no position object to report.
+
+        A part the ladder gives up on stays unread, whatever its give-up rule says: the record
+        is an observation, never a precondition, so a venue that will not answer for a moment
+        ends neither the session nor its shutdown — the ladder has already said so on the
+        session channel. A refused credential still propagates.
+
+        Returns:
+            The answer; a part the ladder gave up on is None and listed in `unread_parts`
+        """
+        adapter = self.broker.adapter
+        reads = [
+            (BrokerTruthPart.VENUE_ORDERS, adapter.get_broker_orders),
+            (BrokerTruthPart.VENUE_BALANCES, adapter.get_broker_balances),
+        ]
+        if not self._spot_mode:
+            reads.append((BrokerTruthPart.VENUE_POSITIONS, adapter.get_broker_positions))
+
+        answers: Dict[BrokerTruthPart, Any] = {}
+        unread: List[BrokerTruthPart] = []
+        for part, read in reads:
+            try:
+                answers[part] = run_with_ladder(read, self.get_rest_ladder())
+            except ConnectionGaveUpError:
+                answers[part] = None
+            if answers[part] is None:
+                unread.append(part)
+        return BrokerTruthSnapshot(
+            venue_orders=answers.get(BrokerTruthPart.VENUE_ORDERS),
+            venue_balances=answers.get(BrokerTruthPart.VENUE_BALANCES),
+            venue_positions=answers.get(BrokerTruthPart.VENUE_POSITIONS),
+            unread_parts=unread,
+        )
+
+    def record_session_truth(
+        self,
+        read_reason: BrokerTruthReadReason,
+    ) -> Optional[BrokerTruthRecord]:
+        """
+        Ask the venue what it holds and write the answer to the order-event stream (#362).
+
+        Args:
+            read_reason: SESSION_START or SESSION_END
+
+        Returns:
+            The recorded record
+        """
+        return self._record_broker_truth(read_reason, self.read_broker_truth())
+
+    def record_reconcile_truth(
+        self,
+        result: ReconciliationResult,
+    ) -> Optional[BrokerTruthRecord]:
+        """
+        Write a reconciliation cycle whose picture changed to the order-event stream (#362).
+
+        The venue's orders and positions come from the cycle itself — read once, never twice.
+        Its balances are read only when the record crosses between clean and divergent, and
+        with ONE attempt: this runs inside the tick loop, where the cadence is the ladder and
+        nothing waits (§43).
+
+        Args:
+            result: The cycle the Reconciler marked due
+
+        Returns:
+            The recorded record
+        """
+        snapshot = BrokerTruthSnapshot(
+            venue_orders=result.broker_orders, venue_positions=result.broker_positions)
+        if result.broker_truth_state_changed:
+            snapshot.venue_balances = self._read_venue_balances_once()
+            if snapshot.venue_balances is None:
+                snapshot.unread_parts.append(BrokerTruthPart.VENUE_BALANCES)
+        state = ReconcileState.CLEAN if result.is_clean else ReconcileState.DIVERGENT
+        return self._record_broker_truth(
+            BrokerTruthReadReason.RECONCILE, snapshot,
+            reconcile_state=state, divergence=result.divergence)
+
+    def _read_venue_balances_once(self) -> Optional[Dict[str, float]]:
+        """
+        The venue's balance sheet, asked once and never waited for — for the tick loop.
+
+        A transient failure gives None and a warning; the next record that reads balances asks
+        again. Anything else propagates, as in the reconcile cycle: a refused credential is not
+        something to keep quiet about.
+
+        Returns:
+            Asset → amount, or None when the venue could not be reached
+        """
+        try:
+            return self.broker.adapter.get_broker_balances()
+        except Exception as error:   # noqa: BLE001 — classified, never swallowed
+            if self.get_rest_ladder().classify(error) is not ConnectionOutcome.TRANSIENT:
+                raise
+            self.logger.warning(
+                f'⚠️ Broker truth: the venue balances could not be read ({error}) — the record '
+                f'marks them unread')
+            return None
 
     def get_session_key(self) -> str:
         """

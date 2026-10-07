@@ -30,9 +30,22 @@ from python.framework.reporting.io.order_event_stream_writer import OrderEventSt
 from python.framework.reporting.store.report_store import IO_SUBDIR
 from python.framework.reporting.store.run_index import RunIndex
 from python.framework.types.api.report_types import RunHeader
+from python.framework.types.live_types.broker_truth_types import (
+    BrokerTruthPart,
+    BrokerTruthReadReason,
+    BrokerTruthRecord,
+    BrokerTruthSnapshot,
+)
+from python.framework.types.live_types.live_execution_types import BrokerOrderStatus
+from python.framework.types.live_types.reconciliation_types import (
+    BrokerOrder,
+    ReconcileDivergence,
+    ReconcileState,
+)
 from python.framework.types.log_layout_types import RUN_TYPE_SIMULATION
 from python.framework.types.trading_env_types.order_event_types import (
     OrderEvent,
+    OrderEventPlane,
     OrderEventType,
 )
 from python.framework.types.trading_env_types.order_types import OrderDirection, OrderType
@@ -49,6 +62,21 @@ def _event(seq: int, event_type: OrderEventType = OrderEventType.SUBMITTED,
         seq=seq, event_type=event_type, order_id=order_id, submitted_seq=1,
         order_type=OrderType.MARKET, symbol='BTCUSD', direction=OrderDirection.LONG,
         lots=0.01, event_time=_TIME)
+
+
+def _truth(seq: int, read_reason: BrokerTruthReadReason = BrokerTruthReadReason.SESSION_START,
+           **snapshot) -> BrokerTruthRecord:
+    """One broker-truth record, as the live executor records it."""
+    return BrokerTruthRecord(seq=seq, read_reason=read_reason,
+                             snapshot=BrokerTruthSnapshot(**snapshot), ts_init=_TIME)
+
+
+def _venue_order() -> BrokerOrder:
+    """A resting limit the venue reports, raw payload and all."""
+    return BrokerOrder(
+        broker_ref='OQ3V2K-ABCDE-FGHIJK', symbol='BTCUSD', direction=OrderDirection.LONG,
+        order_type=OrderType.LIMIT, lots=0.01, status=BrokerOrderStatus.PENDING, price=60000.0,
+        client_order_id='p1a2b_3', raw={'descr': {'order': 'buy 0.01 XBTUSD @ limit 60000'}})
 
 
 def _lines(path: Path) -> list:
@@ -73,7 +101,7 @@ class TestTheFile:
         writer = OrderEventStreamWriter(tmp_path, _RUN_ID, 'btc_run', RecordingLogger())
         writer(_event(1))
 
-        rows, truncated = read_order_event_stream(tmp_path / ORDER_EVENTS_STREAM)
+        rows, _, truncated = read_order_event_stream(tmp_path / ORDER_EVENTS_STREAM)
         assert [r.seq for r in rows] == [1] and not truncated, 'flushed, not buffered'
         writer.close()
 
@@ -104,7 +132,7 @@ class TestTheFile:
         writer.close()
 
         assert len(logger.errors) == 1 and 'seq 2' in logger.errors[0]
-        rows, truncated = read_order_event_stream(tmp_path / ORDER_EVENTS_STREAM)
+        rows, _, truncated = read_order_event_stream(tmp_path / ORDER_EVENTS_STREAM)
         assert [r.seq for r in rows] == [1] and not truncated
 
     def test_a_backtest_writes_its_units_one_after_the_other(self, tmp_path):
@@ -114,7 +142,8 @@ class TestTheFile:
             ('sol_run', [_event(1)]),
         ])
 
-        rows, _ = read_order_event_stream(path)
+        rows, truths, _ = read_order_event_stream(path)
+        assert truths == [], 'a backtest asks no venue'
         assert [(r.scenario_name, r.seq) for r in rows] == [
             ('btc_run', 1), ('btc_run', 2), ('sol_run', 1)]
 
@@ -139,7 +168,7 @@ class TestReadingItBack:
         with open(path, 'a', encoding='utf-8') as handle:
             handle.write('{"scenario_name": "btc_run", "seq": 3, "event_ty')
 
-        rows, truncated = read_order_event_stream(path)
+        rows, _, truncated = read_order_event_stream(path)
 
         assert [r.seq for r in rows] == [1, 2]
         assert truncated
@@ -164,6 +193,18 @@ class TestReadingItBack:
         with pytest.raises(ReportArtifactUnreadableError):
             read_order_event_stream(path)
 
+    def test_the_previous_schema_is_refused_too(self, tmp_path):
+        """One version is read: a stream of the previous one is rewritten by re-running its run."""
+        path = self._two_events(tmp_path)
+        lines = path.read_text(encoding='utf-8').splitlines()
+        header = json.loads(lines[0])
+        header['schema_version'] = ORDER_EVENTS_SCHEMA_VERSION - 1
+        lines[0] = json.dumps(header)
+        path.write_text('\n'.join(lines) + '\n', encoding='utf-8')
+
+        with pytest.raises(ReportArtifactUnreadableError):
+            read_order_event_stream(path)
+
     @pytest.mark.parametrize('line', ['[1, 2]', '42', '"text"'])
     def test_a_line_that_is_not_an_object_is_a_damaged_file(self, tmp_path, line):
         path = self._two_events(tmp_path)
@@ -181,6 +222,75 @@ class TestReadingItBack:
 
         with pytest.raises(ReportArtifactUnreadableError):
             read_order_event_stream(path)
+
+
+class TestBrokerTruthLines:
+    """What the venue said, in the same file and on the same counter as the order events."""
+
+    def _write(self, tmp_path: Path, *records) -> Path:
+        """A session stream holding the given records, events and broker truth alike."""
+        writer = OrderEventStreamWriter(tmp_path, _RUN_ID, 'btc_session', RecordingLogger())
+        for record in records:
+            if isinstance(record, BrokerTruthRecord):
+                writer.write_broker_truth(record)
+            else:
+                writer(record)
+        writer.close()
+        return tmp_path / ORDER_EVENTS_STREAM
+
+    def test_both_planes_read_back_on_one_counter(self, tmp_path):
+        path = self._write(
+            tmp_path,
+            _truth(1, venue_orders=[], venue_balances={'USD': 812.4}),
+            _event(2),
+            _truth(3, BrokerTruthReadReason.SESSION_END, venue_orders=[],
+                   venue_balances={'USD': 800.0}))
+
+        rows, truths, truncated = read_order_event_stream(path)
+
+        assert [r.seq for r in rows] == [2]
+        assert [(t.seq, t.read_reason) for t in truths] == [
+            (1, BrokerTruthReadReason.SESSION_START), (3, BrokerTruthReadReason.SESSION_END)]
+        assert all(t.record_plane is OrderEventPlane.BROKER_TRUTH for t in truths)
+        assert not truncated
+
+    def test_a_venue_order_is_projected_not_copied(self, tmp_path):
+        path = self._write(tmp_path, _truth(1, venue_orders=[_venue_order()], venue_balances={}))
+
+        order = _lines(path)[1]['venue_orders'][0]
+
+        assert order['limit_price'] == 60000.0 and order['client_order_id'] == 'p1a2b_3'
+        assert 'raw' not in order, "the venue's payload stays with its adapter"
+
+    def test_the_three_states_of_a_part_survive_the_file(self, tmp_path):
+        """A value — an empty one included —, null and named unread, null and unnamed."""
+        path = self._write(tmp_path, _truth(
+            1, venue_orders=[], venue_balances=None,
+            unread_parts=[BrokerTruthPart.VENUE_BALANCES]))
+
+        _, (truth,), _ = read_order_event_stream(path)
+
+        assert truth.venue_orders == [], 'the venue holds no order — a statement, not a gap'
+        assert truth.venue_balances is None
+        assert truth.unread_parts == [BrokerTruthPart.VENUE_BALANCES], 'the read gave up'
+        assert truth.venue_positions is None, 'spot: not read on this occasion'
+        assert BrokerTruthPart.VENUE_POSITIONS not in truth.unread_parts
+
+    def test_a_divergent_reconcile_line_names_its_members(self, tmp_path):
+        record = BrokerTruthRecord(
+            seq=1, read_reason=BrokerTruthReadReason.RECONCILE,
+            snapshot=BrokerTruthSnapshot(venue_orders=[_venue_order()]),
+            reconcile_state=ReconcileState.DIVERGENT,
+            divergence=ReconcileDivergence(ghost_orders=['OQ3V2K-ABCDE-FGHIJK']),
+            ts_init=_TIME)
+        path = self._write(tmp_path, record)
+
+        _, (truth,), _ = read_order_event_stream(path)
+
+        assert truth.reconcile_state is ReconcileState.DIVERGENT
+        assert truth.divergence.ghost_orders == ['OQ3V2K-ABCDE-FGHIJK']
+        assert truth.venue_balances is None and truth.unread_parts == [], (
+            'no crossing between clean and divergent — balances are not read, not lost')
 
 
 class TestTheSharedWriter:

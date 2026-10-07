@@ -1,8 +1,9 @@
 """
 FiniexTestingIDE - Reconciliation Types (#151)
 Domain types for the live reconciliation layer: broker truth-pull results
-(BrokerPosition / BrokerOrder), the per-cycle ReconciliationResult bucket set,
-and the one-time flat-preflight result.
+(BrokerPosition / BrokerOrder), the per-cycle ReconciliationResult bucket set with
+its state and its divergence picture by identity (which a broker-truth record of the
+order-event stream names, #362), and the one-time flat-preflight result.
 
 Live-only — simulation's PortfolioManager IS the truth, so reconciliation does
 not apply there. Position buckets are populated on MARGIN adapters only; on SPOT
@@ -12,6 +13,7 @@ is skipped.
 
 from dataclasses import dataclass, field
 from datetime import datetime
+from enum import Enum
 from typing import Any, Dict, List, Optional, Tuple
 
 from python.framework.types.live_types.live_execution_types import BrokerOrderStatus
@@ -94,6 +96,44 @@ class BrokerOrder:
     raw: Optional[Dict[str, Any]] = None
 
 
+class ReconcileState(Enum):
+    """Where one reconciliation cycle left the session's books and the venue's."""
+    CLEAN = 'clean'             # every divergence bucket empty
+    DIVERGENT = 'divergent'     # at least one is not
+
+
+@dataclass
+class ReconcileDivergence:
+    """
+    One cycle's divergence picture by IDENTITY — what the reconciler compares cycle to cycle, and
+    what a broker-truth record names (#362).
+
+    Identities rather than counts: one ghost replaced by a different ghost is a change the operator
+    needs, though the count stayed at one. Positions are counted, as before: a venue's position
+    carries no reference every venue fills in.
+
+    Args:
+        ghost_orders: Venue references of resting orders that are not ours, as far as we can tell
+        abandoned_orders: Venue references carrying this session's key, with no local order left
+        foreign_session_orders: Venue references carrying an earlier session's key
+        unconfirmed_orders: Our order ids whose submit was never answered, unseen at the venue
+        orphan_orders: Our order ids the venue does not hold
+        stale_orders: Our order ids whose venue counterpart differs beyond the tolerance
+        ghost_positions: Venue positions with no local match (margin)
+        orphan_positions: Local positions the venue does not hold (margin)
+        stale_positions: Matched positions that differ beyond the tolerance (margin)
+    """
+    ghost_orders: List[str] = field(default_factory=list)
+    abandoned_orders: List[str] = field(default_factory=list)
+    foreign_session_orders: List[str] = field(default_factory=list)
+    unconfirmed_orders: List[str] = field(default_factory=list)
+    orphan_orders: List[str] = field(default_factory=list)
+    stale_orders: List[str] = field(default_factory=list)
+    ghost_positions: int = 0
+    orphan_positions: int = 0
+    stale_positions: int = 0
+
+
 @dataclass
 class ReconciliationResult:
     """
@@ -144,6 +184,14 @@ class ReconciliationResult:
         skipped_reason: Set when broker truth could not be pulled at all (#473) — the
             cycle produced no comparison, which is neither clean nor divergent. Named
             rather than boolean because "unreachable" is the fact the operator needs
+        broker_orders: The venue's resting orders as this cycle read them
+        broker_positions: The venue's positions as this cycle read them — None on spot,
+            where the cycle reads none
+        divergence: The picture by identity; None on a clean cycle
+        broker_truth_due: The picture differs from the one last written to the order-event
+            stream and the minimum interval has passed — the caller records it (#362)
+        broker_truth_state_changed: That record crosses between clean and divergent, the
+            occasion the balances are read on
     """
     timestamp: datetime
     ghost_positions: List[BrokerPosition] = field(default_factory=list)
@@ -159,6 +207,11 @@ class ReconciliationResult:
     partial_fills: List[PendingOrder] = field(default_factory=list)
     is_clean: bool = True
     skipped_reason: Optional[str] = None
+    broker_orders: List[BrokerOrder] = field(default_factory=list)
+    broker_positions: Optional[List[BrokerPosition]] = None
+    divergence: Optional[ReconcileDivergence] = None
+    broker_truth_due: bool = False
+    broker_truth_state_changed: bool = False
 
 
 @dataclass

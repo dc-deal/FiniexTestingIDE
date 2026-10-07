@@ -90,6 +90,14 @@ runtime cache's specs, the seed's fees and the detected fee tier. `config_hash` 
 AutoTrader session also freezes the content in the run-config store and names it as
 `broker_config_id` in its broker section. See [Data Storage Layout](architecture/data_storage_layout.md).
 
+**broker truth** (`broker_truth` lines of the order-event stream) — What the venue reported when a
+live session asked it: its open orders, its balances and, on a margin account, its positions,
+written beside the session's own steps on the same counter. `read_reason` says when —
+`session_start`, `session_end`, or `reconcile` when the reconciliation picture changed. Each part
+is a value (an empty one says the venue holds nothing), unread (`null` and named in
+`unread_parts`), or not read on that occasion (`null`, unnamed). Never in a backtest, whose venue is
+its own book. See [Order events](consumer/order-events.md).
+
 **cache** — A derived store of computed results. Deleting it loses nothing; a "cache" whose
 deletion loses data is misfiled. See [Data Storage Layout](architecture/data_storage_layout.md).
 

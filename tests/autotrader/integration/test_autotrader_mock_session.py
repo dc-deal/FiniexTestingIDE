@@ -19,14 +19,17 @@ from python.framework.autotrader.rendered_profile_builder import render_autotrad
 from python.framework.reporting.io.artifact_specs import (
     BOOKING_PERIODS_ARTIFACT,
     BROKER_ARTIFACT,
+    ORDER_EVENTS_STREAM,
     SAFETY_ARTIFACT,
 )
+from python.framework.reporting.io.order_event_stream_io import read_order_event_stream
 from python.framework.reporting.io.report_artifact_io import read_artifact
 from python.framework.reporting.io.run_header_io import RUN_HEADER_ARTIFACT, read_run_header
 from python.framework.reporting.store.report_store import IO_SUBDIR
 from python.framework.store.run_config_index import FROZEN_SUBDIR
 from python.framework.store.run_config_store import RunConfigStore
 from python.framework.types.autotrader_types.autotrader_result_types import AutoTraderResult
+from python.framework.types.live_types.broker_truth_types import BrokerTruthReadReason
 from python.framework.types.log_level import LogLevel
 from python.framework.types.log_record_types import LogRecord
 from python.framework.types.run_config_types import RunConfigKind
@@ -232,6 +235,25 @@ class TestTheSessionRecordsWhatItRan:
         unit = read_artifact(run_dir / IO_SUBDIR / 'broker.json', BROKER_ARTIFACT).units[0]
         session_log = (run_dir / 'autotrader_session.log').read_text()
         assert f'frozen as broker_config {unit.broker_config_id[:12]}' in session_log
+
+
+class TestTheVenuesHalfOfTheStream:
+    """
+    The session asks its venue what it holds at its start and at its end, into its own stream
+    (#362). A mock session runs no reconciler, so there is nothing in between.
+    """
+
+    def test_the_stream_opens_and_closes_with_the_venues_account(self, mock_session):
+        _, run_dir = mock_session
+        events, truths, truncated = read_order_event_stream(
+            run_dir / IO_SUBDIR / ORDER_EVENTS_STREAM)
+
+        assert [truth.read_reason for truth in truths] == [
+            BrokerTruthReadReason.SESSION_START, BrokerTruthReadReason.SESSION_END]
+        assert events, 'fixture: the session traded'
+        assert truths[0].seq < events[0].seq and events[-1].seq < truths[-1].seq
+        assert all(truth.unread_parts == [] for truth in truths)
+        assert not truncated
 
 
 class TestTheSessionBooks:

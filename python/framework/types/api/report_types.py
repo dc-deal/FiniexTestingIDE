@@ -13,6 +13,12 @@ from typing import Any, Dict, Optional
 
 from pydantic import BaseModel, Field, computed_field
 
+from python.framework.types.live_types.broker_truth_types import (
+    BrokerTruthPart,
+    BrokerTruthReadReason,
+)
+from python.framework.types.live_types.live_execution_types import BrokerOrderStatus
+from python.framework.types.live_types.reconciliation_types import ReconcileState
 # The risk baseline is REUSED, not projected. It is already a Pydantic record that describes
 # itself — kind, stamp, origin, and on spot the price and quantities its value can be
 # re-derived from — and the safety report's job is to surface exactly that record. A parallel
@@ -320,18 +326,91 @@ class OrderEventRow(BaseModel):
     lost_request: Optional[OrderOperation] = None  # on unresolved / resolved: which request
 
 
+class VenueOrderRow(BaseModel):
+    """One order the venue reported as open, in the venue's own terms (#362)."""
+    broker_ref: str                             # the venue's handle
+    client_order_id: Optional[str] = None       # our wire key, where the order carries one
+    symbol: str
+    direction: OrderDirection
+    order_type: OrderType
+    lots: float                                 # as asked, not what remains
+    filled_lots: float = 0.0                    # executed so far
+    limit_price: Optional[float] = None         # the price it would fill at
+    stop_price: Optional[float] = None          # the price that activates it
+    status: BrokerOrderStatus
+
+
+class VenuePositionRow(BaseModel):
+    """One position the venue reported — a margin account's; spot has none (#362)."""
+    symbol: str
+    direction: OrderDirection
+    lots: float
+    entry_price: float
+    broker_ref: Optional[str] = None
+
+
+class ReconcileDivergenceRow(BaseModel):
+    """
+    A divergent reconciliation picture by identity (#362).
+
+    Venue references for what the venue holds and the session cannot place, our order ids for
+    what the session holds and the venue does not show, positions as counts.
+    """
+    ghost_orders: list[str] = []                # not ours, as far as we can tell
+    abandoned_orders: list[str] = []            # this session's key, no local order left
+    foreign_session_orders: list[str] = []      # an earlier session's key
+    unconfirmed_orders: list[str] = []          # submit never answered, unseen at the venue
+    orphan_orders: list[str] = []               # ours, and the venue does not hold them
+    stale_orders: list[str] = []                # matched, but price or lots differ
+    ghost_positions: int = 0
+    orphan_positions: int = 0
+    stale_positions: int = 0
+
+
+class BrokerTruthRow(BaseModel):
+    """
+    What the venue reported when a live session asked it — a broker-truth line of the run's
+    order-event stream (#362).
+
+    Written at session start, at session end, and when the reconciliation picture changed. Each
+    of the three venue parts is in one of three states: a value — an empty one says the venue
+    holds nothing; null and named in `unread_parts`, where the read gave up; null and unnamed,
+    where this occasion does not read it — positions on a spot account, balances on a reconcile
+    line that does not cross between clean and divergent. `seq` shares the counter of the order
+    events, so the two lists interleave in the order they were written.
+    """
+    scenario_name: str                          # owning run unit (the session)
+    seq: int
+    record_plane: OrderEventPlane = OrderEventPlane.BROKER_TRUTH
+    read_reason: BrokerTruthReadReason
+    reconcile_state: Optional[ReconcileState] = None      # on a reconcile line
+    divergence: Optional[ReconcileDivergenceRow] = None   # on a divergent one
+    venue_orders: Optional[list[VenueOrderRow]] = None
+    venue_balances: Optional[dict[str, float]] = None     # unfiltered, quote currency included
+    venue_positions: Optional[list[VenuePositionRow]] = None
+    unread_parts: list[BrokerTruthPart] = []
+    event_time: Optional[str] = None            # ISO-8601 UTC, canonical clock; null before a tick
+    ts_init: Optional[str] = None               # ISO-8601 UTC, when this process saw the answer
+
+
 class OrderEventsReport(RunScopedReport):
     """
-    The run's order-event stream as one list, every unit's events in their own order.
+    The run's order-event stream as two lists, every unit's lines in their own order: the steps
+    of its orders, and — live only — what the venue reported when the session asked it.
 
     `truncated_tail` says the stream's last line was cut off — a session killed while writing it.
     The line is left out rather than guessed at; everything before it is complete.
     """
     events: list[OrderEventRow]
     count: int
+    broker_truth: list[BrokerTruthRow] = []
     truncated_tail: bool = False
-    # What makes one row unique — a served list declares it: `seq` is unique within a unit.
-    key: list[str] = ['scenario_name', 'seq']
+    # What makes one row unique — a served list declares it. `seq` is unique within a unit,
+    # across both lists: they share one counter.
+    keys: dict[str, list[str]] = {
+        'events': ['scenario_name', 'seq'],
+        'broker_truth': ['scenario_name', 'seq'],
+    }
 
 
 class OpenPositionRow(BaseModel):

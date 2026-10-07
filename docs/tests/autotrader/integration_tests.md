@@ -48,6 +48,11 @@ profile; the broker section's `broker_config_id` names a frozen broker configura
 very `config_hash` the section reports; and `autotrader_session.log` names it too — the one record
 a session killed before its report still keeps.
 
+`TestTheVenuesHalfOfTheStream` proves the broker-truth reads of #362 are wired into a real session:
+the stream's venue lines are exactly `session_start` and `session_end` (a mock session runs no
+reconciler), the first precedes every order event and the last follows them, and no part went
+unread.
+
 ### test_deployment_continuity.py
 
 The only end-to-end run of the deployment mechanism (#497). Four sessions through ONE carry-over

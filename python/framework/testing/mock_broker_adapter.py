@@ -515,7 +515,8 @@ class MockBrokerAdapter(AbstractAdapter):
         held before the call it still holds.
 
         Args:
-            operation: 'submit', 'query', 'cancel' or 'modify'
+            operation: 'submit', 'query', 'cancel', 'modify', or a read of the account —
+                'openorders', 'closedorders', 'balances', 'positions'
         """
         fault = self._transport_faults.get(operation)
         if fault is None:
@@ -891,7 +892,8 @@ class MockBrokerAdapter(AbstractAdapter):
         it must not inject the second.
 
         Args:
-            operation: 'submit', 'query', 'cancel' or 'modify'
+            operation: 'submit', 'query', 'cancel', 'modify', or a read of the account —
+                'openorders', 'closedorders', 'balances', 'positions'
             message: The error text the fault carries, or None to clear it
             terminal: True when a retry could not fix it (→ REJECTED rather than UNRESOLVED)
         """
@@ -961,6 +963,7 @@ class MockBrokerAdapter(AbstractAdapter):
         Returns:
             List of BrokerOrder ([] under DROP_ORDERS)
         """
+        self._raise_injected_fault('openorders')
         if self._divergence_mode == MockDivergenceMode.DROP_ORDERS:
             return []
         return list(self._broker_orders)
@@ -999,6 +1002,7 @@ class MockBrokerAdapter(AbstractAdapter):
         Returns:
             Asset → amount dict ({} under DROP_BALANCE)
         """
+        self._raise_injected_fault('balances')
         if self._divergence_mode == MockDivergenceMode.DROP_BALANCE:
             return {}
         return dict(self._broker_balances)
@@ -1012,6 +1016,7 @@ class MockBrokerAdapter(AbstractAdapter):
         Returns:
             List of BrokerPosition
         """
+        self._raise_injected_fault('positions')
         if self._divergence_mode == MockDivergenceMode.PHANTOM_POSITION:
             return list(self._broker_positions) + [
                 BrokerPosition(

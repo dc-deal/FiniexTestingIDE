@@ -138,6 +138,9 @@ class ReconciliationDefaults(StrictConfigModel):
     mode: Literal['alert_only', 'auto_correct', 'halt_trading'] = 'alert_only'
     interval_ticks: int = 100          # reconcile every N ticks ...
     min_interval_seconds: float = 60.0  # ... OR every M wall-clock seconds (hybrid)
+    # Least distance between two broker-truth records a changed picture writes into the
+    # order-event stream (#362); a change inside it is written once the distance has passed
+    broker_truth_min_interval_seconds: float = 300.0
 
 
 class ApiMonitorConfig(StrictConfigModel):
