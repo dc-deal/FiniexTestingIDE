@@ -130,7 +130,12 @@ class RunLedgerIndex(AbstractStoreIndex):
     # from a previous one — beside `orders_submitted`, which until now counted them as its own.
     # A fragment written before this version answers None for it, and its `orders_submitted`
     # still holds the adoptions.
-    LOGIC_VERSION: int = 17
+    # 17 → 18 (contract 23, #362): `orders_to` appended — whether a run's orders went to a
+    # simulator or to the venue, as its header records it. It is what lets a deployment say which
+    # of its sessions traded real money, and a deployment that mixes the two is reported rather
+    # than summed as one series. Appended, no existing value changes; an older fragment answers
+    # None — not recorded.
+    LOGIC_VERSION: int = 18
 
     def __init__(self, ledger_dir: Path, columns: List[str]):
         super().__init__(Path(ledger_dir) / LEDGER_INDEX_FILE)

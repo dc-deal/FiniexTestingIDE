@@ -21,6 +21,7 @@ from datetime import datetime, timezone
 import pytest
 
 from python.configuration.autotrader.autotrader_config_loader import load_autotrader_config
+from python.configuration.market_config_manager import MarketConfigManager
 from python.framework.autotrader.autotrader_startup import setup_pipeline
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.decision_logic.core.cautious_macd import CautiousMacd
@@ -150,6 +151,34 @@ class TestAVenueThatCannotHoldAProtectiveOrder:
             tmp_path, broker_type='mt5', symbol='EURUSD', **_LIVE_WIRING)
 
         assert 'venue_held_protection' not in message
+
+
+class TestARestLadderThatNeverGivesUp:
+    """
+    #362: every read and write a live session sends goes through its broker's REST ladder, and a
+    budget of 0 retries for ever — the session-end broker-truth read and the boot reads would wait
+    through an outage for as long as it lasts. The model's default is 0, so a broker without a
+    transport block of its own inherits it: MT5 here.
+    """
+
+    def test_a_live_session_refuses_to_start(self, tmp_path):
+        message = _setup_error(tmp_path, broker_type='mt5', symbol='EURUSD', **_LIVE_WIRING)
+
+        assert 'attempt_budget' in message and "'mt5'" in message, (
+            f'A live venue that would be retried for ever must not start: {message!r}')
+
+    def test_a_mock_rehearsal_is_not_stopped(self, tmp_path):
+        """A mock session reaches no venue, so it has no request to hang on."""
+        message = _setup_error(tmp_path, broker_type='mt5', symbol='EURUSD')
+
+        assert 'attempt_budget' not in message, message
+
+    def test_the_shipped_live_venue_gives_up(self):
+        """The one live venue today passes the check — the guard is not a stop for Kraken."""
+        connection = MarketConfigManager().get_broker_entry(
+            'kraken_spot').broker_transport.connection
+
+        assert connection.attempt_budget > 0
 
 
 class TestTheGuardsThatPredateThisFile:

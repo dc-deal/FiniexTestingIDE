@@ -27,9 +27,10 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from python.configuration.app_config_manager import AppConfigManager
 from python.configuration.market_config_manager import MarketConfigManager
+from python.framework.autotrader.dry_run_resolver import resolve_orders_to
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.reporting.io.run_header_io import RUN_HEADER_ARTIFACT, read_run_header
-from python.framework.types.api.report_types import WarningsErrorsReport
+from python.framework.types.api.report_types import OrdersTo, WarningsErrorsReport
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
 from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.data_origin_types import (
@@ -144,6 +145,8 @@ def build_run_provenance(
         # "not swept" is an answer, "no field" is the absence of one.
         trial_count=sweep_context.trial_count if sweep_context else 1,
         run_type=RUN_TYPE_SIMULATION,
+        # A backtest simulates every fill — the header's answer for every simulation run.
+        orders_to=OrdersTo.SIMULATED,
         **consumption_record(scenarios),
         **_run_counts(warnings_errors_report),
     )
@@ -235,6 +238,8 @@ def build_run_provenance_from_session(
         bot_id=config.bot_id,
         profile_hash=_profile_fingerprint(config),
         run_type=RUN_TYPE_AUTOTRADER,
+        # The same resolution the header was stamped with at the start, so the two agree.
+        orders_to=resolve_orders_to(config),
         **_run_counts(warnings_errors_report),
     )
 

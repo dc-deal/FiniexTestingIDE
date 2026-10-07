@@ -382,6 +382,7 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         close_reason: Optional[CloseReason] = None,
         client_order_id: Optional[str] = None,
         symbol: Optional[str] = None,
+        position_direction: Optional[OrderDirection] = None,
     ) -> str:
         """
         Track a submitted CLOSE order with broker reference.
@@ -405,6 +406,7 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
                           counter so an entry and its close stop sharing one key.
             symbol: The position's symbol — so an ending recorded after the position is
                           gone still names it (#362)
+            position_direction: The position's direction, for the same reason
 
         Returns:
             position_id for chaining
@@ -415,6 +417,7 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         pending = PendingOrder(
             pending_order_id=position_id,
             order_action=PendingOrderAction.CLOSE,
+            closed_position_direction=position_direction,
             timing=PendingOrderTiming(
                 submitted_at=now,
                 order_timeout_deadline_monotonic=(

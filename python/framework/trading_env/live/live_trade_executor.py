@@ -405,12 +405,17 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         """
         Ask the venue what it holds and write the answer to the order-event stream (#362).
 
+        Nothing is asked or written where the adapter answers its account reads itself — a dry
+        run against a real venue: its empty answer would claim an empty account.
+
         Args:
             read_reason: SESSION_START or SESSION_END
 
         Returns:
-            The recorded record
+            The recorded record; None when there is no venue account to read
         """
+        if not self.broker.adapter.reads_venue_account():
+            return None
         return self._record_broker_truth(read_reason, self.read_broker_truth())
 
     def record_reconcile_truth(
@@ -429,8 +434,11 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             result: The cycle the Reconciler marked due
 
         Returns:
-            The recorded record
+            The recorded record; None when there is no venue account to read, as at the
+            session's start and end
         """
+        if not self.broker.adapter.reads_venue_account():
+            return None
         snapshot = BrokerTruthSnapshot(
             venue_orders=result.broker_orders, venue_positions=result.broker_positions)
         if result.broker_truth_state_changed:
@@ -3097,6 +3105,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
                 entry_price=position.stop_loss,
                 close_reason=CloseReason.SL_TRIGGERED,
                 closes_position_id=position_id,
+                closed_position_direction=position.direction,
                 order_kwargs={'stop_price': position.stop_loss},
             )
             # Sent by a predecessor of this session, and its fill is booked here — counted
@@ -3208,6 +3217,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             close_lots=position.lots,
             close_reason=CloseReason.SL_TRIGGERED,
             closes_position_id=position.position_id,
+            closed_position_direction=position.direction,
             order_kwargs={'stop_price': position.stop_loss},
         )
         self._active_stop_orders.append(protective)
@@ -3265,6 +3275,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             close_lots=position.lots,
             close_reason=CloseReason.SL_TRIGGERED,
             closes_position_id=position.position_id,
+            closed_position_direction=position.direction,
             order_kwargs={'stop_price': position.stop_loss},
             submission=self._current_submission(),
         )
@@ -3858,6 +3869,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             close_reason=close_reason,
             client_order_id=client_key,
             symbol=position.symbol,
+            position_direction=position.direction,
         )
         self._stamp_write_moment(self._request_processor.get_order(position_id))
         self._request_processor.submit_close_order_async(

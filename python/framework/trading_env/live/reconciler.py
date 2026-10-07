@@ -31,7 +31,6 @@ reads (ALERT_ONLY).
 """
 
 import time
-from datetime import datetime, timezone
 from typing import Dict, List, Optional, Set, Tuple
 
 from python.framework.logging.abstract_logger import AbstractLogger
@@ -240,7 +239,6 @@ class Reconciler:
             f'({error}) · next attempt in {self._config.min_interval_seconds:.0f}s'
         )
         return ReconciliationResult(
-            timestamp=datetime.now(timezone.utc),
             is_clean=False,
             skipped_reason=str(error),
         )
@@ -397,7 +395,6 @@ class Reconciler:
         )
 
         return ReconciliationResult(
-            timestamp=datetime.now(timezone.utc),
             ghost_positions=ghost_positions,
             orphan_positions=orphan_positions,
             stale_positions=stale_positions,

@@ -274,7 +274,8 @@ and `get_broker_positions` on a margin account) on a separate hybrid cadence (ev
 seconds) and diffs it against the shadow state. That cadence reads the balances only when its
 picture crosses between clean and divergent, for the broker-truth line it then writes (#362);
 otherwise the venue's balance sheet is read at boot and at shutdown — by every live session's
-broker-truth reads, by the field study (through the reconciler's flatness check) and by the
+broker-truth reads (not a dry run against a real venue, whose adapter answers its account reads
+itself and declares so in `reads_venue_account()`), by the field study (through the reconciler's flatness check) and by the
 cold-start cross-check. It does **not** learn the fill first — it verifies
 after the fact and reports divergence (`ghost` / `orphan` / `stale`). Today it runs **ALERT_ONLY**
 (detect + log + SESSION panel), validated on real money.

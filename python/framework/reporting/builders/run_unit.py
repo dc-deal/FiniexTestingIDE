@@ -17,6 +17,7 @@ from python.framework.types.api.report_types import AbsentUnitRow, UnitRoster
 from python.framework.types.autotrader_types.autotrader_result_types import AutoTraderResult
 from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.disturbance_episode_types import DisturbanceEpisode, MarketDataTickStats
+from python.framework.types.live_types.broker_truth_types import BrokerTruthRecord
 from python.framework.types.performance_types.performance_stats_types import (
     DecisionLogicStats,
     WorkerCoordinatorPerformanceStats,
@@ -64,6 +65,9 @@ class RunUnit:
     # capped. A backtest carries them back from its scenario; a live session's are read back
     # from the stream it wrote while it ran. The pending-order counters are derived from them.
     order_events: List[OrderEvent] = field(default_factory=list)
+    # What the venue reported when a live session asked it (#362), read back from the same
+    # stream. Empty on sim: a backtest's venue is its own book, there is nothing to ask.
+    broker_truth: List[BrokerTruthRecord] = field(default_factory=list)
     portfolio_stats: Optional[PortfolioStats] = None
     execution_stats: Optional[ExecutionStats] = None
     # What was still resting or on its way when the unit ended
@@ -286,6 +290,7 @@ def run_units_from_session(
         session_end_policy=session.session_end_policy,
         order_history=session.order_history or [],
         order_events=session.order_events or [],
+        broker_truth=session.broker_truth or [],
         portfolio_stats=session.portfolio_stats,
         execution_stats=session.execution_stats,
         active_orders=session.active_orders,

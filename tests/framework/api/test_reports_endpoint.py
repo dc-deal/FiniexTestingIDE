@@ -30,6 +30,7 @@ from python.framework.reporting.io.artifact_specs import (
     SCENARIO_DETAILS_ARTIFACT,
     SIGNAL_ARTIFACT,
     TRADE_HISTORY_ARTIFACT,
+    VENUE_ACCOUNT_ARTIFACT,
     WARNINGS_ERRORS_ARTIFACT,
 )
 from python.framework.reporting.io.order_event_stream_io import write_order_event_stream
@@ -62,6 +63,7 @@ from python.framework.types.api.report_types import (
     PortfolioAggregateRow,
     PortfolioReport,
     PortfolioUnitRow,
+    ReconcileDivergenceRow,
     RunHeader,
     RunReporting,
     RunSummary,
@@ -76,16 +78,21 @@ from python.framework.types.api.report_types import (
     TradeHistoryReport,
     TradeHistoryRow,
     UnitErrorRow,
+    VenueAccountReport,
+    VenueAccountRow,
+    VenueSnapshotRow,
     WarningRow,
     WarningsErrorsOutcome,
     WarningsErrorsReport,
 )
 from python.framework.types.config_types.file_logging_config_types import RunLogPaths
 from python.framework.types.live_types.broker_truth_types import (
+    BrokerTruthPart,
     BrokerTruthReadReason,
     BrokerTruthRecord,
     BrokerTruthSnapshot,
 )
+from python.framework.types.live_types.reconciliation_types import ReconcileState
 from python.framework.types.log_layout_types import RUN_TYPE_AUTOTRADER, RUN_TYPE_SIMULATION
 from python.framework.types.trading_env_types.order_event_types import (
     OrderEvent,
@@ -759,3 +766,41 @@ class TestTheOrderEventStream:
 
         assert response.status_code == 404
         assert response.json()['error'] != 'run_not_found', 'the run is right there'
+
+
+class TestTheVenueAccount:
+    """
+    The venue's account per live session (#362), served from its artifact — and a backtest,
+    whose venue is its own book, answers with the cause rather than a bare not-found.
+    """
+
+    _URL = f'/api/v1/reports/runs/{_RUN}/venue-account'
+
+    def test_it_serves_each_session_row_with_its_key(self, client, tmp_path):
+        io_dir = _run_logs(tmp_path).simulation / 'my_set' / _RUN / IO_SUBDIR
+        write_artifact(VenueAccountReport(run_id=_RUN_ID, units=[VenueAccountRow(
+            name='btc_session',
+            at_start=VenueSnapshotRow(seq=1, venue_order_count=0, venue_balances={'USD': 812.4}),
+            at_end=VenueSnapshotRow(seq=9, venue_order_count=0,
+                                    unread_parts=[BrokerTruthPart.VENUE_BALANCES]),
+            reconcile_lines=2, divergent_lines=1, last_reconcile_state=ReconcileState.CLEAN,
+            last_divergence=ReconcileDivergenceRow(ghost_orders=['OQ3V2K-ABCDE-FGHIJK']))]),
+            io_dir, VENUE_ACCOUNT_ARTIFACT)
+
+        body = client.get(self._URL).json()
+
+        assert body['key'] == ['name']
+        row = body['units'][0]
+        assert (row['at_end']['venue_balances'], row['at_end']['unread_parts']) == (
+            None, ['venue_balances']), 'unread, not empty'
+        assert (row['last_reconcile_state'], row['last_divergence']['ghost_orders']) == (
+            'clean', ['OQ3V2K-ABCDE-FGHIJK'])
+
+    def test_a_backtest_has_none_and_says_why(self, client, tmp_path):
+        RunIndex(_index_path(tmp_path)).record_artifacts(
+            _RUN, _run_logs(tmp_path).simulation / 'my_set' / _RUN)
+
+        response = client.get(self._URL)
+
+        assert response.status_code == 404
+        assert response.json()['error'] == 'artifact_not_produced'

@@ -314,6 +314,34 @@ class TestAProtectiveOrder:
             OrderEndReason.PROTECTION_RELEASED}
 
 
+class TestACloseWhosePositionIsGone:
+    """
+    A close's answer can arrive after something else took its position — another close, a stop
+    the venue held. Its steps still name the position's side and size: both travel on the close
+    from the moment it is registered, not from a position that may be gone by then.
+    """
+
+    @ACCOUNT_MODELS
+    def test_its_steps_still_name_the_side_and_the_size(self, spot_mode):
+        mock, executor, events = live_session(spot_mode=spot_mode)
+        executor.open_order(market_order())
+        mock.await_submit_confirmation(executor)
+        mock.feed_tick(executor, bid=BID, ask=ASK)
+        position = executor.get_open_positions()[0]
+
+        executor.close_position(position.position_id)
+        executor.portfolio.close_position_portfolio(   # taken before the venue answers
+            position.position_id, exit_price=BID, exit_tick_value=1.0, exit_tick_index=0)
+        mock.await_submit_confirmation(executor)
+        mock.feed_tick(executor, bid=BID, ask=ASK)
+
+        close_steps = [e for e in events if e.action is OrderAction.CLOSE]
+        assert [e.event_type for e in close_steps][:2] == [
+            OrderEventType.SUBMITTED, OrderEventType.ACCEPTED]
+        assert {(e.direction, e.lots) for e in close_steps} == {(OrderDirection.LONG, 0.01)}, (
+            [(e.event_type.value, e.direction, e.lots) for e in close_steps])
+
+
 class TestTheStreamItself:
     """Ordered by `seq`, joined by `submitted_seq` — and an answer for a gone order is explained."""
 

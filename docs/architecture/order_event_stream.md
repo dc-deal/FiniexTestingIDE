@@ -37,6 +37,10 @@ These carry the stream's structure:
   one position. Only a `denied` order, never submitted, has none.
 - **`ts_init`** is the wall clock, live only. A backtest leaves it empty so that two identical runs
   write identical streams.
+- **`direction`** is the position's, and on a close the closed position's. A close carries it from
+  the moment it is registered (`PendingOrder.closed_position_direction`), so a close whose position
+  is gone by the time the venue answers — closed by another order on the way — still names its
+  side, in both pipelines.
 
 ## What each pipeline writes
 
@@ -133,6 +137,10 @@ the two planes read in the order they were written. A read is the venue's whole 
   asked once, and a transient failure leaves them unread. A clean cycle forgets the last
   divergence, so one that returns is written — and warned in the session log — again.
 - **Not in a backtest.** The simulation's venue is its own book; there is nobody to ask.
+- **Not in a dry run against a real venue either.** Its adapter answers every account read itself,
+  with nothing, and that answer recorded would claim an empty account. The adapter declares it —
+  `AbstractAdapter.reads_venue_account()`, false for Kraken in dry run — and the executor then
+  writes no line at all.
 - **Mock sessions** write the start and end lines from the mock venue and run no reconciler.
 
 What to do about a difference between the two planes is #349's; this plane only records what the
@@ -172,7 +180,10 @@ lines drop out. A last line without its newline that does not parse is a session
 mid-write: it is left out and `truncated_tail` says so. A broken line anywhere else, or a header
 naming any schema but the current one, is an unreadable file (`artifact_unreadable`), never a
 server error — a stream written under an earlier schema is written again by re-running its run.
-The session's own read-back for the pending-order counters takes the order events only.
+A live session reads its own stream back once it is closed (`read_back_order_event_stream`), one
+pass for both planes: the order events feed the pending-order counters and the check that every
+submission is in the stream, the broker-truth lines the venue-account section
+(`venue_account_report_builder`, served at `…/venue-account`).
 
 ## What is derived from it
 

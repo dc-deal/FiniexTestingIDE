@@ -125,7 +125,7 @@ is stated on [booking periods](/api/v1/docs/booking-periods).
 
 | Field | Meaning |
 |---|---|
-| `orders_submitted` · `orders_executed` · `orders_rejected` | what the block's units asked for and got |
+| `orders_submitted` · `orders_adopted` · `orders_executed` · `orders_denied` · `orders_rejected` · `orders_cancelled` · `orders_expired` · `orders_undelivered` · `orders_unaccounted` | one count per way the block's orders started or ended — what each means is on [execution stats](/api/v1/docs/execution-stats) |
 | `sl_tp_triggered` | closes that came from a stop or a target |
 | `execution_rate_pct` | executed over submitted and adopted |
 | `pending_total_submitted` | orders the block's units handed to their venues |

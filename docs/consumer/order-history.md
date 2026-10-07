@@ -3,8 +3,8 @@
 [Trade history](/api/v1/docs/trade-history) shows what worked. It cannot show what was asked for
 and refused, what was asked for twice, or what the venue never answered — so a strategy that
 wanted twenty positions and was allowed three looks exactly like one that only ever wanted three.
-This section is the order log: one row for every step in an order's life, including the steps that
-produced no trade.
+This section is the order log: a row when an order is placed and a row for the way it ended,
+including the endings that produced no trade.
 
 **Routes**
 
@@ -14,21 +14,25 @@ GET /api/v1/reports/runs/{run_id}/order-history
 
 **What is not here:** what a closed position earned — that is
 [trade history](/api/v1/docs/trade-history). Orders that were still resting when the run's data
-ended are in [pending orders](/api/v1/docs/pending-orders), and the per-unit counts of orders sent,
-executed and rejected are in [execution stats](/api/v1/docs/execution-stats).
+ended are in [pending orders](/api/v1/docs/pending-orders), the per-unit count of each way an order
+ended is in [execution stats](/api/v1/docs/execution-stats), and every step between an order's
+placing and its end — the venue taking it, a modification, an answer that was lost — is in
+[order events](/api/v1/docs/order-events).
 
 ## A row is an event, not an order
 
-One order appears several times. It is recorded `pending` when it is created, `executed` when it
-fills, and then once more per close — a position closed in three parts produces three close rows.
+One order appears several times. It is recorded `pending` when it is placed and once more for the
+way it ended — `executed` when it fills — and every close of a position adds a row of its own: a
+position closed in three parts produces three close rows.
 
 The rows are in **append order within their unit**, and that position in the list is their
 identity. No combination of fields is unique, so this list declares **no row key**, which is a
 statement in itself rather than an omission: see [row keys](/api/v1/docs/row-keys). Keep the order
 the API served, and do not deduplicate.
 
-An order the strategy cancels itself leaves no row at all — its `pending` row is the last thing
-you will see of it.
+An order that ends without filling has a row for that ending too: its `status` says which way it
+ended, and on a cancelled, expired or unaccounted row `initiator` and `end_reason` say who ended it
+and why.
 
 ## `order_id` is the position's id, so it repeats
 
@@ -61,17 +65,18 @@ matching their contents.
 | `close_type` | on a close row: whether it closed all of the position or part of it |
 | `commission` | the fee this event cost |
 | `rejection_reason` · `rejection_message` | why it was refused, as a code and as a sentence |
+| `initiator` · `end_reason` | who ended the order, and why — on a cancelled, expired or unaccounted row |
 
 `event_time` runs on the run's own clock, so in a backtest it is the replayed market time and not
 the time the backtest was executed. It is the moment of the event this row records — the
-submission on a `pending` row, else the fill, the refusal, the expiry.
+submission on a `pending` row, else the fill, the refusal, the cancel, the expiry.
 
 `order_type` is the type that was REQUESTED: a stop-limit order stays `stop_limit` after its stop
 triggered, a close is `market`, and an exit through a protective order the venue held carries that
 order's type.
 
-`direction`, `action`, `status`, `order_type`, `close_type` and `rejection_reason` are closed
-vocabularies and appear in the schema with their values.
+`direction`, `action`, `status`, `order_type`, `close_type`, `rejection_reason`, `initiator` and
+`end_reason` are closed vocabularies and appear in the schema with their values.
 
 ## What is null, and the one field that never is
 
@@ -84,7 +89,8 @@ read as a price is a mistake that cannot be undone further down.
 | `requested_lots` | the order did not know the size |
 | `executed_lots` · `executed_price` | nothing executed |
 | `close_type` | the row is not a close, or the close did not execute |
-| `rejection_reason` · `rejection_message` | the order was not rejected |
+| `rejection_reason` · `rejection_message` | the order was neither denied nor rejected |
+| `initiator` · `end_reason` | the row is not a cancel, an expiry or an order unaccounted for |
 | `direction` · `action` · `order_type` | the record did not carry them |
 
 The exception is `commission`: it is a plain number and present on every row. For the cost of a
@@ -95,43 +101,74 @@ See [nulls](/api/v1/docs/nulls) for how to render an absence.
 
 ## `status`
 
-The vocabulary is `pending`, `submitted`, `executed`, `partial`, `rejected`, `cancelled` and
-`expired`. The sequence described above — `pending`, then `executed`, then a close row per
-close — is what an ordinary order's rows look like; a refused order appears as `rejected`, and an
-order still resting when a backtest's data ends is recorded `expired` in that same step.
+`pending` is an order that has not ended — on its way, or resting at the venue. Every other value
+is one way an order can end, and each has its own word because each is acted on differently:
+
+| `status` | The order |
+|---|---|
+| `executed` | filled |
+| `denied` | was refused before anything was sent — the run's own checks, the lot size, the funds at submission, a close for a position that is not held, a close held back |
+| `rejected` | was refused by the venue — in a backtest the simulated one: its funds or margin check at the fill, a stress test |
+| `cancelled` | was cancelled — on request, or by the venue |
+| `expired` | ran out without filling — the end of a backtest's data, or the venue's own expiry |
+| `undelivered` | never reached the venue, as the venue confirms |
+| `unaccounted` | was given up on: the session stopped asking, and the venue may still hold it, filled or not |
+
+`denied`, `rejected`, `undelivered` and `unaccounted` are the endings nobody planned for; the run
+counts them together as `orders_failed` in [execution stats](/api/v1/docs/execution-stats).
 
 The `status` query parameter takes one of these values and matches it exactly.
 
+## Who ended it, and why — `initiator` and `end_reason`
+
+On a cancelled, expired or unaccounted row, `initiator` says who ended the order — `strategy`,
+`framework` (this side: a timeout, the end of the run, a protective order no longer needed) or
+`venue` — and `end_reason` says why:
+
+| `end_reason` | The order ended because |
+|---|---|
+| `cancel_requested` | the strategy asked for the cancel |
+| `protection_released` | it was a protective order its position no longer needed at the venue: the position's close was going out, or its stop was withdrawn |
+| `order_timeout` | it did not fill within the order timeout |
+| `resolution_ceiling` | its answer was lost, and the venue never named it however long it was asked |
+| `session_end` | the live session ended with the order still out |
+| `scenario_end` | the backtest's data ended with the order still out |
+| `venue_cancelled` | the venue cancelled it on its own |
+| `venue_expired` | the venue let it expire |
+
 ## Rejections
 
-A rejection carries its side and its symbol, which matters more than it sounds: it means a
-`symbol` filter **keeps** the refusals for that instrument instead of silently dropping them.
+A refusal carries its side and its symbol, which matters more than it sounds: it means a `symbol`
+filter **keeps** the refusals for that instrument instead of silently dropping them.
 
-`rejection_reason` is the code to branch on and `rejection_message` the sentence to show. The
-vocabulary:
+`rejection_reason` is the code to branch on and `rejection_message` the sentence to show; both are
+set on a `denied` and on a `rejected` row. The vocabulary:
 
 ```
 insufficient_margin · insufficient_funds · invalid_lot_size · symbol_not_tradeable
 market_closed · invalid_price · order_type_not_supported · broker_error
-rejection_cooldown · stale_market_data · broker_unreachable · unresolved_write
-remainder_below_minimum
+rejection_cooldown · stale_market_data · unaccounted_order · position_not_found
+close_withheld · remainder_below_minimum
 ```
 
-Three of them are worth spelling out, because their names do not carry their meaning:
+Four of them are worth spelling out, because their names do not carry their meaning:
 
 - **`remainder_below_minimum`** — the size asked for is fine, the *leftover* is not. Closing it
   would strand a remainder below the instrument's minimum volume, which could never be sold
   afterwards. It is its own reason rather than `invalid_lot_size` precisely because the lots
   requested are valid, and a reader given the other name would look in the wrong place.
-- **`broker_unreachable`** — the venue never answered before the order's timeout ran out. We did
-  not reach it, so it refused nothing, and **it may still be holding the order**. This is our
-  transport failing, not the venue declining.
-- **`unresolved_write`** — a new entry was refused because an order in exactly that unresolved
-  state is outstanding. Closing and protecting what is already held continue; only new entries
-  stop.
+- **`unaccounted_order`** — a new entry was refused because an order this session sent is
+  unaccounted for: the venue was asked about it as long as the session said it would ask, and
+  never named it. **It may still be resting there.** Closing and protecting what is already held
+  continue; only new entries stop.
+- **`position_not_found`** — a close for a position that is not held. In a backtest the simulated
+  venue also refuses a close whose position was closed while the close was on its way.
+- **`close_withheld`** — the close was held back because the protective order resting over the
+  position could not be cancelled first, and a close beside a working stop can fill twice.
 
-The last two occur in AutoTrader sessions only — see [run kinds](/api/v1/docs/run-kinds) for which
-kind of run you are holding.
+An answer that never came is not a refusal: the [order events](/api/v1/docs/order-events) follow it
+as `unresolved` and `resolved`, and an order whose answer was never found ends `unaccounted`. Which
+reasons a run can produce depends on its kind — see [run kinds](/api/v1/docs/run-kinds).
 
 ## The filters
 

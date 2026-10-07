@@ -6,8 +6,11 @@ adapter with it and the session reads it everywhere else; before it existed the 
 same flag by different rules, so a profile could arm a real adapter that the session then refused.
 """
 
+from typing import Optional
+
 from python.configuration.market_config_manager import MarketConfigManager
 from python.framework.exceptions.live_execution_errors import DryRunConflictError
+from python.framework.types.api.report_types import OrdersTo
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
 
 
@@ -47,3 +50,22 @@ def resolve_dry_run(config: AutoTraderConfig) -> bool:
             f"to market_config.json (or its user_configs override)."
         )
     return profile_override
+
+
+def resolve_orders_to(config: AutoTraderConfig) -> Optional[OrdersTo]:
+    """
+    Where this session's orders go, by the dry-run rule above — the value the run header and the
+    ledger row both record, so the two cannot disagree about whether a session moved real money.
+
+    Args:
+        config: The resolved AutoTrader configuration
+
+    Returns:
+        SIMULATED or VENUE; None for a profile the dry-run rule refuses — the header goes down
+        before that refusal on purpose, so the refused session is still identifiable, and it
+        never trades
+    """
+    try:
+        return OrdersTo.SIMULATED if resolve_dry_run(config) else OrdersTo.VENUE
+    except DryRunConflictError:
+        return None

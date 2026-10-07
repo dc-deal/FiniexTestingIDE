@@ -31,6 +31,9 @@ from python.framework.reporting.builders.run_unit import (
 from python.framework.reporting.builders.safety_report_builder import (
     build_safety_report_from_session,
 )
+from python.framework.reporting.builders.venue_account_report_builder import (
+    build_venue_account_report,
+)
 from python.framework.reporting.builders.warnings_errors_report_builder import (
     build_warnings_errors_report_from_session,
 )
@@ -50,6 +53,7 @@ from python.framework.reporting.io.artifact_specs import (
     BROKER_ARTIFACT,
     COLD_START_ARTIFACT,
     SAFETY_ARTIFACT,
+    VENUE_ACCOUNT_ARTIFACT,
     WARNINGS_ERRORS_ARTIFACT,
 )
 from python.framework.reporting.io.report_artifact_io import write_artifact
@@ -232,6 +236,15 @@ class AutotraderReportCoordinator:
                 self._config.symbol)
             write_artifact(safety_report, io_dir, SAFETY_ARTIFACT)
 
+        # Venue account (#362) — what the venue held at the session's start and end, and what
+        # the reconciliation recorded in between, derived from the broker-truth lines of the
+        # order-event stream. Written only when the session asked its venue anything: a dry run
+        # against a real venue asks nothing, and a row would describe an account nobody read.
+        venue_account_report = None
+        if any(unit.broker_truth for unit in units):
+            venue_account_report = build_venue_account_report(self._run_id, units)
+            write_artifact(venue_account_report, io_dir, VENUE_ACCOUNT_ARTIFACT)
+
         # The booking periods, derived once and used three times: the artifact, the table below,
         # and — through the periods themselves — the ledger rows. The reconciliation against the
         # run's own figure is computed here rather than in the renderer (§12), and it is why the
@@ -279,7 +292,8 @@ class AutotraderReportCoordinator:
             threshold=threshold,
             portfolio_summary=PortfolioSummary(
                 unified.portfolio, unified.pending_orders, unified.execution_stats, None),
-            trade_history_summary=TradeHistorySummary(unified.trade_history, unified.order_history),
+            trade_history_summary=TradeHistorySummary(
+                unified.trade_history, unified.order_history, unified.execution_stats),
             broker_summary=BrokerSummary(broker_report) if broker_report is not None else None,
             signal_summary=SignalSummary(unified.signal) if unified.signal.units else None,
             feed_stability_summary=(
@@ -293,7 +307,8 @@ class AutotraderReportCoordinator:
             booking_periods_summary=BookingPeriodsSummary(booking_periods),
             closing_block=AutotraderSessionSummary(
                 result, unified.trade_history, self._run_dir, unified.run_summary,
-                warnings_errors_report, cold_start_report, safety_report),
+                warnings_errors_report, cold_start_report, safety_report,
+                venue_account_report),
         )
 
         # Render once (live always full detail); capture, print to console (with colors), and

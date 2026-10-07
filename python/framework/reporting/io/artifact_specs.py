@@ -32,6 +32,7 @@ from python.framework.types.api.report_types import (
     ScenarioDetailsReport,
     SignalReport,
     TradeHistoryReport,
+    VenueAccountReport,
     WarningsErrorsReport,
     WorkerDecisionReport,
 )
@@ -77,6 +78,10 @@ SIGNAL_ARTIFACT: ArtifactSpec[SignalReport] = ArtifactSpec(
     'signal.json', SignalReport)
 TRADE_HISTORY_ARTIFACT: ArtifactSpec[TradeHistoryReport] = ArtifactSpec(
     'trade_history.json', TradeHistoryReport)
+# What the venue held at a live session's start and end, and what the reconciliation recorded in
+# between (#362) — derived from the broker-truth lines of the order-event stream.
+VENUE_ACCOUNT_ARTIFACT: ArtifactSpec[VenueAccountReport] = ArtifactSpec(
+    'venue_account.json', VenueAccountReport)
 WARNINGS_ERRORS_ARTIFACT: ArtifactSpec[WarningsErrorsReport] = ArtifactSpec(
     'warnings_errors.json', WarningsErrorsReport)
 WORKER_DECISION_ARTIFACT: ArtifactSpec[WorkerDecisionReport] = ArtifactSpec(

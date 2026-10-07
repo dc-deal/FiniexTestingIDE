@@ -42,7 +42,7 @@ Each order life in a backtest, read by submission; money-touching flows in both 
 | `TestARestingOrder` | a limit accepted on arrival and filled when the market comes; a strategy cancel asked for then carried out, with its initiator; a fill that overtakes a cancel or a modification refuses it first; a modification at its new price; a local refusal writes nothing; the data end expires resting and travelling orders alike |
 | `TestAStopOrder` | a stop rests, `triggered`, then fills at the market; a stop-limit triggers and fills as a limit while every step names the submitted type |
 | `TestAStopLimitWithARequestOnItsWay` | only a fill in the same pass overtakes a cancel; a limit that rests keeps the cancel; a modification that moves the stop is refused at the trigger and the limit keeps its own price, while one that leaves the stop alone applies to the limit |
-| `TestAPositionsCloses` | a close is an order of its own and states its position and that position's direction; a breached stop-loss exits through an order of its own |
+| `TestAPositionsCloses` | a close is an order of its own and states its position and that position's direction; a breached stop-loss exits through an order of its own; a close whose position went on its way still names its side — the side travels on the close, as live |
 | `TestARefusal` | a denial was never submitted; a refused close names its position; a stress-test refusal answers the submission with its delay |
 | `TestTheStreamItself` | `seq` strictly increasing, every step names a recorded submission, no wall clock, and two identical backtests write identical streams |
 
@@ -57,6 +57,7 @@ Each order life in a live session against the mock venue.
 | `TestALostAnswer` | `unresolved` then `resolved` and a late acceptance without latency when the venue names it; `undelivered` when it never had it; the truth pull naming it is a resolution too |
 | `TestAnAdoptedOrder` | adopted, and its fill follows without a second acceptance — counted adopted, not submitted |
 | `TestAProtectiveOrder` | the entry, the protective stop and the close as three lives: the stop is cancelled first, with its position, its position's side and `protection_released` |
+| `TestACloseWhosePositionIsGone` | a close whose position something else took before the answer came still names the position's side and size on its steps, in both account models — both travel on the close from its registration |
 | `TestTheStreamItself` | `seq` strictly increasing across orders; an answer for an order that is gone names how it ended |
 | `TestTheSessionsPendingCounters` | the pending-order counters derived from a session's events — one accepted, one rejected, one never confirmed — add up, and only the answers carry a duration |
 
@@ -93,6 +94,7 @@ What a live session writes when it asks the venue (#362), against the mock venue
 | `TestTheDeclaration` | every part is a field of the served line and every `venue_` field a part; every read reason has a place in the session or the executors that writes it |
 | `TestTheSessionRead` | the venue's orders and balances are written; positions on a margin account only; a part the venue does not give is unread, never empty; a ladder that aborts ends neither the read nor the session |
 | `TestItsPlaceInTheStream` | one counter with the order events, no gap; before the first tick only the receipt time; a backtest asks no venue |
+| `TestARunWithNoVenueAccount` | a dry-run Kraken adapter answers its account reads itself and says so; the mock venue is read; without a venue account no line is written — start, reconcile or end — and no number is spent |
 | `TestAReconcileRecord` | the cycle's own orders, never a second read; balances on a crossing between clean and divergent only; a failed balance read inside the tick loop does not wait |
 
 The route itself — every step in stream order with its keys, the venue's lines beside them and

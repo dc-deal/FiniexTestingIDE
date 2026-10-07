@@ -151,7 +151,8 @@ def aggregate_trade_scenario_totals(rows: List[TradeHistoryRow]) -> List[TradeSc
 
 def aggregate_execution_totals(rows: List[ExecutionStatsRow]) -> ExecutionStatsTotals:
     """Sum the per-unit order counts (currency-agnostic) into one totals object."""
-    return ExecutionStatsTotals(**_summed_execution_counts(rows))
+    return ExecutionStatsTotals(
+        **_summed_execution_counts(rows), orders_failed=sum(r.orders_failed for r in rows))
 
 
 def _summed_execution_counts(rows: List[ExecutionStatsRow]) -> Dict[str, int]:

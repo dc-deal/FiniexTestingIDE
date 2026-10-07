@@ -100,6 +100,11 @@ LEDGER_COLUMNS: List[str] = [
     # it, and a second encoding of a fact is the copy that eventually disagrees (§19).
     # `RunResultRow.run_kind` derives it instead.
     'run_type',
+    # WHERE the run's orders went — `simulated` or `venue`, i.e. whether real money moved
+    # (#362) — as the run header records it. Without it a deployment that rehearsed in a dry run
+    # and then traded real money reads as one series, and its P&L adds simulated fills to real
+    # ones. Appended, so older fragments read back None: not recorded.
+    'orders_to',
     # How the run ENDED and what its warnings-errors channels held, from the outcome the report
     # counted once for both pipelines — so a run list can say whether a run is worth opening
     # without opening it. Run-level values, repeated on every row of the run. Appended, so older
@@ -198,6 +203,9 @@ COLUMN_REDUCTION: Dict[str, Reduction] = {
     'bot_id': Reduction.IDENTITY,
     'profile_hash': Reduction.IDENTITY,
     'run_type': Reduction.IDENTITY,
+    # One answer per run. Across a deployment's runs a disagreement is exactly the case worth
+    # reporting: simulated and real money in one history.
+    'orders_to': Reduction.IDENTITY,
     # One run's outcome and counts, repeated on each of its rows — so they agree within a run.
     # Across runs a combined row has no single outcome, and summing counts that every period row
     # repeats would multiply them.
@@ -587,6 +595,8 @@ class RunResultsLedger:
             'bot_id': p.bot_id,
             'profile_hash': p.profile_hash,
             'run_type': p.run_type,
+            # A parquet column holds the enum's VALUE; reading it back restores the enum.
+            'orders_to': p.orders_to.value if p.orders_to else None,
             'trial_count': p.trial_count,
             # A parquet column holds the enum's VALUE; reading it back restores the enum.
             'run_outcome': p.run_outcome.value if p.run_outcome else None,

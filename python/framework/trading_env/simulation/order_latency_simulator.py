@@ -40,7 +40,11 @@ from python.framework.types.trading_env_types.latency_simulator_types import (
     PendingOrderAction,
     PendingOrderTiming,
 )
-from python.framework.types.trading_env_types.order_types import OpenOrderRequest, OrderType
+from python.framework.types.trading_env_types.order_types import (
+    OpenOrderRequest,
+    OrderDirection,
+    OrderType,
+)
 from python.framework.types.trading_env_types.submission_metadata_types import SubmissionMetadata
 from python.framework.utils.seeded_generators.seeded_delay_generator import SeededDelayGenerator
 
@@ -229,7 +233,8 @@ class OrderLatencySimulator(AbstractPendingOrderManager):
         tick: TickData,
         symbol: Optional[str] = None,
         close_lots: Optional[float] = None,
-        close_reason: Optional[CloseReason] = None
+        close_reason: Optional[CloseReason] = None,
+        position_direction: Optional[OrderDirection] = None
     ) -> str:
         """
         Submit CLOSE order for execution with delay.
@@ -244,6 +249,8 @@ class OrderLatencySimulator(AbstractPendingOrderManager):
             close_lots: Lots to close (None = close all)
             close_reason: Why the close was requested, or None for a plain strategy
                 close — it rides on the PendingOrder to the fill (#500)
+            position_direction: The position's direction, carried for the same reason as
+                its symbol
 
         Returns:
             position_id: Same as input (for chaining)
@@ -264,6 +271,7 @@ class OrderLatencySimulator(AbstractPendingOrderManager):
             order_action=PendingOrderAction.CLOSE,
             order_type=OrderType.MARKET,
             symbol=symbol,
+            closed_position_direction=position_direction,
             close_reason=close_reason,
             close_lots=close_lots,
             submission=SubmissionMetadata(

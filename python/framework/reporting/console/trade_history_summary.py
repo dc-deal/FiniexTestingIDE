@@ -15,6 +15,7 @@ from python.framework.reporting.console.abstract_batch_summary_section import (
 )
 from python.framework.types.api.report_types import (
     ExecutionRow,
+    ExecutionStatsReport,
     OrderHistoryReport,
     OrderHistoryRow,
     TradeAnalytics,
@@ -40,16 +41,24 @@ class TradeHistorySummary(AbstractBatchSummarySection):
 
     _section_title = '📋 TRADE HISTORY (PER SCENARIO)'
 
-    def __init__(self, report: TradeHistoryReport, order_report: OrderHistoryReport) -> None:
+    def __init__(
+        self,
+        report: TradeHistoryReport,
+        order_report: OrderHistoryReport,
+        execution_report: ExecutionStatsReport,
+    ) -> None:
         """
         Initialize trade history summary.
 
         Args:
             report: The unified trade-history report (rows + analytics)
-            order_report: The unified order-history report (rejection source)
+            order_report: The unified order-history report (the failed orders listed)
+            execution_report: The execution counts — how many failed, which the capped
+                history cannot say
         """
         self._report = report
         self._order_report = order_report
+        self._failed_by_unit = {row.name: row.orders_failed for row in execution_report.units}
         # Per-scenario footer totals from the model (no renderer re-sum)
         self._scenario_totals_by_name = {
             t.scenario_name: t for t in report.scenario_totals}
@@ -149,16 +158,21 @@ class TradeHistorySummary(AbstractBatchSummarySection):
 
     def _render_scenario_rejections(
         self, scenario_name: str, renderer: ConsoleRenderer) -> None:
-        """Render the failed orders of a scenario (from the order-history model)."""
+        """
+        Render the failed orders of a scenario: how many from the execution counts, which
+        ones from the order history — which holds only its newest rows in a long session.
+        """
         rejections = [
             o for o in self._order_report.orders
             if o.status in FAILED_ORDER_STATUSES and o.scenario_name == scenario_name
         ]
-        if not rejections:
+        failed = self._failed_by_unit.get(scenario_name, len(rejections))
+        if not failed:
             return
 
+        listed = '' if len(rejections) == failed else f' ({len(rejections)} listed)'
         print()
-        print(renderer.yellow(f'   Failed Orders: {len(rejections)}'))
+        print(renderer.yellow(f'   Failed Orders: {failed}{listed}'))
         header = (f"   {'#':>3} | {'Order ID':<20} | {'Status':<11} | {'Reason':<25} | "
                   f"{'Message'}")
         print(renderer.gray(header))

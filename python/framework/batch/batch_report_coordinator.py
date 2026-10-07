@@ -195,7 +195,8 @@ class BatchReportCoordinator:
             scenario_details_summary=ScenarioDetailsSummary(scenario_details_report),
             portfolio_summary=PortfolioSummary(
                 portfolio_report, pending_report, execution_stats_report, aggregated_portfolio_report),
-            trade_history_summary=TradeHistorySummary(trade_report, order_report),
+            trade_history_summary=TradeHistorySummary(
+                trade_report, order_report, execution_stats_report),
             broker_summary=BrokerSummary(broker_report),
             signal_summary=SignalSummary(signal_report) if signal_report.units else None,
             feed_stability_summary=(

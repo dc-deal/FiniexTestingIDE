@@ -413,6 +413,46 @@ class OrderEventsReport(RunScopedReport):
     }
 
 
+class VenueSnapshotRow(BaseModel):
+    """
+    What the venue held at one read of a live session (#362) — counted, with its balance sheet.
+    The read itself, order by order, is the broker-truth line `seq` names on the order-event
+    stream. A part the read gave up on is null and named in `unread_parts`.
+    """
+    seq: int                                            # the broker-truth line it comes from
+    venue_order_count: Optional[int] = None             # orders the venue reported as open
+    venue_balances: Optional[dict[str, float]] = None   # unfiltered, quote currency included
+    venue_position_count: Optional[int] = None          # margin only; null on spot
+    unread_parts: list[BrokerTruthPart] = []
+
+
+class VenueAccountRow(BaseModel):
+    """
+    One live session's account as its venue reported it — at the start, at the end, and what
+    the reconciliation recorded in between (#362).
+
+    A reconcile line is written only when the picture changes, and the reconciliation starts
+    from clean — so the first line is always a divergent one, and `last_reconcile_state` says
+    whether the last divergence recorded was followed by a clean picture.
+    """
+    name: str                                       # the session
+    at_start: Optional[VenueSnapshotRow] = None     # null: the session stopped before its start read
+    at_end: Optional[VenueSnapshotRow] = None       # null: the session ended without its end read
+    reconcile_lines: int = 0                        # broker-truth lines a changed picture wrote
+    divergent_lines: int = 0                        # of those, the ones that found a divergence
+    last_reconcile_state: Optional[ReconcileState] = None      # the last line's; null: none written
+    last_divergence: Optional[ReconcileDivergenceRow] = None   # the latest divergent picture
+
+
+class VenueAccountReport(RunScopedReport):
+    """
+    The venue's account per live session — AutoTrader only: a backtest's venue is its own book.
+    The lines it is derived from are on the order-event stream, as its `broker_truth` list.
+    """
+    units: list[VenueAccountRow]
+    key: list[str] = ['name']
+
+
 class OpenPositionRow(BaseModel):
     """
     One position still OPEN at run end (#492) — the counterpart to ActiveOrderRow.
@@ -616,6 +656,9 @@ class ExecutionStatsRow(BaseModel):
     orders_undelivered: int
     orders_unaccounted: int
     sl_tp_triggered: int    # closes triggered by stop-loss / take-profit
+    # The rows that ended as a failure — denied, rejected, undelivered or unaccounted. Counted
+    # where each row is booked, so it holds where the order history is capped
+    orders_failed: int = 0
 
 
 class ExecutionStatsTotals(BaseModel):
@@ -633,6 +676,7 @@ class ExecutionStatsTotals(BaseModel):
     orders_undelivered: int = 0
     orders_unaccounted: int = 0
     sl_tp_triggered: int = 0
+    orders_failed: int = 0
 
 
 class ExecutionStatsReport(RunScopedReport):
@@ -1430,6 +1474,9 @@ class RunResultRow(BaseModel):
     # 'simulation' | 'autotrader'; '' on a fragment written before the column existed, which means
     # UNKNOWN and never a guess.
     run_type: str = ''
+    # Where the run's orders went — `venue` is real money and nothing else (#362). None on a
+    # fragment written before the column existed: not recorded.
+    orders_to: OrdersTo | None = None
     # When this row was written — within seconds of the run's end. '' on an older fragment,
     # which is what makes a gap measured from it fall back to start-to-start and SAY so.
     recorded_at_utc: str = ''
@@ -1631,6 +1678,10 @@ class DeploymentSessionRow(BaseModel):
             marked rather than quietly shown as the same measure
         strategy_changed: True when `param_hash` differs from the previous session's
         operation_changed: True when `profile_hash` differs from the previous session's
+        orders_to: Where the session's orders went — `venue` is real money, `simulated` a
+            rehearsal; None on a session recorded before the field existed
+        orders_to_changed: True when `orders_to` differs from the previous session's — a
+            deployment that went from a rehearsal to real money, or back
     """
     index: int
     run_id: str
@@ -1647,6 +1698,8 @@ class DeploymentSessionRow(BaseModel):
     gap_between_starts: bool = False
     strategy_changed: bool = False
     operation_changed: bool = False
+    orders_to: Optional[OrdersTo] = None
+    orders_to_changed: bool = False
 
 
 class DeploymentComparabilityAdvisory(BaseModel):
@@ -1670,11 +1723,15 @@ class DeploymentComparabilityAdvisory(BaseModel):
             what it decided (a safety threshold, a guard, a timeout, the capital declaration)
         longest_gap_hours: The longest stretch the bot was not running, None when no gap could
             be measured
+        orders_to: Where its sessions' orders went, each value once — both `simulated` and
+            `venue` mean the history mixes a rehearsal with real money, and its P&L column adds
+            simulated fills to real ones. Sessions recorded before the field existed add nothing
     """
     sessions: int
     strategy_stands: int
     operation_stands: int
     longest_gap_hours: Optional[float] = None
+    orders_to: list[OrdersTo] = []
 
 
 class DeploymentSummary(BaseModel):
@@ -1699,6 +1756,9 @@ class DeploymentSummary(BaseModel):
         currency: The account currency the figures are in
         longest_gap_hours: The longest stretch the bot was not running
         changed: True when the sessions were not all produced by the same configuration
+        orders_to: Where its sessions' orders went, each value once — `["venue"]` is a
+            real-money deployment, `["simulated"]` a rehearsal, both a deployment that mixes the
+            two (then `changed` is true as well). Empty when no session recorded it
     """
     deployment_id: str
     sessions: int
@@ -1712,6 +1772,7 @@ class DeploymentSummary(BaseModel):
     bot_id: str = ''
     longest_gap_hours: Optional[float] = None
     changed: bool = False
+    orders_to: list[OrdersTo] = []
 
 
 class DeploymentListResponse(BaseModel):

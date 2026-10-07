@@ -93,6 +93,7 @@ def _summarize_one(
         bot_id=sessions[0].bot_id,
         longest_gap_hours=max(gaps) if gaps else None,
         changed=advisories.get(deployment) is not None,
+        orders_to=sorted({s.orders_to for s in sessions if s.orders_to is not None}),
     )
 
 
@@ -102,8 +103,10 @@ def deployment_comparability_advisory(
     """
     Report whether one deployment's sessions form a comparable series.
 
-    Returns None when they do — one strategy stand and one operational stand — because a
-    warning that fires on the normal case is a warning that gets skipped.
+    Returns None when they do — one strategy stand, one operational stand and one place its
+    orders went — because a warning that fires on the normal case is a warning that gets
+    skipped. A rehearsal followed by real money is the sharpest of the three: its P&L column
+    adds simulated fills to real ones.
 
     Args:
         rows: The ledger rows of ONE deployment
@@ -115,7 +118,8 @@ def deployment_comparability_advisory(
         return None
     strategy = {r.param_hash for r in rows if r.param_hash}
     operation = {r.profile_hash for r in rows if r.profile_hash}
-    if len(strategy) < 2 and len(operation) < 2:
+    orders_to = {r.orders_to for r in rows if r.orders_to is not None}
+    if len(strategy) < 2 and len(operation) < 2 and len(orders_to) < 2:
         return None
     return DeploymentComparabilityAdvisory(
         # Distinct RUNS, not rows. A row is one (run × account currency), so counting rows
@@ -125,6 +129,7 @@ def deployment_comparability_advisory(
         sessions=len({r.run_id for r in rows}),
         strategy_stands=max(1, len(strategy)),
         operation_stands=max(1, len(operation)),
+        orders_to=sorted(orders_to),
     )
 
 
@@ -200,6 +205,12 @@ def build_deployment_histories(rows: List[RunResultRow]) -> Dict[str, List[Deplo
                 gap_between_starts=fell_back,
                 strategy_changed=bool(previous and previous.param_hash != row.param_hash),
                 operation_changed=bool(previous and previous.profile_hash != row.profile_hash),
+                orders_to=row.orders_to,
+                # Only between two sessions that both recorded it — an older row says nothing,
+                # which is not a change.
+                orders_to_changed=bool(
+                    previous and previous.orders_to is not None and row.orders_to is not None
+                    and previous.orders_to != row.orders_to),
             ))
             previous = row
         histories[deployment] = sessions

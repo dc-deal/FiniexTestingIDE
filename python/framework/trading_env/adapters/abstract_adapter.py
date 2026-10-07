@@ -825,6 +825,18 @@ class AbstractAdapter(ABC):
         raw = self._do_request_balance(self._build_balance_payload())
         return self._parse_balance_response(raw)
 
+    def reads_venue_account(self) -> bool:
+        """
+        Whether the account reads — open orders, balances, positions — are answered by a venue.
+
+        False where the adapter answers them itself: its empty answer describes no account, so
+        nothing may record it as what the venue holds (#362).
+
+        Returns:
+            True unless the adapter answers its account reads itself
+        """
+        return True
+
     def get_broker_positions(self) -> List[BrokerPosition]:
         """
         Pull the broker's open positions (MARGIN only — empty on spot).

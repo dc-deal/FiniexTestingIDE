@@ -31,8 +31,15 @@ from python.framework.types.api.report_types import (
     VenueOrderRow,
     VenuePositionRow,
 )
-from python.framework.types.live_types.broker_truth_types import BrokerTruthRecord
-from python.framework.types.live_types.reconciliation_types import BrokerOrder, BrokerPosition
+from python.framework.types.live_types.broker_truth_types import (
+    BrokerTruthRecord,
+    BrokerTruthSnapshot,
+)
+from python.framework.types.live_types.reconciliation_types import (
+    BrokerOrder,
+    BrokerPosition,
+    ReconcileDivergence,
+)
 from python.framework.types.trading_env_types.order_event_types import (
     OrderEvent,
     OrderEventPlane,
@@ -154,6 +161,45 @@ def _venue_position_row(position: BrokerPosition) -> VenuePositionRow:
         lots=position.lots,
         entry_price=position.entry_price,
         broker_ref=position.broker_ref,
+    )
+
+
+def broker_truth_from_row(row: BrokerTruthRow) -> BrokerTruthRecord:
+    """
+    A broker-truth line read back as the executor's record — the inverse of `broker_truth_row`.
+
+    The venue's raw payload was never written, so the read-back objects carry none.
+
+    Args:
+        row: The line as the file holds it
+
+    Returns:
+        The record, its stamps parsed back into UTC datetimes
+    """
+    return BrokerTruthRecord(
+        seq=row.seq,
+        read_reason=row.read_reason,
+        snapshot=BrokerTruthSnapshot(
+            venue_orders=([BrokerOrder(
+                broker_ref=order.broker_ref, symbol=order.symbol, direction=order.direction,
+                order_type=order.order_type, lots=order.lots, status=order.status,
+                price=order.limit_price, stop_price=order.stop_price,
+                filled_lots=order.filled_lots, client_order_id=order.client_order_id)
+                for order in row.venue_orders] if row.venue_orders is not None else None),
+            venue_balances=(dict(row.venue_balances)
+                            if row.venue_balances is not None else None),
+            venue_positions=([BrokerPosition(
+                symbol=position.symbol, direction=position.direction, lots=position.lots,
+                entry_price=position.entry_price, broker_ref=position.broker_ref)
+                for position in row.venue_positions]
+                if row.venue_positions is not None else None),
+            unread_parts=list(row.unread_parts),
+        ),
+        reconcile_state=row.reconcile_state,
+        divergence=(ReconcileDivergence(**row.divergence.model_dump())
+                    if row.divergence is not None else None),
+        event_time=parse_datetime(row.event_time) if row.event_time is not None else None,
+        ts_init=parse_datetime(row.ts_init) if row.ts_init is not None else None,
     )
 
 

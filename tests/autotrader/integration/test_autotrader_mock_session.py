@@ -21,6 +21,7 @@ from python.framework.reporting.io.artifact_specs import (
     BROKER_ARTIFACT,
     ORDER_EVENTS_STREAM,
     SAFETY_ARTIFACT,
+    VENUE_ACCOUNT_ARTIFACT,
 )
 from python.framework.reporting.io.order_event_stream_io import read_order_event_stream
 from python.framework.reporting.io.report_artifact_io import read_artifact
@@ -254,6 +255,23 @@ class TestTheVenuesHalfOfTheStream:
         assert truths[0].seq < events[0].seq and events[-1].seq < truths[-1].seq
         assert all(truth.unread_parts == [] for truth in truths)
         assert not truncated
+
+    def test_the_venue_account_is_derived_from_those_lines(self, mock_session):
+        """
+        The section the closing block prints, on disk: its two reads are the stream's own lines,
+        read back into the session's result once the stream closed.
+        """
+        result, run_dir = mock_session
+        _, truths, _ = read_order_event_stream(run_dir / IO_SUBDIR / ORDER_EVENTS_STREAM)
+
+        report = read_artifact(run_dir / IO_SUBDIR / VENUE_ACCOUNT_ARTIFACT.filename,
+                               VENUE_ACCOUNT_ARTIFACT)
+
+        row = report.units[0]
+        assert (row.at_start.seq, row.at_end.seq) == (truths[0].seq, truths[-1].seq)
+        assert row.at_end.venue_balances == truths[-1].venue_balances
+        assert row.reconcile_lines == 0, 'no reconciler, no line between'
+        assert [truth.seq for truth in result.broker_truth] == [truth.seq for truth in truths]
 
 
 class TestTheSessionBooks:

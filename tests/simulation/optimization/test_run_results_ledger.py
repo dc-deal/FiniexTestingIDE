@@ -8,7 +8,7 @@ from python.framework.reporting.store.run_results_ledger import (
     COLUMN_REDUCTION,
     LEDGER_COLUMNS,
 )
-from python.framework.types.api.report_types import RunResultRow
+from python.framework.types.api.report_types import OrdersTo, RunResultRow
 from python.framework.types.log_layout_types import RUN_TYPE_AUTOTRADER, RUN_TYPE_SIMULATION
 from python.framework.types.run_results_types import Reduction
 
@@ -105,6 +105,17 @@ def test_read_rows_nullable_fields(tmp_ledger, make_run_summary, make_provenance
     assert row.sweep_params is None
     assert row.sweep_objective is None
     assert row.sweep_maximize is None
+
+
+def test_where_the_orders_went_round_trips(tmp_ledger, make_run_summary, make_provenance):
+    """`orders_to` comes back as the enum it was written as; a run without one reads None."""
+    tmp_ledger.append(make_run_summary(), make_provenance(run_id='r1', orders_to=OrdersTo.VENUE))
+    tmp_ledger.append(make_run_summary(), make_provenance(run_id='r2'))
+
+    rows = {row.run_id: row for row in tmp_ledger.read_rows()}
+
+    assert rows['r1'].orders_to is OrdersTo.VENUE
+    assert rows['r2'].orders_to is None
 
 
 def test_sweep_objective_persisted(tmp_ledger, make_run_summary, make_provenance):

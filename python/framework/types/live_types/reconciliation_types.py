@@ -12,7 +12,6 @@ is skipped.
 """
 
 from dataclasses import dataclass, field
-from datetime import datetime
 from enum import Enum
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -154,7 +153,6 @@ class ReconciliationResult:
         no key of OURS                              → ghost       (not ours, as far as we know)
 
     Args:
-        timestamp: When the reconcile cycle completed (UTC, tz-aware)
         ghost_positions: Broker positions with no local Position match (MARGIN)
         orphan_positions: Local positions with no broker match (MARGIN)
         stale_positions: (local, broker) pairs matched but diverging (MARGIN)
@@ -193,7 +191,6 @@ class ReconciliationResult:
         broker_truth_state_changed: That record crosses between clean and divergent, the
             occasion the balances are read on
     """
-    timestamp: datetime
     ghost_positions: List[BrokerPosition] = field(default_factory=list)
     orphan_positions: List[Position] = field(default_factory=list)
     stale_positions: List[Tuple[Position, BrokerPosition]] = field(default_factory=list)

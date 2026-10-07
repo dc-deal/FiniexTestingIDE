@@ -526,7 +526,10 @@ class AbstractTradeExecutor(ABC):
                 action=OrderAction.CLOSE if closes is not None else OrderAction.OPEN,
                 order_type=order_type,
                 symbol=pending.symbol,
-                direction=pending.direction if closes is None else None,
+                # A close states its POSITION's direction, stamped when it was registered, so
+                # the steps after the position is gone still name it
+                direction=(pending.direction if closes is None
+                           else pending.closed_position_direction),
                 client_order_id=pending.client_order_id,
                 broker_ref=pending.broker_ref,
                 lots=pending.close_lots if closes is not None else pending.lots,
@@ -542,7 +545,7 @@ class AbstractTradeExecutor(ABC):
             if closes is not None:
                 position = self.portfolio.get_position(closes)
                 if position is not None:
-                    basis['direction'] = position.direction
+                    basis['direction'] = basis['direction'] or position.direction
                     basis['symbol'] = basis['symbol'] or position.symbol
                     if basis['lots'] is None:
                         basis['lots'] = position.lots
@@ -1063,6 +1066,7 @@ class AbstractTradeExecutor(ABC):
                 order_action=PendingOrderAction.CLOSE,
                 order_type=OrderType.MARKET,
                 symbol=position.symbol,
+                closed_position_direction=position.direction,
                 submission=self._current_submission(),
             )
             # Counted as submitted where live counts it, in close_position — without it a
@@ -2068,7 +2072,9 @@ class AbstractTradeExecutor(ABC):
             # path is known to reach it any more: a second close joins the one in flight,
             # and the stop-loss and take-profit check stands aside while a close is on its
             # way, as live does (#362). Should one appear, the close still ends with a row
-            # rather than with none, as it once did. No outcome notification: the strategy
+            # rather than with none, as it once did — a row without a size when the close was a
+            # full one, because the simulation sizes a full close at its fill and this one never
+            # filled (live sizes it at submission). No outcome notification: the strategy
             # heard of the position's end from whatever ended it. Live, the venue has
             # already executed this close, so there is no refusal to record; the book and
             # the venue disagree, and resolving that belongs to reconciliation (#349). The

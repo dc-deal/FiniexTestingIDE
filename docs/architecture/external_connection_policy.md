@@ -350,6 +350,13 @@ names, same defaults — into the config block that owns each domain:
 | AutoTrader profile → `tick_source` | 4 |
 | `configs/market_config.json` → `broker_transport.connection` | 5, 6, 7 |
 
+**A live session refuses a broker ladder that never gives up.** Budget 0 means retry for ever —
+right for a tick socket (row 4), wrong for broker REST: the broker-truth reads at a session's start
+and end wait on it, so an outage would hold the start or the end indefinitely. `autotrader_startup`
+therefore refuses a live session whose broker entry has `broker_transport.connection.attempt_budget`
+0 and names the setting; a mock session is exempt. A broker entry without the block takes the
+default, which is 0 — so it is refused live until it declares a budget.
+
 What is decided in one place is the classification and the vocabulary, not the values. The
 mirror rule applies per file: every default appears with the identical value in its config.
 

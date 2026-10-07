@@ -588,7 +588,8 @@ class TradeSimulator(AbstractTradeExecutor):
             tick=self._current_tick,
             symbol=position.symbol,
             close_lots=lots,
-            close_reason=close_reason
+            close_reason=close_reason,
+            position_direction=position.direction
         )
         self._record_submission(self.latency_simulator.get_order(order_id))
 

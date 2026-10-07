@@ -123,12 +123,15 @@ and A's win read as a streak of three that no account ever had. The correction i
 
 ## Run-wide counts
 
-`orders_submitted`, `orders_executed`, `orders_rejected` and `sl_tp_triggered` are counts, so they
-carry no currency and stand outside the per-currency rows. `unit_count` at this level is the run's
-unit count — scenarios in a backtest, 1 in a live session.
+The order counts — one per way an order starts or ends: `orders_submitted`, `orders_adopted`,
+`orders_executed`, `orders_denied`, `orders_rejected`, `orders_cancelled`, `orders_expired`,
+`orders_undelivered`, `orders_unaccounted` — and `sl_tp_triggered` are counts, so they carry no
+currency and stand outside the per-currency rows. `unit_count` at this level is the run's unit
+count — scenarios in a backtest, 1 in a live session.
 
-Per-unit order counts, and the rate between sent and executed, are on
-[execution stats](/api/v1/docs/execution-stats).
+What each count means, and the same counts per unit, are on
+[execution stats](/api/v1/docs/execution-stats); executed over submitted and adopted is
+`execution_rate_pct` on the [aggregated portfolio](/api/v1/docs/aggregated-portfolio).
 
 ## Which units are missing from the figures, and why
 

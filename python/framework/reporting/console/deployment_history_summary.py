@@ -34,10 +34,10 @@ def render_deployment_list(summaries: List[DeploymentSummary]) -> None:
         summaries: The roll-ups, already ordered
     """
     print(f'\n{len(summaries)} deployment(s)')
-    print('─' * 136)
-    print(f'{"deployment":<30} {"bot":<22} {"bot id":<20} {"sessions":>8} {"since":<17} '
-          f'{"net P&L":>11} {"max DD":>11} {"idle max":>9}')
-    print('─' * 136)
+    print('─' * 153)
+    print(f'{"deployment":<30} {"bot":<22} {"bot id":<20} {"orders to":<16} {"sessions":>8} '
+          f'{"since":<17} {"net P&L":>11} {"max DD":>11} {"idle max":>9}')
+    print('─' * 153)
     # Grouped by BOT so a deliberate restart reads as what it is. `--new-deployment` mints a
     # fresh identity and stores no link back to the one it replaced, so two deployments of one
     # bot would otherwise sit among the others as strangers.
@@ -48,11 +48,14 @@ def render_deployment_list(summaries: List[DeploymentSummary]) -> None:
         # `bot_id` is the only identity that does not move, and the footer's claim about two
         # rows for one bot is only checkable against it — `bot` is the profile NAME, which an
         # operator improves. A profile that declares none shows a dash rather than a blank.
+        # Where the orders went — `venue` is real money. Both values: a rehearsal and real money
+        # in one history; a dash: not recorded.
+        orders_to = ','.join(value.value for value in summary.orders_to) or '—'
         print(f'{summary.deployment_id:<30} {summary.bot:<22} '
-              f'{(summary.bot_id or "—"):<20} {summary.sessions:>8} '
+              f'{(summary.bot_id or "—"):<20} {orders_to:<16} {summary.sessions:>8} '
               f'{since:<17} {summary.net_pnl:>11.2f} {-abs(summary.max_drawdown):>11.2f} '
               f'{gap:>9}{mark}')
-    print('─' * 136)
+    print('─' * 153)
     if any(s.changed for s in summaries):
         print('⚠ = the sessions were not all produced by the same configuration; the detail '
               'view draws the break.')
@@ -95,6 +98,10 @@ def render_deployment_history(
         print(f'    {advisory.strategy_stands} strategy stand(s) and '
               f'{advisory.operation_stands} operational stand(s) over '
               f'{advisory.sessions} sessions.')
+        if len(advisory.orders_to) > 1:
+            print('    Its orders went to a simulator in some sessions and to the venue in others '
+                  '— its P&L')
+            print('    column adds simulated fills to real money.')
         print('    The sessions are one deployment because they were DECLARED one — that says '
               'they belong')
         print('    to one bot, not that their figures are comparable. A drawdown that deepens '
@@ -137,6 +144,8 @@ def render_deployment_history(
             moved.append('STRATEGY')
         if session.operation_changed:
             moved.append('OPERATION')
+        if session.orders_to_changed:
+            moved.append('ORDERS TO')
         if moved:
             print(f'{"·" * 26} {" and ".join(moved)} CHANGED HERE — rows above and below '
                   f'answer different questions {"·" * 6}')

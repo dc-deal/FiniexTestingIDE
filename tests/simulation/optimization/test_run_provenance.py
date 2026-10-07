@@ -9,18 +9,22 @@ comparable to the backtest.
 Built against the REAL AutoTraderConfig / WarningsErrorsReport, never stand-ins.
 """
 
+from dataclasses import replace
 from datetime import datetime, timezone
+from types import SimpleNamespace
 from typing import Optional
+from unittest.mock import patch
 
 from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.reporting.builders.warnings_errors_report_builder import (
     build_warnings_errors_report_from_session,
 )
 from python.framework.reporting.store.run_provenance_builder import (
+    build_run_provenance,
     consumption_record,
     build_run_provenance_from_session,
 )
-from python.framework.types.api.report_types import WarningsErrorsReport
+from python.framework.types.api.report_types import OrdersTo, WarningsErrorsReport
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
 from python.framework.types.autotrader_types.autotrader_result_types import AutoTraderResult
 from python.framework.types.run_results_types import RunProvenance
@@ -119,6 +123,41 @@ class TestSessionProvenance:
         p = _session_provenance(_config(), report)
         assert p.status == 'error'
         assert 'boom' in p.error
+
+
+class TestWhereTheOrdersWent:
+    """
+    The ledger row says whether a run's orders went to the venue (#362), by the rule its header
+    was stamped with — so the row and the header cannot disagree about real money.
+    """
+
+    def test_a_mock_session_simulates(self):
+        config = replace(_config(), adapter_type='mock')
+
+        assert _session_provenance(config).orders_to is OrdersTo.SIMULATED
+
+    def test_real_money_goes_to_the_venue(self):
+        config = replace(_config(), adapter_type='live')
+        with patch('python.framework.autotrader.dry_run_resolver.MarketConfigManager') as manager:
+            manager.return_value.get_dry_run.return_value = False
+
+            assert _session_provenance(config).orders_to is OrdersTo.VENUE
+
+    def test_a_backtest_simulates(self, tmp_path):
+        scenario = SingleScenario(
+            name='s0', scenario_index=0, symbol='BTCUSD', data_broker_type='kraken_spot',
+            start_date='2026-01-01',
+            strategy_config={'decision_logic_type': 'CORE/aggressive_trend',
+                             'worker_instances': {}})
+        scenario_set = SimpleNamespace(
+            logger=SimpleNamespace(get_log_dir=lambda: tmp_path),
+            printed_summary_logger=get_global_logger(), run_timestamp=_TS,
+            scenario_set_name='my_set')
+
+        provenance = build_run_provenance(
+            SimpleNamespace(single_scenario_list=[scenario]), scenario_set, _RUN_ID)
+
+        assert provenance.orders_to is OrdersTo.SIMULATED
 
 
 class TestWhatARunConsumed:

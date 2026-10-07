@@ -8,8 +8,8 @@ empty answer, which would say the venue holds nothing. Only an executor with a v
 backtest's venue is its own book.
 """
 
+import json
 import time
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import List
 
@@ -17,6 +17,7 @@ import pytest
 
 from python.framework.exceptions.connection_errors import ConnectionGaveUpError
 from python.framework.testing.mock_order_execution import MockOrderExecution
+from python.framework.trading_env.adapters.kraken_adapter import KrakenAdapter
 from python.framework.trading_env.live import live_trade_executor as live_module
 from python.framework.types.api.report_types import BrokerTruthRow
 from python.framework.types.live_types.broker_truth_types import (
@@ -156,6 +157,43 @@ class TestItsPlaceInTheStream:
         assert simulator.record_session_truth(_START) is None
 
 
+class TestARunWithNoVenueAccount:
+    """
+    A dry run against a real venue: its adapter answers every account read itself, with nothing.
+    Recorded, that nothing would say the venue holds nothing — so no line is written at all.
+    """
+
+    def test_a_dry_run_kraken_adapter_reads_no_venue_account(self):
+        with open('configs/brokers/kraken/kraken_spot_broker_config.json', encoding='utf-8') as fh:
+            adapter = KrakenAdapter(json.load(fh))     # dry run until enable_live says otherwise
+
+        assert adapter.reads_venue_account() is False
+        assert adapter.get_broker_balances() == {}, 'the empty answer a line would have recorded'
+        assert adapter.get_broker_orders() == []
+
+    def test_a_mock_venue_is_read(self):
+        _, executor, _ = live_session()
+
+        assert executor.broker.adapter.reads_venue_account() is True
+
+    def test_no_line_is_written_and_no_number_spent(self, monkeypatch):
+        mock, executor, events = live_session()
+        truths = _truths(executor)
+        monkeypatch.setattr(executor.broker.adapter, 'reads_venue_account', lambda: False)
+        cycle = ReconciliationResult(
+            is_clean=False, broker_orders=[], divergence=ReconcileDivergence(ghost_orders=[_REF]),
+            broker_truth_due=True, broker_truth_state_changed=True)
+
+        assert executor.record_session_truth(_START) is None
+        assert executor.record_reconcile_truth(cycle) is None
+        assert executor.record_session_truth(_END) is None
+        executor.open_order(market_order())
+        mock.await_submit_confirmation(executor)
+
+        assert truths == []
+        assert events[0].seq == 1, 'no number is spent on a line that was not written'
+
+
 class TestAReconcileRecord:
     """Inside the tick loop: what the cycle read, plus the balances on a crossing only."""
 
@@ -163,7 +201,6 @@ class TestAReconcileRecord:
     def _cycle(state_changed: bool) -> ReconciliationResult:
         """A divergent cycle the Reconciler marked due."""
         return ReconciliationResult(
-            timestamp=datetime(2026, 10, 7, 12, 0, tzinfo=timezone.utc),
             is_clean=False,
             broker_orders=[_venue_order()],
             divergence=ReconcileDivergence(ghost_orders=[_REF]),

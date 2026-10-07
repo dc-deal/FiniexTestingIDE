@@ -164,6 +164,12 @@ parse layer. The processor passes a parse-stage timestamp so async-dispatched re
 timestamp from the main-thread drain (not from the worker), which matters for ordering and event
 correlation.
 
+**An adapter whose dry run answers its own account reads says so.** `reads_venue_account()` is
+`True` by default. An adapter that, in dry run, answers the open-order, balance and position reads
+itself — Kraken returns an empty result without asking — returns `False` there. A live session
+records what its venue holds at its start and its end (the broker truth of the order-event stream),
+and without this an empty answer nobody asked for would be written down as an empty account.
+
 ---
 
 ## Broker Config JSON

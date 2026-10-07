@@ -300,6 +300,25 @@ class TestAPositionsCloses:
     """A close is an order of its own — the strategy's, or the protective level's."""
 
     @ACCOUNT_MODELS
+    def test_a_close_whose_position_went_on_its_way_still_names_its_side(self, spot_mode):
+        """The side travels on the close from its submission, as live — not from the position."""
+        sim = make_simulator(spot_mode, latency_ms=40)
+        events = record_events(sim)
+        sim.open_order(market_order())
+        sim_tick(sim, msc=1050)
+        position = sim.get_open_positions()[0]
+
+        sim.close_position(position.position_id)
+        sim.portfolio.close_position_portfolio(   # taken while the close is on its way
+            position.position_id, exit_price=49999.0, exit_tick_value=1.0, exit_tick_index=0)
+        sim_tick(sim, msc=1100)
+
+        close_steps = [e for e in events if e.action is OrderAction.CLOSE]
+        assert [e.event_type for e in close_steps] == [
+            OrderEventType.SUBMITTED, OrderEventType.REJECTED]
+        assert {e.direction for e in close_steps} == {OrderDirection.LONG}
+
+    @ACCOUNT_MODELS
     def test_a_close_is_submitted_accepted_and_filled_for_its_position(self, spot_mode):
         sim = make_simulator(spot_mode)
         events = record_events(sim)

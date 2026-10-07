@@ -90,13 +90,19 @@ runtime cache's specs, the seed's fees and the detected fee tier. `config_hash` 
 AutoTrader session also freezes the content in the run-config store and names it as
 `broker_config_id` in its broker section. See [Data Storage Layout](architecture/data_storage_layout.md).
 
+**broker ref** (`broker_ref`) — The venue's handle for an order — a txid at Kraken, a ticket at MT5
+— under one name above the adapter. Known once the venue has answered; an amend that replaces it
+is recorded as `modified` with the old handle in `previous_broker_ref`. Not the *client order id*,
+which is ours.
+
 **broker truth** (`broker_truth` lines of the order-event stream) — What the venue reported when a
 live session asked it: its open orders, its balances and, on a margin account, its positions,
 written beside the session's own steps on the same counter. `read_reason` says when —
 `session_start`, `session_end`, or `reconcile` when the reconciliation picture changed. Each part
 is a value (an empty one says the venue holds nothing), unread (`null` and named in
 `unread_parts`), or not read on that occasion (`null`, unnamed). Never in a backtest, whose venue is
-its own book. See [Order events](consumer/order-events.md).
+its own book, and never in a dry run against a real venue, whose account reads never reach it. See
+[Order events](consumer/order-events.md) and *venue account*.
 
 **cache** — A derived store of computed results. Deleting it loses nothing; a "cache" whose
 deletion loses data is misfiled. See [Data Storage Layout](architecture/data_storage_layout.md).
@@ -115,6 +121,11 @@ never kept per run. See [Data Storage Layout](architecture/data_storage_layout.m
 set's `global` block, then the scenario. For an AutoTrader profile: `app_config.autotrader`
 defaults under the profile. The `user_configs/` override is a separate mechanism, not a level.
 See [Config Cascade](config_cascade_guide.md).
+
+**client order id** (`client_order_id`) — Our key for an order, sent with it on the wire so the
+venue's answers and its list of open orders can be matched back to us — and to this session, whose
+run id it carries a piece of, beside a counter. Live only; a backtest sends none. Not the *order id*
+(`pos_btcusd_47`), which never goes on the wire, and not the *broker ref*, which is the venue's.
 
 **close type** (`close_type` on an order-history row and a trade) — Whether a close took the whole
 position (`full`) or part of it (`partial`). Set once the close fills; empty on every other row.
@@ -189,7 +200,8 @@ without logging an error shows in the *run outcome*, not here. See
 happened, on the run's *canonical clock*: the submission on a `pending` row, the fill on an
 `executed` one, and on every other row the moment the order ended without a fill — refused,
 cancelled, expired, undelivered or unaccounted. On an order event, when that step happened; empty
-only for an order adopted before the session's first market data. A point in time — not the
+only on a line written before the session's first market data — an order adopted at its start, and
+the `session_start` *broker truth* line. A point in time — not the
 *execution time*, which is a duration.
 
 **execution time** — How long a run or one of its units took on the *wall clock*:
@@ -288,9 +300,10 @@ backtest. The *order history* keeps a row for each submission and for each way a
 the stream keeps every step. See [Order-Event Stream](architecture/order_event_stream.md).
 
 **order history** — The run's order-lifecycle records: one row per EVENT of an order, not one per
-order. An order appears as `pending` when it enters the pipeline, `executed` when it fills, and a
-`close` row per close; a refused order as `rejected`, stating its side and symbol like any other
-row. Rows are in the order they happened within their unit, and that position is their identity —
+order. An order appears as `pending` when it enters the pipeline and once more for the way it ended
+— `executed` when it fills, else `denied`, `rejected`, `cancelled`, `expired`, `undelivered` or
+`unaccounted` — and a `close` row per close; a refused order states its side and symbol like any
+other row. Rows are in the order they happened within their unit, and that position is their identity —
 the order id repeats.
 
 **order id** (`order_id` on an order-history row) — Not an order's own id: the id of the POSITION
@@ -300,8 +313,15 @@ id is used twice within a run unit. A close refused before it was sent says `clo
 a guard refusal `guard_…`. With its `scenario_name` it names the same position as a trade's
 `position_id`.
 
-**orders to** (`orders_to`) — Where a run's orders went: `simulated` or `venue`. Recorded on every
-run header. See [Introduction](introduction_to_the_ide.md#the-kinds-of-run).
+**order type** (`order_type`) — How an order is to execute: `market`, `limit`, `stop`, `stop_limit`,
+`trailing_stop`, `iceberg` — the type it was ASKED as, kept after a stop triggered. `unknown` is a
+resting order the venue reports under a type this project cannot name: reported, with no prices,
+and never acted on. What a venue offers of the types is its order capabilities.
+
+**orders to** (`orders_to`) — Where a run's orders went: `simulated` or `venue` — and `venue` is
+the only value that means real money. Recorded on every run header and every ledger row; a
+deployment lists the values of its sessions, and both together mean it mixed a rehearsal with real
+money. See [Introduction](introduction_to_the_ide.md#the-kinds-of-run).
 
 **paper** — The planned name for a dry run, not yet a configuration value (#304).
 
@@ -423,6 +443,12 @@ external, pre-collected data such as sentiment. See [Signal Data Source](data_pi
 
 **signal basis** — A signal row's quality grade from the producer (`llm`, `no_data`, `degraded`).
 
+**stop trigger** (`trigger_price` on an order event, `stop_price` on a venue order) — The price at
+which a stop order activates. A triggered stop fills at the market, not at its trigger — the
+distance the price moved through it is real cost; a stop-limit becomes a limit at its limit price.
+The `triggered` order event records the moment, in a backtest only: a live venue does not report
+it.
+
 **store** — One registered place where persistent bytes live, of exactly one kind: *record*,
 *carry-over*, *archive*, *derived* or *special*. `store_cli.py catalog` lists them. See
 [Data Storage Layout](architecture/data_storage_layout.md).
@@ -478,6 +504,12 @@ order: its answer was lost, and asking by our own key after the venue's records 
 nothing. Never a refusal — the venue refused nothing.
 
 **venue** — The real marketplace behind a broker entry: Kraken, an MT5 broker.
+
+**venue account** — The account as its venue reported it to a live session: what it held at the
+session's start and at its end — open orders and positions counted, its balances as they came — and
+the reconciliation lines between, derived from the *broker truth* and served as the
+`venue-account` section. Not the session's own books, which are its *account*. See
+[Venue account](consumer/venue-account.md).
 
 **wall clock** — The machine's clock. It stamps when WE did or saw something (`ts_init`, a run's
 `start_time`) and measures durations — on its monotonic form, because the wall clock itself can

@@ -36,6 +36,7 @@ from python.framework.reporting.io.artifact_specs import (
     RUN_SUMMARY_ARTIFACT,
     SCENARIO_DETAILS_ARTIFACT,
     SIGNAL_ARTIFACT,
+    VENUE_ACCOUNT_ARTIFACT,
     WARNINGS_ERRORS_ARTIFACT,
     WORKER_DECISION_ARTIFACT,
 )
@@ -59,6 +60,7 @@ from python.framework.types.api.report_types import (
     ScenarioDetailsReport,
     SignalReport,
     TradeHistoryReport,
+    VenueAccountReport,
     WarningsErrorsReport,
     WorkerDecisionReport,
 )
@@ -443,6 +445,29 @@ def get_booking_periods(run_id: str) -> BookingPeriodsReport:
     report = ReportStore().get(run_id, BOOKING_PERIODS_ARTIFACT)
     if report is None:
         raise _missing_artifact(run_id, 'booking-periods')
+    return report
+
+
+@router.get('/reports/runs/{run_id}/venue-account', response_model=VenueAccountReport,
+            openapi_extra=describes('venue-account'))
+def get_venue_account(run_id: str) -> VenueAccountReport:
+    """
+    The venue's account per live session (#362): what it held at the start and the end, and
+    what the reconciliation recorded in between. AutoTrader only.
+
+    Args:
+        run_id: The run's id (<timestamp>_<hash>), resolved through the run index
+
+    Returns:
+        The VenueAccountReport (404 if the run has no venue-account artifact — every backtest,
+        and every session that asked its venue nothing; 409 if it cannot be read)
+    """
+    try:
+        report = ReportStore().get(run_id, VENUE_ACCOUNT_ARTIFACT)
+    except ReportArtifactUnreadableError as e:
+        raise api_error(ARTIFACT_UNREADABLE, reason=str(e)) from e
+    if report is None:
+        raise _missing_artifact(run_id, 'venue-account')
     return report
 
 

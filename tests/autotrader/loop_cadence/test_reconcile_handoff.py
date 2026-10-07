@@ -11,7 +11,6 @@ test needs exactly two collaborators, and building a real tick loop would drag i
 a tick source, workers and a decision logic without testing any of them.
 """
 
-from datetime import datetime, timezone
 from typing import List, Tuple
 
 from python.framework.autotrader.autotrader_tick_loop import AutotraderTickLoop
@@ -23,9 +22,6 @@ from python.framework.types.live_types.reconciliation_types import (
 from python.framework.types.trading_env_types.latency_simulator_types import PendingOrder
 from python.framework.types.trading_env_types.order_types import OrderDirection, OrderType
 
-# A fixed stamp: the field is a record timestamp and nothing here reads it, so a test has
-# no business asking the wall clock (§9).
-_STAMP = datetime(2026, 9, 1, 12, 0, tzinfo=timezone.utc)
 
 
 
@@ -95,7 +91,7 @@ class TestReconcileHandoff:
 
     def test_attributions_are_handed_to_the_executor(self):
         pair = _pair()
-        result = ReconciliationResult(timestamp=_STAMP, attributed_orders=[pair])
+        result = ReconciliationResult(attributed_orders=[pair])
         spy = SpyExecutor()
 
         _loop(StubReconciler(result), spy)._reconcile_if_due(7)
@@ -106,7 +102,7 @@ class TestReconcileHandoff:
     def test_a_clean_cycle_hands_over_nothing(self):
         # The executor must not be called with an empty list either — an attribution is an
         # event, and a call per cycle would make an empty one look like a repair.
-        result = ReconciliationResult(timestamp=_STAMP)
+        result = ReconciliationResult()
         spy = SpyExecutor()
 
         _loop(StubReconciler(result), spy)._reconcile_if_due(7)
@@ -115,7 +111,7 @@ class TestReconcileHandoff:
 
     def test_nothing_happens_when_the_cadence_is_not_due(self):
         pair = _pair()
-        result = ReconciliationResult(timestamp=_STAMP, attributed_orders=[pair])
+        result = ReconciliationResult(attributed_orders=[pair])
         reconciler = StubReconciler(result, due=False)
         spy = SpyExecutor()
 
@@ -134,7 +130,7 @@ class TestReconcileHandoff:
 
     def test_a_cycle_marked_due_is_written_by_the_executor(self):
         """#362: the Reconciler decides a changed picture is due; the executor numbers the line."""
-        result = ReconciliationResult(timestamp=_STAMP, is_clean=False, broker_truth_due=True)
+        result = ReconciliationResult(is_clean=False, broker_truth_due=True)
         spy = SpyExecutor()
 
         _loop(StubReconciler(result), spy)._reconcile_if_due(7)
@@ -144,12 +140,12 @@ class TestReconcileHandoff:
     def test_a_cycle_not_due_writes_no_broker_truth(self):
         spy = SpyExecutor()
 
-        _loop(StubReconciler(ReconciliationResult(timestamp=_STAMP)), spy)._reconcile_if_due(7)
+        _loop(StubReconciler(ReconciliationResult()), spy)._reconcile_if_due(7)
 
         assert spy.truth_records == []
 
     def test_the_tick_counter_reaches_the_reconciler(self):
-        reconciler = StubReconciler(ReconciliationResult(timestamp=_STAMP))
+        reconciler = StubReconciler(ReconciliationResult())
 
         _loop(reconciler, SpyExecutor())._reconcile_if_due(4711)
 

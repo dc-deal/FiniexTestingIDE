@@ -593,6 +593,17 @@ class KrakenAdapter(AbstractAdapter):
         """
         return self._dry_run
 
+    def reads_venue_account(self) -> bool:
+        """
+        Whether the account reads reach Kraken. Not in dry run: there every read of open
+        orders, closed orders, balances and positions answers itself with an empty result
+        (`_do_request_openorders` and its siblings), which describes no account.
+
+        Returns:
+            False in dry run
+        """
+        return not self._dry_run
+
     # ============================================
     # Live Execution — Tier 3 Methods
     #

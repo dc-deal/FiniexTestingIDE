@@ -51,7 +51,9 @@ a session killed before its report still keeps.
 `TestTheVenuesHalfOfTheStream` proves the broker-truth reads of #362 are wired into a real session:
 the stream's venue lines are exactly `session_start` and `session_end` (a mock session runs no
 reconciler), the first precedes every order event and the last follows them, and no part went
-unread.
+unread. The session's `venue_account.json` is derived from exactly those two lines — its start and
+end reads name their `seq`, the end read's balances are the line's — and the session's result
+carries the lines it read back.
 
 ### test_deployment_continuity.py
 

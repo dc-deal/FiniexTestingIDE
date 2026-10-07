@@ -119,6 +119,11 @@ stream is narrowed to one order, the unit and order filters, a line cut off mid-
 reported, a damaged stream answered `artifact_unreadable` rather than a server error, and a run
 without one naming why.
 
+The venue account (#362) is served from its artifact — `TestTheVenueAccount` in
+`test_reports_endpoint.py`: a session's row with its key, a part the venue did not answer for as
+null and named rather than empty, where the last reconcile line left the books and the latest
+divergence by name; a backtest, which has none, answered `artifact_not_produced`.
+
 ## Row keys (`test_row_keys.py`)
 
 Every list the API serves says what makes one of its rows unique, and this file is what makes

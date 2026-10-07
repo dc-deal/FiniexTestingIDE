@@ -58,6 +58,15 @@ measured; null when none could.
 one-bit summary for a list a reader is scanning to decide what to open. What actually moved is on
 the detail route, as the advisory.
 
+## Real money or a rehearsal — `orders_to`
+
+`orders_to` on a row lists where its sessions' orders went, each value once: `["venue"]` is a
+deployment that traded real money, `["simulated"]` one that rehearsed — a dry run or a mock
+session — and both together a deployment that did each in different sessions. A mixed row is also
+`changed`, because its `net_pnl` adds simulated fills to real money. Empty when none of its sessions
+recorded it — a session recorded before contract 23 does not say. A single run says the same in the
+run list, as `orders_to`; see [run kinds](/api/v1/docs/run-kinds).
+
 ## What one session says
 
 | Field | Meaning |
@@ -71,7 +80,8 @@ the detail route, as the advisory.
 | `gap_between_starts` | whether that gap could only be measured the coarse way |
 | `net_pnl` | realised P&L of that session |
 | `max_drawdown` / `max_drawdown_pct` | the cumulative account decline as of that session |
-| `strategy_changed` / `operation_changed` | what differed from the session before |
+| `orders_to` | where its orders went — `venue` is real money, `simulated` a rehearsal; null when not recorded |
+| `strategy_changed` / `operation_changed` / `orders_to_changed` | what differed from the session before |
 | `bot` / `bot_id` | which bot ran it |
 | `currency` | the row's account currency |
 
@@ -111,14 +121,17 @@ this way. It is marked rather than quietly shown as the same measure.
 `started` is null where the stored timestamp could not be read, and `ran_hours` and `gap_hours`
 follow it. See [nulls](/api/v1/docs/nulls).
 
-## Two change marks, and what each one means
+## The change marks, and what each one means
 
 `strategy_changed` is what the bot **decided** — its parameters differ from the previous session's.
 
 `operation_changed` is what a session **did** without changing what it decided: a safety threshold,
 a guard, a timeout, the capital declaration.
 
-Both are false on the first session of a currency series, which has nothing to differ from.
+`orders_to_changed` is where the orders **went**: a rehearsal followed by real money, or back. It is
+false where either of the two sessions did not record it — not recorded is not a change.
+
+All are false on the first session of a currency series, which has nothing to differ from.
 
 ## The advisory says whether the history is one series at all
 
@@ -132,9 +145,10 @@ reader has already added up the P&L column by the time they reach them.
 | `sessions` | how many sessions it is about — distinct runs, not rows |
 | `strategy_stands` | how many distinct parameter sets the deployment ran under |
 | `operation_stands` | how many distinct operational configurations |
+| `orders_to` | where the sessions' orders went, each value once — both values mean real money and a rehearsal in one history |
 
-**Null is an answer, not a gap.** It means there is nothing to report: one strategy stand and one
-operational stand across the whole deployment. A deployment of a single session answers null too,
+**Null is an answer, not a gap.** It means there is nothing to report: one strategy stand, one
+operational stand and one place the orders went, across the whole deployment. A deployment of a single session answers null too,
 having nothing to compare against. A warning that fires on the normal case is a warning that gets
 skipped.
 

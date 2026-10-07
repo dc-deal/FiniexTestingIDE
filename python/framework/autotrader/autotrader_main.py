@@ -1144,10 +1144,10 @@ class AutotraderMain:
             except Exception as e:
                 self._session_logger.error(f'Error collecting executor stats: {e}')
 
-        # #362 — the stream is closed by now; read back once, for the pending-order counters
-        # and the check that it holds every submission
+        # #362 — the stream is closed by now; read back once, for the pending-order counters,
+        # the check that it holds every submission, and the venue-account section
         if self._run_dir is not None:
-            result.order_events = read_back_order_event_stream(
+            result.order_events, result.broker_truth = read_back_order_event_stream(
                 self._run_dir, self._session_logger)
 
         if self._decision_logic:

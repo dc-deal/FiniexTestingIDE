@@ -270,6 +270,10 @@ class PendingOrder:
     # order, because the wire key is derived from it and overloading the position id
     # would collide with a restart's counter. So the position has to be named separately.
     closes_position_id: Optional[str] = None
+    # A close's POSITION direction, stamped when the close is registered, so its events still
+    # name it once the position is gone — a close's fill can arrive after another close took
+    # the position (#362). Not `direction`: on a protective order that is its own trading side
+    closed_position_direction: Optional[OrderDirection] = None
     # Whether the position this ENTRY produces should get a protective order at the venue
     # (#503). Resolved once at submit — profile default ⊕ per-order override — and carried
     # here because the fill site sees the order, not the request that made it. An explicit
@@ -311,6 +315,8 @@ class PendingOrder:
             'order_kwargs': serialize_value(self.order_kwargs),
             'close_lots': self.close_lots,
             'closes_position_id': self.closes_position_id,
+            'closed_position_direction': (
+                self.closed_position_direction.value if self.closed_position_direction else None),
             'venue_held_protection': self.venue_held_protection,
             # Async operation state (#318)
             'in_flight_operation': self.execution_state.in_flight_operation.value if self.execution_state.in_flight_operation else None,

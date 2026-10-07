@@ -7,13 +7,14 @@ the session has ended, for what is derived from it.
 """
 
 from pathlib import Path
-from typing import List
+from typing import List, Tuple
 
 from python.configuration.app_config_manager import AppConfigManager
 from python.framework.exceptions.report_artifact_errors import ReportArtifactUnreadableError
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.reporting.io.artifact_specs import ORDER_EVENTS_STREAM
 from python.framework.reporting.io.order_event_stream_io import (
+    broker_truth_from_row,
     order_event_from_row,
     read_order_event_stream,
 )
@@ -21,6 +22,7 @@ from python.framework.reporting.io.order_event_stream_writer import OrderEventSt
 from python.framework.reporting.store.report_store import IO_SUBDIR
 from python.framework.reporting.store.run_index import RunIndex
 from python.framework.trading_env.abstract_trade_executor import AbstractTradeExecutor
+from python.framework.types.live_types.broker_truth_types import BrokerTruthRecord
 from python.framework.types.trading_env_types.order_event_types import OrderEvent
 
 
@@ -57,12 +59,16 @@ def open_order_event_stream(
     return writer
 
 
-def read_back_order_event_stream(run_dir: Path, logger: AbstractLogger) -> List[OrderEvent]:
+def read_back_order_event_stream(
+    run_dir: Path,
+    logger: AbstractLogger,
+) -> Tuple[List[OrderEvent], List[BrokerTruthRecord]]:
     """
-    The order events a session wrote, read back once it has ended (#362) — its broker-truth lines
-    are left aside: nothing derived here reads them, the route serves them.
+    The order events and the broker-truth lines a session wrote, read back once it has ended
+    (#362) — one read of the file for both.
 
-    What the pending-order counters and the check that the stream holds every submission are
+    The events are what the pending-order counters and the check that the stream holds every
+    submission are derived from; the broker-truth lines are what the venue-account section is
     derived from. A stream that cannot be read yields nothing, and says why on the session's
     channel — the check then reports the submissions it cannot find.
 
@@ -71,17 +77,19 @@ def read_back_order_event_stream(run_dir: Path, logger: AbstractLogger) -> List[
         logger: The session's channel
 
     Returns:
-        The events in the order they were recorded; empty when there is no readable stream
+        (the events, the broker-truth lines), each in the order it was recorded; both empty when
+        there is no readable stream
     """
     path = run_dir / IO_SUBDIR / ORDER_EVENTS_STREAM
     if not path.exists():
-        return []
+        return [], []
     try:
-        rows, _, truncated = read_order_event_stream(path)
+        rows, truths, truncated = read_order_event_stream(path)
     except ReportArtifactUnreadableError as e:
         logger.error(f'❌ The order-event stream could not be read back: {e}')
-        return []
+        return [], []
     if truncated:
         logger.warning(
             f'⚠️ The order-event stream {path} ends in a line cut off mid-write — it is left out')
-    return [order_event_from_row(row) for row in rows]
+    return ([order_event_from_row(row) for row in rows],
+            [broker_truth_from_row(truth) for truth in truths])
