@@ -1492,7 +1492,7 @@ class AutotraderTickLoop:
                 f'🚨 EMERGENCY STOP: {reason}. New entries are blocked and the session will '
                 f'end. The {len(positions)} open spot holding(s) are NOT sold — '
                 f'safety.spot_liquidate_to_quote is off, so the position stays and its loss '
-                f'stays unrealised.')
+                f'stays unrealized.')
             self._flatten_sent_at_tick = -1
             return
 

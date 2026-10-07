@@ -83,6 +83,11 @@ account. `account_max_dd_pct` is the share that decline was.
   "run_net_pnl": -4.17, "run_total_trades": 12, "reconciles": true }
 ```
 
+`total_net_pnl`, `total_fees` and `total_trades` are the sums over the periods — the table's own
+totals, and the figures to render beside it. `run_net_pnl` and `run_total_trades` are what the run
+itself reports for the same currency; they are there to be compared against, and when the check
+holds they carry the same value.
+
 `reconciles` compares the periods' sums against the figures the run reports. What it proves is
 **completeness**: every closed trade reached exactly one period. A `false` means a trade was lost
 between the run and its ledger — dropped in retention, missed by a window, lost in transport.

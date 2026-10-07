@@ -93,7 +93,7 @@ class TestTheConsoleDoesNotHideABuyAndHoldRun:
         output = _render(_buy_and_hold_row(), capsys)
 
         assert 'Final equity' in output
-        assert 'unrealised' in output
+        assert 'unrealized' in output
         assert '(realised)' in output, (
             'net_profit must say which of the two figures it is')
 

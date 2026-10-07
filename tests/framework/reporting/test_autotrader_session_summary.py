@@ -86,7 +86,7 @@ class TestAutotraderSessionSummary:
         out = _render(result)
 
         assert 'Still open:     1 position(s)' in out
-        assert 'unrealised' in out
+        assert 'unrealized' in out
         assert 'realised' in out, 'the balance line must say which of the two it is'
         assert 'cancel/leave' in out, 'a position left by policy must be distinguishable'
 

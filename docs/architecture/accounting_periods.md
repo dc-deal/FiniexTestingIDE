@@ -109,7 +109,7 @@ T4                                        │        ╞════════
 
 That is correct bookkeeping and it is not the whole story about Monday. Which is why a period
 carries its **equity band** beside its realised figures: the two differ by exactly the
-unrealised movement across the boundary. Flow is derived from records; stock is read at an
+unrealized movement across the boundary. Flow is derived from records; stock is read at an
 instant. A reader who takes one for the other will find a day whose booked result and
 whose account movement disagree, and conclude that something is broken.
 
@@ -118,7 +118,7 @@ whose account movement disagree, and conclude that something is broken.
 - **What it opened with.** `opening_equity` is the previous period's closing value, read at the
   same instant, or — for a unit's first period — its first observed account value. It is stamped
   where it is known and never computed as `final_equity − net_pnl`: `net_pnl` is realised, while
-  the equity also values what is still open, so that difference is off by exactly the unrealised
+  the equity also values what is still open, so that difference is off by exactly the unrealized
   movement described above.
 - **Its costs, split.** `commission_cost`, `swap_cost` and `spread_cost`, summed over the same
   trades `total_fees` is — the ones the period closed. Commission and swap add up to `total_fees`;
