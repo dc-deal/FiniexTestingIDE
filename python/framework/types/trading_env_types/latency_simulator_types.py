@@ -40,21 +40,6 @@ class PendingOrderAction(StrEnum):
     CLOSE = 'close'
 
 
-class PendingOrderOutcome(StrEnum):
-    """
-    How a pending order's lifecycle ended.
-
-    FILLED: Normal fill after latency delay (simulation) or broker confirmation (live)
-    REJECTED: Rejected after pending phase (stress test, broker rejection)
-    TIMED_OUT: Broker did not respond within timeout threshold (live only)
-    FORCE_CLOSED: Forcefully resolved at scenario end (orders still in queue)
-    """
-    FILLED = 'filled'
-    REJECTED = 'rejected'
-    TIMED_OUT = 'timed_out'
-    FORCE_CLOSED = 'force_closed'
-
-
 class PendingOperation(StrEnum):
     """
     In-flight broker-side operation on a pending order.

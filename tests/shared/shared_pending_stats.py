@@ -1,146 +1,92 @@
 """
-FiniexTestingIDE - Shared Pending Order Statistics Tests
-Reusable test classes for pending stats validation across test suites.
+FiniexTestingIDE - Shared Pending-Order Counter Tests
+Reusable test classes for the pending-order counters a scenario's order-event stream yields (#362).
 
 Validates:
-- Synthetic close path (no false force-closed from end-of-scenario cleanup)
-- Real force-closed detection (stuck-in-pipeline orders)
-- Latency statistics (avg/min/max populated)
-- Outcome counting (filled matches expected)
-- Anomaly records with reason field
+- The counters add up to the submissions — a row with an ending missing disproves itself
+- Answer durations (avg/min/max) are populated
+- Every arrival at the simulated venue is an acceptance
+- An order the data's end met on its way is counted expired, never as unconfirmed
 
 Used by: pending_stats test suite
 Import these classes into suite-specific test_pending_stats.py files.
 """
 
-
-
+from python.framework.types.api.report_types import PendingOrdersUnitRow
 from python.framework.types.portfolio_types.portfolio_aggregation_types import PortfolioStats
-from python.framework.types.trading_env_types.latency_simulator_types import PendingOrderOutcome
-from python.framework.types.trading_env_types.pending_order_stats_types import PendingOrderStats
 
 
-class TestPendingStatsBaseline:
-    """Tests for pending order statistics — baseline assertions."""
+class TestPendingCountersBaseline:
+    """The counters a backtest's stream yields — baseline assertions."""
 
-    def test_pending_stats_exists(self, pending_stats: PendingOrderStats):
-        """Pending stats should be populated after scenario execution."""
-        assert pending_stats is not None
-        assert pending_stats.total_resolved > 0, 'No pending orders were resolved'
+    def test_the_counters_are_populated(self, pending_row: PendingOrdersUnitRow):
+        """The scenario submitted orders, so it has a row with submissions."""
+        assert pending_row is not None
+        assert pending_row.total_submitted > 0, 'No order was submitted'
 
-    def test_total_resolved_consistency(self, pending_stats: PendingOrderStats):
-        """Total resolved should equal sum of all outcome counts."""
-        expected = (
-            pending_stats.total_filled
-            + pending_stats.total_rejected
-            + pending_stats.total_timed_out
-            + pending_stats.total_force_closed
-        )
-        assert pending_stats.total_resolved == expected, (
-            f'total_resolved={pending_stats.total_resolved} != '
-            f'filled({pending_stats.total_filled}) + rejected({pending_stats.total_rejected}) + '
-            f'timed_out({pending_stats.total_timed_out}) + force_closed({pending_stats.total_force_closed})'
-        )
+    def test_the_counters_add_up_to_the_submissions(self, pending_row: PendingOrdersUnitRow):
+        """Every submission's in-flight phase ended exactly one way."""
+        ended = (pending_row.total_accepted + pending_row.total_rejected
+                 + pending_row.total_never_confirmed + pending_row.total_expired)
+        assert pending_row.total_submitted == ended, (
+            f'{pending_row.total_submitted} submitted, but accepted '
+            f'({pending_row.total_accepted}) + rejected ({pending_row.total_rejected}) + '
+            f'never confirmed ({pending_row.total_never_confirmed}) + expired '
+            f'({pending_row.total_expired}) = {ended}')
 
-    def test_no_rejected_orders(self, pending_stats: PendingOrderStats):
+    def test_no_order_is_rejected(self, pending_row: PendingOrdersUnitRow):
         """No orders should be rejected in normal backtesting."""
-        assert pending_stats.total_rejected == 0, (
-            f'Unexpected rejections: {pending_stats.total_rejected}'
-        )
+        assert pending_row.total_rejected == 0, (
+            f'Unexpected rejections: {pending_row.total_rejected}')
 
-    def test_no_timed_out_orders(self, pending_stats: PendingOrderStats):
-        """No orders should time out in simulation mode."""
-        assert pending_stats.total_timed_out == 0, (
-            f'Unexpected timeouts: {pending_stats.total_timed_out}'
-        )
+    def test_a_simulated_venue_confirms_everything(self, pending_row: PendingOrdersUnitRow):
+        """Only a real venue can leave an order unconfirmed."""
+        assert pending_row.total_never_confirmed == 0
+        assert pending_row.never_confirmed_orders == []
 
-    def test_latency_stats_populated(self, pending_stats: PendingOrderStats):
-        """Millisecond-based latency stats should be populated."""
-        assert pending_stats.avg_latency_ms > 0, 'avg_latency_ms not set'
-        assert pending_stats.min_latency_ms is not None, 'min_latency_ms not set'
-        assert pending_stats.max_latency_ms is not None, 'max_latency_ms not set'
-        assert pending_stats.min_latency_ms <= pending_stats.max_latency_ms, (
-            f'min ({pending_stats.min_latency_ms}) > max ({pending_stats.max_latency_ms})'
-        )
+    def test_answer_durations_are_populated(self, pending_row: PendingOrdersUnitRow):
+        """The modelled delay of every answer is a sample."""
+        assert pending_row.avg_in_flight_ms > 0, 'avg_in_flight_ms not set'
+        assert pending_row.min_in_flight_ms is not None, 'min_in_flight_ms not set'
+        assert pending_row.max_in_flight_ms is not None, 'max_in_flight_ms not set'
+        assert pending_row.min_in_flight_ms <= pending_row.max_in_flight_ms
 
-    def test_latency_avg_in_range(self, pending_stats: PendingOrderStats):
-        """Average latency should be between min and max."""
-        assert pending_stats.min_latency_ms <= pending_stats.avg_latency_ms, (
-            f'avg ({pending_stats.avg_latency_ms}) < min ({pending_stats.min_latency_ms})'
-        )
-        assert pending_stats.avg_latency_ms <= pending_stats.max_latency_ms, (
-            f'avg ({pending_stats.avg_latency_ms}) > max ({pending_stats.max_latency_ms})'
-        )
+    def test_the_average_lies_between_min_and_max(self, pending_row: PendingOrdersUnitRow):
+        """Average duration should be between min and max."""
+        assert pending_row.min_in_flight_ms <= pending_row.avg_in_flight_ms
+        assert pending_row.avg_in_flight_ms <= pending_row.max_in_flight_ms
 
 
-class TestSyntheticCloseNotCounted:
-    """Tests that end-of-scenario position closes don't produce false force-closed."""
+class TestEveryArrivalIsAnAcceptance:
+    """The simulated venue takes every order that reaches it — open and close alike."""
 
-    def test_filled_count_matches_trade_lifecycle(
+    def test_accepted_covers_the_completed_trades(
         self,
-        pending_stats: PendingOrderStats,
+        pending_row: PendingOrdersUnitRow,
         portfolio_stats: PortfolioStats
     ):
         """
-        Filled count should reflect actual order fills through the latency pipeline.
+        Each completed trade passed the pipeline twice: its open and its close were accepted.
 
-        Each completed trade = 1 open fill + 1 close fill = 2 filled.
-        End-of-scenario synthetic closes bypass the pipeline and are NOT counted.
+        There are no end-of-scenario synthetic closes any more (#492).
         """
         completed_trades = portfolio_stats.total_trades
-        # Each completed trade has open + close through pipeline
-        # But the last trade may be force-closed (close didn't fill via pipeline)
-        # So filled >= completed_trades (at least the opens filled)
-        assert pending_stats.total_filled >= completed_trades, (
-            f'total_filled ({pending_stats.total_filled}) < '
-            f'total_trades ({completed_trades})'
-        )
+        assert pending_row.total_accepted >= 2 * completed_trades, (
+            f'total_accepted ({pending_row.total_accepted}) < '
+            f'2 x total_trades ({completed_trades})')
 
 
-class TestForceClosedDetection:
-    """Tests that genuine stuck-in-pipeline orders are correctly detected."""
+class TestAnOrderTheDataEndMet:
+    """An order still on its way when the data ends expired there — it is no anomaly."""
 
-    def test_force_closed_count(self, pending_stats: PendingOrderStats):
+    def test_it_is_counted_expired(self, pending_row: PendingOrdersUnitRow):
         """
-        Should have at least 1 force-closed order.
-
-        Trade 2 opens at tick 5000 (last tick). No subsequent tick exists
-        to fill the order, so it remains pending and is force-closed at
-        scenario end.
+        Trade 2 opens at tick 5000 (last tick). No later tick exists to deliver it, so the
+        data's end meets it on its way.
         """
-        assert pending_stats.total_force_closed >= 1, (
-            f'Expected at least 1 force-closed, got {pending_stats.total_force_closed}'
-        )
+        assert pending_row.total_expired >= 1, (
+            f'Expected at least 1 expired on the way, got {pending_row.total_expired}')
 
-    def test_anomaly_records_populated(self, pending_stats: PendingOrderStats):
-        """Anomaly records should exist for force-closed orders."""
-        assert len(pending_stats.anomaly_orders) >= 1, (
-            f'Expected anomaly records, got {len(pending_stats.anomaly_orders)}'
-        )
-
-    def test_anomaly_record_has_reason(self, pending_stats: PendingOrderStats):
-        """Each anomaly record should have a reason field."""
-        for record in pending_stats.anomaly_orders:
-            assert record.reason is not None, (
-                f'Anomaly record {record.order_id} has no reason'
-            )
-
-    def test_anomaly_reason_is_scenario_end(self, pending_stats: PendingOrderStats):
-        """Force-closed records from scenario end should have reason='scenario_end'."""
-        for record in pending_stats.anomaly_orders:
-            if record.outcome == PendingOrderOutcome.FORCE_CLOSED:
-                assert record.reason == 'scenario_end', (
-                    f"Expected reason='scenario_end', got '{record.reason}' "
-                    f"for order {record.order_id}"
-                )
-
-    def test_anomaly_record_has_latency(self, pending_stats: PendingOrderStats):
-        """Force-closed records should have latency information (>= 0ms)."""
-        for record in pending_stats.anomaly_orders:
-            if record.outcome == PendingOrderOutcome.FORCE_CLOSED:
-                assert record.latency_ms is not None, (
-                    f'Force-closed record {record.order_id} has no latency_ms'
-                )
-                assert record.latency_ms >= 0, (
-                    f'Force-closed record {record.order_id} has negative latency_ms'
-                )
+    def test_it_is_not_listed_as_unconfirmed(self, pending_row: PendingOrdersUnitRow):
+        """The list holds only what a venue never confirmed — nothing here."""
+        assert pending_row.never_confirmed_orders == []

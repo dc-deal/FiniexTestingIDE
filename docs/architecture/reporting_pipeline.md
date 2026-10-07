@@ -378,7 +378,7 @@ open work to finish migrating the section (issue ref where one exists; ✅ = don
 | Order History | unified | ✅ | ✅ | — |
 | Portfolio — per-unit | unified | ✅ | ✅ (linear, boxes removed) | — `max_dd_pct`, the spot dual-balance estimate and `final_equity` are derived in the builder; the renderer's `symbol[-3:]` currency split was replaced by the broker-config split stamped at capture (#265). Carries `open_positions` / `unrealized_pnl` / `session_end_policy` (#492), and on each open position `protective_level_enforcement` — who enforces its stop/target, stamped at capture because it is the executor's answer while the stats come from the portfolio (#500) |
 | Portfolio — aggregated (by currency) | sim | ✅ (`AggregatedPortfolioReport`) | ✅ from the model (byte-identical; `PortfolioAggregator` retired) | — |
-| Pending Orders / Active | unified (sim-populated) | ✅ | ✅ | — |
+| Pending Orders / Active | unified — both pipelines since the counters are derived from the order-event stream (#362) | ✅ | ✅ | — |
 | Execution Stats — per-unit | unified | ✅ | ✅ | — |
 | Execution — aggregated ORDER EXECUTION | sim | ✅ (in `AggregatedPortfolioReport`) | ✅ from the model | — (folded into the portfolio aggregate, #397) |
 | Scenario Details | **sim-only** | ✅ | ✅ (linear, incl. failed + `account_currency` hint) | — |

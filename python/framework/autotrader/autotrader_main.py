@@ -25,7 +25,10 @@ from python.framework.autotrader.autotrader_tick_loop import AutotraderTickLoop
 from python.framework.autotrader.cold_start_setup import ColdStartSetup, setup_cold_start
 from python.framework.autotrader.dry_run_resolver import resolve_dry_run
 from python.framework.autotrader.live_clipping_monitor import LiveClippingMonitor
-from python.framework.autotrader.order_event_stream_setup import open_order_event_stream
+from python.framework.autotrader.order_event_stream_setup import (
+    open_order_event_stream,
+    read_back_order_event_stream,
+)
 from python.framework.autotrader.rendered_profile_builder import (
     assert_rendered_parameters_match,
     render_autotrader_profile,
@@ -1118,8 +1121,15 @@ class AutotraderMain:
                 result.execution_stats = self._executor.get_execution_stats()
                 result.trade_history = self._executor.get_trade_history()
                 result.order_history = self._executor.get_order_history()
+                result.active_orders = self._executor.get_active_orders_snapshot()
             except Exception as e:
                 self._session_logger.error(f'Error collecting executor stats: {e}')
+
+        # #362 — the stream is closed by now; read back once, for the pending-order counters
+        # and the check that it holds every submission
+        if self._run_dir is not None:
+            result.order_events = read_back_order_event_stream(
+                self._run_dir, self._session_logger)
 
         if self._decision_logic:
             try:

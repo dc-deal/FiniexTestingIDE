@@ -66,6 +66,10 @@ from python.framework.types.portfolio_types.portfolio_trade_record_types import 
     EntryType,
     TradeRecord,
 )
+from python.framework.types.trading_env_types.active_orders_snapshot_types import (
+    ActiveOrderSnapshot,
+    ActiveOrdersSnapshot,
+)
 from python.framework.types.trading_env_types.broker_trade_types import BrokerTrade
 from python.framework.types.trading_env_types.broker_types import FeeType, SymbolSpecification
 from python.framework.types.trading_env_types.executor_mode_types import ExecutorMode
@@ -76,6 +80,7 @@ from python.framework.types.trading_env_types.latency_simulator_types import (
 )
 from python.framework.types.trading_env_types.market_data_status_types import MarketDataStatus
 from python.framework.types.trading_env_types.order_event_types import (
+    ENDING_EVENT_TYPES,
     ORDER_EVENT_BY_STATUS,
     OrderEvent,
     OrderEventType,
@@ -99,10 +104,6 @@ from python.framework.types.trading_env_types.order_types import (
     create_refusal_result,
     direction_to_side,
 )
-from python.framework.types.trading_env_types.pending_order_stats_types import (
-    ActiveOrderSnapshot,
-    PendingOrderStats,
-)
 from python.framework.types.trading_env_types.submission_metadata_types import SubmissionMetadata
 from python.framework.types.trading_env_types.trading_env_stats_types import (
     EXECUTION_STATS_FIELD_BY_STATUS,
@@ -119,11 +120,6 @@ _CLOSE_LOT_EPSILON = 1e-9
 # How many endings the executor keeps to explain an answer that arrives after its order is gone.
 # A late answer trails its order by a poll or a resolution round, never by hundreds of orders.
 _RECENT_ENDINGS_KEPT = 256
-
-# The events that end an order's life in a unit — what a late answer is told about. Derived
-# from the declared map, so a new ending status cannot be left out of it.
-_ENDING_EVENT_TYPES = frozenset(
-    event for event in ORDER_EVENT_BY_STATUS.values() if event is not None)
 
 
 class AbstractTradeExecutor(ABC):
@@ -426,7 +422,7 @@ class AbstractTradeExecutor(ABC):
             ts_init=self._receipt_time(),
             **values,
         )
-        if event_type in _ENDING_EVENT_TYPES:
+        if event_type in ENDING_EVENT_TYPES:
             self._remember_ending(event)
         for listener in self._order_event_listeners:
             listener(event)
@@ -527,7 +523,7 @@ class AbstractTradeExecutor(ABC):
         Count one order handed to the venue and record its submission — one statement for both.
 
         The submitted count is thereby the number of `submitted` events, which is what the
-        pending-order counters will be derived from (#362).
+        pending-order counters are derived from (#362).
 
         Args:
             pending: The order just handed over
@@ -2833,7 +2829,7 @@ class AbstractTradeExecutor(ABC):
     # ============================================
 
     @abstractmethod
-    def finish_remaining_orders(self, cancel_orders: bool = True, current_msc: int = 0) -> None:
+    def finish_remaining_orders(self, cancel_orders: bool = True) -> None:
         """
         Finish the run's ORDERS — open positions are no longer this method's business (#492).
 
@@ -2850,7 +2846,6 @@ class AbstractTradeExecutor(ABC):
             cancel_orders: False leaves resting orders where they are — live: at the venue,
                 so a later session can adopt them back (#355). They are then NOT recorded as
                 expired either, because they have not expired
-            current_msc: Current millisecond timestamp for pending latency calculation
         """
         pass
 
@@ -2907,12 +2902,12 @@ class AbstractTradeExecutor(ABC):
         return clean
 
     @abstractmethod
-    def get_pending_stats(self) -> PendingOrderStats:
+    def get_active_orders_snapshot(self) -> ActiveOrdersSnapshot:
         """
-        Get aggregated pending order statistics (latency, outcomes).
+        The orders this executor holds right now: what rests, and how many are on their way.
 
         Returns:
-            PendingOrderStats with latency metrics and anomaly records
+            A fresh snapshot — the live display reads one per refresh, the report one at the end
         """
         pass
 
@@ -2920,17 +2915,20 @@ class AbstractTradeExecutor(ABC):
     # Active Order Helpers (shared by all modes)
     # ============================================
 
-    def _populate_active_order_snapshots(self, stats: PendingOrderStats) -> None:
+    def _snapshot_active_orders(self, latency_queue_count: int) -> ActiveOrdersSnapshot:
         """
-        Populate active order snapshots on PendingOrderStats.
+        Build the snapshot of the resting orders.
 
         Converts internal PendingOrder lists to ActiveOrderSnapshot DTOs
-        for reporting consumption. Called by subclass get_pending_stats().
+        for reporting consumption. Called by subclass get_active_orders_snapshot().
 
         Args:
-            stats: PendingOrderStats to populate with active order snapshots
+            latency_queue_count: The orders on their way, which only the subclass can count
+
+        Returns:
+            The snapshot
         """
-        stats.active_limit_orders = [
+        active_limit_orders = [
             ActiveOrderSnapshot(
                 order_id=p.pending_order_id,
                 order_type=p.order_type,
@@ -2953,7 +2951,7 @@ class AbstractTradeExecutor(ABC):
             )
             for p in self._active_limit_orders
         ]
-        stats.active_stop_orders = [
+        active_stop_orders = [
             ActiveOrderSnapshot(
                 order_id=p.pending_order_id,
                 order_type=p.order_type,
@@ -2976,13 +2974,18 @@ class AbstractTradeExecutor(ABC):
             )
             for p in self._active_stop_orders
         ]
+        return ActiveOrdersSnapshot(
+            active_limit_orders=active_limit_orders,
+            active_stop_orders=active_stop_orders,
+            latency_queue_count=latency_queue_count,
+        )
 
     def _expire_active_orders(self) -> None:
         """
         Record EXPIRED status for never-triggered active orders at the end of the data.
 
         Books one expired row (`scenario_end`) per resting order of BOTH worlds. Lists are
-        NOT cleared — preserved for get_pending_stats() snapshots. The simulation's ending
+        NOT cleared — preserved for get_active_orders_snapshot(). The simulation's ending
         only: a live session ends its resting orders by cancelling them at the venue, and
         books what the venue answered.
         """

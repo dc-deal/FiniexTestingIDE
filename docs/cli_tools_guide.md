@@ -43,8 +43,8 @@ python python/cli/docs_search_cli.py search pending order counters
 ```
 🔍 Documentation — 2615 passages, best 8 for 'pending order counters'
 
-   11.2  docs/glossary.md:263  § Glossary
-         **pending-order counters** (`total_resolved`, … on the pending-orders report) — How the unit's …
+   11.2  docs/glossary.md:313  § Glossary
+         **pending-order counters** (`total_submitted`, … on the pending-orders report) — How a unit's …
    10.2  docs/architecture/architecture_execution_layer.md:178  § Pending Order Statistics
 ```
 

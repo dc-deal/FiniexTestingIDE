@@ -3,7 +3,7 @@ FiniexTestingIDE - Active Order Display Test Fixtures
 Suite-specific fixtures for limit_stop_order_mock_scenario_test.json
 
 Validates that active (unresolved) limit and stop orders are correctly
-reported in pending_stats at scenario end.
+reported in the active-orders snapshot at scenario end.
 
 Scenario design:
 - Scenario 0 (active_limit_display): LONG LIMIT at 0.5000 — never fills (far below market)
@@ -15,9 +15,11 @@ import pytest
 
 from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.process_data_types import ProcessResult, ProcessTickLoopResult
-from python.framework.types.trading_env_types.pending_order_stats_types import PendingOrderStats
+from python.framework.types.trading_env_types.active_orders_snapshot_types import (
+    ActiveOrdersSnapshot,
+)
 from tests.shared.fixture_helpers import (
-    extract_pending_stats,
+    extract_active_orders,
     extract_process_result,
     extract_tick_loop_results,
     run_scenario,
@@ -56,9 +58,9 @@ def tick_loop_results_limit(process_result_limit: ProcessResult) -> ProcessTickL
 
 
 @pytest.fixture(scope='session')
-def pending_stats_limit(tick_loop_results_limit: ProcessTickLoopResult) -> PendingOrderStats:
-    """Extract pending stats for the limit scenario."""
-    return extract_pending_stats(tick_loop_results_limit)
+def active_orders_limit(tick_loop_results_limit: ProcessTickLoopResult) -> ActiveOrdersSnapshot:
+    """Extract the active-orders snapshot for the limit scenario."""
+    return extract_active_orders(tick_loop_results_limit)
 
 
 # =============================================================================
@@ -78,6 +80,6 @@ def tick_loop_results_stop(process_result_stop: ProcessResult) -> ProcessTickLoo
 
 
 @pytest.fixture(scope='session')
-def pending_stats_stop(tick_loop_results_stop: ProcessTickLoopResult) -> PendingOrderStats:
-    """Extract pending stats for the stop scenario."""
-    return extract_pending_stats(tick_loop_results_stop)
+def active_orders_stop(tick_loop_results_stop: ProcessTickLoopResult) -> ActiveOrdersSnapshot:
+    """Extract the active-orders snapshot for the stop scenario."""
+    return extract_active_orders(tick_loop_results_stop)

@@ -81,9 +81,9 @@ Three groups of fields are null on a folded row, each for its own reason:
 - **A reading of one account** — `final_equity`, `unrealized_pnl`, `open_position_count`. A
   combination of several scenarios is several accounts, and the latest reading of one account is
   not the run's. Null since contract 17.
-- **The order counts** — `orders_sent`, `orders_executed`, `orders_rejected`, `sl_tp_triggered`. A
-  booking period carries none, so a row folded from periods has nothing to add up. They read `0`
-  before contract 18, which turned an absence into a measured zero.
+- **The order counts** — `orders_submitted`, `orders_executed`, `orders_rejected`,
+  `sl_tp_triggered`. A booking period carries none, so a row folded from periods has nothing to add
+  up. They read `0` before contract 18, which turned an absence into a measured zero.
 - **The streaks** — `max_consecutive_wins`, `max_consecutive_losses`. A run of winners can cross a
   period boundary, so 2 and 3 in adjacent periods may be a run of 5, and no arithmetic over two
   summaries recovers it.

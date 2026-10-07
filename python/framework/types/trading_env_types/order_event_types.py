@@ -81,6 +81,47 @@ ORDER_EVENT_BY_STATUS: Dict[OrderStatus, Optional[OrderEventType]] = {
     OrderStatus.UNACCOUNTED: OrderEventType.UNACCOUNTED,
 }
 
+# The events that end an order's life in a unit — what a late answer is told about. Derived
+# from the map above, so a new ending status cannot be left out of it.
+ENDING_EVENT_TYPES: FrozenSet[OrderEventType] = frozenset(
+    event for event in ORDER_EVENT_BY_STATUS.values() if event is not None)
+
+
+class InFlightEnding(Enum):
+    """How an order's in-flight phase ended — the venue's first word on a submission."""
+    ACCEPTED = 'accepted'                  # The venue took the order
+    REJECTED = 'rejected'                  # The venue refused it
+    NEVER_CONFIRMED = 'never_confirmed'    # The venue never confirmed it: undelivered, unaccounted
+    EXPIRED = 'expired'                    # The data's end met it on its way
+
+
+# Which event ends a submission's in-flight phase, and as what — the pending-order counters are
+# a fold over the stream with this map, one count per category. Only a submission's FIRST such
+# event counts: a resting order the venue took and that later expires was accepted, not expired.
+# A member that ends no in-flight phase says why beside it.
+IN_FLIGHT_ENDING_BY_EVENT: Dict[OrderEventType, Optional[InFlightEnding]] = {
+    OrderEventType.SUBMITTED: None,           # opens the phase; counted as the submission itself
+    OrderEventType.ACCEPTED: InFlightEnding.ACCEPTED,
+    OrderEventType.REJECTED: InFlightEnding.REJECTED,
+    OrderEventType.DENIED: None,              # refused before anything was sent
+    OrderEventType.UNRESOLVED: None,          # a question; its answer is the ending that follows
+    OrderEventType.RESOLVED: None,            # the acceptance or the ending after it says how
+    OrderEventType.TRIGGERED: None,           # the venue took the order before it could trigger
+    OrderEventType.MODIFY_REQUESTED: None,    # a working order is modified, never one on its way
+    OrderEventType.MODIFIED: None,
+    OrderEventType.MODIFY_REJECTED: None,
+    OrderEventType.CANCEL_REQUESTED: None,
+    OrderEventType.CANCEL_DEFERRED: None,     # parked until the venue answers the submission
+    OrderEventType.CANCELLED: None,           # a cancel reaches an order the venue took
+    OrderEventType.CANCEL_REJECTED: None,
+    OrderEventType.PARTIALLY_FILLED: None,    # every execution follows the acceptance
+    OrderEventType.FILLED: None,
+    OrderEventType.EXPIRED: InFlightEnding.EXPIRED,
+    OrderEventType.UNDELIVERED: InFlightEnding.NEVER_CONFIRMED,
+    OrderEventType.UNACCOUNTED: InFlightEnding.NEVER_CONFIRMED,
+    OrderEventType.ADOPTED: None,             # an earlier session's order, accepted there
+}
+
 _BOTH = frozenset({ExecutorMode.SIMULATION, ExecutorMode.LIVE})
 _SIMULATION = frozenset({ExecutorMode.SIMULATION})
 _LIVE = frozenset({ExecutorMode.LIVE})

@@ -508,7 +508,7 @@ class TestNothingIsEverReSent:
         pending = _unresolved_limit(executor_instant, mock_instant)
         adapter = executor_instant.broker.adapter
         adapter.set_transport_fault('submit', None)
-        before = executor_instant.get_pending_stats()
+        before = executor_instant.get_active_orders_snapshot()
 
         _exhaust_resolution(executor_instant, pending)
 

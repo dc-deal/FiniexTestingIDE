@@ -25,12 +25,14 @@ from python.framework.types.portfolio_types.portfolio_trade_record_types import 
     CloseReason,
     EntryType,
 )
+from python.framework.types.trading_env_types.active_orders_snapshot_types import (
+    ActiveOrdersSnapshot,
+)
 from python.framework.types.trading_env_types.latency_simulator_types import (
     ModificationRequest,
     PendingOperation,
     PendingOrder,
     PendingOrderAction,
-    PendingOrderOutcome,
 )
 from python.framework.types.trading_env_types.order_event_types import OrderEventType
 from python.framework.types.trading_env_types.order_types import (
@@ -49,7 +51,6 @@ from python.framework.types.trading_env_types.order_types import (
     OrderType,
     RejectionReason,
 )
-from python.framework.types.trading_env_types.pending_order_stats_types import PendingOrderStats
 from python.framework.types.trading_env_types.stress_test_types import (
     StressTestConfig,
     StressTestRejectOrderConfig,
@@ -260,17 +261,9 @@ class TradeSimulator(AbstractTradeExecutor):
             filled_orders: PendingOrders whose latency delay has elapsed
         """
         for pending_order in filled_orders:
-            # Latency = broker_fill_msc - placed_at_msc (planned delay in ms)
-            latency_ms = None
-            if pending_order.timing.broker_fill_msc is not None and pending_order.timing.placed_at_msc is not None:
-                latency_ms = pending_order.timing.broker_fill_msc - pending_order.timing.placed_at_msc
-
             match pending_order.order_action:
                 case PendingOrderAction.OPEN:
                     if self._stress_test_should_reject(pending_order):
-                        self.latency_simulator.record_outcome(
-                            pending_order, PendingOrderOutcome.REJECTED,
-                            latency_ms=latency_ms)
                         continue
 
                     # A resting type is taken by the simulated venue on arrival — before it
@@ -339,15 +332,8 @@ class TradeSimulator(AbstractTradeExecutor):
                     else:
                         # Market order → fill at current tick price
                         self._fill_open_order(pending_order)
-
-                    self.latency_simulator.record_outcome(
-                        pending_order, PendingOrderOutcome.FILLED,
-                        latency_ms=latency_ms)
                 case PendingOrderAction.CLOSE:
                     self._fill_close_order(pending_order)
-                    self.latency_simulator.record_outcome(
-                        pending_order, PendingOrderOutcome.FILLED,
-                        latency_ms=latency_ms)
 
     def heartbeat(self) -> None:
         """
@@ -1322,26 +1308,20 @@ class TradeSimulator(AbstractTradeExecutor):
         """Get number of orders in the latency queue."""
         return self.latency_simulator.get_pending_count()
 
-    def get_pending_stats(self) -> PendingOrderStats:
+    def get_active_orders_snapshot(self) -> ActiveOrdersSnapshot:
         """
-        Get aggregated pending order statistics with active order snapshots.
-
-        Combines latency simulator stats (resolved orders) with snapshots
-        of currently active limit and stop orders (order IDs, prices, etc.).
+        The resting limit and stop orders, and how many are still in the latency queue.
 
         Returns:
-            PendingOrderStats with latency metrics + active order snapshots
+            A fresh snapshot (order ids, prices, sizes)
         """
-        stats = self.latency_simulator.get_pending_stats()
-        stats.latency_queue_count = self.latency_simulator.get_pending_count()
-        self._populate_active_order_snapshots(stats)
-        return stats
+        return self._snapshot_active_orders(self.latency_simulator.get_pending_count())
 
     # ============================================
     # Cleanup
     # ============================================
 
-    def finish_remaining_orders(self, cancel_orders: bool = True, current_msc: int = 0) -> None:
+    def finish_remaining_orders(self, cancel_orders: bool = True) -> None:
         """
         BEFORE collecting statistics — finish the scenario's ORDERS.
 
@@ -1364,10 +1344,9 @@ class TradeSimulator(AbstractTradeExecutor):
             cancel_orders: Accepted for the shared contract; a simulation always expires
                 its active orders, because "leave them at the venue" has no meaning where
                 there is no venue
-            current_msc: Current millisecond timestamp for latency calculation
         """
         # Expire active orders → EXPIRED records in _order_history.
-        # Lists are NOT cleared — preserved for get_pending_stats() snapshots.
+        # Lists are NOT cleared — preserved for get_active_orders_snapshot().
         if self._active_limit_orders:
             self.logger.info(
                 f'📋 {len(self._active_limit_orders)} unfilled limit orders '
@@ -1382,8 +1361,7 @@ class TradeSimulator(AbstractTradeExecutor):
 
         # Catch genuine stuck-in-pipeline orders (real anomalies). The data ended before
         # they reached the simulated venue, so they expired on the way — each gets its row.
-        for pending in self.latency_simulator.clear_pending(
-                current_msc=current_msc, reason='scenario_end'):
+        for pending in self.latency_simulator.clear_pending(reason='scenario_end'):
             self._book_order_result(self._ending_for_pending(
                 pending, OrderStatus.EXPIRED,
                 initiator=OrderInitiator.FRAMEWORK,

@@ -13,6 +13,7 @@ reads the structured result. See docs/architecture/warnings_errors_tiers.md.
 
 from typing import Optional
 
+from python.framework.reporting.builders.pending_orders_report_builder import submission_count
 from python.framework.reporting.builders.robustness_report_builder import (
     build_robustness_report_from_batch,
 )
@@ -32,6 +33,7 @@ from python.framework.types.validation_types import (
 )
 from python.framework.utils.version_utils import parse_version
 from python.framework.validators.shared_advisory_checks import (
+    check_order_event_stream,
     check_stress_test,
     check_unversioned_code,
 )
@@ -90,6 +92,7 @@ class PostRunValidator:
         self._check_parallel_penalty()
         self._check_multi_currency()
         self._check_time_divergence()
+        self._check_order_event_stream()
         self._check_robustness()
 
     def _add(self, check: str, domain: ValidationDomain, message: str) -> None:
@@ -421,6 +424,18 @@ class PostRunValidator:
                     f'Time divergence: {currency} group scenarios span {span_days} days — aggregated '
                     f'P&L is statistical only, not portfolio-representative (market conditions / '
                     f'volatility / rates differ).'))
+
+    def _check_order_event_stream(self) -> None:
+        """Advisory when a scenario's order-event stream lacks submissions it counted (#362)."""
+        finding = check_order_event_stream([
+            (result.scenario_name,
+             submission_count(result.tick_loop_results.order_events or []),
+             result.tick_loop_results.execution_stats.orders_submitted)
+            for result in self._batch.process_result_list
+            if result.tick_loop_results and result.tick_loop_results.execution_stats
+        ], 'Scenarios')
+        if finding is not None:
+            self._add_finding(finding)
 
     def _check_robustness(self) -> None:
         """Robustness verdict (#367) — OVERFIT / param-drift / low-N advisories, gated on trust."""

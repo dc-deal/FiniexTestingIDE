@@ -26,7 +26,9 @@ from python.framework.types.trading_env_types.order_types import (
     OrderDirection,
     OrderSide,
 )
-from python.framework.types.trading_env_types.pending_order_stats_types import ActiveOrderSnapshot
+from python.framework.types.trading_env_types.active_orders_snapshot_types import (
+    ActiveOrderSnapshot,
+)
 
 
 @dataclass

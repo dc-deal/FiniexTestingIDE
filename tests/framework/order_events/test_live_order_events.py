@@ -16,6 +16,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from python.framework.logging.global_logger import GlobalLogger
+from python.framework.reporting.builders.pending_orders_report_builder import pending_orders_row
 from python.framework.testing.mock_broker_adapter import MockExecutionMode
 from python.framework.testing.mock_order_execution import MockOrderExecution
 from python.framework.trading_env.broker_config import BrokerConfig
@@ -349,3 +350,35 @@ class TestTheStreamItself:
         printed = capsys.readouterr().out
         assert f'it had already ended as cancelled (seq {cancelled.seq})' in printed
         assert executor.describe_recent_ending('pos_btcusd_404') == ''
+
+
+class TestTheSessionsPendingCounters:
+    """A live session's in-flight counters come from the events it recorded, as a backtest's."""
+
+    def test_each_way_out_of_flight_is_counted_and_they_add_up(self):
+        mock, executor, events = live_session()
+        executor.open_order(market_order())                                    # accepted
+        mock.await_submit_confirmation(executor)
+        executor.broker.adapter.set_transport_fault('submit', 'refused', terminal=True)
+        executor.open_order(market_order())                                    # rejected
+        mock.await_submit_confirmation(executor)
+        executor.broker.adapter.set_transport_fault('submit', _FAULT)
+        executor.open_order(market_order())                                    # never confirmed
+        mock.await_submit_confirmation(executor)
+        executor.heartbeat()
+        lost = next(p for p in executor.get_request_processor().get_pending_orders()
+                    if p.broker_ref is None)
+        lost.execution_state.resolution_deadline = (
+            executor.get_current_time() - timedelta(seconds=1))
+        lost.execution_state.resolution_next_at = None
+        lost.execution_state.resolution_in_flight = False
+        executor._process_unresolved_orders()                                 # the ceiling
+
+        row = pending_orders_row(
+            'session', 'BTCUSD', events, executor.get_active_orders_snapshot())
+
+        assert (row.total_submitted, row.total_accepted, row.total_rejected,
+                row.total_never_confirmed, row.total_expired) == (3, 1, 1, 1, 0)
+        assert row.in_flight_count == 2, 'the acceptance and the refusal were answers'
+        assert [o.event_type for o in row.never_confirmed_orders] == [
+            OrderEventType.UNACCOUNTED]

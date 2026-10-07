@@ -58,6 +58,7 @@ Each order life in a live session against the mock venue.
 | `TestAnAdoptedOrder` | adopted, and its fill follows without a second acceptance — counted adopted, not submitted |
 | `TestAProtectiveOrder` | the entry, the protective stop and the close as three lives: the stop is cancelled first, with its position, its position's side and `protection_released` |
 | `TestTheStreamItself` | `seq` strictly increasing across orders; an answer for an order that is gone names how it ended |
+| `TestTheSessionsPendingCounters` | the pending-order counters derived from a session's events — one accepted, one rejected, one never confirmed — add up, and only the answers carry a duration |
 
 ### `test_live_crossed_answers.py`
 

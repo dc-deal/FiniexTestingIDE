@@ -14,10 +14,17 @@ block as clean while the edge keeps cutting the same trades.
 """
 from typing import Dict, List
 
+from python.framework.reporting.builders.pending_orders_report_builder import (
+    first_in_flight_endings,
+)
 from python.framework.types.api.report_types import BlockSplittingReport, BlockSplittingSymbolRow
 from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
 from python.framework.types.scenario_types.window_set_types import WindowSet
+from python.framework.types.trading_env_types.order_event_types import (
+    IN_FLIGHT_ENDING_BY_EVENT,
+    InFlightEnding,
+)
 
 
 def build_block_splitting_report_from_batch(
@@ -76,8 +83,10 @@ def build_block_splitting_report_from_batch(
         row.open_at_boundary_pnl += sum(position.unrealized_pnl for position in positions)
         row.natural_closed_trades += len(trades)
         row.natural_closed_pnl += sum(trade.net_pnl for trade in trades)
-        row.discarded_pending_orders += (
-            loop.pending_stats.total_force_closed if loop.pending_stats else 0)
+        # The orders the block's end met on their way: expired before the venue took them
+        row.discarded_pending_orders += sum(
+            1 for event in first_in_flight_endings(loop.order_events or []).values()
+            if IN_FLIGHT_ENDING_BY_EVENT[event.event_type] is InFlightEnding.EXPIRED)
 
     rows = sorted(rows_by_symbol.values(), key=lambda r: r.symbol)
     for row in rows:

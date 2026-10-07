@@ -911,7 +911,6 @@ than a duration. `PendingOrderTiming.submitted_monotonic` carries the second sta
 | `TestTheLatencyIsMeasuredOnTheMonotonicClock` | the elapsed monotonic difference becomes milliseconds; a wall clock that stepped BACKWARDS cannot produce a negative latency; two orders whose wall-clock stamps differ by a decade measure the same |
 | `TestAnUnmeasurableLatencyIsReportedAsUnmeasured` | a wall-clock stamp alone yields `None`, never a substituted number, and so does an order carrying no stamp at all |
 | `TestEveryLiveSubmissionCarriesTheStamp` | `register_pending_open()` stamps the monotonic clock — the guard against a future submission site forgetting it |
-| `TestAForceClosedOrderIsMeasuredTheSameWay` | the session-end cleanup records a stuck order with the same clock: a wall clock that stepped backwards no longer yields a negative force-close latency, and an order without the stamp is recorded unmeasured |
 
 **Why `None` rather than a fallback:** an unmeasurable duration reported as unmeasured costs a
 blank column; reported as a wall-clock difference it costs an investigation into a venue that

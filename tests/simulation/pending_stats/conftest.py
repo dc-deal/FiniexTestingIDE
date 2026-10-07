@@ -2,15 +2,14 @@
 FiniexTestingIDE - Pending Stats Test Fixtures
 Suite-specific fixtures for pending_stats_validation_test.json
 
-Tests pending order statistics:
-- No false force-closed from the scenario end
-- Real force-closed detection (stuck-in-pipeline)
-- Latency stats population
-- Anomaly records with reason
+Tests the pending-order counters the scenario's order-event stream yields (#362):
+- The counters add up to the submissions
+- Answer durations populated
+- An order the data's end met on its way counts as expired
 
 Config design:
 - Trade 1: Opens at tick 10, closes at tick 110 (normal happy path)
-- Trade 2: Opens at tick 5000 (last tick) — no subsequent tick to fill, force-closed at scenario end
+- Trade 2: Opens at tick 5000 (last tick) — no subsequent tick to deliver it, expired on its way
 - Max ticks: 5000
 - Seeds: inbound_latency=12345
 """
@@ -24,10 +23,10 @@ from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.portfolio_types.portfolio_aggregation_types import PortfolioStats
 from python.framework.types.portfolio_types.portfolio_trade_record_types import TradeRecord
 from python.framework.types.process_data_types import ProcessResult, ProcessTickLoopResult
-from python.framework.types.trading_env_types.pending_order_stats_types import PendingOrderStats
+from python.framework.reporting.builders.pending_orders_report_builder import pending_orders_row
+from python.framework.types.api.report_types import PendingOrdersUnitRow
 from tests.shared.fixture_helpers import (
     extract_probe_metadata,
-    extract_pending_stats,
     extract_portfolio_stats,
     extract_process_result,
     extract_tick_loop_results,
@@ -84,9 +83,14 @@ def trade_history(tick_loop_results: ProcessTickLoopResult) -> List[TradeRecord]
 
 
 @pytest.fixture(scope='session')
-def pending_stats(tick_loop_results: ProcessTickLoopResult) -> PendingOrderStats:
-    """Extract pending order statistics."""
-    return extract_pending_stats(tick_loop_results)
+def pending_row(
+    process_result: ProcessResult, tick_loop_results: ProcessTickLoopResult
+) -> PendingOrdersUnitRow:
+    """The scenario's pending-order row, derived from its order-event stream."""
+    # The symbol labels the row and is not asserted — every counter comes from the events
+    return pending_orders_row(
+        process_result.scenario_name, '', tick_loop_results.order_events or [],
+        tick_loop_results.active_orders)
 
 
 # =============================================================================

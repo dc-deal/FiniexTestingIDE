@@ -28,9 +28,11 @@ from python.framework.types.portfolio_types.portfolio_types import Position
 from python.framework.types.run_results_types import BookingPeriod
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
 from python.framework.types.signal_data_types import SignalResolutionStats
+from python.framework.types.trading_env_types.active_orders_snapshot_types import (
+    ActiveOrdersSnapshot,
+)
 from python.framework.types.trading_env_types.order_event_types import OrderEvent
 from python.framework.types.trading_env_types.order_types import OrderResult
-from python.framework.types.trading_env_types.pending_order_stats_types import PendingOrderStats
 from python.framework.types.trading_env_types.stress_test_types import (
     StaleDataEvent,
     StressTestConfig,
@@ -59,12 +61,13 @@ class RunUnit:
     session_end_policy: str = ''
     order_history: List[OrderResult] = field(default_factory=list)
     # Every order transition of the unit (#362) — uncapped, where the order history is
-    # capped. A backtest carries them back from its scenario. A live session writes its own
-    # stream while it runs and its unit carries none: no report reads them from here yet.
+    # capped. A backtest carries them back from its scenario; a live session's are read back
+    # from the stream it wrote while it ran. The pending-order counters are derived from them.
     order_events: List[OrderEvent] = field(default_factory=list)
     portfolio_stats: Optional[PortfolioStats] = None
     execution_stats: Optional[ExecutionStats] = None
-    pending_stats: Optional[PendingOrderStats] = None
+    # What was still resting or on its way when the unit ended
+    active_orders: Optional[ActiveOrdersSnapshot] = None
     # Worker / decision performance (unified — both pipelines; #398), coordination included:
     # the orchestrator counts the ticks that reach the algo path in both pipelines.
     worker_statistics: List[WorkerPerformanceStats] = field(default_factory=list)
@@ -125,7 +128,7 @@ def run_units_from_batch(batch: BatchExecutionSummary) -> List[RunUnit]:
             order_events=tick_loop.order_events or [],
             portfolio_stats=tick_loop.portfolio_stats,
             execution_stats=tick_loop.execution_stats,
-            pending_stats=tick_loop.pending_stats,
+            active_orders=tick_loop.active_orders,
             worker_statistics=tick_loop.worker_statistics or [],
             decision_statistics=tick_loop.decision_statistics,
             coordination_statistics=tick_loop.coordination_statistics,
@@ -282,8 +285,10 @@ def run_units_from_session(
         open_positions=session.open_positions or [],
         session_end_policy=session.session_end_policy,
         order_history=session.order_history or [],
+        order_events=session.order_events or [],
         portfolio_stats=session.portfolio_stats,
         execution_stats=session.execution_stats,
+        active_orders=session.active_orders,
         worker_statistics=session.worker_statistics or [],
         coordination_statistics=session.coordination_statistics,
         decision_statistics=session.decision_statistics,

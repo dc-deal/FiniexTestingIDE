@@ -33,7 +33,6 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Dict, FrozenSet, List, Optional, Set, Tuple, Union
 
 from python.framework.logging.abstract_logger import AbstractLogger
-from python.framework.trading_env.abstract_pending_order_manager import AbstractPendingOrderManager
 from python.framework.trading_env.abstract_trade_executor import AbstractTradeExecutor
 from python.framework.trading_env.broker_config import BrokerConfig
 from python.framework.trading_env.live.live_request_processor import LiveRequestProcessor
@@ -61,6 +60,9 @@ from python.framework.types.portfolio_types.portfolio_trade_record_types import 
     EntryType,
 )
 from python.framework.types.portfolio_types.portfolio_types import Position
+from python.framework.types.trading_env_types.active_orders_snapshot_types import (
+    ActiveOrdersSnapshot,
+)
 from python.framework.types.trading_env_types.broker_trade_types import BrokerTrade
 from python.framework.types.trading_env_types.executor_mode_types import ExecutorMode
 from python.framework.types.trading_env_types.latency_simulator_types import (
@@ -69,7 +71,6 @@ from python.framework.types.trading_env_types.latency_simulator_types import (
     PendingOrder,
     PendingOrderAction,
     PendingOrderFills,
-    PendingOrderOutcome,
     PendingOrderTiming,
 )
 from python.framework.types.trading_env_types.order_event_types import (
@@ -92,7 +93,6 @@ from python.framework.types.trading_env_types.order_types import (
     OrderType,
     RejectionReason,
 )
-from python.framework.types.trading_env_types.pending_order_stats_types import PendingOrderStats
 from python.framework.types.trading_env_types.submission_metadata_types import SubmissionMetadata
 from python.framework.utils.connection_ladder import ConnectionLadder, run_with_ladder
 from python.framework.utils.run_id_utils import build_client_order_id
@@ -713,11 +713,6 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             # stops: the order is accounted for.
             self._disarm_resolution(filled)
 
-            # Record pending outcome (latency = time from submission to fill)
-            latency_ms = AbstractPendingOrderManager.calculate_pending_latency_ms(filled)
-            self._request_processor.record_outcome(
-                filled, PendingOrderOutcome.FILLED, latency_ms=latency_ms)
-
             # Call inherited fill processing (synthesizes pending.fills.trades
             # entry inside _fill_open_order/close_order if not yet populated)
             self._route_resting_fill(
@@ -734,11 +729,6 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             if rejected is None:
                 return
             self._disarm_resolution(rejected)
-
-            # Record pending outcome
-            latency_ms = AbstractPendingOrderManager.calculate_pending_latency_ms(rejected)
-            self._request_processor.record_outcome(
-                rejected, PendingOrderOutcome.REJECTED, latency_ms=latency_ms)
 
             # Record rejection in order history
             rejection = self._book_order_result(self._rejection_for_pending(
@@ -767,8 +757,10 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         is booked first, as the fill of that size; with nothing executed, the order is
         dropped and the strategy hears that it was cancelled.
 
-        Not counted in the pending-order counters: none of their outcomes means "the venue
-        ended it", and the order-event stream (#362) records it under its own name.
+        Counted as accepted in the pending-order counters, which end at the venue's
+        acceptance — recorded from the submit answer, or by the resolution after a lost one,
+        before an ending can arrive here. The order-event stream (#362) records the ending
+        itself under its own name.
 
         Args:
             pending: The pipeline order the venue answered about
@@ -791,9 +783,6 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             if filled is None:
                 return
             self._disarm_resolution(filled)
-            latency_ms = AbstractPendingOrderManager.calculate_pending_latency_ms(filled)
-            self._request_processor.record_outcome(
-                filled, PendingOrderOutcome.FILLED, latency_ms=latency_ms)
             self.logger.warning(
                 f'🛑 Order {order_id} ended as {response.status.value} at the venue after '
                 f'executing {executed} lots (broker_ref={pending.broker_ref}) — the executed '
@@ -1084,11 +1073,6 @@ class LiveTradeExecutor(AbstractTradeExecutor):
                 self._record_order_event(
                     OrderEventType.CANCEL_REJECTED, pending=pending,
                     venue_reason=cancel.rejection_reason)
-
-        # Record pending outcome as TIMED_OUT
-        latency_ms = AbstractPendingOrderManager.calculate_pending_latency_ms(pending)
-        self._request_processor.record_outcome(
-            pending, PendingOrderOutcome.TIMED_OUT, latency_ms=latency_ms)
 
         # Remove from tracker, keyed by the order's OWN id and never by its broker
         # reference: an order whose submit answer was lost has no reference, so the
@@ -4466,28 +4450,25 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         """Get number of orders in the broker tracker."""
         return self._request_processor.get_pending_count()
 
-    def get_pending_stats(self) -> PendingOrderStats:
+    def get_active_orders_snapshot(self) -> ActiveOrdersSnapshot:
         """
-        Get aggregated pending order statistics from live order tracker.
+        The resting orders, and how many are still in the live pipeline.
 
         Returns:
-            PendingOrderStats with ms-based latency metrics + active order snapshots
+            A fresh snapshot (order ids, prices, sizes)
         """
-        stats = self._request_processor.get_pending_stats()
         # latency_queue_count must reflect orders currently in the live
         # pipeline (registered locally, awaiting broker confirmation or fill)
         # so the display's "■ N PENDING" indicator appears between submit and
         # fill. Sim populates this from latency_simulator.get_pending_count();
         # the live equivalent is the processor's _pending_orders dict size.
-        stats.latency_queue_count = self._request_processor.get_pending_count()
-        self._populate_active_order_snapshots(stats)
-        return stats
+        return self._snapshot_active_orders(self._request_processor.get_pending_count())
 
     # ============================================
     # Cleanup
     # ============================================
 
-    def finish_remaining_orders(self, cancel_orders: bool = True, current_msc: int = 0) -> None:
+    def finish_remaining_orders(self, cancel_orders: bool = True) -> None:
         """
         Finish the session's orders — the venue keeps whatever it still holds (#492).
 
@@ -4511,7 +4492,6 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         Args:
             cancel_orders: False leaves resting orders at the venue for a later session to
                 adopt (#355)
-            current_msc: Not used in live mode (latency is time-based)
         """
         # A close still waiting for its protective order's cancel is not sent now: positions
         # are left to the next session (#492), and a close sent here would have its answer read
@@ -4638,7 +4618,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             # and EXPIRED is a claim about the VENUE: an order whose cancel was not
             # confirmed may still be working there, and recording it as expired is how a
             # live order becomes invisible to the next session's boot adoption.
-            # The lists are NOT cleared — preserved for get_pending_stats() snapshots.
+            # The lists are NOT cleared — preserved for get_active_orders_snapshot().
             not_confirmed = {p.pending_order_id for p, _, _ in unconfirmed}
             for pending in resting:
                 if pending.pending_order_id in settled:

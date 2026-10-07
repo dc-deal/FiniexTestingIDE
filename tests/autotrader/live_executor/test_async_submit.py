@@ -230,7 +230,7 @@ class TestAsyncSubmitShutdown:
         mock.await_submit_confirmation(executor)
         assert executor.has_pending_orders()
 
-        executor.finish_remaining_orders(current_msc=0)
+        executor.finish_remaining_orders()
 
         # Shutdown completed: no pending, worker thread joined
         assert not executor.has_pending_orders()

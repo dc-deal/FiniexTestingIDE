@@ -38,7 +38,7 @@ that produced nothing included, is the roster in
 
 | Field | Counts |
 |---|---|
-| `orders_sent` | orders submitted |
+| `orders_submitted` | orders handed to the venue |
 | `orders_executed` | orders that executed |
 | `orders_rejected` | orders refused — margin, validation, and the rest |
 | `sl_tp_triggered` | closes triggered by a stop-loss or a take-profit level |
@@ -58,7 +58,7 @@ combination folded from booking periods, which carry no order counts — see
 ## `totals` is one object, not one per currency
 
 ```json
-{ "totals": { "orders_sent": 42, "orders_executed": 38, "orders_rejected": 4,
+{ "totals": { "orders_submitted": 42, "orders_executed": 38, "orders_rejected": 4,
               "sl_tp_triggered": 6 } }
 ```
 

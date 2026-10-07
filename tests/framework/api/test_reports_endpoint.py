@@ -168,8 +168,8 @@ def _execution_stats_report() -> ExecutionStatsReport:
 
 def _pending_orders_report() -> PendingOrdersReport:
     unit = PendingOrdersUnitRow(
-        name='s1', symbol='EURUSD', total_resolved=3, total_filled=2, total_force_closed=1,
-        avg_latency_ms=42.0, min_latency_ms=21.0, max_latency_ms=60.0,
+        name='s1', symbol='EURUSD', total_submitted=3, total_accepted=2, total_expired=1,
+        avg_in_flight_ms=42.0, min_in_flight_ms=21.0, max_in_flight_ms=60.0,
         active_limit_orders=[ActiveOrderRow(
             order_id='L1', order_type='limit', direction='long', lots=0.1,
             entry_price=1.10, stop_loss=1.09, take_profit=1.11)])
@@ -448,7 +448,7 @@ def test_pending_orders_returns(client):
     assert response.status_code == 200
     body = response.json()
     assert len(body['units']) == 1
-    assert body['units'][0]['total_resolved'] == 3
+    assert body['units'][0]['total_submitted'] == 3
     assert body['units'][0]['active_limit_orders'][0]['order_id'] == 'L1'
 
 

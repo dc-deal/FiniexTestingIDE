@@ -133,6 +133,16 @@ not parse is a session killed mid-write: it is left out and `truncated_tail` say
 anywhere else, or a header naming a schema this reader does not know, is an unreadable file
 (`artifact_unreadable`), never a server error.
 
+## What is derived from it
+
+- **The pending-order counters** — per submission, the first event that ends its in-flight phase,
+  as `IN_FLIGHT_ENDING_BY_EVENT` declares it, folded by the pending-orders report builder. A live
+  session's stream is read back once the session has ended; a backtest's events come back from its
+  scenarios. See [Execution Layer](architecture_execution_layer.md#pending-order-statistics).
+- **A completeness check** — `order_event_stream_incomplete` compares the stream's submissions with
+  the executor's own count, in both pipelines. Both come from one statement, so a difference is a
+  record the stream lost on its way.
+
 ## Determinism
 
 Two identical backtests write identical streams, field for field — a test runs one twice and

@@ -24,6 +24,7 @@ from python.framework.reporting.io.artifact_specs import ORDER_EVENTS_STREAM
 from python.framework.reporting.io.jsonl_stream_writer import JsonlStreamWriter
 from python.framework.types.api.report_types import OrderEventRow
 from python.framework.types.trading_env_types.order_event_types import OrderEvent
+from python.framework.utils.time_utils import parse_datetime
 
 ORDER_EVENTS_SCHEMA_VERSION = 1
 _HEADER_KIND = 'header'
@@ -63,6 +64,23 @@ def order_event_row(event: OrderEvent, scenario_name: str) -> OrderEventRow:
         moment: Optional[datetime] = values[stamp]
         values[stamp] = moment.isoformat() if moment is not None else None
     return OrderEventRow(scenario_name=scenario_name, **values)
+
+
+def order_event_from_row(row: OrderEventRow) -> OrderEvent:
+    """
+    A row read back as the executor's record — the inverse of `order_event_row`.
+
+    Args:
+        row: The row as the file holds it
+
+    Returns:
+        The event, its unit name dropped and its stamps parsed back into UTC datetimes
+    """
+    values = row.model_dump(exclude={'scenario_name'})
+    for stamp in ('event_time', 'ts_init'):
+        moment: Optional[str] = values[stamp]
+        values[stamp] = parse_datetime(moment) if moment is not None else None
+    return OrderEvent(**values)
 
 
 def write_order_event_stream(

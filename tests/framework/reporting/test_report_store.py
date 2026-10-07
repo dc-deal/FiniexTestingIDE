@@ -400,8 +400,8 @@ class TestExecutionStats:
 
 def _pending_orders_report() -> PendingOrdersReport:
     unit = PendingOrdersUnitRow(
-        name='s1', symbol='EURUSD', total_resolved=3, total_filled=2,
-        total_force_closed=1, avg_latency_ms=42.0, min_latency_ms=21.0, max_latency_ms=60.0,
+        name='s1', symbol='EURUSD', total_submitted=3, total_accepted=2,
+        total_expired=1, avg_in_flight_ms=42.0, min_in_flight_ms=21.0, max_in_flight_ms=60.0,
         active_limit_orders=[ActiveOrderRow(
             order_id='L1', order_type='limit', direction='long', lots=0.1,
             entry_price=1.10, stop_loss=1.09, take_profit=1.11)])
@@ -416,7 +416,7 @@ class TestPendingOrders:
         report = ReportStore(_index_path(tmp_path)).get('20260615_120000_aaaaaaaa', PENDING_ORDERS_ARTIFACT)
         assert report is not None
         u = report.units[0]
-        assert u.total_resolved == 3 and u.avg_latency_ms == 42.0
+        assert u.total_submitted == 3 and u.avg_in_flight_ms == 42.0
         assert u.active_limit_orders[0].order_id == 'L1'
 
     def test_not_found_returns_none(self, tmp_path):

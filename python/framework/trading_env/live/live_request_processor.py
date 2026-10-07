@@ -706,22 +706,17 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
     # Cleanup (override to also clear index)
     # ============================================
 
-    def clear_pending(
-        self,
-        current_msc: Optional[int] = None,
-        reason: str = 'scenario_end',
-    ) -> List[PendingOrder]:
+    def clear_pending(self, reason: str = 'scenario_end') -> List[PendingOrder]:
         """
         Clear all pending orders and the broker_ref index.
 
         Args:
-            current_msc: Not used in live mode (latency is measured on the monotonic clock)
-            reason: Why the force-close happened
+            reason: Why they are cleared, for the log line
 
         Returns:
             The orders cleared, so the executor can book how each one ended
         """
-        cleared = super().clear_pending(current_msc=current_msc, reason=reason)
+        cleared = super().clear_pending(reason=reason)
         self._broker_ref_index.clear()
         return cleared
 

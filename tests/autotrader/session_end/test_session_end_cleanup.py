@@ -177,7 +177,7 @@ class TestOrdersAxis:
             direction=OrderDirection.LONG, lots=0.01, price=50000.0))
         mock.await_submit_confirmation(executor)
 
-        assert executor.get_pending_stats().active_limit_orders, (
+        assert executor.get_active_orders_snapshot().active_limit_orders, (
             'fixture failed to place a resting order')
         return mock, executor
 
@@ -320,7 +320,7 @@ class TestAnUnconfirmedCancelIsNotAnExpiry:
             symbol='BTCUSD', order_type=OrderType.LIMIT,
             direction=OrderDirection.LONG, lots=0.01, price=50000.0))
         mock.await_submit_confirmation(executor)
-        assert executor.get_pending_stats().active_limit_orders, 'fixture placed no order'
+        assert executor.get_active_orders_snapshot().active_limit_orders, 'fixture placed no order'
         return mock, executor
 
     def test_a_refused_cancel_leaves_an_unaccounted_record(self):
@@ -406,7 +406,7 @@ def _resting_limit(executor: LiveTradeExecutor) -> str:
         symbol='BTCUSD', order_type=OrderType.LIMIT,
         direction=OrderDirection.LONG, lots=0.01, price=50000.0)).order_id
     MockOrderExecution().await_submit_confirmation(executor)
-    assert executor.get_pending_stats().active_limit_orders, 'fixture placed no order'
+    assert executor.get_active_orders_snapshot().active_limit_orders, 'fixture placed no order'
     return order_id
 
 
@@ -526,7 +526,7 @@ class TestTheEmergencyIsNotFoldedIn:
         parameters = set(inspect.signature(
             LiveTradeExecutor.finish_remaining_orders).parameters)
 
-        assert parameters == {'self', 'cancel_orders', 'current_msc'}, (
+        assert parameters == {'self', 'cancel_orders'}, (
             f'finish_remaining_orders grew a parameter: {sorted(parameters)}. If it is a '
             f'shutdown mode, emergency flattening has arrived here instead of in #356')
 

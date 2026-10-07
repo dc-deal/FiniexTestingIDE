@@ -301,8 +301,8 @@ def aggregate_full_portfolio(
 
     ex = [exec_by_name[r.name] for r in rows if r.name in exec_by_name]
     pend = [pending_by_name[r.name] for r in rows if r.name in pending_by_name]
-    lat = [p for p in pend if p.avg_latency_ms is not None]
-    lat_count = sum(p.latency_count for p in lat)
+    lat = [p for p in pend if p.avg_in_flight_ms is not None]
+    lat_count = sum(p.in_flight_count for p in lat)
 
     counts = _summed_execution_counts(ex)
     # The orders whose endings the units count: the ones they sent, and the ones they took
@@ -337,15 +337,16 @@ def aggregate_full_portfolio(
         avg_spread=total_spread / total_trades if total_trades > 0 else 0.0,
         **counts,
         execution_rate_pct=(counts['orders_executed'] / handled * 100) if handled > 0 else 0.0,
-        pending_total_resolved=sum(p.total_resolved for p in pend),
-        pending_total_filled=sum(p.total_filled for p in pend),
+        pending_total_submitted=sum(p.total_submitted for p in pend),
+        pending_total_accepted=sum(p.total_accepted for p in pend),
         pending_total_rejected=sum(p.total_rejected for p in pend),
-        pending_total_timed_out=sum(p.total_timed_out for p in pend),
-        pending_total_force_closed=sum(p.total_force_closed for p in pend),
-        pending_avg_latency_ms=(
-            sum(p.avg_latency_ms * p.latency_count for p in lat) / lat_count) if lat_count > 0 else None,
-        pending_min_latency_ms=min((p.min_latency_ms for p in lat), default=None),
-        pending_max_latency_ms=max((p.max_latency_ms for p in lat), default=None),
+        pending_total_never_confirmed=sum(p.total_never_confirmed for p in pend),
+        pending_total_expired=sum(p.total_expired for p in pend),
+        pending_avg_in_flight_ms=(
+            sum(p.avg_in_flight_ms * p.in_flight_count for p in lat) / lat_count)
+        if lat_count > 0 else None,
+        pending_min_in_flight_ms=min((p.min_in_flight_ms for p in lat), default=None),
+        pending_max_in_flight_ms=max((p.max_in_flight_ms for p in lat), default=None),
         pending_active_limit_count=sum(len(p.active_limit_orders) for p in pend),
         pending_active_stop_count=sum(len(p.active_stop_orders) for p in pend),
         **_spot_balances(rows, currency) if is_spot else {},

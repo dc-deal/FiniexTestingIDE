@@ -23,6 +23,7 @@ run carrying it can never be read as a clean one.
 
 from typing import Optional
 
+from python.framework.reporting.builders.pending_orders_report_builder import submission_count
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
 from python.framework.types.autotrader_types.autotrader_result_types import AutoTraderResult
 from python.framework.types.run_origin_types import CodeIdentity
@@ -33,6 +34,7 @@ from python.framework.types.validation_types import (
     ValidationResult,
 )
 from python.framework.validators.shared_advisory_checks import (
+    check_order_event_stream,
     check_stress_test,
     check_unversioned_code,
 )
@@ -77,6 +79,7 @@ class SessionPostRunValidator:
         self._check_clipping()
         self._check_uncommitted_code()
         self._check_unversioned_code()
+        self._check_order_event_stream()
 
     def _add_finding(self, finding: ValidationFinding) -> None:
         """
@@ -95,6 +98,18 @@ class SessionPostRunValidator:
         name = self._config.get_unit_name()
         finding = check_stress_test(
             [(name, settings.stress_test_config)], _SESSION_UNIT_LABEL)
+        if finding is not None:
+            self._add_finding(finding)
+
+    def _check_order_event_stream(self) -> None:
+        """Warn when the session's order-event stream lacks submissions it counted (#362)."""
+        stats = self._result.execution_stats
+        if stats is None:
+            return
+        finding = check_order_event_stream(
+            [(self._config.get_unit_name(), submission_count(self._result.order_events),
+              stats.orders_submitted)],
+            _SESSION_UNIT_LABEL)
         if finding is not None:
             self._add_finding(finding)
 

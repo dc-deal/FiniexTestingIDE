@@ -581,27 +581,48 @@ class ActiveOrderRow(BaseModel):
     take_profit: float | None = None
 
 
+class NeverConfirmedOrderRow(BaseModel):
+    """
+    One order whose in-flight phase ended without the venue ever confirming it (#362).
+
+    `undelivered`: the venue confirmed it never received the order. `unaccounted`: we stopped
+    asking, and the venue may still hold it — the case to check by hand.
+    """
+    order_id: str
+    submitted_seq: int                  # the submission's seq in the order-event stream
+    event_type: OrderEventType          # undelivered · unaccounted
+    end_reason: OrderEndReason | None = None
+    message: str | None = None
+
+
 class PendingOrdersUnitRow(BaseModel):
-    """Pending-order lifecycle + latency + active orders of one run unit (sim scenario)."""
-    name: str               # owning run unit (scenario)
+    """
+    How one run unit's orders left their in-flight phase, derived from its order-event stream.
+
+    Per submission, the first word from the venue counts: accepted, rejected, never confirmed, or
+    expired on the way — so `total_submitted` is their sum, and a row whose counts do not add up
+    names an ending the stream lacks. An order a previous session sent is not a submission here.
+    """
+    name: str               # owning run unit (sim: scenario; live: session)
     symbol: str
-    total_resolved: int = 0
-    total_filled: int = 0
+    total_submitted: int = 0
+    total_accepted: int = 0
     total_rejected: int = 0
-    total_timed_out: int = 0
-    total_force_closed: int = 0
-    avg_latency_ms: float | None = None
-    min_latency_ms: float | None = None
-    max_latency_ms: float | None = None
-    latency_count: int = 0      # latency samples → weighted avg on aggregation (#397)
+    total_never_confirmed: int = 0      # undelivered + unaccounted
+    total_expired: int = 0              # the data's end met the order on its way
+    avg_in_flight_ms: float | None = None
+    min_in_flight_ms: float | None = None
+    max_in_flight_ms: float | None = None
+    in_flight_count: int = 0    # answers with a measured duration → weighted avg on aggregation
+    never_confirmed_orders: list[NeverConfirmedOrderRow] = []
     active_limit_orders: list[ActiveOrderRow] = []
     active_stop_orders: list[ActiveOrderRow] = []
 
 
 class PendingOrdersReport(RunScopedReport):
     """
-    Pending-order lifecycle as the unified array model: per-unit rows. Sim-populated
-    (the live AutoTraderResult carries no pending stats → empty units live).
+    Pending-order lifecycle as the unified array model: per-unit rows, in both pipelines —
+    derived from each unit's order-event stream (#362).
     """
     units: list[PendingOrdersUnitRow]
     # What makes one row unique — a served list declares it. The unit name: a scenario set whose
@@ -2536,15 +2557,15 @@ class AggregatedPortfolioRow(BaseModel):
     orders_unaccounted: int = 0
     sl_tp_triggered: int = 0
     execution_rate_pct: float = 0.0     # orders_executed / (orders_submitted + orders_adopted)
-    # Pending
-    pending_total_resolved: int = 0
-    pending_total_filled: int = 0
+    # Pending — the units' in-flight counters, summed
+    pending_total_submitted: int = 0
+    pending_total_accepted: int = 0
     pending_total_rejected: int = 0
-    pending_total_timed_out: int = 0
-    pending_total_force_closed: int = 0
-    pending_avg_latency_ms: float | None = None
-    pending_min_latency_ms: float | None = None
-    pending_max_latency_ms: float | None = None
+    pending_total_never_confirmed: int = 0
+    pending_total_expired: int = 0
+    pending_avg_in_flight_ms: float | None = None
+    pending_min_in_flight_ms: float | None = None
+    pending_max_in_flight_ms: float | None = None
     pending_active_limit_count: int = 0
     pending_active_stop_count: int = 0
     # Spot dual-balance (only populated for spot rows)

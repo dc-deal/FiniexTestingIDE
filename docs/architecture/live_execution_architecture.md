@@ -235,7 +235,7 @@ modify_limit_order(order_id, new_price, new_sl, new_tp)
 - **No local SL/TP validation** — broker handles validation server-side. Simulation validates locally against limit price; live delegates to broker.
 - **Local shadow state update** — after successful broker modify, the `PendingOrder` in
   `_active_limit_orders` is updated with new price/SL/TP values. This keeps the local state
-  consistent for `get_pending_stats()` snapshots and `get_active_order_counts()`.
+  consistent for `get_active_orders_snapshot()` and `get_active_order_counts()`.
 - **Broker ref update** — Kraken uses `AmendOrder` (in-place), so the `broker_ref` stays the same across a modify. The swap path remains defensive for brokers that return a new ref on modify.
 - **UNSET sentinel** — The `_UnsetType`/`UNSET` pattern from `PortfolioManager` is translated to `None` at the adapter boundary. Adapters don't know about UNSET.
 - **Order lookup** — broker_ref is resolved by scanning `_active_limit_orders` (O(n), typically very small list). `LiveRequestProcessor` is no longer involved in LIMIT order tracking.

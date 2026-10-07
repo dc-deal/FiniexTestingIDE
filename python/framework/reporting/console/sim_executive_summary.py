@@ -452,8 +452,8 @@ class SimExecutiveSummary(AbstractBatchSummarySection):
             print(
                 f'Orders:             {orders_executed}/{orders_submitted} executed ({exec_rate:.1f}%)')
 
-        # Pending order latency (green)
-        if row.pending_total_resolved > 0:
+        # How long the venue took to answer (green)
+        if row.pending_total_submitted > 0:
             latency_line = self._format_pending_latency(renderer, row)
             if latency_line:
                 print(latency_line)
@@ -589,15 +589,16 @@ class SimExecutiveSummary(AbstractBatchSummarySection):
             Formatted latency line (green) or empty string
         """
         # Millisecond-based latency
-        if row.pending_min_latency_ms is not None:
-            line = (f'Avg Latency:        {row.pending_avg_latency_ms:.0f}ms '
-                    f'(min: {row.pending_min_latency_ms:.0f}ms | max: {row.pending_max_latency_ms:.0f}ms)')
-            # Anomaly suffix (force-closed, timed out)
+        if row.pending_min_in_flight_ms is not None:
+            line = (f'In Flight:          avg {row.pending_avg_in_flight_ms:.0f}ms '
+                    f'(min: {row.pending_min_in_flight_ms:.0f}ms | '
+                    f'max: {row.pending_max_in_flight_ms:.0f}ms)')
+            # Anomaly suffix (never confirmed, expired on the way)
             anomaly_parts = []
-            if row.pending_total_force_closed > 0:
-                anomaly_parts.append(f'{row.pending_total_force_closed} force-closed')
-            if row.pending_total_timed_out > 0:
-                anomaly_parts.append(f'{row.pending_total_timed_out} timed out')
+            if row.pending_total_never_confirmed > 0:
+                anomaly_parts.append(f'{row.pending_total_never_confirmed} never confirmed')
+            if row.pending_total_expired > 0:
+                anomaly_parts.append(f'{row.pending_total_expired} expired on the way')
             if anomaly_parts:
                 line += f" | {renderer.yellow(' | '.join(anomaly_parts))}"
             return renderer.green(line)

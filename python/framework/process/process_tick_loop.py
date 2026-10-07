@@ -456,10 +456,7 @@ def execute_tick_loop(
         # and that trade counted in every ranked KPI — so where the data happened to stop
         # decided part of the result. `expect_flat=False` says the survivor is a
         # consequence of that decision, not an orphan.
-        # Use last tick's msc for latency calculation (same fallback as inter-tick interval)
-        last_msc = (current_tick.collected_msc if current_tick and current_tick.collected_msc > 0
-                     else current_tick.time_msc if current_tick else 0)
-        trade_simulator.finish_remaining_orders(current_msc=last_msc)
+        trade_simulator.finish_remaining_orders()
         trade_simulator.check_clean_shutdown(expect_flat=False)
         # update live the last time - to show final balance correctly
         live_updated = process_live_export(
@@ -520,7 +517,7 @@ def execute_tick_loop(
         cost_breakdown = trade_simulator.portfolio.get_cost_breakdown()
         trade_history = trade_simulator.get_trade_history()
         order_history = trade_simulator.get_order_history()
-        pending_stats = trade_simulator.get_pending_stats()
+        active_orders = trade_simulator.get_active_orders_snapshot()
 
         # #492: what the scenario's end left open — the block edge's impact. Handed over
         # raw; the block-splitting builder derives the disposition from it off the run.
@@ -548,7 +545,7 @@ def execute_tick_loop(
             trade_history=trade_history,
             order_history=order_history,
             order_events=order_events,
-            pending_stats=pending_stats,
+            active_orders=active_orders,
             open_positions=open_positions,
             profiling_data=ProcessProfileData(
                 profile_times=profile_times,

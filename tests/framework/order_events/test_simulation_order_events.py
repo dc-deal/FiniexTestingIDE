@@ -186,7 +186,7 @@ class TestARestingOrder:
         sim_tick(sim, msc=1600)                                   # the limit rests
         sim.open_order(market_order())                                 # this one travels
 
-        sim.finish_remaining_orders(current_msc=1700)
+        sim.finish_remaining_orders()
 
         assert order_steps(events) == [
             ['submitted', 'accepted', 'expired'],
@@ -389,7 +389,7 @@ class TestTheStreamItself:
         sim_tick(sim, msc=1060, bid=50140.0, ask=50150.0)
         sim_tick(sim, msc=1090, bid=48900.0, ask=48902.0)
         sim_tick(sim, msc=1120)
-        sim.finish_remaining_orders(current_msc=1200)
+        sim.finish_remaining_orders()
         return events
 
     def test_seq_is_strictly_increasing(self):

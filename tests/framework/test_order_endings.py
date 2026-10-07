@@ -228,7 +228,7 @@ class TestEveryEndingHasARowInTheSimulation:
         _tick(sim, msc=1600)                                  # the limit arrives and rests
         sim.open_order(_market())                             # this one is still travelling
 
-        sim.finish_remaining_orders(current_msc=1700)
+        sim.finish_remaining_orders()
 
         ended = _ended(sim.get_order_history())
         assert [(r.order_type, r.status, r.end_reason) for r in ended] == [

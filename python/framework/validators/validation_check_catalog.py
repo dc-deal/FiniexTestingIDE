@@ -148,6 +148,10 @@ VALIDATION_CHECKS: Tuple[ValidationCheckInfo, ...] = (
         'The run mixes account currencies; profit and loss is shown per currency and never added '
         'across them.'),
     ValidationCheckInfo(
+        'order_event_stream_incomplete', 'Order-event stream lacks submissions',
+        'The order-event stream holds fewer submissions than the executor counted — a record was '
+        'lost, most likely to a failed write — so the counters derived from it are too low.'),
+    ValidationCheckInfo(
         'time_divergence', 'Scenarios far apart in time',
         'The scenarios of one currency span many days, so their combined profit and loss is a '
         'statistic, not a portfolio.'),

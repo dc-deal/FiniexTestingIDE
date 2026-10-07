@@ -208,11 +208,11 @@ class AutotraderDisplayExporter:
                 entry_trades=list(pos.entry_trades),
             ))
 
-        # Active orders (limit + stop) from pending stats
-        pending_stats = self._executor.get_pending_stats()
-        active_orders = list(pending_stats.active_limit_orders) + \
-            list(pending_stats.active_stop_orders)
-        pipeline_count = pending_stats.latency_queue_count
+        # Active orders (limit + stop) from the executor's snapshot
+        snapshot = self._executor.get_active_orders_snapshot()
+        active_orders = list(snapshot.active_limit_orders) + \
+            list(snapshot.active_stop_orders)
+        pipeline_count = snapshot.latency_queue_count
 
         # Trade history — last 10, newest first
         recent_trades: List[TradeHistoryEntry] = []

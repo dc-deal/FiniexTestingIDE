@@ -257,6 +257,11 @@ events](consumer/order-events.md).
 size: `modify_requested`, `modified`, `modify_rejected`, and `modify` as a lost request. *Amend* is
 one venue's name for the same request and stays inside that venue's adapter.
 
+**never confirmed** (`total_never_confirmed`, `never_confirmed_orders` on the pending-orders
+report) — A submission the venue never confirmed: `undelivered` (it confirmed it never received the
+order) or `unaccounted` (we stopped asking, and it may still hold the order — the case to check by
+hand). Live only: a simulated venue answers every order.
+
 **observation** — A dry run whose profile pins `dry_run: true`, kept in
 `configs/autotrader_profiles/observation/`.
 
@@ -305,14 +310,13 @@ in this project means one section of a run report. See
 and while a modify or a cancel of a resting order is on its way, that operation is in flight too.
 See [Pending Orders](architecture/pending_order_architecture.md).
 
-**pending-order counters** (`total_resolved`, `total_filled`, `total_rejected`, `total_timed_out`,
-`total_force_closed` on the pending-orders report) — How the unit's orders left the in-flight
-queue. *Resolved* is every order that left it. *Filled* is NOT a fill count today: in a backtest it
-counts every exit that was not refused, so it is the number of orders that *arrived* — a market or
-close order fills on arrival, while a limit, stop or stop-limit order only begins *resting* there,
-and is counted whether it later fills, expires at data end or is cancelled by the strategy. An
-AutoTrader session counts only the market and close orders a status poll saw filled, and its report
-carries no counters at all. #362 separates arrival from fill.
+**pending-order counters** (`total_submitted`, `total_accepted`, `total_rejected`,
+`total_never_confirmed`, `total_expired` on the pending-orders report) — How a unit's submissions
+left their *in-flight* phase, derived from its order-event stream: per submission, the first word
+from the venue — it took the order, refused it, never confirmed it, or the data's end met it on
+its way. The four add up to `total_submitted`. An order a previous session sent is *adopted*, not
+submitted, and is not counted. Not a fill count: an accepted limit order may still rest, expire or
+be cancelled. See [Pending orders](consumer/pending-orders.md).
 
 **plane** — Never used alone. *Strategy plane* and *valuation plane*: which price a site reads on
 a venue with a spread — the traded price for bars and decisions, the mid for equity and risk (see
@@ -351,12 +355,10 @@ a schema — a later algo version may drop a parameter and the document stays tr
 scenarios, a mock session its window. The producer's *replay window* — envelopes re-sent after a
 reconnect — is a different thing.
 
-**resolved · unresolved** — Three meanings, told apart by where they stand. On an order event,
+**resolved · unresolved** — Two meanings, told apart by where they stand. On an order event,
 `unresolved` is a request whose answer was lost or named nothing, and `resolved` the asking that
 settled it — the request is in `lost_request`. On a broker answer, `UNRESOLVED` is a transport
-fault: the venue could not be reached, so the answer says nothing about the order. Among the
-pending-order counters, `total_resolved` counts every order that left the in-flight queue, however
-it ended.
+fault: the venue could not be reached, so the answer says nothing about the order.
 
 **resting** — A pending order the venue (or the trade simulator) has accepted and that waits for its
 price: a resting limit, a resting stop. See [Pending Orders](architecture/pending_order_architecture.md).

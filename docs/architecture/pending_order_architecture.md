@@ -224,7 +224,7 @@ cancel_limit_order(order_id="EURUSD_1")    ← Same pattern
 cancel_stop_order(order_id="EURUSD_1")     ← Same pattern
     │
     ▼
-get_pending_stats()                         ← ActiveOrderSnapshot.order_id = "EURUSD_1"
+get_active_orders_snapshot()                ← ActiveOrderSnapshot.order_id = "EURUSD_1"
 ```
 
 ### The wire key — live execution stack only (#473)
@@ -388,9 +388,12 @@ A single `modify()` method would need complex branching to select the correct va
 
 ---
 
-## PendingOrderStats and ActiveOrderSnapshot
+## ActiveOrdersSnapshot and ActiveOrderSnapshot
 
-Statistics are collected via `get_pending_stats()` and include all three worlds.
+`get_active_orders_snapshot()` returns what the executor holds at one moment, across all three
+worlds. How orders LEFT the in-flight world is not counted here: the pending-orders report derives
+that from the order-event stream (#362) — see
+[Execution Layer](architecture_execution_layer.md#pending-order-statistics).
 
 ### ActiveOrderSnapshot
 
@@ -410,7 +413,7 @@ class ActiveOrderSnapshot:
     take_profit: Optional[float]        # TP price from order_kwargs
 ```
 
-### PendingOrderStats fields for active orders
+### ActiveOrdersSnapshot fields
 
 ```python
 active_limit_orders: List[ActiveOrderSnapshot]    # World 2 snapshot
@@ -469,15 +472,16 @@ At scenario end, `finish_remaining_orders()` handles all three worlds:
 
 2. **Active limit orders** (`_active_limit_orders`): `_expire_active_orders()` creates
    `OrderResult(status=EXPIRED, reason="scenario_end")` entries in `_order_history` for each. Lists
-   are **preserved** (not cleared) — `get_pending_stats()` snapshots them into
-   `PendingOrderStats.active_limit_orders` for reporting. On the live execution stack, active limit
+   are **preserved** (not cleared) — `get_active_orders_snapshot()` snapshots them into
+   `ActiveOrdersSnapshot.active_limit_orders` for reporting. On the live execution stack, active limit
    orders are also cancelled at the broker before expiry. A warning is logged.
 
 3. **Active stop orders** (`_active_stop_orders`): Same treatment as limit orders — EXPIRED records created, lists preserved for snapshots. A warning is logged.
 
-4. **Latency queue** (`clear_pending()`): Any genuine stuck-in-pipeline orders are recorded as
-   `FORCE_CLOSED` with a `reason` field (e.g. `"scenario_end"`). Only these real anomalies produce
-   individual `PendingOrderRecord` entries in `anomaly_orders`.
+4. **Latency queue** (`clear_pending()`): any genuine stuck-in-pipeline orders are handed back
+   and booked — `expired` in a backtest, where the data ended while they were on their way, and
+   `unaccounted` live, where the venue may hold them. The pending-orders report counts the first
+   as `total_expired` and lists the second under `never_confirmed_orders`.
 
 **Note:** `check_clean_shutdown()` validates only the latency pipeline (via `_has_pipeline_orders()` → `has_pipeline_orders()`) — intentionally preserved active limit/stop orders do not trigger cleanup warnings.
 

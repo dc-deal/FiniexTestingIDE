@@ -59,7 +59,7 @@ tests/
 │   ├── sltp_limit_validation/ integration — SL/TP + limit/stop order semantics
 │   ├── spot_trading/      integration — spot sell sequences, dual-balance
 │   ├── active_order_display/  integration — order display in scenario summary
-│   ├── pending_stats/     integration — pending order statistics
+│   ├── pending_stats/     integration — pending-order counters
 │   ├── modify_lifecycle/  unit — async modify/cancel scheduling + resolution (#318)
 │   ├── trade_emission/    unit — sim BrokerTrade emission via shared _fill_open_order (#326)
 │   ├── tick_clipping/     unit — bar rendering ordering guard (#293 regression)

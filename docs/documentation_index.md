@@ -162,7 +162,7 @@ Each test suite has its own documentation in [`tests/`](tests/).
 | [Multi-Position](tests/simulation/multi_position_tests.md) | Concurrent position management |
 | [Modify Lifecycle](tests/simulation/modify_lifecycle_tests.md) | Order modification across its lifecycle |
 | [Trade Emission](tests/simulation/trade_emission_tests.md) | Per-execution BrokerTrade records on fill |
-| [Pending Stats](tests/simulation/pending_stats_tests.md) | Pending order statistics |
+| [Pending Stats](tests/simulation/pending_stats_tests.md) | Pending-order counters |
 | [SL/TP & Limit Validation](tests/simulation/sltp_limit_validation_tests.md) | Stop-Loss/Take-Profit, limit/stop orders |
 | [Partial Close](tests/simulation/partial_close_tests.md) | Partial position close |
 | [Active Order Display](tests/simulation/active_order_display_tests.md) | Unresolved order reporting |

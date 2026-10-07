@@ -33,10 +33,12 @@ from python.framework.types.portfolio_types.portfolio_types import Position
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
 from python.framework.types.signal_data_types import SignalResolutionStats, SignalSeries
 from python.framework.types.run_results_types import BookingPeriod
+from python.framework.types.trading_env_types.active_orders_snapshot_types import (
+    ActiveOrdersSnapshot,
+)
 from python.framework.types.trading_env_types.broker_types import BrokerType
 from python.framework.types.trading_env_types.order_event_types import OrderEvent
 from python.framework.types.trading_env_types.order_types import OrderResult
-from python.framework.types.trading_env_types.pending_order_stats_types import PendingOrderStats
 from python.framework.types.trading_env_types.stress_test_types import StressTestConfig
 from python.framework.types.trading_env_types.trading_env_stats_types import (
     CostBreakdown,
@@ -552,8 +554,8 @@ class ProcessTickLoopResult:
     # The report writes them; the subprocess cannot write a run artifact itself
     order_events: Optional[List[OrderEvent]] = None
 
-    # Pending order statistics (latency, outcomes, anomalies)
-    pending_stats: PendingOrderStats = None
+    # The orders still resting or on their way when the scenario ended
+    active_orders: Optional[ActiveOrdersSnapshot] = None
 
     # Profiling data
     profiling_data: ProcessProfileData = None

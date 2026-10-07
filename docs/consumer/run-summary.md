@@ -123,7 +123,7 @@ and A's win read as a streak of three that no account ever had. The correction i
 
 ## Run-wide counts
 
-`orders_sent`, `orders_executed`, `orders_rejected` and `sl_tp_triggered` are counts, so they
+`orders_submitted`, `orders_executed`, `orders_rejected` and `sl_tp_triggered` are counts, so they
 carry no currency and stand outside the per-currency rows. `unit_count` at this level is the run's
 unit count — scenarios in a backtest, 1 in a live session.
 

@@ -21,7 +21,7 @@ Channel A: Process Input (pickle →)
 Channel B: Process Output (← pickle)       │
   ProcessResult ←──────────────────────────┘
   (execution_stats, trade_history,
-   order_history, pending_stats,
+   order_history, order_events, active_orders,
    worker_performance, ...)
 
 Channel C: Main-Process Only (no serialization)

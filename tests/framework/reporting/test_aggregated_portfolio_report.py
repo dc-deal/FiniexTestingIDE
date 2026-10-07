@@ -64,10 +64,11 @@ def _ex(name, sent=2, executed=2, rejected=0, sl_tp=0, symbol='EURUSD') -> Execu
         orders_undelivered=0, orders_unaccounted=0, sl_tp_triggered=sl_tp)
 
 
-def _pe(name, resolved=2, filled=2, avg=None, mn=None, mx=None, count=0, symbol='EURUSD') -> PendingOrdersUnitRow:
+def _pe(name, submitted=2, accepted=2, avg=None, mn=None, mx=None, count=0,
+        symbol='EURUSD') -> PendingOrdersUnitRow:
     return PendingOrdersUnitRow(
-        name=name, symbol=symbol, total_resolved=resolved, total_filled=filled,
-        avg_latency_ms=avg, min_latency_ms=mn, max_latency_ms=mx, latency_count=count)
+        name=name, symbol=symbol, total_submitted=submitted, total_accepted=accepted,
+        avg_in_flight_ms=avg, min_in_flight_ms=mn, max_in_flight_ms=mx, in_flight_count=count)
 
 
 _ZERO_TOTALS = ExecutionStatsTotals(
@@ -106,8 +107,8 @@ class TestBuild:
             pe_rows=[_pe('s1', avg=40.0, mn=20.0, mx=60.0, count=3),
                      _pe('s2', avg=80.0, mn=80.0, mx=120.0, count=1)])
         c = rep.currencies[0].combined
-        assert c.pending_avg_latency_ms == 50.0
-        assert c.pending_min_latency_ms == 20.0 and c.pending_max_latency_ms == 120.0
+        assert c.pending_avg_in_flight_ms == 50.0
+        assert c.pending_min_in_flight_ms == 20.0 and c.pending_max_in_flight_ms == 120.0
 
     def test_pure_spot(self):
         rep = _build([_pf('s1', symbol='BTCUSD', spot=True, last_price=100.0,
