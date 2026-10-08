@@ -198,7 +198,7 @@ class PortfolioSummary(AbstractBatchSummarySection):
         if unit.open_positions:
             lines.append(
                 f'Open at end: {len(unit.open_positions)} position(s) | '
-                f'{renderer.pnl(unit.unrealized_pnl, unit.currency)} unrealised')
+                f'{renderer.pnl(unit.unrealized_pnl, unit.currency)} unrealized')
             for pos in unit.open_positions:
                 mark = (f'last {pos.last_price:,.5f} · '
                         f'{renderer.pnl(pos.unrealized_pnl, unit.currency)}'

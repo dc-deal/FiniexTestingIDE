@@ -4,7 +4,7 @@ FiniexTestingIDE - Broker Truth at the Session's End (#362)
 At its end a session asks the venue what it holds once the session's own orders are handled, and
 writes the answer into the order-event stream before it closes. The read sits in its own guard: a
 venue that will not answer — or refuses outright — never keeps the stream open. The field study's
-recorder follows the same rule for its own end snapshot.
+capture, which copies that read in, closes after it and closes even when its own last write fails.
 """
 
 from types import SimpleNamespace
@@ -71,18 +71,38 @@ class TestTheEndRead:
 
 
 class TestTheFieldStudysEnd:
-    def test_its_recorder_closes_when_its_snapshot_fails(self, monkeypatch):
-        calls: List[str] = []
-        session = _session(monkeypatch, calls)
-        session._field_study_recorder = SimpleNamespace(
+    """
+    The capture ends after the session-end read, which its projection has copied in (#566) —
+    and it is closed even when the telemetry written before the marker cannot be read.
+    """
+
+    @staticmethod
+    def _capture(calls: List[str]) -> SimpleNamespace:
+        return SimpleNamespace(
+            record_api_perf=lambda snapshot: calls.append('api perf'),
             close=lambda reason: calls.append('field study closed'))
 
-        def snapshot_fails(phase, flat):
-            raise ConnectionInadmissibleError('credentials refused')
-        monkeypatch.setattr(session, '_record_field_study_broker_truth', snapshot_fails)
+    def test_it_closes_after_the_session_end_read(self, monkeypatch):
+        calls: List[str] = []
+        session = _session(monkeypatch, calls)
+        session._field_study_recorder = self._capture(calls)
+
+        session._shutdown(0, 0)
+
+        assert calls.index('truth:session_end') < calls.index('field study closed')
+
+    def test_it_closes_when_the_telemetry_fails(self, monkeypatch):
+        calls: List[str] = []
+        session = _session(monkeypatch, calls)
+        session._field_study_recorder = self._capture(calls)
+
+        def snapshot_fails():
+            raise RuntimeError('monitor broken')
+        session._api_monitor = SimpleNamespace(get_snapshot=snapshot_fails, shutdown=lambda: None)
 
         session._shutdown(0, 0)
 
         assert 'field study closed' in calls
-        assert any('Field Study broker truth at session end not recorded' in line
+        assert 'api perf' not in calls
+        assert any('Error closing the Field Study recorder' in line
                    for line in session._session_logger.errors)

@@ -22,7 +22,7 @@ _T0 = datetime(2026, 6, 2, 12, 0, 0, tzinfo=timezone.utc)
 
 
 def _ctx(secs, open_pos=0, limits=0, pending=False, filled=False,
-         rejected=False, lots=None, budget_ok=True, stops=0):
+         rejected=False, lots=None, budget_ok=True, stops=0, unaccounted=False):
     """Build a synthetic per-tick observation at T0 + secs."""
     return PhaseContext(
         now=_T0 + timedelta(seconds=secs),
@@ -34,6 +34,7 @@ def _ctx(secs, open_pos=0, limits=0, pending=False, filled=False,
         filled_since_submit=filled,
         rejected_since_submit=rejected,
         cancelled_since_submit=False,
+        unaccounted_since_submit=unaccounted,
         current_position_lots=lots,
         budget_ok=budget_ok,
     )
@@ -67,6 +68,21 @@ def test_expected_rejection_passes():
     m.advance(_ctx(1))
     m.advance(_ctx(2, rejected=True))
     assert m.get_results()[0].outcome == PhaseOutcome.EXPECTED_REJECTION
+
+
+def test_an_unaccounted_order_is_no_expected_rejection():
+    """
+    An order the framework stopped asking about may still rest at the venue (#566).
+
+    Read as a refusal, it passed the rejection battery as 'rejected as expected'; it fails the
+    phase instead, whatever the phase expected.
+    """
+    m = _machine([_phase('p', 'market_open', side='long', expect_rejection=True)])
+    m.advance(_ctx(1))
+    m.advance(_ctx(2, unaccounted=True))
+    result = m.get_results()[0]
+    assert result.outcome == PhaseOutcome.FAIL
+    assert 'unaccounted' in result.reason
 
 
 def test_strict_rejection_fails_on_fill():
@@ -255,6 +271,18 @@ def test_final_summary_ends_session():
     m = _machine([_phase('p', 'final_summary')])
     assert m.advance(_ctx(1)).kind == PhaseActionKind.END_SESSION
     assert m.is_complete()
+    assert m.get_results()[0].outcome == PhaseOutcome.PASS
+
+
+def test_an_unaccounted_order_never_keeps_the_session_from_ending():
+    """
+    The final summary reads no rejection, so a late unaccounted order cannot fail it.
+
+    Failing it would never send END_SESSION, and a real-money session would run on until its
+    wall-clock ceiling. The order it concerns is the venue's to show at the session-end read.
+    """
+    m = _machine([_phase('p', 'final_summary')])
+    assert m.advance(_ctx(1, unaccounted=True)).kind == PhaseActionKind.END_SESSION
     assert m.get_results()[0].outcome == PhaseOutcome.PASS
 
 

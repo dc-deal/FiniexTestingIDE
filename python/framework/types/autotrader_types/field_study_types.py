@@ -193,6 +193,8 @@ class PhaseContext:
         filled_since_submit: A fill was observed since the current phase's last submit
         rejected_since_submit: A rejection was observed since the last submit
         cancelled_since_submit: A cancellation was observed since the last submit
+        unaccounted_since_submit: An order the framework stopped asking about since the last
+            submit — the venue may still hold it, so it is no rejection a phase may wait for
         current_position_lots: Lots of the current open position (None if flat) — partial-close tracking
         budget_ok: Realized session cost is still under the budget ceiling
     """
@@ -205,6 +207,7 @@ class PhaseContext:
     filled_since_submit: bool
     rejected_since_submit: bool
     cancelled_since_submit: bool
+    unaccounted_since_submit: bool
     current_position_lots: Optional[float]
     budget_ok: bool
 
@@ -242,7 +245,6 @@ class FieldStudyHeader:
         started_utc: ISO start timestamp
         profile: AutoTrader profile name
         symbol: Traded symbol
-        release_target: Release version the run certifies (or 'dev')
         phases: Ordered phase ids in the run
         record_kind: Constant marker ('header')
     """
@@ -250,7 +252,6 @@ class FieldStudyHeader:
     started_utc: str
     profile: str
     symbol: str
-    release_target: str
     phases: List[str]
     record_kind: str = 'header'
 
@@ -262,8 +263,9 @@ class FieldStudyEvent:
 
     The core keys (ts_utc / seq / plane / event_type / phase / phase_index) are always
     present; the remaining fields are populated per event type and omitted when unset, so
-    a `jq` one-liner or a pandas load stays trivial. `plane` separates bot-observed events
-    from broker-truth snapshots; the two join on phase + order_id.
+    a `jq` one-liner or a pandas load stays trivial. `plane` separates the study's own lines
+    from what the venue answered; an order line joins the session's order-event stream by
+    `extra.stream_seq`.
 
     Args:
         ts_utc: ISO event timestamp (UTC)
@@ -273,16 +275,16 @@ class FieldStudyEvent:
         phase: Owning phase id
         phase_index: Owning phase index
         order_id: Internal order/position id
-        broker_ref: Broker order reference
         side: 'LONG' / 'SHORT'
         lots: Order/position size
         price: Relevant price
         status: Terminal/observed status
         detected_via: 'poll' today, 'push' once #331 lands
-        slippage: Submission slippage block (#340)
-        reconcile: Reconciliation block (#151)
+        slippage: On a fill, what it is measured against (#566) — order type, trading side,
+            the reference and its price; the certificate computes the figure
+        reconcile: Reconciliation block — the divergence of a `reconcile_alert`, or the session's
+            totals on the `reconcile_summary` line (#151)
         api_perf: Per-endpoint REST telemetry block (#351)
-        cost: Realized-cost block
         extra: Event-specific overflow fields
     """
     ts_utc: str
@@ -292,7 +294,6 @@ class FieldStudyEvent:
     phase: str
     phase_index: int
     order_id: Optional[str] = None
-    broker_ref: Optional[str] = None
     side: Optional[str] = None
     lots: Optional[float] = None
     price: Optional[float] = None
@@ -301,5 +302,4 @@ class FieldStudyEvent:
     slippage: Optional[Dict[str, Any]] = None
     reconcile: Optional[Dict[str, Any]] = None
     api_perf: Optional[Dict[str, Any]] = None
-    cost: Optional[Dict[str, Any]] = None
     extra: Optional[Dict[str, Any]] = None

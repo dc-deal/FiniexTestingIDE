@@ -14,7 +14,8 @@ produce and therefore never exercises.
 |---|---|
 | `test_state_machine.py` | one case per phase type, plus the outcomes each one can end in |
 | `test_cancel_orchestration.py` | the cancel bookkeeping across a re-arm |
-| `test_order_event_recording.py` | what the study's order hooks write into its record: a close ending with no direction — its position is gone — is recorded rather than raised on, and a cancel event records its row's own status, so a venue expiry reads `expired` |
+| `test_field_study_setup.py` | the session wiring (#566): a non-spot account opens no capture, a resting order stops the run before it trades, a preflight that raises still leaves a terminated capture, and the end writes the reconciliation totals and the REST telemetry before the end marker |
+| `test_order_hooks.py` | what the study's order hooks tell the machine — they record nothing, the capture's order lines are the session's own stream (#566): a close ending with no direction — its position is gone — is observed rather than raised on, and an unaccounted order raises its own flag, never the rejection flag |
 
 ## What the outcomes mean
 
@@ -26,7 +27,7 @@ distinction decides whether the certificate fails:
 | `PASS` | the phase did what it set out to do |
 | `EXPECTED_REJECTION` | the venue refused it, and refusing was the point (lot below minimum, order above balance) |
 | `INCONCLUSIVE` | market-dependent, not a defect — a resting limit the market never reached |
-| `FAIL` | mechanical: the order never rested, a cancel was not confirmed, a strict rejection filled instead |
+| `FAIL` | mechanical: the order never rested, a cancel was not confirmed, a strict rejection filled instead — or an order went unaccounted, which fails any phase, one expecting a rejection included, because the venue may still hold it |
 | `SKIPPED` | the adapter lacks the capability, so the phase was disabled before the run |
 
 `INCONCLUSIVE` versus `FAIL` is the line worth understanding: a limit order that does not fill

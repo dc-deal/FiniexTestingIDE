@@ -264,7 +264,7 @@ class AutotraderSessionSummary:
             # look at describes a flat account that is not flat.
             if result.open_positions:
                 print(f'  Still open:     {len(result.open_positions)} position(s) '
-                      f'({result.portfolio_stats.unrealized_pnl:+.2f} unrealised)'
+                      f'({result.portfolio_stats.unrealized_pnl:+.2f} unrealized)'
                       + (f' · policy {result.session_end_policy}'
                          if result.session_end_policy else ''))
 

@@ -73,7 +73,7 @@ class BlockSplittingDisposition(AbstractBatchSummarySection):
             print(
                 f'    Open at edge: {disp.open_at_boundary_trades}/{disp.total_trades} '
                 f'({open_ratio_str})  |  '
-                f'Unrealised at edge: {disp.open_at_boundary_pnl:+.2f}'
+                f'Unrealized at edge: {disp.open_at_boundary_pnl:+.2f}'
             )
 
             # Pending orders (only if any)

@@ -24,6 +24,7 @@ from python.framework.autotrader.autotrader_startup import (
 from python.framework.autotrader.autotrader_tick_loop import AutotraderTickLoop
 from python.framework.autotrader.cold_start_setup import ColdStartSetup, setup_cold_start
 from python.framework.autotrader.dry_run_resolver import resolve_dry_run
+from python.framework.autotrader.field_study_setup import close_field_study, open_field_study
 from python.framework.autotrader.live_clipping_monitor import LiveClippingMonitor
 from python.framework.autotrader.order_event_stream_setup import (
     open_order_event_stream,
@@ -71,10 +72,8 @@ from python.framework.types.autotrader_types.display_label_cache import DisplayL
 from python.framework.types.config_types.autotrader_defaults_config_types import (
     SessionEndDefaults,
 )
-from python.framework.types.config_types.market_config_types import TradingModel
 from python.framework.types.decision_event_types import SessionEndSeverity
 from python.framework.types.live_types.broker_truth_types import BrokerTruthReadReason
-from python.framework.types.live_types.reconciliation_types import FlatCheckResult
 from python.framework.types.persistence_types import (
     AccountDrawdownCarryOver,
     BaselineKind,
@@ -505,35 +504,25 @@ class AutotraderMain:
                 logger=self._session_logger,
             )
 
-            # === FIELD STUDY RECORDER + FLAT-PREFLIGHT (#332) ===
-            # When the active decision logic is the Live Field Study, wire its JSONL
-            # recorder and assert the account is flat (broker truth) before any phase runs.
+            # === FIELD STUDY CAPTURE + FLAT-PREFLIGHT (#332) ===
+            # When the active decision logic is the Live Field Study, open its capture — the
+            # recorder for its phases, the projection that copies this session's order-event
+            # stream into it (#566) — and assert the account holds no resting order before any
+            # phase runs.
             if isinstance(self._decision_logic, LiveFieldStudy):
-                if self._trading_model != TradingModel.SPOT:
-                    # The Field Study assumes SPOT semantics (sell held base, 50/50 funding,
-                    # order-book flat-preflight). The MARGIN variant (short = margin position,
-                    # flat = no positions + free margin) lands with #209 — fail fast until then.
-                    banner = (
-                        f"FIELD STUDY ABORTED — trading_model '{self._trading_model.value}' "
-                        f"is not supported. The Live Field Study currently supports SPOT only "
-                        f"(Kraken); the MARGIN variant lands with #209."
-                    )
-                    # §35: the SESSION channel — the global log never reaches the summary,
-                    # and an abort the report does not know about is an abort nobody sees.
-                    self._session_logger.error(banner)
-                    print(f"\n{'=' * 60}\n  ❌ {banner}\n{'=' * 60}\n")
-                    return self._shutdown(0, 0)
-                self._field_study_recorder = FieldStudyRecorder(
-                    output_path=str(self._run_dir / 'field_study.jsonl'),
-                    profile=self._config.get_unit_name(),
+                field_study = open_field_study(
+                    decision_logic=self._decision_logic,
+                    executor=self._executor,
+                    reconciler=self._reconciler,
+                    trading_model=self._trading_model,
+                    run_dir=self._run_dir,
+                    unit_name=self._config.get_unit_name(),
                     symbol=self._config.symbol,
-                    release_target='dev',
-                    phase_ids=self._decision_logic.get_phase_ids(),
                     logger=self._session_logger,
                 )
-                self._decision_logic.set_recorder(self._field_study_recorder)
-                if not self._field_study_preflight():
-                    # Resting orders present — abort before trading (loud banner already printed).
+                self._field_study_recorder = field_study.recorder
+                if not field_study.proceed:
+                    # A refused account or account model — the banner is already printed.
                     return self._shutdown(0, 0)
 
             # === SIGNAL TRANSPORT (#141 Part 2a) ===
@@ -1043,17 +1032,13 @@ class AutotraderMain:
             except Exception as e:
                 self._session_logger.error(f'Error during algo state shutdown: {e}')
 
-        # #332 — Field Study recorder: final broker-truth snapshot + close. Two guards: the
-        # snapshot reads the venue, and a read that fails must never keep the file open (#362)
+        # #332 — the Field Study capture ends after the session-end read above, which its
+        # projection has already copied in (#566): the REST telemetry, then the marker. A
+        # failure here must never keep the file open — close_field_study closes it regardless.
         if self._field_study_recorder:
             try:
-                flat = self._reconciler.is_account_flat() if self._reconciler else None
-                self._record_field_study_broker_truth('session_end', flat)
-            except Exception as e:
-                self._session_logger.error(
-                    f'Field Study broker truth at session end not recorded: {e}')
-            try:
-                self._field_study_recorder.close('session end')
+                close_field_study(
+                    self._field_study_recorder, self._api_monitor, self._reconciler)
             except Exception as e:
                 self._session_logger.error(f'Error closing the Field Study recorder: {e}')
 
@@ -1626,89 +1611,6 @@ class AutotraderMain:
             self._session_logger.error(
                 f'Final carry-over figures not written: {e} — the next session would reuse '
                 f'a period number already in the books and continue a shallower drawdown')
-
-    def _record_field_study_broker_truth(
-        self,
-        phase: str,
-        flat: Optional[FlatCheckResult],
-    ) -> None:
-        """
-        Record one Field Study broker-truth snapshot (#332, #506).
-
-        The BALANCES come from the venue's full sheet, not from the flat check: that check
-        excludes the quote currency by design — holding cash is not a position — so reusing
-        its answer as a balance sheet recorded the two balances that had not moved and
-        omitted the one that had. Both real runs of 2026-09-08 show it, and it is why the
-        certificate could not contradict a `realized_cost` of zero.
-
-        ORDER COUNT still comes from the flat check where there is one; without a reconciler
-        (a mock session) the executor's own order book answers, so the certificate's
-        end-criterion still resolves.
-
-        Args:
-            phase: 'preflight' or 'session_end' — the certificate selects the end snapshot
-                by this, never by position
-            flat: The flat-check answer, or None when reconciliation is disabled
-        """
-        if self._field_study_recorder is None:
-            return
-
-        if flat is not None:
-            order_count = len(flat.open_orders)
-            is_flat = flat.is_flat
-        else:
-            counts = self._executor.get_active_order_counts()
-            order_count = counts.get('active_limits', 0) + counts.get('active_stops', 0)
-            is_flat = order_count == 0
-
-        # None when the ladder gave up — recorded as such rather than as an empty sheet,
-        # because "{}" is a statement that the venue holds nothing.
-        balances = self._executor.pull_broker_balances()
-
-        self._field_study_recorder.set_phase(phase, -1)
-        self._field_study_recorder.record_broker_truth(
-            order_count=order_count,
-            balances=balances,
-            is_flat=is_flat,
-        )
-
-    def _field_study_preflight(self) -> bool:
-        """
-        Pre-flight the account before the Field Study trades (broker truth).
-
-        Records the start-of-run broker-truth snapshot. The Field Study is funded with
-        assets on both sides (e.g. ~50/50 base/quote) so the SELL phases sell held base
-        — a non-quote balance is therefore EXPECTED, not a contaminant. The hard
-        requirement is only: no resting broker orders (those would contaminate the run).
-        Aborts loudly if any resting order is present (#332 / #151).
-
-        Returns:
-            True if clear (or reconciliation disabled), False to abort the run
-        """
-        if self._reconciler is None:
-            self._session_logger.warning(
-                'Field Study preflight skipped — reconciliation is disabled'
-            )
-            return True
-
-        flat = self._reconciler.is_account_flat()
-        self._record_field_study_broker_truth('preflight', flat)
-
-        if flat.open_orders:
-            banner = (
-                f'FIELD STUDY ABORTED — {len(flat.open_orders)} resting broker order(s) '
-                f'present; cancel them before the run'
-            )
-            self._session_logger.error(banner)
-            print(f"\n{'=' * 60}\n  ❌ {banner}\n{'=' * 60}\n")
-            return False
-
-        self._session_logger.info(
-            f"✅ Field Study preflight: no resting orders "
-            f"(starting balances: {flat.asset_balances or 'quote-only'})"
-        )
-        print('  ▸ Field Study preflight: no resting orders (starting balances recorded)')
-        return True
 
     def _collect_observed_feed(self) -> Optional[SignalObservedSeries]:
         """

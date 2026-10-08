@@ -53,6 +53,7 @@ nothing in the payload to notice it by. The route is not proof; the body is. Ass
 | `initial_balance` · `current_balance` | what the unit started with, and the **realised** balance at the end |
 | `max_equity` | the peak this account's equity reached |
 | `total_commission` · `total_swap` · `total_spread_cost` | the unit's cost split |
+| `maker_fee` · `taker_fee` | on a venue that charges per side: the fees for orders that rested before they filled (maker) and for orders that took the book (taker) — booked here rather than in `total_commission` |
 | `has_error` | the unit produced figures **and** failed |
 
 `has_error` is the one to branch on before rendering anything else as clean. It marks partial

@@ -313,7 +313,7 @@ class TestTheSharedWriter:
     def test_the_field_study_header_is_written_as_before(self, tmp_path):
         path = tmp_path / 'field_study.jsonl'
         recorder = FieldStudyRecorder(
-            output_path=str(path), profile='fs', symbol='ETHUSD', release_target='dev',
+            output_path=str(path), profile='fs', symbol='ETHUSD',
             phase_ids=['p1'], logger=GlobalLogger('FieldStudyStream'))
         recorder.close('done')
 

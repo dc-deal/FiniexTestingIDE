@@ -244,6 +244,22 @@
             }
         },
         {
+            "name": "🔬 Run report_coverage_reference - every report state in one run",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
+            "args": [
+                "run",
+                "report_coverage_reference.json"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "01_runs_simulation",
+                "order": 14
+            }
+        },
+        {
             "name": "🔬🧪 Run User Scenario Set (prompt)",
             "type": "debugpy",
             "request": "launch",
@@ -256,7 +272,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "01_runs_simulation",
-                "order": 14
+                "order": 15
             }
         },
         {
@@ -274,7 +290,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "01_runs_simulation",
-                "order": 15
+                "order": 16
             }
         },
         // ====================================================

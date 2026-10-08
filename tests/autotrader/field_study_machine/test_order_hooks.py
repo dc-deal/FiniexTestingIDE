@@ -1,11 +1,11 @@
 """
-Field Study — what the order hooks write into the record (#362).
+Field Study — what the order hooks tell the phase machine (#362, #566).
 
-The study is the acceptance test of the live core, so a hook that raises on an ordinary
-order ending ends a real-money run in an emergency shutdown. Two endings reach the hooks
-without a direction: a close the venue refused, and one the framework stopped asking about,
-once the position it closed is gone. And a cancel event may carry a venue EXPIRY, which the
-record has to name as such.
+The hooks record nothing any more: the capture's order lines are the live core's own record,
+copied in by the stream projection. What the hooks still do is the machine's input — a flag per
+kind of outcome since the last submit — and two endings reach them without a direction: a close
+the venue refused, and one the framework stopped asking about, once the position it closed is gone.
+None of that may raise, because the study is the acceptance test of a real-money run.
 """
 
 from unittest.mock import MagicMock
@@ -32,6 +32,7 @@ def _bare_field_study() -> LiveFieldStudy:
     study = object.__new__(LiveFieldStudy)        # bypass full __init__
     study._recorder = MagicMock()
     study._rejected_flag = False
+    study._unaccounted_flag = False
     study._cancelled_flag = False
     return study
 
@@ -42,10 +43,10 @@ def _row(status: OrderStatus, direction=None) -> OrderResult:
                        direction=direction)
 
 
-class TestAnEndingWithoutADirectionIsRecorded:
+class TestAnEndingWithoutADirection:
     """None is a legitimate direction for a close whose position is gone — not a crash."""
 
-    def test_a_refused_close(self):
+    def test_a_refused_close_is_a_rejection(self):
         study = _bare_field_study()
 
         study.on_order_rejected(OrderRejectedEvent(
@@ -53,21 +54,21 @@ class TestAnEndingWithoutADirectionIsRecorded:
             message='refused', result=_row(OrderStatus.REJECTED)))
 
         assert study._rejected_flag
-        assert study._recorder.record_order_event.call_args.kwargs['side'] is None
+        assert not study._unaccounted_flag
 
-    def test_an_unaccounted_close(self):
+    def test_an_unaccounted_close_has_its_own_word(self):
         study = _bare_field_study()
 
         study.on_order_unaccounted(OrderUnaccountedEvent(
             order_id='pos_ethusd_4', direction=None, end_reason=OrderEndReason.ORDER_TIMEOUT,
             result=_row(OrderStatus.UNACCOUNTED)))
 
-        assert study._rejected_flag, 'the phase still fails on it'
-        assert study._recorder.record_order_event.call_args.kwargs['side'] is None
+        assert study._unaccounted_flag
+        assert not study._rejected_flag, 'never read as the refusal a phase may be waiting for'
 
 
-class TestACancelEventRecordsItsOwnStatus:
-    """The venue letting an order run out is `expired`, not `cancelled`."""
+class TestAnEndingIsObservedNotRecorded:
+    """The order lines come from the core's record; a hook writing one would write it twice."""
 
     def test_a_venue_expiry(self):
         study = _bare_field_study()
@@ -79,5 +80,19 @@ class TestACancelEventRecordsItsOwnStatus:
         study.on_order_cancelled(OrderCancelledEvent(
             order_id='ord_7', direction=OrderDirection.LONG, result=expired))
 
-        recorded = study._recorder.record_order_event.call_args.kwargs
-        assert (recorded['status'], recorded['side']) == ('expired', 'LONG')
+        assert study._cancelled_flag
+        assert study._recorder.method_calls == []
+
+
+class TestTheFlagsResetTogether:
+    """A new submit or a new phase starts every observation afresh, the unaccounted one too."""
+
+    def test_a_reset_clears_the_unaccounted_flag(self):
+        study = _bare_field_study()
+        study._filled_flag = True
+        study._unaccounted_flag = True
+
+        study._reset_flags()
+
+        assert not study._unaccounted_flag
+        assert not study._filled_flag

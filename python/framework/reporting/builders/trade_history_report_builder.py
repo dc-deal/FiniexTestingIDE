@@ -27,7 +27,7 @@ from python.framework.types.api.report_types import (
 )
 from python.framework.types.portfolio_types.portfolio_trade_record_types import TradeRecord
 from python.framework.types.trading_env_types.broker_trade_types import BrokerTrade
-from python.framework.types.trading_env_types.order_types import OrderSide
+from python.framework.utils.trading_math.slippage_math import adverse_slippage
 
 
 class TradeWindowBasis(Enum):
@@ -151,9 +151,9 @@ def _to_row(trade: TradeRecord, scenario_name: str = '',
     mae_dist = abs(trade.entry_price - trade.mae_price) if trade.mae_price > 0 else 0.0
     mfe_dist = abs(trade.mfe_price - trade.entry_price) if trade.mfe_price > 0 else 0.0
     r_multiple = (trade.net_pnl / trade.initial_risk) if trade.initial_risk else None
-    entry_slip, entry_slip_pct = _slippage(
+    entry_slip, entry_slip_pct = adverse_slippage(
         trade.entry_price, trade.entry_submission.tick_mid_price, trade.entry_side)
-    exit_slip, exit_slip_pct = _slippage(
+    exit_slip, exit_slip_pct = adverse_slippage(
         trade.exit_price, trade.exit_submission.tick_mid_price, trade.exit_side)
     return TradeHistoryRow(
         position_id=trade.position_id,
@@ -199,19 +199,6 @@ def _to_row(trade: TradeRecord, scenario_name: str = '',
         position_closes=closes[trade.position_id] if closes is not None else None,
         entry_lots=trade.entry_lots,
     )
-
-
-def _slippage(fill_price: float, submission_mid: Optional[float], side):
-    """
-    Adverse submission-vs-fill slippage (#340): >0 = paid worse than the submission
-    mid. Direction-aware (BUY: fill−mid, SELL: mid−fill). Returns (price_delta, pct),
-    or (None, None) when no submission tick / side was captured.
-    """
-    if submission_mid is None or side is None:
-        return None, None
-    delta = (fill_price - submission_mid) if side is OrderSide.BUY else (submission_mid - fill_price)
-    pct = (delta / submission_mid * 100.0) if submission_mid else 0.0
-    return delta, pct
 
 
 def _execution_rows(broker_trades: Optional[List[BrokerTrade]],

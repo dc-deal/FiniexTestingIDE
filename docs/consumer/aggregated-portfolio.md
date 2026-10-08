@@ -105,6 +105,7 @@ which account it is about — see [the contract log](/api/v1/docs/contract-log),
 | Field | Meaning |
 |---|---|
 | `initial_balance` · `final_balance` | the currency's summed opening and closing balances |
+| `avg_initial` | `initial_balance` divided by the block's units — the average opening balance of one account |
 | `balance_pnl` | `final_balance − initial_balance` |
 | `balance_pnl_pct` | the share that change was |
 
@@ -115,7 +116,10 @@ as alternatives.
 ## What the trading cost
 
 `total_commission`, `total_swap` and `total_spread_cost` are the cost split summed across the
-block's units; `avg_spread` stands with them. How a single period's split relates to its fee total
+block's units; `avg_spread` stands with them. `maker_fee` and `taker_fee` are summed the same way:
+the fees a venue that charges per side took for orders that rested before they filled (maker) and
+for orders that took the book (taker). Such a venue books its fees there rather than in
+`total_commission`. How a single period's split relates to its fee total
 is stated on [booking periods](/api/v1/docs/booking-periods).
 
 `avg_win` and `avg_loss` are the mean winning and losing trade, and `total_long_trades` /

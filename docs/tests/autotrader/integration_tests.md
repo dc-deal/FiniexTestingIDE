@@ -259,6 +259,30 @@ so no second preparation path can grow back beside the shared one.
 
 **Runtime:** ~30 seconds (the mock session's mount is prepared once per module, the backtest's once).
 
+### test_field_study_capture.py
+
+Runs the mock field study (`configs/autotrader_profiles/mock/field_study_mock.json`) end to end and
+reads its capture: the order and venue lines are the session's own order-event stream, copied in
+while it is written (#566). The phases' outcomes are deliberately NOT asserted — the mock venue fills
+on the first status read, paced on the machine's clock while the ticks replay at full speed, so a
+phase passes or times out by processing speed (#494). Measured 2026-10-07: the same profile ended
+with different phases timed out from run to run, before #566 as after it. Which phase a late fill
+belongs to is held deterministically by the projection's unit tests.
+
+| Test | What it validates |
+|------|-------------------|
+| `test_it_is_the_projected_schema` | The header is schema 2.0 and carries no `release_target` |
+| `test_a_fill_names_the_phase_that_submitted_its_order` | The first order's fill is filed under the first phase |
+| `test_the_session_ended_cleanly` | Normal shutdown and no ERROR — a failure inside the projection would show here, since the run itself survives it |
+| `test_every_execution_of_the_stream_is_one_fill_line` | Every `filled` / `partially_filled` event of `io/order_events.jsonl` is exactly one fill line, joined by `extra.stream_seq`, with its lots, fee and action — a close included, however many the run's timing let fill |
+| `test_the_rejection_battery_writes_its_refusals` | The lot-size refusals made before sending are `order_rejected` lines with status `denied` |
+| `test_the_venue_reads_bracket_the_session` | A `preflight` and a `session_end` snapshot, each with its order count |
+| `test_it_reads_the_fees_and_measures_the_slippage` | The certificate analysis reads `fees_charged` from the run's report, measures market slippage, and derives the account delta |
+| `test_the_report_s_fees_are_the_capture_s` | The run's `fees_charged` equals the sum of the capture's fill fees |
+| `test_a_mock_session_says_it_did_not_reconcile` | The certificate's `reconciliation` reads `disabled` for a mock session, never a bare zero |
+
+**Runtime:** ~12 seconds.
+
 ## Running the Tests
 
 ```bash

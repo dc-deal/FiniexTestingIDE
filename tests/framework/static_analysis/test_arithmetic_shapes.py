@@ -73,6 +73,14 @@ ACCEPTED_LEAKS: Dict[str, str] = {
         'The EMA recursion in `macd.py` against '
         '`now - timedelta(seconds=(COUNT - index) * CADENCE)` in the signal mock producer. A '
         'timestamp offset that happens to have the shape of a recursive average.',
+
+    '((_/_)*100.0)':
+        'A share expressed in percent — the last step of `slippage_math.adverse_slippage` and of '
+        'every other percentage in the project: a drawdown against its baseline or peak (tick '
+        'loop, portfolio manager), a daily loss against the day\'s start, a limit\'s used share '
+        '(safety report), a drift against the broker\'s figure (drift auditor), a tolerance '
+        'check (reconciler). The slippage formula is the side-dependent subtraction before it, '
+        'and that lives only in the slippage module.',
 }
 
 

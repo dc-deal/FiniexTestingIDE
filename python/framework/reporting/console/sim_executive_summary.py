@@ -467,7 +467,7 @@ class SimExecutiveSummary(AbstractBatchSummarySection):
             print('')
             print(
                 f'Open at end:        {h.open_position_count} position(s) '
-                f'({format_currency_simple(h.unrealized_pnl, currency)} unrealised)')
+                f'({format_currency_simple(h.unrealized_pnl, currency)} unrealized)')
             if h.final_equity is not None:
                 print(
                     f'Final Equity:       {format_currency_simple(h.final_equity, currency)}')

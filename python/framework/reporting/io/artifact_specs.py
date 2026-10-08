@@ -94,3 +94,7 @@ WORKER_DECISION_ARTIFACT: ArtifactSpec[WorkerDecisionReport] = ArtifactSpec(
 # session that died before its report has one — counted as an artifact, it would read as reported.
 ORDER_EVENTS_STREAM = 'order_events.jsonl'
 STREAM_FILENAMES: FrozenSet[str] = frozenset({ORDER_EVENTS_STREAM})
+
+# The field study's capture (#332) — a stream too, but at the run directory's root rather than in
+# io/, and read by its certificate rather than served, so it is not among the streams above.
+FIELD_STUDY_CAPTURE = 'field_study.jsonl'

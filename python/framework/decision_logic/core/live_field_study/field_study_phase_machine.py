@@ -185,6 +185,25 @@ class FieldStudyPhaseMachine:
             reason=f'{phase.phase_id} → {outcome.value}: {reason}',
         )
 
+    def _finish_unaccounted(self, phase: FieldStudyPhase, ctx: PhaseContext) -> PhaseAction:
+        """
+        Fail the phase on an order the framework stopped asking about (#566).
+
+        Such an order used to arrive as a rejection, and in a phase that expects one it passed as
+        the refusal the phase was waiting for — while the venue may still hold it. Checked wherever
+        a phase reads a rejection, before it; a phase that reads none (a close-out, the final
+        summary) runs on, so the session still cleans up and still ends.
+
+        Args:
+            phase: The phase in progress
+            ctx: The observation that carried it
+
+        Returns:
+            The action that finishes the phase
+        """
+        return self._finish(phase, PhaseOutcome.FAIL,
+                            'order unaccounted — the venue may still hold it', ctx.now)
+
     def _timed_out(self, phase: FieldStudyPhase, ctx: PhaseContext) -> bool:
         """Whether the current wait exceeded the phase fill timeout."""
         if self._submit_time is None:
@@ -246,6 +265,8 @@ class FieldStudyPhaseMachine:
                 reason='market open',
             ))
 
+        if ctx.unaccounted_since_submit:
+            return self._finish_unaccounted(phase, ctx)
         if ctx.rejected_since_submit:
             if phase.expect_rejection:
                 return self._finish(phase, PhaseOutcome.EXPECTED_REJECTION, 'rejected as expected', ctx.now)
@@ -309,6 +330,8 @@ class FieldStudyPhaseMachine:
         # AWAIT_FILL
         if ctx.filled_since_submit or ctx.open_position_count > 0:
             return self._finish(phase, PhaseOutcome.PASS, 'filled', ctx.now)
+        if ctx.unaccounted_since_submit:
+            return self._finish_unaccounted(phase, ctx)
         if ctx.rejected_since_submit:
             if phase.expect_rejection:
                 return self._finish(phase, PhaseOutcome.EXPECTED_REJECTION, 'rejected as expected', ctx.now)
@@ -337,6 +360,8 @@ class FieldStudyPhaseMachine:
 
         if ctx.filled_since_submit or ctx.open_position_count > 0:
             return self._finish(phase, PhaseOutcome.PASS, 'filled', ctx.now)
+        if ctx.unaccounted_since_submit:
+            return self._finish_unaccounted(phase, ctx)
         if ctx.rejected_since_submit:
             return self._finish(phase, PhaseOutcome.FAIL, 'rejected', ctx.now)
 
@@ -416,6 +441,8 @@ class FieldStudyPhaseMachine:
                 # A resting stop that fills is a mis-sided trigger, not bad luck: the
                 # offset put it on the wrong side of the market and the venue took it.
                 return self._finish(phase, PhaseOutcome.FAIL, 'filled before cancel', ctx.now)
+            if ctx.unaccounted_since_submit:
+                return self._finish_unaccounted(phase, ctx)
             if ctx.rejected_since_submit:
                 return self._finish(phase, PhaseOutcome.FAIL, 'venue refused the stop', ctx.now)
             if ctx.active_stop_count >= 1:
@@ -474,6 +501,8 @@ class FieldStudyPhaseMachine:
             ))
 
         if self._state == PhaseState.AWAIT_FILL:
+            if ctx.unaccounted_since_submit:
+                return self._finish_unaccounted(phase, ctx)
             if ctx.rejected_since_submit:
                 return self._finish(phase, PhaseOutcome.FAIL, 'entry refused', ctx.now)
             if ctx.open_position_count > 0:
@@ -556,6 +585,8 @@ class FieldStudyPhaseMachine:
             ))
 
         if self._state == PhaseState.AWAIT_FILL:
+            if ctx.unaccounted_since_submit:
+                return self._finish_unaccounted(phase, ctx)
             if ctx.rejected_since_submit:
                 return self._finish(phase, PhaseOutcome.FAIL, 'open rejected', ctx.now)
             if ctx.filled_since_submit or ctx.open_position_count > 0:

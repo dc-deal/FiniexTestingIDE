@@ -116,7 +116,7 @@ tests/
 │   ├── path_based_loading/ unit — workers and decision logics loaded by CORE name or file path
 │   ├── api/               unit — REST API endpoints
 │   ├── live_telemetry/    unit — live-telemetry frame serializer (frame_to_json, #400)
-│   ├── field_study_recorder/ unit — Field Study JSONL recorder + certificate analyzer (#332)
+│   ├── field_study_recorder/ unit — Field Study JSONL recorder + stream projection + certificate analyzer (#332, #566)
 │   ├── algo_clock/        unit — wall-clock ban lint (decision logic/workers, CI plane)
 │   ├── algo_clock_validator/ unit — wall-clock ban, runtime startup validator: AST scan of loaded algos (CORE + user) + batch pre-flight (#359)
 │   ├── discovery_validity/ unit — the three discovery caches compare the config fingerprint they were already writing (#486 finding 57); a config change moves no bar file, so mtime alone kept serving a stale cache
