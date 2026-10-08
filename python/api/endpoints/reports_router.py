@@ -491,10 +491,11 @@ def get_run_config(run_id: str) -> RunConfigSnapshot:
     changed, because nothing served what they point at. This is that route.
 
     Two 404s, deliberately distinguished: `run_not_found` when the identity is unknown, and
-    `config_snapshot_missing` when the run declared one it never filed. The header is written at
-    run start and the file is copied later, so the second is an ordinary state — a session that
-    died in between, or one whose file logging was switched off — and reading it as "unknown
-    run" would send a consumer looking for the wrong fault.
+    `config_snapshot_missing` when the run is known but its configuration cannot be resolved. Both
+    pipelines register the configuration BEFORE the header names its id, so the second means a run
+    older than the run-config store, or one whose registration failed — never fatal, so that run
+    went ahead without a content id. An ordinary state, and reading it as "unknown run" would send
+    a consumer looking for the wrong fault.
 
     Args:
         run_id: The run's id (<timestamp>_<hash>), resolved through the run index

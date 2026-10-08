@@ -78,10 +78,10 @@ session before the mark and of the session carrying it, and compare the two bodi
 | `run_not_found` | the identity is unknown — no such run in the run index |
 | `config_snapshot_missing` | the run exists, and its configuration cannot be resolved |
 
-The second is a normal state rather than a defect. A run's header is written when the run starts
-and its configuration is filed afterwards, so a run that died in between declares a snapshot it
-never filed. A run older than the configuration store carries no content id at all, and neither
-does one whose configuration could not be registered.
+The second is a normal state rather than a defect. A configuration is filed before the run's
+header names it, so a run that names one has filed it. But a run older than the configuration
+store carries no content id at all, and neither does one whose configuration could not be
+registered: a store that cannot be written costs the run this answer, never the run itself.
 
 The two are deliberately separate, and this route keeps its own pair rather than the four a report
 section answers with: a configuration is registered at a run's **start**, a report section written

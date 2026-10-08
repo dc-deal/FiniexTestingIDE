@@ -988,9 +988,9 @@ class TestRunConfigSnapshot:
     before this route nothing served what they point at, so a reader who saw a change mark
     between two sessions of a deployment could not ask WHAT changed.
 
-    The two 404s are the point of these cases: an unknown run and a run that declared a
-    snapshot it never filed are different faults, and the header is written at run start while
-    the file is copied later, so the second is ordinary rather than exceptional.
+    The two 404s are the point of these cases: an unknown run and a known run whose
+    configuration cannot be resolved are different faults, and the second is ordinary rather
+    than exceptional — a run older than the run-config store, or one whose registration failed.
     """
 
     def test_it_serves_the_snapshot_parsed(self, client):
