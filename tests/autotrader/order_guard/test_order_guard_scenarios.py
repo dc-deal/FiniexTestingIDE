@@ -99,8 +99,10 @@ class TestRejectionCooldown:
         self,
         cooldown_execution_stats: ExecutionStats,
     ):
-        """orders_rejected must include both broker and guard rejections."""
-        assert cooldown_execution_stats.orders_rejected >= 2, (
-            f'Expected >= 2 rejections (1 broker + 1 guard), '
-            f'got {cooldown_execution_stats.orders_rejected}'
+        """The broker's rejection and the guard's refusal are both counted, each as itself."""
+        assert cooldown_execution_stats.orders_rejected >= 1, (
+            f'Expected >= 1 broker rejection, got {cooldown_execution_stats.orders_rejected}'
+        )
+        assert cooldown_execution_stats.orders_denied >= 1, (
+            f'Expected >= 1 guard denial, got {cooldown_execution_stats.orders_denied}'
         )

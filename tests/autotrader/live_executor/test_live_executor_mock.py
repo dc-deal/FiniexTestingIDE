@@ -219,7 +219,7 @@ class TestFeatureGating:
             direction=OrderDirection.LONG, lots=0.001
         ))
 
-        assert result.status == OrderStatus.REJECTED
+        assert result.status == OrderStatus.DENIED
         assert result.rejection_reason == RejectionReason.ORDER_TYPE_NOT_SUPPORTED
 
     def test_a_stop_without_a_trigger_is_rejected_on_the_price(
@@ -238,7 +238,7 @@ class TestFeatureGating:
             direction=OrderDirection.LONG, lots=0.001
         ))
 
-        assert result.status == OrderStatus.REJECTED
+        assert result.status == OrderStatus.DENIED
         assert result.rejection_reason == RejectionReason.INVALID_PRICE
 
     def test_a_stop_limit_without_a_limit_price_is_rejected_too(
@@ -251,7 +251,7 @@ class TestFeatureGating:
             direction=OrderDirection.LONG, lots=0.001, stop_price=51000.0
         ))
 
-        assert result.status == OrderStatus.REJECTED
+        assert result.status == OrderStatus.DENIED
         assert result.rejection_reason == RejectionReason.INVALID_PRICE
 
     def test_a_fully_formed_stop_is_accepted_and_rests(self, mock_instant, executor_instant):
@@ -354,15 +354,15 @@ class TestValidation:
             symbol='INVALID_SYMBOL', order_type=OrderType.MARKET, direction=OrderDirection.LONG, lots=0.001
         ))
 
-        assert result.status == OrderStatus.REJECTED
+        assert result.status == OrderStatus.DENIED
 
     def test_close_nonexistent_position_rejected(self, mock_instant, executor_instant):
-        """Closing non-existent position returns REJECTED."""
+        """Closing non-existent position is denied: nothing was sent."""
         # The rejection is stamped on the canonical clock, which the loop always injects.
         mock_instant.feed_tick(executor_instant, bid=49999.0, ask=50001.0)
         result = executor_instant.close_position('NONEXISTENT-POS')
 
-        assert result.status == OrderStatus.REJECTED
+        assert result.status == OrderStatus.DENIED
 
 
 class TestExecutionStats:
@@ -379,7 +379,7 @@ class TestExecutionStats:
         mock_instant.feed_tick(executor_instant, bid=49999.0, ask=50001.0)
 
         stats = executor_instant.get_execution_stats()
-        assert stats.orders_sent == 1
+        assert stats.orders_submitted == 1
         assert stats.orders_executed >= 1
 
     def test_stats_after_rejection(self, mock_reject, executor_reject):
@@ -393,7 +393,7 @@ class TestExecutionStats:
         mock_reject.feed_tick(executor_reject, bid=49999.0, ask=50001.0)
 
         stats = executor_reject.get_execution_stats()
-        assert stats.orders_sent == 1
+        assert stats.orders_submitted == 1
         assert stats.orders_rejected >= 1
 
 
@@ -423,3 +423,44 @@ class TestNotLiveCapable:
                 account_currency='USD',
                 logger=logger,
             )
+
+
+class TestWhatTheLiveRowsSay:
+    """A live order's pending row carries its type and its submission, on the canonical clock."""
+
+    def test_a_market_order_is_stamped_at_its_submission(self, mock_delayed, executor_delayed):
+        mock_delayed.feed_tick(executor_delayed, bid=49999.0, ask=50001.0)
+        submitted_at = executor_delayed.get_current_time()
+
+        result = executor_delayed.open_order(OpenOrderRequest(
+            symbol='BTCUSD', order_type=OrderType.MARKET, direction=OrderDirection.LONG, lots=0.001
+        ))
+
+        assert result.execution_time == submitted_at
+        assert result.order_type is OrderType.MARKET
+
+    def test_the_pending_order_takes_its_entry_time_from_the_canonical_clock(
+            self, mock_delayed, executor_delayed):
+        # An event time from the wall clock would land wherever the machine's clock stood,
+        # not where the run's clock did — in a replayed mock session months apart.
+        mock_delayed.feed_tick(executor_delayed, bid=49999.0, ask=50001.0)
+        submitted_at = executor_delayed.get_current_time()
+
+        result = executor_delayed.open_order(OpenOrderRequest(
+            symbol='BTCUSD', order_type=OrderType.MARKET, direction=OrderDirection.LONG, lots=0.001
+        ))
+
+        pending = executor_delayed.get_request_processor().get_order(result.order_id)
+        assert pending.entry_time == submitted_at
+
+    def test_a_resting_order_states_its_type(self, mock_instant, executor_instant):
+        mock_instant.feed_tick(executor_instant, bid=49999.0, ask=50001.0)
+
+        result = executor_instant.open_order(OpenOrderRequest(
+            symbol='BTCUSD', order_type=OrderType.LIMIT, direction=OrderDirection.LONG,
+            lots=0.001, price=45000.0,
+        ))
+
+        assert result.order_type is OrderType.LIMIT
+        assert result.execution_time == executor_instant.get_current_time()
+

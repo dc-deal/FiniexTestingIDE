@@ -15,12 +15,14 @@ import pytest
 from fastapi.testclient import TestClient
 
 from python.api.api_app import create_app
+from python.framework.logging.global_logger import GlobalLogger
 from python.framework.reporting.io.artifact_specs import (
     AGGREGATED_PORTFOLIO_ARTIFACT,
     BOOKING_PERIODS_ARTIFACT,
     BROKER_ARTIFACT,
     EXECUTION_STATS_ARTIFACT,
     FEED_STABILITY_ARTIFACT,
+    ORDER_EVENTS_STREAM,
     ORDER_HISTORY_ARTIFACT,
     PENDING_ORDERS_ARTIFACT,
     PORTFOLIO_ARTIFACT,
@@ -28,8 +30,11 @@ from python.framework.reporting.io.artifact_specs import (
     SCENARIO_DETAILS_ARTIFACT,
     SIGNAL_ARTIFACT,
     TRADE_HISTORY_ARTIFACT,
+    VENUE_ACCOUNT_ARTIFACT,
     WARNINGS_ERRORS_ARTIFACT,
 )
+from python.framework.reporting.io.order_event_stream_io import write_order_event_stream
+from python.framework.reporting.io.order_event_stream_writer import OrderEventStreamWriter
 from python.framework.reporting.io.report_artifact_io import write_artifact
 from python.framework.reporting.store.report_store import IO_SUBDIR, ReportStore
 from python.framework.reporting.store.run_index import RunIndex
@@ -58,6 +63,7 @@ from python.framework.types.api.report_types import (
     PortfolioAggregateRow,
     PortfolioReport,
     PortfolioUnitRow,
+    ReconcileDivergenceRow,
     RunHeader,
     RunReporting,
     RunSummary,
@@ -72,12 +78,27 @@ from python.framework.types.api.report_types import (
     TradeHistoryReport,
     TradeHistoryRow,
     UnitErrorRow,
+    VenueAccountReport,
+    VenueAccountRow,
+    VenueSnapshotRow,
     WarningRow,
     WarningsErrorsOutcome,
     WarningsErrorsReport,
 )
 from python.framework.types.config_types.file_logging_config_types import RunLogPaths
+from python.framework.types.live_types.broker_truth_types import (
+    BrokerTruthPart,
+    BrokerTruthReadReason,
+    BrokerTruthRecord,
+    BrokerTruthSnapshot,
+)
+from python.framework.types.live_types.reconciliation_types import ReconcileState
 from python.framework.types.log_layout_types import RUN_TYPE_AUTOTRADER, RUN_TYPE_SIMULATION
+from python.framework.types.trading_env_types.order_event_types import (
+    OrderEvent,
+    OrderEventType,
+    OrderOperation,
+)
 
 # Every report artifact names its run (#475); the value is opaque to these tests.
 _RUN_ID = '20260830_120000_a1b2c3d4'
@@ -125,12 +146,12 @@ def _order_report() -> OrderHistoryReport:
             order_id='o1', position_id='p1', symbol='EURUSD', direction='long',
             action='open', status='executed', requested_lots=0.1, executed_lots=0.1,
             executed_price=1.10, event_time='2025-10-13T08:00:00+00:00',
-            commission=0.2, swap=0.0, slippage_points=1.0),
+            commission=0.2),
         OrderHistoryRow(
             order_id='o2', symbol='GBPUSD', direction='short',
             action='open', status='rejected', requested_lots=0.5,
-            event_time='2025-10-13T08:05:00+00:00', commission=0.0, swap=0.0,
-            slippage_points=0.0, rejection_reason='insufficient_margin',
+            event_time='2025-10-13T08:05:00+00:00', commission=0.0,
+            rejection_reason='insufficient_margin',
             rejection_message='not enough margin'),
     ]
     return OrderHistoryReport(run_id=_RUN_ID, orders=rows, count=2, symbols=['EURUSD', 'GBPUSD'])
@@ -150,17 +171,19 @@ def _portfolio_report() -> PortfolioReport:
 
 def _execution_stats_report() -> ExecutionStatsReport:
     unit = ExecutionStatsRow(
-        name='s1', symbol='EURUSD', orders_sent=5, orders_executed=4,
-        orders_rejected=1, sl_tp_triggered=2)
+        name='s1', symbol='EURUSD', orders_submitted=5, orders_adopted=0, orders_executed=4,
+        orders_denied=0,
+        orders_rejected=1, orders_cancelled=0, orders_expired=0, orders_undelivered=0,
+        orders_unaccounted=0, sl_tp_triggered=2)
     totals = ExecutionStatsTotals(
-        orders_sent=5, orders_executed=4, orders_rejected=1, sl_tp_triggered=2)
+        orders_submitted=5, orders_executed=4, orders_rejected=1, sl_tp_triggered=2)
     return ExecutionStatsReport(run_id=_RUN_ID, units=[unit], totals=totals)
 
 
 def _pending_orders_report() -> PendingOrdersReport:
     unit = PendingOrdersUnitRow(
-        name='s1', symbol='EURUSD', total_resolved=3, total_filled=2, total_force_closed=1,
-        avg_latency_ms=42.0, min_latency_ms=21.0, max_latency_ms=60.0,
+        name='s1', symbol='EURUSD', total_submitted=3, total_accepted=2, total_expired=1,
+        avg_in_flight_ms=42.0, min_in_flight_ms=21.0, max_in_flight_ms=60.0,
         active_limit_orders=[ActiveOrderRow(
             order_id='L1', order_type='limit', direction='long', lots=0.1,
             entry_price=1.10, stop_loss=1.09, take_profit=1.11)])
@@ -183,7 +206,7 @@ def _run_summary() -> RunSummary:
             currency='USD', net_pnl=60.0, profit_factor=2.5, win_rate=0.6, account_max_drawdown=12.0,
             total_fees=5.0, total_trades=10, winning_trades=6, losing_trades=4,
             expectancy=0.5, avg_win_r=2.0, avg_loss_r=-1.0, r_trade_count=4)],
-        orders_sent=5, orders_executed=4, orders_rejected=1, sl_tp_triggered=2, unit_count=1)
+        orders_submitted=5, orders_executed=4, orders_rejected=1, sl_tp_triggered=2, unit_count=1)
 
 
 def _broker_report() -> BrokerReport:
@@ -439,7 +462,7 @@ def test_pending_orders_returns(client):
     assert response.status_code == 200
     body = response.json()
     assert len(body['units']) == 1
-    assert body['units'][0]['total_resolved'] == 3
+    assert body['units'][0]['total_submitted'] == 3
     assert body['units'][0]['active_limit_orders'][0]['order_id'] == 'L1'
 
 
@@ -617,3 +640,167 @@ class TestTheRunListSaysWhichKindARunIs:
         assert run['data_windows'] == [{'unit_name': 'my_profile',
                                         'start_date': '2026-08-11T00:00:00+00:00',
                                         'end_date': '2026-08-14T00:00:00+00:00'}]
+
+
+class TestTheOrderEventStream:
+    """
+    Every step in an order's life, served from the stream a run writes as it goes (#362) — so a
+    run that is still going, or one that died before its report, is readable all the same.
+    """
+
+    _URL = f'/api/v1/reports/runs/{_RUN}/order-events'
+
+    @staticmethod
+    def _plant_stream(tmp_path: Path, tail: str = '') -> None:
+        """
+        A two-unit stream in the fixture run's io/ folder.
+
+        Args:
+            tmp_path: The fixture's tmp tree
+            tail: Text appended after the last complete line — a line cut off mid-write
+        """
+        io_dir = _run_logs(tmp_path).simulation / 'my_set' / _RUN / IO_SUBDIR
+        moment = datetime(2026, 6, 15, 12, 0, tzinfo=timezone.utc)
+        write_order_event_stream(io_dir, _RUN_ID, [
+            ('btc_run', [
+                OrderEvent(seq=1, event_type=OrderEventType.SUBMITTED, order_id='pos_btcusd_1',
+                           submitted_seq=1, event_time=moment),
+                OrderEvent(seq=2, event_type=OrderEventType.ACCEPTED, order_id='pos_btcusd_1',
+                           submitted_seq=1, in_flight_ms=40.0, event_time=moment),
+            ]),
+            ('eth_run', [
+                OrderEvent(seq=1, event_type=OrderEventType.DENIED, order_id='pos_ethusd_1',
+                           event_time=moment),
+            ]),
+        ])
+        if tail:
+            with open(io_dir / ORDER_EVENTS_STREAM, 'a', encoding='utf-8') as handle:
+                handle.write(tail)
+
+    def test_every_step_is_served_in_stream_order_with_its_key(self, client, tmp_path):
+        self._plant_stream(tmp_path)
+
+        body = client.get(self._URL).json()
+
+        assert [(e['scenario_name'], e['seq'], e['event_type']) for e in body['events']] == [
+            ('btc_run', 1, 'submitted'), ('btc_run', 2, 'accepted'), ('eth_run', 1, 'denied')]
+        assert body['count'] == 3
+        assert body['keys'] == {'events': ['scenario_name', 'seq'],
+                                'broker_truth': ['scenario_name', 'seq']}
+        assert body['broker_truth'] == [], 'a backtest asks no venue'
+        assert body['truncated_tail'] is False
+
+    def test_the_served_names_are_the_contract(self, client, tmp_path):
+        """
+        The names a consumer keys on, as they arrive: each carries the qualifier that tells it
+        apart from a served word with another meaning — the strategy and valuation planes, the
+        profiling report's `operation`.
+        """
+        io_dir = _run_logs(tmp_path).simulation / 'my_set' / _RUN / IO_SUBDIR
+        write_order_event_stream(io_dir, _RUN_ID, [('btc_run', [
+            OrderEvent(seq=1, event_type=OrderEventType.UNRESOLVED, order_id='pos_btcusd_1',
+                       submitted_seq=1, lost_request=OrderOperation.MODIFY),
+        ])])
+
+        event = client.get(self._URL).json()['events'][0]
+
+        assert (event['record_plane'], event['lost_request']) == ('bot', 'modify')
+        assert 'plane' not in event and 'operation' not in event
+
+    def test_a_live_sessions_broker_truth_is_served_beside_its_steps(self, client, tmp_path):
+        """
+        What the venue reported, in its own list on the same counter — and left out when the
+        stream is narrowed to one order, since no such line is a step of one order.
+        """
+        io_dir = _run_logs(tmp_path).simulation / 'my_set' / _RUN / IO_SUBDIR
+        io_dir.mkdir(parents=True, exist_ok=True)
+        writer = OrderEventStreamWriter(io_dir, _RUN_ID, 'btc_session',
+                                        GlobalLogger('ReportsEndpointTest'))
+        writer.write_broker_truth(BrokerTruthRecord(
+            seq=1, read_reason=BrokerTruthReadReason.SESSION_START,
+            snapshot=BrokerTruthSnapshot(venue_orders=[], venue_balances={'USD': 812.4})))
+        writer(OrderEvent(seq=2, event_type=OrderEventType.SUBMITTED, order_id='pos_btcusd_1',
+                          submitted_seq=2))
+        writer.close()
+
+        body = client.get(self._URL).json()
+        by_order = client.get(self._URL, params={'order_id': 'pos_btcusd_1'}).json()
+
+        assert [(t['seq'], t['read_reason'], t['venue_balances'], t['record_plane'])
+                for t in body['broker_truth']] == [(1, 'session_start', {'USD': 812.4},
+                                                    'broker_truth')]
+        assert [e['seq'] for e in body['events']] == [2]
+        assert by_order['broker_truth'] == [] and [e['seq'] for e in by_order['events']] == [2]
+
+    def test_it_narrows_to_one_unit_or_one_order(self, client, tmp_path):
+        self._plant_stream(tmp_path)
+
+        by_unit = client.get(self._URL, params={'scenario_name': 'eth_run'}).json()
+        by_order = client.get(self._URL, params={'order_id': 'pos_btcusd_1'}).json()
+
+        assert [e['order_id'] for e in by_unit['events']] == ['pos_ethusd_1']
+        assert [e['seq'] for e in by_order['events']] == [1, 2]
+
+    def test_a_line_cut_off_mid_write_is_left_out_and_said(self, client, tmp_path):
+        self._plant_stream(tmp_path, tail='{"scenario_name": "btc_run", "seq": 3')
+
+        body = client.get(self._URL).json()
+
+        assert body['count'] == 3
+        assert body['truncated_tail'] is True
+
+    def test_a_damaged_stream_is_unreadable_not_a_server_error(self, client, tmp_path):
+        self._plant_stream(tmp_path)
+        path = _run_logs(tmp_path).simulation / 'my_set' / _RUN / IO_SUBDIR / ORDER_EVENTS_STREAM
+        lines = path.read_text(encoding='utf-8').splitlines()
+        lines.insert(2, '{"broken')
+        path.write_text('\n'.join(lines) + '\n', encoding='utf-8')
+
+        response = client.get(self._URL)
+
+        assert response.status_code == 409
+        assert response.json()['error'] == 'artifact_unreadable'
+
+    def test_a_run_without_a_stream_names_why(self, client):
+        response = client.get(self._URL)
+
+        assert response.status_code == 404
+        assert response.json()['error'] != 'run_not_found', 'the run is right there'
+
+
+class TestTheVenueAccount:
+    """
+    The venue's account per live session (#362), served from its artifact — and a backtest,
+    whose venue is its own book, answers with the cause rather than a bare not-found.
+    """
+
+    _URL = f'/api/v1/reports/runs/{_RUN}/venue-account'
+
+    def test_it_serves_each_session_row_with_its_key(self, client, tmp_path):
+        io_dir = _run_logs(tmp_path).simulation / 'my_set' / _RUN / IO_SUBDIR
+        write_artifact(VenueAccountReport(run_id=_RUN_ID, units=[VenueAccountRow(
+            name='btc_session',
+            at_start=VenueSnapshotRow(seq=1, venue_order_count=0, venue_balances={'USD': 812.4}),
+            at_end=VenueSnapshotRow(seq=9, venue_order_count=0,
+                                    unread_parts=[BrokerTruthPart.VENUE_BALANCES]),
+            reconcile_lines=2, divergent_lines=1, last_reconcile_state=ReconcileState.CLEAN,
+            last_divergence=ReconcileDivergenceRow(ghost_orders=['OQ3V2K-ABCDE-FGHIJK']))]),
+            io_dir, VENUE_ACCOUNT_ARTIFACT)
+
+        body = client.get(self._URL).json()
+
+        assert body['key'] == ['name']
+        row = body['units'][0]
+        assert (row['at_end']['venue_balances'], row['at_end']['unread_parts']) == (
+            None, ['venue_balances']), 'unread, not empty'
+        assert (row['last_reconcile_state'], row['last_divergence']['ghost_orders']) == (
+            'clean', ['OQ3V2K-ABCDE-FGHIJK'])
+
+    def test_a_backtest_has_none_and_says_why(self, client, tmp_path):
+        RunIndex(_index_path(tmp_path)).record_artifacts(
+            _RUN, _run_logs(tmp_path).simulation / 'my_set' / _RUN)
+
+        response = client.get(self._URL)
+
+        assert response.status_code == 404
+        assert response.json()['error'] == 'artifact_not_produced'

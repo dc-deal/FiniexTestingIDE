@@ -27,6 +27,10 @@ from python.framework.testing.mock_broker_adapter import MockExecutionMode
 from python.framework.testing.mock_order_execution import MockOrderExecution
 from python.framework.trading_env.broker_config import BrokerConfig
 from python.framework.trading_env.live.live_trade_executor import LiveTradeExecutor
+from python.framework.types.live_types.live_execution_types import (
+    BrokerOrderStatus,
+    BrokerResponse,
+)
 from python.framework.types.trading_env_types.broker_types import BrokerType
 from python.framework.types.trading_env_types.latency_simulator_types import (
     PendingOperation,
@@ -35,7 +39,9 @@ from python.framework.types.trading_env_types.latency_simulator_types import (
 from python.framework.types.trading_env_types.order_types import (
     OpenOrderRequest,
     OrderDirection,
+    OrderStatus,
     OrderType,
+    RejectionReason,
 )
 
 from tests.autotrader.protective_levels.conftest import VenueHoldsProtectionMock
@@ -169,6 +175,61 @@ class TestTheCeilingEndsTheWait:
         assert protective in executor._active_stop_orders, (
             'giving up on the QUESTION is not the same as deciding the answer')
         assert protective.pending_order_id in executor.get_unresolved_at_ceiling()
+
+    def test_and_the_abandoned_close_ends_with_a_row(self):
+        """
+        The close its caller was told is PENDING ends as a denial — the row the same close
+        gets when it is withheld at the request (#362). It used to end with none.
+        """
+        mock, executor, position, protective = _close_behind_an_unanswered_cancel()
+        _exhaust_resolution(executor, protective)
+
+        withheld = [r for r in executor.get_order_history()
+                    if r.order_id == f'close_{position.position_id}']
+        assert [(r.status, r.rejection_reason, r.direction) for r in withheld] == [
+            (OrderStatus.DENIED, RejectionReason.CLOSE_WITHHELD, OrderDirection.LONG)]
+        assert executor.get_execution_stats().orders_denied == 1
+
+
+class TestACancelAnswerNamingNothingBooksNothing:
+    """
+    The venue ANSWERED and named nothing it cancelled — as open a question as a lost answer.
+
+    Booked as a confirmed cancel it dropped the stop and released the close beside it, the
+    double fill #503 exists to prevent. Kraken does not answer this way — it raises for an
+    order that is gone (measured 2026-09-13) — so the second adapter (#209) is what reaches it.
+    """
+
+    @staticmethod
+    def _close_behind_a_cancel_answered_unknown():
+        """A close waiting behind a cancel the venue answered by naming nothing."""
+        mock, executor, position, protective = _protected_position()
+        executor.broker.adapter.parse_cancel_response = (
+            lambda raw, broker_ref, timestamp: BrokerResponse(
+                broker_ref=broker_ref, status=BrokerOrderStatus.UNKNOWN, timestamp=timestamp))
+
+        executor.close_position(position.position_id)
+        mock.await_submit_confirmation(executor)
+        return mock, executor, position, protective
+
+    def test_the_stop_stays_and_the_close_keeps_waiting(self):
+        mock, executor, position, protective = self._close_behind_a_cancel_answered_unknown()
+
+        assert protective in executor._active_stop_orders
+        assert position.protective_broker_ref, 'the venue may still be holding this stop'
+        assert position.position_id in executor._deferred_closes
+        assert not executor.get_request_processor().get_pending_orders(
+            PendingOrderAction.CLOSE), 'a market close went out beside a stop that may rest'
+        assert not [r for r in executor.get_order_history()
+                    if r.order_id == protective.pending_order_id
+                    and r.status is OrderStatus.CANCELLED]
+
+    def test_and_the_resolution_asks_what_became_of_it(self):
+        mock, executor, position, protective = self._close_behind_a_cancel_answered_unknown()
+        executor.heartbeat()
+
+        assert protective.execution_state.in_flight_operation is PendingOperation.PENDING_CANCEL
+        assert protective.execution_state.resolution_deadline is not None
 
 
 class TestAnUnresolvedAmendWritesNoProvisionalValue:

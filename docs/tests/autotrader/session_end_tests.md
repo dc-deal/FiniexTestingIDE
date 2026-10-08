@@ -59,10 +59,12 @@ no exit at all.
 | `test_a_policy_left_position_is_not_an_error` | Without this, every clean session end grades `FINISHED_WITH_ERRORS` and exits 3 |
 | `test_an_unexpected_survivor_is_still_an_error` | Where flatness was expected, "orphaned" is still the right word |
 | `test_a_flat_session_is_clean_either_way` | — |
-| `test_cancel_expires_the_order_locally` | A cancelled resting order leaves an EXPIRED record |
-| `test_leave_does_not_expire_it` | Left standing means left in BOTH places — an order that can still fill is not expired |
-| `test_cancel_reaches_the_venue_and_expires_it_locally` | The same for a resting STOP, and read from the mock's own cancellation record rather than from our book — a cleanup that only forgot the order locally looks identical from our side |
-| `test_leave_keeps_it_in_both_places` | A stop left standing by policy is neither cancelled at the venue nor expired here |
+| `test_cancel_books_the_order_cancelled_by_the_framework` | A resting order the venue confirms cancelled ends `cancelled`, by the framework, at the session end — it used to be recorded `expired`, a claim the venue never made |
+| `test_leave_does_not_end_it` | Left standing means left in BOTH places — an order that can still fill is not recorded as ended |
+| `test_cancel_reaches_the_venue_and_ends_it_locally` | The same for a resting STOP, and read from the mock's own cancellation record rather than from our book — a cleanup that only forgot the order locally looks identical from our side |
+| `test_leave_keeps_it_in_both_places` | A stop left standing by policy is neither cancelled at the venue nor ended here |
+| `TestAnUnconfirmedCancelIsNotAnExpiry` | A cancel the venue refuses, with the read after the refusal unanswered as well, leaves an `unaccounted` record and an error saying what the operator should expect to find; a confirmed cancel is booked `cancelled` |
+| `TestACancelAlreadyOnItsWay` | A cancel of the strategy's that is already on its way is not sent a second time: the order's status is read, and it ends as the strategy's cancel. An order that filled before its session-end cancel is booked filled from the read after the refusal; a close waiting for its protective order's cancel is abandoned with a row rather than sent. Money cases in both account models |
 | `test_the_cleanup_does_not_take_a_shutdown_mode` | The #356 scope boundary, pinned structurally |
 | `test_the_shutdown_check_only_asks_about_flatness` | — |
 
@@ -108,6 +110,16 @@ position and must be cancelled by hand once the position is gone.
 | `test_an_unvalued_position_is_marked_as_such` | — |
 | `test_the_equity_is_not_called_marked_to_market_when_nothing_was_marked` | Two lines that used to contradict each other |
 | `test_it_is_called_marked_to_market_when_it_is_one` | The other direction, so the label is not simply removed |
+
+### `test_broker_truth_at_session_end.py` — the venue's account at the end (#362)
+
+Drives `AutotraderMain._shutdown` with its collaborators replaced, so the ORDER of the steps is what
+is checked.
+
+| Test | What it verifies |
+|---|---|
+| `TestTheEndRead` | The venue is asked after the session's orders are handled and before the order-event stream closes; a read that fails — a refused credential here — is logged and never keeps the stream open |
+| `TestTheFieldStudysEnd` | The field study's recorder closes even when its own end snapshot fails |
 
 ## The two guards worth knowing about
 

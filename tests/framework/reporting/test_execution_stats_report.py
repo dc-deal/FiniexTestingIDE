@@ -21,7 +21,11 @@ from python.framework.types.autotrader_types.autotrader_result_types import Auto
 from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.process_data_types import ProcessResult, ProcessTickLoopResult
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
-from python.framework.types.trading_env_types.trading_env_stats_types import ExecutionStats
+from python.framework.types.trading_env_types.order_types import FAILED_ORDER_STATUSES
+from python.framework.types.trading_env_types.trading_env_stats_types import (
+    EXECUTION_STATS_FIELD_BY_STATUS,
+    ExecutionStats,
+)
 
 # Every report artifact names its run (#475); the value is opaque to these tests.
 _RUN_ID = '20260830_120000_a1b2c3d4'
@@ -32,7 +36,7 @@ _DT = datetime(2025, 10, 13, tzinfo=timezone.utc)
 def _stats(sent: int = 5, executed: int = 4, rejected: int = 1, sl_tp: int = 2) -> ExecutionStats:
     """A real counts-only ExecutionStats fixture."""
     return ExecutionStats(
-        orders_sent=sent, orders_executed=executed,
+        orders_submitted=sent, orders_executed=executed,
         orders_rejected=rejected, sl_tp_triggered=sl_tp)
 
 
@@ -74,12 +78,12 @@ class TestBatch:
     def test_unit_counts_mapped(self):
         report = build_execution_stats_report(_RUN_ID, run_units_from_batch(_batch()))
         row = report.units[0]
-        assert (row.orders_sent, row.orders_executed, row.orders_rejected, row.sl_tp_triggered) \
+        assert (row.orders_submitted, row.orders_executed, row.orders_rejected, row.sl_tp_triggered) \
             == (5, 4, 1, 2)
 
     def test_totals_sum_currency_agnostic(self):
         report = build_execution_stats_report(_RUN_ID, run_units_from_batch(_batch()))
-        assert report.totals.orders_sent == 8
+        assert report.totals.orders_submitted == 8
         assert report.totals.orders_executed == 7
         assert report.totals.orders_rejected == 1
         assert report.totals.sl_tp_triggered == 3
@@ -109,4 +113,29 @@ class TestSession:
         report = build_execution_stats_report(_RUN_ID, 
             run_units_from_session(AutoTraderResult(execution_stats=None), 'p', 'BTCUSD'))
         assert report.units == []
-        assert report.totals.orders_sent == 0
+        assert report.totals.orders_submitted == 0
+
+
+class TestTheFailedCount:
+    """
+    `orders_failed` is the declared failure category — denied, rejected, undelivered,
+    unaccounted — summed from the counts, so it holds where the order history is capped.
+    """
+
+    def test_every_failed_status_has_a_count(self):
+        assert all(EXECUTION_STATS_FIELD_BY_STATUS[status] for status in FAILED_ORDER_STATUSES)
+
+    def test_it_sums_exactly_the_declared_statuses(self):
+        stats = ExecutionStats(orders_submitted=20, orders_executed=9, orders_denied=1,
+                               orders_rejected=2, orders_cancelled=3, orders_expired=4,
+                               orders_undelivered=5, orders_unaccounted=6)
+
+        row = build_execution_stats_report(_RUN_ID, run_units_from_session(
+            AutoTraderResult(execution_stats=stats), 'session', 'BTCUSD')).units[0]
+
+        assert row.orders_failed == 1 + 2 + 5 + 6, 'cancelled and expired are endings, not failures'
+
+    def test_the_totals_add_the_units_up(self):
+        report = build_execution_stats_report(_RUN_ID, run_units_from_batch(_batch()))
+
+        assert report.totals.orders_failed == sum(u.orders_failed for u in report.units) == 1

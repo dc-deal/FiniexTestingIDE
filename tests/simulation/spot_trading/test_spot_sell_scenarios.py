@@ -120,8 +120,8 @@ class TestSpotSellInsufficientBalance:
         self,
         spot_sell_execution_stats: ExecutionStats,
     ):
-        """The INSUFFICIENT_FUNDS rejection must appear in stats."""
-        assert spot_sell_execution_stats.orders_rejected >= 1, (
-            f'Expected at least 1 rejection in execution_stats, '
-            f'got {spot_sell_execution_stats.orders_rejected}'
+        """The INSUFFICIENT_FUNDS refusal must appear in stats — as a denial: it is refused at submission."""
+        assert spot_sell_execution_stats.orders_denied >= 1, (
+            f'Expected at least 1 denial in execution_stats, '
+            f'got {spot_sell_execution_stats.orders_denied}'
         )

@@ -13,6 +13,12 @@ from typing import Any, Dict, Optional
 
 from pydantic import BaseModel, Field, computed_field
 
+from python.framework.types.live_types.broker_truth_types import (
+    BrokerTruthPart,
+    BrokerTruthReadReason,
+)
+from python.framework.types.live_types.live_execution_types import BrokerOrderStatus
+from python.framework.types.live_types.reconciliation_types import ReconcileState
 # The risk baseline is REUSED, not projected. It is already a Pydantic record that describes
 # itself — kind, stamp, origin, and on spot the price and quantities its value can be
 # re-derived from — and the safety report's job is to surface exactly that record. A parallel
@@ -20,9 +26,17 @@ from pydantic import BaseModel, Field, computed_field
 from python.framework.types.persistence_types import RiskBaseline
 from python.framework.types.run_origin_types import CodeIdentity, RunOrigin
 from python.framework.types.run_outcome_types import RunOutcome
+from python.framework.types.trading_env_types.order_event_types import (
+    OrderEventPlane,
+    OrderEventType,
+    OrderOperation,
+)
 from python.framework.types.trading_env_types.order_types import (
+    CloseType,
     OrderAction,
     OrderDirection,
+    OrderEndReason,
+    OrderInitiator,
     OrderStatus,
     OrderType,
     RejectionReason,
@@ -127,6 +141,13 @@ class TradeHistoryRow(BaseModel):
     exit_slippage: float | None = None
     entry_slippage_pct: float | None = None
     exit_slippage_pct: float | None = None
+    # What belongs to the TRADE rather than to one of its fills. `lots` is what this record
+    # closed; `entry_lots` is the position's size when it opened, and `position_closes` how
+    # many records the position produced in its unit — counted before any filter, so a filter
+    # never changes it. Null where an older record carries no such figure.
+    close_type: CloseType | None = None
+    position_closes: int | None = None
+    entry_lots: float | None = None
 
 
 class TradeAnalytics(BaseModel):
@@ -239,13 +260,18 @@ class OrderHistoryRow(BaseModel):
     executed_lots: Optional[float] = None       # null unless something executed
     executed_price: Optional[float] = None      # null unless something executed
     event_time: Optional[str] = None            # ISO-8601 UTC, on the run's canonical clock —
-                                                # when this row's event happened: the fill, the
-                                                # refusal, the expiry. Null on a `pending` row
+                                                # when this row's event happened: the submission
+                                                # on a `pending` row, else the fill, the refusal,
+                                                # the cancel, the expiry
     commission: float
-    swap: float
-    slippage_points: float
-    rejection_reason: Optional[RejectionReason] = None  # null unless rejected
-    rejection_message: Optional[str] = None             # null unless rejected
+    order_type: Optional[OrderType] = None      # the type the order was ASKED as, refusals
+                                                # included; a close is `market`
+    close_type: Optional[CloseType] = None      # full / partial — close rows only
+    rejection_reason: Optional[RejectionReason] = None  # null unless denied or rejected
+    rejection_message: Optional[str] = None             # null unless denied or rejected
+    initiator: Optional[OrderInitiator] = None  # who ended it — cancelled, expired and
+                                                # unaccounted rows only
+    end_reason: Optional[OrderEndReason] = None  # why it ended — the same rows
 
 
 class OrderHistoryReport(RunScopedReport):
@@ -253,6 +279,178 @@ class OrderHistoryReport(RunScopedReport):
     orders: list[OrderHistoryRow]
     count: int
     symbols: list[str]      # distinct symbols present (filter UX)
+
+
+class OrderEventRow(BaseModel):
+    """
+    One transition in an order's life — a line of the run's order-event stream (#362).
+
+    Where the order history keeps one row per ENDING, this keeps every step: the submission, the
+    venue taking the order, a stop triggering, each cancel and amend asked for and its answer, an
+    answer that was lost and the asking that settled it. `seq` orders the stream within its unit
+    and `submitted_seq` ties every event to the submission it belongs to — one `order_id` repeats
+    across the closes of a position. A value that does not exist is null.
+    """
+    scenario_name: str                          # owning run unit (sim: scenario; live: session)
+    seq: int                                    # strictly increasing within the unit — THE order
+    event_type: OrderEventType
+    order_id: str
+    submitted_seq: Optional[int] = None         # null only on `denied`, which was never submitted
+    record_plane: OrderEventPlane = OrderEventPlane.BOT
+    position_id: Optional[str] = None
+    action: Optional[OrderAction] = None
+    order_type: Optional[OrderType] = None      # the type the order was ASKED as; null if unknown
+    symbol: Optional[str] = None
+    direction: Optional[OrderDirection] = None  # the POSITION's — a close's is the closed position's
+    client_order_id: Optional[str] = None       # our wire key (live)
+    broker_ref: Optional[str] = None            # the venue's handle (live)
+    previous_broker_ref: Optional[str] = None   # the handle an amend replaced
+    trade_id: Optional[str] = None
+    lots: Optional[float] = None
+    cum_lots: Optional[float] = None
+    fill_price: Optional[float] = None
+    limit_price: Optional[float] = None
+    trigger_price: Optional[float] = None
+    fee: Optional[float] = None
+    fee_currency: Optional[str] = None
+    submission_mid: Optional[float] = None
+    submission_time_msc: Optional[int] = None
+    in_flight_ms: Optional[float] = None        # the answer to a submission: modelled / measured
+    event_time: Optional[str] = None            # ISO-8601 UTC, the run's canonical clock
+    ts_init: Optional[str] = None               # ISO-8601 UTC, when this process saw it — live only
+    initiator: Optional[OrderInitiator] = None
+    end_reason: Optional[OrderEndReason] = None
+    rejection_reason: Optional[RejectionReason] = None
+    venue_reason: Optional[str] = None          # the venue's own code, passed through unread
+    message: Optional[str] = None
+    lost_request: Optional[OrderOperation] = None  # on unresolved / resolved: which request
+
+
+class VenueOrderRow(BaseModel):
+    """One order the venue reported as open, in the venue's own terms (#362)."""
+    broker_ref: str                             # the venue's handle
+    client_order_id: Optional[str] = None       # our wire key, where the order carries one
+    symbol: str
+    direction: OrderDirection
+    order_type: OrderType
+    lots: float                                 # as asked, not what remains
+    filled_lots: float = 0.0                    # executed so far
+    limit_price: Optional[float] = None         # the price it would fill at
+    stop_price: Optional[float] = None          # the price that activates it
+    status: BrokerOrderStatus
+
+
+class VenuePositionRow(BaseModel):
+    """One position the venue reported — a margin account's; spot has none (#362)."""
+    symbol: str
+    direction: OrderDirection
+    lots: float
+    entry_price: float
+    broker_ref: Optional[str] = None
+
+
+class ReconcileDivergenceRow(BaseModel):
+    """
+    A divergent reconciliation picture by identity (#362).
+
+    Venue references for what the venue holds and the session cannot place, our order ids for
+    what the session holds and the venue does not show, positions as counts.
+    """
+    ghost_orders: list[str] = []                # not ours, as far as we can tell
+    abandoned_orders: list[str] = []            # this session's key, no local order left
+    foreign_session_orders: list[str] = []      # an earlier session's key
+    unconfirmed_orders: list[str] = []          # submit never answered, unseen at the venue
+    orphan_orders: list[str] = []               # ours, and the venue does not hold them
+    stale_orders: list[str] = []                # matched, but price or lots differ
+    ghost_positions: int = 0
+    orphan_positions: int = 0
+    stale_positions: int = 0
+
+
+class BrokerTruthRow(BaseModel):
+    """
+    What the venue reported when a live session asked it — a broker-truth line of the run's
+    order-event stream (#362).
+
+    Written at session start, at session end, and when the reconciliation picture changed. Each
+    of the three venue parts is in one of three states: a value — an empty one says the venue
+    holds nothing; null and named in `unread_parts`, where the read gave up; null and unnamed,
+    where this occasion does not read it — positions on a spot account, balances on a reconcile
+    line that does not cross between clean and divergent. `seq` shares the counter of the order
+    events, so the two lists interleave in the order they were written.
+    """
+    scenario_name: str                          # owning run unit (the session)
+    seq: int
+    record_plane: OrderEventPlane = OrderEventPlane.BROKER_TRUTH
+    read_reason: BrokerTruthReadReason
+    reconcile_state: Optional[ReconcileState] = None      # on a reconcile line
+    divergence: Optional[ReconcileDivergenceRow] = None   # on a divergent one
+    venue_orders: Optional[list[VenueOrderRow]] = None
+    venue_balances: Optional[dict[str, float]] = None     # unfiltered, quote currency included
+    venue_positions: Optional[list[VenuePositionRow]] = None
+    unread_parts: list[BrokerTruthPart] = []
+    event_time: Optional[str] = None            # ISO-8601 UTC, canonical clock; null before a tick
+    ts_init: Optional[str] = None               # ISO-8601 UTC, when this process saw the answer
+
+
+class OrderEventsReport(RunScopedReport):
+    """
+    The run's order-event stream as two lists, every unit's lines in their own order: the steps
+    of its orders, and — live only — what the venue reported when the session asked it.
+
+    `truncated_tail` says the stream's last line was cut off — a session killed while writing it.
+    The line is left out rather than guessed at; everything before it is complete.
+    """
+    events: list[OrderEventRow]
+    count: int
+    broker_truth: list[BrokerTruthRow] = []
+    truncated_tail: bool = False
+    # What makes one row unique — a served list declares it. `seq` is unique within a unit,
+    # across both lists: they share one counter.
+    keys: dict[str, list[str]] = {
+        'events': ['scenario_name', 'seq'],
+        'broker_truth': ['scenario_name', 'seq'],
+    }
+
+
+class VenueSnapshotRow(BaseModel):
+    """
+    What the venue held at one read of a live session (#362) — counted, with its balance sheet.
+    The read itself, order by order, is the broker-truth line `seq` names on the order-event
+    stream. A part the read gave up on is null and named in `unread_parts`.
+    """
+    seq: int                                            # the broker-truth line it comes from
+    venue_order_count: Optional[int] = None             # orders the venue reported as open
+    venue_balances: Optional[dict[str, float]] = None   # unfiltered, quote currency included
+    venue_position_count: Optional[int] = None          # margin only; null on spot
+    unread_parts: list[BrokerTruthPart] = []
+
+
+class VenueAccountRow(BaseModel):
+    """
+    One live session's account as its venue reported it — at the start, at the end, and what
+    the reconciliation recorded in between (#362).
+
+    A reconcile line is written only when the picture changes, and the reconciliation starts
+    from clean — so the first line is always a divergent one, and `last_reconcile_state` says
+    whether the last divergence recorded was followed by a clean picture.
+    """
+    name: str                                       # the session
+    at_start: Optional[VenueSnapshotRow] = None     # null: the session stopped before its start read
+    at_end: Optional[VenueSnapshotRow] = None       # null: the session ended without its end read
+    reconcile_lines: int = 0                        # broker-truth lines a changed picture wrote
+    divergent_lines: int = 0                        # of those, the ones that found a divergence
+    last_reconcile_state: Optional[ReconcileState] = None      # the last line's; null: none written
+    last_divergence: Optional[ReconcileDivergenceRow] = None   # the latest divergent picture
+
+
+class VenueAccountReport(RunScopedReport):
+    """
+    The venue's account per live session — AutoTrader only: a backtest's venue is its own book.
+    The lines it is derived from are on the order-event stream, as its `broker_truth` list.
+    """
+    units: list[VenueAccountRow]
+    key: list[str] = ['name']
 
 
 class OpenPositionRow(BaseModel):
@@ -437,13 +635,30 @@ class PortfolioReport(RunScopedReport):
 
 
 class ExecutionStatsRow(BaseModel):
-    """Order-execution counts of one run unit (sim: a scenario; live: the session)."""
+    """
+    Order-execution counts of one run unit (sim: a scenario; live: the session).
+
+    Each count carries the name of what it counts (#362): `orders_submitted` the orders handed
+    to the venue — opens, closes and protective orders; `orders_adopted` the orders a previous
+    session sent and this one took over at boot; every other `orders_<status>` the
+    order-history rows that ended with that status. A refusal made here never reached the
+    venue, so it is denied and not submitted.
+    """
     name: str               # scenario name (sim) / profile/session label (live)
     symbol: str
-    orders_sent: int
-    orders_executed: int
+    orders_submitted: int
+    orders_adopted: int     # taken over at boot — live only; a backtest starts with none
+    orders_executed: int    # open and close fills
+    orders_denied: int
     orders_rejected: int
+    orders_cancelled: int
+    orders_expired: int
+    orders_undelivered: int
+    orders_unaccounted: int
     sl_tp_triggered: int    # closes triggered by stop-loss / take-profit
+    # The rows that ended as a failure — denied, rejected, undelivered or unaccounted. Counted
+    # where each row is booked, so it holds where the order history is capped
+    orders_failed: int = 0
 
 
 class ExecutionStatsTotals(BaseModel):
@@ -451,10 +666,17 @@ class ExecutionStatsTotals(BaseModel):
     Order counts summed across all units. Counts are currency-agnostic, so this is
     ONE object (no per-currency split, unlike the portfolio roll-up).
     """
-    orders_sent: int = 0
+    orders_submitted: int = 0
+    orders_adopted: int = 0
     orders_executed: int = 0
+    orders_denied: int = 0
     orders_rejected: int = 0
+    orders_cancelled: int = 0
+    orders_expired: int = 0
+    orders_undelivered: int = 0
+    orders_unaccounted: int = 0
     sl_tp_triggered: int = 0
+    orders_failed: int = 0
 
 
 class ExecutionStatsReport(RunScopedReport):
@@ -482,27 +704,48 @@ class ActiveOrderRow(BaseModel):
     take_profit: float | None = None
 
 
+class NeverConfirmedOrderRow(BaseModel):
+    """
+    One order whose in-flight phase ended without the venue ever confirming it (#362).
+
+    `undelivered`: the venue confirmed it never received the order. `unaccounted`: we stopped
+    asking, and the venue may still hold it — the case to check by hand.
+    """
+    order_id: str
+    submitted_seq: int                  # the submission's seq in the order-event stream
+    event_type: OrderEventType          # undelivered · unaccounted
+    end_reason: OrderEndReason | None = None
+    message: str | None = None
+
+
 class PendingOrdersUnitRow(BaseModel):
-    """Pending-order lifecycle + latency + active orders of one run unit (sim scenario)."""
-    name: str               # owning run unit (scenario)
+    """
+    How one run unit's orders left their in-flight phase, derived from its order-event stream.
+
+    Per submission, the first word from the venue counts: accepted, rejected, never confirmed, or
+    expired on the way — so `total_submitted` is their sum, and a row whose counts do not add up
+    names an ending the stream lacks. An order a previous session sent is not a submission here.
+    """
+    name: str               # owning run unit (sim: scenario; live: session)
     symbol: str
-    total_resolved: int = 0
-    total_filled: int = 0
+    total_submitted: int = 0
+    total_accepted: int = 0
     total_rejected: int = 0
-    total_timed_out: int = 0
-    total_force_closed: int = 0
-    avg_latency_ms: float | None = None
-    min_latency_ms: float | None = None
-    max_latency_ms: float | None = None
-    latency_count: int = 0      # latency samples → weighted avg on aggregation (#397)
+    total_never_confirmed: int = 0      # undelivered + unaccounted
+    total_expired: int = 0              # the data's end met the order on its way
+    avg_in_flight_ms: float | None = None
+    min_in_flight_ms: float | None = None
+    max_in_flight_ms: float | None = None
+    in_flight_count: int = 0    # answers with a measured duration → weighted avg on aggregation
+    never_confirmed_orders: list[NeverConfirmedOrderRow] = []
     active_limit_orders: list[ActiveOrderRow] = []
     active_stop_orders: list[ActiveOrderRow] = []
 
 
 class PendingOrdersReport(RunScopedReport):
     """
-    Pending-order lifecycle as the unified array model: per-unit rows. Sim-populated
-    (the live AutoTraderResult carries no pending stats → empty units live).
+    Pending-order lifecycle as the unified array model: per-unit rows, in both pipelines —
+    derived from each unit's order-event stream (#362).
     """
     units: list[PendingOrdersUnitRow]
     # What makes one row unique — a served list declares it. The unit name: a scenario set whose
@@ -822,6 +1065,11 @@ class RunInfo(BaseModel):
     # a test session legitimately does; such a run is listed rather than hidden, because an
     # index that silently omits runs is its own surprise.
     artifacts: list[str] = Field(default_factory=list)
+    # The STREAMS the run wrote while it ran, by file name — 'order_events.jsonl' (#362). Kept
+    # apart from `artifacts` on purpose: a live session writes its stream from its first order,
+    # so a session that died before its report HAS one, and counting it as an artifact would make
+    # that session read as reported. A stream is served while the run is still going.
+    stream_files: list[str] = Field(default_factory=list)
     # Straight from the run's header (#475) — the list answers "what was this run" on its own,
     # instead of making a consumer open each run to find out.
     start_time: str = ''
@@ -1133,9 +1381,15 @@ class RunSummary(RunScopedReport):
     console headline, API, live snapshot, dashboard — composed once off the section aggregates.
     """
     currencies: list[RunSummaryCurrency]
-    orders_sent: int = 0
+    orders_submitted: int = 0
+    orders_adopted: int = 0
     orders_executed: int = 0
+    orders_denied: int = 0
     orders_rejected: int = 0
+    orders_cancelled: int = 0
+    orders_expired: int = 0
+    orders_undelivered: int = 0
+    orders_unaccounted: int = 0
     sl_tp_triggered: int = 0
     unit_count: int = 0     # sim: N scenarios | live: 1
     # The market time the run processed, as its units' TICK TIMESPANS: covered together (a
@@ -1220,6 +1474,9 @@ class RunResultRow(BaseModel):
     # 'simulation' | 'autotrader'; '' on a fragment written before the column existed, which means
     # UNKNOWN and never a guess.
     run_type: str = ''
+    # Where the run's orders went — `venue` is real money and nothing else (#362). None on a
+    # fragment written before the column existed: not recorded.
+    orders_to: OrdersTo | None = None
     # When this row was written — within seconds of the run's end. '' on an older fragment,
     # which is what makes a gap measured from it fall back to start-to-start and SAY so.
     recorded_at_utc: str = ''
@@ -1303,9 +1560,15 @@ class RunResultRow(BaseModel):
     # None where not measured — a booking-period row carries no order counts (they are
     # monotonic executor totals with no time argument, so a period's share is not derivable),
     # and a default of 0 turned that absence into a measured zero on every folded row.
-    orders_sent: int | None = None
+    orders_submitted: int | None = None
+    orders_adopted: int | None = None
     orders_executed: int | None = None
+    orders_denied: int | None = None
     orders_rejected: int | None = None
+    orders_cancelled: int | None = None
+    orders_expired: int | None = None
+    orders_undelivered: int | None = None
+    orders_unaccounted: int | None = None
     sl_tp_triggered: int | None = None
     # Weakest SIGNAL channel of the run (#433); None = no SIGNAL worker was involved
     signal_fresh_ratio: float | None = None
@@ -1415,6 +1678,10 @@ class DeploymentSessionRow(BaseModel):
             marked rather than quietly shown as the same measure
         strategy_changed: True when `param_hash` differs from the previous session's
         operation_changed: True when `profile_hash` differs from the previous session's
+        orders_to: Where the session's orders went — `venue` is real money, `simulated` a
+            rehearsal; None on a session recorded before the field existed
+        orders_to_changed: True when `orders_to` differs from the previous session's — a
+            deployment that went from a rehearsal to real money, or back
     """
     index: int
     run_id: str
@@ -1431,6 +1698,8 @@ class DeploymentSessionRow(BaseModel):
     gap_between_starts: bool = False
     strategy_changed: bool = False
     operation_changed: bool = False
+    orders_to: Optional[OrdersTo] = None
+    orders_to_changed: bool = False
 
 
 class DeploymentComparabilityAdvisory(BaseModel):
@@ -1454,11 +1723,15 @@ class DeploymentComparabilityAdvisory(BaseModel):
             what it decided (a safety threshold, a guard, a timeout, the capital declaration)
         longest_gap_hours: The longest stretch the bot was not running, None when no gap could
             be measured
+        orders_to: Where its sessions' orders went, each value once — both `simulated` and
+            `venue` mean the history mixes a rehearsal with real money, and its P&L column adds
+            simulated fills to real ones. Sessions recorded before the field existed add nothing
     """
     sessions: int
     strategy_stands: int
     operation_stands: int
     longest_gap_hours: Optional[float] = None
+    orders_to: list[OrdersTo] = []
 
 
 class DeploymentSummary(BaseModel):
@@ -1483,6 +1756,9 @@ class DeploymentSummary(BaseModel):
         currency: The account currency the figures are in
         longest_gap_hours: The longest stretch the bot was not running
         changed: True when the sessions were not all produced by the same configuration
+        orders_to: Where its sessions' orders went, each value once — `["venue"]` is a
+            real-money deployment, `["simulated"]` a rehearsal, both a deployment that mixes the
+            two (then `changed` is true as well). Empty when no session recorded it
     """
     deployment_id: str
     sessions: int
@@ -1496,6 +1772,7 @@ class DeploymentSummary(BaseModel):
     bot_id: str = ''
     longest_gap_hours: Optional[float] = None
     changed: bool = False
+    orders_to: list[OrdersTo] = []
 
 
 class DeploymentListResponse(BaseModel):
@@ -2409,20 +2686,26 @@ class AggregatedPortfolioRow(BaseModel):
     taker_fee: float = 0.0
     avg_spread: float = 0.0
     # Execution (per currency)
-    orders_sent: int = 0
+    orders_submitted: int = 0
+    orders_adopted: int = 0
     orders_executed: int = 0
+    orders_denied: int = 0
     orders_rejected: int = 0
+    orders_cancelled: int = 0
+    orders_expired: int = 0
+    orders_undelivered: int = 0
+    orders_unaccounted: int = 0
     sl_tp_triggered: int = 0
-    execution_rate_pct: float = 0.0     # orders_executed / orders_sent
-    # Pending
-    pending_total_resolved: int = 0
-    pending_total_filled: int = 0
+    execution_rate_pct: float = 0.0     # orders_executed / (orders_submitted + orders_adopted)
+    # Pending — the units' in-flight counters, summed
+    pending_total_submitted: int = 0
+    pending_total_accepted: int = 0
     pending_total_rejected: int = 0
-    pending_total_timed_out: int = 0
-    pending_total_force_closed: int = 0
-    pending_avg_latency_ms: float | None = None
-    pending_min_latency_ms: float | None = None
-    pending_max_latency_ms: float | None = None
+    pending_total_never_confirmed: int = 0
+    pending_total_expired: int = 0
+    pending_avg_in_flight_ms: float | None = None
+    pending_min_in_flight_ms: float | None = None
+    pending_max_in_flight_ms: float | None = None
     pending_active_limit_count: int = 0
     pending_active_stop_count: int = 0
     # Spot dual-balance (only populated for spot rows)

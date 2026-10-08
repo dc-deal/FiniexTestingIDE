@@ -8,11 +8,15 @@ and reset semantics.
 
 from datetime import datetime, timedelta, timezone
 
-from python.framework.trading_env.decision_trading_api import _COOLDOWN_REJECTION_REASONS
+from python.framework.trading_env.decision_trading_api import (
+    _COOLDOWN_REJECTION_REASONS,
+    _COOLDOWN_STATUSES,
+)
 from python.framework.trading_env.order_guard import OrderGuard
 from python.framework.types.trading_env_types.order_types import (
     OpenOrderRequest,
     OrderDirection,
+    OrderStatus,
     OrderType,
     RejectionReason,
 )
@@ -122,17 +126,49 @@ class TestCooldown:
         )
 
 
+class TestTheDenialIdsAreReproducible:
+    """
+    Two identical backtests write identical order-event streams (#362), denials included — so a
+    guard numbers its denials with a counter, never a random suffix.
+    """
+
+    @staticmethod
+    def _denial_ids(denials: int):
+        """
+        The ids a fresh guard gives its denials while its cooldown holds.
+
+        Args:
+            denials: How many requests to refuse
+
+        Returns:
+            The ids, in order
+        """
+        guard = OrderGuard(max_consecutive_rejections=1, cooldown_seconds=60.0)
+        guard.record_rejection(OrderDirection.LONG, _T0)
+        return [guard.validate(_request(OrderDirection.LONG), _T0).order_id
+                for _ in range(denials)]
+
+    def test_two_guards_number_the_same_denials_the_same_way(self):
+        assert self._denial_ids(3) == self._denial_ids(3)
+
+    def test_the_ids_count_from_one_within_a_guard(self):
+        assert self._denial_ids(3) == ['guard_1', 'guard_2', 'guard_3']
+
+
 class TestBrokerUnreachableArmsTheCooldown:
     """
     An unreachable venue is the case where sending more orders helps least.
 
     #473 moved the order-path transport fault from BROKER_ERROR to the new
     BROKER_UNREACHABLE and the cooldown set was not extended, so the pause that used to arm
-    when the venue could not be reached armed on nothing.
+    when the venue could not be reached armed on nothing. Since #362 that fault is no longer
+    a rejection at all — the order ends undelivered or unaccounted — and those two statuses
+    arm the cooldown whatever their reason.
     """
 
-    def test_broker_unreachable_is_a_cooldown_reason(self):
-        assert RejectionReason.BROKER_UNREACHABLE in _COOLDOWN_REJECTION_REASONS
+    def test_an_unreachable_venue_arms_the_cooldown(self):
+        assert _COOLDOWN_STATUSES == {OrderStatus.UNDELIVERED, OrderStatus.UNACCOUNTED}
+        assert RejectionReason.BROKER_ERROR in _COOLDOWN_REJECTION_REASONS
 
     def test_the_cooldown_expires_once_the_rejections_stop(self):
         guard = OrderGuard(

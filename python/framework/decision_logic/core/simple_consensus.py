@@ -368,7 +368,7 @@ class SimpleConsensus(AbstractDecisionLogic):
                     AwarenessLevel.INFO,
                     'order_submitted',
                 )
-            elif order_result.is_rejected:
+            elif order_result.is_refused:
                 self.logger.warning(
                     f"✗ Order rejected: {order_result.rejection_reason.value if order_result.rejection_reason else 'Unknown'} - "
                     f"{order_result.rejection_message}"

@@ -126,12 +126,16 @@ request = OpenOrderRequest(
     direction=OrderDirection.LONG, lots=0.001
 )
 result = executor.open_order(request)
-# result.status == OrderStatus.REJECTED
-# result.rejection_reason == RejectionReason.BROKER_ERROR
+# result.status == OrderStatus.PENDING — the submit is asynchronous
+
+mock.feed_tick(executor, symbol="BTCUSD", bid=49999.0, ask=50001.0)
+# the drain delivers the venue's refusal:
+# executor.get_order_history()[-1].status == OrderStatus.REJECTED
+# executor.get_order_history()[-1].rejection_reason == RejectionReason.BROKER_ERROR
 
 # Check stats
 stats = executor.get_execution_stats()
-# stats.orders_sent == 1
+# stats.orders_submitted == 1
 # stats.orders_rejected == 1
 # stats.orders_executed == 0
 ```
@@ -174,11 +178,15 @@ adapter.set_mode(MockExecutionMode.REJECT_ALL)
 
 ### 2. Error Path Verification (do rejections propagate?)
 - REJECT_ALL mode: rejection in `_order_history`, no position in portfolio
-- TIMEOUT mode: timeout detected, cancellation attempted, BROKER_ERROR recorded
+- TIMEOUT mode: timeout detected, the venue asked, the order cancelled by the framework — a
+  `cancelled` row with the end reason `order_timeout`, never a rejection
 
 ### 3. Stats Consistency Verification
-- `orders_sent == orders_executed + orders_rejected` (always)
-- `len(order_history) >= orders_sent` (may include internal rejections)
+- `orders_submitted == orders_executed + orders_rejected` when every order either fills or is
+  refused by the venue; a cancel, an expiry or a give-up adds its own count to the right-hand
+  side, and a refusal before sending is `orders_denied` and never submitted
+- `len(order_history) >= orders_submitted` once every order has ended — each submission ends
+  with a row of its own, and a denial adds one that was never submitted
 - `len(trade_history) <= orders_executed` (only completed round-trips)
 
 ### 4. Simulation vs live execution stack (same shared core?)

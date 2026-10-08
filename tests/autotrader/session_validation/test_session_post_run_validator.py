@@ -30,6 +30,8 @@ from python.framework.types.config_types.scenario_settings_config_types import (
 from python.framework.types.log_level import LogLevel
 from python.framework.types.log_record_types import LogRecord
 from python.framework.types.run_origin_types import CodeIdentity, RepositoryState
+from python.framework.types.trading_env_types.order_event_types import OrderEvent, OrderEventType
+from python.framework.types.trading_env_types.trading_env_stats_types import ExecutionStats
 from python.framework.types.validation_types import ValidationDomain, ValidationResult
 from python.framework.validators.component_metadata_advisory import check_market_fit
 from python.framework.validators.session_post_run_validator import SessionPostRunValidator
@@ -242,3 +244,39 @@ class TestCodeUnderNoVersionControl:
         checks = self._findings(allowed=True)
         assert 'unversioned_code' not in checks
         assert 'uncommitted_code' in checks
+
+
+class TestTheSessionStreamHoldsEverySubmission:
+    """
+    A live session's stream is a file written line by line; a failed write ends it early (#362).
+
+    The counters derived from it would then be short by what is missing, so a session whose
+    stream holds fewer submissions than its executor counted says so.
+    """
+
+    @staticmethod
+    def _result(recorded: int, counted: int) -> AutoTraderResult:
+        """
+        A session result with `recorded` submissions read back and `counted` counted.
+
+        Args:
+            recorded: `submitted` events read back from its stream
+            counted: The executor's `orders_submitted`
+
+        Returns:
+            The result
+        """
+        return AutoTraderResult(
+            execution_stats=ExecutionStats(orders_submitted=counted),
+            order_events=[OrderEvent(seq=n + 1, event_type=OrderEventType.SUBMITTED,
+                                     order_id=f'pos_btcusd_{n}', submitted_seq=n + 1)
+                          for n in range(recorded)])
+
+    def test_a_stream_short_of_a_submission_is_reported(self):
+        findings = _validated(self._result(recorded=4, counted=5), _config(with_settings=False))
+        assert [f.check for f in findings] == ['order_event_stream_incomplete']
+        assert '4 submission(s) in the stream, 5 counted' in findings[0].message
+        assert findings[0].domain is ValidationDomain.EXECUTION
+
+    def test_a_complete_stream_says_nothing(self):
+        assert _validated(self._result(recorded=5, counted=5), _config(with_settings=False)) == []

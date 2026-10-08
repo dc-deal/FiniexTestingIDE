@@ -429,9 +429,15 @@ BROKER_ARTIFACT: ArtifactSpec[BrokerReport] = ArtifactSpec('broker.json', Broker
 report = ReportStore().get(run_id, BROKER_ARTIFACT)   # statically Optional[BrokerReport]
 ```
 
-Specs live in [`artifact_specs.py`](../../python/framework/reporting/io/artifact_specs.py); the two
-artifacts with a CSV surface and the two with a row filter keep that real logic in
+Specs live in [`artifact_specs.py`](../../python/framework/reporting/io/artifact_specs.py); the
+artifacts with a CSV surface and those with a row filter keep that real logic in
 `report_csv_io.py` and `report_filters.py`.
+
+A run's directory also holds its **order-event stream** (`io/order_events.jsonl`, #362) — written
+while a live session runs, and with its report by a backtest. It is part of the run's record, not a
+store of its own, and not an artifact: the run index lists it under `stream_files`, because an empty
+artifact list is how a run that never reached its report is recognised. See [Order-Event
+Stream](order_event_stream.md).
 
 ---
 

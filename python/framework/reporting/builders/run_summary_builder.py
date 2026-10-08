@@ -24,6 +24,7 @@ from python.framework.types.api.report_types import (
     TradeHistoryReport,
     UnitRoster,
 )
+from python.framework.types.trading_env_types.trading_env_stats_types import EXECUTION_COUNT_FIELDS
 from python.framework.utils.time_utils import covered_seconds
 
 
@@ -71,10 +72,7 @@ def build_run_summary(
     return RunSummary(
         run_id=run_id,
         currencies=currencies,
-        orders_sent=totals.orders_sent,
-        orders_executed=totals.orders_executed,
-        orders_rejected=totals.orders_rejected,
-        sl_tp_triggered=totals.sl_tp_triggered,
+        **{field_name: getattr(totals, field_name) for field_name in EXECUTION_COUNT_FIELDS},
         unit_count=unit_count,
         tick_timespan_seconds=covered_seconds(spans) if spans else None,
         tick_timespan_total_seconds=(

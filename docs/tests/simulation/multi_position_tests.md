@@ -217,7 +217,7 @@ Validates ProbeMetadata tracking from the decision logic.
 | `test_expected_trades_signal_ticks_match` | Signal ticks in metadata match config tick_numbers |
 | `test_order_ids_match_trade_history` | Metadata order_ids = trade_history position_ids (pipeline integrity) |
 | `test_no_warmup_errors` | No warmup validation errors |
-| `test_no_rejected_orders` | All orders executed (0 rejections) |
+| `test_no_rejected_orders` | All orders executed — none rejected by the venue, none denied here |
 | `test_tick_count_matches_config` | 20,500 ticks processed |
 
 **Pipeline integrity:** `test_order_ids_match_trade_history` validates the full chain: decision_logic → send_order() → order_id → portfolio → position_id → TradeRecord. If any step drops or corrupts an ID, this test catches it.
@@ -275,8 +275,9 @@ BatchExecutionSummary
             │    └→ total_spread_cost
             ├→ trade_history: List[TradeRecord]  ← 4 records with full audit trail
             ├→ execution_stats: ExecutionStats
-            │    ├→ orders_sent: 4
-            │    └→ orders_rejected: 0
+            │    ├→ orders_submitted: 8  (4 opens + 4 closes)
+            │    ├→ orders_executed: 8
+            │    └→ orders_rejected: 0 · orders_denied: 0
             └→ decision_statistics: DecisionLogicStats
                  └→ probe_metadata: ProbeMetadata
                       ├→ expected_trades: [{signal_tick, direction, order_id, ...}, ...]

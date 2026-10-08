@@ -26,7 +26,7 @@ End-to-end tests using `margin_stress_probe` decision logic with `trade_sequence
 |-------|-------------------|
 | `TestSpotBuyExecutes` | BUY on spot executes normally (baseline) |
 | `TestSpotSellWithBalance` | SELL on spot with held base currency executes (not guard-rejected) |
-| `TestSpotSellInsufficientBalance` | SELL without base balance → INSUFFICIENT_FUNDS rejection |
+| `TestSpotSellInsufficientBalance` | SELL without base balance → INSUFFICIENT_FUNDS, refused at submission and so counted as a denial |
 
 ---
 

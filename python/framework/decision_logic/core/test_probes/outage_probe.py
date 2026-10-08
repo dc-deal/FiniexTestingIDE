@@ -209,7 +209,7 @@ class OutageProbe(AbstractDecisionLogic):
             lots=self._lot_size,
             comment='OutageProbe stale entry',
         )
-        if result.is_rejected and result.rejection_reason == RejectionReason.STALE_MARKET_DATA:
+        if result.is_refused and result.rejection_reason == RejectionReason.STALE_MARKET_DATA:
             self._received_events.append('stale_entry_rejected')
             self.logger.warning(
                 '[PROBE] stale entry rejected by OrderGuard (STALE_MARKET_DATA)')

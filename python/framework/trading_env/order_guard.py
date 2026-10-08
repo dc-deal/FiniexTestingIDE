@@ -21,10 +21,10 @@ Current rules:
   order_guard.block_stale_market_data.
 
 The guard sits inside DecisionTradingApi.send_order() and returns a fully-formed
-OrderResult(REJECTED) on block — the executor is never called for blocked orders.
-Guard rejections are recorded in the executor's order history via
+OrderResult(DENIED) on block — the executor is never called for blocked orders.
+Guard refusals are recorded in the executor's order history via
 AbstractTradeExecutor.record_guard_rejection() so batch reports see them
-alongside real broker rejections.
+beside the executor's own denials.
 
 Time source:
 - The guard is clock-agnostic — all time-dependent methods take an explicit
@@ -43,7 +43,6 @@ State updates flow through two paths:
 
 from datetime import datetime, timedelta
 from typing import Dict, Optional, Set
-from uuid import uuid4
 
 from python.framework.types.trading_env_types.market_data_status_types import MarketDataStatus
 from python.framework.types.trading_env_types.order_types import (
@@ -51,8 +50,9 @@ from python.framework.types.trading_env_types.order_types import (
     OrderAction,
     OrderDirection,
     OrderResult,
+    OrderStatus,
     RejectionReason,
-    create_rejection_result,
+    create_refusal_result,
 )
 
 
@@ -81,6 +81,7 @@ class OrderGuard:
         self._block_stale_market_data = block_stale_market_data
         self._rejection_counts: Dict[OrderDirection, int] = {}
         self._cooldown_until: Dict[OrderDirection, datetime] = {}
+        self._denials_issued = 0
 
     # ============================================
     # Validation
@@ -106,7 +107,7 @@ class OrderGuard:
                 ordinary live case
 
         Returns:
-            OrderResult(REJECTED) if blocked, None otherwise
+            OrderResult(DENIED) if blocked, None otherwise
         """
         # Stale-market-data block (#436): never open new positions on blind
         # data. Only AutoTrader sessions can be stale; sim status is always fresh.
@@ -135,7 +136,7 @@ class OrderGuard:
         if unresolved_at_ceiling:
             return self._refuse(
                 request, now,
-                reason=RejectionReason.UNRESOLVED_WRITE,
+                reason=RejectionReason.UNACCOUNTED_ORDER,
                 message=(
                     f'Entry blocked: {len(unresolved_at_ceiling)} order(s) sent and never '
                     f'accounted for by the venue '
@@ -165,7 +166,7 @@ class OrderGuard:
         message: str,
     ) -> OrderResult:
         """
-        A guard rejection stating the entry it blocked, stamped at the guard's own time.
+        A guard refusal stating the entry it blocked, stamped at the guard's own time.
 
         Args:
             request: The blocked request
@@ -174,17 +175,19 @@ class OrderGuard:
             message: The human sentence beside the reason
 
         Returns:
-            The REJECTED OrderResult
+            The DENIED OrderResult — the order never left this process
         """
-        return create_rejection_result(
+        return create_refusal_result(
             order_id=self._make_order_id(),
             reason=reason,
             message=message,
+            status=OrderStatus.DENIED,
             execution_time=now,
             action=OrderAction.OPEN,
             symbol=request.symbol,
             direction=request.direction,
             requested_lots=request.lots,
+            order_type=request.order_type,
         )
 
     # ============================================
@@ -236,7 +239,14 @@ class OrderGuard:
     # Internals
     # ============================================
 
-    @staticmethod
-    def _make_order_id() -> str:
-        """Distinct prefix makes guard rejections identifiable in logs."""
-        return f'guard_{uuid4().hex[:8]}'
+    def _make_order_id(self) -> str:
+        """
+        The id of the next denial: a distinct prefix makes guard rejections identifiable in
+        logs, and a COUNTER rather than a random suffix makes two identical backtests record
+        identical ids — the order-event stream of one has to equal the other's (#362).
+
+        Returns:
+            `guard_<n>`, unique within this guard's unit
+        """
+        self._denials_issued += 1
+        return f'guard_{self._denials_issued}'

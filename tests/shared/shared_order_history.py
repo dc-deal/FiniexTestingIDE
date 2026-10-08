@@ -4,9 +4,9 @@ Reusable test class for order_history validation across test suites.
 
 Validates:
 - order_history is populated after scenario execution
-- entry count is consistent with execution_stats counters
+- every status count in execution_stats equals the rows of that status
 - every executed entry carries an executed_price
-- every rejected entry carries a valid RejectionReason
+- every refused entry carries a valid RejectionReason
 
 Used by: baseline
 Import this class into suite-specific test_order_history.py files.
@@ -16,6 +16,9 @@ from typing import List
 
 from python.framework.types.process_data_types import ProcessTickLoopResult
 from python.framework.types.trading_env_types.order_types import OrderResult
+from python.framework.types.trading_env_types.trading_env_stats_types import (
+    EXECUTION_STATS_FIELD_BY_STATUS,
+)
 
 
 class TestOrderHistoryBaseline:
@@ -32,28 +35,22 @@ class TestOrderHistoryBaseline:
         tick_loop_results: ProcessTickLoopResult
     ):
         """
-        order_history entry counts must be consistent with execution_stats.
+        Every status count in execution_stats equals the rows of that status, exactly.
 
-        order_history contains three types of entries per trade:
-        - PENDING: one per open_order() submission
-        - EXECUTED (open): one per fill in _fill_open_order()
-        - EXECUTED (close): one per fill in _fill_close_order()
-        Therefore order_history is always larger than orders_executed alone.
-        Assertions:
-        - rejected entries == orders_rejected (exact)
-        - executed entries >= orders_executed (close fills add extra entries)
+        The counts are taken where each row is booked, so as long as the history is not
+        capped the two are the same set counted twice (#362). This used to hold only for
+        rejections, and only one way for fills: a fill counted executed rows of opens but
+        not of closes, and a refused amend counted as a rejected order.
         """
         stats = tick_loop_results.execution_stats
-        rejected_count = sum(1 for e in order_history if e.is_rejected)
-        executed_count = sum(1 for e in order_history if e.is_success)
-        assert rejected_count == stats.orders_rejected, (
-            f'Rejected entries in order_history ({rejected_count}) != '
-            f'orders_rejected ({stats.orders_rejected})'
-        )
-        assert executed_count >= stats.orders_executed, (
-            f'Executed entries in order_history ({executed_count}) < '
-            f'orders_executed ({stats.orders_executed})'
-        )
+        for status, field_name in EXECUTION_STATS_FIELD_BY_STATUS.items():
+            if field_name is None:
+                continue
+            rows = sum(1 for e in order_history if e.status is status)
+            assert rows == getattr(stats, field_name), (
+                f'{status.value} rows in order_history ({rows}) != '
+                f'{field_name} ({getattr(stats, field_name)})'
+            )
 
     def test_order_history_executed_have_price(self, order_history: List[OrderResult]):
         """Every executed entry must carry an executed_price."""
@@ -68,9 +65,9 @@ class TestOrderHistoryBaseline:
                 )
 
     def test_order_history_rejection_reasons(self, order_history: List[OrderResult]):
-        """Every rejected entry must carry a valid RejectionReason."""
+        """Every refused entry — denied or rejected — must carry a valid RejectionReason."""
         for entry in order_history:
-            if entry.is_rejected:
+            if entry.is_refused:
                 assert entry.rejection_reason is not None, (
                     f'Rejected order {entry.order_id} has no rejection_reason'
                 )

@@ -31,6 +31,8 @@ more than one list carries `keys` instead:
 ```
 
 [Trade history](/api/v1/docs/trade-history) carries three lists and declares all three.
+[Order events](/api/v1/docs/order-events) declares `events` and `broker_truth` alike —
+`["scenario_name", "seq"]` — because `seq` runs across both lists within a unit.
 
 ## An empty key is a declaration too
 
@@ -52,9 +54,10 @@ and the exit — all three.
 
 ## One unit, four field names, one identity
 
-The same unit appears as `name` on [scenario details](/api/v1/docs/scenario-details) and
-[portfolio](/api/v1/docs/portfolio), as `scenario_name` on
-[trade history](/api/v1/docs/trade-history), and as `unit_name` on
+The same unit appears as `name` on [scenario details](/api/v1/docs/scenario-details),
+[portfolio](/api/v1/docs/portfolio) and [venue account](/api/v1/docs/venue-account), as
+`scenario_name` on [trade history](/api/v1/docs/trade-history) and
+[order events](/api/v1/docs/order-events), and as `unit_name` on
 [booking periods](/api/v1/docs/booking-periods).
 
 In a backtest all four are the scenario's name. In a live session all four are the profile's

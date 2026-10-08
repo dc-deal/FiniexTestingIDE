@@ -34,7 +34,9 @@ from python.framework.types.portfolio_types.portfolio_types import Position
 from python.framework.types.process_data_types import ProcessResult, ProcessTickLoopResult
 from python.scenario.scenario_set import ScenarioSet
 from python.framework.types.trading_env_types.order_types import OrderDirection, OrderResult
-from python.framework.types.trading_env_types.pending_order_stats_types import PendingOrderStats
+from python.framework.types.trading_env_types.active_orders_snapshot_types import (
+    ActiveOrdersSnapshot,
+)
 from python.framework.types.trading_env_types.trading_env_stats_types import ExecutionStats
 from python.scenario.scenario_config_loader import ScenarioConfigLoader
 
@@ -227,12 +229,12 @@ def extract_open_positions(
     return tick_loop_results.open_positions or []
 
 
-def extract_pending_stats(
+def extract_active_orders(
     tick_loop_results: ProcessTickLoopResult
-) -> PendingOrderStats:
-    """Extract pending order statistics."""
-    assert tick_loop_results.pending_stats is not None, 'No pending stats'
-    return tick_loop_results.pending_stats
+) -> ActiveOrdersSnapshot:
+    """Extract the orders still resting or on their way at the scenario's end."""
+    assert tick_loop_results.active_orders is not None, 'No active-orders snapshot'
+    return tick_loop_results.active_orders
 
 
 def extract_execution_stats(

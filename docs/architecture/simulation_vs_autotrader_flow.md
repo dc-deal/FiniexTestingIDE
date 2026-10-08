@@ -51,7 +51,7 @@ execute_tick_loop(config, worker_coordinator, trade_simulator, bar_rendering_con
     trade_simulator.check_clean_shutdown()
 
     # Collect results
-    → ProcessTickLoopResult (stats, trade_history, order_history, pending_stats, profiling)
+    → ProcessTickLoopResult (stats, trade_history, order_history, order_events, active_orders, profiling)
 ```
 
 **Key characteristics:**

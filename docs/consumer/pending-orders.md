@@ -3,8 +3,8 @@
 An order does not become a position the moment the strategy sends it. It waits — in a backtest
 for a modelled delay, in a live session for the venue — and while it waits it can be refused, run
 out of time, or still be sitting there when the data ends. Trade history shows what came out of
-that queue, and nothing shows the queue itself. This section is the queue: how many orders left
-it and by which exit, how long they waited, and which were still resting at the end.
+that queue, and nothing shows the queue itself. This section is the queue: how each order left it,
+how long the venue took to answer, and which orders were still resting at the end.
 
 **Routes**
 
@@ -16,15 +16,13 @@ GET /api/v1/reports/runs/{run_id}/pending-orders
 an order — [order history](/api/v1/docs/order-history) is where a single order's life is
 recorded, and [trade history](/api/v1/docs/trade-history) where the positions it produced are.
 
-## Every row served here is a backtest row
+## Both kinds of run
 
-**An AutoTrader session serves no unit at all**: a live session's result carries no pending
-counters into this report. The section still answers — `units` is an empty list, which is the
-expected answer for a live run and not a missing artifact. [Run kinds](/api/v1/docs/run-kinds)
-is how you tell which kind of run you are holding.
-
-Everything below therefore describes a backtest, and its latencies are modelled rather than
-observed at a venue.
+A backtest serves one row per scenario, an AutoTrader session one row for the session. Both are
+counted by the same rule, from the same record of every order step — the
+[order events](/api/v1/docs/order-events) — so a backtest and a session over the same window can be
+compared row for row. Where they differ is the waiting itself: a backtest's is the delay it
+modelled, a session's is measured at the venue.
 
 ## One row is one unit
 
@@ -37,58 +35,77 @@ is unique by construction: a scenario set that names one unit twice is refused b
 starts, and an AutoTrader session has one unit. [Row keys](/api/v1/docs/row-keys) also has the
 four field names one unit answers to across the sections.
 
-A unit that neither resolved a pending order nor held one at the end is not listed. An absent
-unit means nothing ever waited, not that something went missing.
+A unit that neither submitted an order nor held one at the end is not listed. An absent unit means
+nothing ever waited, not that something went missing.
 
-## The counts, and what `total_filled` does not mean
+## The counts
+
+Each submission is counted once, by the venue's first word on it:
 
 | Field | Counts |
 |---|---|
-| `total_resolved` | orders that left the queue, by any exit |
-| `total_filled` | orders that arrived after their delay |
-| `total_rejected` | orders refused once the waiting was over |
-| `total_timed_out` | orders the broker did not answer within their timeout |
-| `total_force_closed` | orders still in the queue when the data ended, resolved by force |
+| `total_submitted` | orders the unit handed to its venue |
+| `total_accepted` | the venue took the order — it rests, or it filled in its answer |
+| `total_rejected` | the venue refused it |
+| `total_never_confirmed` | the venue never confirmed it — each one is listed below |
+| `total_expired` | the end of a backtest's data met the order on its way |
 
-**`total_filled` does not mean filled.** In a backtest it counts each order that *arrived* after
-its delay — so a limit or a stop order that only began resting at its price is counted here
-whether it later filled, expired when the data ended, or was cancelled by the strategy. Arrival
-and fill are one number in this section; nothing served here separates them.
+**The four add up to `total_submitted`.** That holds by construction, so a row where it does not
+names a step its record is missing — and the run's warnings say so too.
 
-**`total_force_closed` and the active lists below are different orders.** A force-closed order
-was still waiting out its delay when the data ended, so it never arrived. An order in the active
-lists did arrive, and was resting at its price.
+**Accepted is not filled.** An accepted limit or stop order may still rest at its price, expire
+when the data ends, or be cancelled; [order history](/api/v1/docs/order-history) is where an
+order's ending is recorded.
 
-**`total_timed_out` belongs to a live session**, where a broker can fail to answer. Since a live
-session serves no row here, it reads `0` on everything this route answers with.
+**An order an earlier session sent is not counted.** A session that takes over orders still working
+at the venue when it starts did not submit them; [execution stats](/api/v1/docs/execution-stats)
+counts them as adopted.
 
-The counts add up, and that was checked rather than assumed. Measured 2026-10-05 over every
-stored unit: `total_resolved` is the unit's `open` orders on `pending` status in
-[order history](/api/v1/docs/order-history) plus the closes the strategy sent itself, and
-`total_filled` is `total_resolved` minus the rejected, timed-out and force-closed counts.
+## Orders never confirmed
 
-## How long they waited
+`never_confirmed_orders` lists each submission the venue never confirmed, in the order they were
+sent. It happens only in a live session — a simulated venue answers every order.
 
-`avg_latency_ms`, `min_latency_ms` and `max_latency_ms` are milliseconds. In a backtest they are
-the modelled delay from submission to arrival — not a measurement of a network.
+| Field | Meaning |
+|---|---|
+| `order_id` | the order |
+| `submitted_seq` | its submission's `seq` in the [order events](/api/v1/docs/order-events) |
+| `event_type` | `undelivered`: the venue confirmed it never received the order · `unaccounted`: the session stopped asking, and the venue may still hold the order |
+| `end_reason` | why the asking stopped, where it was given |
+| `message` | the sentence that came with it |
 
-`latency_count` is how many samples the average rests on. **Weight by it when you average across
-units.** Units resolve very different numbers of orders, and a mean of means is not a mean.
+An `unaccounted` order is the one to check by hand at the venue.
 
-The three latency figures are null together, and `latency_count` is then `0`: no order in this
-unit produced a sample. That is an absence and not a delay of zero — see
+## How long the venue took to answer
+
+`avg_in_flight_ms`, `min_in_flight_ms` and `max_in_flight_ms` are milliseconds from submission to
+the venue's answer — the acceptance or the refusal. In a backtest they are the modelled delay, not
+a measurement of a network; in a live session they are measured when the session reads the answer,
+which can be up to one heartbeat after it arrived. An acceptance the session learned later by
+asking carries no duration: that span would be the asking, not the venue.
+
+`in_flight_count` is how many answers the average rests on. **Weight by it when you average across
+units.** Units submit very different numbers of orders, and a mean of means is not a mean.
+
+The three duration figures are null together, and `in_flight_count` is then `0`: no answer in this
+unit carried a duration. That is an absence and not a delay of zero — see
 [nulls](/api/v1/docs/nulls).
 
 ## The orders still resting at the end
 
 `active_limit_orders` and `active_stop_orders` hold the orders that were still resting when the
-unit's data ended.
+unit ended — a backtest's data end, a session's last step.
 
-**They are not open orders.** In a backtest the same step that takes this snapshot records every
+**In a backtest they are not open orders.** The same step that takes this snapshot records every
 one of them `expired` in [order history](/api/v1/docs/order-history), so after the run none of
 them is still working: resting at data end, then expired. Showing them as live working orders is
 the one reading these lists exist to prevent. The snapshot is read after that expiry, from the
 lists the expiry deliberately leaves intact, which is why both views exist and agree.
+
+**In a live session some may still be working.** The session cancels its resting orders when it
+ends, unless its policy leaves them standing at the venue, and a protective stop over an open
+position is always left standing. [Order history](/api/v1/docs/order-history) records which: a
+cancelled order ends there, one left standing does not.
 
 Which list an order sits in follows from its type, not from its fate. A `limit` order is in the
 limit list; a `stop` or `stop_limit` whose trigger was never reached is in the stop list. A
@@ -116,8 +133,8 @@ the difference.
 
 ## Where these rows come from
 
-The counters are kept by the run while it goes and written once when it closes. This route serves
-that stored result; nothing is recomputed when you ask for it.
+The counters are derived from the unit's order events when the run writes its report, and stored
+with it. This route serves that stored result; nothing is recomputed when you ask for it.
 
 A run that holds no such result answers 404, and the refusal names which of four causes it is:
 the run is unknown, it was started without reports, it has produced none yet, or it produced

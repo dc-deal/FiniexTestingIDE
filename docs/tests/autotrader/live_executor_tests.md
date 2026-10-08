@@ -219,8 +219,16 @@ stop is accepted and rests.
 
 | Test | Description |
 |------|-------------|
-| `test_stats_after_instant_fill` | Stats reflect completed order (orders_sent, orders_executed) |
+| `test_stats_after_instant_fill` | Stats reflect completed order (orders_submitted, orders_executed) |
 | `test_stats_after_rejection` | Stats count rejections |
+
+#### TestWhatTheLiveRowsSay
+
+| Test | Description |
+|------|-------------|
+| `test_a_market_order_is_stamped_at_its_submission` | The PENDING result carries the canonical submission time and its order type |
+| `test_the_pending_order_takes_its_entry_time_from_the_canonical_clock` | The tracked order's entry time is the run's clock, not the machine's — it used to be the wall clock |
+| `test_a_resting_order_states_its_type` | A limit order's PENDING result says `limit` and carries its submission time |
 
 ---
 
@@ -254,7 +262,7 @@ Multi-order scenarios: multiple orders tracked, open+close cycles, close_all_rem
 
 | Test | Description |
 |------|-------------|
-| `test_sent_equals_executed_plus_rejected` | orders_sent == orders_executed + orders_rejected |
+| `test_sent_equals_executed_plus_rejected` | orders_submitted == orders_executed + orders_rejected — a STOP refused before sending is denied and never submitted |
 
 ---
 
@@ -286,13 +294,13 @@ LIMIT submit is async post-#319 step 7 (`broker_ref=None` immediately after `ope
 
 | Test | Description |
 |------|-------------|
-| `test_broker_rejects_modify` | Async (#318): initial PENDING accept; broker rejection arrives via drain on next tick; `orders_rejected` counter increments |
+| `test_broker_rejects_modify` | Async (#318): initial PENDING accept; the broker's refusal of the amend arrives via drain on next tick — and books no row and no count, because the order itself was not refused (#362). That the answer WAS drained is asserted too: the amend is no longer in flight and its price was never written, without which the two absences hold just as well for an answer that never arrives |
 
 #### TestModifyLimitOrderAdapterException
 
 | Test | Description |
 |------|-------------|
-| `test_adapter_exception_handled` | Async (#318): exception raised in worker thread, surfaced as REJECTED via drain; `orders_rejected` counter increments |
+| `test_adapter_exception_handled` | Async (#318): exception raised in worker thread, surfaced as a refused amend via drain — no row, no count, and the amend's answer drained (no longer in flight, price unchanged) |
 
 #### TestGetBrokerRefReverseLookup
 
@@ -355,7 +363,7 @@ Asserts that are unique to this file:
 
 | Test | Description |
 |------|-------------|
-| `test_async_submit_timeout_mode` | Submit in TIMEOUT mode stays pending; tick-driven `check_timeouts()` triggers rejection |
+| `test_async_submit_timeout_mode` | Submit in TIMEOUT mode stays pending; tick-driven `check_timeouts()` cancels it — `cancelled` by the framework for `order_timeout`, not a rejection |
 
 #### TestAsyncSubmitMultiple
 
@@ -597,7 +605,7 @@ of scope).
 | Test | Description |
 |---|---|
 | `test_heartbeat_drains_inbox_without_tick_state` | `heartbeat()` drains async responses without bumping `_tick_counter` or replacing `_current_tick` |
-| `test_heartbeat_processes_timeouts` | A pending order whose timeout deadline is in the past, and which the venue still holds as working, is cancelled and becomes REJECTED on the next `heartbeat()` |
+| `test_heartbeat_processes_timeouts` | A pending order whose timeout deadline is in the past, and which the venue still holds as working, is cancelled and booked `cancelled` on the next `heartbeat()` |
 | `test_heartbeat_sim_is_noop` | `TradeSimulator` inherits the default no-op `heartbeat()` — no errors, no state mutation |
 
 #### TestThrottle
@@ -772,6 +780,8 @@ NEXT drain, so a hook that reacts by placing an order cannot extend the pass it 
 | `test_create_if_subscribed_wires_executor` | With subscriptions → the dispatcher is wired to the executor |
 | `test_executed_outcome_maps_to_order_filled` | An executed order outcome arrives as `ORDER_FILLED` |
 | `test_rejected_outcome_maps_to_order_rejected` | A rejected outcome arrives as `ORDER_REJECTED` |
+| `test_a_close_outcome_carries_the_direction_its_row_states` | A live close carries no direction of its own; its rejected and unaccounted events take the row's — the position's — instead of the None the fan-out hands over, which crashed the field study's handler |
+| `test_a_close_whose_position_is_gone_arrives_without_a_direction` | No position, no direction: the event says None rather than inventing one |
 | `test_unsubscribed_event_is_filtered` | An event type nobody subscribed to never reaches a hook |
 | `test_fifo_ordering_across_sources` | Buffered events reach the hooks in arrival order |
 | `test_drain_is_reentrancy_safe` | An event emitted inside a hook lands in the next drain, not the current one |
@@ -798,7 +808,7 @@ order is resting at the broker and we have forgotten it — we manufactured the 
 | `test_unresolved_does_not_notify_the_algo` | `on_order_rejected` does NOT fire — nothing was refused |
 | `test_unresolved_does_not_overwrite_the_broker_ref` | An existing reference is left intact |
 | `test_rejection_still_removes_the_pending_order` | A genuine rejection clears the pending as before |
-| `test_unresolved_timeout_reason_names_the_transport` | The timeout reason says transport, not refusal |
+| `test_unresolved_timeout_is_not_a_refusal` | An unresolved order that runs out its clock ends `unaccounted`, a status of its own — never a refusal |
 | `test_failed_submit_reaches_the_error_pot` | A failed submit is an ERROR in the session's error pot — the operator must see it |
 | `test_failed_status_poll_is_only_a_warning` | A failed status poll is a WARNING; the next cadence retries |
 | `test_a_venue_answer_is_logged_by_neither` | A normal venue answer is neither error nor warning |
@@ -901,7 +911,6 @@ than a duration. `PendingOrderTiming.submitted_monotonic` carries the second sta
 | `TestTheLatencyIsMeasuredOnTheMonotonicClock` | the elapsed monotonic difference becomes milliseconds; a wall clock that stepped BACKWARDS cannot produce a negative latency; two orders whose wall-clock stamps differ by a decade measure the same |
 | `TestAnUnmeasurableLatencyIsReportedAsUnmeasured` | a wall-clock stamp alone yields `None`, never a substituted number, and so does an order carrying no stamp at all |
 | `TestEveryLiveSubmissionCarriesTheStamp` | `register_pending_open()` stamps the monotonic clock — the guard against a future submission site forgetting it |
-| `TestAForceClosedOrderIsMeasuredTheSameWay` | the session-end cleanup records a stuck order with the same clock: a wall clock that stepped backwards no longer yields a negative force-close latency, and an order without the stamp is recorded unmeasured |
 
 **Why `None` rather than a fallback:** an unmeasurable duration reported as unmeasured costs a
 blank column; reported as a wall-clock difference it costs an investigation into a venue that
@@ -945,15 +954,16 @@ of these and books nothing — the venue did not answer, so the next pass asks a
 |---|---|
 | `TestTheStateUnderTestCanBeProduced` | a transient submit fault leaves the order in flight; a TERMINAL one is a rejection instead — the injector's `terminal` flag is the whole difference |
 | `TestTheAskFiresFromTheEvent` | the resolution is armed by the lost answer, its window is `max_window_seconds` rather than `order_timeout_seconds`, and the fill timer stops applying to a MARKET order — without which the resolution would be unreachable for the only world that has no other exit |
-| `TestTheVenueNamesIt` | the reference comes back, the order survives, and the algo is never told it was rejected |
-| `TestTheVenueNamesNothing` | inside the settle window nothing is booked; after it, exactly one rejection |
-| `TestTheCeiling` | the order is kept, entries stop with `RejectionReason.UNRESOLVED_WRITE`, and an empty set refuses nothing |
-| `TestTheTwoWorldsEndDifferentlyAtTheCeiling` | a MARKET pending leaves the tracker recorded `BROKER_UNREACHABLE` rather than gating the algo forever, and the entry block outlives the order |
+| `TestTheVenueNamesIt` | the reference comes back, the order survives, and the algo is never told it was rejected; a cancel the algo asked for while the reference was missing is sent now and ends the order `cancelled` by the strategy — the resolution is a place the reference arrives, and it used to restore the reference and stop there |
+| `TestTheVenueNamesNothing` | inside the settle window nothing is booked; after it, exactly one `undelivered` row — the venue refused nothing, it never received the order; and two orders under our key are a FAILED read, asked about again — never an absence, never a guess between them |
+| `TestTheCeiling` | the order is kept, entries stop with `RejectionReason.UNACCOUNTED_ORDER`, and an empty set refuses nothing |
+| `TestTheTwoWorldsEndDifferentlyAtTheCeiling` | a MARKET pending leaves the tracker recorded `unaccounted` (`resolution_ceiling`) rather than gating the algo forever, and the entry block outlives the order |
+| `TestTwoClosesOfOnePosition` | the ceiling tells a position's closes apart by submission, since they share its order id: a second close at the ceiling ends `unaccounted` too instead of standing forever, and a second close that fills does not lift the block the first one still holds |
 | `TestNothingIsEverReSent` | one decision, one order out of this process — in every branch |
 
 **Why the settle window.** An order accepted a moment ago may not be indexed yet, so an answer
 that names nothing is not yet evidence that nothing was taken. Promoting it immediately would turn
-the venue's read lag into a rejection.
+the venue's read lag into an undelivered order.
 
 ## test_timeout_asks_the_venue.py — the book follows what the venue answers
 
@@ -967,7 +977,7 @@ insufficient funds.
 | Class | Description |
 |---|---|
 | `TestTheHeartbeatSeesTheFill` | a market open and a close filled while no tick follows are booked by the heartbeat's asynchronous poll; the tick does not ask again while that question is in flight; a fill the #487 resolution learned after a lost submit answer is booked without a tick |
-| `TestTheTimeoutAsksBeforeItBooks` | a timed-out order is read first: filled is booked as executed; no answer hands it to the #487 resolution, which then books the fill; a second unanswerable timeout gives it up as `broker_unreachable`; an order still working is cancelled and given up as before, with exactly one cancel; a cancel refused because the order filled meanwhile is followed by a read that books the fill |
+| `TestTheTimeoutAsksBeforeItBooks` | a timed-out order is read first: filled is booked as executed; no answer hands it to the #487 resolution, which then books the fill; a second unanswerable timeout gives it up as `unaccounted`; an order still working is cancelled and booked `cancelled` by the framework, with exactly one cancel; a cancel refused because the order filled meanwhile is followed by a read that books the fill; a part that executed while the cancel travelled is booked as its fill rather than as a clean cancel — the read before the cancel is older than the cancel |
 | `TestAFailedReadIsNotARejection` | a status read refused with `EAPI:Invalid nonce` keeps the market order and the resting order alike; the failure is an error, reported once per order |
 | `TestTheTimeoutRunsOnTheMonotonicClock` | a timeout re-armed by the resolution survives a canonical clock months in the past — the shape of a mock session's tick |
 | `TestAnOrderTheVenueEnded` | a market order the venue cancels without executing is dropped and reported cancelled, never rejected; what an expired order executed is booked as its fill |

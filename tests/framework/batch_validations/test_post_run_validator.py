@@ -25,6 +25,8 @@ from python.framework.types.process_data_types import (
 )
 from python.framework.types.run_origin_types import CodeIdentity, RepositoryState
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
+from python.framework.types.trading_env_types.order_event_types import OrderEvent, OrderEventType
+from python.framework.types.trading_env_types.trading_env_stats_types import ExecutionStats
 from python.framework.validators.post_run_validator import PostRunValidator
 
 # The validator names the run it validates (#475); opaque here.
@@ -302,3 +304,44 @@ def test_committed_or_merely_dirty_code_is_not_warned_about():
 def test_a_run_without_a_captured_identity_is_not_warned_about():
     """A run commissioned not to report captured none — nothing is claimed, nothing is warned."""
     assert 'unversioned_code' not in _identity_warnings(None)
+
+
+def _stream_result(name, idx, recorded, counted) -> ProcessResult:
+    """
+    A scenario whose stream holds `recorded` submissions while its executor counted `counted`.
+
+    Args:
+        name: Scenario name
+        idx: Scenario index
+        recorded: `submitted` events in its stream
+        counted: The executor's `orders_submitted`
+
+    Returns:
+        The ProcessResult
+    """
+    events = [OrderEvent(seq=n + 1, event_type=OrderEventType.SUBMITTED, order_id=f'pos_{n}',
+                         submitted_seq=n + 1) for n in range(recorded)]
+    tlr = ProcessTickLoopResult(
+        order_events=events, execution_stats=ExecutionStats(orders_submitted=counted))
+    return ProcessResult(success=True, scenario_name=name, scenario_index=idx,
+                         tick_loop_results=tlr)
+
+
+class TestTheStreamHoldsEverySubmission:
+    """
+    The counters derived from a scenario's stream are only as complete as the stream (#362).
+
+    The executor counts a submission and records its event in one statement; the count stays in
+    memory, the event travels back from the subprocess. A difference is a record lost on the way.
+    """
+
+    def test_a_stream_short_of_a_submission_is_reported(self):
+        out = _warnings(_batch_results([_stream_result('s1', 0, recorded=2, counted=3),
+                                        _stream_result('s2', 1, recorded=4, counted=4)]))
+        assert 'order_event_stream_incomplete' in out
+        assert 's1 · 2 submission(s) in the stream, 3 counted' in out['order_event_stream_incomplete']
+        assert 's2' not in out['order_event_stream_incomplete']
+
+    def test_a_complete_stream_says_nothing(self):
+        out = _warnings(_batch_results([_stream_result('s1', 0, recorded=3, counted=3)]))
+        assert 'order_event_stream_incomplete' not in out

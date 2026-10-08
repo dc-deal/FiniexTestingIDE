@@ -43,7 +43,7 @@ the seeded sim latency).
 |---|---|
 | `test_limit_run_succeeds_with_trades` | limit_pullback run succeeds and produces trades |
 | `test_stop_run_succeeds_with_trades` | stop_breakout run succeeds and produces trades |
-| `test_no_orders_rejected` | capacity + gate guards keep `orders_rejected == 0` in both runs |
+| `test_no_orders_rejected` | capacity + gate guards keep `orders_rejected` and `orders_denied` at 0 in both runs |
 
 ### TestEntryModes
 

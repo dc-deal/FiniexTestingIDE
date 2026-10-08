@@ -25,6 +25,10 @@ from python.framework.autotrader.autotrader_tick_loop import AutotraderTickLoop
 from python.framework.autotrader.cold_start_setup import ColdStartSetup, setup_cold_start
 from python.framework.autotrader.dry_run_resolver import resolve_dry_run
 from python.framework.autotrader.live_clipping_monitor import LiveClippingMonitor
+from python.framework.autotrader.order_event_stream_setup import (
+    open_order_event_stream,
+    read_back_order_event_stream,
+)
 from python.framework.autotrader.rendered_profile_builder import (
     assert_rendered_parameters_match,
     render_autotrader_profile,
@@ -49,6 +53,7 @@ from python.framework.persistence.algo_state_store import AlgoStateStore
 from python.framework.persistence.cold_start_state_store import ColdStartStateStore
 from python.framework.reporting.api_perf_monitor import ApiPerfMonitor
 from python.framework.reporting.field_study_recorder import FieldStudyRecorder
+from python.framework.reporting.io.order_event_stream_writer import OrderEventStreamWriter
 from python.framework.signal_data.signal_observed_accumulator import SignalObservedAccumulator
 from python.framework.signal_data.transport.abstract_signal_transport import (
     AbstractSignalTransport,
@@ -68,6 +73,7 @@ from python.framework.types.config_types.autotrader_defaults_config_types import
 )
 from python.framework.types.config_types.market_config_types import TradingModel
 from python.framework.types.decision_event_types import SessionEndSeverity
+from python.framework.types.live_types.broker_truth_types import BrokerTruthReadReason
 from python.framework.types.live_types.reconciliation_types import FlatCheckResult
 from python.framework.types.persistence_types import (
     AccountDrawdownCarryOver,
@@ -258,6 +264,10 @@ class AutotraderMain:
         # #332 — Field Study recorder (set when the decision logic is LiveFieldStudy)
         self._field_study_recorder: Optional[FieldStudyRecorder] = None
 
+        # #362 — the session's order-event stream, written as the steps happen. None until
+        # the pipeline exists, so an abort before that point has nothing to close.
+        self._order_event_stream: Optional[OrderEventStreamWriter] = None
+
         # Loggers (created during run())
         self._global_logger: Optional[ScenarioLogger] = None
         self._session_logger: Optional[ScenarioLogger] = None
@@ -414,6 +424,12 @@ class AutotraderMain:
 
             self._wire_observability()
 
+            # === ORDER-EVENT STREAM (#362) ===
+            # Before the cold start: an order the boot takes over is the first step a session
+            # records.
+            self._order_event_stream = open_order_event_stream(
+                self._executor, self._run_dir, self._run_id, self._config.get_unit_name())
+
             self._restore_algo_state()
 
             # === SESSION-END POLICY (#492) ===
@@ -522,6 +538,11 @@ class AutotraderMain:
 
             # === SIGNAL TRANSPORT (#141 Part 2a) ===
             self._setup_signal_transport()
+
+            # === BROKER TRUTH AT START (#362) ===
+            # What the venue holds once the cold start is resolved, before the first tick —
+            # the venue's half of the order-event stream begins here.
+            self._executor.record_session_truth(BrokerTruthReadReason.SESSION_START)
 
             # === TICK SOURCE ===
             self._print_startup_phase('Starting tick source...')
@@ -975,6 +996,23 @@ class AutotraderMain:
             except Exception as e:
                 self._session_logger.error(f'Error during order cleanup: {e}')
 
+        # #362 — what the venue holds once the session's orders are handled, written before
+        # the stream closes. Its own try: a read that fails must never keep the stream open.
+        if self._executor and self._order_event_stream:
+            try:
+                self._executor.record_session_truth(BrokerTruthReadReason.SESSION_END)
+            except Exception as e:
+                self._session_logger.error(f'Broker truth at session end not recorded: {e}')
+
+        # #362 — the stream ends after the order cleanup, whose cancels are steps of their
+        # own. Its own try: a stream that cannot close must not keep the report from being
+        # written.
+        if self._order_event_stream:
+            try:
+                self._order_event_stream.close()
+            except Exception as e:
+                self._session_logger.error(f'Error closing the order-event stream: {e}')
+
         # #327 — Drift auditor cleanup (surfaces unfinished audits + final summary)
         if self._drift_auditor:
             try:
@@ -1005,14 +1043,19 @@ class AutotraderMain:
             except Exception as e:
                 self._session_logger.error(f'Error during algo state shutdown: {e}')
 
-        # #332 — Field Study recorder: final broker-truth snapshot + close
+        # #332 — Field Study recorder: final broker-truth snapshot + close. Two guards: the
+        # snapshot reads the venue, and a read that fails must never keep the file open (#362)
         if self._field_study_recorder:
             try:
                 flat = self._reconciler.is_account_flat() if self._reconciler else None
                 self._record_field_study_broker_truth('session_end', flat)
+            except Exception as e:
+                self._session_logger.error(
+                    f'Field Study broker truth at session end not recorded: {e}')
+            try:
                 self._field_study_recorder.close('session end')
             except Exception as e:
-                self._session_logger.error(f'Error during Field Study recorder shutdown: {e}')
+                self._session_logger.error(f'Error closing the Field Study recorder: {e}')
 
         # Collect → grade → report, the same order the sim batch runs (batch_orchestrator:
         # PostRunValidator, then BatchReportCoordinator over a finished result).
@@ -1097,8 +1140,15 @@ class AutotraderMain:
                 result.execution_stats = self._executor.get_execution_stats()
                 result.trade_history = self._executor.get_trade_history()
                 result.order_history = self._executor.get_order_history()
+                result.active_orders = self._executor.get_active_orders_snapshot()
             except Exception as e:
                 self._session_logger.error(f'Error collecting executor stats: {e}')
+
+        # #362 — the stream is closed by now; read back once, for the pending-order counters,
+        # the check that it holds every submission, and the venue-account section
+        if self._run_dir is not None:
+            result.order_events, result.broker_truth = read_back_order_event_stream(
+                self._run_dir, self._session_logger)
 
         if self._decision_logic:
             try:

@@ -2,8 +2,8 @@
 
 Trade history says what a run traded. It cannot say what it *tried* to trade: an order that was
 refused leaves no trade behind, so a run that sent ten orders and had six refused looks exactly
-like a run that sent four. This section counts the orders — sent, executed, refused — one row
-per unit, and the run's summed total beside them.
+like a run that sent four. This section counts the orders — one count for each way an order can
+start or end — one row per unit, and the run's summed total beside them.
 
 **Routes**
 
@@ -34,31 +34,50 @@ Only units that recorded order counts appear. The complete list of units a run d
 that produced nothing included, is the roster in
 [scenario details](/api/v1/docs/scenario-details).
 
-## The four counts
+## The counts
+
+Each count carries the name of what it counts. Two count how an order STARTED — handed to the
+venue, or taken over from a previous session; every other `orders_<status>` counts the orders
+whose ending in the [order history](/api/v1/docs/order-history) has that status.
 
 | Field | Counts |
 |---|---|
-| `orders_sent` | orders submitted |
-| `orders_executed` | orders that executed |
-| `orders_rejected` | orders refused — margin, validation, and the rest |
+| `orders_submitted` | orders handed to the venue — opens, closes and protective orders |
+| `orders_adopted` | orders a previous session sent and this one took over at its start — a live session only; a backtest starts with none |
+| `orders_executed` | orders that executed — closing orders as well as opening ones |
+| `orders_denied` | orders refused before anything was sent — lot size, funds, the run's own pre-trade checks |
+| `orders_rejected` | orders the venue refused |
+| `orders_cancelled` | orders cancelled — on request, or by the venue |
+| `orders_expired` | orders that ran out of time — the end of a backtest's data, or the venue's expiry |
+| `orders_undelivered` | orders the venue confirmed it never received |
+| `orders_unaccounted` | orders the session stopped asking about; the venue may still hold them |
+| `orders_failed` | the orders that ended as a failure — denied, rejected, undelivered and unaccounted together |
 | `sl_tp_triggered` | closes triggered by a stop-loss or a take-profit level |
 
-**A refusal counts here whether the venue refused it or this side did.** An order stopped by the
-run's own pre-trade checks never reaches the venue, and it is counted beside the ones the venue
-turned down — so the count is the whole of what was refused, not only the half that travelled.
+**A refusal made here is not one the venue made.** An order stopped by the run's own pre-trade
+checks never reaches the venue: it is `orders_denied`, and it is not counted as submitted.
+`orders_rejected` is the venue's answer alone.
 
-**`sl_tp_triggered` counts closes, not submissions.** It is a different population from the three
+**A close is an order like an open**, so `orders_executed` counts both and a round trip executes
+two orders.
+
+**`orders_failed` is counted where each ending is booked, not from the order history.** That
+history may hold fewer rows than a long run produced; this count holds them all.
+
+**`sl_tp_triggered` counts closes, not submissions.** It is a different population from the
 counts beside it. Read it alongside them, never added into them.
 
-**None of the four is ever null on this route.** They are whole numbers, and a zero is a real
-zero rather than something nobody measured. The same four names do answer `null` on a sweep
-combination folded from booking periods, which carry no order counts — see
-[sweeps](/api/v1/docs/sweeps) and [nulls](/api/v1/docs/nulls) for why the two differ.
+**None of them is ever null on this route.** They are whole numbers, and a zero is a real zero
+rather than something nobody measured. The same names do answer `null` on a sweep combination
+folded from booking periods, which carry no order counts — see [sweeps](/api/v1/docs/sweeps) and
+[nulls](/api/v1/docs/nulls) for why the two differ.
 
 ## `totals` is one object, not one per currency
 
 ```json
-{ "totals": { "orders_sent": 42, "orders_executed": 38, "orders_rejected": 4,
+{ "totals": { "orders_submitted": 42, "orders_adopted": 0, "orders_executed": 38,
+              "orders_denied": 1, "orders_rejected": 3, "orders_cancelled": 1, "orders_expired": 0,
+              "orders_undelivered": 0, "orders_unaccounted": 0, "orders_failed": 4,
               "sl_tp_triggered": 6 } }
 ```
 

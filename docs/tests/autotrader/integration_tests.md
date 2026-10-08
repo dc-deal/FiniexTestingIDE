@@ -48,6 +48,13 @@ profile; the broker section's `broker_config_id` names a frozen broker configura
 very `config_hash` the section reports; and `autotrader_session.log` names it too — the one record
 a session killed before its report still keeps.
 
+`TestTheVenuesHalfOfTheStream` proves the broker-truth reads of #362 are wired into a real session:
+the stream's venue lines are exactly `session_start` and `session_end` (a mock session runs no
+reconciler), the first precedes every order event and the last follows them, and no part went
+unread. The session's `venue_account.json` is derived from exactly those two lines — its start and
+end reads name their `seq`, the end read's balances are the line's — and the session's result
+carries the lines it read back.
+
 ### test_deployment_continuity.py
 
 The only end-to-end run of the deployment mechanism (#497). Four sessions through ONE carry-over
@@ -121,7 +128,7 @@ recovered", both staleness contracts in ONE fast session driven by the
 | `test_session_completes_normally` | Normal shutdown, 3000 ticks, empty error pot despite the outage |
 | `test_stale_episode_reaches_the_pot_with_span` | Exactly one flip warning + one recovery line with the from–to span (the v0 stale protocol) |
 | `test_decision_hook_fired_once` | `on_market_data_stale` edge-dispatched exactly once per episode |
-| `test_guard_blocked_the_stale_entry` | The probe's deliberate ghost-pass entry was rejected (`STALE_MARKET_DATA` floor) |
+| `test_guard_blocked_the_stale_entry` | The probe's deliberate ghost-pass entry was refused by the guard (`STALE_MARKET_DATA` floor) and counted as a denial — nothing was sent |
 | `test_signal_side_fired_too` | `on_signal_stale` fired once (aged archive) — both contracts in one session |
 
 **Runtime:** ~10 seconds (one shared session; includes the 2 s deliberate freeze).

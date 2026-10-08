@@ -21,9 +21,11 @@ from pydantic import BaseModel, ValidationError
 from python.configuration.app_config_manager import AppConfigManager
 from python.framework.exceptions.report_artifact_errors import ReportArtifactUnreadableError
 from python.framework.reporting.io.artifact_specs import (
+    ORDER_EVENTS_STREAM,
     ORDER_HISTORY_ARTIFACT,
     TRADE_HISTORY_ARTIFACT,
 )
+from python.framework.reporting.io.order_event_stream_io import read_order_event_stream
 from python.framework.reporting.io.report_artifact_io import ArtifactSpec, read_artifact
 from python.framework.reporting.io.report_filters import (
     filter_order_history_report,
@@ -33,6 +35,7 @@ from python.framework.reporting.store.run_index import RunIndex
 from python.framework.reporting.store.run_list_figures import get_run_list_figures
 from python.framework.store.run_config_store import RunConfigStore
 from python.framework.types.api.report_types import (
+    OrderEventsReport,
     OrderHistoryReport,
     RunConfigSnapshot,
     RunInfo,
@@ -158,6 +161,44 @@ class ReportStore:
         if report is None:
             return None
         return filter_order_history_report(report, symbol, status)
+
+    def get_order_events(
+        self,
+        run_id: str,
+        scenario_name: Optional[str] = None,
+        order_id: Optional[str] = None,
+    ) -> Optional[OrderEventsReport]:
+        """
+        Read a run's order-event stream, optionally narrowed to one unit or one order (#362).
+
+        Read whenever the file exists — a live session's stream grows from its first order, and
+        a session that died before its report has one, which is when it is worth the most. A
+        cut-off last line is left out and reported on the report rather than failing the read.
+
+        Narrowed to one order, the broker-truth lines drop out: each one is the venue's whole
+        account at a moment, never a step of one order.
+
+        Args:
+            run_id: The run's identity
+            scenario_name: Keep only this unit's lines
+            order_id: Keep only this order's events
+
+        Returns:
+            The report, or None when the run has no stream
+        """
+        path = self._resolve(run_id, ORDER_EVENTS_STREAM)
+        if path is None:
+            return None
+        rows, truths, truncated = read_order_event_stream(path)
+        if scenario_name is not None:
+            rows = [row for row in rows if row.scenario_name == scenario_name]
+            truths = [truth for truth in truths if truth.scenario_name == scenario_name]
+        if order_id is not None:
+            rows = [row for row in rows if row.order_id == order_id]
+            truths = []
+        return OrderEventsReport(
+            run_id=run_id, events=rows, count=len(rows), broker_truth=truths,
+            truncated_tail=truncated)
 
     def get_config_snapshot(self, run_id: str) -> Optional[RunConfigSnapshot]:
         """

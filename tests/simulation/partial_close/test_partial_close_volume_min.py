@@ -122,7 +122,7 @@ class TestTheRequestIsRefusedBeforeItReachesTheVenue:
 
         result = simulator.close_position('p1', lots=_REQUESTED)
 
-        assert result.status == OrderStatus.REJECTED
+        assert result.status == OrderStatus.DENIED
         assert result.rejection_reason == RejectionReason.REMAINDER_BELOW_MINIMUM
 
     def test_the_message_carries_the_arithmetic_a_decision_needs(self):
@@ -177,7 +177,7 @@ class TestTheRequestIsRefusedBeforeItReachesTheVenue:
 
         result = simulator.close_position('p1', lots=7.0)
 
-        assert result.status == OrderStatus.REJECTED
+        assert result.status == OrderStatus.DENIED
         assert result.rejection_reason == RejectionReason.REMAINDER_BELOW_MINIMUM
         message = result.rejection_message
         assert '3.00000000' in message, f'the stranded remainder is missing: {message}'
@@ -197,7 +197,7 @@ class TestTheRequestIsRefusedBeforeItReachesTheVenue:
 
         result = simulator.close_position('p1', lots=1.0)
 
-        assert result.status == OrderStatus.REJECTED
+        assert result.status == OrderStatus.DENIED
         assert result.rejection_reason == RejectionReason.INVALID_LOT_SIZE
 
 

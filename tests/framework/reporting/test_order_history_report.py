@@ -17,10 +17,12 @@ from python.framework.reporting.builders.run_unit import RunUnit
 # Every report artifact names its run (#475); the value is opaque to these tests.
 _RUN_ID = '20260830_120000_a1b2c3d4'
 from python.framework.types.trading_env_types.order_types import (
+    CloseType,
     OrderAction,
     OrderDirection,
     OrderResult,
     OrderStatus,
+    OrderType,
     RejectionReason,
 )
 
@@ -42,7 +44,7 @@ def _order(
     return OrderResult(
         order_id=order_id, status=status,
         executed_price=1.1000, executed_lots=0.1, execution_time=_T0,
-        commission=0.2, swap=0.0, slippage_points=1.0,
+        commission=0.2,
         position_id=f'pos_{order_id}', action=OrderAction.OPEN,
         symbol=symbol, direction=direction, requested_lots=0.1,
     )
@@ -131,3 +133,37 @@ class TestMetadata:
         assert report.count == 0
         assert report.orders == []
         assert report.symbols == []
+
+
+class TestWhatTheRowSaysAboutTheOrder:
+    """The type the order was asked as on every row, and a close row's close type."""
+
+    def test_a_refusal_says_what_was_refused(self):
+        refused = _rejected()
+        refused.order_type = OrderType.STOP_LIMIT
+        row = build_order_history_report(_RUN_ID, _units([refused])).orders[0]
+        assert row.order_type is OrderType.STOP_LIMIT
+
+    def test_a_close_row_states_its_close_type(self):
+        close = _order(order_id='c1')
+        close.action = OrderAction.CLOSE
+        close.order_type = OrderType.MARKET
+        close.close_type = CloseType.PARTIAL
+        row = build_order_history_report(_RUN_ID, _units([close])).orders[0]
+        assert row.order_type is OrderType.MARKET
+        assert row.close_type is CloseType.PARTIAL
+
+    def test_a_pending_row_carries_its_submission_time(self):
+        pending = OrderResult(
+            order_id='o3', status=OrderStatus.PENDING, execution_time=_T0,
+            action=OrderAction.OPEN, symbol='EURUSD', direction=OrderDirection.LONG,
+            requested_lots=0.1, order_type=OrderType.LIMIT)
+        row = build_order_history_report(_RUN_ID, _units([pending])).orders[0]
+        assert row.event_time == _T0.isoformat()
+        assert row.order_type is OrderType.LIMIT
+
+    def test_the_two_fields_nothing_wrote_are_gone(self):
+        row = build_order_history_report(_RUN_ID, _units([_order()])).orders[0].model_dump()
+        assert 'swap' not in row
+        assert 'slippage_points' not in row
+

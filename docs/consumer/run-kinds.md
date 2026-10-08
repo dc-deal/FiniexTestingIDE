@@ -19,7 +19,9 @@ Three fields say which kind you have, and none of them has to be inferred.
 
 `orders_to` is where the orders went: `simulated` means a simulator filled them, `venue` means
 they were placed at the venue. **`venue` on `orders_to` is the only value that means money
-moved**, and it is worth branching on explicitly rather than deriving it from anything else.
+moved**, and it is worth branching on explicitly rather than deriving it from anything else. A
+deployment lists the values of its sessions in its own `orders_to` — both values mean it mixed a
+rehearsal with real money; see [deployments](/api/v1/docs/deployments).
 
 Both are null on a run recorded before these fields existed. See
 [nulls](/api/v1/docs/nulls) for what to render then.

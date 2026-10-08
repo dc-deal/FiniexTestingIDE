@@ -25,7 +25,7 @@ from python.framework.reporting.console.deployment_history_summary import (
     render_deployment_history,
     render_deployment_list,
 )
-from python.framework.types.api.report_types import RunResultRow
+from python.framework.types.api.report_types import OrdersTo, RunResultRow
 
 DEPLOYMENT = 'deploy_20260901_060000_ab12'
 
@@ -335,6 +335,62 @@ class TestTheComparabilityAdvisory:
         assert 'SPANS MORE THAN ONE CONFIGURATION' in printed
         assert printed.index('SPANS MORE THAN ONE') < printed.index('net P&L'), (
             'the question has to reach the reader before the numbers do')
+
+
+class TestWhereTheOrdersWent:
+    """
+    Whether a session traded real money (#362) — on each session, on the overview line, and in
+    the advisory when a deployment mixes a rehearsal with real money: its P&L column would add
+    simulated fills to real ones, although strategy and operation never moved.
+    """
+
+    _ROWS = [row('r1', '2026-09-01T06:00:00+00:00', orders_to=OrdersTo.SIMULATED),
+             row('r2', '2026-09-02T06:00:00+00:00', orders_to=OrdersTo.SIMULATED),
+             row('r3', '2026-09-03T06:00:00+00:00', orders_to=OrdersTo.VENUE)]
+
+    def test_each_session_says_it_and_the_switch_is_marked(self):
+        sessions = build_deployment_histories(self._ROWS)[DEPLOYMENT]
+
+        assert [s.orders_to for s in sessions] == [
+            OrdersTo.SIMULATED, OrdersTo.SIMULATED, OrdersTo.VENUE]
+        assert [s.orders_to_changed for s in sessions] == [False, False, True]
+
+    def test_a_mix_alone_raises_the_advisory(self):
+        advisory = deployment_comparability_advisory(self._ROWS)
+
+        assert advisory is not None
+        assert (advisory.strategy_stands, advisory.operation_stands) == (1, 1)
+        assert advisory.orders_to == [OrdersTo.SIMULATED, OrdersTo.VENUE]
+
+    def test_the_overview_names_both_and_marks_the_deployment(self):
+        histories = build_deployment_histories(self._ROWS)
+        summary = summarize_deployments(
+            histories, {DEPLOYMENT: deployment_comparability_advisory(self._ROWS)})[0]
+
+        assert summary.orders_to == [OrdersTo.SIMULATED, OrdersTo.VENUE]
+        assert summary.changed
+
+    def test_an_older_row_says_nothing_and_changes_nothing(self):
+        """Not recorded is not a change — and not a mix."""
+        rows = [row('r1', '2026-09-01T06:00:00+00:00'),
+                row('r2', '2026-09-02T06:00:00+00:00', orders_to=OrdersTo.VENUE)]
+        sessions = build_deployment_histories(rows)[DEPLOYMENT]
+
+        assert [s.orders_to_changed for s in sessions] == [False, False]
+        assert deployment_comparability_advisory(rows) is None
+        assert summarize_deployments({DEPLOYMENT: sessions}, {DEPLOYMENT: None})[0].orders_to == [
+            OrdersTo.VENUE]
+
+    def test_the_console_says_it(self, capsys):
+        histories = build_deployment_histories(self._ROWS)
+        advisory = deployment_comparability_advisory(self._ROWS)
+        render_deployment_history(DEPLOYMENT, histories[DEPLOYMENT], advisory)
+        render_deployment_list(summarize_deployments(histories, {DEPLOYMENT: advisory}))
+
+        printed = capsys.readouterr().out
+        assert 'simulated fills to real money' in printed
+        assert 'ORDERS TO CHANGED HERE' in printed
+        assert 'simulated,venue' in printed
 
 
 class TestTheOverviewHalf:

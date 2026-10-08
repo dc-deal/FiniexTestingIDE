@@ -3,8 +3,8 @@ FiniexTestingIDE - Decision Event Dispatcher (#348)
 
 Bridges the executor's event sources to the decision logic's typed event hooks.
 
-Order fills and rejections ride the executor's existing order-outcome listener
-fan-out (#319). Cancellations, partial closes, and session-end arrive via the
+Order fills, rejections and unaccounted orders ride the executor's existing
+order-outcome listener fan-out (#319). Cancellations, partial closes, and session-end arrive via the
 executor's dedicated decision-event sink. The dispatcher buffers every event and
 the tick loop drains it at the loop boundary, so events are processed in order —
 after the tick's compute/execute and before the next tick.
@@ -26,6 +26,7 @@ from python.framework.types.decision_event_types import (
     OrderCancelledEvent,
     OrderFilledEvent,
     OrderRejectedEvent,
+    OrderUnaccountedEvent,
     PartialCloseEvent,
     PositionClosedEvent,
     SessionEndEvent,
@@ -41,6 +42,7 @@ from python.framework.types.trading_env_types.order_types import (
 _EVENT_TYPE_BY_CLASS: Dict[Type[DecisionEvent], DecisionEventType] = {
     OrderFilledEvent: DecisionEventType.ORDER_FILLED,
     OrderRejectedEvent: DecisionEventType.ORDER_REJECTED,
+    OrderUnaccountedEvent: DecisionEventType.ORDER_UNACCOUNTED,
     OrderCancelledEvent: DecisionEventType.ORDER_CANCELLED,
     PartialCloseEvent: DecisionEventType.PARTIAL_CLOSE,
     PositionClosedEvent: DecisionEventType.POSITION_CLOSED,
@@ -145,17 +147,24 @@ class DecisionEventDispatcher:
         pending: Optional[PendingOrder] = None,
     ) -> None:
         """
-        Bridge the executor's order-outcome fan-out to ORDER_FILLED / ORDER_REJECTED.
+        Bridge the executor's order-outcome fan-out to ORDER_FILLED / ORDER_REJECTED / ORDER_UNACCOUNTED.
 
-        Open fills arrive as EXECUTED, rejections as REJECTED. Close fills do not
-        reach the outcome fan-out (see _fill_close_order) — partial closes arrive
-        via the sink instead.
+        Open fills arrive as EXECUTED; venue refusals as REJECTED, and an order the venue never
+        received as UNDELIVERED — both are ORDER_REJECTED, and the event's result carries which;
+        an order nobody could account for as UNACCOUNTED. Close fills do not reach the outcome
+        fan-out (see _fill_close_order) — partial closes arrive via the sink instead.
+
+        The event's direction is the row's wherever the row has one. A close in the live
+        pipeline carries no direction of its own, so the fan-out hands over None for it,
+        while its row states the direction of the position it closes — None only once that
+        position is gone.
 
         Args:
-            direction: Position direction
+            direction: Position direction, as the fan-out has it
             result: Terminal OrderResult
             pending: PendingOrder reference at outcome time (unused here)
         """
+        direction = result.direction or direction
         tick_time = self._executor.get_current_time()
         if result.status == OrderStatus.EXECUTED:
             self.submit(OrderFilledEvent(
@@ -167,12 +176,20 @@ class DecisionEventDispatcher:
                 result=result,
                 tick_time=tick_time,
             ))
-        elif result.is_rejected:
+        elif result.status in (OrderStatus.REJECTED, OrderStatus.UNDELIVERED):
             self.submit(OrderRejectedEvent(
                 order_id=result.order_id,
                 direction=direction,
                 reason=result.rejection_reason,
                 message=result.rejection_message,
+                result=result,
+                tick_time=tick_time,
+            ))
+        elif result.status is OrderStatus.UNACCOUNTED:
+            self.submit(OrderUnaccountedEvent(
+                order_id=result.order_id,
+                direction=direction,
+                end_reason=result.end_reason,
                 result=result,
                 tick_time=tick_time,
             ))
@@ -188,6 +205,8 @@ class DecisionEventDispatcher:
             self._decision_logic.on_order_filled(event)
         elif isinstance(event, OrderRejectedEvent):
             self._decision_logic.on_order_rejected(event)
+        elif isinstance(event, OrderUnaccountedEvent):
+            self._decision_logic.on_order_unaccounted(event)
         elif isinstance(event, OrderCancelledEvent):
             self._decision_logic.on_order_cancelled(event)
         elif isinstance(event, PartialCloseEvent):

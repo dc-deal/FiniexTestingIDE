@@ -207,7 +207,7 @@ Partial-close specific tests organized in 7 groups.
 | `test_portfolio_pnl_is_sum_of_trades` | Σ(trade.net_pnl) = portfolio total P&L |
 | `test_portfolio_fees_is_sum_of_trade_fees` | Σ(trade.spread_cost) = portfolio spread cost |
 | `test_total_trades_count` | portfolio.total_trades = 4 |
-| `test_no_rejected_orders` | 0 rejected orders |
+| `test_no_rejected_orders` | No order was refused — neither rejected by the venue nor denied here |
 
 #### TestChronologicalOrder
 
@@ -273,6 +273,43 @@ A refused order built by the rejection factory itself, one on each side — no s
 | `test_a_refused_close_is_not_lost` | A refused close gets its ORDER_REJECT, although closes are otherwise taken from the trade history, where a refused one never lands |
 | `test_a_rejection_carries_its_own_time_never_the_wall_clock` | The event is stamped with the refusal's own time; it used to fall back to the moment the report was written |
 
+#### TestUnfilledEndEvents
+
+Every way an order ends without a fill leaves an event with its status and reason (#362) — built
+from rows as the executors book them, no scenario run.
+
+| Test | Description |
+|------|-------------|
+| `test_cancel_and_unaccounted_get_their_own_events` | A cancel is ORDER_CANCEL and an unaccounted order ORDER_END, each with its status and end reason |
+| `test_a_venue_refusal_keeps_its_submission_and_a_denial_has_none` | An order the venue refused was sent, so its ORDER_SUBMIT stays beside its ORDER_REJECT; a denial never left this process and has none |
+
+#### TestSubmitTimes
+
+| Test | Description |
+|------|-------------|
+| `test_a_close_submit_is_stamped_at_its_submission_tick` | A CLOSE_SUBMIT carries the tick time the close was submitted at, not the fill's — it used to be stamped at the fill |
+
+### test_order_and_trade_rows.py — What the rows say about each order and trade
+
+Reads the scenario's order history and trade records directly. A row names the type the order was
+asked as, a pending row the moment of its submission, a close row its close type and size; a trade
+record carries the position's size when it opened, which a partial close is only a slice of.
+
+#### TestOrderRows
+
+| Test | Description |
+|------|-------------|
+| `test_every_row_states_the_order_type` | No row without its order type, refusals included |
+| `test_a_pending_row_carries_its_submission_time` | The pending row's time is the submission, never empty |
+| `test_a_close_row_states_its_close_type_and_size` | Full or partial, `market`, and the lots asked for |
+
+#### TestTradeRecords
+
+| Test | Description |
+|------|-------------|
+| `test_every_record_carries_the_size_at_entry` | `entry_lots` is set and never below what the record closed |
+| `test_a_partial_close_is_a_slice_of_the_size_at_entry` | On every partial record the size at entry exceeds the slice |
+
 ---
 
 ## Running the Tests
@@ -307,6 +344,7 @@ BatchExecutionSummary
             │    ├→ [2] FULL    0.02 lots (exit ~tick 5205)  ← Trade #1
             │    └→ [3] FULL    0.01 lots (exit ~tick 8105)  ← Trade #0 remainder
             └→ execution_stats: ExecutionStats
-                 ├→ orders_sent: 4  (2 open + 2 partial close orders)
-                 └→ orders_rejected: 0
+                 ├→ orders_submitted: 6  (2 opens + 2 partial closes + 2 full closes)
+                 ├→ orders_executed: 6
+                 └→ orders_rejected: 0 · orders_denied: 0
 ```

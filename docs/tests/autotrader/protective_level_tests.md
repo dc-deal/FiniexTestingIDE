@@ -157,6 +157,7 @@ whole feature is in that separation:
 | `test_no_opt_in_places_nothing` · `test_an_entry_without_a_stop_places_nothing` | The gate in both directions |
 | `test_the_local_check_still_watches_before_confirmation` | Between sending and hearing back nobody at the venue holds anything |
 | `test_a_confirmation_hands_the_stop_over` · `test_and_then_the_local_check_leaves_that_stop_alone` | And only then does it stand down |
+| `TestItClaimsNoFunds` | The resting stop reserves nothing of the account, and a second buy beside it is not refused — in both account models. The venue holds nothing against a resting exit, and a backtest's stop-loss is no order at all; read as a close in its own trading direction, a sell stop held its position's value in quote |
 
 ### `test_protective_order_lifecycle.py` (#503, stages D2-D6)
 
@@ -170,10 +171,12 @@ venue holds a different one or none — which is why each ends in the session ch
 | `test_an_unchanged_level_touches_nothing` · `test_a_refused_amend_says_which_level_the_venue_is_really_holding` | The no-op, and the divergence named out loud when the order cannot follow |
 | `test_a_refused_cancel_withholds_the_close_and_says_so` | **D3.** No `reduce_only` at spot: a close beside a resting stop can fill twice. Without a confirmed cancel the close does NOT go out and the position stays open AND protected |
 | `test_a_partial_close_re_places_at_the_remaining_size` · `test_a_full_close_leaves_nothing_to_protect` | **D4.** The remainder is protected again at its NEW size; a full close invents nothing |
+| `test_the_released_stop_ends_cancelled_by_the_framework` | The protective order a close waited for ends with its own row: `cancelled`, by the framework, `protection_released` — it used to end with no record of how |
+| `test_its_cancel_event_names_the_position_it_protected` | Its `order_cancelled` event states the POSITION's direction, as its row does — the stop protecting a LONG is a sell, and the event used to say SHORT beside a row saying LONG |
 | `test_it_is_exempt_from_the_cancel_policy` | **D5.** The only pair a session can start with today would otherwise cancel the protection exactly when the bot stops looking |
 | `test_the_repeat_request_sends_nothing` · `test_and_the_waiting_close_still_goes_out_when_the_cancel_confirms` | **D3's other half.** A deferred close registers nothing with the request processor, so `is_pending_close` and `has_pending_orders` both stay False and the local level check calls in again on every tick — a repeat request JOINS the waiting close instead of overtaking it, and the waiting one still goes out when the cancel confirms |
 | `test_the_position_hears_about_it` | A broker reference arrives in THREE places, and the reconcile attribution is the third. A protective order reclaimed there without stamping its position leaves the position reading LOCAL for a stop the venue holds — two enforcers, and a carry-over with no reference for the next boot |
-| `test_a_protective_amend_refusal_notifies_no_outcome` · `test_an_ordinary_order_still_arms_it` | **D6.** Measured: 378 amends over 62 positions, worst burst 20 in 39 ticks. Two rejections arm a 60 s block on every new order in that direction — the REPLACEMENT protective order included. A refused amend is no new-order rejection, because no new order was attempted |
+| `test_a_protective_amend_refusal_notifies_no_outcome` · `test_an_ordinary_order_does_not_arm_it_either` | **D6.** Measured: 378 amends over 62 positions, worst burst 20 in 39 ticks. Two rejections arm a 60 s block on every new order in that direction — the REPLACEMENT protective order included. A refused amend is no new-order rejection, because no new order was attempted — for a protective order and for an ordinary entry alike: the order keeps working, so it books no row either |
 
 **The suite's own venue** lives in `conftest.py`. A protective order is the first order in this
 project meant to REST at the venue and outlive the process, and the stock `MockBrokerAdapter`
@@ -196,7 +199,10 @@ Both are narrow, both are real, and neither is a defect to be fixed by loosening
 
 - **A close is already in flight.** The guard matches any close on the position, so a
   strategy's partial close holds the stop off until it resolves. Letting both fly would ask
-  the venue for more lots than the position holds.
+  the venue for more lots than the position holds. The simulation stands aside the same way
+  since #362: filling the level beneath a close still in its latency queue made the position
+  vanish under that close, which then arrived to find nothing — an exit and a refusal an
+  AutoTrader session can never produce.
 - **A protective close was refused.** The pending is gone, so the next tick triggers again.
   That is the right answer for a transient refusal and a tight loop for a permanent one; the
   refusal is logged as an ERROR into the session pot each time, so it cannot pass unnoticed.
@@ -240,6 +246,29 @@ time-ranged closed-order route that can also be narrowed to one wire key, and it
 against Kraken before it was written. That closes the gap this section described for the boot
 resolver, and it is the read on which "the venue never took this order" rests.
 
+## A close waiting behind a protective order always ends
+
+`test_waiting_close_settles.py`. A close requested while the position's protective order is at
+the venue is parked until the venue confirms that order's cancel — a close racing a resting stop
+can fill twice. It used to end in exactly three ways: the cancel confirmed, the close released, the
+close abandoned. Every other way the protective order could stop resting left the close parked for
+the rest of the session, and while it waited every new close joined it and the local stop check
+stood aside: the position could be neither closed nor protected.
+
+| Test class | Pins |
+|---|---|
+| `TestTheProtectiveOrderEndsBeforeItRests` | refused at submission → the waiting close goes out; filled in its own submit answer → the waiting close is dropped, nothing stays pending; never held by the venue while its cancel was still parked (the resolution, by our own key, after the settle window) → booked `undelivered`, and the close goes out |
+| `TestTheVenueEndsTheProtectiveOrderAfterItRested` | a status read finds it rejected → the close goes out; rejected after closing part → the part is booked and the close goes out for the rest |
+
+The window these tests need — the protective order sent, its answer not yet read — exists in the
+live executor only between two drains, and the mock's worker thread answers as fast as it is
+asked. The file therefore holds the venue's answer to the STOP submit until the test releases it;
+without that the window opened by luck of scheduling — in the first run, two of the five tests
+found the order already confirmed.
+
+What still abandons the close is where the stop may rest after all — a refused cancel, the
+resolution's ceiling, an absence read by reference — and that stays pinned below.
+
 ## When the answer to a protective write never arrives (#487)
 
 `test_unresolved_protective_writes.py`. This is the expensive corner of #487 and it lives here
@@ -260,7 +289,8 @@ again, while the framework's own stop check re-requests the close on every tick.
 | Test class | Pins |
 |---|---|
 | `TestAnUnresolvedCancelBooksNothing` | the order stays in its resting list, the stamp stays, the deferred close is NOT released and no close reaches the venue, the operation stays in flight so nothing races it, and the resolution is asking |
-| `TestTheCeilingEndsTheWait` | at the ceiling the close is ABANDONED rather than left hanging, the operation is released so the order is not stuck for the session, and the order itself is still not dropped |
+| `TestTheCeilingEndsTheWait` | at the ceiling the close is ABANDONED rather than left hanging, the operation is released so the order is not stuck for the session, the order itself is still not dropped, and the abandoned close ends with a `denied` · `close_withheld` row — the one it gets when it is withheld at the request (#362) |
+| `TestACancelAnswerNamingNothingBooksNothing` | a cancel answered UNKNOWN — the venue answered and named nothing it cancelled — is treated as the open question it is: the stop and its stamp stay, the close keeps waiting, the operation stays in flight and the resolution asks. Kraken raises instead of answering this way (measured 2026-09-13), so it is the second adapter's case (#209) |
 | `TestAnUnresolvedAmendWritesNoProvisionalValue` | the shadow price does not move, the provisional values stay parked, and the one-outstanding-amend guard stays closed |
 
 Abandoning rather than releasing is the safe direction: the position stays open and, because the

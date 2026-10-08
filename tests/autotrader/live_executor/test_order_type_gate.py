@@ -171,7 +171,7 @@ class TestTheSubmissionGateReadsTheSameSet:
             symbol='BTCUSD', order_type=OrderType.ICEBERG,
             direction=OrderDirection.LONG, lots=0.01, price=49000.0))
 
-        assert result.status == OrderStatus.REJECTED
+        assert result.status == OrderStatus.DENIED
         assert result.rejection_reason == RejectionReason.ORDER_TYPE_NOT_SUPPORTED
 
     def test_every_declared_type_is_one_the_gate_lets_through(self):
@@ -204,7 +204,7 @@ class TestTheSubmissionGateReadsTheSameSet:
             result = executor.open_order(OpenOrderRequest(
                 symbol='BTCUSD', order_type=order_type, direction=OrderDirection.LONG,
                 lots=0.01, **prices[order_type]))
-            assert result.status != OrderStatus.REJECTED, (
+            assert not result.is_refused, (
                 f'{order_type.value} is declared but was rejected: '
                 f'{result.rejection_reason}')
 

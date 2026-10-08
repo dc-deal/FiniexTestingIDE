@@ -38,6 +38,7 @@ from python.framework.types.decision_event_types import (
     OrderCancelledEvent,
     OrderFilledEvent,
     OrderRejectedEvent,
+    OrderUnaccountedEvent,
     PartialCloseEvent,
     SessionEndEvent,
     SessionEndSeverity,
@@ -157,6 +158,7 @@ class EventProbe(AbstractDecisionLogic):
         return {
             DecisionEventType.ORDER_FILLED,
             DecisionEventType.ORDER_REJECTED,
+            DecisionEventType.ORDER_UNACCOUNTED,
             DecisionEventType.ORDER_CANCELLED,
             DecisionEventType.PARTIAL_CLOSE,
             DecisionEventType.POSITION_CLOSED,
@@ -179,6 +181,10 @@ class EventProbe(AbstractDecisionLogic):
     def on_order_rejected(self, event: OrderRejectedEvent) -> None:
         self._received_events.append(DecisionEventType.ORDER_REJECTED.value)
         self.logger.info(f'[EVENT] order_rejected {event.order_id} ({event.message})')
+
+    def on_order_unaccounted(self, event: OrderUnaccountedEvent) -> None:
+        self._received_events.append(DecisionEventType.ORDER_UNACCOUNTED.value)
+        self.logger.info(f'[EVENT] order_unaccounted {event.order_id} ({event.end_reason})')
 
     def on_order_cancelled(self, event: OrderCancelledEvent) -> None:
         self._received_events.append(DecisionEventType.ORDER_CANCELLED.value)
@@ -257,7 +263,7 @@ class EventProbe(AbstractDecisionLogic):
                 lots=self._lot_size,
                 comment='EventProbe open',
             )
-            if order_result and not order_result.is_rejected:
+            if order_result and not order_result.is_refused:
                 self._position_id = order_result.order_id
             return order_result
 

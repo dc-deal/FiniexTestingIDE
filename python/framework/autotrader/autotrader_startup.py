@@ -18,11 +18,10 @@ from python.framework.autotrader.autotrader_data_preparer import build_scenario_
 from python.framework.autotrader.autotrader_logger_bundle import AutotraderLoggerBundle
 from python.framework.autotrader.autotrader_pipeline_bundle import AutotraderPipelineBundle
 from python.framework.autotrader.autotrader_warmup_preparator import AutotraderWarmupPreparator
-from python.framework.autotrader.dry_run_resolver import resolve_dry_run
+from python.framework.autotrader.dry_run_resolver import resolve_orders_to
 from python.framework.autotrader.live_clipping_monitor import LiveClippingMonitor
 from python.framework.bars.bar_rendering_controller import BarRenderingController
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
-from python.framework.exceptions.live_execution_errors import DryRunConflictError
 from python.framework.factory.decision_logic_factory import DecisionLogicFactory
 from python.framework.factory.live_trade_executor_factory import build_live_executor
 from python.framework.factory.worker_factory import WorkerFactory
@@ -45,7 +44,6 @@ from python.framework.trading_env.live.live_trade_executor import LiveTradeExecu
 from python.framework.store.run_config_store import RunConfigStore
 from python.framework.types.api.report_types import (
     DataWindow,
-    OrdersTo,
     ParentKind,
     RunHeader,
     TicksFrom,
@@ -102,24 +100,6 @@ def _ticks_from(config: AutoTraderConfig) -> TicksFrom:
         ARCHIVE for the replaying tick source, VENUE for every other
     """
     return TicksFrom.ARCHIVE if config.tick_source.type == REPLAY_TICK_SOURCE else TicksFrom.VENUE
-
-
-def _orders_to(config: AutoTraderConfig) -> Optional[OrdersTo]:
-    """
-    Where this session's orders go, by the one dry-run rule the broker setup arms the adapter with.
-
-    Args:
-        config: The resolved AutoTrader configuration
-
-    Returns:
-        SIMULATED or VENUE; None for a profile the dry-run rule refuses — the header goes down
-        before that refusal on purpose, so the refused session is still identifiable, and it
-        never trades
-    """
-    try:
-        return OrdersTo.SIMULATED if resolve_dry_run(config) else OrdersTo.VENUE
-    except DryRunConflictError:
-        return None
 
 
 def _data_windows(config: AutoTraderConfig, run_timestamp: datetime) -> List[DataWindow]:
@@ -317,7 +297,7 @@ def create_autotrader_loggers(
             # Which KIND of session this is, from the resolved configuration rather than the
             # file: where the ticks come from and where the orders go (contract 12).
             ticks_from=_ticks_from(config),
-            orders_to=_orders_to(config),
+            orders_to=resolve_orders_to(config),
             data_windows=_data_windows(config, run_timestamp),
         )
         RunIndex(AppConfigManager().get_file_logging_config_object().run_index).register_run(
@@ -731,6 +711,20 @@ def _build_executor(
 
     broker_entry = MarketConfigManager().get_broker_entry(config.broker_type)
     connection_policy = broker_entry.broker_transport.connection
+    # Every read and write a live session sends to its venue goes through this ladder, and a
+    # budget of 0 never gives up — right for a stream whose whole job is to come back, wrong
+    # for a request: the session-end broker-truth read (#362) and the boot reads would wait
+    # through an outage for as long as it lasts. The model's default is 0, so a broker with no
+    # transport block of its own would inherit it. A mock session reaches no venue.
+    if config.adapter_type == 'live' and connection_policy.attempt_budget <= 0:
+        raise ValueError(
+            f"Configuration error: broker '{config.broker_type}' never gives up on a REST "
+            f"request — in market_config.json, the brokers entry for '{config.broker_type}' "
+            f"has broker_transport.connection.attempt_budget = "
+            f"{connection_policy.attempt_budget}, and 0 means retry for ever.\n"
+            f"Set a finite attempt_budget (the shipped Kraken entry uses 3), so that an outage "
+            f"ends a read instead of holding the session's start or its end."
+        )
     executor = build_live_executor(
         broker_config=broker_config,
         balances=balances,
@@ -753,6 +747,11 @@ def _build_executor(
             order_timeout_seconds=config.execution.order_timeout_seconds),
         resolution_config=config.execution.unresolved_resolution,
         venue_read_settle_seconds=config.execution.venue_read_settle_seconds,
+        # The history caps are the app's, not the profile's — the simulation reads the same
+        # block, and a live session that silently kept its constructor defaults would cap
+        # at a number no file states.
+        order_history_max=AppConfigManager().get_order_history_max(),
+        trade_history_max=AppConfigManager().get_trade_history_max(),
     )
     # The session log's event-time column pulls from the canonical clock. Attachable only
     # HERE: the logger goes INTO build_live_executor above, so it necessarily exists first.

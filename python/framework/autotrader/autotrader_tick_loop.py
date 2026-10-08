@@ -720,7 +720,7 @@ class AutotraderTickLoop:
             order_result: Result of the executed decision (may be None / non-rejected)
             decision: The decision that produced the order (for the side label)
         """
-        if not (order_result and order_result.is_rejected):
+        if not (order_result and order_result.is_refused):
             return
         reason = order_result.rejection_reason.value if order_result.rejection_reason else 'unknown'
         self._rejection_count += 1
@@ -741,7 +741,9 @@ class AutotraderTickLoop:
         order id belongs to a local pending whose submit answer was lost, so the venue's
         reference is handed to the executor — the owner of that state — which puts the
         order back into the poll path. Everything else the cycle found is reported by the
-        Reconciler itself; correction is #349.
+        Reconciler itself; correction is #349. A cycle whose picture changed is written to the
+        order-event stream as a broker-truth record — by the executor, which numbers the
+        stream (#362).
 
         Args:
             ticks_processed: Current tick counter (drives the hybrid cadence)
@@ -751,6 +753,8 @@ class AutotraderTickLoop:
         result = self._reconciler.reconcile(ticks_processed)
         if result.attributed_orders:
             self._executor.apply_order_attributions(result.attributed_orders)
+        if result.broker_truth_due:
+            self._executor.record_reconcile_truth(result)
 
     def _persist_state_if_due(self, ticks_processed: int) -> None:
         """

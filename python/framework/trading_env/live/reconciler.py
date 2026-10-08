@@ -31,10 +31,10 @@ reads (ALERT_ONLY).
 """
 
 import time
-from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Dict, List, Optional, Set, Tuple
+from typing import Dict, List, Optional, Set, Tuple
 
 from python.framework.logging.abstract_logger import AbstractLogger
+from python.framework.trading_env.live.live_trade_executor import LiveTradeExecutor
 from python.framework.types.config_types.autotrader_defaults_config_types import (
     ReconciliationDefaults,
 )
@@ -44,6 +44,7 @@ from python.framework.types.live_types.reconciliation_types import (
     BrokerOrder,
     BrokerPosition,
     FlatCheckResult,
+    ReconcileDivergence,
     ReconciliationResult,
 )
 from python.framework.types.portfolio_types.portfolio_types import Position
@@ -53,9 +54,6 @@ from python.framework.types.trading_env_types.latency_simulator_types import (
 )
 from python.framework.utils.broker_asset_utils import normalize_broker_asset
 from python.framework.utils.run_id_utils import parse_client_order_id
-
-if TYPE_CHECKING:
-    from python.framework.trading_env.live.live_trade_executor import LiveTradeExecutor
 
 
 # Relative tolerance (percent) for the stale-field comparison.
@@ -84,7 +82,7 @@ class Reconciler:
 
     def __init__(
         self,
-        executor: 'LiveTradeExecutor',
+        executor: LiveTradeExecutor,
         config: ReconciliationDefaults,
         logger: AbstractLogger,
         trading_model: TradingModel,
@@ -118,13 +116,18 @@ class Reconciler:
         # per cycle (#355). An order that is later ATTRIBUTED is removed again: it is no
         # longer unaccounted for, and the final summary counts this set.
         self._reported_unconfirmed: Set[str] = set()
-        # Broker references already named as ours-but-unaccounted, and the fingerprint of the
-        # last divergence picture. Both exist for the same reason: most of these states are
-        # DURABLE — a resting order stays resting — so repeating them per cycle would bury the
-        # report rather than inform it.
+        # Broker references already named as ours-but-unaccounted, and the last divergence
+        # picture. Both exist for the same reason: most of these states are DURABLE — a resting
+        # order stays resting — so repeating them per cycle would bury the report rather than
+        # inform it. The picture is forgotten on a clean cycle, so a divergence that returns is
+        # reported again (#362).
         self._reported_ours: Set[str] = set()
-        self._last_divergence_fingerprint: Optional[str] = None
+        self._last_divergence: Optional[ReconcileDivergence] = None
         self._unchanged_cycles: int = 0
+        # What the order-event stream was last told — None for clean, which is also where a
+        # session starts — and when, for the minimum distance between two such records (#362)
+        self._recorded_divergence: Optional[ReconcileDivergence] = None
+        self._last_truth_record_time: Optional[float] = None
         self._last_clean: bool = True
         self._state_since: float = time.monotonic()  # when the current clean/divergent state began
 
@@ -187,7 +190,14 @@ class Reconciler:
             return self._skip_cycle(current_tick, error)
 
         result = self._diff(broker_positions, broker_orders, local_positions, local_orders)
+        # What the cycle read travels with it, so a broker-truth record never reads twice
+        result.broker_orders = broker_orders
+        if self._trading_model == TradingModel.MARGIN:
+            result.broker_positions = broker_positions
+        if not result.is_clean:
+            result.divergence = self._divergence_of(result)
         self._handle_result(result)
+        self._mark_broker_truth(result)
 
         # Per-cycle heartbeat — divergences are WARNed in _handle_result; a clean
         # cycle logs a concise INFO line so the poll is visible in the session log.
@@ -229,7 +239,6 @@ class Reconciler:
             f'({error}) · next attempt in {self._config.min_interval_seconds:.0f}s'
         )
         return ReconciliationResult(
-            timestamp=datetime.now(timezone.utc),
             is_clean=False,
             skipped_reason=str(error),
         )
@@ -386,7 +395,6 @@ class Reconciler:
         )
 
         return ReconciliationResult(
-            timestamp=datetime.now(timezone.utc),
             ghost_positions=ghost_positions,
             orphan_positions=orphan_positions,
             stale_positions=stale_positions,
@@ -524,6 +532,10 @@ class Reconciler:
         )
         self._last_divergence_count = n
         if result.is_clean:
+            # Forgotten, so a divergence that returns is reported again rather than as
+            # unchanged (#362) — a clean stretch in between is news the operator needs
+            self._last_divergence = None
+            self._unchanged_cycles = 0
             return
 
         self._divergence_count += n   # cumulative session total (final summary)
@@ -534,8 +546,7 @@ class Reconciler:
         # put up to ~43,000 identical lines into the session pot over a thirty-day run at the
         # 60 s floor — which does not inform, it buries. So the warning fires on CHANGE, and an
         # unchanged cycle says so in one INFO line, which keeps the poll visibly alive.
-        fingerprint = self._divergence_fingerprint(result)
-        if fingerprint == self._last_divergence_fingerprint:
+        if result.divergence == self._last_divergence:
             self._unchanged_cycles += 1
             self._logger.info(
                 f'🔍 reconcile #{self._reconcile_count}: {n} divergence(s) UNCHANGED '
@@ -543,7 +554,7 @@ class Reconciler:
             )
             return
 
-        self._last_divergence_fingerprint = fingerprint
+        self._last_divergence = result.divergence
         self._unchanged_cycles = 0
         self._logger.warning(
             f'[RECONCILE] {n} divergence(s) detected (ALERT_ONLY)\n'
@@ -559,31 +570,60 @@ class Reconciler:
         self._report_our_unaccounted(result)
 
     @staticmethod
-    def _divergence_fingerprint(result: ReconciliationResult) -> str:
+    def _divergence_of(result: ReconciliationResult) -> ReconcileDivergence:
         """
-        What the divergence picture consists of, as one comparable string.
+        What the divergence picture consists of, by identity — compared cycle to cycle, and
+        written into a broker-truth record (#362).
 
         Identities rather than counts: one ghost replaced by a different ghost is a CHANGE the
-        operator needs, even though the count stayed at one.
+        operator needs, even though the count stayed at one. Sorted, so two cycles that found
+        the same members compare equal in whatever order the venue listed them.
 
         Args:
             result: The diff outcome for this cycle
 
         Returns:
-            A stable fingerprint of every divergence bucket's members
+            Every divergence bucket's members
         """
-        parts = [
-            'g:' + ','.join(sorted(o.broker_ref for o in result.ghost_orders)),
-            'a:' + ','.join(sorted(o.broker_ref for o in result.abandoned_orders)),
-            'f:' + ','.join(sorted(o.broker_ref for o in result.foreign_session_orders)),
-            'u:' + ','.join(sorted(p.pending_order_id for p in result.unconfirmed_orders)),
-            'o:' + ','.join(sorted(p.pending_order_id for p in result.orphan_orders)),
-            's:' + ','.join(sorted(lo.pending_order_id for lo, _ in result.stale_orders)),
-            'gp:' + str(len(result.ghost_positions)),
-            'op:' + str(len(result.orphan_positions)),
-            'sp:' + str(len(result.stale_positions)),
-        ]
-        return '|'.join(parts)
+        return ReconcileDivergence(
+            ghost_orders=sorted(o.broker_ref for o in result.ghost_orders),
+            abandoned_orders=sorted(o.broker_ref for o in result.abandoned_orders),
+            foreign_session_orders=sorted(o.broker_ref for o in result.foreign_session_orders),
+            unconfirmed_orders=sorted(p.pending_order_id for p in result.unconfirmed_orders),
+            orphan_orders=sorted(p.pending_order_id for p in result.orphan_orders),
+            stale_orders=sorted(lo.pending_order_id for lo, _ in result.stale_orders),
+            ghost_positions=len(result.ghost_positions),
+            orphan_positions=len(result.orphan_positions),
+            stale_positions=len(result.stale_positions),
+        )
+
+    def _mark_broker_truth(self, result: ReconciliationResult) -> None:
+        """
+        Mark the cycle due for a broker-truth record when its picture changed (#362).
+
+        Changed means: it differs from the picture the order-event stream was last told —
+        clean against divergent, or a divergence with other members. A change that comes within
+        the minimum distance of the last such record is not dropped but deferred: the first
+        cycle after the distance writes the picture as it is THEN, if it still differs. The
+        stream so always ends with the latest state, at most once per interval, however often
+        an order at the edge of a tolerance flips the picture; every cycle stays in the session
+        log either way.
+
+        Args:
+            result: The diff outcome for this cycle
+        """
+        if result.divergence == self._recorded_divergence:
+            return
+        now = time.monotonic()
+        if (self._last_truth_record_time is not None
+                and now - self._last_truth_record_time
+                < self._config.broker_truth_min_interval_seconds):
+            return
+        result.broker_truth_due = True
+        result.broker_truth_state_changed = (
+            (result.divergence is None) != (self._recorded_divergence is None))
+        self._recorded_divergence = result.divergence
+        self._last_truth_record_time = now
 
     def _report_our_unaccounted(self, result: ReconciliationResult) -> None:
         """

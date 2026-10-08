@@ -15,7 +15,7 @@ from python.framework.reporting.builders.block_splitting_report_builder import (
 from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.process_data_types import ProcessResult, ProcessTickLoopResult
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
-from python.framework.types.trading_env_types.pending_order_stats_types import PendingOrderStats
+from python.framework.types.trading_env_types.order_event_types import OrderEvent, OrderEventType
 from tests.shared.fixture_helpers import make_closed_trades, make_open_positions
 
 # Every report artifact names its run (#475); the value is opaque to these tests.
@@ -40,7 +40,7 @@ def _result(name, open_trades=0, open_pnl=0.0, nat_trades=0, nat_pnl=0.0,
         open_pnl: Unrealised P&L riding on them
         nat_trades: Trades the strategy closed itself
         nat_pnl: Realised P&L from those
-        discarded: Pending orders discarded at the edge
+        discarded: Pending orders the edge met on their way — submitted, then expired
         success: False for a scenario that failed
         idx: Its scenario index
         profile_run: False for a normal run, which carries no disposition
@@ -49,13 +49,20 @@ def _result(name, open_trades=0, open_pnl=0.0, nat_trades=0, nat_pnl=0.0,
         The ProcessResult
     """
     _PROFILE_RUN[name] = profile_run
-    pending = PendingOrderStats(total_force_closed=discarded) if discarded else None
+    events = []
+    for number in range(discarded):
+        order_id = f'pos_btcusd_{number}'
+        submitted = len(events) + 1
+        events.append(OrderEvent(seq=submitted, event_type=OrderEventType.SUBMITTED,
+                                 order_id=order_id, submitted_seq=submitted))
+        events.append(OrderEvent(seq=submitted + 1, event_type=OrderEventType.EXPIRED,
+                                 order_id=order_id, submitted_seq=submitted))
     return ProcessResult(
         success=success, scenario_name=name, scenario_index=idx,
         tick_loop_results=ProcessTickLoopResult(
             open_positions=make_open_positions(open_trades, open_pnl),
             trade_history=make_closed_trades(nat_trades, nat_pnl),
-            pending_stats=pending))
+            order_events=events))
 
 
 def _batch(results) -> BatchExecutionSummary:

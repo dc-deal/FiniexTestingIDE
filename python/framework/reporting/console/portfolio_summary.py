@@ -12,6 +12,7 @@ from typing import Dict, List, Optional
 from python.framework.reporting.console.abstract_batch_summary_section import (
     AbstractBatchSummarySection,
 )
+from python.framework.reporting.console.order_counts_line import order_endings_text
 from python.framework.types.api.report_types import (
     ActiveOrderRow,
     AggregatedPortfolioCurrency,
@@ -173,6 +174,10 @@ class PortfolioSummary(AbstractBatchSummarySection):
         pending_line = self._pending_line(pending, renderer)
         if pending_line:
             print(f'   {pending_line}')
+        for order in (pending.never_confirmed_orders if pending else []):
+            print(renderer.yellow(
+                f'   never confirmed: {order.order_id} ({order.event_type.value}'
+                + (f', {order.end_reason.value}' if order.end_reason else '') + ')'))
         active = self._active_summary(pending, renderer)
         if active:
             print(f'   {active}')
@@ -327,25 +332,33 @@ class PortfolioSummary(AbstractBatchSummarySection):
         """Order execution counts line (from the execution-stats model)."""
         if execution is None:
             return ''
-        line = f'Orders: {execution.orders_executed}/{execution.orders_sent} executed'
-        if execution.orders_rejected > 0:
-            line += f" | {renderer.yellow(f'Rej: {execution.orders_rejected}')}"
+        line = f'Orders: {execution.orders_executed}/{execution.orders_submitted} executed'
+        if execution.orders_adopted:
+            # An adopted order that fills is executed here without having been submitted here
+            line += f' · {execution.orders_adopted} adopted'
+        endings = order_endings_text(execution, renderer)
+        if endings:
+            line += f' | {endings}'
         return line
 
     @staticmethod
     def _pending_line(
         pending: Optional[PendingOrdersUnitRow], renderer: ConsoleRenderer) -> str:
-        """Pending-order latency summary line (green), or '' when no latency data."""
-        if pending is None or pending.min_latency_ms is None:
+        """How the unit's submissions left their in-flight phase (green), or '' when none."""
+        if pending is None or not pending.total_submitted:
             return ''
-        text = (
-            f'Pending: avg {pending.avg_latency_ms:.0f}ms '
-            f'({pending.min_latency_ms:.0f}-{pending.max_latency_ms:.0f})')
+        text = (f'Pending: {pending.total_submitted} submitted · '
+                f'{pending.total_accepted} accepted')
+        if pending.total_rejected > 0:
+            text += f' · {pending.total_rejected} rejected'
+        if pending.min_in_flight_ms is not None:
+            text += (f' | in flight avg {pending.avg_in_flight_ms:.0f}ms '
+                     f'({pending.min_in_flight_ms:.0f}-{pending.max_in_flight_ms:.0f})')
         anomalies = []
-        if pending.total_force_closed > 0:
-            anomalies.append(f'{pending.total_force_closed} forced')
-        if pending.total_timed_out > 0:
-            anomalies.append(f'{pending.total_timed_out} timeout')
+        if pending.total_never_confirmed > 0:
+            anomalies.append(f'{pending.total_never_confirmed} never confirmed')
+        if pending.total_expired > 0:
+            anomalies.append(f'{pending.total_expired} expired on the way')
         if anomalies:
             text += ' | ' + renderer.yellow(' | '.join(anomalies))
         return renderer.green(text)
@@ -480,12 +493,14 @@ class PortfolioSummary(AbstractBatchSummarySection):
         print(f'      Profit Factor: {pf_str}')
 
         print(f"\n{renderer.bold('   ORDER EXECUTION:')}")
-        print(f'      Orders Sent: {row.orders_sent}  |  '
-              f'Executed: {row.orders_executed}  |  '
-              f'Rejected: {row.orders_rejected}')
+        endings = order_endings_text(row, renderer)
+        print(f'      Orders Submitted: {row.orders_submitted}  |  '
+              + (f'Adopted: {row.orders_adopted}  |  ' if row.orders_adopted else '')
+              + f'Executed: {row.orders_executed}'
+              + (f'  |  {endings}' if endings else ''))
 
-        if row.orders_sent > 0:
-            print(f'      Execution Rate: {row.orders_executed / row.orders_sent:.1%}')
+        if row.orders_submitted > 0 or row.orders_adopted > 0:
+            print(f'      Execution Rate: {row.execution_rate_pct:.1f}%')
 
         # Pending order statistics (green)
         self._render_pending_stats(renderer, row)
@@ -522,27 +537,32 @@ class PortfolioSummary(AbstractBatchSummarySection):
             renderer: Console renderer for formatting
             row: Aggregated portfolio row carrying the pending fields
         """
-        has_resolved = row.pending_total_resolved > 0
+        has_submitted = row.pending_total_submitted > 0
         has_active = row.pending_active_limit_count or row.pending_active_stop_count
-        if not has_resolved and not has_active:
+        if not has_submitted and not has_active:
             return
 
-        # Pending resolved breakdown (only if orders were resolved)
-        if has_resolved:
-            resolved_line = f"      Pending Resolved: {renderer.green(f'{row.pending_total_filled} filled')}"
+        # How the submissions left their in-flight phase (only if orders were submitted)
+        if has_submitted:
+            submitted_line = (
+                f'      Pending: {row.pending_total_submitted} submitted | '
+                f"{renderer.green(f'{row.pending_total_accepted} accepted')}")
             if row.pending_total_rejected > 0:
-                resolved_line += f' | {row.pending_total_rejected} rejected'
-            if row.pending_total_timed_out > 0:
-                resolved_line += f" | {renderer.yellow(f'{row.pending_total_timed_out} timed out')}"
-            if row.pending_total_force_closed > 0:
-                resolved_line += f" | {renderer.yellow(f'{row.pending_total_force_closed} force-closed')}"
-            print(resolved_line)
+                submitted_line += f' | {row.pending_total_rejected} rejected'
+            if row.pending_total_never_confirmed > 0:
+                submitted_line += (
+                    f" | {renderer.yellow(f'{row.pending_total_never_confirmed} never confirmed')}")
+            if row.pending_total_expired > 0:
+                submitted_line += (
+                    f" | {renderer.yellow(f'{row.pending_total_expired} expired on the way')}")
+            print(submitted_line)
 
-        # Latency stats (ms-based)
-        if row.pending_min_latency_ms is not None:
+        # How long the venue took to answer (ms-based)
+        if row.pending_min_in_flight_ms is not None:
             print(renderer.green(
-                f'      Avg Latency: {row.pending_avg_latency_ms:.0f}ms '
-                f'(min: {row.pending_min_latency_ms:.0f}ms | max: {row.pending_max_latency_ms:.0f}ms)'))
+                f'      In Flight: avg {row.pending_avg_in_flight_ms:.0f}ms '
+                f'(min: {row.pending_min_in_flight_ms:.0f}ms | '
+                f'max: {row.pending_max_in_flight_ms:.0f}ms)'))
 
         # Active orders at scenario end (bot's pending plan)
         active_parts = []

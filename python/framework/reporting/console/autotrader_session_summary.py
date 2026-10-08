@@ -9,17 +9,23 @@ prominently (§35); the warnings/errors list itself is the shared `WarningsSumma
 """
 
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional
 
 from python.framework.reporting.console.feed_stability_summary import format_disturbance_line
+from python.framework.reporting.console.order_counts_line import order_endings_text
 from python.framework.types.api.report_types import (
     ColdStartReport,
+    ReconcileDivergenceRow,
     RunSummary,
     SafetyReport,
     TradeHistoryReport,
+    VenueAccountReport,
+    VenueSnapshotRow,
     WarningsErrorsReport,
 )
 from python.framework.types.autotrader_types.autotrader_result_types import AutoTraderResult
+from python.framework.types.live_types.broker_truth_types import BrokerTruthPart
+from python.framework.types.live_types.reconciliation_types import ReconcileState
 from python.framework.types.log_level import LogLevel
 from python.framework.types.run_outcome_types import RunOutcome
 from python.framework.utils.console_renderer import ConsoleRenderer
@@ -37,6 +43,7 @@ class AutotraderSessionSummary:
         warnings_errors_report: Optional[WarningsErrorsReport] = None,
         cold_start_report: Optional[ColdStartReport] = None,
         safety_report: Optional[SafetyReport] = None,
+        venue_account_report: Optional[VenueAccountReport] = None,
     ):
         """
         Args:
@@ -50,6 +57,9 @@ class AutotraderSessionSummary:
                 was nothing to inherit
             safety_report: The risk denominator this session ran against and how far the
                 account moved (#356 / #314) — absent when no baseline was ever taken
+            venue_account_report: What the venue held at the start and the end, and what the
+                reconciliation recorded between (#362) — absent when the session asked its
+                venue nothing
         """
         self._result = result
         self._trade_report = trade_report
@@ -58,12 +68,14 @@ class AutotraderSessionSummary:
         self._warnings_errors_report = warnings_errors_report
         self._cold_start_report = cold_start_report
         self._safety_report = safety_report
+        self._venue_account_report = venue_account_report
 
     def render(self, renderer: ConsoleRenderer) -> None:
-        """Render the closing block (session stats + cold start + safety + locations)."""
+        """Render the closing block (session stats + cold start + safety + venue + locations)."""
         self._render_stats(renderer)
         self._render_cold_start(renderer)
         self._render_safety(renderer)
+        self._render_venue_account(renderer)
         self._render_output_locations(renderer)
 
     def _render_cold_start(self, renderer: ConsoleRenderer) -> None:
@@ -189,6 +201,37 @@ class AutotraderSessionSummary:
                     f'     NOT confirmed flat — still open at the venue: {still}. '
                     f'Check the account by hand.'))
 
+    def _render_venue_account(self, renderer: ConsoleRenderer) -> None:
+        """
+        What the venue held when the session started and when it ended, and what the
+        reconciliation recorded between (#362).
+
+        The venue's own account beside the session's — the one view in this block that does not
+        come from the session's books. Every count is on the model; a part the venue did not
+        give is printed as unread, never as nothing, because an empty answer says the venue
+        holds nothing.
+        """
+        report = self._venue_account_report
+        if report is None:
+            return
+
+        for row in report.units:
+            print()
+            print('🏦 Venue (broker truth)')
+            print(f'  At start:       {_snapshot_text(row.at_start)}')
+            print(f'  At end:         {_snapshot_text(row.at_end)}')
+            if not row.reconcile_lines:
+                print('  Reconciliation: no divergence recorded')
+                continue
+            lines = 'line' if row.reconcile_lines == 1 else 'lines'
+            last = ('the last clean' if row.last_reconcile_state is ReconcileState.CLEAN
+                    else renderer.yellow('the last divergent'))
+            print(f'  Reconciliation: {row.reconcile_lines} {lines} written, '
+                  f'{row.divergent_lines} divergent — {last}')
+            if row.last_divergence is not None:
+                print(f'                  last divergence: '
+                      f'{_divergence_text(row.last_divergence)}')
+
     def _render_stats(self, renderer: ConsoleRenderer) -> None:
         """Session outcome statistics + the #389 analytics line."""
         result = self._result
@@ -226,9 +269,12 @@ class AutotraderSessionSummary:
                          if result.session_end_policy else ''))
 
         if result.execution_stats:
-            print(f'  Orders:         {result.execution_stats.orders_sent} sent, '
-                  f'{result.execution_stats.orders_executed} executed, '
-                  f'{result.execution_stats.orders_rejected} rejected')
+            stats = result.execution_stats
+            endings = order_endings_text(stats, renderer)
+            print(f'  Orders:         {stats.orders_submitted} submitted · '
+                  + (f'{stats.orders_adopted} adopted · ' if stats.orders_adopted else '')
+                  + f'{stats.orders_executed} executed'
+                  + (f' · {endings}' if endings else ''))
 
         # Trade analytics (#389/#393) — model-sourced, one line per account currency.
         for a in (self._trade_report.analytics if self._trade_report else []):
@@ -262,3 +308,53 @@ class AutotraderSessionSummary:
             orders_n = len(result.order_history) if result.order_history else 0
             print(f'  Event log:      events.csv ({trades_n} trades, {orders_n} orders)')
         print('=' * 60)
+
+
+def _snapshot_text(snapshot: Optional[VenueSnapshotRow]) -> str:
+    """
+    One venue read as a console line.
+
+    Args:
+        snapshot: The read, None when it was not recorded
+
+    Returns:
+        Open orders, positions where read, and the balances, each as the venue gave it
+    """
+    if snapshot is None:
+        return 'not recorded'
+    parts: List[str] = []
+    if snapshot.venue_order_count is not None:
+        orders = 'open order' if snapshot.venue_order_count == 1 else 'open orders'
+        parts.append(f'{snapshot.venue_order_count} {orders}')
+    elif BrokerTruthPart.VENUE_ORDERS in snapshot.unread_parts:
+        parts.append('open orders unread')
+    if snapshot.venue_position_count is not None:
+        positions = 'position' if snapshot.venue_position_count == 1 else 'positions'
+        parts.append(f'{snapshot.venue_position_count} {positions}')
+    elif BrokerTruthPart.VENUE_POSITIONS in snapshot.unread_parts:
+        parts.append('positions unread')
+    if snapshot.venue_balances is not None:
+        parts.extend([f'{asset} {amount:.10g}' for asset, amount in snapshot.venue_balances.items()]
+                     or ['no balances'])
+    elif BrokerTruthPart.VENUE_BALANCES in snapshot.unread_parts:
+        parts.append('balances unread')
+    return ' · '.join(parts)
+
+
+def _divergence_text(divergence: ReconcileDivergenceRow) -> str:
+    """
+    A divergent picture as a console line — each non-empty bucket by its served name.
+
+    Args:
+        divergence: The picture
+
+    Returns:
+        The buckets that hold something, members by identity, positions as counts
+    """
+    parts: List[str] = []
+    for name, value in divergence.model_dump().items():
+        if isinstance(value, list) and value:
+            parts.append(f'{name.replace("_", " ")}: {", ".join(value)}')
+        elif isinstance(value, int) and value:
+            parts.append(f'{name.replace("_", " ")}: {value}')
+    return '; '.join(parts)

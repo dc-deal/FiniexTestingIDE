@@ -88,8 +88,9 @@ knowing rather than rediscovering:
 
 - **A latency-queue order is out of the pull's reach entirely.** The truth pull compares
   against `get_active_orders()` — resting orders only — so an unresolved MARKET or CLOSE
-  order can never be attributed by it, whatever the cadence. Its only exit is the timeout
-  (`order_timeout_seconds`, 30 s) → `BROKER_UNREACHABLE`.
+  order can never be attributed by it, whatever the cadence. Its exit is the #487 resolution
+  or the fill timeout (`order_timeout_seconds`, 30 s), and where neither can say what became of
+  it, the order is booked `unaccounted` (#362).
 - **That timeout fires exactly once, and removal is keyed by the order's OWN id.** The
   reference-keyed removals cannot serve an order whose write was never answered: its
   `broker_ref` is `None`, the index lookup finds nothing, and they return before removing
@@ -97,10 +98,10 @@ knowing rather than rediscovering:
   rest of the session, repeating `on_order_rejected` at the algo and holding
   `has_pending_orders()` true. For a CLOSE it held `is_pending_close` true, which made that
   position unclosable. `discard_order()` removes by `pending_order_id`, which always exists.
-- **`BROKER_UNREACHABLE` arms the order cooldown**, for the same reason as the other
-  cooldown reasons: when the venue cannot be reached, sending more orders helps least. The
-  brake gates ENTRIES only, so closing and protecting an open position stay unaffected.
-  This depends on the line above and cannot precede it: `record_rejection` re-arms the
+- **An `unaccounted` or `undelivered` ending arms the order cooldown**, whatever its reason,
+  for the same reason as the cooldown reasons: when the venue cannot be relied on, sending
+  more orders helps least. The brake gates ENTRIES only, so closing and protecting an open
+  position stay unaffected. This depends on the line above and cannot precede it: `record_rejection` re-arms the
   cooldown on every call once the count is at threshold, and only a success in the same
   direction clears it — so a timeout that re-fired every tick would re-block the direction
   every tick, turning a sixty-second pause into a permanent trading stop.
@@ -185,9 +186,9 @@ documented:
   into the session error pot, so keeping it costs a true `has_pending_orders()` and buys a
   standing record.
 - A **MARKET or CLOSE** pending is outside that pull's reach entirely — nothing would ever
-  look at it again — so it takes the disposition the fill timeout already defines: recorded
-  `BROKER_UNREACHABLE`, never `BROKER_ERROR`, and removed from the tracker so it stops
-  gating the algo. One booking routine serves both callers, because a timeout and a ceiling
+  look at it again — so it takes the disposition the fill timeout already defines: booked
+  `unaccounted`, never a rejection, and removed from the tracker so it stops gating the
+  algo. One booking routine serves both callers, because a timeout and a ceiling
   disagreeing about how a give-up is recorded is how a report and a record come to describe
   different sessions.
 
@@ -348,6 +349,13 @@ names, same defaults — into the config block that owns each domain:
 | `configs/sentiment_config.json` → `stream.connection` / `stream.boot_connection` | 1, 2 |
 | AutoTrader profile → `tick_source` | 4 |
 | `configs/market_config.json` → `broker_transport.connection` | 5, 6, 7 |
+
+**A live session refuses a broker ladder that never gives up.** Budget 0 means retry for ever —
+right for a tick socket (row 4), wrong for broker REST: the broker-truth reads at a session's start
+and end wait on it, so an outage would hold the start or the end indefinitely. `autotrader_startup`
+therefore refuses a live session whose broker entry has `broker_transport.connection.attempt_budget`
+0 and names the setting; a mock session is exempt. A broker entry without the block takes the
+default, which is 0 — so it is refused live until it declares a budget.
 
 What is decided in one place is the classification and the vocabulary, not the values. The
 mirror rule applies per file: every default appears with the identical value in its config.

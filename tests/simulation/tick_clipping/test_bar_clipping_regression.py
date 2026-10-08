@@ -275,10 +275,10 @@ def _build_autotrader_tick_loop(ticks_with_flags):
     executor.get_current_time_if_set.return_value = None
     executor.portfolio.initial_balance = 1000.0
 
-    # execute_decision must return an object whose .is_rejected is False,
+    # execute_decision must return an object whose .is_refused is False,
     # otherwise the rejection branch triggers attribute access on MagicMock.
     order_result = MagicMock()
-    order_result.is_rejected = False
+    order_result.is_refused = False
     decision_logic = MagicMock()
     decision_logic.execute_decision.return_value = order_result
     decision_logic.performance_logger = None

@@ -84,7 +84,8 @@ def _live_position() -> Position:
     position.mae_price = 60000.0
     position.mfe_price = 62000.0
     position.fees.append(
-        MakerTakerFee(is_maker=True, maker_rate=0.16, taker_rate=0.26, order_value=612.0))
+        MakerTakerFee(is_maker=True, maker_rate=0.16, taker_rate=0.26, order_value=612.0,
+                      timestamp=position.entry_time))
     position.entry_trades.append(BrokerTrade(
         trade_id='T1',
         parent_broker_ref='OQ4T2K',

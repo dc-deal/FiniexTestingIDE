@@ -111,7 +111,7 @@ Validates order history contents and consistency with execution statistics count
 | Test | Description |
 |------|-------------|
 | `test_order_history_not_none` | order_history is populated and not empty after execution |
-| `test_order_history_count_matches_stats` | Rejected entries == `orders_rejected`; executed entries >= `orders_executed` (close fills add extra entries beyond open fills) |
+| `test_order_history_count_matches_stats` | Every status count in `execution_stats` equals the rows of that status in the order history, exactly |
 | `test_order_history_executed_have_price` | Every executed entry carries a positive `executed_price` |
 | `test_order_history_rejection_reasons` | Every rejected entry carries a valid `RejectionReason` (trivially passes with 0 rejections) |
 
@@ -206,8 +206,8 @@ Validates trade execution against the deterministic trade sequence.
 |------|-------------|
 | `test_expected_trade_count` | Number of trades in sequence matches config (3 trades) |
 | `test_executed_trade_count` | Portfolio executed all expected trades |
-| `test_no_rejected_orders` | No orders were rejected during execution |
-| `test_orders_sent_equals_executed` | All sent orders were executed |
+| `test_no_rejected_orders` | No order was refused during execution — neither rejected by the venue nor denied here |
+| `test_orders_submitted_equals_executed` | All submitted orders were executed — opens and closes alike |
 | `test_trade_directions_match` | Executed trade directions match configured sequence (LONG, SHORT, LONG) |
 | `test_trade_signal_ticks_match` | Trades were triggered at configured signal ticks (10, 6000, 13000) |
 | `test_long_short_distribution` | Long/short counts match expected distribution (2 long, 1 short) |

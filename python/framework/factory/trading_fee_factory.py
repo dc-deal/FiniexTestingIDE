@@ -5,6 +5,8 @@ Factory functions for creating fee objects from order parameters
 Creates appropriate fee objects based on broker type and order context.
 """
 
+from datetime import datetime
+
 from python.framework.trading_env.trading_fees import MakerTakerFee, SpreadFee
 from python.framework.types.market_types.market_data_types import TickData
 
@@ -17,6 +19,7 @@ from python.framework.types.market_types.market_data_types import TickData
 def create_spread_fee_from_tick(
     tick: TickData,
     lots: float,
+    timestamp: datetime,
     tick_value: float = 1.0,
     digits: int = 5
 ) -> SpreadFee:
@@ -28,6 +31,7 @@ def create_spread_fee_from_tick(
     Args:
         tick: Current tick data with bid/ask
         lots: Order size
+        timestamp: Fee timestamp, from the executor's canonical clock
         tick_value: Value per tick per lot
         digits: Symbol decimal places
 
@@ -39,6 +43,7 @@ def create_spread_fee_from_tick(
         ask=tick.ask,
         lots=lots,
         tick_value=tick_value,
+        timestamp=timestamp,
         digits=digits
     )
 
@@ -49,6 +54,7 @@ def create_maker_taker_fee(
     entry_price: float,
     maker_rate: float,
     taker_rate: float,
+    timestamp: datetime,
     is_maker: bool = False
 ) -> MakerTakerFee:
     """
@@ -62,6 +68,8 @@ def create_maker_taker_fee(
         entry_price: Entry price
         maker_rate: Maker fee percentage (e.g., 0.16)
         taker_rate: Taker fee percentage (e.g., 0.26)
+        timestamp: When the fee is charged — the executor's canonical clock, never the
+                   wall clock: the stamp travels into the position carry-over
         is_maker: True if limit order that adds liquidity
 
     Returns:
@@ -73,5 +81,6 @@ def create_maker_taker_fee(
         is_maker=is_maker,
         maker_rate=maker_rate,
         taker_rate=taker_rate,
-        order_value=order_value
+        order_value=order_value,
+        timestamp=timestamp
     )

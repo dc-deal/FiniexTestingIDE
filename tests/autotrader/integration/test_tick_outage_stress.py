@@ -72,7 +72,8 @@ class TestPlannedTickOutage:
         """The framework floor: no new risk on a feed we do not trust."""
         result = stress_session
         assert _count(result, '[PROBE] stale entry rejected') == 1
-        assert result.execution_stats.orders_rejected >= 1
+        # The guard refuses before anything is sent, so the entry is a denial, not a rejection
+        assert result.execution_stats.orders_denied >= 1
 
     def test_the_ticks_kept_flowing_while_the_status_was_stale(self, stress_session):
         """

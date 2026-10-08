@@ -137,3 +137,34 @@ def check_unversioned_code(code_identity: Optional[CodeIdentity]) -> Optional[Va
                      'owns: `git config --global --add safe.directory <dir>`).')
     return _finding('unversioned_code', ValidationDomain.SETUP, '\n'.join(lines))
 
+
+def check_order_event_stream(
+    units: List[Tuple[str, int, int]], unit_label: str
+) -> Optional[ValidationFinding]:
+    """
+    Warn when a unit's order-event stream lacks submissions its executor counted (#362).
+
+    The two numbers come from ONE place — the executor counts a submission and records its
+    event in the same statement — and then travel apart: the count in memory, the event through
+    the stream (a file a live session writes line by line, a list a scenario hands back from its
+    subprocess). So this catches a LOST record, which is what a failed write leaves behind, and
+    never a wrong value: whatever is counted from the stream would be short by what went missing.
+
+    Args:
+        units: One (unit name, `submitted` events in its stream, submissions it counted) triple
+            per unit
+        unit_label: What a unit is called in the message ('Scenarios' / 'Session')
+
+    Returns:
+        The finding, or None when every unit's stream holds every submission
+    """
+    short = [(name, recorded, counted) for name, recorded, counted in units
+             if recorded != counted]
+    if not short:
+        return None
+    lines = [f'ORDER-EVENT STREAM INCOMPLETE — {unit_label}: the counters derived from it are '
+             f'short by what is missing']
+    lines += [f'   {name} · {recorded} submission(s) in the stream, {counted} counted'
+              for name, recorded, counted in short]
+    return _finding('order_event_stream_incomplete', ValidationDomain.EXECUTION, '\n'.join(lines))
+

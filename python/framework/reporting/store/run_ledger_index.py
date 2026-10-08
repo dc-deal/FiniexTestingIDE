@@ -116,7 +116,26 @@ class RunLedgerIndex(AbstractStoreIndex):
     # 14 → 15 (contract 17): `period_opening_equity` and the period's cost split appended —
     # what a period opened with, and commission / swap / spread beside `total_fees`. An older
     # fragment answers None, which the back-fill fills where the value is exactly derivable.
-    LOGIC_VERSION: int = 15
+    # 15 → 16 (contract 23, #362): the order counts follow the ways an order can end, and three
+    # of them measure something new. `orders_submitted` replaces `orders_sent` and is NOT that
+    # count under another name: closes and protective orders are counted now, and a refusal
+    # before sending is not — it is `orders_denied`. `orders_executed` counts close fills too,
+    # `orders_rejected` only what the venue refused. `orders_denied`, `orders_cancelled`,
+    # `orders_expired`, `orders_undelivered` and `orders_unaccounted` are appended. A fragment
+    # written before this version keeps `orders_executed` and `orders_rejected` under their old
+    # meaning — its `logic_version` says which — and answers None for every other count,
+    # `orders_submitted` included: its old counts are not re-derivable, so nothing is carried
+    # over.
+    # 16 → 17 (contract 23, #362): `orders_adopted` — the orders a session took over at boot
+    # from a previous one — beside `orders_submitted`, which until now counted them as its own.
+    # A fragment written before this version answers None for it, and its `orders_submitted`
+    # still holds the adoptions.
+    # 17 → 18 (contract 23, #362): `orders_to` appended — whether a run's orders went to a
+    # simulator or to the venue, as its header records it. It is what lets a deployment say which
+    # of its sessions traded real money, and a deployment that mixes the two is reported rather
+    # than summed as one series. Appended, no existing value changes; an older fragment answers
+    # None — not recorded.
+    LOGIC_VERSION: int = 18
 
     def __init__(self, ledger_dir: Path, columns: List[str]):
         super().__init__(Path(ledger_dir) / LEDGER_INDEX_FILE)

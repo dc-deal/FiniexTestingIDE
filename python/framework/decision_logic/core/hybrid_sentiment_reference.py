@@ -370,7 +370,7 @@ class HybridSentimentReference(AbstractDecisionLogic):
                     self.emit_event(
                         f'Long opened: {self.lot_size} lots',
                         AwarenessLevel.INFO, 'order_submitted')
-                elif order_result.is_rejected:
+                elif order_result.is_refused:
                     # A refusal reaches the algo as this RETURN VALUE, not as an event:
                     # on_order_rejected fires only from the asynchronous resolution paths,
                     # so a submission-time refusal (#489 committed funds, lot size, a closed

@@ -6,11 +6,22 @@ session stats + warnings/errors (from the session buffers, §35) + output locati
 AutoTraderResult (not a stand-in); rendered through the real ConsoleRenderer with stdout captured.
 """
 
+import io
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Optional
 
 from python.framework.reporting.console.autotrader_session_summary import AutotraderSessionSummary
+from python.framework.types.api.report_types import (
+    ReconcileDivergenceRow,
+    VenueAccountReport,
+    VenueAccountRow,
+    VenueSnapshotRow,
+)
 from python.framework.types.autotrader_types.autotrader_result_types import AutoTraderResult
+from python.framework.types.live_types.broker_truth_types import BrokerTruthPart
+from python.framework.types.live_types.reconciliation_types import ReconcileState
 from python.framework.types.log_level import LogLevel
 from python.framework.types.log_record_types import LogRecord
 from python.framework.types.portfolio_types.portfolio_aggregation_types import PortfolioStats
@@ -20,14 +31,15 @@ from python.framework.types.trading_env_types.order_types import OrderDirection
 from python.framework.utils.console_renderer import ConsoleRenderer
 
 
-def _render(result: AutoTraderResult, run_dir=None, trade_report=None) -> str:
+def _render(result: AutoTraderResult, run_dir=None, trade_report=None,
+            venue_account_report: Optional[VenueAccountReport] = None) -> str:
     """Render the closing block and return the captured stdout (ANSI kept)."""
-    import io
-    import sys
     old = sys.stdout
     sys.stdout = buf = io.StringIO()
     try:
-        AutotraderSessionSummary(result, trade_report, run_dir).render(ConsoleRenderer())
+        AutotraderSessionSummary(
+            result, trade_report, run_dir,
+            venue_account_report=venue_account_report).render(ConsoleRenderer())
     finally:
         sys.stdout = old
     return buf.getvalue()
@@ -119,3 +131,62 @@ class TestAutotraderSessionSummary:
         out = _render(result)
         assert 'Warnings:' not in out
         assert '1 position open' not in out
+
+
+def _venue_account(**row: object) -> VenueAccountReport:
+    """
+    A one-session venue-account report.
+
+    Args:
+        row: The row's fields beside its name
+
+    Returns:
+        The report
+    """
+    return VenueAccountReport(run_id='20261007_120000_ab12cd34',
+                              units=[VenueAccountRow(name='btc_session', **row)])
+
+
+class TestTheVenueBlock:
+    """
+    What the venue held, printed from the model (#362) — a part the venue did not answer for says
+    so, and never reads as nothing.
+    """
+
+    def test_start_and_end_read_as_counts_and_balances(self):
+        out = _render(AutoTraderResult(), venue_account_report=_venue_account(
+            at_start=VenueSnapshotRow(seq=1, venue_order_count=0,
+                                      venue_balances={'ZUSD': 812.4, 'XETH': 0.0031}),
+            at_end=VenueSnapshotRow(seq=9, venue_order_count=1,
+                                    unread_parts=[BrokerTruthPart.VENUE_BALANCES])))
+
+        assert '🏦 Venue (broker truth)' in out
+        assert '  At start:       0 open orders · ZUSD 812.4 · XETH 0.0031\n' in out
+        assert '  At end:         1 open order · balances unread\n' in out, 'unread, not empty'
+
+    def test_a_margin_account_counts_its_positions(self):
+        out = _render(AutoTraderResult(), venue_account_report=_venue_account(
+            at_start=VenueSnapshotRow(seq=1, venue_order_count=0, venue_position_count=2,
+                                      venue_balances={'USD': 10000.0})))
+
+        assert '  At start:       0 open orders · 2 positions · USD 10000\n' in out
+
+    def test_an_empty_account_and_a_missing_read_are_told_apart(self):
+        out = _render(AutoTraderResult(), venue_account_report=_venue_account(
+            at_start=VenueSnapshotRow(seq=1, venue_order_count=0, venue_balances={})))
+
+        assert '  At start:       0 open orders · no balances\n' in out
+        assert '  At end:         not recorded\n' in out
+        assert '  Reconciliation: no divergence recorded\n' in out
+
+    def test_the_last_divergence_is_named_and_where_the_last_line_left_the_books(self):
+        out = _render(AutoTraderResult(), venue_account_report=_venue_account(
+            reconcile_lines=2, divergent_lines=1, last_reconcile_state=ReconcileState.CLEAN,
+            last_divergence=ReconcileDivergenceRow(ghost_orders=['OQ3V2K-ABCDE-FGHIJK'],
+                                                   orphan_positions=1)))
+
+        assert '  Reconciliation: 2 lines written, 1 divergent — the last clean\n' in out
+        assert 'last divergence: ghost orders: OQ3V2K-ABCDE-FGHIJK; orphan positions: 1' in out
+
+    def test_a_session_that_asked_no_venue_has_no_block(self):
+        assert '🏦' not in _render(AutoTraderResult())

@@ -84,7 +84,7 @@ class TestOpenOrderNormalization:
         result = sim_executor.open_order(OpenOrderRequest(
             symbol='NOT_A_SYMBOL', order_type=OrderType.MARKET,
             direction=OrderDirection.LONG, lots=0.001))
-        assert result.status == OrderStatus.REJECTED
+        assert result.status == OrderStatus.DENIED
 
 
 class TestModifyLimitNormalization:

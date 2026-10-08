@@ -9,16 +9,22 @@ by feeding a hand-built model and asserting the rendered text — the audit tabl
 
 import io
 from contextlib import redirect_stdout
+from typing import Optional
 
 from python.framework.reporting.console.trade_history_summary import TradeHistorySummary
 from python.framework.types.api.report_types import (
     ExecutionRow,
+    ExecutionStatsReport,
+    ExecutionStatsRow,
+    ExecutionStatsTotals,
     OrderHistoryReport,
+    OrderHistoryRow,
     TradeAnalytics,
     TradeHistoryReport,
     TradeHistoryRow,
     TradeScenarioTotals,
 )
+from python.framework.types.trading_env_types.order_types import OrderStatus
 from python.framework.utils.console_renderer import ConsoleRenderer
 
 # Every report artifact names its run (#475); the value is opaque to these tests.
@@ -60,8 +66,29 @@ def _empty_orders() -> OrderHistoryReport:
     return OrderHistoryReport(run_id=_RUN_ID, orders=[], count=0, symbols=[])
 
 
-def _render(method_name: str) -> str:
-    summary = TradeHistorySummary(_report(), _empty_orders())
+def _execution(failed: int = 0) -> ExecutionStatsReport:
+    """The scenario's execution counts, `failed` of its rows having failed."""
+    row = ExecutionStatsRow(
+        name='AUDUSD_cont_00', symbol='EURUSD', orders_submitted=failed, orders_adopted=0,
+        orders_executed=0, orders_denied=0, orders_rejected=failed, orders_cancelled=0,
+        orders_expired=0, orders_undelivered=0, orders_unaccounted=0, sl_tp_triggered=0,
+        orders_failed=failed)
+    return ExecutionStatsReport(run_id=_RUN_ID, units=[row],
+                                totals=ExecutionStatsTotals(orders_failed=failed))
+
+
+def _rejected_orders(count: int) -> OrderHistoryReport:
+    """The order history holding `count` refused orders of the scenario."""
+    rows = [OrderHistoryRow(order_id=f'pos_eurusd_{n}', symbol='EURUSD',
+                            status=OrderStatus.REJECTED, commission=0.0,
+                            scenario_name='AUDUSD_cont_00') for n in range(count)]
+    return OrderHistoryReport(run_id=_RUN_ID, orders=rows, count=count, symbols=['EURUSD'])
+
+
+def _render(method_name: str, orders: Optional[OrderHistoryReport] = None,
+            execution: Optional[ExecutionStatsReport] = None) -> str:
+    summary = TradeHistorySummary(_report(), orders or _empty_orders(),
+                                  execution or _execution())
     buf = io.StringIO()
     with redirect_stdout(buf):
         getattr(summary, method_name)(ConsoleRenderer())
@@ -81,3 +108,20 @@ def test_aggregated_analytics_from_model():
     assert 'TRADE ANALYTICS' in out          # #389 block
     assert 'Expectancy' in out
     assert 'TRADE BREAKDOWN' in out          # derived from rows
+
+
+class TestTheFailedOrders:
+    """How many failed comes from the counts; which ones from the history, which may be capped."""
+
+    def test_a_capped_history_says_how_many_it_lists(self):
+        out = _render('render_per_scenario', _rejected_orders(2), _execution(failed=5))
+
+        assert 'Failed Orders: 5 (2 listed)' in out
+
+    def test_a_complete_history_says_nothing_more(self):
+        out = _render('render_per_scenario', _rejected_orders(2), _execution(failed=2))
+
+        assert 'Failed Orders: 2' in out and 'listed' not in out
+
+    def test_nothing_failed_prints_nothing(self):
+        assert 'Failed Orders' not in _render('render_per_scenario')

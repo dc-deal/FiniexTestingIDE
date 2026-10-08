@@ -152,13 +152,13 @@ class TestZeroBalanceRejection:
             f'{len(zb_trade_history)} entries'
         )
 
-    def test_orders_sent_equals_rejected(
+    def test_orders_submitted_equals_rejected(
         self,
         zb_execution_stats: ExecutionStats
     ):
         """All sent orders should equal rejected orders (none executed)."""
-        assert zb_execution_stats.orders_sent == zb_execution_stats.orders_rejected, (
-            f'orders_sent ({zb_execution_stats.orders_sent}) should equal '
+        assert zb_execution_stats.orders_submitted == zb_execution_stats.orders_rejected, (
+            f'orders_submitted ({zb_execution_stats.orders_submitted}) should equal '
             f'orders_rejected ({zb_execution_stats.orders_rejected}) '
             f'when all orders fail'
         )

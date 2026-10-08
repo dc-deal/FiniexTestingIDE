@@ -58,16 +58,18 @@ from .portfolio_manager import UNSET, AccountInfo, Position, _UnsetType
 # Rejection reasons that indicate broker/account-side problems worth
 # cooling down on. Local validation rejections (lot size, unsupported type)
 # are decision bugs, not broker spam — they don't arm the cooldown.
-# BROKER_UNREACHABLE belongs here for the same reason as the rest: when the venue cannot be
-# reached, sending more orders is what helps least. #473 introduced the reason and this set
-# was not extended, so the pause that used to arm on an unreachable broker armed on nothing.
 _COOLDOWN_REJECTION_REASONS = frozenset({
     RejectionReason.INSUFFICIENT_MARGIN,
     RejectionReason.INSUFFICIENT_FUNDS,
     RejectionReason.BROKER_ERROR,
-    RejectionReason.BROKER_UNREACHABLE,
     RejectionReason.MARKET_CLOSED,  # nothing produces it yet — MT5's retcode 10018 will (#209)
 })
+
+# Endings that arm the cooldown whatever their reason (#362): an order the venue never received
+# and one nobody could account for both mean the venue could not be relied on, and sending more
+# orders is what helps least. They used to arrive as rejections with the reason
+# `broker_unreachable` — the reason this set carried for the same purpose.
+_COOLDOWN_STATUSES = frozenset({OrderStatus.UNDELIVERED, OrderStatus.UNACCOUNTED})
 
 
 class DecisionTradingApi:
@@ -255,15 +257,16 @@ class DecisionTradingApi:
 
         result = self._executor.open_order(request)
 
-        # Sync rejections: update guard immediately for direct-return rejections
-        # (lot validation, adapter exception, immediate broker rejection).
-        # Only broker/account rejections feed the cooldown — local validation
-        # rejections (invalid lot size, unsupported order type) are decision
+        # Sync refusals: update guard immediately for direct-return refusals
+        # (lot validation, funds at submission). The executor's own checks deny;
+        # nothing the venue says comes back synchronously.
+        # Only broker/account reasons feed the cooldown — local validation
+        # refusals (invalid lot size, unsupported order type) are decision
         # bugs, not spam.
-        # PENDING/SUBMITTED returns are NOT handled here — async outcomes
+        # PENDING returns are NOT handled here — async outcomes
         # (margin check at fill time, broker polling) flow through the
         # _on_order_outcome callback registered in __init__.
-        if result.is_rejected:
+        if result.is_refused:
             if result.rejection_reason in _COOLDOWN_REJECTION_REASONS:
                 self._order_guard.record_rejection(request.direction, now)
 
@@ -289,17 +292,18 @@ class DecisionTradingApi:
 
         Args:
             direction: Order direction (LONG/SHORT)
-            result: Terminal OrderResult (EXECUTED or REJECTED)
+            result: Terminal OrderResult (EXECUTED, REJECTED, UNDELIVERED or UNACCOUNTED)
             pending: PendingOrder reference (unused — OrderGuard is stateless
                 w.r.t. order context; param exists for listener-signature
                 compatibility with #327 DriftAuditor)
         """
-        if result.is_rejected:
-            if result.rejection_reason in _COOLDOWN_REJECTION_REASONS:
-                self._order_guard.record_rejection(
-                    direction,
-                    self._executor.get_current_time(),
-                )
+        if (result.status in _COOLDOWN_STATUSES
+                or (result.is_refused
+                    and result.rejection_reason in _COOLDOWN_REJECTION_REASONS)):
+            self._order_guard.record_rejection(
+                direction,
+                self._executor.get_current_time(),
+            )
         elif result.status == OrderStatus.EXECUTED:
             self._order_guard.record_success(direction)
 

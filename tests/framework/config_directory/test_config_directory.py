@@ -417,7 +417,7 @@ class TestTheRunsAreJoinedFromTheRunIndex:
                 account_max_drawdown=0.0, total_fees=0.0, gross_profit=0.0, gross_loss=0.0,
                 total_trades=4, winning_trades=0, losing_trades=0, expectancy=0.0,
                 avg_win_r=0.0, avg_loss_r=0.0, r_trade_count=0)],
-                orders_sent=0, orders_executed=0, orders_rejected=0, sl_tp_triggered=0,
+                orders_submitted=0, orders_executed=0, orders_rejected=0, sl_tp_triggered=0,
                 unit_count=1),
             RunProvenance(
                 param_hash='h', status='ok', error=None, run_id='20260925_080000_aaaaaaaa',

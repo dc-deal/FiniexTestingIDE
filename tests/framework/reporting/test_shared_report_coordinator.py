@@ -46,7 +46,7 @@ _EXPECTED_FILES = [
 
 def _stats(sent=5, executed=4, rejected=1, sl_tp=2) -> ExecutionStats:
     return ExecutionStats(
-        orders_sent=sent, orders_executed=executed,
+        orders_submitted=sent, orders_executed=executed,
         orders_rejected=rejected, sl_tp_triggered=sl_tp)
 
 
@@ -91,7 +91,7 @@ class TestDeriveAndPersist:
         assert [u.name for u in unified.execution_stats.units] == ['s1', 's2']
         assert [u.symbol for u in unified.execution_stats.units] == ['EURUSD', 'GBPUSD']
         # The summed totals are the cross-section measure both console + ledger read.
-        assert unified.execution_stats.totals.orders_sent == 8
+        assert unified.execution_stats.totals.orders_submitted == 8
         assert unified.execution_stats.totals.orders_executed == 7
 
     def test_session_single_unit(self, tmp_path):

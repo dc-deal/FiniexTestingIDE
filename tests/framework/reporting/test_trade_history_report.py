@@ -292,3 +292,35 @@ class TestAStreakBelongsToOneAccount:
 
         # time order across both would read win, win, win (a1, b1, a2): 3
         assert analytics.max_consecutive_wins == 2
+
+
+class TestWhatBelongsToTheTrade:
+    """What a record states about its position, beside the slice it closed."""
+
+    def _chain(self):
+        """A position opened at 0.1 and closed in two parts, and a position closed whole."""
+        first = replace(_trade(position_id='p1', close_reason=CloseReason.MANUAL),
+                        lots=0.04, close_type=CloseType.PARTIAL, entry_lots=0.1)
+        rest = replace(_trade(position_id='p1', entry_offset_min=0, duration_min=45),
+                       lots=0.06, close_type=CloseType.FULL, entry_lots=0.1)
+        whole = replace(_trade(position_id='p2', entry_offset_min=60), entry_lots=0.1)
+        return [first, rest, whole]
+
+    def test_each_record_states_its_close_type_and_the_size_at_entry(self):
+        rows = build_trade_history_report(_RUN_ID, _units(self._chain())).trades
+        assert [row.close_type for row in rows] == [
+            CloseType.PARTIAL, CloseType.FULL, CloseType.FULL]
+        assert all(row.entry_lots == 0.1 for row in rows)
+
+    def test_the_closes_of_a_position_are_counted_per_position(self):
+        rows = build_trade_history_report(_RUN_ID, _units(self._chain())).trades
+        assert [(row.position_id, row.position_closes) for row in rows] == [
+            ('p1', 2), ('p1', 2), ('p2', 1)]
+
+    def test_a_filter_does_not_change_the_count(self):
+        # Counted before the filter: a reader who filtered the partial away still learns
+        # that the record in front of them is one of two.
+        rows = build_trade_history_report(
+            _RUN_ID, _units(self._chain()), close_reason=CloseReason.TP_TRIGGERED.value).trades
+        assert [(row.position_id, row.position_closes) for row in rows] == [('p1', 2), ('p2', 1)]
+

@@ -15,6 +15,8 @@ overnight — makes the next boot report that somebody sold outside this bot. Th
 claims the coin, the account no longer holds it, and the cross-check calls that a shortfall.
 """
 
+import pytest
+
 from python.framework.autotrader.cold_start_adopter import ColdStartAdopter
 from python.framework.types.config_types.autotrader_defaults_config_types import (
     ColdStartDefaults,
@@ -117,6 +119,65 @@ class TestAStopThatFiredOvernight:
     The feature working exactly as intended, and the boot has to recognise it as such.
     """
 
+    def test_one_that_executed_part_and_was_cancelled_records_both_and_lets_the_rest_go(
+        self, spot_executor, store, logger
+    ):
+        """
+        The venue ended it after executing part of it (#362). The executed part is booked and
+        recorded as such, the ending follows it, and the remainder goes back to the local check
+        — left stamped, every later close of it waited behind a cancel of an order that is gone.
+        """
+        events = []
+        spot_executor.add_order_event_listener(events.append)
+        store.save(session_key='paa53', highest_position_counter=1,
+                   open_positions=[_carried_long()])
+        _boot(spot_executor, store, logger,
+              _answer(BrokerOrderStatus.CANCELLED, 0.004, 48990.0))
+
+        spot_executor.on_tick(TickData(
+            timestamp=parse_datetime('2026-09-10T06:00:01+00:00'),
+            symbol='BTCUSD', bid=49000.0, ask=49001.0, volume=1.0))
+
+        assert [e.event_type.value for e in events] == [
+            'adopted', 'partially_filled', 'cancelled']
+        adopted = events[0]
+        assert (adopted.client_order_id, adopted.trigger_price) == ('ppaa5_2', 49000.0), (
+            'the order carried over keeps its key and its level')
+        position = spot_executor.portfolio.get_position('pos_btcusd_1')
+        assert position.lots == pytest.approx(0.006)
+        assert position.protective_broker_ref is None, "the remainder is the local check's"
+
+    def test_one_still_working_after_part_of_it_executed_is_adopted_for_the_rest(
+        self, spot_executor, store, logger
+    ):
+        """
+        The venue executed part of it and still holds it for the rest. The part is booked; the
+        order comes back into this session's stop world — left out, the rest rested at the
+        venue with no session aware of it — knowing what it has already closed.
+        """
+        events = []
+        spot_executor.add_order_event_listener(events.append)
+        store.save(session_key='paa53', highest_position_counter=1,
+                   open_positions=[_carried_long()])
+        _boot(spot_executor, store, logger,
+              _answer(BrokerOrderStatus.PENDING, 0.004, 48990.0))
+
+        spot_executor.on_tick(TickData(
+            timestamp=parse_datetime('2026-09-10T06:00:01+00:00'),
+            symbol='BTCUSD', bid=49000.0, ask=49001.0, volume=1.0))
+
+        assert [e.event_type.value for e in events] == ['adopted', 'partially_filled']
+        position = spot_executor.portfolio.get_position('pos_btcusd_1')
+        assert position.lots == pytest.approx(0.006)
+        assert position.protective_broker_ref == _PROTECTIVE_REF, 'the venue still holds it'
+        adopted = [p for p in spot_executor.get_active_orders()
+                   if p.closes_position_id == position.position_id]
+        assert len(adopted) == 1
+        assert adopted[0].close_lots == pytest.approx(0.006)
+        assert adopted[0].execution_state.venue_close_applied_lots == pytest.approx(0.004), (
+            'without it, the next poll reporting the same 0.004 books it a second time')
+        assert spot_executor.get_execution_stats().orders_adopted == 1
+
     def test_the_position_is_closed_rather_than_restored_as_open(
         self, spot_executor, store, logger
     ):
@@ -154,6 +215,23 @@ class TestAStopThatFiredOvernight:
         assert not any('short' in message.lower() for message in logger.errors), (
             f'A closed position cannot be short of anything: {logger.errors}')
 
+    def test_and_its_close_counts_as_an_adopted_order(self, spot_executor, store, logger):
+        """
+        Sent by an earlier session, its fill booked in this one (#362). Uncounted, the session
+        reported more orders executed than it handled; counted as submitted, it claimed an
+        order this session never sent.
+        """
+        store.save(session_key='paa53', highest_position_counter=1,
+                   open_positions=[_carried_long()])
+        _boot(spot_executor, store, logger, _answer(BrokerOrderStatus.FILLED, 0.01, 49000.0))
+
+        spot_executor.on_tick(TickData(
+            timestamp=parse_datetime('2026-09-10T06:00:01+00:00'),
+            symbol='BTCUSD', bid=49000.0, ask=49001.0, volume=1.0))
+
+        stats = spot_executor.get_execution_stats()
+        assert (stats.orders_submitted, stats.orders_adopted, stats.orders_executed) == (0, 1, 1)
+
 
 class TestAStopStillResting:
     """Adopted back, or it rests at the venue with no session aware of it."""
@@ -173,6 +251,19 @@ class TestAStopStillResting:
             'Unadopted it cannot be amended when the level moves, cannot be cancelled '
             'before a close, and comes back at the next boot as a stranger')
         assert adopted[0].broker_ref == _PROTECTIVE_REF
+
+    def test_it_counts_as_an_adopted_order(self, spot_executor, store, logger):
+        """
+        Sent by an earlier session, it ends in this one — counted for the reason an adopted
+        resting entry is (#362), or its fill or release is an ending with no submission.
+        """
+        store.save(session_key='paa53', highest_position_counter=1,
+                   open_positions=[_carried_long()])
+
+        _boot(spot_executor, store, logger, _answer(BrokerOrderStatus.PENDING))
+
+        stats = spot_executor.get_execution_stats()
+        assert (stats.orders_submitted, stats.orders_adopted) == (0, 1)
 
     def test_it_brings_its_wire_key_back_rather_than_a_new_one(
         self, spot_executor, store, logger
@@ -324,7 +415,7 @@ class TestAnOrderIdThatCarriesNoReference:
 
         result = spot_executor.close_position('pos_btcusd_1')
 
-        assert not result.is_rejected, (
+        assert not result.is_refused, (
             f'Withheld behind a cancel that can never be scheduled: {result.message}')
 
 class TestTheVenueAlsoLISTSTheProtectiveOrder:

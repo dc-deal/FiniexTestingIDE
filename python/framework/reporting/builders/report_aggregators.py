@@ -31,6 +31,7 @@ from python.framework.types.api.report_types import (
     WorkerStatRow,
 )
 from python.framework.types.scenario_types.scenario_set_performance_types import EXPECTED_OPERATIONS
+from python.framework.types.trading_env_types.trading_env_stats_types import EXECUTION_COUNT_FIELDS
 
 # --- Trade analytics (per account currency) -------------------------------------------
 
@@ -151,11 +152,21 @@ def aggregate_trade_scenario_totals(rows: List[TradeHistoryRow]) -> List[TradeSc
 def aggregate_execution_totals(rows: List[ExecutionStatsRow]) -> ExecutionStatsTotals:
     """Sum the per-unit order counts (currency-agnostic) into one totals object."""
     return ExecutionStatsTotals(
-        orders_sent=sum(r.orders_sent for r in rows),
-        orders_executed=sum(r.orders_executed for r in rows),
-        orders_rejected=sum(r.orders_rejected for r in rows),
-        sl_tp_triggered=sum(r.sl_tp_triggered for r in rows),
-    )
+        **_summed_execution_counts(rows), orders_failed=sum(r.orders_failed for r in rows))
+
+
+def _summed_execution_counts(rows: List[ExecutionStatsRow]) -> Dict[str, int]:
+    """
+    Every execution count summed over the rows — the one place the set is spelled out.
+
+    Args:
+        rows: Per-unit execution rows
+
+    Returns:
+        Each count field mapped to its sum
+    """
+    return {field_name: sum(getattr(r, field_name) for r in rows)
+            for field_name in EXECUTION_COUNT_FIELDS}
 
 
 # --- Portfolio roll-up (per account currency) -----------------------------------------
@@ -291,11 +302,13 @@ def aggregate_full_portfolio(
 
     ex = [exec_by_name[r.name] for r in rows if r.name in exec_by_name]
     pend = [pending_by_name[r.name] for r in rows if r.name in pending_by_name]
-    lat = [p for p in pend if p.avg_latency_ms is not None]
-    lat_count = sum(p.latency_count for p in lat)
+    lat = [p for p in pend if p.avg_in_flight_ms is not None]
+    lat_count = sum(p.in_flight_count for p in lat)
 
-    orders_sent = sum(e.orders_sent for e in ex)
-    orders_executed = sum(e.orders_executed for e in ex)
+    counts = _summed_execution_counts(ex)
+    # The orders whose endings the units count: the ones they sent, and the ones they took
+    # over at boot — an adopted order that fills is executed without having been submitted here
+    handled = counts['orders_submitted'] + counts['orders_adopted']
 
     return AggregatedPortfolioRow(
         headline=headline,
@@ -323,20 +336,18 @@ def aggregate_full_portfolio(
         maker_fee=sum(r.maker_fee for r in rows),
         taker_fee=sum(r.taker_fee for r in rows),
         avg_spread=total_spread / total_trades if total_trades > 0 else 0.0,
-        orders_sent=orders_sent,
-        orders_executed=orders_executed,
-        orders_rejected=sum(e.orders_rejected for e in ex),
-        sl_tp_triggered=sum(e.sl_tp_triggered for e in ex),
-        execution_rate_pct=(orders_executed / orders_sent * 100) if orders_sent > 0 else 0.0,
-        pending_total_resolved=sum(p.total_resolved for p in pend),
-        pending_total_filled=sum(p.total_filled for p in pend),
+        **counts,
+        execution_rate_pct=(counts['orders_executed'] / handled * 100) if handled > 0 else 0.0,
+        pending_total_submitted=sum(p.total_submitted for p in pend),
+        pending_total_accepted=sum(p.total_accepted for p in pend),
         pending_total_rejected=sum(p.total_rejected for p in pend),
-        pending_total_timed_out=sum(p.total_timed_out for p in pend),
-        pending_total_force_closed=sum(p.total_force_closed for p in pend),
-        pending_avg_latency_ms=(
-            sum(p.avg_latency_ms * p.latency_count for p in lat) / lat_count) if lat_count > 0 else None,
-        pending_min_latency_ms=min((p.min_latency_ms for p in lat), default=None),
-        pending_max_latency_ms=max((p.max_latency_ms for p in lat), default=None),
+        pending_total_never_confirmed=sum(p.total_never_confirmed for p in pend),
+        pending_total_expired=sum(p.total_expired for p in pend),
+        pending_avg_in_flight_ms=(
+            sum(p.avg_in_flight_ms * p.in_flight_count for p in lat) / lat_count)
+        if lat_count > 0 else None,
+        pending_min_in_flight_ms=min((p.min_in_flight_ms for p in lat), default=None),
+        pending_max_in_flight_ms=max((p.max_in_flight_ms for p in lat), default=None),
         pending_active_limit_count=sum(len(p.active_limit_orders) for p in pend),
         pending_active_stop_count=sum(len(p.active_stop_orders) for p in pend),
         **_spot_balances(rows, currency) if is_spot else {},

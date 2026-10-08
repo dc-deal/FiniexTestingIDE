@@ -171,53 +171,45 @@ Rejection data flows through the full reporting pipeline:
 
 ### Pending Order Statistics
 
-Every pending order that leaves the queue (filled, rejected, timed out, or force-closed) is recorded
-via `AbstractPendingOrderManager.record_outcome()`. Statistics are aggregated at the manager level —
-no individual records are stored for normal outcomes.
+How each order left its in-flight phase is not counted while the run goes. The pending-orders
+report derives it from the run's order-event stream (#362): per submission, the first event that
+ends the phase, as `IN_FLIGHT_ENDING_BY_EVENT` in `order_event_types.py` declares it.
 
-**Data flow:**
+| First ending | Counter | What it means |
+|---|---|---|
+| `accepted` | `total_accepted` | The venue took the order — it rests, or it filled in its answer |
+| `rejected` | `total_rejected` | The venue refused it |
+| `undelivered` · `unaccounted` | `total_never_confirmed` | The venue never confirmed it; each one is listed in `never_confirmed_orders` |
+| `expired` | `total_expired` | The data's end met the order on its way |
 
-1. **Executor calls `record_outcome()`** after each pending order resolves — TradeSimulator for ms-timestamp fills, LiveTradeExecutor for broker responses
-2. **`PendingOrderStats`** aggregates running min/max/avg latency in milliseconds using internal counters (`_latency_ms_sum`, `_latency_count`). No individual fill records stored.
-3. **Anomaly detection**: Only `FORCE_CLOSED` and `TIMED_OUT` outcomes produce individual `PendingOrderRecord` entries (stored in `anomaly_orders` list)
-4. **Subprocess bridge**: `pending_stats` collected from `trade_simulator.get_pending_stats()`, serialized as separate field in `ProcessTickLoopResult`
-5. **Aggregation**: `PortfolioAggregator._aggregate_pending_stats()` combines stats across scenarios using weighted averages
+`total_submitted` counts the `submitted` events and equals the sum of the four, so a row with an
+ending missing disproves itself. An order a previous session sent is adopted, not submitted, and is
+not counted. The same rule counts both pipelines: the simulation's acceptance is the order's
+arrival at the simulated venue, live it is the venue's answer.
 
-**Outcome types** (`PendingOrderOutcome` enum in `latency_simulator_types.py`):
+The answer durations — `avg/min/max_in_flight_ms` and `in_flight_count` — come from the
+`in_flight_ms` of the answering `accepted` and `rejected` events: the modelled delay in a backtest,
+measured on the monotonic clock live. A late acceptance learned by asking has none. A post-run check
+(`order_event_stream_incomplete`) compares the stream's submissions with the executor's own count:
+the two come from one statement, so a difference is a record the stream lost.
 
-| Outcome | Source | Individual Record | Latency Unit |
-|---------|--------|-------------------|--------------|
-| `FILLED` | Simulation: the order arrived after its delay — a market or close order fills then, but a limit, stop or stop-limit order that starts resting is counted here too, whether it later fills, expires at data end or is cancelled by the strategy. AutoTrader: a status poll saw a market or close order filled — a resting order is never counted, nor a fill or refusal that arrives in the answer to the submission | No (aggregated only) | ms |
-| `REJECTED` | Stress test or broker rejection | No (aggregated only) | ms |
-| `TIMED_OUT` | Broker timeout (live execution stack only) | Yes (`anomaly_orders`) | ms |
-| `FORCE_CLOSED` | `clear_pending()` for genuine stuck-in-pipeline orders at scenario end | Yes (`anomaly_orders`, with `reason`) | ms |
-
-The unit is milliseconds in both pipelines, but the two measure different things. In simulation
-it is the modelled delay on the market clock — `broker_fill_msc − placed_at_msc`, and for a
-force-close the time the order sat until the scenario ended. In an AutoTrader session it is the
-measured time from submission to the status poll that saw the fill, for market and close orders
-only. Min, max and average cover every resolved outcome, not fills only.
-
-So `FILLED`, its counter `total_filled` and the latency mean different things in the two pipelines.
-The simulation resolves every order when it ARRIVES, so a backtest's resting order that later
-expires at the end of its data is counted as filled. An AutoTrader session counts only the market
-and close orders a poll saw filled — a resting order resolves in no counter — and the session's
-counters reach the live display but no report, because its result does not carry them. This is a
-known defect, not a design (#362).
+What the executor still keeps itself is only a snapshot of the orders it holds —
+`get_active_orders_snapshot()` returns an `ActiveOrdersSnapshot` with the resting limit and stop
+orders and the number still on their way, for the live display and the report's active orders.
 
 **Display locations:**
 
-- **Portfolio Grid Boxes**: Green latency line `"Pending: avg 60ms (60-60)"`, yellow `"X forced"` / `"X timeout"` if anomalies
-- **Aggregated Portfolio (ORDER EXECUTION)**: Resolved breakdown with filled/rejected/timed_out/force-closed counts + latency stats
-- **Executive Summary**: Green latency line per scenario, yellow `"X force-closed"` / `"X timed out"` breakdown
+- **Portfolio Grid Boxes**: `"Pending: 14 submitted · 12 accepted · 1 rejected | in flight avg 182ms (95-410)"`, yellow `"N never confirmed"` / `"N expired on the way"`, and one line per order never confirmed
+- **Aggregated Portfolio (ORDER EXECUTION)**: submitted / accepted / rejected / never confirmed / expired, then the in-flight durations
+- **Executive Summary**: the in-flight durations, with the never-confirmed and expired counts in yellow
 
 **End-of-run cleanup** (`finish_remaining_orders`):
 
 It finishes the run's **orders** only. Active orders are expired (live: cancelled at the broker
 first, unless the session-end policy leaves them standing), then `clear_pending()` catches any
-genuine stuck-in-pipeline orders (e.g. an order submitted right before the run ended). Only these
-real anomalies are recorded as `FORCE_CLOSED` with a `reason` field (e.g. `"scenario_end"`,
-`"manual_abort"`).
+genuine stuck-in-pipeline orders (e.g. an order submitted right before the run ended) and hands
+them back: a backtest books them `expired` — the data ended while they were on their way — and a
+live session `unaccounted`, because the venue may hold them.
 
 **Open positions are not touched.** Until #492 they were closed here through a synthetic
 PendingOrder that bypassed the pipeline — and in live that close never reached the venue: it was
@@ -301,9 +293,9 @@ The foundation. Contains all concrete fill processing and shared infrastructure.
 - `cancel_limit_order(order_id)` — Cancel an active limit order by order ID
 - `has_pipeline_orders()` — Whether orders are in latency pipeline only
 - `is_pending_close(position_id)` — Whether a specific position is being closed
-- `finish_remaining_orders(cancel_orders, current_msc)` — End-of-run cleanup for ORDERS: expire (live: cancel at the broker) or leave standing, then `clear_pending()` for stuck pipeline orders. Open positions are left open (#492)
+- `finish_remaining_orders(cancel_orders)` — End-of-run cleanup for ORDERS: expire (live: cancel at the broker) or leave standing, then `clear_pending()` for stuck pipeline orders. Open positions are left open (#492)
 - `check_clean_shutdown(expect_flat)` — Post-cleanup check. A surviving position is an ERROR only where flatness was expected; where the policy left it standing it is a note
-- `get_pending_stats()` — Aggregated pending order statistics (latency, outcomes)
+- `get_active_orders_snapshot()` — The resting orders and how many are still on their way (`ActiveOrdersSnapshot`)
 
 ### AbstractPendingOrderManager
 Shared storage and query layer for pending orders. Both execution modes need to track in-flight orders — this base provides the common infrastructure.
@@ -315,9 +307,7 @@ Shared storage and query layer for pending orders. Both execution modes need to 
 - `get_pending_count()` — Count pending orders
 - `has_pending_orders()` — Any orders in flight?
 - `is_pending_close(position_id)` — Specific position being closed?
-- `clear_pending(current_msc, reason)` — Cleanup at scenario end, records remaining as FORCE_CLOSED with reason
-- `record_outcome(pending_order, outcome, latency_ms, reason)` — Record resolved pending order for statistics
-- `get_pending_stats()` — Return aggregated `PendingOrderStats`
+- `clear_pending(reason)` — Cleanup at scenario end: removes the orders still in flight and returns them, so the executor books how each one ended
 
 ### OrderLatencySimulator (extends AbstractPendingOrderManager)
 Simulation-specific pending order manager. Adds tick-based latency modeling with seeded randomness.
@@ -774,7 +764,7 @@ At run end, `finish_remaining_orders()` expires unfilled active orders:
    (#355) and therefore does NOT expire them locally either: an order that can still fill must not
    be recorded as expired
 2. **Both modes**: `_expire_active_orders()` creates `OrderResult(status=EXPIRED)` entries in `_order_history`
-3. Lists preserved for `get_pending_stats()` snapshots (reporting)
+3. Lists preserved for `get_active_orders_snapshot()` (reporting)
 
 ---
 
@@ -798,7 +788,7 @@ pattern. `order_history` crosses subprocess boundary via `ProcessTickLoopResult`
 ### Baseline Tests: order_history Coverage
 **Problem:** Baseline tests validate `execution_stats` counters but don't assert on `order_history`
 contents. Tests correctly detect stress test rejections (test_no_rejected_orders,
-test_orders_sent_equals_executed fail when enabled), but no dedicated fixture/assertions for
+test_orders_submitted_equals_executed fail when enabled), but no dedicated fixture/assertions for
 order_history data.
 - Affects: Baseline test suite, test fixtures
 
@@ -838,9 +828,8 @@ logic* (the one class that turns worker outputs into decisions) and *worker* —
 | **BrokerResponse** | Standardized response from broker adapter — see [live_execution_architecture.md](live_execution_architecture.md) |
 | **MockBrokerAdapter** | Test adapter with configurable execution modes — see [live_execution_architecture.md](live_execution_architecture.md) |
 | **Error Seeds** | Seeded fault injection in simulation for stress testing error-handling paths |
-| **PendingOrderOutcome** | Enum: FILLED, REJECTED, TIMED_OUT, FORCE_CLOSED — how a pending order left the queue |
-| **PendingOrderStats** | Aggregated latency metrics and outcome counters for all resolved pending orders |
-| **PendingOrderRecord** | Individual record for anomalous outcomes (FORCE_CLOSED, TIMED_OUT) only |
+| **InFlightEnding** | How an order's in-flight phase ended — accepted, rejected, never confirmed, expired; what the pending-order counters count, derived from the order-event stream |
+| **ActiveOrdersSnapshot** | The resting orders an executor holds at one moment, and how many are still on their way |
 | **OpenOrderRequest** | Internal pipeline dataclass bundling all order parameters (symbol, order_type, direction, lots, price, stop_loss, take_profit, comment, magic_number) |
 | **EntryType** | How a position was opened: MARKET or LIMIT — stored on TradeRecord for history |
 | **FillType** | How an order was filled: MARKET, LIMIT, or LIMIT_IMMEDIATE — stored in OrderResult.metadata |

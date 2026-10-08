@@ -601,7 +601,7 @@ class ColdStartAdopter:
             if _protection_filled(response):
                 self._executor.apply_carried_venue_close(
                     position, response.filled_lots or position.lots,
-                    response.fill_price)
+                    response.fill_price, response.status, response.rejection_reason)
                 continue
             if response.status == BrokerOrderStatus.PENDING:
                 self._executor.adopt_carried_protective_order(position)

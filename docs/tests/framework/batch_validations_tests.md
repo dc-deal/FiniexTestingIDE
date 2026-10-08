@@ -271,6 +271,7 @@ the structured finding rather than on printed text.
 | `test_clean_batch_no_warnings` | The zero state — nothing invented |
 | `test_coordination_overhead` / `test_no_overhead_when_low` | Coordination cost above half the computation is flagged; below it is not |
 | `test_infra_bottleneck` / `test_expected_bottleneck_no_warning` | A non-hot-path operation dominating is flagged; `worker_decision` dominating is normal |
+| `TestTheStreamHoldsEverySubmission` | A scenario whose order-event stream holds fewer submissions than its executor counted is named in `order_event_stream_incomplete` (#362) — a record lost on its way back from the subprocess; a complete stream says nothing (shared with the AutoTrader session validator) |
 
 `TestThePerformanceVerdictsLiveHere` covers the parallel-execution verdict (penalty flagged,
 saving not, sequential never) — and pins one ABSENCE:

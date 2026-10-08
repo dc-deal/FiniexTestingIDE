@@ -3,7 +3,8 @@ FiniexTestingIDE - DecisionEventDispatcher Tests (#348)
 
 Validates the decision event channel mechanics in isolation:
 - create_if_subscribed returns None when the logic subscribes to nothing
-- Order outcomes map to ORDER_FILLED / ORDER_REJECTED
+- Order outcomes map to ORDER_FILLED / ORDER_REJECTED / ORDER_UNACCOUNTED, each carrying the
+  direction its booked row states
 - Unsubscribed event types are filtered out
 - drain() delivers buffered events to the hooks in FIFO order
 - drain() is drain-to-completion + re-entrancy safe (an event emitted from
@@ -20,12 +21,16 @@ from python.framework.types.decision_event_types import (
     OrderCancelledEvent,
     OrderFilledEvent,
     OrderRejectedEvent,
+    OrderUnaccountedEvent,
     PartialCloseEvent,
     SessionEndEvent,
     SessionEndSeverity,
 )
 from python.framework.types.trading_env_types.order_types import (
+    OrderAction,
     OrderDirection,
+    OrderEndReason,
+    OrderInitiator,
     OrderResult,
     OrderStatus,
     RejectionReason,
@@ -68,6 +73,7 @@ class _RecordingLogic:
     def __init__(self) -> None:
         self.filled: List[OrderFilledEvent] = []
         self.rejected: List[OrderRejectedEvent] = []
+        self.unaccounted: List[OrderUnaccountedEvent] = []
         self.cancelled: List[OrderCancelledEvent] = []
         self.partial_closes: List[PartialCloseEvent] = []
         self.session_ends: List[SessionEndEvent] = []
@@ -80,6 +86,10 @@ class _RecordingLogic:
     def on_order_rejected(self, event: OrderRejectedEvent) -> None:
         self.rejected.append(event)
         self.order.append(f'rejected:{event.order_id}')
+
+    def on_order_unaccounted(self, event: OrderUnaccountedEvent) -> None:
+        self.unaccounted.append(event)
+        self.order.append(f'unaccounted:{event.order_id}')
 
     def on_order_cancelled(self, event: OrderCancelledEvent) -> None:
         self.cancelled.append(event)
@@ -138,6 +148,7 @@ def _partial_close_event(position_id: str = 'pos_1') -> PartialCloseEvent:
 _ALL = {
     DecisionEventType.ORDER_FILLED,
     DecisionEventType.ORDER_REJECTED,
+    DecisionEventType.ORDER_UNACCOUNTED,
     DecisionEventType.ORDER_CANCELLED,
     DecisionEventType.PARTIAL_CLOSE,
     DecisionEventType.SESSION_END,
@@ -200,6 +211,56 @@ def test_rejected_outcome_maps_to_order_rejected():
     assert len(logic.rejected) == 1
     assert logic.rejected[0].order_id == 'pos_9'
     assert logic.rejected[0].reason == RejectionReason.INSUFFICIENT_MARGIN
+
+
+def _ended_close(status: OrderStatus, direction: Optional[OrderDirection]) -> OrderResult:
+    """A live close that ended without a fill, as its row states it."""
+    return OrderResult(
+        order_id='pos_3',
+        status=status,
+        action=OrderAction.CLOSE,
+        direction=direction,
+        rejection_reason=(RejectionReason.BROKER_ERROR
+                          if status is OrderStatus.REJECTED else None),
+        initiator=(OrderInitiator.FRAMEWORK
+                   if status is OrderStatus.UNACCOUNTED else None),
+        end_reason=(OrderEndReason.ORDER_TIMEOUT
+                    if status is OrderStatus.UNACCOUNTED else None),
+    )
+
+
+def test_a_close_outcome_carries_the_direction_its_row_states():
+    """
+    A live close carries no direction of its own, so the fan-out hands over None for it.
+
+    Its row states the direction of the position it closes (#362), and the event takes the
+    row's. None reached the field study's handler as `event.direction.name` and ended the
+    acceptance run in an emergency shutdown.
+    """
+    logic = _make_logic(_ALL)
+    executor = _FakeExecutor()
+    dispatcher = DecisionEventDispatcher.create_if_subscribed(
+        logic, executor, GlobalLogger())
+
+    executor.fire_outcome(None, _ended_close(OrderStatus.REJECTED, OrderDirection.LONG))
+    executor.fire_outcome(None, _ended_close(OrderStatus.UNACCOUNTED, OrderDirection.SHORT))
+    dispatcher.drain()
+
+    assert [e.direction for e in logic.rejected] == [OrderDirection.LONG]
+    assert [e.direction for e in logic.unaccounted] == [OrderDirection.SHORT]
+
+
+def test_a_close_whose_position_is_gone_arrives_without_a_direction():
+    """No position, no direction — the event says None rather than inventing one."""
+    logic = _make_logic(_ALL)
+    executor = _FakeExecutor()
+    dispatcher = DecisionEventDispatcher.create_if_subscribed(
+        logic, executor, GlobalLogger())
+
+    executor.fire_outcome(None, _ended_close(OrderStatus.UNACCOUNTED, None))
+    dispatcher.drain()
+
+    assert [(e.order_id, e.direction) for e in logic.unaccounted] == [('pos_3', None)]
 
 
 def test_unsubscribed_event_is_filtered():

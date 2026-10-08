@@ -111,6 +111,19 @@ A missing report section names its cause from the run's index row —
 started with `reporting: none`, `run_not_completed` for one with no artifact yet,
 `artifact_not_produced` for a section the run did not write.
 
+The order-event stream (#362) is served from the run's stream file —
+`TestTheOrderEventStream` in `test_reports_endpoint.py`: every step in stream order with the keys
+declared for both lists, the served names a consumer keys on (`record_plane`, `lost_request`), a
+live session's broker-truth lines in their own list on the same counter and left out when the
+stream is narrowed to one order, the unit and order filters, a line cut off mid-write left out and
+reported, a damaged stream answered `artifact_unreadable` rather than a server error, and a run
+without one naming why.
+
+The venue account (#362) is served from its artifact — `TestTheVenueAccount` in
+`test_reports_endpoint.py`: a session's row with its key, a part the venue did not answer for as
+null and named rather than empty, where the last reconcile line left the books and the latest
+divergence by name; a backtest, which has none, answered `artifact_not_produced`.
+
 ## Row keys (`test_row_keys.py`)
 
 Every list the API serves says what makes one of its rows unique, and this file is what makes

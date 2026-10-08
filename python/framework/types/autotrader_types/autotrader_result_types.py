@@ -15,6 +15,7 @@ from python.framework.types.autotrader_types.cold_start_types import (
 from python.framework.types.autotrader_types.safety_session_types import SafetySessionRecord
 from python.framework.types.run_results_types import BookingPeriod
 from python.framework.types.disturbance_episode_types import DisturbanceEpisode, MarketDataTickStats
+from python.framework.types.live_types.broker_truth_types import BrokerTruthRecord
 from python.framework.types.log_level import LogLevel
 from python.framework.types.log_record_types import LogRecord
 from python.framework.types.performance_types.performance_stats_types import (
@@ -27,6 +28,10 @@ from python.framework.types.portfolio_types.portfolio_trade_record_types import 
 from python.framework.types.portfolio_types.portfolio_types import Position
 from python.framework.types.run_outcome_types import RunOutcome
 from python.framework.types.signal_data_types import SignalResolutionStats
+from python.framework.types.trading_env_types.active_orders_snapshot_types import (
+    ActiveOrdersSnapshot,
+)
+from python.framework.types.trading_env_types.order_event_types import OrderEvent
 from python.framework.types.trading_env_types.order_types import OrderResult
 from python.framework.types.trading_env_types.trading_env_stats_types import ExecutionStats
 from python.framework.types.validation_types import ValidationResult
@@ -52,6 +57,13 @@ class AutoTraderResult:
             the policy may leave them standing, and the report shows them as open and
             valued instead of claiming an exit that never reached the venue
         order_history: All order results
+        order_events: Every order transition, read back from the stream the session wrote
+            (#362) — what the pending-order counters are derived from. Empty when the session
+            opened no stream
+        broker_truth: What the venue reported when the session asked it, read back from the
+            same stream (#362) — what the venue-account section is derived from. Empty for a
+            dry run and a session that opened no stream
+        active_orders: What was still resting or on its way when the orders were finished
         clipping_summary: Clipping monitor session summary
         decision_statistics: Decision logic execution stats
         worker_statistics: Per-worker performance stats
@@ -95,6 +107,9 @@ class AutoTraderResult:
     # that went missing, and '' says the session never got as far as resolving it.
     session_end_policy: str = ''
     order_history: List[OrderResult] = field(default_factory=list)
+    order_events: List[OrderEvent] = field(default_factory=list)
+    broker_truth: List[BrokerTruthRecord] = field(default_factory=list)
+    active_orders: Optional[ActiveOrdersSnapshot] = None
     clipping_summary: ClippingSessionSummary = field(default_factory=ClippingSessionSummary)
     decision_statistics: Optional[DecisionLogicStats] = None
     worker_statistics: List[WorkerPerformanceStats] = field(default_factory=list)

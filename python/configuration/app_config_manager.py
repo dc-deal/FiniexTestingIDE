@@ -236,6 +236,20 @@ class AppConfigManager:
         return self._app_config.api.require_auth
 
     # ============================================
+    # Documentation Search Config
+    # ============================================
+
+    def get_docs_search_extra_commands(self) -> List[List[str]]:
+        """
+        The commands the terminal search runs after the documentation, each with the search
+        term appended.
+
+        Returns:
+            One command per entry, as its argument list; empty when nothing is set up
+        """
+        return [list(command) for command in self._app_config.docs_search.extra_commands]
+
+    # ============================================
     # Development Config
     # ============================================
 

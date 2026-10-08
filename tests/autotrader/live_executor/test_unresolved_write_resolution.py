@@ -36,6 +36,9 @@ from python.framework.types.trading_env_types.latency_simulator_types import Pen
 from python.framework.types.trading_env_types.order_types import (
     OpenOrderRequest,
     OrderDirection,
+    OrderEndReason,
+    OrderInitiator,
+    OrderStatus,
     OrderType,
     RejectionReason,
 )
@@ -202,8 +205,41 @@ class TestTheVenueNamesIt:
 
         _drive_resolution(executor_instant, mock_instant, pending)
 
-        rejections = [o for o in executor_instant.get_order_history() if o.is_rejected]
-        assert not rejections, 'nothing was refused — the answer was merely late'
+        refusals = [o for o in executor_instant.get_order_history() if o.is_refused]
+        assert not refusals, 'nothing was refused — the answer was merely late'
+
+    def test_a_cancel_parked_while_the_reference_was_missing_is_sent(
+        self, executor_instant, mock_instant
+    ):
+        """
+        The resolution is a place the reference arrives, so it owes the parked cancel (#361).
+
+        The submit answer and the reconcile attribution both send it; the resolution restored
+        the reference and stopped there. The limit the algo had cancelled kept resting and
+        could fill, and a close parked behind a protective order's cancel waited for the rest
+        of the session.
+        """
+        pending = _unresolved_limit(executor_instant, mock_instant)
+        assert executor_instant.cancel_limit_order(pending.pending_order_id)
+        assert pending.execution_state.cancel_requested, 'parked: there is no reference yet'
+        adapter = executor_instant.broker.adapter
+        adapter.set_transport_fault('submit', None)
+        adapter.set_broker_orders([BrokerOrder(
+            broker_ref='MOCK-RECOVERED', symbol='BTCUSD',
+            direction=OrderDirection.LONG, order_type=OrderType.LIMIT, lots=0.001,
+            status=BrokerOrderStatus.PENDING, price=40000.0,
+            client_order_id=pending.client_order_id,
+        )])
+
+        _drive_resolution(executor_instant, mock_instant, pending)
+        mock_instant.await_submit_confirmation(executor_instant)   # the cancel's answer
+
+        assert 'MOCK-RECOVERED' in adapter.get_cancelled_refs(), 'the parked cancel was never sent'
+        assert pending not in executor_instant._active_limit_orders
+        ended = [o for o in executor_instant.get_order_history()
+                 if o.order_id == pending.pending_order_id and o.status is OrderStatus.CANCELLED]
+        assert [(o.initiator, o.end_reason) for o in ended] == [
+            (OrderInitiator.STRATEGY, OrderEndReason.CANCEL_REQUESTED)]
 
 
 class TestTheVenueNamesNothing:
@@ -224,7 +260,7 @@ class TestTheVenueNamesNothing:
         assert pending in executor_instant._active_limit_orders, (
             'the empty answer was read as a refusal while the venue was still catching up')
 
-    def test_after_the_settle_window_it_is_a_rejection_once(
+    def test_after_the_settle_window_it_is_undelivered_once(
         self, executor_instant, mock_instant
     ):
         pending = _unresolved_limit(executor_instant, mock_instant)
@@ -237,8 +273,41 @@ class TestTheVenueNamesNothing:
         _drive_resolution(executor_instant, mock_instant, pending)
 
         assert pending not in executor_instant._active_limit_orders
-        rejections = [o for o in executor_instant.get_order_history() if o.is_rejected]
-        assert len(rejections) == 1, f'expected exactly one rejection, got {len(rejections)}'
+        history = executor_instant.get_order_history()
+        undelivered = [o for o in history if o.status is OrderStatus.UNDELIVERED]
+        assert len(undelivered) == 1, f'expected exactly one ending, got {len(undelivered)}'
+        assert not [o for o in history if o.is_refused], (
+            'the venue refused nothing — it never received the order (#362)')
+
+
+    def test_two_orders_under_our_key_are_a_question_not_an_absence(
+        self, executor_instant, mock_instant
+    ):
+        """
+        Several orders carrying our key cannot be told apart, so the read is a FAILED one.
+
+        It used to come back as "the venue names nothing", which after the settle window is a
+        verdict: the order was booked undelivered while two orders under our key were at the
+        venue, and a close parked behind it would now be sent.
+        """
+        pending = _unresolved_limit(executor_instant, mock_instant)
+        adapter = executor_instant.broker.adapter
+        adapter.set_transport_fault('submit', None)
+        adapter.set_broker_orders([
+            BrokerOrder(
+                broker_ref=broker_ref, symbol='BTCUSD', direction=OrderDirection.LONG,
+                order_type=OrderType.LIMIT, lots=0.001, status=BrokerOrderStatus.PENDING,
+                price=40000.0, client_order_id=pending.client_order_id)
+            for broker_ref in ('MOCK-A', 'MOCK-B')])
+        pending.timing.last_write_at = (
+            executor_instant.get_current_time() - timedelta(seconds=30))
+
+        _drive_resolution(executor_instant, mock_instant, pending)
+
+        assert pending in executor_instant._active_limit_orders
+        assert pending.broker_ref is None, 'one of the two was picked — a guess'
+        assert not [o for o in executor_instant.get_order_history()
+                    if o.status is OrderStatus.UNDELIVERED], 'an ambiguity was booked as an absence'
 
 
 class TestTheCeiling:
@@ -270,7 +339,7 @@ class TestTheCeiling:
         )
 
         assert refusal is not None
-        assert refusal.rejection_reason == RejectionReason.UNRESOLVED_WRITE
+        assert refusal.rejection_reason == RejectionReason.UNACCOUNTED_ORDER
 
     def test_an_empty_set_refuses_nothing(self, executor_instant, mock_instant):
         """The guard must not block the ordinary case it sits next to."""
@@ -317,18 +386,20 @@ class TestTheTwoWorldsEndDifferentlyAtTheCeiling:
         assert not executor.get_request_processor().has_pending_orders(), (
             'nothing will ever look at this pending again, and it gates the algo while it '
             'sits there')
-        rejections = [o for o in executor.get_order_history() if o.is_rejected]
-        assert len(rejections) == 1
-        assert rejections[0].rejection_reason == RejectionReason.BROKER_UNREACHABLE, (
-            'the venue never spoke — calling it a broker error puts our transport fault on '
+        history = executor.get_order_history()
+        assert not [o for o in history if o.is_refused], (
+            'the venue never spoke — calling it a refusal puts our transport fault on '
             'their account')
+        unaccounted = [o for o in history if o.status is OrderStatus.UNACCOUNTED]
+        assert len(unaccounted) == 1
+        assert unaccounted[0].end_reason is OrderEndReason.RESOLUTION_CEILING
 
     def test_and_the_entry_block_outlives_the_order(self):
         """
         The latch does not clear because the pending left.
 
-        Being booked BROKER_UNREACHABLE is not being accounted for: we still do not know
-        whether the venue holds that order, and that is exactly what blocks new entries.
+        Being booked unaccounted is not being accounted for: we still do not know whether
+        the venue holds that order, and that is exactly what blocks new entries.
         """
         mock = MockOrderExecution(mode=MockExecutionMode.INSTANT_FILL)
         executor = mock.create_executor()
@@ -350,6 +421,86 @@ class TestTheTwoWorldsEndDifferentlyAtTheCeiling:
         assert order_id in executor.get_unresolved_at_ceiling()
 
 
+class TestTwoClosesOfOnePosition:
+    """
+    A position's closes share its order id, so the latch tells them apart by submission.
+
+    Keyed by the id alone, a second close whose answer was lost found the first close's entry
+    and never ended — every later close joined it, and the position could not be closed for
+    the rest of the session — while a second close that filled lifted the block the first
+    one still held.
+    """
+
+    @staticmethod
+    def _position(mode: MockExecutionMode):
+        """
+        One open LONG.
+
+        Args:
+            mode: How the mock venue answers
+
+        Returns:
+            (mock, executor, position id)
+        """
+        mock = MockOrderExecution(mode=mode)
+        executor = mock.create_executor()
+        mock.feed_tick(executor, symbol='BTCUSD')
+        executor.open_order(OpenOrderRequest(
+            symbol='BTCUSD', order_type=OrderType.MARKET,
+            direction=OrderDirection.LONG, lots=0.001,
+        ))
+        mock.await_submit_confirmation(executor)
+        mock.feed_tick(executor, symbol='BTCUSD')
+        executor.heartbeat()
+        return mock, executor, executor.get_open_positions()[0].position_id
+
+    @staticmethod
+    def _close_with_lost_answer(mock, executor, position_id: str):
+        """
+        Close the position while the venue's answer to the submit is lost.
+
+        Args:
+            mock: The harness
+            executor: The live executor
+            position_id: The position
+
+        Returns:
+            The close's pending, waiting to be asked about
+        """
+        executor.broker.adapter.set_transport_fault('submit', _FAULT)
+        executor.close_position(position_id)
+        mock.await_submit_confirmation(executor)
+        executor.heartbeat()
+        return executor.get_request_processor().get_order(position_id)
+
+    def test_a_second_close_at_the_ceiling_ends_too(self):
+        mock, executor, position_id = self._position(MockExecutionMode.INSTANT_FILL)
+        _exhaust_resolution(executor, self._close_with_lost_answer(mock, executor, position_id))
+
+        _exhaust_resolution(executor, self._close_with_lost_answer(mock, executor, position_id))
+
+        assert not executor.is_pending_close(position_id), (
+            'the second close never ended, and every later close would join it')
+        unaccounted = [o for o in executor.get_order_history()
+                       if o.status is OrderStatus.UNACCOUNTED]
+        assert len(unaccounted) == 2
+
+    def test_the_second_closes_fill_does_not_lift_the_first_ones_block(self):
+        mock, executor, position_id = self._position(MockExecutionMode.DELAYED_FILL)
+        _exhaust_resolution(executor, self._close_with_lost_answer(mock, executor, position_id))
+        executor.broker.adapter.set_transport_fault('submit', None)
+
+        executor.close_position(position_id)
+        for _ in range(3):
+            mock.await_submit_confirmation(executor)
+            mock.feed_tick(executor, symbol='BTCUSD')
+            executor.heartbeat()
+
+        assert not executor.get_open_positions(), 'fixture: the second close filled'
+        assert position_id in executor.get_unresolved_at_ceiling(), (
+            'the first close is still unaccounted for — the second one says nothing about it')
+
+
 class TestNothingIsEverReSent:
     """A retry after a lost answer is how one intent becomes two positions (§43)."""
 
@@ -357,13 +508,11 @@ class TestNothingIsEverReSent:
         pending = _unresolved_limit(executor_instant, mock_instant)
         adapter = executor_instant.broker.adapter
         adapter.set_transport_fault('submit', None)
-        before = executor_instant.get_pending_stats()
 
         _exhaust_resolution(executor_instant, pending)
 
-        assert executor_instant._orders_sent == 1, (
-            f'{executor_instant._orders_sent} orders left this process for one decision')
-        assert before is not None
+        submitted = executor_instant.get_execution_stats().orders_submitted
+        assert submitted == 1, f'{submitted} orders left this process for one decision'
 
 
 def _drive_resolution(executor, mock, pending) -> None:

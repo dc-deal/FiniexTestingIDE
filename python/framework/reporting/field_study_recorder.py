@@ -13,13 +13,13 @@ AutoTrader wiring records the broker-truth plane (Reconciler broker-truth pulls,
 reconcile alerts) and telemetry sub-blocks (#340 slippage, #351 API perf).
 """
 
-import json
 from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from python.framework.logging.scenario_logger import ScenarioLogger
+from python.framework.reporting.io.jsonl_stream_writer import JsonlStreamWriter
 from python.framework.types.autotrader_types.field_study_types import (
     FieldStudyEvent,
     FieldStudyHeader,
@@ -66,8 +66,7 @@ class FieldStudyRecorder:
         self._phase = ''
         self._phase_index = -1
 
-        self._path.parent.mkdir(parents=True, exist_ok=True)
-        self._fh = open(self._path, 'w', encoding='utf-8')
+        self._writer = JsonlStreamWriter(self._path)
 
         header = FieldStudyHeader(
             schema_version=_SCHEMA_VERSION,
@@ -144,7 +143,8 @@ class FieldStudyRecorder:
         Record a bot-observed order/lifecycle event (fill, rejection, cancel, partial).
 
         Args:
-            event_type: 'order_filled' / 'order_rejected' / 'order_cancelled' / 'partial_close'
+            event_type: 'order_filled' / 'order_rejected' / 'order_unaccounted' /
+                'order_cancelled' / 'partial_close'
             order_id: Internal order/position id
             side: 'LONG'/'SHORT'
             lots: Executed/observed lots
@@ -239,11 +239,10 @@ class FieldStudyRecorder:
         Args:
             reason: Human-readable end reason
         """
-        if self._fh is None:
+        if not self._writer.is_open():
             return
         self._emit(PLANE_BOT, 'session_end', status=reason)
-        self._fh.close()
-        self._fh = None
+        self._writer.close()
 
         # Operator next-step hint. The capture (this JSONL) is the durable, expensive
         # artifact; the certificate is a separate, free, re-runnable judgment over it.
@@ -280,8 +279,4 @@ class FieldStudyRecorder:
 
     def _write_line(self, obj: Dict[str, Any]) -> None:
         """Serialize one record as a JSON line, dropping None fields, and flush."""
-        if self._fh is None:
-            return
-        compact = {k: v for k, v in obj.items() if v is not None}
-        self._fh.write(json.dumps(compact) + '\n')
-        self._fh.flush()
+        self._writer.write(obj)

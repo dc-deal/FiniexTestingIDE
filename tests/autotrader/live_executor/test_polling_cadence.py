@@ -86,7 +86,7 @@ class TestHeartbeat:
         assert executor_instant._current_tick is current_tick_before
 
     def test_heartbeat_processes_timeouts(self, mock_timeout, executor_timeout):
-        """A pending order past its timeout is rejected when heartbeat fires."""
+        """A pending order past its timeout is ended when heartbeat fires — cancelled at the venue."""
         mock_timeout.feed_tick(executor_timeout, bid=50000.0, ask=50001.0)
 
         executor_timeout.open_order(OpenOrderRequest(
@@ -100,11 +100,11 @@ class TestHeartbeat:
         for pending in executor_timeout._request_processor.get_pending_orders():
             pending.timing.order_timeout_deadline_monotonic = past
 
-        rejected_before = executor_timeout.get_execution_stats().orders_rejected
+        cancelled_before = executor_timeout.get_execution_stats().orders_cancelled
         executor_timeout.heartbeat()
-        rejected_after = executor_timeout.get_execution_stats().orders_rejected
+        cancelled_after = executor_timeout.get_execution_stats().orders_cancelled
 
-        assert rejected_after == rejected_before + 1
+        assert cancelled_after == cancelled_before + 1
 
     def test_heartbeat_sim_is_noop(self):
         """TradeSimulator inherits the default no-op heartbeat — no errors, no state change."""
@@ -498,7 +498,7 @@ class TestTheVenueNamingNoSuchOrder:
         executor = mock.create_executor()
         order_id = _submit_limit_and_confirm(mock, executor)
         pending = executor._active_limit_orders[0]
-        rejected_before = executor._orders_rejected
+        rows_before = len(executor.get_order_history())
 
         executor._handle_query_response(QueryResponse(
             order_id=order_id,
@@ -510,7 +510,7 @@ class TestTheVenueNamingNoSuchOrder:
         ))
 
         assert len(executor.get_open_positions()) == 0
-        assert executor._orders_rejected == rejected_before
+        assert len(executor.get_order_history()) == rows_before
 
     def test_it_is_said_once_not_every_poll_cycle(self, capsys):
         """

@@ -5,18 +5,17 @@ Validates margin exhaustion, recovery, and execution statistics.
 Tests:
 - Margin exhaustion triggers INSUFFICIENT_MARGIN rejection
 - Margin recovery after closing a position
-- Execution statistics accuracy (sent, executed, rejected)
+- Execution statistics accuracy (submitted, executed, denied, rejected)
 - Trade history contains only successful trades
 """
 
-from typing import Any, Dict, List
-
-import pytest
+from typing import List
 
 from python.framework.types.probe_metadata_types import ProbeMetadata
 from python.framework.types.portfolio_types.portfolio_aggregation_types import PortfolioStats
 from python.framework.types.portfolio_types.portfolio_trade_record_types import TradeRecord
 from python.framework.types.process_data_types import ProcessTickLoopResult
+from python.framework.types.trading_env_types.order_types import OrderAction, OrderStatus
 from python.framework.types.trading_env_types.trading_env_stats_types import ExecutionStats
 from tests.shared.shared_batch_health import TestBatchHealth
 
@@ -35,10 +34,20 @@ class TestMarginExhaustion:
         execution_stats: ExecutionStats,
         expected_rejections: int
     ):
-        """Rejected order count should match expected rejections."""
+        """Rejected order count should match the margin refusals at the fill."""
         assert execution_stats.orders_rejected == expected_rejections, (
             f'Expected {expected_rejections} rejections, '
             f'got {execution_stats.orders_rejected}'
+        )
+
+    def test_denial_count_matches_expected(
+        self,
+        execution_stats: ExecutionStats,
+        expected_denials: int
+    ):
+        """Denied order count should match the refusals made before anything was sent."""
+        assert execution_stats.orders_denied == expected_denials, (
+            f'Expected {expected_denials} denials, got {execution_stats.orders_denied}'
         )
 
     def test_no_position_created_after_rejection(
@@ -115,36 +124,37 @@ class TestMarginRecovery:
 class TestExecutionStatistics:
     """Validates execution statistics accuracy across all order types."""
 
-    def test_orders_sent_count(
+    def test_orders_submitted_count(
         self,
         execution_stats: ExecutionStats,
-        expected_orders_sent: int
+        expected_orders_submitted: int
     ):
-        """orders_sent should count all open order attempts."""
-        assert execution_stats.orders_sent == expected_orders_sent, (
-            f'Expected {expected_orders_sent} orders sent, '
-            f'got {execution_stats.orders_sent}'
+        """orders_submitted counts the orders handed to the venue — never a denied one."""
+        assert execution_stats.orders_submitted == expected_orders_submitted, (
+            f'Expected {expected_orders_submitted} orders submitted, '
+            f'got {execution_stats.orders_submitted}'
         )
 
     def test_orders_executed_count(
         self,
         execution_stats: ExecutionStats,
-        expected_successful_trades: int
+        expected_successful_trades: int,
+        trade_history: List[TradeRecord],
     ):
-        """orders_executed should count only successfully opened positions."""
-        assert execution_stats.orders_executed == expected_successful_trades, (
-            f'Expected {expected_successful_trades} executed, '
-            f'got {execution_stats.orders_executed}'
+        """orders_executed counts every fill — the successful opens and their closes."""
+        expected = expected_successful_trades + len(trade_history)
+        assert execution_stats.orders_executed == expected, (
+            f'Expected {expected} executed, got {execution_stats.orders_executed}'
         )
 
     def test_sent_equals_executed_plus_rejected(
         self,
         execution_stats: ExecutionStats
     ):
-        """orders_sent should equal orders_executed + orders_rejected."""
+        """Every submitted order ended executed or rejected — a denial was never submitted."""
         total = execution_stats.orders_executed + execution_stats.orders_rejected
-        assert execution_stats.orders_sent == total, (
-            f'orders_sent ({execution_stats.orders_sent}) != '
+        assert execution_stats.orders_submitted == total, (
+            f'orders_submitted ({execution_stats.orders_submitted}) != '
             f'orders_executed ({execution_stats.orders_executed}) + '
             f'orders_rejected ({execution_stats.orders_rejected}) = {total}'
         )
@@ -152,10 +162,12 @@ class TestExecutionStatistics:
     def test_trade_history_excludes_rejections(
         self,
         trade_history: List[TradeRecord],
-        execution_stats: ExecutionStats
+        tick_loop_results: ProcessTickLoopResult,
     ):
-        """Trade history should not contain rejected orders."""
-        assert len(trade_history) == execution_stats.orders_executed, (
+        """Trade history holds one record per executed close, and no rejected order."""
+        closes = [o for o in tick_loop_results.order_history
+                  if o.status is OrderStatus.EXECUTED and o.action is OrderAction.CLOSE]
+        assert len(trade_history) == len(closes), (
             f'Trade history has {len(trade_history)} entries, '
-            f'but {execution_stats.orders_executed} orders were executed'
+            f'but {len(closes)} closes were executed'
         )

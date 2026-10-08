@@ -21,6 +21,7 @@ from python.framework.reporting.console.abstract_batch_summary_section import (
     AbstractBatchSummarySection,
 )
 from python.framework.reporting.console.feed_stability_summary import format_disturbance_line
+from python.framework.reporting.console.order_counts_line import order_endings_text
 from python.framework.types.api.report_types import (
     AggregatedPortfolioReport,
     AggregatedPortfolioRow,
@@ -111,12 +112,13 @@ class SimExecutiveSummary(AbstractBatchSummarySection):
         renderer.print_separator(width=68)
         print(f'Scenarios:          {summary.unit_count}')
 
-        exec_rate = (summary.orders_executed / summary.orders_sent *
-                     100) if summary.orders_sent > 0 else 0.0
-        orders_line = (f'Orders:             {summary.orders_executed}/{summary.orders_sent} '
+        exec_rate = (summary.orders_executed / summary.orders_submitted *
+                     100) if summary.orders_submitted > 0 else 0.0
+        orders_line = (f'Orders:             {summary.orders_executed}/{summary.orders_submitted} '
                        f'executed ({exec_rate:.1f}%)')
-        if summary.orders_rejected > 0:
-            orders_line += f" | {renderer.yellow(f'{summary.orders_rejected} rejected')}"
+        endings = order_endings_text(summary, renderer)
+        if endings:
+            orders_line += f' | {endings}'
         if summary.sl_tp_triggered > 0:
             orders_line += f' | {summary.sl_tp_triggered} SL/TP'
         print(orders_line)
@@ -428,9 +430,9 @@ class SimExecutiveSummary(AbstractBatchSummarySection):
 
         print(f'Total P&L:          {renderer.pnl(pnl, currency)} ({pnl_pct:+.2f}%)')
         # Order execution stats
-        orders_sent = row.orders_sent
+        orders_submitted = row.orders_submitted
         orders_executed = row.orders_executed
-        orders_rejected = row.orders_rejected
+        endings = order_endings_text(row, renderer)
         exec_rate = row.execution_rate_pct
 
         print('')
@@ -442,16 +444,16 @@ class SimExecutiveSummary(AbstractBatchSummarySection):
             f'Avg Loss:           {format_currency_simple(row.avg_loss, currency)}')
         print(f'Profit Factor:      {pf_str}')
 
-        if orders_rejected > 0:
+        if endings:
             print(
-                f"Orders:             {orders_executed}/{orders_sent} executed | "
-                f"{renderer.yellow(f'{orders_rejected} rejected')} ({exec_rate:.1f}%)")
+                f'Orders:             {orders_executed}/{orders_submitted} executed | '
+                f'{endings} ({exec_rate:.1f}%)')
         else:
             print(
-                f'Orders:             {orders_executed}/{orders_sent} executed ({exec_rate:.1f}%)')
+                f'Orders:             {orders_executed}/{orders_submitted} executed ({exec_rate:.1f}%)')
 
-        # Pending order latency (green)
-        if row.pending_total_resolved > 0:
+        # How long the venue took to answer (green)
+        if row.pending_total_submitted > 0:
             latency_line = self._format_pending_latency(renderer, row)
             if latency_line:
                 print(latency_line)
@@ -557,9 +559,9 @@ class SimExecutiveSummary(AbstractBatchSummarySection):
             print(f'Win Rate:           {h.win_rate * 100:.1f}%')
 
         # Order execution
-        if row.orders_sent > 0:
+        if row.orders_submitted > 0:
             print(
-                f'Orders:             {row.orders_executed}/{row.orders_sent} executed')
+                f'Orders:             {row.orders_executed}/{row.orders_submitted} executed')
 
         # Costs (layout A — all five categories, zeros where n/a; spot fees are maker/taker)
         print('')
@@ -587,15 +589,16 @@ class SimExecutiveSummary(AbstractBatchSummarySection):
             Formatted latency line (green) or empty string
         """
         # Millisecond-based latency
-        if row.pending_min_latency_ms is not None:
-            line = (f'Avg Latency:        {row.pending_avg_latency_ms:.0f}ms '
-                    f'(min: {row.pending_min_latency_ms:.0f}ms | max: {row.pending_max_latency_ms:.0f}ms)')
-            # Anomaly suffix (force-closed, timed out)
+        if row.pending_min_in_flight_ms is not None:
+            line = (f'In Flight:          avg {row.pending_avg_in_flight_ms:.0f}ms '
+                    f'(min: {row.pending_min_in_flight_ms:.0f}ms | '
+                    f'max: {row.pending_max_in_flight_ms:.0f}ms)')
+            # Anomaly suffix (never confirmed, expired on the way)
             anomaly_parts = []
-            if row.pending_total_force_closed > 0:
-                anomaly_parts.append(f'{row.pending_total_force_closed} force-closed')
-            if row.pending_total_timed_out > 0:
-                anomaly_parts.append(f'{row.pending_total_timed_out} timed out')
+            if row.pending_total_never_confirmed > 0:
+                anomaly_parts.append(f'{row.pending_total_never_confirmed} never confirmed')
+            if row.pending_total_expired > 0:
+                anomaly_parts.append(f'{row.pending_total_expired} expired on the way')
             if anomaly_parts:
                 line += f" | {renderer.yellow(' | '.join(anomaly_parts))}"
             return renderer.green(line)

@@ -10,6 +10,8 @@ it is written at the run's START, lives beside the io/ directory rather than in 
 index reads it without going through the report store.
 """
 
+from typing import FrozenSet
+
 from python.framework.reporting.io.report_artifact_io import ArtifactSpec
 from python.framework.types.api.report_types import (
     AggregatedPortfolioReport,
@@ -30,6 +32,7 @@ from python.framework.types.api.report_types import (
     ScenarioDetailsReport,
     SignalReport,
     TradeHistoryReport,
+    VenueAccountReport,
     WarningsErrorsReport,
     WorkerDecisionReport,
 )
@@ -75,7 +78,19 @@ SIGNAL_ARTIFACT: ArtifactSpec[SignalReport] = ArtifactSpec(
     'signal.json', SignalReport)
 TRADE_HISTORY_ARTIFACT: ArtifactSpec[TradeHistoryReport] = ArtifactSpec(
     'trade_history.json', TradeHistoryReport)
+# What the venue held at a live session's start and end, and what the reconciliation recorded in
+# between (#362) — derived from the broker-truth lines of the order-event stream.
+VENUE_ACCOUNT_ARTIFACT: ArtifactSpec[VenueAccountReport] = ArtifactSpec(
+    'venue_account.json', VenueAccountReport)
 WARNINGS_ERRORS_ARTIFACT: ArtifactSpec[WarningsErrorsReport] = ArtifactSpec(
     'warnings_errors.json', WarningsErrorsReport)
 WORKER_DECISION_ARTIFACT: ArtifactSpec[WorkerDecisionReport] = ArtifactSpec(
     'worker_decision.json', WorkerDecisionReport)
+
+
+# Run STREAMS (#362) — written line by line while a run is in progress, and read back line by line.
+# Not ArtifactSpecs: a spec decodes one JSON document, a stream is many. Kept apart from the report
+# artifacts for a reason beyond format: a live session writes its stream from its first order, so a
+# session that died before its report has one — counted as an artifact, it would read as reported.
+ORDER_EVENTS_STREAM = 'order_events.jsonl'
+STREAM_FILENAMES: FrozenSet[str] = frozenset({ORDER_EVENTS_STREAM})

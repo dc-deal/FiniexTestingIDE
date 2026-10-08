@@ -56,7 +56,6 @@ from python.framework.types.trading_env_types.order_types import (
     OrderDirection,
     OrderResult,
     OrderSide,
-    OrderStatus,
     OrderType,
 )
 from python.framework.types.worker_types import WorkerRequirement, WorkerResult
@@ -617,7 +616,7 @@ class TrendChannelReference(AbstractDecisionLogic):
             self.logger.error(f'❌ Entry submission failed:\n{traceback.format_exc()}')
             return None
 
-        if result and not result.is_rejected:
+        if result and not result.is_refused:
             self._resting_entries[result.order_id] = {
                 'symbol': symbol,
                 'direction': direction,
@@ -632,7 +631,7 @@ class TrendChannelReference(AbstractDecisionLogic):
                 AwarenessLevel.INFO, 'entry_submitted',
             )
             self._record_setup_diagnostic(side, decision, tick)
-        elif result and result.is_rejected:
+        elif result and result.is_refused:
             self.logger.warning(
                 f"✗ Entry rejected: "
                 f"{result.rejection_reason.value if result.rejection_reason else 'Unknown'}"
@@ -696,7 +695,7 @@ class TrendChannelReference(AbstractDecisionLogic):
         # keeps running and the rung is still ahead of it, so silently recording it as done
         # is how a strategy loses a step it never performed.
         result = self.trading_api.close_position(pid, lots=close_lots)
-        if result.status == OrderStatus.REJECTED:
+        if result.is_refused:
             self.logger.info(
                 f'Partial close at {self.partial_rr:.1f}R refused for {pid}: '
                 f'{result.rejection_message}')

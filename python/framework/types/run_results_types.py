@@ -13,7 +13,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
-from python.framework.types.api.report_types import RunSummaryCurrency
+from python.framework.types.api.report_types import OrdersTo, RunSummaryCurrency
 from python.framework.types.run_outcome_types import RunOutcome
 
 
@@ -109,6 +109,12 @@ class RunProvenance:
     # the run tree is laid out with (`log_layout_types.RUN_TYPE_*`) rather than a literal, so
     # the ledger, the run index and the directory on disk cannot drift into three vocabularies.
     run_type: str = ''
+    # WHERE this run's orders went — a simulator or the venue, i.e. whether real money moved
+    # (#362). The value the run header records, by the same rule: a backtest is SIMULATED by
+    # construction, a session resolves its dry-run posture. A deployment's rows are only
+    # comparable when they agree on it, and the money figures of a deployment that mixes the
+    # two add simulated P&L to real. None where the rule refused the profile.
+    orders_to: Optional[OrdersTo] = None
     # How many candidates this run was selected FROM (#32). One for a run nobody swept, which is
     # a statement and not a placeholder: an absent value means the row predates the field, while
     # 1 means one attempt, and the two must not read alike.

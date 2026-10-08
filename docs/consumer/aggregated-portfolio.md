@@ -125,16 +125,16 @@ is stated on [booking periods](/api/v1/docs/booking-periods).
 
 | Field | Meaning |
 |---|---|
-| `orders_sent` · `orders_executed` · `orders_rejected` | what the block's units asked for and got |
+| `orders_submitted` · `orders_adopted` · `orders_executed` · `orders_denied` · `orders_rejected` · `orders_cancelled` · `orders_expired` · `orders_undelivered` · `orders_unaccounted` | one count per way the block's orders started or ended — what each means is on [execution stats](/api/v1/docs/execution-stats) |
 | `sl_tp_triggered` | closes that came from a stop or a target |
-| `execution_rate_pct` | executed over sent |
-| `pending_total_resolved` | resting orders that reached an end state |
-| `pending_total_filled` · `pending_total_rejected` · `pending_total_timed_out` · `pending_total_force_closed` | which end state each reached |
-| `pending_avg_latency_ms` · `pending_min_latency_ms` · `pending_max_latency_ms` | how long resolution took |
+| `execution_rate_pct` | executed over submitted and adopted |
+| `pending_total_submitted` | orders the block's units handed to their venues |
+| `pending_total_accepted` · `pending_total_rejected` · `pending_total_never_confirmed` · `pending_total_expired` | the venue's first word on each — they add up to the submitted |
+| `pending_avg_in_flight_ms` · `pending_min_in_flight_ms` · `pending_max_in_flight_ms` | how long the venue took to answer |
 | `pending_active_limit_count` · `pending_active_stop_count` | what was still resting when the run ended |
 
-The three latency figures are **null when nothing measured one**, never zero — a zero-millisecond
-resolution is a claim, and an unmeasured one is not. [Nulls](/api/v1/docs/nulls) has the general
+The three duration figures are **null when nothing measured one**, never zero — a zero-millisecond
+answer is a claim, and an unmeasured one is not. [Nulls](/api/v1/docs/nulls) has the general
 rule. The per-unit lifecycle these totals fold is on
 [pending orders](/api/v1/docs/pending-orders), and the per-unit order counts are on
 [execution stats](/api/v1/docs/execution-stats).

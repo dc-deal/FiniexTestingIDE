@@ -29,6 +29,7 @@ simply pass fixed or advanced timestamps instead of patching `datetime.now()`.
 | `TestCooldown` | Threshold arming, direction isolation, success reset, expiry, counter accumulation, tick-time anchoring (cooldowns measured in simulated time, not wall-clock) |
 | `TestBrokerUnreachableArmsTheCooldown` | `BROKER_UNREACHABLE` is a cooldown reason (#473 added the reason and the set was not extended); the cooldown expires once rejections stop, and a rejection on every tick would never let it — which is why the timeout-removal fix has to land first |
 | `TestConfigurableThreshold` | Custom `max_consecutive_rejections`, cooldown duration in message |
+| `TestTheDenialIdsAreReproducible` | A guard numbers its denials `guard_1`, `guard_2`, … and two fresh guards number the same denials the same way — two identical backtests write identical order-event streams (#362) |
 
 ### Level 2 — Scenario Integration Tests
 
@@ -76,7 +77,7 @@ This is the critical path that was fixed by the callback mechanism — previousl
 Guard rejections flow through `AbstractTradeExecutor.record_guard_rejection()` into `_order_history`. Scenario tests verify that:
 - Guard rejections appear in order history with correct `RejectionReason`
 - All guard rejections carry the `guard_` order ID prefix
-- `execution_stats.orders_rejected` includes guard rejections
+- `execution_stats.orders_denied` counts the guard's refusals, `orders_rejected` the broker's
 
 ---
 

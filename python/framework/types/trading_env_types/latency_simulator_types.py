@@ -19,7 +19,12 @@ from typing import Dict, List, Optional
 
 from python.framework.types.portfolio_types.portfolio_trade_record_types import CloseReason
 from python.framework.types.trading_env_types.broker_trade_types import BrokerTrade
-from python.framework.types.trading_env_types.order_types import OrderDirection, OrderType
+from python.framework.types.trading_env_types.order_types import (
+    OrderDirection,
+    OrderEndReason,
+    OrderInitiator,
+    OrderType,
+)
 from python.framework.types.trading_env_types.submission_metadata_types import SubmissionMetadata
 from python.framework.utils.process_serialization_utils import serialize_value
 
@@ -33,21 +38,6 @@ class PendingOrderAction(StrEnum):
     """
     OPEN = 'open'
     CLOSE = 'close'
-
-
-class PendingOrderOutcome(StrEnum):
-    """
-    How a pending order's lifecycle ended.
-
-    FILLED: Normal fill after latency delay (simulation) or broker confirmation (live)
-    REJECTED: Rejected after pending phase (stress test, broker rejection)
-    TIMED_OUT: Broker did not respond within timeout threshold (live only)
-    FORCE_CLOSED: Forcefully resolved at scenario end (orders still in queue)
-    """
-    FILLED = 'filled'
-    REJECTED = 'rejected'
-    TIMED_OUT = 'timed_out'
-    FORCE_CLOSED = 'force_closed'
 
 
 class PendingOperation(StrEnum):
@@ -162,6 +152,12 @@ class PendingOrderExecutionState:
     pending_modification: Optional[ModificationRequest] = None
     cancel_apply_at_msc: Optional[int] = None
     cancel_requested: bool = False
+    # Who asked for this order's cancel, and why (#362) — set where the cancel is requested
+    # and read where it is confirmed, which live can be a status read long after the cancel's
+    # own answer was lost. None while nobody here has asked: a cancel the venue reports then
+    # was the venue's own.
+    cancel_initiator: Optional[OrderInitiator] = None
+    cancel_end_reason: Optional[OrderEndReason] = None
     in_flight_query: bool = False
     last_polled_at_ms: float = 0.0
     # How much of a VENUE-HELD protective order is already written into the position book
@@ -274,12 +270,27 @@ class PendingOrder:
     # order, because the wire key is derived from it and overloading the position id
     # would collide with a restart's counter. So the position has to be named separately.
     closes_position_id: Optional[str] = None
+    # A close's POSITION direction, stamped when the close is registered, so its events still
+    # name it once the position is gone — a close's fill can arrive after another close took
+    # the position (#362). Not `direction`: on a protective order that is its own trading side
+    closed_position_direction: Optional[OrderDirection] = None
     # Whether the position this ENTRY produces should get a protective order at the venue
     # (#503). Resolved once at submit — profile default ⊕ per-order override — and carried
     # here because the fill site sees the order, not the request that made it. An explicit
     # field rather than a passenger in `order_kwargs`: that dict is splatted onto the
     # adapter call, so anything added to it goes on the wire.
     venue_held_protection: bool = False
+    # The order-event stream's join key (#362): the `seq` of this order's submission — or
+    # of its adoption, for an order a previous session sent. Every later event about the
+    # order carries it, because `order_id` repeats across the closes of one position.
+    submitted_seq: Optional[int] = None
+    # The `seq` of the event that recorded the venue taking this order, once one did. It is
+    # what keeps a fill from recording a second acceptance.
+    accepted_seq: Optional[int] = None
+    # Set when the answer to this order's submission was lost. Whatever answers afterwards —
+    # the asking, the truth pull — carries no latency: that span would measure the asking,
+    # not the venue.
+    submit_answer_lost: bool = False
 
     # === Composed sub-concerns (#345) ===
     timing: PendingOrderTiming = field(default_factory=PendingOrderTiming)
@@ -304,6 +315,8 @@ class PendingOrder:
             'order_kwargs': serialize_value(self.order_kwargs),
             'close_lots': self.close_lots,
             'closes_position_id': self.closes_position_id,
+            'closed_position_direction': (
+                self.closed_position_direction.value if self.closed_position_direction else None),
             'venue_held_protection': self.venue_held_protection,
             # Async operation state (#318)
             'in_flight_operation': self.execution_state.in_flight_operation.value if self.execution_state.in_flight_operation else None,

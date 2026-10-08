@@ -58,9 +58,11 @@ class TestRunHealth:
         assert len(stop_trades) > 0
 
     def test_no_orders_rejected(self, limit_execution_stats, stop_execution_stats):
-        # Capacity + gate guards keep the logic from spamming rejected orders.
-        assert limit_execution_stats.orders_rejected == 0
-        assert stop_execution_stats.orders_rejected == 0
+        # Capacity + gate guards keep the logic from spamming refused orders — neither the
+        # venue's rejections nor our own denials.
+        for stats in (limit_execution_stats, stop_execution_stats):
+            assert stats.orders_rejected == 0
+            assert stats.orders_denied == 0
 
 
 class TestEntryModes:

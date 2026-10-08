@@ -11,6 +11,7 @@ from typing import Any, Dict, Iterable, List, Optional
 import pandas as pd
 
 from python.framework.exceptions.store_errors import StoreIndexSourceMissingError
+from python.framework.reporting.io.artifact_specs import STREAM_FILENAMES
 from python.framework.reporting.io.run_header_io import (
     RUN_HEADER_ARTIFACT,
     read_run_header,
@@ -63,20 +64,50 @@ def _origin_columns(header: RunHeader) -> Dict[str, Any]:
     }
 
 
-def _artifact_names(run_dir: Path) -> List[str]:
+def _io_file_names(run_dir: Path) -> List[str]:
     """
-    The report artifacts a run has persisted, by file name.
+    Every file in a run's io/ subfolder, by name.
 
     Args:
         run_dir: The run's own directory
 
     Returns:
-        Sorted file names in the run's io/ subfolder; empty when it has none
+        Sorted file names; empty when the run has no io/ subfolder
     """
     io_dir = run_dir / IO_SUBDIR
     if not io_dir.is_dir():
         return []
     return sorted(f.name for f in io_dir.iterdir() if f.is_file())
+
+
+def _artifact_names(run_dir: Path) -> List[str]:
+    """
+    The report artifacts a run has persisted, by file name.
+
+    A stream is not one (#362): a live session writes its stream from its first order, and a
+    session that died before its report would otherwise read as reported — "not completed"
+    hangs on this list being empty.
+
+    Args:
+        run_dir: The run's own directory
+
+    Returns:
+        Sorted file names in the run's io/ subfolder, streams left out
+    """
+    return [name for name in _io_file_names(run_dir) if name not in STREAM_FILENAMES]
+
+
+def _stream_names(run_dir: Path) -> List[str]:
+    """
+    The streams a run has written, by file name.
+
+    Args:
+        run_dir: The run's own directory
+
+    Returns:
+        Sorted stream file names in the run's io/ subfolder
+    """
+    return [name for name in _io_file_names(run_dir) if name in STREAM_FILENAMES]
 
 
 def _kind_columns(header: RunHeader) -> Dict[str, Any]:
@@ -113,6 +144,21 @@ def _data_windows(value) -> Optional[List[DataWindow]]:
     if not isinstance(value, str) or not value:
         return None
     return [DataWindow(**window) for window in json.loads(value)]
+
+
+def _stream_list(value: Any) -> List[str]:
+    """
+    A stored stream list as a list — absent on a row written before the column existed.
+
+    Args:
+        value: The cell, a list or array, or None / NaN
+
+    Returns:
+        The names; empty where nothing was recorded
+    """
+    if value is None or isinstance(value, float):
+        return []
+    return [str(name) for name in value]
 
 
 def _int_or_zero(value) -> int:
@@ -214,6 +260,9 @@ class RunIndex(AbstractStoreIndex):
         'origin_channel', 'origin_person', 'host_id', 'framework_dirty', 'code_dirty',
         # Which kind of run and the market windows it covers (contract 12), from the header.
         'ticks_from', 'orders_to', 'data_windows',
+        # The streams the run wrote while it ran (#362) — kept apart from `artifacts`, which a
+        # stream must not fill: see _artifact_names.
+        'stream_files',
     ]
 
     # 1 → 2: `size_bytes` appended. A row written before it reads back as NaN, which means
@@ -225,7 +274,9 @@ class RunIndex(AbstractStoreIndex):
     # 5 → 6: `ticks_from`, `orders_to` and `data_windows` appended (contract 12) — which kind of
     # run this is and the market windows it covers. Same shape as 4 → 5: a rebuild fills them,
     # and a header older than the fields reads as unknown.
-    LOGIC_VERSION: int = 6
+    # 6 → 7 (#362): `stream_files` appended, and `artifacts` no longer lists a stream. A rebuild
+    # fills it from io/; a row written before it reads as no streams, which is what those runs had.
+    LOGIC_VERSION: int = 7
 
     def __init__(self, path: Path, roots: Optional[RunLogPaths] = None):
         """
@@ -271,6 +322,7 @@ class RunIndex(AbstractStoreIndex):
             'size_bytes': 0,
             **_origin_columns(header),
             **_kind_columns(header),
+            'stream_files': [],
         }])
         self.write_incremental(pd.concat([frame, row], ignore_index=True))
 
@@ -302,7 +354,41 @@ class RunIndex(AbstractStoreIndex):
         mask = frame['run_id'] == run_id
         frame['artifacts'] = frame['artifacts'].astype(object)
         frame.loc[mask, 'artifacts'] = frame.loc[mask, 'artifacts'].apply(lambda _: names)
+        self._stamp_streams(frame, mask, _stream_names(run_dir))
         self.write_incremental(frame)
+
+    def record_streams(self, run_id: str, run_dir: Path) -> None:
+        """
+        Record which streams a run is writing — at the moment it starts writing them (#362).
+
+        A stream is served while its run is still going, which is when it matters most: the run
+        list has to name it before the report does. Only the streams are touched; the size and
+        the artifacts stay unrecorded until the reports land, as `record_artifacts` explains.
+
+        Args:
+            run_id: The run whose stream was just opened
+            run_dir: The run's own directory, whose io/ subfolder is listed
+        """
+        frame = self.read()
+        if frame.empty or run_id not in set(frame['run_id']):
+            return
+        self._stamp_streams(frame, frame['run_id'] == run_id, _stream_names(run_dir))
+        self.write_incremental(frame)
+
+    @staticmethod
+    def _stamp_streams(frame: pd.DataFrame, mask: pd.Series, names: List[str]) -> None:
+        """
+        Write one run's stream list into the frame, in place.
+
+        Args:
+            frame: The index frame
+            mask: The run's row
+            names: Its stream file names
+        """
+        if 'stream_files' not in frame.columns:
+            frame['stream_files'] = [[] for _ in range(len(frame))]
+        frame['stream_files'] = frame['stream_files'].astype(object)
+        frame.loc[mask, 'stream_files'] = frame.loc[mask, 'stream_files'].apply(lambda _: names)
 
     def list_runs(self) -> List[RunInfo]:
         """
@@ -327,7 +413,8 @@ class RunIndex(AbstractStoreIndex):
                         size_bytes=_int_or_zero(getattr(r, 'size_bytes', 0)),
                         ticks_from=_or_none(getattr(r, 'ticks_from', None)),
                         orders_to=_or_none(getattr(r, 'orders_to', None)),
-                        data_windows=_data_windows(getattr(r, 'data_windows', None)))
+                        data_windows=_data_windows(getattr(r, 'data_windows', None)),
+                        stream_files=list(_stream_list(getattr(r, 'stream_files', None))))
                 for r in frame.itertuples()]
 
     def run_dirs_of(self, run_ids: Iterable[str]) -> List[Optional[str]]:
@@ -406,6 +493,7 @@ class RunIndex(AbstractStoreIndex):
                     'size_bytes': dir_size(run_dir),
                     **_origin_columns(header),
                     **_kind_columns(header),
+                    'stream_files': _stream_names(run_dir),
                 })
         self.write(pd.DataFrame(rows, columns=self.COLUMNS))
         return len(rows)

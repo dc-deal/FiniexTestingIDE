@@ -53,6 +53,7 @@ _KRAKEN_SEED = 'configs/brokers/kraken/kraken_spot_broker_config.json'
 _SYMBOL = 'BTCUSD'
 _EXIT = 51_000.0
 _LOTS = 0.01
+_FEE_TIME = datetime(2026, 9, 8, 12, 0, tzinfo=timezone.utc)
 
 # The portfolio tests run over the real MT5 config, which carries EURUSD.
 _PF_SYMBOL = 'EURUSD'
@@ -131,7 +132,7 @@ def _fee(cost: float) -> MakerTakerFee:
     """
     return MakerTakerFee(
         is_maker=False, maker_rate=0.0, taker_rate=100.0, order_value=cost,
-        timestamp=datetime(2026, 9, 8, 12, 0, tzinfo=timezone.utc))
+        timestamp=_FEE_TIME)
 
 
 def _open(portfolio: PortfolioManager, entry_fee_cost: float,
@@ -171,7 +172,8 @@ class TestTheFeeModelDecidesWhetherThereIsAnExitFee:
         spec = executor.broker.adapter.get_symbol_specification(_SYMBOL)
 
         fee = executor._create_exit_fee(
-            symbol_spec=spec, lots=_LOTS, exit_price=_EXIT, is_maker=False)
+            symbol_spec=spec, lots=_LOTS, exit_price=_EXIT, timestamp=_FEE_TIME,
+            is_maker=False)
 
         assert fee is not None
         assert fee.fee_type is FeeType.MAKER_TAKER
@@ -188,7 +190,8 @@ class TestTheFeeModelDecidesWhetherThereIsAnExitFee:
         spec = executor.broker.adapter.get_symbol_specification(_SYMBOL)
 
         fee = executor._create_exit_fee(
-            symbol_spec=spec, lots=_LOTS, exit_price=_EXIT, is_maker=False)
+            symbol_spec=spec, lots=_LOTS, exit_price=_EXIT, timestamp=_FEE_TIME,
+            is_maker=False)
 
         assert fee is None
 
@@ -452,7 +455,8 @@ class TestTheDeclaredRateIsTheRateCharged:
         declared = executor.broker.adapter.get_taker_fee()
 
         fee = executor._create_exit_fee(
-            symbol_spec=spec, lots=1.0, exit_price=4000.0, is_maker=False)
+            symbol_spec=spec, lots=1.0, exit_price=4000.0, timestamp=_FEE_TIME,
+            is_maker=False)
 
         notional = 1.0 * spec.contract_size * 4000.0
         assert fee is not None
@@ -467,7 +471,8 @@ class TestTheDeclaredRateIsTheRateCharged:
         assert maker != taker, 'the seed must declare two different rates for this to prove anything'
 
         fee = executor._create_exit_fee(
-            symbol_spec=spec, lots=1.0, exit_price=4000.0, is_maker=True)
+            symbol_spec=spec, lots=1.0, exit_price=4000.0, timestamp=_FEE_TIME,
+            is_maker=True)
 
         notional = 1.0 * spec.contract_size * 4000.0
         assert fee.cost == pytest.approx(notional * maker / 100.0)

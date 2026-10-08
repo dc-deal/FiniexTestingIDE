@@ -20,8 +20,8 @@ PASS criteria (hard):
 Informational (not pass-gating): realized cost (read from the run's own stamp, with its
 source named — a reconstruction from per-event commissions cannot see a full close), the
 account delta (venue-side movement between the first and the session-end snapshot, which is
-the only figure that can contradict our booking), slippage distribution, detected-via mix,
-reconciliation alert count.
+the only figure that can contradict our booking), slippage — not measured until #566, so no
+figure rather than a zero — detected-via mix, reconciliation alert count.
 """
 
 import json
@@ -174,10 +174,13 @@ class FieldStudyCertificate:
             'account_delta': account_delta,
             'realized_cost': realized_cost,
             'realized_cost_source': realized_cost_source,
+            # Nothing writes a slippage figure into the record any more — the field it copied
+            # was never filled, so every certificate read max 0.0. Until the record carries a
+            # measured one (#566), no figure is NOT MEASURED, never a zero.
             'slippage_points': {
                 'count': len(slip_points),
-                'max': max(slip_points) if slip_points else 0.0,
-                'avg': (sum(slip_points) / len(slip_points)) if slip_points else 0.0,
+                'max': max(slip_points) if slip_points else None,
+                'avg': (sum(slip_points) / len(slip_points)) if slip_points else None,
             },
             'detected_via': detected_via,
             'reconcile_alert_count': len(reconcile_alerts),

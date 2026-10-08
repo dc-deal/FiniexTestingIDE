@@ -87,7 +87,7 @@ class TestEveryColumnClassIsFollowed:
         # absence: a default of 0 made every run that booked periods read "0 orders sent".
         rows = [_period(1, 'd1', net_pnl=1.0), _period(2, 'd2', net_pnl=2.0)]
         folded = aggregate_ledger_rows(rows)[0]
-        assert (folded.orders_sent, folded.orders_executed, folded.sl_tp_triggered) == (
+        assert (folded.orders_submitted, folded.orders_executed, folded.sl_tp_triggered) == (
             None, None, None)
 
     def test_a_cumulative_extremum_takes_the_largest_magnitude(self):

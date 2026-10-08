@@ -42,11 +42,6 @@ from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.types.trading_env_types.latency_simulator_types import (
     PendingOrder,
     PendingOrderAction,
-    PendingOrderOutcome,
-)
-from python.framework.types.trading_env_types.pending_order_stats_types import (
-    PendingOrderRecord,
-    PendingOrderStats,
 )
 
 
@@ -61,7 +56,6 @@ class AbstractPendingOrderManager(ABC):
     def __init__(self, logger: AbstractLogger):
         self.logger = logger
         self._pending_orders: Dict[str, PendingOrder] = {}
-        self._pending_stats: PendingOrderStats = PendingOrderStats()
 
     # ============================================
     # Storage (concrete — shared by all modes)
@@ -141,56 +135,8 @@ class AbstractPendingOrderManager(ABC):
         return any(p.pending_order_id == position_id for p in pending_closes)
 
     # ============================================
-    # Pending Order Statistics
+    # Pending Order Latency
     # ============================================
-
-    def record_outcome(
-        self,
-        pending_order: PendingOrder,
-        outcome: PendingOrderOutcome,
-        latency_ms: Optional[float] = None,
-        reason: Optional[str] = None,
-    ) -> None:
-        """
-        Record a resolved pending order outcome for statistics.
-
-        Called by the executor after determining the final outcome.
-        Updates aggregated latency stats. Stores individual record
-        only for anomalous outcomes (FORCE_CLOSED, TIMED_OUT).
-
-        Args:
-            pending_order: The resolved pending order
-            outcome: How the pending phase ended
-            latency_ms: Pending duration in ms
-            reason: Why the force-close happened (e.g. "scenario_end", "manual_abort")
-        """
-        # Build anomaly record for FORCE_CLOSED / TIMED_OUT
-        anomaly_record = None
-        if outcome in (PendingOrderOutcome.FORCE_CLOSED, PendingOrderOutcome.TIMED_OUT):
-            anomaly_record = PendingOrderRecord(
-                order_id=pending_order.pending_order_id,
-                action=pending_order.order_action,
-                outcome=outcome,
-                reason=reason,
-                latency_ms=latency_ms,
-                placed_at_msc=pending_order.timing.placed_at_msc,
-                submitted_at=pending_order.timing.submitted_at,
-            )
-
-        self._pending_stats.record(
-            outcome=outcome,
-            latency_ms=latency_ms,
-            anomaly_record=anomaly_record,
-        )
-
-    def get_pending_stats(self) -> PendingOrderStats:
-        """
-        Get aggregated pending order statistics.
-
-        Returns:
-            PendingOrderStats with latency metrics and anomaly records
-        """
-        return self._pending_stats
 
     @staticmethod
     def calculate_pending_latency_ms(pending: PendingOrder) -> Optional[float]:
@@ -217,50 +163,28 @@ class AbstractPendingOrderManager(ABC):
     # Cleanup
     # ============================================
 
-    def clear_pending(
-        self,
-        current_msc: Optional[int] = None,
-        reason: str = 'scenario_end'
-    ) -> None:
+    def clear_pending(self, reason: str = 'scenario_end') -> List[PendingOrder]:
         """
-        Clear all pending orders. Records remaining orders as FORCE_CLOSED.
+        Clear all pending orders and hand them back, so the executor can book how each one ended.
 
-        Used at scenario end to prevent orders from leaking into next scenario.
-        Orders still in queue are recorded as anomalies before clearing.
-        These are genuine stuck-in-pipeline orders. There are no end-of-scenario
-        position closes any more — a position open at the end stays open and is
-        reported as open (#492).
+        Used at scenario end to prevent orders from leaking into the next scenario. These are
+        genuine stuck-in-pipeline orders. There are no end-of-scenario position closes any more
+        — a position open at the end stays open and is reported as open (#492).
 
         Args:
-            current_msc: Current millisecond timestamp for latency calculation (simulation).
-                         None for live mode (measured on the monotonic clock).
-            reason: Why the force-close happened (e.g. "scenario_end", "manual_abort")
+            reason: Why they are cleared (e.g. "scenario_end", "manual_abort"), for the log line
+
+        Returns:
+            The orders cleared
         """
         if not self._pending_orders:
-            return
+            return []
 
-        count = len(self._pending_orders)
         self.logger.warning(
-            f'Clearing {count} pending order(s) — recording as FORCE_CLOSED (reason: {reason})'
+            f'Clearing {len(self._pending_orders)} pending order(s) still in flight '
+            f'(reason: {reason})'
         )
 
-        # Record each remaining order as FORCE_CLOSED
-        for pending in self._pending_orders.values():
-            latency_ms = None
-
-            # Simulation: ms-timestamp-based latency
-            if pending.timing.placed_at_msc is not None and current_msc is not None:
-                latency_ms = current_msc - pending.timing.placed_at_msc
-
-            # Live: monotonic duration since submission — None when it cannot be measured
-            if pending.timing.submitted_at is not None:
-                latency_ms = self.calculate_pending_latency_ms(pending)
-
-            self.record_outcome(
-                pending_order=pending,
-                outcome=PendingOrderOutcome.FORCE_CLOSED,
-                latency_ms=latency_ms,
-                reason=reason,
-            )
-
+        cleared = list(self._pending_orders.values())
         self._pending_orders.clear()
+        return cleared

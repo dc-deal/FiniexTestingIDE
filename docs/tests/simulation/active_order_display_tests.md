@@ -2,7 +2,7 @@
 
 ## Overview
 
-The active order display test suite validates that resting limit and stop orders are correctly reported in `PendingOrderStats.active_limit_orders` and `active_stop_orders` at scenario end.
+The active order display test suite validates that resting limit and stop orders are correctly reported in `ActiveOrdersSnapshot.active_limit_orders` and `active_stop_orders` at scenario end.
 
 **Test Configuration:** `backtesting/limit_stop_order_mock_scenario_test.json`
 - Symbol: GBPUSD
@@ -18,7 +18,7 @@ The active order display test suite validates that resting limit and stop orders
 ```
 tests/
 ├── shared/
-│   ├── fixture_helpers.py               ← extract_pending_stats() used here
+│   ├── fixture_helpers.py               ← extract_active_orders() used here
 │   └── shared_active_order_display.py   ← Reusable test classes
 ├── active_order_display/
 │   ├── conftest.py                      ← Dual-scenario fixtures (limit + stop)
@@ -37,17 +37,17 @@ The conftest runs one batch (both scenarios), then extracts per-scenario fixture
 | `batch_execution_summary` | session | Runs both scenarios once per session |
 | `process_result_limit` | session | ProcessResult for scenario 0 (active_limit_display) |
 | `tick_loop_results_limit` | session | Tick loop results for limit scenario |
-| `pending_stats_limit` | session | PendingOrderStats for limit scenario |
+| `active_orders_limit` | session | ActiveOrdersSnapshot for limit scenario |
 | `process_result_stop` | session | ProcessResult for scenario 1 (active_stop_display) |
 | `tick_loop_results_stop` | session | Tick loop results for stop scenario |
-| `pending_stats_stop` | session | PendingOrderStats for stop scenario |
+| `active_orders_stop` | session | ActiveOrdersSnapshot for stop scenario |
 
 ---
 
 ## Test Classes
 
 ### TestActiveLimitOrdersReported
-Uses `pending_stats_limit` fixture. Validates scenario 0: LONG LIMIT at price 0.5000, SL 0.4900, TP 0.5200.
+Uses `active_orders_limit` fixture. Validates scenario 0: LONG LIMIT at price 0.5000, SL 0.4900, TP 0.5200.
 
 | Test | Validates |
 |------|-----------|
@@ -60,7 +60,7 @@ Uses `pending_stats_limit` fixture. Validates scenario 0: LONG LIMIT at price 0.
 | `test_active_stop_orders_empty` | `active_stop_orders` is empty (no stop orders placed) |
 
 ### TestActiveStopOrdersReported
-Uses `pending_stats_stop` fixture. Validates scenario 1: LONG STOP at stop_price 5.0000, SL 4.9500, TP 5.1000.
+Uses `active_orders_stop` fixture. Validates scenario 1: LONG STOP at stop_price 5.0000, SL 4.9500, TP 5.1000.
 
 | Test | Validates |
 |------|-----------|
@@ -94,10 +94,10 @@ Both scenarios use intentionally unreachable prices to ensure the order stays ac
 
 ```
 trade_simulator._active_limit_orders / _active_stop_orders
-  └→ get_pending_stats()
-       └→ PendingOrderStats.active_limit_orders / active_stop_orders: List[ActiveOrderSnapshot]
-            └→ ProcessTickLoopResult.pending_stats
-                 └→ pending_stats_limit / pending_stats_stop fixtures
+  └→ get_active_orders_snapshot()
+       └→ ActiveOrdersSnapshot.active_limit_orders / active_stop_orders: List[ActiveOrderSnapshot]
+            └→ ProcessTickLoopResult.active_orders
+                 └→ active_orders_limit / active_orders_stop fixtures
 ```
 
 `ActiveOrderSnapshot` contains: `order_id`, `order_type`, `symbol`, `direction`, `lots`, `entry_price`, `limit_price` (STOP_LIMIT only), `stop_loss`, `take_profit`.

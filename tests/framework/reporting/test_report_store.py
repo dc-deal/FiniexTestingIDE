@@ -6,6 +6,7 @@ the shared filter. Tested against a temporary logs directory with fixture artifa
 no run required.
 """
 
+import csv
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -60,6 +61,7 @@ from python.framework.types.api.report_types import (
     WarningsErrorsReport,
 )
 from python.framework.types.config_types.file_logging_config_types import RunLogPaths
+from python.framework.types.trading_env_types.order_types import CloseType
 from python.framework.types.log_layout_types import (
     RUN_TYPE_AUTOTRADER,
     RUN_TYPE_SIMULATION,
@@ -290,6 +292,17 @@ class TestCsv:
         assert all(line.startswith(_RUN_ID + ',') for line in lines[1:])
         assert 'EURUSD' in lines[1]
 
+    def test_an_enum_cell_holds_its_value(self, tmp_path):
+        # The CSV is read beside the JSON and the API, which say `partial` — a cell saying
+        # `CloseType.PARTIAL` is found by no filter on the served value
+        report = _report()
+        report.trades[0].close_type = CloseType.PARTIAL
+        write_trade_history_csv(report, tmp_path)
+        with (tmp_path / 'trade_history.csv').open(newline='', encoding='utf-8') as handle:
+            rows = list(csv.DictReader(handle))
+        assert rows[0]['close_type'] == 'partial'
+        assert rows[1]['close_type'] == ''
+
 
 def _order_row(order_id: str, symbol: str, status: str) -> OrderHistoryRow:
     return OrderHistoryRow(
@@ -297,7 +310,7 @@ def _order_row(order_id: str, symbol: str, status: str) -> OrderHistoryRow:
         direction='long', action='open', status=status,
         requested_lots=0.1, executed_lots=0.1, executed_price=1.10,
         event_time='2025-10-13T08:00:00+00:00',
-        commission=0.2, swap=0.0, slippage_points=1.0,
+        commission=0.2,
     )
 
 
@@ -354,10 +367,12 @@ class TestPortfolio:
 
 def _execution_stats_report() -> ExecutionStatsReport:
     unit = ExecutionStatsRow(
-        name='s1', symbol='EURUSD', orders_sent=5, orders_executed=4,
-        orders_rejected=1, sl_tp_triggered=2)
+        name='s1', symbol='EURUSD', orders_submitted=5, orders_adopted=0, orders_executed=4,
+        orders_denied=0,
+        orders_rejected=1, orders_cancelled=0, orders_expired=0, orders_undelivered=0,
+        orders_unaccounted=0, sl_tp_triggered=2)
     totals = ExecutionStatsTotals(
-        orders_sent=5, orders_executed=4, orders_rejected=1, sl_tp_triggered=2)
+        orders_submitted=5, orders_executed=4, orders_rejected=1, sl_tp_triggered=2)
     return ExecutionStatsReport(run_id=_RUN_ID, units=[unit], totals=totals)
 
 
@@ -377,7 +392,7 @@ class TestExecutionStats:
     def test_csv_header_and_rows(self, tmp_path):
         write_execution_stats_csv(_execution_stats_report(), tmp_path)
         lines = (tmp_path / 'execution_stats.csv').read_text().splitlines()
-        assert lines[0].startswith('run_id,name,symbol,orders_sent')
+        assert lines[0].startswith('run_id,name,symbol,orders_submitted')
         assert len(lines) == 1 + 1                 # header + 1 unit row
         assert lines[1].startswith(_RUN_ID + ',')
         assert 'EURUSD' in lines[1]
@@ -385,8 +400,8 @@ class TestExecutionStats:
 
 def _pending_orders_report() -> PendingOrdersReport:
     unit = PendingOrdersUnitRow(
-        name='s1', symbol='EURUSD', total_resolved=3, total_filled=2,
-        total_force_closed=1, avg_latency_ms=42.0, min_latency_ms=21.0, max_latency_ms=60.0,
+        name='s1', symbol='EURUSD', total_submitted=3, total_accepted=2,
+        total_expired=1, avg_in_flight_ms=42.0, min_in_flight_ms=21.0, max_in_flight_ms=60.0,
         active_limit_orders=[ActiveOrderRow(
             order_id='L1', order_type='limit', direction='long', lots=0.1,
             entry_price=1.10, stop_loss=1.09, take_profit=1.11)])
@@ -401,7 +416,7 @@ class TestPendingOrders:
         report = ReportStore(_index_path(tmp_path)).get('20260615_120000_aaaaaaaa', PENDING_ORDERS_ARTIFACT)
         assert report is not None
         u = report.units[0]
-        assert u.total_resolved == 3 and u.avg_latency_ms == 42.0
+        assert u.total_submitted == 3 and u.avg_in_flight_ms == 42.0
         assert u.active_limit_orders[0].order_id == 'L1'
 
     def test_not_found_returns_none(self, tmp_path):
@@ -439,7 +454,7 @@ def _run_summary() -> RunSummary:
             currency='USD', net_pnl=60.0, profit_factor=2.5, win_rate=0.6, account_max_drawdown=12.0,
             total_fees=5.0, total_trades=10, winning_trades=6, losing_trades=4,
             expectancy=0.5, avg_win_r=2.0, avg_loss_r=-1.0, r_trade_count=4)],
-        orders_sent=5, orders_executed=4, orders_rejected=1, sl_tp_triggered=2, unit_count=1)
+        orders_submitted=5, orders_executed=4, orders_rejected=1, sl_tp_triggered=2, unit_count=1)
 
 
 class TestRunSummary:

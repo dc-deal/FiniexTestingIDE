@@ -14,6 +14,7 @@ cannot slip through:
 Tracked by #321.
 """
 
+import time
 from datetime import datetime, timezone
 
 from python.framework.testing.mock_broker_adapter import MockExecutionMode
@@ -22,6 +23,8 @@ from python.framework.trading_env.order_guard import OrderGuard
 from python.framework.types.trading_env_types.order_types import (
     OpenOrderRequest,
     OrderDirection,
+    OrderEndReason,
+    OrderInitiator,
     OrderStatus,
     OrderType,
     RejectionReason,
@@ -100,7 +103,7 @@ class TestAsyncSubmitRejection:
         guard = OrderGuard(cooldown_seconds=60.0, max_consecutive_rejections=1)
 
         def listener(direction, result, pending=None):
-            if result.is_rejected and result.rejection_reason == RejectionReason.BROKER_ERROR:
+            if result.is_refused and result.rejection_reason == RejectionReason.BROKER_ERROR:
                 guard.record_rejection(direction, datetime.now(timezone.utc))
 
         executor_reject.add_order_outcome_listener(listener)
@@ -227,7 +230,7 @@ class TestAsyncSubmitShutdown:
         mock.await_submit_confirmation(executor)
         assert executor.has_pending_orders()
 
-        executor.finish_remaining_orders(current_msc=0)
+        executor.finish_remaining_orders()
 
         # Shutdown completed: no pending, worker thread joined
         assert not executor.has_pending_orders()
@@ -235,10 +238,10 @@ class TestAsyncSubmitShutdown:
 
 
 class TestAsyncSubmitTimeout:
-    """TIMEOUT-mode pending eventually triggers timeout rejection via check_timeouts."""
+    """A TIMEOUT-mode pending reaches its fill timeout and is cancelled by the framework."""
 
     def test_async_submit_timeout_mode(self):
-        """Submit in TIMEOUT mode stays pending; tick-driven check_timeouts triggers rejection."""
+        """Submit in TIMEOUT mode stays pending; tick-driven check_timeouts cancels it."""
         # Short timeout so the test runs fast
         mock = MockOrderExecution(mode=MockExecutionMode.TIMEOUT, timeout_seconds=0.1)
         executor = mock.create_executor()
@@ -252,15 +255,19 @@ class TestAsyncSubmitTimeout:
         assert executor.has_pending_orders()
 
         # Wait past the timeout window
-        import time
         time.sleep(0.15)
 
-        rejected_before = executor.get_execution_stats().orders_rejected
         mock.feed_tick(executor, bid=49999.0, ask=50001.0)
-        rejected_after = executor.get_execution_stats().orders_rejected
 
-        # Timeout path increments orders_rejected and clears the pending
-        assert rejected_after > rejected_before
+        # The venue confirmed the order working and unexecuted, so the framework's cancel
+        # ends it — a cancellation, not a rejection the venue never made (#362)
+        stats = executor.get_execution_stats()
+        assert stats.orders_cancelled == 1
+        assert stats.orders_rejected == 0
+        ended = executor.get_order_history()[-1]
+        assert ended.status is OrderStatus.CANCELLED
+        assert ended.initiator is OrderInitiator.FRAMEWORK
+        assert ended.end_reason is OrderEndReason.ORDER_TIMEOUT
         assert not executor.has_pending_orders()
 
 
