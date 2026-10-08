@@ -4,6 +4,7 @@
   "created": "2026-10-07T22:40:00+00:00",
   "global": {
     "strategy_config": {
+      "_comment": "The thresholds stand in each scenario that trades this logic, not here: a scenario's strategy is merged INTO this block, so one that brings its own logic would inherit them and be refused for parameters it does not know.",
       "decision_logic_type": "CORE/aggressive_trend",
       "worker_instances": {
         "rsi_fast": "CORE/rsi",
@@ -21,11 +22,6 @@
           },
           "deviation": 2.0
         }
-      },
-      "decision_logic_config": {
-        "rsi_buy_threshold": 30,
-        "rsi_sell_threshold": 70,
-        "min_confidence": 0.6
       }
     },
     "execution_config": {},
@@ -41,7 +37,13 @@
       "end_date": "2025-10-31T06:00:00+00:00",
       "max_ticks": 1883,
       "enabled": true,
-      "strategy_config": {},
+      "strategy_config": {
+        "decision_logic_config": {
+          "rsi_buy_threshold": 30,
+          "rsi_sell_threshold": 70,
+          "min_confidence": 0.6
+        }
+      },
       "execution_config": {},
       "trade_simulator_config": {
         "balances": {
@@ -65,7 +67,13 @@
       "end_date": "2025-10-10T07:00:00+00:00",
       "max_ticks": 2445,
       "enabled": true,
-      "strategy_config": {},
+      "strategy_config": {
+        "decision_logic_config": {
+          "rsi_buy_threshold": 30,
+          "rsi_sell_threshold": 70,
+          "min_confidence": 0.6
+        }
+      },
       "execution_config": {},
       "trade_simulator_config": {
         "balances": {
@@ -89,7 +97,13 @@
       "end_date": "2026-02-10T20:00:00+00:00",
       "max_ticks": 20000,
       "enabled": true,
-      "strategy_config": {},
+      "strategy_config": {
+        "decision_logic_config": {
+          "rsi_buy_threshold": 30,
+          "rsi_sell_threshold": 70,
+          "min_confidence": 0.6
+        }
+      },
       "execution_config": {},
       "trade_simulator_config": {
         "balances": {
@@ -108,7 +122,107 @@
       "end_date": "2024-01-10T11:00:00+00:00",
       "max_ticks": 2000,
       "enabled": true,
-      "strategy_config": {},
+      "strategy_config": {
+        "decision_logic_config": {
+          "rsi_buy_threshold": 30,
+          "rsi_sell_threshold": 70,
+          "min_confidence": 0.6
+        }
+      },
+      "execution_config": {},
+      "trade_simulator_config": {
+        "balances": {
+          "EUR": 10000
+        }
+      }
+    },
+    {
+      "_comment": "A position left open: a deterministic probe opens pos_eurgbp_1 and holds it past the end of the data, so its order is executed and no trade closes it. The other EURGBP scenarios traded the same position id — a link from an order into the trade history must be drawn there and absent here. The window of EURGBP_refusals_02.",
+      "scenario_name": "EURGBP_left_open",
+      "symbol": "EURGBP",
+      "data_broker_type": "mt5",
+      "start_date": "2025-10-10T06:00:00+00:00",
+      "end_date": "2025-10-10T07:00:00+00:00",
+      "max_ticks": 2445,
+      "enabled": true,
+      "strategy_config": {
+        "decision_logic_type": "CORE/test_probes/multi_position_probe",
+        "worker_instances": {
+          "probe_worker": "CORE/test_probes/sample_probe_worker"
+        },
+        "workers": {
+          "probe_worker": {
+            "periods": {
+              "M5": 14,
+              "M30": 20
+            },
+            "bar_snapshot_checks": []
+          }
+        },
+        "decision_logic_config": {
+          "trade_sequence": [
+            {
+              "tick_number": 100,
+              "direction": "LONG",
+              "hold_ticks": 100000,
+              "lot_size": 0.01
+            }
+          ]
+        }
+      },
+      "execution_config": {},
+      "trade_simulator_config": {
+        "balances": {
+          "EUR": 10000
+        }
+      }
+    },
+    {
+      "_comment": "A partial close: a deterministic probe opens 0.03 lots, closes 0.01 of them twice and the rest when its hold ends, so the trade history carries partial rows beside a full one. The same window as EURGBP_refusals_01.",
+      "scenario_name": "EURGBP_partial_close",
+      "symbol": "EURGBP",
+      "data_broker_type": "mt5",
+      "start_date": "2025-10-31T05:00:00+00:00",
+      "end_date": "2025-10-31T06:00:00+00:00",
+      "max_ticks": 1883,
+      "enabled": true,
+      "strategy_config": {
+        "decision_logic_type": "CORE/test_probes/multi_position_probe",
+        "worker_instances": {
+          "probe_worker": "CORE/test_probes/sample_probe_worker"
+        },
+        "workers": {
+          "probe_worker": {
+            "periods": {
+              "M5": 14,
+              "M30": 20
+            },
+            "bar_snapshot_checks": []
+          }
+        },
+        "decision_logic_config": {
+          "trade_sequence": [
+            {
+              "tick_number": 100,
+              "direction": "LONG",
+              "hold_ticks": 1500,
+              "lot_size": 0.03
+            }
+          ],
+          "partial_close_sequence": [
+            {
+              "tick_number": 600,
+              "position_index": 0,
+              "close_lots": 0.01
+            },
+            {
+              "tick_number": 1100,
+              "position_index": 0,
+              "close_lots": 0.01
+            }
+          ]
+        }
+      },
       "execution_config": {},
       "trade_simulator_config": {
         "balances": {

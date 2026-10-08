@@ -12,9 +12,10 @@ reason transfers exactly: a hand-written ledger is a fiction that can drift from
 actually emit, and then a consumer builds against a shape that does not exist. So this runs
 real sessions through the real CLI and lets the real coordinators write the rows.
 
-**Re-runnable on purpose** (§27 / §32): the shapes it produces move when the API contract moves,
-so a fixture generated once rots silently. It serves #539 and dies with it unless another issue
-claims it.
+**Re-runnable on purpose**, like a venue probe: the shapes it produces move when the API contract
+moves, so a fixture generated once rots silently. It served #539, which is closed; #576 claims it
+now — its session sequence becomes an entry of that issue's fixture catalog, and this script goes
+when the catalog lands.
 
 WHAT IT PRODUCES, and each one is a case a renderer has to survive:
 
