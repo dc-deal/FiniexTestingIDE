@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Callable, Dict, List, Optional
 
 from python.configuration.app_config_manager import AppConfigManager
+from python.framework.reporting.io.artifact_specs import FIELD_STUDY_CAPTURE
 from python.framework.reporting.io.run_header_io import RUN_HEADER_ARTIFACT
 from python.framework.reporting.store.run_index import (
     RunIndex,
@@ -33,11 +34,6 @@ from python.framework.types.run_prune_types import (
     PruneSelectors,
 )
 from python.framework.utils.time_utils import ensure_utc_aware, parse_datetime
-
-# The raw record behind a real-money release certificate. `FieldStudyCertificate` finds it by
-# rglob under the live root, so a run holding one is evidence, not archive — no selector reaches
-# it.
-FIELD_STUDY_ARTIFACT = 'field_study.jsonl'
 
 # A run's own substructure. These are never candidates in their own right; they go with the run
 # directory that contains them.
@@ -203,7 +199,10 @@ class RunTreePruner:
             # FILESYSTEM and never of the index, unlike the size above: this one is a GUARD,
             # and a guard that trusts a derived file deletes real evidence the day that file
             # is stale. One stat per run is what the guarantee costs.
-            if (run_dir / FIELD_STUDY_ARTIFACT).exists():
+            # The raw record behind a real-money release certificate: `FieldStudyCertificate`
+            # finds it by rglob under the live root, so a run holding one is evidence, not
+            # archive — no selector reaches it.
+            if (run_dir / FIELD_STUDY_CAPTURE).exists():
                 report.kept_field_study.append(candidate)
                 continue
             # Always-on: commissioned to produce nothing, and it produced nothing.

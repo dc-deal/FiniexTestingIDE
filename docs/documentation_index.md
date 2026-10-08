@@ -200,6 +200,7 @@ Each test suite has its own documentation in [`tests/`](tests/).
 | [Price Trigger Tests](tests/framework/price_trigger_tests.md) | The shared order-vs-quote predicate: has the market reached this price, and which side of the book does this direction trade at |
 | [Order Endings Tests](tests/framework/order_endings_tests.md) | One status per way an order ends, in both pipelines — who refused it, who cancelled it, what the end of a run leaves — and the counts declared from them |
 | [Order Events Tests](tests/framework/order_events_tests.md) | Every order transition as one event in both pipelines — the declared vocabulary held to the source, each order life step by step, the stream file, the run index and the route |
+| [Field Study Recorder Tests](tests/framework/field_study_recorder_tests.md) | The field study's capture as a copy of the order-event stream, and the certificate that reads it — offline, no order placed |
 | [Trading Day Anchor Tests](tests/framework/trading_day_anchor_tests.md) | Where a market flips its trading day, and which day an instant belongs to — DST-aware, one answer for the log rotation, the daily-loss baseline and the record seal |
 | [Time Utils UTC Tests](tests/framework/time_utils_tests.md) | Every parsed or normalised datetime comes back in UTC — also on a machine whose own zone is not UTC |
 | [Server Clock Tests](tests/framework/server_clock_tests.md) | A broker server's wall clock to UTC through the zone's own daylight saving rules — both seasons, the payroll and weekly-open anchors, the changed hours refused |

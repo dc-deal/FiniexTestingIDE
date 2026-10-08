@@ -81,7 +81,7 @@ class TestFieldStudyCertificate:
         data = json.loads(latest.read_text(encoding='utf-8'))
         required = [
             'release_version', 'git_commit', 'timestamp', 'valid_until',
-            'overall_status', 'phases', 'flat_at_session_end', 'realized_cost',
+            'overall_status', 'phases', 'flat_at_session_end', 'fees_charged', 'slippage',
         ]
         missing = [f for f in required if f not in data]
         assert not missing, f'Certificate missing fields: {missing}'

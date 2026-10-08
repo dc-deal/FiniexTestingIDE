@@ -11,7 +11,8 @@ It is **operator-driven by design** — there is no pytest equivalent for the re
 The exhaustive branch coverage lives in the mock tests; the Field Study proves the
 realism subset (real timing, fills, fees, slippage, broker_ref) that mocks cannot.
 
-> **Cost:** ~$0.08–0.20 per full run on Kraken ETHUSD at min-lot.
+> **Cost:** ~$0.50 per full run on Kraken ETHUSD at min-lot (measured 2026-10-07; the budget ceiling
+> `max_session_cost_usd` is 1.00). The older ~$0.08–0.20 is stale — see the re-measurement below.
 
 ---
 
@@ -21,11 +22,14 @@ realism subset (real timing, fills, fees, slippage, broker_ref) that mocks canno
 |---|---|
 | Decision logic | `python/framework/decision_logic/core/live_field_study/live_field_study.py` |
 | Phase state machine | `.../live_field_study/field_study_phase_machine.py` |
-| JSONL recorder | `python/framework/reporting/field_study_recorder.py` |
-| Certificate analyzer | `python/framework/reporting/field_study_certificate.py` |
+| JSONL recorder (the study's phases) | `python/framework/reporting/field_study_recorder.py` |
+| Stream projection (its order and venue lines) | `python/framework/reporting/field_study_stream_projection.py` |
+| Session wiring + preflight | `python/framework/autotrader/field_study_setup.py` |
+| Certificate analyzer | `python/framework/reporting/certificates/field_study_certificate.py` |
 | Certificate CLI | `python/cli/field_study_certificate_cli.py` |
 | Profiles | `configs/autotrader_profiles/field_study/kraken_spot_{ethusd,btcusd}_field_study.json` |
 | Certificates (committed) | `tests/live_field_study/reports/` |
+| Offline tests | `tests/framework/field_study_recorder/` (recorder, projection, analyzer) · `tests/autotrader/field_study_machine/` · `tests/autotrader/integration/test_field_study_capture.py` |
 
 ---
 
@@ -120,31 +124,73 @@ re-arms toward the market; this one wants the opposite.
   cost breaches `max_session_cost_usd` or the wall-clock exceeds `session_timeout_s`. The COST half
   of that guard only became effective with #506: `OrderResult.commission` was a literal `0.0` before
   it, so every certificate up to 2026-09-08 records `realized_cost = 0` — because the field could
-  not carry a figure, not because the run was free. The cost is now read from the order history,
-  which is the only list that carries every leg (a full close emits no decision event).
+  not carry a figure, not because the run was free. The guard reads the portfolio's fee total,
+  which books every fee through one site — both legs of a round trip, a full close included.
 - **Step mode** — `halt_after_phase: <phase_id>` ends the session cleanly after a named phase (for incremental runs that spend only part of the budget).
 
 ## JSONL Schema
 
 One JSON object per line, append-only, flushed per event (crash-safe, tail-able live).
 
+**Two writers, one file.** The study writes its own choreography — the header, every phase's start
+and result, the REST telemetry at the end, the session-end marker. Its order and venue lines are not
+its own: they are the live core's order-event stream (`io/order_events.jsonl`), copied in while the
+executor writes it. So the capture and the session's record cannot disagree about an order, and a
+line can be joined back to the stream by `extra.stream_seq`.
+
 **Line 1 — header:**
 ```json
-{"record_kind":"header","schema_version":"1.0","started_utc":"...","profile":"...","symbol":"ETHUSD","release_target":"dev","phases":["market_long_open", ...]}
+{"record_kind":"header","schema_version":"2.0","started_utc":"...","profile":"...","symbol":"ETHUSD","phases":["market_long_open", ...]}
 ```
 
 **Every event — stable core keys** (`ts_utc`, `seq`, `plane`, `event_type`, `phase`,
-`phase_index`) plus per-event fields (`order_id`, `broker_ref`, `side`, `lots`, `price`,
-`status`, `detected_via`) and typed sub-blocks (`reconcile` #151, `api_perf` #351, `extra`).
-None fields are omitted. The `slippage` sub-block (#340) is no longer written: the figure it
-copied was never filled, and a measured one arrives with #566.
+`phase_index`) plus per-event fields (`order_id`, `side`, `lots`, `price`, `status`,
+`detected_via`) and typed sub-blocks (`slippage`, `reconcile`, `api_perf`, `extra`). None fields are
+omitted.
 
-- `plane` = `bot` (bot-observed via #348) or `broker_truth` (pulled from the broker).
-  The two planes join on `phase` + `order_id`.
-- `event_type` includes: `phase_start`, `order_filled`, `order_rejected`,
-  `order_unaccounted`, `order_cancelled`, `partial_close`, `phase_result`, `broker_snapshot`,
-  `reconcile_alert`, `api_perf`, `session_end`. `order_rejected` and `order_cancelled` carry the
-  order's own status — `undelivered` beside `rejected`, `expired` beside `cancelled`.
+- `plane` = `bot` (the study's phases and its orders) or `broker_truth` (what the venue answered).
+  An order line joins the session's order-event stream by `extra.stream_seq`; a broker-truth line
+  carries no `order_id`, so the planes do not join on one.
+- **An order line names the phase that SUBMITTED its order**, not the phase that was running when
+  the answer came. A fill that arrives after its phase passed still carries its own phase.
+  An order the framework places on the study's behalf — a protective order once an entry fills, or a
+  close held back until the venue confirms the protective order is gone — names the phase that
+  submitted IT, which can be a later one than its entry's. A close shares its position's `order_id`;
+  a protective order takes a fresh number from the order counter (`protect_pos_ethusd_41` protects
+  `pos_ethusd_40`), so its entry is found through the stream row its `extra.stream_seq` points at,
+  which carries the `position_id`.
+- `event_type` includes: `phase_start`, `order_filled`, `order_rejected`, `order_unaccounted`,
+  `order_cancelled`, `partial_close`, `phase_result`, `broker_snapshot`, `reconcile_alert`,
+  `api_perf`, `session_end`.
+  - A **full close** is an `order_filled` line with `extra.action: close`; a close that leaves lots is
+    a `partial_close` with `extra.remaining_lots`.
+  - A refusal made **before sending** — the rejection battery's lot-size refusals — is an
+    `order_rejected` with status `denied` and its reason.
+  - `order_rejected` and `order_cancelled` carry the order's own status — `denied` and `undelivered`
+    beside `rejected`, `expired` beside `cancelled`.
+- Every order line's `extra` carries `action`, `order_type` and `stream_seq`, and `submitted_seq`
+  where the order was submitted — a refusal made before sending (`denied`) never was, so it has none.
+  An ending adds who ended the order and why (`initiator`, `end_reason`); a fill adds its `fee` and
+  `fee_currency`.
+- A fill's `slippage` block carries what the fill is measured against — the values, not the
+  measurement: `order_type`, `side`, `measured_against` (`submission_mid`, `limit_price` or
+  `trigger_price`) and `reference_price`. A market order is measured against the mid when it was
+  submitted, a limit against its own limit, a stop against its trigger. The certificate computes the
+  figure.
+- `broker_snapshot` is the venue's read at the session's start (phase `preflight`) and at its end
+  (phase `session_end`): `extra.order_count`, the unfiltered `extra.balances` (`null` when the read
+  gave up — never `{}`) and `extra.unread_parts`. A read whose order book could not be read has
+  status `unread` and no count.
+- `reconcile_alert` is written when the reconciliation picture CHANGED — and at most once per
+  `broker_truth_min_interval_seconds` (300 s by default), so a divergence that opens and closes
+  inside that window is not written: status `divergent`, with the divergence by identity in
+  `reconcile`, or `clean` once it ended.
+- `reconcile_summary` is written once, at the end: whether the session reconciled (`enabled`), its
+  `cycles`, its `skipped` cycles and the `divergences_seen` — summed over every cycle, so one
+  divergence counts once per cycle it stood. It is what tells a clean session from one that never
+  compared.
+- `api_perf` is written once, at the end, where the REST monitor ran: per endpoint its calls, latency
+  and errors, with the session's slow calls and errors.
 
 ---
 
@@ -189,13 +235,31 @@ The certificate is written to `tests/live_field_study/reports/field_study_report
 - no phase is missing a result (a missing result means the run aborted mid-sequence)
 - **no resting orders at session end** — read from the broker-truth snapshot of the `session_end`
   PHASE, never simply the last one recorded: a session-end snapshot that failed to be written would
-  otherwise let the PREFLIGHT state answer the gate. The account holds base by design, so order-book
+  otherwise let the PREFLIGHT state answer the gate. A session-end read that could not see the order
+  book (status `unread`, no count) does not pass either: the gate needs a counted, empty book. The account holds base by design, so order-book
   flatness (not a zero base balance) is the criterion; what the account actually MOVED is the
   certificate's `account_delta`, derived from the two snapshots rather than asserted in prose
 
-**Informational (not pass-gating):** realized cost, slippage — reported as not measured (count
-0, no figure, never a zero) until #566 records a measured one — detected-via mix,
-reconciliation alert count.
+**Informational (not pass-gating)** — each says where it came from, or that it is missing, never a
+silent zero:
+- `fees_charged` — what the run booked, read from the run's own report beside the capture
+  (`io/run_summary.json`, source `run_record`); where that report is gone, no longer reads or names
+  no single currency, the sum of the fill
+  lines' fees (source `event_sum`). Both are our own booking — neither can show a fee we computed
+  wrong — so the certificate needs the report: generate it before the run directory is pruned.
+- `account_delta` — what the venue's account moved between the preflight and the session-end
+  snapshot: the one figure that can contradict our booking.
+- `slippage` — per order type, positive is adverse: a market order against the mid when it was
+  submitted, a limit against its own limit (`vs_limit_max_pct`), a stop against its trigger. A fill
+  whose reference was not captured is a leg, not a measurement; `status` says `measured`,
+  `partly_measured` or `not_measured` — the last for every capture from before #566.
+- `api_calls` — the session's REST calls, errors and slow calls, from the telemetry written at its
+  end.
+- `reconciliation` — `checked`, `partly_skipped`, `skipped`, `not_run` or `disabled`, with the
+  cycles, skipped cycles and divergences seen, and the divergent pictures the capture holds;
+  `not_recorded` for a capture from before #566. Never a bare zero: a session that did not compare
+  says so.
+- the detected-via mix.
 
 Validate a committed certificate (CI-friendly, no real-money session):
 ```bash
@@ -211,9 +275,14 @@ Per-phase outcomes (`jq`):
 jq -r 'select(.event_type=="phase_result") | "\(.phase)\t\(.status)"' field_study.jsonl
 ```
 
-Total fees (`jq`):
+Fees of the fills (`jq`):
 ```bash
-jq '[.. | .commission? // empty] | add' field_study.jsonl
+jq -s '[.[] | select(.event_type=="order_filled" or .event_type=="partial_close") | .extra.fee // 0] | add' field_study.jsonl
+```
+
+An order line back to its full record in the order-event stream (`jq`):
+```bash
+jq -r 'select(.extra.stream_seq != null) | "\(.extra.stream_seq)\t\(.phase)\t\(.event_type)"' field_study.jsonl
 ```
 
 Two-plane merge (pandas):

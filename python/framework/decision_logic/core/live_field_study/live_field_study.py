@@ -41,8 +41,6 @@ from python.framework.types.decision_event_types import (
     OrderFilledEvent,
     OrderRejectedEvent,
     OrderUnaccountedEvent,
-    PartialCloseEvent,
-    SessionEndEvent,
     SessionEndSeverity,
 )
 from python.framework.types.decision_logic_types import (
@@ -129,15 +127,16 @@ class LiveFieldStudy(AbstractDecisionLogic):
         self._machine: Optional[FieldStudyPhaseMachine] = None
         self._pending_action: Optional[PhaseAction] = None
 
-        # JSONL recorder (bot plane) — injected + lifecycle-owned by the AutoTrader wiring.
+        # JSONL recorder — injected + lifecycle-owned by the AutoTrader wiring. It writes the
+        # phases; the order lines come from the live core's own record (#566).
         self._recorder: Optional[FieldStudyRecorder] = None
 
         # Session guards (budget + wall-clock) — enforced on every machine advance.
         # Deliberately NOT an accumulator any more (#506). Accumulating from decision events
         # missed every FULL close: `_notify_outcome` fires only for opens, and the only event a
         # close emits is the partial one — so a study whose exits are `market_close_all` counted
-        # entry fees and one partial. The order history is the authoritative list, the same one
-        # the run report is built from, and it carries every leg.
+        # entry fees and one partial. The portfolio's fee total is read instead: it books every
+        # fee through one site, both legs of a round trip included.
         self._realized_cost = 0.0
         self._session_started_at: Optional[datetime] = None
         self._safe_abort_active = False
@@ -164,6 +163,7 @@ class LiveFieldStudy(AbstractDecisionLogic):
         # Event observation flags (set by the #348 hooks, reset on each new submit / phase).
         self._filled_flag = False
         self._rejected_flag = False
+        self._unaccounted_flag = False
         self._cancelled_flag = False
 
         self.logger.info(
@@ -292,8 +292,6 @@ class LiveFieldStudy(AbstractDecisionLogic):
             DecisionEventType.ORDER_REJECTED,
             DecisionEventType.ORDER_UNACCOUNTED,
             DecisionEventType.ORDER_CANCELLED,
-            DecisionEventType.PARTIAL_CLOSE,
-            DecisionEventType.SESSION_END,
         }
 
     def wants_heartbeat(self) -> bool:
@@ -321,80 +319,24 @@ class LiveFieldStudy(AbstractDecisionLogic):
 
     def on_order_filled(self, event: OrderFilledEvent) -> None:
         self._filled_flag = True
-        if self._recorder:
-            self._recorder.record_order_event(
-                'order_filled', order_id=event.order_id, side=event.direction.name,
-                lots=event.lots, price=event.fill_price, status='filled',
-                extra={'commission': event.result.commission},
-            )
 
     def on_order_rejected(self, event: OrderRejectedEvent) -> None:
         self._rejected_flag = True
-        if self._recorder:
-            self._recorder.record_order_event(
-                'order_rejected', order_id=event.order_id,
-                side=event.direction.name if event.direction else None,
-                status=event.result.status.value,
-                extra={
-                    'reason': event.reason.value if event.reason else None,
-                    'message': event.message,
-                },
-            )
 
     def on_order_unaccounted(self, event: OrderUnaccountedEvent) -> None:
         """
-        An order the framework stopped asking about — the phase fails, as it did before #362.
+        An order the framework stopped asking about — the venue may still hold it (#362).
 
-        Such an order used to arrive as a rejection, and the phase machine failed the phase on
-        it; it still does, through the same flag, while the record names the status it ended
-        with. The machine gets a word of its own for it with #566.
+        It has a word of its own (#566): read as a rejection, it would pass a phase that WAITS for
+        a rejection, while an order may rest at the venue. The machine fails the phase on it.
 
         Args:
             event: The unaccounted order
         """
-        self._rejected_flag = True
-        if self._recorder:
-            self._recorder.record_order_event(
-                'order_unaccounted', order_id=event.order_id,
-                side=event.direction.name if event.direction else None,
-                status=event.result.status.value,
-                extra={'end_reason': event.end_reason.value if event.end_reason else None},
-            )
-
-    def on_session_end(self, event: SessionEndEvent) -> None:
-        """
-        Stamp the session's realized cost into the capture (#506).
-
-        Recorded here rather than reconstructed by the certificate: the per-event commissions
-        the certificate used to sum cannot see a FULL close, and the study's exits are full
-        closes. This is the same figure the budget ceiling is checked against.
-
-        Args:
-            event: Session-end detail (reason, severity)
-        """
-        self._refresh_realized_cost()
-        if self._recorder:
-            self._recorder.record_session_cost(
-                self._realized_cost, source='portfolio_cost_breakdown')
+        self._unaccounted_flag = True
 
     def on_order_cancelled(self, event: OrderCancelledEvent) -> None:
         self._cancelled_flag = True
-        if self._recorder:
-            self._recorder.record_order_event(
-                'order_cancelled', order_id=event.order_id,
-                side=event.direction.name if event.direction else None,
-                # The row's own status: the venue letting an order run out is `expired`
-                status=event.result.status.value,
-            )
-
-    def on_partial_close(self, event: PartialCloseEvent) -> None:
-        # Lots-polling drives the machine; the event is recorded for the analysis stream.
-        if self._recorder:
-            self._recorder.record_order_event(
-                'partial_close', order_id=event.position_id, side=event.direction.name,
-                lots=event.closed_lots, price=event.fill_price, status='partial_close',
-                extra={'remaining_lots': event.remaining_lots, 'commission': event.result.commission},
-            )
 
     # ============================================
     # Core: compute()/compute_heartbeat() drive the machine, execute() dispatches the action
@@ -470,6 +412,7 @@ class LiveFieldStudy(AbstractDecisionLogic):
             filled_since_submit=self._filled_flag,
             rejected_since_submit=self._rejected_flag,
             cancelled_since_submit=self._cancelled_flag,
+            unaccounted_since_submit=self._unaccounted_flag,
             current_position_lots=positions[0].lots if positions else None,
             budget_ok=self._budget_ok(),
         )
@@ -772,6 +715,7 @@ class LiveFieldStudy(AbstractDecisionLogic):
     def _reset_flags(self) -> None:
         self._filled_flag = False
         self._rejected_flag = False
+        self._unaccounted_flag = False
         self._cancelled_flag = False
 
     def _record_phase_start(self, phase_id: Optional[str]) -> None:

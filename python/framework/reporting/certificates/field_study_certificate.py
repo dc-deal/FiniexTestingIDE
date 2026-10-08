@@ -17,11 +17,18 @@ PASS criteria (hard):
   never simply the last one recorded, or a session-end snapshot that failed to be written
   would let the PREFLIGHT state answer the gate)
 
-Informational (not pass-gating): realized cost (read from the run's own stamp, with its
-source named — a reconstruction from per-event commissions cannot see a full close), the
-account delta (venue-side movement between the first and the session-end snapshot, which is
-the only figure that can contradict our booking), slippage — not measured until #566, so no
-figure rather than a zero — detected-via mix, reconciliation alert count.
+Informational (not pass-gating), each saying where it came from or that it is missing — never a
+silent zero:
+- `fees_charged` — what the run booked, read from the run's own report beside the capture; the sum
+  of the capture's fill fees where that report is gone, unreadable or names no single currency
+- `account_delta` — what the venue's account moved between the first and the session-end snapshot,
+  the one figure that can contradict our booking
+- `slippage` — each fill against what it is measured by: a market order against the mid when it was
+  submitted, a limit against its own limit, a stop against its trigger (#566)
+- `api_calls` — the session's REST calls, errors and slow calls
+- `reconciliation` — whether the session reconciled, how many cycles ran or were skipped, and the
+  divergences it saw
+- the detected-via mix
 """
 
 import json
@@ -33,6 +40,11 @@ from python.configuration.app_config_manager import AppConfigManager
 from python.framework.reporting.certificates.certificate_identity_builder import (
     build_certificate_identity,
 )
+from python.framework.reporting.io.artifact_specs import FIELD_STUDY_CAPTURE, RUN_SUMMARY_ARTIFACT
+from python.framework.reporting.io.report_artifact_io import read_artifact
+from python.framework.types.log_layout_types import IO_SUBDIR
+from python.framework.types.trading_env_types.order_types import OrderSide
+from python.framework.utils.trading_math.slippage_math import adverse_slippage
 
 # Default home for committed certificates — sibling of tests/live_adapters/reports
 # and tests/simulation/benchmark/reports (release-gate suites).
@@ -41,6 +53,8 @@ DEFAULT_REPORTS_DIR = 'tests/live_field_study/reports'
 VALIDITY_DAYS = 90
 # Phase outcomes that do NOT fail the certificate.
 _PASSING_OUTCOMES = frozenset({'pass', 'expected_rejection', 'skipped', 'inconclusive'})
+# The capture's lines that are executions — what fees and slippage are read from.
+_FILL_LINES = frozenset({'order_filled', 'partial_close'})
 
 
 class FieldStudyCertificate:
@@ -64,7 +78,7 @@ class FieldStudyCertificate:
             AppConfigManager().get_file_logging_config_object().run_logs.autotrader)
         if not root.exists():
             return None
-        candidates = list(root.rglob('field_study.jsonl'))
+        candidates = list(root.rglob(FIELD_STUDY_CAPTURE))
         if not candidates:
             return None
         return max(candidates, key=lambda p: p.stat().st_mtime)
@@ -117,41 +131,14 @@ class FieldStudyCertificate:
             (s for s in reversed(broker_snapshots) if s.get('phase') == 'session_end'),
             None,
         )
-        last_order_count = (
-            (end_snapshot.get('extra') or {}).get('order_count', 1)
-            if end_snapshot else 1
-        )
-        flat_at_end = end_snapshot is not None and last_order_count == 0
+        # A read that could not see the order book carries no count (status `unread`): the gate
+        # has no measurement then, and does not pass.
+        end_extra = (end_snapshot.get('extra') or {}) if end_snapshot else {}
+        last_order_count = end_extra.get('order_count')
+        flat_at_end = last_order_count == 0
 
         account_delta = FieldStudyCertificate._account_delta(
             broker_snapshots, end_snapshot)
-
-        reconcile_alerts = [e for e in events if e.get('event_type') == 'reconcile_alert']
-
-        # The run stamps its own total (#506). Summing the per-event `commission` values is
-        # only a fallback, and a KNOWN-partial one: a FULL close emits no decision event, so
-        # the reconstruction misses every full-close leg. `realized_cost_source` says which
-        # of the two the number is, because a partial figure that looks authoritative is the
-        # failure this field already had — four certificates recorded 0.
-        stamped = next(
-            (e for e in reversed(events) if e.get('event_type') == 'session_cost'), None)
-        if stamped is not None:
-            extra = stamped.get('extra') or {}
-            realized_cost = float(extra.get('realized_cost', 0.0) or 0.0)
-            realized_cost_source = extra.get('source', 'session_cost')
-        else:
-            commissions = [
-                (e.get('extra') or {}).get('commission', 0.0)
-                for e in events if e.get('event_type') in ('order_filled', 'partial_close')
-            ]
-            realized_cost = sum(c for c in commissions if c)
-            realized_cost_source = 'event_sum_partial'
-
-        slip_points = [
-            (e.get('slippage') or {}).get('slippage_points')
-            for e in events if e.get('slippage')
-        ]
-        slip_points = [s for s in slip_points if s is not None]
 
         detected_via: Dict[str, int] = {}
         for e in events:
@@ -171,19 +158,12 @@ class FieldStudyCertificate:
             'failed_phases': failed,
             'missing_phases': missing,
             'flat_at_session_end': flat_at_end,
+            'fees_charged': FieldStudyCertificate._fees_charged(jsonl_path, events),
             'account_delta': account_delta,
-            'realized_cost': realized_cost,
-            'realized_cost_source': realized_cost_source,
-            # Nothing writes a slippage figure into the record any more — the field it copied
-            # was never filled, so every certificate read max 0.0. Until the record carries a
-            # measured one (#566), no figure is NOT MEASURED, never a zero.
-            'slippage_points': {
-                'count': len(slip_points),
-                'max': max(slip_points) if slip_points else None,
-                'avg': (sum(slip_points) / len(slip_points)) if slip_points else None,
-            },
+            'slippage': FieldStudyCertificate._slippage(events),
+            'api_calls': FieldStudyCertificate._api_calls(events),
+            'reconciliation': FieldStudyCertificate._reconciliation(events),
             'detected_via': detected_via,
-            'reconcile_alert_count': len(reconcile_alerts),
         }
 
     @staticmethod
@@ -241,6 +221,175 @@ class FieldStudyCertificate:
     # ============================================
 
     @staticmethod
+    def _fees_charged(jsonl_path: str, events: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """
+        What the run booked in fees, read from the run's own report (#566).
+
+        The report beside the capture carries `fees_charged` — every fee the run booked, open
+        positions included. Where that report is gone, no longer reads, or names no single
+        currency, the capture's fill lines carry each execution's fee and add up to the same
+        bookings; the source says which was read. Neither can show a fee we computed wrong — both
+        are our booking. The control is `account_delta`.
+
+        Args:
+            jsonl_path: The capture, in its run directory
+            events: The capture's lines
+
+        Returns:
+            {'value', 'currency', 'source'} — source 'run_record', 'event_sum' or 'not_available'
+        """
+        summary_path = Path(jsonl_path).parent / IO_SUBDIR / RUN_SUMMARY_ARTIFACT.filename
+        charged = []
+        try:
+            if summary_path.exists():
+                summary = read_artifact(summary_path, RUN_SUMMARY_ARTIFACT)
+                charged = [row for row in summary.currencies if row.fees_charged is not None]
+        except ValueError:
+            # A report written by another version of its model no longer validates — the
+            # capture's own lines still add up to the same bookings.
+            charged = []
+        if len(charged) == 1:
+            return {'value': charged[0].fees_charged, 'currency': charged[0].currency,
+                    'source': 'run_record'}
+        fills = [(e.get('extra') or {}) for e in events if e.get('event_type') in _FILL_LINES]
+        fees = [fill['fee'] for fill in fills if fill.get('fee') is not None]
+        if not fees:
+            return {'value': None, 'currency': None, 'source': 'not_available'}
+        currency = next((fill['fee_currency'] for fill in fills if fill.get('fee_currency')), None)
+        return {'value': sum(fees), 'currency': currency, 'source': 'event_sum'}
+
+    @staticmethod
+    def _slippage(events: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """
+        Each fill against what it is measured by, per order type (#566).
+
+        Positive is adverse. A market order is measured against the mid when it was submitted —
+        the #340 measurement — a limit against its own limit, never the mid, and a stop against its
+        trigger, because a triggered stop fills at the market. A fill whose reference was not
+        captured counts as a leg and not as measured; a capture from before the projection carries
+        no source at all and reads `not_measured`, never 0.0.
+
+        Args:
+            events: The capture's lines
+
+        Returns:
+            The slippage block: per order type what it is measured against, its legs and figures,
+            the sign, and a status
+        """
+        legs: Dict[str, List[Optional[float]]] = {}
+        measured_against: Dict[str, str] = {}
+        for event in events:
+            if event.get('event_type') not in _FILL_LINES:
+                continue
+            source = event.get('slippage') or {}
+            order_type = source.get('order_type')
+            if order_type is None:
+                continue
+            measured_against.setdefault(order_type, source.get('measured_against', 'unknown'))
+            side = source.get('side')
+            pct = None
+            if event.get('price') is not None:
+                _, pct = adverse_slippage(
+                    event['price'], source.get('reference_price'),
+                    OrderSide(side) if side else None)
+            legs.setdefault(order_type, []).append(pct)
+
+        by_order_type: Dict[str, Dict[str, Any]] = {}
+        for order_type, values in sorted(legs.items()):
+            measured = [value for value in values if value is not None]
+            block: Dict[str, Any] = {'legs': len(values), 'measured': len(measured)}
+            if measured and order_type == 'limit':
+                block['vs_limit_max_pct'] = max(measured)
+            elif measured:
+                block['adverse_avg_pct'] = sum(measured) / len(measured)
+                block['adverse_max_pct'] = max(measured)
+            by_order_type[order_type] = block
+
+        total = sum(block['legs'] for block in by_order_type.values())
+        measured_total = sum(block['measured'] for block in by_order_type.values())
+        if measured_total == 0:
+            status = 'not_measured'
+        elif measured_total < total:
+            status = 'partly_measured'
+        else:
+            status = 'measured'
+        return {
+            'measured_against': {order_type: measured_against[order_type]
+                                 for order_type in by_order_type},
+            'sign': 'positive = adverse',
+            'by_order_type': by_order_type,
+            'status': status,
+        }
+
+    @staticmethod
+    def _api_calls(events: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """
+        The session's broker REST calls, from the telemetry written at its end (#351).
+
+        Args:
+            events: The capture's lines
+
+        Returns:
+            {'status': 'recorded', 'calls', 'errors', 'slow_calls'}, or {'status': 'not_recorded'}
+        """
+        line = next((e for e in reversed(events) if e.get('event_type') == 'api_perf'), None)
+        if line is None:
+            return {'status': 'not_recorded'}
+        block = line.get('api_perf') or {}
+        return {
+            'status': 'recorded',
+            'calls': sum(endpoint.get('calls', 0) for endpoint in block.get('endpoints', [])),
+            'errors': block.get('errors', 0),
+            'slow_calls': block.get('slow_calls', 0),
+        }
+
+    @staticmethod
+    def _reconciliation(events: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """
+        Whether the session reconciled against the venue, and what that found (#566).
+
+        The capture's `reconcile_alert` lines are written only when the picture CHANGED, and at
+        most one per minimum interval, so their count alone cannot tell a clean session from one
+        that never compared or skipped every cycle. The session's own totals, written at its end,
+        can.
+
+        Args:
+            events: The capture's lines
+
+        Returns:
+            {'status': 'checked' | 'partly_skipped' | 'skipped' | 'not_run' | 'disabled' |
+            'not_recorded', ...} with the cycles, skipped cycles and divergences seen where
+            recorded, and the divergent pictures the capture holds
+        """
+        divergent_records = sum(
+            1 for e in events
+            if e.get('event_type') == 'reconcile_alert' and e.get('status') == 'divergent')
+        line = next((e for e in reversed(events) if e.get('event_type') == 'reconcile_summary'),
+                    None)
+        if line is None:
+            return {'status': 'not_recorded', 'divergent_records': divergent_records}
+        summary = line.get('reconcile') or {}
+        if not summary.get('enabled'):
+            return {'status': 'disabled'}
+        cycles = summary.get('cycles', 0)
+        skipped = summary.get('skipped', 0)
+        if cycles == 0:
+            status = 'not_run'
+        elif skipped >= cycles:
+            status = 'skipped'
+        elif skipped:
+            status = 'partly_skipped'
+        else:
+            status = 'checked'
+        return {
+            'status': status,
+            'cycles': cycles,
+            'skipped': skipped,
+            'divergences_seen': summary.get('divergences_seen', 0),
+            'divergent_records': divergent_records,
+        }
+
+    @staticmethod
     def _account_delta(
         broker_snapshots: List[Dict[str, Any]],
         end_snapshot: Optional[Dict[str, Any]],
@@ -248,14 +397,14 @@ class FieldStudyCertificate:
         """
         What the ACCOUNT moved between the first snapshot and the session-end one (#506).
 
-        The venue-side counterpart to `realized_cost`: one figure is our booking, the other
-        is the account, and their DIFFERENCE is how well we model the venue — which is the
+        The venue-side counterpart to `fees_charged`: one figure is our booking, the other is
+        the account, and their DIFFERENCE is how well we model the venue — which is the
         question the certificate exists to answer. It is a MEASUREMENT, never a gate: a cost
         the run cannot explain must be visible, not fatal.
 
         `status` is part of the answer rather than an afterthought. An absent or unreadable
         snapshot has to say so, because a silent empty delta reads as "nothing moved" — the
-        exact failure a `realized_cost` of zero already had.
+        exact failure a cost figure of zero already had.
 
         Args:
             broker_snapshots: Every broker-truth snapshot of the run, in order
@@ -298,19 +447,14 @@ class FieldStudyCertificate:
             print(f"  failed:  {cert['failed_phases']}")
         if cert['missing_phases']:
             print(f"  missing: {cert['missing_phases']}")
-        # The source is printed beside the figure on purpose: a reconstructed total is
-        # known-partial (it cannot see a full close), and a partial number that looks
-        # authoritative is the failure this field already had.
-        # Only the FALLBACK is flagged. Which stamp produced an authoritative figure is
-        # provenance and travels in the field; what the reader has to see at a glance is
-        # whether the number was READ or RECONSTRUCTED — the reconstruction cannot see a
-        # full close, so it is always an undercount.
-        source = cert.get('realized_cost_source', 'event_sum_partial')
-        source_tag = '  [reconstructed — partial]' if source == 'event_sum_partial' else ''
-        print(
-            f"  realized cost: {cert['realized_cost']:.6f}{source_tag}  "
-            f"|  reconcile alerts: {cert['reconcile_alert_count']}"
-        )
+        # The source is printed beside the figure: a total read from the run's report and one
+        # added up from the capture are the same bookings, but only the first is the run's own.
+        fees = cert.get('fees_charged') or {}
+        if fees.get('value') is None:
+            print('  fees charged: not available')
+        else:
+            print(f"  fees charged: {fees['value']:.6f} {fees.get('currency') or ''} "
+                  f"({fees.get('source')})")
         # The account's own movement beside our booking — a missing measurement is printed
         # as such rather than as a silent absence.
         delta = cert.get('account_delta') or {}
@@ -320,6 +464,30 @@ class FieldStudyCertificate:
             print(f"  account delta: {moved or 'nothing moved'}")
         else:
             print(f"  account delta: {delta.get('status', 'unknown')}")
+        slippage = cert.get('slippage') or {}
+        parts = []
+        for order_type, block in (slippage.get('by_order_type') or {}).items():
+            if 'vs_limit_max_pct' in block:
+                parts.append(f"{order_type} max {block['vs_limit_max_pct']:+.4f}% vs limit "
+                             f"({block['measured']}/{block['legs']})")
+            elif 'adverse_max_pct' in block:
+                parts.append(f"{order_type} avg {block['adverse_avg_pct']:+.4f}% "
+                             f"max {block['adverse_max_pct']:+.4f}% "
+                             f"({block['measured']}/{block['legs']})")
+            else:
+                parts.append(f"{order_type} not measured ({block['legs']} legs)")
+        print(f"  slippage: {slippage.get('status', 'not_measured')}"
+              + (f" — {' · '.join(parts)}" if parts else ''))
+        reconciliation = cert.get('reconciliation') or {}
+        if 'cycles' in reconciliation:
+            print(f"  reconciliation: {reconciliation['status']} — {reconciliation['cycles']} "
+                  f"cycles, {reconciliation['skipped']} skipped, "
+                  f"{reconciliation['divergences_seen']} divergences seen")
+        else:
+            print(f"  reconciliation: {reconciliation.get('status', 'not_recorded')}")
+        api = cert.get('api_calls') or {}
+        if api.get('status') == 'recorded':
+            print(f"  api: {api['calls']} calls, {api['errors']} errors, {api['slow_calls']} slow")
         print(f'  certificate: {out_path}')
         print(f"{'=' * 60}\n")
 

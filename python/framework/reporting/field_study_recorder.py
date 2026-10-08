@@ -1,22 +1,23 @@
 """
-FiniexTestingIDE - Field Study Recorder (#332, CORE)
+FiniexTestingIDE - Field Study Recorder (#332)
 
 Writes the Field Study run as analysis-ready JSONL: one JSON object per line,
 append-only, flushed per event (crash-safe and tail-able during the live run). The
 first line is a header that describes the run. Every event carries a stable shared key
-set so a `jq` one-liner or a 3-line pandas load is enough — and two planes (bot-observed
-vs. broker-truth) join on phase + order_id.
+set so a `jq` one-liner or a 3-line pandas load is enough. An order line joins the session's
+order-event stream by `extra.stream_seq`, and the lines of one submission share
+`extra.submitted_seq` (absent on a refusal made before sending, which was never submitted).
 
-The recorder is source-agnostic about who feeds it: the LiveFieldStudy decision logic
-records the bot plane (phase boundaries + #348 order events with phase context); the
-AutoTrader wiring records the broker-truth plane (Reconciler broker-truth pulls,
-reconcile alerts) and telemetry sub-blocks (#340 slippage, #351 API perf).
+The recorder writes the study's own choreography: the header, every phase's start and result,
+the REST telemetry at the end and the session-end marker. Its order and venue lines are the live
+core's own record, copied in while the executor writes it (`FieldStudyStreamProjection`, #566) —
+the study keeps no second picture of its orders. Both go through this one writer and one sequence.
 """
 
 from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.reporting.io.jsonl_stream_writer import JsonlStreamWriter
@@ -26,11 +27,19 @@ from python.framework.types.autotrader_types.field_study_types import (
     PhaseResult,
 )
 
-_SCHEMA_VERSION = '1.0'
+# 2.0 — order and venue lines are projected from the live core's record (#566): they name the
+# phase that submitted the order, a full close is a line of its own, a refusal made before sending
+# is one too, and a fill carries what its slippage is measured against.
+_SCHEMA_VERSION = '2.0'
 
 # Plane labels — keep in sync with the certificate analyzer and the operator guide.
 PLANE_BOT = 'bot'
 PLANE_BROKER_TRUTH = 'broker_truth'
+
+# The marker phases outside the sequence: the venue's read before trading, and everything written
+# once the session ends. The certificate selects the end snapshot by the second, never by position.
+PREFLIGHT_PHASE = 'preflight'
+SESSION_END_PHASE = 'session_end'
 
 
 def _utc_now_iso() -> str:
@@ -46,9 +55,8 @@ class FieldStudyRecorder:
         output_path: Target .jsonl file (parent dirs are created)
         profile: AutoTrader profile name
         symbol: Traded symbol
-        release_target: Release version this run certifies (or 'dev')
         phase_ids: Ordered phase ids (for the header)
-        logger: Session logger (for the file-path banner)
+        logger: Session logger (for the file-path banner, and a write that fails)
     """
 
     def __init__(
@@ -56,7 +64,6 @@ class FieldStudyRecorder:
         output_path: str,
         profile: str,
         symbol: str,
-        release_target: str,
         phase_ids: List[str],
         logger: ScenarioLogger,
     ):
@@ -65,6 +72,7 @@ class FieldStudyRecorder:
         self._seq = 0
         self._phase = ''
         self._phase_index = -1
+        self._failed = False
 
         self._writer = JsonlStreamWriter(self._path)
 
@@ -73,7 +81,6 @@ class FieldStudyRecorder:
             started_utc=_utc_now_iso(),
             profile=profile,
             symbol=symbol,
-            release_target=release_target,
             phases=list(phase_ids),
         )
         self._write_line(asdict(header))
@@ -93,6 +100,15 @@ class FieldStudyRecorder:
         """
         self._phase = phase_id
         self._phase_index = phase_index
+
+    def get_phase(self) -> Tuple[str, int]:
+        """
+        The phase in progress — what a submission recorded now is filed under.
+
+        Returns:
+            (phase id, phase index); ('', -1) before the first phase starts
+        """
+        return self._phase, self._phase_index
 
     def record_phase_start(self, phase_id: str, phase_index: int, side: Optional[str]) -> None:
         """
@@ -124,113 +140,70 @@ class FieldStudyRecorder:
         )
 
     # ============================================
-    # Bot plane — #348 order events (with phase context)
+    # Lines copied from the live core's record (#566)
     # ============================================
 
-    def record_order_event(
+    def write_projected(
         self,
+        plane: str,
         event_type: str,
-        order_id: Optional[str] = None,
-        side: Optional[str] = None,
-        lots: Optional[float] = None,
-        price: Optional[float] = None,
-        status: Optional[str] = None,
-        detected_via: str = 'poll',
-        slippage: Optional[Dict[str, Any]] = None,
-        extra: Optional[Dict[str, Any]] = None,
+        phase: str,
+        phase_index: int,
+        **fields: Any,
     ) -> None:
         """
-        Record a bot-observed order/lifecycle event (fill, rejection, cancel, partial).
+        Write one line the projection copied from the order-event stream.
+
+        Filed under the phase it names rather than the one in progress: an order line belongs to
+        the phase that submitted the order, a venue read at the session's start and end to its
+        own marker phase.
 
         Args:
-            event_type: 'order_filled' / 'order_rejected' / 'order_unaccounted' /
-                'order_cancelled' / 'partial_close'
-            order_id: Internal order/position id
-            side: 'LONG'/'SHORT'
-            lots: Executed/observed lots
-            price: Fill/limit price
-            status: Observed status string
-            detected_via: 'poll' today, 'push' once #331 lands
-            slippage: Submission slippage block (#340), when available
-            extra: Event-specific overflow fields
+            plane: 'bot' for an order line, 'broker_truth' for a venue read
+            event_type: The line's type
+            phase: The phase it is filed under
+            phase_index: Its index; -1 for a marker phase
+            **fields: Further FieldStudyEvent fields
         """
-        self._emit(
-            PLANE_BOT, event_type,
-            order_id=order_id, side=side, lots=lots, price=price,
-            status=status, detected_via=detected_via, slippage=slippage, extra=extra,
+        self._seq += 1
+        event = FieldStudyEvent(
+            ts_utc=_utc_now_iso(),
+            seq=self._seq,
+            plane=plane,
+            event_type=event_type,
+            phase=phase,
+            phase_index=phase_index,
+            **fields,
         )
+        self._write_line(asdict(event))
 
     # ============================================
-    # Broker-truth plane — pulled from the broker (#151)
+    # Telemetry and lifecycle
     # ============================================
 
-    def record_broker_truth(
-        self,
-        order_count: int,
-        balances: Optional[Dict[str, float]],
-        is_flat: bool,
-        reconcile: Optional[Dict[str, Any]] = None,
-    ) -> None:
+    def record_reconcile_summary(self, summary: Dict[str, Any]) -> None:
         """
-        Record a broker-truth snapshot (resting orders + balances + flat status).
+        Record what the session's reconciliation did, once at its end.
+
+        The reconciliation lines in between are written only when the picture CHANGED, so
+        without this a capture with none of them could mean a clean session, a session whose
+        every cycle was skipped, or one that never reconciled at all.
 
         Args:
-            order_count: Resting broker orders right now
-            balances: Broker balances by asset as the venue reports them — quote currency
-                included and unfiltered; the contract was always the full sheet, and passing
-                a flat-check answer instead is what hid the only balance that moved (#506).
-                None when the venue could not be read — never {} for that case, because an
-                empty sheet is the statement that the account holds nothing
-            is_flat: Whether the account is flat by broker truth
-            reconcile: Reconciliation counters block (#151), when available
+            summary: Whether reconciliation ran, its cycles, its skipped cycles and the
+                divergences it saw
         """
-        self._emit(
-            PLANE_BROKER_TRUTH, 'broker_snapshot',
-            status='flat' if is_flat else 'not_flat',
-            reconcile=reconcile,
-            extra={'order_count': order_count, 'balances': balances},
-        )
-
-    def record_reconcile_alert(self, alert: Dict[str, Any]) -> None:
-        """
-        Record a reconciliation divergence alert (#151 ALERT_ONLY).
-
-        Args:
-            alert: Divergence detail block
-        """
-        self._emit(PLANE_BROKER_TRUTH, 'reconcile_alert', reconcile=alert)
+        self.write_projected(
+            PLANE_BOT, 'reconcile_summary', SESSION_END_PHASE, -1, reconcile=summary)
 
     def record_api_perf(self, snapshot: Dict[str, Any]) -> None:
         """
-        Record an API performance snapshot (#351) as forensic context.
+        Record the session's broker REST telemetry, once at its end (#351).
 
         Args:
-            snapshot: Per-endpoint latency/error block
+            snapshot: Per-endpoint calls, latency and errors, with the session's totals
         """
-        self._emit(PLANE_BOT, 'api_perf', api_perf=snapshot)
-
-    def record_session_cost(self, realized_cost: float, source: str) -> None:
-        """
-        Record the session's realized cost as ONE authoritative figure (#506).
-
-        The certificate used to add up the per-event `commission` values instead, which can
-        only ever see the legs that emit an event — and a FULL close emits none. This is the
-        study's own total, derived from the order history, so the artifact carries the number
-        the cost ceiling was actually checked against rather than a partial reconstruction.
-
-        Args:
-            realized_cost: Total cost of the session in the account currency
-            source: Where the figure came from, recorded so a future reader can tell an
-                authoritative total from a reconstructed one
-        """
-        self._emit(
-            PLANE_BOT, 'session_cost',
-            extra={'realized_cost': realized_cost, 'source': source},
-        )
-
-    # ============================================
-    # Lifecycle
-    # ============================================
+        self.write_projected(PLANE_BOT, 'api_perf', SESSION_END_PHASE, -1, api_perf=snapshot)
 
     def close(self, reason: str = 'session end') -> None:
         """
@@ -241,7 +214,7 @@ class FieldStudyRecorder:
         """
         if not self._writer.is_open():
             return
-        self._emit(PLANE_BOT, 'session_end', status=reason)
+        self.write_projected(PLANE_BOT, 'session_end', SESSION_END_PHASE, -1, status=reason)
         self._writer.close()
 
         # Operator next-step hint. The capture (this JSONL) is the durable, expensive
@@ -265,18 +238,24 @@ class FieldStudyRecorder:
 
     def _emit(self, plane: str, event_type: str, **fields: Any) -> None:
         """Build a FieldStudyEvent with the current phase context and write it."""
-        self._seq += 1
-        event = FieldStudyEvent(
-            ts_utc=_utc_now_iso(),
-            seq=self._seq,
-            plane=plane,
-            event_type=event_type,
-            phase=self._phase,
-            phase_index=self._phase_index,
-            **fields,
-        )
-        self._write_line(asdict(event))
+        self.write_projected(plane, event_type, self._phase, self._phase_index, **fields)
 
     def _write_line(self, obj: Dict[str, Any]) -> None:
-        """Serialize one record as a JSON line, dropping None fields, and flush."""
-        self._writer.write(obj)
+        """
+        Serialize one record as a JSON line, dropping None fields, and flush.
+
+        The first failed write is reported on the session channel and ends the writing: the
+        capture is incomplete from there on, and a real-money session is not stopped for it.
+
+        Args:
+            obj: The line
+        """
+        if self._failed:
+            return
+        try:
+            self._writer.write(obj)
+        except OSError as e:
+            self._failed = True
+            self._logger.error(
+                f'❌ The Field Study capture {self._path} could not be written: {e}. It is '
+                f'incomplete from this line on; the session continues.')

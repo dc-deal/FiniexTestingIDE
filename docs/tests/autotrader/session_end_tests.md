@@ -119,7 +119,7 @@ is checked.
 | Test | What it verifies |
 |---|---|
 | `TestTheEndRead` | The venue is asked after the session's orders are handled and before the order-event stream closes; a read that fails — a refused credential here — is logged and never keeps the stream open |
-| `TestTheFieldStudysEnd` | The field study's recorder closes even when its own end snapshot fails |
+| `TestTheFieldStudysEnd` | The field study's capture closes after the session-end read it copies in, and closes even when its REST telemetry cannot be written |
 
 ## The two guards worth knowing about
 

@@ -17,11 +17,9 @@ import shutil
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+from python.framework.reporting.io.artifact_specs import FIELD_STUDY_CAPTURE
 from python.framework.reporting.store.run_index import RunIndex
-from python.framework.reporting.store.run_tree_pruner import (
-    FIELD_STUDY_ARTIFACT,
-    RunTreePruner,
-)
+from python.framework.reporting.store.run_tree_pruner import RunTreePruner
 from python.framework.reporting.store.run_results_ledger import RunResultsLedger
 from python.framework.types.api.report_types import (
     ParentKind,
@@ -93,7 +91,7 @@ def _plant(root: Path, run_id: str, name: str, *, run_type: str = RUN_TYPE_SIMUL
         (run_dir / IO_SUBDIR).mkdir()
         (run_dir / IO_SUBDIR / 'portfolio.json').write_text('{}', encoding='utf-8')
     if field_study:
-        (run_dir / FIELD_STUDY_ARTIFACT).write_text('{}\n', encoding='utf-8')
+        (run_dir / FIELD_STUDY_CAPTURE).write_text('{}\n', encoding='utf-8')
 
     header = RunHeader(
         run_id=run_id, start_time=started or _START + timedelta(minutes=minutes),

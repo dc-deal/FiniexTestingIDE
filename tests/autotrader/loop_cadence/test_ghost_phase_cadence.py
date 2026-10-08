@@ -55,6 +55,7 @@ def _ctx(elapsed_s: float, active_limit_count: int,
         filled_since_submit=False,
         rejected_since_submit=False,
         cancelled_since_submit=False,
+        unaccounted_since_submit=False,
         current_position_lots=None,
         budget_ok=True,
     )
