@@ -23,7 +23,7 @@ from typing import List
 
 # One monotonic integer. Not a date and not the app version: a consumer compares it for
 # equality, and equality is the only question they have.
-API_CONTRACT_VERSION = 25
+API_CONTRACT_VERSION = 26
 
 # Every response carries it, so a saved fixture carries it too.
 CONTRACT_HEADER = 'X-Api-Contract'
@@ -36,8 +36,13 @@ API_PREFIX = '/api/v1'
 # What moved INTO the current version. One line per change, written for someone who cannot
 # read this repository.
 CHANGES: List[str] = [
-    'The run list: every run carries fixture_superseded — true for a run of the fixture catalog '
-    "that is not its entry's current fixture (an older catalog production made it, or one that "
-    'failed its check), false for a run of the current one, null for a run no catalog production '
-    "made. Derived from the catalog's production record each time the list is served",
+    "GET /api/v1/reports/runs/{run_id}/header: new — a run's whole header, every path in it "
+    'relative to its repository. Its document, run-header, lists every key with its meaning and '
+    'the label to show it under',
+    'The run list: origin_channel, origin_client, origin_person and origin_host — who started the '
+    "run, the header's origin block flattened; null on a run that predates the block",
+    "Origin on its own keeps one meaning, who started a run. The configuration directory row's "
+    "origin, a feed-health episode's origin and origin_classes / origin_evidence_grades (the "
+    'data origin classes) are renamed in a later contract',
+    'The run list: fixture_superseded is true also for a run of a catalog entry no longer declared',
 ]

@@ -46,6 +46,7 @@ that is not safelisted, so they are published deliberately.
 | 404 | `run_not_completed` | the run has no report artifact yet — still running, or it ended before its report phase |
 | 404 | `artifact_not_produced` | the run persisted other sections but not this one |
 | 404 | `config_snapshot_missing` | the run declares a configuration snapshot that was never filed |
+| 404 | `run_header_missing` | the run index lists the run, but its header file is missing |
 | 404 | `broker_not_found` | the broker is not in the bar index |
 | 404 | `symbol_not_found` | the broker has no such symbol in the bar index |
 | 404 | `no_bars_indexed` | the symbol is indexed but holds no bars |

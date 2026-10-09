@@ -174,8 +174,8 @@ class RunIndexCli:
             older_than: Keep runs that started within this window (None = selector off).
                 Composes with keep_last as a second KEEP rule — see PruneSelectors
             apply: Actually delete; without it nothing is touched
-            release_fixtures: Let the selectors reach the runs a consumer may pin — every
-                verified production of the fixture catalog, current or superseded (#576)
+            release_fixtures: Let the selectors reach the runs of the fixture catalog's
+                superseded productions (#576); a current production is never released
 
         Returns:
             Process exit code
@@ -222,8 +222,10 @@ class RunIndexCli:
                           'certificate runs — never deleted, by any selector', names=False)
         self._print_group('KEEP', report.kept_unreadable_header,
                           'a header that cannot be read — no guard can clear it')
-        self._print_group('KEEP', report.kept_catalog_fixture,
-                          'catalog fixtures a consumer may pin — --release-fixtures lets them go',
+        self._print_group('KEEP', report.kept_current_fixture,
+                          'current catalog fixtures — what a consumer pins now', names=False)
+        self._print_group('KEEP', report.kept_superseded_fixture,
+                          'superseded catalog fixtures — --release-fixtures lets them go',
                           names=False)
         self._print_group('KEEP', report.kept_unindexed_run,
                           'runs the index does not list — rebuild it; a run is never an orphan')
@@ -371,9 +373,9 @@ def main() -> int:
              '--keep-last: a run goes only when BOTH release it')
     prune_parser.add_argument(
         '--release-fixtures', action='store_true', default=False,
-        help='Let the selectors reach the runs a consumer may pin — every verified production '
-             'of the fixture catalog, current or superseded. Without it they are kept whatever '
-             'the selectors say')
+        help="Let the selectors reach the runs of the fixture catalog's SUPERSEDED productions, "
+             'once the consumer has moved to the current ones. A current production is never '
+             'released')
     prune_parser.add_argument(
         '--apply', action='store_true', default=False,
         help='Actually delete. Without it nothing is touched — a run directory is the only '

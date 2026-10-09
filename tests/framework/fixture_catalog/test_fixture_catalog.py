@@ -144,6 +144,17 @@ class TestTheRecordDerivesTheCurrentFixture:
     def test_a_missing_record_holds_nothing(self, tmp_path):
         assert FixtureProductionStore(tmp_path / 'absent.jsonl').current() == {}
 
+    def test_an_entry_the_catalog_no_longer_declares_is_current_no_more(self, tmp_path):
+        """Renamed or removed — nobody can produce it again, so nothing may pin it for ever."""
+        store = FixtureProductionStore(tmp_path / 'record.jsonl',
+                                       declared_entries={'report_coverage'})
+        retired = _production('retired_entry', '2026-10-08T10:00:00+00:00', True)
+        store.append(retired)
+        store.append(_production('report_coverage', '2026-10-08T11:00:00+00:00', True))
+
+        assert set(store.current()) == {'report_coverage'}
+        assert all(store.fixture_superseded_by_run()[run_id] for run_id in retired.run_ids)
+
 
 class TestASessionSequenceRunsEveryDeclaredSession:
     """Run with a session runner that starts nothing — the sessions themselves are not run here."""

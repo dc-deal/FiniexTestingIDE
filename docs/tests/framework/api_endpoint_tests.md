@@ -124,6 +124,19 @@ The venue account (#362) is served from its artifact — `TestTheVenueAccount` i
 null and named rather than empty, where the last reconcile line left the books and the latest
 divergence by name; a backtest, which has none, answered `artifact_not_produced`.
 
+## The run header (`test_run_header_route.py`)
+
+`/reports/runs/{run_id}/header` (#582) serves the record every run writes at its start, and the run
+list carries who started each run. The header is planted as a run on another machine records it —
+absolute paths throughout — so the tests can see what the route makes of them.
+
+| Class | Validates |
+|---|---|
+| `TestTheHeaderIsServedWhole` | the run and its origin come back as written; every path is relative to a repository the run recorded — `.` for this repository, `user_algos` for one inside it, the patch reference too, a decision's name (its type, a path) relative to this repository, a component's file relative to its own repository, a path in no repository reduced to its name; and no path of the planting machine appears anywhere in the answer |
+| `TestAHeaderThatCannotBeServedSaysWhy` | an unknown run is `run_not_found`; a missing header file of a run the index lists is `run_header_missing`, naming the rebuild; a header that no longer matches its model is `artifact_unreadable` and names the failing fields, never a value — Pydantic's own text would quote the input, and a header's input holds paths |
+| `TestTheRunListSaysWhoStartedEachRun` | `origin_channel`, `origin_client`, `origin_person` and `origin_host` on the run's row, from the header's origin block |
+| `TestAPathFromAnotherSystemIsServedTheSameWay` | a header written on Windows — drive letter, backslashes — has its paths made relative the same way |
+
 ## Row keys (`test_row_keys.py`)
 
 Every list the API serves says what makes one of its rows unique, and this file is what makes

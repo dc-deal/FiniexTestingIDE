@@ -347,6 +347,14 @@ the only value that means real money. Recorded on every run header and every led
 deployment lists the values of its sessions, and both together mean it mixed a rehearsal with real
 money. See [Introduction](introduction_to_the_ide.md#the-kinds-of-run).
 
+**origin** (`origin`) — Who started a run: how (`cli`, `sweep`, `direct`, `api`), which client, for
+which account and on which installation — the block every run header records at its start, served
+on the run list as `origin_channel`, `origin_client`, `origin_person` and `origin_host`. The word
+keeps this one meaning: the configuration directory row's `origin` (where a file lives), a
+feed-health episode's `origin` (real or stress-injected) and the `origin_classes` /
+`origin_evidence_grades` of a run's data (see *data origin*) are being renamed (#581, #582). See
+[Run Origin & Code Identity](architecture/run_origin_and_code_identity.md).
+
 **paper** — The planned name for a dry run, not yet a configuration value (#304).
 
 **partial** — Never used alone. *Partial close*: part of a position was closed. *Partial fill*: part

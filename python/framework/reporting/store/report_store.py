@@ -20,6 +20,7 @@ from pydantic import BaseModel, ValidationError
 
 from python.configuration.app_config_manager import AppConfigManager
 from python.framework.exceptions.report_artifact_errors import ReportArtifactUnreadableError
+from python.framework.fixture_catalog.fixture_catalog import entry_ids
 from python.framework.fixture_catalog.fixture_production_store import (
     PRODUCTION_RECORD_FILE,
     FixtureProductionStore,
@@ -35,13 +36,16 @@ from python.framework.reporting.io.report_filters import (
     filter_order_history_report,
     filter_trade_history_report,
 )
+from python.framework.reporting.io.run_header_io import RUN_HEADER_ARTIFACT, read_run_header
 from python.framework.reporting.store.run_index import RunIndex
 from python.framework.reporting.store.run_list_figures import get_run_list_figures
+from python.framework.reporting.store.served_run_header import served_run_header
 from python.framework.store.run_config_store import RunConfigStore
 from python.framework.types.api.report_types import (
     OrderEventsReport,
     OrderHistoryReport,
     RunConfigSnapshot,
+    RunHeader,
     RunInfo,
     RunListFigures,
     TradeHistoryReport,
@@ -68,7 +72,8 @@ class ReportStore:
         self._index = RunIndex(index_path)
         self._ledger_dir = Path(ledger_dir or AppConfigManager().get_run_ledger_path())
         # Beside the index it describes runs of, wherever that index is (#576).
-        self._fixture_record = FixtureProductionStore(index_path.parent / PRODUCTION_RECORD_FILE)
+        self._fixture_record = FixtureProductionStore(index_path.parent / PRODUCTION_RECORD_FILE,
+                                                      declared_entries=set(entry_ids()))
 
     def list_runs(self) -> List[RunInfo]:
         """Every indexed run, both types, newest first.
@@ -246,6 +251,32 @@ class ReportStore:
             config_id=info.config_id,
             config=json.loads(frozen.read_text(encoding='utf-8')),
         )
+
+    def get_run_header(self, run_id: str) -> Optional[RunHeader]:
+        """
+        A run's header as it may be served (#582) — the record, with every path relative.
+
+        Args:
+            run_id: The run's identity
+
+        Returns:
+            The served header, or None when the run is unknown. A header the current model cannot
+            read raises ReportArtifactUnreadableError; one that is gone from a run the index still
+            lists raises FileNotFoundError, because that is a different fault with its own remedy
+        """
+        run_dir = self._index.run_dir(run_id)
+        if run_dir is None:
+            return None
+        try:
+            header = read_run_header(run_dir / RUN_HEADER_ARTIFACT)
+        except ValidationError as e:
+            # The reason is served, so it names the run and the fields that failed and never a
+            # value: Pydantic's own text quotes the input, and a header's input holds paths.
+            failed = ', '.join('.'.join(str(part) for part in error['loc']) or error['type']
+                               for error in e.errors()[:5])
+            raise ReportArtifactUnreadableError(
+                RUN_HEADER_ARTIFACT, f'run {run_id}', f'fields that do not match: {failed}') from e
+        return served_run_header(header)
 
     def _resolve(self, run_id: str, artifact: str) -> Optional[Path]:
         """

@@ -37,7 +37,7 @@ class FixtureCatalogCli:
 
     def __init__(self):
         """Open the configured production record."""
-        self._store = FixtureProductionStore()
+        self._store = FixtureProductionStore(declared_entries=set(entry_ids()))
 
     def cmd_list(self) -> int:
         """

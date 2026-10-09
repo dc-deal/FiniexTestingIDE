@@ -96,6 +96,7 @@
 | [Why a field is null](consumer/nulls.md) | The three causes of a null — not applicable, not measured, not recorded — and what to render for each |
 | [What makes one row unique](consumer/row-keys.md) | The declared row key, the several-lists form, and the one-unit-four-names join |
 | [Which kind of run this is](consumer/run-kinds.md) | `group`, `ticks_from` and `orders_to`; which combination means money moved |
+| [The run header](consumer/run-header.md) | Every key a run's header holds, its meaning, and the label to show it under |
 | [What a refusal says](consumer/errors.md) | The error vocabulary, and why one absence has four codes |
 | [API Contract Log](consumer/contract-log.md) | Every contract version newest first |
 | [One document per route family](consumer/) | Served at `/api/v1/docs`, which lists them at runtime |

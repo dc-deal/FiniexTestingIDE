@@ -48,6 +48,7 @@ has two entries there, and folding them into one loses data. See
 | `run_purpose` | what the run is FOR — `regular`, `fixture` or `certificate` |
 | `report_contract` | the contract its reports were written under |
 | `fixture_superseded` | for a run of the fixture catalog, whether it is no longer its entry's current one |
+| `origin_channel` · `origin_client` · `origin_person` · `origin_host` | who started the run: how, which client, for which account, on which installation — the header's `origin`, see [run header](/api/v1/docs/run-header) |
 
 `group`, the two parent fields, `ticks_from`, `orders_to`, `data_windows` and `run_purpose` are the
 subject of [run kinds](/api/v1/docs/run-kinds), and it is worth reading before branching on any of
@@ -73,7 +74,8 @@ measurement. `null` on a run recorded before the field.
 
 `fixture_superseded` is about the runs this side produces for consumers to pin — its fixture
 catalog. `false`: the run was made by its entry's current catalog production, so it is the one to
-pin. `true`: an older catalog production made it, or one that failed its check. A replaced run that
+pin. `true`: an older catalog production made it, one that failed its check, or a production of an
+entry the catalog no longer declares. A replaced run that
 passed its check stays until this side releases it, so a pin on it keeps working until you move
 it. `null`: no catalog production made the run — every ordinary run and every test run. A list
 hiding superseded fixtures filters on `true` alone.

@@ -33,9 +33,9 @@ class PruneSelectors:
     # Directories in the tree that are not runs: no header, not in the index, not a sweep
     # directory, not a run's own substructure.
     orphans: bool = False
-    # Let the selectors reach the runs of the fixture catalog's verified productions (#576) —
-    # current or superseded, a consumer may still pin them. Without it they are kept whatever
-    # the selectors say.
+    # Let the selectors reach the runs of the fixture catalog's SUPERSEDED verified productions
+    # (#576) — a consumer may still pin them until it has moved to the new ids. A current
+    # production is never released: to drop one, produce its entry again.
     release_fixtures: bool = False
 
 
@@ -67,10 +67,12 @@ class PruneReport:
     kept_field_study: List[PruneCandidate] = field(default_factory=list)
     # A certificate run (#576): never deleted, by any selector, and no flag releases it.
     kept_certificate: List[PruneCandidate] = field(default_factory=list)
-    # A run of a fixture catalog production that carried its properties (#576) — current or
-    # superseded, a consumer may still pin it. Kept unless the operator passed
-    # `release_fixtures`.
-    kept_catalog_fixture: List[PruneCandidate] = field(default_factory=list)
+    # A run of an entry's CURRENT fixture catalog production (#576) — what a consumer pins now.
+    # Kept by every selector, whatever flag is given.
+    kept_current_fixture: List[PruneCandidate] = field(default_factory=list)
+    # A run of a SUPERSEDED production that carried its properties — a consumer may still pin
+    # it. Kept unless the operator passed `release_fixtures`.
+    kept_superseded_fixture: List[PruneCandidate] = field(default_factory=list)
     # A directory holding a run header that the index does not list — a row lost to a
     # concurrent write. A run, not an orphan: a rebuild re-indexes it, so nothing deletes it.
     kept_unindexed_run: List[PruneCandidate] = field(default_factory=list)

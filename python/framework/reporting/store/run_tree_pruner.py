@@ -17,6 +17,7 @@ from typing import Callable, Dict, List, Optional
 
 from python.configuration.app_config_manager import AppConfigManager
 from python.framework.config_directory.config_directory import declared_run_purposes
+from python.framework.fixture_catalog.fixture_catalog import entry_ids
 from python.framework.fixture_catalog.fixture_production_store import (
     PRODUCTION_RECORD_FILE,
     FixtureProductionStore,
@@ -98,7 +99,8 @@ class RunTreePruner:
             index_path, self._roots,
             declared_purposes=None if run_index_path else declared_run_purposes)
         # The fixture catalog's record lives beside the index it describes runs of (#576).
-        self._fixture_record = FixtureProductionStore(index_path.parent / PRODUCTION_RECORD_FILE)
+        self._fixture_record = FixtureProductionStore(index_path.parent / PRODUCTION_RECORD_FILE,
+                                                      declared_entries=set(entry_ids()))
         self._ledger_dir = Path(run_ledger_path or app_config.get_run_ledger_path())
 
     def size_figures_available(self) -> bool:
@@ -208,7 +210,8 @@ class RunTreePruner:
         now = datetime.now(timezone.utc)
         deletable: List[Path] = []
         # The runs a consumer may pin — read once, from the catalog's RECORD (#576).
-        pinned = self._fixture_record.verified_run_ids()
+        current_fixtures = self._fixture_record.current_run_ids()
+        superseded_fixtures = self._fixture_record.verified_run_ids() - current_fixtures
 
         for done, run in enumerate(runs, 1):
             if progress is not None:
@@ -256,10 +259,16 @@ class RunTreePruner:
             if declared == RunPurpose.CERTIFICATE.value:
                 report.kept_certificate.append(candidate)
                 continue
-            # What a consumer may pin (#576) — the current production and a superseded one alike,
-            # because only the operator knows when the consumer has moved to the new ids.
-            if run.run_id in pinned and not selectors.release_fixtures:
-                report.kept_catalog_fixture.append(candidate)
+            # What a consumer pins now (#576): no flag releases it. Released together with the
+            # superseded ones, a run newer than it in its family would push it past `--keep-last`
+            # and delete the very ids the consumer had just moved to.
+            if run.run_id in current_fixtures:
+                report.kept_current_fixture.append(candidate)
+                continue
+            # A superseded production — a consumer may still pin it until it has moved, which only
+            # the operator knows.
+            if run.run_id in superseded_fixtures and not selectors.release_fixtures:
+                report.kept_superseded_fixture.append(candidate)
                 continue
             # Always-on: commissioned to produce nothing, and it produced nothing.
             if run.reporting == RunReporting.NONE and not run.artifacts:
@@ -399,6 +408,7 @@ class RunTreePruner:
             known_dirs: The directories the index lists
             report: Filled in place
         """
+        found: List[PruneCandidate] = []
         for root in (Path(self._roots.simulation), Path(self._roots.autotrader)):
             if not root.exists():
                 continue
@@ -430,8 +440,23 @@ class RunTreePruner:
                     dirnames[:] = []
                     continue
                 if filenames:
-                    report.to_delete_orphans.append(
-                        PruneCandidate(path=path, size_bytes=dir_size(path)))
+                    found.append(PruneCandidate(path=path, size_bytes=dir_size(path)))
+        # A directory that HOLDS a run is never an orphan, whatever else lies in it: deleting it
+        # deletes the runs inside. A set's directory with one stray file beside its runs — an
+        # editor's backup, a desktop.ini — was classified whole, field-study evidence and the
+        # current catalog fixtures included. Decided after the walk, because a walk from the top
+        # meets the parent before the runs below it.
+        # Compared resolved, so a relative root and an absolute index entry still meet — a
+        # comparison that silently never matched would protect nothing. Only paid when a
+        # candidate exists, which is rare.
+        if not found:
+            return
+        holders = [Path(held).resolve() for held in
+                   list(known_dirs) + [c.path for c in report.kept_unindexed_run]
+                   + [c.path for c in report.skipped_sweep_dirs]]
+        report.to_delete_orphans.extend(
+            candidate for candidate in found
+            if not any(held.is_relative_to(candidate.path.resolve()) for held in holders))
 
     @staticmethod
     def _inside_run_dir(path: Path, known_dirs: set) -> bool:

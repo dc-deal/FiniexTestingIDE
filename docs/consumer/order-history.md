@@ -34,10 +34,22 @@ An order that ends without filling has a row for that ending too: its `status` s
 ended, and on a cancelled, expired or unaccounted row `initiator` and `end_reason` say who ended it
 and why.
 
+**A protective order is the exception, twice.** The stop or target this side places at the venue
+for a position carries an `order_id` of its own — `protect_` and the position's id — and it is not
+recorded `pending` when it is placed: its placement is in the
+[order-event stream](/api/v1/docs/order-events), and the history records only how it ended.
+
+**The last row under an `order_id` is not what became of the position.** It says how the latest of
+the orders under that id ended. What the position became is in
+[trade history](/api/v1/docs/trade-history) — each closed part, with `close_type` and
+`position_closes` — and, for a position still open when the run ended, in
+[portfolio](/api/v1/docs/portfolio) under `open_positions`. A position whose entry never executed
+appears in neither.
+
 ## `order_id` is the position's id, so it repeats
 
-It is minted when the position opens and carried by every later order belonging to that position.
-It does not identify a row and it does not identify an order.
+It is minted when the position opens and carried by every later order belonging to that position,
+a protective order excepted (above). It does not identify a row and it does not identify an order.
 
 An executed row's `scenario_name` and `position_id` together name the same position as a trade
 row does. One counter per unit mints it and no id is used twice, so that pair is a reliable join

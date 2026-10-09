@@ -33,6 +33,27 @@ reads downwards from the version their fixtures hold until they reach the one be
 A test holds the newest heading in this log to the number the server answers with, so a version
 cannot ship without its entry.
 
+## Version 26 — 2026-10-09 (#582)
+
+A run's header is served whole, and the run list says who started each run.
+
+- `GET /api/v1/reports/runs/{run_id}/header` — new: the record every run writes at its start —
+  what it is, what it was started from, who started it and which code ran. Every path in it is
+  relative to its repository; no path of the machine is served. `run_not_found` for an unknown run,
+  `artifact_unreadable` for a header that cannot be read or whose run directory is gone. Its
+  document, [run header](/api/v1/docs/run-header), is the authoritative list of every key, with its
+  meaning and the label to show it under.
+- The run list: every run carries who started it — `origin_channel` (`cli`, `sweep`, `direct` or
+  `api`), `origin_client`, `origin_person` and `origin_host`, the header's `origin` block
+  flattened. Null on a run that predates the block.
+- *Origin* on its own keeps one meaning: who started a run. Three served fields still carry the
+  word for something else — the configuration directory row's `origin` (where a file lives), a
+  feed-health episode's `origin` (real or stress-injected), and `origin_classes` /
+  `origin_evidence_grades` on scenario details and sweep combinations (the class of instance that
+  produced a run's data); a later contract renames them.
+- The run list: `fixture_superseded` is `true` also for a run of a catalog entry this side no
+  longer declares — nothing can produce it again, so it is current no more.
+
 ## Version 25 — 2026-10-08 (#576)
 
 The runs a consumer pins are now entries of a fixture catalog on this side — produced and checked
@@ -160,34 +181,13 @@ describes it.
   already served and were invisible to a browser client, which hides every response header that is
   not safelisted — and three of them carry semantics a caller cannot infer from the rows at all.
 
-## Version 21 — 2026-10-02 (#555, viewer#21)
-
-
-The worker-decision report says "not counted" instead of zero.
-
-- `GET /api/v1/reports/runs/{run_id}/worker-decision`: every unit carries `worker_decision_tracked`
-  — whether it counted its decisions and timed its workers. A backtest leaves it off by default,
-  because the tracker sits on the hot path. Untracked, `decision_count`, `buy_signals`,
-  `sell_signals`, `flat_signals`, `trades_requested` and the four `decision_*_time_ms` are null;
-  they read 0, so a logic that decided on 2,737 ticks said it decided nothing. The unit still names
-  its logic (`decision_logic_type`, `decision_logic_name`), which an untracked unit left empty, and
-  `ticks_processed` is counted either way. `workers` stays empty when untracked — that empty list is
-  true.
-- `worker-decision`: a worker row's `compute_ratio_pct` is null when no tick was processed, and
-  `ticks_idle` is null when the worker never computed — it read 0, which says "just computed". On
-  `worker_totals`, which span several units' tick counts, both are null.
-
-Every stored run was carried over: a unit with no logic type was not tracked — a tracker stamps the
-type on every unit it counts — so its counters are null now; a unit with one is marked tracked and
-keeps its figures. The logic name of an old untracked unit stays null, because only a new run
-stamps it.
-
-## Versions 20 and earlier
+## Versions 21 and earlier
 
 One line each. Every one of these moved a shape or a meaning; what they moved is summarised here
 rather than spelled out, because a consumer this far behind needs the list of steps, not each step's
 reasoning. The full text of a compressed version is in this repository's history.
 
+- **Version 21** — 2026-10-02 (#555, viewer#21): The worker-decision report says "not counted" instead of zero — `worker_decision_tracked` per unit, null counters and timings on an untracked one, and null `compute_ratio_pct` / `ticks_idle` where nothing was measured.
 - **Version 20** — 2026-10-02 (viewer#21, #557): A refused order says what was refused — its side,
   symbol, direction and size — `execution_time` became `event_time`, and the order history says
   "absent" as null and its closed values as enums.

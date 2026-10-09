@@ -26,12 +26,16 @@ PRODUCTION_RECORD_FILE = 'fixture_productions.jsonl'
 class FixtureProductionStore:
     """The production record of the fixture catalog."""
 
-    def __init__(self, path: Optional[Path] = None):
+    def __init__(self, path: Optional[Path] = None, declared_entries: Optional[Set[str]] = None):
         """
         Args:
             path: The record file; beside the configured run index when not given
+            declared_entries: The entries the catalog still declares. A production of any other
+                entry — renamed or removed since — is current no more, so its runs read as
+                superseded and a prune may release them. None counts every entry as declared
         """
         self._path = Path(path) if path is not None else default_production_record_path()
+        self._declared_entries = declared_entries
 
     def get_path(self) -> Path:
         """
@@ -82,7 +86,7 @@ class FixtureProductionStore:
         Returns:
             Entry id → its current production; an entry with no verified production is absent
         """
-        return _current_of(self.read())
+        return _current_of(self.read(), self._declared_entries)
 
     def verified_run_ids(self) -> Set[str]:
         """
@@ -94,6 +98,16 @@ class FixtureProductionStore:
             Their run ids
         """
         return {run_id for production in self.read() if production.verified
+                for run_id in production.run_ids}
+
+    def current_run_ids(self) -> Set[str]:
+        """
+        Every run of each entry's CURRENT production — what a consumer pins now.
+
+        Returns:
+            Their run ids
+        """
+        return {run_id for production in self.current().values()
                 for run_id in production.run_ids}
 
     def fixture_superseded_by_run(self) -> Dict[str, bool]:
@@ -108,7 +122,7 @@ class FixtureProductionStore:
             False for a run of the entry's current production; a run no production made is absent
         """
         productions = self.read()
-        current = _current_of(productions)
+        current = _current_of(productions, self._declared_entries)
         superseded: Dict[str, bool] = {}
         for production in productions:
             pinned = current.get(production.entry_id)
@@ -119,19 +133,22 @@ class FixtureProductionStore:
 
 
 
-def _current_of(productions: List[FixtureProduction]) -> Dict[str, FixtureProduction]:
+def _current_of(productions: List[FixtureProduction],
+                declared_entries: Optional[Set[str]]) -> Dict[str, FixtureProduction]:
     """
-    Each entry's newest verified production, from the productions in record order.
+    Each declared entry's newest verified production, from the productions in record order.
 
     Args:
         productions: The record, oldest first
+        declared_entries: The entries the catalog still declares; None counts every entry
 
     Returns:
         Entry id → its current production
     """
     current: Dict[str, FixtureProduction] = {}
     for production in productions:
-        if production.verified:
+        if production.verified and (declared_entries is None
+                                     or production.entry_id in declared_entries):
             current[production.entry_id] = production
     return current
 

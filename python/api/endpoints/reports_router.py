@@ -17,6 +17,7 @@ from python.api.api_error_catalog import (
     CONFIG_SNAPSHOT_MISSING,
     INVALID_TIMESTAMP,
     REPORTS_NOT_COMMISSIONED,
+    RUN_HEADER_MISSING,
     RUN_NOT_COMPLETED,
     RUN_NOT_FOUND,
     api_error,
@@ -53,6 +54,7 @@ from python.framework.types.api.report_types import (
     PortfolioReport,
     ProfilingReport,
     RunConfigSnapshot,
+    RunHeader,
     RunInfo,
     RunListResponse,
     RunReporting,
@@ -510,3 +512,31 @@ def get_run_config(run_id: str) -> RunConfigSnapshot:
             raise api_error(RUN_NOT_FOUND, run_id=run_id)
         raise api_error(CONFIG_SNAPSHOT_MISSING, run_id=run_id)
     return snapshot
+
+
+@router.get('/reports/runs/{run_id}/header', response_model=RunHeader,
+            openapi_extra=describes('run-header'))
+def get_run_header(run_id: str) -> RunHeader:
+    """
+    A run's header: what the run is, who started it and which code ran (#582).
+
+    Written once, at the run's start, so it answers before the run has reported anything. Served
+    with every path relative to its repository — the record names paths as the machine saw them,
+    and a directory layout does not leave the machine.
+
+    Args:
+        run_id: The run's id (<timestamp>_<hash>), resolved through the run index
+
+    Returns:
+        The RunHeader (404 if the run is unknown or its header file is missing, 409 if the
+        header no longer matches its model)
+    """
+    try:
+        header = ReportStore().get_run_header(run_id)
+    except ReportArtifactUnreadableError as e:
+        raise api_error(ARTIFACT_UNREADABLE, reason=str(e)) from e
+    except FileNotFoundError as e:
+        raise api_error(RUN_HEADER_MISSING, run_id=run_id) from e
+    if header is None:
+        raise api_error(RUN_NOT_FOUND, run_id=run_id)
+    return header

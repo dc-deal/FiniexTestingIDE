@@ -577,8 +577,9 @@ class TestTheAgeSelector:
 
 class TestWhatIsPinnedOrCertifiedIsKept:
     """
-    #576: a certificate run is never deleted, and a run of a verified fixture catalog production —
-    current or superseded, a consumer may still pin it — is kept until the operator releases it.
+    #576: a certificate run is never deleted; the current fixture catalog production is never
+    released; a superseded verified one — a consumer may still pin it — is kept until the operator
+    releases it.
     """
 
     @staticmethod
@@ -599,8 +600,12 @@ class TestWhatIsPinnedOrCertifiedIsKept:
         assert [c.path for c in report.kept_certificate] == [certified]
         assert certified not in [c.path for c in report.all_deletions()]
 
-    def test_a_catalog_fixture_is_kept_until_released(self, tmp_path):
-        pinned = _plant(tmp_path, '20260830_132034_aaaaaaaa', 'report_coverage_reference')
+    def test_the_current_fixture_is_kept_even_when_fixtures_are_released(self, tmp_path):
+        """
+        Newer runs of its family push it past `--keep-last`; releasing it with the superseded
+        ones would delete the very ids a consumer has just moved to.
+        """
+        current = _plant(tmp_path, '20260830_132034_aaaaaaaa', 'report_coverage_reference')
         _plant(tmp_path, '20260830_132035_bbbbbbbb', 'report_coverage_reference', minutes=1)
         _plant(tmp_path, '20260830_132036_cccccccc', 'report_coverage_reference', minutes=2)
         self._record(tmp_path, '2026-10-08T10:00:00+00:00', ['20260830_132034_aaaaaaaa'])
@@ -608,8 +613,9 @@ class TestWhatIsPinnedOrCertifiedIsKept:
         kept = _pruner(tmp_path).plan(PruneSelectors(keep_last=1))
         released = _pruner(tmp_path).plan(PruneSelectors(keep_last=1, release_fixtures=True))
 
-        assert [c.path for c in kept.kept_catalog_fixture] == [pinned]
-        assert pinned in [c.path for c in released.to_delete_redundant]
+        assert [c.path for c in kept.kept_current_fixture] == [current]
+        assert [c.path for c in released.kept_current_fixture] == [current]
+        assert current not in [c.path for c in released.all_deletions()]
 
     def test_a_superseded_production_stays_until_released_and_a_failed_one_does_not(self, tmp_path):
         """The consumer may still pin the old ids; only the operator knows when they have moved."""
@@ -623,9 +629,28 @@ class TestWhatIsPinnedOrCertifiedIsKept:
         self._record(tmp_path, '2026-10-08T11:00:00+00:00', ['20260830_132036_cccccccc'])
 
         report = _pruner(tmp_path).plan(PruneSelectors(keep_last=1))
+        released = _pruner(tmp_path).plan(PruneSelectors(keep_last=1, release_fixtures=True))
 
-        assert sorted(c.path for c in report.kept_catalog_fixture) == sorted([old, new])
+        assert [c.path for c in report.kept_superseded_fixture] == [old]
+        assert [c.path for c in report.kept_current_fixture] == [new]
         assert failed in [c.path for c in report.to_delete_redundant]
+        assert old in [c.path for c in released.to_delete_redundant]
+        assert [c.path for c in released.kept_current_fixture] == [new]
+
+
+    def test_a_production_of_a_retired_entry_is_released_like_a_superseded_one(self, tmp_path):
+        """An entry the catalog no longer declares cannot be produced again to replace it."""
+        retired = _plant(tmp_path, '20260830_132034_aaaaaaaa', 'retired_set')
+        _plant(tmp_path, '20260830_132035_bbbbbbbb', 'retired_set', minutes=1)
+        FixtureProductionStore(tmp_path / PRODUCTION_RECORD_FILE).append(FixtureProduction(
+            entry_id='retired_entry', produced_at='2026-10-08T10:00:00+00:00',
+            run_ids=['20260830_132034_aaaaaaaa'], verified=True, report_contract=24))
+
+        kept = _pruner(tmp_path).plan(PruneSelectors(keep_last=1))
+        released = _pruner(tmp_path).plan(PruneSelectors(keep_last=1, release_fixtures=True))
+
+        assert [c.path for c in kept.kept_superseded_fixture] == [retired]
+        assert retired in [c.path for c in released.to_delete_redundant]
 
 
 class TestARunIsNeverAnOrphan:
@@ -643,6 +668,25 @@ class TestARunIsNeverAnOrphan:
         assert [c.path for c in report.kept_unindexed_run] == [lost]
         assert lost not in [c.path for c in report.all_deletions()]
         assert indexed not in [c.path for c in report.all_deletions()]
+
+    def test_a_directory_holding_runs_is_never_an_orphan_whatever_else_lies_in_it(
+            self, tmp_path, any_run_purpose):
+        """A stray file beside a set's runs once made the whole set directory an orphan."""
+        certified = _plant(tmp_path, '20260830_132034_aaaaaaaa', 'study',
+                           run_type=RUN_TYPE_AUTOTRADER, purpose=RunPurpose.CERTIFICATE,
+                           field_study=True)
+        ordinary = _plant(tmp_path, '20260830_132035_bbbbbbbb', 'my_set', minutes=1)
+        (certified.parent / 'desktop.ini').write_text('x', encoding='utf-8')
+        (ordinary.parent / 'notes.txt').write_text('x', encoding='utf-8')
+        leftover = ordinary.parent.parent / 'leftover'
+        leftover.mkdir()
+        (leftover / 'stray.log').write_text('x', encoding='utf-8')
+
+        report = _pruner(tmp_path).plan(PruneSelectors(orphans=True))
+
+        deleted = [c.path for c in report.all_deletions()]
+        assert certified.parent not in deleted and ordinary.parent not in deleted
+        assert [c.path for c in report.to_delete_orphans] == [leftover]
 
     def test_a_header_that_cannot_be_read_is_kept(self, tmp_path):
         """No guard can clear a run whose header says nothing readable — it stays."""

@@ -24,7 +24,7 @@ from python.framework.types.live_types.reconciliation_types import ReconcileStat
 # re-derived from — and the safety report's job is to surface exactly that record. A parallel
 # row type would be a hand-maintained copy of it, and a copy is what silently drops a field.
 from python.framework.types.persistence_types import RiskBaseline
-from python.framework.types.run_origin_types import CodeIdentity, RunOrigin
+from python.framework.types.run_origin_types import CodeIdentity, RunChannel, RunOrigin
 from python.framework.types.run_outcome_types import RunOutcome
 from python.framework.types.run_purpose_types import RunPurpose
 from python.framework.types.trading_env_types.order_event_types import (
@@ -1125,6 +1125,14 @@ class RunInfo(BaseModel):
     # contract that added a figure serves that figure as 0 or null — compare this with
     # `/api/v1/contract` to tell an old run from a wrong one. None on a run from before the field.
     report_contract: Optional[int] = None
+    # WHO started the run (contract 26, #582) — the header's `origin` block, flattened so a
+    # list can be filtered by it: how it was started, the client that did it, the person it
+    # acted for, the installation it ran on. The one meaning the word `origin` keeps. None on a
+    # run from before the block existed (#551).
+    origin_channel: Optional[RunChannel] = None
+    origin_client: Optional[str] = None
+    origin_person: Optional[str] = None
+    origin_host: Optional[str] = None
     # Whether a run of the fixture catalog is NOT the current fixture of its entry (contract 25,
     # #576) — derived from the catalog's production record each time the list is served, never
     # written into the run. True: an older catalog production made it, or one that failed its

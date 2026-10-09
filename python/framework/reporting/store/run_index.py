@@ -58,6 +58,7 @@ def _origin_columns(header: RunHeader) -> Dict[str, Any]:
     framework_known = framework is not None and framework.commit is not None
     return {
         'origin_channel': str(origin.channel) if origin is not None else None,
+        'origin_client': origin.client if origin is not None else None,
         'origin_person': origin.person if origin is not None else None,
         'host_id': origin.host if origin is not None else None,
         'framework_dirty': framework.dirty if framework_known else None,
@@ -298,9 +299,8 @@ class RunIndex(AbstractStoreIndex):
         'size_bytes',
         # Where a run came from and whether its code can be reproduced from commits (#551),
         # flattened from the header so a selection by channel, person, host or dirty state is a
-        # column filter rather than a header read per run. Not served on `RunInfo`: the API
-        # contract changes of #551 are the `caller` route and the meaning of the ledger's
-        # `git_dirty`, neither of which touches this list.
+        # column filter rather than a header read per run. The origin columns are served on
+        # `RunInfo` since contract 26 (#582), `host_id` as `origin_host`; the dirty flags are not.
         'origin_channel', 'origin_person', 'host_id', 'framework_dirty', 'code_dirty',
         # Which kind of run and the market windows it covers (contract 12), from the header.
         'ticks_from', 'orders_to', 'data_windows',
@@ -309,6 +309,8 @@ class RunIndex(AbstractStoreIndex):
         'stream_files',
         # What the run is for and the contract its reports were written under (#576).
         'run_purpose', 'report_contract',
+        # The client that started the run — the one origin field the list lacked (#582).
+        'origin_client',
     ]
 
     # 1 → 2: `size_bytes` appended. A row written before it reads back as NaN, which means
@@ -325,7 +327,8 @@ class RunIndex(AbstractStoreIndex):
     # 7 → 8 (#576): `run_purpose` and `report_contract` appended. A rebuild fills them; for a
     # header older than the fields the purpose comes from its configuration's current
     # declaration where one is found (_purpose_columns), and the contract stays unknown.
-    LOGIC_VERSION: int = 8
+    # 8 → 9 (#582): `origin_client` appended, so the run list can serve the whole origin.
+    LOGIC_VERSION: int = 9
 
     def __init__(self, path: Path, roots: Optional[RunLogPaths] = None,
                  declared_purposes: Optional[Callable[[], Dict[str, RunPurpose]]] = None):
@@ -472,7 +475,11 @@ class RunIndex(AbstractStoreIndex):
                         data_windows=_data_windows(getattr(r, 'data_windows', None)),
                         stream_files=list(_stream_list(getattr(r, 'stream_files', None))),
                         run_purpose=_or_none(getattr(r, 'run_purpose', None)),
-                        report_contract=_int_or_none(getattr(r, 'report_contract', None)))
+                        report_contract=_int_or_none(getattr(r, 'report_contract', None)),
+                        origin_channel=_or_none(getattr(r, 'origin_channel', None)),
+                        origin_client=_or_none(getattr(r, 'origin_client', None)),
+                        origin_person=_or_none(getattr(r, 'origin_person', None)),
+                        origin_host=_or_none(getattr(r, 'host_id', None)))
                 for r in frame.itertuples()]
 
     def run_dirs_of(self, run_ids: Iterable[str]) -> List[Optional[str]]:

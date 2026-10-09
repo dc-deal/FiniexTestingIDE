@@ -22,7 +22,7 @@ which the session's isolation does not reach.
 | Class | What it pins |
 |---|---|
 | `TestTheCatalogIsComplete` | every entry is named once, asserts something and names a consumer; every source exists; every entry starts from a configuration that declares `"run_purpose": "fixture"` — a sweep through its base set; only a session sequence declares sessions and a bot |
-| `TestTheRecordDerivesTheCurrentFixture` | a production reads back as recorded; the newest verified production is current; a failed one stays in the record and never replaces a good one; a cut-off last line hides nothing before it |
+| `TestTheRecordDerivesTheCurrentFixture` | a production reads back as recorded; the newest verified production is current; a failed one stays in the record and never replaces a good one; a cut-off last line hides nothing before it; an entry the catalog no longer declares has no current production, so its runs read as superseded |
 | `TestASessionSequenceRunsEveryDeclaredSession` | each session runs from its own profile — the sequence's bot, the continuous deployment, its own replay day, a carry-over inside the production's own workspace — with its own flags (a new history, a kill before the close); a production that made no run is not verified |
 | `TestAPropertyReadsWhatIsServed` | the two-histories check reads the deployment list's rows |
 | `TestTheRunListSaysWhichFixtureIsCurrent` | the served `fixture_superseded`: `true` for a run of an older production, `false` for the current one, `null` for a run no production made — derived from the record beside the index |

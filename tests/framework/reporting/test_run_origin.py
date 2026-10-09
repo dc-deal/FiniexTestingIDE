@@ -334,7 +334,8 @@ class TestTheEntryPointsDeclareTheirChannel:
 class TestTheIndexProjectsBothBlocks:
     """Flat columns, identical on append and on rebuild — the index is derived, never a source."""
 
-    _COLUMNS = ['origin_channel', 'origin_person', 'host_id', 'framework_dirty', 'code_dirty']
+    _COLUMNS = ['origin_channel', 'origin_client', 'origin_person', 'host_id', 'framework_dirty',
+                'code_dirty']
 
     @staticmethod
     def _plant(tmp_path: Path):
@@ -369,12 +370,12 @@ class TestTheIndexProjectsBothBlocks:
         rows = self._rows(self._plant(tmp_path))
 
         assert rows['20260924_080000_aaaaaaaa'] == {
-            'origin_channel': 'cli', 'origin_person': 'operator', 'host_id': 'h_7k2m9q',
-            'framework_dirty': False, 'code_dirty': True}
+            'origin_channel': 'cli', 'origin_client': 'console', 'origin_person': 'operator',
+            'host_id': 'h_7k2m9q', 'framework_dirty': False, 'code_dirty': True}
         assert rows['20260924_080001_bbbbbbbb']['code_dirty'] is False
         assert rows['20260924_080002_cccccccc'] == {
-            'origin_channel': 'direct', 'origin_person': 'operator', 'host_id': 'h_7k2m9q',
-            'framework_dirty': None, 'code_dirty': None}
+            'origin_channel': 'direct', 'origin_client': 'console', 'origin_person': 'operator',
+            'host_id': 'h_7k2m9q', 'framework_dirty': None, 'code_dirty': None}
         assert set(rows['20260924_080003_dddddddd'].values()) == {None}
 
     def test_the_rebuild_reproduces_the_append(self, tmp_path):
@@ -396,11 +397,15 @@ class TestTheIndexProjectsBothBlocks:
 
         assert row['framework_dirty'] is None and row['code_dirty'] is True
 
-    def test_the_served_run_list_is_unchanged(self, tmp_path):
-        """#551 changes the API by the `caller` route and the meaning of `git_dirty` — `RunInfo` does not grow."""
-        served = self._plant(tmp_path).list_runs()[0].model_dump()
+    def test_the_run_list_serves_the_origin_and_not_the_dirty_flags(self, tmp_path):
+        """Contract 26 (#582): who started a run is served; whether its code was dirty is not."""
+        served = {run.run_id: run.model_dump() for run in self._plant(tmp_path).list_runs()}
 
-        assert not set(self._COLUMNS) & set(served)
+        row = served['20260924_080000_aaaaaaaa']
+        assert (row['origin_channel'], row['origin_client'], row['origin_person'],
+                row['origin_host']) == ('cli', 'console', 'operator', 'h_7k2m9q')
+        assert not {'host_id', 'framework_dirty', 'code_dirty'} & set(row)
+        assert served['20260924_080003_dddddddd']['origin_channel'] is None
 
 
 class TestTheLedgerReadsItsProvenanceFromTheHeader:

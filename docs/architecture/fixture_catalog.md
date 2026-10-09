@@ -78,16 +78,19 @@ happened, and the previous one stays current. Nothing is written into a run.
 
 A new production makes new runs beside the old ones. The new ids go to the consumer in one
 message; the old runs stay until the consumer has moved to them. Only the operator knows when that
-is, so the pruner keeps the runs of every production that passed its check — current or superseded —
-until it is told `--release-fixtures`. A production that failed its check protects nothing: nobody
-was ever told to pin it.
+is, so the pruner keeps the runs of a superseded production that passed its check until it is told
+`--release-fixtures`. The current production is kept whatever it is told: releasing it together
+with the old ones would let a newer run of its family push it past `--keep-last` and delete the ids
+the consumer has just moved to. An entry renamed or removed from the catalog has no current
+production any more — nothing can produce it again — so its runs count as superseded. A production that failed its check protects nothing: nobody was ever
+told to pin it.
 
 ## What protects a pinned run
 
 | What happens to a run | What decides it |
 |---|---|
 | produced again | a new production beside the old one; the run list serves `fixture_superseded: true` on the old runs, derived from the record each time — nothing in the old run changes |
-| pruned | the pruner keeps every run of a production that passed its check — the current one and a superseded one alike — whatever the selectors say, unless `--release-fixtures` is given ([CLI Tools](../cli_tools_guide.md)) |
+| pruned | the pruner keeps every run of the current production by every selector, and the runs of a superseded production that passed its check until `--release-fixtures` is given ([CLI Tools](../cli_tools_guide.md)) |
 | the archive rebuilt | `produce --all` is the fixture step of a rebuild: the entries come back as new productions, and their ids go to the consumer in one message |
 | a certificate run | never produced here — the catalog holds fixture entries only — and never pruned: the pruner keeps a run whose own header says `certificate`, read from the header on disk rather than the index |
 

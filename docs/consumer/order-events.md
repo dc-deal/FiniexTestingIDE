@@ -83,6 +83,47 @@ Live session, market buy
 A backtest's market order is taken and filled in one instant. A live venue answers with its
 reference first, and the fill shows up later.
 
+## One event, field by field
+
+Every entry of `events` carries the same fields. Most are null on most events — a submission has
+no fill price, a fill has no ending — and null means the value does not exist for this step, never
+zero.
+
+| field | what it says | null when |
+|---|---|---|
+| `scenario_name` | the unit the event belongs to: a scenario, or the session | never |
+| `seq` | the event's place in its unit's stream — the order to read in, never a timestamp | never |
+| `event_type` | what happened, above | never |
+| `order_id` | the order's own id; a position's open and its market closes share one, a protective order has its own | never |
+| `submitted_seq` | the `seq` of the submission this event belongs to — the join key for one order's steps | on `denied`, which was never submitted |
+| `record_plane` | whose account this is: `bot` for this side's own steps | never |
+| `position_id` | the position the order opens or closes | the order belongs to no position yet |
+| `action` | `open` or `close` | not known for this step |
+| `order_type` | the type the order was asked as | not known |
+| `symbol` | the instrument | not known |
+| `direction` | the POSITION's direction; a close carries the direction of the position it closes, which a protective order's own trading side is the opposite of | not known |
+| `client_order_id` | this side's key on the wire | a backtest, or an order sent without one |
+| `broker_ref` | the venue's handle for the order | a backtest, or the venue has not answered yet |
+| `previous_broker_ref` | the handle an amend replaced | every event that is not an amend's answer |
+| `trade_id` | the execution, where the event is exactly one | the event is no single execution |
+| `lots` | this event's quantity — asked for, executed or ended | the step has none |
+| `cum_lots` | what the order has executed so far | nothing executed yet, or not known |
+| `fill_price` | the price the execution happened at | the event is no execution |
+| `limit_price` | the order's limit | the order has none |
+| `trigger_price` | the order's stop — the price that activates it | the order has none |
+| `fee` · `fee_currency` | the fee charged on this execution, and its currency | the event is no execution, or the venue charged none |
+| `submission_mid` | the market's mid when the order was submitted | every event but the submission |
+| `submission_time_msc` | that market moment, in epoch milliseconds | as above |
+| `in_flight_ms` | on the acceptance or refusal that answers a submission: how long the answer took — modelled in a backtest, measured live | every other event |
+| `event_time` | when it happened, on the run's own clock | only before the run's clock was set — an order taken over at a session's start |
+| `ts_init` | when this process saw it, on the wall clock | a backtest, which has to stay reproducible |
+| `initiator` | who ended the order: `strategy`, `framework` or `venue` | the event ends nothing, or the order was refused |
+| `end_reason` | why it ended | as above |
+| `rejection_reason` | why it was refused | the event is no refusal |
+| `venue_reason` | the venue's own code for a refusal, passed through unread | no venue code was given |
+| `message` | the sentence that goes with it, for a person to read | there is none |
+| `lost_request` | on `unresolved` and `resolved`: which request's answer was lost | every other event |
+
 ## What the venue said — `broker_truth`
 
 A live session asks its venue what it holds, and each answer is one line of `broker_truth`: the

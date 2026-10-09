@@ -258,7 +258,7 @@ deletes without ceremony because a cache is rebuildable — this is not that.
   DELETE     12 · sweep directories left without a single combination   17.8 MB
   KEEP       35 · reporting=expected, no artifacts — crashed or still running
   KEEP        2 · hold field_study.jsonl (evidence behind a release gate)
-  KEEP        2 · catalog fixtures a consumer may pin — --release-fixtures lets them go
+  KEEP        2 · current catalog fixtures — what a consumer pins now
   KEEP       32 · complete
   SKIP       17 · sweep directories — not runs, deliberately header-less
 
@@ -277,11 +277,13 @@ deletes without ceremony because a cache is rebuildable — this is not that.
   index row is repaired by a rebuild, never by deleting the run
 - a run whose header exists and cannot be read — no guard can clear it
 
-**What it keeps until told otherwise:** every run of a fixture catalog production that passed its
-check — the current one, and a superseded one a consumer may still pin until they have moved to the
-new ids ([Fixture Catalog](architecture/fixture_catalog.md)). The selectors reach them only with
-`--release-fixtures`; give it once the consumer has re-pinned. A production that failed its check
-protects nothing.
+**What it keeps, and what it keeps until told otherwise:** every run of an entry's CURRENT fixture
+catalog production is kept, whatever the selectors and flags say — it is what a consumer pins now,
+and to drop one, produce the entry again ([Fixture Catalog](architecture/fixture_catalog.md)). An
+entry the catalog no longer declares has no current production, so its runs count as superseded. A
+SUPERSEDED production that passed its check is kept too, because a consumer may still pin it until
+they have moved to the new ids; the selectors reach it only with `--release-fixtures`, given once
+the consumer has re-pinned. A production that failed its check protects nothing.
 
 **The selectors** (`--keep-last`, `--older-than` and `--orphans` are opt-in; the last one is
 always on):
@@ -290,8 +292,8 @@ always on):
 |---|---|
 | `--keep-last N` | per scenario set / AutoTrader profile, all but the N newest complete runs. **A sweep is the unit, not the combination** — the N newest sweeps survive WHOLE, the rest go WHOLE, because a half-pruned sweep leaves a `ranked.csv` ranking runs that no longer exist |
 | `--older-than AGE` | runs that started longer ago than `AGE`, written as whole days or hours (`30d`, `12h`). The age comes from the run header's own start time; a run that records none is KEPT and reported separately, because an age nobody can measure is not a reason to delete |
-| `--orphans` | directories that are not runs: no header, not in the index. Never sweep directories (correctly header-less) and never a run's own `io/`, `scenario_logs/`, … |
-| `--release-fixtures` | nothing by itself — it lets the selectors above reach the runs of the fixture catalog's productions, current and superseded |
+| `--orphans` | directories that are not runs: no header, not in the index, and no run anywhere below them — a set's directory holding a stray file beside its runs is never one. Never sweep directories (correctly header-less) and never a run's own `io/`, `scenario_logs/`, … |
+| `--release-fixtures` | nothing by itself — it lets the selectors above reach the runs of the fixture catalog's superseded productions; a current production is never released |
 | *(always on)* | `reporting=none` with no artifacts — commissioned to produce nothing, and it did not |
 
 **`--keep-last` and `--older-than` compose as KEEP rules, not as delete rules.** "Keep the

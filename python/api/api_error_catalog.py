@@ -43,6 +43,10 @@ ARTIFACT_UNREADABLE = ApiErrorKind(409, 'artifact_unreadable', '{reason}')
 CONFIG_SNAPSHOT_MISSING = ApiErrorKind(
     404, 'config_snapshot_missing',
     "Run '{run_id}' declares a configuration snapshot that was never filed")
+RUN_HEADER_MISSING = ApiErrorKind(
+    404, 'run_header_missing',
+    "Run '{run_id}' is listed in the run index, but its header file is missing — if the run is "
+    "gone, a rebuild of the run index drops its row")
 INVALID_TIMESTAMP = ApiErrorKind(
     400, 'invalid_timestamp', "'{field}' must be ISO-8601, got '{value}'")
 
@@ -103,7 +107,7 @@ IDENTITY_UNBOUND = ApiErrorKind(
 # Every entry above, for the completeness test and the documentation table.
 API_ERRORS: Tuple[ApiErrorKind, ...] = (
     RUN_NOT_FOUND, REPORTS_NOT_COMMISSIONED, RUN_NOT_COMPLETED, ARTIFACT_NOT_PRODUCED,
-    ARTIFACT_UNREADABLE, CONFIG_SNAPSHOT_MISSING, INVALID_TIMESTAMP,
+    ARTIFACT_UNREADABLE, CONFIG_SNAPSHOT_MISSING, RUN_HEADER_MISSING, INVALID_TIMESTAMP,
     BROKER_NOT_FOUND, SYMBOL_NOT_FOUND, NO_BARS_INDEXED, TIMEFRAME_NOT_RENDERED,
     COVERAGE_REPORT_UNAVAILABLE, NO_BARS_IN_RANGE, INVALID_TIMEFRAME, INVALID_LIMIT,
     INVALID_PERIOD, INVALID_RANGE, MARKET_TYPE_NOT_CONFIGURED,
