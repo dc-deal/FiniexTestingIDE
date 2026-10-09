@@ -93,7 +93,7 @@ to infer one from another:
 | Which pipeline ran it? | `run_type` — `simulation` or `autotrader` |
 | Which kind of run is it? | `ticks_from` · `orders_to` — the table above |
 | Does it stand alone? | `parent_kind` · `parent_id` — the sweep or the deployment it belongs to |
-| Who started it, and where? | `origin` — channel, client, person, host |
+| Who started it, and where? | `origin` — channel, client, principal, host |
 | Which configuration did it run? | `config_snapshot` · `config_id` |
 | What is it FOR? | `run_purpose` — `regular`; `fixture`, a run constructed to show something (every run a test starts, every run a consumer pins); `certificate`, a release-gate run |
 | Why does its configuration exist? | the configuration's own `description` |

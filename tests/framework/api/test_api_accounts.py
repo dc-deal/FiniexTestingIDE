@@ -2,7 +2,7 @@
 FiniexTestingIDE - API Account Tests (#551)
 
 A token identifies a CLIENT — which program is calling. It never said on whose BEHALF, and the
-first write surface needs exactly that: a run started through the API has to record a person,
+first write surface needs exactly that: a run started through the API has to record a principal,
 and "whoever held the viewer token" is not one. So every token entry now names an account —
 switched off or not — and the boot refuses a live token whose account does not exist or is
 switched off.
@@ -32,7 +32,7 @@ from python.framework.types.config_types.api_auth_config_types import (
     ApiAccount,
     ConsumerToken,
 )
-from python.framework.types.run_origin_types import OPERATOR_PERSON
+from python.framework.types.run_origin_types import OPERATOR_PRINCIPAL
 from python.framework.utils.declared_id_utils import (
     DECLARED_ID_MAX_LENGTH,
     declared_id_malformed_reason,
@@ -162,14 +162,14 @@ class TestTheOperatorIsNotAnAccount:
 
     def test_an_account_named_operator_is_refused(self):
         with pytest.raises(ValidationError, match='reserved'):
-            ApiAccount(account_id=OPERATOR_PERSON, **_PERSON)
+            ApiAccount(account_id=OPERATOR_PRINCIPAL, **_PERSON)
 
     def test_a_token_naming_operator_is_refused(self):
         with pytest.raises(ValidationError, match='reserved'):
-            ConsumerToken(token='t', grants=['*'], account=OPERATOR_PERSON)
+            ConsumerToken(token='t', grants=['*'], account=OPERATOR_PRINCIPAL)
 
     def test_an_accounts_file_naming_operator_refuses_the_parse(self, workspace):
-        _write(workspace, f'{_WORKSPACE}/{_ACCOUNTS}', {'accounts': {OPERATOR_PERSON: _PERSON}})
+        _write(workspace, f'{_WORKSPACE}/{_ACCOUNTS}', {'accounts': {OPERATOR_PRINCIPAL: _PERSON}})
         with pytest.raises(ApiConfigurationError, match='reserved'):
             ApiAccountManager().load_accounts()
 
@@ -380,7 +380,7 @@ class TestTheCommandsWriteNothing:
 
     def test_the_account_block_refuses_the_operator(self, workspace):
         with pytest.raises(ApiConfigurationError, match='reserved'):
-            ApiAccountManager().render_account(OPERATOR_PERSON, 'person', 'Me', '')
+            ApiAccountManager().render_account(OPERATOR_PRINCIPAL, 'person', 'Me', '')
 
     def test_a_mint_carries_its_account_and_writes_nothing(self, workspace):
         _write(workspace, f'{_WORKSPACE}/{_ACCOUNTS}', {'accounts': {'analyst': _PERSON}})

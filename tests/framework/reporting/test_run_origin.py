@@ -60,7 +60,7 @@ from python.framework.types.git_info_types import GitInfo
 from python.framework.types.log_layout_types import RUN_TYPE_AUTOTRADER, RUN_TYPE_SIMULATION
 from python.framework.types.run_origin_types import (
     CONSOLE_CLIENT,
-    OPERATOR_PERSON,
+    OPERATOR_PRINCIPAL,
     CodeIdentity,
     ComponentIdentity,
     ComponentRole,
@@ -139,7 +139,7 @@ def _identity(algos_dirty: bool = False, framework_commit: str = 'abc1234',
 
 def _origin(channel: RunChannel = RunChannel.CLI, allow_dirty: bool = False) -> RunOrigin:
     """An origin as the console states it."""
-    return RunOrigin(channel=channel, client=CONSOLE_CLIENT, person=OPERATOR_PERSON,
+    return RunOrigin(channel=channel, client=CONSOLE_CLIENT, principal=OPERATOR_PRINCIPAL,
                      host='h_7k2m9q', allow_dirty=allow_dirty)
 
 
@@ -158,7 +158,7 @@ class TestTheOriginIsAlwaysStated:
         origin = build_run_origin(RunChannel.CLI)
 
         assert origin.channel is RunChannel.CLI
-        assert origin.client == CONSOLE_CLIENT and origin.person == OPERATOR_PERSON
+        assert origin.client == CONSOLE_CLIENT and origin.principal == OPERATOR_PRINCIPAL
         # The suite runs isolated, so the declared test identity is stated and nothing minted.
         assert origin.host == TEST_HOST_ID
         assert origin.allow_dirty is False
@@ -334,7 +334,7 @@ class TestTheEntryPointsDeclareTheirChannel:
 class TestTheIndexProjectsBothBlocks:
     """Flat columns, identical on append and on rebuild — the index is derived, never a source."""
 
-    _COLUMNS = ['origin_channel', 'origin_client', 'origin_person', 'host_id', 'framework_dirty',
+    _COLUMNS = ['origin_channel', 'origin_client', 'origin_principal', 'host_id', 'framework_dirty',
                 'code_dirty']
 
     @staticmethod
@@ -370,11 +370,11 @@ class TestTheIndexProjectsBothBlocks:
         rows = self._rows(self._plant(tmp_path))
 
         assert rows['20260924_080000_aaaaaaaa'] == {
-            'origin_channel': 'cli', 'origin_client': 'console', 'origin_person': 'operator',
+            'origin_channel': 'cli', 'origin_client': 'console', 'origin_principal': 'operator',
             'host_id': 'h_7k2m9q', 'framework_dirty': False, 'code_dirty': True}
         assert rows['20260924_080001_bbbbbbbb']['code_dirty'] is False
         assert rows['20260924_080002_cccccccc'] == {
-            'origin_channel': 'direct', 'origin_client': 'console', 'origin_person': 'operator',
+            'origin_channel': 'direct', 'origin_client': 'console', 'origin_principal': 'operator',
             'host_id': 'h_7k2m9q', 'framework_dirty': None, 'code_dirty': None}
         assert set(rows['20260924_080003_dddddddd'].values()) == {None}
 
@@ -402,7 +402,7 @@ class TestTheIndexProjectsBothBlocks:
         served = {run.run_id: run.model_dump() for run in self._plant(tmp_path).list_runs()}
 
         row = served['20260924_080000_aaaaaaaa']
-        assert (row['origin_channel'], row['origin_client'], row['origin_person'],
+        assert (row['origin_channel'], row['origin_client'], row['origin_principal'],
                 row['origin_host']) == ('cli', 'console', 'operator', 'h_7k2m9q')
         assert not {'host_id', 'framework_dirty', 'code_dirty'} & set(row)
         assert served['20260924_080003_dddddddd']['origin_channel'] is None

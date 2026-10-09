@@ -63,7 +63,7 @@ sweep combinations (the class of instance that produced a run's data).
 |---|---|---|---|---|
 | `origin.channel` | Started via | how the run was started | `cli` — the command line · `sweep` — an optimization sweep · `direct` — a direct call · `api` — through the API | `origin_channel` |
 | `origin.client` | Client | who made the call | `console` at a terminal, otherwise the API consumer's name | `origin_client` |
-| `origin.person` | Person | the account the client acted for | `operator` at the console, otherwise an account id | `origin_person` |
+| `origin.principal` | Started for | on whose behalf the run was started — the console's own principal, or the account a token acts for, which may be a person or a service | `operator` at the console, otherwise an account id | `origin_principal` |
 | `origin.host` | Host | the installation the run ran on: its minted identity, `h_` and six characters | | `origin_host` |
 | `origin.allow_dirty` | Uncommitted code allowed | whether real orders were explicitly allowed from code that was not committed | `true` · `false` | — |
 

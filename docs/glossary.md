@@ -349,7 +349,7 @@ money. See [Introduction](introduction_to_the_ide.md#the-kinds-of-run).
 
 **origin** (`origin`) — Who started a run: how (`cli`, `sweep`, `direct`, `api`), which client, for
 which account and on which installation — the block every run header records at its start, served
-on the run list as `origin_channel`, `origin_client`, `origin_person` and `origin_host`. The word
+on the run list as `origin_channel`, `origin_client`, `origin_principal` and `origin_host`. The word
 keeps this one meaning: the configuration directory row's `origin` (where a file lives), a
 feed-health episode's `origin` (real or stress-injected) and the `origin_classes` /
 `origin_evidence_grades` of a run's data (see *data origin*) are being renamed (#581, #582). See
@@ -395,6 +395,11 @@ for an order-driven venue, the mid for a quote-driven one. See [Market Model](ar
 **price formation** — How a venue forms its prices: `order_driven` (a central order book, every
 trade prints) or `quote_driven` (a dealer quotes both sides, nothing prints). See
 [Market Model](architecture/market_model.md).
+
+**principal** (`origin.principal`, served as `origin_principal`) — On whose behalf a run was
+started: `operator`, the console's own principal, or the account an API token acts for — which may
+be a person or a service. Not *person*, which in the account vocabulary is a KIND of account, and
+not *account* in this glossary's sense, a run unit's balance. See *origin*.
 
 **profile** — Never used alone outside the AutoTrader context. *AutoTrader profile*: one bot's
 configuration file. *Generator profile*: a set of generated scenario windows, run by a *profile

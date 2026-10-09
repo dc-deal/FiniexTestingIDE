@@ -1126,12 +1126,12 @@ class RunInfo(BaseModel):
     # `/api/v1/contract` to tell an old run from a wrong one. None on a run from before the field.
     report_contract: Optional[int] = None
     # WHO started the run (contract 26, #582) — the header's `origin` block, flattened so a
-    # list can be filtered by it: how it was started, the client that did it, the person it
-    # acted for, the installation it ran on. The one meaning the word `origin` keeps. None on a
-    # run from before the block existed (#551).
+    # list can be filtered by it: how it was started, the client that did it, the principal it
+    # acted for — `operator` or an account, a person or a service — and the installation it ran
+    # on. The one meaning the word `origin` keeps. None on a run from before the block (#551).
     origin_channel: Optional[RunChannel] = None
     origin_client: Optional[str] = None
-    origin_person: Optional[str] = None
+    origin_principal: Optional[str] = None
     origin_host: Optional[str] = None
     # Whether a run of the fixture catalog is NOT the current fixture of its entry (contract 25,
     # #576) — derived from the catalog's production record each time the list is served, never

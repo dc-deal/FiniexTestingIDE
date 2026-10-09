@@ -33,7 +33,7 @@ class RunChannel(StrEnum):
 
 
 # The console operator — a principal of its own, and never an account the API can bind a token to.
-OPERATOR_PERSON = 'operator'
+OPERATOR_PRINCIPAL = 'operator'
 # The client that is not a token: somebody at the terminal.
 CONSOLE_CLIENT = 'console'
 
@@ -45,14 +45,15 @@ class RunOrigin(BaseModel):
     Args:
         channel: How it was started — declared by the entry point
         client: The caller: `console` at a terminal, the API consumer name for a token
-        person: The account the client acts for — `operator` at the console
+        principal: On whose behalf the run was started — `operator`, the console's own
+            principal, or the account a token acts for, which may be a person or a service
         host: The installation's minted identity (`user_configs/host_identity.json`)
         allow_dirty: Whether the operator explicitly allowed real orders from uncommitted code
             (`--allow-dirty`); recorded because an override nobody can see afterwards is not one
     """
     channel: RunChannel
     client: str
-    person: str
+    principal: str
     host: str
     allow_dirty: bool = False
 

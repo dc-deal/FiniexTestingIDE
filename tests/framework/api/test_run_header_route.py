@@ -45,7 +45,7 @@ def _header(machine: Path) -> RunHeader:
     return RunHeader(
         run_id=_RUN, start_time=datetime(2026, 10, 9, 12, 0, tzinfo=timezone.utc),
         run_type=RUN_TYPE_SIMULATION, run_name='my_set', config_snapshot='my_set.json',
-        origin=RunOrigin(channel=RunChannel.CLI, client='console', person='operator',
+        origin=RunOrigin(channel=RunChannel.CLI, client='console', principal='operator',
                          host='h_test01'),
         code_identity=CodeIdentity(
             framework=RepositoryState(root=str(machine), commit='abc1234',
@@ -86,7 +86,7 @@ class TestTheHeaderIsServedWhole:
     def test_it_answers_with_the_run_and_who_started_it(self, client):
         body = client.get(_URL).json()
         assert (body['run_id'], body['config_snapshot']) == (_RUN, 'my_set.json')
-        assert body['origin'] == {'channel': 'cli', 'client': 'console', 'person': 'operator',
+        assert body['origin'] == {'channel': 'cli', 'client': 'console', 'principal': 'operator',
                                   'host': 'h_test01', 'allow_dirty': False}
 
     def test_every_path_is_relative_to_its_repository(self, client):
@@ -135,7 +135,7 @@ class TestTheRunListSaysWhoStartedEachRun:
     def test_the_origin_is_flattened_onto_the_row(self, client):
         row = next(run for run in client.get('/api/v1/reports/runs').json()['runs']
                    if run['run_id'] == _RUN)
-        assert (row['origin_channel'], row['origin_client'], row['origin_person'],
+        assert (row['origin_channel'], row['origin_client'], row['origin_principal'],
                 row['origin_host']) == ('cli', 'console', 'operator', 'h_test01')
 
 

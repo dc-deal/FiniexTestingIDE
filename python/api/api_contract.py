@@ -39,8 +39,8 @@ CHANGES: List[str] = [
     "GET /api/v1/reports/runs/{run_id}/header: new — a run's whole header, every path in it "
     'relative to its repository. Its document, run-header, lists every key with its meaning and '
     'the label to show it under',
-    'The run list: origin_channel, origin_client, origin_person and origin_host — who started the '
-    "run, the header's origin block flattened; null on a run that predates the block",
+    'The run list: origin_channel, origin_client, origin_principal and origin_host — who started '
+    "the run, the header's origin block flattened; null on a run that predates the block",
     "Origin on its own keeps one meaning, who started a run. The configuration directory row's "
     "origin, a feed-health episode's origin and origin_classes / origin_evidence_grades (the "
     'data origin classes) are renamed in a later contract',

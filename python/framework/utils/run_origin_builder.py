@@ -21,7 +21,7 @@ from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.store.run_patch_store import RunPatchStore
 from python.framework.types.run_origin_types import (
     CONSOLE_CLIENT,
-    OPERATOR_PERSON,
+    OPERATOR_PRINCIPAL,
     CodeIdentity,
     RunChannel,
     RunOrigin,
@@ -55,7 +55,7 @@ def build_run_origin(channel: RunChannel, allow_dirty: bool = False) -> RunOrigi
     return RunOrigin(
         channel=channel,
         client=CONSOLE_CLIENT,
-        person=OPERATOR_PERSON,
+        principal=OPERATOR_PRINCIPAL,
         host=HostIdentityManager().get_host_id(),
         allow_dirty=allow_dirty,
     )

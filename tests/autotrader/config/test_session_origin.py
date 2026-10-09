@@ -33,7 +33,7 @@ from python.framework.reporting.io.run_header_io import RUN_HEADER_ARTIFACT, rea
 from python.framework.types.config_types.host_identity_config_types import TEST_HOST_ID
 from python.framework.types.run_origin_types import (
     CONSOLE_CLIENT,
-    OPERATOR_PERSON,
+    OPERATOR_PRINCIPAL,
     CodeIdentity,
     RepositoryState,
     RunChannel,
@@ -84,7 +84,7 @@ class TestTheSessionStatesItsOrigin:
 
         origin = received['origin']
         assert origin.channel is RunChannel.DIRECT and origin.allow_dirty is False
-        assert origin.client == CONSOLE_CLIENT and origin.person == OPERATOR_PERSON
+        assert origin.client == CONSOLE_CLIENT and origin.principal == OPERATOR_PRINCIPAL
         assert origin.host == TEST_HOST_ID
 
     def test_the_declared_channel_and_override_reach_the_header(self, stopped_session):
@@ -117,7 +117,7 @@ class TestTheLiveHeaderCarriesBoth:
     def test_the_header_written_at_the_start_holds_origin_and_identity(self):
         """A session killed before its close still says who started it and which code it ran."""
         origin = RunOrigin(channel=RunChannel.CLI, client=CONSOLE_CLIENT,
-                           person=OPERATOR_PERSON, host=TEST_HOST_ID)
+                           principal=OPERATOR_PRINCIPAL, host=TEST_HOST_ID)
         config = load_autotrader_config(PROFILE)
 
         bundle = create_autotrader_loggers(

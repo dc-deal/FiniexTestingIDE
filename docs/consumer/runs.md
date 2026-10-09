@@ -48,7 +48,7 @@ has two entries there, and folding them into one loses data. See
 | `run_purpose` | what the run is FOR — `regular`, `fixture` or `certificate` |
 | `report_contract` | the contract its reports were written under |
 | `fixture_superseded` | for a run of the fixture catalog, whether it is no longer its entry's current one |
-| `origin_channel` · `origin_client` · `origin_person` · `origin_host` | who started the run: how, which client, for which account, on which installation — the header's `origin`, see [run header](/api/v1/docs/run-header) |
+| `origin_channel` · `origin_client` · `origin_principal` · `origin_host` | who started the run: how, which client, on whose behalf, on which installation — the header's `origin`, see [run header](/api/v1/docs/run-header) |
 
 `group`, the two parent fields, `ticks_from`, `orders_to`, `data_windows` and `run_purpose` are the
 subject of [run kinds](/api/v1/docs/run-kinds), and it is worth reading before branching on any of

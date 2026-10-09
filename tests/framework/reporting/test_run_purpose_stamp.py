@@ -23,7 +23,7 @@ from python.framework.types.api.report_types import RunHeader, RunReporting
 from python.framework.types.config_types.host_identity_config_types import TEST_HOST_ID
 from python.framework.types.run_origin_types import (
     CONSOLE_CLIENT,
-    OPERATOR_PERSON,
+    OPERATOR_PRINCIPAL,
     RunChannel,
     RunOrigin,
 )
@@ -34,7 +34,7 @@ from python.scenario.scenario_set import ScenarioSet
 _ROOT = Path(__file__).resolve().parents[3]
 _FIXTURE_SET = _ROOT / 'tests' / 'fixtures' / 'scenario_sets' / 'cascade' / 'no_overrides.json'
 _FIXTURE_PROFILE = _ROOT / 'configs' / 'autotrader_profiles' / 'mock' / 'mock_session_test.json'
-_ORIGIN = RunOrigin(channel=RunChannel.CLI, client=CONSOLE_CLIENT, person=OPERATOR_PERSON,
+_ORIGIN = RunOrigin(channel=RunChannel.CLI, client=CONSOLE_CLIENT, principal=OPERATOR_PRINCIPAL,
                     host=TEST_HOST_ID)
 
 

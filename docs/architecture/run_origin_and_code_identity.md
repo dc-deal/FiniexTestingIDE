@@ -30,7 +30,7 @@ The shape, with illustrative values — a session whose decision logic is loaded
 "origin": {
   "channel": "cli",
   "client": "console",
-  "person": "operator",
+  "principal": "operator",
   "host": "h_7k2m9q",
   "allow_dirty": false
 },
@@ -86,7 +86,7 @@ The channel travels as a keyword argument: `ScenarioSet(channel=…)`,
 own.
 
 **The console operator is a principal of its own, and never an API account.** Every channel that
-exists today starts at a terminal, so `client` is `console` and `person` is `operator`. The `api`
+exists today starts at a terminal, so `client` is `console` and `principal` is `operator`. The `api`
 channel — a consumer token naming its client, bound to exactly one account — arrives with the
 first write route (#552). Until then nothing constructs a run from a request, so
 `build_run_origin` reads no token.
@@ -253,9 +253,15 @@ certified, and a `dev` rehearsal on a dirty tree keeps its patch. Details in
 [Release Certificates](release_certificates.md#the-shared-identity).
 
 **The run index flattens both blocks** into flat columns, identically on append and on rebuild:
-`origin_channel` · `origin_person` · `host_id` · `framework_dirty` · `code_dirty`. None means
-unknown. `framework_dirty` is this repository alone and unknown where git could not read it;
-`code_dirty` is `is_dirty()`. The index columns are not served on the API's run list.
+`origin_channel` · `origin_client` · `origin_principal` · `host_id` · `framework_dirty` ·
+`code_dirty`. None means unknown. `framework_dirty` is this repository alone and unknown where git
+could not read it; `code_dirty` is `is_dirty()`. Since contract 26 the API's run list serves the
+origin columns — `host_id` as `origin_host` — and never the dirty flags.
+
+**`principal`, not `person` (renamed 2026-10-09, #582).** The field names on whose behalf a run was
+started: `operator`, the console's own principal, or the account a token acts for. In the account
+vocabulary `person` is a KIND of account beside `service`, so the old name would have shown a run a
+service started as though a person had asked for it. The headers on disk were migrated with it.
 
 **What the API serves changed in two places**, both in contract 4: the new `caller` route, and the
 ledger's `git_dirty` on `GET /api/v1/sweeps/{sweep_id}`, which kept its shape and changed its

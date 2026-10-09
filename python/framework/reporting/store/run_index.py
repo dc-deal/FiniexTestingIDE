@@ -59,7 +59,7 @@ def _origin_columns(header: RunHeader) -> Dict[str, Any]:
     return {
         'origin_channel': str(origin.channel) if origin is not None else None,
         'origin_client': origin.client if origin is not None else None,
-        'origin_person': origin.person if origin is not None else None,
+        'origin_principal': origin.principal if origin is not None else None,
         'host_id': origin.host if origin is not None else None,
         'framework_dirty': framework.dirty if framework_known else None,
         'code_dirty': identity.is_dirty() if identity is not None else None,
@@ -298,10 +298,10 @@ class RunIndex(AbstractStoreIndex):
         # above already carries: listing at read time is the cost this index exists to remove.
         'size_bytes',
         # Where a run came from and whether its code can be reproduced from commits (#551),
-        # flattened from the header so a selection by channel, person, host or dirty state is a
+        # flattened from the header so a selection by channel, principal, host or dirty state is a
         # column filter rather than a header read per run. The origin columns are served on
         # `RunInfo` since contract 26 (#582), `host_id` as `origin_host`; the dirty flags are not.
-        'origin_channel', 'origin_person', 'host_id', 'framework_dirty', 'code_dirty',
+        'origin_channel', 'origin_principal', 'host_id', 'framework_dirty', 'code_dirty',
         # Which kind of run and the market windows it covers (contract 12), from the header.
         'ticks_from', 'orders_to', 'data_windows',
         # The streams the run wrote while it ran (#362) — kept apart from `artifacts`, which a
@@ -327,7 +327,8 @@ class RunIndex(AbstractStoreIndex):
     # 7 → 8 (#576): `run_purpose` and `report_contract` appended. A rebuild fills them; for a
     # header older than the fields the purpose comes from its configuration's current
     # declaration where one is found (_purpose_columns), and the contract stays unknown.
-    # 8 → 9 (#582): `origin_client` appended, so the run list can serve the whole origin.
+    # 8 → 9 (#582): `origin_client` appended, so the run list can serve the whole origin, and
+    # `origin_person` renamed `origin_principal` — `person` is an account KIND (#551).
     LOGIC_VERSION: int = 9
 
     def __init__(self, path: Path, roots: Optional[RunLogPaths] = None,
@@ -478,7 +479,7 @@ class RunIndex(AbstractStoreIndex):
                         report_contract=_int_or_none(getattr(r, 'report_contract', None)),
                         origin_channel=_or_none(getattr(r, 'origin_channel', None)),
                         origin_client=_or_none(getattr(r, 'origin_client', None)),
-                        origin_person=_or_none(getattr(r, 'origin_person', None)),
+                        origin_principal=_or_none(getattr(r, 'origin_principal', None)),
                         origin_host=_or_none(getattr(r, 'host_id', None)))
                 for r in frame.itertuples()]
 

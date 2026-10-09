@@ -44,7 +44,7 @@ A run's header is served whole, and the run list says who started each run.
   document, [run header](/api/v1/docs/run-header), is the authoritative list of every key, with its
   meaning and the label to show it under.
 - The run list: every run carries who started it — `origin_channel` (`cli`, `sweep`, `direct` or
-  `api`), `origin_client`, `origin_person` and `origin_host`, the header's `origin` block
+  `api`), `origin_client`, `origin_principal` and `origin_host`, the header's `origin` block
   flattened. Null on a run that predates the block.
 - *Origin* on its own keeps one meaning: who started a run. Three served fields still carry the
   word for something else — the configuration directory row's `origin` (where a file lives), a

@@ -58,7 +58,7 @@ otherwise leave it green while the surface it gated went unreachable.
 ## Accounts (`test_api_accounts.py`)
 
 A token says which client is calling and never said on whose behalf — which the first write
-surface needs, because a run started through the API has to record a person. So every token entry
+surface needs, because a run started through the API has to record its principal. So every token entry
 names an account, switched off or not, and the boot refuses a live token whose account does not
 exist or is switched off.
 The file-based tests run in a throwaway tree as the working directory, with config isolation
@@ -134,7 +134,7 @@ absolute paths throughout — so the tests can see what the route makes of them.
 |---|---|
 | `TestTheHeaderIsServedWhole` | the run and its origin come back as written; every path is relative to a repository the run recorded — `.` for this repository, `user_algos` for one inside it, the patch reference too, a decision's name (its type, a path) relative to this repository, a component's file relative to its own repository, a path in no repository reduced to its name; and no path of the planting machine appears anywhere in the answer |
 | `TestAHeaderThatCannotBeServedSaysWhy` | an unknown run is `run_not_found`; a missing header file of a run the index lists is `run_header_missing`, naming the rebuild; a header that no longer matches its model is `artifact_unreadable` and names the failing fields, never a value — Pydantic's own text would quote the input, and a header's input holds paths |
-| `TestTheRunListSaysWhoStartedEachRun` | `origin_channel`, `origin_client`, `origin_person` and `origin_host` on the run's row, from the header's origin block |
+| `TestTheRunListSaysWhoStartedEachRun` | `origin_channel`, `origin_client`, `origin_principal` and `origin_host` on the run's row, from the header's origin block |
 | `TestAPathFromAnotherSystemIsServedTheSameWay` | a header written on Windows — drive letter, backslashes — has its paths made relative the same way |
 
 ## Row keys (`test_row_keys.py`)

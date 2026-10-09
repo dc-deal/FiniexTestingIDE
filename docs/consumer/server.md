@@ -68,7 +68,7 @@ A token says which **client** is calling. The account says on whose **behalf**.
 | `note` | the token's own note — who holds it |
 
 Until a login exists, presenting a token **is** acting as its account, so this is also what a run
-started through the API would record as the person behind it.
+started through the API would record as its principal — `origin_principal` on the run list.
 
 `account_kind: service` is a sibling service, not a person who happens to be named after one: a
 record saying a run was started for a service must not read as though somebody by that name asked
