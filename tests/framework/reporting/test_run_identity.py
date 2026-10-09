@@ -31,10 +31,16 @@ from python.framework.types.api.report_types import (
 )
 from python.framework.types.config_types.file_logging_config_types import RunLogPaths
 from python.framework.types.log_layout_types import IO_SUBDIR, RUN_TYPE_AUTOTRADER, RUN_TYPE_SIMULATION
+from python.framework.types.run_purpose_types import RunPurpose
 from python.framework.utils.run_id_utils import mint_run_id
 
 _START = datetime(2026, 8, 30, 13, 20, 34, tzinfo=timezone.utc)
 
+
+
+def _run_tree(root: Path) -> RunLogPaths:
+    """The two run-type roots under a tmp tree."""
+    return RunLogPaths(simulation=root / 'simulation', autotrader=root / 'autotrader')
 
 def _header(run_id: str, run_type: str = RUN_TYPE_SIMULATION, parent: str = None,
             parent_kind: ParentKind = None) -> RunHeader:
@@ -112,12 +118,8 @@ class TestTheIndexIsDerivedAndRebuildable:
     being lost. If a rebuild did not reproduce it, the index would be a second source of truth.
     """
 
-    @staticmethod
-    def _tree(root: Path) -> RunLogPaths:
-        return RunLogPaths(simulation=root / 'simulation', autotrader=root / 'autotrader')
-
     def test_rebuild_reproduces_what_the_appends_wrote(self, tmp_path):
-        roots = self._tree(tmp_path)
+        roots = _run_tree(tmp_path)
         index = RunIndex(tmp_path / 'index.parquet', roots)
 
         planted = [
@@ -155,7 +157,7 @@ class TestTheIndexIsDerivedAndRebuildable:
 
     def test_a_run_is_addressable_without_walking_the_tree(self, tmp_path):
         """The sweep combination sits one level deeper — the lookup no longer has to know that."""
-        roots = self._tree(tmp_path)
+        roots = _run_tree(tmp_path)
         index = RunIndex(tmp_path / 'index.parquet')
         deep = roots.sweeps / 'sweep_20260830_132030' / 'my_set_c000' / '20260830_132036_cccccccc'
         header = _header('20260830_132036_cccccccc', parent='sweep_20260830_132030')
@@ -165,7 +167,7 @@ class TestTheIndexIsDerivedAndRebuildable:
         assert index.run_dir('20260830_132036_dddddddd') is None
 
     def test_reports_are_marked_when_they_are_written(self, tmp_path):
-        roots = self._tree(tmp_path)
+        roots = _run_tree(tmp_path)
         index = RunIndex(tmp_path / 'index.parquet')
         run_dir = roots.simulation / 'my_set' / '20260830_132034_aaaaaaaa'
         header = _header('20260830_132034_aaaaaaaa')
@@ -249,7 +251,7 @@ class TestTheRunSaysWhichKindItIs:
     """
 
     def test_the_kind_and_the_windows_survive_the_index_and_its_rebuild(self, tmp_path):
-        roots = TestTheIndexIsDerivedAndRebuildable._tree(tmp_path)
+        roots = _run_tree(tmp_path)
         index = RunIndex(tmp_path / 'index.parquet', roots)
         header = _header('20260830_132035_bbbbbbbb', RUN_TYPE_AUTOTRADER).model_copy(update={
             'ticks_from': TicksFrom.VENUE, 'orders_to': OrdersTo.SIMULATED,
@@ -270,3 +272,68 @@ class TestTheRunSaysWhichKindItIs:
 
         row = index.list_runs()[0]
         assert (row.ticks_from, row.orders_to, row.data_windows) == (None, None, None)
+
+
+class TestTheRunSaysWhatItIsFor:
+    """
+    #576: a run records what it is FOR and the contract its reports were written under. A run
+    recorded before the fields takes its configuration's CURRENT declaration where that
+    configuration can still be found — in the index only, never written back into its header.
+    """
+
+    def test_the_purpose_and_the_contract_survive_the_index_and_its_rebuild(self, tmp_path):
+        roots = _run_tree(tmp_path)
+        index = RunIndex(tmp_path / 'index.parquet', roots)
+        header = _header('20260830_132035_bbbbbbbb').model_copy(update={
+            'run_purpose': RunPurpose.FIXTURE, 'report_contract': 24})
+        index.register_run(header, roots.simulation / 'my_set' / header.run_id)
+
+        for rows in (index.list_runs(), (index.rebuild(), index.list_runs())[1]):
+            assert (rows[0].run_purpose, rows[0].report_contract) == (RunPurpose.FIXTURE, 24)
+
+    def test_an_older_run_takes_its_configuration_s_current_declaration(self, tmp_path):
+        roots = _run_tree(tmp_path)
+        older = _header('20260830_132034_aaaaaaaa')
+        run_dir = roots.simulation / 'my_set' / older.run_id
+        write_run_header(older, run_dir)
+        index = RunIndex(tmp_path / 'index.parquet', roots,
+                         declared_purposes=lambda: {'scenario_config.json': RunPurpose.FIXTURE})
+
+        index.rebuild()
+
+        row = index.list_runs()[0]
+        assert (row.run_purpose, row.report_contract) == (RunPurpose.FIXTURE, None), \
+            'the contract has no source to be derived from and stays unknown'
+        assert read_run_header(run_dir / RUN_HEADER_ARTIFACT).run_purpose is None, \
+            'the record was rewritten — the derivation belongs to the index alone'
+
+    def test_an_older_run_whose_configuration_is_gone_reads_as_unknown(self, tmp_path):
+        roots = _run_tree(tmp_path)
+        older = _header('20260830_132034_aaaaaaaa')
+        write_run_header(older, roots.simulation / 'my_set' / older.run_id)
+        index = RunIndex(tmp_path / 'index.parquet', roots, declared_purposes=lambda: {})
+
+        index.rebuild()
+
+        assert index.list_runs()[0].run_purpose is None
+
+    def test_a_header_s_own_purpose_is_never_replaced(self, tmp_path):
+        """The declaration fills a gap; it never overrides what the run recorded at its start."""
+        roots = _run_tree(tmp_path)
+        header = _header('20260830_132034_aaaaaaaa').model_copy(
+            update={'run_purpose': RunPurpose.REGULAR})
+        write_run_header(header, roots.simulation / 'my_set' / header.run_id)
+        index = RunIndex(tmp_path / 'index.parquet', roots,
+                         declared_purposes=lambda: {'scenario_config.json': RunPurpose.FIXTURE})
+
+        index.rebuild()
+
+        assert index.list_runs()[0].run_purpose is RunPurpose.REGULAR
+
+    def test_an_append_without_a_purpose_reads_as_unknown(self, tmp_path):
+        """Only a header built by hand lacks one — every run started since stamps its own."""
+        index = RunIndex(tmp_path / 'index.parquet')
+        index.register_run(_header('20260830_132034_aaaaaaaa'), tmp_path / 'run')
+
+        row = index.list_runs()[0]
+        assert (row.run_purpose, row.report_contract) == (None, None)

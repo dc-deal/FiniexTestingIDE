@@ -122,6 +122,15 @@ set's `global` block, then the scenario. For an AutoTrader profile: `app_config.
 defaults under the profile. The `user_configs/` override is a separate mechanism, not a level.
 See [Config Cascade](config_cascade_guide.md).
 
+**catalog production** — One run of the fixture catalog's `produce` for one entry: the runs it
+made and whether they carried every property the entry asserts. The newest one that passed is the
+entry's *current fixture*. Not a *production* profile, which trades real money. See
+[Fixture Catalog](architecture/fixture_catalog.md).
+
+**certificate run** (`run_purpose: certificate`) — A release-gate run whose record becomes a
+release certificate, such as a real-money *field study*. Never produced again and never deleted.
+Not the certificate itself, which is a file beside the gate's test suite. See *run purpose*.
+
 **client order id** (`client_order_id`) — Our key for an order, sent with it on the wire so the
 venue's answers and its list of open orders can be matched back to us — and to this session, whose
 run id it carries a piece of, beside a counter. Live only; a backtest sends none. Not the *order id*
@@ -135,6 +144,11 @@ position (`full`) or part of it (`partial`). Set once the close fills; empty on 
 
 **compute basis** — When a worker recomputes: `live` on every tick (the forming bar included) or
 `bar_close` only when a bar closes. Not a kind of run. See [Worker Naming](user_guides/worker_naming_doc.md).
+
+**config description** (`config_description`; `description` in the file) — Why a configuration
+exists, in its own words, declared at the top of a scenario set or a profile; Markdown allowed.
+Served on the configuration's directory row. Not the one-sentence description of a validation
+check. See [Directory](consumer/directory.md).
 
 **config snapshot** — The FILE NAME of the configuration a run started from, recorded in its
 header (`config_snapshot`). The full strategy configuration a ledger row carries is a different
@@ -217,6 +231,14 @@ swap on every position, open ones included. They differ by the fees of what is s
 **field study** — The real-money acceptance test of the live execution stack, whose record becomes
 a release certificate. See [Field Study](tests/live_field_study/field_study_guide.md).
 
+**fixture** — Never used alone. *Fixture run* (`run_purpose: fixture`): a run constructed to show
+something — every run a test starts, and every run a consumer pins; its numbers are built, not
+earned. *Test fixture*: the data a test reads from `tests/fixtures/`, or a pytest fixture in a
+`conftest.py`. A consumer's *fixtures* are the answers it captured from this API to test against.
+A *current fixture* is the run a catalog entry's newest verified production made — see
+[Fixture Catalog](architecture/fixture_catalog.md); a *superseded* one (`fixture_superseded: true`)
+was made by an older or a failed production. See *run purpose*.
+
 **fragment** — One ledger file, written per run. Nothing else is called a fragment.
 
 **in flight** — A pending order that was sent and not yet acknowledged: in a backtest the latency
@@ -241,7 +263,9 @@ many periods, such as a deployment's total or a month's drawdown. Sealing one bo
 `ExecutorMode.LIVE`, `live_types/` — it names the live execution stack that every AutoTrader
 session runs, mock sessions included. For the kinds of run say *AutoTrader session*, *live-adapter
 session* or *real-money session*; for the other senses see *compute basis*, *live transport*,
-*stream state*, *data origin* and *live telemetry*.
+*stream state* and *live telemetry*. A signal's `data_origin` is `live` when the producer's output
+was real and `synthetic` when it was generated — not the *data origin* entry, which names the
+class of instance that produced an archived file.
 
 **live-adapter session** — An AutoTrader session on a real venue's adapter: a dry run or a
 real-money session.
@@ -383,6 +407,11 @@ a schema — a later algo version may drop a parameter and the document stays tr
 scenarios, a mock session its window. The producer's *replay window* — envelopes re-sent after a
 reconnect — is a different thing.
 
+**report contract** (`report_contract`) — The API contract version a run's reports were written
+under, stamped at its start. Compared with the contract the server answers with, it tells an old
+run from a wrong one: a figure a later contract added reads `0` or `null` on an older run. See
+[Contract Log](consumer/contract-log.md).
+
 **resolved · unresolved** — Two meanings, told apart by where they stand. On an order event,
 `unresolved` is a request whose answer was lost or named nothing, and `resolved` the asking that
 settled it — the request is in `lost_request`. On a broker answer, `UNRESOLVED` is a transport
@@ -398,6 +427,11 @@ session. See [Batch Data Flow](architecture/batch_data_flow.md).
 `finished_with_errors` (it completed, but errors were logged), `failed` (units failed, or the session
 ended in an emergency) or `crashed` (the process did not complete). The exit code says the same. See
 [Warnings & Errors](architecture/warnings_errors_tiers.md).
+
+**run purpose** (`run_purpose`) — What a run is FOR: `regular`, `fixture` or `certificate`,
+declared at the top of the configuration it started from — absent means `regular`, and a
+configuration the user owns never declares one — and stamped on its header. It never says whether money moved; `orders_to` does. See *fixture*, *certificate run*
+and [Run Kinds](consumer/run-kinds.md).
 
 **report section** (served as a route segment and in a run's `artifacts`) — One part of a run's
 report: `trade-history`, `portfolio`, `booking-periods` and the rest. Which sections a run holds

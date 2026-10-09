@@ -29,8 +29,9 @@ exclusion would have skipped almost the entire population it exists to protect.
 
 import json
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Sequence
 
+from python.framework.config_directory.config_directory_discovery import json_files_under
 from python.framework.exceptions.persistence_errors import (
     BotIdMalformedError,
     BotIdRequiredError,
@@ -127,6 +128,7 @@ def validate_carry_over_identity_unique(
     profile_name: str,
     symbol: str,
     bot_id: str = '',
+    profile_homes: Sequence[Path] = (),
 ) -> None:
     """
     Refuse to start when another profile claims this session's carry-over identity.
@@ -143,11 +145,14 @@ def validate_carry_over_identity_unique(
         symbol: The traded symbol
         bot_id: The identity this profile DECLARES, which takes precedence over the name (#538).
             Empty means it declares none and the key is composed, as before
+        profile_homes: Every configured root a profile may live under (`profile_homes`) — a
+            session whose profile lies in one is compared against all of them. Empty compares
+            only the tree the profile sits in and its sibling, which is what a test tree needs
 
     Returns:
         None — raises CarryOverIdentityCollisionError when the identity is not unique
     """
-    roots = _profiles_roots(config_path)
+    roots = _profiles_roots(config_path, profile_homes)
     if not roots:
         return
 
@@ -170,7 +175,7 @@ def validate_carry_over_identity_unique(
     )
 
 
-def _profiles_roots(config_path: Optional[Path]) -> List[Path]:
+def _profiles_roots(config_path: Optional[Path], profile_homes: Sequence[Path]) -> List[Path]:
     """
     Every profile tree this session must be compared against.
 
@@ -185,36 +190,51 @@ def _profiles_roots(config_path: Optional[Path]) -> List[Path]:
     nothing else), so two files claiming one identity are always two bots sharing one position
     book — whichever directories they sit in.
 
+    And every configured profile home besides (#581). A profile in a user algo directory has no
+    `autotrader_profiles` folder above it, so the walk up found nothing and the check was
+    skipped — for the operator's own bots, the very copies it exists for.
+
     Args:
         config_path: The loaded profile's path, or None
+        profile_homes: The configured roots a profile may live under; may be empty
 
     Returns:
-        The roots to scan, nearest first; empty when the config did not come from a profile tree
-        at all — a fixture in a test tree legitimately does not, and a check that guessed a root
-        there would compare this session against profiles it has nothing to do with
+        The roots to scan, nearest first; empty when the config lies in no profile tree and in no
+        configured home — a fixture in a test tree legitimately does not, and a check that guessed
+        a root there would compare this session against profiles it has nothing to do with
     """
     if config_path is None:
         return []
+    resolved = Path(config_path).resolve()
+    homes = [Path(home).resolve() for home in profile_homes]
     own: Optional[Path] = None
-    for parent in Path(config_path).resolve().parents:
+    for parent in resolved.parents:
         if parent.name == PROFILES_ROOT_NAME:
             own = parent
             break
-    if own is None:
+    in_a_home = any(resolved.is_relative_to(home) for home in homes)
+    if own is None and not in_a_home:
         return []
 
-    roots = [own]
-    # The pair is the project's config cascade, named here the way §29 names the credential
-    # one: most specific first. The sibling is found by swapping the directory the root sits
-    # in, never by guessing a path from the working directory — a session started from a
-    # temporary tree must not suddenly be compared against the repository's profiles.
-    container = own.parent
-    for a, b in ((_WORKSPACE_CONFIG_DIR, _TRACKED_CONFIG_DIR),
-                 (_TRACKED_CONFIG_DIR, _WORKSPACE_CONFIG_DIR)):
-        if container.name == a:
-            sibling = container.parent / b / PROFILES_ROOT_NAME
-            if sibling.is_dir():
-                roots.append(sibling)
+    roots: List[Path] = []
+    if own is not None:
+        roots.append(own)
+        # The pair is the project's config cascade, named here the way §29 names the credential
+        # one: most specific first. The sibling is found by swapping the directory the root sits
+        # in, never by guessing a path from the working directory — a session started from a
+        # temporary tree must not suddenly be compared against the repository's profiles.
+        container = own.parent
+        for a, b in ((_WORKSPACE_CONFIG_DIR, _TRACKED_CONFIG_DIR),
+                     (_TRACKED_CONFIG_DIR, _WORKSPACE_CONFIG_DIR)):
+            if container.name == a:
+                sibling = container.parent / b / PROFILES_ROOT_NAME
+                if sibling.is_dir():
+                    roots.append(sibling)
+    # The configured homes join only for a profile that lies in one of them — for the same
+    # reason: a temporary tree's copy of a shipped profile would otherwise collide with its own
+    # original.
+    if in_a_home:
+        roots += [home for home in homes if home.is_dir() and home not in roots]
     return roots
 
 
@@ -236,7 +256,9 @@ def _live_identities(roots: List[Path]) -> Dict[Path, str]:
     """
     identities: Dict[Path, str] = {}
     for root in roots:
-        for path in sorted(root.rglob('*.json')):
+        # The directory's own walk, which never enters a `.git`: a user algo directory is
+        # usually a repository, and walking its objects cost ~1 s on this tree (2026-10-09).
+        for path in json_files_under(root):
             raw = _read_profile(path)
             if raw is None:
                 continue

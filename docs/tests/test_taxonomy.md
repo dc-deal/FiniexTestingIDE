@@ -99,6 +99,7 @@ tests/
 │   │                      AutoTrader loader field coverage (every block field reachable from JSON)
 │   ├── connection_ladder/ unit — shared retry decision for every external connection: classification, backoff, jitter, budget, give-up (#473)
 │   ├── config_directory/  unit — every configuration that can start a run: what a file declares, unreadable files as rows, precedence, the per-file cache, run figures from the run index, and the console views over it (#554)
+│   ├── fixture_catalog/   unit + one real production — the runs a consumer pins: the catalog's completeness, the production record and the current fixture, a session sequence's profiles, the report-coverage run carrying every asserted property (#576)
 │   ├── indicators/        unit — the shared indicator library: what each name means (Wilder vs EMA vs simple), the scalar/series parity, and the warmup each recursive average needs (#517)
 │   ├── worker_tests/      unit — worker computation, parameter schema, factory
 │   ├── signal_workers/    unit — SIGNAL worker type, provider, llm_sentiment, hybrid decision (#141), outage contract + episode capture (#434/#451)

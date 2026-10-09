@@ -60,8 +60,18 @@ strategy settings:
 | `symbols` | the distinct symbols of the enabled scenarios |
 | `data_broker_types` · `market_types` | the brokers whose archives those scenarios read, and what those brokers are |
 | `decision_logics` · `workers` | the distinct strategy components they resolve to |
+| `run_purpose` | what runs started from the file are FOR — `regular`, `fixture` or `certificate` |
+| `config_description` | why the configuration exists, in its own words — Markdown allowed |
 
 A profile is one unit: both of its scenario counts read 1.
+
+`run_purpose` is `regular` when the file declares nothing, and null when the file could not be
+read. A file that misspells it is `unreadable`, with the allowed values in `reason` — the same
+refusal a run started from it would meet — and so is a file whose `origin` is not `configs` that
+declares one at all: the user's own files always run as `regular`. What each value means is in
+[run kinds](/api/v1/docs/run-kinds). `config_description` is null when the file has none; it is
+written by whoever maintains the file, so render it as Markdown and treat it as prose, not as a
+field to parse.
 
 `data_broker_types` is the broker whose **archive** is read, which for a profile is the broker its
 scenario settings name, or its own broker where they name none. It has been called this since
@@ -129,7 +139,9 @@ A name no file goes by is `404 config_file_not_found` — see [errors](/api/v1/d
 On these rows an absent **string** is empty rather than null: `name`, `reason`, `folder`,
 `bot_id`, `adapter_type`, `last_run_at` and `last_run_id` all read `""` when there is nothing to
 say, and a scenario's `end` reads `""` where its window is open. Treat those the way
-[nulls](/api/v1/docs/nulls) says to treat a null — as absence, not as a value.
+[nulls](/api/v1/docs/nulls) says to treat a null — as absence, not as a value. The newer
+`config_description` is the exception: it is null when the file has none, the spelling of absence
+every field moves to.
 
 The two fields that are genuinely three-state, and must not be collapsed into two, are
 `dry_run_declared` and `last_run_figures`.

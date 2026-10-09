@@ -23,9 +23,11 @@ from python.framework.types.api.directory_types import DirectoryRow, DirectorySc
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
 from python.framework.types.config_directory_types import (
     ConfigKind,
+    ConfigOrigin,
     ConfigReadStatus,
     DiscoveredConfigFile,
 )
+from python.framework.utils.declared_purpose_utils import read_declared_purpose
 from python.scenario.scenario_cascade import ScenarioCascade
 
 # The key that makes a JSON file a scenario set — the one the scenario-set finder always used.
@@ -85,13 +87,16 @@ def read_config_file(candidate: DiscoveredConfigFile, market_type_of: MarketType
         data = _load(candidate.path)
         if not isinstance(data, dict):
             return DirectoryRow(status=ConfigReadStatus.NOT_A_CONFIG, **base)
+        user_owned = candidate.origin is not ConfigOrigin.CONFIGS
         if SCENARIO_SET_MARKER in data:
             return DirectoryRow(status=ConfigReadStatus.READABLE, kind=ConfigKind.SCENARIO_SET,
-                                **base, **_scenario_set_fields(data, market_type_of))
+                                **base, **_scenario_set_fields(data, market_type_of),
+                                **_declared_fields(data, candidate.path.name, user_owned))
         if PROFILE_MARKERS <= data.keys():
             return DirectoryRow(status=ConfigReadStatus.READABLE,
                                 kind=ConfigKind.AUTOTRADER_PROFILE,
-                                **base, **_profile_fields(data, market_type_of))
+                                **base, **_profile_fields(data, market_type_of),
+                                **_declared_fields(data, candidate.path.name, user_owned))
         return DirectoryRow(status=ConfigReadStatus.NOT_A_CONFIG, **base)
     except ConfigFileUnreadable as error:
         return DirectoryRow(status=ConfigReadStatus.UNREADABLE, reason=str(error), **base)
@@ -223,6 +228,27 @@ def _profile_fields(data: Dict[str, Any], market_type_of: MarketTypeOf) -> Dict[
         adapter_type=_text(data.get('adapter_type')) or _DEFAULT_ADAPTER_TYPE,
         dry_run_declared=dry_run if isinstance(dry_run, bool) else None,
     )
+
+
+def _declared_fields(data: Dict[str, Any], file_name: str, user_owned: bool) -> Dict[str, Any]:
+    """
+    What a file declares about itself (#576), for either kind — read by the loaders' own reader.
+
+    Args:
+        data: The parsed file
+        file_name: Its name, carried into the reason of a refusal
+        user_owned: Whether it lies outside `configs/`, where no purpose may be declared
+
+    Returns:
+        The row's `run_purpose` and `config_description`
+    """
+    try:
+        run_purpose = read_declared_purpose(data, file_name, user_owned)
+    except ValueError as error:
+        # The same refusal a run would meet at its start; here it makes the row unreadable,
+        # exactly like a marker with the wrong shape.
+        raise ConfigFileUnreadable(str(error)) from None
+    return dict(run_purpose=run_purpose, config_description=data.get('description'))
 
 
 def _scenario_parts(data: Dict[str, Any]) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:

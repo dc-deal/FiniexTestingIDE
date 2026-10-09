@@ -85,6 +85,24 @@ which ones a run has ([Reporting Pipeline](architecture/reporting_pipeline.md)).
 booked into the ledger, one row per booking period and currency
 ([Accounting Periods](architecture/accounting_periods.md)).
 
+The header answers the main questions about a run, each with a field of its own, so no reader has
+to infer one from another:
+
+| Question | Field |
+|---|---|
+| Which pipeline ran it? | `run_type` — `simulation` or `autotrader` |
+| Which kind of run is it? | `ticks_from` · `orders_to` — the table above |
+| Does it stand alone? | `parent_kind` · `parent_id` — the sweep or the deployment it belongs to |
+| Who started it, and where? | `origin` — channel, client, person, host |
+| Which configuration did it run? | `config_snapshot` · `config_id` |
+| What is it FOR? | `run_purpose` — `regular`; `fixture`, a run constructed to show something (every run a test starts, every run a consumer pins); `certificate`, a release-gate run |
+| Why does its configuration exist? | the configuration's own `description` |
+
+`run_purpose` and `description` are declared at the top of a scenario set or a profile; a
+configuration that says nothing is `regular`. Every configuration a test runs declares `fixture`,
+and the test session refuses a run whose configuration does not. Your own configurations, in
+`user_algos/`, never declare one: their runs are always `regular`.
+
 Where each of these lives, and which stores can be rebuilt, is the
 [Data Storage Layout](architecture/data_storage_layout.md).
 

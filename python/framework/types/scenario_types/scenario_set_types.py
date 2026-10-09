@@ -12,6 +12,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from python.framework.types.run_purpose_types import RunPurpose
 from python.framework.types.trading_env_types.broker_types import BrokerType
 from python.framework.types.config_types.robustness_config_types import (
     RobustnessConfig,
@@ -175,6 +176,8 @@ class LoadedScenarioConfig:
     # else sees them, so this count is the only trace they leave — without it a run's summary
     # cannot say how many it DECLARED, and the console's "(N disabled)" never fired.
     disabled_count: int = 0
+    # What the set's runs are FOR (#576) — the top-level `run_purpose`, absent meaning REGULAR.
+    run_purpose: RunPurpose = RunPurpose.REGULAR
 
 
 @dataclass

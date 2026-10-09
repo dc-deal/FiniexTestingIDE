@@ -67,6 +67,7 @@ class StoreId(StrEnum):
     RUN_CONFIGS = 'run_configs'
     RUN_PATCHES = 'run_patches'
     RUN_LEDGER = 'run_ledger'
+    FIXTURE_PRODUCTIONS = 'fixture_productions'
     CERTIFICATES = 'certificates'
     SESSION_STATE = 'session_state'
     COLD_START_STATE = 'cold_start_state'

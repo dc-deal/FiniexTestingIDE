@@ -1,6 +1,7 @@
 {
   "version": "1.0",
   "scenario_set_name": "sltp_limit_validation_test",
+  "run_purpose": "fixture",
   "created": "2026-02-19T00:00:00.000000",
   "description": "SL/TP Trigger, Limit Order Fill & Modify Validation — Tests stop loss, take profit triggers, limit order fills, maker fees, and order modifications",
   "global": {

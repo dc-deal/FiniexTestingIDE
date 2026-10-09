@@ -1,5 +1,6 @@
 {
   "profile_name": "mock_session_test",
+  "run_purpose": "fixture",
   "bot_id": "mocksess01",
   "symbol": "BTCUSD",
   "broker_type": "kraken_spot",

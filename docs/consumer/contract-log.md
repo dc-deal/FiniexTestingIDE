@@ -33,6 +33,44 @@ reads downwards from the version their fixtures hold until they reach the one be
 A test holds the newest heading in this log to the number the server answers with, so a version
 cannot ship without its entry.
 
+## Version 25 — 2026-10-08 (#576)
+
+The runs a consumer pins are now entries of a fixture catalog on this side — produced and checked
+by one command — and the run list says which of them is current.
+
+- The run list: every run carries `fixture_superseded`. `false` — the run was made by its catalog
+  entry's CURRENT catalog production, so it is the one to pin. `true` — an older catalog production
+  made it, or one that failed its check. A replaced run that passed its check stays until this side
+  releases it, so a pin on it keeps working until you move it. `null` — no catalog production made
+  this run, which is every ordinary run and every test run. Derived each time the list is served;
+  nothing in the run changes.
+
+An addition; no existing field changed.
+
+## Version 24 — 2026-10-08 (#576)
+
+Every run says what it is FOR, and under which contract its reports were written.
+
+- The run list: every run carries `run_purpose` — `regular`, `fixture` or `certificate`. A
+  `fixture` run was constructed to show something: every run a test starts, and every run a
+  consumer pins — its numbers are built, not earned. A `certificate` run is a release-gate run
+  whose record becomes a certificate. It is what the run's configuration declares, stamped at the
+  start. For a run recorded before this, the value is filled in when the run index is rebuilt, from
+  the CURRENT declaration of its configuration where that configuration can still be read; `null`
+  before that rebuild and where none is found.
+- The run list: every run carries `report_contract`, the contract its reports were written under.
+  A run older than a contract that added a figure serves that figure as `0` or `null` — compare
+  this number with `/api/v1/contract` to tell an old run from a wrong one. `null` on a run recorded
+  before this.
+- The configuration directory: every row carries `run_purpose` — `regular` when the file declares
+  nothing, `null` when the file could not be read — and `config_description`, the file's
+  `description`, Markdown allowed, `null` when it has none. A `run_purpose` the file misspells, any
+  `run_purpose` in a file whose `origin` is not `configs` — the user's own files always run as
+  `regular` — or a `description` that is not text makes its row `unreadable`, with the reason in
+  `reason`.
+
+All three are additions; no existing field changed.
+
 ## Version 23 — 2026-10-07 (#362)
 
 Every step of an order's life is recorded, and the order counts, the order history and the
@@ -144,63 +182,17 @@ type on every unit it counts — so its counters are null now; a unit with one i
 keeps its figures. The logic name of an old untracked unit stays null, because only a new run
 stamps it.
 
-## Version 20 — 2026-10-02 (viewer#21, #557)
-
-
-A refused order now says what was refused, and the order history says "absent" as null.
-
-- `GET /api/v1/reports/runs/{run_id}/order-history`: a rejected row states its side (`action`), its
-  `symbol`, its `direction` and its `requested_lots`, and when it was refused. Every rejection used
-  to leave them empty, so `?symbol=` dropped all of them without a word — 12 rows with 2 rejections
-  unfiltered, 10 rows and none with the filter. A rejection can be on either side: a partial close
-  below the symbol's minimum is refused on the close side. Runs recorded before this contract carry
-  the symbol and the side, taken from their own records; their direction, size and time stay null,
-  because the records never had them.
-- `order-history`: `execution_time` is renamed `event_time`. On these rows it is a point in time —
-  when the row's event happened, on the run's clock: the fill, the refusal, the expiry; null on a
-  `pending` row. Every other `execution_time` in the API is how long something ran.
-- `order-history`: a value that does not exist is null, never an empty string or `0.0` —
-  `position_id`, `direction`, `action`, `requested_lots`, `executed_lots`, `executed_price`,
-  `event_time`, `rejection_reason`, `rejection_message`. A zero price reads as a price. `direction`,
-  `action`, `status` and `rejection_reason` are enums, so the schema lists their values; the values
-  themselves are unchanged.
-- `order-history`: an expired row states its direction and its requested lots, and the expiry of a
-  close-side order — a protective stop — says `close`; it said `open` for every expiry.
-- `GET /api/v1/reports/runs/{run_id}/pending-orders`: an active order's `order_type` (`limit`,
-  `stop`, `stop_limit`) and `direction` are enums. The two active-order lists hold the orders still
-  resting when the unit's data ended; in a backtest the same orders are recorded `expired` in
-  `order-history` in that same step, so they are not open. A STOP or STOP_LIMIT whose trigger was not
-  reached sits in the stop list; a STOP_LIMIT whose stop triggered becomes a limit order.
-
-Every stored run was carried over to this shape, so an old run answers like a new one.
-
-## Version 19 — 2026-10-01 (#547, viewer#21)
-
-
-A session now records the broker configuration it traded with, and one more list says what keys
-its rows.
-
-- `GET /api/v1/reports/runs/{run_id}/broker`: every unit carries `broker_config_id` beside
-  `config_hash`. It is the run-config store id of the broker configuration an AutoTrader session
-  froze at its start — the symbol specifications from the venue's cache, the seed's fee structure
-  and the fee tier the venue reported — which `config_hash` only digests in eight characters. A
-  later backtest of the same window reads that frozen copy instead of whatever the cache holds by
-  then. Empty for a simulation unit, which reads the archive's broker files when it runs, and on a
-  session recorded before the freeze existed.
-- `GET /api/v1/reports/runs/{run_id}/pending-orders` declares `key: ["name"]` for `units` — the
-  unit name, which a scenario set cannot repeat (it is refused at validation) and an AutoTrader
-  session has once. The nested `active_limit_orders` / `active_stop_orders` lists and
-  `order-history` declare no key yet; both come with #557. Old runs serve the key too: the
-  default fills in on read, nothing to re-fetch.
-
-Both are additions with a default; no existing field changed.
-
-## Versions 18 and earlier
+## Versions 20 and earlier
 
 One line each. Every one of these moved a shape or a meaning; what they moved is summarised here
 rather than spelled out, because a consumer this far behind needs the list of steps, not each step's
 reasoning. The full text of a compressed version is in this repository's history.
 
+- **Version 20** — 2026-10-02 (viewer#21, #557): A refused order says what was refused — its side,
+  symbol, direction and size — `execution_time` became `event_time`, and the order history says
+  "absent" as null and its closed values as enums.
+- **Version 19** — 2026-10-01 (#547, viewer#21): A session records the broker configuration it
+  traded with (`broker_config_id` on `broker`), and the pending-orders unit list declares its key.
 - **Version 18** — 2026-09-29 (viewer#21, #557): The figures an aggregate inventory found wrong were
   corrected: `total_fees` is the closed trades' fees beside a new `fees_charged`, a trade that
   realised nothing is neither a winner nor a loser, streaks and the drawdown trio are one account's,

@@ -241,7 +241,7 @@ hidden.
 | | |
 |---|---|
 | **VS Code** | `📈 Run Index: Prune (preview)` |
-| **CLI** | `python run_index_cli.py prune [--orphans] [--keep-last N] [--older-than AGE] [--apply]` |
+| **CLI** | `python run_index_cli.py prune [--orphans] [--keep-last N] [--older-than AGE] [--release-fixtures] [--apply]` |
 | **Purpose** | Remove what the run tree no longer needs — after showing exactly what that is |
 
 **The preview is the default and it IS the product.** Without `--apply` nothing is touched. A run
@@ -258,17 +258,30 @@ deletes without ceremony because a cache is rebuildable — this is not that.
   DELETE     12 · sweep directories left without a single combination   17.8 MB
   KEEP       35 · reporting=expected, no artifacts — crashed or still running
   KEEP        2 · hold field_study.jsonl (evidence behind a release gate)
-  KEEP       34 · complete
+  KEEP        2 · catalog fixtures a consumer may pin — --release-fixtures lets them go
+  KEEP       32 · complete
   SKIP       17 · sweep directories — not runs, deliberately header-less
 
   The run-results ledger KEEPS its rows: 430 fragment(s) remain, including those of the runs above.
 ```
 
-**Two things it will never delete, whatever flags are given:**
+**What it will never delete, whatever flags are given:**
 
 - a run with `reporting=expected` and **no artifacts** — it crashed before reporting or is still
   going. A crashed run is the only record of that failure and the most valuable directory there is
 - a run holding `field_study.jsonl` — the raw evidence behind a real-money release certificate
+- a run whose own header says `run_purpose: certificate` — asked of the header on disk, never of
+  the index, whose purpose of an older run is derived from today's configuration
+
+- a directory holding a run header that the index does not list — a run, not an orphan; a lost
+  index row is repaired by a rebuild, never by deleting the run
+- a run whose header exists and cannot be read — no guard can clear it
+
+**What it keeps until told otherwise:** every run of a fixture catalog production that passed its
+check — the current one, and a superseded one a consumer may still pin until they have moved to the
+new ids ([Fixture Catalog](architecture/fixture_catalog.md)). The selectors reach them only with
+`--release-fixtures`; give it once the consumer has re-pinned. A production that failed its check
+protects nothing.
 
 **The selectors** (`--keep-last`, `--older-than` and `--orphans` are opt-in; the last one is
 always on):
@@ -278,6 +291,7 @@ always on):
 | `--keep-last N` | per scenario set / AutoTrader profile, all but the N newest complete runs. **A sweep is the unit, not the combination** — the N newest sweeps survive WHOLE, the rest go WHOLE, because a half-pruned sweep leaves a `ranked.csv` ranking runs that no longer exist |
 | `--older-than AGE` | runs that started longer ago than `AGE`, written as whole days or hours (`30d`, `12h`). The age comes from the run header's own start time; a run that records none is KEPT and reported separately, because an age nobody can measure is not a reason to delete |
 | `--orphans` | directories that are not runs: no header, not in the index. Never sweep directories (correctly header-less) and never a run's own `io/`, `scenario_logs/`, … |
+| `--release-fixtures` | nothing by itself — it lets the selectors above reach the runs of the fixture catalog's productions, current and superseded |
 | *(always on)* | `reporting=none` with no artifacts — commissioned to produce nothing, and it did not |
 
 **`--keep-last` and `--older-than` compose as KEEP rules, not as delete rules.** "Keep the

@@ -1,6 +1,7 @@
 {
     "version": "1.0",
     "scenario_set_name": "sentiment_smoke_test",
+    "run_purpose": "fixture",
     "created": "2026-04-27T00:00:00.000000",
     "description": "SIGNAL worker smoke — drives the hybrid_sentiment_reference decision (RSI + CORE/llm_sentiment) over BTCUSD ticks with a pre-collected sentiment week, validating the end-to-end SIGNAL data path (load → provider injection → decision fusion). Didactic, not a profit claim.",
     "global": {

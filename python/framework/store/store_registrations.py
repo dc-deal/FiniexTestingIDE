@@ -19,6 +19,7 @@ from python.configuration.import_config_manager import ImportConfigManager
 from python.data_management.index.bars_index_manager import BarsIndexManager
 from python.data_management.index.signal_index_manager import SignalIndexManager
 from python.data_management.index.tick_index_manager import TickIndexManager
+from python.framework.config_directory.config_directory import declared_run_purposes
 from python.framework.config_directory.config_directory_index import (
     CONFIG_DIRECTORY_INDEX_FILE,
     ConfigDirectoryIndex,
@@ -27,6 +28,7 @@ from python.framework.discoveries.discovery_cache_index import (
     DISCOVERY_INDEX_FILE,
     DiscoveryCacheIndex,
 )
+from python.framework.fixture_catalog.fixture_production_store import PRODUCTION_RECORD_FILE
 from python.framework.persistence.cold_start_state_index import (
     COLD_START_INDEX_FILE,
     ColdStartStateIndex,
@@ -102,7 +104,8 @@ def build_registrations() -> Dict[StoreId, StoreDescriptor]:
             backend=StoreBackend.DISK,
             entry_glob='**/header.json',
             index_path=Path(file_logging.run_index),
-            index_factory=lambda: RunIndex(file_logging.run_index, file_logging.run_logs),
+            index_factory=lambda: RunIndex(file_logging.run_index, file_logging.run_logs,
+                                           declared_purposes=declared_run_purposes),
         ),
         StoreId.RUN_CONFIGS: StoreDescriptor(
             store_id=StoreId.RUN_CONFIGS,
@@ -174,6 +177,21 @@ def build_registrations() -> Dict[StoreId, StoreDescriptor]:
             index_path=ledger_root / LEDGER_INDEX_FILE,
             index_factory=lambda: RunLedgerIndex(ledger_root, LEDGER_COLUMNS),
             self_healing=True,
+        ),
+        StoreId.FIXTURE_PRODUCTIONS: StoreDescriptor(
+            store_id=StoreId.FIXTURE_PRODUCTIONS,
+            kind=StoreKind.RECORD,
+            purpose='which runs each fixture-catalog production made',
+            doc='docs/architecture/fixture_catalog.md#the-production-record',
+            root=runs_root / PRODUCTION_RECORD_FILE,
+            key='entry_id + produced_at — one line per production',
+            form=RetrievalForm.SET,
+            backend=StoreBackend.DISK,
+            note=('One append-only JSONL file at the root of the run tree (#576): read whole, a '
+                  'handful of lines per catalog entry, so it needs no index; beside the run index '
+                  'because it describes runs in that tree and dies with it. The CURRENT fixture of '
+                  'an entry is derived from it — the newest verified production — and is never '
+                  'written into a run.'),
         ),
         StoreId.CERTIFICATES: StoreDescriptor(
             store_id=StoreId.CERTIFICATES,

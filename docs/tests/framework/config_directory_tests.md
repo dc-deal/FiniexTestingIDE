@@ -26,6 +26,10 @@ real one reads (`_Roots`), so nothing here reads the operator's files.
 | `test_a_profile_is_one_unit_with_its_live_facts` | bot id, adapter, declared `dry_run`; no adapter means the loader's default `mock`, no `dry_run` means the broker decides; the `configs/` sub-folder is recorded |
 | `test_a_mock_profile_names_the_broker_whose_archive_it_replays` | a profile's `data_broker_types` follows `scenario_settings.data_broker_type` where declared, else its `broker_type` — the rule `AutoTraderConfig.get_data_broker_type` applies to the loaded config |
 | `test_a_broker_the_market_config_does_not_know_is_unknown_not_a_crash` | market type `unknown` |
+| `test_a_file_says_what_its_runs_are_for_and_why_it_exists` | #576: a set and a profile serve their `run_purpose` and `config_description`; a file that declares nothing is `regular` |
+| `test_a_purpose_declared_in_a_users_own_file_is_an_unreadable_row` | a file in a user algo directory always runs as `regular`: declaring any purpose there makes its row `unreadable`, and the reason says so |
+| `test_an_unknown_purpose_is_an_unreadable_row` | a misspelt `run_purpose` makes the row unreadable, with the allowed values in `reason` — the refusal a run would meet |
+| `test_the_declared_purposes_name_only_readable_files` | what a run-index rebuild hands its older headers: readable files only |
 
 ### `TestAFileBeingEditedIsARowNotAnError`
 

@@ -1,6 +1,7 @@
 {
     "version": "1.0",
     "scenario_set_name": "signal_resolution_cases",
+    "run_purpose": "fixture",
     "created": "2026-08-16T00:00:00.000000",
     "description": "Signal resolution counters (#433 Part C): six deterministic cases on the gap-free synthetic sentiment archive, every anomaly carved by the stress module (stale_data_stress) so the expectation is exact. Covers the two things the archive-side coverage report cannot answer — a gap SHORTER than max_staleness costs zero stale ticks, and a threshold TIGHTER than the producer cadence turns half the run stale without touching the data.",
     "global": {

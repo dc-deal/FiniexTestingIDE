@@ -83,12 +83,15 @@ The profile 'DOTUSD Live Bot' declares no `bot_id`.
 A refusal rather than a warning, because a warning on a thirty-day unattended run is a warning
 nobody is there to read.
 
-**Uniqueness is checked at boot across BOTH profile trees** — the tracked one under `configs/`
-and the workspace one under `user_configs/` — not only within a folder and not only within the
-tree the session was started from. The reason is the route an operator actually takes: copying a
-profile and forgetting to change its `bot_id`. A private copy of a shipped profile lands in
-`user_configs/`, which is across the boundary a single-tree check never crossed, so the one check
-that could catch a copy was blind to exactly the copy that matters.
+**Uniqueness is checked at boot across EVERY place a profile may live** — the tracked tree under
+`configs/`, the workspace one under `user_configs/` and each user algo directory — not only within
+a folder and not only within the tree the session was started from. The reason is the route an
+operator actually takes: copying a profile and forgetting to change its `bot_id`. A private copy of
+a shipped profile lands outside the shipped tree, across the boundary a single-tree check never
+crossed, so the one check that could catch a copy was blind to exactly the copy that matters. A
+profile in a user algo directory was skipped entirely until #581, because no `autotrader_profiles`
+folder sits above it. A profile started from anywhere else — a test's temporary tree — is compared
+only with its own tree.
 
 They are separate BOTS, not a cascade. An AutoTrader profile does not merge with a same-named file
 the way `app_config.json` does — `deep_merge` puts the app defaults UNDER one profile and nothing
@@ -149,6 +152,8 @@ Sections not listed here (`execution`, `clipping_monitor`, `order_guard`) inheri
 |---------|---------|-------|
 | `profile_name` | Profile name | **Required.** Used for the run directory (`runs/autotrader/<profile_name>/`) and as the unit name in every report |
 | `bot_id` | Carry-over identity | **Mandatory** — see [`bot_id`](#bot_id--the-identity-a-bots-state-is-filed-under) above |
+| `run_purpose` | What the sessions are FOR (#576) | `regular` (default when omitted), `fixture` or `certificate`. Every profile in `mock/` declares `fixture` — the test session refuses a run whose profile does not; the `field_study/` profiles declare `certificate`. A profile of your own — in a user algo directory or in `user_configs/` — declares none: it always runs as `regular`, and a declaration there is refused. Stamped on the run header; see [Run Kinds](../consumer/run-kinds.md) |
+| `description` | Why the profile exists | Optional text, Markdown allowed; served by the configuration directory as `config_description` |
 | `symbol` | Trading pair | Single symbol per session |
 | `broker_type` | Broker identifier | Maps to MarketType via `market_config.json`; broker connection settings read from there too |
 | `adapter_type` | `mock` or `live` | Selects only the adapter; the tick source is `tick_source.type`. Mock: no credentials needed |
@@ -245,7 +250,9 @@ One wide hash would answer neither. A raised stop level must not read as a diffe
 would put an otherwise comparable run beyond comparison; and a changed RSI threshold must not pass
 as mere operation. Both are computed from the LOADED config, so a value the loader resolved is
 fingerprinted as resolved; `config_path`, `profile_name` and `symbol` are excluded, because where a
-profile sits on disk is not a property of the run.
+profile sits on disk is not a property of the run. So is `run_purpose`: what a session is FOR
+says nothing about how it trades. A profile's `description` never reaches the loaded configuration
+at all, so a reworded one cannot mark a session as an operation change.
 
 **Three identity columns sit beside them on the ledger row, and they answer different
 questions.** `scenario_set_name` is what the profile is CALLED and an operator improves that;

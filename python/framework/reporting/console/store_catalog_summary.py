@@ -26,7 +26,7 @@ def render_store_catalog(rows: List[StoreStatus], findings: List[ValidationFindi
         findings: The store health advisories
         with_sizes: Whether the rows carry measured sizes and the size column is shown
     """
-    header = (f'  {"KIND":<11} {"STORE":<18} {"ROOT":<38} {"INDEX":<31} '
+    header = (f'  {"KIND":<11} {"STORE":<20} {"ROOT":<38} {"INDEX":<31} '
               f'{"ENTRIES":>8}' + (f' {"SIZE":>10}' if with_sizes else '')
               + f'  {"PURPOSE":<{PURPOSE_MAX_LENGTH}}')
     print('\n' + '=' * len(header))
@@ -41,10 +41,10 @@ def render_store_catalog(rows: List[StoreStatus], findings: List[ValidationFindi
     # promises the key and does not show it is a false map.
     print('\n  How ONE entry is addressed:')
     for row in rows:
-        print(f'      {row.store_id.value:<18} {row.key}')
+        print(f'      {row.store_id.value:<20} {row.key}')
     print('\n  Where each store is explained:')
     for row in rows:
-        print(f'      {row.store_id.value:<18} {row.doc}')
+        print(f'      {row.store_id.value:<20} {row.doc}')
     _render_staleness(rows)
     _render_findings(findings)
     _render_notes(rows)
@@ -59,7 +59,7 @@ def render_store_rebuilt(store_id: StoreId, count: int) -> None:
         store_id: The store whose index was rebuilt
         count: How many entries it now holds
     """
-    print(f'  ✅ {store_id.value:<18} {count} entr(y/ies) indexed')
+    print(f'  ✅ {store_id.value:<20} {count} entr(y/ies) indexed')
 
 
 def render_store_rebuild_skipped(store_id: StoreId, loses: str) -> None:
@@ -70,7 +70,7 @@ def render_store_rebuild_skipped(store_id: StoreId, loses: str) -> None:
         store_id: The store left out
         loses: What its rebuild cannot restore
     """
-    print(f'  ↷  {store_id.value:<18} skipped — a rebuild loses {loses}. Rebuild it alone with '
+    print(f'  ↷  {store_id.value:<20} skipped — a rebuild loses {loses}. Rebuild it alone with '
           f'--accept-loss if that is intended')
 
 
@@ -99,17 +99,17 @@ def _render_staleness(rows: List[StoreStatus]) -> None:
         print('\n  ⚠️  Stale index — rebuild before trusting it '
               '(`store_cli.py rebuild <store>`)')
         for row in stale:
-            print(f'      {row.store_id.value:<18} {row.stale_reason}')
+            print(f'      {row.store_id.value:<20} {row.stale_reason}')
     if lossy:
         print('\n  ⚠️  Stale index whose rebuild LOSES information — repair it rather than '
               'rebuilding it')
         for row in lossy:
-            print(f'      {row.store_id.value:<18} {row.stale_reason}. A rebuild loses '
+            print(f'      {row.store_id.value:<20} {row.stale_reason}. A rebuild loses '
                   f'{row.rebuild_loses}')
     if healing:
         print('\n  ↻  Behind, but the store refreshes it on its next read — nothing to do')
         for row in healing:
-            print(f'      {row.store_id.value:<18} {row.stale_reason}')
+            print(f'      {row.store_id.value:<20} {row.stale_reason}')
 
 
 def _render_findings(findings: List[ValidationFinding]) -> None:
@@ -140,7 +140,7 @@ def _render_notes(rows: List[StoreStatus]) -> None:
         return
     print('\n  Notes')
     for row in noted:
-        print(f'    {row.store_id.value:<18} {row.note}')
+        print(f'    {row.store_id.value:<20} {row.note}')
 
 
 def _format_row(row: StoreStatus, with_sizes: bool) -> str:
@@ -159,7 +159,7 @@ def _format_row(row: StoreStatus, with_sizes: bool) -> str:
         index = f'{index}  {"↻ refreshes on read" if row.self_healing else "⚠ stale"}'
     entries = '—' if row.entries is None else str(row.entries)
     root = row.root if row.exists else f'{row.root} (absent)'
-    line = (f'  {row.kind.value:<11} {row.store_id.value:<18} {root:<38} '
+    line = (f'  {row.kind.value:<11} {row.store_id.value:<20} {root:<38} '
             f'{index:<31} {entries:>8}')
     if with_sizes:
         line += f' {_human_size(row.size_bytes):>10}'

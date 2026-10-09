@@ -15,6 +15,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+from python.configuration.app_config_manager import AppConfigManager
 from python.configuration.market_config_manager import MarketConfigManager
 from python.framework.autotrader.autotrader_data_preparer import prepare_mock_session_data
 from python.framework.autotrader.autotrader_startup import (
@@ -40,6 +41,7 @@ from python.framework.autotrader.reporting.autotrader_report_coordinator import 
 from python.framework.autotrader.risk_baseline_tracker import RiskBaselineTracker
 from python.framework.autotrader.tick_sources.abstract_tick_source import AbstractTickSource
 from python.framework.autotrader.tick_sources.tick_source_setup import setup_tick_source
+from python.framework.config_directory.config_directory_discovery import profile_homes
 from python.framework.stress_test.stale_data_stress_driver import StaleDataStressDriver
 from python.framework.bars.bar_rendering_controller import BarRenderingController
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
@@ -624,7 +626,8 @@ class AutotraderMain:
             self._config.config_path,
             self._config.get_unit_name(),
             self._config.symbol,
-            self._config.bot_id)
+            self._config.bot_id,
+            profile_homes=profile_homes(AppConfigManager()))
 
         # === UNCOMMITTED CODE (#551) ===
         # Real orders must run code a commit describes: the parity backtest afterwards compares

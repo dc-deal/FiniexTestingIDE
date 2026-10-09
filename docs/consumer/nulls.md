@@ -68,6 +68,12 @@ separating. A run that stands alone has no parent, so there is nothing to name. 
 before the field existed **may** have a parent whose kind is simply unknown. If you need the
 distinction, `parent_id` tells you which you have: an id with no kind is the second case.
 
+`run_purpose` is the one exception to "always will": for a run recorded before it, the value is
+filled in when the run index is rebuilt, from the current declaration of its configuration, looked
+up by the configuration's file name — and null before that rebuild and where the configuration can
+no longer be read. `report_contract` has no such source and is null on every
+run older than it.
+
 ## Null versus the empty list
 
 They are not the same answer, and the run index is where the difference matters most.

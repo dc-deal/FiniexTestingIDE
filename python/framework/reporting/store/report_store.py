@@ -20,6 +20,10 @@ from pydantic import BaseModel, ValidationError
 
 from python.configuration.app_config_manager import AppConfigManager
 from python.framework.exceptions.report_artifact_errors import ReportArtifactUnreadableError
+from python.framework.fixture_catalog.fixture_production_store import (
+    PRODUCTION_RECORD_FILE,
+    FixtureProductionStore,
+)
 from python.framework.reporting.io.artifact_specs import (
     ORDER_EVENTS_STREAM,
     ORDER_HISTORY_ARTIFACT,
@@ -59,9 +63,12 @@ class ReportStore:
             ledger_dir: The run-results ledger the run list joins its figures from; from config
                 when not given, injectable for the same reason
         """
-        self._index = RunIndex(
+        index_path = Path(
             run_index_path or AppConfigManager().get_file_logging_config_object().run_index)
+        self._index = RunIndex(index_path)
         self._ledger_dir = Path(ledger_dir or AppConfigManager().get_run_ledger_path())
+        # Beside the index it describes runs of, wherever that index is (#576).
+        self._fixture_record = FixtureProductionStore(index_path.parent / PRODUCTION_RECORD_FILE)
 
     def list_runs(self) -> List[RunInfo]:
         """Every indexed run, both types, newest first.
@@ -81,15 +88,19 @@ class ReportStore:
 
         The index says what a run IS and the ledger what it did; the two are joined here on
         `run_id`, once for the whole list. A run the ledger holds nothing for keeps `results`
-        None — it is still going, died before its close, or never reported.
+        None — it is still going, died before its close, or never reported. Whether a run of the
+        fixture catalog is still its entry's current fixture is joined the same way, from the
+        catalog's production record.
 
         Returns:
             The runs of `list_runs`, each carrying its figures where the ledger has them
         """
         figures = get_run_list_figures(self._ledger_dir)
+        superseded = self._fixture_record.fixture_superseded_by_run()
         runs = self._index.list_runs()
-        return [run.model_copy(update=_figure_fields(figures[run.run_id]))
-                if run.run_id in figures else run
+        return [run.model_copy(update={
+                    **(_figure_fields(figures[run.run_id]) if run.run_id in figures else {}),
+                    'fixture_superseded': superseded.get(run.run_id)})
                 for run in runs]
 
     def get(self, run_id: str, spec: ArtifactSpec[T]) -> Optional[T]:

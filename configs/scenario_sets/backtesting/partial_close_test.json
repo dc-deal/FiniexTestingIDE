@@ -1,6 +1,7 @@
 {
     "version": "1.0",
     "scenario_set_name": "partial_close_test",
+    "run_purpose": "fixture",
     "created": "2026-02-23T00:00:00.000000",
     "description": "Partial Position Close Validation (#119) - Proportional P&L, fee splitting, multiple partial closes, remaining close",
     "global": {

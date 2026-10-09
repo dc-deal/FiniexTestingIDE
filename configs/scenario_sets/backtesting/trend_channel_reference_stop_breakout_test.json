@@ -1,6 +1,7 @@
 {
   "version": "1.0",
   "scenario_set_name": "trend_channel_reference_stop_breakout_test",
+  "run_purpose": "fixture",
   "created": "2026-06-26T00:00:00.000000",
   "description": "Didactic reference set (#118) \u2014 CORE/trend_channel_reference in STOP-breakout mode on mt5 EURUSD. Teaching example, NOT a profitable strategy: drives resting STOP entries + SL/TP + trailing + partial close so the STOP order path is exercised by a `\ud83e\uddea` run.",
   "global": {

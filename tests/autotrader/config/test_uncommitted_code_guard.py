@@ -463,7 +463,8 @@ class TestTheGuardIsPartOfStartup:
         monkeypatch.setattr(autotrader_main_module, 'validate_bot_id',
                             lambda name, symbol, bot_id: calls.append('bot_id'))
         monkeypatch.setattr(autotrader_main_module, 'validate_carry_over_identity_unique',
-                            lambda path, name, symbol, bot_id: calls.append('unique'))
+                            lambda path, name, symbol, bot_id, profile_homes: calls.append(
+                                'unique'))
         return session
 
     def test_a_dirty_real_money_start_is_refused_there(self, monkeypatch):

@@ -51,6 +51,17 @@ received instead of trusting the route it asked on.
 | `TestTheHeaderSurvivesTheRunItDescribes` | the header round-trips, and it stands alone — written at the run's START, so a run that crashes before producing anything is still identifiable |
 | `TestTheParentIdSaysWhatKindOfParentItIs` | `parent_id` holds two different things of one shape — a sweep id and a deployment id — so the header carries `parent_kind` beside it. Pins the kind through a register and a rebuild, that a standalone run names neither, and that a header written before the field still reads: it keeps its parent and reports an unknown kind, because refusing the pair would make the index unreadable for its own history |
 | `TestTheIndexIsDerivedAndRebuildable` | delete the index, rebuild from the headers, get the identical result. That is the property the design rests on — an index that could not be rebuilt would be a second source of truth. Also: a run is addressable without walking the tree (the sweep combination sits one level deeper and the lookup no longer has to know — it is a `simulation` with a `parent_id`, not a type of its own), an unknown or crafted id resolves to nothing (index membership replaced a shape check — it is the stronger guard, since it accepts only ids that exist), and the run's **artifact list** is told, never inferred — the list rather than a boolean, because the two pipelines produce different sets (measured: an AutoTrader session writes fewer files than a sim run), so a consumer that only learned "yes, some" would still be guessing which |
+| `TestTheRunSaysWhatItIsFor` | #576: `run_purpose` and `report_contract` survive the index and its rebuild; a header older than the field takes its configuration's CURRENT declaration in the index — never written back into the header — and reads as unknown when that configuration is gone; a header's own purpose is never replaced by a declaration |
+
+
+## `test_run_purpose_stamp.py` — what a run is FOR, on its header from the start (#576)
+
+Both pipelines stamp the purpose their configuration declares, and the contract their reports are
+written under, into the header they write at the start — a backtest through `ScenarioSet`, a session
+through `create_autotrader_loggers`. A configuration that declares nothing is stamped `regular`.
+The second class pins the guard every other test runs under: a run a test starts from a
+configuration that is not a fixture fails that test, and a certificate header is refused at the
+index (`tests/conftest.py`, *Every run a test starts is a fixture* in the runner documentation).
 
 ## `test_git_repo_identity.py` — the git reads behind a code identity (#551)
 
@@ -146,6 +157,8 @@ around the refusals first.
 | `TestAnEmptyOrStaleTree` | the two states a hand-cleared tree reaches. An empty tree is a no-op that still writes an index. And index rows whose directory is gone are **reported** — the rebuild drops them either way, so a preview that showed an empty report while three rows were about to vanish would be lying by omission. Found by trying it, not by design |
 | `TestApplyAndTheIndex` | `apply` removes exactly what `plan` decided · after a prune the index-header invariant holds in BOTH directions · one unremovable directory is reported and does not abort the rest |
 | `TestTheLedgerKeepsItsRowsAndSaysWhy` | a prune removes RECORDS, never RESULTS. The pruned run's ledger row survives with its figures untouched and gains a `records_pruned_at` stamp; a run that stays keeps an unstamped row. The two stores have opposite retention on purpose, and the stamp is what stops a surviving row from implying its figures can still be recomputed from entries that are gone |
+| `TestWhatIsPinnedOrCertifiedIsKept` | #576: a run whose own header says `certificate` is kept by every selector, `--release-fixtures` included; a run of a verified fixture catalog production — current or superseded — is kept until `--release-fixtures`, and a failed production protects nothing |
+| `TestARunIsNeverAnOrphan` | a directory holding a run header that the index lost is kept and named, never deleted as an orphan — a rebuild repairs the index; a header that cannot be read keeps its run, because no guard can clear it |
 
 The ledger path is injected into the pruner exactly like the index and the roots, and for a
 sharper reason than either: this store is WRITTEN, so a suite pointed at a throwaway tree would

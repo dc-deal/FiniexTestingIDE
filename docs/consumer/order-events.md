@@ -123,6 +123,36 @@ seq 61   broker_truth  reconcile      clean                         ← at least
 seq 212  broker_truth  session_end    venue_balances null  unread_parts [venue_balances]
 ```
 
+### The venue parts, field by field
+
+These parts have a fixed shape whether or not a run you hold has ever filled them — type them
+from here rather than from an instance.
+
+**One entry of `venue_orders`** — an order the venue reported as open, in its own terms:
+
+| Field | Meaning |
+|---|---|
+| `broker_ref` | the venue's handle for the order, always present |
+| `client_order_id` | our wire key where the order carries one, else null |
+| `symbol` | the instrument |
+| `direction` | `long` or `short` |
+| `order_type` | `market` · `limit` · `stop` · `stop_limit` · `trailing_stop` · `iceberg` · `unknown` |
+| `lots` | the size as asked, not what remains |
+| `filled_lots` | what has executed so far, `0.0` when nothing has |
+| `limit_price` | the price it would fill at, null where the order has none |
+| `stop_price` | the price that activates it, null where the order has none |
+| `status` | `pending` · `filled` · `partially_filled` · `rejected` · `cancelled` · `expired` · `unresolved` · `unknown` |
+
+**One entry of `venue_positions`** — margin accounts only: `symbol`, `direction`, `lots`,
+`entry_price`, and `broker_ref` where the venue names the position.
+
+**`divergence`** — on a divergent `reconcile` line only. Lists of order identities, each
+possibly empty: `ghost_orders`, `abandoned_orders` and `foreign_session_orders` hold the venue's
+references; `unconfirmed_orders`, `orphan_orders` and `stale_orders` hold this session's order ids.
+Integers count positions: `ghost_positions`, `orphan_positions`, `stale_positions`.
+
+`venue_balances` is an object from asset to amount, every asset the venue reports.
+
 ## Times and durations
 
 - `event_time` is when the step happened on the run's own clock: the replayed market time in a

@@ -1,5 +1,6 @@
 {
   "profile_name": "deployment_continuity_test",
+  "run_purpose": "fixture",
   "bot_id": "deploy01",
   "symbol": "BTCUSD",
   "broker_type": "kraken_spot",

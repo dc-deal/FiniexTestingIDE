@@ -1,6 +1,7 @@
 {
   "version": "1.0",
   "scenario_set_name": "report_coverage_reference",
+  "run_purpose": "fixture",
   "created": "2026-10-07T22:40:00+00:00",
   "global": {
     "strategy_config": {

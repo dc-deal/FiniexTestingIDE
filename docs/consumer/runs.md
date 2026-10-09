@@ -45,9 +45,13 @@ has two entries there, and folding them into one loses data. See
 | `data_windows` | the market window each unit was declared to cover, one per unit |
 | `app_version` · `git_commit` | the program version and the commit it ran from |
 | `config_snapshot` · `config_id` | the configuration it was commissioned with |
+| `run_purpose` | what the run is FOR — `regular`, `fixture` or `certificate` |
+| `report_contract` | the contract its reports were written under |
+| `fixture_superseded` | for a run of the fixture catalog, whether it is no longer its entry's current one |
 
-`group`, the two parent fields, `ticks_from`, `orders_to` and `data_windows` are the subject of
-[run kinds](/api/v1/docs/run-kinds), and it is worth reading before branching on any of them. The
+`group`, the two parent fields, `ticks_from`, `orders_to`, `data_windows` and `run_purpose` are the
+subject of [run kinds](/api/v1/docs/run-kinds), and it is worth reading before branching on any of
+them. The
 trap in one line: **`group` is the pipeline, never the nesting** — a sweep combination is a
 `simulation` whose parent names its sweep.
 
@@ -61,6 +65,18 @@ of that configuration's **content**: two runs naming the same id ran the same co
 changed file mints a new one. It is empty on a run that started before that registry existed, and
 on one whose configuration could not be registered. The configuration itself is served by
 [config](/api/v1/docs/config).
+
+`report_contract` is the [contract](/api/v1/docs/contract-log) number of the code that started the
+run. A later contract can add a figure that an older run serves as `0` or `null`; when this number
+is below the one the server answers with, check the contract log before reading such a figure as a
+measurement. `null` on a run recorded before the field.
+
+`fixture_superseded` is about the runs this side produces for consumers to pin — its fixture
+catalog. `false`: the run was made by its entry's current catalog production, so it is the one to
+pin. `true`: an older catalog production made it, or one that failed its check. A replaced run that
+passed its check stays until this side releases it, so a pin on it keeps working until you move
+it. `null`: no catalog production made the run — every ordinary run and every test run. A list
+hiding superseded fixtures filters on `true` alone.
 
 ## `artifacts` and `reporting`, read as a pair
 

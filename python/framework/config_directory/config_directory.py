@@ -43,6 +43,7 @@ from python.framework.types.config_directory_types import (
     DiscoveredConfigFile,
 )
 from python.framework.types.log_layout_types import RUN_TYPE_AUTOTRADER, RUN_TYPE_SIMULATION
+from python.framework.types.run_purpose_types import RunPurpose
 from python.framework.validators.config_name_validator import config_name_conflict
 
 # How long a refreshed directory is served before the next request walks the roots again. The
@@ -61,6 +62,20 @@ _MEMO: Dict[str, Tuple[float, List[DirectoryRow], Dict[str, Path]]] = {}
 def clear_config_directory_memo() -> None:
     """Forget every served directory, so the next request walks the roots again."""
     _MEMO.clear()
+
+
+def declared_run_purposes() -> Dict[str, RunPurpose]:
+    """
+    What every configuration declares its runs are for, by file name (#576).
+
+    The source a rebuild of the real run index hands to `RunIndex` for headers written before
+    `run_purpose` existed — one function, so the run-index command, the store catalog and the
+    pruner all ask the same.
+
+    Returns:
+        File name → declared purpose
+    """
+    return ConfigDirectory().declared_purposes()
 
 
 def _with_name_conflict(candidate: DiscoveredConfigFile, row: DirectoryRow) -> DirectoryRow:
@@ -133,6 +148,21 @@ class ConfigDirectory:
         return DirectoryDetailResponse(row=row, scenarios=scenarios,
                                        runs=list(runs['run_id']) if not runs.empty else [])
 
+    def declared_purposes(self) -> Dict[str, RunPurpose]:
+        """
+        What every readable configuration declares its runs are for (#576), by file name.
+
+        The name is the key a run's header records as `config_snapshot`, resolved once by
+        precedence; a name taken by both kinds is unreadable and therefore absent here. Read from
+        the files alone — no run and no ledger row is joined in, because a run-index rebuild asks
+        this, and a repair path must not depend on the stores it repairs or on the ledger.
+
+        Returns:
+            File name → declared purpose
+        """
+        return {row.file: row.run_purpose for _, row in self._read_rows()
+                if row.status == ConfigReadStatus.READABLE and row.run_purpose is not None}
+
     def path_of(self, file: str) -> Optional[Path]:
         """
         Where a listed configuration file lives — for a caller on this machine, never served.
@@ -171,6 +201,23 @@ class ConfigDirectory:
         Returns:
             (rows with run figures, newest-changed first; file name → path)
         """
+        served = self._read_rows()
+        runs = self._run_index.read()
+        figures = get_run_list_figures(Path(self._app_config.get_run_ledger_path()))
+        rows = [self._with_runs(row.model_copy(update={'shadowed': candidate.shadowed}), runs,
+                                figures)
+                for candidate, row in served]
+        rows.sort(key=lambda row: row.modified_at, reverse=True)
+        return rows, {candidate.path.name: candidate.path for candidate, _ in served}
+
+    def _read_rows(self) -> List[Tuple[DiscoveredConfigFile, DirectoryRow]]:
+        """
+        Walk the roots, read what changed and write the cache when anything did — the rows as
+        the files declare them, before any run is joined in.
+
+        Returns:
+            (file, row) for every configuration the directory serves, name conflicts marked
+        """
         candidates = discover_config_files(self._app_config)
         cached = self._cached_rows()
         market_type_of = market_type_lookup()
@@ -193,15 +240,8 @@ class ConfigDirectory:
                   'row_json': row.model_dump_json()} for candidate, row in entries],
                 columns=ConfigDirectoryIndex.COLUMNS))
 
-        served = [(candidate, _with_name_conflict(candidate, row)) for candidate, row in entries
-                  if row.status != ConfigReadStatus.NOT_A_CONFIG]
-        runs = self._run_index.read()
-        figures = get_run_list_figures(Path(self._app_config.get_run_ledger_path()))
-        rows = [self._with_runs(row.model_copy(update={'shadowed': candidate.shadowed}), runs,
-                                figures)
-                for candidate, row in served]
-        rows.sort(key=lambda row: row.modified_at, reverse=True)
-        return rows, {candidate.path.name: candidate.path for candidate, _ in served}
+        return [(candidate, _with_name_conflict(candidate, row)) for candidate, row in entries
+                if row.status != ConfigReadStatus.NOT_A_CONFIG]
 
     def _cached_rows(self) -> Dict[str, Tuple[float, int, DirectoryRow]]:
         """

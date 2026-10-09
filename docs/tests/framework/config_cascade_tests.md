@@ -11,6 +11,13 @@ The `tests/framework/config/` suite holds complementary test files:
 - **`test_autotrader_loader_field_coverage.py`** — one property over the AutoTrader
   profile loader: every field of every config block is reachable from JSON. See
   [Loader Field Coverage](#loader-field-coverage) below.
+- **`test_run_purpose_declaration.py`** — what a configuration declares about its runs
+  (#576): both loaders read `run_purpose` and `description` (absent is `regular`; an
+  unknown value and a misspelt top-level key are refused); a configuration in a user algo
+  directory declares no purpose, whatever its value; neither moves a profile's
+  fingerprints; and the folder rule — every configuration in the test folders declares
+  `fixture`, the field-study profiles `certificate`, no production or observation profile
+  anything else.
 
 | Item | Value |
 |---|---|

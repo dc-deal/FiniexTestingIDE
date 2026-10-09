@@ -1,6 +1,7 @@
 {
   "version": "1.0",
   "scenario_set_name": "btcusd_mini_set",
+  "run_purpose": "fixture",
   "created": "2026-06-21T00:00:00+00:00",
   "description": "Tiny BTCUSD kraken_spot base set for the Parameter Optimization integration test (capped ticks).",
   "global": {

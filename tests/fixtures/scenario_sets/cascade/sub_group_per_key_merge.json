@@ -1,6 +1,7 @@
 {
   "version": "1.0",
   "scenario_set_name": "cascade_sub_group_per_key_merge",
+  "run_purpose": "fixture",
   "description": "Cascade test fixture (#137) — performance_tracking nested sub-group. Global sets both switches, scenario overrides only one. The non-overridden key must be inherited from global, not silently dropped.",
   "global": {
     "strategy_config": {

@@ -33,6 +33,10 @@ class PruneSelectors:
     # Directories in the tree that are not runs: no header, not in the index, not a sweep
     # directory, not a run's own substructure.
     orphans: bool = False
+    # Let the selectors reach the runs of the fixture catalog's verified productions (#576) —
+    # current or superseded, a consumer may still pin them. Without it they are kept whatever
+    # the selectors say.
+    release_fixtures: bool = False
 
 
 @dataclass
@@ -61,6 +65,17 @@ class PruneReport:
     # a group that mixed two reasons would answer neither.
     kept_incomplete: List[PruneCandidate] = field(default_factory=list)
     kept_field_study: List[PruneCandidate] = field(default_factory=list)
+    # A certificate run (#576): never deleted, by any selector, and no flag releases it.
+    kept_certificate: List[PruneCandidate] = field(default_factory=list)
+    # A run of a fixture catalog production that carried its properties (#576) — current or
+    # superseded, a consumer may still pin it. Kept unless the operator passed
+    # `release_fixtures`.
+    kept_catalog_fixture: List[PruneCandidate] = field(default_factory=list)
+    # A directory holding a run header that the index does not list — a row lost to a
+    # concurrent write. A run, not an orphan: a rebuild re-indexes it, so nothing deletes it.
+    kept_unindexed_run: List[PruneCandidate] = field(default_factory=list)
+    # A run whose header exists and cannot be read — no guard can clear it, so it stays.
+    kept_unreadable_header: List[PruneCandidate] = field(default_factory=list)
     kept_complete: List[PruneCandidate] = field(default_factory=list)
     # Spared by the age selector because they are younger than the window it named. Its own
     # group rather than folded into kept_complete: when an operator passes --older-than, this

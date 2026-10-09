@@ -26,6 +26,7 @@ from python.framework.types.live_types.reconciliation_types import ReconcileStat
 from python.framework.types.persistence_types import RiskBaseline
 from python.framework.types.run_origin_types import CodeIdentity, RunOrigin
 from python.framework.types.run_outcome_types import RunOutcome
+from python.framework.types.run_purpose_types import RunPurpose
 from python.framework.types.trading_env_types.order_event_types import (
     OrderEventPlane,
     OrderEventType,
@@ -971,6 +972,14 @@ class RunHeader(BaseModel):
         orders_to: Where its orders went, from the RESOLVED dry-run rule. None as above, and on
             a session whose profile the dry-run rule refuses (it never trades)
         data_windows: The market window each unit was declared to cover; None as above
+        run_purpose: What the run is FOR (#576), from its configuration's declaration — absent
+            there means REGULAR, so every run started since the field exists carries a value. A
+            header written before that takes its configuration's current declaration; None where
+            that configuration is gone or cannot be read
+        report_contract: The API contract the run's reports were written under (#576) — the
+            contract version of the code that started it. A later contract can add a figure that
+            an older run serves as 0 or null; this is what tells such a run apart from a wrong
+            one. None on a header written before the field existed
     """
     run_id: str
     start_time: datetime
@@ -989,6 +998,8 @@ class RunHeader(BaseModel):
     ticks_from: Optional[TicksFrom] = None
     orders_to: Optional[OrdersTo] = None
     data_windows: Optional[list[DataWindow]] = None
+    run_purpose: Optional[RunPurpose] = None
+    report_contract: Optional[int] = None
 
 
 class RunConfigSnapshot(BaseModel):
@@ -1105,6 +1116,20 @@ class RunInfo(BaseModel):
     # The market window each unit was DECLARED to cover — what a date filter asks, where
     # `start_time` is only when the run was executed. None as above.
     data_windows: Optional[list[DataWindow]] = None
+    # What the run is FOR (contract 24, #576): `regular`, `fixture` — a test's run or one a
+    # consumer pins, its numbers built rather than earned — or `certificate`. Stamped at the
+    # start. For a run older than the field, filled in when the index is rebuilt from the CURRENT
+    # declaration of its configuration where that configuration can still be read, else None.
+    run_purpose: Optional[RunPurpose] = None
+    # The API contract the run's reports were written under (contract 24). A run older than a
+    # contract that added a figure serves that figure as 0 or null — compare this with
+    # `/api/v1/contract` to tell an old run from a wrong one. None on a run from before the field.
+    report_contract: Optional[int] = None
+    # Whether a run of the fixture catalog is NOT the current fixture of its entry (contract 25,
+    # #576) — derived from the catalog's production record each time the list is served, never
+    # written into the run. True: an older catalog production made it, or one that failed its
+    # check. False: the entry's current one made it. None: no catalog production made this run.
+    fixture_superseded: Optional[bool] = None
     # What the run DID, joined from the run-results ledger (contract 15) so the list needs no
     # request per run. `results` has THREE states: None — the ledger holds nothing for this run
     # (still going, died before its close, or never commissioned to report; read it with

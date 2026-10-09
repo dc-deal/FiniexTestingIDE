@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import List, Optional
 
 from python.configuration.app_config_manager import AppConfigManager
+from python.framework.config_directory.config_directory import declared_run_purposes
 from python.framework.reporting.builders.deployment_history_builder import (
     build_deployment_histories,
     deployment_comparability_advisory,
@@ -48,7 +49,8 @@ class RunIndexCli:
     def __init__(self):
         """Initialize CLI with paths from AppConfigManager."""
         self._file_logging = AppConfigManager().get_file_logging_config_object()
-        self._index = RunIndex(self._file_logging.run_index, self._file_logging.run_logs)
+        self._index = RunIndex(self._file_logging.run_index, self._file_logging.run_logs,
+                               declared_purposes=declared_run_purposes)
 
     def cmd_rebuild(self) -> int:
         """
@@ -161,7 +163,8 @@ class RunIndexCli:
         return 0
 
     def cmd_prune(self, orphans: bool, keep_last: int,
-                  older_than: Optional[timedelta], apply: bool) -> int:
+                  older_than: Optional[timedelta], apply: bool,
+                  release_fixtures: bool = False) -> int:
         """
         Remove what the run tree no longer needs — showing it first, deleting only on request.
 
@@ -171,13 +174,15 @@ class RunIndexCli:
             older_than: Keep runs that started within this window (None = selector off).
                 Composes with keep_last as a second KEEP rule — see PruneSelectors
             apply: Actually delete; without it nothing is touched
+            release_fixtures: Let the selectors reach the runs a consumer may pin — every
+                verified production of the fixture catalog, current or superseded (#576)
 
         Returns:
             Process exit code
         """
         selectors = PruneSelectors(
             keep_last=keep_last if keep_last > 0 else None,
-            older_than=older_than, orphans=orphans)
+            older_than=older_than, orphans=orphans, release_fixtures=release_fixtures)
         pruner = RunTreePruner()
 
         # PREVIEW, not 'dry run': in this project `dry_run` names exactly one thing — a
@@ -191,8 +196,9 @@ class RunIndexCli:
         print('  65-616x on this mount, so give it a moment.')
 
         if not pruner.size_figures_available():
-            print('  ⚠ The run index predates the size column — every MB below reads 0.0.')
-            print('    Run `python python/cli/store_cli.py rebuild runs` once to fill it in.')
+            print('  ⚠ The run index was built by an older logic version — a figure it predates,')
+            print('    such as the size, may read 0.0 below. Rebuild it once to fill it in:')
+            print('    `python python/cli/store_cli.py rebuild runs`.')
 
         started = time.monotonic()
         report = pruner.plan(selectors, progress=self._show_progress)
@@ -212,6 +218,15 @@ class RunIndexCli:
                           names=False)
         self._print_group('KEEP', report.kept_field_study,
                           'hold field_study.jsonl (evidence behind a release gate)', names=False)
+        self._print_group('KEEP', report.kept_certificate,
+                          'certificate runs — never deleted, by any selector', names=False)
+        self._print_group('KEEP', report.kept_unreadable_header,
+                          'a header that cannot be read — no guard can clear it')
+        self._print_group('KEEP', report.kept_catalog_fixture,
+                          'catalog fixtures a consumer may pin — --release-fixtures lets them go',
+                          names=False)
+        self._print_group('KEEP', report.kept_unindexed_run,
+                          'runs the index does not list — rebuild it; a run is never an orphan')
         self._print_group('KEEP', report.kept_recent,
                           'started inside the window --older-than named', names=False)
         self._print_group('KEEP', report.kept_undated,
@@ -355,6 +370,11 @@ def main() -> int:
         help="Keep runs that started within this window, e.g. '30d' or '12h'. Composes with "
              '--keep-last: a run goes only when BOTH release it')
     prune_parser.add_argument(
+        '--release-fixtures', action='store_true', default=False,
+        help='Let the selectors reach the runs a consumer may pin — every verified production '
+             'of the fixture catalog, current or superseded. Without it they are kept whatever '
+             'the selectors say')
+    prune_parser.add_argument(
         '--apply', action='store_true', default=False,
         help='Actually delete. Without it nothing is touched — a run directory is the only '
              'copy of its logs')
@@ -373,7 +393,8 @@ def main() -> int:
 
     cli = RunIndexCli()
     if args.command == 'prune':
-        return cli.cmd_prune(args.orphans, args.keep_last, args.older_than, args.apply)
+        return cli.cmd_prune(args.orphans, args.keep_last, args.older_than, args.apply,
+                             args.release_fixtures)
     if args.command == 'deployments':
         return cli.cmd_deployments(args.id)
     return {'rebuild': cli.cmd_rebuild, 'status': cli.cmd_status}[args.command]()

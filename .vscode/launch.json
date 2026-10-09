@@ -250,7 +250,7 @@
             "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
             "args": [
                 "run",
-                "report_coverage_reference.json"
+                "backtesting/report_coverage_reference.json"
             ],
             "console": "integratedTerminal",
             "justMyCode": false,
@@ -1781,6 +1781,21 @@
             }
         },
         {
+            "name": "📈 Fixture Catalog: list",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/fixture_catalog_cli.py",
+            "args": [
+                "list"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "11_maintenance",
+                "order": 2
+            }
+        },
+        {
             "name": "📈 Run Index: Prune (APPLY — DELETES run directories)",
             "type": "debugpy",
             "request": "launch",
@@ -1796,7 +1811,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "11_maintenance",
-                "order": 2
+                "order": 3
             }
         },
         {
@@ -1814,7 +1829,23 @@
             "justMyCode": false,
             "presentation": {
                 "group": "11_maintenance",
-                "order": 3
+                "order": 4
+            }
+        },
+        {
+            "name": "🔄 Fixture Catalog: produce (pick an entry)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/fixture_catalog_cli.py",
+            "args": [
+                "produce",
+                "${input:fixtureEntry}"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "11_maintenance",
+                "order": 5
             }
         },
         {
@@ -1829,7 +1860,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "11_maintenance",
-                "order": 4
+                "order": 6
             }
         },
         // ====================================================
@@ -2321,6 +2352,22 @@
             }
         },
         {
+            "name": "🧩 Pytest: Fixture Catalog (All)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/framework/fixture_catalog/",
+                "-v"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "13_pytest_validation",
+                "order": 25
+            }
+        },
+        {
             "name": "🧩 Pytest: Import Pipeline (All)",
             "type": "debugpy",
             "request": "launch",
@@ -2334,7 +2381,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 25
+                "order": 26
             }
         },
         {
@@ -2351,7 +2398,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 26
+                "order": 27
             }
         },
         {
@@ -2368,7 +2415,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 27
+                "order": 28
             }
         },
         {
@@ -2385,7 +2432,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 28
+                "order": 29
             }
         },
         {
@@ -2402,7 +2449,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 29
+                "order": 30
             }
         },
         {
@@ -2419,7 +2466,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 30
+                "order": 31
             }
         },
         {
@@ -2436,7 +2483,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 31
+                "order": 32
             }
         },
         {
@@ -2453,7 +2500,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 32
+                "order": 33
             }
         },
         {
@@ -2470,7 +2517,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 33
+                "order": 34
             }
         },
         {
@@ -2487,7 +2534,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 34
+                "order": 35
             }
         },
         {
@@ -2504,7 +2551,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 35
+                "order": 36
             }
         },
         {
@@ -2521,7 +2568,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 36
+                "order": 37
             }
         },
         {
@@ -2539,7 +2586,7 @@
             "cwd": "${workspaceFolder}",
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 37
+                "order": 38
             }
         },
         {
@@ -2556,7 +2603,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 38
+                "order": 39
             }
         },
         {
@@ -2573,7 +2620,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 39
+                "order": 40
             }
         },
         {
@@ -2591,7 +2638,7 @@
             "cwd": "${workspaceFolder}",
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 40
+                "order": 41
             }
         },
         {
@@ -2610,7 +2657,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 41
+                "order": 42
             }
         },
         {
@@ -2627,7 +2674,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 42
+                "order": 43
             }
         },
         {
@@ -2644,7 +2691,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 43
+                "order": 44
             }
         },
         {
@@ -2662,7 +2709,7 @@
             "cwd": "${workspaceFolder}",
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 44
+                "order": 45
             }
         },
         {
@@ -2679,7 +2726,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 45
+                "order": 46
             }
         },
         {
@@ -2696,7 +2743,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 46
+                "order": 47
             }
         },
         {
@@ -2714,7 +2761,7 @@
             "cwd": "${workspaceFolder}",
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 47
+                "order": 48
             }
         },
         {
@@ -2729,7 +2776,7 @@
             "console": "integratedTerminal",
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 48
+                "order": 49
             }
         },
         {
@@ -2746,7 +2793,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 49
+                "order": 50
             }
         },
         {
@@ -2763,7 +2810,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 50
+                "order": 51
             }
         },
         {
@@ -2780,7 +2827,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 51
+                "order": 52
             }
         },
         {
@@ -2797,7 +2844,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 52
+                "order": 53
             }
         },
         {
@@ -2814,7 +2861,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 53
+                "order": 54
             }
         },
         {
@@ -2825,7 +2872,7 @@
             "console": "integratedTerminal",
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 54
+                "order": 55
             }
         },
         {
@@ -2842,7 +2889,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 55
+                "order": 56
             }
         },
         {
@@ -2859,7 +2906,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 56
+                "order": 57
             }
         },
         {
@@ -2876,7 +2923,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 57
+                "order": 58
             }
         },
         {
@@ -2893,7 +2940,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 58
+                "order": 59
             }
         },
         {
@@ -2910,7 +2957,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 59
+                "order": 60
             }
         },
         {
@@ -2927,7 +2974,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 60
+                "order": 61
             }
         },
         {
@@ -2944,7 +2991,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 61
+                "order": 62
             }
         },
         {
@@ -2961,7 +3008,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 62
+                "order": 63
             }
         },
         {
@@ -2978,7 +3025,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 63
+                "order": 64
             }
         },
         {
@@ -2995,7 +3042,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 64
+                "order": 65
             }
         },
         {
@@ -3012,7 +3059,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 65
+                "order": 66
             }
         },
         {
@@ -3029,7 +3076,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 66
+                "order": 67
             }
         },
         {
@@ -3046,7 +3093,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 67
+                "order": 68
             }
         },
         {
@@ -3063,7 +3110,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 68
+                "order": 69
             }
         },
         {
@@ -3080,7 +3127,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 69
+                "order": 70
             }
         },
         {
@@ -3097,7 +3144,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 70
+                "order": 71
             }
         },
         {
@@ -3114,7 +3161,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 71
+                "order": 72
             }
         },
         {
@@ -3131,7 +3178,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 72
+                "order": 73
             }
         },
         {
@@ -3148,7 +3195,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 73
+                "order": 74
             }
         },
         {
@@ -3165,7 +3212,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 74
+                "order": 75
             }
         },
         {
@@ -3182,7 +3229,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 75
+                "order": 76
             }
         },
         {
@@ -3199,7 +3246,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 76
+                "order": 77
             }
         },
         // ====================================================
@@ -4048,6 +4095,12 @@
         }
     ],
     "inputs": [
+        {
+            "id": "fixtureEntry",
+            "type": "promptString",
+            "description": "Fixture catalog entry (the list entry names them), or --all",
+            "default": "report_coverage"
+        },
         {
             "id": "docsSearchQuery",
             "type": "promptString",

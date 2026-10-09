@@ -16,6 +16,7 @@ from pathlib import Path
 
 import pytest
 
+from python.framework.config_directory.config_directory_discovery import profile_homes
 from python.framework.exceptions.persistence_errors import (
     BotIdMalformedError,
     BotIdRequiredError,
@@ -382,3 +383,82 @@ class TestTheCheckCrossesTheConfigBoundary:
         mine = self._write(tracked / 'sol.json', 'solusd_production', 'SOLUSD', 'sollive01')
 
         validate_carry_over_identity_unique(mine, 'solusd_production', 'SOLUSD', 'sollive01')
+
+
+class TestTheCheckReachesTheUserAlgoDirectories:
+    """
+    A user algo directory is where the operator's own profiles live and where a copy lands — with
+    no `autotrader_profiles` folder above it, so the walk up never found it and the check was
+    skipped for exactly the profiles it protects (#581).
+    """
+
+    @staticmethod
+    def _homes(tmp_path):
+        """A tracked profile tree and a user algo directory. Returns: (tracked, algos)."""
+        tracked = tmp_path / 'configs' / 'autotrader_profiles'
+        algos = tmp_path / 'user_algos'
+        (tracked / 'production').mkdir(parents=True)
+        (algos / 'my_bot').mkdir(parents=True)
+        return tracked, algos
+
+    @staticmethod
+    def _write(path: Path, name: str, symbol: str, bot_id: str) -> Path:
+        path.write_text(json.dumps(
+            {'profile_name': name, 'symbol': symbol, 'bot_id': bot_id}), encoding='utf-8')
+        return path
+
+    def test_a_forgotten_id_on_a_copy_into_a_user_algo_directory_is_caught(self, tmp_path):
+        tracked, algos = self._homes(tmp_path)
+        self._write(tracked / 'production' / 'sol.json', 'solusd_production', 'SOLUSD', 'sollive01')
+        mine = self._write(algos / 'my_bot' / 'sol.json', 'my_sol', 'SOLUSD', 'sollive01')
+
+        with pytest.raises(CarryOverIdentityCollisionError) as raised:
+            validate_carry_over_identity_unique(mine, 'my_sol', 'SOLUSD', 'sollive01',
+                                                profile_homes=[tracked, algos])
+
+        message = str(raised.value)
+        assert 'production/sol.json' in message and 'my_bot/sol.json' in message
+
+    def test_it_fires_from_the_shipped_side_too(self, tmp_path):
+        tracked, algos = self._homes(tmp_path)
+        mine = self._write(
+            tracked / 'production' / 'sol.json', 'solusd_production', 'SOLUSD', 'sollive01')
+        self._write(algos / 'my_bot' / 'sol.json', 'my_sol', 'SOLUSD', 'sollive01')
+
+        with pytest.raises(CarryOverIdentityCollisionError):
+            validate_carry_over_identity_unique(mine, 'solusd_production', 'SOLUSD', 'sollive01',
+                                                profile_homes=[tracked, algos])
+
+    def test_distinct_ids_pass(self, tmp_path):
+        tracked, algos = self._homes(tmp_path)
+        self._write(tracked / 'production' / 'sol.json', 'solusd_production', 'SOLUSD', 'sollive01')
+        mine = self._write(algos / 'my_bot' / 'sol.json', 'my_sol', 'SOLUSD', 'mysol01')
+
+        validate_carry_over_identity_unique(mine, 'my_sol', 'SOLUSD', 'mysol01',
+                                            profile_homes=[tracked, algos])
+
+    def test_a_profile_in_a_temporary_tree_is_not_compared_with_the_homes(self, tmp_path):
+        """A test's copy of a shipped profile would otherwise collide with its own original."""
+        tracked, algos = self._homes(tmp_path)
+        self._write(tracked / 'production' / 'sol.json', 'solusd_production', 'SOLUSD', 'sollive01')
+        elsewhere = tmp_path / 'scratch' / 'autotrader_profiles'
+        elsewhere.mkdir(parents=True)
+        mine = self._write(elsewhere / 'sol.json', 'solusd_production', 'SOLUSD', 'sollive01')
+
+        validate_carry_over_identity_unique(mine, 'solusd_production', 'SOLUSD', 'sollive01',
+                                            profile_homes=[tracked, algos])
+
+    def test_the_homes_are_both_profile_trees_and_every_user_algo_directory(self):
+        class _Paths:
+            def get_autotrader_profiles_path(self) -> str:
+                return 'configs/autotrader_profiles'
+
+            def get_user_autotrader_profiles_path(self) -> str:
+                return 'user_configs/autotrader_profiles'
+
+            def get_user_algo_dirs(self) -> list:
+                return ['user_algos/', '/ext_algos']
+
+        assert profile_homes(_Paths()) == [
+            Path('configs/autotrader_profiles'), Path('user_configs/autotrader_profiles'),
+            Path('user_algos/'), Path('/ext_algos')]

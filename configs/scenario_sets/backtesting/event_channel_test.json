@@ -1,6 +1,7 @@
 {
     "version": "1.0",
     "scenario_set_name": "event_channel_test",
+    "run_purpose": "fixture",
     "created": "2026-05-29T00:00:00.000000",
     "description": "Decision Event Channel (#348) — drives the event-probe decision logic (open -> partial close -> request_session_end) through the simulation pipeline and records the received event sequence for dual-world parity.",
     "global": {

@@ -32,6 +32,7 @@ worse. What they *can* share is how they describe themselves.
 | 1 | `runs/` | RECORD | `run_id` | `runs_index.parquet`, from `header.json` | A · document |
 | 1b | `run_configs/` | RECORD | `config_id` — SHA256 over the normalised content | `run_configs_index.parquet` | A · document |
 | 1c | `run_patches/` — this repository's; a strategy repository keeps its own inside itself | RECORD | patch hash — SHA256 over the patch bytes | none — opened by id | A · document |
+| 1d | `runs/fixture_productions.jsonl` | RECORD | `entry_id` + `produced_at` — one line per production | none — one file, read whole | B · set |
 | 2 | `runs/ledger/` | RECORD | `(run_id, unit, period_no, currency)` — columns, never a path | `run_ledger_index.parquet` | B · set |
 | 3 | `tests/*/reports/` | RECORD | family + version + date | `certificates_index.parquet` | A · document |
 | 4 | `data/runtime/session_state/` | **CARRY-OVER** | `<bot_id>_<symbol>`, separator reserved | none — opened by key | A · document |
@@ -47,6 +48,11 @@ worse. What they *can* share is how they describe themselves.
 | 12 | `data/raw/` → `data/finished/` | **SPECIAL** | file name | none — conveyor | — |
 | 13 | `logs/global.log` | **SPECIAL** | none | none — append stream | — |
 | 14 | `user_configs/host_identity.json` | **SPECIAL** | none | none — one file, read at boot by its manager | — |
+
+**Row 1d is one file, not a folder.** It is the fixture catalog's production record — which runs
+each production of a catalog entry made, and whether they carried every property — and it sits
+beside the run index so it dies with the run tree. The current fixture of an entry is derived from
+it, never stored ([Fixture Catalog](fixture_catalog.md#the-production-record)).
 
 **Ticks and bars are two stores, and bars are DERIVED.** Ticks are IMPORTED from the collector's
 JSON; bars are GENERATED from those ticks, today only by a full re-render (`clean_mode` →

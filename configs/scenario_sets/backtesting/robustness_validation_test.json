@@ -1,6 +1,7 @@
 {
   "version": "1.0",
   "scenario_set_name": "robustness_validation_test",
+  "run_purpose": "fixture",
   "created": "2026-06-24T00:00:00.000000",
   "description": "Robustness Validation (#367) - multi-window IS/OOS over one constant strategy (5 windows, 3 IS / 2 OOS)",
   "robustness": {

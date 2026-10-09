@@ -1,6 +1,7 @@
 {
     "version": "1.0",
     "scenario_set_name": "sentiment_realdata_demo",
+    "run_purpose": "fixture",
     "created": "2026-08-15T00:00:00.000000",
     "description": "SIGNAL worker on REAL collected sentiment — the first run where both planes are real: live-collected ticks (kraken_spot BTCUSD / mt5 GBPUSD) and a live-produced signal archive (crypto_sentiment / forex_macro_sentiment). Window 2026-08-11 → 08-14: the archive's clean stretch after the producer outage, zero partial and zero error envelopes on both sources. Covers both market worlds in one set. Didactic — hybrid_sentiment_reference is crypto-recommended, so a soft market-fit advisory is expected on the forex leg. Not a profit claim.",
     "global": {

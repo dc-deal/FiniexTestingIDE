@@ -19,6 +19,10 @@ from pathlib import Path
 
 from python.framework.reporting.io.artifact_specs import FIELD_STUDY_CAPTURE
 from python.framework.reporting.store.run_index import RunIndex
+from python.framework.fixture_catalog.fixture_production_store import (
+    PRODUCTION_RECORD_FILE,
+    FixtureProductionStore,
+)
 from python.framework.reporting.store.run_tree_pruner import RunTreePruner
 from python.framework.reporting.store.run_results_ledger import RunResultsLedger
 from python.framework.types.api.report_types import (
@@ -31,12 +35,14 @@ from python.framework.types.api.report_types import (
 )
 from python.framework.types.run_results_types import RunProvenance
 from python.framework.types.config_types.file_logging_config_types import RunLogPaths
+from python.framework.types.fixture_catalog_types import FixtureProduction
 from python.framework.types.log_layout_types import (
     IO_SUBDIR,
     RUN_TYPE_AUTOTRADER,
     RUN_TYPE_SIMULATION,
 )
 from python.framework.types.run_prune_types import PruneSelectors
+from python.framework.types.run_purpose_types import RunPurpose
 
 _START = datetime(2026, 8, 30, 13, 20, 34, tzinfo=timezone.utc)
 
@@ -55,7 +61,7 @@ def _plant(root: Path, run_id: str, name: str, *, run_type: str = RUN_TYPE_SIMUL
            artifacts: bool = True, reporting: RunReporting = RunReporting.EXPECTED,
            parent: str = None, parent_kind: ParentKind = None,
            field_study: bool = False, minutes: int = 0,
-           started: datetime = None) -> Path:
+           started: datetime = None, purpose: RunPurpose = None) -> Path:
     """
     Write one run the way a real one writes itself: header first, index row with it.
 
@@ -72,6 +78,7 @@ def _plant(root: Path, run_id: str, name: str, *, run_type: str = RUN_TYPE_SIMUL
         field_study: Whether it holds the raw record behind a release certificate
         minutes: Offset from the base start time
         started: An explicit start time, for the cases that care about AGE rather than order
+        purpose: What its header says it is for; None for a header older than the field
 
     Returns:
         The run's directory
@@ -96,7 +103,8 @@ def _plant(root: Path, run_id: str, name: str, *, run_type: str = RUN_TYPE_SIMUL
     header = RunHeader(
         run_id=run_id, start_time=started or _START + timedelta(minutes=minutes),
         run_type=run_type,
-        run_name=name, parent_id=parent, parent_kind=parent_kind, reporting=reporting)
+        run_name=name, parent_id=parent, parent_kind=parent_kind, reporting=reporting,
+        run_purpose=purpose)
     index = RunIndex(root / 'index.parquet')
     index.register_run(header, run_dir)
     if artifacts:
@@ -565,3 +573,83 @@ class TestTheAgeSelector:
         row = ledger.read_rows()[0]
         assert row.records_pruned_at != ''
         assert row.net_pnl == 412.0
+
+
+class TestWhatIsPinnedOrCertifiedIsKept:
+    """
+    #576: a certificate run is never deleted, and a run of a verified fixture catalog production —
+    current or superseded, a consumer may still pin it — is kept until the operator releases it.
+    """
+
+    @staticmethod
+    def _record(root: Path, produced_at: str, run_ids: list, verified: bool = True) -> None:
+        FixtureProductionStore(root / PRODUCTION_RECORD_FILE).append(FixtureProduction(
+            entry_id='report_coverage', produced_at=produced_at, run_ids=run_ids,
+            verified=verified, report_contract=24))
+
+    def test_a_certificate_run_is_kept_by_every_selector(self, tmp_path, any_run_purpose):
+        certified = _plant(tmp_path, '20260830_132034_aaaaaaaa', 'study',
+                           run_type=RUN_TYPE_AUTOTRADER, purpose=RunPurpose.CERTIFICATE)
+        for minute in (1, 2, 3):
+            _plant(tmp_path, f'20260830_13203{4 + minute}_bbbbbbb{minute}', 'study',
+                   run_type=RUN_TYPE_AUTOTRADER, minutes=minute)
+
+        report = _pruner(tmp_path).plan(PruneSelectors(keep_last=1, release_fixtures=True))
+
+        assert [c.path for c in report.kept_certificate] == [certified]
+        assert certified not in [c.path for c in report.all_deletions()]
+
+    def test_a_catalog_fixture_is_kept_until_released(self, tmp_path):
+        pinned = _plant(tmp_path, '20260830_132034_aaaaaaaa', 'report_coverage_reference')
+        _plant(tmp_path, '20260830_132035_bbbbbbbb', 'report_coverage_reference', minutes=1)
+        _plant(tmp_path, '20260830_132036_cccccccc', 'report_coverage_reference', minutes=2)
+        self._record(tmp_path, '2026-10-08T10:00:00+00:00', ['20260830_132034_aaaaaaaa'])
+
+        kept = _pruner(tmp_path).plan(PruneSelectors(keep_last=1))
+        released = _pruner(tmp_path).plan(PruneSelectors(keep_last=1, release_fixtures=True))
+
+        assert [c.path for c in kept.kept_catalog_fixture] == [pinned]
+        assert pinned in [c.path for c in released.to_delete_redundant]
+
+    def test_a_superseded_production_stays_until_released_and_a_failed_one_does_not(self, tmp_path):
+        """The consumer may still pin the old ids; only the operator knows when they have moved."""
+        old = _plant(tmp_path, '20260830_132034_aaaaaaaa', 'report_coverage_reference')
+        failed = _plant(tmp_path, '20260830_132035_bbbbbbbb', 'report_coverage_reference',
+                        minutes=1)
+        new = _plant(tmp_path, '20260830_132036_cccccccc', 'report_coverage_reference', minutes=2)
+        self._record(tmp_path, '2026-10-08T10:00:00+00:00', ['20260830_132034_aaaaaaaa'])
+        self._record(tmp_path, '2026-10-08T10:30:00+00:00', ['20260830_132035_bbbbbbbb'],
+                     verified=False)
+        self._record(tmp_path, '2026-10-08T11:00:00+00:00', ['20260830_132036_cccccccc'])
+
+        report = _pruner(tmp_path).plan(PruneSelectors(keep_last=1))
+
+        assert sorted(c.path for c in report.kept_catalog_fixture) == sorted([old, new])
+        assert failed in [c.path for c in report.to_delete_redundant]
+
+
+class TestARunIsNeverAnOrphan:
+    """A directory holding a run header is a run, whether or not the index lists it."""
+
+    def test_a_run_the_index_lost_is_kept_and_named(self, tmp_path):
+        indexed = _plant(tmp_path, '20260830_132034_aaaaaaaa', 'my_set')
+        lost = _plant(tmp_path, '20260830_132035_bbbbbbbb', 'my_set', minutes=1)
+        frame = RunIndex(tmp_path / 'index.parquet').read()
+        RunIndex(tmp_path / 'index.parquet').write(
+            frame[frame['run_id'] != '20260830_132035_bbbbbbbb'])
+
+        report = _pruner(tmp_path).plan(PruneSelectors(orphans=True))
+
+        assert [c.path for c in report.kept_unindexed_run] == [lost]
+        assert lost not in [c.path for c in report.all_deletions()]
+        assert indexed not in [c.path for c in report.all_deletions()]
+
+    def test_a_header_that_cannot_be_read_is_kept(self, tmp_path):
+        """No guard can clear a run whose header says nothing readable — it stays."""
+        broken = _plant(tmp_path, '20260830_132034_aaaaaaaa', 'my_set')
+        _plant(tmp_path, '20260830_132035_bbbbbbbb', 'my_set', minutes=1)
+        (broken / 'header.json').write_text('{"run_id": "20260830_13', encoding='utf-8')
+
+        report = _pruner(tmp_path).plan(PruneSelectors(keep_last=1))
+
+        assert [c.path for c in report.kept_unreadable_header] == [broken]

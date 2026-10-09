@@ -1,5 +1,6 @@
 {
   "profile_name": "duplicate_signal_guard_test",
+  "run_purpose": "fixture",
   "bot_id": "dupsig01",
   "symbol": "BTCUSD",
   "broker_type": "kraken_spot",

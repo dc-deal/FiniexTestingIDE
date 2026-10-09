@@ -1,6 +1,7 @@
 {
   "version": "1.0",
   "scenario_set_name": "backtesting_validation_test",
+  "run_purpose": "fixture",
   "created": "2025-12-16T00:00:00.000000",
   "description": "Validation Testing - First run to verify components work",
   "global": {

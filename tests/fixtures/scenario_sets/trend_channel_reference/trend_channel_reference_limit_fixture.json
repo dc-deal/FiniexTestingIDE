@@ -1,6 +1,7 @@
 {
   "version": "1.0",
   "scenario_set_name": "trend_channel_reference_limit_fixture",
+  "run_purpose": "fixture",
   "created": "2026-06-26T00:00:00.000000",
   "description": "Test fixture \u2014 CORE/trend_channel_reference in limit_pullback mode (mt5 EURUSD). Drives resting LIMIT entries + SL/TP + trailing + partial close for behavior assertions.",
   "global": {

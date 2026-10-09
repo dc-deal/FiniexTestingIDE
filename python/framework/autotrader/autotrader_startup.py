@@ -9,6 +9,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+from python.api.api_contract import API_CONTRACT_VERSION
 from python.configuration.app_config_manager import AppConfigManager
 from python.configuration.market_config_manager import MarketConfigManager
 from python.configuration.sentiment_config_manager import SentimentConfigManager
@@ -299,6 +300,9 @@ def create_autotrader_loggers(
             ticks_from=_ticks_from(config),
             orders_to=resolve_orders_to(config),
             data_windows=_data_windows(config, run_timestamp),
+            # What the session is FOR, as the profile declares it (#576).
+            run_purpose=config.run_purpose,
+            report_contract=API_CONTRACT_VERSION,
         )
         RunIndex(AppConfigManager().get_file_logging_config_object().run_index).register_run(
             header, run_dir)

@@ -179,6 +179,13 @@ question and must not become a second config validator.
 One test runs against the SHIPPED profiles rather than a fixture: a collision there would mean
 two of the operator's own bots share a position book.
 
+**The check reaches the user algo directories too** (`TestTheCheckReachesTheUserAlgoDirectories`,
+#581). A profile there has no `autotrader_profiles` folder above it, so the walk up found nothing
+and the check was skipped — for the operator's own bots. The boot passes every configured place a
+profile may live; the tests pin a copy caught from either side, distinct ids passing, and a profile
+in a temporary tree still compared only with its own tree, because a test's copy of a shipped
+profile would otherwise collide with its original.
+
 ---
 
 ## `test_run_config_store.py`

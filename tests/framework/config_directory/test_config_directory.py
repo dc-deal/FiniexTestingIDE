@@ -36,6 +36,7 @@ from python.framework.types.config_directory_types import (
 )
 from python.framework.types.log_layout_types import RUN_TYPE_AUTOTRADER, RUN_TYPE_SIMULATION
 from python.framework.types.run_outcome_types import RunOutcome
+from python.framework.types.run_purpose_types import RunPurpose
 from python.framework.types.run_results_types import RunProvenance
 from python.framework.validators import config_name_validator
 from python.framework.validators.config_name_validator import (
@@ -189,6 +190,55 @@ class TestWhatAFileDeclares:
                _set('odd', [_scenario('a', broker='no_such_broker')]))
 
         assert _rows(tree)['odd.json'].market_types == ['unknown']
+
+    def test_a_file_says_what_its_runs_are_for_and_why_it_exists(self, tree):
+        """#576: both kinds serve their declaration; a file that declares nothing is regular."""
+        _write(tree / 'configs/scenario_sets/declared.json',
+               {**_set('declared', [_scenario('a')]), 'run_purpose': 'fixture',
+                'description': 'Every report state in **one** run.'})
+        _write(tree / 'configs/scenario_sets/silent.json', _set('silent', [_scenario('a')]))
+        _write(tree / 'configs/autotrader_profiles/field_study/study.json',
+               _profile(run_purpose='certificate'))
+
+        rows = _rows(tree)
+
+        assert (rows['declared.json'].run_purpose, rows['declared.json'].config_description) == (
+            RunPurpose.FIXTURE, 'Every report state in **one** run.')
+        assert (rows['silent.json'].run_purpose, rows['silent.json'].config_description) == (
+            RunPurpose.REGULAR, None)
+        assert rows['study.json'].run_purpose is RunPurpose.CERTIFICATE
+
+    def test_a_purpose_declared_in_a_users_own_file_is_an_unreadable_row(self, tree):
+        """A file outside `configs/` always runs as regular, so declaring one there is refused."""
+        _write(tree / 'user_algos/my_bot/declared.json',
+               {**_set('declared', [_scenario('a')]), 'run_purpose': 'regular'})
+        _write(tree / 'user_algos/my_bot/silent.json', _set('silent', [_scenario('a')]))
+
+        rows = _rows(tree)
+
+        assert rows['declared.json'].status == ConfigReadStatus.UNREADABLE
+        assert rows['declared.json'].run_purpose is None
+        assert 'does not belong in a user algo directory' in rows['declared.json'].reason
+        assert rows['silent.json'].run_purpose is RunPurpose.REGULAR
+
+    def test_an_unknown_purpose_is_an_unreadable_row(self, tree):
+        """The refusal a run would meet at its start, shown before anyone starts one."""
+        _write(tree / 'configs/scenario_sets/typo.json',
+               {**_set('typo', [_scenario('a')]), 'run_purpose': 'fixtures'})
+
+        row = _rows(tree)['typo.json']
+
+        assert row.status == ConfigReadStatus.UNREADABLE and row.run_purpose is None
+        assert 'regular, fixture, certificate' in row.reason
+
+    def test_the_declared_purposes_name_only_readable_files(self, tree):
+        """What a run-index rebuild hands its older headers — an unreadable file declares none."""
+        _write(tree / 'configs/scenario_sets/declared.json',
+               {**_set('declared', [_scenario('a')]), 'run_purpose': 'fixture'})
+        _write(tree / 'configs/scenario_sets/typo.json',
+               {**_set('typo', [_scenario('a')]), 'run_purpose': 'fixtures'})
+
+        assert _directory(tree).declared_purposes() == {'declared.json': RunPurpose.FIXTURE}
 
 
 class TestAFileBeingEditedIsARowNotAnError:

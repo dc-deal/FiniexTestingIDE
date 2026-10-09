@@ -1,6 +1,7 @@
 {
   "version": "1.0",
   "scenario_set_name": "trend_channel_reference_robustness_test",
+  "run_purpose": "fixture",
   "created": "2026-06-26T08:42:19.692415+00:00",
   "description": "Didactic reference robustness set (#118 case study) \u2014 CORE/trend_channel_reference on mt5 EURUSD+GBPUSD, 36 windows (IS/OOS 0.3). Teaching example, NOT a profitable strategy: exercises the full order surface (resting LIMIT entries, SL/TP, trailing stop, partial close, multi-position) under multi-window IS/OOS validation.",
   "robustness": {

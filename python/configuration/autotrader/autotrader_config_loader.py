@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any, Dict
 
 from python.configuration.app_config_manager import AppConfigManager
+from python.framework.config_directory.config_directory_discovery import is_user_owned
 from python.framework.types.autotrader_types.autotrader_config_types import (
     AutoTraderConfig,
     DeploymentConfig,
@@ -40,6 +41,7 @@ from python.framework.utils.config_merge_utils import (
     deep_merge,
     without_meta_keys,
 )
+from python.framework.utils.declared_purpose_utils import read_declared_purpose
 from python.framework.validators.adapter_wiring_validator import (
     refuse_live_adapter_on_replayed_ticks,
 )
@@ -62,8 +64,10 @@ def _allowlist_from(cls) -> frozenset:
 
 # Top-level keys include load-time meta (`config_path`) that must NOT appear
 # in profile JSON. Filter that out so the allowlist matches the JSON surface.
+# `description` (#576) is a key with no field: it is checked on load and served by the
+# configuration directory from the file itself, and nothing that runs reads it.
 _KNOWN_PROFILE_TOP_KEYS: frozenset = (
-    _allowlist_from(AutoTraderConfig) - {'config_path'}
+    (_allowlist_from(AutoTraderConfig) - {'config_path'}) | {'description'}
 )
 _KNOWN_EXECUTION_KEYS: frozenset            = _allowlist_from(AutotraderExecutionDefaults)
 _KNOWN_CLIPPING_KEYS: frozenset             = _allowlist_from(ClippingMonitorDefaults)
@@ -248,9 +252,12 @@ def load_autotrader_config(config_path: str) -> AutoTraderConfig:
     else:
         state_persistence_enabled_resolved = state_persistence_raw.get('enabled', True)
 
+    run_purpose = read_declared_purpose(raw_profile_only, path.name, is_user_owned(path))
+
     config = AutoTraderConfig(
         profile_name=raw.get('profile_name', ''),
         bot_id=raw.get('bot_id', ''),
+        run_purpose=run_purpose,
         symbol=raw.get('symbol', ''),
         broker_type=raw.get('broker_type', ''),
         adapter_type=adapter_type_resolved,
