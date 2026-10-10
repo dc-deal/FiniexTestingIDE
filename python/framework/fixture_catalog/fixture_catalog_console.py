@@ -5,6 +5,10 @@ The fixture catalog on the console (#576) — what the catalog command prints.
 from pathlib import Path
 from typing import Dict, List, Optional
 
+from python.framework.fixture_catalog.fixture_catalog import (
+    DECLARED_RUN_COUNT,
+    DECLARED_RUN_COUNT_SENTENCE,
+)
 from python.framework.types.fixture_catalog_types import FixtureEntry, FixtureProduction
 
 
@@ -106,6 +110,7 @@ def _print_failures(entry: FixtureEntry, failed: List[str]) -> None:
         failed: The ids of the properties that did not hold
     """
     sentences = {prop.property_id: prop.sentence for prop in entry.properties}
+    sentences[DECLARED_RUN_COUNT] = DECLARED_RUN_COUNT_SENTENCE
     for property_id in failed:
         print(f'    ✗ {property_id}: {sentences.get(property_id, "")}')
 

@@ -570,3 +570,30 @@ def entry_ids() -> List[str]:
         The ids
     """
     return [entry.entry_id for entry in FIXTURE_CATALOG]
+
+
+# Checked on every entry rather than declared on each. A production finds its runs by name, so a
+# run of the same name that somebody starts elsewhere while it runs would be counted as its own;
+# the count is what notices. A sweep is exempt — its runs are found by the sweep they belong to.
+DECLARED_RUN_COUNT = 'declared_run_count'
+DECLARED_RUN_COUNT_SENTENCE = ('The production made exactly the runs its entry declares — no run '
+                               'of the same name, started elsewhere while it ran, counted as its '
+                               'own')
+
+
+def declared_run_count(entry: FixtureEntry) -> Optional[int]:
+    """
+    How many runs one production of an entry makes.
+
+    Args:
+        entry: The catalog entry
+
+    Returns:
+        One for a scenario set or a profile, one per session for a sequence — a killed session
+        leaves its run too; None for a sweep, whose runs are not found by name
+    """
+    if entry.producer == FixtureProducerKind.SWEEP:
+        return None
+    if entry.producer == FixtureProducerKind.SESSION_SEQUENCE:
+        return len(entry.sessions)
+    return 1

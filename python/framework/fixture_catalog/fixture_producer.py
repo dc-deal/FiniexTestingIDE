@@ -10,7 +10,8 @@ A production finds its runs by asking the run index which runs appeared while it
 to the entry — by run name, or by sweep — checks them through the readers the API serves from, and
 records itself, verified or not, in the production record. A run of the same name that somebody
 starts elsewhere while a production runs would be counted as the production's; produce when the
-machine is otherwise quiet.
+machine is otherwise quiet. Should one slip in, the production made more runs than its entry
+declares, and that fails its check.
 """
 
 import copy
@@ -28,6 +29,10 @@ from typing import Any, Callable, Dict, Iterator, List, Optional, Set
 from python.api.api_contract import API_CONTRACT_VERSION
 from python.configuration.app_config_manager import AppConfigManager
 from python.configuration.autotrader.autotrader_config_loader import load_autotrader_config
+from python.framework.fixture_catalog.fixture_catalog import (
+    DECLARED_RUN_COUNT,
+    declared_run_count,
+)
 from python.framework.fixture_catalog.fixture_evidence_reader import read_fixture_evidence
 from python.framework.fixture_catalog.fixture_production_store import FixtureProductionStore
 from python.framework.optimization.optimization_runner import OptimizationRunner
@@ -368,10 +373,15 @@ def failed_properties(entry: FixtureEntry, run_ids: List[str], deployment_ids: L
         sweep_ids: The sweeps it ran
 
     Returns:
-        The ids of the properties that did not hold, in catalog order
+        The ids of the properties that did not hold, in catalog order — the run count, which
+        every entry but a sweep carries undeclared, first
     """
     evidence = read_fixture_evidence(run_ids, deployment_ids, sweep_ids)
-    return [prop.property_id for prop in entry.properties if not prop.check(evidence)]
+    failed = [prop.property_id for prop in entry.properties if not prop.check(evidence)]
+    expected = declared_run_count(entry)
+    if expected is not None and len(run_ids) != expected:
+        failed.insert(0, DECLARED_RUN_COUNT)
+    return failed
 
 
 def session_profile(base: Dict[str, Any], entry: FixtureEntry,

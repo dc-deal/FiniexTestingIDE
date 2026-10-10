@@ -65,6 +65,13 @@ name, or belong to its sweep — and checks every property against them through 
 serves from: a run's sections from the report store, a deployment and a sweep from the route
 functions that answer for them. A property therefore holds for what a consumer is SERVED.
 
+Finding runs by name has one gap: a run of the same name that somebody starts elsewhere while a
+production runs looks exactly like one of its own. So produce when nothing else runs — and every
+entry but a sweep also carries one check it does not declare: the production made exactly as many
+runs as the entry makes, one per scenario set or profile and one per session. A run that slipped in
+fails that check, and the previous production stays the current one. A sweep's runs are found by
+the sweep they belong to, so a sweep is not counted.
+
 `verify` checks the current production again without producing anything — after a contract change,
 it says whether the pinned runs still carry what their consumers assert.
 

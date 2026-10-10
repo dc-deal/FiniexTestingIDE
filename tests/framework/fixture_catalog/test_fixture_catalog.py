@@ -18,11 +18,13 @@ from typing import Callable, List, Optional
 import pytest
 
 from python.framework.fixture_catalog.fixture_catalog import (
+    DECLARED_RUN_COUNT,
     FIXTURE_CATALOG,
     FIXTURE_CATALOG_BY_ID,
 )
 from python.framework.fixture_catalog.fixture_producer import (
     FixtureProducer,
+    failed_properties,
     run_until_killed,
     session_profile,
 )
@@ -194,6 +196,7 @@ class TestASessionSequenceRunsEveryDeclaredSession:
                                                 session.killed_before_close)
         assert not production.verified, 'a production that made no run cannot be current'
         assert production.run_ids == []
+        assert production.failed_properties[0] == DECLARED_RUN_COUNT
         # Why each session ended travels into the record, the kill's reason with it.
         assert len(production.session_outcomes) == len(entry.sessions)
         killed = [line for line, session in zip(production.session_outcomes, entry.sessions)
@@ -209,6 +212,28 @@ class TestASessionSequenceRunsEveryDeclaredSession:
         assert changed['safety']['max_drawdown_pct'] == 12.0
         assert changed['safety']['enabled'] is True
         assert base['profile_name'] != changed['profile_name'], 'the base profile was altered'
+
+
+class TestAProductionMakesExactlyTheRunsItDeclares:
+    """
+    A production finds its runs by name, so one more run of that name — started elsewhere while
+    it ran — must fail its check rather than become part of the current fixture.
+    """
+
+    def test_a_run_more_than_declared_fails_the_check(self):
+        profile_entry = next(entry for entry in FIXTURE_CATALOG
+                             if entry.producer == FixtureProducerKind.PROFILE)
+
+        failed = failed_properties(profile_entry, ['20261010_000000_aaaaaaaa',
+                                                   '20261010_000001_bbbbbbbb'], [], [])
+
+        assert failed[0] == DECLARED_RUN_COUNT
+
+    def test_a_sweep_is_not_counted(self):
+        sweep_entry = next(entry for entry in FIXTURE_CATALOG
+                           if entry.producer == FixtureProducerKind.SWEEP)
+
+        assert DECLARED_RUN_COUNT not in failed_properties(sweep_entry, [], [], [])
 
 
 class TestASessionIsKilledAtItsMomentAndSaysWhy:
