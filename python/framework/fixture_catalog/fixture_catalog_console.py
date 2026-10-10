@@ -61,6 +61,7 @@ def render_production(entry: FixtureEntry, production: FixtureProduction,
         print(f'   Supersedes the production of {superseded.produced_at[:19]}Z — its runs stay '
               f'until the consumer has re-pinned; tell them the new ids in one message.')
     if not production.verified:
+        _print_session_outcomes(production.session_outcomes)
         print('   Not current: the previous production, if any, stays the current one.')
 
 
@@ -107,3 +108,15 @@ def _print_failures(entry: FixtureEntry, failed: List[str]) -> None:
     sentences = {prop.property_id: prop.sentence for prop in entry.properties}
     for property_id in failed:
         print(f'    ✗ {property_id}: {sentences.get(property_id, "")}')
+
+
+def _print_session_outcomes(outcomes: List[str]) -> None:
+    """
+    Print how each AutoTrader session of a production ended — the reason a session was killed,
+    or could not be.
+
+    Args:
+        outcomes: One line per session
+    """
+    for outcome in outcomes:
+        print(f'    · {outcome}')

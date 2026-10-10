@@ -34,7 +34,7 @@ s1 · a fresh history            2026-02-01  rsi_oversold 40  max_drawdown_pct 2
 s2 · the same configuration     2026-02-02  rsi_oversold 40  max_drawdown_pct 25
 s3 · the STRATEGY changed       2026-02-03  rsi_oversold 35  max_drawdown_pct 25
 s4 · the OPERATION changed      2026-02-04  rsi_oversold 35  max_drawdown_pct 12
-s5 · killed before its close    2026-02-05  rsi_oversold 35  max_drawdown_pct 12   killed after 25 s
+s5 · killed before its close    2026-02-05  rsi_oversold 35  max_drawdown_pct 12   killed at its first order
 s6 · a second history           2026-02-06  rsi_oversold 35  max_drawdown_pct 12   --new-deployment
 ```
 
@@ -52,6 +52,14 @@ points the strategy runner and the optimization command use. An AutoTrader sessi
 own command line in a process of its own, because a session that must never reach its close can only
 be produced by killing one.
 
+A session is killed at a moment it reaches, never after a fixed time: the production watches the
+session's own order event stream and kills it once its first order is there. The session is then
+past its boot and trading, so the run it leaves behind dies with an order on it, the way a real
+session dies. A timer could not tell where the session was — the first order arrives about 25
+seconds after the start on an idle machine, and later on a busy one. A session that does not reach
+its moment within three minutes is killed anyway; one that ends on its own first is left alone; and
+either way the production says so.
+
 The production then finds its runs — those that appeared while it ran and carry the entry's run
 name, or belong to its sweep — and checks every property against them through the readers the API
 serves from: a run's sections from the report store, a deployment and a sweep from the route
@@ -63,12 +71,14 @@ it says whether the pinned runs still carry what their consumers assert.
 ## The production record
 
 `runs/fixture_productions.jsonl` records every production, one line each: the entry, when it
-finished, the runs, deployments and sweeps it made, whether every property held, and the contract
-it ran under. Which code made the runs is on each run's own header, so the record does not repeat
-it. It is a RECORD store of one append-only file at the root of the run tree —
-read whole, because it holds a handful of lines per entry, and placed beside the run index because
-it describes runs in that tree and has to die with it. Its location is derived from the run index's,
-never configured a second time.
+finished, the runs, deployments and sweeps it made, whether every property held, how each of its
+AutoTrader sessions ended, and the contract it ran under. A killed process cannot leave a word in
+its own run, so why a session was killed — or why it could not be — travels in the record, and a
+production that fails its check prints it beside the properties that did not hold. Which code made
+the runs is on each run's own header, so the record does not repeat it. It is a RECORD store of
+one append-only file at the root of the run tree — read whole, because it holds a handful of lines
+per entry, and placed beside the run index because it describes runs in that tree and has to die
+with it. Its location is derived from the run index's, never configured a second time.
 
 **The CURRENT fixture of an entry is derived from it, never stored**: it is the newest production
 whose runs carried every property. A production that failed its check stays in the record as what

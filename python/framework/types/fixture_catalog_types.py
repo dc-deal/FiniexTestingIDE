@@ -9,7 +9,7 @@ the newest verified production — and is never written anywhere.
 
 from dataclasses import dataclass, field
 from enum import StrEnum
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Tuple
 
 from pydantic import BaseModel
 
@@ -55,14 +55,14 @@ class FixtureSession:
         overrides: Values set on the base profile, by dotted path
             (`strategy_config.decision_logic_config.rsi_oversold`)
         new_deployment: Start a fresh deployment history with this session
-        kill_after_seconds: Kill the session after this long, so it never reaches its close —
-            the way a run with a header and no ledger row is produced
+        killed_before_close: Kill the session at its first order, so it dies while trading and
+            never reaches its close — the way a run with a header and no ledger row is produced
     """
     label: str
     start_date: str
     overrides: Dict[str, Any] = field(default_factory=dict)
     new_deployment: bool = False
-    kill_after_seconds: Optional[float] = None
+    killed_before_close: bool = False
 
 
 @dataclass
@@ -153,6 +153,8 @@ class FixtureProduction(BaseModel):
         sweep_ids: The sweeps it ran; empty otherwise
         verified: Whether every property held
         failed_properties: The properties that did not hold
+        session_outcomes: How each AutoTrader session it ran ended, one line each — why a session
+            was killed, or why it could not be; empty for a backtest and a sweep
         report_contract: The API contract its runs' reports were written under — which code
             made them is on each run's own header
     """
@@ -163,4 +165,5 @@ class FixtureProduction(BaseModel):
     sweep_ids: List[str] = []
     verified: bool
     failed_properties: List[str] = []
+    session_outcomes: List[str] = []
     report_contract: int

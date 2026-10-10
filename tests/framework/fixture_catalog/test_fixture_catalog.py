@@ -4,11 +4,13 @@ The fixture catalog (#576) — the runs a consumer pins, produced by one command
 This suite pins that the catalog is complete and every entry starts from a configuration that
 declares itself a fixture; that the production record derives the current fixture and never lets a
 failed production replace a good one; that a session sequence runs every declared session with its
-own changes and its own carry-over; and that one real production — the report-coverage backtest —
+own changes and its own carry-over; that a session to be killed is killed at its moment, at a
+limit, or not at all, and says which; and that one real production — the report-coverage backtest —
 still carries every property its consumers assert.
 """
 
 import json
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, List, Optional
@@ -19,7 +21,11 @@ from python.framework.fixture_catalog.fixture_catalog import (
     FIXTURE_CATALOG,
     FIXTURE_CATALOG_BY_ID,
 )
-from python.framework.fixture_catalog.fixture_producer import FixtureProducer, session_profile
+from python.framework.fixture_catalog.fixture_producer import (
+    FixtureProducer,
+    run_until_killed,
+    session_profile,
+)
 from python.framework.fixture_catalog.fixture_production_store import (
     PRODUCTION_RECORD_FILE,
     FixtureProductionStore,
@@ -165,10 +171,10 @@ class TestASessionSequenceRunsEveryDeclaredSession:
 
         arguments_seen: List[str] = []
 
-        def runner(arguments: List[str], kill_after: Optional[float]) -> str:
+        def runner(arguments: List[str], kill_when: Optional[Callable[[], bool]]) -> str:
             profile = json.loads(Path(arguments[2]).read_text(encoding='utf-8'))
             arguments_seen.append(arguments[2])
-            seen.append((profile, '--new-deployment' in arguments, kill_after))
+            seen.append((profile, '--new-deployment' in arguments, kill_when is not None))
             return 'not run'
 
         production = FixtureProducer(session_runner=runner,
@@ -176,7 +182,7 @@ class TestASessionSequenceRunsEveryDeclaredSession:
                                      progress=lambda line: None).produce(entry)
 
         assert len(seen) == len(entry.sessions)
-        for (profile, new_deployment, kill_after), session in zip(seen, entry.sessions):
+        for (profile, new_deployment, killed), session in zip(seen, entry.sessions):
             assert profile['profile_name'] == entry.session_profile_name
             assert profile['bot_id'] == entry.session_bot_id
             assert profile['deployment'] == {'continuous': True}
@@ -184,10 +190,15 @@ class TestASessionSequenceRunsEveryDeclaredSession:
             assert profile['scenario_settings']['max_ticks'] == entry.session_max_ticks
             # Its own carry-over, shared by the sequence and by nothing outside it.
             assert profile['cold_start']['path'].startswith(str(Path(arguments_seen[0]).parent))
-            assert (new_deployment, kill_after) == (session.new_deployment,
-                                                    session.kill_after_seconds)
+            assert (new_deployment, killed) == (session.new_deployment,
+                                                session.killed_before_close)
         assert not production.verified, 'a production that made no run cannot be current'
         assert production.run_ids == []
+        # Why each session ended travels into the record, the kill's reason with it.
+        assert len(production.session_outcomes) == len(entry.sessions)
+        killed = [line for line, session in zip(production.session_outcomes, entry.sessions)
+                  if session.killed_before_close]
+        assert killed and all('to be killed at its first order' in line for line in killed)
 
     def test_a_session_s_changes_land_at_their_dotted_paths(self):
         entry = FIXTURE_CATALOG_BY_ID['demo_deployment']
@@ -198,6 +209,37 @@ class TestASessionSequenceRunsEveryDeclaredSession:
         assert changed['safety']['max_drawdown_pct'] == 12.0
         assert changed['safety']['enabled'] is True
         assert base['profile_name'] != changed['profile_name'], 'the base profile was altered'
+
+
+class TestASessionIsKilledAtItsMomentAndSaysWhy:
+    """A real process stands in for the session — a sleep, or one that fails on its own."""
+
+    _SLEEPER = [sys.executable, '-c', 'import time; time.sleep(30)']
+
+    def test_killed_the_moment_it_is_due(self):
+        asked: List[int] = []
+
+        def due() -> bool:
+            asked.append(1)
+            return len(asked) >= 3
+
+        outcome = run_until_killed(self._SLEEPER, due, limit_seconds=20, poll_seconds=0.05)
+
+        assert outcome.startswith('killed when due, after ')
+        assert len(asked) == 3
+
+    def test_killed_at_the_limit_when_never_due(self):
+        outcome = run_until_killed(self._SLEEPER, lambda: False, limit_seconds=1,
+                                   poll_seconds=0.05)
+
+        assert outcome == 'never due within 1 s — killed at the limit'
+
+    def test_a_process_that_ends_first_says_so_with_its_error(self):
+        failing = [sys.executable, '-c', 'import sys; sys.stderr.write("boom\\n"); sys.exit(3)']
+
+        outcome = run_until_killed(failing, lambda: False, limit_seconds=20, poll_seconds=0.05)
+
+        assert outcome == 'ended on its own before it was due (exit 3) — boom'
 
 
 class TestAPropertyReadsWhatIsServed:
