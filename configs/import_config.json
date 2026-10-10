@@ -4,7 +4,9 @@
     "paths": {
         "data_raw": "data/raw",
         "import_output": "data/processed",
-        "data_finished": "data/finished"
+        "data_finished": "data/finished",
+        "_comment_import_timings": "The measured duration of each import step, written once after a complete import into the production archive and read for the next import's estimate. Derived and deletable: without it the screen shows no estimate.",
+        "import_timings": "data/runtime/import_timings.json"
     },
     "test_paths": {
         "data_raw": "data/test/import/raw",
@@ -31,5 +33,10 @@
             "H4",
             "D1"
         ]
+    },
+    "display": {
+        "_comment": "The live screen of `data_index_cli.py import`. Off, or with stdout not a terminal, the import logs line by line instead; --no-display switches it off for one run.",
+        "enabled": true,
+        "update_interval_ms": 250
     }
 }

@@ -285,3 +285,19 @@ suite runs from a tree that is dirty whenever somebody is working on it.
 | [Reporting Pipeline Tests](reporting_tests.md) | The artifacts themselves, and `ReportStore` against a real run tree |
 | [API Endpoint Tests](api_endpoint_tests.md) | The report endpoints over the generic getter — response shapes unchanged by the collapse |
 | [Algo State Persistence](../autotrader/state_persistence_tests.md) | The carry-over store's cadence, corrupt and staleness policies |
+
+## `test_import_timings_store.py`
+
+The measured duration of each import step (#175) — the file the next import's estimate is read
+from (`data/runtime/import_timings.json`):
+
+- a missing file has no rates, and a record round-trips through an atomic write that leaves no
+  temporary file behind
+- a second measurement is averaged into the first, and a step not measured again keeps its rate
+- a new unit or worker count starts the average again, because averaging two different
+  quantities would describe neither
+- the file keeps the mode an ordinary write would give it, although it is written through an
+  owner-only temporary file
+- another schema version, or a file that is not JSON, yields no rates — the estimate is a
+  convenience and never a reason to stop
+

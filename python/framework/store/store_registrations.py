@@ -47,7 +47,7 @@ from python.framework.store.run_config_index import RUN_CONFIG_INDEX_FILE, RunCo
 from python.framework.store.run_patch_store import PATCH_SUFFIX
 from python.framework.store.store_descriptor import StoreDescriptor
 from python.framework.types.config_types.host_identity_config_types import HOST_IDENTITY_FILE
-from python.framework.types.log_layout_types import GLOBAL_LOG_FILE
+from python.framework.types.log_layout_types import GLOBAL_LOG_FILE, IMPORT_LOG_SUBDIR
 from python.framework.types.store_types import (
     DISCOVERY_CACHE_DIRNAME,
     RetrievalForm,
@@ -253,7 +253,7 @@ def build_registrations() -> Dict[StoreId, StoreDescriptor]:
             backend=StoreBackend.DISK,
             entry_glob='*/ticks/**/*.parquet',
             index_path=processed / TickIndexManager.INDEX_FILE_PARQUET,
-            note='Index owned by TickIndexManager; converges on the shared base under #175.',
+            note='Index owned by TickIndexManager; converges on the shared base under #583.',
         ),
         StoreId.BARS: StoreDescriptor(
             store_id=StoreId.BARS,
@@ -270,9 +270,11 @@ def build_registrations() -> Dict[StoreId, StoreDescriptor]:
             index_path=processed / BarsIndexManager.INDEX_FILE_PARQUET,
             derived_from=StoreId.TICKS,
             note=('DERIVED, not archive: rendered from the tick archive, and today only by a full '
-                  're-render (bar_importer.py:347 clean_mode → _clean_bars). Every bar file already '
+                  're-render that replaces each file once its new version is verified, and removes '
+                  'files without a source only after every symbol rendered '
+                  '(BarImporter.render_bars_for_all_symbols). Every bar file already '
                   'carries its build stamp — importer_version, rendered_at, source_version_min/max '
-                  '— and nothing compares it; that check is #175. Index owned by BarsIndexManager.'),
+                  '— and nothing compares it; that check is #583. Index owned by BarsIndexManager.'),
         ),
         StoreId.SIGNALS: StoreDescriptor(
             store_id=StoreId.SIGNALS,
@@ -286,7 +288,7 @@ def build_registrations() -> Dict[StoreId, StoreDescriptor]:
             # Matches SignalIndexManager's own scan depth — one level per sentiment type.
             entry_glob='*/*.parquet',
             index_path=processed / 'signals' / SignalIndexManager.INDEX_FILE_PARQUET,
-            note='Index owned by SignalIndexManager; converges on the shared base under #175.',
+            note='Index owned by SignalIndexManager; converges on the shared base under #583.',
         ),
         StoreId.DISCOVERY_CACHES: StoreDescriptor(
             store_id=StoreId.DISCOVERY_CACHES,
@@ -402,6 +404,34 @@ def build_registrations() -> Dict[StoreId, StoreDescriptor]:
             backend=StoreBackend.DISK,
             note=('Append stream without identity. It gets bounding and rotation (#476), '
                   'never an index.'),
+        ),
+        StoreId.IMPORT_LOGS: StoreDescriptor(
+            store_id=StoreId.IMPORT_LOGS,
+            kind=StoreKind.RECORD,
+            purpose='one log file per data import',
+            doc='docs/architecture/data_storage_layout.md#an-imports-log-and-its-timings',
+            root=Path(file_logging.global_log_dir) / IMPORT_LOG_SUBDIR,
+            key='import id (the UTC start plus a random half, e.g. 20261010_090011_a3f9c2d1)',
+            form=RetrievalForm.DOCUMENT,
+            backend=StoreBackend.DISK,
+            entry_glob='import_*.log',
+            note=('No index: a file is opened by the import id it is named after, which the '
+                  "import's summary prints, and nothing searches across imports yet. No "
+                  'lifetime either — a store lifetime is #535.'),
+        ),
+        StoreId.IMPORT_TIMINGS: StoreDescriptor(
+            store_id=StoreId.IMPORT_TIMINGS,
+            kind=StoreKind.DERIVED,
+            purpose='measured import step durations, for estimates',
+            doc='docs/architecture/data_storage_layout.md#an-imports-log-and-its-timings',
+            root=Path(ImportConfigManager().get_import_timings_path()),
+            key='—',
+            form=RetrievalForm.DOCUMENT,
+            backend=StoreBackend.DISK,
+            derived_from=None,
+            note=("One file, written once after a complete import into the production archive. "
+                  "`derived_from` stays None on purpose — its source is the imports' own "
+                  'durations, not a store. Deleting it loses nothing but the next estimate.'),
         ),
         StoreId.HOST_IDENTITY: StoreDescriptor(
             store_id=StoreId.HOST_IDENTITY,

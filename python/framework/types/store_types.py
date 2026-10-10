@@ -81,6 +81,8 @@ class StoreId(StrEnum):
     RAW_INBOX = 'raw_inbox'
     FINISHED_ARCHIVE = 'finished_archive'
     GLOBAL_LOG = 'global_log'
+    IMPORT_LOGS = 'import_logs'
+    IMPORT_TIMINGS = 'import_timings'
     HOST_IDENTITY = 'host_identity'
 
 

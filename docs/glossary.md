@@ -247,6 +247,19 @@ event is how long that took, on the acceptance or refusal that answers the submi
 delay in a backtest, measured live, and empty where the answer was learned by asking. See
 [Pending Orders](architecture/pending_order_architecture.md).
 
+**inbox** — Three different places, so the bare word is not used alone:
+- **import inbox** — the folder a producer's files wait in until an import takes them: `data/raw/`
+  for tick exports, `data/raw/signals/` for signal JSONL. An import writes the archive from it and
+  moves each file it imported to `data/finished/`; a file it refused, or skipped as a duplicate,
+  stays where it is. The import screen's first step scans both. See [Data Import
+  Pipeline](data_pipeline/data_import_pipeline.md#the-import-screen-its-log-and-its-estimate).
+- **signal inbox** (`SignalInbox`) — the buffer between a signal stream's transport thread and the
+  loop: it holds the snapshots that arrived until the loop takes them. See [Signal Data
+  Source](data_pipeline/signal_data_source.md).
+- **executor inbox** — where a session's broker answers (acknowledgements, fills, query results)
+  wait until the executor drains them, on every pass of the loop, tick and heartbeat alike. See
+  [Live Execution](architecture/live_execution_architecture.md).
+
 **index** — A derived single file, `<store>_index.parquet`, at the root of its store and rebuilt
 from the store's own entries. See [Data Storage Layout](architecture/data_storage_layout.md).
 

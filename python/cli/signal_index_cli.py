@@ -1,9 +1,11 @@
 """
 FiniexTestingIDE - Signal Index CLI
-Command-line tools for signal data import and inspection (#429).
+Command-line tools for the signal index and the producer (#429).
+
+The import itself runs with the tick import, in one command:
+    python python/cli/data_index_cli.py import [--only signals] [--override] [--include-finished]
 
 Usage:
-    python python/cli/signal_index_cli.py import [--override] [--include-finished]
     python python/cli/signal_index_cli.py status
     python python/cli/signal_index_cli.py rebuild
     python python/cli/signal_index_cli.py inspect DATA_SENTIMENT_TYPE SYMBOL
@@ -16,8 +18,8 @@ data/finished/signals/<pipeline_id>/ (switched by 'processing.move_processed_fil
 
 An import reads the raw directory only, so a re-run costs nothing once everything is
 archived; --include-finished additionally re-reads the finished archive and rebuilds every
-day ever imported. --override means what it means in the tick importer — replace an
-existing parquet instead of skipping it — and nothing more.
+day ever imported. --override means what it means for ticks — replace an existing parquet
+instead of skipping it — and nothing more.
 """
 
 import argparse
@@ -29,7 +31,6 @@ import pandas as pd
 
 from python.configuration.import_config_manager import ImportConfigManager
 from python.configuration.sentiment_config_manager import SentimentConfigManager
-from python.data_management.importers.signal_data_importer import SignalDataImporter
 from python.data_management.index.signal_index_manager import SignalIndexManager
 from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.signal_data.producer.signal_connect_check import (
@@ -59,9 +60,8 @@ vLog = get_global_logger()
 
 class SignalIndexCli:
     """
-    Command-line interface for signal data import and inspection (#429).
+    Command-line interface for the signal index and the producer (#429).
 
-    - Import signal JSONL to columnar parquet
     - Build / rebuild + summarize the signal index
     - Inspect one source/symbol (coverage + sample rows)
     """
@@ -69,34 +69,6 @@ class SignalIndexCli:
     def __init__(self):
         """Initialize CLI with the import config manager."""
         self._import_config = ImportConfigManager()
-
-    def cmd_import(self, override: bool = False, include_finished: bool = False):
-        """
-        Import signal JSONL to parquet and rebuild the index.
-
-        Args:
-            override: If True, replace existing parquet files instead of skipping them
-            include_finished: If True, read the finished archive as well as the inbox
-        """
-        source_dir = self._import_config.get_signal_data_raw_path()
-        target_dir = self._import_config.get_signal_import_output_path()
-        finished_dir = self._import_config.get_signal_data_finished_path() \
-            if self._import_config.get_move_processed_files() else None
-
-        print('\n' + '=' * 80)
-        print('📡 Signal Data Import')
-        print('=' * 80)
-        print(f'Source:         {source_dir}')
-        print(f'Target:         {target_dir}')
-        print(f"Finished:       {finished_dir or 'DISABLED (files stay in source)'}")
-        print(f"Override Mode:  {'ENABLED' if override else 'DISABLED'}")
-        print(f"Read Archive:   {'YES' if include_finished else 'NO (inbox only)'}")
-        print('=' * 80)
-
-        importer = SignalDataImporter(
-            source_dir=source_dir, target_dir=target_dir, override=override,
-            finished_dir=finished_dir, include_finished=include_finished)
-        importer.process_all_signals()
 
     def cmd_status(self):
         """Load + summarize the signal index."""
@@ -230,23 +202,11 @@ class SignalIndexCli:
 
 def main():
     parser = argparse.ArgumentParser(
-        description='Signal data import and inspection CLI (#429)',
+        description='Signal index and producer CLI (#429)',
         formatter_class=argparse.RawDescriptionHelpFormatter
     )
 
     subparsers = parser.add_subparsers(dest='command', help='Commands')
-
-    # ─────────────────────────────────────────────────────────────────────────
-    # IMPORT command
-    # ─────────────────────────────────────────────────────────────────────────
-    import_parser = subparsers.add_parser(
-        'import', help='Import signal JSONL to parquet + rebuild index')
-    import_parser.add_argument(
-        '--include-finished', action='store_true', default=False,
-        help='Also re-read the finished archive, re-projecting every day ever imported')
-    import_parser.add_argument(
-        '--override', action='store_true', default=False,
-        help='Overwrite existing parquet files')
 
     # ─────────────────────────────────────────────────────────────────────────
     # STATUS command
@@ -303,10 +263,7 @@ def main():
     cli = SignalIndexCli()
 
     try:
-        if args.command == 'import':
-            cli.cmd_import(override=args.override,
-                           include_finished=args.include_finished)
-        elif args.command == 'status':
+        if args.command == 'status':
             cli.cmd_status()
         elif args.command == 'rebuild':
             cli.cmd_rebuild()

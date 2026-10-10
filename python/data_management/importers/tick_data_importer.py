@@ -13,7 +13,7 @@ import json
 import re
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, Optional, Set, Tuple
+from typing import Callable, Dict, List, Optional, Set, Tuple
 
 import pandas as pd
 import pyarrow as pa
@@ -32,7 +32,7 @@ from python.framework.exceptions.data_quality_errors import (
 from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.reporting.duplicate_report import DuplicateReport
 from python.framework.types.config_types.market_config_types import ServerClockConfig
-from python.framework.types.import_schema_types import (
+from python.framework.types.import_types.import_schema_types import (
     ALREADY_CAPTURED_METADATA_KEYS,
     DISCARDED_METADATA_KEYS,
     NESTED_METADATA_KEYS,
@@ -134,53 +134,29 @@ class TickDataImporter:
         """
         Finds all TickCollector exports and converts them sequentially.
         Errors do not stop processing of remaining files.
+
+        The import's own steps, run one after the other — the same methods the import
+        coordinator calls one by one, so both paths share one implementation.
         """
-        json_files = list(self.source_dir.glob('*_ticks.json'))
+        json_files = self.collect_files()
 
         if not json_files:
             vLog.warning(
                 f'No JSON files found in {self.source_dir}. Just rebuilding index.')
-            self.rebuild_parquet_index()
+            index_manager = self.rebuild_parquet_index()
+            if index_manager is not None:
+                self.validate_archive_ordering(index_manager)
             return
 
-        vLog.info('\n' + '=' * 80)
-        vLog.info(f'FiniexTestingIDE Tick Data Importer V{self.VERSION}')
-        vLog.info('=' * 80)
-        vLog.info(f'Found: {len(json_files)} JSON files')
-        vLog.info(
-            f"Override Mode: {'ENABLED' if self.override else 'DISABLED'}")
-        market_config = MarketConfigManager()
-        for broker_type in market_config.get_all_broker_types():
-            clock = market_config.get_server_clock(broker_type)
-            vLog.info(f'Server clock: {broker_type} → {_server_clock_label(clock)}')
-        vLog.info('=' * 80 + '\n')
+        self.log_header(len(json_files))
 
         # Sequential processing with error recovery
         for json_file in json_files:
-            vLog.info(f'\n📄 Processing: {json_file.name}')
-            try:
-                self.convert_json_to_parquet(json_file)
-                self.processed_files += 1
-            except ArtificialDuplicateException as e:
-                # Special handling for duplicate detection
-                warning_msg = f'DUPLICATE DETECTED in {json_file.name}'
-                vLog.warning(warning_msg)
-                vLog.warning(str(e))
-                self.warnings.append(warning_msg)
-                vLog.info('→ Skipping import (duplicate already exists)')
-            except TickFileValidationException as e:
-                # Structural defect in the source file — refuse it, keep the batch running
-                error_msg = f'VALIDATION FAILED in {json_file.name}'
-                vLog.error(error_msg)
-                vLog.error(str(e))
-                self.errors.append(error_msg)
-                vLog.info('→ Skipping import (file not written)')
-            except Exception as e:
-                error_msg = f'ERROR in {json_file.name}: {str(e)}'
-                vLog.error(error_msg)
-                self.errors.append(error_msg)
+            self.import_file(json_file)
 
-        self.rebuild_parquet_index()
+        index_manager = self.rebuild_parquet_index()
+        if index_manager is not None:
+            self.validate_archive_ordering(index_manager)
 
         # === AUTO-TRIGGER BAR RENDERING ===
         # After all ticks imported, render bars automatically
@@ -189,24 +165,132 @@ class TickDataImporter:
 
         self._print_summary()
 
-    def rebuild_parquet_index(self):
-        """Rebuild index after successful imports"""
+    def collect_files(self) -> List[Path]:
+        """
+        The tick exports waiting in the inbox.
+
+        Returns:
+            The *_ticks.json files of source_dir, sorted by name
+        """
+        return sorted(self.source_dir.glob('*_ticks.json'))
+
+    def log_header(self, file_count: int) -> None:
+        """
+        Log the import's header: version, file count, override mode, each broker's clock.
+
+        Args:
+            file_count: Number of files about to be imported
+
+        Returns:
+            None
+        """
+        vLog.info('\n' + '=' * 80)
+        vLog.info(f'FiniexTestingIDE Tick Data Importer V{self.VERSION}')
+        vLog.info('=' * 80)
+        vLog.info(f'Found: {file_count} JSON files')
+        vLog.info(
+            f"Override Mode: {'ENABLED' if self.override else 'DISABLED'}")
+        market_config = MarketConfigManager()
+        for broker_type in market_config.get_all_broker_types():
+            clock = market_config.get_server_clock(broker_type)
+            vLog.info(f'Server clock: {broker_type} → {_server_clock_label(clock)}')
+        vLog.info('=' * 80 + '\n')
+
+    def import_file(self, json_file: Path) -> bool:
+        """
+        Import one tick export. A refused, duplicate or failing file is counted and logged,
+        never raised — the batch goes on with the next file.
+
+        Args:
+            json_file: The export to import
+
+        Returns:
+            True when the file was processed, False when it was skipped or failed
+        """
+        vLog.info(f'\n📄 Processing: {json_file.name}')
+        try:
+            self.convert_json_to_parquet(json_file)
+            self.processed_files += 1
+            return True
+        except ArtificialDuplicateException as e:
+            # Special handling for duplicate detection
+            warning_msg = f'DUPLICATE DETECTED in {json_file.name}'
+            vLog.warning(warning_msg)
+            vLog.warning(str(e))
+            self.warnings.append(warning_msg)
+            vLog.info('→ Skipping import (duplicate already exists)')
+        except TickFileValidationException as e:
+            # Structural defect in the source file — refuse it, keep the batch running
+            error_msg = f'VALIDATION FAILED in {json_file.name}'
+            vLog.error(error_msg)
+            vLog.error(str(e))
+            self.errors.append(error_msg)
+            vLog.info('→ Skipping import (file not written)')
+        except Exception as e:
+            error_msg = f'ERROR in {json_file.name}: {str(e)}'
+            vLog.error(error_msg)
+            self.errors.append(error_msg)
+        return False
+
+    def rebuild_parquet_index(
+        self,
+        on_file_scanned: Optional[Callable[[int, int], None]] = None
+    ) -> Optional[TickIndexManager]:
+        """
+        Rebuild index after successful imports. A failure is counted among the errors, and so
+        is a tick file the scan could not read, so the summary cannot read `Errors: 0` over an
+        index that no longer describes the archive.
+
+        Args:
+            on_file_scanned: Called with (file number, file count) for each tick file scanned
+
+        Returns:
+            The rebuilt index — also when files were missing from it — or None when the
+            rebuild failed
+        """
         vLog.info('\n🔄 Rebuilding Parquet index...')
         try:
 
             index_manager = TickIndexManager(data_dir=str(self.target_dir))
-            index_manager.build_index(force_rebuild=True)
+            index_manager.build_index(force_rebuild=True, on_file_scanned=on_file_scanned)
 
             symbols = index_manager.list_symbols()
             vLog.info(f'✅ Index rebuilt: {len(symbols)} symbols indexed')
-
-            self._validate_archive_ordering(index_manager)
+            unreadable = index_manager.get_unreadable_files()
+            if unreadable:
+                # The ticks are the archive, not derived: the repair is a re-import
+                self.errors.append(
+                    f'Tick index: {len(unreadable)} tick file(s) could not be read and are '
+                    f'missing from the index (first: {unreadable[0]}) — re-import them from '
+                    f'the raw archive')
+            return index_manager
 
         except Exception as e:
             vLog.error(f'❌ Failed to rebuild index: {e}')
             vLog.error('   Index may be outdated - run manual rebuild!')
+            self.errors.append(f'Tick index rebuild failed: {e}')
+            return None
 
-    def _validate_archive_ordering(self, index_manager: TickIndexManager) -> None:
+    def get_applied_offsets(self) -> Dict[str, Dict[str, int]]:
+        """
+        Per broker, how many files resolved to each UTC offset — the summary's evidence that
+        a season boundary was crossed rather than one constant applied to everything.
+
+        Returns:
+            Offset counts by broker type
+        """
+        return self._applied_offsets
+
+    def get_processed_broker_types(self) -> List[str]:
+        """
+        The broker types whose files this import processed — the ones whose bars it renders.
+
+        Returns:
+            Broker type identifiers, sorted
+        """
+        return sorted(self._processed_broker_types)
+
+    def validate_archive_ordering(self, index_manager: TickIndexManager) -> None:
         """
         Check the archive across file boundaries: no overlapping event ranges
         per symbol, and collected_msc continuous from one file to the next.
@@ -741,6 +825,9 @@ class TickDataImporter:
         """
         Trigger automatic bar rendering after tick import.
         Renders bars for all broker_types that were processed.
+
+        The bar index is rebuilt even when the render is interrupted, so it describes the bar
+        files that are actually there; render failures count as import errors.
         """
         vLog.info('\n' + '=' * 80)
         vLog.info('🔄 AUTO-TRIGGERING BAR RENDERING')
@@ -749,18 +836,24 @@ class TickDataImporter:
         try:
             bar_importer = BarImporter(data_dir=str(self.target_dir))
 
-            bar_importer.render_bars_for_all_symbols(
-                broker_types=list(self._processed_broker_types),
-                clean_mode=True
-            )
-            bar_importer.update_bar_index()
+            try:
+                bar_importer.render_bars_for_all_symbols(
+                    broker_types=self.get_processed_broker_types())
+            finally:
+                indexed = bar_importer.update_bar_index()
+            # The caches read the bar index: over a failed one they would describe stale bars
+            if indexed:
+                bar_importer.rebuild_discovery_caches()
+            self.warnings.extend(bar_importer.warnings)
+            self.errors.extend(bar_importer.errors)
 
             vLog.info('✅ Bar rendering completed!')
 
         except Exception as e:
             vLog.error(f'❌ Bar rendering failed: {e}')
             vLog.error('   You can manually trigger it later with:')
-            vLog.error('   python python/cli/bar_index_cli.py render --all --clean')
+            vLog.error('   python python/cli/bar_index_cli.py render --all')
+            self.errors.append(f'Bar rendering failed: {e}')
 
     def _validate_broker_type(self, metadata: dict) -> str:
         """

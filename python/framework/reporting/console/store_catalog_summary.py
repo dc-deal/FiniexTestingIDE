@@ -14,6 +14,9 @@ from python.framework.types.store_types import StoreId, StoreStatus
 from python.framework.types.validation_types import ValidationFinding
 from python.framework.validators.validation_check_catalog import VALIDATION_CHECKS_BY_ID
 
+# The root column's width when every root is shorter
+_ROOT_MIN_WIDTH = 38
+
 
 def render_store_catalog(rows: List[StoreStatus], findings: List[ValidationFinding],
                          with_sizes: bool) -> None:
@@ -26,7 +29,10 @@ def render_store_catalog(rows: List[StoreStatus], findings: List[ValidationFindi
         findings: The store health advisories
         with_sizes: Whether the rows carry measured sizes and the size column is shown
     """
-    header = (f'  {"KIND":<11} {"STORE":<20} {"ROOT":<38} {"INDEX":<31} '
+    # Wide enough for the longest root: a fixed width let one long path push its row's later
+    # columns out of line with the header.
+    root_width = max([_ROOT_MIN_WIDTH] + [len(_root_text(row)) for row in rows])
+    header = (f'  {"KIND":<11} {"STORE":<20} {"ROOT":<{root_width}} {"INDEX":<31} '
               f'{"ENTRIES":>8}' + (f' {"SIZE":>10}' if with_sizes else '')
               + f'  {"PURPOSE":<{PURPOSE_MAX_LENGTH}}')
     print('\n' + '=' * len(header))
@@ -35,7 +41,7 @@ def render_store_catalog(rows: List[StoreStatus], findings: List[ValidationFindi
     print(header)
     print('  ' + '-' * (len(header) - 2))
     for row in rows:
-        print(_format_row(row, with_sizes))
+        print(_format_row(row, with_sizes, root_width))
     # The KEY is what a reader needs to ADDRESS one entry, and it does not fit the table — several
     # are a sentence rather than a column. Printed underneath rather than dropped: a catalog that
     # promises the key and does not show it is a false map.
@@ -143,13 +149,27 @@ def _render_notes(rows: List[StoreStatus]) -> None:
         print(f'    {row.store_id.value:<20} {row.note}')
 
 
-def _format_row(row: StoreStatus, with_sizes: bool) -> str:
+def _root_text(row: StoreStatus) -> str:
+    """
+    The root as the table shows it, marked when it does not exist.
+
+    Args:
+        row: The store's status
+
+    Returns:
+        The root text
+    """
+    return row.root if row.exists else f'{row.root} (absent)'
+
+
+def _format_row(row: StoreStatus, with_sizes: bool, root_width: int = _ROOT_MIN_WIDTH) -> str:
     """
     One catalog line.
 
     Args:
         row: The store's status
         with_sizes: Whether the size column is shown
+        root_width: Width of the root column
 
     Returns:
         The formatted line
@@ -158,8 +178,8 @@ def _format_row(row: StoreStatus, with_sizes: bool) -> str:
     if row.stale_reason:
         index = f'{index}  {"↻ refreshes on read" if row.self_healing else "⚠ stale"}'
     entries = '—' if row.entries is None else str(row.entries)
-    root = row.root if row.exists else f'{row.root} (absent)'
-    line = (f'  {row.kind.value:<11} {row.store_id.value:<20} {root:<38} '
+    root = _root_text(row)
+    line = (f'  {row.kind.value:<11} {row.store_id.value:<20} {root:<{root_width}} '
             f'{index:<31} {entries:>8}')
     if with_sizes:
         line += f' {_human_size(row.size_bytes):>10}'

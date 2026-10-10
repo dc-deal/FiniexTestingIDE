@@ -494,8 +494,7 @@
             "program": "${workspaceFolder}/python/cli/bar_index_cli.py",
             "args": [
                 "render",
-                "--all",
-                "--clean"
+                "--all"
             ],
             "console": "integratedTerminal",
             "justMyCode": false,
@@ -505,14 +504,13 @@
             }
         },
         {
-            "name": "📥 Bar Render kraken_spot --clean",
+            "name": "📥 Bar Render kraken_spot",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/bar_index_cli.py",
             "args": [
                 "render",
-                "kraken_spot",
-                "--clean"
+                "kraken_spot"
             ],
             "console": "integratedTerminal",
             "justMyCode": false,
@@ -522,13 +520,12 @@
             }
         },
         {
-            "name": "📥 Import (Override)",
+            "name": "📥 Import",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/data_index_cli.py",
             "args": [
-                "import",
-                "--override"
+                "import"
             ],
             "console": "integratedTerminal",
             "presentation": {
@@ -537,10 +534,10 @@
             }
         },
         {
-            "name": "📥 Signal Import (Override)",
+            "name": "📥 Import (Override)",
             "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/python/cli/signal_index_cli.py",
+            "program": "${workspaceFolder}/python/cli/data_index_cli.py",
             "args": [
                 "import",
                 "--override"
@@ -930,29 +927,15 @@
         // ====================================================
         // 🔄 REBUILDS
         // ====================================================
-        // One entry per store that HAS an index (§44). The three marked "own manager"
-        // do not go through store_cli — they predate the shared base and #175 converges
-        // them; until then the split is real and this group shows it.
+        // One entry per store that has an index. Each rebuilds that INDEX from the store's own
+        // files and changes nothing in the store itself — except that the bar index's CLI then
+        // also recomputes the discovery caches; the caches alone are recomputed by
+        // "🔍 Disc - Cache: Rebuild All". The three marked "own manager" do not go through
+        // store_cli: they predate the shared base, and #583 converges them. run_configs has no
+        // entry on purpose: its index holds what nothing else does, so a rebuild would lose it
+        // (store_cli refuses one without --accept-loss).
         {
-            "name": "📡 Signal Index: Rebuild",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/python/cli/signal_index_cli.py",
-            "args": [
-                "rebuild"
-            ],
-            "console": "integratedTerminal",
-            "justMyCode": false,
-            "presentation": {
-                "group": "06_rebuild",
-                "order": 1
-            }
-        },
-        // One entry per store that HAS an index (§44). The three marked "own manager"
-        // do not go through store_cli — they predate the shared base and #175 converges
-        // them; until then the split is real and this group shows it.
-        {
-            "name": "🔄 Rebuild: All indexes a rebuild restores fully",
+            "name": "🔄 Rebuild index: all store_cli indexes (not ticks, bars, signals)",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/store_cli.py",
@@ -964,11 +947,11 @@
             "justMyCode": false,
             "presentation": {
                 "group": "06_rebuild",
-                "order": 2
+                "order": 1
             }
         },
         {
-            "name": "🔄 Rebuild: bars (own manager, #175)",
+            "name": "🔄 Rebuild index: bars, then the discovery caches (own manager, #583)",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/bar_index_cli.py",
@@ -979,11 +962,11 @@
             "justMyCode": false,
             "presentation": {
                 "group": "06_rebuild",
-                "order": 3
+                "order": 2
             }
         },
         {
-            "name": "🔄 Rebuild: certificates",
+            "name": "🔄 Rebuild index: certificates",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/store_cli.py",
@@ -995,11 +978,11 @@
             "justMyCode": false,
             "presentation": {
                 "group": "06_rebuild",
-                "order": 4
+                "order": 3
             }
         },
         {
-            "name": "🔄 Rebuild: cold_start_state",
+            "name": "🔄 Rebuild index: cold_start_state",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/store_cli.py",
@@ -1011,11 +994,27 @@
             "justMyCode": false,
             "presentation": {
                 "group": "06_rebuild",
+                "order": 4
+            }
+        },
+        {
+            "name": "🔄 Rebuild index: config_directory",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/store_cli.py",
+            "args": [
+                "rebuild",
+                "config_directory"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "06_rebuild",
                 "order": 5
             }
         },
         {
-            "name": "🔄 Rebuild: discovery_caches",
+            "name": "🔄 Rebuild index: discovery_caches",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/store_cli.py",
@@ -1031,7 +1030,7 @@
             }
         },
         {
-            "name": "🔄 Rebuild: run_ledger",
+            "name": "🔄 Rebuild index: run_ledger",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/store_cli.py",
@@ -1047,7 +1046,7 @@
             }
         },
         {
-            "name": "🔄 Rebuild: runs",
+            "name": "🔄 Rebuild index: runs",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/store_cli.py",
@@ -1063,7 +1062,7 @@
             }
         },
         {
-            "name": "🔄 Rebuild: signals (own manager, #175)",
+            "name": "🔄 Rebuild index: signals (own manager, #583)",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/signal_index_cli.py",
@@ -1078,7 +1077,7 @@
             }
         },
         {
-            "name": "🔄 Rebuild: ticks (own manager, #175)",
+            "name": "🔄 Rebuild index: ticks (own manager, #583)",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/tick_index_cli.py",

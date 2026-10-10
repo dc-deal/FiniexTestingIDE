@@ -17,7 +17,7 @@ else — it stays the audit source and must remain readable.
 
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Tuple
 
 import pandas as pd
 
@@ -91,48 +91,79 @@ class SignalDataImporter:
         """
         Convert every *.jsonl of the inbox, then rebuild the index.
         Errors do not stop processing of remaining files.
+
+        The import's own steps, run one after the other — the same methods the import
+        coordinator calls one by one, so both paths share one implementation.
         """
-        jsonl_files = self._collect_files()
+        jsonl_files = self.collect_files()
 
         if not jsonl_files:
             vLog.warning(
                 f'No signal JSONL found in {self.source_dir}. Rebuilding index only.')
-            self._prune_empty_source_dirs()
-            self._rebuild_index()
+            self.prune_empty_source_dirs()
+            self.rebuild_index()
             return
 
+        self.log_header(len(jsonl_files))
+
+        for root, jsonl_file in jsonl_files:
+            self.import_file(root, jsonl_file)
+
+        self.prune_empty_source_dirs()
+        self.rebuild_index()
+        self._print_summary()
+
+    def log_header(self, file_count: int) -> None:
+        """
+        Log the import's header: version, file count, override mode.
+
+        Args:
+            file_count: Number of files about to be imported
+
+        Returns:
+            None
+        """
         vLog.info('\n' + '=' * 80)
         vLog.info(f'FiniexTestingIDE Signal Data Importer V{self.VERSION}')
         vLog.info('=' * 80)
-        vLog.info(f'Found: {len(jsonl_files)} JSONL file(s)')
+        vLog.info(f'Found: {file_count} JSONL file(s)')
         vLog.info(f"Override Mode: {'ENABLED' if self.override else 'DISABLED'}")
         vLog.info('=' * 80 + '\n')
 
-        for root, jsonl_file in jsonl_files:
-            vLog.info(f'\n📄 Processing: {jsonl_file.name}')
-            try:
-                written = self.convert_jsonl_to_parquet(jsonl_file)
-                self.processed_files += 1
-                if written is not None:
-                    self._move_to_finished(root, jsonl_file)
-            except SignalAlreadyImportedError as e:
-                # A warning, never an error: re-running an import whose days are already
-                # archived is the normal case, and the tick importer grades it the same.
-                warning_msg = f'ALREADY IMPORTED: {jsonl_file.name}'
-                vLog.warning(warning_msg)
-                vLog.warning(str(e))
-                self.warnings.append(warning_msg)
-                vLog.info('→ Skipping import (parquet already exists)')
-            except Exception as e:
-                error_msg = f'ERROR in {jsonl_file.name}: {str(e)}'
-                vLog.error(error_msg)
-                self.errors.append(error_msg)
+    def import_file(self, root: Path, jsonl_file: Path) -> bool:
+        """
+        Import one signal JSONL and archive it. An already-imported or failing file is
+        counted and logged, never raised — the batch goes on with the next file.
 
-        self._prune_empty_source_dirs()
-        self._rebuild_index()
-        self._print_summary()
+        Args:
+            root: The directory the file was found under
+            jsonl_file: The JSONL to import
 
-    def _collect_files(self) -> List[Tuple[Path, Path]]:
+        Returns:
+            True when the file was processed, False when it was skipped or failed
+        """
+        vLog.info(f'\n📄 Processing: {jsonl_file.name}')
+        try:
+            written = self.convert_jsonl_to_parquet(jsonl_file)
+            self.processed_files += 1
+            if written is not None:
+                self._move_to_finished(root, jsonl_file)
+            return True
+        except SignalAlreadyImportedError as e:
+            # A warning, never an error: re-running an import whose days are already
+            # archived is the normal case, and the tick importer grades it the same.
+            warning_msg = f'ALREADY IMPORTED: {jsonl_file.name}'
+            vLog.warning(warning_msg)
+            vLog.warning(str(e))
+            self.warnings.append(warning_msg)
+            vLog.info('→ Skipping import (parquet already exists)')
+        except Exception as e:
+            error_msg = f'ERROR in {jsonl_file.name}: {str(e)}'
+            vLog.error(error_msg)
+            self.errors.append(error_msg)
+        return False
+
+    def collect_files(self) -> List[Tuple[Path, Path]]:
         """
         The files to import, each paired with the root it was found under.
 
@@ -185,7 +216,7 @@ class SignalDataImporter:
         self.moved_files += 1
         vLog.info(f'   → archived to {target}')
 
-    def _prune_empty_source_dirs(self) -> None:
+    def prune_empty_source_dirs(self) -> None:
         """
         Remove inbox folders left empty after their files were archived.
 
@@ -401,14 +432,38 @@ class SignalDataImporter:
                 result.evidence_as_of)
         return row
 
-    def _rebuild_index(self) -> None:
-        """Rebuild the signal index over the target directory."""
+    def rebuild_index(
+        self,
+        on_file_scanned: Optional[Callable[[int, int], None]] = None
+    ) -> bool:
+        """
+        Rebuild the signal index over the target directory. A failure is counted among the
+        errors, and so is a file the scan could not read, so the summary cannot read clean over
+        an index that no longer describes the archive.
+
+        Args:
+            on_file_scanned: Called with (file number, file count) for each parquet scanned
+
+        Returns:
+            True when the index was rebuilt and lists every signal file on disk
+        """
         try:
             index_manager = SignalIndexManager(data_dir=str(self.target_dir))
-            index_manager.build_index(force_rebuild=True)
+            index_manager.build_index(force_rebuild=True, on_file_scanned=on_file_scanned)
             vLog.info('✅ Signal index rebuilt')
         except Exception as e:
             vLog.error(f'Signal index rebuild failed: {e}')
+            self.errors.append(f'Signal index rebuild failed: {e}')
+            return False
+
+        unreadable = index_manager.get_unreadable_files()
+        if unreadable:
+            self.errors.append(
+                f'Signal index: {len(unreadable)} file(s) could not be read and are missing '
+                f'from the index (first: {unreadable[0]}) — re-import them from their source '
+                f'files')
+            return False
+        return True
 
     def _print_summary(self) -> None:
         """Print the import summary."""

@@ -33,6 +33,7 @@ worse. What they *can* share is how they describe themselves.
 | 1b | `run_configs/` | RECORD | `config_id` — SHA256 over the normalised content | `run_configs_index.parquet` | A · document |
 | 1c | `run_patches/` — this repository's; a strategy repository keeps its own inside itself | RECORD | patch hash — SHA256 over the patch bytes | none — opened by id | A · document |
 | 1d | `runs/fixture_productions.jsonl` | RECORD | `entry_id` + `produced_at` — one line per production | none — one file, read whole | B · set |
+| 1e | `logs/imports/` | RECORD | import id — the UTC start plus a random half, e.g. `20261010_090011_a3f9c2d1` | none — opened by the id its file is named after | A · document |
 | 2 | `runs/ledger/` | RECORD | `(run_id, unit, period_no, currency)` — columns, never a path | `run_ledger_index.parquet` | B · set |
 | 3 | `tests/*/reports/` | RECORD | family + version + date | `certificates_index.parquet` | A · document |
 | 4 | `data/runtime/session_state/` | **CARRY-OVER** | `<bot_id>_<symbol>`, separator reserved | none — opened by key | A · document |
@@ -44,6 +45,7 @@ worse. What they *can* share is how they describe themselves.
 | 9 | `configs/generator_profiles/` | DERIVED ← discovery caches | mode / broker / symbol | none — its own fingerprints | A · document |
 | 10 | `data/runtime/brokers/` | DERIVED ← a remote API | `broker_type` | none — one file per broker | A · document |
 | 10b | `data/runtime/config_directory/` | DERIVED ← the configuration files (not a store) | path of the configuration file | `config_directory_index.parquet` | B · set |
+| 10c | `data/runtime/import_timings.json` | DERIVED ← the imports' own durations (not a store) | none | none — one file | A · document |
 | 11 | `data/finished/` | ARCHIVE | file name | none — opened by name | A · document |
 | 12 | `data/raw/` → `data/finished/` | **SPECIAL** | file name | none — conveyor | — |
 | 13 | `logs/global.log` | **SPECIAL** | none | none — append stream | — |
@@ -55,8 +57,9 @@ beside the run index so it dies with the run tree. The current fixture of an ent
 it, never stored ([Fixture Catalog](fixture_catalog.md#the-production-record)).
 
 **Ticks and bars are two stores, and bars are DERIVED.** Ticks are IMPORTED from the collector's
-JSON; bars are GENERATED from those ticks, today only by a full re-render (`clean_mode` →
-`_clean_bars`). Different origin, different producer, different index. Registering bars as
+JSON; bars are GENERATED from those ticks, by a render that writes each symbol's files anew from
+all of its ticks and replaces a file only once the new one reads back in full. Different origin,
+different producer, different index. Registering bars as
 ARCHIVE was the first defect this model found in itself — and the project's own store rules had
 already written down the sentence the registration then contradicted.
 
@@ -104,6 +107,26 @@ The three levels this produces are ordinary double-entry bookkeeping, and
 **journal**, the ledger rows are the **ledger**, and everything over many periods — a
 deployment's total, a Sharpe ratio — is the **closing**.
 
+
+## An import's log and its timings
+
+A data import (`data_index_cli.py import`) writes two things beside the archives it fills.
+
+**Its own log, `logs/imports/import_<import_id>.log` (row 1e).** Every line the import produces —
+the importers, the index rebuilds, each bar-render worker as its symbol finishes, the summary —
+in the format of `global.log`, which still receives the same lines. The import id is the UTC
+start plus a random half — the form run ids have, so two imports started in one second cannot
+share a file — and the summary's last line names the file. It is a record of what happened, keyed by the
+import, and nothing searches across imports yet, so it has no index. It has no lifetime either:
+that is #535.
+
+**The measured step durations, `data/runtime/import_timings.json` (row 10c).** One rate per step —
+seconds per MB of JSON, per index file, per million ticks rendered at a given worker count, per
+bar file for the caches — smoothed over the imports that produced it. The next import multiplies
+each rate by what its scan found and shows the result as its estimate. It is written once, at the
+end of a complete import into the production archive; an interrupted or scoped import writes
+nothing, and a step that failed contributes no rate. Deleting it costs the next estimate and
+nothing else, which is what makes it derived.
 
 ## The carry-over separator is reserved (#538)
 
@@ -476,7 +499,7 @@ rebuilding it when it is stale. Making the index derivable again, so that it rej
 migration paths, and they are form C — the side this model deliberately does not mediate. They are
 also less alike than their method names suggest: `data_format_version` lives in the tick index alone,
 legitimately, because bars inherit it from the ticks they were rendered from and signals carry the
-producer's own `schema_version`. What they inherit later is the `LOGIC_VERSION` field, under #175.
+producer's own `schema_version`. What they inherit later is the `LOGIC_VERSION` field, under #583.
 
 **Until then the tick index carries its own schema stamp**, and that is the stopgap rather than the
 design. `needs_rebuild()` compares mtimes alone, so an index written before a column existed stays
@@ -484,7 +507,7 @@ design. `needs_rebuild()` compares mtimes alone, so an index written before a co
 makes adding a column unsafe to deploy. `index_version` was already being written by all three
 managers and read by none; the tick index now reads it back and rebuilds when it differs. Bump
 `INDEX_SCHEMA_VERSION` whenever a column is added or its meaning changes. The other two still write
-a version nobody reads, which is the gap #175 closes properly.
+a version nobody reads, which is the gap #583 closes properly.
 
 **Its provenance columns** — `origin_instance_id`, `origin_class`, `origin_evidence` — are resolved
 ONCE at import and read back from the stamp, never re-resolved from the registry. Full contract:

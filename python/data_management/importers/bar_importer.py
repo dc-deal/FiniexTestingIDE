@@ -11,24 +11,38 @@ All broker_types and symbols are rendered in one pool.
 Workflow:
 1. Load ALL tick files for a symbol
 2. Call VectorizedBarRenderer for all timeframes
-3. Write bar parquet files (one per timeframe)
-4. Update bar index (caller responsibility)
+3. Write bar parquet files (one per timeframe) beside the old ones, then replace them
+4. After a COMPLETE render: remove what no longer has a source
+5. Update bar index (caller responsibility)
+
+Nothing is deleted before it has been rendered again: a render stopped half-way leaves every
+symbol it did not reach with its previous bars, never with none.
 
 """
 
+import ctypes
+import ctypes.util
+import os
+import signal
+import sys
 import time
 import traceback
-from concurrent.futures import ProcessPoolExecutor, as_completed
+from concurrent.futures import FIRST_COMPLETED, Future, ProcessPoolExecutor, wait
+from concurrent.futures.process import BrokenProcessPool
+from multiprocessing.managers import SyncManager
 from pathlib import Path
-from typing import List, Optional, Tuple
+from queue import Empty
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 import pandas as pd
+import psutil
 import pyarrow as pa
 import pyarrow.parquet as pq
 
 from python.configuration.app_config_manager import AppConfigManager
 from python.configuration.import_config_manager import ImportConfigManager
 from python.configuration.market_config_manager import MarketConfigManager
+from python.data_management.importers.bar_render_progress_reporter import BarRenderProgressReporter
 from python.data_management.importers.vectorized_bar_renderer import VectorizedBarRenderer
 from python.data_management.index.bars_index_manager import BarsIndexManager
 from python.data_management.index.tick_index_manager import TickIndexManager
@@ -36,20 +50,66 @@ from python.framework.data_preparation.tick_parquet_reader import read_tick_parq
 from python.framework.discoveries.discovery_cache_manager import DiscoveryCacheManager
 from python.framework.exceptions.data_quality_errors import BarFileVerificationException
 from python.framework.logging.bootstrap_logger import get_global_logger
-from python.framework.types.import_result_types import BarRenderResult
+from python.framework.types.import_types.import_progress_types import (
+    BarRenderPhase,
+    BarRenderProgress,
+)
+from python.framework.types.import_types.import_result_types import BarRenderResult
 
 vLog = get_global_logger()
+
+BAR_FILE_SUFFIX = '_BARS.parquet'
+# A bar file being written. The index scan matches *_BARS.parquet and never sees it.
+PARTIAL_SUFFIX = '.partial'
+# How long the parent waits for a finished symbol before it shows the workers' progress again.
+_POLL_INTERVAL_S = 0.25
+# prctl option (Linux): the signal a process receives when its parent dies.
+_PR_SET_PDEATHSIG = 1
 
 
 # =============================================================================
 # TOP-LEVEL WORKER FUNCTION (required for multiprocessing pickle)
 # =============================================================================
 
+def _ignore_interrupt_signals() -> None:
+    """
+    Initializer of every child a render starts: leave Ctrl+C and SIGTERM to the parent, and
+    end with the parent.
+
+    Ctrl+C reaches every process of the terminal's foreground group, so without this each
+    worker printed its own traceback over the screen, and a worker inherits a SIGTERM handler
+    an import installs for itself. The parent ends its children when it is interrupted.
+
+    Returns:
+        None
+    """
+    signal.signal(signal.SIGINT, signal.SIG_IGN)
+    signal.signal(signal.SIGTERM, signal.SIG_DFL)
+    _end_with_parent()
+
+
+def _end_with_parent() -> None:
+    """
+    Ask the OS to end this process when its parent dies — the one stop no handler of the parent
+    can see. Measured 2026-10-10: the workers of a parent killed outright finished the symbol they
+    held and the ones already queued, replacing bar files nobody indexed, then stayed idle under
+    PID 1 until ended by hand. Linux only; elsewhere nothing changes.
+
+    Returns:
+        None
+    """
+    if not sys.platform.startswith('linux'):
+        return
+    libc = ctypes.CDLL(ctypes.util.find_library('c'), use_errno=True)
+    libc.prctl(_PR_SET_PDEATHSIG, signal.SIGTERM)
+
+
 def _render_symbol_worker(
     symbol: str,
     broker_type: str,
     data_dir: str,
-    importer_version: str
+    importer_version: str,
+    progress_queue: Optional[Any] = None
 ) -> BarRenderResult:
     """
     Standalone worker function for parallel bar rendering.
@@ -63,12 +123,14 @@ def _render_symbol_worker(
         broker_type: Broker type identifier
         data_dir: Path to data directory (string for pickle)
         importer_version: BarImporter.VERSION string
+        progress_queue: Manager queue for progress events, None when nobody listens
 
     Returns:
         BarRenderResult with rendered bar count, log buffer, and status
     """
     log_buffer: list[str] = []
     data_path = Path(data_dir)
+    reporter = BarRenderProgressReporter(progress_queue, symbol, broker_type)
 
     try:
         start_time = time.monotonic()
@@ -79,7 +141,10 @@ def _render_symbol_worker(
 
         # === 2. LOAD TICK DATA ===
         log_buffer.append(f'  ├─ Loading tick data for {broker_type}/{symbol}...')
-        ticks_df = _load_all_ticks_for_symbol(tick_index, symbol, broker_type, log_buffer)
+        ticks_df = _load_all_ticks_for_symbol(
+            tick_index, symbol, broker_type, log_buffer,
+            on_file_loaded=lambda done, total: reporter.report(
+                BarRenderPhase.LOADING_TICKS, done, total))
 
         if ticks_df.empty:
             log_buffer.append(f'  └─ No tick data found for {broker_type}/{symbol}')
@@ -104,13 +169,16 @@ def _render_symbol_worker(
         # === 3. RENDER BARS ===
         log_buffer.append('  ├─ Rendering bars...')
         renderer = VectorizedBarRenderer(symbol, log_buffer=log_buffer)
-        all_bars = renderer.render_all_timeframes(ticks_df)
+        all_bars = renderer.render_all_timeframes(
+            ticks_df,
+            on_timeframe_rendered=lambda done, total: reporter.report(
+                BarRenderPhase.RENDERING, done, total))
 
         # === 4. WRITE BAR FILES ===
         log_buffer.append('  ├─ Writing bar files...')
         bars_written = 0
 
-        for timeframe, bars_df in all_bars.items():
+        for written, (timeframe, bars_df) in enumerate(all_bars.items(), 1):
             if len(bars_df) > 0:
                 _write_bar_file(
                     data_path, symbol, timeframe, bars_df,
@@ -119,6 +187,7 @@ def _render_symbol_worker(
                     log_buffer
                 )
                 bars_written += len(bars_df)
+            reporter.report(BarRenderPhase.WRITING, written, len(all_bars))
 
         # === 5. LOG STATISTICS ===
         elapsed = time.monotonic() - start_time
@@ -156,7 +225,8 @@ def _load_all_ticks_for_symbol(
     tick_index: TickIndexManager,
     symbol: str,
     broker_type: str,
-    log_buffer: list[str]
+    log_buffer: list[str],
+    on_file_loaded: Optional[Callable[[int, int], None]] = None
 ) -> pd.DataFrame:
     """
     Load ALL tick files for a symbol.
@@ -166,6 +236,7 @@ def _load_all_ticks_for_symbol(
         symbol: Trading symbol
         broker_type: Broker type identifier
         log_buffer: Buffer for log messages
+        on_file_loaded: Called with (files loaded, file count) after each tick file
 
     Returns:
         DataFrame with all ticks for symbol
@@ -186,9 +257,11 @@ def _load_all_ticks_for_symbol(
     ]
 
     dfs = []
-    for tick_file in tick_files:
+    for loaded, tick_file in enumerate(tick_files, 1):
         df = read_tick_parquet(tick_file)
         dfs.append(df)
+        if on_file_loaded is not None:
+            on_file_loaded(loaded, len(tick_files))
 
     if not dfs:
         return pd.DataFrame()
@@ -212,6 +285,10 @@ def _write_bar_file(
     """
     Write bar DataFrame to parquet file.
 
+    Written beside the existing file first and verified there; only a file that reads back in
+    full replaces the old one. An interruption therefore leaves the previous file in place,
+    and a broken render never replaces a good file.
+
     Args:
         data_dir: Base data directory
         symbol: Trading symbol
@@ -226,8 +303,9 @@ def _write_bar_file(
     bars_dir = data_dir / broker_type / 'bars' / symbol
     bars_dir.mkdir(parents=True, exist_ok=True)
 
-    filename = f'{symbol}_{timeframe}_BARS.parquet'
+    filename = f'{symbol}_{timeframe}{BAR_FILE_SUFFIX}'
     filepath = bars_dir / filename
+    partial_path = bars_dir / f'{filename}{PARTIAL_SUFFIX}'
 
     market_config = MarketConfigManager()
     market_type = market_config.get_market_type(broker_type)
@@ -252,9 +330,10 @@ def _write_bar_file(
 
     table = pa.Table.from_pandas(bars_df)
     table = table.replace_schema_metadata(metadata)
-    pq.write_table(table, filepath, compression='snappy')
+    pq.write_table(table, partial_path, compression='snappy')
 
-    _verify_bar_file(filepath, len(bars_df))
+    _verify_bar_file(partial_path, len(bars_df))
+    os.replace(partial_path, filepath)
 
     file_size_mb = filepath.stat().st_size / (1024 * 1024)
     if log_buffer is not None:
@@ -344,6 +423,37 @@ def _extract_source_versions(
     return (sorted_versions[0], sorted_versions[-1])
 
 
+def effective_render_workers(configured_workers: int, symbol_count: int) -> int:
+    """
+    The worker count a render of this many symbols runs with: never more workers than
+    symbols, and at least one. The render and the import's estimate both ask here, so a
+    stored render rate is keyed to the count that actually ran.
+
+    Args:
+        configured_workers: processing.bar_render_workers
+        symbol_count: Symbols to render
+
+    Returns:
+        Effective worker count
+    """
+    return max(1, min(configured_workers, symbol_count))
+
+
+def is_production_archive(data_dir: Path) -> bool:
+    """
+    Whether a directory is the production archive — the one the discovery caches and the
+    import timings describe. An import scoped anywhere else must touch neither.
+
+    Args:
+        data_dir: The directory an import writes to
+
+    Returns:
+        True when it is the configured processed-data directory
+    """
+    production = Path(AppConfigManager().get_data_processed_path()).resolve()
+    return data_dir.resolve() == production
+
+
 # =============================================================================
 # BAR IMPORTER CLASS
 # =============================================================================
@@ -383,21 +493,32 @@ class BarImporter:
         self.processed_symbols = 0
         self.total_bars_rendered = 0
         self.errors = []
+        # What the operator must act on without the render having failed: an interrupted
+        # render, bars kept because the tick index does not list their symbol
+        self.warnings: List[str] = []
+        # The symbols a render has finished, as broker_type/symbol — what an interrupted
+        # render can say it did not reach.
+        self._finished_items: Set[str] = set()
 
     def render_bars_for_all_symbols(
         self,
         broker_types: List[str],
-        clean_mode: bool = False
+        on_symbol_done: Optional[Callable[[int, int, str], None]] = None,
+        on_worker_progress: Optional[Callable[[BarRenderProgress], None]] = None
     ):
         """
         Render bars for ALL symbols across one or more broker_types.
 
-        All symbols from all broker_types are rendered in a single pool.
+        All symbols from all broker_types are rendered in a single pool. A symbol's files
+        replace its previous ones only once written and verified, and files without a source
+        are removed only after every symbol rendered — a render stopped half-way leaves each
+        symbol it did not reach with its previous bars.
         Index/cache rebuild is NOT performed — caller is responsible.
 
         Args:
             broker_types: List of broker type identifiers (e.g., ['mt5', 'kraken_spot'])
-            clean_mode: If True, delete all existing bars before rendering
+            on_symbol_done: Called with (symbols done, symbol count, broker_type/symbol)
+            on_worker_progress: Called with each progress event a worker sends (parallel only)
         """
         max_workers = self._import_config.get_bar_render_workers()
 
@@ -407,10 +528,9 @@ class BarImporter:
         vLog.info(f'Workers: {max_workers}')
         vLog.info('=' * 80)
 
-        # === CLEAN MODE: Delete all bars first ===
-        if clean_mode:
-            for bt in broker_types:
-                self._clean_bars(bt)
+        # A file left half-written by an earlier, interrupted render
+        for bt in broker_types:
+            self._remove_partial_files(bt)
 
         # === COLLECT ALL (broker_type, symbol) PAIRS ===
         all_tasks: List[Tuple[str, str]] = []
@@ -434,22 +554,39 @@ class BarImporter:
         vLog.info('=' * 80 + '\n')
 
         # === PARALLEL RENDERING ===
-        effective_workers = min(max_workers, len(all_tasks))
+        effective_workers = effective_render_workers(max_workers, len(all_tasks))
 
-        if effective_workers <= 1:
-            self._render_sequential(all_tasks)
-        else:
-            self._render_parallel(all_tasks, effective_workers)
+        try:
+            if effective_workers <= 1:
+                self._render_sequential(all_tasks, on_symbol_done)
+            else:
+                self._render_parallel(
+                    all_tasks, effective_workers, on_symbol_done, on_worker_progress)
+        except KeyboardInterrupt:
+            self._log_interrupted(all_tasks)
+            raise
+
+        # Only now, with every symbol rendered: what has no source any more
+        for bt in broker_types:
+            self._remove_stale_bar_files(bt)
 
         # Print summary
         self._print_summary()
 
-    def _render_sequential(self, tasks: List[Tuple[str, str]]) -> None:
+    def _render_sequential(
+        self,
+        tasks: List[Tuple[str, str]],
+        on_symbol_done: Optional[Callable[[int, int, str], None]] = None
+    ) -> None:
         """
         Render symbols sequentially (single-process fallback).
 
         Args:
             tasks: List of (broker_type, symbol) tuples
+            on_symbol_done: Called with (symbols done, symbol count, broker_type/symbol)
+
+        Returns:
+            None
         """
         for i, (broker_type, symbol) in enumerate(tasks, 1):
             vLog.info(
@@ -463,111 +600,325 @@ class BarImporter:
             for line in result.log_buffer:
                 vLog.info(line)
 
-            if result.success:
-                self.processed_symbols += 1
-                self.total_bars_rendered += result.bars_rendered
-            else:
-                vLog.error(result.error_message)
-                self.errors.append(result.error_message)
+            self._book_result(result)
+            if on_symbol_done is not None:
+                on_symbol_done(i, len(tasks), f'{broker_type}/{symbol}')
 
     def _render_parallel(
         self,
         tasks: List[Tuple[str, str]],
-        max_workers: int
+        max_workers: int,
+        on_symbol_done: Optional[Callable[[int, int, str], None]] = None,
+        on_worker_progress: Optional[Callable[[BarRenderProgress], None]] = None
     ) -> None:
         """
         Render symbols in parallel using ProcessPoolExecutor.
 
+        Each symbol is logged the moment it finishes. Until #175 every line was held back
+        until the whole pool was done, so a render of several minutes printed nothing between
+        its start line and its summary — and a silent terminal reads as a finished one.
+
         Args:
             tasks: List of (broker_type, symbol) tuples
             max_workers: Number of worker processes
+            on_symbol_done: Called with (symbols done, symbol count, broker_type/symbol)
+            on_worker_progress: Called with each progress event a worker sends
+
+        Returns:
+            None
         """
         vLog.info(
             f'🚀 Launching {max_workers} worker processes for '
             f'{len(tasks)} symbols...\n'
         )
 
-        results: list[BarRenderResult] = []
+        # The progress channel exists only when someone listens: a manager is a process of its own.
+        manager: Optional[SyncManager] = None
+        if on_worker_progress is not None:
+            manager = SyncManager()
+            manager.start(_ignore_interrupt_signals)
+        progress_queue = manager.Queue() if manager is not None else None
+        children_before = {child.pid for child in psutil.Process().children()}
 
-        with ProcessPoolExecutor(max_workers=max_workers) as executor:
-            future_to_task = {
+        executor = ProcessPoolExecutor(
+            max_workers=max_workers, initializer=_ignore_interrupt_signals)
+        try:
+            future_to_task: Dict[Future, Tuple[str, str]] = {
                 executor.submit(
                     _render_symbol_worker,
-                    symbol, broker_type, str(self.data_dir), self.VERSION
+                    symbol, broker_type, str(self.data_dir), self.VERSION, progress_queue
                 ): (broker_type, symbol)
                 for broker_type, symbol in tasks
             }
+            pending: Set[Future] = set(future_to_task)
+            finished = 0
 
-            for future in as_completed(future_to_task):
-                broker_type, symbol = future_to_task[future]
-                try:
-                    result = future.result()
-                    results.append(result)
-                except Exception as e:
-                    error_msg = f'ERROR in {broker_type}/{symbol}: {str(e)}'
-                    results.append(BarRenderResult(
-                        symbol=symbol,
-                        broker_type=broker_type,
-                        success=False,
-                        error_message=error_msg,
-                        log_buffer=[f'  └─ ❌ Worker crashed: {str(e)}']
-                    ))
+            while pending:
+                done, pending = wait(
+                    pending, timeout=_POLL_INTERVAL_S, return_when=FIRST_COMPLETED)
+                self._drain_progress(progress_queue, on_worker_progress)
 
-        # Flush all log buffers sorted by broker_type/symbol
-        results.sort(key=lambda r: (r.broker_type, r.symbol))
-        for i, result in enumerate(results, 1):
-            vLog.info(
-                f'\n[{i}/{len(results)}] {result.broker_type}/{result.symbol}:')
-            for line in result.log_buffer:
-                vLog.info(line)
+                for future in done:
+                    broker_type, symbol = future_to_task[future]
+                    result = self._collect_result(future, broker_type, symbol, max_workers)
+                    finished += 1
+                    vLog.info(
+                        f'\n[{finished}/{len(tasks)}] {result.broker_type}/{result.symbol}:')
+                    for line in result.log_buffer:
+                        vLog.info(line)
+                    self._book_result(result)
+                    if on_symbol_done is not None:
+                        on_symbol_done(finished, len(tasks), f'{broker_type}/{symbol}')
 
-            if result.success:
-                self.processed_symbols += 1
-                self.total_bars_rendered += result.bars_rendered
-            else:
-                vLog.error(result.error_message)
-                self.errors.append(result.error_message)
+            self._drain_progress(progress_queue, on_worker_progress)
+            executor.shutdown(wait=True)
 
-    def _clean_bars(self, broker_type: str) -> None:
+        except BaseException:
+            # The workers would otherwise finish the symbol they hold, unseen, before the
+            # process can exit. What they leave half-written is a .partial file, never a
+            # damaged bar file, and the next render removes it. Any exception, not only a
+            # stop: a pool left running would keep replacing bar files after the caller
+            # has rebuilt the index from them.
+            if manager is not None:
+                manager.shutdown()
+                manager = None
+            self._terminate_workers(children_before)
+            executor.shutdown(wait=False, cancel_futures=True)
+            raise
+
+        finally:
+            if manager is not None:
+                manager.shutdown()
+
+    def _collect_result(
+        self,
+        future: Future,
+        broker_type: str,
+        symbol: str,
+        max_workers: int
+    ) -> BarRenderResult:
         """
-        Delete all existing bar files for a broker_type.
+        The result of one finished future, with a crashed worker turned into a failed result.
+
+        Args:
+            future: The finished future
+            broker_type: Broker type of its symbol
+            symbol: Its symbol
+            max_workers: Worker count of the pool, named in the out-of-memory hint
+
+        Returns:
+            The worker's result, or a failed result describing the crash
+        """
+        try:
+            return future.result()
+        except BrokenProcessPool as e:
+            # The OS ended a worker — in this pipeline almost always for memory (#442), and
+            # the pool then fails every symbol still queued with this same exception.
+            error_msg = (
+                f'ERROR in {broker_type}/{symbol}: a render worker was ended abruptly — most '
+                f'likely the machine ran out of memory. Lower processing.bar_render_workers '
+                f'(now {max_workers}) in import_config.json, or free memory, and render again '
+                f'({e})')
+        except Exception as e:
+            error_msg = f'ERROR in {broker_type}/{symbol}: {str(e)}'
+        return BarRenderResult(
+            symbol=symbol,
+            broker_type=broker_type,
+            success=False,
+            error_message=error_msg,
+            log_buffer=[f'  └─ ❌ Worker crashed: {error_msg}']
+        )
+
+    def _book_result(self, result: BarRenderResult) -> None:
+        """
+        Count one symbol's result into the statistics.
+
+        Args:
+            result: The symbol's render result
+
+        Returns:
+            None
+        """
+        self._finished_items.add(f'{result.broker_type}/{result.symbol}')
+        if result.success:
+            self.processed_symbols += 1
+            self.total_bars_rendered += result.bars_rendered
+        else:
+            vLog.error(result.error_message)
+            self.errors.append(result.error_message)
+
+    @staticmethod
+    def _drain_progress(
+        progress_queue: Optional[Any],
+        on_worker_progress: Optional[Callable[[BarRenderProgress], None]]
+    ) -> None:
+        """
+        Hand every queued worker event to the listener.
+
+        Args:
+            progress_queue: The manager queue, or None
+            on_worker_progress: The listener, or None
+
+        Returns:
+            None
+        """
+        if progress_queue is None or on_worker_progress is None:
+            return
+        while True:
+            try:
+                event = progress_queue.get_nowait()
+            except Empty:
+                return
+            on_worker_progress(event)
+
+    @staticmethod
+    def _terminate_workers(children_before: Set[int]) -> None:
+        """
+        End the worker processes this render started.
+
+        Args:
+            children_before: Process ids of this process's children before the pool started
+
+        Returns:
+            None
+        """
+        workers = [child for child in psutil.Process().children()
+                   if child.pid not in children_before]
+        # A worker can exit on its own between the listing and the signal
+        for worker in workers:
+            try:
+                worker.terminate()
+            except psutil.NoSuchProcess:
+                pass
+        _, alive = psutil.wait_procs(workers, timeout=3)
+        for worker in alive:
+            try:
+                worker.kill()
+            except psutil.NoSuchProcess:
+                pass
+
+    def _log_interrupted(self, tasks: List[Tuple[str, str]]) -> None:
+        """
+        Say that the render stopped, what it did not finish, and how to finish it — counted
+        as a warning, so the summary lists it even when a live screen held the console.
+
+        Args:
+            tasks: Every (broker_type, symbol) the render was asked for
+
+        Returns:
+            None
+        """
+        missing = [(bt, symbol) for bt, symbol in tasks
+                   if f'{bt}/{symbol}' not in self._finished_items]
+        if not missing:
+            return
+        missing_brokers = sorted({bt for bt, _ in missing})
+        rerun = (f'render {missing_brokers[0]}' if len(missing_brokers) == 1
+                 else 'render --all')
+        # A worker replaces its timeframes one by one, so a symbol stopped while writing
+        # holds new and previous files side by side — only one never reached is untouched
+        message = (
+            f'⚠️  Bar render INTERRUPTED after {len(tasks) - len(missing)} of {len(tasks)} '
+            f'symbols — not finished: '
+            f"{', '.join(f'{bt}/{symbol}' for bt, symbol in missing)}. "
+            f'A symbol the render never reached keeps its previous bars; one stopped while '
+            f'writing may mix new and previous timeframes until it is rendered again. '
+            f'Re-run: python python/cli/bar_index_cli.py {rerun}'
+        )
+        vLog.warning(message)
+        self.warnings.append(message)
+
+    def _remove_partial_files(self, broker_type: str) -> None:
+        """
+        Remove bar files an interrupted render left half-written.
 
         Args:
             broker_type: Broker type identifier
+
+        Returns:
+            None
         """
         bars_base_dir = self.data_dir / broker_type / 'bars'
+        if not bars_base_dir.exists():
+            return
+        for partial in bars_base_dir.glob(f'**/*{BAR_FILE_SUFFIX}{PARTIAL_SUFFIX}'):
+            partial.unlink()
+            vLog.info(f'   🧹 Removed unfinished {partial.name}')
 
-        if bars_base_dir.exists():
-            vLog.warning(
-                f'🗑️  CLEAN MODE: Deleting all bars in {bars_base_dir}')
-
-            deleted_count = 0
-            for bar_file in bars_base_dir.glob('**/*_BARS.parquet'):
-                bar_file.unlink()
-                deleted_count += 1
-
-            vLog.info(f'   Deleted {deleted_count} bar files')
-
-            # Clean up empty directories
-            for symbol_dir in bars_base_dir.iterdir():
-                if symbol_dir.is_dir() and not any(symbol_dir.iterdir()):
-                    symbol_dir.rmdir()
-                    vLog.debug(
-                        f'   Removed empty directory: {symbol_dir.name}')
-        else:
-            vLog.info('   No bars directory found - nothing to clean')
-
-    def update_bar_index(self):
+    def _remove_stale_bar_files(self, broker_type: str) -> None:
         """
-        Update bar index and discovery caches after rendering.
+        Remove bar files that no longer have a source: symbols without tick data, and
+        timeframes no longer in render_timeframes. Bars are DERIVED — a bar file without its
+        ticks is misfiled, and a timeframe nobody renders goes stale without saying so.
 
-        Creates/updates bars_index.parquet and rebuilds discovery caches.
-        Called by the caller after rendering is complete — not automatically.
+        "Without tick data" is decided on disk, not by the tick index alone: an index that
+        missed a symbol (a stale one, or files it could not read) would otherwise delete
+        bars whose ticks are right there. Such bars are kept, and the gap is counted.
+
+        Args:
+            broker_type: Broker type identifier
+
+        Returns:
+            None
+        """
+        bars_base_dir = self.data_dir / broker_type / 'bars'
+        if not bars_base_dir.exists():
+            return
+
+        symbols_with_ticks = set(self.tick_index.list_symbols(broker_type))
+        timeframes = set(self._import_config.get_render_timeframes())
+        ticks_base_dir = self.data_dir / broker_type / 'ticks'
+
+        for symbol_dir in sorted(bars_base_dir.iterdir()):
+            if not symbol_dir.is_dir():
+                continue
+            symbol = symbol_dir.name
+            if (symbol not in symbols_with_ticks
+                    and any((ticks_base_dir / symbol).glob('*.parquet'))):
+                message = (f'⚠️  Kept the bars of {broker_type}/{symbol}: its tick files are '
+                           f'on disk, but the tick index does not list them — rebuild the '
+                           f'tick index, then render again')
+                vLog.warning(message)
+                self.warnings.append(message)
+                continue
+            prefix = f'{symbol}_'
+            for bar_file in sorted(symbol_dir.glob(f'*{BAR_FILE_SUFFIX}')):
+                if not bar_file.name.startswith(prefix):
+                    continue
+                timeframe = bar_file.name[len(prefix):-len(BAR_FILE_SUFFIX)]
+                if symbol in symbols_with_ticks and timeframe in timeframes:
+                    continue
+                reason = ('no tick data for this symbol' if symbol not in symbols_with_ticks
+                          else f'{timeframe} is not in render_timeframes')
+                bar_file.unlink()
+                vLog.info(f'   🗑️  Removed {broker_type}/{bar_file.name} — {reason}')
+
+            if not any(symbol_dir.iterdir()):
+                symbol_dir.rmdir()
+                vLog.debug(f'   Removed empty directory: {symbol}')
+
+    def update_bar_index(
+        self,
+        on_file_scanned: Optional[Callable[[int, int], None]] = None
+    ) -> bool:
+        """
+        Rebuild the bar index from the bar files on disk.
+
+        Called by the caller after rendering — also after an interrupted one, so the index
+        describes what is there. A failure is counted among the errors, and so is a bar file
+        the scan could not read: either way the index no longer describes the archive, and an
+        import must not report success over it.
+
+        Args:
+            on_file_scanned: Called with (file number, file count) for each bar file scanned
+
+        Returns:
+            True when the index was rebuilt and lists every bar file on disk
         """
         vLog.info('\n📄 Updating bar index...')
         try:
             bar_index = BarsIndexManager(data_dir=str(self.data_dir))
-            bar_index.build_index(force_rebuild=True)
+            bar_index.build_index(force_rebuild=True, on_file_scanned=on_file_scanned)
 
             # Count symbols across all broker_types
             total_symbols = len(bar_index.list_symbols())
@@ -577,23 +928,52 @@ class BarImporter:
                 f"{len(broker_types)} broker_types ({', '.join(broker_types)})"
             )
 
-            # Rebuild all discovery caches. They resolve their own paths and cannot be
-            # scoped, so rebuilding them from an import directed elsewhere would rewrite
-            # production caches from bars this run never touched (#175 owns the
-            # convergence of the three index managers).
-            if self._writes_production_archive():
-                DiscoveryCacheManager().rebuild_all(force=True)
-                vLog.info('✅ Discovery caches rebuilt')
-            else:
-                vLog.info(
-                    '⏭️  Discovery caches NOT rebuilt: this import is scoped to '
-                    f'{self.data_dir}, and the caches can only be built for the '
-                    'production archive.'
-                )
-
         except Exception as e:
             vLog.error(f'❌ Failed to update bar index: {e}')
             vLog.error('   Index may be outdated - run manual rebuild!')
+            self.errors.append(f'Bar index update failed: {e}')
+            return False
+
+        unreadable = bar_index.get_unreadable_files()
+        if unreadable:
+            self.errors.append(
+                f'Bar index: {len(unreadable)} bar file(s) could not be read and are missing '
+                f'from the index — re-render: python python/cli/bar_index_cli.py render --all')
+            return False
+        return True
+
+    def rebuild_discovery_caches(
+        self,
+        on_cache_done: Optional[Callable[[int, int], None]] = None
+    ) -> bool:
+        """
+        Rebuild all discovery caches after a render — production archive only.
+
+        Args:
+            on_cache_done: Called with (caches done, cache count) after each cache family
+
+        Returns:
+            True when the caches were rebuilt, False when this import may not touch them
+        """
+        # Rebuild all discovery caches. They resolve their own paths and cannot be
+        # scoped, so rebuilding them from an import directed elsewhere would rewrite
+        # production caches from bars this run never touched (#583 owns the
+        # convergence of the three index managers).
+        if not self._writes_production_archive():
+            vLog.info(
+                '⏭️  Discovery caches NOT rebuilt: this import is scoped to '
+                f'{self.data_dir}, and the caches can only be built for the '
+                'production archive.'
+            )
+            return False
+        try:
+            DiscoveryCacheManager().rebuild_all(force=True, on_cache_done=on_cache_done)
+            vLog.info('✅ Discovery caches rebuilt')
+            return True
+        except Exception as e:
+            vLog.error(f'❌ Failed to rebuild discovery caches: {e}')
+            self.errors.append(f'Discovery cache rebuild failed: {e}')
+            return False
 
     def _writes_production_archive(self) -> bool:
         """
@@ -602,8 +982,7 @@ class BarImporter:
         Returns:
             True when data_dir is the configured processed-data directory
         """
-        production = Path(AppConfigManager().get_data_processed_path()).resolve()
-        return self.data_dir.resolve() == production
+        return is_production_archive(self.data_dir)
 
     def _print_summary(self):
         """Print processing summary"""

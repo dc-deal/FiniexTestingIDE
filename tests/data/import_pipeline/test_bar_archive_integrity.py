@@ -218,7 +218,11 @@ class TestIndexBuildReportsUnreadableFiles:
         errors = logger.text_at('error')
         assert '1 of 2 bar files could not be read' in errors
         assert 'BTCUSD_M5_BARS.parquet' in errors
-        assert 'bar_index_cli.py render' in errors
+        # The repair as it can be run: a flag the render no longer has would stop it at once
+        assert 'bar_index_cli.py render --all' in errors
+        assert '--clean' not in errors
+        unreadable = manager.get_unreadable_files()
+        assert len(unreadable) == 1 and unreadable[0].startswith('BTCUSD_M5_BARS.parquet')
 
     def test_clean_build_reports_no_error_block(self, tmp_path):
         """A build where every file reads must not produce the error block."""

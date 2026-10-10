@@ -17,6 +17,7 @@ Phases, and which of them write:
            loose source there. Beside them it writes a manifest: the scope, the members, the
            tick index rows they had before, and when each one was extracted.
   import   the operator's, not this tool's: python python/cli/data_index_cli.py import --override
+           --only ticks (without --only it would import a waiting signal inbox as well)
   verify   reads only. Checks count, names, inbox and rewritten against the manifest; exit
            code 0 only when every one passes.
   clean    writes. Re-runs verify and refuses unless it is green. Then deletes each loose copy the
@@ -58,7 +59,7 @@ Usage:
         --window 2025-11-02..2026-03-07
     python python/experiments/raw_archive_reimport/raw_archive_reimport.py extract --broker mt5 \\
         --symbols EURUSD,GBPUSD --window 2025-11-02..2026-03-07
-    python python/cli/data_index_cli.py import --override
+    python python/cli/data_index_cli.py import --override --only ticks
     python python/experiments/raw_archive_reimport/raw_archive_reimport.py verify
     python python/experiments/raw_archive_reimport/raw_archive_reimport.py clean
 
@@ -233,7 +234,7 @@ class RawArchiveReimport:
         print('  next')
         print('    1. for #562, and any importer change that needs one: run its migration on '
               'the inbox now, before the import')
-        print('    2. python python/cli/data_index_cli.py import --override')
+        print('    2. python python/cli/data_index_cli.py import --override --only ticks')
         print(f'    3. python {_TOOL_PATH} verify')
         print(f'    4. python {_TOOL_PATH} clean')
         return 0

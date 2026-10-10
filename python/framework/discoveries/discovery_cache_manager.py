@@ -13,7 +13,7 @@ Used by:
 """
 
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Callable, Dict, Optional
 
 from python.configuration.app_config_manager import AppConfigManager
 
@@ -49,12 +49,17 @@ class DiscoveryCacheManager:
         self._data_coverage_cache = DataCoverageReportCache()
         self._volatility_profile_cache = VolatilityProfileAnalyzerCache(logger=self._logger)
 
-    def rebuild_all(self, force: bool = False) -> Dict[str, Dict[str, int]]:
+    def rebuild_all(
+        self,
+        force: bool = False,
+        on_cache_done: Optional[Callable[[int, int], None]] = None
+    ) -> Dict[str, Dict[str, int]]:
         """
         Rebuild all discovery caches.
 
         Args:
             force: Force rebuild even if cache is valid
+            on_cache_done: Called with (caches done, cache count) after each cache family
 
         Returns:
             Dict mapping cache name to {generated, skipped, failed} stats
@@ -63,15 +68,15 @@ class DiscoveryCacheManager:
 
         self._logger.info('Rebuilding all discovery caches...')
 
-        results['coverage'] = self._data_coverage_cache.build_all(
-            force_rebuild=force
-        )
-        results['extreme_moves'] = self._discovery_cache.build_all(
-            force_rebuild=force
-        )
-        results['volatility_profile'] = self._volatility_profile_cache.build_all(
-            force_rebuild=force
-        )
+        builders = {
+            'coverage': self._data_coverage_cache.build_all,
+            'extreme_moves': self._discovery_cache.build_all,
+            'volatility_profile': self._volatility_profile_cache.build_all,
+        }
+        for done, (name, build_all) in enumerate(builders.items(), 1):
+            results[name] = build_all(force_rebuild=force)
+            if on_cache_done is not None:
+                on_cache_done(done, len(builders))
 
         # The rebuild just rewrote every cache file, which leaves the store index (#486)
         # describing the previous generation. Refreshing it here is the difference between an

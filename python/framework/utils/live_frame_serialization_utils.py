@@ -11,6 +11,7 @@ from dataclasses import asdict
 from typing import Any, Dict, Union
 
 from python.framework.types.autotrader_types.autotrader_display_types import AutoTraderDisplayStats
+from python.framework.types.import_types.import_progress_types import ImportProgressFrame
 from python.framework.types.live_types.live_scenario_stats_types import (
     LiveScenarioStats,
     LiveStatusFrame,
@@ -19,7 +20,7 @@ from python.framework.utils.process_serialization_utils import serialize_value
 
 
 def frame_to_json(
-    frame: Union[LiveScenarioStats, AutoTraderDisplayStats, LiveStatusFrame]
+    frame: Union[LiveScenarioStats, AutoTraderDisplayStats, LiveStatusFrame, ImportProgressFrame]
 ) -> Dict[str, Any]:
     """
     Encode a live-telemetry frame as a JSON-safe dict.
@@ -29,7 +30,8 @@ def frame_to_json(
     frame itself an untouched runtime object.
 
     Args:
-        frame: A live-telemetry frame (sim progress / status or AutoTrader session)
+        frame: A live-telemetry frame (sim progress / status, AutoTrader session, or an
+            import's progress)
 
     Returns:
         JSON-serializable dict mirroring the frame

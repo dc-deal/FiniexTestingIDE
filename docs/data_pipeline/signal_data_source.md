@@ -27,8 +27,12 @@ this doc covers only how the *data* is imported, indexed, and resolved.
 
 ## Import
 
+The signals are imported by the same command as the ticks, right after them, on one screen
+([Data Import Pipeline](data_import_pipeline.md#the-import-screen-its-log-and-its-estimate)):
+
 ```bash
-python python/cli/signal_index_cli.py import [--override] [--include-finished]  # JSONL → parquet + index
+python python/cli/data_index_cli.py import [--override] [--include-finished]   # ticks, then signals
+python python/cli/data_index_cli.py import --only signals [--override] [--include-finished]
 python python/cli/signal_index_cli.py status                # coverage per source / symbol
 python python/cli/signal_index_cli.py rebuild               # force index rebuild
 python python/cli/signal_index_cli.py inspect crypto_sentiment BTCUSD

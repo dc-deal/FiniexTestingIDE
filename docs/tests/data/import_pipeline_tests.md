@@ -264,12 +264,101 @@ route through the stdlib `logging` module, so `caplog` cannot see them, and thes
 assert what was REPORTED rather than what was returned.
 
 
+### test_import_coordinator.py
+
+The one import over both import inboxes (`ImportCoordinator`, #175), run against a temporary
+tree:
+
+- **TestBothArchives** — ticks and signals are imported, moved and rendered; every step ends
+  done, except the caches, which a scoped import shows skipped as `not the production archive`;
+  the import's own log holds both importers' lines, the summary and the line naming itself; the
+  frame serializes to JSON; the scan names the broker from each file's metadata head
+- **TestPinnedIssue** — a duplicate is counted and pinned as the bottom line; an `--override` run,
+  which logs a warning per replaced file but counts none, pins nothing
+- **TestOnlyOneArchive** — `--only ticks` and `--only signals` leave the other import inbox
+  untouched
+- **TestEmptyInboxes** — with nothing to import every step after the scan is shown skipped
+- **TestInterruptedRender** — a stop at the third symbol leaves its previous bars untouched,
+  removes nothing and leaves no `.partial`; the bar index is REBUILT — a symbol new in this import
+  and rendered before the stop is in it; the stop is a counted warning, pinned and in the
+  summary's warning list; the outcome maps to exit code `130`
+- **TestFailedSteps** — a bar index that cannot be rebuilt, a signal index that cannot be rebuilt,
+  and a bar, tick or signal file an index rebuild cannot read each end their step failed, count
+  an error and store no rate; a tick index missing an unreadable file still serves the render;
+  the caches are not rebuilt over a failed bar index; the pinned error is the newest one even when
+  it lands in a list the summary prints first
+- **TestWithTheScreen** — the default path from a terminal: the screen starts and stops, the lines
+  logged while it runs reach the import's own log but not the console, and the summary reaches
+  the console after it
+- **TestStops** — a code crash is raised after the summary, stores no rates and restores the
+  previous SIGTERM handler; a SIGTERM ends the import as interrupted, the running step says so
+- **TestSigtermBlock** — the block the import and a standalone render run under turns SIGTERM into
+  a stop and gives the previous handler back
+- **TestTimings** — the step rates are stored after a complete production import only, never
+  after a scoped or interrupted one; the next import's summary holds each step's estimate against
+  what it took
+- **TestExitCodes** — every outcome has an exit code, and an import with errors is not reported
+  as success
+- `test_bar_files_carry_the_render_after_a_complete_import` — a complete import leaves only
+  finished bar files, each readable in full
+
+### test_bar_render_replace.py
+
+- **TestReplaceAndClean** — a second render replaces every file and leaves no `.partial`; a new
+  file that fails its verification never replaces the good one, which stays byte-identical; a
+  leftover `.partial` of a timeframe the render does not write is removed at the start; files
+  without a source (a symbol without ticks, a timeframe not configured) are removed after a
+  complete render, never after an interrupted one; bars whose tick files are on disk are kept,
+  with a warning, when the tick index does not list their symbol
+- **TestBarIndexUpdate** — an unreadable bar file makes the index rebuild report failure and
+  count one error that names the repair
+- **TestWorkerLifetime** — a parent that starts a pool with the render's initializer and is then
+  killed outright takes its workers with it (Linux; the test runs that parent as a process of its
+  own and ends any worker left behind)
+- **TestParallelRender** — two workers report every phase of their symbols with their memory, and
+  each finished symbol is counted
+- **TestCrashDiagnosis** — an abruptly ended worker is named as a likely out-of-memory end, with
+  the setting to lower and its current value (#442)
+
+### test_import_progress_tracker.py
+
+The state behind the import screen: a stored rate times this import's quantity is a step's
+estimate (only in the same unit, and for the render only at the same worker count); one step
+without an estimate leaves the total unknown; a running step below 5 % of its work counts down its
+estimate and past it extrapolates its own progress, pinned with exact numbers on a clock the test
+moves by hand, and the step carries the same figure the header sums; a pending step carries its
+estimate, a finished one none; the frame carries the whole import's estimated duration and end
+time while it runs; the comparison holds each step's estimate at the start against its duration,
+and its total sums only the steps that ran and had an estimate, saying so when that is not every
+planned step; only finished steps yield a rate to store; the newest counted issue is pinned by its
+first line, without the emoji variation selector; worker lines follow their events, leave with
+their symbol and keep their number across symbols; a full queue keeps the newest frame; a frame
+shares nothing with the tracker; the refresh keeps publishing while nothing reports — the clock
+moves and a report the throttle dropped still reaches the screen — and stops when told, and
+without a queue it never starts.
+
+### test_import_live_display.py
+
+The screen rendered into a recording console — no live terminal: at 80 and at 160 columns every
+step, the render workers, the memory bar, the counters with the last warning, and the remaining
+time with the total and the end time are shown; each step's time is the frame's own figure, never
+one the screen derives; a finished import names its outcome and its log file and shows no estimate
+any more; every step status and every outcome renders (a missing icon would end the display
+thread); at 64 columns every status icon stays visible; a note cut for width ends in `…` rather
+than in a smaller number; sizes use one MB.
+
+### test_import_config_display.py
+
+The screen's settings and the timings path are declared in the model or manager and in
+`configs/import_config.json`, with the same values.
+
 ---
 
 ## Architecture
 
 - Tests are **fully isolated** — each test creates temporary directories, no shared state
-- Uses `TickDataImporter` directly (not via CLI) for precise control
+- The importer tests use `TickDataImporter` directly (not via CLI) for precise control; the
+  coordinator and render tests build `ImportCoordinator` and `BarImporter` against a temporary tree
 - `auto_render_bars=False` in most tests to skip bar rendering overhead — `test_bar_archive_integrity.py` deliberately sets it `True`, because the scope of the bar render is what it examines
 - Synthetic data covers both `kraken_spot` (server clock `UTC+0h`) and `mt5` (`America/New_York+7h`) broker types; the default fixture date, 2026-01-15, lies in US winter
 - No production data required — all test data generated by `build_minimal_tick_json()`

@@ -14,6 +14,10 @@ Usage:
     logger.info("Application started")
 """
 
+from contextlib import contextmanager
+from pathlib import Path
+from typing import Iterator, Optional
+
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.logging.file_logger import FileLogger
 from python.framework.types.log_layout_types import GLOBAL_LOG_FILE
@@ -58,8 +62,57 @@ class GlobalLogger(AbstractLogger):
         else:
             self.file_logger = None
 
+        # A second file, attached only while tee_to() runs (an import).
+        self._tee_logger: Optional[FileLogger] = None
+        self._console_muted = False
+
         # Print log destination
         self.print_log_info()
+
+    @contextmanager
+    def tee_to(self, file_path: Path) -> Iterator[Path]:
+        """
+        Write every line to a second file as well, for as long as the block runs.
+
+        The import's own log comes from here: the importers, index managers and caches all
+        log through this logger, so a second sink records all of them without a logger being
+        handed to each. global.log keeps receiving every line as before. One block at a time:
+        a second one inside the first is refused, because its end would close the outer file
+        and give the console back while the outer block still owns it.
+
+        Args:
+            file_path: The second log file; its directory is created when missing
+
+        Returns:
+            The second log file's path
+        """
+        if self._tee_logger is not None:
+            raise RuntimeError(
+                f'tee_to does not nest: {file_path} opened while another tee is open')
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+        self._tee_logger = FileLogger(
+            file_path=file_path.parent,
+            log_filename=file_path.name,
+            log_level=self._file_logging_config.global_log_level,
+        )
+        try:
+            yield file_path
+        finally:
+            self._console_muted = False
+            tee_logger, self._tee_logger = self._tee_logger, None
+            tee_logger.close()
+
+    def set_console_muted(self, muted: bool) -> None:
+        """
+        Keep lines off the console while a live screen owns it. The files still get them.
+
+        Args:
+            muted: True to keep lines off the console
+
+        Returns:
+            None
+        """
+        self._console_muted = muted
 
     def print_log_info(self):
         """Print where logs are being written (or if disabled)"""
@@ -86,6 +139,8 @@ class GlobalLogger(AbstractLogger):
         """
         check if console log is enabled for logger
         """
+        if self._console_muted:
+            return False
         return LogLevel.should_log(
             level, self._console_logging_config.global_log_level)
 
@@ -119,3 +174,5 @@ class GlobalLogger(AbstractLogger):
         if self.file_logger is not None:
             # Write to file (plain text format with DateTime)
             self.file_logger.write_log(record, self._render_timestamp(record))
+        if self._tee_logger is not None:
+            self._tee_logger.write_log(record, self._render_timestamp(record))

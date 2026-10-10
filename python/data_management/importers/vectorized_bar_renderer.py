@@ -11,7 +11,7 @@ Key Features:
 - Consistent data types (float64, matching BarRenderer)
 """
 
-from typing import Dict, Optional
+from typing import Callable, Dict, Optional
 
 import pandas as pd
 
@@ -75,15 +75,17 @@ class VectorizedBarRenderer:
 
     def render_all_timeframes(
         self,
-        ticks_df: pd.DataFrame
+        ticks_df: pd.DataFrame,
+        on_timeframe_rendered: Optional[Callable[[int, int], None]] = None
     ) -> Dict[str, pd.DataFrame]:
         """
         Render bars for all supported timeframes from tick data.
 
-        This is the main entry point - renders all 7 timeframes in one go!
+        This is the main entry point - renders all configured timeframes in one go!
 
         Args:
             ticks_df: DataFrame with tick data (must have 'timestamp', 'bid', 'ask')
+            on_timeframe_rendered: Called with (timeframes done, timeframe count) after each
 
         Returns:
             Dict[timeframe, DataFrame] - Bars for each timeframe
@@ -96,11 +98,13 @@ class VectorizedBarRenderer:
 
         # Render all timeframes
         all_bars = {}
-        for timeframe in self._resample_rules.keys():
+        for done, timeframe in enumerate(self._resample_rules.keys(), 1):
             self._log('debug', f'  ├─ Rendering {timeframe}...')
             bars_df = self._render_single_timeframe(prepared_df, timeframe)
             all_bars[timeframe] = bars_df
             self._log('info', f'  ├─ {timeframe}: {len(bars_df):,} bars rendered')
+            if on_timeframe_rendered is not None:
+                on_timeframe_rendered(done, len(self._resample_rules))
 
         self._log('info', f'✅ All timeframes rendered for {self.symbol}')
         return all_bars
