@@ -223,6 +223,12 @@ the `session_start` *broker truth* line. A point in time — not the
 about how much market time was processed — that is the *tick timespan* — and it is never a point
 in time: when an order's event happened is its *event time*.
 
+**fee source** (`fee_source`) — Where the fee booked for a fill came from: `venue` — the figure
+the venue reported for that fill, in the answer that reported it, which is what the account was
+charged; `estimate` — our fee model's, the declared rate times the order's value. A backtest is
+always `estimate`; a live fill is `venue` wherever its venue reports the fee there. Where the
+venue does is declared on the adapter (`fee_report`). Not a *source* in the signal sense.
+
 **fees charged** · **total fees** (`fees_charged`, `total_fees`) — Two fee totals of one run.
 *Total fees* are the fees of the trades it CLOSED — the population every trade row, booking period
 and trade analytic sums. *Fees charged* are everything the run charged, entry and exit fees and

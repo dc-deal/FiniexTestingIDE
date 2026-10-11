@@ -23,7 +23,7 @@ from typing import List
 
 # One monotonic integer. Not a date and not the app version: a consumer compares it for
 # equality, and equality is the only question they have.
-API_CONTRACT_VERSION = 26
+API_CONTRACT_VERSION = 27
 
 # Every response carries it, so a saved fixture carries it too.
 CONTRACT_HEADER = 'X-Api-Contract'
@@ -36,13 +36,10 @@ API_PREFIX = '/api/v1'
 # What moved INTO the current version. One line per change, written for someone who cannot
 # read this repository.
 CHANGES: List[str] = [
-    "GET /api/v1/reports/runs/{run_id}/header: new — a run's whole header, every path in it "
-    'relative to its repository. Its document, run-header, lists every key with its meaning and '
-    'the label to show it under',
-    'The run list: origin_channel, origin_client, origin_principal and origin_host — who started '
-    "the run, the header's origin block flattened; null on a run that predates the block",
-    "Origin on its own keeps one meaning, who started a run. The configuration directory row's "
-    "origin, a feed-health episode's origin and origin_classes / origin_evidence_grades (the "
-    'data origin classes) are renamed in a later contract',
-    'The run list: fixture_superseded is true also for a run of a catalog entry no longer declared',
+    "The order-event stream: fee_source on every event that executed something — 'venue' where "
+    "fee is the venue's own figure for that fill, 'estimate' where it is our fee model's; always "
+    "'estimate' in a backtest; null where nothing executed and on events recorded before",
+    "A live fill's fee — the event's fee, the order history's commission, the trade history's "
+    "fees and every figure summed from them — is the venue's own charge wherever the venue "
+    "reports it in the answer that says the order filled, no longer the declared rate's estimate",
 ]

@@ -153,8 +153,10 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         # #318 — modify/cancel/position-modify responses forwarded to
         # their respective hooks since the target order/position lives in
         # the executor's _active_*_orders / portfolio (Hybrid pattern).
-        self._fill_open_hook: Optional[Callable[[PendingOrder, float], None]] = None
-        self._fill_close_hook: Optional[Callable[[PendingOrder, float], None]] = None
+        self._fill_open_hook: Optional[
+            Callable[[PendingOrder, Optional[float], Optional[float]], None]] = None
+        self._fill_close_hook: Optional[
+            Callable[[PendingOrder, Optional[float], Optional[float]], None]] = None
         self._rejection_hook: Optional[
             Callable[[PendingOrder, RejectionReason, str, Optional[str]], None]] = None
         self._resting_response_hook: Optional[Callable[[str, 'BrokerResponse'], None]] = None
@@ -162,8 +164,8 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         self._cancel_response_hook: Optional[Callable[[str, 'BrokerResponse'], None]] = None
         self._position_modify_response_hook: Optional[Callable[[str, 'BrokerResponse'], None]] = None
         # #326: trades-query drain handler — main-thread callback receiving
-        # the parsed TradesQueryResponse so the executor can append trades to
-        # pending.fills.trades and trigger _fill_open_order with cumulative truth.
+        # the parsed TradesQueryResponse so the executor can hand it to its
+        # consumers; it books nothing (#508).
         self._trades_response_hook: Optional[Callable[[TradesQueryResponse], None]] = None
         # #320: status-poll drain handler — main-thread callback receiving the
         # parsed QueryResponse so the executor can clear in_flight_query, run
@@ -737,8 +739,8 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
 
     def set_executor_hooks(
         self,
-        fill_open: Callable[[PendingOrder, float], None],
-        fill_close: Callable[[PendingOrder, float], None],
+        fill_open: Callable[[PendingOrder, Optional[float], Optional[float]], None],
+        fill_close: Callable[[PendingOrder, Optional[float], Optional[float]], None],
         on_rejection: Callable[[PendingOrder, RejectionReason, str, Optional[str]], None],
         resting_response: Optional[Callable[[str, BrokerResponse], None]] = None,
         modify_response: Optional[Callable[[str, BrokerResponse], None]] = None,
@@ -761,10 +763,10 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         without locking.
 
         Args:
-            fill_open: _fill_open_order(pending, fill_price) — handles
-                       MARKET OPEN fills (portfolio add, history append)
-            fill_close: _fill_close_order(pending, fill_price) — handles
-                        MARKET CLOSE fills (portfolio close, history append)
+            fill_open: (pending, fill_price, reported_fee) — books an OPEN filled in its
+                       own submit answer (portfolio add, history append); reported_fee is the
+                       fee that answer carries, None where it carries none (#508)
+            fill_close: (pending, fill_price, reported_fee) — the same for a CLOSE
             on_rejection: _record_processor_rejection(pending, reason, message,
                           venue_reason) — handles MARKET broker-side rejection (counter,
                           history, listener notification). The executor builds
@@ -789,9 +791,9 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
                             so the executor can apply SL/TP to portfolio.
             trades_response: Optional (#326) — _handle_trades_response(response).
                             Invoked for TradesQueryResponse so the executor can
-                            append per-execution BrokerTrade records to the
-                            parent PendingOrder and finalize the fill with
-                            cumulative truth (price + fee).
+                            hand the venue's executions to the consumers that
+                            asked for them. It books nothing and writes nothing
+                            onto the order (#508).
             query_response: Optional (#320) — _handle_query_response(response).
                             Invoked for QueryResponse so the executor can clear
                             in_flight_query on the polled PendingOrder, apply
@@ -1425,10 +1427,10 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
                 return
             if item.action == PendingOrderAction.OPEN:
                 if self._fill_open_hook is not None:
-                    self._fill_open_hook(filled, response.fill_price)
+                    self._fill_open_hook(filled, response.fill_price, response.fill_fee)
             elif item.action == PendingOrderAction.CLOSE:
                 if self._fill_close_hook is not None:
-                    self._fill_close_hook(filled, response.fill_price)
+                    self._fill_close_hook(filled, response.fill_price, response.fill_fee)
         # else: PENDING — pending stays in store, polling will handle it
 
     # ============================================
@@ -1511,10 +1513,10 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         """
         Main-thread handler for a TradesQueryResponse (#326).
 
-        Delegates to the executor's _trades_response_hook. The hook appends
-        each BrokerTrade to the parent PendingOrder.fills.trades, updates
-        cumulative_* aggregates, and finalizes the fill via _fill_open_order.
-        See ISSUE_326 §8 Post-Drain Distribution Flow for the full chain.
+        Delegates to the executor's _trades_response_hook, which hands the
+        executions to its registered consumers — today the drift auditor. It
+        books nothing: a fill is booked once, from the answer that reported
+        it (#508).
         """
         if self._trades_response_hook is not None:
             self._trades_response_hook(item)
@@ -1806,11 +1808,11 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         """
         Enqueue a TradesQueryJob for the worker thread (#326).
 
-        Triggered by LiveTradeExecutor after a query response detects FILLED.
-        The worker fetches per-execution trade records via the adapter's
-        Tier-3 trades_query layer; drain_inbox routes the response to
-        _handle_trades_response, which appends BrokerTrade records to
-        pending.fills.trades and finalizes the fill.
+        Triggered by the drift auditor once a fill is booked — an entry through
+        the order-outcome listener, a close through the close-fill listener
+        (#508). The worker fetches per-execution trade records via the
+        adapter's Tier-3 trades_query layer; drain_inbox routes the response to
+        _handle_trades_response, which hands it to the registered consumers.
 
         Args:
             order_id: Internal order identifier (primary routing key)

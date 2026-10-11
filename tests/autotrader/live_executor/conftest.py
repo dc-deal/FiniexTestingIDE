@@ -136,6 +136,8 @@ class AcknowledgingVenueMock(MockBrokerAdapter):
         super().__init__(mode=MockExecutionMode.DELAYED_FILL)
         # What the venue holds, by reference: status plus what executed
         self._venue_orders: Dict[str, Dict[str, Any]] = {}
+        # What each order was submitted as — a resting limit is charged the maker rate
+        self._order_types: Dict[str, OrderType] = {}
         self._closed: List[BrokerOrder] = []
         self.fill_market_orders: bool = True
         self.lose_next_submit_answer: bool = False
@@ -161,12 +163,15 @@ class AcknowledgingVenueMock(MockBrokerAdapter):
             payload['symbol'], payload['direction'], payload['expected_price'])
         lots = payload['lots']
         self.submits.append(ref)
+        self._order_types[ref] = payload['order_type']
         if self.fill_market_orders and payload['order_type'] == OrderType.MARKET:
-            self._venue_orders[ref] = {
-                'status': 'FILLED', 'fill_price': price, 'filled_lots': lots}
-            self._record_mock_trades(
+            fill_fee = self._record_mock_trades(
                 broker_ref=ref, symbol=payload['symbol'], direction=payload['direction'],
                 total_lots=lots, fill_price=price, is_maker=False)
+            # Like Kraken, the answer that reports the fill carries its fee (#508)
+            self._venue_orders[ref] = {
+                'status': 'FILLED', 'fill_price': price, 'filled_lots': lots,
+                'fill_fee': fill_fee}
             self._closed.append(BrokerOrder(
                 broker_ref=ref, symbol=payload['symbol'], direction=payload['direction'],
                 order_type=OrderType.MARKET, lots=lots, status=BrokerOrderStatus.FILLED,
@@ -237,7 +242,10 @@ class AcknowledgingVenueMock(MockBrokerAdapter):
             fill_price: At what price
         """
         self._venue_orders[ref] = {
-            'status': status, 'filled_lots': filled_lots, 'fill_price': fill_price}
+            'status': status, 'filled_lots': filled_lots, 'fill_price': fill_price,
+            'fill_fee': self.venue_fee_for(
+                'BTCUSD', filled_lots, fill_price,
+                is_maker=self._order_types.get(ref) is OrderType.LIMIT)}
 
     def get_closed_broker_orders(
         self,

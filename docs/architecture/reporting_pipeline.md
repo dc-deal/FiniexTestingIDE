@@ -556,7 +556,11 @@ substrate the Parameter Optimization system ranks over. Both pipelines append (#
    (spot): `CostBreakdown` / `PortfolioStats` / the portfolio rows carry `maker_fee` + `taker_fee`
    (`PortfolioManager._record_fee_cost` categorizes every fee — maker/taker by `is_maker`), and all
    five categories (spread · commission · swap · maker · taker) render together (zeros where n/a), so
-   the spot fee that used to fold invisibly into `total_fees` is now itemized.
+   the spot fee that used to fold invisibly into `total_fees` is now itemized. Since #508 the
+   AMOUNT of a live fill's fee is the venue's own wherever its answer reports one, while the
+   category still comes from how the order filled — the venue states maker or taker per execution
+   only. A backtest's fees are the model's estimate throughout; every order event says which with
+   `fee_source`, so a live-versus-backtest comparison of fees can tell the two apart.
    Block-splitting disposition is also model-fed now (`BlockSplittingReport`, Profile Runs only).
    File-logs follow automatically (captured stdout).
 7. **Directory consolidation (#396, final, structural) — DONE.** `framework/batch_reporting/` was

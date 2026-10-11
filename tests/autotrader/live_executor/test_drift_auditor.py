@@ -10,8 +10,11 @@ Validates the read-only drift telemetry pipeline:
 - Multi-listener / multi-consumer coexistence with OrderGuard
 - Failed responses do not leak the pending_audits dict
 - Consumer exceptions are isolated (one bad consumer cannot kill the chain)
+- A booked close is audited too, keyed apart from its entry; a venue without trade-level
+  reporting is not asked at all (#508)
 """
 
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Callable, List, Optional
 
@@ -30,16 +33,37 @@ from python.framework.types.trading_env_types.latency_simulator_types import (
     PendingOrderAction,
 )
 from python.framework.types.trading_env_types.order_types import (
+    CloseType,
+    OrderAction,
+    OrderCapabilities,
     OrderDirection,
     OrderResult,
     OrderStatus,
     OrderType,
 )
 from python.framework.types.trading_env_types.submission_metadata_types import SubmissionMetadata
+from tests.framework.order_events.conftest import ASK, BID, live_session, market_order
+
+ACCOUNT_MODELS = pytest.mark.parametrize('spot_mode', [False, True], ids=['margin', 'spot'])
 
 # =============================================================================
 # Helpers
 # =============================================================================
+
+
+class _FakeAdapter:
+    """Declares only what the auditor reads: whether the venue answers a trades query."""
+
+    def __init__(self, trade_level_reporting: bool) -> None:
+        self._trade_level_reporting = trade_level_reporting
+
+    def get_order_capabilities(self) -> OrderCapabilities:
+        return OrderCapabilities(trade_level_reporting=self._trade_level_reporting)
+
+
+@dataclass
+class _FakeBroker:
+    adapter: _FakeAdapter
 
 
 class _FakeExecutor:
@@ -49,13 +73,23 @@ class _FakeExecutor:
     up a full LiveTradeExecutor + worker thread.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, trade_level_reporting: bool = True) -> None:
         self.outcome_listeners: List[Callable] = []
+        self.close_listeners: List[Callable] = []
         self.trades_consumers: List[Callable] = []
         self.trades_query_calls: List[dict] = []
+        self.broker = _FakeBroker(_FakeAdapter(trade_level_reporting))
 
     def add_order_outcome_listener(self, listener: Callable) -> None:
         self.outcome_listeners.append(listener)
+
+    def add_close_fill_listener(self, listener: Callable) -> None:
+        self.close_listeners.append(listener)
+
+    def fire_close_fill(self, pending: PendingOrder, result: OrderResult) -> None:
+        """Simulate the executor telling its close-fill listeners of a booked close."""
+        for listener in self.close_listeners:
+            listener(pending, result)
 
     def add_trades_response_consumer(self, consumer: Callable) -> None:
         self.trades_consumers.append(consumer)
@@ -124,14 +158,22 @@ def _make_pending(
     return pending
 
 
-def _make_executed_result(order_id: str) -> OrderResult:
-    """Build an OrderResult with EXECUTED status."""
+def _make_executed_result(
+    order_id: str,
+    action: OrderAction = OrderAction.OPEN,
+    commission: float = 0.0,
+) -> OrderResult:
+    """Build an OrderResult with EXECUTED status — a close names its position's side."""
     return OrderResult(
         order_id=order_id,
         status=OrderStatus.EXECUTED,
         executed_price=100.0,
         executed_lots=0.1,
+        commission=commission,
         execution_time=datetime.now(timezone.utc),
+        action=action,
+        symbol='BTCUSD',
+        direction=OrderDirection.LONG,
     )
 
 
@@ -190,7 +232,6 @@ def enabled_config() -> DriftAuditConfig:
         volume_threshold_pct=0.1,
         price_threshold_pct=1.0,
         log_all=False,
-        sample_rate=1.0,
     )
 
 
@@ -366,13 +407,14 @@ class TestFailedTradesResponseNoLeak:
         result = _make_executed_result('ORD-1')
 
         fake_executor.fire_outcome(OrderDirection.LONG, result, pending)
-        assert 'ORD-1' in auditor._pending_audits   # snapshot stored
+        # snapshot stored — under the venue's reference, which is unique per venue order
+        assert pending.broker_ref in auditor._pending_audits
 
         failed_response = _make_trades_response(order_id='ORD-1', success=False)
         fake_executor.fire_trades_response(failed_response)
 
         # The snapshot must be cleaned up even though we never recorded a drift
-        assert 'ORD-1' not in auditor._pending_audits
+        assert pending.broker_ref not in auditor._pending_audits
         # No drift events recorded (failed response → audit skipped)
         assert auditor.get_summary().total_orders_audited == 0
 
@@ -571,11 +613,10 @@ class TestSlippageAudit:
         assert summary.max_slippage_drift_pct == 0.0
 
     def test_slippage_captured_on_close_order(self, fake_executor, enabled_config, logger):
-        """Close-action pending with submission_tick set → SLIPPAGE record produced.
+        """A booked close with submission_tick set → SLIPPAGE record produced.
 
-        Action-agnostic compare: the auditor pipeline does not differentiate
-        OPEN/CLOSE — both produce a SLIPPAGE record if the submission tick is
-        present. Validates that partial-close slippage flows through the same path.
+        A close reaches the auditor through the close-fill listener, never through the
+        order-outcome one (#508) — and is compared exactly like an entry.
         """
         auditor = DriftAuditor(executor=fake_executor, config=enabled_config, logger=logger)
         pending = _make_pending(
@@ -585,9 +626,9 @@ class TestSlippageAudit:
             submission_tick_time_msc=1716220985000,
             order_action=PendingOrderAction.CLOSE,
         )
-        result = _make_executed_result('POS-1')
+        result = _make_executed_result('POS-1', action=OrderAction.CLOSE)
 
-        fake_executor.fire_outcome(OrderDirection.LONG, result, pending)
+        fake_executor.fire_close_fill(pending, result)
         response = _make_trades_response(order_id='POS-1', real_price=2120.0)
         fake_executor.fire_trades_response(response)
 
@@ -597,3 +638,170 @@ class TestSlippageAudit:
         assert slip_records[0].local_value == 2118.0
         assert slip_records[0].broker_value == 2120.0
         assert slip_records[0].is_structural is True
+
+
+# =============================================================================
+# #508 — the exit leg, the reference key, and a venue that answers no trades query
+# =============================================================================
+
+
+class TestTheExitLegIsAudited:
+    """A close is checked against the venue's executions like an entry, keyed apart from it."""
+
+    def test_a_close_is_queried_and_compared(self, fake_executor, enabled_config, logger):
+        auditor = DriftAuditor(executor=fake_executor, config=enabled_config, logger=logger)
+        close = _make_pending('POS-1', broker_ref='OCLOSE-1', synthetic_fee=0.0040,
+                              order_action=PendingOrderAction.CLOSE)
+
+        fake_executor.fire_close_fill(
+            close, _make_executed_result('POS-1', OrderAction.CLOSE, commission=0.0040))
+        fake_executor.fire_trades_response(
+            _make_trades_response('POS-1', broker_ref='OCLOSE-1', real_fee=0.0040))
+
+        assert fake_executor.trades_query_calls == [
+            {'order_id': 'POS-1', 'broker_ref': 'OCLOSE-1'}]
+        fee_records = [r for r in auditor.get_summary().records if r.drift_type is DriftType.FEE]
+        assert [r.broker_ref for r in fee_records] == ['OCLOSE-1']
+        assert fee_records[0].relative_delta_pct == pytest.approx(0.0)
+
+    def test_an_entry_and_its_close_in_flight_together_keep_their_own_snapshots(
+            self, fake_executor, enabled_config, logger):
+        """
+        A position's entry and its close share one order_id. Keyed by it, a close that filled
+        before the entry's executions arrived replaced the entry's snapshot: the entry was
+        compared with the close's figures, and the close's own response found nothing.
+        """
+        auditor = DriftAuditor(executor=fake_executor, config=enabled_config, logger=logger)
+        entry = _make_pending('POS-1', broker_ref='OENTRY-1', synthetic_fee=0.0080)
+        close = _make_pending('POS-1', broker_ref='OCLOSE-1', synthetic_fee=0.0040,
+                              order_action=PendingOrderAction.CLOSE)
+
+        fake_executor.fire_outcome(OrderDirection.LONG, _make_executed_result('POS-1'), entry)
+        fake_executor.fire_close_fill(
+            close, _make_executed_result('POS-1', OrderAction.CLOSE, commission=0.0040))
+        fake_executor.fire_trades_response(
+            _make_trades_response('POS-1', broker_ref='OCLOSE-1', real_fee=0.0040))
+        fake_executor.fire_trades_response(
+            _make_trades_response('POS-1', broker_ref='OENTRY-1', real_fee=0.0080))
+
+        summary = auditor.get_summary()
+        assert summary.total_orders_audited == 2
+        assert summary.fee_events == 0
+        assert {r.broker_ref for r in summary.records if r.drift_type is DriftType.FEE} == {
+            'OENTRY-1', 'OCLOSE-1'}
+
+
+class TestAVenueWithoutExecutionsIsNotAsked:
+    """Where the venue answers no trades query there is nothing to audit against."""
+
+    def test_neither_leg_is_queried(self, enabled_config, logger):
+        executor = _FakeExecutor(trade_level_reporting=False)
+        auditor = DriftAuditor(executor=executor, config=enabled_config, logger=logger)
+
+        executor.fire_outcome(OrderDirection.LONG, _make_executed_result('POS-1'),
+                              _make_pending('POS-1', broker_ref='OENTRY-1'))
+        executor.fire_close_fill(
+            _make_pending('POS-1', broker_ref='OCLOSE-1', order_action=PendingOrderAction.CLOSE),
+            _make_executed_result('POS-1', OrderAction.CLOSE))
+
+        assert executor.trades_query_calls == []
+        assert auditor.get_summary().total_orders_audited == 0
+
+
+class TestAProtectiveOrderIsAuditedOnceItCloses:
+    """
+    A protective order the venue holds is booked in steps, and its executions describe the
+    whole order. It is audited once, by the booking that closes the position, against all that
+    was booked for it — and never for slippage against the mid of its placement, which
+    measures the distance to its stop rather than what its fill cost (#508).
+    """
+
+    @staticmethod
+    def _protective(applied_lots: float = 0.0, applied_fee: float = 0.0,
+                    applied_value: float = 0.0) -> PendingOrder:
+        """
+        A venue-held protective order with what earlier steps booked.
+
+        Args:
+            applied_lots: Lots already booked
+            applied_fee: Fee already booked
+            applied_value: Lots times price already booked
+
+        Returns:
+            The protective order
+        """
+        pending = _make_pending('protect_pos_1', broker_ref='OSTOP-1', synthetic_fee=0.0,
+                                submission_tick_mid_price=50000.0,
+                                order_action=PendingOrderAction.CLOSE)
+        pending.closes_position_id = 'pos_1'
+        pending.execution_state.venue_close_applied_lots = applied_lots
+        pending.execution_state.venue_close_applied_fee = applied_fee
+        pending.execution_state.venue_close_applied_value = applied_value
+        return pending
+
+    @staticmethod
+    def _booked(lots: float, price: float, fee: float, close_type: CloseType) -> OrderResult:
+        """
+        The result one step of it booked.
+
+        Args:
+            lots: The step's lots
+            price: Its price
+            fee: Its fee
+            close_type: Whether it closed the position
+
+        Returns:
+            The executed close result
+        """
+        return OrderResult(
+            order_id='protect_pos_1', status=OrderStatus.EXECUTED, executed_price=price,
+            executed_lots=lots, commission=fee, execution_time=datetime.now(timezone.utc),
+            action=OrderAction.CLOSE, symbol='BTCUSD', direction=OrderDirection.LONG,
+            close_type=close_type)
+
+    def test_a_step_that_leaves_the_position_open_asks_nothing(
+            self, fake_executor, enabled_config, logger):
+        DriftAuditor(executor=fake_executor, config=enabled_config, logger=logger)
+
+        fake_executor.fire_close_fill(
+            self._protective(), self._booked(0.04, 49000.0, 15.68, CloseType.PARTIAL))
+
+        assert fake_executor.trades_query_calls == []
+
+    def test_the_closing_step_is_compared_with_everything_booked(
+            self, fake_executor, enabled_config, logger):
+        auditor = DriftAuditor(executor=fake_executor, config=enabled_config, logger=logger)
+
+        fake_executor.fire_close_fill(
+            self._protective(0.04, 15.68, 1960.0),
+            self._booked(0.06, 2935.0 / 0.06, 23.50, CloseType.FULL))
+        fake_executor.fire_trades_response(_make_trades_response(
+            'protect_pos_1', broker_ref='OSTOP-1', real_fee=39.18, real_volume=0.10,
+            real_price=48950.0, trades_count=2))
+
+        summary = auditor.get_summary()
+        assert summary.total_orders_audited == 1
+        assert [r.drift_type for r in summary.records if r.threshold_exceeded] == []
+        assert DriftType.SLIPPAGE not in {r.drift_type for r in summary.records}
+
+
+class TestTheExecutorAuditsBothLegs:
+    """The real executor tells the auditor of an entry and of its close — the wiring, pinned."""
+
+    @ACCOUNT_MODELS
+    def test_an_entry_and_its_close_each_ask_for_their_executions(
+            self, spot_mode, enabled_config, logger, monkeypatch):
+        mock, executor, _ = live_session(spot_mode=spot_mode)
+        DriftAuditor(executor=executor, config=enabled_config, logger=logger)
+        asked: List[str] = []
+        monkeypatch.setattr(executor, 'submit_trades_query_async',
+                            lambda order_id, broker_ref: asked.append(broker_ref))
+
+        executor.open_order(market_order())
+        mock.await_submit_confirmation(executor)
+        mock.feed_tick(executor, bid=BID, ask=ASK)
+        executor.close_position(executor.get_open_positions()[0].position_id)
+        mock.await_submit_confirmation(executor)
+        mock.feed_tick(executor, bid=BID, ask=ASK)
+
+        assert len(asked) == 2 and len(set(asked)) == 2, asked

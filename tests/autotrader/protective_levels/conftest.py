@@ -98,8 +98,10 @@ class VenueHoldsProtectionMock(MockBrokerAdapter):
         ended = self._ended_stops.get(payload.get('broker_ref'))
         if ended is not None:
             status, lots, price = ended
+            # Like Kraken, an answer with executed volume carries the fee for all of it (#508)
             return {'status': status, 'broker_ref': payload['broker_ref'],
-                    'filled_lots': lots, 'fill_price': price}
+                    'filled_lots': lots, 'fill_price': price,
+                    'fill_fee': self.venue_fee_for('BTCUSD', lots, price)}
         return super().do_request_query(payload)
 
     def do_request_cancel(self, payload: Dict[str, Any]) -> Dict[str, Any]:

@@ -112,6 +112,7 @@ zero.
 | `limit_price` | the order's limit | the order has none |
 | `trigger_price` | the order's stop — the price that activates it | the order has none |
 | `fee` · `fee_currency` | the fee charged on this execution, and its currency | the event is no execution, or the venue charged none |
+| `fee_source` | where `fee` came from: `venue` — the figure the venue reported for this fill, what the account was charged; `estimate` — our fee model's, the declared rate times the order's value. A backtest is always `estimate`, and so is a live fill whose venue reports no fee per fill. A protective order the venue reports as one total is booked in steps: each step's figure is what the total grew by, and a step that had to be estimated is settled by the next total, so the order's fees add up to the venue's | the event is no execution; a fill nothing could be booked for, its position already gone, whose venue reported no fee; or it was recorded before the field existed |
 | `submission_mid` | the market's mid when the order was submitted | every event but the submission |
 | `submission_time_msc` | that market moment, in epoch milliseconds | as above |
 | `in_flight_ms` | on the acceptance or refusal that answers a submission: how long the answer took — modelled in a backtest, measured live | every other event |

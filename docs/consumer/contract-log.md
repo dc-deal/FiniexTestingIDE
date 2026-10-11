@@ -33,6 +33,23 @@ reads downwards from the version their fixtures hold until they reach the one be
 A test holds the newest heading in this log to the number the server answers with, so a version
 cannot ship without its entry.
 
+## Version 27 — 2026-10-11 (#508)
+
+A live fill's fee is the venue's own charge, and every executed order event says where its fee
+came from.
+
+- The order-event stream: `fee_source` on every event that executed something — `venue` where
+  `fee` is the figure the venue reported for that fill, `estimate` where it is our fee model's
+  (the declared rate times the order's value). A backtest is always `estimate`: it has no venue to
+  ask. Null on an event that executed nothing, on a fill nothing could be booked for whose venue
+  reported no fee, and on every event recorded before this contract.
+- `fee` on a live fill — and with it the order history's `commission`, the trade history's fees
+  and every fee figure summed from them — is now the venue's own charge wherever the venue reports
+  it in the answer that says the order filled, no longer the declared rate's estimate. Same fields,
+  another source: a live run before this contract and one after can differ in fees for the same
+  orders. A live event that still says `estimate` where its venue reports the fee means the answer
+  came without it; the session's log says so as well.
+
 ## Version 26 — 2026-10-09 (#582)
 
 A run's header is served whole, and the run list says who started each run.
@@ -40,7 +57,8 @@ A run's header is served whole, and the run list says who started each run.
 - `GET /api/v1/reports/runs/{run_id}/header` — new: the record every run writes at its start —
   what it is, what it was started from, who started it and which code ran. Every path in it is
   relative to its repository; no path of the machine is served. `run_not_found` for an unknown run,
-  `artifact_unreadable` for a header that cannot be read or whose run directory is gone. Its
+  `run_header_missing` for a run the index lists whose header file is gone, `artifact_unreadable`
+  for a header that no longer matches its model — naming the fields that fail. Its
   document, [run header](/api/v1/docs/run-header), is the authoritative list of every key, with its
   meaning and the label to show it under.
 - The run list: every run carries who started it — `origin_channel` (`cli`, `sweep`, `direct` or
@@ -152,41 +170,13 @@ A run recorded before this contract serves `0` in the new counts and the pending
 and `null` in the new order-history fields and in `orders_to` on deployments, until it is run
 again.
 
-## Version 22 — 2026-10-06 (#524, #568)
-
-The documentation this API answers with is now served by it, and every route says which document
-describes it.
-
-- `GET /api/v1/docs` lists every document this server carries, each with the routes it describes;
-  `key` is `["name"]`. `GET /api/v1/docs/{name}` serves one in full as `text/markdown` — this
-  API's only answer that is not JSON.
-- `GET /api/v1/docs/search?q=…` ranks the documentation's PASSAGES — the text under one heading —
-  against a query, best first. A hit names its document, its heading and the line it starts at, so
-  it can be opened at the answer rather than at the top; `key` is `["document", "heading", "line"]`.
-  It is called a passage and not a section because in this API a *section* is one section of a run
-  report, and one word carrying two contracts is how a reader comes to hold the wrong one.
-  `terms_not_matched` lists the query's words that appear in no document at all — the field to
-  read when a result looks wrong, because a word that is not our vocabulary contributes nothing to
-  the ranking and that is invisible from outside.
-- A new grant surface, `docs`: a token needs `docs:*`. **A token that enumerates its surfaces is
-  refused on these three routes until it is re-minted**, and the server reads its tokens at boot,
-  so the new grant takes effect on a restart.
-- Three new error codes — `document_not_found` (404), `empty_query` (400) and `query_too_long`
-  (400). An empty `q` is refused rather than answered with everything or with nothing: one
-  character is enough to search, so an empty query is an error and not a stage of typing.
-- Every route now answers with `Link: <…>; rel="describedby"`, naming the document that describes
-  it. It is a header rather than a field so it also reaches the routes whose body is a bare array,
-  and so a client that ignores it is unaffected.
-- `Link` and the seven `X-Bar-*` headers are now published cross-origin. The bar headers were
-  already served and were invisible to a browser client, which hides every response header that is
-  not safelisted — and three of them carry semantics a caller cannot infer from the rows at all.
-
-## Versions 21 and earlier
+## Versions 22 and earlier
 
 One line each. Every one of these moved a shape or a meaning; what they moved is summarised here
 rather than spelled out, because a consumer this far behind needs the list of steps, not each step's
 reasoning. The full text of a compressed version is in this repository's history.
 
+- **Version 22** — 2026-10-06 (#524, #568): The documentation is served by the API — `GET /api/v1/docs`, `GET /api/v1/docs/{name}` (markdown) and `GET /api/v1/docs/search` over passages — behind a new `docs` grant surface (tokens re-minted, server restarted); three error codes (`document_not_found`, `empty_query`, `query_too_long`); every route answers with `Link: …; rel="describedby"`, and `Link` and the `X-Bar-*` headers are published cross-origin.
 - **Version 21** — 2026-10-02 (#555, viewer#21): The worker-decision report says "not counted" instead of zero — `worker_decision_tracked` per unit, null counters and timings on an untracked one, and null `compute_ratio_pct` / `ticks_idle` where nothing was measured.
 - **Version 20** — 2026-10-02 (viewer#21, #557): A refused order says what was refused — its side,
   symbol, direction and size — `execution_time` became `event_time`, and the order history says

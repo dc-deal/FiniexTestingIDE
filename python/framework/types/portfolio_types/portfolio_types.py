@@ -135,6 +135,14 @@ class Position:
     # a session whose discriminator is gone. Re-deriving one from THIS session would stamp
     # our name on a predecessor's order.
     protective_client_order_id: Optional[str] = None
+    # How much of that order is already written into the books: its volume, the fee booked
+    # for it, and lots times price (#508). The order's own counters are the resolver's key
+    # (`venue_close_applied_*` on its execution state); these are their copy for the
+    # carry-over, written wherever a step of it is booked. The venue reports the order as
+    # totals, so a session that restarted without them would book an executed step again.
+    protective_applied_lots: float = 0.0
+    protective_applied_fee: float = 0.0
+    protective_applied_value: float = 0.0
 
     # === Swap accrual (#365) — last rollover instant already charged ===
     # Seeded to entry_time in __post_init__; advanced as overnight swap accrues.
@@ -373,6 +381,21 @@ class Position:
         if self.protective_broker_ref:
             return ProtectiveLevelEnforcement.VENUE
         return run_default
+
+    def forget_protective_order(self) -> None:
+        """
+        Drop the protective order this position carried: its identity and what it booked.
+
+        Called wherever that order no longer exists at the venue. What it booked stays in the
+        books; only the record of how much of THIS order was booked goes, because the next
+        protective order for the position starts from nothing (#508).
+        """
+        self.protective_broker_ref = None
+        self.protective_order_id = None
+        self.protective_client_order_id = None
+        self.protective_applied_lots = 0.0
+        self.protective_applied_fee = 0.0
+        self.protective_applied_value = 0.0
 
     def is_sl_triggered(self, bid: float, ask: float) -> bool:
         """

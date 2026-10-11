@@ -24,7 +24,7 @@ stream. The fields fall into groups:
 | Group | Fields | What it says |
 |---|---|---|
 | Identity and order | `seq`, `submitted_seq`, `event_type`, `record_plane`, `order_id`, `position_id`, `action`, `order_type`, `symbol`, `direction`, `client_order_id`, `broker_ref`, `previous_broker_ref` | which order, which step, in which place of the unit's stream |
-| Quantities and prices | `lots`, `cum_lots`, `trade_id`, `fill_price`, `limit_price`, `trigger_price`, `fee`, `fee_currency`, `submission_mid`, `submission_time_msc` | what was asked, executed or ended, and at what price |
+| Quantities and prices | `lots`, `cum_lots`, `trade_id`, `fill_price`, `limit_price`, `trigger_price`, `fee`, `fee_currency`, `fee_source`, `submission_mid`, `submission_time_msc` | what was asked, executed or ended, and at what price — and whether the fee was the venue's own or our estimate (#508) |
 | Times | `event_time`, `ts_init`, `in_flight_ms` | when it happened on the canonical clock, when this process saw it, how long an answer took |
 | Why | `initiator`, `end_reason`, `rejection_reason`, `venue_reason`, `message`, `lost_request` | who ended or asked, why, and the venue's own word |
 

@@ -14,15 +14,21 @@ established by #326. The pipeline has existed but has only been exercised
 by tests until now.
 
 Architecture:
-    on_outcome(EXECUTED, pending)
-        → snapshot synthetic state from pending.fills.cumulative_*
-        → store in self._pending_audits[order_id]
+    on_outcome(EXECUTED, pending)        — an entry's fill
+    on_close_fill(pending, result)       — a close's fill, the exit leg (#508)
+        → snapshot what was booked from pending.fills.cumulative_*
+        → store in self._pending_audits[broker_ref]
         → executor.submit_trades_query_async(order_id, broker_ref)
 
     on_trades_response(response)   (later, after broker roundtrip)
         → pop snapshot from self._pending_audits (always — no leak)
         → compute broker truth from response.trades (immutable)
         → compare local vs. broker, log drift events
+
+Since #508 a live fill books the venue's own fee from the answer that reported it, so the FEE
+channel compares two of the venue's figures — the order's total from that answer against the
+sum of its executions — as the PRICE channel always has. It is what measures, on every real
+fill, that the fee really is complete in the first answer that says filled.
 """
 
 from datetime import datetime, timezone
@@ -39,6 +45,8 @@ from python.framework.types.live_types.drift_audit_types import (
 from python.framework.types.live_types.live_request_types import TradesQueryResponse
 from python.framework.types.trading_env_types.latency_simulator_types import PendingOrder
 from python.framework.types.trading_env_types.order_types import (
+    CloseType,
+    OrderAction,
     OrderDirection,
     OrderResult,
     OrderStatus,
@@ -64,7 +72,7 @@ class DriftAuditor:
     Args:
         executor: LiveTradeExecutor — provides listener/consumer registration
             and the submit_trades_query_async delegating method.
-        config: DriftAuditConfig — thresholds, log_all, sample_rate.
+        config: DriftAuditConfig — thresholds, log_all.
         logger: AbstractLogger — session logger; drift events written with
             [DRIFT] prefix at WARNING level.
     """
@@ -78,10 +86,16 @@ class DriftAuditor:
         self._executor = executor
         self._config = config
         self._logger = logger
+        # Keyed by the venue's reference: an entry and its position's close share one
+        # order_id, and both audits can be waiting for their executions at the same time.
         self._pending_audits: Dict[str, AuditContext] = {}
         self._summary = DriftAuditSummary()
+        # A venue that answers no trades query has nothing to audit against (#508)
+        self._venue_reports_executions = (
+            executor.broker.adapter.get_order_capabilities().trade_level_reporting)
 
         executor.add_order_outcome_listener(self._on_order_outcome)
+        executor.add_close_fill_listener(self._on_close_fill)
         executor.add_trades_response_consumer(self._on_trades_response)
 
         self._logger.info(
@@ -112,16 +126,9 @@ class DriftAuditor:
             result: Terminal OrderResult
             pending: PendingOrder reference (None for pre-submit rejections)
         """
-        if not self._config.enabled:
+        if result.status != OrderStatus.EXECUTED or pending is None:
             return
-        if result.status != OrderStatus.EXECUTED:
-            return
-        if pending is None:
-            return
-        if pending.broker_ref is None or pending.broker_ref.startswith('DRYRUN-'):
-            return
-
-        snapshot = AuditContext(
+        self._start_audit(AuditContext(
             order_id=result.order_id,
             broker_ref=pending.broker_ref,
             symbol=pending.symbol,
@@ -132,14 +139,76 @@ class DriftAuditor:
             synthetic_cumulative_filled_lots=pending.fills.cumulative_filled_lots,
             fee_currency=pending.fills.trades[0].fee_currency if pending.fills.trades else None,
             submission_tick_mid_price=pending.submission.tick_mid_price,
-        )
-        self._pending_audits[result.order_id] = snapshot
+        ))
+
+    def _on_close_fill(self, pending: PendingOrder, result: OrderResult) -> None:
+        """
+        Snapshot what a booked close cost, schedule trades_query for the venue's executions.
+
+        The exit leg used to have no audit at all — a close reaches no order-outcome listener —
+        so the leg with no estimate check was also the leg with no truth check (#508).
+
+        A protective order the venue holds is booked in steps while it works, and the venue's
+        executions describe the whole order. So it is audited once, by the booking that closes
+        the position, against everything booked for it — counted by the resolver, which also
+        knows what a restarted session's predecessor booked. One the venue ends after part of
+        it executed leaves its position open and is not audited.
+
+        Args:
+            pending: The close order that filled
+            result: Its executed result, naming the position's symbol and direction
+        """
+        if result.status != OrderStatus.EXECUTED:
+            return
+        venue_held = pending.closes_position_id is not None
+        if venue_held and result.close_type is not CloseType.FULL:
+            return
+        # Before this booking — the resolver advances its counters after it; all zero for a
+        # close that is not a venue-held protective order
+        state = pending.execution_state
+        lots = result.executed_lots or 0.0
+        booked_lots = state.venue_close_applied_lots + lots
+        booked_value = state.venue_close_applied_value + lots * (result.executed_price or 0.0)
+        self._start_audit(AuditContext(
+            order_id=result.order_id,
+            broker_ref=pending.broker_ref,
+            symbol=result.symbol,
+            direction=result.direction,
+            requested_lots=booked_lots,
+            synthetic_cumulative_fee=state.venue_close_applied_fee + result.commission,
+            synthetic_cumulative_avg_price=(booked_value / booked_lots if booked_lots > 0
+                                            else 0.0),
+            synthetic_cumulative_filled_lots=booked_lots,
+            fee_currency=pending.fills.trades[0].fee_currency if pending.fills.trades else None,
+            # A protective order rested at the venue from its placement: the mid at that moment
+            # measures its distance to the stop, not what its fill cost
+            submission_tick_mid_price=(None if venue_held
+                                       else pending.submission.tick_mid_price),
+            action=OrderAction.CLOSE,
+        ))
+
+    def _start_audit(self, snapshot: AuditContext) -> None:
+        """
+        Keep a fill's snapshot and ask the venue for that order's executions.
+
+        Skipped where the audit is off, where the venue answers no trades query, and for a
+        dry-run reference, which has no venue truth behind it.
+
+        Args:
+            snapshot: What was booked for the fill
+        """
+        if not self._config.enabled or not self._venue_reports_executions:
+            return
+        broker_ref = snapshot.broker_ref
+        if broker_ref is None or broker_ref.startswith('DRYRUN-'):
+            return
+        self._pending_audits[broker_ref] = snapshot
 
         # Trigger real trades_query — broker round-trip happens on worker thread,
         # response surfaces via drain_inbox to our _on_trades_response consumer.
         self._executor.submit_trades_query_async(
-            order_id=result.order_id,
-            broker_ref=pending.broker_ref,
+            order_id=snapshot.order_id,
+            broker_ref=broker_ref,
         )
 
     # ============================================
@@ -157,7 +226,7 @@ class DriftAuditor:
         Args:
             response: TradesQueryResponse from the worker thread
         """
-        snapshot = self._pending_audits.pop(response.order_id, None)
+        snapshot = self._pending_audits.pop(response.broker_ref, None)
         if snapshot is None:
             return    # Not triggered by us — another consumer or unrelated response
 
@@ -322,6 +391,7 @@ class DriftAuditor:
             cur_tag = f' {fee_currency}' if fee_currency else ''
             self._logger.warning(
                 f'[DRIFT]{structural_tag} order={snapshot.order_id} '
+                f'leg={snapshot.action.value} '
                 f'broker_ref={snapshot.broker_ref} symbol={snapshot.symbol}\n'
                 f'   {drift_type.value.upper()}  local={local:.6f}{cur_tag}  '
                 f'broker={broker:.6f}{cur_tag}  delta={relative_delta_pct:+.2f}%  '

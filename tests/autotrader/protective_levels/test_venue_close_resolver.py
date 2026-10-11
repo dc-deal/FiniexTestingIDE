@@ -8,9 +8,10 @@ construction rather than by nobody asking twice.
 
 `_apply_venue_close` applies the DELTA against its own counter,
 `execution_state.venue_close_applied_lots` (decision 13.a, 2026-09-10). The fills
-aggregate cannot serve: it answers how much the VENUE filled, and on a venue with
-trade-level reporting the trades drain sets it to the full amount BEFORE anything is
-booked — so a delta taken against it would be zero exactly in the case this exists for.
+aggregate cannot serve: it holds the executions booked in THIS session, while the key has
+to survive a restart — the position carries it into the carry-over (#508) — and has to
+advance where nothing could be booked, or an unattributable report would be raised again
+on every poll.
 
 Fed directly here, deliberately. The mock cannot price-trigger a resting stop order, so
 driving one through the poll loop would prove the mock rather than the resolver.
@@ -136,22 +137,23 @@ class TestTheSameFillArrivesTwice:
         """
         Decision 13.a, asserted rather than assumed.
 
-        On a venue with trade-level reporting the trades drain fills the aggregate BEFORE
-        anything is booked. Were the delta taken against it, this close would never
-        happen — and the failure would be silent: no error, just a position that stays
-        open while the venue has already sold it.
+        After a restart the order is rebuilt with no executions at all, while the venue
+        still reports its totals. Were the delta taken against the empty fills, the step
+        the predecessor booked would be booked a second time (#508).
         """
-        mock, executor, position = _live_with_one_long()
-        protective = _protective_order(position.position_id)
-        protective.fills.append_trade(_trade(0.10, 49000.0, 'T-1'))
-        assert protective.fills.cumulative_filled_lots == 0.10
-        assert protective.execution_state.venue_close_applied_lots == 0.0
+        mock, executor, position = _live_with_one_long(lots=0.10)
+        executor._apply_venue_close(_protective_order(position.position_id),
+                                    filled_lots=0.04, avg_price=49000.0)
+        rebuilt = _protective_order(position.position_id)
+        executor._seed_venue_close_progress(rebuilt, executor.get_open_positions()[0])
+        assert not rebuilt.fills.trades
 
-        executor._apply_venue_close(protective, filled_lots=0.10, avg_price=49000.0)
+        executor._apply_venue_close(rebuilt, filled_lots=0.10, avg_price=48950.0)
 
-        assert not executor.get_open_positions(), (
-            'The trades drain had already set the fills aggregate; a delta taken against '
-            'it would have been zero and this position would still be open')
+        assert not executor.get_open_positions()
+        assert [record.lots for record in executor.get_trade_history()[-2:]] == [
+            pytest.approx(0.04), pytest.approx(0.06)], (
+            'The predecessor booked 0.04; a delta against the empty fills books it again')
 
 
 class TestAPartialThenTheRest:

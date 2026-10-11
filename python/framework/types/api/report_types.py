@@ -27,6 +27,7 @@ from python.framework.types.persistence_types import RiskBaseline
 from python.framework.types.run_origin_types import CodeIdentity, RunChannel, RunOrigin
 from python.framework.types.run_outcome_types import RunOutcome
 from python.framework.types.run_purpose_types import RunPurpose
+from python.framework.types.trading_env_types.broker_types import FeeSource
 from python.framework.types.trading_env_types.order_event_types import (
     OrderEventPlane,
     OrderEventType,
@@ -314,6 +315,7 @@ class OrderEventRow(BaseModel):
     trigger_price: Optional[float] = None
     fee: Optional[float] = None
     fee_currency: Optional[str] = None
+    fee_source: Optional[FeeSource] = None      # the venue's own figure, or our model's estimate
     submission_mid: Optional[float] = None
     submission_time_msc: Optional[int] = None
     in_flight_ms: Optional[float] = None        # the answer to a submission: modelled / measured

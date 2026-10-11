@@ -76,8 +76,12 @@ class BrokerResponse:
     Args:
         broker_ref: Broker's order reference ID (e.g., Kraken txid)
         status: Current order status at broker
-        fill_price: Execution price (set when status=FILLED)
+        fill_price: The volume-weighted average price over everything the order executed so
+            far — a total like `filled_lots`, never the price of its latest part (#508)
         filled_lots: Actual filled volume (set when status=FILLED)
+        fill_fee: The fee the venue reports for the volume executed so far, in the symbol's
+            quote currency — set wherever volume is, by a venue that declares
+            `FeeReport.STATUS_ANSWER`; None where the answer carries none (#508)
         rejection_reason: Broker's rejection message (set when status=REJECTED)
         undecided_reason: Why this poll produced no decision — set only by the DRY-RUN
             simulator, which plays the venue and can run out of the facts it needs (#505).
@@ -92,6 +96,7 @@ class BrokerResponse:
     status: BrokerOrderStatus
     fill_price: Optional[float] = None
     filled_lots: Optional[float] = None
+    fill_fee: Optional[float] = None
     rejection_reason: Optional[str] = None
     undecided_reason: Optional[str] = None
     timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))

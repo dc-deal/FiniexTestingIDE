@@ -15,6 +15,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Dict, FrozenSet, Optional
 
+from python.framework.types.trading_env_types.broker_types import FeeSource
 from python.framework.types.trading_env_types.executor_mode_types import ExecutorMode
 from python.framework.types.trading_env_types.order_types import (
     OrderAction,
@@ -183,6 +184,8 @@ class OrderEvent:
         trigger_price: The order's stop
         fee: The fee charged on this execution
         fee_currency: Its currency
+        fee_source: Where that fee came from — the venue's own figure, or our fee model's
+            estimate (#508). None where nothing executed
         submission_mid: The market's mid when the order was submitted
         submission_time_msc: That market moment, epoch milliseconds
         in_flight_ms: On the acceptance or refusal that answers a submission: how long the
@@ -220,6 +223,7 @@ class OrderEvent:
     trigger_price: Optional[float] = None
     fee: Optional[float] = None
     fee_currency: Optional[str] = None
+    fee_source: Optional[FeeSource] = None
     submission_mid: Optional[float] = None
     submission_time_msc: Optional[int] = None
     in_flight_ms: Optional[float] = None

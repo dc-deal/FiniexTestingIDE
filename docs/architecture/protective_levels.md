@@ -187,6 +187,27 @@ still claims the coin because it was written before the stop fired, so a closed 
 otherwise be reported as "somebody sold outside this bot" — the feature's most ordinary success
 raising an alarm on every restart.
 
+**The note also carries how much of the order is already booked** — `protective_applied_lots`,
+`protective_applied_fee` and `protective_applied_value` on the position (#508). The venue reports
+a protective order as TOTALS for everything it executed: the volume, its average price, its fee.
+A session books them in steps, each step what a total grew by since the last one. Without the
+note, the boot would rebuild the order from nothing and book the venue's totals in full: the step
+the previous session already booked a second time, at the average over both steps, with the whole
+fee.
+
+```
+  session 1   venue: 0.04 of 0.10 executed, fee 15.68     → booked 0.04 @ 49000, fee 15.68
+              note:  applied lots 0.04 · fee 15.68 · value 1960.00
+  restart
+  session 2   venue: FILLED 0.10, average 48950, fee 39.18 → books 0.06 @ 48916.67, fee 23.50
+              without the note: 0.10 against the 0.06 left → an "unattributable excess" error,
+              and the fee 39.18 booked again in full
+```
+
+Spot only: a margin position comes back from the venue rather than from the note (#209). The
+three values are reset wherever the protective order stops existing, because the next protective
+order for the position starts from nothing.
+
 ---
 
 ## 6 · Who holds it, as the report says it

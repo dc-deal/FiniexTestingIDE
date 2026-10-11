@@ -266,13 +266,13 @@ class PositionModifyResponse:
 # ============================================
 # #326 — Broker Trade Record Pull (Order ↔ Executions Pairing)
 # ============================================
-# After an order reports FILLED, fetch its per-execution detail via the
+# After a fill is booked, fetch the order's per-execution detail via the
 # adapter's Tier-3 trades-query layer. drain_inbox routes the response to
-# LiveTradeExecutor._handle_trades_response, which appends each trade to
-# pending.fills.trades (updating cumulative_*) and triggers _fill_open_order
-# with the aggregated cumulative_avg_price / cumulative_fee.
+# LiveTradeExecutor._handle_trades_response, which hands it to the consumers
+# that asked for it — today the drift auditor. Nothing is booked from it: a
+# fill is booked once, from the answer that reported it (#508).
 #
-# See docs/architecture/broker_trade_records.md and ISSUE_326 §8.
+# See docs/architecture/broker_trade_records.md.
 
 
 @dataclass
@@ -362,16 +362,12 @@ class TradesQueryResponse:
     Result of a TradesQueryJob carried via _http_inbox to the main thread.
 
     drain_inbox routes this to LiveTradeExecutor._handle_trades_response,
-    which appends each trade to pending.fills.trades, updates cumulative_*, and
-    triggers _fill_open_order with the aggregated values.
-
-    Stale-response guard: if response.broker_ref != pending.broker_ref at
-    drain time (e.g. after an amend re-minted the ref), the response is
-    discarded.
+    which hands it to the consumers that asked for it and books nothing
+    (#508). A consumer matches it to its own request by broker_ref.
 
     Args:
         order_id: Internal order identifier (matches TradesQueryJob.order_id)
-        broker_ref: Parent order's broker_ref at query time (stale-response guard)
+        broker_ref: Parent order's broker_ref at query time — what a consumer matches it by
         trades: List of BrokerTrade records (empty on broker error / no data)
         success: True if query succeeded; False on broker rejection or transport error
         error_message: Non-empty if success=False

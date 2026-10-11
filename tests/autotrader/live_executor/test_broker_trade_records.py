@@ -6,12 +6,10 @@ Validates the BrokerTrade data model and the trades-query async path:
 - After a fill, pending.fills.trades is populated (synthesized in V1)
 - The async trades_query path (submit_trades_query_async → drain) wires through
   the LiveRequestProcessor worker and into _handle_trades_response
-- Stale-response guard discards responses with mismatched broker_ref
 - Multi-trade mocks (trades_per_fill=N) produce N records and correct cumulatives
 
-Tests do not assert real broker fees in V1 — the polling-path synthesis records
-fee from the local model. Async trades_query exercises the per-execution path
-that #327 Drift Audit consumes.
+The venue's own fee in the books is pinned by test_venue_reported_fee.py (#508).
+Async trades_query exercises the per-execution path that #327 Drift Audit consumes.
 """
 
 from datetime import datetime, timezone
@@ -208,46 +206,6 @@ class TestTradesQueryAsyncRoundtrip:
         assert len(captured) == 1
         assert captured[0].success
         assert captured[0].trades == []
-
-
-# =============================================================================
-# Stale-response guard in LiveTradeExecutor._handle_trades_response
-# =============================================================================
-
-class TestStaleResponseGuard:
-    """If broker_ref on response differs from pending.broker_ref, discard."""
-
-    def test_stale_trades_response_does_not_remove_pending(self, mock_instant, executor_instant):
-        """A trades response with a stale broker_ref leaves _active_limit_orders untouched."""
-        # Inject an active limit order manually so we can simulate a stale response
-        active = PendingOrder(
-            pending_order_id='ORD-STALE',
-            broker_ref='NEW-REF',
-            symbol='BTCUSD',
-            direction=OrderDirection.LONG,
-            lots=0.001,
-            entry_price=49000.0,
-            order_kwargs={},
-        )
-        executor_instant._active_limit_orders.append(active)
-
-        # Build a stale response (broker_ref doesn't match)
-        stale = TradesQueryResponse(
-            order_id='ORD-STALE',
-            broker_ref='OLD-REF',
-            trades=[BrokerTrade(
-                trade_id='T-1', parent_broker_ref='OLD-REF', order_id='ORD-STALE',
-                volume=0.001, price=49000.0, fee=0.0, fee_currency='USD',
-                timestamp=datetime.now(timezone.utc),
-                side=OrderDirection.LONG, is_maker=True,
-            )],
-            success=True,
-        )
-        executor_instant._handle_trades_response(stale)
-
-        # Order is still in active list, no trades appended (stale discarded)
-        assert active in executor_instant._active_limit_orders
-        assert active.fills.trades == []
 
 
 # =============================================================================

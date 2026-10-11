@@ -43,6 +43,7 @@ from python.framework.types.trading_env_types.broker_types import (
     SymbolSpecification,
 )
 from python.framework.types.trading_env_types.order_types import (
+    FeeReport,
     IcebergOrder,
     LimitOrder,
     MarketOrder,
@@ -230,6 +231,12 @@ class KrakenAdapter(AbstractAdapter):
             # rests over a spot holding and fires while this process is gone. Kraken
             # links nothing — no reserve, no OCO — so the pairing is our work (#503).
             venue_held_protective_orders=True,
+            # Measured 2026-10-11 with real orders (probe_kraken_fee_at_fill): QueryOrders
+            # carries the order's total `fee` in the FIRST answer that says closed, and it
+            # does not change afterwards (#508). Declared in a dry run too: a capability
+            # describes the venue, and a session caches it before it knows whether it is a
+            # dry run. The executor tells a dry run's answers apart by where they come from.
+            fee_report=FeeReport.STATUS_ANSWER,
         )
 
     # ============================================
@@ -712,6 +719,14 @@ class KrakenAdapter(AbstractAdapter):
         if client_order_id:
             data['cl_ord_id'] = str(client_order_id)[:_CL_ORD_ID_MAX_LEN]
 
+        # The fee in the QUOTE currency, on both sides (#508). The spot books charge it there,
+        # and the fee read from the venue's answer is stated there. Kraken's documentation
+        # names `fcib` (the base currency) as the default when selling; measured 2026-10-11,
+        # this account was charged in ZUSD on every sell and every order read back `fciq`
+        # although none was sent. Sending it makes the books' assumption a guarantee rather
+        # than the account's present habit. `validate=true` accepts it on both sides.
+        data['oflags'] = 'fciq'
+
         return data
 
     @classmethod
@@ -1164,12 +1179,19 @@ class KrakenAdapter(AbstractAdapter):
         filled_lots = executed if executed > 0.0 else None
         fill_price = (float(order_info.get('price', 0.0) or 0.0)
                       if filled_lots is not None else None)
+        # `fee` is the order's total fee in the quote currency, for everything it has executed
+        # (#508). Measured 2026-10-11: present in the first answer that says closed, equal to
+        # the sum of the order's trade fees, unchanged on later reads. Read where volume is,
+        # like the price beside it; an answer with volume and no fee field reports none.
+        raw_fee = order_info.get('fee') if filled_lots is not None else None
+        fill_fee = float(raw_fee) if raw_fee not in (None, '') else None
 
         return BrokerResponse(
             broker_ref=broker_ref,
             status=status,
             fill_price=fill_price,
             filled_lots=filled_lots,
+            fill_fee=fill_fee,
             timestamp=timestamp,
             raw_response=raw,
         )

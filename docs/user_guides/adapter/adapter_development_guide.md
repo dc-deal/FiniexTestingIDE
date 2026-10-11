@@ -98,6 +98,32 @@ so in a comment beside a `True` — the intersection already refuses the order.
 
 If a Tier-3 operation is declared but not implementable for some order type, the `build_<op>_payload` layer should raise — fail fast at build time rather than send a malformed payload.
 
+### What a Fill Costs — Declared, Not Assumed
+
+Two more declarations say how the venue reports a fill, and the executor reads both:
+
+- **`fee_report`** — where the venue reports the fee it charged for a fill. `status_answer`: in the
+  answer that reports the order filled — then put it into `BrokerResponse.fill_fee`, in the
+  symbol's quote currency, beside `filled_lots` and `fill_price`, and the fill is booked with the
+  venue's own figure instead of the fee model's estimate. `fill_fee`, `filled_lots` and
+  `fill_price` are TOTALS for everything the order executed so far — the price is the average over
+  all of it, never the price of the latest part — because the executor books a partly executed
+  order in steps and derives each step from them. `executions`: only with the executions,
+  after the fill — the books cannot use that yet and book the estimate. `not_reported` (the
+  default): nothing per fill, as with a spread broker. A dry run declares what its venue does; the
+  executor knows its answers come from our own simulator and books them from the estimate without a
+  warning. A venue that declares `status_answer` and then answers a fill without a fee is booked
+  from the estimate WITH a warning in the session's log; measure where your venue reports it before
+  declaring it — Kraken's QueryOrders `fee` was read from real orders before it was declared.
+- **`trade_level_reporting`** — whether the venue answers a trades query with per-execution detail.
+  The drift auditor asks for it after every fill, entry and exit, and compares it with what was
+  booked. Declare `False` until your `*_trades_query` triple exists: a `True` sends the auditor to a
+  method that raises.
+
+The fee CURRENCY matters as much as the amount: the spot books charge a fee in the quote currency.
+Where a venue lets the order choose — Kraken's `oflags=fciq` — choose it explicitly on every order
+rather than relying on a default, and check what the account's ledger actually debited.
+
 ---
 
 ## Files to Create

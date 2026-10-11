@@ -73,7 +73,8 @@ filled in when the run index is rebuilt, from the current declaration of its con
 up by the configuration's file name — and null before that rebuild and where the configuration can
 no longer be read. `report_contract` has no such source and is null on every
 run older than it. So are the four `origin_` fields of the run list on a run older than the
-header's `origin` block.
+header's `origin` block, and an order event's `fee_source` on an event recorded before it — or on
+a fill nothing could be booked for, whose venue reported no fee.
 
 ## Null versus the empty list
 

@@ -113,8 +113,10 @@ class DriftAuditConfig(StrictConfigModel):
     """
     Read-only drift telemetry defaults (#327).
 
-    Compares locally-computed fee/volume/price against broker-reported truth
-    via the #326 trades-query pipeline. Logs drift events above thresholds.
+    Compares what a fill was booked with — fee, volume, price — against the
+    venue's executions via the #326 trades-query pipeline. Where the venue
+    reports its fee in the fill answer, the booked fee is already the venue's
+    (#508). Logs drift events above thresholds.
     Does not mutate state — purely observational. Correction is #151.
     """
     enabled: bool = True
@@ -123,7 +125,6 @@ class DriftAuditConfig(StrictConfigModel):
     price_threshold_pct: float = 1.0     # Kraken-intra-reporting consistency (QueryOrder vs QueryTrades)
     slippage_threshold_pct: float = 0.5  # Submission tick mid vs broker fill price (#340)
     log_all: bool = False                # If True, log every event (not just threshold breaches)
-    sample_rate: float = 1.0             # Reserved notausgang; V1.3 default = audit every fill
 
 
 class ReconciliationDefaults(StrictConfigModel):

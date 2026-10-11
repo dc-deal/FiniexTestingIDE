@@ -1,9 +1,25 @@
 # Drift Audit (#327)
 
-Read-only telemetry channel that compares **locally computed** fee/volume/price values against the
-**broker-reported truth** delivered via the #326 async trades-query pipeline. Surfaces fee-model
-bugs, partial-fill mismatches, and tier mismatches without mutating any state — correction is
-reserved for the future Reconciliation Layer (#151).
+Read-only telemetry channel that compares what a live fill was **booked with** against the
+**venue's own executions**, delivered via the #326 async trades-query pipeline — for every fill, the
+entry and, since #508, the exit. Surfaces partial-fill mismatches and, where a venue reports no fee
+per fill, fee-model bugs and tier mismatches — without mutating any state; correction is reserved
+for the future Reconciliation Layer (#151).
+
+Since #508 a live fill books the venue's own fee from the answer that reported it, wherever the
+venue reports one there, so on Kraken the FEE channel compares two of the venue's figures: the
+order's total fee from that answer against the sum of its executions' fees. It is what keeps
+measuring, on every real fill, that the fee really is complete in the first answer that says the
+order filled. Where a venue reports no fee per fill, the booked fee is the estimate and the channel
+measures the model against the venue, as it always did. On Kraken a configured rate the account is
+not charged no longer shows in this channel; the fee-tier check at session start (#337) is what
+catches it there.
+
+A protective order the venue holds is booked in steps while it works, and its executions describe
+the whole order. So it is audited once, by the booking that closes its position, against everything
+booked for it, a restarted session's predecessor included. One the venue ends after part of it
+executed leaves its position open and is not audited. Its SLIPPAGE is not measured: the mid at its
+placement measures the distance to the stop, not what the fill cost.
 
 ## Concept
 
@@ -11,7 +27,7 @@ Every fully-filled order has two views of itself once it leaves our pipeline:
 
 | View | Source | Fee | Volume | Avg Price |
 |---|---|---|---|---|
-| **Local synthesis** | `_synthesize_pending_trade` from `MakerTakerFee.calculate_cost(...)` | locally computed | requested lots | broker fill_price (passed through) |
+| **Booked** | `_synthesize_pending_trade` at the fill, carrying the booked fee | the venue's figure from its status answer (#508), the model's estimate otherwise | requested lots — booked lots for a close | broker fill_price (passed through) |
 | **Broker truth** | `QueryTrades` response → `BrokerTrade` records | broker `fee` field | sum of execution volumes | volume-weighted mean of execution prices |
 
 DriftAuditor consumes both, computes the relative delta per dimension, and counts events that exceed
@@ -21,21 +37,23 @@ from broker reality.
 
 ## Architecture
 
-DriftAuditor is a **reactive observer**, not a poller. It reacts to the `EXECUTED` outcome event,
-fires exactly one `submit_trades_query_async()` to obtain the broker's per-execution truth, consumes
-the response asynchronously, and logs the comparison.
+DriftAuditor is a **reactive observer**, not a poller. It reacts to a booked fill — an entry's
+`EXECUTED` outcome, or a close through the executor's close-fill listeners (#508), because a close
+deliberately reaches no order-outcome listener — fires exactly one `submit_trades_query_async()` to
+obtain the venue's per-execution truth, consumes the response asynchronously, and logs the
+comparison. It asks only where the venue declares `trade_level_reporting`; a venue that answers no
+trades query has nothing to audit against.
 
 ```
-Order fills (synthetic data populates pending.trades via _synthesize_pending_trade)
+Order fills (one execution synthesized via _synthesize_pending_trade, with the booked fee)
   ↓
-_fill_open_order runs (portfolio.open_position, history append)
+_fill_open_order / _fill_close_order runs (portfolio, history append)
   ↓
-_notify_outcome(EXECUTED, result, pending)   ← #319 multi-listener, signature
-                                                 extended with Optional[PendingOrder]
-  ↓
-DriftAuditor._on_order_outcome:
-  - snapshot synthetic state from pending.cumulative_*
-  - store in self._pending_audits[order_id]
+entry: _notify_outcome(EXECUTED, result, pending)     close: _on_close_fill(pending, result)
+  ↓                                                       ↓
+DriftAuditor._on_order_outcome                         DriftAuditor._on_close_fill
+  - snapshot what was booked from pending.cumulative_*
+  - store in self._pending_audits[broker_ref]
   - executor.submit_trades_query_async(order_id, broker_ref)
         ↓ (worker thread)
         TradesQueryJob → HTTP /0/private/QueryOrders + /0/private/QueryTrades
@@ -43,10 +61,9 @@ DriftAuditor._on_order_outcome:
 
 (later, on next drain_inbox)
 TradesQueryResponse arrives → executor._handle_trades_response
-  ↓ (executor's own logic: append to pending if still active, otherwise log+skip)
-  ↓ NEW: fan-out to registered trades-response consumers (#327)
+  ↓ fan-out to registered trades-response consumers — the executor books nothing from it (#508)
 DriftAuditor._on_trades_response:
-  - pop snapshot from self._pending_audits (always — no leak on failure)
+  - pop snapshot from self._pending_audits by broker_ref (always — no leak on failure)
   - compute real cumulative_* from response.trades (immutable)
   - compare snapshot.synthetic_* vs real_*
   - log [DRIFT] event if over threshold; increment counters
@@ -66,8 +83,8 @@ the routing key, and the broker's `broker_ref` (txid) used for the API call. A t
 
 | ID | Owner | Lifetime | Used for |
 |---|---|---|---|
-| `PendingOrder.pending_order_id` | **Us** — assigned at submission, e.g. `pos_ethusd_3` | Order lifetime | Primary routing key. DriftAuditor's `_pending_audits` dict key. Listener correlation. Log identifier. |
-| `PendingOrder.broker_ref` | **Broker** — Kraken txid (e.g. `OPRSKJ-IAYTG-T5VB2M`), MT5 ticket | Order lifetime, **stable across modify** (Kraken `AmendOrder` is in-place; #320 stale-ref guard now defensive) | The handle the API call needs (`POST /0/private/QueryOrders` with `txid=<broker_ref>`). |
+| `PendingOrder.pending_order_id` | **Us** — assigned at submission, e.g. `pos_ethusd_3` | Order lifetime | Primary routing key. Listener correlation. Log identifier. NOT unique across a position's entry and its closes, which share it |
+| `PendingOrder.broker_ref` | **Broker** — Kraken txid (e.g. `OPRSKJ-IAYTG-T5VB2M`), MT5 ticket | Order lifetime, **stable across modify** (Kraken `AmendOrder` is in-place; #320 stale-ref guard now defensive) | The handle the API call needs (`POST /0/private/QueryOrders` with `txid=<broker_ref>`). DriftAuditor's `_pending_audits` dict key: unique per venue order, so an entry's audit and its position's close's cannot collide (#508). |
 | `BrokerTrade.trade_id` | **Broker** — Kraken tradeid (e.g. `TKH2SE-M7IF5-CFI7LT`), MT5 deal ticket | Permanent | Per-execution receipt. Persists in trade history, never reused. |
 | `BrokerTrade.parent_broker_ref` | **Broker** — copy of the parent order's `broker_ref` | Permanent | Trade → parent order link on the broker side. |
 | `BrokerTrade.order_id` | **Us** — written by the adapter's `parse_trades_query_response` | Permanent | Trade → internal order link. The bridge that makes drain-side routing possible without re-lookups. |
@@ -83,7 +100,7 @@ DriftAuditor._on_order_outcome
     broker_ref = pending.broker_ref,       ← broker's, for the API
     ...
   )
-  self._pending_audits[order_id] = snapshot
+  self._pending_audits[broker_ref] = snapshot
 
   executor.submit_trades_query_async(
     order_id   = pending.pending_order_id,    ──┐  both IDs ride in
@@ -110,16 +127,12 @@ DriftAuditor._on_order_outcome
                                                             drain_inbox picks up response
                                                             ↓
                                                             executor._handle_trades_response(response):
-                                                              stale-ref guard:
-                                                                if pending.broker_ref != response.broker_ref:
-                                                                    log "stale" + skip executor mutation
-                                                                    (next throttle cycle re-queries)
-                                                              fan-out to consumers:
+                                                              fan-out to consumers (books nothing, #508):
                                                                 DriftAuditor._on_trades_response(response):
                                                                   snapshot = self._pending_audits.pop(
-                                                                      response.order_id          ← our internal,
-                                                                  )                                routes back to
-                                                                  compare snapshot vs.             the right snapshot
+                                                                      response.broker_ref        ← unique per
+                                                                  )                                venue order
+                                                                  compare snapshot vs.
                                                                        sum(response.trades.fee/volume/price)
 ```
 
@@ -139,19 +152,18 @@ The split is deliberate and non-removable:
   every `BrokerTrade` it produces, and threads it into the `TradesQueryResponse`. From that moment
   on, the response is fully routable on the drain side without re-looking-up anything.
 
-### Stale-Ref Guard vs. DriftAuditor's Snapshot Pop
+### Why the snapshot is keyed by the venue's reference
 
-These are independent decisions:
-
-- The **executor's `_handle_trades_response`** uses the broker_ref guard to decide whether to *mutate the executor's own state* (append trades to `pending`, finalize fill). A stale-ref response is logged-and-skipped from the executor's perspective.
-- **DriftAuditor's `_on_trades_response`** runs in the fan-out, AFTER the executor's own decision.
-  It always pops its snapshot by `response.order_id`. A stale-ref response still carries broker
-  truth (the trades that ran on whichever broker_ref was active at query time) — the audit
-  comparison is still meaningful for the order whose snapshot was captured.
+The executor's `_handle_trades_response` mutates nothing since #508 — it only fans the response
+out — so the stale-reference guard it used to apply before appending executions to an order is gone
+with the appending. **DriftAuditor's `_on_trades_response`** pops its snapshot by
+`response.broker_ref`, the reference the query was made with. Keyed by `order_id` it could not tell
+an entry from its position's close: both carry the position's id, and a close that fills within the
+two seconds the entry's executions take would have replaced the entry's snapshot.
 
 The only response that DriftAuditor truly ignores is one where the snapshot was never created (no
 matching entry in `_pending_audits` — e.g., trades-query triggered by something other than us, or
-already-popped by an earlier response with the same order_id).
+already-popped by an earlier response for the same reference).
 
 ### The same pattern on MT5
 
@@ -183,23 +195,22 @@ OrderGuard's listener takes `pending: Optional[PendingOrder] = None` and ignores
 
 ## Trades-Response Multi-Consumer
 
-The processor's `_trades_response_hook` is single-slot (executor registers itself). To let DriftAuditor receive the response, the **executor** introduces a multi-consumer fan-out at the end of `_handle_trades_response`:
+The processor's `_trades_response_hook` is single-slot (executor registers itself). To let DriftAuditor receive the response, the **executor**'s `_handle_trades_response` is a multi-consumer fan-out, and since #508 that is all it is — it books nothing and writes nothing onto the order:
 
 ```python
 def _handle_trades_response(self, response: TradesQueryResponse) -> None:
-    try:
-        # ... existing logic: find pending, append trades, fill if active ...
-    finally:
-        # Fan-out — runs on success AND failure paths so consumers can
-        # clean up their own tracking state (Risk 4 — no leaks)
-        for consumer in self._trades_response_consumers:
-            try:
-                consumer(response)
-            except Exception as e:
-                self.logger.error(f"trades_response consumer raised: {e}", exc_info=True)
+    if not response.success:
+        self.logger.warning(f"TradesQueryResponse error for {response.order_id}: ...")
+    # Every response, failures included, so consumers can clean up their own
+    # tracking state (Risk 4 — no leaks)
+    for consumer in self._trades_response_consumers:
+        try:
+            consumer(response)
+        except Exception as e:
+            self.logger.error(f'trades_response consumer raised: {e}', exc_info=True)
 ```
 
-**Consumer contract:** read from `response.trades` (immutable response object), NOT from `pending.trades` (mutation-order-sensitive across the executor's own logic).
+**Consumer contract:** read from `response.trades` (the immutable response object), NOT from `pending.fills.trades` — those are the executions the executor synthesized for its own booking, not the venue's.
 
 Per-consumer try/except — one bad consumer cannot kill the chain (Risk 2 mitigation).
 
@@ -209,8 +220,8 @@ The processor's single-hook contract stays unchanged — multi-consumer logic li
 
 | Type | What is compared | Default threshold |
 |---|---|---|
-| `FEE` | `pending.cumulative_fee` (local) vs. `sum(BrokerTrade.fee)` (broker) | 0.5 % |
-| `VOLUME` | `pending.requested_lots` (local) vs. `sum(BrokerTrade.volume)` (broker) | 0.1 % |
+| `FEE` | `pending.cumulative_fee` — the fee BOOKED, the venue's own from its status answer where it reports one (#508) — vs. `sum(BrokerTrade.fee)` (broker) | 0.5 % |
+| `VOLUME` | `pending.requested_lots` (local; a close's booked lots) vs. `sum(BrokerTrade.volume)` (broker) | 0.1 % |
 | `PRICE` | `pending.cumulative_avg_price` (local) vs. volume-weighted mean of broker trades | 1.0 % |
 | `SLIPPAGE` | `pending.submission.tick_mid_price` (local) vs. volume-weighted mean of broker trades | 0.5 % |
 
@@ -270,10 +281,9 @@ class DriftAuditConfig(BaseModel):
     price_threshold_pct: float = 1.0     # Kraken-intra-reporting consistency check
     slippage_threshold_pct: float = 0.5  # real submission-to-fill cost (market reality)
     log_all: bool = False                # if True, log every event (not just threshold breaches)
-    sample_rate: float = 1.0             # reserved notausgang; V1.3 default = audit every fill
 ```
 
-Wired through the autotrader cascade (`app_config.json` → profile override). `sample_rate` is reserved as a rate-limit escape hatch — at 1.0 every fill triggers a post-fill trades-query (+2 ops on Kraken Tier-3 budget per fill).
+Wired through the autotrader cascade (`app_config.json` → profile override). Every audited fill triggers a post-fill trades-query (+2 ops on Kraken Tier-3 budget per fill) — see Performance Budget.
 
 Backtesting pipeline does NOT wire the auditor (sim has no broker truth distinct from the local fee model — comparison would be tautological).
 
@@ -281,7 +291,8 @@ Backtesting pipeline does NOT wire the auditor (sim has no broker truth distinct
 
 The `_pending_audits` dict carries `AuditContext` snapshots between the outcome event and the trades-response arrival. Critical invariants:
 
-- Stored on EXECUTED outcome (not on REJECTED, not on DRYRUN orders)
+- Stored on an entry's EXECUTED outcome and on a booked close (#508) — not on REJECTED, not on
+  DRYRUN orders, not where the venue declares no trade-level reporting; keyed by `broker_ref`
 - **Always popped** on `_on_trades_response`, regardless of `response.success` — prevents leaks (Risk 4)
 - On `shutdown()`: any unfinished entries are logged as a warning and the dict is cleared
 
@@ -322,14 +333,16 @@ Styling:
 
 ## Performance Budget
 
-Drift audit overhead per filled order:
+Drift audit overhead per fill — an entry and, since #508, every close:
 - Snapshot creation: a few dataclass field reads + dict insert
-- Trades-query: +2 Kraken ops (`QueryOrders` + `QueryTrades` — counts against account rate limit)
+- Trades-query: +2 Kraken ops (`QueryOrders` + `QueryTrades` — counts against account rate limit),
+  so a round trip costs four
 - Comparison: three arithmetic deltas, a dict insert, conditional log
 
 Target: <1 ms per filled order excluding the network roundtrip. Verified during the throughput benchmark when present in the run.
 
-If rate-limit pressure ever becomes a concern (very-high-frequency strategies), `sample_rate < 1.0` reduces the audit cadence. V1.3 default is 1.0 (audit every fill — production trading frequencies make this trivially cheap).
+There is no knob that lowers the audit cadence: every fill is audited, entry and close, which
+production trading frequencies make cheap. A very-high-frequency strategy would need one added.
 
 ## Files
 
@@ -368,7 +381,7 @@ If rate-limit pressure ever becomes a concern (very-high-frequency strategies), 
 - **#332 Live Field Study** — runs the full DriftAuditor pipeline end-to-end against a real broker,
   captures all four drift types (FEE / VOLUME / PRICE / SLIPPAGE) in the JSONL artifact. The
   `slippage` block is the first concrete production data for #244 calibration.
-- **#337 Kraken Fee Tier Auto-Detection** — closes the loop on FEE drift root cause when DriftAuditor surfaces a tier mismatch.
+- **#337 Kraken Fee Tier Auto-Detection** — the detector of a tier mismatch on Kraken, at session start. Since #508 the FEE channel compares the venue's figures with each other there, so it no longer sees one.
 - **#151 Reconciliation Layer (V1.4)** — drift audit is observability; reconciliation is correction. Audit feeds #151's design.
 
 ---

@@ -36,10 +36,10 @@ cumulative_fee         = 0.0026
 | `order_id` | OUR internal order_id — primary routing key |
 | `volume` | Lots filled in this execution |
 | `price` | Price of this execution |
-| `fee` | Broker-reported fee for this execution |
+| `fee` | Fee for this execution — the venue's own on a venue execution; on a synthesized one, the fee the fill was booked with |
 | `fee_currency` | Fee currency (e.g. 'USD', 'EUR') |
 | `timestamp` | UTC, timezone-aware execution time |
-| `side` | LONG / SHORT |
+| `side` | BUY / SELL — the execution's trading side, not the position's direction |
 | `is_maker` | True for LIMIT/maker fills, False for MARKET/taker |
 
 `PendingOrder` (see [latency_simulator_types.py](../../python/framework/types/trading_env_types/latency_simulator_types.py)) carries the executions:
@@ -65,10 +65,11 @@ def parse_trades_query_response(raw, broker_ref, order_id) -> List[BrokerTrade]
 
 Pure / transport / pure layering, identical to the submit/query/cancel/modify triples established by #319.
 
-The `OrderCapabilities.trade_level_reporting` flag (default True) declares whether the broker
-exposes per-execution detail. All real broker integrations (Kraken, MT5, IBKR, Binance) support it.
-Adapters that lack it can declare False and fall back to aggregated reporting — the data model still
-works (one synthetic record per fill).
+The `OrderCapabilities.trade_level_reporting` flag (default True) declares whether the venue
+answers a trades query with per-execution detail. The drift auditor reads it: it asks for the
+executions after every fill only where the venue can answer. Kraken declares True; MT5 declares
+False until its deal layer exists (#209), because the query would reach a method that raises. The
+books never depend on it — every fill carries one record synthesized where it is booked.
 
 ### Kraken Implementation
 
@@ -88,13 +89,22 @@ constructor parameter `trades_per_fill: int = 1` controls how many records are p
 - `1` (default): single full-volume trade — typical real-world fill
 - `N > 1`: split into N records with even volume and small price offsets — exercises partial-fill code paths in regression tests
 
-Each synthesized trade gets a `MOCK-TRADE-XXXXXX` ID and a quote-currency fee computed from the broker config's maker_taker rates.
+Each synthesized trade gets a `MOCK-TRADE-XXXXXX` ID and a quote-currency fee — at the rates the
+broker configuration declares, or at the mock venue's own (`set_venue_fee_rates`), which is how a
+test plays an account whose real tier is not the declared one. A spread broker's executions carry
+no fee: it charges nothing per fill. The answer that reports the fill carries the fill's total fee
+as `fill_fee`, like Kraken's; `set_fee_in_status_answer(False)` sends it without, for the fallback.
 
 ## Drain-Layer Distribution (Post-Drain Anchor)
 
-Reference: #326.
+Reference: #326, #508.
 
 ```
+fill booked (entry: outcome listeners · close: close-fill listeners)
+        │
+        ▼
+DriftAuditor → submit_trades_query_async(order_id, broker_ref)
+        │
 worker thread: HTTP / RPC trades_query → parse → push TradesQueryResponse
                                                           │
                                                           ▼
@@ -102,47 +112,75 @@ drain_inbox      ←──── routes to _trades_response_hook
                                                           │
                                                           ▼
 LiveTradeExecutor._handle_trades_response(response):
-  ├─ stale broker_ref check                     (defensive guard)
-  ├─ for trade in response.trades:
-  │     pending.append_trade(trade)             (mutates pending.trades + cumulative_*)
-  │
-  ├─ remove from _active_limit_orders
-  └─ _fill_open_order(pending, cumulative_avg_price, ...)
-        │
-        ▼  (inherited from AbstractTradeExecutor — existing code, unchanged)
-        ├─ portfolio.open_position(...)                  (with cumulative truth)
-        ├─ self._order_history.append(EXECUTED)
-        └─ self._notify_outcome(...)                     (multi-listener fan-out, #319)
-              │
-              ├─ OrderGuard._on_order_outcome
-              ├─ DriftAuditor._on_order_outcome           (#327 — reads pending.trades)
-              └─ Reconciler._on_order_outcome             (#151 Phase 4)
+  └─ fan-out to every registered consumer           (books NOTHING)
+        └─ DriftAuditor._on_trades_response         (compares with what was booked)
 ```
+
+The executions arrive after the fill has been booked, and they are evidence about that booking,
+never a second booking route. The drain used to append them to a still-active order and book the
+order from their total — a path only tests reached, and one that would have booked a protective
+order's partial fill twice once anything asked about the order while it still worked.
 
 ## Sim vs. Live — Same Algo-Facing Contract
 
 | | Sim (TradeSimulator) | Live (LiveTradeExecutor) |
 |---|---|---|
 | Emission trigger | `_fill_open_order` / `_fill_close_order` (shared) | `_fill_open_order` / `_fill_close_order` (shared) |
-| Data source | Synthesized from local price + fee model | Synthesized from polling response in V1 |
-| Future: real broker trades | n/a — sim is its own truth | Async `submit_trades_query_async` populates per-execution truth |
+| Data source | Synthesized from local price + fee model | Synthesized from the answer that reported the fill — with the venue's own fee where it reports one (#508) |
+| The venue's real executions | n/a — sim is its own truth | Read by the drift auditor after every fill, entry and exit; never written onto the order |
 
 Both pipelines route through `AbstractTradeExecutor._synthesize_pending_trade` when `pending.trades` is empty at fill time. Consumers (`portfolio`, `order_history`, listeners) see the same shape in both pipelines.
 
-## V1 Limitation — Synthetic Fee
+## Where a live fill's fee comes from
 
-The polling-path synthesis in V1 uses the locally-computed fee as the BrokerTrade.fee value —
-`entry_fee.cost` on an open and `exit_fee.cost` on a close (#506), both ours rather than
-broker-reported — not the broker-reported fee. Drift Audit (#327) consumes `pending.cumulative_fee`
-to compare against `KrakenFeeModel.compute_fee` and surface divergence. As long as V1 polling drives
-`pending.trades`, that comparison is tautologically zero. Real divergence detection requires async
-trades_query against the live broker, which #327 may trigger independently as a post-outcome
-consumer.
+A live fill is booked once, from the answer that reports it — and with the fee that answer carries,
+where the venue reports one there (#508). No second figure follows, so nothing is corrected
+afterwards. The fee model still decides WHETHER a fill is charged and under which category; the
+venue decides how much. Every executed result and order event says which it was: `fee_source` is
+`venue` or `estimate`.
 
-The async path (`submit_trades_query_async` → drain → `_handle_trades_response`) is fully wired and tested. It is not invoked from the V1 polling code path by default; that activation is deferred to:
+Where a venue reports the fee is declared on the adapter, `OrderCapabilities.fee_report`:
 
-- **#327 Drift Audit** — opt-in trades_query after each FILLED outcome, populates real broker fee
-- **#320 Polling Cadence Management** — future migration of all polling to async via worker
+| `fee_report` | Where the fee is | Booked from |
+|---|---|---|
+| `status_answer` | in the answer that reports the order filled — Kraken's QueryOrders `fee` | the venue's figure |
+| `executions` | only in the order's executions, after the fill — a broker that sends its commission in a report of its own (#210), or keeps it on the deal in its history (MT5's `DEAL_COMMISSION`; #209 measures where it appears before declaring) | not built: it needs the order held open until that report, or the estimate corrected afterwards |
+| `not_reported` | nowhere per fill — a spread broker, whose cost is inside the fill price | the estimate |
+
+A dry run declares what its venue does. Its answers come from our own simulator and carry no fee,
+so its fills are booked from the estimate — without the warning a real answer missing its fee gets.
+
+Measured on Kraken, 2026-10-11 (`python/experiments/venue_probes/probe_kraken_fee_at_fill.py`, real
+orders): the order's total `fee` is in the first QueryOrders answer that says closed and does not
+change afterwards; it equals the sum of the order's trade fees; the ledger debits it in the quote
+currency on both sides, rounded to that asset's four decimals — under 0.0001 USD per fill. Every
+AddOrder therefore sends `oflags=fciq`: the spot books charge the fee in the quote, and Kraken's
+documentation names the base currency as the default when selling.
+
+What stays derived is the CATEGORY. The venue states maker or taker per execution only, never on
+the order, so a fill's fee is filed under the category its fill type implies — a market order or a
+close is a taker, a resting limit a maker. A limit that crossed the book on arrival is charged the
+taker rate and filed as a maker; the amount is still the venue's. Over the fifteen orders measured
+on 2026-10-11 the venue's own flag agreed every time.
+
+**The fallback is visible.** A fill on a venue that declares `status_answer` whose answer arrives
+without a fee is booked from the estimate, its event says `estimate`, and the session's log warns —
+"we estimated" and "the venue said" are different facts about money. A venue reporting a fee where
+the configured model charges none per fill is warned about and NOT booked: the configuration does
+not describe that venue.
+
+**A protective order the venue holds** is reported as totals for everything it executed — the
+volume, its average price, its fee — while it is booked in steps. Each step books what each total
+grew by since the last one: its own volume, at its own price, with the fee the total grew by. The
+counters (`venue_close_applied_lots`, `_fee`, `_value`) follow the booking, a step booked from
+the estimate included, so the venue's next total settles it rather than paying it twice. The
+position carries a copy into the cold-start carry-over, so a restart books only what is new.
+
+**The drift auditor checks both legs.** After every fill — an entry, and since #508 a close as
+well — it asks for the order's executions and compares them with what was booked. With the fee
+now the venue's, its FEE channel compares two of the venue's own figures, the way the PRICE
+channel always has, and that is what keeps measuring on every real fill that the fee really is
+complete in the first answer.
 
 ## Out of Scope
 
@@ -154,7 +192,7 @@ The async path (`submit_trades_query_async` → drain → `_handle_trades_respon
 
 | File | Scope |
 |---|---|
-| [tests/autotrader/live_executor/test_broker_trade_records.py](../../tests/autotrader/live_executor/test_broker_trade_records.py) | append_trade aggregation, async path roundtrip via processor, stale-response guard, multi-trade mock |
+| [tests/autotrader/live_executor/test_broker_trade_records.py](../../tests/autotrader/live_executor/test_broker_trade_records.py) | append_trade aggregation, async path roundtrip via processor, multi-trade mock |
 | [tests/simulation/trade_emission/test_trade_emission.py](../../tests/simulation/trade_emission/test_trade_emission.py) | Sim `_fill_open_order` / `_fill_close_order` synthesis on the shared abstract path |
 | [tests/parity/test_trade_records_parity.py](../../tests/parity/test_trade_records_parity.py) | Sim/live agreement on post-fill state (position, history, synthesis shape) |
 

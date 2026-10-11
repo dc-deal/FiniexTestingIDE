@@ -81,7 +81,11 @@ from python.framework.types.trading_env_types.active_orders_snapshot_types impor
     ActiveOrdersSnapshot,
 )
 from python.framework.types.trading_env_types.broker_trade_types import BrokerTrade
-from python.framework.types.trading_env_types.broker_types import FeeType, SymbolSpecification
+from python.framework.types.trading_env_types.broker_types import (
+    FeeSource,
+    FeeType,
+    SymbolSpecification,
+)
 from python.framework.types.trading_env_types.executor_mode_types import ExecutorMode
 from python.framework.types.trading_env_types.latency_simulator_types import (
     PendingOperation,
@@ -568,6 +572,7 @@ class AbstractTradeExecutor(ABC):
                 basis['fill_price'] = result.executed_price
                 basis['fee'] = result.commission
                 basis['fee_currency'] = self.portfolio.account_currency
+                basis['fee_source'] = result.fee_source
                 if pending is not None and len(pending.fills.trades) == 1:
                     basis['trade_id'] = pending.fills.trades[0].trade_id
             elif result.requested_lots is not None:
@@ -1746,6 +1751,7 @@ class AbstractTradeExecutor(ABC):
         entry_type: EntryType = EntryType.MARKET,
         fill_type: FillType = FillType.MARKET,
         fill_event: OrderEventType = OrderEventType.FILLED,
+        reported_fee: Optional[float] = None,
     ) -> None:
         """
         Process a confirmed OPEN order — update portfolio, fees, stats.
@@ -1765,6 +1771,9 @@ class AbstractTradeExecutor(ABC):
             fill_type: How the order was filled (MARKET, LIMIT, LIMIT_IMMEDIATE)
             fill_event: How the order-event stream records the fill — `partially_filled`
                 for the executed part of an order the venue then ended (#362)
+            reported_fee: The venue's own fee for this fill, from the answer that reported it,
+                in the symbol's quote currency (#508). None in a backtest, and wherever the
+                answer carried none — the fee model's estimate is booked then
         """
         self.logger.info(
             f'📋 Fill open order: {pending_order.pending_order_id} '
@@ -1805,7 +1814,11 @@ class AbstractTradeExecutor(ABC):
         # Only a fill that RESTED provided liquidity, and `FillType` already says which did.
         # This is the single derivation — the synthetic BrokerTrade below reads the same
         # boolean instead of repeating the test, which is how the two came to disagree.
-        # LIVE is unaffected: its BrokerTrades carry the venue's own `maker` flag (#326).
+        # LIVE books the AMOUNT from the venue's answer wherever the venue reports it (#508),
+        # and this category is then the one part of the fee that stays derived there too: the
+        # venue states maker or taker per execution only, never on the order, and nothing here
+        # reads that flag yet. Measured 2026-10-11 over 15 Kraken orders, the venue's flag
+        # agreed with this derivation every time.
         is_maker = fill_type is FillType.LIMIT
         entry_fee = self._create_entry_fee(
             symbol_spec=symbol_spec,
@@ -1815,6 +1828,7 @@ class AbstractTradeExecutor(ABC):
             timestamp=self.get_current_time(),
             is_maker=is_maker
         )
+        fee_source = self._book_reported_fee(entry_fee, reported_fee, pending_order)
 
         self.logger.debug(
             f'💱 tick_value calculation: '
@@ -1976,6 +1990,7 @@ class AbstractTradeExecutor(ABC):
             # NOT model-specific: it means "what this fill cost in FEES". A SPREAD broker
             # books none — its spread is inside `executed_price` above, not beside it.
             commission=entry_fee.cost if entry_fee else 0.0,
+            fee_source=fee_source,
             position_id=position.position_id,
             action=OrderAction.OPEN,
             symbol=pending_order.symbol,
@@ -2005,7 +2020,8 @@ class AbstractTradeExecutor(ABC):
         close_reason: CloseReason = CloseReason.MANUAL,
         exit_trades: Optional[List[BrokerTrade]] = None,
         fill_event: OrderEventType = OrderEventType.FILLED,
-    ) -> float:
+        reported_fee: Optional[float] = None,
+    ) -> Optional[OrderResult]:
         """
         Process a confirmed CLOSE order — update portfolio, record PnL.
 
@@ -2032,14 +2048,18 @@ class AbstractTradeExecutor(ABC):
             fill_event: How the order-event stream records the fill — `partially_filled`
                 for part of a protective order that is still working, or of one the venue
                 then ended (#362)
+            reported_fee: The venue's own fee for the volume this call books, in the symbol's
+                quote currency (#508). None in a backtest, and wherever the answer carried
+                none — the fee model's estimate is booked then
 
         Returns:
-            The lots actually booked — 0.0 where nothing was. Since #507 this is the size
-            handed in for every partial: the volume_min conversion that used to make it
-            differ is gone, and the judgement happens at submission instead. It can still
-            exceed the request in one case, `close_lots > position.lots`, which is booked as
-            a full close — so the venue-close resolver keeps recording what HAPPENED rather
-            than what it requested (#503)
+            The booked result — its lots, its price and the fee booked for it — or None where
+            nothing was booked. Since #507 the lots are the size handed in for every partial:
+            the volume_min conversion that used to make them differ is gone, and the
+            judgement happens at submission instead. They can still exceed the request in one
+            case, `close_lots > position.lots`, which is booked as a full close — so the
+            venue-close resolver keeps recording what HAPPENED rather than what it requested
+            (#503), the price and the fee included (#508)
         """
         # A live close is asynchronous, so the reason is known at the TRIGGER and the fill
         # happens a round trip later. It travels on the PendingOrder; an explicit argument
@@ -2091,8 +2111,9 @@ class AbstractTradeExecutor(ABC):
                 self._record_order_event(
                     fill_event, pending=pending_order, fill_price=fill_price,
                     message=f'the venue executed this close; position {position_id} is no '
-                            f'longer held here, so nothing was booked')
-            return 0.0
+                            f'longer held here, so nothing was booked',
+                    **self._unbooked_fee_fields(reported_fee))
+            return None
 
         # Get current price (needed for tick_value calculation regardless)
         bid, ask = self.get_current_price(position.symbol)
@@ -2119,7 +2140,7 @@ class AbstractTradeExecutor(ABC):
                 f'⚠️ Invalid close_lots {close_lots} for {pending_order.pending_order_id} '
                 f'— skipping fill'
             )
-            return 0.0
+            return None
 
         if close_lots is not None and close_lots > position.lots:
             self.logger.warning(
@@ -2174,6 +2195,7 @@ class AbstractTradeExecutor(ABC):
             timestamp=self.get_current_time(),
             is_maker=False,
         )
+        fee_source = self._book_reported_fee(exit_fee, reported_fee, pending_order)
 
         # #326: synthesize a BrokerTrade for the close execution if not yet
         # populated. It carries the exit fee so the event stream and the trade history show
@@ -2268,6 +2290,7 @@ class AbstractTradeExecutor(ABC):
             # instead of summing events. The POSITION_CLOSED event below is what a
             # listener that DOES want full closes should read.
             commission=exit_fee.cost if exit_fee else 0.0,
+            fee_source=fee_source,
             # order_id stays the ORDER's id and position_id the POSITION's. They are the
             # same value for every locally-requested close and differ for a venue-held
             # protective order (#503) — which is exactly why they are two fields.
@@ -2289,6 +2312,7 @@ class AbstractTradeExecutor(ABC):
             f'CLOSE_FILL_ORDER: {json.dumps(result.to_dict(), indent=2)}')
 
         self._book_order_result(result, pending_order, event_type=fill_event)
+        self._on_close_fill(pending_order, result)
 
         # Partial-close event (#348) carries the delta; a full close emits
         # POSITION_CLOSED (#503). Until then a full close emitted nothing at all and the
@@ -2319,7 +2343,7 @@ class AbstractTradeExecutor(ABC):
                 result=result,
                 tick_time=self.get_current_time(),
             ))
-        return executed_lots
+        return result
 
     # ============================================
     # Position Management
@@ -3338,6 +3362,94 @@ class AbstractTradeExecutor(ABC):
             is_maker=is_maker
         )
 
+    def _book_reported_fee(
+        self,
+        fee: Optional[AbstractTradingFee],
+        reported_fee: Optional[float],
+        pending_order: PendingOrder,
+    ) -> FeeSource:
+        """
+        Put the venue's own figure for a fill into its fee, where the venue reported one (#508).
+
+        The fee model still decides WHETHER a fill is charged and under which category; the
+        venue decides how much. Booked once, at the fill, from the answer that reported it — no
+        second figure follows, so nothing is ever corrected afterwards. Both are in the symbol's
+        quote currency: the estimate is the rate times lots times contract size times price, and
+        the venue states its fee in the quote as well.
+
+        Args:
+            fee: The fee the configured model charges for this fill; None where it charges none
+            reported_fee: The venue's fee for the booked volume; None where its answer had none
+            pending_order: The order being booked, named in a warning
+
+        Returns:
+            Where the booked fee came from
+        """
+        if reported_fee is None:
+            self._report_missing_venue_fee(pending_order, fee)
+            return FeeSource.ESTIMATE
+        if fee is None:
+            if reported_fee > 0:
+                # A spread model charges nothing per fill, so a venue reporting a charge is a
+                # venue the configured model does not describe. Booking the charge under some
+                # category of its own would hide that; the configuration is what is wrong.
+                self.logger.warning(
+                    f'⚠️ The venue reported a fee of {reported_fee:.8f} for order '
+                    f'{pending_order.pending_order_id}, but the configured fee model charges '
+                    f"nothing per fill — it was NOT booked. The fee model in this broker's "
+                    f'configuration does not describe the venue.')
+            return FeeSource.ESTIMATE
+        fee.apply_reported_cost(reported_fee)
+        return FeeSource.VENUE
+
+    def _unbooked_fee_fields(self, reported_fee: Optional[float]) -> Dict[str, Any]:
+        """
+        The fee fields of an event for a fill nothing could be booked for (#508).
+
+        Its position was already gone, so no result carries the fee — yet the venue executed
+        and charged, and the event is the only record of either.
+
+        Args:
+            reported_fee: The venue's fee for that fill, or None where its answer had none
+
+        Returns:
+            OrderEvent keyword arguments — empty where the venue reported no fee
+        """
+        if reported_fee is None:
+            return {}
+        return {
+            'fee': reported_fee,
+            'fee_currency': self.portfolio.account_currency,
+            'fee_source': FeeSource.VENUE,
+        }
+
+    def _report_missing_venue_fee(
+        self,
+        pending_order: PendingOrder,
+        fee: Optional[AbstractTradingFee],
+    ) -> None:
+        """
+        Say so where a fill is booked from the estimate although its venue reports the fee.
+
+        Nothing to say in a backtest, which has no venue to report one; the live executor
+        answers it (#508).
+
+        Args:
+            pending_order: The order being booked
+            fee: The estimated fee it is booked with; None where the model charges none
+        """
+
+    def _on_close_fill(self, pending_order: PendingOrder, result: OrderResult) -> None:
+        """
+        A close was booked. Nothing listens in a backtest; the live executor tells the
+        listeners it keeps for closes — the drift auditor among them (#508). An entry reaches
+        the order-outcome listeners instead, which a close deliberately does not.
+
+        Args:
+            pending_order: The close order that filled
+            result: Its executed result
+        """
+
     def _synthesize_pending_trade(
         self,
         pending_order: PendingOrder,
@@ -3356,10 +3468,9 @@ class AbstractTradeExecutor(ABC):
         QueryTrades response). One trade per fill; is_maker is derived from
         entry_type (LIMIT and STOP_LIMIT = maker, MARKET and STOP = taker).
 
-        The fee_cost is the locally-computed entry_fee.cost — this matches
-        what the portfolio receives. #327 Drift Audit compares this against
-        real broker fees when a TradesQueryResponse arrives via the async
-        path; the synthetic baseline supports the comparison.
+        The fee_cost is the fee the portfolio receives — live, the venue's own figure where
+        its answer reported one (#508), otherwise the fee model's. The drift auditor compares
+        it with the venue's executions when its trades query is answered.
 
         Args:
             pending_order: PendingOrder being filled
@@ -3369,7 +3480,7 @@ class AbstractTradeExecutor(ABC):
                 `FillType` and handed down — never re-derived here, because a second copy of
                 that test is how the fee and this record came to disagree (#244)
             symbol_spec: Symbol specification (for fee_currency = quote)
-            fee_cost: Locally-computed entry fee in account currency
+            fee_cost: The booked fee, in the symbol's quote currency
             position: The position a CLOSE settles, already resolved by the caller. It
                 supplies the execution side, and it is the only source that can: a
                 venue-held protective order carries its OWN id, so looking the position

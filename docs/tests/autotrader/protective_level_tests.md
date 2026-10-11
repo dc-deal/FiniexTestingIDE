@@ -110,7 +110,7 @@ all of them without closing twice.
 |---|---|
 | `test_a_repeated_report_books_nothing_further` | The property the resolver exists for — a second arrival of the same volume is a no-op |
 | `test_the_counter_records_what_was_booked` | The delta is taken against `venue_close_applied_lots` |
-| `test_the_counter_is_not_the_fills_aggregate` | **Decision 13.a asserted rather than assumed.** On a venue with trade-level reporting the trades drain fills `cumulative_filled_lots` BEFORE anything is booked, so a delta taken against it would be zero exactly in the case this exists for — and the failure would be silent: no error, just a position that stays open while the venue has already sold it |
+| `test_the_counter_is_not_the_fills_aggregate` | **Decision 13.a asserted rather than assumed.** After a restart the order is rebuilt with no executions while the venue still reports its totals; the key, carried with the position (#508), books only the rest — a delta against the empty fills would book the predecessor's step a second time |
 | `test_it_books_a_partial_close_then_the_close` | Kraken has no PARTIALLY_FILLED — a half-filled order stays `open` and reports what executed beside it. Both halves are real lots |
 | `test_the_second_booking_does_not_reuse_the_first_executions` | `_fill_close_order` hands its trade list to the portfolio as the closing record's executions; handed the same list twice, the second close would report the first partial's executions and fee again |
 | `test_a_close_for_a_position_we_no_longer_hold_is_reported` | Not attributable is never silent, and the venue's reference is always named — it is the only handle left for a manual check |
