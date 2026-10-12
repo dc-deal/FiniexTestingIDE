@@ -23,7 +23,7 @@ from typing import List
 
 # One monotonic integer. Not a date and not the app version: a consumer compares it for
 # equality, and equality is the only question they have.
-API_CONTRACT_VERSION = 27
+API_CONTRACT_VERSION = 28
 
 # Every response carries it, so a saved fixture carries it too.
 CONTRACT_HEADER = 'X-Api-Contract'
@@ -36,10 +36,11 @@ API_PREFIX = '/api/v1'
 # What moved INTO the current version. One line per change, written for someone who cannot
 # read this repository.
 CHANGES: List[str] = [
-    "The order-event stream: fee_source on every event that executed something — 'venue' where "
-    "fee is the venue's own figure for that fill, 'estimate' where it is our fee model's; always "
-    "'estimate' in a backtest; null where nothing executed and on events recorded before",
-    "A live fill's fee — the event's fee, the order history's commission, the trade history's "
-    "fees and every figure summed from them — is the venue's own charge wherever the venue "
-    "reports it in the answer that says the order filled, no longer the declared rate's estimate",
+    "The portfolio: every unit and every per-currency row carries fee_source_totals — one "
+    "entry per fee source its fills carry, 'venue' or 'estimate', each with fill_count (the "
+    "fills) and fill_fees (what their fees came to, in the account currency); a backtest has "
+    "only 'estimate'; empty where nothing executed and on a run recorded before. The "
+    "aggregated portfolio carries it in every block's headline",
+    "The order history: fee_source on every row — where its commission came from, 'venue' or "
+    "'estimate'; null where nothing executed and on a row recorded before",
 ]

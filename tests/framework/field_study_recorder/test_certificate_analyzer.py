@@ -4,12 +4,14 @@ FiniexTestingIDE - Field Study Certificate Analyzer Tests (#332)
 Drives FieldStudyCertificate against synthetic JSONL fixtures: a clean run certifies
 PASSED, a run with a failed phase + not-flat end certifies FAILED, and a run missing a
 phase result (aborted) certifies FAILED. Beside the verdict, the informational figures each
-say where they came from or that they are missing: the fees from the run's own report, the
-account's movement, the slippage per order type (#566), the REST calls, the divergences.
+say where they came from or that they are missing: the fees from the run's own report, whose
+figure each fill's fee is (#508), the account's movement, the slippage per order type (#566),
+the REST calls, the divergences.
 """
 
 import json
 from pathlib import Path
+from typing import Optional
 
 import pytest
 
@@ -26,6 +28,8 @@ from python.framework.types.live_types.broker_truth_types import (
     BrokerTruthSnapshot,
 )
 from python.framework.types.log_layout_types import IO_SUBDIR
+from python.framework.types.trading_env_types.broker_types import FeeSource
+from python.framework.types.trading_env_types.order_types import FeeReport
 
 _FIXTURES = Path('tests/fixtures/field_study')
 
@@ -85,7 +89,8 @@ def test_certificate_required_fields_present(tmp_path):
     cert = json.loads(cert_path.read_text())
     for field in (
         'release_version', 'git_commit', 'timestamp', 'valid_until',
-        'overall_status', 'phases', 'flat_at_session_end', 'fees_charged', 'slippage',
+        'overall_status', 'phases', 'flat_at_session_end', 'fees_charged', 'fee_source',
+        'slippage',
     ):
         assert field in cert
 
@@ -467,3 +472,163 @@ class TestWhatTheSlippageIsMeasuredAgainst:
 
         assert analysis['slippage']['measured_against'] == {'iceberg': 'submission_mid'}
         assert analysis['slippage']['by_order_type']['iceberg']['measured'] == 1
+
+
+def _fee_fill(seq: int, fee_source: Optional[FeeSource]) -> str:
+    """
+    One fill line with its fee, and whose figure that fee is where one is given.
+
+    Args:
+        seq: Sequence number
+        fee_source: The fee's source; None writes a line from before the source was recorded
+
+    Returns:
+        The JSONL line, newline-terminated
+    """
+    extra = {'action': 'open', 'order_type': 'market', 'fee': 0.004, 'fee_currency': 'USD'}
+    if fee_source is not None:
+        extra['fee_source'] = fee_source.value
+    return json.dumps({
+        'ts_utc': 'x', 'seq': seq, 'plane': 'bot', 'event_type': 'order_filled',
+        'phase': 'a', 'phase_index': 0, 'price': 2000.0, 'extra': extra,
+    }) + '\n'
+
+
+def _passing_capture(tmp_path, fee_report: Optional[FeeReport], *fill_lines) -> Path:
+    """
+    A capture that passes every gate — one passing phase, an empty book at both ends — around
+    some fills.
+
+    Args:
+        tmp_path: pytest temporary directory
+        fee_report: What the header records about where the venue reports a fill's fee; None
+            writes a header from before it was recorded
+        fill_lines: Pre-rendered fill lines
+
+    Returns:
+        The capture's path
+    """
+    header = {'record_kind': 'header', 'schema_version': '2.0', 'started_utc': 'x',
+              'profile': 'p', 'symbol': 'ETHUSD', 'phases': ['a']}
+    if fee_report is not None:
+        header['fee_report'] = fee_report.value
+    capture = tmp_path / 'field_study.jsonl'
+    capture.write_text(
+        json.dumps(header) + '\n'
+        + _snapshot(1, 'preflight', {'ZUSD': 100.0})
+        + ''.join(fill_lines)
+        + json.dumps({'ts_utc': 'x', 'seq': 90, 'plane': 'bot', 'event_type': 'phase_result',
+                      'phase': 'a', 'phase_index': 0, 'status': 'pass'}) + '\n'
+        + _snapshot(91, 'session_end', {'ZUSD': 99.99}),
+        encoding='utf-8')
+    return capture
+
+
+class TestTheFeeSource:
+    """
+    Whose figure each fill's fee is — the venue's own, or our fee model's estimate (#508).
+
+    Counted per fill. An estimate where the venue states its fee in the answer that reports the
+    fill is a warning, never a failure, and a capture from before the source was recorded says
+    so rather than passing for the venue's figures.
+    """
+
+    def test_a_run_whose_every_fee_is_the_venue_s(self, tmp_path, capsys):
+        cert_path = FieldStudyCertificate.generate(
+            str(_FIXTURES / 'pass_run.jsonl'), release_version='dev', reports_dir=str(tmp_path))
+        cert = json.loads(cert_path.read_text())
+
+        assert cert['fee_source'] == {
+            'status': 'recorded', 'fills': 2,
+            'by_source': {FeeSource.VENUE.value: 2, FeeSource.ESTIMATE.value: 0},
+            'not_recorded': 0, 'fee_report': FeeReport.STATUS_ANSWER.value}
+        assert cert['warnings'] == []
+        assert 'USD (event_sum) · venue 2/2 fills' in capsys.readouterr().out
+
+    def test_an_estimate_where_the_venue_states_its_fee_is_a_warning_never_a_failure(
+            self, tmp_path, capsys):
+        capture = _passing_capture(tmp_path, FeeReport.STATUS_ANSWER,
+                                   _fee_fill(2, FeeSource.VENUE), _fee_fill(3, FeeSource.ESTIMATE))
+
+        cert_path = FieldStudyCertificate.generate(
+            str(capture), release_version='dev', reports_dir=str(tmp_path / 'reports'))
+        cert = json.loads(cert_path.read_text())
+
+        assert cert['overall_status'] == 'PASSED'
+        assert cert['fee_source']['by_source'] == {FeeSource.VENUE.value: 1,
+                                                   FeeSource.ESTIMATE.value: 1}
+        assert len(cert['warnings']) == 1
+        assert cert['warnings'][0].startswith('ESTIMATED FEES: 1 of 2 fills')
+        printed = capsys.readouterr().out
+        assert 'venue 1/2 fills' in printed
+        assert '⚠️  ESTIMATED FEES: 1 of 2 fills' in printed
+
+    @pytest.mark.parametrize(
+        'fee_report', [report for report in FeeReport if report is not FeeReport.STATUS_ANSWER],
+        ids=lambda report: report.value)
+    def test_an_estimate_where_the_venue_states_none_there_is_by_design(self, tmp_path,
+                                                                        fee_report):
+        analysis = FieldStudyCertificate.analyze(str(_passing_capture(
+            tmp_path, fee_report, _fee_fill(2, FeeSource.ESTIMATE))))
+
+        assert analysis['fee_source']['by_source'][FeeSource.ESTIMATE.value] == 1
+        assert analysis['warnings'] == []
+
+    def test_an_estimate_without_the_venue_s_declaration_is_not_judged(self, tmp_path):
+        analysis = FieldStudyCertificate.analyze(str(_passing_capture(
+            tmp_path, None, _fee_fill(2, FeeSource.ESTIMATE))))
+
+        assert analysis['fee_source']['fee_report'] is None
+        assert analysis['warnings'] == []
+
+    def test_a_capture_from_before_the_source_was_recorded(self, tmp_path, capsys):
+        """No source on any fill, no declaration in the header: still PASSED, and said so."""
+        lines = []
+        for raw in (_FIXTURES / 'pass_run.jsonl').read_text(encoding='utf-8').splitlines():
+            record = json.loads(raw)
+            record.pop('fee_report', None)
+            (record.get('extra') or {}).pop('fee_source', None)
+            lines.append(json.dumps(record))
+        capture = tmp_path / 'field_study.jsonl'
+        capture.write_text('\n'.join(lines) + '\n', encoding='utf-8')
+
+        cert = json.loads(FieldStudyCertificate.generate(
+            str(capture), release_version='dev',
+            reports_dir=str(tmp_path / 'reports')).read_text())
+
+        assert cert['overall_status'] == 'PASSED'
+        assert cert['fee_source'] == {
+            'status': 'not_recorded', 'fills': 2,
+            'by_source': {FeeSource.VENUE.value: 0, FeeSource.ESTIMATE.value: 0},
+            'not_recorded': 2, 'fee_report': None}
+        assert cert['warnings'] == []
+        assert 'USD (event_sum) · source not recorded' in capsys.readouterr().out
+
+    def test_a_fill_without_its_source_beside_recorded_ones(self, tmp_path):
+        analysis = FieldStudyCertificate.analyze(str(_passing_capture(
+            tmp_path, FeeReport.STATUS_ANSWER, _fee_fill(2, FeeSource.VENUE), _fee_fill(3, None))))
+
+        block = analysis['fee_source']
+        assert (block['status'], block['fills'], block['not_recorded']) == (
+            'partly_recorded', 2, 1)
+
+    def test_a_capture_without_a_fill(self, tmp_path):
+        analysis = FieldStudyCertificate.analyze(str(_passing_capture(
+            tmp_path, FeeReport.STATUS_ANSWER)))
+
+        assert (analysis['fee_source']['status'], analysis['fee_source']['fills']) == (
+            'no_fills', 0)
+        assert analysis['warnings'] == []
+
+    def test_an_identity_warning_fails_it_and_stands_before_the_fee_warning(self, tmp_path):
+        """A release declared from a tree that says otherwise fails; the fee warning still shows."""
+        capture = _passing_capture(tmp_path, FeeReport.STATUS_ANSWER,
+                                   _fee_fill(2, FeeSource.ESTIMATE))
+
+        cert = json.loads(FieldStudyCertificate.generate(
+            str(capture), release_version='0.0.1',
+            reports_dir=str(tmp_path / 'reports')).read_text())
+
+        assert cert['overall_status'] == 'FAILED'
+        assert cert['warnings'][0].startswith('VERSION MISMATCH')
+        assert cert['warnings'][-1].startswith('ESTIMATED FEES: 1 of 1 fills')

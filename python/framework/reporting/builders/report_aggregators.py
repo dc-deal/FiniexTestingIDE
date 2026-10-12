@@ -16,6 +16,7 @@ from python.framework.types.api.report_types import (
     AggregatedPortfolioSpotScenarioRow,
     ExecutionStatsRow,
     ExecutionStatsTotals,
+    FeeSourceTotals,
     PendingOrdersUnitRow,
     PortfolioAggregateRow,
     PortfolioUnitRow,
@@ -31,6 +32,7 @@ from python.framework.types.api.report_types import (
     WorkerStatRow,
 )
 from python.framework.types.scenario_types.scenario_set_performance_types import EXPECTED_OPERATIONS
+from python.framework.types.trading_env_types.broker_types import FeeSource
 from python.framework.types.trading_env_types.trading_env_stats_types import EXECUTION_COUNT_FIELDS
 
 # --- Trade analytics (per account currency) -------------------------------------------
@@ -242,12 +244,34 @@ def _portfolio_aggregate(currency: str, rows: List[PortfolioUnitRow]) -> Portfol
         account_max_drawdown_unit=max_dd_unit,
         total_fees=sum(r.total_fees for r in rows),
         fees_charged=sum(r.fees_charged for r in rows),
+        fee_source_totals=_summed_fee_source_totals(rows),
         unrealized_pnl=sum(r.unrealized_pnl for r in rows),
         final_equity=total_final_equity if len(rows) == 1 else None,
         total_final_equity=total_final_equity,
         total_initial_balance=sum(r.initial_balance for r in rows),
         open_position_count=sum(len(r.open_positions) for r in rows),
     )
+
+
+def _summed_fee_source_totals(rows: List[PortfolioUnitRow]) -> Dict[FeeSource, FeeSourceTotals]:
+    """
+    The units' fill fees per fee source, summed (#508) — a fill count and a fee total both add
+    up across the accounts of one currency.
+
+    Args:
+        rows: The portfolio per-unit rows of one currency group
+
+    Returns:
+        One entry per fee source any unit carries, in the order FeeSource declares them
+    """
+    summed: Dict[FeeSource, FeeSourceTotals] = {}
+    for source in FeeSource:
+        parts = [r.fee_source_totals[source] for r in rows if source in r.fee_source_totals]
+        if parts:
+            summed[source] = FeeSourceTotals(
+                fill_count=sum(part.fill_count for part in parts),
+                fill_fees=sum(part.fill_fees for part in parts))
+    return summed
 
 
 def aggregate_full_portfolio(

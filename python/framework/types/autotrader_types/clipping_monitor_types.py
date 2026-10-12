@@ -38,7 +38,7 @@ class ClippingDisplaySnapshot:
     Lightweight clipping stats for live display rendering.
 
     Subset of ClippingSessionSummary — only the fields needed by
-    AutotraderTickLoop._build_display_stats(). Avoids full summary
+    AutotraderDisplayExporter.build(). Avoids full summary
     construction on every tick.
 
     Args:

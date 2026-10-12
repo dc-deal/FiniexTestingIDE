@@ -399,19 +399,18 @@ class DriftAuditor:
             )
 
     # ============================================
-    # Public accessors (used by tick loop in Tranche D)
+    # Public accessors
     # ============================================
 
     def get_summary(self) -> DriftAuditSummary:
-        """Return aggregate counters + full DriftRecord history."""
+        """Return aggregate counters + full DriftRecord history. Only the tests read it."""
         return self._summary
 
     def get_display_counters(self) -> Dict[str, float]:
         """
         Return slim counter dict for AutoTraderDisplayStats.drift_* population.
 
-        Used by AutotraderTickLoop._build_display_stats to surface the Audit
-        footer in the SESSION panel.
+        Read by AutotraderDisplayExporter to surface the Audit footer in the SESSION panel.
         """
         return {
             'drift_enabled': True,

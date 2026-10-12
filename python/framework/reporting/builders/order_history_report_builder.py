@@ -78,6 +78,7 @@ def _to_row(order: OrderResult, scenario_name: str = '') -> OrderHistoryRow:
         executed_price=order.executed_price or None,
         event_time=order.execution_time.isoformat() if order.execution_time else None,
         commission=order.commission,
+        fee_source=order.fee_source,
         order_type=order.order_type,
         close_type=order.close_type,
         rejection_reason=order.rejection_reason,

@@ -26,7 +26,11 @@ from python.framework.types.api.report_types import (
     PortfolioReport,
     PortfolioUnitRow,
 )
-from python.framework.types.trading_env_types.currency_codes import format_currency_simple
+from python.framework.types.trading_env_types.broker_types import FeeSource
+from python.framework.types.trading_env_types.currency_codes import (
+    format_currency_signed,
+    format_currency_simple,
+)
 from python.framework.types.trading_env_types.order_types import ProtectiveLevelEnforcement
 from python.framework.utils.console_renderer import ConsoleRenderer
 from python.framework.utils.math_utils import force_negative, force_positive
@@ -161,12 +165,17 @@ class PortfolioSummary(AbstractBatchSummarySection):
             print(
                 f'     ↳ in force since {since} · spans {unit.drawdown_restarts + 1} sessions')
 
+        # Spread and swap are SIGNED costs — a price improvement and a swap credit are below
+        # zero — so they are negated rather than forced negative, which printed a credit as zero.
         print(
-            f'   Cost: spread {renderer.pnl(force_negative(unit.total_spread_cost), unit.currency)} | '
+            f'   Cost: spread {renderer.pnl(-unit.total_spread_cost, unit.currency)} | '
             f'comm {renderer.pnl(force_negative(unit.total_commission), unit.currency)} | '
-            f'swap {renderer.pnl(force_negative(unit.total_swap), unit.currency)} | '
+            f'swap {renderer.pnl(-unit.total_swap, unit.currency)} | '
             f'maker {renderer.pnl(force_negative(unit.maker_fee), unit.currency)} | '
             f'taker {renderer.pnl(force_negative(unit.taker_fee), unit.currency)}')
+        fee_sources = self._fee_source_line(unit)
+        if fee_sources:
+            print(f'   {fee_sources}')
 
         orders = self._orders_line(execution, renderer)
         if orders:
@@ -181,6 +190,34 @@ class PortfolioSummary(AbstractBatchSummarySection):
         active = self._active_summary(pending, renderer)
         if active:
             print(f'   {active}')
+
+    @staticmethod
+    def _fee_source_line(unit: PortfolioUnitRow) -> str:
+        """Where the unit's fill fees came from — the venue's own figure or our model's (#508).
+
+        An AutoTrader session's line, told apart by its session-end policy: a scenario has none,
+        and a session resolves one before it can place an order. Every fee of a backtest is the
+        estimate by construction, so the line would say nothing there; the split stays on the
+        model and the API either way. Silent too for a unit charged nothing per fill — a spread
+        broker's cost is inside its fill price, and its fills carry the estimate at zero.
+
+        Args:
+            unit: The unit's portfolio row
+
+        Returns:
+            The line, empty where there is nothing to say
+        """
+        totals = unit.fee_source_totals
+        if not unit.session_end_policy or not totals:
+            return ''
+        if FeeSource.VENUE not in totals and not any(t.fill_fees for t in totals.values()):
+            return ''
+        parts = []
+        for source, source_totals in totals.items():
+            noun = 'fill' if source_totals.fill_count == 1 else 'fills'
+            parts.append(f'{source.value} {source_totals.fill_count} {noun} '
+                         f'{source_totals.fill_fees:.4f} {unit.currency}')
+        return 'Fee source: ' + ' | '.join(parts)
 
     @staticmethod
     def _open_position_lines(
@@ -278,9 +315,11 @@ class PortfolioSummary(AbstractBatchSummarySection):
         self, unit: PortfolioUnitRow, renderer: ConsoleRenderer) -> List[str]:
         """Balance + init (+ spot estimated P&L) lines — spot-aware, from the model."""
         currency = unit.currency
+        # A figure that can go below zero keeps its sign, in front of the symbol: a balance, the
+        # usable funds, the estimated P&L. A starting balance, a claim and a price cannot.
         if not unit.spot_mode:
             initial_str = format_currency_simple(unit.initial_balance, currency)
-            current_str = format_currency_simple(unit.current_balance, currency)
+            current_str = format_currency_signed(unit.current_balance, currency)
             if unit.current_balance > unit.initial_balance:
                 current_str = renderer.green(current_str)
             elif unit.current_balance < unit.initial_balance:
@@ -299,7 +338,7 @@ class PortfolioSummary(AbstractBatchSummarySection):
         base_init_fmt = f'{base_init:,.4f}' if base_init < 100 else f'{base_init:,.2f}'
 
         lines = [
-            f'Bal: {format_currency_simple(quote_bal, quote)} | {base} {base_fmt}',
+            f'Bal: {format_currency_signed(quote_bal, quote)} | {base} {base_fmt}',
             f'Init: {format_currency_simple(quote_init, quote)} | {base} {base_init_fmt}',
         ]
         # Only when something is actually claimed (#489): a run that ended with no unfilled
@@ -316,14 +355,13 @@ class PortfolioSummary(AbstractBatchSummarySection):
                 f'Committed: {format_currency_simple(quote_committed, quote)} | '
                 f'{base} {base_committed:,.4f}')
             lines.append(
-                f'Usable: {format_currency_simple(usable_quote, quote)} | '
+                f'Usable: {format_currency_signed(usable_quote, quote)} | '
                 f'{base} {usable_base:,.4f}{warn}')
         if unit.last_price > 0:
-            sign = '+' if unit.spot_est_pnl >= 0 else ''
             price_str = format_currency_simple(unit.last_price, quote)
             lines.append(
-                f'Est: {sign}{format_currency_simple(unit.spot_est_pnl, quote)} '
-                f'({sign}{unit.spot_est_pnl_pct:.2f}%) @ {base} {price_str}')
+                f'Est: {format_currency_signed(unit.spot_est_pnl, quote, plus_sign=True)} '
+                f'({unit.spot_est_pnl_pct:+.2f}%) @ {base} {price_str}')
         return lines
 
     @staticmethod
@@ -510,12 +548,15 @@ class PortfolioSummary(AbstractBatchSummarySection):
                        + row.maker_fee + row.taker_fee)
 
         print(f"\n{renderer.bold('   💸 COST BREAKDOWN:')}")
-        print(f'      Spread: {renderer.pnl(force_negative(row.total_spread_cost), currency)} |  '
+        # Spread and swap negated, not forced negative: a credit is a signed cost (unit block)
+        print(f'      Spread: {renderer.pnl(-row.total_spread_cost, currency)} |  '
               f'Commission: {renderer.pnl(force_negative(row.total_commission), currency)} |  '
-              f'Swap: {renderer.pnl(force_negative(row.total_swap), currency)}')
+              f'Swap: {renderer.pnl(-row.total_swap, currency)}')
         print(f'      Maker: {renderer.pnl(force_negative(row.maker_fee), currency)} |  '
               f'Taker: {renderer.pnl(force_negative(row.taker_fee), currency)} |  '
-              f'Total Fees: {renderer.pnl(force_negative(total_costs), currency)}')
+              # Signed like its parts, so a net credit prints as one. The sum is still taken
+              # here; moving it onto the model, and settling its label, belongs to #557.
+              f'Total Fees: {renderer.pnl(-total_costs, currency)}')
 
         print('\n   📉 RISK METRICS:')
         print(f'      Max Drawdown (account, curve): '

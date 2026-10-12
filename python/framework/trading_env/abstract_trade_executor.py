@@ -571,6 +571,9 @@ class AbstractTradeExecutor(ABC):
                 basis['lots'] = result.executed_lots
                 basis['fill_price'] = result.executed_price
                 basis['fee'] = result.commission
+                # MARGIN NOTE (2026-10-11, #209): the account currency here, the quote currency on
+                # the execution synthesized for the same fill — one currency at spot, two on a
+                # margin account whose quote is not its account currency once it pays per fill.
                 basis['fee_currency'] = self.portfolio.account_currency
                 basis['fee_source'] = result.fee_source
                 if pending is not None and len(pending.fills.trades) == 1:

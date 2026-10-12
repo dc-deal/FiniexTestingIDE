@@ -13,17 +13,25 @@ from datetime import datetime, timezone
 
 import pytest
 
-from python.framework.reporting.builders.portfolio_report_builder import build_portfolio_report
+from python.framework.reporting.builders.portfolio_report_builder import (
+    build_portfolio_report,
+    fee_source_totals,
+)
 from python.framework.reporting.builders.run_unit import (
     run_units_from_batch,
     run_units_from_session,
 )
+from python.framework.types.api.report_types import PortfolioReport
 from python.framework.types.autotrader_types.autotrader_result_types import AutoTraderResult
 from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.portfolio_types.portfolio_aggregation_types import PortfolioStats
 from python.framework.types.process_data_types import ProcessResult, ProcessTickLoopResult
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
-from python.framework.types.trading_env_types.broker_types import BrokerType
+from python.framework.types.trading_env_types.broker_types import BrokerType, FeeSource
+from python.framework.types.trading_env_types.order_event_types import (
+    OrderEvent,
+    OrderEventType,
+)
 
 # Every report artifact names its run (#475); the value is opaque to these tests.
 _RUN_ID = '20260830_120000_a1b2c3d4'
@@ -294,3 +302,159 @@ class TestTheCommittedFundsRecord:
         row = self._row({})
 
         assert row.committed_funds == {} and row.usable_funds == {}
+
+
+def _fill(seq: int, source: FeeSource, fee: float) -> OrderEvent:
+    """
+    An executed event, carrying its fee and where that fee came from.
+
+    Args:
+        seq: The event's place in the unit's stream
+        source: Where the fee came from
+        fee: The fee, in the account currency
+
+    Returns:
+        The event
+    """
+    return OrderEvent(
+        seq=seq, event_type=OrderEventType.FILLED, order_id=f'pos_btcusd_{seq}',
+        submitted_seq=seq, fee=fee, fee_currency='USD', fee_source=source)
+
+
+def _step(seq: int, event_type: OrderEventType) -> OrderEvent:
+    """
+    A step that executed nothing, so it carries no fee source.
+
+    Args:
+        seq: The event's place in the unit's stream
+        event_type: What happened
+
+    Returns:
+        The event
+    """
+    return OrderEvent(seq=seq, event_type=event_type, order_id=f'pos_btcusd_{seq}',
+                      submitted_seq=seq)
+
+
+class TestTheFillFeesBySource:
+    """
+    Where each fill's fee came from, counted and summed per source (#508).
+
+    Folded from the order events, because an event is the one record of a fill that says
+    whether its fee is the venue's own figure or our fee model's estimate — and the stream holds
+    every fill, where the order history keeps only its newest rows.
+    """
+
+    def test_a_session_whose_venue_reported_every_fee(self):
+        totals = fee_source_totals([
+            _step(1, OrderEventType.SUBMITTED), _step(2, OrderEventType.ACCEPTED),
+            _fill(3, FeeSource.VENUE, 0.0412), _fill(4, FeeSource.VENUE, 0.0388)])
+
+        assert list(totals) == [FeeSource.VENUE]
+        assert totals[FeeSource.VENUE].fill_count == 2
+        assert totals[FeeSource.VENUE].fill_fees == pytest.approx(0.08)
+
+    def test_a_backtest_is_the_estimate_throughout(self):
+        totals = fee_source_totals([_fill(1, FeeSource.ESTIMATE, 0.25),
+                                    _fill(2, FeeSource.ESTIMATE, 0.25)])
+
+        assert list(totals) == [FeeSource.ESTIMATE]
+        assert (totals[FeeSource.ESTIMATE].fill_count,
+                totals[FeeSource.ESTIMATE].fill_fees) == (2, pytest.approx(0.5))
+
+    def test_a_mixed_session_keeps_the_two_apart_in_declaration_order(self):
+        """The estimate came first in the stream; the map still reads venue, then estimate."""
+        totals = fee_source_totals([
+            _fill(1, FeeSource.ESTIMATE, 0.0412),
+            _fill(2, FeeSource.VENUE, 0.2266), _fill(3, FeeSource.VENUE, 0.2266)])
+
+        assert list(totals) == [FeeSource.VENUE, FeeSource.ESTIMATE]
+        assert totals[FeeSource.VENUE].fill_count == 2
+        assert totals[FeeSource.VENUE].fill_fees == pytest.approx(0.4532)
+        assert totals[FeeSource.ESTIMATE].fill_count == 1
+        assert totals[FeeSource.ESTIMATE].fill_fees == pytest.approx(0.0412)
+
+    def test_a_unit_that_executed_nothing_has_no_entry(self):
+        assert fee_source_totals([_step(1, OrderEventType.SUBMITTED),
+                                  _step(2, OrderEventType.REJECTED)]) == {}
+        assert fee_source_totals([]) == {}
+
+    def test_a_fill_charged_nothing_is_still_a_fill(self):
+        """A spread broker's fill: the estimate, at zero — counted all the same."""
+        totals = fee_source_totals([_fill(1, FeeSource.ESTIMATE, 0.0)])
+
+        assert (totals[FeeSource.ESTIMATE].fill_count,
+                totals[FeeSource.ESTIMATE].fill_fees) == (1, 0.0)
+
+    def test_both_pipelines_fold_their_units_order_events(self):
+        events = [_fill(1, FeeSource.VENUE, 0.05), _fill(2, FeeSource.ESTIMATE, 0.01)]
+        session = build_portfolio_report(_RUN_ID, run_units_from_session(
+            AutoTraderResult(portfolio_stats=_stats(), order_events=events),
+            'my_profile', 'BTCUSD')).units[0]
+        batch = BatchExecutionSummary(
+            batch_execution_time=0.0, batch_warmup_time=0.0, batch_tickrun_time=0.0,
+            process_result_list=[ProcessResult(
+                success=True, scenario_name='s1', scenario_index=0,
+                tick_loop_results=ProcessTickLoopResult(
+                    portfolio_stats=_stats(), order_events=events))],
+            single_scenario_list=[_scenario('s1', 0, 'BTCUSD')])
+        scenario = build_portfolio_report(_RUN_ID, run_units_from_batch(batch)).units[0]
+
+        for row in (session, scenario):
+            assert row.fee_source_totals[FeeSource.VENUE].fill_count == 1
+            assert row.fee_source_totals[FeeSource.VENUE].fill_fees == pytest.approx(0.05)
+            assert row.fee_source_totals[FeeSource.ESTIMATE].fill_count == 1
+
+    def test_the_currency_row_sums_each_source_over_its_units(self):
+        """Counts and fees both add up across accounts; a source one unit lacks is still summed."""
+        results = [
+            ProcessResult(success=True, scenario_name='s1', scenario_index=0,
+                          tick_loop_results=ProcessTickLoopResult(
+                              portfolio_stats=_stats(), order_events=[
+                                  _fill(1, FeeSource.VENUE, 0.30),
+                                  _fill(2, FeeSource.ESTIMATE, 0.05)])),
+            ProcessResult(success=True, scenario_name='s2', scenario_index=1,
+                          tick_loop_results=ProcessTickLoopResult(
+                              portfolio_stats=_stats(), order_events=[
+                                  _fill(1, FeeSource.VENUE, 0.20)])),
+        ]
+        batch = BatchExecutionSummary(
+            batch_execution_time=0.0, batch_warmup_time=0.0, batch_tickrun_time=0.0,
+            process_result_list=results,
+            single_scenario_list=[_scenario('s1', 0, 'BTCUSD'), _scenario('s2', 1, 'BTCUSD')])
+
+        summed = build_portfolio_report(
+            _RUN_ID, run_units_from_batch(batch)).aggregates[0].fee_source_totals
+
+        assert list(summed) == [FeeSource.VENUE, FeeSource.ESTIMATE]
+        assert summed[FeeSource.VENUE].fill_count == 2
+        assert summed[FeeSource.VENUE].fill_fees == pytest.approx(0.50)
+        assert summed[FeeSource.ESTIMATE].fill_count == 1
+        assert summed[FeeSource.ESTIMATE].fill_fees == pytest.approx(0.05)
+
+    def test_the_json_keys_are_the_source_names_and_read_back(self):
+        report = build_portfolio_report(_RUN_ID, run_units_from_session(
+            AutoTraderResult(portfolio_stats=_stats(),
+                             order_events=[_fill(1, FeeSource.VENUE, 0.05)]),
+            'my_profile', 'BTCUSD'))
+
+        served = report.model_dump(mode='json')
+        assert served['units'][0]['fee_source_totals'] == {
+            'venue': {'fill_count': 1, 'fill_fees': 0.05}}
+        assert served['aggregates'][0]['fee_source_totals'] == {
+            'venue': {'fill_count': 1, 'fill_fees': 0.05}}
+        read_back = PortfolioReport.model_validate_json(report.model_dump_json())
+        assert read_back.units[0].fee_source_totals == report.units[0].fee_source_totals
+
+    def test_a_report_written_before_the_split_reads_as_none_recorded(self):
+        """An artifact older than the field has no key: read back as an empty map, not a failure."""
+        served = build_portfolio_report(_RUN_ID, run_units_from_session(
+            AutoTraderResult(portfolio_stats=_stats()), 'my_profile', 'BTCUSD'),
+        ).model_dump(mode='json')
+        for row in served['units'] + served['aggregates']:
+            del row['fee_source_totals']
+
+        older = PortfolioReport.model_validate(served)
+
+        assert older.units[0].fee_source_totals == {}
+        assert older.aggregates[0].fee_source_totals == {}

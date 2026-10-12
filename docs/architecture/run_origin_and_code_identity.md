@@ -268,7 +268,8 @@ ledger's `git_dirty` on `GET /api/v1/sweeps/{sweep_id}`, which kept its shape an
 meaning as described above — it covers every repository a component of the run came from, and
 reads true where the code state could not be determined. A consumer that read it as "this
 repository had uncommitted changes" now sees true for more runs, correctly. Details in the
-[API Contract Log](../consumer/contract-log.md#versions-17-and-earlier).
+[API Contract Log](../consumer/contract-log.md), version 17 — linked without an anchor, because
+the heading that holds the older versions is renamed whenever the log is compressed.
 
 ## What it costs
 

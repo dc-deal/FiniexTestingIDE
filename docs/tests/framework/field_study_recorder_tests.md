@@ -21,10 +21,12 @@ real money, which is the [Field Study Guide](../live_field_study/field_study_gui
 ### `test_recorder_format.py`
 
 The capture's own format: a header first, the stable core keys on every line, a rising `seq`, both
-planes, `None` left out, and the session-end marker last. The phase in progress is what a submission
-is filed under; the reconciliation totals are filed at the session's end. A write that fails — a
-full disk — is reported once on the session channel and never raised, because the recorder writes
-from inside the executor's order path.
+planes, `None` left out, and the session-end marker last. The header records where the venue reports
+a fill's fee (`fee_report`) as its value, for every declaration there is, and leaves the key out
+where the capture was opened without it. The phase in progress is what a submission is filed under;
+the reconciliation totals are filed at the session's end. A write that fails — a full disk — is
+reported once on the session channel and never raised, because the recorder writes from inside the
+executor's order path.
 
 ### `test_stream_projection.py`
 
@@ -37,7 +39,8 @@ The projection from the order-event stream into the capture:
 | `TestTheLineNamesThePhaseThatSubmitted` | A fill that arrives after its phase ended keeps that phase; a refusal before sending takes the phase in progress |
 | `TestAnEndingWithoutADirection` | A close whose position is gone writes a line without a side, never a crash |
 | `TestAnEndingCarriesItsOwnStatus` | A venue expiry is a cancel line with status `expired` |
-| `TestOpenPartialAndFullClose` | Open, partial close and full close of one position through a real executor, in both account models |
+| `TestOpenPartialAndFullClose` | Open, partial close and full close of one position through a real executor, in both account models — each fill with its fee, and the mock venue's own (`fee_source: venue`) |
+| `TestTheFeeSource` | A fill line carries the `fee_source` of the event its fee comes from, for every source there is, a partial close included; an event that names none leaves the key out |
 | `TestAnOrderThatEndsAfterPartOfItExecuted` | The executed part is a fill line; the ending says who ended the rest and why |
 | `TestTheVenueClosesInTwoSteps` | A protective stop executed in two parts: a partial close, then the full one |
 | `TestTheUnaccountedEnding` | An unaccounted order names why it ended |
@@ -52,6 +55,14 @@ and the end gate passes only on a counted, empty order book. Beside the verdict,
 where it came from or that it is missing — the fees from the run's own report (or the capture's
 fills where the report is gone or no longer reads), the account's movement, the slippage per order
 type, the REST calls, and whether the session reconciled at all.
+
+`TestTheFeeSource` holds whose figure the fills' fees are (#508): counted per source, with what the
+header declares; a fill booked from the estimate on a venue that reports its fee in the answer that
+reports the fill is a printed warning and the certificate still passes; the same estimate on a venue
+that reports none there, or under a header that records no declaration, draws nothing. A capture
+written before the source was recorded still certifies, as `not_recorded` and printed as
+`source not recorded`. A declared release from the wrong tree fails the certificate, and its warning
+stands before the fee warning.
 
 ## Running
 

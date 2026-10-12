@@ -76,6 +76,7 @@ matching their contents.
 | `order_type` | the type the order was asked as — on every row, a refusal included |
 | `close_type` | on a close row: whether it closed all of the position or part of it |
 | `commission` | the fee this event cost |
+| `fee_source` | where `commission` came from: `venue` — the figure the venue reported for the fill, what the account was charged; `estimate` — our fee model's, the declared rate times the order's value. A backtest's is always `estimate` |
 | `rejection_reason` · `rejection_message` | why it was refused, as a code and as a sentence |
 | `initiator` · `end_reason` | who ended the order, and why — on a cancelled, expired or unaccounted row |
 
@@ -87,8 +88,8 @@ submission on a `pending` row, else the fill, the refusal, the cancel, the expir
 triggered, a close is `market`, and an exit through a protective order the venue held carries that
 order's type.
 
-`direction`, `action`, `status`, `order_type`, `close_type`, `rejection_reason`, `initiator` and
-`end_reason` are closed vocabularies and appear in the schema with their values.
+`direction`, `action`, `status`, `fee_source`, `order_type`, `close_type`, `rejection_reason`,
+`initiator` and `end_reason` are closed vocabularies and appear in the schema with their values.
 
 ## What is null, and the one field that never is
 
@@ -100,6 +101,7 @@ read as a price is a mistake that cannot be undone further down.
 | `position_id` | no position exists yet |
 | `requested_lots` | the order did not know the size |
 | `executed_lots` · `executed_price` | nothing executed |
+| `fee_source` | nothing executed, or the row was recorded before the field existed |
 | `close_type` | the row is not a close, or the close did not execute |
 | `rejection_reason` · `rejection_message` | the order was neither denied nor rejected |
 | `initiator` · `end_reason` | the row is not a cancel, an expiry or an order unaccounted for |

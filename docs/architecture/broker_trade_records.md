@@ -31,7 +31,7 @@ cumulative_fee         = 0.0026
 
 | Field | Meaning |
 |---|---|
-| `trade_id` | Broker's execution ID (Kraken tradeid, MT5 deal ticket) |
+| `trade_id` | The venue's execution ID on an execution the venue reports (Kraken tradeid, MT5 deal ticket); ours, `SYNTH-<order_id>-<n>`, on the execution recorded on an order when its fill is booked |
 | `parent_broker_ref` | Parent order's broker_ref (Kraken txid, MT5 order ticket) |
 | `order_id` | OUR internal order_id — primary routing key |
 | `volume` | Lots filled in this execution |
@@ -175,6 +175,12 @@ grew by since the last one: its own volume, at its own price, with the fee the t
 counters (`venue_close_applied_lots`, `_fee`, `_value`) follow the booking, a step booked from
 the estimate included, so the venue's next total settles it rather than paying it twice. The
 position carries a copy into the cold-start carry-over, so a restart books only what is new.
+Where an estimate exceeded the venue's later total, that step books no fee and reverses nothing:
+the excess stays booked, a later total above the books absorbs it, and only an order whose last
+total stays below them ends above the venue's figure. The session log warns, and the step's event says so in its `message` — as does the
+event of a step that settles an estimate. The part booked from the estimate is counted in-session
+only (`venue_close_estimated_fee`), so after a restart a settling step books the same figure
+without its sentence.
 
 **The drift auditor checks both legs.** After every fill — an entry, and since #508 a close as
 well — it asks for the order's executions and compares them with what was booked. With the fee

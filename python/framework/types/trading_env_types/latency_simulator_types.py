@@ -173,6 +173,14 @@ class PendingOrderExecutionState:
     # The fee booked for that volume, in the symbol's quote currency: the venue's figure, or
     # the estimate where its answer carried none (#508)
     venue_close_applied_fee: float = 0.0
+    # The part of it booked from the estimate that no total of the venue's has covered yet. The
+    # next total settles it — or finds it exceeded, the excess then staying booked until a later
+    # total above the books absorbs it — and that step's
+    # event says so: its fee is not what the total grew by (#508). In-session only, unlike the
+    # other three: a restart between an estimated step and the next total is rare, and the
+    # booking does not depend on this — the next total still books what it exceeds the books
+    # by. Only the sentence on that step's event is lost.
+    venue_close_estimated_fee: float = 0.0
     # Lots times price booked for that volume. The venue reports one average price over all
     # the order executed, and the next step's own price follows from it and this (#508).
     venue_close_applied_value: float = 0.0

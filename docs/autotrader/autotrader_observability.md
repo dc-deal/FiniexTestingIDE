@@ -52,7 +52,7 @@ Both are polled directly from `AbstractTickSource` (GIL-safe primitive reads) �
 
 ### Display Stats Transport
 
-After each tick, `autotrader_tick_loop._build_display_stats()` builds an `AutoTraderDisplayStats`
+After each tick, `AutotraderDisplayExporter.build()` builds an `AutoTraderDisplayStats`
 snapshot and pushes it to the display queue (`put_nowait` — dropped if full, display uses last known
 state). The snapshot contains only primitives, lists, and dataclasses — safe for queue transport and
 future JSON serialization.
@@ -72,7 +72,7 @@ render a dual-balance layout (spot) or the standard balance view (margin).
 ```
 Tick Loop (Thread 2)                Display Thread (Thread 3)
 ────────────────────                ──────────────────────────
-_build_display_stats()              while running:
+AutotraderDisplayExporter.build()   while running:
   → AutoTraderDisplayStats            drain queue (up to 100)
   → display_q.put_nowait() ──────→    render(latest_stats)
                                       live.update(panel)

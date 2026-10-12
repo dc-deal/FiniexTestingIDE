@@ -85,7 +85,7 @@ the routing key, and the broker's `broker_ref` (txid) used for the API call. A t
 |---|---|---|---|
 | `PendingOrder.pending_order_id` | **Us** — assigned at submission, e.g. `pos_ethusd_3` | Order lifetime | Primary routing key. Listener correlation. Log identifier. NOT unique across a position's entry and its closes, which share it |
 | `PendingOrder.broker_ref` | **Broker** — Kraken txid (e.g. `OPRSKJ-IAYTG-T5VB2M`), MT5 ticket | Order lifetime, **stable across modify** (Kraken `AmendOrder` is in-place; #320 stale-ref guard now defensive) | The handle the API call needs (`POST /0/private/QueryOrders` with `txid=<broker_ref>`). DriftAuditor's `_pending_audits` dict key: unique per venue order, so an entry's audit and its position's close's cannot collide (#508). |
-| `BrokerTrade.trade_id` | **Broker** — Kraken tradeid (e.g. `TKH2SE-M7IF5-CFI7LT`), MT5 deal ticket | Permanent | Per-execution receipt. Persists in trade history, never reused. |
+| `BrokerTrade.trade_id` | **Broker** on an execution the venue reports — Kraken tradeid (e.g. `TKH2SE-M7IF5-CFI7LT`), MT5 deal ticket; **Us** (`SYNTH-<order_id>-<n>`) on the one recorded on an order when its fill is booked | Permanent | Per-execution receipt, never reused. The trade history carries the recorded execution, so its ids are ours (#508). |
 | `BrokerTrade.parent_broker_ref` | **Broker** — copy of the parent order's `broker_ref` | Permanent | Trade → parent order link on the broker side. |
 | `BrokerTrade.order_id` | **Us** — written by the adapter's `parse_trades_query_response` | Permanent | Trade → internal order link. The bridge that makes drain-side routing possible without re-lookups. |
 
@@ -305,7 +305,7 @@ path that has no submission snapshot.
 
 ## Live Display Footer
 
-`AutoTraderDisplayStats` carries the audit counter fields (populated from `DriftAuditor.get_display_counters()` in `_build_display_stats`):
+`AutoTraderDisplayStats` carries the audit counter fields (populated from `DriftAuditor.get_display_counters()` by `AutotraderDisplayExporter`):
 
 ```python
 drift_enabled: bool = False
@@ -321,8 +321,8 @@ drift_max_slippage_pct: float = 0.0
 Renderer adds a conditional line to the SESSION panel, width-aware:
 
 ```
-Audit:   ✓47 │ ⚠3 fee (max 4.8%) │ ⚠0 vol │ 47 price │ ◇47 slip (max 0.05%)   (wide, ≥120 cols)
-Audit:   ✓47 │ ⚠3F │ ⚠0V │ 47P │ ◇47S                                          (compact, <120 cols)
+Audit:   ✓47 │ ⚠0 fee │ ⚠0 vol │ 0 price │ ◇0 slip (max 0.01%)   (wide, ≥120 cols)
+Audit:   ✓47 │ ⚠0F │ ⚠0V │ 0P │ ◇0S                              (compact, <120 cols)
 ```
 
 Styling:
@@ -362,7 +362,7 @@ production trading frequencies make cheap. A very-high-frequency strategy would 
 - `python/framework/trading_env/live/live_request_processor.py` — `register_pending_open` / `register_pending_close` accept a `submission: SubmissionMetadata` parameter
 - `python/framework/trading_env/simulation/order_latency_simulator.py` — submission-tick capture at sim open/close submission
 - `python/framework/autotrader/autotrader_main.py` — DriftAuditor instantiation gated by config + isinstance(LiveTradeExecutor) + shutdown hook
-- `python/framework/autotrader/autotrader_tick_loop.py` — display-stats population via `_drift_display_counters()`
+- `python/framework/autotrader/autotrader_display_exporter.py` — display-stats population via `_drift_display_counters()`
 - `python/system/ui/autotrader_live_display.py` — Audit footer in SESSION panel (4 counters incl. SLIPPAGE)
 - `python/framework/reporting/event_stream_csv_writer.py` — `EVENT_FIELDS` extended with `submission_tick_mid_price` / `submission_tick_time_msc` columns on `ORDER_SUBMIT` / `CLOSE_SUBMIT` / `POSITION_OPEN` rows (CSV column names unchanged by #345)
 
@@ -378,9 +378,11 @@ production trading frequencies make cheap. A very-high-frequency strategy would 
   `Position`/`TradeRecord` propagation path established for `entry_trades`/`exit_trades`. The
   event-stream CSV (`events.csv`) carries the `submission_tick_mid_price` /
   `submission_tick_time_msc` columns on `ORDER_SUBMIT` / `CLOSE_SUBMIT` / `POSITION_OPEN` rows.
-- **#332 Live Field Study** — runs the full DriftAuditor pipeline end-to-end against a real broker,
-  captures all four drift types (FEE / VOLUME / PRICE / SLIPPAGE) in the JSONL artifact. The
-  `slippage` block is the first concrete production data for #244 calibration.
+- **#332 Live Field Study** — a real-broker session, so the auditor runs in it as in any live
+  session; its figures reach only the Audit footer and the session log. The study's JSONL artifact
+  carries none of the four drift types: each fill line carries what its slippage is measured
+  against, and the certificate computes its own `slippage` block from those lines. That block is
+  the first concrete production data for #244 calibration.
 - **#337 Kraken Fee Tier Auto-Detection** — the detector of a tier mismatch on Kraken, at session start. Since #508 the FEE channel compares the venue's figures with each other there, so it no longer sees one.
 - **#151 Reconciliation Layer (V1.4)** — drift audit is observability; reconciliation is correction. Audit feeds #151's design.
 

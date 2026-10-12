@@ -15,7 +15,7 @@ and spread into every certificate body.
 |---|---|---|---|
 | **Benchmark** | Throughput has not regressed on registered hardware | nothing | `tests/simulation/benchmark/conftest.py` |
 | **Live Adapter** | The broker adapter really places, modifies, cancels and fills orders | ~$0.01 in fees | `tests/live_adapters/conftest.py` |
-| **Field Study** | The full live execution stack works on a funded account | ~$0.08–0.20 | `certificates/field_study_certificate.py` |
+| **Field Study** | The full live execution stack works on a funded account | ~$0.50 | `certificates/field_study_certificate.py` |
 | **Signal Feed** | The producer contract holds against the running production journal | nothing (3 free GETs) | `certificates/signal_feed_certificate.py` |
 
 Each has a validation test that reads the committed artifact without re-running anything:

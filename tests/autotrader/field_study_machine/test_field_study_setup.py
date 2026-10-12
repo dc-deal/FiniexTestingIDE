@@ -1,10 +1,11 @@
 """
 Field Study — the session wiring and its preflight (#332, #566).
 
-`open_field_study` opens the capture, hangs the projection on the executor's record and refuses
-to trade beside a resting order; `close_field_study` writes what reconciliation did and the REST
-telemetry before the end marker. Every refusal and every end leaves a terminated capture behind —
-a header with no end is a run that cannot be told from one still going.
+`open_field_study` opens the capture with the venue's declared fee reporting in its header, hangs
+the projection on the executor's record and refuses to trade beside a resting order;
+`close_field_study` writes what reconciliation did and the REST telemetry before the end marker.
+Every refusal and every end leaves a terminated capture behind — a header with no end is a run
+that cannot be told from one still going.
 """
 
 import json
@@ -20,16 +21,30 @@ from python.framework.types.config_types.market_config_types import TradingModel
 from python.framework.types.live_types.api_perf_types import ApiEndpointStats, ApiPerfSnapshot
 from python.framework.types.live_types.live_execution_types import BrokerOrderStatus
 from python.framework.types.live_types.reconciliation_types import BrokerOrder, FlatCheckResult
-from python.framework.types.trading_env_types.order_types import OrderDirection, OrderType
+from python.framework.types.trading_env_types.order_types import (
+    FeeReport,
+    OrderCapabilities,
+    OrderDirection,
+    OrderType,
+)
 from tests.autotrader.cold_start.conftest import RecordingLogger
 
 
 class _Executor:
-    """The two listener registrations the setup makes, kept for inspection."""
+    """
+    The two listener registrations the setup makes, kept for inspection, and the venue's
+    declared capabilities it reads.
 
-    def __init__(self):
+    Args:
+        fee_report: Where the venue declares it reports a fill's fee
+    """
+
+    def __init__(self, fee_report: FeeReport = FeeReport.STATUS_ANSWER):
         self.order_listeners: List[Any] = []
         self.truth_listeners: List[Any] = []
+        capabilities = OrderCapabilities(fee_report=fee_report)
+        self.broker = SimpleNamespace(
+            adapter=SimpleNamespace(get_order_capabilities=lambda: capabilities))
 
     def add_order_event_listener(self, listener) -> None:
         self.order_listeners.append(listener)
@@ -53,8 +68,9 @@ def _reconciler(open_orders=(), raises=None, counters: Dict[str, int] = None) ->
                                                   'reconcile_total_divergences': 2})
 
 
-def _open(tmp_path: Path, reconciler, trading_model=TradingModel.SPOT):
-    executor = _Executor()
+def _open(tmp_path: Path, reconciler, trading_model=TradingModel.SPOT,
+          fee_report: FeeReport = FeeReport.STATUS_ANSWER):
+    executor = _Executor(fee_report)
     setup = open_field_study(
         decision_logic=_study(), executor=executor, reconciler=reconciler,
         trading_model=trading_model, run_dir=tmp_path, unit_name='fs', symbol='ETHUSD',
@@ -98,6 +114,18 @@ class TestTheRefusals:
             _open(tmp_path, _reconciler(raises=ConnectionError('venue unreachable')))
 
         assert _lines(tmp_path)[-1]['event_type'] == 'session_end'
+
+
+class TestTheHeader:
+
+    @pytest.mark.parametrize('fee_report', list(FeeReport), ids=lambda report: report.value)
+    def test_it_records_where_the_venue_reports_a_fill_s_fee(self, tmp_path, fee_report):
+        """What the session's adapter declares — what the certificate judges an estimate by."""
+        _open(tmp_path, None, fee_report=fee_report)
+
+        header = json.loads(
+            (tmp_path / 'field_study.jsonl').read_text(encoding='utf-8').splitlines()[0])
+        assert header['fee_report'] == fee_report.value
 
 
 class TestTheEnd:

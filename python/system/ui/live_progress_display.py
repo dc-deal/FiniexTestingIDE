@@ -42,7 +42,10 @@ from python.framework.types.live_types.live_scenario_stats_types import (
     ScenarioStatus,
 )
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
-from python.framework.types.trading_env_types.currency_codes import format_currency_simple
+from python.framework.types.trading_env_types.currency_codes import (
+    format_currency_signed,
+    format_currency_simple,
+)
 
 vLog = get_global_logger()
 
@@ -444,7 +447,7 @@ class LiveProgressDisplay:
                 awareness_suffix = f' [{a_suffix_color}]· {a_icon} {a_msg}[/{a_suffix_color}]'
 
             stats_text = (
-                f'[{pnl_color}]{format_currency_simple(portfolio_value, account_currency)}{dirty_flag}[/{pnl_color}] '
+                f'[{pnl_color}]{format_currency_signed(portfolio_value, account_currency)}{dirty_flag}[/{pnl_color}] '
                 f'[dim]({pnl_sign}{format_currency_simple(pnl, account_currency)})[/dim] \n'
                 f'[blue]{trades}[/blue]{awareness_suffix}'
             )

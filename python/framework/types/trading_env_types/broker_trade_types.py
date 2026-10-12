@@ -24,12 +24,16 @@ class BrokerTrade:
     routing uses order_id (set at submit time) as primary routing key.
 
     Args:
-        trade_id: Broker's execution ID (Kraken tradeid, MT5 deal ticket)
+        trade_id: Execution ID — the venue's (Kraken tradeid, MT5 deal ticket) on an
+            execution the venue reports; ours ('SYNTH-<order_id>-<6 digits>') on an
+            execution recorded on an order when its fill is booked
         parent_broker_ref: Parent order's broker_ref (Kraken txid, MT5 order ticket)
         order_id: OUR internal order_id — primary routing key in drain handlers
         volume: Lots filled in THIS execution
         price: Price of THIS execution
-        fee: Broker-reported fee for THIS execution
+        fee: Fee for THIS execution — the venue's own on an execution the venue reports;
+            on one recorded on an order, the fee its fill was BOOKED with (the venue's
+            where its answer reported one, the fee model's estimate otherwise)
         fee_currency: Fee currency (e.g. 'USD', 'EUR')
         timestamp: UTC timezone-aware execution time
         side: BUY / SELL — the execution operation (what this trade did).
@@ -37,7 +41,9 @@ class BrokerTrade:
             design — every institutional broker shows BUY/SELL per fill.
             Open LONG → BUY, close LONG → SELL, open SHORT → SELL, close SHORT → BUY.
             Use `direction_to_side(direction, action)` helper at construction.
-        is_maker: True for LIMIT/maker fills, False for taker (market)
+        is_maker: True for LIMIT/maker fills, False for taker (market). The venue's own flag
+            on an execution it reports; on one recorded on an order, OUR classification
+            from how the order filled (a resting limit is a maker)
     """
     trade_id: str
     parent_broker_ref: str

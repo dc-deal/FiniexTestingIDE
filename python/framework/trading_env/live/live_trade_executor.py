@@ -77,6 +77,7 @@ from python.framework.types.trading_env_types.active_orders_snapshot_types impor
     ActiveOrdersSnapshot,
 )
 from python.framework.types.trading_env_types.broker_trade_types import BrokerTrade
+from python.framework.types.trading_env_types.broker_types import FeeSource
 from python.framework.types.trading_env_types.executor_mode_types import ExecutorMode
 from python.framework.types.trading_env_types.latency_simulator_types import (
     ModificationRequest,
@@ -116,6 +117,11 @@ from python.framework.utils.run_id_utils import build_client_order_id
 # Below every venue's minimum increment by orders of magnitude, so it can only ever
 # absorb float noise, never a real fill.
 _VENUE_CLOSE_LOT_EPSILON = 1e-9
+
+# Fee tolerance for the same resolver (#508). The venue's fee total is compared with a sum of
+# the fees booked step by step, and float arithmetic leaves the two apart by noise where they
+# are equal. Far below any venue's smallest fee increment, so it never hides a real difference.
+_VENUE_CLOSE_FEE_EPSILON = 1e-9
 
 # How far either side of our own write the resolution reads the venue's closed orders
 # (#487). Generous on purpose: the range is evaluated against the VENUE's clock, not ours,
@@ -295,6 +301,10 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         # #508 — told of every booked CLOSE, which the order-outcome listeners deliberately
         # are not: the drift auditor checks an exit leg's fee the way it checks an entry's.
         self._close_fill_listeners: List[Callable[[PendingOrder, OrderResult], None]] = []
+        # #508 — the sentence a close's fill carries on its order event, with the order it is
+        # for. Set by `_fill_close_order` around one booking and taken by `_book_order_result`,
+        # which books the row inside the shared close path, a level below the caller that knows it
+        self._fill_message: Optional[Tuple[PendingOrder, str]] = None
 
         self.logger.info(
             f'LiveTradeExecutor initialized with broker: '
@@ -2071,7 +2081,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             f"⚠️ Order {pending_order.pending_order_id} (broker_ref={pending_order.broker_ref}) "
             f"was booked from the fee model's estimate ({estimate}): the answer that reported "
             f"its fill carried no fee, although this venue reports it there. The venue's own "
-            f"figure is in the order's executions.")
+            f"figure is in its execution records at the venue.")
 
     def _fill_open_from_submit_answer(
         self,
@@ -3072,6 +3082,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         exit_trades: Optional[List[BrokerTrade]] = None,
         fill_event: OrderEventType = OrderEventType.FILLED,
         reported_fee: Optional[float] = None,
+        fill_message: Optional[str] = None,
     ) -> Optional[OrderResult]:
         """
         Book the close, then re-protect whatever the position has left (#503).
@@ -3091,10 +3102,15 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             exit_trades: The executions to record — see the base method
             fill_event: How the stream records it — see the base method
             reported_fee: The venue's fee for the volume booked — see the base method
+            fill_message: A sentence for the fill's order event where its booking needs one —
+                why a protective order's step was booked with the fee it was (#508)
 
         Returns:
             The booked result — see the base method
         """
+        # Taken by `_book_order_result` as the fill's row is booked; cleared after the call,
+        # where nothing was booked to take it
+        self._fill_message = (pending_order, fill_message) if fill_message else None
         booking = super()._fill_close_order(
             pending_order,
             fill_price=fill_price,
@@ -3103,6 +3119,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             fill_event=fill_event,
             reported_fee=reported_fee,
         )
+        self._fill_message = None
         position_id = pending_order.closes_position_id or pending_order.pending_order_id
         if position_id not in self._reinstate_after_close:
             return booking
@@ -3117,6 +3134,38 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             f'fresh protective order at its remaining size')
         self._place_protective_order(position)
         return booking
+
+    def _book_order_result(
+        self,
+        result: OrderResult,
+        pending: Optional[PendingOrder] = None,
+        event_type: Optional[OrderEventType] = None,
+        **event_fields: Any,
+    ) -> OrderResult:
+        """
+        Book a row as the base does, and give a close's fill the sentence its booking needs (#508).
+
+        The venue-close resolver knows why a step was booked with the fee it was, and the row is
+        booked a level below it, inside the close path both pipelines share. A fill's row has no
+        field for a sentence — `rejection_message` is a refusal's — so the sentence travels beside
+        the call (see `_fill_close_order`) and joins the event here, as one of the further event
+        fields this method takes — on the executed row of the order it was set for, and on no
+        other row.
+
+        Args:
+            result: The row to book
+            pending: The order it ends, where one exists
+            event_type: Overrides the event the status maps to — see the base method
+            **event_fields: Further OrderEvent fields the row cannot carry
+
+        Returns:
+            The same row
+        """
+        if (self._fill_message is not None and pending is self._fill_message[0]
+                and result.status is OrderStatus.EXECUTED):
+            event_fields.setdefault('message', self._fill_message[1])
+            self._fill_message = None
+        return super()._book_order_result(result, pending, event_type, **event_fields)
 
     def on_tick(self, tick: TickData) -> None:
         """
@@ -3484,6 +3533,11 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         reference, which is the only handle left for a manual check (§35). So does an
         excess beyond what the position still holds.
 
+        A step whose fee is not what the venue's total grew by says why on its event: it
+        settles an earlier step booked from the estimate, or it finds an estimate above the
+        venue's total: that step reverses nothing, the excess stays booked until a later total
+        above the books absorbs it, and it is warned about as well (#508).
+
         Args:
             protective: The protective order, naming its position in closes_position_id
             filled_lots: Total volume the venue reports filled on it so far
@@ -3537,6 +3591,13 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         # An excess the position cannot hold is not booked, and neither is its share of the fee
         booked_fee = (fee_delta * bookable / delta
                       if fee_delta is not None and bookable < delta else fee_delta)
+        # A total below what is already booked: an estimate booked for an earlier step exceeded
+        # the venue's figure. Nothing is taken back, and that is never silent (#508).
+        overshoot = (reported_fee is not None
+                     and reported_fee < state.venue_close_applied_fee - _VENUE_CLOSE_FEE_EPSILON)
+        fee_message = self._venue_close_fee_message(protective, reported_fee, overshoot)
+        if overshoot:
+            self.logger.warning(f'⚠️ Protective order {protective.broker_ref}: {fee_message}')
         # Record what was BOOKED, never what was requested. Since #507 the two are the same
         # number — `_fill_close_order` no longer converts a partial into a full close when
         # the remainder falls under volume_min, because that judgement moved to submission.
@@ -3550,6 +3611,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             exit_trades=exit_trades,
             fill_event=fill_event,
             reported_fee=booked_fee,
+            fill_message=fee_message,
         )
         if booking is None:
             return
@@ -3560,6 +3622,12 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         state.venue_close_applied_lots = consumed + booking.executed_lots
         state.venue_close_applied_fee += booking.commission
         state.venue_close_applied_value += booking.executed_lots * booking.executed_price
+        if booking.fee_source is FeeSource.ESTIMATE:
+            state.venue_close_estimated_fee += booking.commission
+        elif not overshoot:
+            # The venue's total reached what was booked, so none of the books is an estimate
+            # any more — the next step books what the total grew by, and says nothing
+            state.venue_close_estimated_fee = 0.0
         self._mirror_venue_close_progress(protective)
 
     def _venue_close_step_price(
@@ -3598,6 +3666,46 @@ class LiveTradeExecutor(AbstractTradeExecutor):
                 f'{delta:.8f} lots executed since the last step — booked at the average.')
             return avg_price
         return step_value / delta
+
+    @staticmethod
+    def _venue_close_fee_message(
+        protective: PendingOrder,
+        reported_fee: Optional[float],
+        overshoot: bool,
+    ) -> Optional[str]:
+        """
+        Why a step's fee is not what the venue's fee total grew by, where it is not (#508).
+
+        Two cases. A step booked earlier from the estimate is SETTLED by the venue's next
+        total: the step books that total less what is already booked. And where an estimate
+        exceeded the venue's later total, the step books no fee and reverses nothing: the excess
+        stays booked, a later total above the books absorbs it, and only an order whose last
+        total stays below them ends above the venue's figure.
+
+        Args:
+            protective: The protective order a step is about to be booked for
+            reported_fee: The venue's fee total for everything the order executed, or None
+            overshoot: Whether that total stands below what is already booked
+
+        Returns:
+            The sentence for the step's order event, or None where the step books what the
+            total grew by
+        """
+        if reported_fee is None:
+            return None
+        state = protective.execution_state
+        has_estimate = state.venue_close_estimated_fee > _VENUE_CLOSE_FEE_EPSILON
+        if not overshoot and not has_estimate:
+            # What the total grew by — nothing to explain
+            return None
+        booked = state.venue_close_applied_fee
+        of_it = (f', {state.venue_close_estimated_fee:.8f} of it from the estimate'
+                 if has_estimate else '')
+        if overshoot:
+            return (f"the venue's total {reported_fee:.8f} is below the {booked:.8f} already "
+                    f'booked{of_it} — the excess {booked - reported_fee:.8f} stays booked until a '
+                    f'later total above the books absorbs it')
+        return f"the venue's total {reported_fee:.8f} less {booked:.8f} already booked{of_it}"
 
     def _mirror_venue_close_progress(self, protective: PendingOrder) -> None:
         """

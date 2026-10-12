@@ -9,6 +9,7 @@ contracts — no simulation or live run required.
 
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Dict
 from unittest.mock import patch
 
 import pytest
@@ -55,6 +56,7 @@ from python.framework.types.api.report_types import (
     FeedStabilityEpisodeRow,
     FeedStabilityReport,
     FeedStabilitySourceRow,
+    FeeSourceTotals,
     OrderHistoryReport,
     OrderHistoryRow,
     OrdersTo,
@@ -94,6 +96,7 @@ from python.framework.types.live_types.broker_truth_types import (
 )
 from python.framework.types.live_types.reconciliation_types import ReconcileState
 from python.framework.types.log_layout_types import RUN_TYPE_AUTOTRADER, RUN_TYPE_SIMULATION
+from python.framework.types.trading_env_types.broker_types import FeeSource
 from python.framework.types.trading_env_types.order_event_types import (
     OrderEvent,
     OrderEventType,
@@ -146,7 +149,7 @@ def _order_report() -> OrderHistoryReport:
             order_id='o1', position_id='p1', symbol='EURUSD', direction='long',
             action='open', status='executed', requested_lots=0.1, executed_lots=0.1,
             executed_price=1.10, event_time='2025-10-13T08:00:00+00:00',
-            commission=0.2),
+            commission=0.2, fee_source='venue'),
         OrderHistoryRow(
             order_id='o2', symbol='GBPUSD', direction='short',
             action='open', status='rejected', requested_lots=0.5,
@@ -157,15 +160,28 @@ def _order_report() -> OrderHistoryReport:
     return OrderHistoryReport(run_id=_RUN_ID, orders=rows, count=2, symbols=['EURUSD', 'GBPUSD'])
 
 
+def _fee_split() -> Dict[FeeSource, FeeSourceTotals]:
+    """
+    Twelve fills at the venue's figure, one at our estimate (#508).
+
+    Returns:
+        The split, keyed by fee source
+    """
+    return {FeeSource.VENUE: FeeSourceTotals(fill_count=12, fill_fees=0.4532),
+            FeeSource.ESTIMATE: FeeSourceTotals(fill_count=1, fill_fees=0.0412)}
+
+
 def _portfolio_report() -> PortfolioReport:
     unit = PortfolioUnitRow(
         name='s1', symbol='EURUSD', currency='USD', total_trades=10, winning_trades=6,
         losing_trades=4, win_rate=0.6, profit_factor=2.5, total_profit=100.0,
-        total_loss=40.0, net_profit=60.0, account_max_drawdown=12.0, total_fees=5.0)
+        total_loss=40.0, net_profit=60.0, account_max_drawdown=12.0, total_fees=5.0,
+        fee_source_totals=_fee_split())
     agg = PortfolioAggregateRow(
         currency='USD', unit_count=1, total_trades=10, winning_trades=6, losing_trades=4,
         win_rate=0.6, profit_factor=2.5, total_profit=100.0, total_loss=40.0,
-        net_profit=60.0, account_max_drawdown=12.0, total_fees=5.0)
+        net_profit=60.0, account_max_drawdown=12.0, total_fees=5.0,
+        fee_source_totals=_fee_split())
     return PortfolioReport(run_id=_RUN_ID, units=[unit], aggregates=[agg])
 
 
@@ -271,7 +287,8 @@ def _aggregated_portfolio_report() -> AggregatedPortfolioReport:
     headline = PortfolioAggregateRow(
         currency='USD', unit_count=1, total_trades=10, winning_trades=6, losing_trades=4,
         win_rate=0.6, profit_factor=2.5, total_profit=100.0, total_loss=40.0, net_profit=60.0,
-        account_max_drawdown=12.0, total_fees=5.0)
+        account_max_drawdown=12.0, total_fees=5.0,
+        fee_source_totals={FeeSource.ESTIMATE: FeeSourceTotals(fill_count=20, fill_fees=5.0)})
     return AggregatedPortfolioReport(run_id=_RUN_ID, currencies=[AggregatedPortfolioCurrency(
         currency='USD', scenario_count=1, scenario_names=['s1'],
         combined=AggregatedPortfolioRow(headline=headline, initial_balance=1000.0))])
@@ -424,6 +441,12 @@ def test_order_history_filter_by_status(client):
     assert response.json()['orders'][0]['order_id'] == 'o2'
 
 
+def test_order_history_serves_where_each_commission_came_from(client):
+    orders = client.get(_ORDER_URL).json()['orders']
+    assert orders[0]['fee_source'] == 'venue'
+    assert orders[1]['fee_source'] is None      # rejected: nothing executed
+
+
 def test_order_history_run_not_found(client):
     response = client.get('/api/v1/reports/runs/nope/order-history')
     assert response.status_code == 404
@@ -436,6 +459,15 @@ def test_portfolio_returns(client):
     assert len(body['units']) == 1
     assert body['units'][0]['net_profit'] == 60.0
     assert body['aggregates'][0]['currency'] == 'USD'
+
+
+def test_portfolio_serves_the_fills_by_fee_source(client):
+    # Keyed by the source's name, unit and per-currency row alike (#508, contract 28)
+    body = client.get(_PORTFOLIO_URL).json()
+    split = {'venue': {'fill_count': 12, 'fill_fees': 0.4532},
+             'estimate': {'fill_count': 1, 'fill_fees': 0.0412}}
+    assert body['units'][0]['fee_source_totals'] == split
+    assert body['aggregates'][0]['fee_source_totals'] == split
 
 
 def test_portfolio_run_not_found(client):
@@ -581,6 +613,8 @@ def test_aggregated_portfolio_returns(client):
     assert cur['currency'] == 'USD'
     assert cur['combined']['headline']['total_trades'] == 10
     assert cur['combined']['initial_balance'] == 1000.0
+    assert cur['combined']['headline']['fee_source_totals'] == {
+        'estimate': {'fill_count': 20, 'fill_fees': 5.0}}
 
 
 def test_aggregated_portfolio_run_not_found(client):

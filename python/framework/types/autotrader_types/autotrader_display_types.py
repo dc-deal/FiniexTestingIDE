@@ -36,7 +36,7 @@ class PositionSnapshot:
     """
     Lightweight open position state for display queue transport.
 
-    Built from Position objects in _build_display_stats().
+    Built from Position objects in AutotraderDisplayExporter.build().
     Contains only the fields needed for display rendering.
 
     Args:
@@ -268,7 +268,7 @@ class AutoTraderDisplayStats:
     """
     Stats snapshot pushed to display queue after each tick.
 
-    Built by AutotraderTickLoop._build_display_stats().
+    Built by AutotraderDisplayExporter.build().
     Consumed by AutoTraderLiveDisplay for rendering.
 
     All fields are primitives or lists of dataclasses for
@@ -408,7 +408,7 @@ class AutoTraderDisplayStats:
     seconds_since_last_tick: float = 0.0
 
     # #327 — Drift Audit footer counters
-    # Populated from DriftAuditor.get_display_counters() during _build_display_stats.
+    # Populated from DriftAuditor.get_display_counters() by AutotraderDisplayExporter.
     # Renderer conditionally appends an "Audit:" line to the SESSION panel when
     # drift_enabled is True. PRICE counter measures Kraken-intra-reporting
     # consistency (dim). SLIPPAGE counter (#340) measures the real submission-tick

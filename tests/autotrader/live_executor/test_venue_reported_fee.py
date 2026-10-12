@@ -311,8 +311,9 @@ class TestAProtectiveOrderBooksInSteps:
     """
     The venue reports one total for everything a protective order executed — its volume, its
     average price and its fee — and the resolver books it in steps: each step books what a
-    total grew by since the last one. Live only at spot today, where Kraken holds the order;
-    pinned in both account models because the arithmetic is shared.
+    total grew by since the last one, and a step whose fee is not that growth says why on its
+    event. Live only at spot today, where Kraken holds the order; pinned in both account models
+    because the arithmetic is shared.
     """
 
     def _held_long(self, spot_mode: bool = False):
@@ -395,6 +396,107 @@ class TestAProtectiveOrderBooksInSteps:
         assert (first.fee_source, second.fee_source) == (FeeSource.ESTIMATE, FeeSource.VENUE)
         assert first.fee > 0
         assert first.fee + second.fee == pytest.approx(39.18)
+
+    @ACCOUNT_MODELS
+    def test_the_step_that_settles_an_estimate_says_so(self, spot_mode):
+        """
+        The settling step books the venue's total less what is already booked, which is not
+        what the total grew by — its event says why. Once settled, nothing of the books is an
+        estimate any more: the next step books what the total grew by and says nothing.
+        """
+        executor, protective, events = self._held_long(spot_mode)
+
+        executor._apply_venue_close(protective, filled_lots=0.04, avg_price=49000.0)
+        executor._apply_venue_close(protective, filled_lots=0.07, avg_price=48980.0,
+                                    reported_fee=27.43)
+        executor._apply_venue_close(protective, filled_lots=0.10, avg_price=48950.0,
+                                    reported_fee=39.18)
+
+        estimated, settling, last = _fills(events, OrderAction.CLOSE)
+        assert (estimated.fee_source, estimated.message) == (FeeSource.ESTIMATE, None)
+        assert settling.message == (
+            f"the venue's total {27.43:.8f} less {estimated.fee:.8f} already booked, "
+            f'{estimated.fee:.8f} of it from the estimate')
+        assert settling.fee == pytest.approx(27.43 - estimated.fee)
+        assert (last.fee, last.message) == (pytest.approx(39.18 - 27.43), None)
+        assert protective.execution_state.venue_close_estimated_fee == 0.0
+
+    @ACCOUNT_MODELS
+    def test_an_estimate_above_the_venues_later_total_stays_booked_at_that_step(
+            self, spot_mode, monkeypatch):
+        """
+        The first step was booked from the declared rate; the venue's total for the whole order
+        comes in below it — an account on a cheaper tier than declared. The second step books no
+        fee, what the estimate booked beyond the venue's figure stays booked, and the session log
+        warns in the words the step's event carries.
+        """
+        executor, protective, events = self._held_long(spot_mode)
+        warnings = _warnings_of(executor, monkeypatch)
+        venue_total = 3.92
+
+        executor._apply_venue_close(protective, filled_lots=0.04, avg_price=49000.0)
+        estimated = _fills(events, OrderAction.CLOSE)[0].fee
+        executor._apply_venue_close(protective, filled_lots=0.10, avg_price=48950.0,
+                                    reported_fee=venue_total)
+
+        first, second = _fills(events, OrderAction.CLOSE)
+        assert first.fee_source is FeeSource.ESTIMATE
+        assert estimated > venue_total, 'the estimate must exceed the total to test this'
+        assert (second.fee, second.fee_source) == (0.0, FeeSource.VENUE)
+        assert second.message == (
+            f"the venue's total {venue_total:.8f} is below the {estimated:.8f} already booked, "
+            f'{estimated:.8f} of it from the estimate — the excess '
+            f'{estimated - venue_total:.8f} stays booked until a later total above the books '
+            f'absorbs it')
+        assert f'⚠️ Protective order OABCDE-1234-XYZ: {second.message}' in warnings
+        assert protective.execution_state.venue_close_applied_fee == pytest.approx(estimated)
+        entry = _fills(events, OrderAction.OPEN)[0]
+        records = executor.get_trade_history()[-2:]
+        assert sum(r.total_fees for r in records) == pytest.approx(entry.fee + estimated)
+        step_price = 2935.0 / 0.06
+        if spot_mode:
+            assert executor.portfolio.get_asset_balance('USD') == pytest.approx(
+                _START_USD - entry.lots * entry.fill_price - entry.fee
+                + 0.04 * 49000.0 - estimated + 0.06 * step_price)
+        else:
+            assert executor.get_balance() == pytest.approx(
+                _START_USD + sum(r.net_pnl for r in records))
+        assert not executor.get_open_positions()
+
+    @ACCOUNT_MODELS
+    def test_a_later_total_above_the_books_absorbs_the_excess(self, spot_mode):
+        """
+        The excess an over-estimate left is not reversed at its step, yet nothing is lost: the
+        next total that exceeds what is booked books only its growth beyond the books, so the
+        order ends at the venue's figure after all.
+        """
+        executor, protective, events = self._held_long(spot_mode)
+        executor._apply_venue_close(protective, filled_lots=0.04, avg_price=49000.0)
+        estimated = _fills(events, OrderAction.CLOSE)[0].fee
+        below, final_total = estimated * 0.5, estimated * 1.5
+
+        executor._apply_venue_close(protective, filled_lots=0.07, avg_price=48980.0,
+                                    reported_fee=below)
+        executor._apply_venue_close(protective, filled_lots=0.10, avg_price=48960.0,
+                                    reported_fee=final_total)
+
+        fees = [e.fee for e in _fills(events, OrderAction.CLOSE)]
+        assert fees[1] == 0.0, 'the overshooting step books nothing'
+        assert sum(fees) == pytest.approx(final_total), 'the order ends at the venue total'
+        assert not executor.get_open_positions()
+
+    @ACCOUNT_MODELS
+    def test_steps_that_all_carry_the_venues_fee_say_nothing_more(self, spot_mode, monkeypatch):
+        executor, protective, events = self._held_long(spot_mode)
+        warnings = _warnings_of(executor, monkeypatch)
+
+        executor._apply_venue_close(protective, filled_lots=0.04, avg_price=49000.0,
+                                    reported_fee=15.68)
+        executor._apply_venue_close(protective, filled_lots=0.10, avg_price=48950.0,
+                                    reported_fee=39.18)
+
+        assert [e.message for e in _fills(events, OrderAction.CLOSE)] == [None, None]
+        assert not [w for w in warnings if 'already booked' in w], warnings
 
     @ACCOUNT_MODELS
     def test_an_excess_books_only_the_positions_share_of_the_fee(self, spot_mode):

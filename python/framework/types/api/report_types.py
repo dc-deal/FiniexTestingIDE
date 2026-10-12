@@ -266,6 +266,9 @@ class OrderHistoryRow(BaseModel):
                                                 # on a `pending` row, else the fill, the refusal,
                                                 # the cancel, the expiry
     commission: float
+    fee_source: Optional[FeeSource] = None      # where `commission` came from — the venue's own
+                                                # figure, or our model's estimate; null unless
+                                                # something executed
     order_type: Optional[OrderType] = None      # the type the order was ASKED as, refusals
                                                 # included; a close is `market`
     close_type: Optional[CloseType] = None      # full / partial — close rows only
@@ -499,6 +502,20 @@ class OpenPositionRow(BaseModel):
     take_profit_enforcement: str = ''
 
 
+class FeeSourceTotals(BaseModel):
+    """
+    The fills whose fee came from ONE fee source, and what those fees came to (#508).
+
+    Folded from the order-event stream, where every event that executed something says whether
+    its fee is the venue's own figure or our fee model's estimate. `fill_count` is the control
+    total: the executed events `fill_fees` is the sum of. Swap is not a fill's fee and is not in
+    it. A close the venue executed for a position no longer held here is in it with the venue's
+    figure, although nothing could be booked for it and no fee total of the portfolio holds it.
+    """
+    fill_count: int         # executed events carrying this fee source
+    fill_fees: float        # the sum of their fee, in the account currency
+
+
 class PortfolioUnitRow(BaseModel):
     """Headline P&L of one run unit (sim: a scenario; live: the session)."""
     name: str               # scenario name (sim) / profile/session label (live)
@@ -559,6 +576,10 @@ class PortfolioUnitRow(BaseModel):
     total_swap: float = 0.0
     maker_fee: float = 0.0       # spot maker-side fee
     taker_fee: float = 0.0       # spot taker-side fee
+    # The unit's fill fees by where each came from (#508): the venue's own figure, or our fee
+    # model's estimate — every fee of a backtest is the estimate. One entry per fee source that
+    # occurs, so an empty map is a unit that executed nothing.
+    fee_source_totals: dict[FeeSource, FeeSourceTotals] = {}
     has_error: bool = False     # hybrid unit (partial data + error) → CRITICAL marker
     # Spot mode — dual-balance + estimated portfolio value
     balances: dict[str, float] = {}
@@ -613,6 +634,8 @@ class PortfolioAggregateRow(BaseModel):
     account_max_drawdown_unit: str = ''
     total_fees: float               # Σ the units' closed-trade fees
     fees_charged: float = 0.0       # Σ what the units charged, open positions included
+    # Σ the units' fill fees per fee source — counts and fees both add up across accounts
+    fee_source_totals: dict[FeeSource, FeeSourceTotals] = {}
     # #492 — the wealth view beside the realised one. Summed across the currency's units,
     # never folded into net_profit.
     unrealized_pnl: float = 0.0

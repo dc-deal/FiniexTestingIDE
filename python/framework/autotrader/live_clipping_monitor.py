@@ -153,7 +153,7 @@ class LiveClippingMonitor:
         Lightweight snapshot for live display rendering.
 
         Avoids full ClippingSessionSummary construction — only the fields
-        needed by AutotraderTickLoop._build_display_stats().
+        needed by AutotraderDisplayExporter.build().
 
         Returns:
             ClippingDisplaySnapshot with current session totals

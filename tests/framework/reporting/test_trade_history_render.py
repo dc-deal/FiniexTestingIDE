@@ -125,3 +125,51 @@ class TestTheFailedOrders:
 
     def test_nothing_failed_prints_nothing(self):
         assert 'Failed Orders' not in _render('render_per_scenario')
+
+
+class TestTheSlippageBlockOnItsOwn:
+    """
+    `render_slippage` prints the submission-vs-fill block without the aggregated statistics it
+    otherwise sits in — what a single unit gets after its table.
+    """
+
+    def _summary(self, slipped: bool) -> TradeHistorySummary:
+        """
+        The fixture report, its one trade with or without a measured slippage.
+
+        Args:
+            slipped: Whether the entry carries a slippage sample
+
+        Returns:
+            The presenter
+        """
+        report = _report()
+        if slipped:
+            report.trades[0].entry_slippage = 0.0002
+            report.trades[0].entry_slippage_pct = 0.018
+        return TradeHistorySummary(report, _empty_orders(), _execution())
+
+    def _render_slippage(self, slipped: bool) -> str:
+        """
+        Render the block alone.
+
+        Args:
+            slipped: Whether the entry carries a slippage sample
+
+        Returns:
+            The printed text
+        """
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            self._summary(slipped).render_slippage(ConsoleRenderer())
+        return buf.getvalue()
+
+    def test_a_measured_entry_prints_the_block(self):
+        out = self._render_slippage(slipped=True)
+
+        assert 'SLIPPAGE (submission tick vs fill)' in out
+        assert 'Samples: 1 entry / 0 exit (of 1 trades)' in out
+        assert 'TRADE BREAKDOWN' not in out          # the aggregated statistics stay out
+
+    def test_nothing_measured_prints_nothing(self):
+        assert self._render_slippage(slipped=False) == ''

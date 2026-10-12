@@ -140,8 +140,14 @@ line can be joined back to the stream by `extra.stream_seq`.
 
 **Line 1 — header:**
 ```json
-{"record_kind":"header","schema_version":"2.0","started_utc":"...","profile":"...","symbol":"ETHUSD","phases":["market_long_open", ...]}
+{"record_kind":"header","schema_version":"2.0","started_utc":"...","profile":"...","symbol":"ETHUSD","phases":["market_long_open", ...],"fee_report":"status_answer"}
 ```
+
+`fee_report` is where the session's venue reports the fee of a fill, as its adapter declared it when
+the capture opened: `status_answer` (in the answer that reports the order filled — Kraken),
+`executions` (only with the order's executions, after the fill) or `not_reported` (no fee per fill).
+It is what the certificate judges a fill booked from the estimate by. A capture written before it
+was recorded has no such key.
 
 **Every event — stable core keys** (`ts_utc`, `seq`, `plane`, `event_type`, `phase`,
 `phase_index`) plus per-event fields (`order_id`, `side`, `lots`, `price`, `status`,
@@ -170,8 +176,11 @@ omitted.
     beside `rejected`, `expired` beside `cancelled`.
 - Every order line's `extra` carries `action`, `order_type` and `stream_seq`, and `submitted_seq`
   where the order was submitted — a refusal made before sending (`denied`) never was, so it has none.
-  An ending adds who ended the order and why (`initiator`, `end_reason`); a fill adds its `fee` and
-  `fee_currency`.
+  An ending adds who ended the order and why (`initiator`, `end_reason`); a fill adds its `fee`,
+  `fee_currency` and `fee_source` — `venue` where the fee is the venue's own figure for that fill,
+  read from the answer that reported it, `estimate` where it is our fee model's (#508). It comes from
+  the same order event as the fee; an event that names no source leaves the key out, and so does
+  every fill line of a capture written before it was recorded.
 - A fill's `slippage` block carries what the fill is measured against — the values, not the
   measurement: `order_type`, `side`, `measured_against` (`submission_mid`, `limit_price` or
   `trigger_price`) and `reference_price`. A market order is measured against the mid when it was
@@ -247,6 +256,12 @@ silent zero:
   no single currency, the sum of the fill
   lines' fees (source `event_sum`). Both are our own booking — neither can show a fee we computed
   wrong — so the certificate needs the report: generate it before the run directory is pruned.
+- `fee_source` — whose figure the fills' fees are (#508): `fills`, `by_source` (how many carry
+  `venue` and how many `estimate`, each named, at zero too), `not_recorded` (fills that carry no
+  source) and the header's `fee_report`. `status` is `recorded`, `partly_recorded`, `no_fills` or
+  `not_recorded` — the last for every capture written before the source was recorded, which is read
+  as such and never fails. The generator prints it after the fees:
+  `fees charged: 0.494400 USD (run_record) · venue 13/13 fills`, or `· source not recorded`.
 - `account_delta` — what the venue's account moved between the preflight and the session-end
   snapshot: the one figure that can contradict our booking.
 - `slippage` — per order type, positive is adverse: a market order against the mid when it was
@@ -260,6 +275,15 @@ silent zero:
   `not_recorded` for a capture from before #566. Never a bare zero: a session that did not compare
   says so.
 - the detected-via mix.
+
+**Warned, never failed** — the certificate's `warnings`, printed at generation. `ESTIMATED FEES`
+names the fills booked from the fee model's estimate although the header says the venue reports
+the fee in the answer that reports the fill (`fee_report: status_answer`): that answer came without
+one — the session log names each order — so those fees are ours, not what the account was charged.
+The run itself traded, so the verdict stands. Where the venue reports no fee there, every fill is an
+estimate by design and nothing is said; a capture that does not record `fee_report` is not judged.
+The identity guards — a declared release from a tree that names another version, or from
+uncommitted work — write into the same list ahead of it, and those DO fail the certificate.
 
 Validate a committed certificate (CI-friendly, no real-money session):
 ```bash

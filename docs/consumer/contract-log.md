@@ -33,6 +33,23 @@ reads downwards from the version their fixtures hold until they reach the one be
 A test holds the newest heading in this log to the number the server answers with, so a version
 cannot ship without its entry.
 
+## Version 28 — 2026-10-11 (#508)
+
+A run says how many of its fills were booked at the venue's own fee and how many at our estimate,
+and what each came to.
+
+- `portfolio`: every unit row carries `fee_source_totals` — one entry per fee source its fills
+  carry, `venue` or `estimate` as on the order-event stream's `fee_source`, each with `fill_count`
+  (the fills) and `fill_fees` (what their fees came to, in the account currency). A backtest has
+  only `estimate`: it has no venue to ask. Empty where the unit executed nothing. Every
+  per-currency row carries the same, summed over its units — and so does the `headline` of every
+  block on `aggregated-portfolio`.
+- `order-history`: every row carries `fee_source` — where its `commission` came from, `venue` or
+  `estimate`. Null where nothing executed.
+
+Both are additions; no existing field changed. A run recorded before this contract serves an empty
+`fee_source_totals` and a null `fee_source`, until it is run again.
+
 ## Version 27 — 2026-10-11 (#508)
 
 A live fill's fee is the venue's own charge, and every executed order event says where its fee
@@ -110,72 +127,16 @@ Every run says what it is FOR, and under which contract its reports were written
 
 All three are additions; no existing field changed.
 
-## Version 23 — 2026-10-07 (#362)
-
-Every step of an order's life is recorded, and the order counts, the order history and the
-pending-order section are counted from that record — one status for each way an order can end.
-
-- New: `GET /api/v1/reports/runs/{run_id}/order-events`, the run's order-event stream. `events`
-  holds one line per step in an order's life — submitted, accepted, refused, triggered, modified,
-  cancelled, filled, expired, an answer that was lost and how it was settled — and for a live
-  session `broker_truth` holds what the venue reported when the session asked it: at its start, at
-  its end, and when the session's comparison with the venue changed. `keys` declares both lists
-  `["scenario_name", "seq"]`, and `seq` runs across both within a unit. It is served while a run
-  is still going; `truncated_tail` says a session was stopped in the middle of a line, and
-  `scenario_name` and `order_id` narrow it. The run list names a run's streams in the new
-  `stream_files`.
-- New: `GET /api/v1/reports/runs/{run_id}/venue-account`, live sessions only — what the venue held
-  at the session's start and at its end (open orders and positions counted, the balances as the
-  venue reported them, a part it could not read named in `unread_parts`) and the reconciliation in
-  between: `reconcile_lines`, `divergent_lines`, `last_reconcile_state`, `last_divergence`. `key` is
-  `["name"]`. A backtest has none, and neither has a dry run against a real venue, whose account
-  reads never reach the venue — 404 `artifact_not_produced`.
-- The order counts — `execution-stats` (every unit and `totals`), `run-summary`,
-  `aggregated-portfolio` and a sweep's `combinations`: `orders_sent` is gone. In its place there is
-  one count per way an order starts or ends — `orders_submitted`, `orders_adopted` (an order a
-  previous session sent, taken over at this session's start), `orders_executed`, `orders_denied`
-  (refused before anything was sent), `orders_rejected`, `orders_cancelled`, `orders_expired`,
-  `orders_undelivered` and `orders_unaccounted`. **Two meanings changed:** `orders_executed` now
-  counts the fills of closing orders too, and `orders_rejected` counts the venue's refusals only.
-  `execution-stats` adds `orders_failed` — denied, rejected, undelivered and unaccounted together —
-  so a consumer need not add them up.
-- `order-history` keeps a row per submission and one per way an order ended. `status` gains
-  `denied`, `undelivered` and `unaccounted` and loses `submitted` and `partial`. New:
-  `order_type` (as the order was asked), `close_type` (`full` or `partial`, on a close row),
-  `initiator` — who ended the order: `strategy`, `framework` or `venue` — and `end_reason`:
-  `cancel_requested`, `protection_released`, `order_timeout`, `resolution_ceiling`, `session_end`,
-  `scenario_end`, `venue_cancelled`, `venue_expired`. `swap` and `slippage_points` were removed.
-- `rejection_reason` gains `unaccounted_order`, `position_not_found` and `close_withheld` and loses
-  `broker_unreachable` and `unresolved_write`: an answer that never came is not a refusal, and the
-  order events follow it as `unresolved` and then `resolved`.
-- `pending-orders` is counted from the order events, and **an AutoTrader session now has a row** —
-  it had none. The counters carry the names of what they count: `total_submitted`,
-  `total_accepted`, `total_rejected`, `total_never_confirmed` (undelivered and unaccounted) and
-  `total_expired` replace `total_resolved`, `total_filled`, `total_timed_out` and
-  `total_force_closed`. `avg_in_flight_ms`, `min_in_flight_ms`, `max_in_flight_ms` and
-  `in_flight_count` — the time from a submission to the venue's answer — replace the four
-  `*_latency_*` fields, and `never_confirmed_orders` lists the orders behind
-  `total_never_confirmed`. The `pending_*` fields of `aggregated-portfolio` follow the same names.
-- `trade-history` adds `close_type`, `entry_lots` (the position's size when it opened) and
-  `position_closes` (how many records the position produced in its unit).
-- Deployments say whether real money moved. `GET /api/v1/deployments` adds `orders_to` per row —
-  where its sessions' orders went, each value once: `["venue"]` real money, `["simulated"]` a
-  rehearsal, both a deployment that did each — and a row mixing the two is `changed`. On
-  `GET /api/v1/deployments/{deployment_id}` each session carries `orders_to` and
-  `orders_to_changed`, the advisory carries `orders_to` and now also fires on a mix alone, and a
-  sweep's `combinations` carry `orders_to` too. A single run said it already, as `orders_to` on the
-  run list.
-
-A run recorded before this contract serves `0` in the new counts and the pending-order counters,
-and `null` in the new order-history fields and in `orders_to` on deployments, until it is run
-again.
-
-## Versions 22 and earlier
+## Versions 23 and earlier
 
 One line each. Every one of these moved a shape or a meaning; what they moved is summarised here
 rather than spelled out, because a consumer this far behind needs the list of steps, not each step's
 reasoning. The full text of a compressed version is in this repository's history.
 
+- **Version 23** — 2026-10-07 (#362): Every step of an order's life is recorded —
+  `order-events` and `venue-account` were added — and the order counts, the order history and
+  the pending-order counters are counted from that record, one status per way an order can end:
+  `orders_sent` was replaced, and `orders_executed` and `orders_rejected` changed meaning.
 - **Version 22** — 2026-10-06 (#524, #568): The documentation is served by the API — `GET /api/v1/docs`, `GET /api/v1/docs/{name}` (markdown) and `GET /api/v1/docs/search` over passages — behind a new `docs` grant surface (tokens re-minted, server restarted); three error codes (`document_not_found`, `empty_query`, `query_too_long`); every route answers with `Link: …; rel="describedby"`, and `Link` and the `X-Bar-*` headers are published cross-origin.
 - **Version 21** — 2026-10-02 (#555, viewer#21): The worker-decision report says "not counted" instead of zero — `worker_decision_tracked` per unit, null counters and timings on an untracked one, and null `compute_ratio_pct` / `ticks_idle` where nothing was measured.
 - **Version 20** — 2026-10-02 (viewer#21, #557): A refused order says what was refused — its side,

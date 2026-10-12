@@ -92,6 +92,9 @@ def open_field_study(
         symbol=symbol,
         phase_ids=decision_logic.get_phase_ids(),
         logger=logger,
+        # What the session's adapter declares, read where the executor reads it when it books a
+        # fill — the certificate judges an estimated fee against it, never against a config
+        fee_report=executor.broker.adapter.get_order_capabilities().fee_report,
     )
     decision_logic.set_recorder(recorder)
     projection = FieldStudyStreamProjection(recorder, unit_name)

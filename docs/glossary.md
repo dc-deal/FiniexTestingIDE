@@ -223,11 +223,21 @@ the `session_start` *broker truth* line. A point in time — not the
 about how much market time was processed — that is the *tick timespan* — and it is never a point
 in time: when an order's event happened is its *event time*.
 
-**fee source** (`fee_source`) — Where the fee booked for a fill came from: `venue` — the figure
-the venue reported for that fill, in the answer that reported it, which is what the account was
-charged; `estimate` — our fee model's, the declared rate times the order's value. A backtest is
-always `estimate`; a live fill is `venue` wherever its venue reports the fee there. Where the
-venue does is declared on the adapter (`fee_report`). Not a *source* in the signal sense.
+**fee report** (`fee_report`) — Where a venue reports the fee it charged for a fill, as its adapter
+declares it: `status_answer` — in the answer that reports the order filled, as Kraken does;
+`executions` — only with the order's executions, after the fill; `not_reported` — no fee per fill,
+as at a spread broker. A declaration, not a report of fees: it decides whether a live fill can carry
+the venue's own figure (*fee source*). A field study's capture records it in its header. See
+[Broker Trade Records](architecture/broker_trade_records.md).
+
+**fee source** (`fee_source`, `fee_source_totals`) — Where the fee booked for a fill came from:
+`venue` — the figure the venue reported for that fill, in the answer that reported it, which is
+what the account was charged; `estimate` — our fee model's, the declared rate times the order's
+value. A backtest is always `estimate`; a live fill is `venue` wherever its venue reports the fee
+there. Where the venue does is declared on the adapter (`fee_report`). On the portfolio report,
+`fee_source_totals` counts a unit's fills per fee source (`fill_count`) and what their fees came to
+(`fill_fees`) — neither of the two fee totals: swap is not a fill's fee. Not a *source* in the
+signal sense. See [Portfolio](consumer/portfolio.md).
 
 **fees charged** · **total fees** (`fees_charged`, `total_fees`) — Two fee totals of one run.
 *Total fees* are the fees of the trades it CLOSED — the population every trade row, booking period

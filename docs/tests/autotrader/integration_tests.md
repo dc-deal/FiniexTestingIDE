@@ -272,14 +272,16 @@ belongs to is held deterministically by the projection's unit tests.
 | Test | What it validates |
 |------|-------------------|
 | `test_it_is_the_projected_schema` | The header is schema 2.0 and carries no `release_target` |
+| `test_the_header_records_where_the_venue_reports_a_fill_s_fee` | The header's `fee_report` is the mock venue's declaration, `status_answer` — as Kraken's |
 | `test_a_fill_names_the_phase_that_submitted_its_order` | The first order's fill is filed under the first phase |
 | `test_the_session_ended_cleanly` | Normal shutdown and no ERROR — a failure inside the projection would show here, since the run itself survives it |
-| `test_every_execution_of_the_stream_is_one_fill_line` | Every `filled` / `partially_filled` event of `io/order_events.jsonl` is exactly one fill line, joined by `extra.stream_seq`, with its lots, fee and action — a close included, however many the run's timing let fill |
+| `test_every_execution_of_the_stream_is_one_fill_line` | Every `filled` / `partially_filled` event of `io/order_events.jsonl` is exactly one fill line, joined by `extra.stream_seq`, with its lots, fee, fee source and action — a close included, however many the run's timing let fill |
 | `test_the_rejection_battery_writes_its_refusals` | The lot-size refusals made before sending are `order_rejected` lines with status `denied` |
 | `test_the_venue_reads_bracket_the_session` | A `preflight` and a `session_end` snapshot, each with its order count |
 | `test_it_reads_the_fees_and_measures_the_slippage` | The certificate analysis reads `fees_charged` from the run's report, measures market slippage, and derives the account delta |
 | `test_the_report_s_fees_are_the_capture_s` | The run's `fees_charged` equals the sum of the capture's fill fees |
 | `test_a_mock_session_says_it_did_not_reconcile` | The certificate's `reconciliation` reads `disabled` for a mock session, never a bare zero |
+| `test_every_fee_is_the_venue_s_own` | The certificate's `fee_source` counts every fill as the venue's — the mock venue reports each fill's fee in its answer — and warns of nothing |
 
 **Runtime:** ~12 seconds.
 

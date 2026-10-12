@@ -101,8 +101,8 @@ class DriftAuditSummary:
     """
     Aggregate counters and history for one DriftAuditor session.
 
-    Surfaced at session exit (one-line summary) and via
-    DriftAuditor.get_summary() for analysis.
+    Surfaced at session exit as one session-log line; no report carries it.
+    DriftAuditor.get_summary() returns it, and today only the tests read it.
 
     Args:
         total_orders_audited: Number of orders that completed audit comparison

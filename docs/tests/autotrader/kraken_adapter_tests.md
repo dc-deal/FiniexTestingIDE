@@ -141,8 +141,8 @@ The answer that says an order filled carries the order's total fee — measured 
 2026-10-11: QueryOrders' `fee` is in the first answer that says closed and does not change after.
 The adapter reads it into `BrokerResponse.fill_fee` beside the executed volume and the price, sends
 `oflags=fciq` on every order so the fee is charged in the quote currency the spot books charge it
-in, and declares `fee_report` — `status_answer` against the venue, `not_reported` in a dry run, whose
-answers come from our own simulator (#508).
+in, and declares `fee_report = status_answer`, in a dry run too: a capability describes the venue,
+and the executor knows a dry run's answers come from our own simulator, which reports no fee (#508).
 
 | Test class | Asserts |
 |---|---|

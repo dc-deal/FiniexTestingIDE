@@ -26,6 +26,7 @@ from python.framework.types.autotrader_types.field_study_types import (
     FieldStudyHeader,
     PhaseResult,
 )
+from python.framework.types.trading_env_types.order_types import FeeReport
 
 # 2.0 — order and venue lines are projected from the live core's record (#566): they name the
 # phase that submitted the order, a full close is a line of its own, a refusal made before sending
@@ -57,6 +58,8 @@ class FieldStudyRecorder:
         symbol: Traded symbol
         phase_ids: Ordered phase ids (for the header)
         logger: Session logger (for the file-path banner, and a write that fails)
+        fee_report: Where the session's venue reports the fee of a fill, as its adapter
+            declares it (#508); None leaves it out of the header
     """
 
     def __init__(
@@ -66,6 +69,7 @@ class FieldStudyRecorder:
         symbol: str,
         phase_ids: List[str],
         logger: ScenarioLogger,
+        fee_report: Optional[FeeReport] = None,
     ):
         self._path = Path(output_path)
         self._logger = logger
@@ -82,8 +86,12 @@ class FieldStudyRecorder:
             profile=profile,
             symbol=symbol,
             phases=list(phase_ids),
+            fee_report=fee_report,
         )
-        self._write_line(asdict(header))
+        line = asdict(header)
+        # The line is where the declaration becomes its value — the header keeps the enum
+        line['fee_report'] = fee_report.value if fee_report is not None else None
+        self._write_line(line)
         self._logger.info(f'📝 Field Study recorder → {self._path}')
 
     # ============================================
