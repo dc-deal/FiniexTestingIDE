@@ -16,7 +16,7 @@ from python.framework.types.api.report_types import (
     AggregatedPortfolioSpotScenarioRow,
     ExecutionStatsRow,
     ExecutionStatsTotals,
-    FeeSourceTotals,
+    FeeSourceFills,
     PendingOrdersUnitRow,
     PortfolioAggregateRow,
     PortfolioUnitRow,
@@ -244,7 +244,7 @@ def _portfolio_aggregate(currency: str, rows: List[PortfolioUnitRow]) -> Portfol
         account_max_drawdown_unit=max_dd_unit,
         total_fees=sum(r.total_fees for r in rows),
         fees_charged=sum(r.fees_charged for r in rows),
-        fee_source_totals=_summed_fee_source_totals(rows),
+        fill_fees_by_source=_summed_fill_fees_by_source(rows),
         unrealized_pnl=sum(r.unrealized_pnl for r in rows),
         final_equity=total_final_equity if len(rows) == 1 else None,
         total_final_equity=total_final_equity,
@@ -253,7 +253,7 @@ def _portfolio_aggregate(currency: str, rows: List[PortfolioUnitRow]) -> Portfol
     )
 
 
-def _summed_fee_source_totals(rows: List[PortfolioUnitRow]) -> Dict[FeeSource, FeeSourceTotals]:
+def _summed_fill_fees_by_source(rows: List[PortfolioUnitRow]) -> Dict[FeeSource, FeeSourceFills]:
     """
     The units' fill fees per fee source, summed (#508) — a fill count and a fee total both add
     up across the accounts of one currency.
@@ -264,11 +264,11 @@ def _summed_fee_source_totals(rows: List[PortfolioUnitRow]) -> Dict[FeeSource, F
     Returns:
         One entry per fee source any unit carries, in the order FeeSource declares them
     """
-    summed: Dict[FeeSource, FeeSourceTotals] = {}
+    summed: Dict[FeeSource, FeeSourceFills] = {}
     for source in FeeSource:
-        parts = [r.fee_source_totals[source] for r in rows if source in r.fee_source_totals]
+        parts = [r.fill_fees_by_source[source] for r in rows if source in r.fill_fees_by_source]
         if parts:
-            summed[source] = FeeSourceTotals(
+            summed[source] = FeeSourceFills(
                 fill_count=sum(part.fill_count for part in parts),
                 fill_fees=sum(part.fill_fees for part in parts))
     return summed

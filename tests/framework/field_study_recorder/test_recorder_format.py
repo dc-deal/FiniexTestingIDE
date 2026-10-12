@@ -59,13 +59,24 @@ def test_header_is_first_line(tmp_path):
 
 @pytest.mark.parametrize('fee_report', list(FeeReport), ids=lambda report: report.value)
 def test_the_header_records_where_the_venue_reports_a_fill_s_fee(tmp_path, fee_report):
-    """The declaration the certificate judges an estimated fee by (#508), as its value."""
+    """The venue's declaration (#508), as its value."""
     path = tmp_path / 'field_study.jsonl'
     recorder = FieldStudyRecorder(str(path), 'prof', 'ETHUSD', ['p1'], _StubLogger(),
                                   fee_report=fee_report)
     recorder.close()
     header, _ = _read(path)
     assert header['fee_report'] == fee_report.value
+
+
+@pytest.mark.parametrize('expected', [True, False])
+def test_the_header_records_what_the_executor_expects_of_a_fill_s_fee(tmp_path, expected):
+    """The answer the certificate judges an estimated fee by (#508) — false is a value too."""
+    path = tmp_path / 'field_study.jsonl'
+    recorder = FieldStudyRecorder(str(path), 'prof', 'ETHUSD', ['p1'], _StubLogger(),
+                                  venue_fee_expected=expected)
+    recorder.close()
+    header, _ = _read(path)
+    assert header['venue_fee_expected'] is expected
 
 
 def test_a_header_opened_without_the_declaration_leaves_it_out(tmp_path):
@@ -75,6 +86,7 @@ def test_a_header_opened_without_the_declaration_leaves_it_out(tmp_path):
     recorder.close()
     header, _ = _read(path)
     assert 'fee_report' not in header
+    assert 'venue_fee_expected' not in header
 
 
 def test_events_carry_stable_core_keys_and_monotonic_seq(tmp_path):

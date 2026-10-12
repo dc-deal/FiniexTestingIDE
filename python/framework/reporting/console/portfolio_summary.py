@@ -207,7 +207,7 @@ class PortfolioSummary(AbstractBatchSummarySection):
         Returns:
             The line, empty where there is nothing to say
         """
-        totals = unit.fee_source_totals
+        totals = unit.fill_fees_by_source
         if not unit.session_end_policy or not totals:
             return ''
         if FeeSource.VENUE not in totals and not any(t.fill_fees for t in totals.values()):

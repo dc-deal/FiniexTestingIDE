@@ -956,6 +956,19 @@ class AbstractTradeExecutor(ABC):
         """
         return None
 
+    def expects_venue_fee_in_fill_answer(self) -> bool:
+        """
+        Whether a fill booked by this executor should carry the venue's own fee (#508).
+
+        Asked in one place and read by both that judge it: the executor, which warns where a
+        fill is booked from the estimate instead, and the field study's capture, whose
+        certificate judges the same fills afterwards. A simulation has no venue to report one.
+
+        Returns:
+            False — the live executor answers for itself
+        """
+        return False
+
     # ============================================
     # SL/TP Trigger Detection (per-tick, BOTH pipelines since #500)
     # ============================================

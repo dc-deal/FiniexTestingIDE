@@ -60,6 +60,8 @@ class FieldStudyRecorder:
         logger: Session logger (for the file-path banner, and a write that fails)
         fee_report: Where the session's venue reports the fee of a fill, as its adapter
             declares it (#508); None leaves it out of the header
+        venue_fee_expected: Whether the session's fills should carry the venue's own fee, as
+            the executor answers it (#508); None leaves it out of the header
     """
 
     def __init__(
@@ -70,6 +72,7 @@ class FieldStudyRecorder:
         phase_ids: List[str],
         logger: ScenarioLogger,
         fee_report: Optional[FeeReport] = None,
+        venue_fee_expected: Optional[bool] = None,
     ):
         self._path = Path(output_path)
         self._logger = logger
@@ -87,6 +90,7 @@ class FieldStudyRecorder:
             symbol=symbol,
             phases=list(phase_ids),
             fee_report=fee_report,
+            venue_fee_expected=venue_fee_expected,
         )
         line = asdict(header)
         # The line is where the declaration becomes its value — the header keeps the enum

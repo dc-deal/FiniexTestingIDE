@@ -230,13 +230,13 @@ as at a spread broker. A declaration, not a report of fees: it decides whether a
 the venue's own figure (*fee source*). A field study's capture records it in its header. See
 [Broker Trade Records](architecture/broker_trade_records.md).
 
-**fee source** (`fee_source`, `fee_source_totals`) — Where the fee booked for a fill came from:
+**fee source** (`fee_source`, `fill_fees_by_source`) — Where the fee booked for a fill came from:
 `venue` — the figure the venue reported for that fill, in the answer that reported it, which is
 what the account was charged; `estimate` — our fee model's, the declared rate times the order's
 value. A backtest is always `estimate`; a live fill is `venue` wherever its venue reports the fee
 there. Where the venue does is declared on the adapter (`fee_report`). On the portfolio report,
-`fee_source_totals` counts a unit's fills per fee source (`fill_count`) and what their fees came to
-(`fill_fees`) — neither of the two fee totals: swap is not a fill's fee. Not a *source* in the
+`fill_fees_by_source` counts a unit's fills per fee source (`fill_count`) and what their fees came
+to (`fill_fees`) — neither of the two fee totals: swap is not a fill's fee. Not a *source* in the
 signal sense. See [Portfolio](consumer/portfolio.md).
 
 **fees charged** · **total fees** (`fees_charged`, `total_fees`) — Two fee totals of one run.

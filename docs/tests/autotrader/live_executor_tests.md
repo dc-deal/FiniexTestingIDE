@@ -790,6 +790,10 @@ Money paths run in both account models.
 | `test_a_fill_for_a_position_already_gone_still_carries_the_venues_fee` | Nothing can be booked, and the event still carries the venue's fee, `fee_source=venue` |
 | `test_what_was_booked_travels_with_the_position_into_the_carry_over` | The booked lots, fee and value reach the carry-over note, so a restart does not book a step again |
 | `test_a_fill_without_a_fee_is_booked_from_the_estimate_silently` | A dry run declares the venue's capability; its fill without a fee is the estimate, with no warning |
+| `test_a_venue_that_reports_it_in_the_answer` | `expects_venue_fee_in_fill_answer()` — the one answer the session's warning and the field study's certificate both read — is true against a venue that reports the fee in its answer |
+| `test_not_in_a_dry_run` | …false in a dry run, whose answers are our simulator's |
+| `test_not_on_a_venue_that_charges_nothing_per_fill` | …false where the broker's fee model charges no fee per fill |
+| `test_not_in_a_simulation` [margin, spot] | …false in a backtest, whatever the configured venue declares |
 | `test_the_fee_in_its_fill_answer` [limit, market] | The mock venue charges a limit that rested the maker rate and a market order the taker rate |
 | `test_a_response_for_a_working_order_leaves_it_working_and_still_reaches_consumers` | A trades response for a still-working order books nothing and writes nothing onto it — and still reaches the consumers |
 | `test_a_simulated_fill_says_estimate` [margin, spot] | A backtest's fill event says `fee_source=estimate` |

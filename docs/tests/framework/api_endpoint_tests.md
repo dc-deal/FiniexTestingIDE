@@ -120,7 +120,7 @@ reported, a damaged stream answered `artifact_unreadable` rather than a server e
 without one naming why.
 
 Where a fill's fee came from (#508, contract 28) reaches three routes in `test_reports_endpoint.py`:
-`test_portfolio_serves_the_fills_by_fee_source` — `fee_source_totals` on the unit and the
+`test_portfolio_serves_the_fills_by_fee_source` — `fill_fees_by_source` on the unit and the
 per-currency row, keyed by the source's name; `test_order_history_serves_where_each_commission_came_from`
 — `fee_source` on an executed row, null on a rejected one; and `test_aggregated_portfolio_returns`,
 the same split in a block's `headline`.

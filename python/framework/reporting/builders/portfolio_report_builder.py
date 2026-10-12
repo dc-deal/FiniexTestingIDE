@@ -14,7 +14,7 @@ from typing import Dict, List
 from python.framework.reporting.builders.report_aggregators import aggregate_portfolio_by_currency
 from python.framework.reporting.builders.run_unit import RunUnit
 from python.framework.types.api.report_types import (
-    FeeSourceTotals,
+    FeeSourceFills,
     OpenPositionRow,
     PortfolioReport,
     PortfolioUnitRow,
@@ -188,7 +188,7 @@ def _usable_funds(stats: PortfolioStats) -> dict:
     }
 
 
-def fee_source_totals(events: List[OrderEvent]) -> Dict[FeeSource, FeeSourceTotals]:
+def fill_fees_by_source(events: List[OrderEvent]) -> Dict[FeeSource, FeeSourceFills]:
     """
     A unit's fill fees split by where each came from — the venue's own figure, or our fee
     model's estimate (#508).
@@ -212,7 +212,7 @@ def fee_source_totals(events: List[OrderEvent]) -> Dict[FeeSource, FeeSourceTota
             continue
         counts[event.fee_source] = counts.get(event.fee_source, 0) + 1
         fees[event.fee_source] = fees.get(event.fee_source, 0.0) + (event.fee or 0.0)
-    return {source: FeeSourceTotals(fill_count=counts[source], fill_fees=fees[source])
+    return {source: FeeSourceFills(fill_count=counts[source], fill_fees=fees[source])
             for source in FeeSource if source in counts}
 
 
@@ -256,7 +256,7 @@ def _to_unit_row(unit: RunUnit) -> PortfolioUnitRow:
         total_swap=stats.total_swap,
         maker_fee=stats.maker_fee,
         taker_fee=stats.taker_fee,
-        fee_source_totals=fee_source_totals(unit.order_events),
+        fill_fees_by_source=fill_fees_by_source(unit.order_events),
         has_error=unit.has_error,
         balances=stats.balances,
         initial_balances=stats.initial_balances,

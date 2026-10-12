@@ -22,8 +22,9 @@ real money, which is the [Field Study Guide](../live_field_study/field_study_gui
 
 The capture's own format: a header first, the stable core keys on every line, a rising `seq`, both
 planes, `None` left out, and the session-end marker last. The header records where the venue reports
-a fill's fee (`fee_report`) as its value, for every declaration there is, and leaves the key out
-where the capture was opened without it. The phase in progress is what a submission is filed under;
+a fill's fee (`fee_report`) as its value, for every declaration there is, and whether the executor
+expects the venue's fee on a fill (`venue_fee_expected`), false included; it leaves both keys out
+where the capture was opened without them. The phase in progress is what a submission is filed under;
 the reconciliation totals are filed at the session's end. A write that fails — a full disk — is
 reported once on the session channel and never raised, because the recorder writes from inside the
 executor's order path.
@@ -57,9 +58,10 @@ fills where the report is gone or no longer reads), the account's movement, the 
 type, the REST calls, and whether the session reconciled at all.
 
 `TestTheFeeSource` holds whose figure the fills' fees are (#508): counted per source, with what the
-header declares; a fill booked from the estimate on a venue that reports its fee in the answer that
-reports the fill is a printed warning and the certificate still passes; the same estimate on a venue
-that reports none there, or under a header that records no declaration, draws nothing. A capture
+header declares and what the session expected; a fill booked from the estimate where the session
+expected the venue's fee is a printed warning and the certificate still passes; the same estimate on
+a venue that reports none there, in a dry run, or under a header that records no expectation —
+whatever it declares — draws nothing. A capture
 written before the source was recorded still certifies, as `not_recorded` and printed as
 `source not recorded`. A declared release from the wrong tree fails the certificate, and its warning
 stands before the fee warning.

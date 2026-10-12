@@ -38,7 +38,7 @@ cannot ship without its entry.
 A run says how many of its fills were booked at the venue's own fee and how many at our estimate,
 and what each came to.
 
-- `portfolio`: every unit row carries `fee_source_totals` — one entry per fee source its fills
+- `portfolio`: every unit row carries `fill_fees_by_source` — one entry per fee source its fills
   carry, `venue` or `estimate` as on the order-event stream's `fee_source`, each with `fill_count`
   (the fills) and `fill_fees` (what their fees came to, in the account currency). A backtest has
   only `estimate`: it has no venue to ask. Empty where the unit executed nothing. Every
@@ -48,7 +48,7 @@ and what each came to.
   `estimate`. Null where nothing executed.
 
 Both are additions; no existing field changed. A run recorded before this contract serves an empty
-`fee_source_totals` and a null `fee_source`, until it is run again.
+`fill_fees_by_source` and a null `fee_source`, until it is run again.
 
 ## Version 27 — 2026-10-11 (#508)
 

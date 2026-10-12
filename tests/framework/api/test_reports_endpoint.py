@@ -56,7 +56,7 @@ from python.framework.types.api.report_types import (
     FeedStabilityEpisodeRow,
     FeedStabilityReport,
     FeedStabilitySourceRow,
-    FeeSourceTotals,
+    FeeSourceFills,
     OrderHistoryReport,
     OrderHistoryRow,
     OrdersTo,
@@ -160,15 +160,15 @@ def _order_report() -> OrderHistoryReport:
     return OrderHistoryReport(run_id=_RUN_ID, orders=rows, count=2, symbols=['EURUSD', 'GBPUSD'])
 
 
-def _fee_split() -> Dict[FeeSource, FeeSourceTotals]:
+def _fee_split() -> Dict[FeeSource, FeeSourceFills]:
     """
     Twelve fills at the venue's figure, one at our estimate (#508).
 
     Returns:
         The split, keyed by fee source
     """
-    return {FeeSource.VENUE: FeeSourceTotals(fill_count=12, fill_fees=0.4532),
-            FeeSource.ESTIMATE: FeeSourceTotals(fill_count=1, fill_fees=0.0412)}
+    return {FeeSource.VENUE: FeeSourceFills(fill_count=12, fill_fees=0.4532),
+            FeeSource.ESTIMATE: FeeSourceFills(fill_count=1, fill_fees=0.0412)}
 
 
 def _portfolio_report() -> PortfolioReport:
@@ -176,12 +176,12 @@ def _portfolio_report() -> PortfolioReport:
         name='s1', symbol='EURUSD', currency='USD', total_trades=10, winning_trades=6,
         losing_trades=4, win_rate=0.6, profit_factor=2.5, total_profit=100.0,
         total_loss=40.0, net_profit=60.0, account_max_drawdown=12.0, total_fees=5.0,
-        fee_source_totals=_fee_split())
+        fill_fees_by_source=_fee_split())
     agg = PortfolioAggregateRow(
         currency='USD', unit_count=1, total_trades=10, winning_trades=6, losing_trades=4,
         win_rate=0.6, profit_factor=2.5, total_profit=100.0, total_loss=40.0,
         net_profit=60.0, account_max_drawdown=12.0, total_fees=5.0,
-        fee_source_totals=_fee_split())
+        fill_fees_by_source=_fee_split())
     return PortfolioReport(run_id=_RUN_ID, units=[unit], aggregates=[agg])
 
 
@@ -288,7 +288,7 @@ def _aggregated_portfolio_report() -> AggregatedPortfolioReport:
         currency='USD', unit_count=1, total_trades=10, winning_trades=6, losing_trades=4,
         win_rate=0.6, profit_factor=2.5, total_profit=100.0, total_loss=40.0, net_profit=60.0,
         account_max_drawdown=12.0, total_fees=5.0,
-        fee_source_totals={FeeSource.ESTIMATE: FeeSourceTotals(fill_count=20, fill_fees=5.0)})
+        fill_fees_by_source={FeeSource.ESTIMATE: FeeSourceFills(fill_count=20, fill_fees=5.0)})
     return AggregatedPortfolioReport(run_id=_RUN_ID, currencies=[AggregatedPortfolioCurrency(
         currency='USD', scenario_count=1, scenario_names=['s1'],
         combined=AggregatedPortfolioRow(headline=headline, initial_balance=1000.0))])
@@ -466,8 +466,8 @@ def test_portfolio_serves_the_fills_by_fee_source(client):
     body = client.get(_PORTFOLIO_URL).json()
     split = {'venue': {'fill_count': 12, 'fill_fees': 0.4532},
              'estimate': {'fill_count': 1, 'fill_fees': 0.0412}}
-    assert body['units'][0]['fee_source_totals'] == split
-    assert body['aggregates'][0]['fee_source_totals'] == split
+    assert body['units'][0]['fill_fees_by_source'] == split
+    assert body['aggregates'][0]['fill_fees_by_source'] == split
 
 
 def test_portfolio_run_not_found(client):
@@ -613,7 +613,7 @@ def test_aggregated_portfolio_returns(client):
     assert cur['currency'] == 'USD'
     assert cur['combined']['headline']['total_trades'] == 10
     assert cur['combined']['initial_balance'] == 1000.0
-    assert cur['combined']['headline']['fee_source_totals'] == {
+    assert cur['combined']['headline']['fill_fees_by_source'] == {
         'estimate': {'fill_count': 20, 'fill_fees': 5.0}}
 
 

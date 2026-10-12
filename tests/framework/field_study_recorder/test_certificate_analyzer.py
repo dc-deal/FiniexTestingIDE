@@ -494,7 +494,8 @@ def _fee_fill(seq: int, fee_source: Optional[FeeSource]) -> str:
     }) + '\n'
 
 
-def _passing_capture(tmp_path, fee_report: Optional[FeeReport], *fill_lines) -> Path:
+def _passing_capture(tmp_path, fee_report: Optional[FeeReport], *fill_lines,
+                     venue_fee_expected: Optional[bool] = None) -> Path:
     """
     A capture that passes every gate — one passing phase, an empty book at both ends — around
     some fills.
@@ -504,6 +505,8 @@ def _passing_capture(tmp_path, fee_report: Optional[FeeReport], *fill_lines) -> 
         fee_report: What the header records about where the venue reports a fill's fee; None
             writes a header from before it was recorded
         fill_lines: Pre-rendered fill lines
+        venue_fee_expected: What the header records the executor expected of a fill's fee;
+            None writes a header from before it was recorded
 
     Returns:
         The capture's path
@@ -512,6 +515,8 @@ def _passing_capture(tmp_path, fee_report: Optional[FeeReport], *fill_lines) -> 
               'profile': 'p', 'symbol': 'ETHUSD', 'phases': ['a']}
     if fee_report is not None:
         header['fee_report'] = fee_report.value
+    if venue_fee_expected is not None:
+        header['venue_fee_expected'] = venue_fee_expected
     capture = tmp_path / 'field_study.jsonl'
     capture.write_text(
         json.dumps(header) + '\n'
@@ -528,9 +533,9 @@ class TestTheFeeSource:
     """
     Whose figure each fill's fee is — the venue's own, or our fee model's estimate (#508).
 
-    Counted per fill. An estimate where the venue states its fee in the answer that reports the
-    fill is a warning, never a failure, and a capture from before the source was recorded says
-    so rather than passing for the venue's figures.
+    Counted per fill. An estimate where the session's executor expected the venue's fee is a
+    warning, never a failure, and a capture from before the source was recorded says so rather
+    than passing for the venue's figures.
     """
 
     def test_a_run_whose_every_fee_is_the_venue_s(self, tmp_path, capsys):
@@ -541,14 +546,16 @@ class TestTheFeeSource:
         assert cert['fee_source'] == {
             'status': 'recorded', 'fills': 2,
             'by_source': {FeeSource.VENUE.value: 2, FeeSource.ESTIMATE.value: 0},
-            'not_recorded': 0, 'fee_report': FeeReport.STATUS_ANSWER.value}
+            'not_recorded': 0, 'fee_report': FeeReport.STATUS_ANSWER.value,
+            'venue_fee_expected': True}
         assert cert['warnings'] == []
         assert 'USD (event_sum) · venue 2/2 fills' in capsys.readouterr().out
 
     def test_an_estimate_where_the_venue_states_its_fee_is_a_warning_never_a_failure(
             self, tmp_path, capsys):
         capture = _passing_capture(tmp_path, FeeReport.STATUS_ANSWER,
-                                   _fee_fill(2, FeeSource.VENUE), _fee_fill(3, FeeSource.ESTIMATE))
+                                   _fee_fill(2, FeeSource.VENUE), _fee_fill(3, FeeSource.ESTIMATE),
+                                   venue_fee_expected=True)
 
         cert_path = FieldStudyCertificate.generate(
             str(capture), release_version='dev', reports_dir=str(tmp_path / 'reports'))
@@ -569,16 +576,29 @@ class TestTheFeeSource:
     def test_an_estimate_where_the_venue_states_none_there_is_by_design(self, tmp_path,
                                                                         fee_report):
         analysis = FieldStudyCertificate.analyze(str(_passing_capture(
-            tmp_path, fee_report, _fee_fill(2, FeeSource.ESTIMATE))))
+            tmp_path, fee_report, _fee_fill(2, FeeSource.ESTIMATE), venue_fee_expected=False)))
 
         assert analysis['fee_source']['by_source'][FeeSource.ESTIMATE.value] == 1
         assert analysis['warnings'] == []
 
-    def test_an_estimate_without_the_venue_s_declaration_is_not_judged(self, tmp_path):
+    def test_an_estimate_in_a_dry_run_is_by_design(self, tmp_path):
+        """The venue declares the fee in its answer; a dry run's answers are our simulator's."""
         analysis = FieldStudyCertificate.analyze(str(_passing_capture(
-            tmp_path, None, _fee_fill(2, FeeSource.ESTIMATE))))
+            tmp_path, FeeReport.STATUS_ANSWER, _fee_fill(2, FeeSource.ESTIMATE),
+            venue_fee_expected=False)))
 
-        assert analysis['fee_source']['fee_report'] is None
+        assert analysis['fee_source']['venue_fee_expected'] is False
+        assert analysis['warnings'] == []
+
+    @pytest.mark.parametrize('fee_report', [FeeReport.STATUS_ANSWER, None],
+                             ids=['declared', 'undeclared'])
+    def test_an_estimate_without_the_executor_s_expectation_is_not_judged(self, tmp_path,
+                                                                          fee_report):
+        """A capture from before the expectation was stamped: the declaration decides nothing."""
+        analysis = FieldStudyCertificate.analyze(str(_passing_capture(
+            tmp_path, fee_report, _fee_fill(2, FeeSource.ESTIMATE))))
+
+        assert analysis['fee_source']['venue_fee_expected'] is None
         assert analysis['warnings'] == []
 
     def test_a_capture_from_before_the_source_was_recorded(self, tmp_path, capsys):
@@ -587,6 +607,7 @@ class TestTheFeeSource:
         for raw in (_FIXTURES / 'pass_run.jsonl').read_text(encoding='utf-8').splitlines():
             record = json.loads(raw)
             record.pop('fee_report', None)
+            record.pop('venue_fee_expected', None)
             (record.get('extra') or {}).pop('fee_source', None)
             lines.append(json.dumps(record))
         capture = tmp_path / 'field_study.jsonl'
@@ -600,7 +621,7 @@ class TestTheFeeSource:
         assert cert['fee_source'] == {
             'status': 'not_recorded', 'fills': 2,
             'by_source': {FeeSource.VENUE.value: 0, FeeSource.ESTIMATE.value: 0},
-            'not_recorded': 2, 'fee_report': None}
+            'not_recorded': 2, 'fee_report': None, 'venue_fee_expected': None}
         assert cert['warnings'] == []
         assert 'USD (event_sum) · source not recorded' in capsys.readouterr().out
 
@@ -623,7 +644,7 @@ class TestTheFeeSource:
     def test_an_identity_warning_fails_it_and_stands_before_the_fee_warning(self, tmp_path):
         """A release declared from a tree that says otherwise fails; the fee warning still shows."""
         capture = _passing_capture(tmp_path, FeeReport.STATUS_ANSWER,
-                                   _fee_fill(2, FeeSource.ESTIMATE))
+                                   _fee_fill(2, FeeSource.ESTIMATE), venue_fee_expected=True)
 
         cert = json.loads(FieldStudyCertificate.generate(
             str(capture), release_version='0.0.1',

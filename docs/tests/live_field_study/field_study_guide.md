@@ -140,14 +140,18 @@ line can be joined back to the stream by `extra.stream_seq`.
 
 **Line 1 — header:**
 ```json
-{"record_kind":"header","schema_version":"2.0","started_utc":"...","profile":"...","symbol":"ETHUSD","phases":["market_long_open", ...],"fee_report":"status_answer"}
+{"record_kind":"header","schema_version":"2.0","started_utc":"...","profile":"...","symbol":"ETHUSD","phases":["market_long_open", ...],"fee_report":"status_answer","venue_fee_expected":true}
 ```
 
 `fee_report` is where the session's venue reports the fee of a fill, as its adapter declared it when
 the capture opened: `status_answer` (in the answer that reports the order filled — Kraken),
 `executions` (only with the order's executions, after the fill) or `not_reported` (no fee per fill).
-It is what the certificate judges a fill booked from the estimate by. A capture written before it
-was recorded has no such key.
+`venue_fee_expected` is what the session's executor made of that when the capture opened: whether
+a fill booked here should carry the venue's own fee. It is `false` in a dry run, where the venue's
+declaration still stands but the answers come from our own simulator, and on a venue that reports
+no fee in the answer. The certificate judges a fill booked from the estimate by this answer — the
+same one the session's own warning reads, so the two cannot disagree. A capture written before
+either was recorded has no such key.
 
 **Every event — stable core keys** (`ts_utc`, `seq`, `plane`, `event_type`, `phase`,
 `phase_index`) plus per-event fields (`order_id`, `side`, `lots`, `price`, `status`,
@@ -258,9 +262,10 @@ silent zero:
   wrong — so the certificate needs the report: generate it before the run directory is pruned.
 - `fee_source` — whose figure the fills' fees are (#508): `fills`, `by_source` (how many carry
   `venue` and how many `estimate`, each named, at zero too), `not_recorded` (fills that carry no
-  source) and the header's `fee_report`. `status` is `recorded`, `partly_recorded`, `no_fills` or
-  `not_recorded` — the last for every capture written before the source was recorded, which is read
-  as such and never fails. The generator prints it after the fees:
+  source), and the header's `fee_report` and `venue_fee_expected`. `status` is `recorded`,
+  `partly_recorded`, `no_fills` or `not_recorded` — the last for every capture written before the
+  source was recorded, which is read as such and never fails. The generator prints it after the
+  fees:
   `fees charged: 0.494400 USD (run_record) · venue 13/13 fills`, or `· source not recorded`.
 - `account_delta` — what the venue's account moved between the preflight and the session-end
   snapshot: the one figure that can contradict our booking.
@@ -277,11 +282,12 @@ silent zero:
 - the detected-via mix.
 
 **Warned, never failed** — the certificate's `warnings`, printed at generation. `ESTIMATED FEES`
-names the fills booked from the fee model's estimate although the header says the venue reports
-the fee in the answer that reports the fill (`fee_report: status_answer`): that answer came without
-one — the session log names each order — so those fees are ours, not what the account was charged.
-The run itself traded, so the verdict stands. Where the venue reports no fee there, every fill is an
-estimate by design and nothing is said; a capture that does not record `fee_report` is not judged.
+names the fills booked from the fee model's estimate although the header says the session expected
+the venue's fee (`venue_fee_expected: true`): the answer that reported the fill came without one —
+the session log names each order — so those fees are ours, not what the account was charged. The
+run itself traded, so the verdict stands. In a dry run, or where the venue reports no fee there,
+every fill is an estimate by design and nothing is said; a capture that does not record
+`venue_fee_expected` is not judged.
 The identity guards — a declared release from a tree that names another version, or from
 uncommitted work — write into the same list ahead of it, and those DO fail the certificate.
 

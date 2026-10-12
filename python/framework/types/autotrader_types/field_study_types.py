@@ -249,9 +249,14 @@ class FieldStudyHeader:
         symbol: Traded symbol
         phases: Ordered phase ids in the run
         fee_report: Where the session's venue reports the fee of a fill, as its adapter declared
-            it when the capture opened (#508) — what tells a fill booked from the estimate where
-            the venue should have stated its fee from one it never states. None where the
-            capture was opened without it
+            it when the capture opened (#508) — a description of the venue; whether a fill should
+            have carried the venue's fee is venue_fee_expected's. None where the capture was
+            opened without it
+        venue_fee_expected: Whether this session's fills should carry the venue's own fee, as
+            the executor answered it when the capture opened (#508) — False in a dry run, where
+            the venue's declaration still stands but its answers are our simulator's. What the
+            certificate judges an estimated fee against. None where the capture was opened
+            without it
         record_kind: Constant marker ('header')
     """
     schema_version: str
@@ -260,6 +265,7 @@ class FieldStudyHeader:
     symbol: str
     phases: List[str]
     fee_report: Optional[FeeReport] = None
+    venue_fee_expected: Optional[bool] = None
     record_kind: str = 'header'
 
 

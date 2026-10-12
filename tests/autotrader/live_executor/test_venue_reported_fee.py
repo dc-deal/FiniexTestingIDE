@@ -592,6 +592,33 @@ class TestADryRunIsNotWarnedAbout:
         assert not [w for w in warnings if 'fee' in w], warnings
 
 
+class TestWhoExpectsTheVenuesFee:
+    """
+    One answer to "should this fill carry the venue's fee", asked of the executor — read by the
+    session's warning and stamped into the field study's capture for its certificate.
+    """
+
+    def test_a_venue_that_reports_it_in_the_answer(self):
+        _, executor, _, _ = _venue_session()
+
+        assert executor.expects_venue_fee_in_fill_answer() is True
+
+    def test_not_in_a_dry_run(self):
+        executor, _ = _executor_against(_DryRunVenue(mode=MockExecutionMode.DELAYED_FILL))
+
+        assert executor.expects_venue_fee_in_fill_answer() is False
+
+    def test_not_on_a_venue_that_charges_nothing_per_fill(self):
+        executor, _ = _spread_venue_executor(MockBrokerAdapter)
+
+        assert executor.expects_venue_fee_in_fill_answer() is False
+
+    @ACCOUNT_MODELS
+    def test_not_in_a_simulation(self, spot_mode):
+        """Whatever the configured venue declares — a backtest has no venue to ask."""
+        assert make_simulator(spot_mode).expects_venue_fee_in_fill_answer() is False
+
+
 class TestTheMockVenueChargesARestingLimitAsAMaker:
     """A limit that rested and filled later provided liquidity, which is how the executor files it."""
 

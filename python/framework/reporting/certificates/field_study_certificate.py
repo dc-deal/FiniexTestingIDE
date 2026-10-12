@@ -286,9 +286,10 @@ class FieldStudyCertificate:
             events: The capture's lines
 
         Returns:
-            {'status', 'fills', 'by_source', 'not_recorded', 'fee_report'} — status 'recorded',
-            'partly_recorded', 'not_recorded' or 'no_fills'; `by_source` names every source, at
-            zero too; `fee_report` is None where the header does not record it
+            {'status', 'fills', 'by_source', 'not_recorded', 'fee_report', 'venue_fee_expected'}
+            — status 'recorded', 'partly_recorded', 'not_recorded' or 'no_fills'; `by_source`
+            names every source, at zero too; `fee_report` and `venue_fee_expected` are None
+            where the header does not record them
         """
         by_source: Dict[str, int] = {source.value: 0 for source in FeeSource}
         fills = 0
@@ -317,6 +318,7 @@ class FieldStudyCertificate:
             'by_source': by_source,
             'not_recorded': not_recorded,
             'fee_report': header.get('fee_report'),
+            'venue_fee_expected': header.get('venue_fee_expected'),
         }
 
     @staticmethod
@@ -324,12 +326,14 @@ class FieldStudyCertificate:
         """
         Fills booked from the estimate where the venue should have stated the fee (#508).
 
-        Said only where the venue declared it reports the fee in the answer that reports the
-        fill: there an estimate means that answer came without one, and the session's log names
-        the order. A warning, never a failure — the run traded, one of its figures is ours rather
-        than the venue's. Where the venue reports no fee there, every fill is an estimate by
-        design and nothing is said; where the capture does not record the declaration, nothing
-        can be judged.
+        Said only where the session's executor expected the venue's fee — the venue reports it
+        in the answer that reports the fill, and the session read a real account: there an
+        estimate means that answer came without one, and the session's log names the order. A
+        warning, never a failure — the run traded, one of its figures is ours rather than the
+        venue's. The expectation is the executor's own answer, stamped into the capture's
+        header, so the certificate and the session's warning cannot disagree about a dry run or
+        a venue that reports no fee there. Where the capture does not record it, nothing can be
+        judged.
 
         Args:
             fee_source: The certificate's fee-source block
@@ -338,7 +342,7 @@ class FieldStudyCertificate:
             The warning, or an empty list
         """
         estimated = fee_source['by_source'].get(FeeSource.ESTIMATE.value, 0)
-        if fee_source['fee_report'] != FeeReport.STATUS_ANSWER.value or not estimated:
+        if fee_source['venue_fee_expected'] is not True or not estimated:
             return []
         return [
             f"ESTIMATED FEES: {estimated} of {fee_source['fills']} fills booked from the fee "

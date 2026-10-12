@@ -2052,6 +2052,21 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             except Exception as e:
                 self.logger.error(f'close_fill listener raised: {e}', exc_info=True)
 
+    def expects_venue_fee_in_fill_answer(self) -> bool:
+        """
+        Whether a fill booked here should carry the venue's own fee (#508): the venue reports a
+        fill's fee in the answer that reports the fill, and this session reads its account.
+
+        Not in a dry run — the capability still describes the venue, but the answers come from
+        our own simulator, which reports no fee. Not on a venue that reports none there.
+
+        Returns:
+            True where a fill booked from the fee model's estimate is an anomaly
+        """
+        adapter = self.broker.adapter
+        return (adapter.get_order_capabilities().fee_report is FeeReport.STATUS_ANSWER
+                and adapter.reads_venue_account())
+
     def _report_missing_venue_fee(
         self,
         pending_order: PendingOrder,
@@ -2070,11 +2085,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             pending_order: The order being booked
             fee: The estimated fee it is booked with; None where the model charges none
         """
-        adapter = self.broker.adapter
-        if adapter.get_order_capabilities().fee_report is not FeeReport.STATUS_ANSWER:
-            return
-        if not adapter.reads_venue_account():
-            # A dry run: the capability still describes the venue, the answers do not
+        if not self.expects_venue_fee_in_fill_answer():
             return
         estimate = f'{fee.cost:.8f}' if fee is not None else 'none'
         self.logger.warning(

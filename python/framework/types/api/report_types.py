@@ -502,7 +502,7 @@ class OpenPositionRow(BaseModel):
     take_profit_enforcement: str = ''
 
 
-class FeeSourceTotals(BaseModel):
+class FeeSourceFills(BaseModel):
     """
     The fills whose fee came from ONE fee source, and what those fees came to (#508).
 
@@ -579,7 +579,7 @@ class PortfolioUnitRow(BaseModel):
     # The unit's fill fees by where each came from (#508): the venue's own figure, or our fee
     # model's estimate — every fee of a backtest is the estimate. One entry per fee source that
     # occurs, so an empty map is a unit that executed nothing.
-    fee_source_totals: dict[FeeSource, FeeSourceTotals] = {}
+    fill_fees_by_source: dict[FeeSource, FeeSourceFills] = {}
     has_error: bool = False     # hybrid unit (partial data + error) → CRITICAL marker
     # Spot mode — dual-balance + estimated portfolio value
     balances: dict[str, float] = {}
@@ -635,7 +635,7 @@ class PortfolioAggregateRow(BaseModel):
     total_fees: float               # Σ the units' closed-trade fees
     fees_charged: float = 0.0       # Σ what the units charged, open positions included
     # Σ the units' fill fees per fee source — counts and fees both add up across accounts
-    fee_source_totals: dict[FeeSource, FeeSourceTotals] = {}
+    fill_fees_by_source: dict[FeeSource, FeeSourceFills] = {}
     # #492 — the wealth view beside the realised one. Summed across the currency's units,
     # never folded into net_profit.
     unrealized_pnl: float = 0.0

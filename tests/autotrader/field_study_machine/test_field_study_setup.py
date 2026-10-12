@@ -37,14 +37,20 @@ class _Executor:
 
     Args:
         fee_report: Where the venue declares it reports a fill's fee
+        venue_fee_expected: What the executor answers about a fill carrying the venue's fee
     """
 
-    def __init__(self, fee_report: FeeReport = FeeReport.STATUS_ANSWER):
+    def __init__(self, fee_report: FeeReport = FeeReport.STATUS_ANSWER,
+                 venue_fee_expected: bool = True):
         self.order_listeners: List[Any] = []
         self.truth_listeners: List[Any] = []
         capabilities = OrderCapabilities(fee_report=fee_report)
         self.broker = SimpleNamespace(
             adapter=SimpleNamespace(get_order_capabilities=lambda: capabilities))
+        self._venue_fee_expected = venue_fee_expected
+
+    def expects_venue_fee_in_fill_answer(self) -> bool:
+        return self._venue_fee_expected
 
     def add_order_event_listener(self, listener) -> None:
         self.order_listeners.append(listener)
@@ -69,8 +75,8 @@ def _reconciler(open_orders=(), raises=None, counters: Dict[str, int] = None) ->
 
 
 def _open(tmp_path: Path, reconciler, trading_model=TradingModel.SPOT,
-          fee_report: FeeReport = FeeReport.STATUS_ANSWER):
-    executor = _Executor(fee_report)
+          fee_report: FeeReport = FeeReport.STATUS_ANSWER, venue_fee_expected: bool = True):
+    executor = _Executor(fee_report, venue_fee_expected)
     setup = open_field_study(
         decision_logic=_study(), executor=executor, reconciler=reconciler,
         trading_model=trading_model, run_dir=tmp_path, unit_name='fs', symbol='ETHUSD',
@@ -126,6 +132,15 @@ class TestTheHeader:
         header = json.loads(
             (tmp_path / 'field_study.jsonl').read_text(encoding='utf-8').splitlines()[0])
         assert header['fee_report'] == fee_report.value
+
+    @pytest.mark.parametrize('expected', [True, False])
+    def test_it_records_what_the_executor_expects_of_a_fill_s_fee(self, tmp_path, expected):
+        """The executor's own answer — a dry run keeps the venue's declaration, expects none."""
+        _open(tmp_path, None, venue_fee_expected=expected)
+
+        header = json.loads(
+            (tmp_path / 'field_study.jsonl').read_text(encoding='utf-8').splitlines()[0])
+        assert header['venue_fee_expected'] is expected
 
 
 class TestTheEnd:

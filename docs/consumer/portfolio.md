@@ -54,7 +54,7 @@ nothing in the payload to notice it by. The route is not proof; the body is. Ass
 | `max_equity` | the peak this account's equity reached |
 | `total_commission` · `total_swap` · `total_spread_cost` | the unit's cost split |
 | `maker_fee` · `taker_fee` | on a venue that charges per side: the fees for orders that rested before they filled (maker) and for orders that took the book (taker) — booked here rather than in `total_commission` |
-| `fee_source_totals` | the unit's fills split by where their fee came from — the venue or our estimate; see below |
+| `fill_fees_by_source` | the unit's fills split by where their fee came from — the venue or our estimate; see below |
 | `has_error` | the unit produced figures **and** failed |
 
 `has_error` is the one to branch on before rendering anything else as clean. It marks partial
@@ -74,13 +74,13 @@ arrived with contract 18; see [the contract log](/api/v1/docs/contract-log).
 
 A live fill is booked at the fee the venue reported for it, wherever the venue reports one in the
 answer that says the order filled, and at our fee model's estimate — the declared rate times the
-order's value — where it does not. `fee_source_totals` splits a unit's fills by that, so a reader
-comparing a live session with a backtest of the same period can see how much of the session's fee
-figure is the venue's and how much is estimated:
+order's value — where it does not. `fill_fees_by_source` splits a unit's fills by that, so a
+reader comparing a live session with a backtest of the same period can see how much of the
+session's fee figure is the venue's and how much is estimated:
 
 ```json
-{ "fee_source_totals": { "venue":    { "fill_count": 12, "fill_fees": 0.4532 },
-                         "estimate": { "fill_count": 1,  "fill_fees": 0.0412 } } }
+{ "fill_fees_by_source": { "venue":    { "fill_count": 12, "fill_fees": 0.4532 },
+                          "estimate": { "fill_count": 1,  "fill_fees": 0.0412 } } }
 ```
 
 - **One entry per source that occurs.** A missing key means no fill carried that source; an empty

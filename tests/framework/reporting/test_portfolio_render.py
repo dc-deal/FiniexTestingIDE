@@ -27,7 +27,7 @@ from python.framework.types.api.report_types import (
     AggregatedPortfolioReport,
     ExecutionStatsReport,
     ExecutionStatsTotals,
-    FeeSourceTotals,
+    FeeSourceFills,
     OpenPositionRow,
     PendingOrdersReport,
     PortfolioReport,
@@ -80,7 +80,7 @@ def _unit(spot_mode: bool, currency: str = 'USD', **fields: Any) -> PortfolioUni
     return PortfolioUnitRow(**row)
 
 
-def _split(**sources: tuple) -> Dict[FeeSource, FeeSourceTotals]:
+def _split(**sources: tuple) -> Dict[FeeSource, FeeSourceFills]:
     """
     A fee-source split, in the order the model folds it — venue, then estimate.
 
@@ -90,7 +90,7 @@ def _split(**sources: tuple) -> Dict[FeeSource, FeeSourceTotals]:
     Returns:
         The split
     """
-    return {source: FeeSourceTotals(fill_count=sources[source.value][0],
+    return {source: FeeSourceFills(fill_count=sources[source.value][0],
                                     fill_fees=sources[source.value][1])
             for source in FeeSource if source.value in sources}
 
@@ -192,7 +192,7 @@ class TestTheFeeSourceLine:
     def test_a_session_whose_venue_reported_every_fee(self, spot_mode):
         output = _render_unit(_unit(
             spot_mode, session_end_policy=_SESSION_POLICY,
-            fee_source_totals=_split(venue=(13, 0.4944))))
+            fill_fees_by_source=_split(venue=(13, 0.4944))))
 
         lines = _lines(output)
         line = _line(output, 'Fee source:')
@@ -203,7 +203,7 @@ class TestTheFeeSourceLine:
     def test_one_estimated_fill_is_named_beside_the_venues(self, spot_mode):
         output = _render_unit(_unit(
             spot_mode, session_end_policy=_SESSION_POLICY,
-            fee_source_totals=_split(venue=(12, 0.4532), estimate=(1, 0.0412))))
+            fill_fees_by_source=_split(venue=(12, 0.4532), estimate=(1, 0.0412))))
 
         assert _line(output, 'Fee source:') == (
             'Fee source: venue 12 fills 0.4532 USD | estimate 1 fill 0.0412 USD')
@@ -213,29 +213,29 @@ class TestTheFeeSourceLine:
         """A dry run: the venue reports its fee, its answers come from our own simulator."""
         output = _render_unit(_unit(
             spot_mode, session_end_policy=_SESSION_POLICY,
-            fee_source_totals=_split(estimate=(13, 0.4944))))
+            fill_fees_by_source=_split(estimate=(13, 0.4944))))
 
         assert _line(output, 'Fee source:') == 'Fee source: estimate 13 fills 0.4944 USD'
 
     @_ACCOUNT_MODELS
     def test_a_backtest_prints_none_and_still_carries_the_split(self, spot_mode):
-        unit = _unit(spot_mode, fee_source_totals=_split(estimate=(13, 0.4944)))
+        unit = _unit(spot_mode, fill_fees_by_source=_split(estimate=(13, 0.4944)))
 
         assert 'Fee source' not in _render_unit(unit)
-        assert unit.fee_source_totals[FeeSource.ESTIMATE].fill_count == 13
+        assert unit.fill_fees_by_source[FeeSource.ESTIMATE].fill_count == 13
 
     @_ACCOUNT_MODELS
     def test_a_session_charged_nothing_per_fill_prints_none(self, spot_mode):
         """A spread broker: its fills carry the estimate at zero — there is no fee to place."""
         unit = _unit(spot_mode, session_end_policy=_SESSION_POLICY,
-                     fee_source_totals=_split(estimate=(13, 0.0)))
+                     fill_fees_by_source=_split(estimate=(13, 0.0)))
 
         assert 'Fee source' not in _render_unit(unit)
 
     @_ACCOUNT_MODELS
     def test_a_venue_figure_of_zero_is_still_the_venues(self, spot_mode):
         unit = _unit(spot_mode, session_end_policy=_SESSION_POLICY,
-                     fee_source_totals=_split(venue=(2, 0.0)))
+                     fill_fees_by_source=_split(venue=(2, 0.0)))
 
         assert _line(_render_unit(unit), 'Fee source:') == 'Fee source: venue 2 fills 0.0000 USD'
 

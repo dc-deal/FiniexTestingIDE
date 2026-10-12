@@ -72,9 +72,13 @@ class TestTheCapture:
         assert 'release_target' not in header
 
     def test_the_header_records_where_the_venue_reports_a_fill_s_fee(self, capture):
-        """The mock venue declares it as Kraken does — in the answer that reports the fill."""
+        """
+        The mock venue declares it as Kraken does — in the answer that reports the fill — and
+        the session reads its account, so the executor expects the venue's fee there.
+        """
         _, header, _ = capture
         assert header['fee_report'] == FeeReport.STATUS_ANSWER.value
+        assert header['venue_fee_expected'] is True
 
     def test_a_fill_names_the_phase_that_submitted_its_order(self, capture):
         """The study's first order is sent by its first phase — whenever its fill arrives."""

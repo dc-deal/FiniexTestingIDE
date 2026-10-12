@@ -14,7 +14,7 @@ produce and therefore never exercises.
 |---|---|
 | `test_state_machine.py` | one case per phase type, plus the outcomes each one can end in |
 | `test_cancel_orchestration.py` | the cancel bookkeeping across a re-arm |
-| `test_field_study_setup.py` | the session wiring (#566): a non-spot account opens no capture, a resting order stops the run before it trades, a preflight that raises still leaves a terminated capture, the header records where the session's adapter declares the venue reports a fill's fee (#508), and the end writes the reconciliation totals and the REST telemetry before the end marker |
+| `test_field_study_setup.py` | the session wiring (#566): a non-spot account opens no capture, a resting order stops the run before it trades, a preflight that raises still leaves a terminated capture, the header records where the session's adapter declares the venue reports a fill's fee and what the executor expects of it (#508), and the end writes the reconciliation totals and the REST telemetry before the end marker |
 | `test_order_hooks.py` | what the study's order hooks tell the machine — they record nothing, the capture's order lines are the session's own stream (#566): a close ending with no direction — its position is gone — is observed rather than raised on, and an unaccounted order raises its own flag, never the rejection flag |
 
 ## What the outcomes mean
