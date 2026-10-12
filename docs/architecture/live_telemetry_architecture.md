@@ -107,7 +107,10 @@ A failure never ends a session or a batch, and it is never silent:
   and the import screen write to the global log.
 
 Should a display thread still end, the run is unaffected: the producers hand frames over with
-`put_nowait` and drop them when nobody takes them, so nothing ever waits on the screen.
+`put_nowait` and drop them when nobody takes them, so nothing ever waits on the screen. A full
+queue is the one failure they skip without a word. Any other failure to hand a frame over is
+reported to the global log once and never raised; a scenario whose frames cannot be sent stops
+sending them and runs on.
 
 ## Viewer push — preview (groundwork only)
 

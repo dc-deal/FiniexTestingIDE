@@ -1,9 +1,11 @@
 
 
+import queue
 import time
 from multiprocessing import Queue
 from typing import Dict, Optional, Tuple
 
+from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.trading_env.portfolio_manager import PortfolioManager
 from python.framework.types.live_types.live_core_snapshot_types import LiveCoreSnapshot
@@ -16,6 +18,8 @@ from python.framework.types.market_types.market_data_types import Bar, TickData
 from python.framework.types.process_data_types import ProcessScenarioConfig
 from python.framework.utils.process_serialization_utils import serialize_current_bars
 from python.framework.workers.worker_orchestrator import WorkerOrchestrator
+
+vLog = get_global_logger()
 
 
 def process_live_setup(logger: ScenarioLogger,
@@ -121,8 +125,15 @@ def process_live_export(live_setup: ProcessLiveSetup,
         try:
             live_queue.put_nowait(frame)
             live_setup.last_update_time = current_time
-        except:
+        except queue.Full:
             pass  # Queue full - skip update
+        except Exception as error:
+            # The progress screen is the only reader: reported once and never raised — the
+            # scenario stops sending frames and runs on without them (#586)
+            live_setup.live_enabled = False
+            vLog.error(f'❌ [DISPLAY] A live progress frame of {config.name} was not sent — '
+                       f'{type(error).__name__}: {error}. The progress screen stops updating '
+                       f'this scenario; the scenario is unaffected.')
 
         return True
 

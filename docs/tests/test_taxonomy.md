@@ -116,7 +116,7 @@ tests/
 │   ├── tick_parquet_reader/  unit — parquet reader normalization
 │   ├── path_based_loading/ unit — workers and decision logics loaded by CORE name or file path
 │   ├── api/               unit — REST API endpoints
-│   ├── live_telemetry/    unit — live-telemetry frame serializer (frame_to_json, #400); every dashboard panel rendered, the progress screen, render-failure reporting (#586)
+│   ├── live_telemetry/    unit — live-telemetry frame serializer (frame_to_json, #400); every dashboard panel rendered, the progress screen and its senders, render-failure reporting (#586)
 │   ├── field_study_recorder/ unit — Field Study JSONL recorder + stream projection + certificate analyzer (#332, #566)
 │   ├── algo_clock/        unit — wall-clock ban lint (decision logic/workers, CI plane)
 │   ├── algo_clock_validator/ unit — wall-clock ban, runtime startup validator: AST scan of loaded algos (CORE + user) + batch pre-flight (#359)

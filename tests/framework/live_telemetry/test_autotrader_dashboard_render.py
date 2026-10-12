@@ -35,13 +35,10 @@ from python.framework.types.trading_env_types.order_types import (
     OrderSide,
 )
 
-# One width per layout. Three columns at 220 so TRADE HISTORY has room for its columns;
-# narrower three-column terminals cut them (a layout matter of its own, not this suite's).
-_SINGLE, _TWO, _THREE = 100, 130, 220
+# One width per layout, each the narrowest of its layout — where a panel has the least room
+_SINGLE, _TWO, _THREE = 100, 120, 160
 # Wide enough that no free text wraps inside its panel
 _WIDE = 400
-# The widest two-column terminal: the trade table's columns fit only from about here on
-_TWO_ROOMY = 159
 
 _PANELS = {
     _SINGLE: ['SESSION', 'PORTFOLIO', 'OPEN POSITIONS', 'ORDERS', 'REJECTIONS',
@@ -148,10 +145,47 @@ class TestEveryPanelRenders:
 
     def test_an_order_partly_filled_shows_its_progress(self, dashboard, dashboard_frame,
                                                        connection, frame_time):
-        text = _export(dashboard.render(dashboard_frame, connection, frame_time, _TWO_ROOMY),
-                       _TWO_ROOMY)
+        text = _export(dashboard.render(dashboard_frame, connection, frame_time, _TWO),
+                       _TWO)
 
         assert 'PARTIAL' in _line_with(text, '└─ 0.0400/0.1000')
+
+
+class TestTheTablesSpanTheFullWidth:
+    """
+    OPEN POSITIONS, ORDERS and TRADE HISTORY stand below the columns, each across the full
+    width (#586). In a column they had a third or a half of the terminal, and their tables cut
+    the numbers a trader reads them for: `0.0…` lots, `49800…` prices, `WATCH…`.
+    """
+
+    _WHOLE = {
+        'OPEN POSITIONS': ['pos_btcusd_9', '0.0500', '50100.00', '-3.2500',
+                           '└─ 2 fills', '50100.00→50110.00'],
+        'ORDERS': ['pos_btcusd_11', 'limit', '49800.00', 'WATCHING', '11m ago',
+                   '└─ 0.0400/0.1000', 'PARTIAL', '■ 1 PENDING'],
+        'TRADE HISTORY': ['50000.00', '50500.00', '+24.5000', 'remain', '2m ago',
+                          '50000.00→50010.00', '50490.00→50510.00'],
+    }
+
+    @pytest.mark.parametrize('width', [_TWO, _THREE, _WIDE], ids=['2-col', '3-col', 'wide'])
+    def test_each_table_has_a_row_of_its_own(self, dashboard, dashboard_frame, connection,
+                                             frame_time, width):
+        text = _export(dashboard.render(dashboard_frame, connection, frame_time, width), width)
+
+        for title in self._WHOLE:
+            # The table's top border is the only panel border on its line
+            assert _line_with(text, f' {title} ').count('╭') == 1, title
+
+    @pytest.mark.parametrize('width', [_SINGLE, _TWO, _THREE], ids=['1-col', '2-col', '3-col'])
+    def test_no_number_is_cut_at_the_narrowest_width_of_a_layout(
+            self, dashboard, dashboard_frame, connection, frame_time, width):
+        text = _export(dashboard.render(dashboard_frame, connection, frame_time, width), width)
+
+        for title, whole in self._WHOLE.items():
+            if title not in _PANELS[width]:
+                continue
+            for value in whole:
+                assert value in text, (title, value)
 
 
 class TestTheTradeHistoryReason:
@@ -169,7 +203,7 @@ class TestTheTradeHistoryReason:
         frame = dataclasses.replace(dashboard_frame, recent_trades=[make_trade_row(
             close_reason=close_reason, close_type=close_type, entry_lots=entry_lots)])
 
-        text = _export(dashboard.render(frame, connection, frame_time, _TWO_ROOMY), _TWO_ROOMY)
+        text = _export(dashboard.render(frame, connection, frame_time, _TWO), _TWO)
 
         row = _line_with(text, '50500.00')
         if close_reason is not CloseReason.MANUAL:
@@ -189,8 +223,8 @@ class TestTheTradeHistoryReason:
     def test_each_side_of_a_trade_filled_in_parts_gets_its_line(self, dashboard,
                                                                dashboard_frame, connection,
                                                                frame_time):
-        text = _export(dashboard.render(dashboard_frame, connection, frame_time, _TWO_ROOMY),
-                       _TWO_ROOMY)
+        text = _export(dashboard.render(dashboard_frame, connection, frame_time, _TWO),
+                       _TWO)
 
         assert '└─ in 2' in text
         assert '└─ out 2' in text

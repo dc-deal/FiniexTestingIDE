@@ -20,14 +20,14 @@ from python.framework.types.live_types.live_core_snapshot_types import LiveCoreS
 from python.framework.types.parameter_types import OutputValue
 from python.framework.types.portfolio_types.portfolio_trade_record_types import CloseReason
 from python.framework.types.signal_data_types import SignalHealthStatus
+from python.framework.types.trading_env_types.active_orders_snapshot_types import (
+    ActiveOrderSnapshot,
+)
 from python.framework.types.trading_env_types.broker_trade_types import BrokerTrade
 from python.framework.types.trading_env_types.order_types import (
     CloseType,
     OrderDirection,
     OrderSide,
-)
-from python.framework.types.trading_env_types.active_orders_snapshot_types import (
-    ActiveOrderSnapshot,
 )
 
 
@@ -251,10 +251,8 @@ class SignalTransportStats:
     Args:
         configured: False in a mounted session — then the panel says so instead of
             rendering an idle transport that was never meant to run
-        state: Transport condition. Shared by both live transports, so it carries the
-            pull path's 'degraded' (the producer could not serve from its store) and the
-            stream's 'connecting' / 'replay' / 'cursor_ahead' / 'misconfigured' alongside
-            'mounted' / 'live' / 'error' / 'unauthorized' / 'contract'. Three of them are
+        state: Transport condition — 'mounted', 'connecting', 'replay', 'live', 'error',
+            'contract', 'unauthorized', 'cursor_ahead' or 'misconfigured'. Three of them are
             TERMINAL — 'unauthorized', 'cursor_ahead' and 'misconfigured' end the feed for
             the rest of the session, because no amount of retrying fixes a token, a
             restored consumer store or a wrong request. 'error' and 'contract' are not:
@@ -265,7 +263,6 @@ class SignalTransportStats:
         stream_epoch: Series generation of that envelope
         last_envelope_at: Availability stamp of the newest envelope
         envelopes_received: New envelopes accepted this session
-        degraded_responses: Times the producer could not serve from its store
         transport_errors: Times the transport itself failed
         contract_errors: Times the producer answered but we could not read the envelope —
             counted apart from transport_errors on purpose, because blaming their
@@ -283,7 +280,6 @@ class SignalTransportStats:
     stream_epoch: Optional[int] = None
     last_envelope_at: Optional[datetime] = None
     envelopes_received: int = 0
-    degraded_responses: int = 0
     transport_errors: int = 0
     contract_errors: int = 0
     tape: List[SignalTransportEvent] = field(default_factory=list)

@@ -6,6 +6,9 @@ Architecture:
 - Daemon thread polls queue.Queue every 300ms (configurable)
 - Tick source stats (reconnects, last_message_time) polled once per frame into a snapshot
 - Responsive layout: 3-col (≥160), 2-col (≥120), 1-col (<120)
+- In the 3-col and 2-col layouts the three tables — OPEN POSITIONS, ORDERS, TRADE HISTORY — span
+  the full width below the columns: a third or a half of the terminal cut their sizes, prices and
+  states (#586)
 - Panel priority: session/portfolio/positions/orders always shown,
   algo state/connection/clipping/worker perf added with terminal width
 - A panel that raises shows as failed in place and is reported to the session log (#586)
@@ -37,7 +40,7 @@ from python.framework.types.autotrader_types.display_label_cache import DisplayL
 from python.framework.types.decision_logic_types import AwarenessLevel, DecisionLogicAction
 from python.framework.types.trading_env_types.order_types import CloseType, OrderDirection
 from python.system.ui.render_failure_reporter import RenderFailureReporter
-from python.system.ui.ui_render_utils import prove_printable
+from python.system.ui.ui_render_utils import prove_printable, rendered_height
 
 
 class AutoTraderLiveDisplay:
@@ -71,6 +74,8 @@ class AutoTraderLiveDisplay:
     # Layout breakpoints
     _WIDTH_THREE_COL = 160
     _WIDTH_TWO_COL = 120
+    # The dashboard frame's border and padding: how much narrower its content is than the terminal
+    _FRAME_MARGIN = 4
 
     # Trade history display limit
     _MAX_RECENT_TRADES = 8
@@ -419,25 +424,17 @@ class AutoTraderLiveDisplay:
                    name='tick'),
         )
 
-        # Right: Positions + Orders + Trade History + Algo State
-        right_panels = [
-            Layout(self._guarded('OPEN POSITIONS', self._build_positions_panel, stats),
-                   name='positions'),
-            Layout(self._guarded('ORDERS', self._build_orders_panel, stats, now), name='orders'),
-        ]
+        # Right: Rejections + Algo State
+        right_panels = []
         if stats.recent_rejections:
             right_panels.append(Layout(
                 self._guarded('REJECTIONS', self._build_rejections_panel, stats, now),
                 name='rejections'))
-        if stats.recent_trades:
-            right_panels.append(Layout(
-                self._guarded('TRADE HISTORY', self._build_trade_history_panel, stats, now),
-                name='trades'))
         right_panels.append(Layout(
             self._guarded('ALGO STATE', self._build_algo_state_panel, stats, now), name='algo'))
         layout['right'].split_column(*right_panels)
 
-        return layout
+        return self._with_tables_below(layout, stats, now, width)
 
     def _render_two_col(
         self,
@@ -453,38 +450,68 @@ class AutoTraderLiveDisplay:
             Layout(name='right', ratio=1),
         )
 
-        # Left: Session + Portfolio + Algo State + Connection (+ API perf)
+        # Left: Session + Portfolio (+ API perf)
         left_panels = [
             Layout(self._guarded('SESSION', self._build_session_panel, stats, now, width),
                    name='session'),
             Layout(self._guarded('PORTFOLIO', self._build_portfolio_panel, stats),
                    name='portfolio'),
-            Layout(self._guarded('ALGO STATE', self._build_algo_state_panel, stats, now),
-                   name='algo'),
-            Layout(self._guarded('CONNECTION', self._build_connection_panel,
-                                 stats, connection, now), name='connection'),
         ]
         api_perf = self._guarded('API PERFORMANCE', self._build_api_perf_panel, stats, now)
         if api_perf is not None:
             left_panels.append(Layout(api_perf, name='api_perf'))
         layout['left'].split_column(*left_panels)
 
-        # Right: Positions + Orders + Trade History
-        right_panels = [
-            Layout(self._guarded('OPEN POSITIONS', self._build_positions_panel, stats),
-                   name='positions'),
-            Layout(self._guarded('ORDERS', self._build_orders_panel, stats, now), name='orders'),
-        ]
+        # Right: Rejections + Algo State + Connection — the tables that stood here went below
+        right_panels = []
         if stats.recent_rejections:
             right_panels.append(Layout(
                 self._guarded('REJECTIONS', self._build_rejections_panel, stats, now),
                 name='rejections'))
-        if stats.recent_trades:
-            right_panels.append(Layout(
-                self._guarded('TRADE HISTORY', self._build_trade_history_panel, stats, now),
-                name='trades'))
+        right_panels.append(Layout(
+            self._guarded('ALGO STATE', self._build_algo_state_panel, stats, now), name='algo'))
+        right_panels.append(Layout(
+            self._guarded('CONNECTION', self._build_connection_panel, stats, connection, now),
+            name='connection'))
         layout['right'].split_column(*right_panels)
 
+        return self._with_tables_below(layout, stats, now, width)
+
+    def _with_tables_below(
+        self,
+        columns: Layout,
+        stats: AutoTraderDisplayStats,
+        now: datetime,
+        width: int,
+    ) -> Layout:
+        """
+        Put the three tables below the columns — OPEN POSITIONS, ORDERS and, once there are
+        trades, TRADE HISTORY — each across the full width and as tall as its rows.
+
+        In a column they had a third or a half of the terminal, and their tables cut sizes,
+        prices and states to `0.0…`, `49800…` and `WATCH…` (#586).
+
+        Args:
+            columns: The layout's columns
+            stats: The snapshot
+            now: The wall clock, where the snapshot carries no tick time to measure ages by
+            width: The terminal width
+
+        Returns:
+            The columns above the tables
+        """
+        tables = [
+            ('positions', self._guarded('OPEN POSITIONS', self._build_positions_panel, stats)),
+            ('orders', self._guarded('ORDERS', self._build_orders_panel, stats, now)),
+        ]
+        if stats.recent_trades:
+            tables.append(('trades', self._guarded(
+                'TRADE HISTORY', self._build_trade_history_panel, stats, now)))
+        table_width = width - self._FRAME_MARGIN
+        layout = Layout()
+        layout.split_column(columns, *[
+            Layout(panel, name=name, size=rendered_height(panel, table_width))
+            for name, panel in tables])
         return layout
 
     def _render_single_col(
@@ -790,13 +817,15 @@ class AutoTraderLiveDisplay:
         if not stats.open_positions:
             return Panel('[dim]No open positions[/dim]', title='[bold]OPEN POSITIONS[/bold]', box=box.ROUNDED)
 
+        # Minimum widths and no wrapping, as in TRADE HISTORY: a fixed Entry column cut the price
+        # range of an entry filled in parts at every terminal width (#586)
         table = Table(show_header=True, box=None, padding=(0, 1))
-        table.add_column('#', width=3)
-        table.add_column('ID', width=16)
-        table.add_column('Dir', width=6)
-        table.add_column('Lots', width=8, justify='right')
-        table.add_column('Entry', width=10, justify='right')
-        table.add_column('P&L', width=12, justify='right')
+        table.add_column('#', min_width=3, no_wrap=True)
+        table.add_column('ID', min_width=16, no_wrap=True)
+        table.add_column('Dir', min_width=6, no_wrap=True)
+        table.add_column('Lots', min_width=8, justify='right', no_wrap=True)
+        table.add_column('Entry', min_width=10, justify='right', no_wrap=True)
+        table.add_column('P&L', min_width=12, justify='right', no_wrap=True)
 
         for idx, pos in enumerate(stats.open_positions, 1):
             pnl_color = 'green' if pos.unrealized_pnl >= 0 else 'red'
@@ -844,13 +873,14 @@ class AutoTraderLiveDisplay:
             return Panel('[dim]No active orders[/dim]', title='[bold]ORDERS[/bold]', box=box.ROUNDED)
 
         table = Table(show_header=True, box=None, padding=(0, 1))
-        table.add_column('#', width=3)
-        table.add_column('ID', width=16)
-        table.add_column('Type', width=8)
-        table.add_column('Dir', width=6)
-        table.add_column('Price', width=10, justify='right')
-        table.add_column('Status', width=10)
-        table.add_column('Age', width=9)
+        # Minimum widths and no wrapping, as in the other two tables (#586)
+        table.add_column('#', min_width=3, no_wrap=True)
+        table.add_column('ID', min_width=16, no_wrap=True)
+        table.add_column('Type', min_width=8, no_wrap=True)
+        table.add_column('Dir', min_width=6, no_wrap=True)
+        table.add_column('Price', min_width=10, justify='right', no_wrap=True)
+        table.add_column('Status', min_width=10, no_wrap=True)
+        table.add_column('Age', min_width=9, no_wrap=True)
 
         # Active limit/stop orders (broker-accepted, watching) — newest first
         ordered_active = list(reversed(stats.active_orders))
@@ -942,14 +972,17 @@ class AutoTraderLiveDisplay:
         if not stats.recent_trades:
             return Panel('[dim]No trades yet[/dim]', title='[bold]TRADE HISTORY[/bold]', box=box.ROUNDED)
 
+        # Minimum widths, never fixed ones, and no wrapping: a column grows to what it holds — the
+        # price range of a trade filled in parts is wider than a price — and the full-width row
+        # this panel stands in leaves room for that (#586)
         table = Table(show_header=True, box=None, padding=(0, 1))
-        table.add_column('Side', width=6)
-        table.add_column('Lots', width=8, justify='right')
-        table.add_column('Entry', width=10, justify='right')
-        table.add_column('Exit', width=10, justify='right')
-        table.add_column('P&L', width=12, justify='right')
-        table.add_column('Reason', width=8)
-        table.add_column('Age', width=9)
+        table.add_column('Side', min_width=6, no_wrap=True)
+        table.add_column('Lots', min_width=8, justify='right', no_wrap=True)
+        table.add_column('Entry', min_width=10, justify='right', no_wrap=True)
+        table.add_column('Exit', min_width=10, justify='right', no_wrap=True)
+        table.add_column('P&L', min_width=12, justify='right', no_wrap=True)
+        table.add_column('Reason', min_width=8, no_wrap=True)
+        table.add_column('Age', min_width=9, no_wrap=True)
 
         for trade in stats.recent_trades[:self._MAX_RECENT_TRADES]:
             pnl_color = 'green' if trade.net_pnl >= 0 else 'red'
@@ -1161,7 +1194,7 @@ class AutoTraderLiveDisplay:
         # human must decide, 'misconfigured' says the request itself is wrong and no
         # amount of waiting will fix it. Both stop the feed for the rest of the session.
         colors = {'live': 'green', 'replay': 'yellow', 'connecting': 'yellow',
-                  'degraded': 'yellow', 'error': 'red', 'unauthorized': 'red',
+                  'error': 'red', 'unauthorized': 'red',
                   'contract': 'red', 'cursor_ahead': 'bold red',
                   'misconfigured': 'bold red'}
         color = colors.get(transport.state, 'dim')
@@ -1182,15 +1215,12 @@ class AutoTraderLiveDisplay:
         ]
         lines.extend(self._build_journal_lines(transport.health))
         lines.append(f'Last Envelope:  {age_str}')
-        # contract_errors belongs here too: the stream never sets degraded_responses (that
-        # is a pull-path answer), so gating the line on the pull counters alone hid the
-        # one failure the operator can act on — the producer answered and we could not
+        # contract_errors belongs here too: gating the line on the transport counter alone hid
+        # the one failure the operator can act on — the producer answered and we could not
         # read it.
-        if (transport.degraded_responses or transport.transport_errors
-                or transport.contract_errors):
+        if transport.transport_errors or transport.contract_errors:
             lines.append(
-                f'[yellow]Feed Issues:    {transport.degraded_responses} degraded · '
-                f'{transport.transport_errors} transport · '
+                f'[yellow]Feed Issues:    {transport.transport_errors} transport · '
                 f'{transport.contract_errors} contract[/yellow]')
 
         if transport.tape:

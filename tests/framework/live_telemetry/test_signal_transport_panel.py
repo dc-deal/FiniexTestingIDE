@@ -88,13 +88,6 @@ class TestLiveTransport:
 class TestTrouble:
     """The states the panel exists for."""
 
-    def test_degraded_producer_is_visible(self, now):
-        out = render(SignalTransportStats(
-            configured=True, state='degraded', last_seq=4914, stream_epoch=1,
-            last_envelope_at=now - timedelta(minutes=8), degraded_responses=3))
-        assert 'degraded' in out
-        assert '3 degraded' in out
-
     def test_transport_errors_are_counted(self, now):
         out = render(SignalTransportStats(
             configured=True, state='error', transport_errors=2,

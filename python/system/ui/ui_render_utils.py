@@ -63,3 +63,19 @@ def prove_printable(renderable: RenderableType, width: int, height: int) -> None
     Console(file=io.StringIO(), width=width, height=height, color_system=None,
             force_terminal=False).print(renderable)
 
+
+
+def rendered_height(renderable: RenderableType, width: int) -> int:
+    """
+    How many lines a renderable takes when it is drawn at a width — what a layout region has to
+    give a panel that should show all of its rows (#586).
+
+    Args:
+        renderable: What will be drawn
+        width: The width it gets
+
+    Returns:
+        Its height in lines
+    """
+    console = Console(file=io.StringIO(), width=width, color_system=None, force_terminal=False)
+    return len(console.render_lines(renderable, console.options, pad=False))

@@ -77,14 +77,15 @@ from its default, so a field added to the frame joins the renders.
 |---|---|
 | the frame is full | every field of `AutoTraderDisplayStats` is set to something a panel renders |
 | every panel renders | each layout — one, two and three columns — shows each of its panels, a margin account's portfolio too, and the frame before the first snapshot; ages and uptime are measured against the frame's own clock and tick time; the Audit line takes the width it is given; an order partly filled shows `└─ filled/requested · PARTIAL` |
+| the tables span the full width | OPEN POSITIONS, ORDERS and TRADE HISTORY each stand on a row of their own below the columns, and at the narrowest width of each layout no size, price, state or fill range of theirs is cut — in a column they cut `0.0…`, `49800…`, `WATCH…` |
 | the Reason column | every `CloseReason` × `CloseType` × size at entry (larger, equal, unknown) gives its marker — `partial`, `remain` or the reason itself — and a trade filled in parts on each side gets its lines |
 | words are text | a venue's reason, the strategy's awareness, events and outputs, the producer's journal name and budget reason reach the screen as written, brackets included — a closing tag with no opener builds fine and fails only when **printed** |
 | a panel that fails | it shows as failed in its place, the other panels render, and the failure is reported once with its traceback |
 | the loop | a frame that cannot be printed is replaced by a failure frame and the loop goes on — the frame is proven printable before the live display holds it, never in a refresh thread of rich's own; the failure frame still names the deployment |
 | the exporter | `AutotraderDisplayExporter.trade_history_entry` carries the size at entry, and every field of the row comes from the record — the record differs from the row's default in each of them, so a forgotten copy cannot pass |
 
-The Reason column and the partial-fill row are tested at the widest two-column terminal (159
-columns): narrower, the trade table's fixed columns are cut, which is a layout matter of its own.
+Each layout is rendered at its narrowest width — 100, 120 and 160 columns — where a panel has the
+least room.
 
 ---
 
@@ -99,6 +100,19 @@ the scenario's name reach the screen as written, brackets included. A screen tha
 printed never reaches the live display: it is proven first and replaced, so the report of the
 failure — which the global logger prints through the display — and the batch's own logging keep
 working; held, it made every print in every thread raise.
+
+---
+
+## Live Progress Senders
+
+`tests/framework/live_telemetry/test_live_progress_senders.py` — the three places that put a
+simulation's progress on the batch's live queue: a scenario's frame per update interval, a
+scenario's status, and the batch's status broadcast to every scenario. A full queue is the ordinary
+case and is skipped without a word. Before #586 every other failure was swallowed as well, and the
+progress screen simply stopped moving. Now a frame that cannot be built propagates, because it is
+a defect; a queue that fails otherwise is reported to the global log once and never raised,
+because the screen is the only reader. A scenario whose frames cannot be sent stops sending them
+and runs on, and one failed status in a broadcast does not cost the other scenarios theirs.
 
 ---
 

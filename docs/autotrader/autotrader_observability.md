@@ -29,7 +29,14 @@ Three layouts based on terminal width:
 
 Rejections and API Performance join any layout once there is something to show.
 
+In the two- and three-column layouts the three tables — Open Positions, Orders and Trade History —
+stand below the columns, each across the full width and as tall as its rows; the state panels share
+the columns above them. In a column a table had a third or a half of the terminal, and it cut the
+numbers it is read for: `0.0…` for a size, `49800…` for a price, `WATCH…` for a state.
+
 ### Panels
+
+Section names the place in the three-column layout.
 
 | Panel | Section | Content |
 |-------|---------|---------|
@@ -38,10 +45,10 @@ Rejections and API Performance join any layout once there is something to show.
 | WORKER PERFORMANCE | Left | Per-worker avg processing time with bar chart (scale: 50ms = full bar). Hidden completely when `execution.performance_tracking.worker_decision_tracking` is `false` — see [performance_tracking_layers.md](../architecture/performance_tracking_layers.md) |
 | PORTFOLIO | Center | Balance with quote equivalent (`≈ X.XX USD`), net P&L, W/L count |
 | TICK PROCESSING | Center | Avg/max processing ms, p50/p95/p99 percentiles, clipping bar + ratio, queue depth |
-| OPEN POSITIONS | Right | Live positions: ID, direction, lots, entry price, unrealized P&L |
-| ORDERS | Right | Active limit/stop orders + pipeline (in-transit) count. An order partly filled gets a `└─ 0.0400/0.1000 · PARTIAL` row — today one taken over at a cold start partly filled; an ordinary resting order's partial execution is mirrored once #342 lands |
+| OPEN POSITIONS | Below, full width | Live positions: ID, direction, lots, entry price, unrealized P&L |
+| ORDERS | Below, full width | Active limit/stop orders + pipeline (in-transit) count. An order partly filled gets a `└─ 0.0400/0.1000 · PARTIAL` row — today one taken over at a cold start partly filled; an ordinary resting order's partial execution is mirrored once #342 lands |
 | REJECTIONS | Right | Shown once an order was refused: newest first, numbered, with the venue's reason as it gave it |
-| TRADE HISTORY | Right | Last 8 completed trades (newest first): dir, lots, entry, exit, P&L, close reason. A close the strategy made itself reads `partial` for a part of the position and `remain` for the last part of a position closed in parts |
+| TRADE HISTORY | Below, full width | Last 8 completed trades (newest first): dir, lots, entry, exit, P&L, close reason. A close the strategy made itself reads `partial` for a part of the position and `remain` for the last part of a position closed in parts |
 | API PERFORMANCE | Left | Per broker REST endpoint: calls, average and maximum latency, errors |
 | ALGO STATE | Right | Decision + confidence, config params with `display=True` (e.g., `rsi_os=30 env_l=0.30`), worker `display=True` outputs (e.g., `rsi`, `up`/`lo`) |
 

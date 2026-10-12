@@ -212,7 +212,7 @@ def dashboard_frame() -> AutoTraderDisplayStats:
         signal_transport=SignalTransportStats(
             configured=True, state='live', source='producer', last_seq=812, stream_epoch=4,
             last_envelope_at=_FRAME_TIME - timedelta(seconds=40), envelopes_received=812,
-            degraded_responses=1, transport_errors=2, contract_errors=1,
+            transport_errors=2, contract_errors=1,
             tape=[SignalTransportEvent(message='epoch changed [/x] — reconnecting',
                                        at=_FRAME_TIME - timedelta(minutes=2),
                                        level=AwarenessLevel.NOTICE)],
