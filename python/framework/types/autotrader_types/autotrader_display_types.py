@@ -8,6 +8,7 @@ Designed for queue transport: all fields are primitives, lists, or dicts.
 
 from dataclasses import dataclass, field
 from datetime import datetime
+from enum import Enum
 from typing import Dict, List, Optional
 
 from python.framework.types.decision_logic_types import (
@@ -19,7 +20,7 @@ from python.framework.types.live_types.api_perf_types import ApiPerfSnapshot
 from python.framework.types.live_types.live_core_snapshot_types import LiveCoreSnapshot
 from python.framework.types.parameter_types import OutputValue
 from python.framework.types.portfolio_types.portfolio_trade_record_types import CloseReason
-from python.framework.types.signal_data_types import SignalHealthStatus
+from python.framework.types.signal_data_types import SignalHealthStatus, SignalTransportState
 from python.framework.types.trading_env_types.active_orders_snapshot_types import (
     ActiveOrderSnapshot,
 )
@@ -140,6 +141,19 @@ class RejectionEntry:
     tick_time: Optional[datetime] = None
 
 
+class QuoteFeedState(str, Enum):
+    """
+    The condition of a tick source's quote channel, as the CONNECTION panel shows it (#520).
+
+    OFF: the channel is not subscribed · WAITING: subscribed, no quote yet · LIVE · DEGRADED: the
+    subscription failed, and trades still flow without a quote.
+    """
+    OFF = 'off'
+    WAITING = 'waiting'
+    LIVE = 'live'
+    DEGRADED = 'degraded'
+
+
 @dataclass(frozen=True)
 class QuoteFeedStats:
     """
@@ -156,8 +170,7 @@ class QuoteFeedStats:
     warning is a verdict, and verdicts belong to a validator (§12).
 
     Args:
-        state: 'off' (the channel is not subscribed) · 'waiting' (subscribed, no quote yet) ·
-            'live' · 'degraded' (the subscription failed; trades still flow without a quote)
+        state: The channel's condition
         bid: Best bid of the last observed quote, 0.0 while there is none
         ask: Best ask of the last observed quote, 0.0 while there is none
         quote_age_ms: How old that quote is NOW, from the monotonic clock. None — never 0 —
@@ -166,7 +179,7 @@ class QuoteFeedStats:
         quotes_received: Quote updates accepted this session. A frozen spread beside a rising
             count means the venue is quiet; a frozen count means we stopped receiving
     """
-    state: str = 'off'
+    state: QuoteFeedState = QuoteFeedState.OFF
     bid: float = 0.0
     ask: float = 0.0
     quote_age_ms: Optional[int] = None
@@ -251,13 +264,7 @@ class SignalTransportStats:
     Args:
         configured: False in a mounted session — then the panel says so instead of
             rendering an idle transport that was never meant to run
-        state: Transport condition — 'mounted', 'connecting', 'replay', 'live', 'error',
-            'contract', 'unauthorized', 'cursor_ahead' or 'misconfigured'. Three of them are
-            TERMINAL — 'unauthorized', 'cursor_ahead' and 'misconfigured' end the feed for
-            the rest of the session, because no amount of retrying fixes a token, a
-            restored consumer store or a wrong request. 'error' and 'contract' are not:
-            the first retries, and the second keeps the connection open because the
-            producer answered and it is our reader that could not follow
+        state: Transport condition — which ones end the feed is said on the enum
         source: The signal source being consumed
         last_seq: Position of the newest envelope received ('' era: None)
         stream_epoch: Series generation of that envelope
@@ -274,7 +281,7 @@ class SignalTransportStats:
             a session's measurements belong to
     """
     configured: bool = False
-    state: str = 'mounted'
+    state: SignalTransportState = SignalTransportState.MOUNTED
     source: str = ''
     last_seq: Optional[int] = None
     stream_epoch: Optional[int] = None

@@ -33,11 +33,13 @@ from python.framework.autotrader.tick_sources.abstract_tick_source import Abstra
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
 from python.framework.types.autotrader_types.autotrader_display_types import (
     AutoTraderDisplayStats,
+    QuoteFeedState,
     QuoteFeedStats,
     TickSourceSnapshot,
 )
 from python.framework.types.autotrader_types.display_label_cache import DisplayLabelCache
 from python.framework.types.decision_logic_types import AwarenessLevel, DecisionLogicAction
+from python.framework.types.signal_data_types import SignalTransportState
 from python.framework.types.trading_env_types.order_types import CloseType, OrderDirection
 from python.system.ui.render_failure_reporter import RenderFailureReporter
 from python.system.ui.ui_render_utils import prove_printable, rendered_height
@@ -1148,9 +1150,9 @@ class AutoTraderLiveDisplay:
         """
         if quote is None:
             return '[dim]— (no quote channel)[/dim]'
-        if quote.state == 'off':
+        if quote.state == QuoteFeedState.OFF:
             return '[dim]— (off)[/dim]'
-        if quote.state == 'degraded':
+        if quote.state == QuoteFeedState.DEGRADED:
             return '[yellow]— (degraded: no ticker)[/yellow]'
         if quote.quote_age_ms is None:
             return '[dim]— (waiting for quote)[/dim]'
@@ -1193,12 +1195,13 @@ class AutoTraderLiveDisplay:
         # are the hardest of them: 'cursor_ahead' says our own store was restored and a
         # human must decide, 'misconfigured' says the request itself is wrong and no
         # amount of waiting will fix it. Both stop the feed for the rest of the session.
-        colors = {'live': 'green', 'replay': 'yellow', 'connecting': 'yellow',
-                  'error': 'red', 'unauthorized': 'red',
-                  'contract': 'red', 'cursor_ahead': 'bold red',
-                  'misconfigured': 'bold red'}
+        colors = {SignalTransportState.LIVE: 'green', SignalTransportState.REPLAY: 'yellow',
+                  SignalTransportState.CONNECTING: 'yellow', SignalTransportState.ERROR: 'red',
+                  SignalTransportState.UNAUTHORIZED: 'red', SignalTransportState.CONTRACT: 'red',
+                  SignalTransportState.CURSOR_AHEAD: 'bold red',
+                  SignalTransportState.MISCONFIGURED: 'bold red'}
         color = colors.get(transport.state, 'dim')
-        marker = '●' if transport.state == 'live' else '◌'
+        marker = '●' if transport.state == SignalTransportState.LIVE else '◌'
         position = (f'epoch {transport.stream_epoch}  seq {transport.last_seq}'
                     if transport.last_seq is not None else 'awaiting first envelope')
 
@@ -1211,7 +1214,7 @@ class AutoTraderLiveDisplay:
 
         lines = [
             '',
-            f'[{color}]Signal Feed:    {marker} {transport.state}   {position}[/{color}]',
+            f'[{color}]Signal Feed:    {marker} {transport.state.value}   {position}[/{color}]',
         ]
         lines.extend(self._build_journal_lines(transport.health))
         lines.append(f'Last Envelope:  {age_str}')
@@ -1343,7 +1346,7 @@ class AutoTraderLiveDisplay:
             d_max = stats.decision_max_time_ms
             lines.append(
                 f'{dl_label:<16s} {d_bar} avg={display_ms:.2f}ms  [dim]max {d_max:.2f}ms[/dim]')
-            lines.append('─' * 55)
+            lines.append('─' * 40)
 
         for name, avg_ms in stats.worker_times_ms.items():
             rolling_ms = stats.worker_rolling_avg_times_ms.get(name, 0.0)
@@ -1386,7 +1389,7 @@ class AutoTraderLiveDisplay:
             err = f'  [yellow]⚠{s.error_count}[/yellow]' if s.error_count else ''
             lines.append(
                 f'{name:<16s} {s.count:>3}× avg {s.avg_ms:.0f}ms · max {max_str} · {age}{err}')
-        lines.append('─' * 50)
+        lines.append('─' * 40)
         lines.append(
             f'[dim]slow >{threshold:.0f}ms: {snap.slow_count} · errors: {snap.total_errors}[/dim]')
         return Panel('\n'.join(lines), title='[bold]API PERFORMANCE[/bold]', box=box.ROUNDED)

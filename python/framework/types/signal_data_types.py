@@ -368,6 +368,28 @@ class SignalSourceMode(str, Enum):
     LIVE = 'live'
 
 
+class SignalTransportState(str, Enum):
+    """
+    The condition of the live signal transport, as the operator panel and the stream probe show
+    it (#468).
+
+    Three are TERMINAL: UNAUTHORIZED, CURSOR_AHEAD and MISCONFIGURED end the feed for the rest of
+    the session, because no amount of retrying fixes a token, a restored consumer store or a
+    wrong request. ERROR and CONTRACT are not: the first retries, and the second keeps the
+    connection open because the producer answered and it is our reader that could not follow.
+    MOUNTED is a session that reads its signals from the archive and runs no transport.
+    """
+    MOUNTED = 'mounted'
+    CONNECTING = 'connecting'
+    REPLAY = 'replay'
+    LIVE = 'live'
+    ERROR = 'error'
+    CONTRACT = 'contract'
+    UNAUTHORIZED = 'unauthorized'
+    CURSOR_AHEAD = 'cursor_ahead'
+    MISCONFIGURED = 'misconfigured'
+
+
 class SignalTransportKind(str, Enum):
     """
     Which live transport carries the envelopes.
@@ -873,7 +895,7 @@ class StreamProbeResult:
     Args:
         ok: Whether the transport reached a healthy state
         detail: Registry summary, or why the probe could not start
-        state: Transport state when the probe ended
+        state: Transport state when the probe ended, None when it could not start
         seconds: How long the connection was held
         connections: How many connections were opened in that time
         arrivals: Envelopes that reached the inbox
@@ -884,7 +906,7 @@ class StreamProbeResult:
     """
     ok: bool
     detail: str = ''
-    state: str = ''
+    state: Optional[SignalTransportState] = None
     seconds: float = 0.0
     connections: int = 0
     arrivals: List['SignalSnapshot'] = field(default_factory=list)

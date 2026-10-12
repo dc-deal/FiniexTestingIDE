@@ -21,6 +21,7 @@ from python.framework.types.autotrader_types.autotrader_config_types import (
 from python.framework.types.autotrader_types.autotrader_display_types import (
     AutoTraderDisplayStats,
     PositionSnapshot,
+    QuoteFeedState,
     QuoteFeedStats,
     RejectionEntry,
     SignalTransportEvent,
@@ -38,7 +39,7 @@ from python.framework.types.decision_logic_types import (
 from python.framework.types.live_types.api_perf_types import ApiEndpointStats, ApiPerfSnapshot
 from python.framework.types.live_types.live_core_snapshot_types import LiveCoreSnapshot
 from python.framework.types.portfolio_types.portfolio_trade_record_types import CloseReason
-from python.framework.types.signal_data_types import SignalHealthStatus
+from python.framework.types.signal_data_types import SignalHealthStatus, SignalTransportState
 from python.framework.types.trading_env_types.active_orders_snapshot_types import (
     ActiveOrderSnapshot,
 )
@@ -210,7 +211,8 @@ def dashboard_frame() -> AutoTraderDisplayStats:
         worker_outputs={'rsi_fast': {'rsi': 41.2, 'regime': 'range [low]'}},
         feed_stale=True,
         signal_transport=SignalTransportStats(
-            configured=True, state='live', source='producer', last_seq=812, stream_epoch=4,
+            configured=True, state=SignalTransportState.LIVE, source='producer', last_seq=812,
+            stream_epoch=4,
             last_envelope_at=_FRAME_TIME - timedelta(seconds=40), envelopes_received=812,
             transport_errors=2, contract_errors=1,
             tape=[SignalTransportEvent(message='epoch changed [/x] — reconnecting',
@@ -273,7 +275,7 @@ def connection(frame_time: datetime) -> TickSourceSnapshot:
         reconnect_count=1, ticks_emitted=48213,
         last_message_time=frame_time - timedelta(seconds=1),
         last_tick_time=frame_time - timedelta(seconds=2),
-        quote=QuoteFeedStats(state='live', bid=50430.0, ask=50436.0, quote_age_ms=420,
+        quote=QuoteFeedStats(state=QuoteFeedState.LIVE, bid=50430.0, ask=50436.0, quote_age_ms=420,
                              quotes_received=900))
 
 

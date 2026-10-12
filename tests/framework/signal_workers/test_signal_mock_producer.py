@@ -27,7 +27,7 @@ from python.framework.types.config_types.sentiment_config_types import (
     ResolvedCredential,
     SentimentStreamConfig,
 )
-from python.framework.types.signal_data_types import SignalStreamControlCode
+from python.framework.types.signal_data_types import SignalStreamControlCode, SignalTransportState
 
 # The stand-in's human-facing pacing is deliberately slow; a test shortens both ends. The
 # window must outlast injection PLUS the reconnect backoff, or a followed rewind looks
@@ -72,7 +72,7 @@ class TestTheStandInSpeaksTheProducersContract:
         result = probe(mock_logger)
 
         assert result.ok
-        assert result.state == 'live'
+        assert result.state == SignalTransportState.LIVE
         assert len(result.arrivals) == MOCK_SNAPSHOT_COUNT
         assert result.arrivals[0].seq == MOCK_FIRST_SEQ
         assert result.connections == 1, 'a healthy stream must not reconnect'
@@ -104,14 +104,14 @@ class TestTheControlCodesReachTheOperator:
         """Our store was restored — silently resuming would paper over exactly that."""
         result = probe(mock_logger, SignalStreamControlCode.CURSOR_AHEAD)
 
-        assert result.state == 'cursor_ahead'
+        assert result.state == SignalTransportState.CURSOR_AHEAD
         assert not result.ok
         assert result.connections == 1, 'terminal means terminal — no reconnect'
 
     def test_auth_revoked_stops_as_a_credential_condition(self, mock_logger):
         result = probe(mock_logger, SignalStreamControlCode.AUTH_REVOKED)
 
-        assert result.state == 'unauthorized'
+        assert result.state == SignalTransportState.UNAUTHORIZED
         assert result.transport_errors == 0, (
             'a revoked token is not a transport fault — counting it as one sends the '
             'operator to the wrong system')
@@ -125,7 +125,7 @@ class TestTheControlCodesReachTheOperator:
         """
         result = probe(mock_logger, SignalStreamControlCode.REPLAY_TRUNCATED)
 
-        assert result.state == 'live'
+        assert result.state == SignalTransportState.LIVE
         assert len(result.arrivals) == MOCK_SNAPSHOT_COUNT
 
 

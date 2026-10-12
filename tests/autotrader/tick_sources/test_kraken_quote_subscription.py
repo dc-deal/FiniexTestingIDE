@@ -11,6 +11,7 @@ field that is the only thing letting two subscriptions be told apart.
 
 import asyncio
 import json
+import queue
 from collections import deque
 from pathlib import Path
 from typing import Any, Dict, List
@@ -21,6 +22,12 @@ from python.framework.autotrader.tick_sources.kraken_tick_source import (
     TICKER_EVENT_TRIGGER,
     KrakenTickSource,
 )
+from python.framework.autotrader.tick_sources.mock_tick_source import MockTickSource
+from python.framework.types.autotrader_types.autotrader_display_types import (
+    QuoteFeedState,
+    QuoteFeedStats,
+)
+from python.system.ui.autotrader_live_display import AutoTraderLiveDisplay
 
 FIXTURE_PATH = Path('tests/fixtures/tick_sources/kraken_ws_frames.json')
 SYMBOL = 'BTCUSD'
@@ -120,8 +127,6 @@ def build_source(logger: RecordingLogger, quote_channel_enabled: bool) -> Kraken
     Returns:
         KrakenTickSource with an unbounded queue
     """
-    import queue
-
     return KrakenTickSource(
         symbol=SYMBOL,
         ws_pair=WS_PAIR,
@@ -163,7 +168,7 @@ def test_switch_off_subscribes_only_the_trade_channel(frames):
     asyncio.run(source._subscribe_trade_channel(ws))
 
     assert subscribed_channels(ws) == ['trade']
-    assert source.get_quote_stats().state == 'off'
+    assert source.get_quote_stats().state == QuoteFeedState.OFF
     assert source.get_quote_stats().quote_age_ms is None
 
 
@@ -187,7 +192,7 @@ def test_the_quote_channel_is_subscribed_first_and_asks_for_bbo(frames):
 
     assert subscribed_channels(ws) == ['ticker', 'trade']
     assert ws.sent[0]['params']['event_trigger'] == TICKER_EVENT_TRIGGER
-    assert source.get_quote_stats().state == 'waiting'
+    assert source.get_quote_stats().state == QuoteFeedState.WAITING
 
 
 def test_frames_arriving_during_the_handshake_warm_the_quote(frames):
@@ -234,7 +239,7 @@ def test_a_refused_quote_channel_is_degraded_and_the_session_starts(frames):
     asyncio.run(source._subscribe_channels(ws))
 
     assert subscribed_channels(ws) == ['ticker', 'trade']
-    assert source.get_quote_stats().state == 'degraded'
+    assert source.get_quote_stats().state == QuoteFeedState.DEGRADED
     assert len(logger.warnings) == 1
     assert 'Subscription depth unavailable' in logger.warnings[0]
 
@@ -262,7 +267,7 @@ def test_a_refusal_on_reconnect_drops_the_quote_from_before_the_drop(frames):
     ])))
 
     stats = source.get_quote_stats()
-    assert stats.state == 'degraded'
+    assert stats.state == QuoteFeedState.DEGRADED
     assert stats.quote_age_ms is None
 
     # And a trade now falls back to the trade price on both sides.
@@ -336,7 +341,7 @@ def test_the_quote_state_turns_live_on_the_first_quote(frames):
     asyncio.run(source._receive_loop(ws))
 
     stats = source.get_quote_stats()
-    assert stats.state == 'live'
+    assert stats.state == QuoteFeedState.LIVE
     assert stats.quote_age_ms is not None
     assert stats.quote_age_ms >= 0
 
@@ -360,7 +365,7 @@ def test_ticks_keep_flowing_while_the_quote_channel_is_silent(frames):
 
     assert source.get_ticks_emitted() == 5
     assert source.get_quote_stats().quotes_received == 1
-    assert source.get_quote_stats().state == 'live'
+    assert source.get_quote_stats().state == QuoteFeedState.LIVE
 
 
 def test_the_reported_spread_matches_the_quote_it_came_from(frames):
@@ -388,9 +393,6 @@ def test_a_source_without_a_quote_channel_reports_nothing_to_render(frames):
     A replay source has no quote feed, and the panel must say nothing rather than show an idle
     one — the same shape the signal panel uses for a mounted session.
     """
-    from python.framework.autotrader.tick_sources.mock_tick_source import MockTickSource
-    import queue
-
     source = MockTickSource(ticks=[], symbol=SYMBOL, tick_queue=queue.Queue())
 
     assert source.get_quote_stats() is None
@@ -414,8 +416,6 @@ def _format(stats):
     Returns:
         The rendered line
     """
-    from python.system.ui.autotrader_live_display import AutoTraderLiveDisplay
-
     display = AutoTraderLiveDisplay.__new__(AutoTraderLiveDisplay)
     return display._format_quote(stats)
 
@@ -428,19 +428,19 @@ def test_the_panel_distinguishes_every_quote_condition():
     watching a log, and 'off', 'waiting', 'degraded' and 'stale' all render as a dash or a
     number otherwise.
     """
-    from python.framework.types.autotrader_types.autotrader_display_types import QuoteFeedStats
-
     assert 'no quote channel' in _format(None)
-    assert '(off)' in _format(QuoteFeedStats(state='off'))
-    assert 'waiting' in _format(QuoteFeedStats(state='waiting'))
-    assert 'degraded' in _format(QuoteFeedStats(state='degraded'))
+    assert '(off)' in _format(QuoteFeedStats(state=QuoteFeedState.OFF))
+    assert 'waiting' in _format(QuoteFeedStats(state=QuoteFeedState.WAITING))
+    assert 'degraded' in _format(QuoteFeedStats(state=QuoteFeedState.DEGRADED))
 
-    live = _format(QuoteFeedStats(state='live', bid=75_920.6, ask=75_920.7, quote_age_ms=214))
+    live = _format(QuoteFeedStats(state=QuoteFeedState.LIVE, bid=75_920.6, ask=75_920.7,
+                                  quote_age_ms=214))
     assert '0.1' in live
     assert '214ms' in live
 
     # A stuck cache: the spread stops moving while the age climbs, and the age is coloured so
     # the operator's eye lands on it rather than on an unremarkable number beside it.
-    stuck = _format(QuoteFeedStats(state='live', bid=75_920.6, ask=75_920.7, quote_age_ms=47_000))
+    stuck = _format(QuoteFeedStats(state=QuoteFeedState.LIVE, bid=75_920.6, ask=75_920.7,
+                                   quote_age_ms=47_000))
     assert '47s' in stuck
     assert 'yellow' in stuck

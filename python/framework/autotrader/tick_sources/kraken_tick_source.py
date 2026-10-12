@@ -33,7 +33,10 @@ from python.framework.autotrader.tick_sources.kraken_tick_message_parser import 
     KrakenTickMessageParser,
 )
 from python.framework.logging.scenario_logger import ScenarioLogger
-from python.framework.types.autotrader_types.autotrader_display_types import QuoteFeedStats
+from python.framework.types.autotrader_types.autotrader_display_types import (
+    QuoteFeedState,
+    QuoteFeedStats,
+)
 from python.framework.types.config_types.connection_policy_config_types import ConnectionPolicy
 from python.framework.utils.connection_ladder import ConnectionLadder
 
@@ -119,9 +122,10 @@ class KrakenTickSource(AbstractTickSource):
         self._last_message_time: Optional[datetime] = None
         self._last_tick_time: Optional[datetime] = None
         # Quote-channel condition as the display reports it. Set on the socket thread when a
-        # subscription succeeds or is refused, read on the display thread — one string, so a
+        # subscription succeeds or is refused, read on the display thread — one value, so a
         # reader sees the old value or the new one and never a mixture.
-        self._quote_state: str = 'off' if not quote_channel_enabled else 'waiting'
+        self._quote_state = (QuoteFeedState.WAITING if quote_channel_enabled
+                             else QuoteFeedState.OFF)
 
     # === AbstractTickSource interface ===
 
@@ -222,7 +226,7 @@ class KrakenTickSource(AbstractTickSource):
         a venue fault rather than a clock fault.
 
         Returns:
-            A consistent snapshot; state 'off' when the channel is not subscribed
+            A consistent snapshot; state OFF when the channel is not subscribed
         """
         quote = self._parser.get_last_quote()
         if quote is None:
@@ -414,7 +418,7 @@ class KrakenTickSource(AbstractTickSource):
             error = 'no confirmation within the subscription deadline'
 
         if error is not None:
-            self._quote_state = 'degraded'
+            self._quote_state = QuoteFeedState.DEGRADED
             # On a RECONNECT the parser may still hold the quote from before the drop. Keeping
             # it would stamp every tick with a spread we can no longer refresh, and the tick
             # carries no age for a reader to catch it with.
@@ -427,7 +431,7 @@ class KrakenTickSource(AbstractTickSource):
                 )
             return
 
-        self._quote_state = 'waiting'
+        self._quote_state = QuoteFeedState.WAITING
         if self._logger:
             self._logger.info(
                 f'📡 Subscribed to ticker channel: {self._ws_pair} '
@@ -504,8 +508,9 @@ class KrakenTickSource(AbstractTickSource):
                     self._ticks_emitted += 1
                 self._last_tick_time = datetime.now(timezone.utc)
 
-            if self._quote_state == 'waiting' and self._parser.get_last_quote() is not None:
-                self._quote_state = 'live'
+            if (self._quote_state == QuoteFeedState.WAITING
+                    and self._parser.get_last_quote() is not None):
+                self._quote_state = QuoteFeedState.LIVE
 
     async def _connection_monitor(self, ws) -> None:
         """

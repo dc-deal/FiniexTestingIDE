@@ -198,7 +198,7 @@ class SignalFeedStreamObserver:
         if not result.observations:
             result.transport_failures.append(FeedCheck(
                 'stream_delivered_an_envelope', False,
-                f'GET {route}: the connection reached state {stats.state!r} and delivered '
+                f'GET {route}: the connection reached state {stats.state.value!r} and delivered '
                 f'no envelope in {seconds:.0f}s'))
         if stats.contract_errors:
             result.transport_failures.append(FeedCheck(

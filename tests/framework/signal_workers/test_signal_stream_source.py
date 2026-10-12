@@ -37,6 +37,7 @@ from python.framework.types.signal_data_types import (
     ProducerStreamSettings,
     SignalHealthStatus,
     SignalStreamCursor,
+    SignalTransportState,
 )
 from tests.framework.signal_workers.conftest import MockStreamReply, MockStreamServer
 
@@ -198,7 +199,8 @@ class TestConnect:
             hold_s=0.5)])
         with running(server, inbox) as source:
             assert wait_until(lambda: inbox.get_total_received() == 2)
-            assert wait_until(lambda: source.get_transport_stats().state == 'live')
+            assert wait_until(
+                lambda: source.get_transport_stats().state == SignalTransportState.LIVE)
             assert source.get_cursor() == SignalStreamCursor(epoch=1, seq=1042)
             drained = inbox.drain()
             assert [s.seq for s in drained[SIGNAL_KIND]] == [1041, 1042]
@@ -225,7 +227,8 @@ class TestControlCodes:
         server = MockStreamServer([MockStreamReply(
             body=control('live', stream_epoch=1, head_seq=0), hold_s=0.5)])
         with running(server, inbox) as source:
-            assert wait_until(lambda: source.get_transport_stats().state == 'live')
+            assert wait_until(
+                lambda: source.get_transport_stats().state == SignalTransportState.LIVE)
             assert source.get_transport_stats().contract_errors == 0
 
     def test_replay_truncated_accepts_the_hole_instead_of_chasing_it(self, inbox):
@@ -279,7 +282,7 @@ class TestControlCodes:
         cursor = SignalStreamCursor(epoch=1, seq=9001)
         with running(server, inbox, cursor=cursor) as source:
             assert wait_until(
-                lambda: source.get_transport_stats().state == 'cursor_ahead')
+                lambda: source.get_transport_stats().state == SignalTransportState.CURSOR_AHEAD)
             time.sleep(0.3)
             assert server.get_connection_count() == 1, 'a terminal frame must not reconnect'
 
@@ -298,7 +301,7 @@ class TestControlCodes:
         cursor = SignalStreamCursor(epoch=1, seq=9001)
         with running(server, inbox, cursor=cursor, health_probe=probe) as source:
             assert wait_until(
-                lambda: source.get_transport_stats().state == 'cursor_ahead')
+                lambda: source.get_transport_stats().state == SignalTransportState.CURSOR_AHEAD)
             assert wait_until(lambda: probe.stop.called), (
                 'a dead feed must stop asking the health route')
 
@@ -307,7 +310,7 @@ class TestControlCodes:
             body=control('auth_revoked', stream_epoch=1, detail='token expired'))])
         with running(server, inbox) as source:
             assert wait_until(
-                lambda: source.get_transport_stats().state == 'unauthorized')
+                lambda: source.get_transport_stats().state == SignalTransportState.UNAUTHORIZED)
             time.sleep(0.3)
             assert server.get_connection_count() == 1
 
@@ -378,7 +381,7 @@ class TestRefusedRequests:
         server = MockStreamServer([MockStreamReply(body=b'')])
         with running(server, inbox, token='wrong') as source:
             assert wait_until(
-                lambda: source.get_transport_stats().state == 'unauthorized')
+                lambda: source.get_transport_stats().state == SignalTransportState.UNAUTHORIZED)
             time.sleep(0.3)
             assert server.get_connection_count() == 1
             assert source.get_transport_stats().transport_errors == 0, (

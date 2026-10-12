@@ -243,9 +243,12 @@ bars = self.effective_bars(timeframe, bar_history, current_bars, count=period + 
 every compute materializes the whole history just to use its last `period` bars. With `count`
 the per-compute cost is **O(count)** instead of **O(bar_max_history)** — and stays constant if the
 operator raises `bar_max_history`. The result is bit-identical for a worker that only reads its
-tail (an SMA / RSI band over the last `period` bars); it is **not** correct to bound a worker whose
-output is path-dependent over the whole history — a cumulative indicator (OBV) or a recursive EMA
-(MACD) reads `len(bars)` and must keep the full (timeframe-filtered) history, so it omits `count`.
+tail (an SMA / Bollinger band over the last `period` bars); it is **not** correct to bound a worker
+whose output depends on the whole history — a cumulative indicator (OBV) reads every bar it has, so
+it omits `count`. A recursive average sits in between: MACD and RSI read a FIXED window as long as
+their warmup (`count=window`), long enough for the average to forget its seed. Their value then does
+not depend on how long the run has been going, so a backtest and a live session that warmed up on
+the same number of bars compute the same number.
 
 **Two different "how many bars" concerns — do not conflate them:**
 
