@@ -600,7 +600,7 @@ class ColdStartAdopter:
                 continue
             if _protection_filled(response):
                 self._executor.apply_carried_venue_close(
-                    position, response.filled_lots or position.lots,
+                    position, response.filled_lots,
                     response.fill_price, response.status, response.rejection_reason,
                     fill_fee=response.fill_fee)
                 continue

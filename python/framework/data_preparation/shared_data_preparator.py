@@ -761,10 +761,9 @@ class SharedDataPreparator:
                 # At least one timespan-mode requirement — use max end_time
                 union_end = ensure_utc_aware(max(end_times))
             else:
-                # All requirements are max_ticks mode (no end_time) —
-                # use the last file's end as conservative upper bound
-                files = self.tick_index_manager.index[broker_type][symbol]
-                union_end = pd.to_datetime(files[-1]['end_time'], utc=True)
+                # All requirements are max_ticks mode (no end_time) — bounded by the index's
+                # tick counts, not by the archive's last file (#485)
+                union_end = self._max_ticks_end(broker_type, symbol, reqs)
 
             relevant_files = self.tick_index_manager.get_relevant_files(
                 broker_type=broker_type,
@@ -839,6 +838,54 @@ class SharedDataPreparator:
                 )
 
         return ticks_data, tick_counts, tick_ranges
+
+    def _max_ticks_end(
+        self,
+        broker_type: str,
+        symbol: str,
+        reqs: List[TickRequirement],
+    ) -> datetime:
+        """
+        Where reading can stop for requirements that ask for a number of ticks, not a span.
+
+        Counted from the index, never read: walking the files in time order from each start,
+        the bound is the latest end among the files it takes to reach that requirement's
+        max_ticks. A file straddling the start may hold ticks before it, so its ticks are not
+        counted — the bound errs towards reading more, never less. Every tick up to the bound
+        lies in a file that starts no later than it, so the files read hold the same first
+        max_ticks ticks as the whole archive does, ties included; a file left out starts after
+        the bound. Without it every such requirement read every file up to the archive's end,
+        and the archive grows with every import (measured 2026-10-12: 362 files and a 3.5 s
+        sort per AutoTrader mock session, for 15,000 ticks used).
+
+        Args:
+            broker_type: Broker type identifier
+            symbol: Trading symbol
+            reqs: Requirements in max_ticks mode, all for this symbol
+
+        Returns:
+            The bound — the archive's end where it holds too few ticks after a start
+        """
+        files = sorted(self.tick_index_manager.index[broker_type][symbol],
+                       key=lambda entry: entry['start_time'])
+        archive_end = max(pd.to_datetime(entry['end_time'], utc=True) for entry in files)
+        bound: Optional[datetime] = None
+        for req in reqs:
+            start = ensure_utc_aware(req.start_time)
+            counted = 0
+            req_end: Optional[datetime] = None
+            for entry in files:
+                file_end = pd.to_datetime(entry['end_time'], utc=True)
+                if file_end < start:
+                    continue
+                if pd.to_datetime(entry['start_time'], utc=True) >= start:
+                    counted += entry['tick_count']
+                req_end = file_end if req_end is None else max(req_end, file_end)
+                if counted >= req.max_ticks:
+                    break
+            req_end = req_end or archive_end
+            bound = req_end if bound is None else max(bound, req_end)
+        return bound or archive_end
 
     def prepare_bars(
         self,

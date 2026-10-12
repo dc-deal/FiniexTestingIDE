@@ -235,8 +235,9 @@ count as an action signal.
 at submission (`PendingOrder.submission.tick_mid_price`) against the volume-weighted mean of broker
 trades. Both sides come from *independent* sources — our tick feed and the broker's matching engine
 — so the delta is the **real cost the operator paid** (spread + intra-latency market drift +
-book-walking on larger orders). This is the empirical baseline that #244 (Crypto Spread Simulation)
-consumes for spread reconstruction.
+book-walking on larger orders). This is the empirical baseline #244 (Crypto Spread Simulation) is
+meant to consume for spread reconstruction. The records do not outlive the session yet: #587 keeps
+them as an artifact of the run, and until then #244 has nothing to read.
 
 ## Slippage vs. Spread — Conceptual Clarity
 

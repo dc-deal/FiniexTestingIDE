@@ -27,6 +27,8 @@ Three layouts based on terminal width:
 | ≥ 120 cols | 2-column | Session, Portfolio, Algo State, Connection, Positions, Orders, Trade History |
 | < 120 cols | Single-column | Session, Portfolio, Positions, Orders only |
 
+Rejections and API Performance join any layout once there is something to show.
+
 ### Panels
 
 | Panel | Section | Content |
@@ -37,8 +39,10 @@ Three layouts based on terminal width:
 | PORTFOLIO | Center | Balance with quote equivalent (`≈ X.XX USD`), net P&L, W/L count |
 | TICK PROCESSING | Center | Avg/max processing ms, p50/p95/p99 percentiles, clipping bar + ratio, queue depth |
 | OPEN POSITIONS | Right | Live positions: ID, direction, lots, entry price, unrealized P&L |
-| ORDERS | Right | Active limit/stop orders + pipeline (in-transit) count |
-| TRADE HISTORY | Right | Last 8 completed trades (newest first): dir, lots, entry, exit, P&L, close reason |
+| ORDERS | Right | Active limit/stop orders + pipeline (in-transit) count. An order partly filled gets a `└─ 0.0400/0.1000 · PARTIAL` row — today one taken over at a cold start partly filled; an ordinary resting order's partial execution is mirrored once #342 lands |
+| REJECTIONS | Right | Shown once an order was refused: newest first, numbered, with the venue's reason as it gave it |
+| TRADE HISTORY | Right | Last 8 completed trades (newest first): dir, lots, entry, exit, P&L, close reason. A close the strategy made itself reads `partial` for a part of the position and `remain` for the last part of a position closed in parts |
+| API PERFORMANCE | Left | Per broker REST endpoint: calls, average and maximum latency, errors |
 | ALGO STATE | Right | Decision + confidence, config params with `display=True` (e.g., `rsi_os=30 env_l=0.30`), worker `display=True` outputs (e.g., `rsi`, `up`/`lo`) |
 
 ### Connection Panel — Two Distinct Clocks
@@ -48,7 +52,8 @@ Three layouts based on terminal width:
 - **Stream** (`● connected / stale / dead`): based on `_last_message_time` — any WS message including Kraken heartbeats. Reflects connection health. Goes stale after 30s silence, dead after 90s.
 - **Last Tick**: based on `_last_tick_time` — only actual trade messages that produced `TickData`. Can be minutes old in quiet markets while `Stream` stays green.
 
-Both are polled directly from `AbstractTickSource` (GIL-safe primitive reads) — no queue transport needed.
+Both are read from `AbstractTickSource` once per frame (GIL-safe primitive reads) into a
+`TickSourceSnapshot` that the frame renders from — no queue transport needed.
 
 ### Display Stats Transport
 
@@ -74,14 +79,39 @@ Tick Loop (Thread 2)                Display Thread (Thread 3)
 ────────────────────                ──────────────────────────
 AutotraderDisplayExporter.build()   while running:
   → AutoTraderDisplayStats            drain queue (up to 100)
-  → display_q.put_nowait() ──────→    render(latest_stats)
-                                      live.update(panel)
+  → display_q.put_nowait() ──────→    render(stats, readings, now, width)
+                                      live.update(frame, refresh=True)
                                       sleep(update_interval_ms / 1000)
                                     ─── loop exits (_running=False) ───
 on shutdown:                        final drain (remaining queue items)
   drain stale, push final ─────→   live.update(final render)
                                     Live context exits (static output)
 ```
+
+### When a panel fails
+
+A panel whose builder raises shows as failed in its place, and the rest of the dashboard keeps
+rendering; a frame that cannot be printed is replaced by a failure frame until it renders again:
+
+```
+╭─ TRADE HISTORY ──────────────────────────────╮
+│ ⚠ panel failed: AttributeError — see the     │
+│   session log                                 │
+╰───────────────────────────────────────────────╯
+```
+
+Each failure reaches the session log once, as an ERROR with its traceback — so the session ends
+graded as finished with errors and exits 3, although trading was unaffected:
+
+```
+❌ [DISPLAY] Panel TRADE HISTORY failed — AttributeError: 'TradeHistoryEntry' object has no
+   attribute 'entry_lots'. The panel shows as failed; trading is unaffected.
+```
+
+The same failure is not reported again, and one place reports only a few distinct failures.
+Should the display thread end all the same, the session trades on: the tick loop hands its
+snapshots over without waiting. The mechanics are in
+[live_telemetry_architecture.md](../architecture/live_telemetry_architecture.md).
 
 ### Config
 

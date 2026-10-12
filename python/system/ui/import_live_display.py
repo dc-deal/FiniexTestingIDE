@@ -20,6 +20,7 @@ from rich.rule import Rule
 from rich.table import Table
 from rich.text import Text
 
+from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.types.import_types.import_progress_types import (
     ImportOutcome,
     ImportProgressFrame,
@@ -29,7 +30,15 @@ from python.framework.types.import_types.import_progress_types import (
 )
 from python.framework.types.log_level import LogLevel
 from python.framework.utils.time_utils import format_duration
-from python.system.ui.ui_render_utils import BYTES_PER_GB, format_size, progress_bar
+from python.system.ui.render_failure_reporter import RenderFailureReporter
+from python.system.ui.ui_render_utils import (
+    BYTES_PER_GB,
+    format_size,
+    progress_bar,
+    prove_printable,
+)
+
+vLog = get_global_logger()
 
 _STATUS_ICON = {
     ImportStepStatus.PENDING: '⬜',
@@ -75,6 +84,8 @@ class ImportLiveDisplay:
         self._stopped = threading.Event()
         self._thread: Optional[threading.Thread] = None
         self._console = Console()
+        # The console is muted while the import runs, so a report reaches the log files
+        self._failure_reporter = RenderFailureReporter(vLog.error)
 
     def start(self) -> None:
         """
@@ -105,16 +116,80 @@ class ImportLiveDisplay:
         """
         Redraw from the newest frame until stopped.
 
+        Nothing leaves this thread unreported (#586): a screen that cannot be drawn is
+        replaced by a failure screen, and only a failure of the live display itself ends the
+        loop. The import never waits on this thread.
+
         Returns:
             None
         """
-        with Live(self._render(), console=self._console, refresh_per_second=4) as live:
-            while not self._stopped.is_set():
+        try:
+            # No first screen here: Live prints it on entry, before any guard could catch a
+            # screen that fails to print — the loop's first _show() puts it up instead
+            with Live(console=self._console, auto_refresh=False) as live:
+                while not self._stopped.is_set():
+                    self._drain()
+                    self._show(live)
+                    self._stopped.wait(self._update_interval_s)
                 self._drain()
-                live.update(self._render())
-                self._stopped.wait(self._update_interval_s)
-            self._drain()
-            live.update(self._render())
+                self._show(live)
+        except Exception as error:
+            self._failure_reporter.report(
+                'The import screen', error, 'The screen has stopped; the import is unaffected.')
+
+    def _show(self, live: Live) -> None:
+        """
+        Draw and print one screen; one that cannot be printed is replaced by a failure screen
+        and tried again on the next cycle (#586).
+
+        Args:
+            live: The live display that owns the console
+
+        Returns:
+            None
+        """
+        screen = self._screen()
+        try:
+            # Proven before the live display holds it: a held screen is re-rendered whenever
+            # any thread prints
+            prove_printable(screen, self._console.size.width, self._console.size.height)
+        except Exception as error:
+            screen = self._failure_screen(error)
+            self._failure_reporter.report(
+                'The import screen', error,
+                'A failure screen replaces it until it draws again; the import is unaffected.')
+        live.update(screen, refresh=True)
+
+    def _screen(self) -> RenderableType:
+        """
+        The screen for this moment; one that cannot be built is a failure screen.
+
+        Returns:
+            A renderable
+        """
+        try:
+            return self._render()
+        except Exception as error:
+            self._failure_reporter.report(
+                'The import screen', error,
+                'A failure screen replaces it until it draws again; the import is unaffected.')
+            return self._failure_screen(error)
+
+    @staticmethod
+    def _failure_screen(error: Exception) -> Panel:
+        """
+        What stands on screen while the import cannot be drawn.
+
+        Args:
+            error: The failure
+
+        Returns:
+            A plain panel naming it
+        """
+        return Panel(
+            Text(f'{_WARNING_SIGN} import screen failed: {type(error).__name__} — '
+                 f'see the log files', style='yellow'),
+            box=box.ROUNDED, border_style='yellow')
 
     def _drain(self) -> None:
         """

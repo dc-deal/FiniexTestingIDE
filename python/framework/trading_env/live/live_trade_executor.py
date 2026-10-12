@@ -3606,7 +3606,9 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         # the venue's figure. Nothing is taken back, and that is never silent (#508).
         overshoot = (reported_fee is not None
                      and reported_fee < state.venue_close_applied_fee - _VENUE_CLOSE_FEE_EPSILON)
-        fee_message = self._venue_close_fee_message(protective, reported_fee, overshoot)
+        fee_message = self._venue_close_fee_message(
+            protective, reported_fee, overshoot,
+            position_share=booked_fee if bookable < delta else None)
         if overshoot:
             self.logger.warning(f'⚠️ Protective order {protective.broker_ref}: {fee_message}')
         # Record what was BOOKED, never what was requested. Since #507 the two are the same
@@ -3683,6 +3685,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         protective: PendingOrder,
         reported_fee: Optional[float],
         overshoot: bool,
+        position_share: Optional[float] = None,
     ) -> Optional[str]:
         """
         Why a step's fee is not what the venue's fee total grew by, where it is not (#508).
@@ -3697,6 +3700,8 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             protective: The protective order a step is about to be booked for
             reported_fee: The venue's fee total for everything the order executed, or None
             overshoot: Whether that total stands below what is already booked
+            position_share: The fee the step books where the venue executed more than the
+                position holds — its share of what the total grew by; None otherwise
 
         Returns:
             The sentence for the step's order event, or None where the step books what the
@@ -3716,7 +3721,10 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             return (f"the venue's total {reported_fee:.8f} is below the {booked:.8f} already "
                     f'booked{of_it} — the excess {booked - reported_fee:.8f} stays booked until a '
                     f'later total above the books absorbs it')
-        return f"the venue's total {reported_fee:.8f} less {booked:.8f} already booked{of_it}"
+        share = (f", of which the position's share {position_share:.8f} is booked"
+                 if position_share is not None else '')
+        return (f"the venue's total {reported_fee:.8f} less {booked:.8f} already "
+                f'booked{of_it}{share}')
 
     def _mirror_venue_close_progress(self, protective: PendingOrder) -> None:
         """

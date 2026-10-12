@@ -192,11 +192,6 @@ class DiscoveriesCli:
 
         cache = DataCoverageReportCache()
         report = cache.get_report(broker_type, symbol, force_rebuild=force)
-
-        if report is None:
-            print(f'\n❌ No data available for {broker_type}/{symbol}\n')
-            return
-
         print(report.generate_report())
 
     def cmd_signal_coverage_show(

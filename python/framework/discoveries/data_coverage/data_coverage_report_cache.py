@@ -184,7 +184,8 @@ class DataCoverageReportCache:
             force_rebuild: Force regeneration, ignore cache
 
         Returns:
-            DataCoverageReport instance or None if data unavailable
+            DataCoverageReport instance — never None: a symbol without bars yields a report
+            whose start_time and end_time are None
         """
         # Convert string to BrokerType if needed
         if isinstance(broker_type, str):

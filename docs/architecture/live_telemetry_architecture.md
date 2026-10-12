@@ -82,6 +82,33 @@ per tick / heartbeat:
 config); the tick loop passes the volatile per-frame state and stays orchestration-only. An
 in-thread `queue.Queue` passes the dataclass by reference (no pickling — same process).
 
+### Rendering, and what a failure does
+
+The dashboard renders through one public entry, `AutoTraderLiveDisplay.render(stats, connection,
+now, width)`. Everything a frame shows arrives there: the snapshot, the tick source's readings
+(polled once per frame into a `TickSourceSnapshot`), the wall clock and the terminal width.
+Nothing in the render path reads a live object, so every panel is rendered by a test from a
+fully populated frame — at each layout, and with every way a trade can close — without a
+session, a thread or a terminal.
+
+A failure never ends a session or a batch, and it is never silent:
+
+- **A panel whose builder raises** shows as failed in place; the rest of the frame renders.
+- **A frame that cannot be printed** — markup that only fails when it is printed — never reaches
+  the live display. Each frame is printed once into a scratch console first, and one that fails
+  is replaced by a failure frame and tried again on the next cycle. The order matters: a live
+  display re-renders the frame it holds whenever ANY thread prints, so an unprintable frame, once
+  held, makes that other thread's print raise — the tick loop's own logging included. Printing
+  happens in the display's own loop rather than in a refresh thread of rich's own. A venue's or a
+  strategy's words are escaped before they enter a panel, so a bracket in them is text.
+- **Each failure is reported once**, and only a few per place, by
+  `system/ui/render_failure_reporter.py`: the AutoTrader dashboard writes to the session log as
+  an ERROR, so the session ends graded as finished with errors; the simulation's progress screen
+  and the import screen write to the global log.
+
+Should a display thread still end, the run is unaffected: the producers hand frames over with
+`put_nowait` and drop them when nobody takes them, so nothing ever waits on the screen.
+
 ## Viewer push — preview (groundwork only)
 
 The frames are JSON-serializable so the FiniexViewer live windows (#379 Algo State / Session /
@@ -118,6 +145,7 @@ stream is the fast, lossy live feed. The two never share code:
 
 - Producers: `framework/process/process_live_export.py` (sim), `framework/process/process_live_queue_helper.py` + `framework/batch/live_stats_coordinator.py` (sim status), `framework/autotrader/autotrader_display_exporter.py` (AutoTrader)
 - Consumers: `system/ui/live_progress_display.py` (sim), `system/ui/autotrader_live_display.py` (AutoTrader)
+- Failure reporting: `system/ui/render_failure_reporter.py` (all live screens, the import screen included)
 - Model: `framework/types/live_types/live_core_snapshot_types.py`, `live_scenario_stats_types.py`, `framework/types/autotrader_types/autotrader_display_types.py`
 - Serializer: `framework/utils/live_frame_serialization_utils.py`
 - Tick-flow context: [simulation_vs_autotrader_flow.md](simulation_vs_autotrader_flow.md)

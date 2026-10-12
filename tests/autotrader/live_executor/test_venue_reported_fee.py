@@ -422,6 +422,27 @@ class TestAProtectiveOrderBooksInSteps:
         assert protective.execution_state.venue_close_estimated_fee == 0.0
 
     @ACCOUNT_MODELS
+    def test_a_settling_step_with_an_excess_names_the_share_it_books(self, spot_mode):
+        """
+        The settling step also reports more than the position holds: 0.08 lots against 0.06.
+        It books the position's share of what the total grew by, and its sentence says so
+        rather than naming the whole difference.
+        """
+        executor, protective, events = self._held_long(spot_mode)
+
+        executor._apply_venue_close(protective, filled_lots=0.04, avg_price=49000.0)
+        executor._apply_venue_close(protective, filled_lots=0.12, avg_price=48950.0,
+                                    reported_fee=40.00)
+
+        estimated, settling = _fills(events, OrderAction.CLOSE)
+        share = (40.00 - estimated.fee) * 0.06 / 0.08
+        assert settling.fee == pytest.approx(share)
+        assert settling.message == (
+            f"the venue's total {40.00:.8f} less {estimated.fee:.8f} already booked, "
+            f"{estimated.fee:.8f} of it from the estimate, of which the position's share "
+            f'{settling.fee:.8f} is booked')
+
+    @ACCOUNT_MODELS
     def test_an_estimate_above_the_venues_later_total_stays_booked_at_that_step(
             self, spot_mode, monkeypatch):
         """

@@ -63,9 +63,25 @@ Two boundaries carry a tick and both are covered:
   records. It carries `mid`, `last` and `price` together: `mid` is what a valuation used and
   `price` what a strategy saw, and a record with only one cannot tell them apart afterwards.
 
+### A Tick-Count Window Reads What It Needs (`test_max_ticks_window.py`)
+
+A scenario bounded by `max_ticks` instead of `end_date` — every AutoTrader mock profile is one —
+read every tick file from its start to the archive's end, sorted them all and kept `max_ticks`:
+measured 2026-10-12, 362 files and a 3.5 s sort per mock session for 15,000 ticks used, growing
+with every import. Over a synthetic archive of daily files, one of them overlapping another and
+repeating one of its stamps exactly:
+
+| Test | What it pins |
+|---|---|
+| `test_it_stops_where_the_index_counts_reach_max_ticks` | only the files the index's tick counts say are needed are opened; a file straddling the start is read but not counted |
+| `test_an_archive_too_short_is_read_to_its_end` | asking for more ticks than the archive holds reads every file after the start |
+| `test_from_inside_a_file` | the ticks equal the first `max_ticks` of reading the whole archive |
+| `test_across_the_overlap_and_its_repeated_stamp` | the same holds where files overlap and two ticks share a stamp — a tie is broken as it is when everything is read |
+
 ## Files
 
 - `tests/framework/tick_parquet_reader/test_tick_parquet_reader.py` — Test suite
+- `tests/framework/tick_parquet_reader/test_max_ticks_window.py` — the `max_ticks` read bound
 - `python/framework/data_preparation/tick_parquet_reader.py` — Module under test
 
 ## Running the Tests

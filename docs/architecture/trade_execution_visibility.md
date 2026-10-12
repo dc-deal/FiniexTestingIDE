@@ -187,7 +187,10 @@ Compact — sub-rows fire only when non-trivial:
     fill's volume said the same only while a position opened in one fill; with several it is a
     slice
   - Non-MANUAL reasons (`sl_triggered`, `tp_triggered`, `scenario_end`) → keep the real reason value; the partial nature is then visible via the lots column (`lots < original_lots`)
-- **ORDERS** — three-level rendering for LIMIT (Trigger → BrokerOrder → Fills) is wired but stays dormant until #342 surfaces real `PARTIALLY_FILLED` state from the Kraken parser
+- **ORDERS** — an order partly filled gets a `└─ filled/requested · PARTIAL` row. The snapshot
+  carries both figures since #586 (before, nothing set them, so the row could never appear). It
+  shows today for an order taken over at a cold start partly filled; an ordinary resting order's
+  partial execution is mirrored once #342 surfaces `PARTIALLY_FILLED` from the Kraken parser
 
 In V1.3 multi-fill data does not yet flow from the broker side, so most sub-rows stay invisible. The display path is ready the moment the data does.
 
@@ -269,11 +272,13 @@ Where an `OrderResult` is constructed:
 | `python/framework/reporting/event_stream_csv_writer.py` | `EventStreamWriter`, `EventType` enum, `TradeEvent`, `EVENT_FIELDS` |
 | `python/framework/reporting/console/trade_history_summary.py` | Sim sub-line renderer + `shared(Nx)` + `(this trade: X of Y)` |
 | `python/system/ui/autotrader_live_display.py` | Live panel sub-rows + `partial` / `remain` reason markers |
+| `python/framework/types/autotrader_types/autotrader_display_types.py` | `TradeHistoryEntry` — the dashboard's row, `entry_lots` included |
+| `python/framework/autotrader/autotrader_display_exporter.py` | `trade_history_entry` — copies the row from the trade record, every field |
 | `python/framework/autotrader/autotrader_main.py` | AutoTrader-side `EventStreamWriter.from_autotrader_result(...).flush('events.csv')` |
 | `python/framework/batch/batch_report_coordinator.py` | Sim-side per-scenario loop emitting `events_<scenario>.csv` into `events/` subfolder |
 
 ## Latent for Future Work
 
-- `ActiveOrderSnapshot.cumulative_filled_lots` / `requested_lots` — fields defined, ORDERS panel BrokerOrder sub-row conditional. Activates when #342 (Kraken `PARTIALLY_FILLED` parser) surfaces real partial state
+- `ActiveOrderSnapshot.cumulative_filled_lots` / `requested_lots` — set by the snapshot since #586; the ORDERS row they drive reaches ordinary resting orders once #342 (Kraken `PARTIALLY_FILLED` parser) surfaces real partial state
 - `Position.broker_ref` consumption by the Reconciliation Layer — owned by #151
 - MT5 multi-deal entry executions — feed into `entry_trades` naturally once #209 lands

@@ -7,11 +7,17 @@ carries — a step's remaining time included — and derives nothing itself. No 
 started: the panel is rendered into a recording console.
 """
 
+import io
+import queue
+import time
 from datetime import datetime, timezone
+from types import SimpleNamespace
+from typing import List
 
 import pytest
 from rich.console import Console
 
+import python.system.ui.import_live_display as import_live_display
 from python.framework.types.import_types.import_progress_types import (
     BarRenderPhase,
     ImportMessage,
@@ -143,3 +149,32 @@ def test_progress_bar_clamps_and_fills():
 def test_sizes_use_one_mb():
     assert format_size(412 * 1024 ** 2) == '412.0 MB'
     assert format_size(int(4.1 * GB)) == '4.1 GB'
+
+
+def test_a_frame_that_cannot_be_drawn_is_reported_and_the_screen_goes_on(monkeypatch):
+    """
+    A screen that fails used to end the display thread without a word; the import's console is
+    muted while it runs, so not even the traceback was seen (#586).
+    """
+    reports: List[str] = []
+    monkeypatch.setattr(import_live_display, 'vLog', SimpleNamespace(error=reports.append))
+    terminal = Console(file=io.StringIO(), width=120, height=60, force_terminal=True,
+                       color_system=None, record=True)
+    monkeypatch.setattr(import_live_display, 'Console', lambda: terminal)
+    frames: queue.Queue = queue.Queue()
+    frames.put(object())
+
+    display = import_live_display.ImportLiveDisplay(frames, update_interval_s=0.01)
+    display.start()
+    deadline = time.monotonic() + 5.0
+    while not reports and time.monotonic() < deadline:
+        time.sleep(0.01)
+    frames.put(_frame())
+    time.sleep(0.1)
+    display.stop()
+
+    assert len(reports) == 1
+    assert reports[0].startswith('❌ [DISPLAY] The import screen failed — AttributeError')
+    # The next frame was drawn: the thread outlived the failure
+    assert 'Scan import inboxes' in terminal.export_text()
+

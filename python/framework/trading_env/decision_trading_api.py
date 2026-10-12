@@ -611,18 +611,17 @@ class DecisionTradingApi:
         """Get name of connected broker"""
         return self._executor.broker.adapter.get_broker_name()
 
-    def get_leverage(self, symbol: Optional[str] = None) -> float:
+    def get_leverage(self) -> int:
         """
-        Get leverage for symbol.
+        The account's leverage — the figure margin is computed with (#586).
 
-        Args:
-            symbol: Trading symbol (None = default leverage)
+        Leverage is account-wide at every venue this framework speaks to: no broker
+        configuration and no adapter declares one per symbol, which is why this takes no
+        symbol. A spot account answers 1.
 
         Returns:
-            Leverage multiplier (e.g., 100.0 for 1:100)
+            Leverage multiplier (e.g., 500 for 1:500)
         """
-        if symbol:
-            return self._executor.broker.get_symbol_leverage(symbol)
         return self._executor.broker.get_max_leverage()
 
     # ============================================

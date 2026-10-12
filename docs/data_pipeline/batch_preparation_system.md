@@ -143,7 +143,11 @@ and the Phase 7 `BrokerSummary`.
 **Purpose:** Load shared data once for all scenarios  
 **Mode:** Serial (main process)  
 **Key Operations:**
-- Load ticks from parquet (based on RequirementsMap)
+- Load ticks from parquet (based on RequirementsMap). A scenario bounded by `max_ticks` rather
+  than by `end_date` reads only the files it needs: where reading stops is counted from the tick
+  index's per-file tick counts, so the files read hold the same first `max_ticks` ticks the whole
+  archive would — without it, such a scenario read every file up to the archive's end, which
+  grows with every import
 - Load warmup bars (filtered to start_time)
 - Package into ProcessDataPackage (broker configs from Phase 0 injected here)
 

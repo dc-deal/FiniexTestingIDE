@@ -57,3 +57,54 @@ renamed, so a panel showing the name alone would show a claim. The tests pin tha
 unresolved name, and that `⚠ unidentified` — the producer naming no journal at all — is rendered as
 the different thing it is: not a probe that has not run, but a session nothing can certify.
 
+
+---
+
+## Dashboard Render
+
+`tests/framework/live_telemetry/test_autotrader_dashboard_render.py` — every panel of the AutoTrader
+dashboard, rendered through `AutoTraderLiveDisplay.render` from a fully populated frame into a
+recording console: no live terminal, no tick source, no thread (#586).
+
+It exists because the trade-history panel once read a field its row never had and ended the
+display at the first close a strategy made itself — the ordinary exit of most strategies. Nothing
+rendered it: every mock profile switches the display off, and a test built on a MagicMock frame
+cannot fail on a missing field, because a mock invents every attribute it is asked for. The frame
+here is built from the real types (`conftest.py`), and a test holds it full: every field differs
+from its default, so a field added to the frame joins the renders.
+
+| Group | What it pins |
+|---|---|
+| the frame is full | every field of `AutoTraderDisplayStats` is set to something a panel renders |
+| every panel renders | each layout — one, two and three columns — shows each of its panels, a margin account's portfolio too, and the frame before the first snapshot; ages and uptime are measured against the frame's own clock and tick time; the Audit line takes the width it is given; an order partly filled shows `└─ filled/requested · PARTIAL` |
+| the Reason column | every `CloseReason` × `CloseType` × size at entry (larger, equal, unknown) gives its marker — `partial`, `remain` or the reason itself — and a trade filled in parts on each side gets its lines |
+| words are text | a venue's reason, the strategy's awareness, events and outputs, the producer's journal name and budget reason reach the screen as written, brackets included — a closing tag with no opener builds fine and fails only when **printed** |
+| a panel that fails | it shows as failed in its place, the other panels render, and the failure is reported once with its traceback |
+| the loop | a frame that cannot be printed is replaced by a failure frame and the loop goes on — the frame is proven printable before the live display holds it, never in a refresh thread of rich's own; the failure frame still names the deployment |
+| the exporter | `AutotraderDisplayExporter.trade_history_entry` carries the size at entry, and every field of the row comes from the record — the record differs from the row's default in each of them, so a forgotten copy cannot pass |
+
+The Reason column and the partial-fill row are tested at the widest two-column terminal (159
+columns): narrower, the trade table's fixed columns are cut, which is a layout matter of its own.
+
+---
+
+## Simulation Progress Render
+
+`tests/framework/live_telemetry/test_live_progress_render.py` — the batch's progress screen, driven
+the way a batch drives it: frames on its queue, its own thread, start and stop, into a recording
+terminal. Every status a scenario can be in renders at two widths, a status-only frame changes the
+status, and a frame that cannot be applied is reported and skipped — the frame after it still
+arrives. Before #586 such a frame was swallowed without a word. The strategy's awareness text and
+the scenario's name reach the screen as written, brackets included. A screen that cannot be
+printed never reaches the live display: it is proven first and replaced, so the report of the
+failure — which the global logger prints through the display — and the batch's own logging keep
+working; held, it made every print in every thread raise.
+
+---
+
+## Render Failure Reporter
+
+`tests/framework/live_telemetry/test_render_failure_reporter.py` — the shared reporter behind every
+live screen. A screen redraws several times a second, so one failure repeats on every frame: each
+distinct failure is reported once with its traceback, one place reports only its share and says
+so on the last, no sink reports nothing, and a sink that fails itself does not raise.

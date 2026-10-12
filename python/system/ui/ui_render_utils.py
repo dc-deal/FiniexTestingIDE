@@ -3,6 +3,10 @@ FiniexTestingIDE - UI Render Utils
 Small text pieces the console screens share.
 """
 
+import io
+
+from rich.console import Console, RenderableType
+
 PROGRESS_FILLED = '█'
 PROGRESS_EMPTY = '░'
 
@@ -40,3 +44,22 @@ def format_size(size_bytes: int) -> str:
     if size_bytes >= BYTES_PER_GB:
         return f'{size_bytes / BYTES_PER_GB:.1f} GB'
     return f'{size_bytes / BYTES_PER_MB:.1f} MB'
+
+
+def prove_printable(renderable: RenderableType, width: int, height: int) -> None:
+    """
+    Print a frame once into a scratch console, so whatever would fail when it is printed fails
+    here — before the live display holds it (#586).
+
+    A live display re-renders the frame it holds whenever ANY thread prints while it runs, so
+    a frame that cannot be printed, once handed over, makes that other thread's print raise —
+    a logging call in a tick loop included. Proven first, it never reaches the display.
+
+    Args:
+        renderable: The frame
+        width: The terminal width it is drawn at
+        height: The terminal height it is drawn at
+    """
+    Console(file=io.StringIO(), width=width, height=height, color_system=None,
+            force_terminal=False).print(renderable)
+

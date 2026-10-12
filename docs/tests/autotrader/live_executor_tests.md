@@ -781,6 +781,7 @@ Money paths run in both account models.
 | `test_two_steps_book_the_growth_of_each_total` [margin, spot] | A protective order the venue holds reports totals; booked in two steps, each books what the fee total grew by, the second step at its own price rather than the average over both — the records' fees, the exit prices and the balance agree |
 | `test_a_step_booked_from_the_estimate_is_settled_by_the_next_total` [margin, spot] | A step whose answer had no fee is booked from the estimate; the next total books only what it exceeds the books by, so the order costs the venue's figure once |
 | `test_the_step_that_settles_an_estimate_says_so` [margin, spot] | The settling step's event carries the sentence — the venue's total less what is already booked, and how much of that was the estimate; the step after it books what the total grew by and says nothing |
+| `test_a_settling_step_with_an_excess_names_the_share_it_books` [margin, spot] | A settling step that also reports more than the position holds books the position's share of what the total grew by, and its sentence names that share rather than the whole difference |
 | `test_an_estimate_above_the_venues_later_total_stays_booked_at_that_step` [margin, spot] | The venue's total comes in below the estimate already booked: the step books a fee of `0.0`, the excess stays booked — the records' fees and the balance agree — and the session log warns in the words the step's event carries |
 | `test_a_later_total_above_the_books_absorbs_the_excess` [margin, spot] | After such a step, the next total above what is booked books only its growth beyond the books: the order ends at the venue's figure |
 | `test_steps_that_all_carry_the_venues_fee_say_nothing_more` [margin, spot] | Two steps that each carry the venue's figure: no sentence on either event, no warning |
@@ -1043,4 +1044,18 @@ insufficient funds.
 | `TestAFailedReadIsNotARejection` | a status read refused with `EAPI:Invalid nonce` keeps the market order and the resting order alike; the failure is an error, reported once per order |
 | `TestTheTimeoutRunsOnTheMonotonicClock` | a timeout re-armed by the resolution survives a canonical clock months in the past — the shape of a mock session's tick |
 | `TestAnOrderTheVenueEnded` | a market order the venue cancels without executing is dropped and reported cancelled, never rejected; what an expired order executed is booked as its fill |
+
+---
+
+## test_active_order_snapshot.py — what the ORDERS panel's partial-fill row reads (#586)
+
+The row needs what an order asked for and what has executed of it. Both fields were declared on
+`ActiveOrderSnapshot` and set by nothing, so the row could never appear; the two order lists now
+share one snapshot helper that sets them.
+
+| Test | What it pins |
+|---|---|
+| `test_an_order_partly_filled_says_how_far_it_got` | requested lots from the order, executed lots from its fill record |
+| `test_an_order_nothing_has_executed_of` | executed reads 0.0 — the row stays off |
+| `test_a_protective_order_reads_nothing_requested_rather_than_none` | a venue-held protective order carries its size as `close_lots`; requested reads 0.0, never None, so the panel's comparison cannot raise |
 

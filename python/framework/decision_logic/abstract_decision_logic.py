@@ -134,6 +134,18 @@ class AbstractDecisionLogic(ABC):
         # Diagnostics CSV sinks (#376) — algo-declared, framework-flushed at run end
         self._diagnostics_sinks: Dict[str, DiagnosticsCsvSink] = {}
 
+    def get_trading_context(self) -> Optional[TradingContext]:
+        """
+        The instrument facts the framework hands this logic: broker, market, symbol and the
+        broker's authoritative pip size (#167).
+
+        Both pipelines supply one; a logic built by hand in a test may have none.
+
+        Returns:
+            The trading context, or None
+        """
+        return self._trading_context
+
     # ============================================
     # abstractmethods
     # ============================================

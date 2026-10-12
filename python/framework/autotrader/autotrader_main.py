@@ -831,7 +831,13 @@ class AutotraderMain:
                 tick_source=self._tick_source,
                 config=self._config,
                 dry_run=dry_run,
+                # The header names the deployment before the first snapshot does, and in a
+                # failure frame (#586) — without it, both read ONE-OFF
+                deployment_id=self._deployment_id,
                 display_label_cache=self._display_label_cache,
+                # A panel that fails is an error of this session, graded as one (#586)
+                on_render_error=(self._session_logger.error
+                                 if self._session_logger is not None else None),
             )
             self._display.start()
             self._global_logger.info('📺 Live display started')

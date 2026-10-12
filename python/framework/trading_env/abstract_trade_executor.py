@@ -3077,56 +3077,49 @@ class AbstractTradeExecutor(ABC):
         Returns:
             The snapshot
         """
-        active_limit_orders = [
-            ActiveOrderSnapshot(
-                order_id=p.pending_order_id,
-                order_type=p.order_type,
-                symbol=p.symbol,
-                direction=p.direction,
-                lots=p.lots,
-                entry_price=p.entry_price,
-                # The submit path stores the limit price as `entry_price`; only an AMENDED
-                # order carries `order_kwargs['limit_price']` (written by the modify resolve).
-                # Reading the kwarg alone left this blank for every order never amended —
-                # which is most of them, so the panel column and the reconciler's price
-                # comparison both had nothing to work with.
-                limit_price=(p.order_kwargs.get('limit_price') if p.order_kwargs else None)
-                or p.entry_price,
-                stop_loss=p.order_kwargs.get(
-                    'stop_loss') if p.order_kwargs else None,
-                take_profit=p.order_kwargs.get(
-                    'take_profit') if p.order_kwargs else None,
-                submitted_at=p.timing.submitted_at,
-            )
-            for p in self._active_limit_orders
-        ]
-        active_stop_orders = [
-            ActiveOrderSnapshot(
-                order_id=p.pending_order_id,
-                order_type=p.order_type,
-                symbol=p.symbol,
-                direction=p.direction,
-                lots=p.lots,
-                entry_price=p.entry_price,
-                # The submit path stores the limit price as `entry_price`; only an AMENDED
-                # order carries `order_kwargs['limit_price']` (written by the modify resolve).
-                # Reading the kwarg alone left this blank for every order never amended —
-                # which is most of them, so the panel column and the reconciler's price
-                # comparison both had nothing to work with.
-                limit_price=(p.order_kwargs.get('limit_price') if p.order_kwargs else None)
-                or p.entry_price,
-                stop_loss=p.order_kwargs.get(
-                    'stop_loss') if p.order_kwargs else None,
-                take_profit=p.order_kwargs.get(
-                    'take_profit') if p.order_kwargs else None,
-                submitted_at=p.timing.submitted_at,
-            )
-            for p in self._active_stop_orders
-        ]
+        active_limit_orders = [self._order_snapshot(p) for p in self._active_limit_orders]
+        active_stop_orders = [self._order_snapshot(p) for p in self._active_stop_orders]
         return ActiveOrdersSnapshot(
             active_limit_orders=active_limit_orders,
             active_stop_orders=active_stop_orders,
             latency_queue_count=latency_queue_count,
+        )
+
+    @staticmethod
+    def _order_snapshot(p: PendingOrder) -> ActiveOrderSnapshot:
+        """
+        One resting order as the snapshot carries it — the one copy both order lists use.
+
+        Args:
+            p: The resting order
+
+        Returns:
+            Its snapshot row
+        """
+        return ActiveOrderSnapshot(
+            order_id=p.pending_order_id,
+            order_type=p.order_type,
+            symbol=p.symbol,
+            direction=p.direction,
+            lots=p.lots,
+            entry_price=p.entry_price,
+            # The submit path stores the limit price as `entry_price`; only an AMENDED
+            # order carries `order_kwargs['limit_price']` (written by the modify resolve).
+            # Reading the kwarg alone left this blank for every order never amended —
+            # which is most of them, so the panel column and the reconciler's price
+            # comparison both had nothing to work with.
+            limit_price=(p.order_kwargs.get('limit_price') if p.order_kwargs else None)
+            or p.entry_price,
+            stop_loss=p.order_kwargs.get(
+                'stop_loss') if p.order_kwargs else None,
+            take_profit=p.order_kwargs.get(
+                'take_profit') if p.order_kwargs else None,
+            submitted_at=p.timing.submitted_at,
+            # What the order asked for and what has executed of it (#586). A venue-held
+            # protective order carries its size as close_lots, not lots — it reads 0.0 here,
+            # so the partial-fill row stays off for it rather than comparing against None.
+            requested_lots=p.lots or 0.0,
+            cumulative_filled_lots=p.fills.cumulative_filled_lots,
         )
 
     def _expire_active_orders(self) -> None:

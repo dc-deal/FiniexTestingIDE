@@ -75,6 +75,10 @@ class TradeHistoryEntry:
         exit_price: Exit price
         net_pnl: Net P&L after fees
         close_reason: How the trade was closed
+        close_type: Whether the close took the whole position or a part of it
+        entry_lots: The position's size when it opened, from TradeRecord.entry_lots — larger
+            than lots on the last close of a position closed in parts. None where the record
+            carries none
         entry_trades: Per-execution BrokerTrade list from TradeRecord.entry_trades (#330).
             Shared across all derived TradeRecords on a partially-closed position.
         exit_trades: Per-execution BrokerTrade list from TradeRecord.exit_trades (#330).
@@ -89,6 +93,7 @@ class TradeHistoryEntry:
     net_pnl: float
     close_reason: CloseReason
     close_type: CloseType = CloseType.FULL
+    entry_lots: Optional[float] = None
     entry_trades: List[BrokerTrade] = field(default_factory=list)
     exit_trades: List[BrokerTrade] = field(default_factory=list)
     # Trade-event side (BUY/SELL) for the close — used by Live TRADE HISTORY
@@ -191,6 +196,29 @@ class QuoteFeedStats:
         if self.bid <= 0:
             return 0.0
         return (self.ask - self.bid) / self.bid * 100.0
+
+
+@dataclass(frozen=True)
+class TickSourceSnapshot:
+    """
+    What the dashboard reads from the tick source, once per frame (#586).
+
+    The CONNECTION panel was the one place the dashboard read a live object while it
+    rendered. With the readings handed in, every panel renders from data alone, and a test
+    renders the whole dashboard without a running tick source.
+
+    Args:
+        reconnect_count: Reconnects since the session started
+        ticks_emitted: Ticks the source has emitted
+        last_message_time: When the last transport message arrived, heartbeats included
+        last_tick_time: When the last trade tick arrived
+        quote: The quote channel's state, None for a source without one
+    """
+    reconnect_count: int = 0
+    ticks_emitted: int = 0
+    last_message_time: Optional[datetime] = None
+    last_tick_time: Optional[datetime] = None
+    quote: Optional[QuoteFeedStats] = None
 
 
 @dataclass

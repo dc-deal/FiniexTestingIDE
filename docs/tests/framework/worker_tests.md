@@ -247,6 +247,14 @@ Tests end-to-end factory workflows: config → validation → instantiation for 
 |------|-------------|
 | `test_the_type_and_name_come_back_without_a_tracker` | Without a performance tracker (the simulation's default) `get_statistics()` still names the logic's type and name, unflagged as tracked — so a report can name it and mark its counters as not counted |
 
+#### TestCautiousMacdTakesItsPipSizeFromTheContext
+
+| Test | Description |
+|------|-------------|
+| `test_without_pip_size_the_context_supplies_it` | `pip_size` left unset is taken from the trading context the factory hands in — the broker's authoritative pip size (#167). It used to read an attribute the base class never set, so every such config failed to build (#586) |
+| `test_an_explicit_pip_size_wins` | A configured `pip_size` overrides the context's |
+| `test_without_either_it_refuses_to_be_built` | No `pip_size` and no context: refused at construction with a clear message, rather than failing at the first entry |
+
 ---
 
 ### worker_computation_tests/

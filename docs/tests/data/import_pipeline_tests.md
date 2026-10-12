@@ -345,7 +345,9 @@ time with the total and the end time are shown; each step's time is the frame's 
 one the screen derives; a finished import names its outcome and its log file and shows no estimate
 any more; every step status and every outcome renders (a missing icon would end the display
 thread); at 64 columns every status icon stays visible; a note cut for width ends in `…` rather
-than in a smaller number; sizes use one MB.
+than in a smaller number; sizes use one MB. A frame the screen cannot draw is reported once to the
+log files and the screen goes on — the next frame still appears (#586); before, the display
+thread ended unseen, the console being muted while the import runs.
 
 ### test_import_config_display.py
 
