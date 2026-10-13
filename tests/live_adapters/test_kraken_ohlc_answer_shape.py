@@ -28,7 +28,6 @@ import pytest
 import requests
 
 from python.framework.autotrader.kraken_ohlc_bar_fetcher import KrakenOhlcBarFetcher
-from python.framework.utils.bar_period import is_complete_at
 
 _FIXTURE = Path('tests/fixtures/warmup_history/kraken_ohlc_answers.json')
 
@@ -41,12 +40,16 @@ def recording() -> dict:
 
 @pytest.fixture(scope='module')
 def live_answer(recording) -> dict:
-    """The venue's answer now, for the recording's pair and interval."""
+    """The venue's answer now for the recording's pair and interval, and its clock after it."""
     response = requests.get(KrakenOhlcBarFetcher.API_BASE + '/0/public/OHLC', params={
         'pair': recording['pair'], 'interval': recording['interval_minutes'],
         'since': int(time.time()) - 20 * 60}, timeout=15)
     response.raise_for_status()
-    return response.json()
+    # The venue's own clock, read after the answer: a stamp compared against it cannot be
+    # misjudged by a local clock that drifted
+    clock = requests.get(KrakenOhlcBarFetcher.API_BASE + '/0/public/Time', timeout=15)
+    clock.raise_for_status()
+    return {'answer': response.json(), 'venue_time': clock.json()['result']['unixtime']}
 
 
 def _recorded_result(recording: dict) -> dict:
@@ -60,28 +63,58 @@ def _rows(result: dict) -> list:
 class TestTheVenueStillAnswersAsRecorded:
 
     def test_no_error_and_the_same_result_keys(self, recording, live_answer):
-        assert live_answer['error'] == []
-        assert sorted(live_answer['result']) == sorted(_recorded_result(recording)), (
+        answer = live_answer['answer']
+        assert answer['error'] == []
+        assert sorted(answer['result']) == sorted(_recorded_result(recording)), (
             'the result keys changed — the pair key or the commit marker')
 
     def test_every_field_keeps_its_type(self, recording, live_answer):
         recorded_types = [type(field) for field in _rows(_recorded_result(recording))[-1]]
-        for row in _rows(live_answer['result']):
+        for row in _rows(live_answer['answer']['result']):
             assert [type(field) for field in row] == recorded_types, row
 
     def test_rows_are_still_stamped_with_their_opening_minute(self, recording, live_answer):
+        """
+        On the grid, and the newest row opens no later than the venue's clock.
+
+        The grid alone holds for an opening and a closing stamp alike. The newest row is the
+        period still forming: stamped with its opening it lies in the past, stamped with its
+        closing in the future — unless the answer came within the moment after a period
+        ended in which the venue may not list the new period yet.
+        """
         interval_s = recording['interval_minutes'] * 60
-        for row in _rows(live_answer['result']):
+        rows = _rows(live_answer['answer']['result'])
+        for row in rows:
             assert row[0] % interval_s == 0, row
+        assert rows[-1][0] <= live_answer['venue_time'], (
+            f'the newest row is stamped {rows[-1][0]}, after the venue\'s clock '
+            f'{live_answer["venue_time"]} — rows carry their closing instant now')
 
     def test_the_commit_marker_still_precedes_the_forming_row(self, live_answer):
-        result = live_answer['result']
+        result = live_answer['answer']['result']
         assert isinstance(result['last'], int)
         assert _rows(result)[-1][0] > result['last']
 
-    def test_the_reader_takes_only_finished_and_committed_bars(self, recording):
-        now = datetime.now(timezone.utc)
-        bars = KrakenOhlcBarFetcher().fetch_bars(recording['pair'], 'M1', 10, now)
-        assert bars, 'the venue answered, and the reader took nothing'
-        assert all(is_complete_at(datetime.fromisoformat(bar.timestamp), 'M1', now)
-                   for bar in bars)
+    def test_the_reader_takes_only_committed_bars(self, monkeypatch, recording, live_answer):
+        """
+        The real fetcher over the live answer, read once every row's period has ended.
+
+        Time alone would then take every row, the forming one included; only the answer's
+        commit marker keeps the rows after it out, so the newest bar taken opens at `last`.
+        """
+        result = live_answer['answer']['result']
+        fetcher = KrakenOhlcBarFetcher()
+        monkeypatch.setattr(fetcher, '_fetch_ohlc', lambda pair, interval, since: result)
+        every_row_ended = datetime.fromtimestamp(
+            _rows(result)[-1][0] + recording['interval_minutes'] * 60, tz=timezone.utc)
+
+        bars = fetcher.fetch_bars(recording['pair'], 'M1', 10, every_row_ended)
+
+        assert bars[-1].timestamp == datetime.fromtimestamp(
+            result['last'], tz=timezone.utc).isoformat()
+
+    def test_the_reader_reads_the_venue(self, recording):
+        """The real request path end to end: the venue answers and the reader takes bars."""
+        bars = KrakenOhlcBarFetcher().fetch_bars(
+            recording['pair'], 'M1', 10, datetime.now(timezone.utc))
+        assert len(bars) == 10, 'the venue answered, and the reader took too little'

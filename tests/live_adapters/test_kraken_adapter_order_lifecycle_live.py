@@ -8,10 +8,10 @@ using a LIMIT buy far below market — orders are never filled.
 Lot size 0.1 ETH @ $100 meets Kraken's ~$5 cost minimum ($10 reserved, returned on cancel).
 
 Run explicitly:
-    pytest tests/live_adapters/ -v -m live_adapter
+    pytest tests/live_adapters/ -v -m live_adapter --place-real-orders
 
 Skipped by default and excluded from the unified test runner.
-Requires: user_configs/credentials/kraken_credentials.json
+Requires: user_configs/credentials/venues/kraken_credentials.json
           USD balance (~$10 reserved during test, returned on cancel)
 """
 
@@ -26,10 +26,9 @@ from python.framework.trading_env.adapters.kraken_adapter import KrakenAdapter
 from python.framework.trading_env.live.live_request_processor import LiveRequestProcessor
 from python.framework.types.live_types.live_execution_types import BrokerOrderStatus, TimeoutConfig
 from python.framework.types.trading_env_types.order_types import OrderDirection, OrderType
-from tests.live_adapters.conftest import record_observed_adapter
+from tests.live_adapters.conftest import kraken_credentials_path, record_observed_adapter
 
 _BROKER_CONFIG_PATH = Path('configs/brokers/kraken/kraken_spot_broker_config.json')
-_CREDENTIALS_PATH = Path('user_configs/credentials/kraken_credentials.json')
 
 
 @pytest.fixture(scope='module')
@@ -40,8 +39,9 @@ def live_adapter_real(request, real_orders_authorised):
     Returns:
         KrakenAdapter with Tier 3 enabled and dry_run disabled
     """
-    if not _CREDENTIALS_PATH.exists():
-        pytest.skip(f'Kraken credentials not found: {_CREDENTIALS_PATH}')
+    credentials_path = kraken_credentials_path()
+    if not credentials_path.exists():
+        pytest.skip(f'Kraken credentials not found: {credentials_path}')
 
     with open(_BROKER_CONFIG_PATH, 'r') as f:
         broker_config = json.load(f)

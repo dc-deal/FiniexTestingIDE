@@ -244,8 +244,8 @@ class AutotraderSessionSummary:
         # A Ctrl+C also ends as 'emergency' — name it, so a deliberate stop does not
         # read like a crash on the operator's own screen.
         operator_stop = ' (operator stop)' if result.operator_interrupted else ''
-        # #588: a refusal at the first tick ends as 'emergency' too, before any decision —
-        # named, so it does not read like a crash.
+        # #588: a refusal at the first tick ends as 'emergency' too, before that tick's workers
+        # and decision ran — named, so it does not read like a crash.
         refused = ' (refused at the first tick)' if result.refused_at_first_tick else ''
         print(f'  Shutdown:       {result.shutdown_mode}{operator_stop}{refused}')
         if result.shutdown_mode == 'emergency' and result.emergency_reason:

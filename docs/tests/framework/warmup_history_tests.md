@@ -53,7 +53,7 @@ and the first rendered bar must follow the history without repeating it.
 | `test_midnight_between_the_read_and_the_first_tick` | read at 23:59:59, first trade at 00:00:02 — the day that just ended is in the history |
 | `test_the_histories_stay_one_after_the_first_rendered_bar_closes` | ten minutes on, the bars each path rendered itself have joined the history alike |
 | `test_a_period_the_venue_has_not_committed_yet` | a first trade inside the venue's commit lag — the session refuses instead of trading on a hole |
-| `test_a_venue_that_cannot_be_read_again` | the re-read fails — refused, before the first decision |
+| `test_a_venue_that_cannot_be_read_again` | the re-read fails — refused, before that tick's workers and decision run |
 
 ### `test_venue_warmup_read.py`
 
@@ -134,16 +134,19 @@ once the seam has closed.
 
 A session that cannot close its warmup seam says it refused, not that it crashed — console, session
 log and result — while its grading stays `FAILED` (exit 2), so whoever relaunches sessions
-relaunches it.
+relaunches it. It says what did not run on the tick, never that nothing reached the venue: the
+executor's stop and take-profit check of that tick runs first, so the block names what the session
+had sent by then.
 
 | Test | Description |
 |------|-------------|
-| `test_a_seam_refusal_in_the_tick_loop_is_a_refusal` | the `⛔ REFUSED AT THE FIRST TICK` block, not `RUNTIME ERROR` |
-| `test_the_refusal_reaches_the_session_log` | one error line in the session log, nothing in the global log |
+| `test_a_seam_refusal_in_the_tick_loop_is_a_refusal` | the `⛔ REFUSED AT THE FIRST TICK` block, not `RUNTIME ERROR`, and its line saying nothing was sent |
+| `test_the_refusal_reaches_the_session_log` | the reason as an error and what was sent in the session log, nothing in the global log |
 | `test_a_crash_in_the_tick_loop_still_reads_as_one` | any other exception keeps `RUNTIME ERROR — SESSION ABORTED` |
 | `test_the_same_refusal_before_the_tick_loop_is_a_startup_failure` | the boot refusals keep `STARTUP FAILED` |
 | `test_a_refused_session_is_still_failed_and_exits_2` | the grading is unchanged |
 | `test_the_result_carries_the_refusal` | the flag reaches `AutoTraderResult`, where the summary reads it |
+| `test_a_take_profit_crossed_by_the_first_tick_is_named` | a carried LONG whose take profit the first tick crosses, on a real executor in the loop's order: the close the executor sent before the seam refused is named in the block and as a warning |
 
 ### `test_warmup_outcomes.py`
 

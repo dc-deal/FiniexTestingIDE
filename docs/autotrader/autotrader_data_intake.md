@@ -219,18 +219,25 @@ Phase 9 in setup_pipeline():
 
 Rare, and shown as a refusal rather than a crash. When the first trade arrives within about two
 seconds of a period's end that also lies after the boot read, the venue may not have committed that
-period yet; reading it again then still lacks the bar, and the session stops before its first
-decision:
+period yet; reading it again then still lacks the bar, and the session stops before that tick's
+workers and decision run:
 
 ```
 ============================================================
-  ⛔ REFUSED AT THE FIRST TICK — no decision made, no order placed
+  ⛔ REFUSED AT THE FIRST TICK — its workers and decision did not run
   ETHUSD M1: the venue has not yet committed the period before the first tick (…); its newest
-  committed bar opens at …. Refusing before the first decision rather than trading on a history
-  with a missing bar — the venue commits a period within about two seconds of its end, so a
-  restart a few seconds later closes it.
+  committed bar opens at …. Refusing before the workers and the decision run on that tick rather
+  than trading on a history with a missing bar — the venue commits a period within about two
+  seconds of its end, so a restart a few seconds later closes it.
+  No order was submitted in this session and no stop or take-profit fired.
 ============================================================
 ```
+
+The last line is counted, not assumed. The executor's stop and take-profit check runs on the tick
+before its bars are rendered, so a carried position whose level the first tick crossed already has
+a close on its way when the seam refuses; the line then reads
+`⚠️ Before the refusal: 1 order(s) submitted in this session · 1 close(s) triggered by a stop or
+take-profit on this tick — check what the venue holds before a restart.`
 
 The same block appears when the venue cannot be read again at that moment. The session log
 carries the reason, the summary reads `Shutdown: emergency (refused at the first tick)`, and the

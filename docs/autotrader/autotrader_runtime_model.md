@@ -225,14 +225,22 @@ and `get_outcome()` grades the session from there:
 | `FAILED` | `2` | `emergency` that the operator did not initiate — startup abort, tick-loop crash, safety escalation, a refusal at the first tick |
 | `FINISHED_WITH_ERRORS` | `3` | the session ended without an emergency, but errors were logged |
 
-A **refusal at the first tick** (#588) is the one `emergency` that is neither a crash nor a startup
-abort: a live session could not complete its warmup history when its first trade arrived — the
-venue had not yet committed the period that ended since the boot read, or could not be read again —
-and stopped before any decision and any order. It is graded `FAILED` like the others, so whoever
-relaunches sessions relaunches it, and it is SHOWN as what it is: the console prints a
-`⛔ REFUSED AT THE FIRST TICK — no decision made, no order placed` block instead of
-`RUNTIME ERROR — SESSION ABORTED`, the session log carries the reason as an error, and the summary
-reads `Shutdown: emergency (refused at the first tick)`. A restart a few seconds later closes it.
+A **refusal at the first tick** (#588) is an `emergency` that is neither a crash nor a startup
+abort, like a safety escalation: a live session could not complete its warmup history when its
+first trade arrived — the venue had not yet committed the period that ended since the boot read, or
+could not be read again — and stopped before that tick's workers and decision ran. It is graded
+`FAILED` like the others, so whoever relaunches sessions relaunches it, and it is SHOWN as what it
+is: the console prints a `⛔ REFUSED AT THE FIRST TICK — its workers and decision did not run` block
+instead of `RUNTIME ERROR — SESSION ABORTED`, the session log carries the reason as an error, and
+the summary reads `Shutdown: emergency (refused at the first tick)`. A restart a few seconds later
+closes it.
+
+It is not a promise that nothing reached the venue. The tick's bars are rendered after the
+executor's part of the tick, so the stop and take-profit check of that first tick has already run —
+a carried position whose level the tick crossed has a close on its way — and a heartbeat pass
+before the first tick may have run the decision. The block therefore names what the session had
+sent: `No order was submitted in this session and no stop or take-profit fired.`, or the orders and
+triggered closes with `check what the venue holds before a restart`.
 Why it can happen at all: [Warmup History](../architecture/warmup_history.md), *The seam at the
 first tick*.
 

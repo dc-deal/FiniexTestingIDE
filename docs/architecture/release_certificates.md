@@ -138,7 +138,7 @@ pytest tests/simulation/benchmark/test_throughput_regression.py -v --release-ver
 pytest tests/simulation/benchmark/test_benchmark_certificate.py -v
 
 # 2. live adapters — PLACES REAL ORDERS (~$0.01 fees, ~$10 briefly reserved)
-pytest tests/live_adapters/ -v -m live_adapter --release-version X.Y.Z
+pytest tests/live_adapters/ -v -m live_adapter --place-real-orders --release-version X.Y.Z
 pytest tests/live_adapters/test_live_adapter_certificate.py -v
 
 # 3. signal feed — needs the production endpoint, so isolation must be OFF

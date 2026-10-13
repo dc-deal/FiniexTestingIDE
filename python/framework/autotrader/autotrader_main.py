@@ -594,12 +594,22 @@ class AutotraderMain:
         self._emergency_reason = str(error)
         self._emergency_error_type = type(error).__name__
         if self._tick_loop_started and isinstance(error, WarmupHistoryRefusedError):
-            # #588: the warmup seam could not be closed at the first tick. No decision has
-            # run and no order was placed, so this is a refusal rather than a crash, and the
-            # console, the session log and the summary say so.
+            # #588: the warmup seam could not be closed at the first tick. That is a refusal
+            # rather than a crash, and the console, the session log and the summary say so.
+            # The seam closes where the tick's bars are rendered — after the executor's part
+            # of that tick, whose stop and take-profit check can send a close, and after any
+            # heartbeat pass before it, which can run the decision. So the block says what did
+            # not run on the tick and names what the session had sent by then.
             self._refused_at_first_tick = True
+            stats = self._executor.get_execution_stats()
+            sent = self._describe_orders_before_refusal(
+                stats.orders_submitted, stats.sl_tp_triggered)
             self._session_logger.error(f'⛔ Refused at the first tick: {error}')
-            self._print_first_tick_refusal(str(error))
+            if stats.orders_submitted or stats.sl_tp_triggered:
+                self._session_logger.warning(sent)
+            else:
+                self._session_logger.info(sent)
+            self._print_first_tick_refusal(str(error), sent)
         elif self._tick_loop_started:
             # Runtime error inside the tick loop — NOT a startup failure.
             self._global_logger.error(f'❌ AutoTrader runtime error in tick loop: {error}')
@@ -949,12 +959,46 @@ class AutotraderMain:
         print(f'  {message}')
         print(f"{'=' * 60}\n")
 
-    def _print_first_tick_refusal(self, message: str) -> None:
-        """Print a refusal at the first tick to console — before any decision or order."""
+    def _print_first_tick_refusal(self, message: str, sent: str) -> None:
+        """
+        Print a refusal at the first tick to console — the tick's workers and decision did not run.
+
+        Args:
+            message: The refusal's reason
+            sent: What the session had sent to the venue by then
+
+        Returns:
+            None
+        """
         print(f"\n{'=' * 60}")
-        print('  ⛔ REFUSED AT THE FIRST TICK — no decision made, no order placed')
+        print('  ⛔ REFUSED AT THE FIRST TICK — its workers and decision did not run')
         print(f'  {message}')
+        print(f'  {sent}')
         print(f"{'=' * 60}\n")
+
+    @staticmethod
+    def _describe_orders_before_refusal(orders_submitted: int, protective_closes: int) -> str:
+        """
+        Say what a session refused at its first tick had sent to the venue by then.
+
+        Args:
+            orders_submitted: Orders this session submitted — adopted ones are not counted
+            protective_closes: Closes the stop and take-profit check triggered. It runs only on
+                a tick, so at a first-tick refusal every one of them is that tick's
+
+        Returns:
+            One sentence: nothing sent, or what was sent and what to check before a restart
+        """
+        if not orders_submitted and not protective_closes:
+            return 'No order was submitted in this session and no stop or take-profit fired.'
+        sent = []
+        if orders_submitted:
+            sent.append(f'{orders_submitted} order(s) submitted in this session')
+        if protective_closes:
+            sent.append(f'{protective_closes} close(s) triggered by a stop or take-profit '
+                        f'on this tick')
+        return (f'⚠️ Before the refusal: {" · ".join(sent)} — check what the venue holds '
+                f'before a restart.')
 
     def _print_runtime_error(self, message: str) -> None:
         """Print a tick-loop runtime error to console. Aborts via emergency shutdown."""

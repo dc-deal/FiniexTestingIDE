@@ -108,7 +108,7 @@ measured against the most demanding worker per timeframe; each pipeline decides 
 | the venue could not be read | — | refused (live) |
 | a requirement beyond `bar_max_history` | scenario refused — `warmup_capacity` | refused at startup |
 | a bar not complete, repeated or out of order | defect, raised | defect, raised |
-| the seam cannot be closed at the first tick | — | live: refused at the first tick, before any decision, and shown as a refusal |
+| the seam cannot be closed at the first tick | — | live: refused at the first tick, before its workers and decision run, and shown as a refusal |
 | a worker whose two warmup answers differ | refused when the worker is created | refused when the worker is created |
 
 The capacity check exists because the renderer keeps at most `bar_max_history` bars per timeframe
@@ -143,9 +143,9 @@ session's window against exactly that history. One object per file:
 first tick once the seam has closed. Each bar is `[opening instant, open, high, low, close, volume,
 tick count]`. A backtest does not write this file: its history is the archive's, and the same
 selection over the same archive reproduces it. The archive does change — every import renders the
-bar files again — so the parity report (#512) records which render of the bar files its backtest
-read; the bar index's `rendered_at` shows a new render, and only a data hash per file (#583) will
-show whether the values changed.
+bar files again — so the parity report (#512) will record which render of the bar files its
+backtest read; the bar index's `rendered_at` shows a new render, and only a data hash per file
+(#583) will show whether the values changed.
 
 ## Thinly traded symbols — said, not corrected
 
@@ -185,8 +185,8 @@ committed yet. The same symbols run into a second limit: Kraken reaches back 720
 Recorded, not built — none of them touches a liquid symbol read by a daily strategy:
 
 - A live warmup bar carries the venue's volume and trade count, an archive bar the sums of what
-  the collector recorded, so a volume-reading worker starts from different values (#512 compares
-  the two, from the session's record).
+  the collector recorded, so a volume-reading worker starts from different values (#512 will
+  compare the two, from the session's record).
 - The first bar a run renders could be pre-filled — live from the venue's forming row, a backtest
   from the archive's ticks before the start — so that it is whole rather than partial. It matters
   only to workers reading a bar's high, low or volume.
