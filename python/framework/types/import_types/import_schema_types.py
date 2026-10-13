@@ -62,6 +62,48 @@ class CollectedMscRestorationSchema(TypedDict, total=False):
     shift_ms: List[int]
 
 
+class ExternalSourcePartSchema(TypedDict):
+    """
+    One part of a vendor archive a converted file was read from.
+
+    Args:
+        name: The part's file name as the vendor publishes it
+        sha256: Its SHA-256, checked against the vendor's published checksum before conversion
+
+    Returns:
+        N/A (TypedDict - used for type checking only)
+    """
+    name: str
+    sha256: str
+
+
+class ExternalSourceSchema(TypedDict, total=False):
+    """
+    Where a file that no collector of ours wrote came from (#561).
+
+    A converter writes it beside the origin block. The origin block names the converter's own
+    identity; this block names the vendor material the ticks were converted from, down to the
+    bytes, so a file can always be traced to exactly what it was made of.
+
+    Args:
+        vendor: Who published the data
+        dataset: Which of the vendor's datasets
+        parts: The archive parts the member was read from, each with its checksum
+        member: The member inside the archive
+        manifest_schema_version: The schema version the vendor's manifest declares
+        converter_version: The converter version that wrote this file
+
+    Returns:
+        N/A (TypedDict - used for type checking only)
+    """
+    vendor: str
+    dataset: str
+    parts: List[ExternalSourcePartSchema]
+    member: str
+    manifest_schema_version: str
+    converter_version: str
+
+
 class ImportMetadataSchema(TypedDict, total=False):
     """
     Metadata section of a collector JSON tick export.
@@ -113,6 +155,7 @@ class ImportMetadataSchema(TypedDict, total=False):
     symbol_info: SymbolInfoSchema
     collection_settings: CollectionSettingsSchema
     error_tracking: ErrorTrackingSchema  # read from the raw file, never stored (DISCARDED_METADATA_KEYS)
+    external_source: ExternalSourceSchema  # only in a converter's file (#561)
 
 
 class ImportTickSchema(TypedDict, total=False):
@@ -213,6 +256,9 @@ NESTED_METADATA_KEYS: List[str] = [
     # record of a repair stays readable rather than landing as a Python repr.
     'collected_msc_restoration',
     'collected_msc_server_clock_correction',
+    # Which vendor material a converted file was made of (#561) — JSON, so the parts and their
+    # checksums stay readable in the Parquet header.
+    'external_source',
 ]
 
 # Metadata a collector still writes that nothing downstream reads: the settings of the collector's

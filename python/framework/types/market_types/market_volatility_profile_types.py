@@ -73,9 +73,9 @@ class VolatilityProfileConfig:
     atr_period: int = 14
     regime_granularity_hours: int = 1
 
-    # Regime thresholds (percentiles)
-    regime_thresholds: List[int] = field(
-        default_factory=lambda: [20, 40, 60, 80]
+    # Regime boundaries: a period's ATR as a ratio to the reference average
+    regime_thresholds: List[float] = field(
+        default_factory=lambda: [0.5, 0.8, 1.2, 1.8]
     )
 
 

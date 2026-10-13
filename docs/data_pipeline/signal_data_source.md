@@ -918,7 +918,7 @@ measured against the producer's journal envelope for envelope.
 **`data_origin`** (`synthetic` / `live`) is the mock-versus-real discriminator. Without it a
 generated archive and a real one are identical in every other field — the generator mirrors the
 prompt identity on purpose, so `prompt_hash` cannot tell them apart. A scenario binding a
-`synthetic` source gets a pre-run warning (see [Discovery System](../discovery_system.md)).
+`synthetic` source gets a pre-run warning under its own check id, `data_synthetic` — the deficiency `synthetic` (see [Discovery System](../discovery_system.md) and [Data Provenance](../architecture/data_provenance.md)).
 
 **`config_fingerprint`** is a hash over the producer's *effective* input configuration — the feed
 set, weights, retrieval thresholds, model. A feed added, disabled or re-weighted shifts the score

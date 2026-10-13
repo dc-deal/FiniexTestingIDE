@@ -94,6 +94,22 @@ class ImportConfigManager:
             )
         return path
 
+    def get_data_external_path(self) -> str:
+        """
+        Get the external history store — a venue's published archives, kept unchanged.
+
+        Returns:
+            Path string for the external history root
+        """
+        paths = self._config.get('paths', {})
+        path = paths.get('data_external')
+        if not path:
+            raise ValueError(
+                "Missing required path 'data_external' in import_config.json. "
+                "Add to 'paths' section: \"data_external\": \"data/external\""
+            )
+        return path
+
     def get_import_timings_path(self) -> str:
         """
         Get the file of measured import step durations.
@@ -249,6 +265,16 @@ class ImportConfigManager:
         """
         processing = self.get_processing_config()
         return processing.get('bar_render_workers', 2)
+
+    def get_bar_render_max_ram_mb(self) -> int:
+        """
+        Get the memory the bar-render workers may hold together.
+
+        Returns:
+            Budget in MB (default: 20000)
+        """
+        processing = self.get_processing_config()
+        return processing.get('bar_render_max_ram_mb', 20000)
 
     def get_render_timeframes(self) -> List[str]:
         """

@@ -160,7 +160,7 @@ class TestTheRegistryRefusesAFileItCannotTrust:
 
     def test_an_unknown_class_fails_at_parse_time(self, tmp_path):
         # At config-parse time rather than as an unexplainable answer later: the vocabulary is
-        # closed, and a fourth value is how a deployment label creeps back into this judgement.
+        # closed, and a deployment label like this one is exactly what it keeps out.
         registry = _registry(tmp_path, {_PROD_ID: {'class': 'staging'}}, [])
         with pytest.raises(ValueError, match='Invalid data origin registry'):
             registry.resolve(None, '1.5.0', broker_type='kraken_spot')
@@ -178,6 +178,24 @@ class TestTheRegistryRefusesAFileItCannotTrust:
             registry = _registry(tmp_path, {bad: {'class': 'production'}}, [])
             with pytest.raises(ValueError, match='12 lowercase hex'):
                 registry.resolve(None, '1.5.0', broker_type='kraken_spot')
+
+
+class TestTheVocabularyIsClosed:
+
+    def test_the_classes_are_exactly_these_four(self):
+        # A closed set pinned on purpose: a new class changes what every gate and every record
+        # can say, so it arrives only as a deliberate edit to this line.
+        assert {member.value for member in OriginClass} == {
+            'production', 'development', 'unknown', 'external'}
+
+    def test_the_converter_identity_resolves_external_and_never_measurable(self):
+        # Data no instance of ours produced is stamped by the converter that brought it in —
+        # a known origin, and still never admissible for a parity measurement.
+        registry = DataOriginRegistry(user_config_path='user_configs/absent_on_purpose.json')
+        result = registry.resolve('d351d787e800', '1.7.0', broker_type='kraken_spot')
+        assert result.origin_class == OriginClass.EXTERNAL
+        assert result.evidence == OriginEvidence.STAMPED
+        assert not result.is_admissible_for_measurement
 
 
 class TestTheTrackedFileIsSafeByItself:

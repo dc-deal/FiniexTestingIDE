@@ -5,6 +5,8 @@
         "data_raw": "data/raw",
         "import_output": "data/processed",
         "data_finished": "data/finished",
+        "_comment_data_external": "A venue's published history, kept unchanged as it was downloaded (#561): one folder per vendor and dataset, one per fetch below it. Never part of a data package.",
+        "data_external": "data/external",
         "_comment_import_timings": "The measured duration of each import step, written once after a complete import into the production archive and read for the next import's estimate. Derived and deletable: without it the screen shows no estimate.",
         "import_timings": "data/runtime/import_timings.json"
     },
@@ -22,6 +24,8 @@
         "move_processed_files": true,
         "auto_render_bars": true,
         "bar_render_workers": 2,
+        "_comment_bar_render_max_ram_mb": "The memory the bar-render workers may hold together. A symbol's estimate comes from its tick count in the index; a worker starts only while the estimates of the running ones plus its own fit, and a symbol larger than the whole budget renders alone.",
+        "bar_render_max_ram_mb": 20000,
         "_comment_render_timeframes": "Which timeframes the import materializes. Each one costs a parquet file per symbol, so this is a cost knob, not the vocabulary — a name absent here still exists and can be added without code changes. Must name timeframes the registry knows.",
         "render_timeframes": [
             "M1",

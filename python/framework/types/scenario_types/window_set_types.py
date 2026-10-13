@@ -85,6 +85,9 @@ class WindowSet:
     mode: str = ''
     split_config: Optional[WindowSplitConfig] = None
     discovery_fingerprints: dict = field(default_factory=dict)
+    # The origin classes of the data the set was derived from (#561), sorted and distinct.
+    # Empty for a set generated before the field existed — never read as "collected".
+    origin_classes: List[str] = field(default_factory=list)
 
     @property
     def block_count(self) -> int:

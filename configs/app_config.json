@@ -227,7 +227,7 @@
         "weekend",
         "holiday"
       ],
-      "_comment_admitted_origin_classes": "Which data origins a scenario may READ (#518). Open on purpose until producers stamp an identity and the legacy archive is attested — a scenario reading anything but producer-stamped production data is WARNED about meanwhile, so the refusal can be measured before it is armed. Narrow this list to arm it.",
+      "_comment_admitted_origin_classes": "Which data origins a scenario may READ (#518). Open on purpose until producers stamp an identity and the legacy archive is attested — a scenario reading anything but producer-stamped production data is WARNED about meanwhile, so the refusal can be measured before it is armed. Narrow this list to arm it. `external` (a venue's published history, #561) is left out on purpose: such ticks are refused until a configuration admits them.",
       "admitted_origin_classes": [
         "production",
         "development",

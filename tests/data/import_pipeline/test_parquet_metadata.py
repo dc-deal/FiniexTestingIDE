@@ -132,6 +132,16 @@ class TestSourceMetadata:
         # the raw file keeps it, the Parquet header does not
         assert 'source_meta_error_tracking' not in meta
 
+    def test_external_source_lands_as_json(self, tmp_path):
+        # A converter's statement of the vendor material it read (#561) — listed among the
+        # nested keys, or it would land as a Python repr nobody can parse back.
+        block = {'vendor': 'kraken', 'dataset': 'time_and_sales', 'member': 'DOTUSD.csv',
+                 'parts': [{'name': 'part00', 'sha256': 'ab' * 32}], 'converter_version': '1.0.0'}
+        meta = _import_and_get_metadata(
+            tmp_path, symbol='DOTUSD', broker_type='kraken_spot',
+            extra_metadata={'external_source': block})
+        assert json.loads(meta['source_meta_external_source']) == block
+
     def test_source_meta_symbol_info_content(self, tmp_path):
         """Parsed symbol_info should contain expected fields."""
         meta = _import_and_get_metadata(

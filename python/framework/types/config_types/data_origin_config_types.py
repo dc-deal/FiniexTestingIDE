@@ -19,14 +19,19 @@ class OriginClass(str, Enum):
     """
     What a producing instance is, as far as this consumer is concerned.
 
-    A CLOSED vocabulary, and deliberately not the producer's to set. It stays at three values:
-    a fourth is how a deployment label creeps back into a judgement that belongs here, and a
-    file written under it would then carry a word this side never agreed to.
+    A CLOSED vocabulary, and deliberately not the producer's to set. Every value is this side's
+    own judgement about WHO produced the data: an instance of ours in production or in
+    development, nobody we can name, or — EXTERNAL — nobody of ours at all, such as a venue's
+    published trade history brought in by a converter (the converter states its own identity,
+    registered under this class, so such files are stamped rather than guessed). A deployment
+    label is not a class: a value of that kind is how a label creeps back into a judgement that
+    belongs here, and a file written under it would carry a word this side never agreed to.
     """
 
     PRODUCTION = 'production'
     DEVELOPMENT = 'development'
     UNKNOWN = 'unknown'
+    EXTERNAL = 'external'
 
 
 class OriginEvidence(str, Enum):

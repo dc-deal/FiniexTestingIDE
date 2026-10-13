@@ -6,14 +6,16 @@ runs it, and serializes the result (WindowSetSerializer). Keeps the CLI to param
 only (§13).
 """
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 from python.configuration.generator_config_loader import GeneratorConfigLoader
 from python.configuration.market_config_manager import MarketConfigManager
 from python.data_management.index.bars_index_manager import BarsIndexManager
+from python.data_management.index.tick_index_manager import TickIndexManager
 from python.framework.logging.bootstrap_logger import get_global_logger
+from python.framework.types.config_types.data_origin_config_types import OriginClass
 from python.framework.types.config_types.robustness_config_types import RobustnessConfig
 from python.framework.types.scenario_types.scenario_generator_types import (
     BlocksStrategyConfig,
@@ -26,6 +28,10 @@ from python.scenario.generator.splitters.splitter_factory import SplitterFactory
 from python.scenario.generator.window_set_serializer import WindowSetSerializer
 
 vLog = get_global_logger()
+
+# How far before its range a profile reads: the volatility profile's ATR warms up on the bars
+# before a period (14 M5 bars, 70 minutes), so a day covers it with room to spare.
+_PROFILE_LOOKBACK = timedelta(days=1)
 
 # CLI mode string → generation strategy (profile splitters)
 _PROFILE_MODE_STRATEGY = {
@@ -91,10 +97,13 @@ class GenerationCoordinator:
         # One WindowSet per symbol — roles (#367) are assigned per symbol (time-ordered),
         # so a multi-symbol robustness set never trains one symbol on another's future.
         window_sets = []
+        tick_index = self._tick_index()
         for symbol in symbols:
             window_set = splitter.split(broker_type, symbol, start_dt, end_dt, count)
             vLog.info(
                 f'Generated {window_set.block_count} blocks for {symbol} (max {hours}h each)')
+            # A block set reads only its windows, so only their ticks decide its origin
+            self._stamp_origin(window_set, tick_index, *self._window_span(window_set))
             window_sets.append(window_set)
 
         # Robustness mode (#367): --oos-split turns the block set into an IS/OOS set.
@@ -147,6 +156,7 @@ class GenerationCoordinator:
         splitter = self._splitter_factory.create_splitter(
             _PROFILE_MODE_STRATEGY[mode], profile_config)
         window_set = splitter.split(broker_type, symbol, start_dt, end_dt)
+        self._stamp_origin(window_set, self._tick_index(), start_dt - _PROFILE_LOOKBACK, end_dt)
 
         output_file = output or self._profile_output_name(broker_type, symbol, mode)
         profile_path = self._serializer.save_profile(window_set, output_file)
@@ -180,6 +190,7 @@ class GenerationCoordinator:
         """
         bar_index = BarsIndexManager()
         bar_index.build_index()
+        tick_index = self._tick_index()
 
         total_generated = 0
         total_failed = 0
@@ -207,6 +218,8 @@ class GenerationCoordinator:
             for symbol in symbols:
                 try:
                     window_set = splitter.split(broker_type, symbol, start_dt, end_dt)
+                    self._stamp_origin(
+                        window_set, tick_index, start_dt - _PROFILE_LOOKBACK, end_dt)
                     output_file = self._profile_output_name(broker_type, symbol, mode)
                     profile_path = self._serializer.save_profile(window_set, output_file)
                     generated_files.append(str(profile_path))
@@ -231,6 +244,67 @@ class GenerationCoordinator:
     # =========================================================================
     # HELPERS
     # =========================================================================
+
+    @staticmethod
+    def _tick_index() -> TickIndexManager:
+        """
+        The tick index, the authority for the origin of every tick file.
+
+        Returns:
+            The loaded index
+        """
+        index = TickIndexManager()
+        index.build_index()
+        return index
+
+    @staticmethod
+    def _window_span(window_set: WindowSet) -> Tuple[Optional[datetime], Optional[datetime]]:
+        """
+        The span a block set's windows cover.
+
+        Args:
+            window_set: The generated set
+
+        Returns:
+            (first start, last end), or (None, None) for a set without windows
+        """
+        if not window_set.windows:
+            return None, None
+        return (min(window.start_time for window in window_set.windows),
+                max(window.end_time for window in window_set.windows))
+
+    @staticmethod
+    def _stamp_origin(window_set: WindowSet, tick_index: TickIndexManager,
+                      span_start: Optional[datetime], span_end: Optional[datetime]) -> None:
+        """
+        Record the origin classes a window set was derived from, and warn on external data.
+
+        Only the data inside the span counts: a block set reads its windows, a profile its range
+        — its regimes are measured against that range, not against the whole history (#561).
+        Nothing committed may rest on external data, so generation says so the moment it does.
+
+        Args:
+            window_set: The generated set, stamped in place
+            tick_index: The loaded tick index
+            span_start: First instant the set was derived from (None: nothing was)
+            span_end: Last instant the set was derived from
+        """
+        entries = [] if span_start is None or span_end is None else [
+            entry for entry in tick_index.get_symbol_entries(
+                window_set.broker_type, window_set.symbol)
+            if entry.get('start_time') and entry.get('end_time')
+            and ensure_utc_aware(datetime.fromisoformat(entry['start_time'])) < span_end
+            and ensure_utc_aware(datetime.fromisoformat(entry['end_time'])) > span_start]
+        window_set.origin_classes = sorted(
+            {entry.get('origin_class', 'unknown') for entry in entries})
+        if OriginClass.EXTERNAL.value not in window_set.origin_classes:
+            return
+        message = (
+            f'EXTERNAL DATA — {window_set.broker_type}/{window_set.symbol} was derived from a '
+            f'venue\'s published history ({", ".join(window_set.origin_classes)}). Fine on this '
+            f'machine; never commit it — CONTRIBUTING.md, "Data Behind Committed Files".')
+        print(f'  ⚠️  {message}')
+        vLog.warning(message)
 
     def _resolve_profile_config(self, broker_type: str) -> ProfileStrategyConfig:
         """

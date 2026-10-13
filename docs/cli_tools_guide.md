@@ -911,12 +911,12 @@ logged the moment it finishes.
 >
 > Bar rendering runs symbols in parallel via `ProcessPoolExecutor`. Worker count is configured in `import_config.json` → `processing.bar_render_workers` (default: 2). Set to `1` for sequential mode.
 >
-> ⚠️ **Known issue (work in progress):** each worker loads its symbol's complete tick history into
-> RAM. On large tick archives, too many parallel workers can exceed the available memory — the OS
-> kills a worker and the run aborts with
+> Each worker loads its symbol's complete tick history into RAM, so workers start only while
+> their estimated memory fits `processing.bar_render_max_ram_mb`; a symbol larger than that
+> renders alone. Should the OS still kill a worker, the run aborts with
 > `A process in the process pool was terminated abruptly while the future was running or pending.`
-> The render now names this as a likely out-of-memory end and says which setting to lower. The
-> conservative default of `2` avoids it; memory-aware worker scheduling is planned (#442).
+> and the render names it as a likely out-of-memory end and the setting to lower — see
+> [What one render worker holds](data_pipeline/data_import_pipeline.md#what-one-render-worker-holds).
 
 ---
 

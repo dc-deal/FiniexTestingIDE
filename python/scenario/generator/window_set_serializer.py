@@ -219,6 +219,7 @@ class WindowSetSerializer:
                 'total_coverage_hours': window_set.total_coverage_hours,
                 'block_count': window_set.block_count,
                 'discovery_fingerprints': window_set.discovery_fingerprints,
+                'origin_classes': window_set.origin_classes,
                 'split_config': split_config_dict,
             },
             'blocks': [self._window_to_block_dict(w) for w in window_set.windows],
@@ -258,6 +259,7 @@ class WindowSetSerializer:
             mode=meta['generator_mode'],
             split_config=split_config,
             discovery_fingerprints=meta.get('discovery_fingerprints', {}),
+            origin_classes=meta.get('origin_classes', []),
         )
 
     @staticmethod

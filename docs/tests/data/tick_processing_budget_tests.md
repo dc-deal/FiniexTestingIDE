@@ -43,7 +43,7 @@ Boundary conditions and data quality guards.
 |------|------|
 | `test_empty_ticks` | Empty tick list → zero stats, budget recorded |
 | `test_pre_v13_data_skips_filtering` | `collected_msc=0` → all ticks returned unchanged (no `is_clipped` flag) |
-| `test_pre_v13_logs_warning` | Pre-V1.3.0 data triggers logger.warning |
+| `test_pre_v13_logs_warning` | Data without an arrival time triggers a logger.warning naming `no_arrival_time` |
 | `test_sub_ms_budget_no_clipping` | Budget < 1.0ms with integer-ms data → all `is_clipped=False` |
 | `test_symbol_not_in_ticks` | Unknown symbol → empty stats |
 

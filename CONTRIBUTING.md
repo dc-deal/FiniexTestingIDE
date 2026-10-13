@@ -66,6 +66,8 @@ rest only on data the project's own collectors recorded, which is the data the p
 Data from any other source, such as a venue's historical download, may be used on your own
 machine, but no committed set or profile may read it or be derived from it: anyone working from
 the project's published data would find nothing in that window, or derive different numbers.
+Generation warns when such data enters a profile or a set, and the test suite checks every set and
+profile kept in those folders against the data on your machine.
 
 ---
 

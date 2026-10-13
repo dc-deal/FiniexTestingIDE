@@ -6,6 +6,7 @@ from typing import Dict, List, Optional
 
 from pydantic import BaseModel, ConfigDict
 
+from python.framework.types.config_types.data_origin_config_types import OriginClass
 from python.framework.types.config_types.strict_config_model import StrictConfigModel
 
 from python.framework.types.config_types.performance_tracking_config_types import (
@@ -88,10 +89,13 @@ class DataValidationConfig(StrictConfigModel):
     how a gate gets switched off permanently instead of being narrowed once. It therefore ramps:
     a scenario reading anything other than production data the producer itself stamped is
     WARNED about from the start, so the refusal can be measured before it is armed, and
-    narrowing this list is what turns the warning into an exclusion.
+    narrowing this list is what turns the warning into an exclusion. `external` — a venue's
+    published history, not recorded by any instance of ours — is the one class the default
+    leaves OUT: such ticks are refused until a configuration admits them deliberately.
     """
     allowed_gap_categories: List[str] = ['seamless', 'short', 'weekend', 'holiday']
-    admitted_origin_classes: List[str] = ['production', 'development', 'unknown']
+    admitted_origin_classes: List[OriginClass] = [
+        OriginClass.PRODUCTION, OriginClass.DEVELOPMENT, OriginClass.UNKNOWN]
 
 
 class BacktestingPaths(StrictConfigModel):

@@ -15,7 +15,9 @@ a missing timeframe.
 """
 
 import hashlib
+from datetime import datetime, timezone
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Optional
 
 import pandas as pd
@@ -25,9 +27,14 @@ import pytest
 
 from python.configuration.app_config_manager import AppConfigManager
 from python.configuration.import_config_manager import ImportConfigManager
-from python.data_management.importers.bar_importer import BarImporter, _verify_bar_file
+from python.data_management.importers.bar_importer import (
+    BarImporter,
+    _source_origin,
+    _verify_bar_file,
+)
 from python.data_management.importers.tick_data_importer import TickDataImporter
 from python.data_management.index.bars_index_manager import BarsIndexManager
+from python.framework.data_preparation.shared_data_preparator import SharedDataPreparator
 from python.framework.discoveries.discovery_cache_index import DISCOVERY_INDEX_FILE
 from python.framework.exceptions.data_quality_errors import BarFileVerificationException
 from tests.data.import_pipeline.conftest import (
@@ -317,3 +324,102 @@ class TestThePriceBasisSurvivesIntoTheIndex:
         manager.build_index(force_rebuild=True)
 
         assert manager.index['kraken_spot']['SOLUSD']['M1']['price_basis'] == 'unknown'
+
+
+class TestTheOriginOfABarFileSurvivesIntoTheIndex:
+    """
+    A bar file covers a symbol's whole history, so where a venue's published history precedes
+    our collection (#561) the file holds both — and only its stamp says where one ends. The
+    stamp reaches the index, and the seam answers which warmup bars were rendered from
+    external ticks.
+    """
+
+    _PATH = Path('kraken_spot') / 'bars' / 'ETHUSD' / 'ETHUSD_D1_BARS.parquet'
+
+    def _write(self, data_dir: Path, origin_classes: Optional[str],
+               collected_from: Optional[str]) -> None:
+        """Write a D1 bar file over 2026-01-10 … 2026-01-19, stamped or not.
+
+        Args:
+            data_dir: The archive root
+            origin_classes: The stamped classes, or None for a file from before the stamp
+            collected_from: The stamped seam, or None
+        """
+        rows = 10
+        df = pd.DataFrame({
+            'timestamp': pd.date_range('2026-01-10', periods=rows, freq='1D', tz='UTC'),
+            'open': [1.1] * rows, 'high': [1.2] * rows,
+            'low': [1.0] * rows, 'close': [1.15] * rows,
+            'volume': [10.0] * rows, 'tick_count': [5] * rows,
+        })
+        filepath = data_dir / self._PATH
+        filepath.parent.mkdir(parents=True, exist_ok=True)
+        metadata = {'symbol': 'ETHUSD', 'timeframe': 'D1', 'broker_type': 'kraken_spot'}
+        if origin_classes is not None:
+            metadata['origin_classes'] = origin_classes
+            metadata['collected_from'] = collected_from or ''
+        table = pa.Table.from_pandas(df).replace_schema_metadata(metadata)
+        pq.write_table(table, filepath, compression='snappy')
+
+    def _index(self, data_dir: Path) -> BarsIndexManager:
+        manager = BarsIndexManager(data_dir=str(data_dir))
+        manager.build_index(force_rebuild=True)
+        reloaded = BarsIndexManager(data_dir=str(data_dir))
+        reloaded.build_index()
+        return reloaded
+
+    def _bars(self, *days: int) -> tuple:
+        return tuple({'timestamp': pd.Timestamp(f'2026-01-{day:02d}', tz='UTC')} for day in days)
+
+    def test_the_classes_and_the_seam_survive_a_reload(self, tmp_path):
+        self._write(tmp_path, 'external,production', '2026-01-15T08:30:00+00:00')
+        index = self._index(tmp_path)
+
+        assert index.get_origin_classes('kraken_spot', 'ETHUSD', 'D1') == ['external', 'production']
+        assert index.get_collected_from('kraken_spot', 'ETHUSD', 'D1') == datetime(
+            2026, 1, 15, 8, 30, tzinfo=timezone.utc)
+
+    def test_a_file_written_before_the_stamp_answers_nothing(self, tmp_path):
+        # "Not recorded", never "collected"
+        self._write(tmp_path, None, None)
+        index = self._index(tmp_path)
+
+        assert index.get_origin_classes('kraken_spot', 'ETHUSD', 'D1') == []
+        assert index.get_collected_from('kraken_spot', 'ETHUSD', 'D1') is None
+
+    def test_the_seam_is_where_the_first_collected_file_starts(self):
+        entries = [
+            {'origin_class': 'external', 'start_time': '2015-08-07T14:03:25+00:00'},
+            {'origin_class': 'production', 'start_time': '2026-01-24T10:00:00+00:00'},
+            {'origin_class': 'development', 'start_time': '2026-01-15T08:30:00+00:00'},
+        ]
+        assert _source_origin(entries) == (
+            'development,external,production', '2026-01-15T08:30:00+00:00')
+
+    def test_one_origin_has_no_seam(self):
+        assert _source_origin([{'origin_class': 'production', 'start_time': '2026-01-24'}]) == (
+            'production', '')
+        assert _source_origin([{'origin_class': 'external', 'start_time': '2015-08-07'}]) == (
+            'external', '')
+
+    def test_a_warmup_reaching_before_the_seam_is_external(self, tmp_path):
+        self._write(tmp_path, 'external,production', '2026-01-15T08:30:00+00:00')
+        preparator = SimpleNamespace(bar_index_manager=self._index(tmp_path))
+        reaches = SharedDataPreparator._warmup_reaches_external
+
+        # The D1 bar opening 2026-01-15 00:00 was rendered partly from external ticks
+        assert reaches(preparator, 'kraken_spot', 'ETHUSD', 'D1', self._bars(15, 16, 17))
+        assert not reaches(preparator, 'kraken_spot', 'ETHUSD', 'D1', self._bars(16, 17, 18))
+        assert not reaches(preparator, 'kraken_spot', 'ETHUSD', 'D1', ())
+
+    def test_a_file_of_external_history_only_is_external_throughout(self, tmp_path):
+        self._write(tmp_path, 'external', None)
+        preparator = SimpleNamespace(bar_index_manager=self._index(tmp_path))
+        assert SharedDataPreparator._warmup_reaches_external(
+            preparator, 'kraken_spot', 'ETHUSD', 'D1', self._bars(18, 19))
+
+    def test_collected_data_alone_never_is(self, tmp_path):
+        self._write(tmp_path, 'production', None)
+        preparator = SimpleNamespace(bar_index_manager=self._index(tmp_path))
+        assert not SharedDataPreparator._warmup_reaches_external(
+            preparator, 'kraken_spot', 'ETHUSD', 'D1', self._bars(10, 11))

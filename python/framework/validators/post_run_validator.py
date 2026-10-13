@@ -11,13 +11,19 @@ pipeline makes no decisions — the verdict ("does this warrant a warning?") liv
 reads the structured result. See docs/architecture/warnings_errors_tiers.md.
 """
 
-from typing import Optional
+from collections import Counter
+from typing import Dict, Optional
 
 from python.framework.reporting.builders.pending_orders_report_builder import submission_count
 from python.framework.reporting.builders.robustness_report_builder import (
     build_robustness_report_from_batch,
 )
 from python.framework.types.batch_execution_types import BatchExecutionSummary
+from python.framework.types.config_types.data_origin_config_types import OriginClass
+from python.framework.types.data_deficiency_types import (
+    DEFICIENCY_DECLARATIONS,
+    DataDeficiency,
+)
 from python.framework.types.data_origin_types import is_admissible_for_measurement
 from python.framework.types.process_data_types import ProcessResult
 from python.framework.types.run_origin_types import CodeIdentity
@@ -49,12 +55,6 @@ _BOTTLENECK_PCT = 15.0
 # Time-divergence threshold — a currency group spanning more days than this gets an advisory.
 _TIME_DIVERGENCE_DAYS = 30
 
-# The venue whose older archive carries no quote, and the format from which it does. Kraken's
-# collector read only the trade channel below 1.6.0, so those files hold `bid == ask`. MT5 is
-# NOT this case — it numbers its formats independently and has carried a real spread throughout,
-# which is why the check asks the broker before it asks the version.
-_SPREADLESS_BROKER = 'kraken_spot'
-_QUOTE_CHANNEL_FROM = (1, 6, 0)
 
 
 class PostRunValidator:
@@ -83,7 +83,7 @@ class PostRunValidator:
         self._check_unversioned_code()
         self._check_data_version()
         self._check_data_origin()
-        self._check_spreadless_ticks()
+        self._check_data_deficiencies()
         self._check_budget()
         self._check_budget_granularity()
         self._check_budget_too_high()
@@ -182,16 +182,50 @@ class PostRunValidator:
         """
         total_files = 0
         unstamped_files = 0
+        external_files = 0
+        external_scenarios = set()
         for scenario in self._batch.single_scenario_list:
             for origin_class, evidence in zip(scenario.origin_classes,
                                               scenario.origin_evidence_grades):
                 total_files += 1
+                # A venue's published history IS stamped — by the converter that brought it in —
+                # so it is said in a finding of its own rather than counted as unstamped, where
+                # it would contradict that finding beside it.
+                if origin_class == OriginClass.EXTERNAL.value:
+                    external_files += 1
+                    external_scenarios.add(scenario.name)
+                    continue
                 # Asked of the shared rule rather than spelled out here. It decides whether
                 # a measurement may use a file, and a second copy of that sentence would
                 # eventually answer a different question than the first — with the copy
                 # nobody reads being the one that decays.
                 if not is_admissible_for_measurement(origin_class, evidence):
                     unstamped_files += 1
+
+        # A warmup reaching back into a venue's published history needs no admission — the
+        # ticks traded on are what admission guards — so it is said here rather than refused.
+        warmup_scenarios = sorted(
+            f'{scenario.name} ({", ".join(scenario.external_warmup_timeframes)})'
+            for scenario in self._batch.single_scenario_list
+            if scenario.external_warmup_timeframes)
+        if external_files:
+            lines = [
+                f'EXTERNAL DATA — {external_files} of {total_files} input file(s) are a venue\'s '
+                f'published history, not recorded by our collectors',
+                '  → never admissible for a parity measurement',
+                f'  → scenarios: {", ".join(sorted(external_scenarios))}']
+        elif warmup_scenarios:
+            lines = [
+                'EXTERNAL DATA — the warmup history reached back before our collection, into a '
+                'venue\'s published history',
+                '  → the ticks traded on are our own; the indicators started from bars rendered '
+                'from external ticks']
+        else:
+            lines = []
+        if warmup_scenarios:
+            lines.append(f'  → warmup from external history: {", ".join(warmup_scenarios)}')
+        if lines:
+            self._add('data_origin_external', ValidationDomain.DATA, '\n'.join(lines))
 
         if unstamped_files == 0:
             return
@@ -202,57 +236,42 @@ class PostRunValidator:
             f'  → a parity measurement reads only data a producer stamped itself\n'
             f'  → docs/architecture/data_provenance.md'))
 
-    def _check_spreadless_ticks(self) -> None:
+    def _check_data_deficiencies(self) -> None:
         """
-        Say when a run's fills crossed no spread, because the DATA carried none.
+        Say once per run what the data this run read LACKS — counted, never repeated (#561).
 
-        A Kraken tick written before collector format 1.6.0 has `bid == ask`: the collector
-        read only the trade channel, so no quote was ever recorded. A backtest over such data
-        is not wrong, it is incomplete in a known direction — and the cost breakdown shows
-        `Spread Cost: 0.00`, which without a word beside it reads as "nothing was crossed"
-        rather than "these data cannot say".
-
-        Keyed on the VENUE as well as the version, and that is load-bearing rather than
-        tidy: MT5 numbers its collector formats independently and its whole archive sits
-        below 1.6.0 — 244.8 M ticks, every one of them carrying a real spread all along. A
-        version test alone would report the entire forex archive as spreadless.
-
-        Counted in FILES, and it says so. The tick-exact share would need the loaded frame
-        rather than the index — a scenario reads a slice of a file, not the file — and that
-        is a per-tick allocation on the data path for a refinement nobody decides on. The
-        distinction that carries a decision is whether a window is wholly inside the old
-        regime or spans the boundary, and files answer that.
+        One finding per deficiency present, over every input file of every scenario, with the
+        files grouped by where they came from: the same lack has a different reason in a
+        venue's published history than in a file our collector wrote under an older format.
+        A standing condition is still reported on every run, because dropping it would make a
+        run on complete data and one on deficient data look alike — but as one line with its
+        count, its explanation living in the check catalog. This replaces the spreadless
+        advisory, which guessed the missing quote from venue and format version and so stayed
+        silent for converted history declaring format 1.7.0.
         """
-        spreadless = 0
-        total = 0
-        mixed_scenarios = []
+        total_files = 0
+        found: Dict[DataDeficiency, Counter] = {}
         for scenario in self._batch.single_scenario_list:
-            if scenario.data_broker_type != _SPREADLESS_BROKER:
+            versions = scenario.data_format_versions
+            for position, (origin_class, deficiencies) in enumerate(
+                    zip(scenario.origin_classes, scenario.data_deficiencies)):
+                total_files += 1
+                group = _input_group(origin_class, versions[position] if position < len(versions) else None)
+                for deficiency in deficiencies:
+                    found.setdefault(deficiency, Counter())[group] += 1
+
+        for deficiency in DataDeficiency:
+            groups = found.get(deficiency)
+            # `synthetic` is said before the run, per scenario, where both pipelines mount
+            # their signals — an AutoTrader session has no post-run counter of this kind
+            if not groups or deficiency == DataDeficiency.SYNTHETIC:
                 continue
-            versions = [parse_version(v) for v in scenario.data_format_versions]
-            without = [v for v in versions if v is not None and v < _QUOTE_CHANNEL_FROM]
-            with_quote = [v for v in versions if v is not None and v >= _QUOTE_CHANNEL_FROM]
-            spreadless += len(without)
-            total += len(versions)
-            if without and with_quote:
-                mixed_scenarios.append(scenario.name)
-
-        if spreadless == 0:
-            return
-
-        message = (
-            f'{spreadless}/{total} Kraken tick file(s) read predate collector format '
-            f'{".".join(str(part) for part in _QUOTE_CHANNEL_FROM)} — their fills crossed NO '
-            f'spread\n'
-            f'  → `bid == ask` in those files: the collector recorded no quote, so a zero '
-            f'spread cost is the DATA saying nothing, not the venue being free\n'
-            f'  → fees are unaffected and were charged in full')
-        if mixed_scenarios:
-            message += (
-                f'\n  → {len(mixed_scenarios)} scenario(s) span the boundary and read both '
-                f'regimes: {", ".join(sorted(mixed_scenarios))}')
-
-        self._add('spreadless_tick_data', ValidationDomain.DATA, message)
+            declaration = DEFICIENCY_DECLARATIONS[deficiency]
+            breakdown = ' · '.join(f'{count} {group}' for group, count in sorted(groups.items()))
+            self._add(declaration.check, ValidationDomain.DATA, (
+                f'{declaration.title} — {sum(groups.values())} of {total_files} input file(s): '
+                f'{declaration.consequence}\n'
+                f'  → {breakdown}'))
 
     def _check_budget(self) -> None:
         """Warn when avg tick processing exceeds the P5 interval (consider setting a budget)."""
@@ -499,3 +518,21 @@ class PostRunValidator:
             inter_tick_intervals_ms=pd.inter_tick_intervals_ms,
             gap_threshold_s=pd.gap_threshold_s,
             ticks_total=pd.ticks_total)
+
+
+def _input_group(origin_class: str, data_format_version: Optional[str]) -> str:
+    """
+    Name the group an input file is counted in, for a deficiency finding's breakdown.
+
+    Args:
+        origin_class: The file's resolved origin class
+        data_format_version: The tick file's declared format, None for a signal file
+
+    Returns:
+        'external', 'collected at format X', or 'signal'
+    """
+    if origin_class == OriginClass.EXTERNAL.value:
+        return 'external'
+    if data_format_version is None:
+        return 'signal'
+    return f'collected at format {data_format_version}'

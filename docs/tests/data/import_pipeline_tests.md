@@ -120,17 +120,25 @@ Validates Parquet file header metadata.
 - `source_meta_symbol_info` is valid JSON string
 - Parsed nested metadata has correct content
 - Already-captured keys (`symbol`, `broker`) not duplicated as `source_meta_`
+- A converter's `external_source` block lands as JSON, not as a Python repr (#561)
 
 ---
 
 ### test_duplicate_detection.py
 
-Validates hash-based duplicate detection.
+Validates duplicate detection by source file NAME, answered from the tick index, and the refusal of
+a file that overlaps the archive.
 
 - First import succeeds (no duplicate)
 - Second import of same file detected as duplicate (0 processed)
 - Override mode allows re-import of duplicate
 - Different source file not flagged as duplicate
+
+**TestTheArchiveIsCheckedBeforeTheWrite** (#561):
+- A file whose ticks fall inside an archived file's span is refused and nothing is written
+- A refused `--override` keeps the parquet it would have replaced — the check runs before the delete
+- Touching edges are not an overlap
+- A batch is checked against itself: of two overlapping files in one inbox, the second is refused
 
 **DUPLICATE AT LAST Policy:** The `populate_persistent_test_output` session fixture imports 4
 reference files into `data/test/import/processed/` at session start. All duplicate detection tests
@@ -138,6 +146,56 @@ use `tmp_path` for full isolation, so they don't conflict with the persistent im
 persistent import must complete first — if duplicate detection tests ever run against shared
 directories, they must be ordered last (after the reference data is established and directories are
 clean).
+
+---
+
+### test_bar_render_admission.py
+
+Render workers start by memory (#442):
+
+- **TestTheEstimate** — the measured symbol is estimated at its measured peak; an empty symbol
+  costs the process alone
+- **TestTheAdmission** — two large symbols never run side by side; a freed worker takes the largest
+  that fits; a symbol larger than the budget renders alone; the worker count still caps
+
+### test_kraken_history_converter.py
+
+Kraken's published trade history through the converter and the real import (#561). Every test
+builds its own small archive — a zip with Kraken's manifest, cut into byte-range parts with a
+checksum list — so nothing binary is committed.
+
+- **TestTheArchiveIsCheckedBeforeItIsRead** — verified parts are recorded with their checksums; a
+  part differing from its checksum, a manifest of another schema, and parts nobody verified are
+  refused
+- **TestAPairIsReadExactly** — BTCUSD is the member `XBTUSD.csv` and never `XBTUSDC.csv`; a header
+  in another column order and a pair the archive does not hold are refused
+- **TestEachTradeBecomesOneTick** — Kraken's first BTCUSD trade maps field by field, with no
+  `collected_msc`; the file names its converter identity and its parts; the same parts give the
+  same ticks
+- **TestWhereConversionStopsAndSplits** — conversion stops before our first collected tick; one
+  file per month, never more ticks than the cap
+- **TestTheImportStampsItExternal** — a converted file imports as `external`, stamped, with the
+  deficiencies `no_quote` and `no_arrival_time` in the index
+- **TestTheArchiveStepProvesBeforeItRemoves** — an imported conversion is zipped intact and its
+  loose copies removed, the record marked; a conversion not yet imported is refused, nothing is
+  zipped and nothing removed
+
+---
+
+### test_data_deficiency.py
+
+What a tick file LACKS, measured from its rows when the tick index scans it (#561).
+
+- **TestTheVocabularyIsDeclared** — every `DataDeficiency` has its declaration, and every declared
+  check id is in the validation check catalog
+- **TestWhatAFileLacksIsMeasured** — a recorded, quoted file lacks nothing; bid = ask throughout is
+  `no_quote`; an absent or zeroed arrival column is `no_arrival_time`; both reconstruction
+  fingerprints (every multi-tick second ending on .999, the arrival copied from the event time) are
+  `arrival_time_reconstructed`
+- **TestMissingTradesAreCountedAlways** — a few missing trade ids are a count, not a deficiency; a
+  run of missing ids spanning more than five minutes is one; no trade ids means "not measurable"
+- **TestTheIndexCarriesThem** — a file imported without a quote and without an arrival time is
+  indexed with both deficiencies, through a persisted index
 
 ---
 
@@ -150,7 +208,8 @@ Tests for the `collected_msc` field (V1.3.0), `time_msc` offset consistency, tic
 - `collected_msc` dtype is int64
 
 **TestCollectedMscBackwardCompat:**
-- Old JSON without `collected_msc` imports with default value 0
+- JSON without `collected_msc` imports WITHOUT the column (no zero is written); the reader adds the
+  tick loop's zero when it loads the file
 
 **TestCollectedMscValues:**
 - V1.3.0 data preserves `collected_msc` values through import
@@ -213,7 +272,8 @@ constants it enforces are measured values; each test names the measurement it re
 - A gap past the 7-day threshold is
 
 **TestMissingColumns:**
-- Missing or all-zero `collected_msc` warns, never rejects (pre-V1.3.0 data has no arrival clock)
+- Missing or all-zero `collected_msc` never rejects; an all-zero column warns that the file records
+  no arrival time
 
 **TestWeekendOpen:**
 - A regular winter open (Sunday 17:01 New York = 22:01 UTC) passes; the same in summer at 21:01 UTC
@@ -258,6 +318,15 @@ given, and a bar file is proven readable at the moment it is written.
 **TestIndexBuildReportsUnreadableFiles:**
 - A file the scan cannot read is named in an error-level block, with the balance (`N of M bar files`) and the repair command
 - A build in which every file reads produces no error block
+
+**TestThePriceBasisSurvivesIntoTheIndex:**
+- The stamped basis reaches the index, survives a reload and is a column of the persisted index
+- A file written before the stamp reads as `unknown`, never as today's declaration
+
+**TestTheOriginOfABarFileSurvivesIntoTheIndex** (#561):
+- `origin_classes` and the seam `collected_from` survive a reload; a file from before the stamp answers nothing
+- The seam is the start of the first tick file not from a venue's published history; one origin alone has no seam
+- A warmup whose first bar opens before the seam is external; a file of external history only is external throughout; collected data alone never is
 
 Uses `RecordingLogger` (`tests/shared/recording_logger.py`): the project's loggers do not
 route through the stdlib `logging` module, so `caplog` cannot see them, and these cases

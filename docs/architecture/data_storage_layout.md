@@ -47,6 +47,7 @@ worse. What they *can* share is how they describe themselves.
 | 10b | `data/runtime/config_directory/` | DERIVED ← the configuration files (not a store) | path of the configuration file | `config_directory_index.parquet` | B · set |
 | 10c | `data/runtime/import_timings.json` | DERIVED ← the imports' own durations (not a store) | none | none — one file | A · document |
 | 11 | `data/finished/` | ARCHIVE | file name | none — opened by name | A · document |
+| 11b | `data/external/` | ARCHIVE | vendor / dataset / fetch folder | none — a fetch is opened by its folder, its `manifest.json` keyed on part SHA-256 and fetch time | A · document |
 | 12 | `data/raw/` → `data/finished/` | **SPECIAL** | file name | none — conveyor | — |
 | 13 | `logs/global.log` | **SPECIAL** | none | none — append stream | — |
 | 14 | `user_configs/host_identity.json` | **SPECIAL** | none | none — one file, read at boot by its manager | — |
@@ -62,6 +63,17 @@ all of its ticks and replaces a file only once the new one reads back in full. D
 different producer, different index. Registering bars as
 ARCHIVE was the first defect this model found in itself — and the project's own store rules had
 already written down the sentence the registration then contradicted.
+
+### The external history store
+
+A venue's published history — data no instance of ours recorded — is kept here exactly as it was
+downloaded (#561): `data/external/<vendor>/<dataset>/<fetch date>/`, holding the parts as the
+vendor publishes them, the vendor's checksum list, and this side's `manifest.json`. The manifest is
+keyed on each part's SHA-256 and the time it was fetched, never on the vendor's release label: a
+vendor may re-upload a release under the same label, so the label alone does not pin the bytes.
+Conversion records (`conversions/`) beside the manifest say which collector-shaped files each run
+wrote into the import inbox. The store is append-only, the importer never reads it — the converter
+does — and nothing in it ever enters a data package or the repository.
 
 See it live, with entry counts and the stated reasons:
 

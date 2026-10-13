@@ -6,7 +6,7 @@ Phase 1.5: Post-Load Data Quality Validation
 """
 
 from collections import Counter
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from python.configuration.app_config_manager import AppConfigManager
 from python.configuration.market_config_manager import MarketConfigManager
@@ -15,6 +15,7 @@ from python.framework.discoveries.signal_coverage.signal_coverage_report import 
 from python.framework.exceptions.market_compatibility_errors import MarketCompatibilityError
 from python.framework.factory.worker_factory import WorkerFactory
 from python.framework.logging.abstract_logger import AbstractLogger
+from python.framework.types.config_types.data_origin_config_types import OriginClass
 from python.framework.types.coverage_report_types import GapCategory
 from python.framework.types.process_data_types import ProcessDataPackage, RequirementsMap
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
@@ -72,7 +73,10 @@ class ScenarioDataValidator:
         # Load validation settings from config
         self._bar_max_history = app_config.get_bar_max_history()
         self._allowed_gap_categories = self._load_allowed_gap_categories()
-        self._admitted_origin_classes = app_config.get_admitted_origin_classes()
+        # Compared against the class strings the tick index carries, so held as their values
+        self._admitted_origin_classes = [
+            OriginClass(origin_class).value
+            for origin_class in app_config.get_admitted_origin_classes()]
 
     def _load_allowed_gap_categories(self) -> List[GapCategory]:
         """
@@ -197,6 +201,28 @@ class ScenarioDataValidator:
 
         return errors
 
+    def validate_signal_synthetic(self, scenario: SingleScenario) -> Optional[str]:
+        """
+        Say when the scenario's signal source declares itself generated — the deficiency
+        `synthetic`, said before the run because both pipelines mount signals through here.
+
+        Args:
+            scenario: Scenario to validate
+
+        Returns:
+            The warning, or None for a market record or a scenario without signals
+        """
+        if not scenario.data_sentiment_type:
+            return None
+        report = self._signal_coverage_reports.get(
+            (scenario.data_sentiment_type, scenario.symbol))
+        if not report or not report.is_synthetic():
+            return None
+        return (
+            f"Signal '{scenario.data_sentiment_type}' is SYNTHETIC "
+            f"(data_origin=synthetic) — generated data, not a market record. "
+            f"Valid for pipeline validation, meaningless as a performance statement.")
+
     def validate_signal_availability(
         self,
         scenario: SingleScenario
@@ -204,9 +230,10 @@ class ScenarioDataValidator:
         """
         Validate the scenario's signal source against its coverage (pre-load).
 
-        Five checks. One is about the data's nature, four about the window — the
-        point where a SIGNAL worker either has something to resolve or does not:
-        - the source declares itself synthetic (generated, not a market record)
+        Four checks, all about the window — the point where a SIGNAL worker either has
+        something to resolve or does not. Whether the source declares itself synthetic is
+        not one of them: that is what the data LACKS rather than how much of it there is,
+        checked by `validate_signal_synthetic` under a check id of its own (#561).
         - the source/symbol carries no snapshots at all (config/data error)
         - the window closes before the series opens: nothing can ever resolve
         - no snapshot at or before start_date: the run begins blind, every tick
@@ -239,14 +266,6 @@ class ScenarioDataValidator:
                 f"no snapshot for this symbol."
             )
             return errors, warnings
-
-        # === Synthetic data: a result on generated signals is not a market result ===
-        if report.is_synthetic():
-            warnings.append(
-                f"Signal '{scenario.data_sentiment_type}' is SYNTHETIC "
-                f"(data_origin=synthetic) — generated data, not a market record. "
-                f"Valid for pipeline validation, meaningless as a performance statement."
-            )
 
         start_date = scenario.start_date
         end_date = scenario.end_date

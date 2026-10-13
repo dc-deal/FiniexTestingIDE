@@ -28,7 +28,9 @@ from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.signal_data.signal_jsonl_loader import load_signal_series
 from python.framework.signal_data.signal_parquet_reader import load_signal_series_from_parquet
 from python.framework.stress_test.stale_data_slicer import StaleDataSlicer
+from python.framework.types.config_types.data_origin_config_types import OriginClass
 from python.framework.types.config_types.market_config_types import PriceFormation
+from python.framework.types.data_deficiency_types import DataDeficiency
 from python.framework.types.process_data_types import (
     BarRequirement,
     ClippingStats,
@@ -256,6 +258,15 @@ class SharedDataPreparator:
                 entry.get('origin_class', 'unknown') for entry in inputs]
             scenario.origin_evidence_grades = [
                 entry.get('origin_evidence', 'unknown') for entry in inputs]
+            # What each of those files LACKS (#561), in the same order: the tick files as the
+            # index measured them, the signal files from their producer's own data_origin
+            signals_synthetic = any(
+                snapshot.data_origin == 'synthetic'
+                for series in signal_series.values() for snapshot in series.snapshots)
+            scenario.data_deficiencies = (
+                [list(entry.get('deficiencies', [])) for entry in overlapping]
+                + [[DataDeficiency.SYNTHETIC] if signals_synthetic else []
+                   for _ in signal_entries])
             # The price basis comes from the BAR index, because the bar files are the only
             # place it is stamped — a tick parquet carries no basis at all. So a scenario
             # that mounted no bar file records NOTHING here rather than the broker's
@@ -266,6 +277,11 @@ class SharedDataPreparator:
                 self.bar_index_manager.get_price_basis(
                     scenario.data_broker_type, scenario.symbol, timeframe)
                 for timeframe in scenario_bars['bars']
+            ]
+            scenario.external_warmup_timeframes = [
+                timeframe for timeframe, bars in scenario_bars['bars'].items()
+                if self._warmup_reaches_external(
+                    scenario.data_broker_type, scenario.symbol, timeframe, bars)
             ]
 
             # Log package size
@@ -552,12 +568,12 @@ class SharedDataPreparator:
         if ticks_total == 0:
             return scenario_ticks, ClippingStats(budget_ms=budget_ms)
 
-        # Check if collected_msc is available (V1.3.0+ data)
+        # The budget is timed on arrival, so data without an arrival time cannot be filtered
         first_tick = ticks_tuple[0]
         if first_tick.get('collected_msc', 0) == 0:
             self._logger.warning(
-                f'⚠️  Budget filtering skipped for {symbol}: '
-                f'collected_msc not available (pre-V1.3.0 data)'
+                f'⚠️  Budget filtering skipped for {symbol}: the data records no arrival '
+                f'time (deficiency no_arrival_time)'
             )
             return scenario_ticks, ClippingStats(
                 ticks_total=ticks_total,
@@ -646,6 +662,34 @@ class SharedDataPreparator:
             'bars': scenario_bars,
             'counts': scenario_counts
         }
+
+    def _warmup_reaches_external(self, broker_type: str, symbol: str, timeframe: str,
+                                 bars: Tuple[Dict[str, Any], ...]) -> bool:
+        """
+        Whether a selected warmup history holds bars rendered from a venue's published history.
+
+        Asked of the bar file's own stamp (#561): the classes of the ticks it was rendered from
+        and the seam where our collection takes over. A bar opening before the seam is external;
+        a file holding external history only has no seam, and every bar of it is.
+
+        Args:
+            broker_type: Broker the bars belong to
+            symbol: Trading symbol
+            timeframe: Timeframe key
+            bars: The selected warmup bars
+
+        Returns:
+            True when at least one selected bar was rendered from external ticks
+        """
+        if not bars:
+            return False
+        classes = self.bar_index_manager.get_origin_classes(broker_type, symbol, timeframe)
+        if OriginClass.EXTERNAL.value not in classes:
+            return False
+        seam = self.bar_index_manager.get_collected_from(broker_type, symbol, timeframe)
+        if seam is None:
+            return True
+        return min(bar['timestamp'] for bar in bars) < seam
 
     def _assert_traded_price_present(
         self,

@@ -12,6 +12,7 @@ Tests for the collected_msc field introduced in data format V1.3.0:
 import pandas as pd
 
 from python.data_management.importers.tick_data_importer import TickDataImporter
+from python.framework.data_preparation.tick_parquet_reader import read_tick_parquet
 from tests.data.import_pipeline.conftest import (
     build_minimal_tick_json,
     find_tick_parquets,
@@ -58,8 +59,12 @@ class TestCollectedMscPresence:
 class TestCollectedMscBackwardCompat:
     """Verify backward compatibility for data without collected_msc."""
 
-    def test_missing_collected_msc_defaults_to_zero(self, tmp_path):
-        """Old JSON without collected_msc should import with default 0."""
+    def test_missing_collected_msc_stays_absent(self, tmp_path):
+        """
+        A file without an arrival time stores none — the absent column IS the statement, and
+        the tick index measures it as `no_arrival_time` (#561). A zero written here once made
+        every such file read as pre-1.3.0 collector data.
+        """
         source = tmp_path / 'source'
         target = tmp_path / 'target'
 
@@ -88,8 +93,9 @@ class TestCollectedMscBackwardCompat:
         importer.process_all_exports()
 
         df = pd.read_parquet(find_tick_parquets(target)[0])
-        assert 'collected_msc' in df.columns
-        assert (df['collected_msc'] == 0).all()
+        assert 'collected_msc' not in df.columns
+        # The reader restores the tick loop's own "not recorded" convention, once
+        assert (read_tick_parquet(find_tick_parquets(target)[0])['collected_msc'] == 0).all()
 
 
 class TestCollectedMscValues:

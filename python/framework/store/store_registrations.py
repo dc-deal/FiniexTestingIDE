@@ -380,6 +380,22 @@ def build_registrations() -> Dict[StoreId, StoreDescriptor]:
                   'from, moved here unchanged. No index — nothing searches it; it is opened by '
                   'name when a file has to be re-examined.'),
         ),
+        StoreId.EXTERNAL_HISTORY: StoreDescriptor(
+            store_id=StoreId.EXTERNAL_HISTORY,
+            kind=StoreKind.ARCHIVE,
+            purpose="a venue's published history, kept as downloaded",
+            doc='docs/architecture/data_storage_layout.md#the-external-history-store',
+            root=Path(ImportConfigManager().get_data_external_path()),
+            key='vendor / dataset / fetch folder',
+            form=RetrievalForm.DOCUMENT,
+            backend=StoreBackend.DISK,
+            entry_glob='*/*/*/manifest.json',
+            note=('The source of truth for data no instance of ours recorded (#561): the parts '
+                  'exactly as the vendor publishes them, with a manifest keyed on each part\'s '
+                  'SHA-256 and the time it was fetched — a vendor may re-upload under the same '
+                  'release label. Append-only, never rewritten; no index, a fetch is opened by '
+                  'its folder. Stays on this machine and never enters a data package.'),
+        ),
         StoreId.RAW_INBOX: StoreDescriptor(
             store_id=StoreId.RAW_INBOX,
             kind=StoreKind.SPECIAL,

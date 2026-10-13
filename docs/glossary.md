@@ -186,8 +186,8 @@ session reads its own broker's feed. In a report it is each unit's `data_broker_
 configuration directory, a row's `data_broker_types`.
 
 **data origin** — Which kind of source produced an archived file: `origin_class` (`production`,
-`development`, `unknown`) with its evidence grade, stamped at import and carried into every run's
-consumption record. Not the *broker*. See [Data Provenance](architecture/data_provenance.md).
+`development`, `unknown`, `external`) with its evidence grade, stamped at import and carried into
+every run's consumption record. Not the *broker*. See [Data Provenance](architecture/data_provenance.md).
 
 **data source** — One of the inputs a scenario reads, named by its key: its *data broker* for the
 ticks, its `data_sentiment_type` for the signals. A stale-data stress event names the one it makes
@@ -198,6 +198,11 @@ header): a start, and an end unless it is open. Not a span over several units. O
 *window* is always a span of TIME — the served `window_start`, `window_end`, `window_count` and
 `windows` mean the same — never a docked panel: that is the FiniexViewer's `window`, defined in its
 own glossary.
+
+**deficiency** (`DataDeficiency`; `deficiencies` in the tick index) — What an archived file LACKS:
+`no_quote`, `no_arrival_time`, `arrival_time_reconstructed`, `missing_trades`, `synthetic`. Measured
+from the data, never inferred from a format version, and counted once per run. Not a gap in time,
+and not a property of the venue. See [Data Provenance](architecture/data_provenance.md).
 
 **decision basis** — The fresh / stale / blind counts of the inputs a decision was made on. See
 [Signal Data Source](data_pipeline/signal_data_source.md).
@@ -239,6 +244,11 @@ the `session_start` *broker truth* line. A point in time — not the
 `execution_time_ms` for a scenario, `execution_time_s` for a whole backtest run. It says nothing
 about how much market time was processed — that is the *tick timespan* — and it is never a point
 in time: when an order's event happened is its *event time*.
+
+**external** (`origin_class: external`) — Data no instance of ours recorded: a venue's published
+history, brought in by a converter that stamps its own identity. A backtest reads it only where
+`admitted_origin_classes` admits it, and it is never admissible for a parity measurement. Not
+*unknown*, which means nobody could be named. See [Data Provenance](architecture/data_provenance.md).
 
 **fee report** (`fee_report`) — Where a venue reports the fee it charged for a fill, as its adapter
 declares it: `status_answer` — in the answer that reports the order filled, as Kraken does;

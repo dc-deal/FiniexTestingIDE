@@ -550,6 +550,41 @@
             }
         },
         {
+            "name": "📥 External History: Convert (dry run)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/external_history_cli.py",
+            "args": [
+                "convert",
+                "--fetch",
+                "${input:externalHistoryFetch}",
+                "--symbols",
+                "${input:externalHistorySymbols}",
+                "--dry-run"
+            ],
+            "console": "integratedTerminal",
+            "presentation": {
+                "group": "03_import",
+                "order": 3
+            }
+        },
+        {
+            "name": "📥 External History: List",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/external_history_cli.py",
+            "args": [
+                "list",
+                "--fetch",
+                "${input:externalHistoryFetch}"
+            ],
+            "console": "integratedTerminal",
+            "presentation": {
+                "group": "03_import",
+                "order": 4
+            }
+        },
+        {
             "name": "📥 Import",
             "type": "debugpy",
             "request": "launch",
@@ -560,7 +595,7 @@
             "console": "integratedTerminal",
             "presentation": {
                 "group": "03_import",
-                "order": 3
+                "order": 5
             }
         },
         {
@@ -575,7 +610,7 @@
             "console": "integratedTerminal",
             "presentation": {
                 "group": "03_import",
-                "order": 4
+                "order": 6
             }
         },
         // ====================================================
@@ -4158,6 +4193,18 @@
         }
     ],
     "inputs": [
+        {
+            "id": "externalHistoryFetch",
+            "type": "promptString",
+            "description": "Fetch folder of the external history store",
+            "default": "data/external/kraken/trades/2026-10-13"
+        },
+        {
+            "id": "externalHistorySymbols",
+            "type": "promptString",
+            "description": "Symbols to convert, comma-separated",
+            "default": "ETHUSD"
+        },
         {
             "id": "fixtureEntry",
             "type": "promptString",

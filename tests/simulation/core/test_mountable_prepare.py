@@ -31,7 +31,7 @@ from python.scenario.scenario_config_loader import ScenarioConfigLoader
 
 CORE_CONFIG = 'backtesting/backtesting_validation_test.json'
 
-# One window at the head of the ETHUSD archive (short M30 warmup) beside an ordinary one (§34).
+# One window at the head of the EURUSD archive (no warmup at all) beside an ordinary one.
 WARMUP_REJECTED_CONFIG = str(
     Path(__file__).resolve().parents[2] / 'fixtures' / 'scenario_sets' / 'mountable_prepare'
     / 'warmup_rejected_after_mount.json')

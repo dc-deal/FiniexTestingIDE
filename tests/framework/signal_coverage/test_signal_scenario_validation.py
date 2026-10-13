@@ -203,16 +203,24 @@ class TestSignalAvailability:
         assert 'starts on a snapshot' in warnings[0]
 
     def test_synthetic_source_warns(self, tmp_path):
+        # What the data LACKS, under a check id of its own (#561) — not among the thin-data
+        # warnings of the availability check
         start = datetime(2026, 7, 22, 0, 0, tzinfo=timezone.utc)
         report = _report(tmp_path, _grid(start, 36), origin='synthetic')
         validator = _validator({(SOURCE, SYMBOL): report})
+        scenario = _scenario(start + timedelta(hours=1))
 
-        errors, warnings = validator.validate_signal_availability(
-            _scenario(start + timedelta(hours=1)))
+        errors, warnings = validator.validate_signal_availability(scenario)
+        synthetic = validator.validate_signal_synthetic(scenario)
 
-        assert errors == []          # generated data runs, it just says so
-        assert len(warnings) == 1
-        assert 'SYNTHETIC' in warnings[0]
+        assert errors == [] and warnings == []   # generated data runs, it just says so
+        assert 'SYNTHETIC' in synthetic
+
+    def test_a_market_record_is_not_synthetic(self, tmp_path):
+        start = datetime(2026, 7, 22, 0, 0, tzinfo=timezone.utc)
+        report = _report(tmp_path, _grid(start, 36))
+        validator = _validator({(SOURCE, SYMBOL): report})
+        assert validator.validate_signal_synthetic(_scenario(start + timedelta(hours=1))) is None
 
     def test_stale_tail_is_not_flagged(self, tmp_path):
         # A window reaching past the series end is contracted degradation (#434)

@@ -179,6 +179,7 @@ but must not be manually edited (documented convention, not enforced via hash).
       "data_coverage": "c7d4e982...",
       "extreme_moves": "b8e1f9a3..."
     },
+    "origin_classes": ["production"],
     "split_config": {
       "min_block_hours": 2,
       "max_block_hours": 24,
@@ -202,6 +203,23 @@ but must not be manually edited (documented convention, not enforced via hash).
   ]
 }
 ```
+
+**A profile is derived from its own range.** The volatility profile measures every hour against
+the symbol's whole history; a generated profile re-measures the hours of its range against that
+range, so `regime_at_split` and `atr_at_split` depend on the range alone. Where the split points
+fall does not change — they compare hours with each other. The reason is the archive's reach:
+once a venue's published history precedes our own collection, the whole history spans prices two
+orders of magnitude apart (ETHUSD's mean daily range was $0.89 in 2016 and $174.54 in 2025), and
+half a year of our data would be labelled by a decade it does not cover.
+
+`origin_classes` names the origin classes of the data a set was derived from: a profile's range
+(and a day before it, where the ATR warms up), a block set's windows. Generation warns the moment
+`external` enters either, and the suite holds every profile and scenario set kept in `configs/`
+and `tests/fixtures/` to the rule that nothing committed rests on external data
+(`CONTRIBUTING.md`, *Data Behind Committed Files*). A profile over our own collection is
+committable however far the archive reaches back; one across the seam stays on the machine that
+made it. A profile generated before the field existed carries none; it predates external data and
+is read as "not recorded".
 
 ### CLI Usage
 

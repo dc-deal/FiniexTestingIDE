@@ -29,6 +29,7 @@ Before this reader existed, three independent consumers each had their own `real
 | `test_legacy_no_volume_column` | Neither column present: `volume=0.0` added |
 | `test_already_normalized_passthrough` | Existing `volume` column passes through unchanged |
 | `test_raw_columns_preserved` | bid, ask, tick_volume, tick_flags, time_msc survive normalization |
+| `test_a_projected_read_derives_the_same_price_and_volume` | a read of only some columns holds less and derives the same timestamp, time_msc, price and volume |
 
 ### Integration Test (`TestVolumeChain`)
 

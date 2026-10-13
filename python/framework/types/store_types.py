@@ -80,6 +80,7 @@ class StoreId(StrEnum):
     CONFIG_DIRECTORY = 'config_directory'
     RAW_INBOX = 'raw_inbox'
     FINISHED_ARCHIVE = 'finished_archive'
+    EXTERNAL_HISTORY = 'external_history'
     GLOBAL_LOG = 'global_log'
     IMPORT_LOGS = 'import_logs'
     IMPORT_TIMINGS = 'import_timings'

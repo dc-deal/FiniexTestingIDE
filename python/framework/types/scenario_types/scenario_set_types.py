@@ -12,6 +12,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from python.framework.types.data_deficiency_types import DataDeficiency
 from python.framework.types.run_purpose_types import RunPurpose
 from python.framework.types.trading_env_types.broker_types import BrokerType
 from python.framework.types.config_types.robustness_config_types import (
@@ -96,11 +97,19 @@ class SingleScenario:
     data_format_versions: List[str] = field(default_factory=list)
     origin_classes: List[str] = field(default_factory=list)
     origin_evidence_grades: List[str] = field(default_factory=list)
+    # What each of those files LACKS (#561), in the same order as `origin_classes` — the tick
+    # files as the index measured them, the signal files as their producer declared them.
+    data_deficiencies: List[List[DataDeficiency]] = field(default_factory=list)
     # One entry per mounted BAR file — the only archive that stamps a price basis. A scenario
     # that mounted none stays EMPTY rather than falling back to the broker's declaration
     # (§31c): 'what was this rendered from' and 'what would a render produce today' are two
     # questions, and they disagree for exactly as long as a re-render is unfinished.
     price_bases: List[str] = field(default_factory=list)
+    # The timeframes whose warmup history reached back before our own collection, into bars
+    # rendered from a venue's published history (#561). Allowed without admission — the ticks
+    # the scenario trades on are what admission guards — and recorded, so a run whose
+    # indicators started from external bars is never mistaken for one that did not.
+    external_warmup_timeframes: List[str] = field(default_factory=list)
 
     # === PROFILE RUN METADATA (populated from a WindowSet) ===
     is_profile_run: bool = False

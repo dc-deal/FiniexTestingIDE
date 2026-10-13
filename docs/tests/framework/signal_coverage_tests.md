@@ -76,7 +76,7 @@ verdict matches what the run will actually see.
 | Case | Outcome |
 |---|---|
 | scenario binds no signal source | skipped, no findings |
-| source declares `data_origin: synthetic` | **warning** — generated data, not a market record |
+| source declares `data_origin: synthetic` | **warning** `data_synthetic`, from `validate_signal_synthetic` — generated data, not a market record (#561); a market record says nothing |
 | source/symbol not imported | **error** — scenario excluded (a config/data error, the batch continues) |
 | window closes before the series opens | **error** — nothing can ever resolve |
 | no snapshot at or before window start | **warning** — run starts blind, with the blind duration |

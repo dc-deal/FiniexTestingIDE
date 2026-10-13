@@ -118,7 +118,7 @@ The system warns about this:
 |--------|----------------------|-----------------|
 | MT5 (V1.3.0+) | Device clock at collection time | Typically 100ms+ (interpolated within seconds) |
 | Kraken (V1.3.0+) | Synthesized from trade fills | 1ms (synthetic, real cadence unknown) |
-| Pre-V1.3.0 data | Not available (`collected_msc = 0`) | Filtering skipped, warning logged |
+| Data without an arrival time (`no_arrival_time`) | Not available | Filtering skipped, warning logged |
 
 ---
 
@@ -159,7 +159,7 @@ The "how to set" hint is only shown when no budget is currently configured.
 | Budget < 1.0ms, 0 clipped | Profiling + Warnings & Notices | Below data granularity |
 | Budget > 2× P95 processing | Profiling + Warnings & Notices | Ticks clipped unnecessarily |
 | Avg processing > P5 interval | Profiling + Warnings & Notices | Risk of clipping in a live-adapter session |
-| Pre-V1.3.0 data | Log output | Filtering skipped |
+| Data without an arrival time | Log output | Filtering skipped |
 
 ---
 

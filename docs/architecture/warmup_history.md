@@ -121,6 +121,11 @@ which a session loads by. The worker factory asks both whenever it creates a wor
 user's — and refuses one whose answers differ, because the two pipelines would then warm up on
 different histories.
 
+A backtest's warmup may reach back before our own collection, into bars rendered from a venue's
+published history. That is allowed without admission and recorded per scenario; the run's
+`data_origin_external` finding names the scenarios and timeframes — see
+[data provenance](data_provenance.md), *A bar file carries the origins of its ticks*.
+
 ## What a session records
 
 A session writes the history it started from into its run directory, `io/warmup_history.json` —

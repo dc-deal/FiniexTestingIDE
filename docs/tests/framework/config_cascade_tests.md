@@ -18,6 +18,11 @@ The `tests/framework/config/` suite holds complementary test files:
   fingerprints; and the folder rule — every configuration in the test folders declares
   `fixture`, the field-study profiles `certificate`, no production or observation profile
   anything else.
+- **`test_committed_data_origin.py`** — nothing kept in `configs/` or `tests/fixtures/` rests
+  on external data (#561): no generator profile records `external` among its origin classes,
+  and one without the field predates external data; no scenario set's window or warmup reaches
+  an external file of the LOCAL archive. Where the archive holds no external data there is
+  nothing to reach, and the scenario-set case skips saying so.
 
 | Item | Value |
 |---|---|

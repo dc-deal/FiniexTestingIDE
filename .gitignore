@@ -138,6 +138,8 @@ data/raw/signals/*
 !data/raw/signals/.gitkeep
 data/finished/*
 !data/finished/.gitkeep
+# A venue's published history (#561) — downloaded, never versioned, never published
+data/external/
 data/cache/
 # Parameter Optimization run-results ledger (generated runtime data)
 

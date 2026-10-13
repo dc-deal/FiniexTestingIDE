@@ -50,6 +50,7 @@ from python.framework.data_preparation.tick_parquet_reader import read_tick_parq
 from python.framework.discoveries.discovery_cache_manager import DiscoveryCacheManager
 from python.framework.exceptions.data_quality_errors import BarFileVerificationException
 from python.framework.logging.bootstrap_logger import get_global_logger
+from python.framework.types.config_types.data_origin_config_types import OriginClass
 from python.framework.types.import_types.import_progress_types import (
     BarRenderPhase,
     BarRenderProgress,
@@ -65,6 +66,17 @@ PARTIAL_SUFFIX = '.partial'
 _POLL_INTERVAL_S = 0.25
 # prctl option (Linux): the signal a process receives when its parent dies.
 _PR_SET_PDEATHSIG = 1
+# What a render reads of a tick file, and what it keeps once the reader has derived `price` and
+# `volume`: event time and its order, the price, a column to count ticks by, the traded volume.
+# A worker holds a symbol's whole history in one frame, so every other column is memory spent for
+# nothing — measured 2026-10-13 on ETHUSD's 60M ticks: 20.5 GB with every column, 8.4 GB with
+# these, every bar of every timeframe identical.
+_RENDER_SOURCE_COLUMNS = ['timestamp', 'time_msc', 'bid', 'ask', 'last', 'real_volume', 'volume']
+_RENDER_COLUMNS = ['timestamp', 'time_msc', 'price', 'bid', 'volume']
+# What one render worker holds, from the same measurement: 8.4 GB peak for 60.0M ticks, the
+# concatenation and the event-order sort included, over a process that starts at about 0.4 GB.
+_RENDER_BASE_MB = 400
+_RENDER_BYTES_PER_TICK = 140
 
 
 # =============================================================================
@@ -165,6 +177,8 @@ def _render_symbol_worker(
         ]
         source_version_min, source_version_max = _extract_source_versions(
             tick_files, log_buffer)
+        # Which origins the ticks came from, and where our own collection takes over (#561)
+        origin_classes, collected_from = _source_origin(tick_index.index[broker_type][symbol])
 
         # === 3. RENDER BARS ===
         log_buffer.append('  ├─ Rendering bars...')
@@ -184,7 +198,8 @@ def _render_symbol_worker(
                     data_path, symbol, timeframe, bars_df,
                     broker_type, importer_version,
                     source_version_min, source_version_max,
-                    log_buffer
+                    log_buffer,
+                    origin_classes=origin_classes, collected_from=collected_from
                 )
                 bars_written += len(bars_df)
             reporter.report(BarRenderPhase.WRITING, written, len(all_bars))
@@ -258,8 +273,8 @@ def _load_all_ticks_for_symbol(
 
     dfs = []
     for loaded, tick_file in enumerate(tick_files, 1):
-        df = read_tick_parquet(tick_file)
-        dfs.append(df)
+        df = read_tick_parquet(tick_file, columns=_RENDER_SOURCE_COLUMNS)
+        dfs.append(df[[column for column in _RENDER_COLUMNS if column in df.columns]])
         if on_file_loaded is not None:
             on_file_loaded(loaded, len(tick_files))
 
@@ -280,7 +295,9 @@ def _write_bar_file(
     importer_version: str,
     source_version_min: str = '1.0.0',
     source_version_max: str = '1.0.0',
-    log_buffer: list[str] = None
+    log_buffer: list[str] = None,
+    origin_classes: str = '',
+    collected_from: str = ''
 ) -> None:
     """
     Write bar DataFrame to parquet file.
@@ -326,6 +343,13 @@ def _write_bar_file(
         # indistinguishable from a consistent one, and nothing can cross-check a run's bars
         # against the source it read them with.
         'price_basis': market_config.get_price_formation(broker_type).value,
+        # Which origins the ticks behind these bars came from, and the instant our own
+        # collection takes over from a venue's published history (#561) — the seam is empty
+        # unless external history precedes our collection. One file covers a symbol's whole
+        # history, so without the seam a warmup reaching back into external bars could not be
+        # told apart.
+        'origin_classes': origin_classes,
+        'collected_from': collected_from,
     }
 
     table = pa.Table.from_pandas(bars_df)
@@ -374,6 +398,27 @@ def _verify_bar_file(filepath: Path, expected_rows: int) -> None:
             f'Bar file row count mismatch: {filepath.name} reads back '
             f'{table.num_rows} rows, {expected_rows} were written'
         )
+
+
+def _source_origin(entries: List[Dict]) -> Tuple[str, str]:
+    """
+    The origins a symbol's ticks came from, and where our own collection takes over.
+
+    Args:
+        entries: The symbol's tick index entries
+
+    Returns:
+        Tuple (distinct origin classes, sorted and comma-joined; the first tick not from a
+        venue's published history, as ISO — empty unless external history precedes it)
+    """
+    classes = sorted({entry.get('origin_class', 'unknown') for entry in entries})
+    if OriginClass.EXTERNAL.value not in classes or len(classes) == 1:
+        return ','.join(classes), ''
+    collected = [entry['start_time'] for entry in entries
+                 if entry.get('origin_class') != OriginClass.EXTERNAL.value
+                 and entry.get('start_time')]
+    first = min(pd.to_datetime(collected, utc=True)) if collected else None
+    return ','.join(classes), first.isoformat() if first is not None else ''
 
 
 def _extract_source_versions(
@@ -437,6 +482,55 @@ def effective_render_workers(configured_workers: int, symbol_count: int) -> int:
         Effective worker count
     """
     return max(1, min(configured_workers, symbol_count))
+
+
+def estimate_render_mb(tick_count: int) -> float:
+    """
+    What one render worker is expected to hold for a symbol, from its tick count alone.
+
+    Args:
+        tick_count: The symbol's ticks, from the tick index
+
+    Returns:
+        Estimated peak memory in MB
+    """
+    return _RENDER_BASE_MB + tick_count * _RENDER_BYTES_PER_TICK / 1e6
+
+
+def admit_render_tasks(
+    waiting: List[Tuple[str, str]],
+    estimates: Dict[Tuple[str, str], float],
+    reserved_mb: float,
+    running: int,
+    max_workers: int,
+    budget_mb: float
+) -> List[Tuple[str, str]]:
+    """
+    The waiting symbols that may start now: while a worker is free and the reserved memory plus
+    a symbol's estimate fits the budget. A symbol larger than the whole budget starts only when
+    nothing else runs, so it renders alone rather than never. Scheduling only — every symbol
+    renders independently, so the bars do not depend on the order.
+
+    Args:
+        waiting: Symbols not started yet, largest estimate first
+        estimates: Estimated MB per symbol
+        reserved_mb: Estimates of the running symbols, summed
+        running: Running symbols
+        max_workers: processing.bar_render_workers, as effective for this render
+        budget_mb: processing.bar_render_max_ram_mb
+
+    Returns:
+        The symbols to start, in order
+    """
+    admitted = []
+    for task in waiting:
+        if running >= max_workers:
+            break
+        if reserved_mb + estimates[task] <= budget_mb or running == 0:
+            admitted.append(task)
+            reserved_mb += estimates[task]
+            running += 1
+    return admitted
 
 
 def is_production_archive(data_dir: Path) -> bool:
@@ -640,26 +734,48 @@ class BarImporter:
         progress_queue = manager.Queue() if manager is not None else None
         children_before = {child.pid for child in psutil.Process().children()}
 
+        # Admission by memory (#442): a symbol starts only while the estimates of the running
+        # ones plus its own fit the budget, largest first so a large one is not left to the end
+        estimates = {
+            task: estimate_render_mb(sum(
+                entry.get('tick_count', 0)
+                for entry in self.tick_index.get_symbol_entries(*task)))
+            for task in tasks}
+        budget_mb = self._import_config.get_bar_render_max_ram_mb()
+        waiting = sorted(tasks, key=lambda task: estimates[task], reverse=True)
+        for task in waiting:
+            if estimates[task] > budget_mb:
+                vLog.warning(
+                    f'⚠️  {task[0]}/{task[1]}: an estimated {estimates[task] / 1000:.1f} GB exceeds '
+                    f'processing.bar_render_max_ram_mb ({budget_mb / 1000:.1f} GB) — it renders alone')
+
         executor = ProcessPoolExecutor(
             max_workers=max_workers, initializer=_ignore_interrupt_signals)
         try:
-            future_to_task: Dict[Future, Tuple[str, str]] = {
-                executor.submit(
-                    _render_symbol_worker,
-                    symbol, broker_type, str(self.data_dir), self.VERSION, progress_queue
-                ): (broker_type, symbol)
-                for broker_type, symbol in tasks
-            }
-            pending: Set[Future] = set(future_to_task)
+            future_to_task: Dict[Future, Tuple[str, str]] = {}
+            pending: Set[Future] = set()
+            reserved_mb = 0.0
             finished = 0
 
-            while pending:
+            while waiting or pending:
+                for task in admit_render_tasks(
+                        waiting, estimates, reserved_mb, len(pending), max_workers, budget_mb):
+                    waiting.remove(task)
+                    broker_type, symbol = task
+                    future = executor.submit(
+                        _render_symbol_worker,
+                        symbol, broker_type, str(self.data_dir), self.VERSION, progress_queue)
+                    future_to_task[future] = task
+                    pending.add(future)
+                    reserved_mb += estimates[task]
+
                 done, pending = wait(
                     pending, timeout=_POLL_INTERVAL_S, return_when=FIRST_COMPLETED)
                 self._drain_progress(progress_queue, on_worker_progress)
 
                 for future in done:
                     broker_type, symbol = future_to_task[future]
+                    reserved_mb -= estimates[(broker_type, symbol)]
                     result = self._collect_result(future, broker_type, symbol, max_workers)
                     finished += 1
                     vLog.info(

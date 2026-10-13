@@ -8,6 +8,7 @@ from typing import Any, Dict, List
 from python.configuration.config_file_loader import ConfigFileLoader
 from python.framework.types.config_types.app_config_types import AppConfig
 from python.framework.types.config_types.console_logging_config_types import ConsoleLoggingConfig
+from python.framework.types.config_types.data_origin_config_types import OriginClass
 from python.framework.types.config_types.file_logging_config_types import FileLoggingConfig
 
 
@@ -287,12 +288,12 @@ class AppConfigManager:
         """
         return self._app_config.backtesting.data_validation.allowed_gap_categories
 
-    def get_admitted_origin_classes(self) -> List[str]:
+    def get_admitted_origin_classes(self) -> List[OriginClass]:
         """
         Get the data origin classes a scenario may read.
 
         Returns:
-            List of admitted class strings; narrowing it arms the gate
+            List of admitted classes; narrowing it arms the gate
         """
         return self._app_config.backtesting.data_validation.admitted_origin_classes
 

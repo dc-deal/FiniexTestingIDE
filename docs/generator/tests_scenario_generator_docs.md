@@ -91,7 +91,8 @@ The splitters create their data dependencies internally. Tests use `unittest.moc
 - `split()` raises `NotImplementedError` (rolling-fold algorithm lands with #32 Phase 4)
 
 ### ContinuousSplit / VolatilitySplit (mocked caches)
-- Continuous: gap-free region → one window with period-derived regime
+- Continuous: gap-free region → one window with period-derived regime — measured against the
+  range itself, so six alike periods read `medium` whatever the whole history called them
 - Profile splitters require `start_time` / `end_time`
 - Volatility: region ≤ max_block_hours → single `single_region` window
 - Volatility: region > max_block_hours → splits, no window exceeds the max
@@ -125,6 +126,23 @@ runnable set. Tests the pure dict assembly (no file write); quote-currency resol
   no cross-symbol future leak); top-level `robustness` block written
 - No robustness → no `role` keys, no `robustness` block
 - Quote-currency balance seeded into set-wide `global`, unioned across symbols (#265)
+
+**TestTheOriginOfAProfile** (#561):
+- `origin_classes` survive the profile round trip; a profile from before the field reads as not recorded
+- Only the span a set was derived from decides its origin — a block set's windows, a profile's
+  range; external data inside the span prints the warning not to commit it
+
+---
+
+## test_volatility_regime.py
+
+A generated profile measures its periods against its own range rather than the symbol's whole
+history (#561):
+
+- A range far above the whole history's average is ordinary among itself, not all `very_high`
+- Re-basing keeps the order of the periods (split points cannot move) and re-ranks percentiles
+- Periods without ATR are left as they are
+- The regime boundaries are the configured ones
 
 ---
 
