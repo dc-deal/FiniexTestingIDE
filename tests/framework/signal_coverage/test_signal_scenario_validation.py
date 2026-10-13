@@ -78,7 +78,7 @@ def _scenario(start: datetime, sentiment_type: str = SOURCE,
 def _validator(reports: dict, allowed: List[str] = None) -> ScenarioDataValidator:
     """Validator with a stubbed app config — only the two settings it reads."""
     app_config = MagicMock()
-    app_config.get_warmup_quality_mode.return_value = 'standard'
+    app_config.get_bar_max_history.return_value = 1000
     app_config.get_allowed_gap_categories.return_value = allowed or [
         'seamless', 'short', 'weekend', 'holiday']
 
@@ -253,7 +253,7 @@ class TestAvailabilityWiring:
             The ValidationResult the phase appended to the scenario
         """
         app_config = MagicMock()
-        app_config.get_warmup_quality_mode.return_value = 'standard'
+        app_config.get_bar_max_history.return_value = 1000
         app_config.get_allowed_gap_categories.return_value = ['seamless', 'short']
 
         manager = DataCoverageReportManager(

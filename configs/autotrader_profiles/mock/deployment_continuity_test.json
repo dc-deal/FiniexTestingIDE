@@ -47,9 +47,6 @@
   "tick_source": {
     "type": "mock"
   },
-  "execution": {
-    "bar_max_history": 30
-  },
   "cold_start": {
     "_comment": "The carry-over is what hands the deployment identity from one session to the next. 'auto' because an unattended restart is the case this exists for — a prompt would hang it.",
     "adoption_mode": "auto"

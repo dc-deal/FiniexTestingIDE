@@ -102,6 +102,8 @@ tests/
 │   ├── fixture_catalog/   unit + one real production — the runs a consumer pins: the catalog's completeness, the production record and the current fixture, a session sequence's profiles, the report-coverage run carrying every asserted property (#576)
 │   ├── indicators/        unit — the shared indicator library: what each name means (Wilder vs EMA vs simple), the scalar/series parity, and the warmup each recursive average needs (#517)
 │   ├── worker_tests/      unit — worker computation, parameter schema, factory
+│   ├── warmup_history/    unit + cross-path — the bars a run starts from: one synthetic stream through the backtest, mock and live
+│   │                      warmup paths, the venue read by period and commit, start invariance, the injection guard, the outcome table (#588)
 │   ├── signal_workers/    unit — SIGNAL worker type, provider, llm_sentiment, hybrid decision (#141), outage contract + episode capture (#434/#451)
 │   ├── reporting/         unit — report builders, aggregators, IO/store, console renderers (#391/#433/#451)
 │   ├── signal_coverage/   unit — SignalCoverageReport gap detection + scenario signal-window validation

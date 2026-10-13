@@ -109,7 +109,7 @@ class RsiWorker(AbstractIndicatorWorker):
 | Method | Purpose |
 |--------|---------|
 | `get_worker_type()` | Return `WorkerType.INDICATOR` |
-| `get_warmup_requirements()` | Bars needed before trading: `{"M5": 14}` |
+| `get_warmup_requirements()` | Bars needed before trading: `{"M5": 14}` — the same answer the classmethod `calculate_requirements(config)` gives, which a backtest asks before the worker exists; override the classmethod where the answer is not simply `periods`, and let this one return what it returns. A worker whose two answers differ is refused when it is created |
 | `compute()` | Calculate indicator, return `WorkerResult` |
 | `get_output_schema()` | Declare typed output fields (optional) |
 

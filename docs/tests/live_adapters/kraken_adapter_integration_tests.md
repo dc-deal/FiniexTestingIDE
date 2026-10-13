@@ -39,7 +39,8 @@ tests/live_adapters/
 ├── test_live_adapter_certificate.py             # Validates the committed certificate (no broker contact)
 ├── test_kraken_adapter_order_lifecycle_dry.py    # AddOrder dry-run (validate=true), no funds
 ├── test_kraken_adapter_order_lifecycle_live.py   # Full lifecycle, real orders, no fills
-└── test_kraken_adapter_order_lifecycle_fill.py   # Fill validation, real MARKET execution
+├── test_kraken_adapter_order_lifecycle_fill.py   # Fill validation, real MARKET execution
+└── test_kraken_ohlc_answer_shape.py              # The OHLC answer still has the recorded shape (public, no credentials)
 ```
 
 ## Dry-Run Limitations
@@ -107,6 +108,27 @@ VS Code, in launch.json:
 The error cases (`XXXUSD`, below-min-lot) reach the real Kraken API — `execute_order()`
 does not pre-validate. Kraken returns an error which the adapter catches and returns
 as `BrokerOrderStatus.REJECTED`.
+
+## The OHLC Answer the Warmup Reads (#588)
+
+`test_kraken_ohlc_answer_shape.py` keeps a recording honest. The warmup suite pins the live warmup
+read against two Kraken OHLC answers recorded verbatim around the moment the venue committed a
+just-ended minute (`tests/fixtures/warmup_history/kraken_ohlc_answers.json`). A recording ages
+without any test noticing, so this check asks the venue now — public market data, no credentials,
+nothing placed — and holds its answer to the recording's shape:
+
+| Test | What it holds |
+|------|---------------|
+| `test_no_error_and_the_same_result_keys` | the pair key (`XETHZUSD`, not the requested `ETHUSD`) and `last` |
+| `test_every_field_keeps_its_type` | an int opening time, string prices, an int trade count |
+| `test_rows_are_still_stamped_with_their_opening_minute` | every row on the interval's grid |
+| `test_the_commit_marker_still_precedes_the_forming_row` | the newest row stands after `last` |
+| `test_the_reader_takes_only_finished_and_committed_bars` | the real fetcher over the live answer |
+
+It runs with the rest of this suite at release time, so the recording's freshness follows the
+release rhythm. Red means the recording no longer describes the venue: record it again with
+`python/experiments/venue_probes/probe_kraken_ohlc_commit.py --record …` and look at what changed. It
+builds no adapter, so on its own it writes no certificate.
 
 ## Test Cases — Phase 2
 

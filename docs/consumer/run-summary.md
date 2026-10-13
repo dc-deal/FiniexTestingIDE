@@ -168,7 +168,7 @@ started, the exception's class name for a crash — a live session's crash inclu
 `NoResults` where nothing failed and nothing was produced.
 
 `checks` is what lets you ask which units a particular check cost you: ids such as
-`warmup_quality` or `tick_stretch_gap`, stable enough to group on.
+`warmup_history_empty` or `tick_stretch_gap`, stable enough to group on.
 
 ## Two timespans, and they answer different questions
 

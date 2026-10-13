@@ -278,15 +278,6 @@ class AppConfigManager:
         """Get max trade history entries (0=unlimited)."""
         return self._app_config.history.trade_history_max
 
-    def get_warmup_quality_mode(self) -> str:
-        """
-        Get warmup quality mode.
-
-        Returns:
-            Warmup quality mode: 'permissive' or 'standard' (default: 'standard')
-        """
-        return self._app_config.backtesting.data_validation.warmup_quality_mode
-
     def get_allowed_gap_categories(self) -> List[str]:
         """
         Get allowed gap categories for validation.

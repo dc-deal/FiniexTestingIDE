@@ -189,7 +189,6 @@
       "event_tape_size": 5
     },
     "data_validation": {
-      "warmup_quality_mode": "standard",
       "allowed_gap_categories": [
         "seamless",
         "short",

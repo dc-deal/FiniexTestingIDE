@@ -216,7 +216,9 @@ Validates trade execution against the deterministic trade sequence.
 
 ### test_baseline_warmup_validation.py
 
-Validates that warmup data was correctly loaded before tick processing.
+Validates that every timeframe's warmup history held exactly the bars its probe worker requires
+when the first tick arrived. Which bars those are — the last N complete at the first tick — is
+pinned across all paths by the [warmup history suite](../framework/warmup_history_tests.md).
 
 #### TestWarmupValidation
 

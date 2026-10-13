@@ -13,6 +13,7 @@ import requests
 from python.framework.exceptions.timeframe_errors import UnsupportedTimeframeError
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.types.market_types.market_data_types import Bar
+from python.framework.utils.bar_period import is_complete_at
 from python.framework.utils.timeframe_config_utils import TimeframeConfig
 
 # Mirrors BrokerTransportConfig.request_timeout_s, which is where an operator tunes it.
@@ -88,17 +89,28 @@ class KrakenOhlcBarFetcher:
         symbol: str,
         timeframe: str,
         count: int,
+        reference_time: datetime,
     ) -> List[Bar]:
         """
-        Fetch historical OHLC bars from Kraken API.
+        Fetch the newest `count` bars that are complete at an instant.
 
-        Drops the last bar (Kraken returns the current in-progress bar).
-        Returns only the last `count` completed bars.
+        A row is taken only when BOTH sides call it finished: its period has ended by the
+        reference instant (bar_period — the same rule the archive selects by), and the venue
+        has committed it — Kraken answers with a `last` field naming the newest committed
+        period, and the row after it is the period still forming. Measured on M1 ETHUSD: a
+        period was committed about 0.8 s after it ended on 2026-10-12, between 1.5 and 2.2 s on
+        2026-10-13, and a fresh row for the next period appears at the same moment
+        (python/experiments/venue_probes/probe_kraken_ohlc_commit.py repeats it). Either test
+        alone fails near a boundary: our
+        clock may already be past the period's end while the venue still adds trades to it,
+        and dropping the last row by POSITION — as this method once did — keeps or drops a
+        row by where it stands rather than by what it is.
 
         Args:
             symbol: Standard symbol (e.g., 'BTCUSD')
             timeframe: Timeframe string (e.g., 'M5', 'H1')
             count: Number of completed bars to return
+            reference_time: The instant the bars must be complete at
 
         Returns:
             List of Bar objects (oldest first)
@@ -121,7 +133,7 @@ class KrakenOhlcBarFetcher:
 
         # Request slightly more bars than needed to handle gaps
         since_ts = int(
-            (datetime.now(timezone.utc).timestamp())
+            reference_time.timestamp()
             - (count + 10) * interval_minutes * 60
         )
 
@@ -136,13 +148,13 @@ class KrakenOhlcBarFetcher:
             )
             return []
 
-        # Convert to Bar objects — drop last bar (in-progress)
-        if len(bars_data) > 1:
-            bars_data = bars_data[:-1]
-
+        committed_until = data.get('last')
         bars = [
             self._row_to_bar(row, symbol, timeframe)
             for row in bars_data
+            if (committed_until is None or int(row[0]) <= int(committed_until))
+            and is_complete_at(
+                datetime.fromtimestamp(int(row[0]), tz=timezone.utc), timeframe, reference_time)
         ]
 
         # Take only the last `count` bars
@@ -218,7 +230,6 @@ class KrakenOhlcBarFetcher:
             close=float(row[4]),
             volume=float(row[6]),
             tick_count=int(row[7]),
-            is_complete=True,
         )
 
     def _extract_bars_data(self, data: Dict, pair: str) -> Optional[list]:

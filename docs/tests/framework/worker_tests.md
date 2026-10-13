@@ -257,6 +257,22 @@ Tests end-to-end factory workflows: config → validation → instantiation for 
 
 ---
 
+### test_warmup_requirement_agreement.py
+
+A worker states its warmup through two doors — the classmethod `calculate_requirements(config)`,
+which a backtest asks before any worker exists, and the instance's `get_warmup_requirements()`,
+which a session loads by — and the two must be one answer (#517). Since #588 the factory asks both
+whenever it creates a worker and refuses one whose answers differ.
+
+| Test / Class | Description |
+|------|-------------|
+| `test_the_classmethod_and_the_instance_agree` | per CORE case (RSI, OBV, MACD, Bollinger and MA trend under both averages) — parametrized |
+| `test_the_requirement_covers_every_configured_timeframe` | no timeframe dropped, never fewer bars than the period |
+| `TestARecursiveAverageAsksForMoreThanItsPeriod` | an EMA or a Wilder average over exactly its period returns its seed, so these ask for more |
+| `TestTheFactoryRefusesTwoAnswers` | every CORE case is created through the factory; a path-loaded worker answering 14 and 42 (`tests/fixtures/warmup_history/two_answers_worker.py`) is refused |
+
+---
+
 ### worker_computation_tests/
 
 Unit tests for indicator computation logic. Each test creates a worker with known input data and validates mathematical correctness.

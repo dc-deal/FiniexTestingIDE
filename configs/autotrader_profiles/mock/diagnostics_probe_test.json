@@ -26,9 +26,6 @@
   "tick_source": {
     "type": "mock"
   },
-  "execution": {
-    "bar_max_history": 30
-  },
   "display": {
     "enabled": false
   },

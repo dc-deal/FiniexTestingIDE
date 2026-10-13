@@ -372,6 +372,11 @@ class KrakenTickSource(AbstractTickSource):
             ValueError: The venue refused the subscription
             asyncio.TimeoutError: No confirmation within the deadline
         """
+        # No `snapshot` parameter, deliberately. Measured 2026-10-12 with a read-only public probe:
+        # the trade channel then sends no trade snapshot — the acknowledgement answers
+        # 'snapshot': False and only live trades follow. So the first bar a session renders holds
+        # the trades from its first tick on, exactly as a backtest's first bar does (#588);
+        # everything before comes from the warmup history.
         await ws.send(json.dumps({
             'method': 'subscribe',
             'params': {

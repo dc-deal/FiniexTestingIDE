@@ -97,7 +97,7 @@ python/framework/autotrader/
   autotrader_startup.py          Pipeline object creation, phase by phase
   autotrader_pipeline_bundle.py  What setup_pipeline hands back (named, not positional)
   autotrader_logger_bundle.py    The session's three log channels + run identity
-  autotrader_warmup_preparator.py  Warmup bar loading (mock: parquet, live adapter: API)
+  autotrader_warmup_preparator.py  Warmup bar loading (mock: the mount's package, live adapter: API) into a WarmupHistory
   kraken_ohlc_bar_fetcher.py     Kraken OHLC bar fetch (public API, no auth)
   live_clipping_monitor.py       Per-tick timing, clipping detection (#197)
   session_log_retention.py       Prunes rotated daily session logs (#357)

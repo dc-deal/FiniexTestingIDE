@@ -376,7 +376,8 @@ def setup_pipeline(
     config: AutoTraderConfig,
     logger: ScenarioLogger,
     run_id: str,
-    package: Optional[ProcessDataPackage] = None
+    package: Optional[ProcessDataPackage] = None,
+    run_dir: Optional[Path] = None,
 ) -> AutotraderPipelineBundle:
     """
     Create all pipeline objects for AutoTrader session.
@@ -395,6 +396,8 @@ def setup_pipeline(
         package: Prepared scenario data package (#438, mock) — its signal series is injected
             into SIGNAL workers and its warmup bars into the bar controller; None for a
             live-adapter session
+        run_dir: The session's run directory, where it records the warmup history it started
+            from; None records nothing
 
     Returns:
         The pipeline bundle — every object the session needs, wired
@@ -447,7 +450,8 @@ def setup_pipeline(
     # === Phase 9: Warmup + Display Label Cache ===
     display_label_cache = _run_warmup(
         config, logger, workers, bar_controller, connection_policy,
-        decision_logic, balances, account, package)
+        decision_logic, balances, account, package,
+        record_path=run_dir / 'io' / 'warmup_history.json' if run_dir else None)
 
     # === Phase 10: LiveClippingMonitor ===
     clipping_monitor = LiveClippingMonitor(
@@ -901,6 +905,7 @@ def _run_warmup(
     balances: Dict[str, float],
     account: AutotraderAccountModel,
     package: Optional[ProcessDataPackage],
+    record_path: Optional[Path] = None,
 ) -> DisplayLabelCache:
     """
     Phase 9 — fill the workers' history, build the display labels, and refuse a session that
@@ -917,6 +922,8 @@ def _run_warmup(
         account: The account model from phase 3
         package: A mock session's prepared data, whose warmup bars fill the history; None
             for a live-adapter session, which fetches them from the venue
+        record_path: Where the session records the warmup history it started from; None
+            records nothing
 
     Returns:
         The pre-resolved display labels
@@ -928,6 +935,7 @@ def _run_warmup(
         bar_controller=bar_controller,
         connection_policy=connection_policy,
         package=package,
+        record_path=record_path,
     )
     display_label_cache = warmup_preparator.build_display_label_cache(
         decision_logic=decision_logic,

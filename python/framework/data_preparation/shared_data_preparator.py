@@ -49,6 +49,7 @@ from python.framework.types.validation_types import (
     ValidationFinding,
     ValidationResult,
 )
+from python.framework.utils.bar_period import last_complete_frame
 from python.framework.utils.process_serialization_utils import (
     serialize_ticks_for_transport,
     time_range_from_transport_ticks,
@@ -154,8 +155,11 @@ class SharedDataPreparator:
         ticks_s = time.time() - _t_ticks
 
         _t_bars = time.time()
-        all_bars_dict, all_bar_counts = self.prepare_bars(
-            requirements_map.bar_requirements
+        all_bars_dict, all_bar_counts, warmup_references = self.prepare_bars(
+            requirements_map.bar_requirements,
+            first_tick_times={
+                scenario_name: time_range[0]
+                for scenario_name, time_range in all_tick_ranges.items()},
         )
         bars_s = time.time() - _t_bars
 
@@ -231,6 +235,7 @@ class SharedDataPreparator:
                 tick_counts=scenario_ticks['counts'],
                 tick_ranges=scenario_ticks['ranges'],
                 bar_counts=scenario_bars['counts'],
+                warmup_reference_time=warmup_references.get(scenario.name),
                 signal_series=signal_series,
             )
 
@@ -259,8 +264,8 @@ class SharedDataPreparator:
             # archive still holds the previous answer (§31c).
             scenario.price_bases = [
                 self.bar_index_manager.get_price_basis(
-                    scenario.data_broker_type, symbol, timeframe)
-                for symbol, timeframe, _ in scenario_bars['bars']
+                    scenario.data_broker_type, scenario.symbol, timeframe)
+                for timeframe in scenario_bars['bars']
             ]
 
             # Log package size
@@ -598,8 +603,8 @@ class SharedDataPreparator:
     def _filter_bars_for_scenario(
         self,
         scenario: SingleScenario,
-        all_bars_dict: Dict[Tuple[str, str, datetime], Tuple[Any, ...]],
-        all_bar_counts: Dict[Tuple[str, str, datetime], int]
+        all_bars_dict: Dict[Tuple[str, str], Tuple[Any, ...]],
+        all_bar_counts: Dict[Tuple[str, str], int]
     ) -> Dict[str, Any]:
         """
         Filter bar data for one scenario.
@@ -608,44 +613,34 @@ class SharedDataPreparator:
 
         Args:
             scenario: Scenario to filter for
-            all_bars_dict: All loaded bars (keyed by symbol, timeframe, start_time)
+            all_bars_dict: All selected warmup bars, keyed by (scenario name, timeframe)
             all_bar_counts: Bar counts per key
 
         Returns:
-            Dict with filtered 'bars', 'counts'
+            Dict with filtered 'bars', 'counts', both keyed by timeframe
             Structure matches ProcessDataPackage expectations
         """
-        # Parse scenario start time (for matching bar keys)
-        start_date = scenario.start_date
-
         # === STRING INTERNING OPTIMIZATION ===
         symbol_intern = scenario.symbol
 
-        # Filter bars matching this scenario (symbol + start_time)
+        # The selection was made for THIS scenario (its first tick, its requirement), so the
+        # scenario name is the whole match — two scenarios sharing a symbol and a start no
+        # longer share a key, and so no longer overwrite each other's warmup.
         scenario_bars = {}
         scenario_counts = {}
 
-        for key, bars_tuple in all_bars_dict.items():
-            symbol, timeframe, start_time = key
+        for (scenario_name, timeframe), bars_tuple in all_bars_dict.items():
+            if scenario_name != scenario.name:
+                continue
 
-            # Match criteria: symbol AND start_time must match exactly
-            symbol_match = symbol == symbol_intern
-            time_match = start_time == start_date
+            # Apply string interning to bar dicts
+            bars_list = list(bars_tuple)
+            for bar in bars_list:
+                bar['symbol'] = symbol_intern
+                bar['timeframe'] = timeframe
 
-            # Match criteria: symbol AND start_time
-            if symbol_match and time_match:
-                # Apply string interning to bar dicts
-                bars_list = list(bars_tuple)
-                for bar in bars_list:
-                    bar['symbol'] = symbol_intern
-                    bar['timeframe'] = timeframe
-
-                bars_tuple = tuple(bars_list)
-
-                # Store with interned strings
-                new_key = (symbol_intern, timeframe, start_time)
-                scenario_bars[new_key] = bars_tuple
-                scenario_counts[new_key] = all_bar_counts[key]
+            scenario_bars[timeframe] = tuple(bars_list)
+            scenario_counts[timeframe] = all_bar_counts[(scenario_name, timeframe)]
 
         return {
             'bars': scenario_bars,
@@ -889,31 +884,38 @@ class SharedDataPreparator:
 
     def prepare_bars(
         self,
-        requirements: List[BarRequirement]
-    ) -> Tuple[Dict[Tuple[str, str, datetime], Tuple[Any, ...]], Dict[Tuple[str, str, datetime], int]]:
+        requirements: List[BarRequirement],
+        first_tick_times: Dict[str, datetime],
+    ) -> Tuple[Dict[Tuple[str, str], Tuple[Any, ...]], Dict[Tuple[str, str], int],
+               Dict[str, datetime]]:
         """
-        Prepare bar data for all requirements.
+        Select each scenario's warmup history: the last N bars complete at its first tick.
+
+        A bar is stamped with its period's OPENING instant and known only at its END, so the
+        selection asks bar_period whether a bar's period has ended — never whether it opened
+        before the start. The instant asked about is the scenario's FIRST TICK, not its
+        configured start: nothing reads the history before that tick, and no tick lies between
+        the start and it, so every bar complete then was built from ticks before the start. It
+        also closes the seam the live path closes at its first tick: a scenario starting at
+        12:59:59 whose first tick arrives at 13:00:02 warms up on the 12:00 bar, exactly as a
+        live session whose first tick arrives then.
 
         UTC-FIX: Ensures timestamp comparisons are UTC-aware.
 
         Args:
             requirements: List of bar requirements
+            first_tick_times: Each scenario's first tick, by scenario name; a scenario without
+                one (it has no ticks and will not run) is selected at its configured start
 
         Returns:
-            (bars_data, bar_counts)
+            (bars_data, bar_counts) keyed by (scenario name, timeframe), and the instant each
+            scenario's history was selected for, by scenario name
         """
         bars_data = {}
         bar_counts = {}
+        references: Dict[str, datetime] = {}
 
-        # Group by (symbol, timeframe) to load each file once
-        by_symbol_tf: Dict[Tuple[str, str], List[BarRequirement]] = {}
-        for req in requirements:
-            key = (req.symbol, req.timeframe)
-            if key not in by_symbol_tf:
-                by_symbol_tf[key] = []
-            by_symbol_tf[key].append(req)
-
-        # Load and filter for each (symbol, timeframe)
+        # Load and filter for each (broker_type, symbol, timeframe)
         by_broker_symbol_tf: Dict[Tuple[str,
                                         str, str], List[BarRequirement]] = {}
 
@@ -951,24 +953,21 @@ class SharedDataPreparator:
                 bars_df['timestamp'] = pd.to_datetime(
                     bars_df['timestamp'], utc=True)
 
-            # Filter for each unique start_time
+            # Select for each scenario
             for req in reqs:
-                # UTC-FIX: Ensure req.start_time is UTC-aware
-                req_start_time = req.start_time
-                req_start_time = ensure_utc_aware(req_start_time)
+                reference = ensure_utc_aware(
+                    first_tick_times.get(req.scenario_name, req.start_time))
+                references[req.scenario_name] = reference
 
-                # Get warmup bars (bars BEFORE start_time)
-                warmup_bars_df = bars_df[bars_df['timestamp'] < req_start_time]
-
-                # Take last N bars (warmup_count)
-                warmup_bars_df = warmup_bars_df.tail(req.warmup_count)
+                warmup_bars_df = last_complete_frame(
+                    bars_df, timeframe, reference, req.warmup_count).copy()
 
                 # Validate count
                 if len(warmup_bars_df) < req.warmup_count:
                     self._logger.warning(
                         f'  ⚠️  Only {len(warmup_bars_df)} warmup bars available '
                         f'(requested {req.warmup_count}) for {symbol} {timeframe} '
-                        f'before {req_start_time}'
+                        f'complete at {reference}'
                     )
 
                 # Convert to records and tuple
@@ -977,13 +976,13 @@ class SharedDataPreparator:
                     'UTC')
                 bars_list = warmup_bars_df.to_dict('records')
 
-                key = (symbol, timeframe, req.start_time)
+                key = (req.scenario_name, timeframe)
                 bars_data[key] = tuple(bars_list)
                 bar_counts[key] = len(bars_list)
 
                 self._logger.debug(
-                    f'  ✅ {len(bars_list)} warmup bars filtered '
-                    f'(before {req_start_time})'
+                    f'  ✅ {len(bars_list)} warmup bars selected '
+                    f'(complete at {reference})'
                 )
 
-        return bars_data, bar_counts
+        return bars_data, bar_counts, references

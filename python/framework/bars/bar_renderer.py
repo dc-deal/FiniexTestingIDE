@@ -10,12 +10,18 @@ PERFORMANCE OPTIMIZED:
 """
 
 from collections import defaultdict, deque
-from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Set, Tuple
+from datetime import datetime
+from typing import Dict, List, Optional, Sequence, Set, Tuple
 
+from python.framework.exceptions.warmup_history_errors import WarmupHistoryDefectError
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.types.market_types.market_data_types import Bar, TickData
-from python.framework.utils.timeframe_config_utils import TimeframeConfig
+from python.framework.utils.bar_period import (
+    is_complete_at,
+    open_time_of,
+    period_end,
+    period_start,
+)
 
 
 class BarRenderer:
@@ -87,17 +93,8 @@ class BarRenderer:
         if cache_key in self._bar_start_cache:
             return self._bar_start_cache[cache_key]
 
-        # Calculate bar start time
-        minutes = TimeframeConfig.get_minutes(timeframe)
-        total_minutes = timestamp.hour * 60 + timestamp.minute
-        bar_start_minute = (total_minutes // minutes) * minutes
-
-        bar_start = timestamp.replace(
-            minute=bar_start_minute % 60,
-            hour=bar_start_minute // 60,
-            second=0,
-            microsecond=0,
-        )
+        # Calculate bar start time — the one grid every path shares (bar_period)
+        bar_start = period_start(timestamp, timeframe)
 
         # Cache result
         self._bar_start_cache[cache_key] = bar_start
@@ -115,10 +112,7 @@ class BarRenderer:
         self, bar_start: datetime, current_time: datetime, timeframe: str
     ) -> bool:
         """Check if bar is complete"""
-        bar_duration = timedelta(
-            minutes=TimeframeConfig.get_minutes(timeframe))
-        bar_end = bar_start + bar_duration
-        return current_time >= bar_end
+        return is_complete_at(bar_start, timeframe, current_time)
 
     def update_current_bars(
         self, tick_data: TickData, required_timeframes: Set[str]
@@ -156,8 +150,8 @@ class BarRenderer:
 
             bar_was_closed = False
             if current_bar is None:
-                # First bar
-                pass
+                # First bar — the warmup history must end where the session's own bars begin
+                self._require_history_ends_by(symbol, timeframe, bar_start_time)
             else:
                 # Compare cached datetime directly (no string parsing)
                 cached_start = self._current_bar_starts[timeframe].get(symbol)
@@ -194,6 +188,37 @@ class BarRenderer:
 
         self._last_tick_time = timestamp
         return updated_bars, closed_bars
+
+    def _require_history_ends_by(
+        self, symbol: str, timeframe: str, first_bar_start: datetime
+    ) -> None:
+        """
+        Refuse a warmup history that reaches into the first bar this session renders.
+
+        Runs once per timeframe, at the session's first bar. A history whose newest bar ends
+        after that bar opens holds a bar the session is about to render again — the same
+        opening instant twice, and the older copy built from ticks the session has not seen yet.
+
+        Args:
+            symbol: Trading symbol
+            timeframe: The timeframe whose first bar opens
+            first_bar_start: Opening instant of that first bar
+
+        Returns:
+            None
+        """
+        history = self.completed_bars[timeframe][symbol]
+        if not history:
+            return
+        newest = history[-1]
+        newest_end = period_end(open_time_of(newest), timeframe)
+        if newest_end <= first_bar_start:
+            return
+        raise WarmupHistoryDefectError(
+            f'{symbol} {timeframe}: the warmup history ends at {newest_end.isoformat()}, after '
+            f'the first bar this session renders opens at {first_bar_start.isoformat()} — its '
+            f'newest bar ({newest.timestamp}) was not complete when the session began.'
+        )
 
     def _archive_completed_bar(self, symbol: str, timeframe: str, bar: Bar):
         """
@@ -237,18 +262,20 @@ class BarRenderer:
         return self.current_bars[timeframe].get(symbol)
 
     def initialize_historical_bars(
-        self, symbol: str, timeframe: str, bars: Tuple[Bar, ...]
+        self, symbol: str, timeframe: str, bars: Sequence[Bar]
     ) -> None:
         """
-        Initialize the completed_bars history with warmup bars.
+        Set the completed_bars history to the warmup bars, replacing what it held.
 
         This method populates the historical bar storage with pre-rendered
         warmup bars, making them available for get_bar_history() calls.
+        Called at startup and once more when the seam at the first tick is closed
+        (BarRenderingController.inject_warmup_bars is the route; it checks the bars first).
 
         Args:
             symbol: The trading symbol (e.g., "EURUSD")
             timeframe: The timeframe (e.g., "M5")
-            bars: List of completed warmup bars to initialize with
+            bars: Completed warmup bars, oldest first
         """
         # Ensure the nested structure exists for this timeframe/symbol
         if timeframe not in self.completed_bars:
@@ -256,13 +283,9 @@ class BarRenderer:
                 lambda: deque(maxlen=self.max_history)
             )
 
-        if symbol not in self.completed_bars[timeframe]:
-            self.completed_bars[timeframe][symbol] = deque(
-                maxlen=self.max_history)
-
-        # Add all warmup bars to the history
-        for bar in bars:
-            self.completed_bars[timeframe][symbol].append(bar)
+        history = deque(maxlen=self.max_history)
+        history.extend(bars)
+        self.completed_bars[timeframe][symbol] = history
 
         self.logger.debug(
             f'Initialized {len(bars)} historical {timeframe} bars for {symbol}'

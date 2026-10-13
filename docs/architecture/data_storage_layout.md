@@ -468,6 +468,11 @@ store of its own, and not an artifact: the run index lists it under `stream_file
 artifact list is how a run that never reached its report is recognised. See [Order-Event
 Stream](order_event_stream.md).
 
+An AutoTrader session's directory also holds the **warmup history** it started from
+(`io/warmup_history.json`, #588) — the bars and the instants that selected them, written at
+injection and again once the seam at the first tick has closed. Part of the run's record like the
+stream; a live session's warmup exists nowhere else. See [Warmup History](warmup_history.md).
+
 ---
 
 ## The index contract

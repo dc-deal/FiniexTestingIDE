@@ -27,6 +27,10 @@ from python.framework.types.validation_types import (
 )
 from python.framework.utils.process_serialization_utils import time_range_from_transport_ticks
 from python.framework.utils.time_utils import ensure_utc_aware, format_duration
+from python.framework.validators.warmup_history_validator import (
+    find_capacity_shortfalls,
+    find_warmup_shortfalls,
+)
 
 
 class ScenarioDataValidator:
@@ -38,8 +42,8 @@ class ScenarioDataValidator:
     2. Post-load: Quality checks (tick stretch, warmup quality)
 
     Configuration via app_config:
-    - warmup_quality_mode: 'permissive' or 'standard'
     - allowed_gap_categories: List of allowed gap types
+    - bar_max_history: the bar history the renderer keeps, which a warmup must fit
     """
 
     def __init__(
@@ -66,7 +70,7 @@ class ScenarioDataValidator:
         self._logger = logger
 
         # Load validation settings from config
-        self._warmup_quality_mode = app_config.get_warmup_quality_mode()
+        self._bar_max_history = app_config.get_bar_max_history()
         self._allowed_gap_categories = self._load_allowed_gap_categories()
         self._admitted_origin_classes = app_config.get_admitted_origin_classes()
 
@@ -385,7 +389,8 @@ class ScenarioDataValidator:
         Checks:
         1. start_date not in gap
         2. Tick stretch (first_tick → last_tick) free of forbidden gaps
-        3. Warmup bars quality (no synthetic in standard mode)
+        3. Warmup history: a timeframe without bars or beyond the bar history refuses, a
+           short one warns
 
         Args:
             scenarios: List of scenarios to validate
@@ -474,12 +479,13 @@ class ScenarioDataValidator:
             scenario, report, scenario_package)
         findings.extend(_as(stretch_errors, Severity.ERROR, 'tick_stretch_gap'))
 
-        # === VALIDATION 3: Warmup quality ===
-        warmup_errors, warmup_warnings = self._validate_warmup_quality(
+        # === VALIDATION 3: Warmup history ===
+        warmup_empty, warmup_capacity, warmup_short = self._validate_warmup_quality(
             scenario, scenario_package, requirements_map
         )
-        findings.extend(_as(warmup_errors, Severity.ERROR, 'warmup_quality'))
-        findings.extend(_as(warmup_warnings, Severity.WARNING, 'warmup_quality'))
+        findings.extend(_as(warmup_empty, Severity.ERROR, 'warmup_history_empty'))
+        findings.extend(_as(warmup_capacity, Severity.ERROR, 'warmup_capacity'))
+        findings.extend(_as(warmup_short, Severity.WARNING, 'warmup_quality'))
 
         # === VALIDATION 4: Signal gaps in the tick stretch ===
         signal_errors = self._validate_signal_stretch(scenario, scenario_package)
@@ -626,7 +632,7 @@ class ScenarioDataValidator:
                         f"({first_tick.strftime('%Y-%m-%d %H:%M:%S')} → {last_tick.strftime('%Y-%m-%d %H:%M:%S')}): "
                         f"{gap_start.strftime('%Y-%m-%d %H:%M:%S')} → "
                         f"{gap_end.strftime('%Y-%m-%d %H:%M:%S')} ({gap.duration_human}). "
-                        f"Not allowed in '{self._warmup_quality_mode}' mode"
+                        f"Not among the allowed gap categories"
                     )
 
         return errors
@@ -682,7 +688,7 @@ class ScenarioDataValidator:
                 f"{gap.gap_end.strftime('%Y-%m-%d %H:%M:%S')} ({gap.duration_human}) "
                 f"in source '{scenario.data_sentiment_type}'. "
                 f"Signal coverage in stretch: {coverage_pct:.0f}%. "
-                f"Not allowed in '{self._warmup_quality_mode}' mode"
+                f"Not among the allowed gap categories"
             )
 
         return errors
@@ -692,9 +698,16 @@ class ScenarioDataValidator:
         scenario: SingleScenario,
         scenario_package: ProcessDataPackage,
         requirements_map: RequirementsMap
-    ) -> Tuple[List[str], List[str]]:
+    ) -> Tuple[List[str], List[str], List[str]]:
         """
-        Validate warmup bar quality: synthetic bar check and bar count sufficiency.
+        Judge the scenario's warmup history against its workers' most demanding requirement.
+
+        The batch selected the history for the scenario's first tick (bar_period), so what is
+        judged here is exactly what the workers will start from. A timeframe with no bar at all
+        is an error — the case this check used to skip in silence; so is a requirement the
+        renderer's history cannot hold, because it would be trimmed at injection without a
+        word. A history shorter than required because the archive holds no more is a warning:
+        the scenario runs, and says so.
 
         Args:
             scenario: Scenario to validate
@@ -702,35 +715,36 @@ class ScenarioDataValidator:
             requirements_map: Requirements map with bar requirements
 
         Returns:
-            Tuple of (errors, warnings)
+            Tuple of (empty-history errors, capacity errors, short-history warnings)
         """
-        errors = []
-        warnings = []
-        is_standard = self._warmup_quality_mode == 'standard'
+        required = {
+            bar_req.timeframe: bar_req.warmup_count
+            for bar_req in requirements_map.bar_requirements
+            if bar_req.scenario_name == scenario.name
+        }
+        if not required:
+            return [], [], []
 
-        # Get bar requirements for this scenario
-        for bar_req in requirements_map.bar_requirements:
-            if bar_req.scenario_name != scenario.name:
-                continue
+        reference = scenario_package.warmup_reference_time
+        complete_at = reference.isoformat() if reference else 'the first tick'
+        shortfalls = find_warmup_shortfalls(scenario_package.bar_counts, required)
 
-            # Get bar data
-            bar_key = (bar_req.symbol, bar_req.timeframe, bar_req.start_time)
-            bar_data = scenario_package.bars.get(bar_key)
-
-            if not bar_data:
-                continue
-
-            # Check bar count sufficiency
-            actual_count = len(bar_data)
-            if actual_count < bar_req.warmup_count:
-                pct = (actual_count / bar_req.warmup_count * 100) if bar_req.warmup_count > 0 else 0
-                msg = (
-                    f'Warmup for {bar_req.timeframe} has {actual_count}/{bar_req.warmup_count} bars '
-                    f'({pct:.0f}%) — insufficient for indicator stabilization.'
-                )
-                if is_standard:
-                    errors.append(msg)
-                else:
-                    warnings.append(msg)
-
-        return errors, warnings
+        empty_errors = [
+            f'No warmup bars for {shortfall.timeframe}: the archive holds not a single '
+            f'{shortfall.timeframe} bar complete at the first tick ({complete_at}), so its '
+            f'workers would start from nothing ({shortfall.required} required).'
+            for shortfall in shortfalls if shortfall.is_empty()
+        ]
+        capacity_errors = [
+            f'Warmup for {shortfall.timeframe} requires {shortfall.required} bars, more than '
+            f'the bar history keeps (bar_max_history = {shortfall.available}) — the workers '
+            f'would run on a shortened history.'
+            for shortfall in find_capacity_shortfalls(required, self._bar_max_history)
+        ]
+        short_warnings = [
+            f'Warmup for {shortfall.timeframe} has {shortfall.available}/{shortfall.required} '
+            f'bars complete at the first tick ({complete_at}) — the archive holds no more, '
+            f'so indicators may not have settled.'
+            for shortfall in shortfalls if not shortfall.is_empty()
+        ]
+        return empty_errors, capacity_errors, short_warnings

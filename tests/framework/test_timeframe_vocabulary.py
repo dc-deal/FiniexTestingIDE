@@ -17,6 +17,8 @@ The venue set is now DERIVED — the venue declares which interval LENGTHS it pu
 names come from the registry. So the two cannot disagree, and that is what these tests hold.
 """
 
+from datetime import datetime, timezone
+
 import pytest
 
 from python.framework.autotrader.kraken_ohlc_bar_fetcher import KrakenOhlcBarFetcher
@@ -59,7 +61,9 @@ class TestTheVenueSetIsDerivedNotListed:
         move is to remove it from the vocabulary, which would be the wrong fix.
         """
         with pytest.raises(UnsupportedTimeframeError) as caught:
-            KrakenOhlcBarFetcher().fetch_bars(symbol='BTCUSD', timeframe='M10', count=10)
+            KrakenOhlcBarFetcher().fetch_bars(
+                symbol='BTCUSD', timeframe='M10', count=10,
+                reference_time=datetime(2026, 10, 12, tzinfo=timezone.utc))
 
         message = str(caught.value)
         assert '10-minute' in message

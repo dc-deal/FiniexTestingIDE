@@ -3232,6 +3232,23 @@
             }
         },
         {
+            "name": "🧩 Pytest: Warmup History (All)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/framework/warmup_history/",
+                "-v",
+                "--tb=short"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "13_pytest_validation",
+                "order": 77
+            }
+        },
+        {
             "name": "🧩 Pytest: Worker Tests (All)",
             "type": "debugpy",
             "request": "launch",
@@ -3245,7 +3262,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 77
+                "order": 78
             }
         },
         // ====================================================

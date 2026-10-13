@@ -2,8 +2,8 @@
 FiniexTestingIDE - Sim <-> Mock Session Data Parity (#438)
 
 A mock session replays scenario base data through the SAME shared MountPreparer a backtest uses:
-the same ticks, the same signal sources, and the same warmup bars — the last N bars before the
-window's start. These tests hold the mock session to that. The mock path once loaded its warmup
+the same ticks, the same signal sources, and the same warmup bars — the last N bars complete at the
+window's first tick. These tests hold the mock session to that. The mock path once loaded its warmup
 bars itself, taking a bar file's newest bars whatever the window, so a mock session replaying
 January warmed its indicators on September; the parity test below is what keeps a second path
 from growing back.
@@ -21,6 +21,7 @@ from python.framework.batch.mount_preparer import MountPreparer
 from python.framework.batch.requirements_collector import RequirementsCollector
 from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
+from python.framework.utils.bar_period import is_complete_at
 
 # A BTCUSD mock profile with a SIGNAL source and a worker that needs bars (RSI on M5).
 _PROFILE = 'configs/autotrader_profiles/mock/sentiment_mock_test.json'
@@ -57,17 +58,29 @@ def test_mock_session_prepares_exactly_the_backtests_data(prepared):
     assert mock.bars == backtest.bars, 'mock-session warmup bars diverge from the backtest'
 
 
-def test_mock_session_warms_up_on_bars_before_its_window(prepared):
-    """No warmup bar may lie at or after the replayed window's start — that would be look-ahead."""
-    start = prepared.scenario.start_date
-    assert prepared.package.bars, 'no warmup bars prepared — this test would check nothing'
+def test_mock_session_warms_up_on_bars_complete_at_its_first_tick(prepared):
+    """
+    Every warmup bar's period has ENDED by the first tick the session replays.
 
-    for (symbol, timeframe, _), bars in prepared.package.bars.items():
+    The check is on the period's end, not its opening stamp: a bar opening before the start can
+    still close after it, and its high, low and close then come from ticks the session has not
+    seen. This test once compared the opening stamp, and on this very profile let through a bar
+    that ended 219 s after the start.
+    """
+    package = prepared.package
+    symbol = prepared.scenario.symbol
+    first_tick = package.tick_ranges[symbol][0]
+    assert package.bars, 'no warmup bars prepared — this test would check nothing'
+    assert package.warmup_reference_time == first_tick, (
+        f'warmup selected for {package.warmup_reference_time}, but the first tick is {first_tick}')
+
+    for timeframe, bars in package.bars.items():
         assert bars, f'{symbol} {timeframe}: no warmup bars'
-        late = [bar['timestamp'] for bar in bars if bar['timestamp'] >= start]
+        late = [bar['timestamp'] for bar in bars
+                if not is_complete_at(bar['timestamp'], timeframe, first_tick)]
         assert not late, (
-            f'{symbol} {timeframe}: {len(late)} warmup bar(s) at or after the window start '
-            f'{start.isoformat()}, first {late[0]}')
+            f'{symbol} {timeframe}: {len(late)} warmup bar(s) not complete at the first tick '
+            f'{first_tick.isoformat()}, first {late[0]}')
 
 
 def test_mock_session_records_the_price_basis_of_its_warmup_bars(prepared):

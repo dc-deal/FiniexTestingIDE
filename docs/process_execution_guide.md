@@ -153,8 +153,7 @@ the wired objects as one named object rather than a positional tuple
 
 6. Create BarRenderingController
    └─> Register workers requiring bar data
-   └─> Inject warmup bars matching (symbol, timeframe, start_time)
-   └─> Validate warmup bar injection
+   └─> Inject the scenario's warmup history (WarmupHistory → the controller's checked route)
 
 7. Deserialize Ticks
    └─> Convert immutable tuple → mutable list
@@ -165,29 +164,24 @@ the wired objects as one named object rather than a positional tuple
 
 ### Warmup Bar Injection
 
-**Key Logic:** Match bars by (symbol, timeframe, start_time) tuple
+**Key Logic:** the package already holds this scenario's history — the batch selected it, per
+timeframe, as the last N bars complete at the scenario's first tick, and its data validation
+refused the scenario if a timeframe had none. The process only hands it on:
 
 ```python
-for key, bars_tuple in shared_data.bars.items():
-    symbol, timeframe, start_time = key
-    
-    # Only inject bars matching this scenario
-    if symbol == config.symbol and start_time == config.start_time:
-        warmup_bars[timeframe] = bars_tuple
-
-bar_rendering_controller.inject_warmup_bars(
-    symbol=config.symbol, 
-    warmup_bars=warmup_bars
-)
+warmup_history = WarmupHistory.from_package(
+    symbol=config.symbol, package=shared_data, logger=scenario_logger)
+warmup_history.inject_into(bar_rendering_controller)
 ```
+
+`inject_into` goes through `BarRenderingController.inject_warmup_bars`, which refuses a bar not
+complete at that instant, a repeated period or one out of order — the same route the AutoTrader
+uses. The rule, the seam at the first tick and the outcome table:
+[Warmup History](architecture/warmup_history.md).
 
 **Example from Log:**
 ```
-🔍 Checking: (GBPUSD, M5, 2025-09-25 14:00:00+00:00)
-  ✅ MATCH! Adding 14 bars
-🔍 Checking: (GBPUSD, M30, 2025-09-25 14:00:00+00:00)
-  ✅ MATCH! Adding 20 bars
-✅ Injected warmup bars: M5:14, M30:20
+✅ Warmup injected: 34 bars (M5:14, M30:20) from the archive, complete at 2025-09-25T14:00:03+00:00
 ```
 
 ---

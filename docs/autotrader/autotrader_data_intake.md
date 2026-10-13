@@ -153,23 +153,25 @@ surface (status, hook, guard reason, config) carries over unchanged. Authoring g
 
 ## Warmup (#231)
 
-Workers need warmup bars before producing meaningful signals. Without warmup, a worker with `{"M5": 14}` needs 70 minutes of live ticks before its first valid RSI. The warmup system pre-loads historical bars at startup.
+Workers need warmup bars before producing meaningful signals. Without warmup, a worker with `{"M5": 14}` needs 70 minutes of live ticks before its first valid RSI. The warmup system pre-loads historical bars at startup — the last N bars **complete at the session's first tick**, in both paths, so a mock session, a live session and a backtest of the same window start from the same history. The rule, the seam and the guard: [Warmup History](../architecture/warmup_history.md) (#588).
 
 ### Two Paths
 
 | Aspect | Mock session (archive) | Live-adapter session (API) |
 |--------|----------------|------------|
 | **Source** | The bars the shared mount prepared — the same bars a backtest of the window warms up on | Kraken `GET /0/public/OHLC` |
-| **Reference time** | The replayed window's `start_date`: the last N bars BEFORE it | `datetime.now(UTC)` |
+| **Selected for** | The first tick the session replays | The instant of the boot read — then the first tick, where a period ended in between (the seam) |
 | **Network** | No | Yes (public, no auth) |
 | **Extensibility** | Static data | ABC pattern → MT5 (#209) |
-| **On a short read** | the backtest's own warmup-quality check first, then warn and continue | **refuse to start** (#473) |
+| **No bar at all for a timeframe** | refuse to start | refuse to start |
+| **Fewer bars, the source holds no more** | warn and continue | warn and continue |
+| **The venue could not be read** | — | **refuse to start** (#473) |
 
 ### Why a live-adapter session refuses rather than warns (#473)
 
 The fetch has a retry ladder, and a give-up produces an empty result rather than an
-exception — so the refusal is raised one level up, by the validation that knows *how many*
-bars are missing on *which* timeframe and can say so.
+exception — so the refusal is raised one level up, by the check that knows *which* timeframe
+could not be read and can say so.
 
 It refuses because **there is no contract for an empty indicator history.** A stale signal
 and a stale market feed each have one (#434 / #436): the input declares itself unusable and
@@ -178,16 +180,17 @@ emits a number, that number is wrong, and nothing marks it wrong. Trading on it 
 reduced run, it is a different one.
 
 ```
-❌ Warmup requirement unmet: H1: 0/200. The broker's bar history could not be read, and
-   there is no staleness contract for an empty indicator history — refusing to start
-   rather than trading on unreliable worker output.
+❌ Warmup requirement unmet: the broker's bar history could not be read for H1, and there is
+   no staleness contract for an empty indicator history — refusing to start rather than
+   trading on unreliable worker output.
 ```
 
-The mock path keeps warning: it reads a local archive, a short window is a data question
-the operator can see, and refusing would block replay runs that deliberately start near
-the edge of their data. Before that warning, the mount has already judged the warmup the way
-it judges a backtest's (`warmup_quality_mode`), so a window a backtest would refuse is refused
-here too.
+A history that is merely SHORT because the source holds no more — the archive's first bars, the
+venue's reach of 720 intervals — warns in both paths and starts. A timeframe with not a single bar
+refuses in both, and so does a requirement beyond `execution.bar_max_history`: the renderer keeps
+at most that many bars per timeframe and would trim a larger history at injection without a word.
+For a mock session the mount has already judged the warmup the way it judges a backtest's, so a
+window a backtest would refuse is refused here too.
 
 ### Flow
 
@@ -197,37 +200,47 @@ Phase 9 in setup_pipeline():
   1. calculate_scenario_requirements(workers)
      → warmup_by_timeframe = {"M5": 20, "M30": 20}
 
-  2. Reference timestamp:
-     Mock:         the replayed window's start_date → 2026-01-24T14:19:46Z
-     Live adapter: now()
+  2. Capacity: every requirement fits execution.bar_max_history — else refuse
 
-  3. Load bars:
+  3. Load the history:
      Mock:         the package the shared mount prepared (SharedDataPreparator.prepare_bars:
-                   bars before start_date → tail(count)) → deserialize_bars_batch → Bar objects
-     Live adapter: KrakenOhlcBarFetcher → GET /0/public/OHLC → Bar objects
+                   the last N bars complete at the first tick) → WarmupHistory.from_package
+     Live adapter: WarmupHistory.from_venue — KrakenOhlcBarFetcher at the instant of the read
 
-  4. Validate: mock warns if fewer bars than required — LIVE ADAPTER REFUSES (#473)
+  4. Judge it: an unreadable venue or an empty timeframe refuses, a short one warns
 
-  5. bar_renderer.initialize_historical_bars() per timeframe
-     → Workers have full history from tick 1
+  5. WarmupHistory.inject_into(bar controller)
+     → BarRenderingController.inject_warmup_bars checks every bar, then sets the history
+     → the seam is armed: at the first tick, before it is rendered, every timeframe whose
+       newest bar ends before that tick's period opens is read again for the tick (live only)
 ```
 
 ### Injection
 
-AutoTrader is single-process, so it hands `Bar` objects to `bar_renderer.initialize_historical_bars()`
-directly. A mock session gets them from the mount's bar dicts through `deserialize_bars_batch` —
-the converter a backtest's subprocess uses — so a mock session and a backtest of the same window
-start from bar for bar the same history; a live-adapter session builds them from the venue's
-answer.
+Both paths go through `BarRenderingController.inject_warmup_bars` — the route a backtest's
+subprocess uses too. It refuses a bar that is not complete at the instant the history was
+selected for, a repeated period and one out of order, as a defect; a mock session gets its bars
+from the mount's bar dicts through `deserialize_bars_batch`, a live-adapter session from the
+venue's answer.
 
 ### Kraken OHLC API
 
 ```
 GET /0/public/OHLC?pair=XBTUSD&interval=5&since=<unix_ts>
-→ [[time, open, high, low, close, vwap, volume, count], ...]
+→ {"XBTUSD": [[time, open, high, low, close, vwap, volume, count], ...], "last": <unix_ts>}
 ```
 
-Public endpoint, no auth. Intervals: 1 (M1), 5 (M5), 15 (M15), 30 (M30), 60 (H1), 240 (H4), 1440 (D1). Returns up to 720 bars. Last bar is in-progress (dropped).
+Public endpoint, no auth. Intervals: 1 (M1), 5 (M5), 15 (M15), 30 (M30), 60 (H1), 240 (H4), 1440
+(D1). Returns up to 720 intervals. Each row is stamped with its period's opening time, and `last`
+names the newest period the venue has committed — the row after it is the period still forming. A
+row is taken only when its period has ended by the instant of the read AND the venue has committed
+it. Measured on ETHUSD M1, a period was committed about 0.8 s after it ended on 2026-10-12 and
+between 1.5 and 2.2 s after it on 2026-10-13.
+
+Kraken also publishes a row for an interval nobody traded — a flat bar — where the archive has no bar
+at all. On a thinly traded symbol (DASHUSD: 187 of its last 721 M5 rows, measured 2026-10-13) the
+session warns once per timeframe that its warmup holds such bars; see [Warmup
+History](../architecture/warmup_history.md), *Thinly traded symbols*.
 
 ### Data Independence
 

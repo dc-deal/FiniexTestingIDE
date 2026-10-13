@@ -248,13 +248,14 @@ whose output depends on the whole history — a cumulative indicator (OBV) reads
 it omits `count`. A recursive average sits in between: MACD and RSI read a FIXED window as long as
 their warmup (`count=window`), long enough for the average to forget its seed. Their value then does
 not depend on how long the run has been going, so a backtest and a live session that warmed up on
-the same number of bars compute the same number.
+the same bars compute the same number — and for the same data they do: both start from the last N
+bars complete at their first tick ([Warmup History](../architecture/warmup_history.md)).
 
 **Two different "how many bars" concerns — do not conflate them:**
 
 | Declaration | Question it answers | Who consumes it |
 |---|---|---|
-| `get_warmup_requirements()` | how much history to **pre-load** so the worker is warm at tick 0 | data preparation / startup (coarse — "enough") |
+| `calculate_requirements(config)` = `get_warmup_requirements()` | how much history to **pre-load** so the worker is warm at tick 0 — one answer through two doors: a backtest asks the classmethod before the worker exists, a session asks the instance, and a worker whose two answers differ is refused when it is created | data preparation / startup (coarse — "enough") |
 | the `count` window | how much of the available history the worker **reads this compute** | the worker itself, at the point it knows |
 
 The framework filters the **coarse** axis for you — the orchestrator hands each worker only the

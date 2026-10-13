@@ -136,7 +136,7 @@ def test_a_scenario_rejected_after_its_package_was_built_is_reported_not_a_crash
 
     rejected, ordinary = scenario_set.get_all_scenarios()
     reasons = ' '.join(error for result in rejected.validation_result for error in result.errors)
-    assert 'insufficient for indicator stabilization' in reasons, \
+    assert 'No warmup bars' in reasons, \
         'the fixture must be rejected by the data quality phase, after its package was built'
     assert ordinary.is_valid()
     results = {result.scenario_name: result for result in summary.process_result_list}
@@ -146,10 +146,10 @@ def test_a_scenario_rejected_after_its_package_was_built_is_reported_not_a_crash
     # rejected with its reason, one counted — the two sides of the invariant from two sources.
     roster = unit_roster_from_batch(summary, scenario_set.get_disabled_count())
     assert (roster.declared, roster.disabled) == (3, 1)
-    assert [row.name for row in roster.absent] == ['archive_head_short_warmup']
-    assert 'insufficient for indicator stabilization' in roster.absent[0].reason
+    assert [row.name for row in roster.absent] == ['archive_head_no_warmup']
+    assert 'No warmup bars' in roster.absent[0].reason
     # The cause as a code, and the check that refused it — what lets a reader group absences.
     assert roster.absent[0].reason_code == 'ValidationError'
-    assert roster.absent[0].checks == ['warmup_quality']
+    assert roster.absent[0].checks == ['warmup_history_empty']
     assert roster.declared == roster.disabled + len(roster.absent) + len(
         run_units_from_batch(summary))

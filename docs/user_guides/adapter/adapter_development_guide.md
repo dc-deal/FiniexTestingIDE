@@ -658,6 +658,33 @@ The `BrokerType` enum (`python/framework/types/trading_env_types/broker_types.py
 
 ---
 
+## Warmup Bars From the Venue
+
+A live-adapter session warms its workers up on the venue's own bar history, read at boot and read
+again at the first tick where a period ended in between. Whatever the venue, its bars must satisfy
+the rule every other path selects by: the history at the first tick holds the last N bars
+**complete** at that tick — bars whose period has ended. The rule, the seam and the guard are in
+[Warmup History](../../architecture/warmup_history.md); what a venue's reader owes it:
+
+- **Take a row by what it is, never by where it stands.** A row is taken only when its period has
+  ended by the instant of the read (`bar_period.is_complete_at`) AND the venue says it is final.
+  Kraken names the newest committed period in its answer's `last` field and commits within about
+  two seconds after a period ends (measured 0.8 s on 2026-10-12, 1.5–2.2 s on 2026-10-13, with
+  `python/experiments/venue_probes/probe_kraken_ohlc_commit.py`). A venue with a completeness flag
+  of its own reads that
+  flag; a venue with none is MEASURED before the reader is written — a probe against the live
+  endpoint around a period boundary, not an inference from its documentation.
+- **Stamp a bar with its period's opening instant**, on the UTC grid every timeframe shares. A venue
+  that stamps the close, or a broker-local timezone, converts at the reader — a bar stamped an hour
+  late passes every count check and is still the wrong bar.
+- **Declare which intervals it publishes** (`PUBLISHED_INTERVAL_MINUTES` on the Kraken reader): a
+  timeframe the venue does not serve is refused at boot, naming every one of them.
+- **Hand back what it read, judged by nothing else.** Counting, refusing and warning belong to the
+  shared shortfall rule, not to the reader; injection goes through
+  `BarRenderingController.inject_warmup_bars`, which checks every bar again.
+
+---
+
 ## Related
 
 - `python/framework/trading_env/adapters/abstract_adapter.py` — full interface

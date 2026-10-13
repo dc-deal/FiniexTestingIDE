@@ -404,7 +404,8 @@ class AutotraderMain:
             # Startup phases are logged to console via _print_startup_phase().
             self._print_startup_phase('Creating pipeline objects...')
             pipeline = setup_pipeline(
-                self._config, self._session_logger, self._run_id, self._data_package)
+                self._config, self._session_logger, self._run_id, self._data_package,
+                run_dir=self._run_dir)
             self._executor = pipeline.executor
             self._bar_controller = pipeline.bar_controller
             self._worker_orchestrator = pipeline.worker_orchestrator

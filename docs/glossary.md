@@ -142,6 +142,12 @@ position (`full`) or part of it (`partial`). Set once the close fills; empty on 
 **combination** — One point of a sweep's parameter grid, run as one ordinary backtest. See
 [Parameter Optimization](architecture/parameter_optimization_system.md).
 
+**complete at** (a bar) — A bar is complete at an instant when its period has ended by then: its
+opening time plus its timeframe's duration lies at or before that instant. A bar is stamped with
+the instant its period opens but known only when it ends, so a bar that *opened* before a start is
+not therefore complete at it — the bar holding the start opened before it and closes after. See
+[Warmup History](architecture/warmup_history.md).
+
 **compute basis** — When a worker recomputes: `live` on every tick (the forming bar included) or
 `bar_close` only when a bar closes. Not a kind of run. See [Worker Naming](user_guides/worker_naming_doc.md).
 
@@ -590,6 +596,13 @@ the reconciliation lines between, derived from the *broker truth* and served as 
 **wall clock** — The machine's clock. It stamps when WE did or saw something (`ts_init`, a run's
 `start_time`) and measures durations — on its monotonic form, because the wall clock itself can
 step backwards. Never the time a decision reads — that is the *canonical clock*.
+
+**warmup history** — The bars of each timeframe a run hands its workers before their first tick:
+the last N bars *complete at* that tick, N being what the most demanding worker reading the
+timeframe requires. A backtest and a mock session select it from the archive, a live-adapter
+session reads it from the venue. Not the *warmup requirement* a worker declares (that N), and not
+the history a recursive average needs before it forgets its seed. See
+[Warmup History](architecture/warmup_history.md).
 
 **warning count** (`warning_count`) — A run's Tier-1 findings: advisories a validator decided.
 Not the log's warnings, which are its *log warning count*. See

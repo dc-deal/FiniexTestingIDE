@@ -82,13 +82,13 @@ When the generator splits a full time range into blocks, each block runs in comp
 | 6 | **Bar history depth** | Long-range patterns (S/R over 200+ bars) blind | ✅ Warmup bars from parquet, `max_history=1000` deque is generous |
 
 These are NOT block-splitting problems — they are warmup problems handled entirely by the batch
-orchestrator. `SharedDataPreparator.prepare_bars()` loads bars by count
-(`bars_df.tail(warmup_count)`) from parquet, regardless of time gaps. Bars from before gaps
+orchestrator. `SharedDataPreparator.prepare_bars()` selects by count — the last `warmup_count`
+bars complete at the block's first tick — regardless of time gaps. Bars from before gaps
 (weekends, outages) are valid warmup data for indicators. The generator has no warmup logic — it
-only splits data into time blocks.
+only splits data into time blocks. The rule and its paths: [Warmup History](../architecture/warmup_history.md).
 
 **Evidence:** The warmup bar pipeline: `VectorizedBarRenderer (parquet)` →
-`SharedDataPreparator.prepare_bars()` → `ProcessDataPackage` →
+`SharedDataPreparator.prepare_bars()` → `ProcessDataPackage` → `WarmupHistory` →
 `BarRenderingController.inject_warmup_bars()` → `BarRenderer.initialize_historical_bars()`. Same
 data source, same rendering algorithm, same quality as bars built tick by tick during a run.
 

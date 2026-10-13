@@ -94,8 +94,16 @@ VALIDATION_CHECKS: Tuple[ValidationCheckInfo, ...] = (
         "The tick data has a gap inside the scenario's window that is longer than allowed."),
     ValidationCheckInfo(
         'warmup_quality', 'Not enough warmup bars',
-        "A timeframe has fewer bars before the scenario's start than its indicators need to "
-        'settle.'),
+        "A timeframe has fewer bars complete at the scenario's first tick than its indicators "
+        'need to settle, because the archive holds no more; the scenario runs and says so.'),
+    ValidationCheckInfo(
+        'warmup_history_empty', 'No warmup bars',
+        "A timeframe the workers read has not a single bar complete at the scenario's first "
+        'tick, so its indicators would start from nothing; the scenario is refused.'),
+    ValidationCheckInfo(
+        'warmup_capacity', 'Warmup larger than the bar history',
+        'A worker requires more bars than the renderer keeps per timeframe (bar_max_history), '
+        'so its history would be cut short at the start; the scenario is refused.'),
     ValidationCheckInfo(
         'tick_data_missing', 'No tick data loaded',
         'No tick data could be loaded for the scenario.'),

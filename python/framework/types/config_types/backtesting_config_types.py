@@ -90,7 +90,6 @@ class DataValidationConfig(StrictConfigModel):
     WARNED about from the start, so the refusal can be measured before it is armed, and
     narrowing this list is what turns the warning into an exclusion.
     """
-    warmup_quality_mode: str = 'standard'
     allowed_gap_categories: List[str] = ['seamless', 'short', 'weekend', 'holiday']
     admitted_origin_classes: List[str] = ['production', 'development', 'unknown']
 
