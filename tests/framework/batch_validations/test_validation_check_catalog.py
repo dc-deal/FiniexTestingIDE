@@ -6,9 +6,10 @@ and a sentence. It is only worth anything if it is complete: an id the code emit
 is a facet nobody can label, and an entry for a check the code no longer emits describes a finding
 nobody can receive. Neither is visible by reading, so both are asserted here.
 
-The emitted ids are found in the SOURCE, not listed here: a keyword `check='…'`, a module-level
-`…_CHECK = '…'` constant, and the helpers that pass an id on — `_add` / `_finding` (first
-argument) and `_as` (third). A new way of passing an id that none of these catches would make the
+The emitted ids are found in the SOURCE, not listed here: a keyword `check='…'`, a
+`…_CHECK = '…'` assignment at any depth — a class body included, so a name ending in `_CHECK` is
+read as a check id wherever it stands — and the helpers that pass an id on — `_add` / `_finding`
+(first argument) and `_as` (third). A new way of passing an id that none of these catches would make the
 first test below vacuous for it, which is why the walk has to find a non-trivial number of ids.
 """
 

@@ -40,6 +40,8 @@ from python.framework.types.persistence_types import (
     BaselineOrigin,
     RiskBaseline,
 )
+from python.framework.autotrader.operator_alerts.alert_episode import AlertEpisode
+from tests.shared.operator_alert_recorder import OperatorAlertRecorder
 
 _DEPLOY = datetime(2026, 9, 10, 8, 0, tzinfo=timezone.utc)
 
@@ -74,6 +76,10 @@ class _LoopStub:
         self._config = AutoTraderConfig(safety=safety or SafetyConfig())
         self._trading_model = trading_model
         self._logger = _NullLogger()
+        self._operator_alerts = OperatorAlertRecorder()   # #235 — the breaker alerts out of band
+        self._all_clear_after_s = 300.0
+        self._safety_alert = AlertEpisode(self._all_clear_after_s)
+        self._market_data_alert = AlertEpisode(self._all_clear_after_s)
         self._now = now
         self._risk_baseline = None
         if baseline is not None:
@@ -117,6 +123,10 @@ class _LoopStub:
 
             @staticmethod
             def get_current_time_if_set():
+                return stub._now
+
+            @staticmethod
+            def get_current_time():
                 return stub._now
 
         self._executor = _Executor()

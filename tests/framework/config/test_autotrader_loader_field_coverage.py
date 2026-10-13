@@ -15,10 +15,13 @@ nothing.
 
 The field list is DERIVED from the models, never written down here. A static fixture would
 have to be extended for every new field — which is the maintenance trap this test exists to
-close, so it must not reproduce it.
+close, so it must not reproduce it. The derivation goes as deep as the blocks do — a nested
+block, a dict of blocks — and a field whose type it cannot probe fails the guard, so a new type
+extends the probe rather than slipping past it.
 """
 
 import dataclasses
+import enum
 import json
 import typing
 from pathlib import Path
@@ -28,6 +31,7 @@ from pydantic import BaseModel
 
 from python.configuration.autotrader.autotrader_config_loader import load_autotrader_config
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
+from python.framework.types.connection_types import GiveUpAction
 
 _BASE_PROFILE = (
     Path(__file__).resolve().parents[2]
@@ -40,6 +44,13 @@ _HISTORICAL_LOSSES = [
     ('cold_start', 'book_drift_interval_ticks'),
     ('clipping_monitor', 'warn_above_ratio'),
 ]
+
+# Values a block refuses by design — operator_alerts.telegram.connection refuses `abort`, which
+# would end the alert thread. A probe needs any value but the default, so it takes another.
+_REFUSED_PROBES = {GiveUpAction.ABORT}
+
+# The key a dict of blocks is probed with — one the defaults do not hold
+_PROBE_ENTRY = 'probe_entry'
 
 
 def _is_config_block(annotation) -> bool:
@@ -87,6 +98,10 @@ def _probe_value(annotation, default):
     if typing.get_origin(annotation) is typing.Literal:
         alternatives = [a for a in typing.get_args(annotation) if a != default]
         return alternatives[0] if alternatives else None
+    if isinstance(annotation, type) and issubclass(annotation, enum.Enum):
+        # JSON carries the value; the loaded block holds the member
+        alternatives = [m for m in annotation if m != default and m not in _REFUSED_PROBES]
+        return alternatives[0].value if alternatives else None
     if annotation is bool:
         return not default
     if annotation is int:
@@ -100,38 +115,91 @@ def _probe_value(annotation, default):
     return None
 
 
-def _blocks() -> list:
+def _probes(model: type, current, path: str, unprobed: list) -> dict:
     """
-    Every config block of AutoTraderConfig with its probe-able fields.
+    A probe value for every field of one block, nested blocks and dicts of blocks included.
+
+    Args:
+        model: The block's class
+        current: The block as the defaults build it — a nested block's default comes from its
+            parent (the Telegram ladder waits 2 s where the ladder's own default is 1 s)
+        path: The block's dotted path, naming a field that cannot be probed
+        unprobed: Collects the fields no probe type covers
 
     Returns:
-        (section name, model, {field: probe value}) per block — the section name in JSON
-        equals the attribute name on AutoTraderConfig, which is the loader's own convention
+        field name → probe value; a nested dict for a nested block or a dict of blocks
     """
-    blocks = []
+    probes = {}
+    hints = typing.get_type_hints(model)
+    for name in _model_defaults(model):
+        annotation = hints[name]
+        value = getattr(current, name)
+        if _is_config_block(annotation):
+            # The nested block travels as a dict and Pydantic builds it
+            probes[name] = _probes(annotation, value, f'{path}.{name}', unprobed)
+            continue
+        if typing.get_origin(annotation) is dict and _is_config_block(
+                typing.get_args(annotation)[1]):
+            # A dict of blocks (telegram.endpoints): a new key, every field of it probed
+            entry = typing.get_args(annotation)[1]
+            probes[name] = {_PROBE_ENTRY: _probes(entry, entry(), f'{path}.{name}', unprobed)}
+            continue
+        probe = _probe_value(annotation, value)
+        if probe is None:
+            unprobed.append(f'{path}.{name}')
+            continue
+        probes[name] = probe
+    return probes
+
+
+def _blocks() -> typing.Tuple[list, list]:
+    """
+    Every config block of AutoTraderConfig with its probe values.
+
+    Returns:
+        (blocks, unprobed): (section name, model, {field: probe value}) per block — the section
+        name in JSON equals the attribute name on AutoTraderConfig, which is the loader's own
+        convention — and the dotted path of every field no probe type covers
+    """
+    defaults = AutoTraderConfig()
+    blocks, unprobed = [], []
     hints = typing.get_type_hints(AutoTraderConfig)
     for field in dataclasses.fields(AutoTraderConfig):
         model = hints[field.name]
         if not _is_config_block(model):
             continue
-        probes = {}
-        field_hints = typing.get_type_hints(model)
-        for name, default in _model_defaults(model).items():
-            annotation = field_hints[name]
-            if _is_config_block(annotation):
-                # One level of nesting (execution.performance_tracking) — the nested block
-                # travels as a dict and Pydantic builds it.
-                nested = {
-                    n: _probe_value(typing.get_type_hints(annotation)[n], d)
-                    for n, d in _model_defaults(annotation).items()
-                }
-                probes[name] = {n: v for n, v in nested.items() if v is not None}
-                continue
-            probe = _probe_value(annotation, default)
-            if probe is not None:
-                probes[name] = probe
+        probes = _probes(model, getattr(defaults, field.name), field.name, unprobed)
         blocks.append((field.name, model, probes))
-    return blocks
+    return blocks, unprobed
+
+
+def _not_arrived(actual, expected, path: str) -> list:
+    """
+    The dotted paths whose probe value did not reach the loaded configuration.
+
+    Args:
+        actual: What the loader built — a block, a dict of blocks, or a value
+        expected: The probe — a dict for a block, else the JSON value
+        path: Where in the profile the probe was set
+
+    Returns:
+        The paths that were ignored
+    """
+    if isinstance(expected, dict):
+        missing = []
+        for key, nested in expected.items():
+            if isinstance(actual, dict):
+                if key not in actual:
+                    missing.append(f'{path}.{key}')
+                    continue
+                child = actual[key]
+            else:
+                child = getattr(actual, key)
+            missing.extend(_not_arrived(child, nested, f'{path}.{key}'))
+        return missing
+    if isinstance(actual, enum.Enum):
+        actual = actual.value
+    return [] if actual == expected else [path]
 
 
 def _load_with(sections: dict, tmp_path: Path) -> AutoTraderConfig:
@@ -157,23 +225,17 @@ class TestAutotraderLoaderFieldCoverage:
 
     def test_every_field_of_every_block_is_reachable_from_json(self, tmp_path):
         """A profile value differing from the default arrives — for every field of every block."""
-        blocks = _blocks()
+        blocks, unprobed = _blocks()
         assert blocks, 'no config blocks discovered — the derivation itself is broken'
+        assert not unprobed, (
+            f'no probe value for these fields — extend _probe_value for their type, or the '
+            f'guard is blind to them: {unprobed}')
 
         config = _load_with({name: probes for name, _, probes in blocks}, tmp_path)
 
         ignored = []
         for name, _, probes in blocks:
-            block = getattr(config, name)
-            for field, expected in probes.items():
-                actual = getattr(block, field)
-                if isinstance(expected, dict):
-                    for nested_field, nested_expected in expected.items():
-                        if getattr(actual, nested_field) != nested_expected:
-                            ignored.append(f'{name}.{field}.{nested_field}')
-                    continue
-                if actual != expected:
-                    ignored.append(f'{name}.{field}')
+            ignored.extend(_not_arrived(getattr(config, name), probes, name))
 
         assert not ignored, (
             'the loader ignored these profile values — they are declared in the model, '
@@ -193,11 +255,14 @@ class TestAutotraderLoaderFieldCoverage:
 
     def test_the_mock_auto_disable_still_wins_when_the_profile_stays_silent(self, tmp_path):
         """
-        The four blocks that auto-disable for a mock adapter keep doing so.
+        The blocks that auto-disable for a mock adapter keep doing so.
 
         The coverage test above sets `enabled` explicitly, which the loader honours by
         design (the provenance check asks whether the PROFILE set it). This is the other
-        half: a profile that says nothing still gets the mock auto-disable.
+        half: a profile that says nothing still gets the mock auto-disable. The operator
+        alerts auto-disable too, and are held where it shows: their defaults are off, so a
+        silent profile proves nothing here — `test_operator_alerts_loading.py` switches the
+        defaults on first.
         """
         config = _load_with({}, tmp_path)
 

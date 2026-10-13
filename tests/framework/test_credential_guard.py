@@ -70,6 +70,13 @@ class TestTheTrackedDefaultIsRefused:
         assert 'user_configs/credentials/kraken_credentials.json' in message
         assert 'committed' in message
 
+    def test_the_fix_keeps_the_subfolder(self):
+        """The cascade reads `venues/…` — advice naming the flat location sends the key astray."""
+        with pytest.raises(ValueError) as caught:
+            assert_real_credential(
+                Path('configs/credentials/venues/kraken_credentials.json'), PURPOSE)
+        assert 'user_configs/credentials/venues/kraken_credentials.json' in str(caught.value)
+
 
 class TestUnrelatedPathsAreNotTouched:
     """The guard judges one directory and stays out of everything else."""

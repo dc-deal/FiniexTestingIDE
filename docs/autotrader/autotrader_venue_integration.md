@@ -265,8 +265,8 @@ Standard symbols (e.g., `BTCUSD`) are mapped to Kraken pair names (e.g., `XBTUSD
 
 ## External Connections — one ladder, one give-up rule (#473)
 
-A live-adapter session holds seven connections to things outside its own process. They now share
-one classification and one vocabulary; the full policy is
+A live-adapter session holds several connections to things outside its own process. They share
+one classification and one vocabulary; the list and the full policy are in
 [architecture/external_connection_policy.md](../architecture/external_connection_policy.md).
 Two consequences visible in this pipeline:
 

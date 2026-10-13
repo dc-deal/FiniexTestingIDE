@@ -22,6 +22,11 @@ from python.configuration.autotrader.abstract_broker_config_fetcher import (
     AbstractBrokerConfigFetcher,
 )
 from python.configuration.credential_guard import assert_real_credential
+from python.configuration.credentials_cascade import (
+    resolve_credentials_file,
+    tracked_credentials_path,
+    workspace_credentials_path,
+)
 from python.configuration.market_config_manager import MarketConfigManager
 from python.framework.factory.broker_config_factory import BrokerConfigFactory
 from python.framework.logging.scenario_logger import ScenarioLogger
@@ -578,19 +583,14 @@ class KrakenConfigFetcher(AbstractBrokerConfigFetcher):
         Returns:
             (api_key, api_secret) tuple
         """
-        user_path = Path('user_configs/credentials') / credentials_filename
-        default_path = Path('configs/credentials') / credentials_filename
-
-        # Cascade: user override first, then tracked default
-        if user_path.exists():
-            cred_path = user_path
-        elif default_path.exists():
-            cred_path = default_path
-        else:
+        # The cascade is the framework's, so a venue package carries no copy of it (#328);
+        # what this venue adds is which keys it reads from the file.
+        cred_path = resolve_credentials_file(credentials_filename)
+        if cred_path is None:
             raise FileNotFoundError(
                 f"Credentials file not found. Expected at:\n"
-                f"  {user_path} (user override)\n"
-                f"  {default_path} (default)\n"
+                f"  {workspace_credentials_path(credentials_filename)} (user override)\n"
+                f"  {tracked_credentials_path(credentials_filename)} (default)\n"
                 f"Create one with {{'api_key': '...', 'api_secret': '...'}}"
             )
 

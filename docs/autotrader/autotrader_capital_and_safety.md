@@ -263,7 +263,9 @@ construction moves only on realised P&L, so an open loss could not reach the flo
 | `baseline_mode` | `fixed` holds the value at deployment; `high_water_mark` trails the peak and therefore RATCHETS — profit tightens the limit, which is the prop-firm convention and a deliberate choice rather than a default |
 | `persist_baseline` | Whether it survives a restart. `true` is the point of #356: a restart mid-drawdown would otherwise re-anchor at the drawn-down value and forget the accumulated loss. `false` is the deliberate escape for a profile that wants a fresh reference on every start |
 
-**The hard stop** — CLOSES what is open, then ends the session:
+**The hard stop** — CLOSES what is open, then ends the session. From the moment it fires it also
+blocks new entries, with or without a soft threshold configured: its closes take ticks to drain,
+and an entry in between would keep the book from ever reaching flat.
 
 | Field | Description |
 |---|---|

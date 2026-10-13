@@ -13,6 +13,7 @@ import json
 from pathlib import Path
 from typing import Any, Dict
 
+from python.configuration.credentials_cascade import resolve_credentials_file
 from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.types.config_types.sentiment_config_types import (
     ActiveProducer,
@@ -88,22 +89,20 @@ class SentimentConfigManager:
         Returns:
             The token and the file that answered for it
         """
-        for directory in ('user_configs/credentials', 'configs/credentials'):
-            path = Path(directory) / credentials_filename
-            if not path.exists():
-                continue
-            try:
-                with open(path, 'r') as handle:
-                    return ResolvedCredential(
-                        token=json.load(handle).get('api_token', ''),
-                        source=str(path))
-            except json.JSONDecodeError as error:
-                raise RuntimeError(
-                    f'Invalid JSON in credentials file: {path}\n'
-                    f'Error: {error}\n'
-                    f'Fix the syntax or remove the file.'
-                )
-        return ResolvedCredential(token='', source=None)
+        path = resolve_credentials_file(credentials_filename)
+        if path is None:
+            return ResolvedCredential(token='', source=None)
+        try:
+            with open(path, 'r') as handle:
+                return ResolvedCredential(
+                    token=json.load(handle).get('api_token', ''),
+                    source=str(path))
+        except json.JSONDecodeError as error:
+            raise RuntimeError(
+                f'Invalid JSON in credentials file: {path}\n'
+                f'Error: {error}\n'
+                f'Fix the syntax or remove the file.'
+            )
 
     def _load(self) -> Dict[str, Any]:
         """

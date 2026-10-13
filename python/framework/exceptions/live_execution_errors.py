@@ -9,6 +9,17 @@ broker communication and order execution failures.
 from python.framework.exceptions.finiex_error import FiniexError
 
 
+class StartupRefusedError(FiniexError):
+    """
+    A boot step refused to start the session — the cold start, or the Field Study's preflight.
+
+    Not a crash: the step has already said why in the session log, and the session shuts down
+    as an ordinary end, graded by what it logged. Raised so the one guarded shutdown runs it,
+    and so the operator alert can quote the reason (#235).
+    """
+    pass
+
+
 class DryRunConflictError(FiniexError):
     """
     A profile tried to enable real orders that the broker's global setting forbids.

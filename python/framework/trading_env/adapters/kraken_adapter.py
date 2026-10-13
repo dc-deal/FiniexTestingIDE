@@ -23,12 +23,16 @@ import time
 import urllib.parse
 from dataclasses import replace
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import requests
 
 from python.configuration.credential_guard import assert_real_credential
+from python.configuration.credentials_cascade import (
+    resolve_credentials_file,
+    tracked_credentials_path,
+    workspace_credentials_path,
+)
 from python.framework.exceptions.connection_errors import ConnectionAttemptFailedError
 from python.framework.types.config_types.market_config_types import BrokerTransportConfig
 from python.framework.types.live_types.live_execution_types import BrokerOrderStatus, BrokerResponse
@@ -1920,18 +1924,14 @@ class KrakenAdapter(AbstractAdapter):
         Returns:
             (api_key, api_secret) tuple
         """
-        user_path = Path('user_configs/credentials') / credentials_filename
-        default_path = Path('configs/credentials') / credentials_filename
-
-        if user_path.exists():
-            cred_path = user_path
-        elif default_path.exists():
-            cred_path = default_path
-        else:
+        # The cascade is the framework's, so a venue package carries no copy of it (#328);
+        # what this venue adds is which keys it reads from the file.
+        cred_path = resolve_credentials_file(credentials_filename)
+        if cred_path is None:
             raise FileNotFoundError(
                 f"Credentials file not found. Expected at:\n"
-                f"  {user_path} (user override)\n"
-                f"  {default_path} (default)\n"
+                f"  {workspace_credentials_path(credentials_filename)} (user override)\n"
+                f"  {tracked_credentials_path(credentials_filename)} (default)\n"
                 f"Create one with {{'api_key': '...', 'api_secret': '...'}}"
             )
 

@@ -33,13 +33,14 @@
 
 | Document | Description |
 |----------|-------------|
-| [AutoTrader Architecture](autotrader/autotrader_architecture.md) | Start here — what it is, how a tick travels, where every file lives, and the map to the six documents below |
+| [AutoTrader Architecture](autotrader/autotrader_architecture.md) | Start here — what it is, how a tick travels, where every file lives, and the map to the documents below |
 | [AutoTrader Runtime Model](autotrader/autotrader_runtime_model.md) | Threading, tick source vs broker adapter, session lifecycle, what survives a restart |
 | [AutoTrader Configuration](autotrader/autotrader_configuration.md) | The profile cascade, the deployment declaration, the two fingerprints |
 | [AutoTrader Data Intake](autotrader/autotrader_data_intake.md) | Tick sources, sentiment feed, the staleness contract, warmup from the venue |
 | [AutoTrader Capital and Safety](autotrader/autotrader_capital_and_safety.md) | What the bot may spend, committed funds, whose account it is, protective levels, the circuit breaker |
 | [AutoTrader Venue Integration](autotrader/autotrader_venue_integration.md) | Broker config acquisition, the Kraken execution tier, polling, drift audit, the connection ladder |
 | [AutoTrader Observability](autotrader/autotrader_observability.md) | The live console, the clipping monitor, the three log channels |
+| [Unattended Operation](autotrader/unattended_operation.md) | What reaches the operator when nobody watches: Telegram alerts, the liveness ping a monitor turns into an alarm, the supervisor (#235) |
 | [Outage Handling](user_guides/outage_handling_guide.md) | Connection/feed outages — mandatory staleness hooks, escalation ladder, OrderGuard floor, outage drills (#434/#436) |
 | [Deployment & Ledger](user_guides/deployment_ledger_guide.md) | Reading a bot across its restarts — the mandatory `deployment` declaration, the history command, gaps and parameter changes (#497) |
 | [Adapter Development Guide](user_guides/adapter/adapter_development_guide.md) | How to implement a new broker adapter (Tier 1/2/3, config files, credentials, test suite) |
@@ -157,6 +158,7 @@ Each test suite has its own documentation in [`tests/`](tests/).
 | [Session End](tests/autotrader/session_end_tests.md) | What a session leaves standing and how it is reported (#492): the two axes, the incoherent pair, realised vs valued, the phantom-drawdown guard |
 | [Session Validation](tests/autotrader/session_validation_tests.md) | The AutoTrader Tier-1 channel: SessionPostRunValidator + the checks shared with the sim batch |
 | [API Monitor](tests/autotrader/api_monitor_tests.md) | Per-endpoint broker REST latency/error telemetry (#351) |
+| [Operator Alerts](tests/autotrader/operator_alerts_tests.md) | The alert channel, its dispatcher and the liveness ping (#235): the loop never waits, an outage costs one message, a refusal closes the channel, the ping follows the loop, no secret in a log line |
 | [Kraken Adapter](tests/autotrader/kraken_adapter_tests.md) | The adapter's pure layers, offline: nonce monotonicity (#332), the client order id on the wire (#473), and the stop / stop-limit price semantics in both directions (#500) |
 | [Test Taxonomy](tests/test_taxonomy.md) | The human-readable test map — which suite covers which pipeline domain |
 | [Baseline Tests](tests/simulation/baseline_tests.md) | Core functionality validation |

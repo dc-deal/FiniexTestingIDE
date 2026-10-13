@@ -218,6 +218,26 @@ position whose protective order the venue confirmed answers for itself
 Every open position in the run report carries that answer next to its levels — an operator reading
 a stop can always read who is behind it.
 
+## 7 · The venue's dead man's timer — deliberately never armed
+
+Exchanges offer a mirror of our own liveness ping: Kraken's `CancelAllOrdersAfter` counts down,
+we refresh it while we live, and when we stop, the venue cancels the account's orders. It is the
+standard institutional answer to "the client vanished", and this project does **not** arm it —
+decided on 2026-10-13 (#235), recorded here because an absent answer would read as an
+unasked question.
+
+The reason is this section's subject. Kraken documents that the timer cancels **all** client
+orders and names no exception, so a stop the venue holds would be cancelled at exactly the moment
+it exists for: the process is gone, the position is open, and nothing watches it for as long as
+the outage lasts. The two mechanisms protect against opposite failures and cannot both be armed
+as they are.
+
+What covers "the client vanished" instead: the stop the venue holds keeps the position protected,
+and the liveness ping ([Unattended Operation](../autotrader/unattended_operation.md)) tells the
+operator that the session has gone silent. A venue timer that may be armed beside a protective order would be a
+capability an adapter DECLARES, with a reader and a contract for that collision — none exists
+today, deliberately.
+
 ---
 
 ## What is measured, and what is not

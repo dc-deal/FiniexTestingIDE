@@ -96,6 +96,7 @@ class TestTheRefusals:
         setup, executor = _open(tmp_path, _reconciler(), TradingModel.MARGIN)
 
         assert (setup.proceed, setup.recorder) == (False, None)
+        assert setup.refusal.startswith('FIELD STUDY ABORTED'), 'what the operator alert quotes'
         assert not (tmp_path / 'field_study.jsonl').exists()
         assert executor.order_listeners == []
 
@@ -106,12 +107,13 @@ class TestTheRefusals:
         setup, _ = _open(tmp_path, _reconciler(open_orders=[resting]))
 
         assert setup.proceed is False
+        assert '1 resting broker order(s)' in setup.refusal
         assert setup.recorder is not None, 'the session closes it on its way out'
 
     def test_no_reconciler_trades_with_a_warning(self, tmp_path):
         setup, executor = _open(tmp_path, None)
 
-        assert setup.proceed is True
+        assert (setup.proceed, setup.refusal) == (True, '')
         assert isinstance(executor.order_listeners[0], FieldStudyStreamProjection)
         assert len(executor.truth_listeners) == 1
 

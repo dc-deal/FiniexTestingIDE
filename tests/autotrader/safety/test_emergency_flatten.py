@@ -28,8 +28,11 @@ from python.framework.types.autotrader_types.autotrader_config_types import (
     AutoTraderConfig,
     SafetyConfig,
 )
+from python.framework.types.autotrader_types.operator_alert_types import OperatorAlertKind
 from python.framework.types.config_types.market_config_types import TradingModel
 from python.framework.types.decision_event_types import SessionEndSeverity
+from tests.shared.operator_alert_recorder import OperatorAlertRecorder
+
 
 class _RecordingLogger:
     """Captures what reached the operator — a hard stop that says nothing is the defect."""
@@ -58,8 +61,10 @@ class _FlattenStub:
         self._config = AutoTraderConfig(safety=safety)
         self._trading_model = trading_model
         self._logger = _RecordingLogger()
+        self._operator_alerts = OperatorAlertRecorder()   # #235 — the hard stop alerts out of band
         self._flatten_sent_at_tick = None
         self._flatten_reason = ''
+        self._safety_blocked = False                       # no soft threshold is configured
         self.closed: List[str] = []
         self.session_end: List[tuple] = []
         self._open = [SimpleNamespace(position_id=p) for p in positions]
@@ -100,6 +105,9 @@ class _FlattenStub:
 
     def drive(self, tick_index: int) -> None:
         AutotraderTickLoop._drive_emergency_flatten(self, tick_index)
+
+    def entries_blocked(self) -> bool:
+        return AutotraderTickLoop._entries_blocked(self)
 
 
 def _stub(
@@ -180,6 +188,35 @@ class TestItFiresOnlyWhenItShould:
         stub.check(value=5_000.0, baseline=10_000.0)
 
         assert stub.closed == ['pos_1', 'pos_2']
+        assert stub._operator_alerts.kinds == [OperatorAlertKind.EMERGENCY_STOP]   # #235, once
+
+
+class TestItBlocksEntriesWithoutASoftThreshold:
+    """
+    The hard stop is the stronger stop, so it needs no soft threshold to block what the soft one
+    blocks. Every soft threshold defaults to off; a profile with only a hard one would otherwise
+    let the decision open positions on the very tick the stop fired and through the whole drain,
+    and the book would never reach flat.
+    """
+
+    def test_nothing_is_blocked_before_it_fires(self):
+        stub = _stub(pct_hard=20.0)
+        stub.check(value=9_000.0, baseline=10_000.0)
+        assert stub.entries_blocked() is False
+
+    def test_once_it_fires_entries_are_blocked(self):
+        stub = _stub(pct_hard=20.0)
+        stub.check(value=7_000.0, baseline=10_000.0, tick_index=100)
+        assert stub._safety_blocked is False, 'no soft threshold was configured'
+        assert stub.entries_blocked() is True
+        stub.drive(101)                                     # still draining
+        assert stub.entries_blocked() is True
+
+    def test_spot_holdings_kept_block_entries_too(self):
+        """The log line says new entries are blocked — it has to be true."""
+        stub = _stub(trading_model=TradingModel.SPOT, pct_hard=20.0)
+        stub.check(value=7_000.0, baseline=10_000.0)
+        assert stub.entries_blocked() is True
 
 
 class TestTheSessionEndsOnlyAfterTheFillsArrive:
@@ -224,6 +261,9 @@ class TestTheSessionEndsOnlyAfterTheFillsArrive:
         assert severity is SessionEndSeverity.EMERGENCY
         assert 'incomplete' in reason
         assert any('pos_1' in m and 'pos_2' in m for m in stub._logger.errors)
+        # #235 — and the operator is told out of band to check the account by hand
+        assert stub._operator_alerts.titles[-1] == (
+            'EMERGENCY STOP incomplete — check the account by hand')
 
     def test_it_ends_once_not_on_every_later_tick(self):
         stub = _stub(pct_hard=20.0)
@@ -265,6 +305,9 @@ class TestSpotIsGatedAndTheAsymmetryIsDeliberate:
 
         assert len(stub.session_end) == 1
         assert stub.session_end[0][1] is SessionEndSeverity.EMERGENCY
+        # #235: one alert — a second one would invite selling by hand, which realises the very
+        # loss the switch keeps unrealised
+        assert stub._operator_alerts.kinds == [OperatorAlertKind.EMERGENCY_STOP]
 
     def test_with_the_switch_on_the_holding_is_sold(self):
         stub = _stub(trading_model=TradingModel.SPOT, pct_hard=20.0, spot_liquidate=True)

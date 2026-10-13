@@ -21,6 +21,7 @@ from typing import Any, Dict, List
 
 import pytest
 
+from python.configuration.credentials_cascade import workspace_credentials_path
 from python.configuration.market_config_manager import MarketConfigManager
 from python.framework.reporting.certificates.certificate_identity_builder import (
     build_certificate_identity,
@@ -119,20 +120,24 @@ def pytest_configure(config):
     config.pluginmanager.register(config._live_adapter_results)
 
 
-def kraken_credentials_path() -> Path:
+def venue_credentials_path(broker_type: str) -> Path:
     """
-    Where the operator's Kraken key lives — the override a live session reads first.
+    Where the operator's key for a venue lives — the override a live session reads first.
 
-    Built from the broker entry's configured name, the way the adapter resolves it. A fixed
-    path here went stale when the credentials folder was split, and every phase then skipped
-    as if no key existed. The tracked default beside it holds a placeholder the adapter
-    refuses, so only the override counts.
+    Built from the broker entry's configured name through the shared credentials cascade, the
+    way the adapter resolves it. A fixed path here went stale when the credentials folder was
+    split, and every phase then skipped as if no key existed. The tracked default beside it
+    holds a placeholder the adapter refuses, so only the override counts. Venue-neutral, so
+    the next adapter's suite (#209) asks the same question with its own broker type.
+
+    Args:
+        broker_type: The broker entry in `market_config.json`, e.g. 'kraken_spot'
 
     Returns:
-        The override path of the configured credentials file
+        The override path of the configured credentials file, whether or not it exists
     """
-    entry = MarketConfigManager().get_broker_entry('kraken_spot')
-    return Path('user_configs/credentials') / entry.credentials_file
+    entry = MarketConfigManager().get_broker_entry(broker_type)
+    return workspace_credentials_path(entry.credentials_file)
 
 
 @pytest.fixture(scope='module')

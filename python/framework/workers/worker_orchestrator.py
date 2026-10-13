@@ -126,6 +126,10 @@ class WorkerOrchestrator:
             if isinstance(worker, AbstractSignalWorker)
         }
         self._signal_stale_state: Dict[str, bool] = {}
+        # Every fresh↔stale flip, in either direction. A reader that only needs to know whether
+        # anything moved (the AutoTrader's operator alerts, #235) compares this number rather
+        # than the whole state on every pass.
+        self._signal_stale_flips = 0
 
         # Per-tick resolution counters (#433 Part C) — one row per SIGNAL worker.
         # Counted HERE, not in the worker: this is the only loop that runs exactly
@@ -510,6 +514,8 @@ class WorkerOrchestrator:
                     stats.blind_ticks += 1
 
             is_stale = result.is_stale
+            if is_stale != self._signal_stale_state.get(name, False):
+                self._signal_stale_flips += 1
             if is_stale and not self._signal_stale_state.get(name, False):
                 self._signal_episode_open[name] = tick_time
                 self.decision_logic.on_signal_stale(
@@ -597,6 +603,24 @@ class WorkerOrchestrator:
             Instance name → worker; empty when the strategy reads no signal source
         """
         return dict(self._signal_workers)
+
+    def get_signal_stale_flip_count(self) -> int:
+        """
+        How many times a SIGNAL worker's result has turned stale or fresh again.
+
+        Returns:
+            The count of flips, in either direction, since the session started
+        """
+        return self._signal_stale_flips
+
+    def get_stale_signal_workers(self) -> List[str]:
+        """
+        The SIGNAL workers whose latest result is stale.
+
+        Returns:
+            Their instance names, sorted
+        """
+        return sorted(name for name, stale in self._signal_stale_state.items() if stale)
 
     def merge_signal_arrivals(
         self, arrivals: Dict[str, List[SignalSnapshot]]

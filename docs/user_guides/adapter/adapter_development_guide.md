@@ -98,6 +98,14 @@ so in a comment beside a `True` — the intersection already refuses the order.
 
 If a Tier-3 operation is declared but not implementable for some order type, the `build_<op>_payload` layer should raise — fail fast at build time rather than send a malformed payload.
 
+**Not declared, deliberately: a venue dead man's timer.** Kraken offers one (`CancelAllOrdersAfter`
+cancels every order of the account once the client stops refreshing it), and this project does not
+arm it — it would cancel a stop the venue holds exactly when the stop is needed
+([Protective Levels](../../architecture/protective_levels.md), section 7). So there is no
+capability, no config key and no adapter method for it. If a venue's timer is ever to be armed, it
+arrives as a declared capability with a reader, and its collision with a venue-held stop is part of
+its contract — not as a call one adapter makes on its own.
+
 ### What a Fill Costs — Declared, Not Assumed
 
 Two more declarations say how the venue reports a fill, and the executor reads both:
@@ -282,14 +290,22 @@ proving something about settings nobody obeys is not a gate.
 
 ## Credentials Cascade
 
-`_load_credentials(filename)` (implement in your adapter) follows this cascade:
+The cascade is the framework's, not the adapter's. `python/configuration/credentials_cascade.py`
+turns the configured name (`venues/<venue>_credentials.json`) into a file: the workspace copy in
+`user_configs/credentials/` first (gitignored, real keys), the tracked placeholder in
+`configs/credentials/` second. An adapter asks it and adds only what is its own — which keys it
+reads from the file — and refuses the placeholder before a real call:
 
 ```python
-user_path = Path('user_configs/credentials') / filename     # gitignored, real keys
-default_path = Path('configs/credentials') / filename       # checked in, placeholder
+cred_path = resolve_credentials_file(credentials_filename)
+if cred_path is None:
+    raise FileNotFoundError(...)            # name workspace_credentials_path(...) in the message
+assert_real_credential(cred_path, 'Enabling live <venue> execution')
 ```
 
-Prefer `user_path`. Never log credentials. Store only in short-lived `_api_key` / `_api_secret` fields.
+A copy of the cascade inside an adapter is the rule written twice, and it would travel with the
+adapter when #328 moves every venue into a package of its own. Never log credentials. Store only in
+short-lived `_api_key` / `_api_secret` fields.
 
 ---
 

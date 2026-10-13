@@ -53,6 +53,14 @@ one took over at its start: a resting order found at the venue under this bot's 
 order carried over with its position. Counted apart from `orders_submitted`, which is what this
 session sent; an execution rate divides by both. See *carry-over*.
 
+**alert episode** — One symptom as the operator hears it: an *operator alert* when it starts, the
+all-clear once it has stayed away for `all_clear_after_s`, and a recurrence before the all-clear
+inside the same episode — so a breaker or a feed flapping around its threshold is two messages,
+not one per crossing. Not the *disturbance episode* a run report counts
+(`disturbance_episode_count`), one per stale stretch of an input: one alert episode can span
+several of them. See [Unattended Operation](autotrader/unattended_operation.md) and, for the
+disturbance episode, [Outage Handling](user_guides/outage_handling_guide.md).
+
 **algo** — The user-authored code of a strategy, kept in `user_algos/`. See
 [User Algo Workspace](user_guides/user_modules_and_hot_reload_mechanics.md).
 
@@ -319,6 +327,12 @@ exports as it goes. Here *live* means "as it happens", which is why the code und
 **live transport** — Signals arriving over the network from the producer, as opposed to a mounted
 archive. See [Signal Data Source](data_pipeline/signal_data_source.md).
 
+**liveness ping** — The ping an AutoTrader session sends a monitoring service every interval while
+its tick loop is still passing; the monitor raises the alarm when pings stop. It vouches for the
+LOOP, not the process, so a hung session goes silent too — and for one bot: each bot pings a check
+of its own. Not the *heartbeat*: that is the tick
+loop's idle pass when no tick arrives. See [Unattended Operation](autotrader/unattended_operation.md).
+
 **log warning count** (`log_warning_count`) — The WARNING records in a run's log pot, Tier 2 —
 ignorable by design. Not the *warning count*. See [Warnings & Errors](architecture/warnings_errors_tiers.md).
 
@@ -353,6 +367,14 @@ hand). Live only: a simulated venue answers every order.
 previous period's close, read at the same instant, or a unit's first observed value. Stamped, never
 `final_equity − net_pnl`, which would drop what was still open. See
 [Accounting Periods](architecture/accounting_periods.md).
+
+**operator alert** — A message an AutoTrader session sends its operator out of band, over Telegram:
+a start that failed or was refused, an abort, an emergency stop, the breaker, stale inputs, a
+stalled loop, the session's end. Always *operator* alert — `AwarenessLevel.ALERT` is a display
+severity, `alert_only` a reconciliation mode, and `on_give_up: alert` a connection's give-up rule
+(log an error and go on — for the alert channel's own ladder, the one message is dropped); none of
+them sends anything. A symptom is one *alert episode*. See
+[Unattended Operation](autotrader/unattended_operation.md).
 
 **order event** · **order-event stream** — One step in an order's life — submitted, accepted,
 triggered, a cancel or modification asked for and how it was answered, an answer lost and the
@@ -452,7 +474,9 @@ first tick because its *warmup history* could not be completed there: the venue 
 committed the period that ended since the boot read, or could not be read again. A refusal of the
 SESSION, never of an order — no order is *denied* or *rejected* by it. Graded `failed` like any
 emergency. The tick's workers and decision did not run, but the executor's stop and take-profit
-check of that tick may have sent a close. See [Warmup History](architecture/warmup_history.md).
+check of that tick may have sent a close. Not a start refused before the loop — by the cold start
+or the Field Study's preflight: that one is graded by what it logged, and its operator alert reads
+STARTUP REFUSED. See [Warmup History](architecture/warmup_history.md).
 
 **rendered configuration** (`rendered_config_id`) — What an AutoTrader session RAN with, as
 opposed to the profile file it was GIVEN: the profile with the `app_config.autotrader` layer merged

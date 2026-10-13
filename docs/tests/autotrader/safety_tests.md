@@ -46,6 +46,7 @@ Direct tests against `_check_safety` using a lightweight stub that mirrors the i
 | `TestCombinedConditions` | OR-combined: both fire, only min fires, only drawdown fires |
 | `TestDisabled` | Zero thresholds disabled, `enabled=False` skips all checks |
 | `TestDisplayState` | `_safety_current_value` stored, `_safety_drawdown_pct` stored, drawdown floored at 0% (profit case) |
+| `TestTheOperatorHearsOneEpisode` | #235 — a breaker flapping around its limit sends ONE alert out of band and one all-clear once it has stayed clear for the quiet period; the record still counts every engagement |
 
 ### Level 1 — The Baseline (`test_risk_baseline.py`, #356)
 
@@ -72,8 +73,9 @@ and waits for a human, this CLOSES. Driven against the real `_check_emergency_fl
 | Class | What it validates |
 |-------|-------------------|
 | `TestItFiresOnlyWhenItShould` | a hard breach closes everything; a loss inside the threshold closes nothing; the master switch and `enabled=False` both close nothing; the absolute threshold fires too; it sends ONCE, not on every tick — a second round would double-sell what the first is already closing |
+| `TestItBlocksEntriesWithoutASoftThreshold` | once it fires, new entries are blocked with no soft threshold configured — through the drain and on the spot path that keeps its holdings — so an entry cannot keep the book from reaching flat |
 | `TestTheSessionEndsOnlyAfterTheFillsArrive` | it does not end while positions are open (EMERGENCY means immediate exit, and the fills arrive later); it ends once the book is flat; it ends anyway at the drain ceiling and NAMES what is still open; it ends once, not on every later tick |
-| `TestSpotIsGatedAndTheAsymmetryIsDeliberate` | a spot holding is not sold by default and the operator hears why; the session still ends; with the switch on it is sold |
+| `TestSpotIsGatedAndTheAsymmetryIsDeliberate` | a spot holding is not sold by default and the operator hears why; the session still ends — without a second "check the account by hand" alarm, since nothing was sent; with the switch on it is sold |
 | `TestACloseThatCannotBeSent` | every position is attempted and each failure is named — a close that failed silently is still open at the venue |
 
 ### Level 1 — The Session Record (`test_safety_report.py`, #356 Phase C / #314)

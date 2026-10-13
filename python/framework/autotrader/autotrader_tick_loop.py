@@ -13,7 +13,7 @@ import time
 from collections import deque
 from datetime import date, datetime, timezone
 from pathlib import Path
-from typing import Callable, Deque, Dict, List, Optional, Tuple
+from typing import Callable, Deque, Dict, List, Optional, Set, Tuple
 
 from python.configuration.app_config_manager import AppConfigManager
 from python.configuration.market_config_manager import MarketConfigManager
@@ -21,6 +21,14 @@ from python.framework.autotrader.autotrader_display_exporter import AutotraderDi
 from python.framework.autotrader.autotrader_startup import create_session_file_logger
 from python.framework.autotrader.session_log_retention import prune_rotated_session_logs
 from python.framework.autotrader.live_clipping_monitor import LiveClippingMonitor
+from python.framework.autotrader.operator_alerts.alert_episode import (
+    AlertEpisode,
+    all_clear_detail,
+)
+from python.framework.autotrader.operator_alerts.operator_alerts import OperatorAlerts
+from python.framework.autotrader.operator_alerts.operator_alerts_setup import (
+    disabled_operator_alerts,
+)
 from python.framework.autotrader.risk_baseline_tracker import RiskBaselineTracker
 from python.framework.autotrader.tick_sources.abstract_tick_source import AbstractTickSource
 from python.framework.bars.bar_rendering_controller import BarRenderingController
@@ -50,6 +58,10 @@ from python.framework.types.autotrader_types.autotrader_display_types import (
     SafetyState,
 )
 from python.framework.types.autotrader_types.display_label_cache import DisplayLabelCache
+from python.framework.types.autotrader_types.operator_alert_types import (
+    OperatorAlertKind,
+    OperatorAlertLevel,
+)
 from python.framework.types.autotrader_types.safety_session_types import (
     SafetyDayRecord,
     SafetySessionRecord,
@@ -106,6 +118,8 @@ class AutotraderTickLoop:
         clipping_monitor: LiveClippingMonitor instance
         logger: ScenarioLogger instance (session logger)
         run_dir: Session run directory (for log rotation)
+        operator_alerts: The out-of-band channels to the operator (#235) — the loop stamps their
+            loop progress on every pass and reports its symptoms through them; off by default
     """
 
     def __init__(
@@ -137,6 +151,7 @@ class AutotraderTickLoop:
         signal_transport: Optional[AbstractSignalTransport] = None,
         carried_period_no: int = 0,
         stale_stress_driver: Optional[StaleDataStressDriver] = None,
+        operator_alerts: Optional[OperatorAlerts] = None,
     ):
         self._config = config
         self._tick_queue = tick_queue
@@ -159,6 +174,23 @@ class AutotraderTickLoop:
         # declares them. None on every live-adapter session — the block lives in
         # scenario_settings, which a live-adapter profile does not carry at all.
         self._stale_stress_driver = stale_stress_driver
+        # #235: what the operator hears out of band. The loop stamps the progress the liveness
+        # ping vouches for on every pass, and reports symptoms — the breaker, a hard stop, stale
+        # inputs — each once per edge, never per tick.
+        self._operator_alerts = operator_alerts or disabled_operator_alerts()
+        self._loop_progress = self._operator_alerts.get_loop_progress()
+        self._seen_signal_stale_flips = 0
+        self._stale_signals_seen: Set[str] = set()
+        # One episode per symptom: the opening alert, then the all-clear only once the symptom
+        # stayed away this long — a breaker or a feed flapping around its threshold is one
+        # episode, not a message per crossing
+        self._all_clear_after_s = config.operator_alerts.telegram.all_clear_after_s
+        self._safety_alert = AlertEpisode(self._all_clear_after_s)
+        self._market_data_alert = AlertEpisode(self._all_clear_after_s)
+        self._signal_alerts: Dict[str, AlertEpisode] = {}
+        # When the loop started, on the monotonic clock: a first tick that never comes is an
+        # outage the operator hears about, though the status calls it a startup wait (#436)
+        self._loop_started_monotonic: float = 0.0
         self._logger = logger
         self._trading_model = trading_model
         self._run_dir = run_dir
@@ -365,6 +397,7 @@ class AutotraderTickLoop:
             (ticks_processed, ticks_clipped) counts
         """
         self._running = True
+        self._loop_started_monotonic = time.monotonic()
         ticks_processed = 0
         ticks_clipped = 0
         prev_msc: int = 0
@@ -384,6 +417,10 @@ class AutotraderTickLoop:
         self._push_pulse_frame(ticks_processed)
 
         while self._running:
+            # #235: one stamp per pass, tick or heartbeat — a pass that hangs stamps no more,
+            # and the liveness ping stops vouching for the loop
+            self._loop_progress.stamp()
+            self._alert_on_signal_staleness()
             try:
                 tick = self._tick_queue.get(timeout=self._heartbeat_interval_s)
             except queue.Empty:
@@ -481,6 +518,11 @@ class AutotraderTickLoop:
             # #436: a real tick ends a stale episode (recovery, edge reset).
             if self._market_stale:
                 self._end_market_stale_episode()
+            elif self._last_real_tick_wall_time <= 0 and self._market_data_alert.is_open():
+                # #235: the first tick ends the wait for it the operator was told about
+                self._market_data_alert.clears(self._executor.get_current_time())
+            if self._market_data_alert.is_open():
+                self._send_market_data_all_clear_if_due()
 
             # #444: advance the planned stale-window state machine AFTER that recovery and
             # BEFORE the tracker observes — the wall-clock episode resolves itself first,
@@ -553,7 +595,7 @@ class AutotraderTickLoop:
             self._drive_emergency_flatten(ticks_processed)
 
             # === 6. Order Execution ===
-            if self._safety_blocked:
+            if self._entries_blocked():
                 decision.action = DecisionLogicAction.FLAT
             order_result = self._decision_logic.execute_decision(decision, tick)
             self._record_rejection(order_result, decision)
@@ -883,7 +925,7 @@ class AutotraderTickLoop:
         if decision is None:
             return
         self._ghost_pass_count += 1
-        if self._safety_blocked:
+        if self._entries_blocked():
             decision.action = DecisionLogicAction.FLAT
         order_result = self._decision_logic.execute_decision(decision, tick=None)
         if order_result is not None:
@@ -957,7 +999,10 @@ class AutotraderTickLoop:
                 and self._stale_stress_driver.get_active_label()):
             return
         if self._last_real_tick_wall_time <= 0:
-            return  # no tick yet — startup wait, not an outage
+            # No tick yet — a startup wait for the status, not an outage. The operator still
+            # hears when it outlasts the threshold (#235)
+            self._alert_on_missing_first_tick()
+            return
         seconds_since = time.time() - self._last_real_tick_wall_time
         if seconds_since <= self._market_data_stale_after_s:
             return
@@ -984,7 +1029,39 @@ class AutotraderTickLoop:
                 f"{seconds_since:.0f}s (threshold "
                 f"{self._market_data_stale_after_s:.0f}s) — entries guard-blocked"
             )
+            if self._market_data_alert.opens(self._executor.get_current_time()):
+                self._operator_alerts.send(
+                    OperatorAlertKind.MARKET_DATA_STALE, OperatorAlertLevel.WARNING,
+                    'Market data stale — new entries blocked',
+                    f'No tick for {seconds_since:.0f}s (threshold '
+                    f'{self._market_data_stale_after_s:.0f}s), stale since '
+                    f"{self._market_stale_since.strftime('%H:%M:%S')} UTC")
             self._decision_logic.on_market_data_stale(status)
+
+    def _alert_on_missing_first_tick(self) -> None:
+        """
+        #235: tell the operator, once, when no first tick has come within the stale threshold.
+
+        A feed that never delivers its first tick — a socket down at a restart while the REST
+        boot went through — would otherwise leave "Session started" as the operator's last word
+        while the ping stays green, because the idle passes keep the loop alive. Only the alert:
+        the status stays fresh until a first tick exists to measure from (#436). The first tick
+        ends the episode, and its all-clear follows the same quiet period as any other.
+        """
+        if self._market_data_alert.is_open() or self._loop_started_monotonic <= 0:
+            return
+        waited = time.monotonic() - self._loop_started_monotonic
+        if waited <= self._market_data_stale_after_s:
+            return
+        self._logger.warning(
+            f'⚠️ No market data yet: no tick for {waited:.0f}s since the tick loop started '
+            f'(threshold {self._market_data_stale_after_s:.0f}s) — the feed may not be connected')
+        if self._market_data_alert.opens(self._executor.get_current_time()):
+            self._operator_alerts.send(
+                OperatorAlertKind.MARKET_DATA_STALE, OperatorAlertLevel.WARNING,
+                'No market data since the session started',
+                f'No tick for {waited:.0f}s since the tick loop started (threshold '
+                f'{self._market_data_stale_after_s:.0f}s). The feed may not be connected.')
 
     def _end_market_stale_episode(self) -> None:
         """
@@ -998,6 +1075,52 @@ class AutotraderTickLoop:
         self._market_stale_since = None
         self._executor.set_market_data_status(MarketDataStatus(
             reconnect_count=self._last_reconnect_count))
+        # #235: the all-clear waits until the data has stayed fresh for the quiet period
+        self._market_data_alert.clears(self._executor.get_current_time())
+
+    def _send_market_data_all_clear_if_due(self) -> None:
+        """#235: the market data's all-clear, once it has stayed fresh for the quiet period."""
+        if self._market_data_alert.all_clear_due(self._executor.get_current_time()):
+            self._operator_alerts.send(
+                OperatorAlertKind.MARKET_DATA_RECOVERED, OperatorAlertLevel.INFO,
+                'Market data fresh again',
+                all_clear_detail(self._market_data_alert, self._all_clear_after_s))
+
+    def _alert_on_signal_staleness(self) -> None:
+        """
+        Tell the operator when a SIGNAL input turns stale, and when it has stayed fresh again.
+
+        The orchestrator owns the stale edge — it fires `on_signal_stale` there, in both
+        pipelines. The loop only compares the orchestrator's flip count with the one it last
+        saw, so a pass with nothing new costs one integer comparison, and reads the state itself
+        only when something moved. Each worker is its own episode (#235): its all-clear waits
+        until it has stayed fresh for the quiet period.
+        """
+        now = self._executor.get_current_time_if_set()
+        if now is None:
+            return
+        flips = self._worker_orchestrator.get_signal_stale_flip_count()
+        if flips != self._seen_signal_stale_flips:
+            self._seen_signal_stale_flips = flips
+            stale_now = set(self._worker_orchestrator.get_stale_signal_workers())
+            for name in sorted(stale_now - self._stale_signals_seen):
+                episode = self._signal_alerts.setdefault(
+                    name, AlertEpisode(self._all_clear_after_s))
+                if episode.opens(now):
+                    self._operator_alerts.send(
+                        OperatorAlertKind.SIGNAL_STALE, OperatorAlertLevel.WARNING,
+                        f'Signal input stale — {name}',
+                        'The decision now reads it as stale; the strategy decides what that '
+                        'means.')
+            for name in sorted(self._stale_signals_seen - stale_now):
+                self._signal_alerts[name].clears(now)
+            self._stale_signals_seen = stale_now
+        for name, episode in self._signal_alerts.items():
+            if episode.is_open() and episode.all_clear_due(now):
+                self._operator_alerts.send(
+                    OperatorAlertKind.SIGNAL_RECOVERED, OperatorAlertLevel.INFO,
+                    f'Signal input fresh again — {name}',
+                    all_clear_detail(episode, self._all_clear_after_s))
 
     def _injected_outage_label(self) -> str:
         """
@@ -1424,8 +1547,21 @@ class AutotraderTickLoop:
             self._safety_block_count += 1
             self._logger.warning(
                 f'⛔ Safety circuit breaker triggered: {self._safety_reason}')
+            if self._safety_alert.opens(self._executor.get_current_time()):
+                self._operator_alerts.send(
+                    OperatorAlertKind.SAFETY_BLOCKED, OperatorAlertLevel.WARNING,
+                    'Safety circuit breaker — new entries blocked',
+                    f'{self._safety_reason} · '
+                    f'{len(self._executor.portfolio.get_open_positions())} position(s) open, kept')
         elif was_blocked and not self._safety_blocked:
             self._logger.info('✅ Safety circuit breaker cleared')
+            self._safety_alert.clears(self._executor.get_current_time())
+        if (self._safety_alert.is_open()
+                and self._safety_alert.all_clear_due(self._executor.get_current_time())):
+            self._operator_alerts.send(
+                OperatorAlertKind.SAFETY_CLEARED, OperatorAlertLevel.INFO,
+                'Safety circuit breaker cleared — entries allowed again',
+                all_clear_detail(self._safety_alert, self._all_clear_after_s))
 
     def _check_emergency_flatten(
         self,
@@ -1493,12 +1629,21 @@ class AutotraderTickLoop:
                 f'end. The {len(positions)} open spot holding(s) are NOT sold — '
                 f'safety.spot_liquidate_to_quote is off, so the position stays and its loss '
                 f'stays unrealized.')
+            self._operator_alerts.send(
+                OperatorAlertKind.EMERGENCY_STOP, OperatorAlertLevel.CRITICAL,
+                'EMERGENCY STOP — the session ends',
+                f'{reason}. {len(positions)} spot holding(s) are NOT sold '
+                f'(safety.spot_liquidate_to_quote is off).')
             self._flatten_sent_at_tick = -1
             return
 
         self._logger.error(
             f'🚨 EMERGENCY STOP: {reason}. Closing {len(positions)} open position(s) now, '
             f'then ending the session. This is the HARD stop, not the entry block.')
+        self._operator_alerts.send(
+            OperatorAlertKind.EMERGENCY_STOP, OperatorAlertLevel.CRITICAL,
+            'EMERGENCY STOP — closing everything, then the session ends',
+            f'{reason}. Closing {len(positions)} open position(s).')
         for position in positions:
             try:
                 self._executor.close_position(position.position_id)
@@ -1540,8 +1685,21 @@ class AutotraderTickLoop:
             self._flatten_sent_at_tick = None
             return
 
-        waited = ticks_processed - max(self._flatten_sent_at_tick, 0)
-        if self._flatten_sent_at_tick < 0 or waited >= _FLATTEN_DRAIN_TICKS:
+        if self._flatten_sent_at_tick < 0:
+            # Spot holdings kept on purpose (safety.spot_liquidate_to_quote is off): no close was
+            # sent, and the first error line already said the holdings are not sold. The session
+            # ends — without a second alarm that would invite selling by hand, which realises
+            # exactly the loss the switch exists to keep unrealised (#235).
+            self._flatten_completed = False
+            self._flatten_unconfirmed = [p.position_id for p in open_positions]
+            self._executor.request_session_end(
+                f'emergency stop, spot holdings kept ({self._flatten_reason})',
+                SessionEndSeverity.EMERGENCY)
+            self._flatten_sent_at_tick = None
+            return
+
+        waited = ticks_processed - self._flatten_sent_at_tick
+        if waited >= _FLATTEN_DRAIN_TICKS:
             self._flatten_completed = False
             self._flatten_unconfirmed = [p.position_id for p in open_positions]
             still_open = ', '.join(p.position_id for p in open_positions)
@@ -1549,10 +1707,27 @@ class AutotraderTickLoop:
                 f'🚨 EMERGENCY STOP ending the session with {len(open_positions)} '
                 f'position(s) still open: {still_open}. They were not confirmed closed '
                 f'within the drain window — check the account by hand.')
+            self._operator_alerts.send(
+                OperatorAlertKind.EMERGENCY_STOP, OperatorAlertLevel.CRITICAL,
+                'EMERGENCY STOP incomplete — check the account by hand',
+                f'{len(open_positions)} position(s) not confirmed closed: {still_open}')
             self._executor.request_session_end(
                 f'emergency flatten incomplete ({self._flatten_reason})',
                 SessionEndSeverity.EMERGENCY)
             self._flatten_sent_at_tick = None
+
+    def _entries_blocked(self) -> bool:
+        """
+        Whether a decision is forced FLAT now — by the soft block, or once the hard stop fired.
+
+        The hard stop blocks entries as well (#356): it is the stronger stop, and must not need a
+        soft threshold configured to do what the soft one does. Its closes are draining, and an
+        entry during the drain would keep the book from ever reaching flat.
+
+        Returns:
+            True when no new entry may be opened
+        """
+        return self._safety_blocked or bool(self._flatten_reason)
 
     def _block(self, reason: str) -> None:
         """

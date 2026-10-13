@@ -422,6 +422,13 @@ is deliberately not part of the key.
   run header after it names another host. It lives in the workspace and is never tracked, because
   a tracked id would give every clone the same one.
 
+**Not a store at all: a file the operator addresses for a reader outside the app.** The liveness
+stamp file (`operator_alerts.liveness.liveness_stamp_file`, #235) holds one UTC instant, rewritten
+with each liveness ping, at a path the operator chooses — and nothing in this app reads it. It has
+no root the catalog could register, and deleting it loses nothing the app needs: the watcher it is
+written for reads its absence as silence. See
+[Unattended Operation](../autotrader/unattended_operation.md).
+
 ---
 
 ## Four retrieval forms — the reader belongs to the FORM

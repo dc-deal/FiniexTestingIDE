@@ -21,6 +21,7 @@ from python.framework.types.config_types.autotrader_defaults_config_types import
     StatePersistenceDefaults,
     TickSourceConfig,
 )
+from python.framework.types.config_types.operator_alerts_config_types import OperatorAlertsConfig
 from python.framework.types.config_types.scenario_settings_config_types import (
     ScenarioSettingsConfig,
 )
@@ -156,6 +157,8 @@ class AutoTraderConfig:
         session_end: What the session does with resting orders and open positions when it
             ends (#492). Two axes; `orders: 'leave'` is the loosening one and needs the
             broker's posture behind it, the same way `dry_run` does
+        operator_alerts: The out-of-band channels to the operator (#235) — Telegram alerts and
+            the liveness ping, both off by default
         deployment: Whether this profile's sessions form one continuous deployment (#497).
             MANDATORY — the loader refuses a profile without it, because neither value is
             safe to inherit (see DeploymentConfig)
@@ -190,6 +193,7 @@ class AutoTraderConfig:
     cold_start: ColdStartDefaults = field(default_factory=ColdStartDefaults)
     session_end: SessionEndDefaults = field(default_factory=SessionEndDefaults)
     capital: CapitalDefaults = field(default_factory=CapitalDefaults)
+    operator_alerts: OperatorAlertsConfig = field(default_factory=OperatorAlertsConfig)
     config_path: Optional[Path] = None
     dry_run: Optional[bool] = None
 

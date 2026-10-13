@@ -27,6 +27,15 @@ from python.framework.autotrader.cold_start_setup import ColdStartSetup, setup_c
 from python.framework.autotrader.dry_run_resolver import resolve_dry_run
 from python.framework.autotrader.field_study_setup import close_field_study, open_field_study
 from python.framework.autotrader.live_clipping_monitor import LiveClippingMonitor
+from python.framework.autotrader.operator_alerts.operator_alert_messages import (
+    session_ended_text,
+    session_started_text,
+)
+from python.framework.autotrader.operator_alerts.operator_alerts import OperatorAlerts
+from python.framework.autotrader.operator_alerts.operator_alerts_setup import (
+    build_operator_alerts,
+    disabled_operator_alerts,
+)
 from python.framework.autotrader.order_event_stream_setup import (
     open_order_event_stream,
     read_back_order_event_stream,
@@ -48,7 +57,10 @@ from python.framework.decision_logic.abstract_decision_logic import AbstractDeci
 from python.framework.decision_logic.core.live_field_study.live_field_study import LiveFieldStudy
 from python.framework.discoveries.signal_coverage.signal_scenario_info import SignalScenarioInfo
 from python.framework.exceptions.code_identity_errors import CodeIdentityCaptureError
-from python.framework.exceptions.live_execution_errors import OneOffInsideDeploymentError
+from python.framework.exceptions.live_execution_errors import (
+    OneOffInsideDeploymentError,
+    StartupRefusedError,
+)
 from python.framework.exceptions.swap_errors import SwapModeNotImplementedError
 from python.framework.exceptions.warmup_history_errors import WarmupHistoryRefusedError
 from python.framework.logging.bootstrap_logger import get_global_logger
@@ -69,9 +81,14 @@ from python.framework.trading_env.decision_event_dispatcher import DecisionEvent
 from python.framework.trading_env.live.drift_auditor import DriftAuditor
 from python.framework.trading_env.live.live_trade_executor import LiveTradeExecutor
 from python.framework.trading_env.live.reconciler import Reconciler
+from python.framework.types.api.report_types import RunSummary
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
 from python.framework.types.autotrader_types.autotrader_result_types import AutoTraderResult
 from python.framework.types.autotrader_types.display_label_cache import DisplayLabelCache
+from python.framework.types.autotrader_types.operator_alert_types import (
+    OperatorAlertKind,
+    OperatorAlertLevel,
+)
 from python.framework.types.config_types.autotrader_defaults_config_types import (
     SessionEndDefaults,
 )
@@ -85,6 +102,7 @@ from python.framework.types.persistence_types import (
 )
 from python.framework.types.process_data_types import ProcessDataPackage
 from python.framework.types.run_origin_types import CodeIdentity, RunChannel
+from python.framework.types.run_outcome_types import RunOutcome
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
 from python.framework.types.signal_data_types import (
     SignalObservedSeries,
@@ -198,6 +216,12 @@ class AutotraderMain:
         self._emergency_reason: Optional[str] = None
         self._emergency_error_type: Optional[str] = None
         self._refused_at_first_tick = False
+        # #235: the out-of-band channels to the operator, off until the startup builds them —
+        # so an abort before that point is printed and logged, and simply not sent.
+        self._operator_alerts: OperatorAlerts = disabled_operator_alerts()
+        # Set once an abort was reported out of band; the closing alert then stays silent,
+        # because one failure is one message to the operator, not two.
+        self._abort_alerted = False
         self._session_start: Optional[float] = None
         self._run_timestamp: Optional[datetime] = None
         # Read once at boot, before the header that carries the deployment identity.
@@ -370,6 +394,12 @@ class AutotraderMain:
                 f'its profile but not what it ran with (#547).')
 
         try:
+            # === OPERATOR ALERTS (#235) ===
+            # First, so every later refusal reaches the operator out of band. An enabled channel
+            # that cannot work — a missing credential, a refused token — refuses the start here.
+            self._operator_alerts = build_operator_alerts(self._config, self._session_logger)
+            self._print_startup_phase(f'Operator alerts: {self._operator_alerts.describe()}')
+
             # === CODE IDENTITY NOT CAPTURED (#551) ===
             # Refused for EVERY session, not only a real-money one: the header now records a run
             # whose code nobody can name, and the cause is an environment or storage fault the
@@ -472,8 +502,10 @@ class AutotraderMain:
                 session_end_orders=self._session_end.orders,
             )
             if not self._cold_start.proceed:
-                # The loud banner is already in the session log, and therefore the pot.
-                return self._shutdown(0, 0)
+                # The loud banner is already in the session log, and therefore the pot. Raised
+                # rather than returned, so the one guarded shutdown below runs it.
+                raise StartupRefusedError(
+                    self._cold_start.refusal or 'The cold start refused the boot.')
 
             # === RISK BASELINE (#356) ===
             # Built BEFORE the first carry-over write below, which now carries the record.
@@ -528,7 +560,8 @@ class AutotraderMain:
                 self._field_study_recorder = field_study.recorder
                 if not field_study.proceed:
                     # A refused account or account model — the banner is already printed.
-                    return self._shutdown(0, 0)
+                    raise StartupRefusedError(
+                        field_study.refusal or 'The Field Study refused the account.')
 
             # === SIGNAL TRANSPORT (#141 Part 2a) ===
             self._setup_signal_transport()
@@ -565,6 +598,12 @@ class AutotraderMain:
 
             self._tick_loop = self._build_tick_loop(run_timestamp, dry_run)
             self._tick_loop_started = True
+            self._operator_alerts.start_liveness()
+            title, detail = session_started_text(
+                self._config, dry_run, self._run_id,
+                self._code_identity.framework.commit or '' if self._code_identity else '')
+            self._operator_alerts.send(
+                OperatorAlertKind.SESSION_STARTED, OperatorAlertLevel.INFO, title, detail)
             ticks_processed, ticks_clipped = self._tick_loop.run()
 
             # #348: an EMERGENCY session-end request escalates the shutdown mode.
@@ -572,13 +611,28 @@ class AutotraderMain:
                     and self._executor.get_session_end_severity() == SessionEndSeverity.EMERGENCY):
                 self._shutdown_mode = 'emergency'
 
+        except StartupRefusedError as refusal:
+            self._report_refusal(refusal)
+            ticks_processed = 0
+            ticks_clipped = 0
         except Exception as e:
             self._report_abort(e)
             ticks_processed = 0
             ticks_clipped = 0
 
+        # #235: the loop is over — from here a pass that no longer comes is the shutdown, not a
+        # stall, and the liveness watch must not report one
+        self._operator_alerts.loop_ended()
+
         # === SHUTDOWN ===
-        return self._shutdown(ticks_processed, ticks_clipped)
+        try:
+            return self._shutdown(ticks_processed, ticks_clipped)
+        except Exception as error:
+            # #235: a crash while shutting down or reporting would otherwise leave no word out
+            # of band, and the supervisor's restart would resume the pings before the monitor
+            # noticed anything
+            self._alert_shutdown_crash(error)
+            raise
 
     def _report_abort(self, error: Exception) -> None:
         """
@@ -610,14 +664,50 @@ class AutotraderMain:
             else:
                 self._session_logger.info(sent)
             self._print_first_tick_refusal(str(error), sent)
+            self._alert_abort(OperatorAlertKind.REFUSED_AT_FIRST_TICK,
+                              'REFUSED AT THE FIRST TICK', f'{error}\n{sent}')
         elif self._tick_loop_started:
             # Runtime error inside the tick loop — NOT a startup failure.
             self._global_logger.error(f'❌ AutoTrader runtime error in tick loop: {error}')
             self._print_runtime_error(str(error))
+            self._alert_abort(OperatorAlertKind.RUNTIME_ERROR,
+                              'RUNTIME ERROR — session aborted', str(error))
         else:
             self._global_logger.error(f'❌ AutoTrader startup error: {error}')
             self._print_startup_error(str(error))
+            self._alert_abort(OperatorAlertKind.STARTUP_FAILED, 'STARTUP FAILED', str(error))
         self._shutdown_mode = 'emergency'
+
+    def _report_refusal(self, refusal: StartupRefusedError) -> None:
+        """
+        Tell the operator out of band that a boot step refused to start the session, and why.
+
+        Not an abort: the step has already said why in the session log, and the session shuts
+        down as an ordinary end, graded by what it logged. Only the alert is sent here — at once,
+        before the shutdown, which may itself fail — and it is the session's one message.
+
+        Args:
+            refusal: The refusal, carrying the line the session log shows
+
+        Returns:
+            None
+        """
+        self._alert_abort(OperatorAlertKind.STARTUP_REFUSED, 'STARTUP REFUSED', str(refusal))
+
+    def _alert_abort(self, kind: OperatorAlertKind, title: str, detail: str) -> None:
+        """
+        Report an abort out of band, at once — before the shutdown, which may itself fail.
+
+        Args:
+            kind: Which abort
+            title: The notification's title
+            detail: The reason, as the console shows it
+
+        Returns:
+            None
+        """
+        self._operator_alerts.send(kind, OperatorAlertLevel.CRITICAL, title, detail)
+        self._abort_alerted = True
 
     def _validate_startup(self) -> None:
         """
@@ -907,6 +997,7 @@ class AutotraderMain:
             # #444: the planned tick-plane stale windows a mock profile declared. None on
             # every live-adapter session, so the loop runs exactly as it did before.
             stale_stress_driver=self._stale_stress_driver,
+            operator_alerts=self._operator_alerts,
             display_label_cache=self._display_label_cache,
             drift_auditor=self._drift_auditor,
             decision_event_dispatcher=self._decision_event_dispatcher,
@@ -1285,7 +1376,7 @@ class AutotraderMain:
         # === REPORTS === all run artifacts + post-session summary, delegated to
         # the live report coordinator (mirrors the sim BatchReportCoordinator —
         # consumes the finished result).
-        AutotraderReportCoordinator(
+        run_summary = AutotraderReportCoordinator(
             result=result,
             run_dir=self._run_dir,
             run_id=self._run_id,
@@ -1301,11 +1392,56 @@ class AutotraderMain:
             deployment_id=self._deployment_id,
         ).generate_and_log()
 
+        self._send_closing_alert(result, run_summary)
+
         # Close all loggers
         self._global_logger.info('🏁 Session complete — loggers closing')
         self._session_logger.close()
         self._summary_logger.close()
         self._global_logger.close()
+
+    def _send_closing_alert(self, result: AutoTraderResult, run_summary: RunSummary) -> None:
+        """
+        The operator's last message for the session, then the final liveness word (#235).
+
+        One failure is one message: a session that aborted or was refused was reported at once
+        by `_alert_abort`, so the closing message goes out only for an end that was not. The
+        last word to the monitor goes out either way — the fail URL when the session FAILED, so
+        the monitor alarms at once rather than after its grace period; otherwise an ordinary
+        ping, but only for a loop that passed: a session that never reached it vouches for
+        nothing, and its silence raises the alarm after the grace period.
+
+        Args:
+            result: The graded session result
+            run_summary: The run's figures as the report built them
+
+        Returns:
+            None
+        """
+        if not self._abort_alerted:
+            end_reason = (self._executor.get_session_end_reason()
+                          if self._executor is not None
+                          and self._executor.is_session_end_requested() else '')
+            level, title, detail = session_ended_text(result, run_summary, end_reason)
+            self._operator_alerts.send(OperatorAlertKind.SESSION_ENDED, level, title, detail)
+        self._operator_alerts.finish(emergency=result.get_outcome() is RunOutcome.FAILED)
+
+    def _alert_shutdown_crash(self, error: Exception) -> None:
+        """
+        Report a crash during the shutdown or the reports, then the fail ping and the flush.
+
+        Args:
+            error: What the shutdown raised
+
+        Returns:
+            None
+        """
+        self._operator_alerts.send(
+            OperatorAlertKind.SHUTDOWN_CRASHED, OperatorAlertLevel.CRITICAL,
+            'SESSION CRASHED while shutting down',
+            f'{type(error).__name__}: {error} — the report may be incomplete; check the account '
+            f'and the run directory.')
+        self._operator_alerts.finish(emergency=True)
 
     # =========================================================================
     # SIGNAL HANDLING

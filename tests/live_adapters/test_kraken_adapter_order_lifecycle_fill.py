@@ -30,7 +30,7 @@ from python.framework.types.live_types.live_execution_types import (
     TimeoutConfig,
 )
 from python.framework.types.trading_env_types.order_types import OrderDirection, OrderType
-from tests.live_adapters.conftest import kraken_credentials_path, record_observed_adapter
+from tests.live_adapters.conftest import record_observed_adapter, venue_credentials_path
 
 _BROKER_CONFIG_PATH = Path('configs/brokers/kraken/kraken_spot_broker_config.json')
 
@@ -45,7 +45,7 @@ def live_adapter_fill(request, real_orders_authorised):
     Returns:
         KrakenAdapter with Tier 3 enabled and dry_run disabled
     """
-    credentials_path = kraken_credentials_path()
+    credentials_path = venue_credentials_path('kraken_spot')
     if not credentials_path.exists():
         pytest.skip(f'Kraken credentials not found: {credentials_path}')
 

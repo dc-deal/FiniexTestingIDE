@@ -450,6 +450,36 @@
             }
         },
         {
+            "name": "🤖 AutoTrader: Operator alerts — check",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/operator_alerts_cli.py",
+            "args": [
+                "check"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "02_runs_autotrader",
+                "order": 9
+            }
+        },
+        {
+            "name": "🤖 AutoTrader: Operator alerts — find the chat id",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/operator_alerts_cli.py",
+            "args": [
+                "chat-id"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "02_runs_autotrader",
+                "order": 10
+            }
+        },
+        {
             "name": "🤖 AutoTrader: SOLUSD Production",
             "type": "debugpy",
             "request": "launch",
@@ -463,7 +493,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "02_runs_autotrader",
-                "order": 9
+                "order": 11
             }
         },
         {
@@ -481,7 +511,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "02_runs_autotrader",
-                "order": 10
+                "order": 12
             }
         },
         // ====================================================
@@ -2660,6 +2690,23 @@
             }
         },
         {
+            "name": "🧩 Pytest: Operator Alerts (All)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/autotrader/operator_alerts/",
+                "-v",
+                "--tb=short"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "13_pytest_validation",
+                "order": 43
+            }
+        },
+        {
             "name": "🧩 Pytest: Order Events (All)",
             "type": "debugpy",
             "request": "launch",
@@ -2673,7 +2720,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 43
+                "order": 44
             }
         },
         {
@@ -2690,7 +2737,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 44
+                "order": 45
             }
         },
         {
@@ -2708,7 +2755,7 @@
             "cwd": "${workspaceFolder}",
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 45
+                "order": 46
             }
         },
         {
@@ -2725,7 +2772,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 46
+                "order": 47
             }
         },
         {
@@ -2742,7 +2789,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 47
+                "order": 48
             }
         },
         {
@@ -2760,7 +2807,7 @@
             "cwd": "${workspaceFolder}",
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 48
+                "order": 49
             }
         },
         {
@@ -2775,7 +2822,7 @@
             "console": "integratedTerminal",
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 49
+                "order": 50
             }
         },
         {
@@ -2792,7 +2839,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 50
+                "order": 51
             }
         },
         {
@@ -2809,7 +2856,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 51
+                "order": 52
             }
         },
         {
@@ -2826,7 +2873,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 52
+                "order": 53
             }
         },
         {
@@ -2843,7 +2890,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 53
+                "order": 54
             }
         },
         {
@@ -2860,7 +2907,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 54
+                "order": 55
             }
         },
         {
@@ -2871,7 +2918,7 @@
             "console": "integratedTerminal",
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 55
+                "order": 56
             }
         },
         {
@@ -2888,7 +2935,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 56
+                "order": 57
             }
         },
         {
@@ -2905,7 +2952,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 57
+                "order": 58
             }
         },
         {
@@ -2922,7 +2969,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 58
+                "order": 59
             }
         },
         {
@@ -2939,7 +2986,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 59
+                "order": 60
             }
         },
         {
@@ -2956,7 +3003,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 60
+                "order": 61
             }
         },
         {
@@ -2973,7 +3020,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 61
+                "order": 62
             }
         },
         {
@@ -2990,7 +3037,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 62
+                "order": 63
             }
         },
         {
@@ -3007,7 +3054,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 63
+                "order": 64
             }
         },
         {
@@ -3024,7 +3071,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 64
+                "order": 65
             }
         },
         {
@@ -3041,7 +3088,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 65
+                "order": 66
             }
         },
         {
@@ -3058,7 +3105,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 66
+                "order": 67
             }
         },
         {
@@ -3075,7 +3122,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 67
+                "order": 68
             }
         },
         {
@@ -3092,7 +3139,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 68
+                "order": 69
             }
         },
         {
@@ -3109,7 +3156,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 69
+                "order": 70
             }
         },
         {
@@ -3126,7 +3173,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 70
+                "order": 71
             }
         },
         {
@@ -3143,7 +3190,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 71
+                "order": 72
             }
         },
         {
@@ -3160,7 +3207,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 72
+                "order": 73
             }
         },
         {
@@ -3177,7 +3224,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 73
+                "order": 74
             }
         },
         {
@@ -3194,7 +3241,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 74
+                "order": 75
             }
         },
         {
@@ -3211,7 +3258,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 75
+                "order": 76
             }
         },
         {
@@ -3228,7 +3275,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 76
+                "order": 77
             }
         },
         {
@@ -3245,7 +3292,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 77
+                "order": 78
             }
         },
         {
@@ -3262,7 +3309,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 78
+                "order": 79
             }
         },
         // ====================================================

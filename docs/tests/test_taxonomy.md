@@ -76,6 +76,8 @@ tests/
 │   ├── integration/       integration — mock session, trade lifecycle, trade scenarios (full pipeline)
 │   ├── live_executor/     unit — LiveTradeExecutor, LiveRequestProcessor, async submit/modify/cancel/trades_query/polling_cadence/drift_audit/decision_event_dispatcher, undecided dry-run poll (#319, #321, #318, #326, #320, #327, #348, #505)
 │   ├── loop_cadence/      unit — clock injection + heartbeat re-poll + decision ghost-pass cadence (#360) + market-data staleness contract (#436) + disturbance episodes (#451)
+│   ├── operator_alerts/   unit + integration — operator alerts and the liveness ping (#235): channel, dispatcher,
+│   │                      pinger, messages, setup, and a short mock session end to end
 │   ├── order_guard/       unit — OrderGuard scenarios and unit cases
 │   ├── safety/            unit — circuit breaker (margin + spot)
 │   ├── cold_start/        unit — boot adoption of our own resting orders + carry-over (#355)

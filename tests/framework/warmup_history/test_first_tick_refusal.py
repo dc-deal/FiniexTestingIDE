@@ -19,6 +19,9 @@ import pytest
 
 from python.framework.autotrader import autotrader_main as autotrader_main_module
 from python.framework.autotrader.autotrader_main import AutotraderMain
+from python.framework.autotrader.operator_alerts.operator_alerts_setup import (
+    disabled_operator_alerts,
+)
 from python.framework.bars.bar_rendering_controller import BarRenderingController
 from python.framework.exceptions.warmup_history_errors import WarmupHistoryRefusedError
 from python.framework.process.tick_pipeline_core import render_bars_for_tick
@@ -48,6 +51,8 @@ def _session(tick_loop_started: bool, executor=None) -> AutotraderMain:
     session._session_logger = RecordingLogger()
     session._global_logger = RecordingLogger()
     session._refused_at_first_tick = False
+    session._operator_alerts = disabled_operator_alerts()
+    session._abort_alerted = False
     session._emergency_reason = None
     session._emergency_error_type = None
     session._shutdown_mode = 'normal'

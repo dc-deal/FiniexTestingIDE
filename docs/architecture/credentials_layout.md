@@ -96,14 +96,28 @@ was allowed, rather than as an authentication error anyone would recognise.
 The tracked file carries the development address, which is harmless, and leaves the production
 address **empty**; the real one lives in `user_configs/`.
 
-## The three directories
+One exception, because the address is a public API: the Telegram block carries the production
+`base_url` (`https://api.telegram.org`) in the tracked file and no development endpoint. That
+address is the same for every bot of every user, so it names nothing private and grants nothing;
+which bot speaks into which chat is decided by the credential alone. A test bot gets an endpoint
+of its own — `dev`, naming another credentials file — rather than another address.
+
+## The directories
 
 ```
 configs/credentials/
   inbound/   consumer_tokens.json, accounts.json       who may call us, and for whom
   peers/     rag_*, collector_*                        sibling projects, read-only
   venues/    kraken_credentials.json                   real money
+  services/  telegram_*, liveness_<bot_id>.json        outside services we call: the operator
+                                                       alert channel and the liveness monitor,
+                                                       one ping URL per bot
 ```
+
+`services/` arrived on 2026-10-13 with the operator alerts (#235). A messenger and a monitoring
+service are neither a venue nor a sibling project, so they got a directory of their own rather
+than a stretched meaning of `peers/`. Its files are secrets like the others: the bot token can post
+as the bot, and the ping URL can fake a liveness ping.
 
 Split on 2026-09-15, when the peer credentials reached four files. The pressure was recent: the
 folder held a single file from March to August 2026, and four more arrived in the three weeks
@@ -112,7 +126,10 @@ readable — not through one wrong decision, but through several right ones in a
 
 A reader resolves a credential by joining a directory with a **relative path**, so the subdirectory
 travels in the configured name (`peers/rag_credentials.json`) and the cascade
-`user_configs/credentials/` → `configs/credentials/` needs no change.
+`user_configs/credentials/` → `configs/credentials/` needs no change. The cascade itself lives in
+one place, `python/configuration/credentials_cascade.py`: the venue adapter, its config fetcher,
+the producer client and the alert channel all ask there, so an adapter moved into a package of its
+own (#328) carries no copy of the rule. The inbound files add config isolation on top of it.
 
 **One thing the split nearly broke, recorded because it would have failed silently.** The guard that
 refuses a real credential read from the tracked copy tested the *immediate* parent directory. Under

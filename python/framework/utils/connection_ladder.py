@@ -2,16 +2,17 @@
 FiniexTestingIDE - Connection Ladder
 One retry ladder and one give-up rule for every external connection (#473).
 
-Seven connections reach outside this process — the signal stream, the producer registry and
-its identity probe, the broker's tick socket, its REST endpoint, its warmup bars and its
-configuration. Before this unit each decided for itself what to do when the other side did
-not answer, and the ones carrying the most consequence decided nothing at all.
+Every connection that reaches outside this process answers to it — the signal stream, the
+producer registry, the broker's socket and REST endpoint, the operator alert channel among them;
+the full list is in docs/architecture/external_connection_policy.md. Before this unit each
+decided for itself what to do when the other side did not answer, and the ones carrying the most
+consequence decided nothing at all.
 
-What is centralized is the CLASSIFICATION and the arithmetic, not the waiting. The four
-callers wait with four different primitives — a stop event, an asyncio sleep, a plain
-blocking sleep on the broker worker thread, and in the tick loop no wait at all because a
-cadenced caller skips its cycle instead. A ladder that owned the wait would need a plugin
-point to serve them; one that owns only the decision needs none.
+What is centralized is the CLASSIFICATION and the arithmetic, not the waiting. The callers wait
+with different primitives — a stop event, an asyncio sleep, a blocking sleep on a thread of
+their own, and in the tick loop no wait at all because a cadenced caller skips its cycle
+instead. A ladder that owned the wait would need a plugin point to serve them; one that owns
+only the decision needs none.
 
 REPORT RULE: an external call that decides for itself how often to retry, or turns a
 transport fault into a domain answer (a rejection, an empty result), bypasses this unit —

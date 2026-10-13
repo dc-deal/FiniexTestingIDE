@@ -14,15 +14,15 @@ import json
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+from python.configuration.credentials_cascade import (
+    TRACKED_CREDENTIALS_DIR,
+    WORKSPACE_CREDENTIALS_DIR,
+)
 from python.framework.exceptions.api_errors import ApiConfigurationError
 from python.framework.utils.config_merge_utils import (
     is_config_isolation_active,
     without_meta_keys,
 )
-
-# The cascade every credential in this project uses, most specific first.
-WORKSPACE_CREDENTIALS_DIR = 'user_configs/credentials'
-TRACKED_CREDENTIALS_DIR = 'configs/credentials'
 
 
 def inbound_credential_dirs() -> Tuple[str, ...]:

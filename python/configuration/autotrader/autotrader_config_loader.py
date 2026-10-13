@@ -30,6 +30,7 @@ from python.framework.types.config_types.autotrader_defaults_config_types import
     StatePersistenceDefaults,
     TickSourceConfig,
 )
+from python.framework.types.config_types.operator_alerts_config_types import OperatorAlertsConfig
 from python.framework.types.config_types.performance_tracking_config_types import (
     AutoTraderPerformanceTrackingConfig,
 )
@@ -80,6 +81,7 @@ _KNOWN_API_MONITOR_KEYS: frozenset          = _allowlist_from(ApiMonitorConfig)
 _KNOWN_STATE_PERSISTENCE_KEYS: frozenset    = _allowlist_from(StatePersistenceDefaults)
 _KNOWN_COLD_START_KEYS: frozenset           = _allowlist_from(ColdStartDefaults)
 _KNOWN_SESSION_END_KEYS: frozenset          = _allowlist_from(SessionEndDefaults)
+_KNOWN_OPERATOR_ALERTS_KEYS: frozenset      = _allowlist_from(OperatorAlertsConfig)
 _KNOWN_CAPITAL_KEYS: frozenset              = _allowlist_from(CapitalDefaults)
 _KNOWN_DEPLOYMENT_KEYS: frozenset           = _allowlist_from(DeploymentConfig)
 _KNOWN_PERFORMANCE_TRACKING_KEYS: frozenset = _allowlist_from(AutoTraderPerformanceTrackingConfig)
@@ -166,6 +168,7 @@ def load_autotrader_config(config_path: str) -> AutoTraderConfig:
     state_persistence_raw = raw.get('state_persistence', {})
     cold_start_raw = raw.get('cold_start', {})
     session_end_raw = raw.get('session_end', {})
+    operator_alerts_raw = raw.get('operator_alerts', {})
     capital_raw = raw.get('capital', {})
     deployment_raw = raw.get('deployment', None)
     performance_tracking_raw = execution_raw.get('performance_tracking', {})
@@ -207,6 +210,7 @@ def load_autotrader_config(config_path: str) -> AutoTraderConfig:
     check_unknown_keys('state_persistence',   state_persistence_raw, _KNOWN_STATE_PERSISTENCE_KEYS)
     check_unknown_keys('cold_start',          cold_start_raw,   _KNOWN_COLD_START_KEYS)
     check_unknown_keys('session_end',         session_end_raw,  _KNOWN_SESSION_END_KEYS)
+    check_unknown_keys('operator_alerts',     operator_alerts_raw, _KNOWN_OPERATOR_ALERTS_KEYS)
     check_unknown_keys('capital',             capital_raw,      _KNOWN_CAPITAL_KEYS)
     check_unknown_keys('deployment',          deployment_raw,   _KNOWN_DEPLOYMENT_KEYS)
     check_unknown_keys('tick_source',         tick_source_raw,  _KNOWN_TICK_SOURCE_KEYS)
@@ -252,6 +256,22 @@ def load_autotrader_config(config_path: str) -> AutoTraderConfig:
     else:
         state_persistence_enabled_resolved = state_persistence_raw.get('enabled', True)
 
+    # Operator alerts and the liveness ping auto-disable for mock adapters too (#235): a mock
+    # session is a replay, and one switched on through user_configs/app_config.json would page
+    # the operator for every test run — and ping the live bot's monitor check. A profile that
+    # sets `enabled` explicitly keeps its own answer (same provenance pattern as above).
+    profile_alerts_raw = raw_profile_only.get('operator_alerts', {})
+    telegram_raw = operator_alerts_raw.get('telegram', {})
+    liveness_raw = operator_alerts_raw.get('liveness', {})
+    if adapter_type_resolved == 'mock' and 'enabled' not in profile_alerts_raw.get('telegram', {}):
+        telegram_enabled_resolved = False
+    else:
+        telegram_enabled_resolved = telegram_raw.get('enabled', False)
+    if adapter_type_resolved == 'mock' and 'enabled' not in profile_alerts_raw.get('liveness', {}):
+        liveness_enabled_resolved = False
+    else:
+        liveness_enabled_resolved = liveness_raw.get('enabled', False)
+
     run_purpose = read_declared_purpose(raw_profile_only, path.name, is_user_owned(path))
 
     config = AutoTraderConfig(
@@ -288,6 +308,10 @@ def load_autotrader_config(config_path: str) -> AutoTraderConfig:
         cold_start=ColdStartDefaults(**_block(cold_start_raw)),
         session_end=SessionEndDefaults(**_block(session_end_raw)),
         capital=CapitalDefaults(**_block(capital_raw)),
+        operator_alerts=OperatorAlertsConfig(**_block(
+            operator_alerts_raw,
+            telegram={**telegram_raw, 'enabled': telegram_enabled_resolved},
+            liveness={**liveness_raw, 'enabled': liveness_enabled_resolved})),
         deployment=DeploymentConfig(**_block(deployment_raw)),
         state_persistence=StatePersistenceDefaults(**_block(state_persistence_raw, enabled=state_persistence_enabled_resolved)),
         config_path=path,

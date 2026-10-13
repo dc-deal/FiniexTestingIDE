@@ -7,6 +7,7 @@ AutoTraderConfig profile type defined in autotrader_config_types.py.
 """
 from typing import Literal
 
+from python.framework.types.config_types.operator_alerts_config_types import OperatorAlertsConfig
 from python.framework.types.config_types.strict_config_model import StrictConfigModel
 
 from python.framework.types.config_types.performance_tracking_config_types import (
@@ -328,3 +329,4 @@ class AutotraderDefaultsConfig(StrictConfigModel):
     cold_start: ColdStartDefaults = ColdStartDefaults()
     session_end: SessionEndDefaults = SessionEndDefaults()
     tick_source: TickSourceConfig = TickSourceConfig()
+    operator_alerts: OperatorAlertsConfig = OperatorAlertsConfig()

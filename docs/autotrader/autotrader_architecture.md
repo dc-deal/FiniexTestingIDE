@@ -8,8 +8,8 @@ nothing above them does.
 
 This document is the entry point: what the thing is, how a tick travels through it, where every
 file lives, and which document answers which question. **It is deliberately short.** The detail
-sits in the six documents below, because a single file of fifteen hundred lines is one nobody
-reads to the end.
+sits in the documents below, because a single file of fifteen hundred lines is one nobody reads
+to the end.
 
 FiniexAutoTrader is the counterpart of the backtesting `process_tick_loop`. It connects tick
 sources through workers and decision logic to the `LiveTradeExecutor`, using the same algorithm
@@ -62,6 +62,7 @@ session. Same classes, same interfaces. Only the runner and the executor change.
 | [autotrader_capital_and_safety.md](autotrader_capital_and_safety.md) | what the bot may spend, committed funds, whose account it is, protective levels, the circuit breaker |
 | [autotrader_venue_integration.md](autotrader_venue_integration.md) | broker config acquisition, the Kraken execution tier, polling, the drift audit, the connection ladder |
 | [autotrader_observability.md](autotrader_observability.md) | the live console, the clipping monitor, the three log channels |
+| [unattended_operation.md](unattended_operation.md) | what reaches the operator when nobody watches: Telegram alerts, the liveness ping, the supervisor |
 
 Outside this folder, and owned there rather than here: the execution layer
 ([architecture_execution_layer.md](../architecture/architecture_execution_layer.md)), the live
