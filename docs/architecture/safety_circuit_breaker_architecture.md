@@ -211,10 +211,16 @@ so a single "worst daily loss" across a month would be a maximum across thirty d
 denominators. Each row names its own day-start baseline. The console prints the deepest day plus
 every day that tripped a limit; the artifact carries them all.
 
-**What the hard stop did.** Whether it fired, what tripped it, and whether the book was confirmed
-flat. `flatten_completed` is `null` when it never fired, which a reader must be able to tell apart
-from "fired and did not finish" — a drain still running when the session ended for another reason is
-resolved to `false` at capture, with the positions still open at the venue named.
+**What the hard stop did.** Whether it fired, what tripped it, and how it ended —
+`flatten_outcome`: `complete` (the closes landed, the book is flat), `holdings_kept` (spot holdings
+kept on purpose because `spot_liquidate_to_quote` is off, named in `flatten_kept`) or `unconfirmed`
+(closes sent and not confirmed, named in `flatten_unconfirmed`). The middle one is kept apart from
+the last on purpose: both leave something open at the venue, but only an unconfirmed close asks the
+operator to check the account, and the same words beside a kept holding invite the sale that
+realises the loss the switch keeps unrealised. `flatten_outcome` is `null` when the stop never
+fired, which a reader must be able to tell apart from every outcome — a drain still running when the
+session ended for another reason is resolved to `unconfirmed` at capture, with the positions still
+open at the venue named.
 
 ### It is written even when the limits are OFF
 

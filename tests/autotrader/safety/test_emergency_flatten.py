@@ -29,6 +29,7 @@ from python.framework.types.autotrader_types.autotrader_config_types import (
     SafetyConfig,
 )
 from python.framework.types.autotrader_types.operator_alert_types import OperatorAlertKind
+from python.framework.types.autotrader_types.safety_session_types import FlattenOutcome
 from python.framework.types.config_types.market_config_types import TradingModel
 from python.framework.types.decision_event_types import SessionEndSeverity
 from tests.shared.operator_alert_recorder import OperatorAlertRecorder
@@ -64,6 +65,9 @@ class _FlattenStub:
         self._operator_alerts = OperatorAlertRecorder()   # #235 — the hard stop alerts out of band
         self._flatten_sent_at_tick = None
         self._flatten_reason = ''
+        self._flatten_outcome = None
+        self._flatten_unconfirmed: List[str] = []
+        self._flatten_kept: List[str] = []
         self._safety_blocked = False                       # no soft threshold is configured
         self.closed: List[str] = []
         self.session_end: List[tuple] = []
@@ -243,6 +247,7 @@ class TestTheSessionEndsOnlyAfterTheFillsArrive:
         reason, severity = stub.session_end[0]
         assert severity is SessionEndSeverity.EMERGENCY
         assert 'complete' in reason
+        assert stub._flatten_outcome is FlattenOutcome.COMPLETE
 
     def test_it_ends_anyway_at_the_ceiling_and_names_what_is_still_open(self):
         """
@@ -261,6 +266,8 @@ class TestTheSessionEndsOnlyAfterTheFillsArrive:
         assert severity is SessionEndSeverity.EMERGENCY
         assert 'incomplete' in reason
         assert any('pos_1' in m and 'pos_2' in m for m in stub._logger.errors)
+        assert stub._flatten_outcome is FlattenOutcome.UNCONFIRMED
+        assert (stub._flatten_unconfirmed, stub._flatten_kept) == (['pos_1', 'pos_2'], [])
         # #235 — and the operator is told out of band to check the account by hand
         assert stub._operator_alerts.titles[-1] == (
             'EMERGENCY STOP incomplete — check the account by hand')
@@ -308,6 +315,9 @@ class TestSpotIsGatedAndTheAsymmetryIsDeliberate:
         # #235: one alert — a second one would invite selling by hand, which realises the very
         # loss the switch keeps unrealised
         assert stub._operator_alerts.kinds == [OperatorAlertKind.EMERGENCY_STOP]
+        # and the record says KEPT, never "not confirmed" — the same invitation, one layer down
+        assert stub._flatten_outcome is FlattenOutcome.HOLDINGS_KEPT
+        assert (stub._flatten_kept, stub._flatten_unconfirmed) == (['pos_1', 'pos_2'], [])
 
     def test_with_the_switch_on_the_holding_is_sold(self):
         stub = _stub(trading_model=TradingModel.SPOT, pct_hard=20.0, spot_liquidate=True)

@@ -74,8 +74,8 @@ and waits for a human, this CLOSES. Driven against the real `_check_emergency_fl
 |-------|-------------------|
 | `TestItFiresOnlyWhenItShould` | a hard breach closes everything; a loss inside the threshold closes nothing; the master switch and `enabled=False` both close nothing; the absolute threshold fires too; it sends ONCE, not on every tick — a second round would double-sell what the first is already closing |
 | `TestItBlocksEntriesWithoutASoftThreshold` | once it fires, new entries are blocked with no soft threshold configured — through the drain and on the spot path that keeps its holdings — so an entry cannot keep the book from reaching flat |
-| `TestTheSessionEndsOnlyAfterTheFillsArrive` | it does not end while positions are open (EMERGENCY means immediate exit, and the fills arrive later); it ends once the book is flat; it ends anyway at the drain ceiling and NAMES what is still open; it ends once, not on every later tick |
-| `TestSpotIsGatedAndTheAsymmetryIsDeliberate` | a spot holding is not sold by default and the operator hears why; the session still ends — without a second "check the account by hand" alarm, since nothing was sent; with the switch on it is sold |
+| `TestTheSessionEndsOnlyAfterTheFillsArrive` | it does not end while positions are open (EMERGENCY means immediate exit, and the fills arrive later); it ends once the book is flat (`complete`); it ends anyway at the drain ceiling and NAMES what is still open (`unconfirmed`); it ends once, not on every later tick |
+| `TestSpotIsGatedAndTheAsymmetryIsDeliberate` | a spot holding is not sold by default and the operator hears why; the session still ends — without a second "check the account by hand" alarm, since nothing was sent, and the record says `holdings_kept`; with the switch on it is sold |
 | `TestACloseThatCannotBeSent` | every position is attempted and each failure is named — a close that failed silently is still open at the venue |
 
 ### Level 1 — The Session Record (`test_safety_report.py`, #356 Phase C / #314)
@@ -89,7 +89,8 @@ bound to a stub, the DERIVE half against the real builder. Nothing here renders.
 | `TestTheTwoExtremesCanBeTwoMoments` | under a high-water mark the deepest amount and the deepest share are different instants and both are kept; under the default fixed baseline they coincide |
 | `TestTheBlockCountsEngagements` | a block held over many ticks counts once; cleared and returned counts twice; a session that ended clear still reports that it happened |
 | `TestOneRowPerDay` | a day boundary files the day that ended; the new day starts from zero; the final incomplete day is filed by the capture; capturing twice does not file it twice; a day that tripped its own limit is marked |
-| `TestAnUnresolvedHardStopIsNotReportedAsNeverFired` | a drain still running at session end resolves to "not confirmed" with the open positions named; a hard stop that never fired stays `None` |
+| `TestAnUnresolvedHardStopIsNotReportedAsNeverFired` | a drain still running at session end resolves to `unconfirmed` with the open positions named; a hard stop that never fired stays `None` |
+| `TestKeptHoldingsAreNotAnUnconfirmedClose` | spot holdings kept on purpose travel as `holdings_kept`, never as an unconfirmed close; the closing block says "kept, not sold" and asks for nothing, while an unconfirmed close still says "check the account by hand" and a completed stop says flat |
 | `TestTheReportNamesItsDenominator` | the baseline record travels whole; a carried baseline is flagged; a freshly struck one is not |
 | `TestHowCloseItCame` | the share of the configured limit; `None` rather than 0.0 when no limit is configured; the NEARER of the percentage and absolute limits wins; the hard threshold is measured separately |
 | `TestTheFloorIsOneQuantityWithTwoSpellings` | the report names the config key the account model writes, so one limit is not read as two |

@@ -13,6 +13,7 @@ from typing import Any, Dict, Optional
 
 from pydantic import BaseModel, Field, computed_field
 
+from python.framework.types.autotrader_types.safety_session_types import FlattenOutcome
 from python.framework.types.live_types.broker_truth_types import (
     BrokerTruthPart,
     BrokerTruthReadReason,
@@ -2437,11 +2438,13 @@ class SafetyReport(RunScopedReport):
         worst_day_loss_pct: That day's loss as a share of ITS OWN day-start baseline
         flatten_fired: Whether the HARD stop tripped
         flatten_reason: What tripped it, with its numbers
-        flatten_completed: Whether the book was confirmed flat before the session ended.
-            None when the hard stop never fired — which a reader must be able to tell apart
-            from "fired and did not finish"
-        flatten_unconfirmed: Positions still open when the session ended anyway. These are
-            at the venue and nobody has confirmed otherwise
+        flatten_outcome: How the hard stop ended — complete, holdings_kept or unconfirmed.
+            None when it never fired, which a reader must be able to tell apart from every
+            outcome it can have
+        flatten_unconfirmed: Positions whose close was sent and not confirmed. These are at
+            the venue and nobody has confirmed otherwise
+        flatten_kept: Spot holdings the hard stop kept on purpose (spot_liquidate_to_quote
+            off): open at the venue by decision, not by failure
     """
     symbol: str = ''
     enabled: bool = False
@@ -2466,8 +2469,9 @@ class SafetyReport(RunScopedReport):
     worst_day_loss_pct: float = 0.0
     flatten_fired: bool = False
     flatten_reason: str = ''
-    flatten_completed: Optional[bool] = None
+    flatten_outcome: Optional[FlattenOutcome] = None
     flatten_unconfirmed: list[str] = []
+    flatten_kept: list[str] = []
 
 
 class SignalUsageRow(BaseModel):

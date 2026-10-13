@@ -110,8 +110,9 @@ def build_safety_report_from_session(
         worst_day_loss_pct=worst_day.worst_loss_pct if worst_day is not None else 0.0,
         flatten_fired=record.flatten_fired,
         flatten_reason=record.flatten_reason,
-        flatten_completed=record.flatten_completed,
+        flatten_outcome=record.flatten_outcome,
         flatten_unconfirmed=list(record.flatten_unconfirmed),
+        flatten_kept=list(record.flatten_kept),
     )
 
 

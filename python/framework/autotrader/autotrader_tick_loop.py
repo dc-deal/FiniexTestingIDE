@@ -63,6 +63,7 @@ from python.framework.types.autotrader_types.operator_alert_types import (
     OperatorAlertLevel,
 )
 from python.framework.types.autotrader_types.safety_session_types import (
+    FlattenOutcome,
     SafetyDayRecord,
     SafetySessionRecord,
 )
@@ -307,8 +308,9 @@ class AutotraderTickLoop:
         self._day_worst_loss_pct: float = 0.0
         self._day_worst_loss_at: str = ''
         self._day_limit_hit: bool = False
-        self._flatten_completed: Optional[bool] = None
+        self._flatten_outcome: Optional[FlattenOutcome] = None
         self._flatten_unconfirmed: List[str] = []
+        self._flatten_kept: List[str] = []
 
 
         # Last rejection (displayed until overwritten by next rejection)
@@ -1411,10 +1413,10 @@ class AutotraderTickLoop:
         self._safety_current_day = None
 
         flatten_fired = bool(self._flatten_reason)
-        flatten_completed = self._flatten_completed
+        flatten_outcome = self._flatten_outcome
         flatten_unconfirmed = list(self._flatten_unconfirmed)
-        if flatten_fired and flatten_completed is None:
-            flatten_completed = False
+        if flatten_fired and flatten_outcome is None:
+            flatten_outcome = FlattenOutcome.UNCONFIRMED
             flatten_unconfirmed = [
                 position.position_id
                 for position in self._executor.portfolio.get_open_positions()]
@@ -1435,8 +1437,9 @@ class AutotraderTickLoop:
             days=list(self._safety_days),
             flatten_fired=flatten_fired,
             flatten_reason=self._flatten_reason,
-            flatten_completed=flatten_completed,
+            flatten_outcome=flatten_outcome,
             flatten_unconfirmed=flatten_unconfirmed,
+            flatten_kept=list(self._flatten_kept),
         )
 
     def _spot_quantities(self) -> BaselineQuantities:
@@ -1678,7 +1681,7 @@ class AutotraderTickLoop:
             return
         open_positions = self._executor.portfolio.get_open_positions()
         if not open_positions:
-            self._flatten_completed = True
+            self._flatten_outcome = FlattenOutcome.COMPLETE
             self._executor.request_session_end(
                 f'emergency flatten complete ({self._flatten_reason})',
                 SessionEndSeverity.EMERGENCY)
@@ -1689,9 +1692,10 @@ class AutotraderTickLoop:
             # Spot holdings kept on purpose (safety.spot_liquidate_to_quote is off): no close was
             # sent, and the first error line already said the holdings are not sold. The session
             # ends — without a second alarm that would invite selling by hand, which realises
-            # exactly the loss the switch exists to keep unrealised (#235).
-            self._flatten_completed = False
-            self._flatten_unconfirmed = [p.position_id for p in open_positions]
+            # exactly the loss the switch exists to keep unrealised (#235). The record says KEPT,
+            # never "not confirmed": that phrase asks the operator to check the account by hand.
+            self._flatten_outcome = FlattenOutcome.HOLDINGS_KEPT
+            self._flatten_kept = [p.position_id for p in open_positions]
             self._executor.request_session_end(
                 f'emergency stop, spot holdings kept ({self._flatten_reason})',
                 SessionEndSeverity.EMERGENCY)
@@ -1700,7 +1704,7 @@ class AutotraderTickLoop:
 
         waited = ticks_processed - self._flatten_sent_at_tick
         if waited >= _FLATTEN_DRAIN_TICKS:
-            self._flatten_completed = False
+            self._flatten_outcome = FlattenOutcome.UNCONFIRMED
             self._flatten_unconfirmed = [p.position_id for p in open_positions]
             still_open = ', '.join(p.position_id for p in open_positions)
             self._logger.error(

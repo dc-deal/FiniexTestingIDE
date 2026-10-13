@@ -24,6 +24,7 @@ from python.framework.types.api.report_types import (
     WarningsErrorsReport,
 )
 from python.framework.types.autotrader_types.autotrader_result_types import AutoTraderResult
+from python.framework.types.autotrader_types.safety_session_types import FlattenOutcome
 from python.framework.types.live_types.broker_truth_types import BrokerTruthPart
 from python.framework.types.live_types.reconciliation_types import ReconcileState
 from python.framework.types.log_level import LogLevel
@@ -193,8 +194,15 @@ class AutotraderSessionSummary:
 
         if report.flatten_fired:
             print(renderer.red(f'  🚨 HARD STOP fired: {report.flatten_reason}'))
-            if report.flatten_completed:
+            if report.flatten_outcome is FlattenOutcome.COMPLETE:
                 print('     the book was confirmed flat before the session ended')
+            elif report.flatten_outcome is FlattenOutcome.HOLDINGS_KEPT:
+                # Kept by decision, not left by a failure — "check the account by hand" here
+                # would invite the sale that realises the loss the switch keeps unrealised
+                kept = ', '.join(report.flatten_kept) or 'none reported'
+                print(renderer.yellow(
+                    f'     spot holdings kept, not sold (safety.spot_liquidate_to_quote is off): '
+                    f'{kept} — the loss stays unrealised'))
             else:
                 still = ', '.join(report.flatten_unconfirmed) or 'none reported'
                 print(renderer.red(

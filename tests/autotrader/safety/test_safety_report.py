@@ -22,15 +22,19 @@ from types import SimpleNamespace
 from typing import List, Optional
 
 from python.framework.autotrader.autotrader_tick_loop import AutotraderTickLoop
+from python.framework.autotrader.operator_alerts.alert_episode import AlertEpisode
 from python.framework.autotrader.risk_baseline_tracker import RiskBaselineTracker
 from python.framework.reporting.builders.safety_report_builder import (
     build_safety_report_from_session,
 )
+from python.framework.reporting.console.autotrader_session_summary import AutotraderSessionSummary
 from python.framework.types.autotrader_types.autotrader_config_types import (
     AutoTraderConfig,
     SafetyConfig,
 )
+from python.framework.types.autotrader_types.autotrader_result_types import AutoTraderResult
 from python.framework.types.autotrader_types.safety_session_types import (
+    FlattenOutcome,
     SafetyDayRecord,
     SafetySessionRecord,
 )
@@ -40,7 +44,7 @@ from python.framework.types.persistence_types import (
     BaselineOrigin,
     RiskBaseline,
 )
-from python.framework.autotrader.operator_alerts.alert_episode import AlertEpisode
+from python.framework.utils.console_renderer import ConsoleRenderer
 from tests.shared.operator_alert_recorder import OperatorAlertRecorder
 
 _DEPLOY = datetime(2026, 9, 10, 8, 0, tzinfo=timezone.utc)
@@ -107,8 +111,9 @@ class _LoopStub:
         self._day_limit_hit = False
         self._flatten_sent_at_tick = None
         self._flatten_reason = ''
-        self._flatten_completed = None
+        self._flatten_outcome = None
         self._flatten_unconfirmed: List[str] = []
+        self._flatten_kept: List[str] = []
 
         stub = self
         positions = [SimpleNamespace(position_id=p) for p in (open_positions or [])]
@@ -389,7 +394,7 @@ class TestAnUnresolvedHardStopIsNotReportedAsNeverFired:
     """
     The session can end for a reason of its own while the closes are still in flight.
 
-    `flatten_completed=None` means the hard stop never fired. Leaving an unfinished drain at
+    `flatten_outcome=None` means the hard stop never fired. Leaving an unfinished drain at
     None would hide open positions at the venue behind a field that reads as "not
     applicable".
     """
@@ -402,7 +407,7 @@ class TestAnUnresolvedHardStopIsNotReportedAsNeverFired:
         record = stub.capture()
 
         assert record.flatten_fired is True
-        assert record.flatten_completed is False
+        assert record.flatten_outcome is FlattenOutcome.UNCONFIRMED
         assert record.flatten_unconfirmed == ['pos_1']
 
     def test_a_hard_stop_that_never_fired_stays_none(self):
@@ -410,8 +415,61 @@ class TestAnUnresolvedHardStopIsNotReportedAsNeverFired:
         record = _LoopStub(baseline=_baseline(), open_positions=['pos_1']).capture()
 
         assert record.flatten_fired is False
-        assert record.flatten_completed is None
-        assert record.flatten_unconfirmed == []
+        assert record.flatten_outcome is None
+        assert (record.flatten_unconfirmed, record.flatten_kept) == ([], [])
+
+
+class TestKeptHoldingsAreNotAnUnconfirmedClose:
+    """
+    Spot holdings the hard stop keeps on purpose are open at the venue exactly like a close that
+    never landed — and only the second asks the operator to look. The record and the closing
+    block keep them apart: "check the account by hand" beside a kept holding invites the sale
+    that realises the loss `spot_liquidate_to_quote: false` keeps unrealised.
+    """
+
+    @staticmethod
+    def _fired(outcome: FlattenOutcome, kept=(), unconfirmed=()) -> SafetySessionRecord:
+        stub = _LoopStub(baseline=_baseline(), open_positions=['pos_1'])
+        stub._flatten_reason = 'hard drawdown 25.0% > 20.0%'
+        stub._flatten_outcome = outcome
+        stub._flatten_kept = list(kept)
+        stub._flatten_unconfirmed = list(unconfirmed)
+        return stub.capture()
+
+    @staticmethod
+    def _closing_block(record: SafetySessionRecord, capsys) -> str:
+        report = build_safety_report_from_session('run1', record, SafetyConfig(), 'ETHUSD')
+        capsys.readouterr()
+        AutotraderSessionSummary(AutoTraderResult(), None, None,
+                                 safety_report=report).render(ConsoleRenderer())
+        return capsys.readouterr().out
+
+    def test_kept_holdings_travel_as_kept_not_as_unconfirmed(self):
+        record = self._fired(FlattenOutcome.HOLDINGS_KEPT, kept=['pos_1'])
+        report = build_safety_report_from_session('run1', record, SafetyConfig(), 'ETHUSD')
+
+        assert report.flatten_outcome is FlattenOutcome.HOLDINGS_KEPT
+        assert (report.flatten_kept, report.flatten_unconfirmed) == (['pos_1'], [])
+
+    def test_the_closing_block_says_kept_and_asks_for_nothing(self, capsys):
+        out = self._closing_block(
+            self._fired(FlattenOutcome.HOLDINGS_KEPT, kept=['pos_1']), capsys)
+
+        assert 'spot holdings kept, not sold' in out and 'pos_1' in out
+        assert 'Check the account by hand' not in out
+
+    def test_an_unconfirmed_close_still_asks_for_a_look(self, capsys):
+        out = self._closing_block(
+            self._fired(FlattenOutcome.UNCONFIRMED, unconfirmed=['pos_1']), capsys)
+
+        assert 'NOT confirmed flat — still open at the venue: pos_1' in out
+        assert 'Check the account by hand' in out
+
+    def test_a_completed_stop_says_flat(self, capsys):
+        out = self._closing_block(self._fired(FlattenOutcome.COMPLETE), capsys)
+
+        assert 'the book was confirmed flat' in out
+        assert 'NOT confirmed' not in out
 
 
 class TestTheReportNamesItsDenominator:

@@ -17,9 +17,28 @@ Captured here, derived in the builder, rendered nowhere else (#391).
 """
 
 from dataclasses import dataclass, field
+from enum import StrEnum
 from typing import List, Optional
 
 from python.framework.types.persistence_types import RiskBaseline
+
+
+class FlattenOutcome(StrEnum):
+    """
+    How a hard stop that fired ended (#356).
+
+    Three answers, because two of them read alike in a bare "flat or not" and must not: a spot
+    holding the stop keeps on purpose is open at the venue exactly like a close that never
+    landed, and only the second one asks the operator to look.
+
+    COMPLETE: the closes landed, the book was confirmed flat
+    HOLDINGS_KEPT: spot holdings kept on purpose — `safety.spot_liquidate_to_quote` is off, so no
+        close was sent and the loss stays unrealised
+    UNCONFIRMED: closes were sent and not confirmed before the session ended
+    """
+    COMPLETE = 'complete'
+    HOLDINGS_KEPT = 'holdings_kept'
+    UNCONFIRMED = 'unconfirmed'
 
 
 @dataclass
@@ -81,10 +100,11 @@ class SafetySessionRecord:
         days: One row per trading day the session ran through
         flatten_fired: Whether the HARD stop tripped
         flatten_reason: What tripped it, with its numbers
-        flatten_completed: Whether the book was confirmed flat before the session ended.
-            None when the hard stop never fired — which is not the same as False, and a
-            reader must be able to tell "did not fire" from "fired and did not finish"
-        flatten_unconfirmed: The positions still open when the session ended anyway
+        flatten_outcome: How the hard stop ended. None when it never fired — which a reader
+            must be able to tell apart from every outcome it can have
+        flatten_unconfirmed: Positions whose close was sent and not confirmed — still open at
+            the venue, and nobody has confirmed otherwise
+        flatten_kept: Spot holdings the hard stop kept on purpose, no close sent
     """
     enabled: bool = False
     spot_mode: bool = False
@@ -100,5 +120,6 @@ class SafetySessionRecord:
     days: List[SafetyDayRecord] = field(default_factory=list)
     flatten_fired: bool = False
     flatten_reason: str = ''
-    flatten_completed: Optional[bool] = None
+    flatten_outcome: Optional[FlattenOutcome] = None
     flatten_unconfirmed: List[str] = field(default_factory=list)
+    flatten_kept: List[str] = field(default_factory=list)
