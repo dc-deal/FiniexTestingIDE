@@ -231,9 +231,9 @@ first trade arrived — the venue had not yet committed the period that ended si
 could not be read again — and stopped before that tick's workers and decision ran. It is graded
 `FAILED` like the others, so whoever relaunches sessions relaunches it, and it is SHOWN as what it
 is: the console prints a `⛔ REFUSED AT THE FIRST TICK — its workers and decision did not run` block
-instead of `RUNTIME ERROR — SESSION ABORTED`, the session log carries the reason as an error, and
-the summary reads `Shutdown: emergency (refused at the first tick)`. A restart a few seconds later
-closes it.
+instead of `RUNTIME ERROR — SESSION ABORTED`, the session log carries the reason as an error, the
+summary reads `Shutdown: emergency (refused at the first tick)`, and the served warnings-errors
+outcome carries `refused_at_first_tick: true`. A restart a few seconds later closes it.
 
 It is not a promise that nothing reached the venue. The tick's bars are rendered after the
 executor's part of the tick, so the stop and take-profit check of that first tick has already run —

@@ -186,7 +186,10 @@ ticks, its `data_sentiment_type` for the signals. A stale-data stress event name
 stale in `stale_data_source`. See [Stress Test](stress_test.md).
 
 **data window** — The market window one run unit was declared to cover (`data_windows` on the run
-header): a start, and an end unless it is open. Not a span over several units.
+header): a start, and an end unless it is open. Not a span over several units. On this side a
+*window* is always a span of TIME — the served `window_start`, `window_end`, `window_count` and
+`windows` mean the same — never a docked panel: that is the FiniexViewer's `window`, defined in its
+own glossary.
 
 **decision basis** — The fresh / stale / blind counts of the inputs a decision was made on. See
 [Signal Data Source](data_pipeline/signal_data_source.md).
@@ -443,6 +446,13 @@ where tick-processing time goes.
 
 **real-money session** — A live-adapter session with `dry_run` false: its orders are placed at the
 venue and move the account.
+
+**refused at the first tick** (`refused_at_first_tick`) — A live-adapter session that stopped at its
+first tick because its *warmup history* could not be completed there: the venue had not yet
+committed the period that ended since the boot read, or could not be read again. A refusal of the
+SESSION, never of an order — no order is *denied* or *rejected* by it. Graded `failed` like any
+emergency. The tick's workers and decision did not run, but the executor's stop and take-profit
+check of that tick may have sent a close. See [Warmup History](architecture/warmup_history.md).
 
 **rendered configuration** (`rendered_config_id`) — What an AutoTrader session RAN with, as
 opposed to the profile file it was GIVEN: the profile with the `app_config.autotrader` layer merged

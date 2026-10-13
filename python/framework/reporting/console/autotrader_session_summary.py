@@ -245,11 +245,15 @@ class AutotraderSessionSummary:
         # read like a crash on the operator's own screen.
         operator_stop = ' (operator stop)' if result.operator_interrupted else ''
         # #588: a refusal at the first tick ends as 'emergency' too, before that tick's workers
-        # and decision ran — named, so it does not read like a crash.
-        refused = ' (refused at the first tick)' if result.refused_at_first_tick else ''
+        # and decision ran — named, so it does not read like a crash. Read from the outcome
+        # model, which is what the API serves, so the console and a served reader agree.
+        refused_at_first_tick = bool(
+            self._warnings_errors_report
+            and self._warnings_errors_report.outcome.refused_at_first_tick)
+        refused = ' (refused at the first tick)' if refused_at_first_tick else ''
         print(f'  Shutdown:       {result.shutdown_mode}{operator_stop}{refused}')
         if result.shutdown_mode == 'emergency' and result.emergency_reason:
-            if result.refused_at_first_tick:
+            if refused_at_first_tick:
                 print(renderer.yellow(
                     f'  ⛔ REFUSED AT THE FIRST TICK: {result.emergency_reason}'))
             else:

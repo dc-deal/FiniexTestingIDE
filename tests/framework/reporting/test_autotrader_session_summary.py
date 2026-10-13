@@ -12,12 +12,16 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
+from python.framework.reporting.builders.warnings_errors_report_builder import (
+    build_warnings_errors_report_from_session,
+)
 from python.framework.reporting.console.autotrader_session_summary import AutotraderSessionSummary
 from python.framework.types.api.report_types import (
     ReconcileDivergenceRow,
     VenueAccountReport,
     VenueAccountRow,
     VenueSnapshotRow,
+    WarningsErrorsReport,
 )
 from python.framework.types.autotrader_types.autotrader_result_types import AutoTraderResult
 from python.framework.types.live_types.broker_truth_types import BrokerTruthPart
@@ -32,13 +36,15 @@ from python.framework.utils.console_renderer import ConsoleRenderer
 
 
 def _render(result: AutoTraderResult, run_dir=None, trade_report=None,
-            venue_account_report: Optional[VenueAccountReport] = None) -> str:
+            venue_account_report: Optional[VenueAccountReport] = None,
+            warnings_errors_report: Optional[WarningsErrorsReport] = None) -> str:
     """Render the closing block and return the captured stdout (ANSI kept)."""
     old = sys.stdout
     sys.stdout = buf = io.StringIO()
     try:
         AutotraderSessionSummary(
             result, trade_report, run_dir,
+            warnings_errors_report=warnings_errors_report,
             venue_account_report=venue_account_report).render(ConsoleRenderer())
     finally:
         sys.stdout = old
@@ -123,10 +129,12 @@ class TestAutotraderSessionSummary:
         assert 'Shutdown:       emergency\n' in crashed
 
     def test_a_refusal_at_the_first_tick_is_named_as_one(self):
-        """#588: stopped before any decision — a refusal, not a crash, on the operator's screen."""
-        out = _render(AutoTraderResult(
+        """#588: a refusal, not a crash, on the operator's screen — read from the served model."""
+        result = AutoTraderResult(
             shutdown_mode='emergency', refused_at_first_tick=True,
-            emergency_reason='ETHUSD M1: the venue has not yet committed the period'))
+            emergency_reason='ETHUSD M1: the venue has not yet committed the period')
+        out = _render(result, warnings_errors_report=build_warnings_errors_report_from_session(
+            '20261013_073000_a1b2c3d4', result, 'p', 'ETHUSD'))
         assert 'Shutdown:       emergency (refused at the first tick)' in out
         assert 'REFUSED AT THE FIRST TICK: ETHUSD M1: the venue has not yet committed' in out
         assert 'EMERGENCY CAUSE' not in out

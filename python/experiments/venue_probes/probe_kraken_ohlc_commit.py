@@ -1,6 +1,9 @@
 """Probe: when does Kraken's OHLC answer commit a period that has just ended, and how does it look?
 
-The question belongs to #588 (the warmup history). A live session reads its warmup from
+The question arose in #588 (the warmup history); #328 owns the probe from there on. It moves the
+Kraken code into a package of its own, which this probe and the recording it writes follow, and
+the release gate re-records with it as long as the gate checks the answer's shape. A live session
+reads its warmup from
 `GET /0/public/OHLC` and takes a row only when two things hold: the period has ended by the instant
 of the read, and the venue has committed it — the answer's `last` field names the newest committed
 period, and the row after it is the one still forming. The seam at the first tick depends on how

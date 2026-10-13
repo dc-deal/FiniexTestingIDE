@@ -33,6 +33,19 @@ reads downwards from the version their fixtures hold until they reach the one be
 A test holds the newest heading in this log to the number the server answers with, so a version
 cannot ship without its entry.
 
+## Version 29 — 2026-10-13 (#588)
+
+A live session that refused at its first tick is told apart from one that crashed.
+
+- `warnings-errors`: the `outcome` carries `refused_at_first_tick` — `true` when a live session
+  stopped at its first tick because the warmup history it starts from could not be completed
+  there: the venue had not yet committed the period that ended since the session read it, or could
+  not be read again. Such a session reads `shutdown_mode: emergency` and is graded `failed`, exactly
+  like a crash, so without this flag the two look the same; the reason is in `emergency_reason`.
+  `false` on every other run and on a backtest.
+
+An addition; no existing field changed. A run recorded before this contract serves `false`.
+
 ## Version 28 — 2026-10-11 (#508)
 
 A run says how many of its fills were booked at the venue's own fee and how many at our estimate,
@@ -103,36 +116,15 @@ by one command — and the run list says which of them is current.
 
 An addition; no existing field changed.
 
-## Version 24 — 2026-10-08 (#576)
-
-Every run says what it is FOR, and under which contract its reports were written.
-
-- The run list: every run carries `run_purpose` — `regular`, `fixture` or `certificate`. A
-  `fixture` run was constructed to show something: every run a test starts, and every run a
-  consumer pins — its numbers are built, not earned. A `certificate` run is a release-gate run
-  whose record becomes a certificate. It is what the run's configuration declares, stamped at the
-  start. For a run recorded before this, the value is filled in when the run index is rebuilt, from
-  the CURRENT declaration of its configuration where that configuration can still be read; `null`
-  before that rebuild and where none is found.
-- The run list: every run carries `report_contract`, the contract its reports were written under.
-  A run older than a contract that added a figure serves that figure as `0` or `null` — compare
-  this number with `/api/v1/contract` to tell an old run from a wrong one. `null` on a run recorded
-  before this.
-- The configuration directory: every row carries `run_purpose` — `regular` when the file declares
-  nothing, `null` when the file could not be read — and `config_description`, the file's
-  `description`, Markdown allowed, `null` when it has none. A `run_purpose` the file misspells, any
-  `run_purpose` in a file whose `origin` is not `configs` — the user's own files always run as
-  `regular` — or a `description` that is not text makes its row `unreadable`, with the reason in
-  `reason`.
-
-All three are additions; no existing field changed.
-
-## Versions 23 and earlier
+## Versions 24 and earlier
 
 One line each. Every one of these moved a shape or a meaning; what they moved is summarised here
 rather than spelled out, because a consumer this far behind needs the list of steps, not each step's
 reasoning. The full text of a compressed version is in this repository's history.
 
+- **Version 24** — 2026-10-08 (#576): Every run says what it is for and under which contract its
+  reports were written — `run_purpose` (`regular`, `fixture`, `certificate`) and `report_contract`
+  on the run list; `run_purpose` and `config_description` on the configuration directory.
 - **Version 23** — 2026-10-07 (#362): Every step of an order's life is recorded —
   `order-events` and `venue-account` were added — and the order counts, the order history and
   the pending-order counters are counted from that record, one status per way an order can end:

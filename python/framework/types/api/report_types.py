@@ -2661,6 +2661,10 @@ class WarningsErrorsOutcome(BaseModel):
     # An operator Ctrl+C also arrives as shutdown_mode='emergency', so the mode alone cannot
     # separate a deliberate stop from a crash — this flag is the discriminator get_outcome() uses.
     operator_interrupted: bool = False
+    # A live session that could not complete its warmup history at its first tick also ends as
+    # 'emergency' and is graded FAILED, but it refused rather than crashed (#588) — this flag
+    # tells the two apart. False on a sim run (not applicable).
+    refused_at_first_tick: bool = False
     # How many entries each channel held, counted HERE the same way in both pipelines — the rows
     # above cannot be counted instead, because the simulation summarizes its whole log pot in ONE
     # warning row while the AutoTrader writes a row per entry. None only where nothing recorded

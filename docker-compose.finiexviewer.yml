@@ -40,6 +40,10 @@ services:
   finiex-viewer:
     image: node:20-alpine
     container_name: finiex-viewer
+    # A small init process runs as PID 1: it passes a stop signal on to npm and the dev server and
+    # reaps their exited children. Without it `sh -c` is PID 1, ignores SIGTERM, and every stop
+    # waits out Docker's grace period before the container is killed.
+    init: true
     working_dir: /app
     volumes:
       - ../FiniexViewer:/app
