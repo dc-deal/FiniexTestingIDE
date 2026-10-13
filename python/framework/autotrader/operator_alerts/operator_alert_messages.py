@@ -7,9 +7,10 @@ Nothing is computed here — a P&L re-derived for a phone notification would be 
 definition of it, and the two would drift apart.
 """
 
-from typing import Dict, Optional, Tuple
+from datetime import date
+from typing import Dict, List, Optional, Tuple
 
-from python.framework.types.api.report_types import RunSummary
+from python.framework.types.api.report_types import RunSummary, RunSummaryCurrency
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
 from python.framework.types.autotrader_types.autotrader_result_types import AutoTraderResult
 from python.framework.types.autotrader_types.operator_alert_types import (
@@ -18,6 +19,7 @@ from python.framework.types.autotrader_types.operator_alert_types import (
 )
 from python.framework.types.log_level import LogLevel
 from python.framework.types.run_outcome_types import RunOutcome
+from python.framework.types.run_results_types import BookingPeriod
 
 # The mark opening every message — the one thing a notification list shows besides the title.
 LEVEL_MARK: Dict[OperatorAlertLevel, str] = {
@@ -125,16 +127,54 @@ def session_ended_text(result: AutoTraderResult, run_summary: Optional[RunSummar
         activity.append('figures unavailable — see the run summary')
     else:
         for row in run_summary.currencies:
-            activity.append(f'{row.total_trades} trade(s)')
-            activity.append(f'net P&L {row.net_pnl:+.2f} {row.currency}')
-            # Realised and valued are kept apart (#492): a holding left open is not in net_pnl
-            if row.unrealized_pnl:
-                activity.append(f'open {row.unrealized_pnl:+.2f} {row.currency}')
+            activity.extend(_figures_parts(row))
     errors = result.count_logged(LogLevel.ERROR)
     if errors:
         activity.append(f'{errors} error(s) logged')
     lines.append(' · '.join(activity))
     return level, title, '\n'.join(lines)
+
+
+def day_closed_text(period: BookingPeriod, trading_day: date) -> Tuple[str, str]:
+    """
+    The message a session sends when a trading day closes: the booking period that day sealed.
+
+    A second distribution of the period, beside its line in the session log and its ledger row
+    — it formats the period's own figures and computes none.
+
+    Args:
+        period: The booking period the day's boundary sealed
+        trading_day: The trading day it covered, in the market's own calendar
+
+    Returns:
+        Title and detail
+    """
+    figures = period.figures
+    closed = f'{figures.final_equity:,.2f}' if figures.final_equity is not None else 'not observed'
+    opened = (f'{period.period_opening_equity:,.2f}'
+              if period.period_opening_equity is not None else 'not observed')
+    parts = _figures_parts(figures) + [
+        f'fees {figures.total_fees:.2f}',
+        f'equity {closed} (opened {opened})',
+        f'deepest dip {-abs(period.period_max_drawdown):,.2f}',
+    ]
+    return f'Day closed — {trading_day.isoformat()}', ' · '.join(parts)
+
+
+def _figures_parts(row: RunSummaryCurrency) -> List[str]:
+    """
+    One account currency's trades and P&L, as both the day and the session end read them.
+
+    Args:
+        row: The figures of one account currency
+
+    Returns:
+        The parts, realised and valued kept apart (#492): a holding left open is not in net_pnl
+    """
+    parts = [f'{row.total_trades} trade(s)', f'net P&L {row.net_pnl:+.2f} {row.currency}']
+    if row.unrealized_pnl:
+        parts.append(f'open {row.unrealized_pnl:+.2f} {row.currency}')
+    return parts
 
 
 def format_duration(seconds: float) -> str:

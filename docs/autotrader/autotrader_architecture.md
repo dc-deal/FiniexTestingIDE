@@ -98,29 +98,48 @@ python/framework/autotrader/
   autotrader_startup.py          Pipeline object creation, phase by phase
   autotrader_pipeline_bundle.py  What setup_pipeline hands back (named, not positional)
   autotrader_logger_bundle.py    The session's three log channels + run identity
+  autotrader_account_model.py    Market, trading model and book currency of the session's account
+  autotrader_broker_config_setup.py  Broker config load + adapter (mock static / live dynamic / live static)
+  autotrader_data_preparer.py    A mock session's one scenario, prepared through the shared MountPreparer (#438)
   autotrader_warmup_preparator.py  Warmup bar loading (mock: the mount's package, live adapter: API) into a WarmupHistory
+  autotrader_display_exporter.py Display frames from the live pipeline state (#400)
   kraken_ohlc_bar_fetcher.py     Kraken OHLC bar fetch (public API, no auth)
+  cold_start_setup.py            Builds the cold start and runs its boot step (#355)
+  cold_start_adopter.py          Takes over what an earlier session left at the venue — or refuses (#355)
+  risk_baseline_tracker.py       The one number every risk limit measures against (#356)
+  dry_run_resolver.py            Whether the session places real orders, answered once
+  field_study_setup.py           Field Study capture + preflight (#332)
+  order_event_stream_setup.py    The order-event stream: opened, registered, read back (#362)
+  rendered_profile_builder.py    What the session runs with, as one document (#547)
   live_clipping_monitor.py       Per-tick timing, clipping detection (#197)
   session_log_retention.py       Prunes rotated daily session logs (#357)
   reporting/
-    autotrader_post_session_report.py   Console + file log summary
-    autotrader_csv_file_report.py       Trade/order CSV export
+    autotrader_report_coordinator.py  Writes every run output from the finished result (#391)
+  operator_alerts/               Telegram alerts and the liveness ping (#235) — unattended_operation.md
   tick_sources/
     abstract_tick_source.py      AbstractTickSource ABC
     mock_tick_source.py          Scenario base-data replay (#438) tick source
     kraken_tick_source.py        Kraken WS v2 tick source (#232)
     kraken_tick_message_parser.py  WS JSON → TickData parser (#232)
+    tick_source_setup.py         Builds the profile's tick source and starts its feeder thread
 
 python/configuration/autotrader/
   autotrader_config_loader.py          JSON → AutoTraderConfig
   abstract_broker_config_fetcher.py    ABC for venue config fetchers
+  broker_config_fetcher_factory.py     Picks the venue's config fetcher
   kraken_config_fetcher.py             Kraken REST API fetch (symbol specs + balance)
 
 python/framework/types/autotrader_types/
   autotrader_config_types.py     AutoTraderConfig, DisplayConfig, sub-configs
   autotrader_result_types.py     AutoTraderResult
   autotrader_display_types.py    AutoTraderDisplayStats, PositionSnapshot, TradeHistoryEntry (#228)
+  autotrader_session_data_types.py  The prepared data a mock session starts from (#438)
   clipping_monitor_types.py      ClippingReport, ClippingSessionSummary
+  cold_start_types.py            The boot situation the decision logic sees, and its answer (#493)
+  display_label_cache.py         Label tables for the dashboard's ALGO STATE panel (#271)
+  field_study_types.py           Field Study phases and their state machine (#332)
+  operator_alert_types.py        Operator alert kinds, levels and the message (#235)
+  safety_session_types.py        What the circuit breaker saw over one session (#356, #314)
 
 python/system/ui/
   autotrader_live_display.py     Live console dashboard (#228, rich.live, responsive layout)

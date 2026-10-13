@@ -33,6 +33,8 @@ Also pinned in the suites whose code raises the alerts:
 - the alert block reachable from a profile down to the Telegram ladder and endpoints —
   [config_cascade_tests.md](../framework/config_cascade_tests.md),
   `test_every_field_of_every_block_is_reachable_from_json`;
+- the booking period handing each sealed period to its listener, once and after it is filed —
+  `tests/framework/reporting/test_booking_period_recorder.py`, `TestEverySealIsHandedOn`;
 - the credential guard naming the subfolder a real key belongs in —
   [test_credential_guard.py](../../../tests/framework/test_credential_guard.py),
   `test_the_fix_keeps_the_subfolder`.
@@ -115,6 +117,16 @@ Also pinned in the suites whose code raises the alerts:
 | `test_missing_figures_are_said_rather_than_shown_as_zero` | no summary, no invented zeros |
 | `test_it_says_whether_real_orders_go_out` | mock, dry run or LIVE |
 | `test_a_duration_reads_the_way_a_person_says_it` | `2d 4h 12m` |
+| `TestTheDayClose` | the sealed booking period rendered — its own figures, an open holding beside the realised one, an unobserved value said rather than shown as zero |
+
+### `test_day_closed_message.py` — the day's close, as the operator hears it
+
+| Test | What it verifies |
+|---|---|
+| `test_a_closed_trading_day_is_one_message_named_by_its_day` | one message per trading-day boundary, titled with the market's trading day |
+| `test_the_session_end_is_not_a_day_close` | the session's last period is covered by its closing message, not announced twice |
+| `test_switched_off_it_stays_silent` | `daily_digest: false` |
+| `test_a_message_that_cannot_be_written_does_not_end_the_session` | a failure is said in the session log; the trading session goes on |
 
 ### `test_operator_alerts_setup.py` — what a profile switches on, and what is refused
 

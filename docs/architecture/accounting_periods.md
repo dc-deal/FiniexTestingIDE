@@ -22,7 +22,7 @@ does not describe the stores themselves (that is
 | Log rotation | the SAME anchor, read from the canonical clock | A new session log file. Fires on the heartbeat too, so a silent feed over the boundary still rotates |  AutoTrader only |
 | Algo state | hybrid tick / second cadence | What the algo chose to remember. Discarded once older than `max_age_trading_days` | AutoTrader |
 | Cold-start state | boot, shutdown, and a structural change of the open book; excursion extrema on a tick cadence | Session keys, the position-counter high-water mark, the open position book. Never discarded for age | AutoTrader |
-| **Booking period** | the SAME trading-day anchor, read from the canonical clock | One sealed `BookingPeriod` per run unit: the period's realised figures, its control total and its own equity band. Fires on the heartbeat too, so a quiet feed over the boundary still books | both — AutoTrader per session, simulation per SCENARIO |
+| **Booking period** | the SAME trading-day anchor, read from the canonical clock | One sealed `BookingPeriod` per run unit: the period's realised figures, its control total and its own equity band. Fires on the heartbeat too, so a quiet feed over the boundary still books. A live session also tells its operator how the day closed — the same period, rendered for Telegram ([Unattended Operation](../autotrader/unattended_operation.md)) | both — AutoTrader per session, simulation per SCENARIO |
 | Session end | once, when the run ends | The final equity sample, the report, and the ledger rows — one per booking period, not one per session | both |
 
 **Both of those used to read midnight UTC off the TICK stamp, and both were corrected on

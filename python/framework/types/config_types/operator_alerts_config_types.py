@@ -51,6 +51,9 @@ class TelegramAlertsConfig(StrictConfigModel):
         all_clear_after_s: How long a symptom must stay away before its all-clear is sent — a
             breaker or a feed flapping around its threshold is one episode, not a message per
             crossing
+        daily_digest: Whether the close of each trading day is sent — the day's booking period,
+            rendered: its P&L, trades, fees and equity. The session log carries the same period
+            either way
         connection: Retry ladder for one message — its budget bounds how long one message may
             hold the queue, and how long the boot check waits for an unreachable Telegram
     """
@@ -61,6 +64,7 @@ class TelegramAlertsConfig(StrictConfigModel):
     min_send_interval_s: float = Field(default=3.0, ge=0.0)
     queue_capacity: int = Field(default=100, ge=1)
     all_clear_after_s: float = Field(default=300.0, ge=0.0)
+    daily_digest: bool = True
     connection: ConnectionPolicy = Field(default_factory=lambda: ConnectionPolicy(
         initial_delay_s=2.0, max_delay_s=60.0, attempt_budget=5, request_timeout_s=10.0))
 

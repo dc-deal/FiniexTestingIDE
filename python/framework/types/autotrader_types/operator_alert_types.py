@@ -41,6 +41,7 @@ class OperatorAlertKind(Enum):
     TICK_LOOP_STALLED = 'tick_loop_stalled'
     TICK_LOOP_RESUMED = 'tick_loop_resumed'
     LIVENESS_PING_REFUSED = 'liveness_ping_refused'
+    DAY_CLOSED = 'day_closed'
     SESSION_ENDED = 'session_ended'
     SHUTDOWN_CRASHED = 'shutdown_crashed'
     CHECK_MESSAGE = 'check_message'

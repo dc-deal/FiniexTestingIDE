@@ -25,6 +25,7 @@ from python.framework.autotrader.operator_alerts.alert_episode import (
     AlertEpisode,
     all_clear_detail,
 )
+from python.framework.autotrader.operator_alerts.operator_alert_messages import day_closed_text
 from python.framework.autotrader.operator_alerts.operator_alerts import OperatorAlerts
 from python.framework.autotrader.operator_alerts.operator_alerts_setup import (
     disabled_operator_alerts,
@@ -76,7 +77,7 @@ from python.framework.reporting.booking_period_recorder import (
     BookingPeriodRecorder,
     snapshot_from_portfolio,
 )
-from python.framework.types.run_results_types import BookingPeriod
+from python.framework.types.run_results_types import BookingPeriod, PeriodCloseReason
 from python.framework.utils.trading_day_anchor import trading_day_of
 from python.framework.types.persistence_types import (
     BaselineKind,
@@ -186,6 +187,8 @@ class AutotraderTickLoop:
         # stayed away this long — a breaker or a feed flapping around its threshold is one
         # episode, not a message per crossing
         self._all_clear_after_s = config.operator_alerts.telegram.all_clear_after_s
+        # Each trading day's close, rendered for the operator from the period it sealed
+        self._daily_digest = config.operator_alerts.telegram.daily_digest
         self._safety_alert = AlertEpisode(self._all_clear_after_s)
         self._market_data_alert = AlertEpisode(self._all_clear_after_s)
         self._signal_alerts: Dict[str, AlertEpisode] = {}
@@ -356,6 +359,7 @@ class AutotraderTickLoop:
             anchor=self._day_anchor,
             carried_period_no=carried_period_no,
             log=self._logger.info,
+            on_seal=self._announce_day_closed,
         )
 
         # Daily rotation state
@@ -1337,6 +1341,31 @@ class AutotraderTickLoop:
             The high-water mark, which is the inherited floor when nothing was sealed
         """
         return self._booking.get_highest_period_no()
+
+    def _announce_day_closed(self, period: BookingPeriod) -> None:
+        """
+        #235: tell the operator how the trading day closed — the period its boundary just sealed.
+
+        A second distribution of that period: the session log already carries its full line and
+        the ledger books it; this renders the same figures for the operator. Only a trading-day
+        boundary is announced — the session's end has its own closing message. A message that
+        cannot be written is said in the session log and never ends the session.
+
+        Args:
+            period: The booking period just sealed
+        """
+        if period.reason is not PeriodCloseReason.ANCHOR or not self._daily_digest:
+            return
+        try:
+            title, detail = day_closed_text(
+                period, trading_day_of(period.opened_at, self._day_anchor))
+        except Exception as error:   # noqa: BLE001 — a message must never end a trading session
+            self._logger.error(
+                f'📣 The day-close message for booking period {period.period_no} could not be '
+                f'written ({type(error).__name__}: {error})')
+            return
+        self._operator_alerts.send(
+            OperatorAlertKind.DAY_CLOSED, OperatorAlertLevel.INFO, title, detail)
 
     def get_booking_periods(self) -> List[BookingPeriod]:
         """

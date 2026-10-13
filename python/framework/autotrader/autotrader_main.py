@@ -165,9 +165,11 @@ class AutotraderMain:
     - session_logger: Per-tick processing → session_logs/autotrader_session_YYYYMMDD.log
     - summary_logger: Post-session summary → autotrader_summary.log + console
 
-    Shutdown modes:
-    - Normal: tick source exhausted or SIGTERM → close positions, cancel orders, collect stats
-    - Emergency: SIGINT/Ctrl+C → immediate close, best-effort stats
+    Shutdown modes — one shutdown for both; the mode is what the record and the grade say:
+    - Normal: tick source exhausted, a requested session end, or SIGTERM
+    - Emergency: SIGINT/Ctrl+C, an EMERGENCY session-end request (#348), or an abort
+    Either way the session finishes its orders per the session-end policy and leaves open
+    positions where they are (#492), then collects stats.
 
     Args:
         config: AutoTraderConfig instance
@@ -316,7 +318,7 @@ class AutotraderMain:
         1. Setup: create loggers, print startup banner, create pipeline objects
         2. Start tick source thread
         3. Tick loop: queue.get → on_tick → bars → workers → decision
-        4. Shutdown: close positions, collect statistics
+        4. Shutdown: finish orders per the session-end policy, collect statistics
 
         Returns:
             AutoTraderResult with session statistics
@@ -330,8 +332,10 @@ class AutotraderMain:
         # header is written in there — at the run's start, with no update path by design. The
         # payload is kept, so the two readers further down (#356's baseline, #497's curve) do
         # not open the same document again: this tree charges 110x for a file read (§42), and
-        # two reads could straddle a write and describe two different predecessors.
-        self._carried = self._read_carry_over(run_timestamp)
+        # two reads could straddle a write and describe two different predecessors. The
+        # cold-start adopter opens it once more for its own step, and only that read's
+        # warnings reach the session log — this one comes before the session logger exists.
+        self._carried = self._read_carry_over()
         deployment_id = self._resolve_deployment(run_timestamp)
 
         # === ORIGIN + CODE IDENTITY (#551) ===
@@ -1040,7 +1044,7 @@ class AutotraderMain:
         print(f"{'=' * 60}")
 
     def _print_startup_phase(self, message: str) -> None:
-        """Print startup phase message directly to console and to global log."""
+        """Print startup phase message directly to console."""
         print(f'  ▸ {message}')
 
     def _print_startup_error(self, message: str) -> None:
@@ -1458,7 +1462,7 @@ class AutotraderMain:
         The transport feeds the SignalDataProvider through the inbox — it never touches a
         worker. That is what lets the same worker read a mounted series and a live one
         without knowing which it got. How it is assembled lives in
-        `signal_data/signal_transport_setup.py`; what this session owns is the lifecycle.
+        `signal_data/transport/signal_transport_setup.py`; what this session owns is the lifecycle.
         """
         setup = setup_signal_transport(
             symbol=self._config.symbol,
@@ -1479,7 +1483,7 @@ class AutotraderMain:
         """
         Register signal handlers for graceful shutdown.
 
-        First Ctrl+C → normal shutdown (close positions).
+        First Ctrl+C → emergency shutdown (orders finished per the session-end policy).
         Second Ctrl+C within 3s → force exit.
         SIGTERM → normal shutdown.
         """
@@ -1490,7 +1494,7 @@ class AutotraderMain:
         """
         Handle SIGINT (Ctrl+C).
 
-        First interrupt: normal shutdown.
+        First interrupt: emergency shutdown.
         Second interrupt within 3s: force exit.
         """
         now = time.monotonic()
@@ -1571,16 +1575,14 @@ class AutotraderMain:
             return _mint_deployment_id(run_timestamp)
         return self._carried.deployment_id or _mint_deployment_id(run_timestamp)
 
-    def _read_carry_over(self, run_timestamp: datetime) -> ColdStartPayload:
+    def _read_carry_over(self) -> ColdStartPayload:
         """
-        Open this bot's carry-over document, once, before anything else needs it.
+        Open this bot's carry-over document before anything else needs it.
 
         Early because the run HEADER carries the deployment identity and is written at the
         run's start with no update path. Constructing the store does no IO — it assembles a
-        path — so this is exactly one file read for every reader that follows.
-
-        Args:
-            run_timestamp: This session's start, used only as the store's provenance stamp
+        path. The deployment, the risk baseline, the drawdown curve and the period floor read
+        this payload; the cold-start adopter reads the document again for its own step.
 
         Returns:
             The stored payload, or an empty one when there is nothing to read

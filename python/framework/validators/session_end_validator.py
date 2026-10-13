@@ -3,8 +3,8 @@ FiniexTestingIDE - Session-End Policy Validation (#492)
 
 Resolves what an AutoTrader session does with what it still holds when it ends, and refuses the
 combinations that would leave the operator worse off than either half suggests. One thin
-call from `AutotraderMain.run()`, before anything is set up — a refusal here must arrive
-before the first order, not after.
+call from `AutotraderMain.run()`, after the pipeline is built and before the cold start reads
+the venue — a refusal here must arrive before the first order, not after.
 
 Three questions, in the order they can be answered:
 
@@ -15,7 +15,7 @@ Three questions, in the order they can be answered:
 3. Is the pair with cold-start adoption coherent? Leaving orders behind only helps if the
    next boot may adopt them, and that is the check worth more than the setting itself.
 
-The dry-run resolution still lives in `autotrader_main._is_dry_run()`. This one lives in a
+The dry-run resolution lives in `autotrader/dry_run_resolver.py`. This one lives in a
 validator because the third question needs the decision logic, and because the reasoning is
 longer than a call site should carry (§14).
 """

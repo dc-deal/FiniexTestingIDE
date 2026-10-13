@@ -67,6 +67,7 @@ true — a recurrence before the all-clear keeps the episode open.
 | Safety circuit breaker — new entries blocked / cleared | ⚠️ / ✅ |
 | Market data stale / fresh again — including no first tick within `market_data_stale_after_s` of the loop's start, a feed that never connected | ⚠️ / ✅ |
 | A signal input stale / fresh again | ⚠️ / ✅ |
+| A trading day closed — its booking period: trades, net P&L and the open part, fees, equity at the close and at the open, the deepest dip; `daily_digest` switches it off | ✅ |
 | The session ended — its grade, exit code, why it was asked to end, duration, ticks, trades, net P&L and the open part, errors logged | by grade |
 
 An abort or a refused start is one message, sent at once, before the shutdown — not a second one
@@ -81,6 +82,17 @@ eth_daily · kraken_spot ETHUSD · 2026-10-20 03:12:05 UTC
 
 The last line names the speaker, so several bots can share one chat, and the UTC time the
 session raised it — a message may arrive later when Telegram asked us to slow down.
+
+**The day's close is one record, distributed.** At the market's trading-day boundary the session
+seals a booking period; its ledger row is the record the reports and the API read, and the session
+log carries the same period in one line the moment it is sealed. The message renders that period
+for the operator and computes nothing of its own:
+
+```
+✅ Day closed — 2026-10-20
+3 trade(s) · net P&L +12.40 USD · fees 1.85 · equity 1,012.40 (opened 1,000.00) · deepest dip -8.20
+eth_daily · kraken_spot ETHUSD · 2026-10-21 00:00:05 UTC
+```
 
 **What it never does: block the session.** The session hands a message to a queue and goes on;
 a thread of its own paces the messages, honours Telegram's `retry_after`, and retries through the

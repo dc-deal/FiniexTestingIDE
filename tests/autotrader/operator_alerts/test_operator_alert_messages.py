@@ -6,11 +6,15 @@ nothing. The two maps it is built on are declared beside their enums, so a new l
 grade cannot arrive without an answer here.
 """
 
+from datetime import date, datetime, timezone
+from typing import Optional
+
 import pytest
 
 from python.framework.autotrader.operator_alerts.operator_alert_messages import (
     END_LEVEL_BY_OUTCOME,
     LEVEL_MARK,
+    day_closed_text,
     format_duration,
     session_ended_text,
     session_started_text,
@@ -20,6 +24,7 @@ from python.framework.types.autotrader_types.autotrader_config_types import Auto
 from python.framework.types.autotrader_types.autotrader_result_types import AutoTraderResult
 from python.framework.types.autotrader_types.operator_alert_types import OperatorAlertLevel
 from python.framework.types.run_outcome_types import RunOutcome
+from python.framework.types.run_results_types import BookingPeriod, PeriodCloseReason
 
 
 def _summary(net_pnl: float, trades: int, unrealized: float = 0.0) -> RunSummary:
@@ -28,6 +33,22 @@ def _summary(net_pnl: float, trades: int, unrealized: float = 0.0) -> RunSummary
         account_max_drawdown=0.0, total_fees=0.0, total_trades=trades, winning_trades=0,
         losing_trades=0, expectancy=0.0, avg_win_r=0.0, avg_loss_r=0.0, r_trade_count=0,
         unrealized_pnl=unrealized)])
+
+
+def _period(opening: Optional[float] = 1_000.0, closing: Optional[float] = 1_012.4,
+            unrealized: float = 0.0) -> BookingPeriod:
+    figures = RunSummaryCurrency(
+        currency='USD', net_pnl=12.4, profit_factor=None, win_rate=0.0, account_max_drawdown=0.0,
+        total_fees=1.85, total_trades=3, winning_trades=2, losing_trades=1, expectancy=0.0,
+        avg_win_r=None, avg_loss_r=None, r_trade_count=0, unrealized_pnl=unrealized,
+        final_equity=closing)
+    return BookingPeriod(
+        period_no=15, unit_name='eth_daily',
+        opened_at=datetime(2026, 10, 20, tzinfo=timezone.utc),
+        closed_at=datetime(2026, 10, 21, tzinfo=timezone.utc),
+        reason=PeriodCloseReason.ANCHOR, trade_count=3, figures=figures,
+        period_max_equity=1_020.0, period_min_equity=995.0, period_max_drawdown=8.2,
+        period_opening_equity=opening)
 
 
 class TestTheDeclaredMaps:
@@ -97,3 +118,22 @@ class TestTheStartMessage:
     (5, '5s'), (725, '12m 5s'), (15_120, '4h 12m'), (187_920, '2d 4h 12m')])
 def test_a_duration_reads_the_way_a_person_says_it(seconds, text):
     assert format_duration(seconds) == text
+
+
+class TestTheDayClose:
+    """The sealed booking period, rendered — every figure the period's own (#235)."""
+
+    def test_a_closed_day_reads_its_period_and_computes_nothing(self):
+        title, detail = day_closed_text(_period(), date(2026, 10, 20))
+
+        assert title == 'Day closed — 2026-10-20'
+        assert detail == ('3 trade(s) · net P&L +12.40 USD · fees 1.85 · '
+                          'equity 1,012.40 (opened 1,000.00) · deepest dip -8.20')
+
+    def test_an_open_holding_is_shown_beside_the_realised_figure(self):
+        _, detail = day_closed_text(_period(unrealized=4.1), date(2026, 10, 20))
+        assert 'net P&L +12.40 USD · open +4.10 USD' in detail
+
+    def test_a_value_that_was_not_observed_says_so(self):
+        _, detail = day_closed_text(_period(opening=None, closing=None), date(2026, 10, 20))
+        assert 'equity not observed (opened not observed)' in detail
