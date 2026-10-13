@@ -215,6 +215,28 @@ Phase 9 in setup_pipeline():
        newest bar ends before that tick's period opens is read again for the tick (live only)
 ```
 
+### When the first tick cannot close the seam
+
+Rare, and shown as a refusal rather than a crash. When the first trade arrives within about two
+seconds of a period's end that also lies after the boot read, the venue may not have committed that
+period yet; reading it again then still lacks the bar, and the session stops before its first
+decision:
+
+```
+============================================================
+  ⛔ REFUSED AT THE FIRST TICK — no decision made, no order placed
+  ETHUSD M1: the venue has not yet committed the period before the first tick (…); its newest
+  committed bar opens at …. Refusing before the first decision rather than trading on a history
+  with a missing bar — the venue commits a period within about two seconds of its end, so a
+  restart a few seconds later closes it.
+============================================================
+```
+
+The same block appears when the venue cannot be read again at that moment. The session log
+carries the reason, the summary reads `Shutdown: emergency (refused at the first tick)`, and the
+exit code is `2` like any failed session ([Runtime Model](autotrader_runtime_model.md), *Session
+outcome and exit code*).
+
 ### Injection
 
 Both paths go through `BarRenderingController.inject_warmup_bars` — the route a backtest's

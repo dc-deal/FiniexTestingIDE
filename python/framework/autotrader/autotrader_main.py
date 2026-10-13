@@ -50,6 +50,7 @@ from python.framework.discoveries.signal_coverage.signal_scenario_info import Si
 from python.framework.exceptions.code_identity_errors import CodeIdentityCaptureError
 from python.framework.exceptions.live_execution_errors import OneOffInsideDeploymentError
 from python.framework.exceptions.swap_errors import SwapModeNotImplementedError
+from python.framework.exceptions.warmup_history_errors import WarmupHistoryRefusedError
 from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.persistence.algo_state_store import AlgoStateStore
@@ -196,6 +197,7 @@ class AutotraderMain:
         self._session_end: Optional[SessionEndDefaults] = None
         self._emergency_reason: Optional[str] = None
         self._emergency_error_type: Optional[str] = None
+        self._refused_at_first_tick = False
         self._session_start: Optional[float] = None
         self._run_timestamp: Optional[datetime] = None
         # Read once at boot, before the header that carries the deployment identity.
@@ -571,21 +573,41 @@ class AutotraderMain:
                 self._shutdown_mode = 'emergency'
 
         except Exception as e:
-            self._emergency_reason = str(e)
-            self._emergency_error_type = type(e).__name__
-            if self._tick_loop_started:
-                # Runtime error inside the tick loop — NOT a startup failure.
-                self._global_logger.error(f'❌ AutoTrader runtime error in tick loop: {e}')
-                self._print_runtime_error(str(e))
-            else:
-                self._global_logger.error(f'❌ AutoTrader startup error: {e}')
-                self._print_startup_error(str(e))
-            self._shutdown_mode = 'emergency'
+            self._report_abort(e)
             ticks_processed = 0
             ticks_clipped = 0
 
         # === SHUTDOWN ===
         return self._shutdown(ticks_processed, ticks_clipped)
+
+    def _report_abort(self, error: Exception) -> None:
+        """
+        Record and show why the session ended early: a refusal at its first tick, a crash
+        inside the tick loop, or a startup failure.
+
+        Args:
+            error: The exception that ended the session
+
+        Returns:
+            None
+        """
+        self._emergency_reason = str(error)
+        self._emergency_error_type = type(error).__name__
+        if self._tick_loop_started and isinstance(error, WarmupHistoryRefusedError):
+            # #588: the warmup seam could not be closed at the first tick. No decision has
+            # run and no order was placed, so this is a refusal rather than a crash, and the
+            # console, the session log and the summary say so.
+            self._refused_at_first_tick = True
+            self._session_logger.error(f'⛔ Refused at the first tick: {error}')
+            self._print_first_tick_refusal(str(error))
+        elif self._tick_loop_started:
+            # Runtime error inside the tick loop — NOT a startup failure.
+            self._global_logger.error(f'❌ AutoTrader runtime error in tick loop: {error}')
+            self._print_runtime_error(str(error))
+        else:
+            self._global_logger.error(f'❌ AutoTrader startup error: {error}')
+            self._print_startup_error(str(error))
+        self._shutdown_mode = 'emergency'
 
     def _validate_startup(self) -> None:
         """
@@ -927,6 +949,13 @@ class AutotraderMain:
         print(f'  {message}')
         print(f"{'=' * 60}\n")
 
+    def _print_first_tick_refusal(self, message: str) -> None:
+        """Print a refusal at the first tick to console — before any decision or order."""
+        print(f"\n{'=' * 60}")
+        print('  ⛔ REFUSED AT THE FIRST TICK — no decision made, no order placed')
+        print(f'  {message}')
+        print(f"{'=' * 60}\n")
+
     def _print_runtime_error(self, message: str) -> None:
         """Print a tick-loop runtime error to console. Aborts via emergency shutdown."""
         print(f"\n{'=' * 60}")
@@ -1085,6 +1114,7 @@ class AutotraderMain:
             operator_interrupted=self._first_interrupt_time > 0,
             emergency_reason=self._emergency_reason,
             emergency_error_type=self._emergency_error_type,
+            refused_at_first_tick=self._refused_at_first_tick,
             session_end_policy=(
                 f'{self._session_end.orders}/{self._session_end.positions}'
                 if self._session_end is not None else ''),

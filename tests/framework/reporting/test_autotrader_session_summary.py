@@ -122,6 +122,15 @@ class TestAutotraderSessionSummary:
             shutdown_mode='emergency', emergency_reason='broker down'))
         assert 'Shutdown:       emergency\n' in crashed
 
+    def test_a_refusal_at_the_first_tick_is_named_as_one(self):
+        """#588: stopped before any decision — a refusal, not a crash, on the operator's screen."""
+        out = _render(AutoTraderResult(
+            shutdown_mode='emergency', refused_at_first_tick=True,
+            emergency_reason='ETHUSD M1: the venue has not yet committed the period'))
+        assert 'Shutdown:       emergency (refused at the first tick)' in out
+        assert 'REFUSED AT THE FIRST TICK: ETHUSD M1: the venue has not yet committed' in out
+        assert 'EMERGENCY CAUSE' not in out
+
     def test_warnings_not_in_closing_block(self):
         # Warnings/errors moved to the shared WarningsSummary section (#403 Phase 2 follow-up);
         # the closing block no longer lists them (only the prominent emergency cause stays).

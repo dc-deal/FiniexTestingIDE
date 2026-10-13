@@ -283,7 +283,7 @@ class WarmupHistory:
                     f'{self._symbol} {timeframe}: a period ended between the warmup read and the '
                     f'first tick ({first_tick_time.isoformat()}), and reading the venue again '
                     f'failed: {error}. Refusing before the first decision rather than trading '
-                    f'on a history with a missing bar.'
+                    f'on a history with a missing bar — restart once the venue answers again.'
                 ) from error
             if self._seam_open(timeframe, fresh, first_tick_time):
                 newest = fresh[-1].timestamp if fresh else 'none'
@@ -291,8 +291,9 @@ class WarmupHistory:
                     f'{self._symbol} {timeframe}: the venue has not yet committed the period '
                     f'before the first tick ({first_tick_time.isoformat()}); its newest '
                     f'committed bar opens at {newest}. Refusing before the first decision '
-                    f'rather than trading on a history with a missing bar — a restart a few '
-                    f'seconds later closes it.'
+                    f'rather than trading on a history with a missing bar — the venue commits '
+                    f'a period within about two seconds of its end, so a restart a few seconds '
+                    f'later closes it.'
                 )
             reread[timeframe] = fresh
 

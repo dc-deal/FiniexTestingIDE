@@ -130,6 +130,21 @@ once the seam has closed.
 | `test_a_live_session_records_the_history_after_the_seam` | the boot read, then the re-read timeframes and the bars after the seam |
 | `test_without_a_path_nothing_is_written` | no path, no file |
 
+### `test_first_tick_refusal.py`
+
+A session that cannot close its warmup seam says it refused, not that it crashed — console, session
+log and result — while its grading stays `FAILED` (exit 2), so whoever relaunches sessions
+relaunches it.
+
+| Test | Description |
+|------|-------------|
+| `test_a_seam_refusal_in_the_tick_loop_is_a_refusal` | the `⛔ REFUSED AT THE FIRST TICK` block, not `RUNTIME ERROR` |
+| `test_the_refusal_reaches_the_session_log` | one error line in the session log, nothing in the global log |
+| `test_a_crash_in_the_tick_loop_still_reads_as_one` | any other exception keeps `RUNTIME ERROR — SESSION ABORTED` |
+| `test_the_same_refusal_before_the_tick_loop_is_a_startup_failure` | the boot refusals keep `STARTUP FAILED` |
+| `test_a_refused_session_is_still_failed_and_exits_2` | the grading is unchanged |
+| `test_the_result_carries_the_refusal` | the flag reaches `AutoTraderResult`, where the summary reads it |
+
 ### `test_warmup_outcomes.py`
 
 The outcome table: one shortfall rule, and what each pipeline does with it.

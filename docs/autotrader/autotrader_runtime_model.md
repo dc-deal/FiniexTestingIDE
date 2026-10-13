@@ -222,8 +222,19 @@ and `get_outcome()` grades the session from there:
 |---|---|---|
 | `SUCCESS` | `0` | normal shutdown, or an operator Ctrl+C — no errors logged |
 | `CRASHED` | `1` | an uncaught exception reached the CLI |
-| `FAILED` | `2` | `emergency` that the operator did not initiate — startup abort, tick-loop crash, safety escalation |
+| `FAILED` | `2` | `emergency` that the operator did not initiate — startup abort, tick-loop crash, safety escalation, a refusal at the first tick |
 | `FINISHED_WITH_ERRORS` | `3` | the session ended without an emergency, but errors were logged |
+
+A **refusal at the first tick** (#588) is the one `emergency` that is neither a crash nor a startup
+abort: a live session could not complete its warmup history when its first trade arrived — the
+venue had not yet committed the period that ended since the boot read, or could not be read again —
+and stopped before any decision and any order. It is graded `FAILED` like the others, so whoever
+relaunches sessions relaunches it, and it is SHOWN as what it is: the console prints a
+`⛔ REFUSED AT THE FIRST TICK — no decision made, no order placed` block instead of
+`RUNTIME ERROR — SESSION ABORTED`, the session log carries the reason as an error, and the summary
+reads `Shutdown: emergency (refused at the first tick)`. A restart a few seconds later closes it.
+Why it can happen at all: [Warmup History](../architecture/warmup_history.md), *The seam at the
+first tick*.
 
 Full taxonomy: [Warnings & Errors — Tier Taxonomy](../architecture/warnings_errors_tiers.md).
 

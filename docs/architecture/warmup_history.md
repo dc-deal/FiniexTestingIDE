@@ -108,6 +108,7 @@ measured against the most demanding worker per timeframe; each pipeline decides 
 | the venue could not be read | — | refused (live) |
 | a requirement beyond `bar_max_history` | scenario refused — `warmup_capacity` | refused at startup |
 | a bar not complete, repeated or out of order | defect, raised | defect, raised |
+| the seam cannot be closed at the first tick | — | live: refused at the first tick, before any decision, and shown as a refusal |
 | a worker whose two warmup answers differ | refused when the worker is created | refused when the worker is created |
 
 The capacity check exists because the renderer keeps at most `bar_max_history` bars per timeframe
@@ -141,7 +142,10 @@ session's window against exactly that history. One object per file:
 `read_at` is the boot read, `selected_for` the instant the recorded bars are complete at — the
 first tick once the seam has closed. Each bar is `[opening instant, open, high, low, close, volume,
 tick count]`. A backtest does not write this file: its history is the archive's, and the same
-selection over the same archive reproduces it.
+selection over the same archive reproduces it. The archive does change — every import renders the
+bar files again — so the parity report (#512) records which render of the bar files its backtest
+read; the bar index's `rendered_at` shows a new render, and only a data hash per file (#583) will
+show whether the values changed.
 
 ## Thinly traded symbols — said, not corrected
 
