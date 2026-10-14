@@ -323,7 +323,7 @@ class AutoTraderDisplayStats:
         max_processing_ms: Maximum tick processing time in ms
         queue_depth: Current tick queue depth
         total_ticks_clipped: Total clipped ticks
-        processing_times_ms: Per-tick processing times for percentile calculation
+        processing_times_ms: The most recent ticks' processing times — a bounded window, for the percentiles
         ticks_per_min: Session-average tick rate (ticks / uptime_minutes)
         last_price: Mid price of last tick ((bid+ask)/2), 0.0 if no ticks yet
         worker_times_ms: Worker name to average computation time in ms

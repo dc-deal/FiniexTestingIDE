@@ -120,6 +120,13 @@ whose account movement disagree, and conclude that something is broken.
   where it is known and never computed as `final_equity − net_pnl`: `net_pnl` is realised, while
   the equity also values what is still open, so that difference is off by exactly the unrealized
   movement described above.
+- **Its own close, inside its band — when a tick seals it.** A period sealed by the first tick
+  past the boundary reads the account value after that tick: that value is the period's
+  `final_equity`, and both pipelines observe it into the band BEFORE sealing, so the closing value
+  lies inside the band it closes and a drop on the boundary tick is in the closing day's deepest
+  decline. Pinned as parity in `tests/parity/test_booking_period_parity.py`. A period sealed by an
+  idle pass, or at the session's end, reads the account value without a fresh observation: a fill
+  that resolved since the last tick is in its `final_equity` but not in its band.
 - **Its costs, split.** `commission_cost`, `swap_cost` and `spread_cost`, summed over the same
   trades `total_fees` is — the ones the period closed. Commission and swap add up to `total_fees`;
   the spread is measured against the mid and stands beside the fees, never inside them. A swap

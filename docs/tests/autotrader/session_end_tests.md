@@ -121,6 +121,19 @@ is checked.
 | `TestTheEndRead` | The venue is asked after the session's orders are handled and before the order-event stream closes; a read that fails — a refused credential here — is logged and never keeps the stream open |
 | `TestTheFieldStudysEnd` | The field study's capture closes after the session-end read it copies in, and closes even when its REST telemetry cannot be written |
 
+### `test_signal_session_end.py` — what a Ctrl+C or a SIGTERM tells the session (#348)
+
+A signal used to stop the loop and nothing more, so the decision logic's session-end event and the
+closing message read "tick source exhausted" — the answer for a replay that ran out of data.
+
+| Test | What it verifies |
+|---|---|
+| `test_a_sigterm_asks_for_a_normal_end_with_its_reason` | A supervisor's stop names itself, at NORMAL severity |
+| `test_a_ctrl_c_asks_for_a_normal_end_and_keeps_its_shutdown_mode` | The operator's stop names itself; the shutdown mode is unchanged |
+| `test_an_earlier_request_is_kept` | A hard stop's EMERGENCY request is not overwritten — it decides the shutdown mode |
+| `test_a_signal_before_the_executor_reaches_it_once_it_exists` | A Ctrl+C during the start is remembered and handed over |
+| `test_an_end_asked_for_before_the_first_pass_lets_no_decision_run` | The loop makes no pass at all, so no order follows a stop |
+
 ## The two guards worth knowing about
 
 **The phantom drawdown.** The run-end equity sample must use the SPOT portfolio value, not the

@@ -95,7 +95,7 @@ should not be possible.
 
 A grant is `<surface>:<name>`. The **surface** is a group of routes; the **name** is the route's
 first path parameter. So `bars:kraken_spot` is one venue's bar data and
-`deployments:deploy_20260918_091413` is one deployment.
+`deployments:deploy_20260918_091413_a1b2c3d4` is one deployment.
 
 Where that first parameter is a generated id nobody would write into a token — a run id, for
 instance — the realistic grant is `<surface>:*`. The model degrades to surface level there by

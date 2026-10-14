@@ -7,7 +7,7 @@ Nothing is computed here — a P&L re-derived for a phone notification would be 
 definition of it, and the two would drift apart.
 """
 
-from datetime import date
+from datetime import date, datetime, timedelta
 from typing import Dict, List, Optional, Tuple
 
 from python.framework.types.api.report_types import RunSummary, RunSummaryCurrency
@@ -46,19 +46,20 @@ def render_alert_text(alert: OperatorAlert, session_label: str) -> str:
         session_label: Who is speaking — several bots may share one chat
 
     Returns:
-        Mark and title, the detail when there is one, and the speaker with the UTC time the
-        session raised it
+        Mark and title, the detail when there is one, the speaker, and on a line of its own the
+        UTC time the session raised it — a phone breaks a long last line wherever it likes
     """
     lines = [f'{LEVEL_MARK[alert.level]} {alert.title}']
     if alert.detail:
         lines.append(alert.detail)
-    lines.append(f'{session_label} · {alert.raised_at:%Y-%m-%d %H:%M:%S} UTC')
+    lines.append(session_label)
+    lines.append(f'{alert.raised_at:%Y-%m-%d %H:%M:%S} UTC')
     return '\n'.join(lines)
 
 
 def session_label(config: AutoTraderConfig) -> str:
     """
-    The speaker line every message ends with.
+    The speaker line every message carries, right above the time it was raised.
 
     Args:
         config: The session's resolved profile
@@ -89,8 +90,8 @@ def session_started_text(config: AutoTraderConfig, dry_run: bool, run_id: str,
         mode = 'dry run — nothing is placed at the venue'
     else:
         mode = 'LIVE — real orders'
-    code = f' · commit {commit[:8]}' if commit else ''
-    return 'Session started', f'{mode}\nrun {run_id}{code}'
+    code = f'\nCommit: {commit[:8]}' if commit else ''
+    return 'Session started', f'{mode}\nRun: {run_id}{code}'
 
 
 def session_ended_text(result: AutoTraderResult, run_summary: Optional[RunSummary],
@@ -117,25 +118,32 @@ def session_ended_text(result: AutoTraderResult, run_summary: Optional[RunSummar
 
     lines = []
     if result.refused_at_first_tick:
-        lines.append(f'refused at the first tick: {result.emergency_reason}')
+        lines.append(f'Refused at the first tick: {result.emergency_reason}')
     elif result.emergency_reason:
-        lines.append(result.emergency_reason)
+        lines.append(f'Reason: {result.emergency_reason}')
     elif end_reason:
-        lines.append(end_reason)
-    activity = [format_duration(result.session_duration_s), f'{result.ticks_processed:,} ticks']
+        lines.append(f'Reason: {end_reason}')
+    lines.append(f'Duration: {format_duration(result.session_duration_s)}')
+    lines.append(f'Ticks: {result.ticks_processed:,}')
     if run_summary is None:
-        activity.append('figures unavailable — see the run summary')
+        lines.append('Figures: unavailable — see the run summary')
     else:
         for row in run_summary.currencies:
-            activity.extend(_figures_parts(row))
+            lines.extend(_figures_lines(row))
     errors = result.count_logged(LogLevel.ERROR)
     if errors:
-        activity.append(f'{errors} error(s) logged')
-    lines.append(' · '.join(activity))
+        lines.append(f'Errors logged: {errors}')
     return level, title, '\n'.join(lines)
 
 
-def day_closed_text(period: BookingPeriod, trading_day: date) -> Tuple[str, str]:
+# How late a period may open after its trading day did and still count as the whole day. A day
+# that ran through its boundary opens the next period within a pass of it; a session started
+# later opens its first period at its start, and that day's message covers only the rest.
+_WHOLE_DAY_TOLERANCE = timedelta(minutes=1)
+
+
+def day_closed_text(period: BookingPeriod, trading_day: date,
+                    day_opened_at: datetime) -> Tuple[str, str]:
     """
     The message a session sends when a trading day closes: the booking period that day sealed.
 
@@ -145,23 +153,29 @@ def day_closed_text(period: BookingPeriod, trading_day: date) -> Tuple[str, str]
     Args:
         period: The booking period the day's boundary sealed
         trading_day: The trading day it covered, in the market's own calendar
+        day_opened_at: When that trading day opened (UTC)
 
     Returns:
-        Title and detail
+        Title and detail, one figure per line — first, when the session started during the day,
+        the line that says the figures cover only the rest of it
     """
     figures = period.figures
-    closed = f'{figures.final_equity:,.2f}' if figures.final_equity is not None else 'not observed'
-    opened = (f'{period.period_opening_equity:,.2f}'
-              if period.period_opening_equity is not None else 'not observed')
-    parts = _figures_parts(figures) + [
-        f'fees {figures.total_fees:.2f}',
-        f'equity {closed} (opened {opened})',
-        f'deepest dip {-abs(period.period_max_drawdown):,.2f}',
+    # rounded first, so a dip below a cent reads 0.00 rather than -0.00
+    dip = round(abs(period.period_max_drawdown), 2)
+    lines = []
+    if period.opened_at - day_opened_at > _WHOLE_DAY_TOLERANCE:
+        lines.append(f'Covers: from {period.opened_at:%H:%M} UTC — the session started '
+                     f'during the day')
+    lines += _figures_lines(figures) + [
+        f'Fees: {figures.total_fees:,.2f} {figures.currency}',
+        _equity_line(period),
+        # a day that never fell reads 0.00, not -0.00
+        f'Deepest dip: {-dip if dip else 0.0:,.2f} {figures.currency}',
     ]
-    return f'Day closed — {trading_day.isoformat()}', ' · '.join(parts)
+    return f'Day closed — {trading_day.isoformat()}', '\n'.join(lines)
 
 
-def _figures_parts(row: RunSummaryCurrency) -> List[str]:
+def _figures_lines(row: RunSummaryCurrency) -> List[str]:
     """
     One account currency's trades and P&L, as both the day and the session end read them.
 
@@ -169,12 +183,35 @@ def _figures_parts(row: RunSummaryCurrency) -> List[str]:
         row: The figures of one account currency
 
     Returns:
-        The parts, realised and valued kept apart (#492): a holding left open is not in net_pnl
+        One line each, realised and valued kept apart (#492): a holding left open is not in
+        net_pnl
     """
-    parts = [f'{row.total_trades} trade(s)', f'net P&L {row.net_pnl:+.2f} {row.currency}']
+    lines = [f'Trades: {row.total_trades}', f'Net P&L: {row.net_pnl:+,.2f} {row.currency}']
     if row.unrealized_pnl:
-        parts.append(f'open {row.unrealized_pnl:+.2f} {row.currency}')
-    return parts
+        lines.append(f'Open P&L: {row.unrealized_pnl:+,.2f} {row.currency}')
+    return lines
+
+
+def _equity_line(period: BookingPeriod) -> str:
+    """
+    The account's value across the day: what it opened with and what it closed at.
+
+    Args:
+        period: The sealed booking period
+
+    Returns:
+        'Equity: 933.49 → 907.57 USD', or which end of it was not observed
+    """
+    currency = period.figures.currency
+    opening = period.period_opening_equity
+    closing = period.figures.final_equity
+    if opening is not None and closing is not None:
+        return f'Equity: {opening:,.2f} → {closing:,.2f} {currency}'
+    if closing is not None:
+        return f'Equity: {closing:,.2f} {currency} at the close, the open was not observed'
+    if opening is not None:
+        return f'Equity: {opening:,.2f} {currency} at the open, the close was not observed'
+    return 'Equity: not observed'
 
 
 def format_duration(seconds: float) -> str:

@@ -44,7 +44,7 @@ Section names the place in the three-column layout.
 | CONNECTION | Left | Stream health (WS message age), Last Tick (actual trade tick age), reconnect count, emitted tick rate |
 | WORKER PERFORMANCE | Left | Per-worker avg processing time with bar chart (scale: 50ms = full bar). Hidden completely when `execution.performance_tracking.worker_decision_tracking` is `false` — see [performance_tracking_layers.md](../architecture/performance_tracking_layers.md) |
 | PORTFOLIO | Center | Balance with quote equivalent (`≈ X.XX USD`), net P&L, W/L count |
-| TICK PROCESSING | Center | Avg/max processing ms, p50/p95/p99 percentiles, clipping bar + ratio, queue depth |
+| TICK PROCESSING | Center | Avg/max processing ms over the session; p50/p95/p99 over a bounded window of the most recent ticks — the panel says how many; clipping bar + ratio, queue depth |
 | OPEN POSITIONS | Below, full width | Live positions: ID, direction, lots, entry price, unrealized P&L |
 | ORDERS | Below, full width | Active limit/stop orders + pipeline (in-transit) count. An order partly filled gets a `└─ 0.0400/0.1000 · PARTIAL` row — today one taken over at a cold start partly filled; an ordinary resting order's partial execution is mirrored once #342 lands |
 | REJECTIONS | Right | Shown once an order was refused: newest first, numbered, with the venue's reason as it gave it |

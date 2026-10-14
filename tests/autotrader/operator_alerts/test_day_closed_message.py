@@ -67,7 +67,7 @@ def test_switched_off_it_stays_silent():
 
 
 def test_a_message_that_cannot_be_written_does_not_end_the_session(monkeypatch):
-    def broken(period, trading_day):
+    def broken(period, trading_day, day_opened_at):
         raise KeyError('figures')
 
     monkeypatch.setattr(tick_loop_module, 'day_closed_text', broken)

@@ -305,21 +305,28 @@ class TestTheReportedDrawdownReachesTheStore:
 
         assert store.saves[0]['account_drawdown'] is None
 
-    def test_the_switch_withholds_it(self, executor):
+    def test_the_switch_decides_at_the_read_not_at_the_write(self, executor):
         """
         `persist_baseline=false` is the deliberate escape for a fresh reference per start.
 
         It governs BOTH records rather than only the denominator: a session where one
         survives and the other does not produces two drawdown figures that silently describe
-        different periods, which is the confusion #497 exists to end.
+        different periods, which is the confusion #497 exists to end. It does so at the READ,
+        once for both. The writes always carry the curve, as they carry the denominator and as
+        the final figures always did — a write that obeyed the switch on its own made what was
+        stored depend on whether the tick loop had run.
         """
         store = SpyStore()
         executor.portfolio.sample_equity()
+        main = _main(executor, store, persist=True, persist_baseline=False)
 
-        _main(executor, store, persist=True,
-              persist_baseline=False)._persist_cold_start_carry_over()
+        main._persist_cold_start_carry_over()
+        written = store.saves[0]['account_drawdown']
+        assert written is not None
 
-        assert store.saves[0]['account_drawdown'] is None
+        main._carried = ColdStartPayload(account_drawdown=written)
+        assert main._load_carry_over_records() == ColdStartPayload(), (
+            'the successor of a session with the switch off continued its curve anyway')
 
 
 class TestTheDeploymentIdentityReachesTheStore:

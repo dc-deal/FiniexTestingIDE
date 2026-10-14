@@ -124,9 +124,9 @@ class ConsumerToken(ConsumerTokenBase):
     A surface is a ROUTER, not a route — the closed list is `GRANT_SURFACES` below.
     What a grant
     names is the thing a route addresses — its first path parameter — so `bars:kraken_spot` is
-    one venue's bar data and `deployments:deploy_20260918_091413` is one bot's history, while
-    `reports:*` is every run report, because a run id is generated and nobody would write one
-    into a token.
+    one venue's bar data and `deployments:deploy_20260918_091413_a1b2c3d4` is one bot's
+    history, while `reports:*` is every run report, because a run id is generated and nobody
+    would write one into a token.
 
     The vocabulary is CLOSED on purpose. A grant naming anything else fails when the
     credentials file is parsed, at boot, instead of becoming a denial at request time that

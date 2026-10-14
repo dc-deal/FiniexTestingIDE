@@ -4,13 +4,20 @@ Real-time tick processing measurement and clipping detection (#197).
 """
 
 import time
-from typing import Optional
+from collections import deque
+from typing import Deque, Optional
 
 from python.framework.types.autotrader_types.clipping_monitor_types import (
     ClippingDisplaySnapshot,
     ClippingReport,
     ClippingSessionSummary,
 )
+
+# How many of the most recent processing times the display's percentiles are read from. Bounded
+# because the list used to keep every tick of the session: a month-long session would hold
+# millions of entries, copy them into every display frame on the tick thread and sort them on
+# every render (measured 2026-10-13: 3 M entries cost 30 ms per copy and 728 ms per sort).
+PERCENTILE_WINDOW_TICKS = 10_000
 
 
 class LiveClippingMonitor:
@@ -45,7 +52,7 @@ class LiveClippingMonitor:
         self._max_processing_ms: float = 0.0
         self._total_processing_ms: float = 0.0
         self._max_queue_depth: int = 0
-        self._processing_times_ms: list = []
+        self._processing_times_ms: Deque[float] = deque(maxlen=PERCENTILE_WINDOW_TICKS)
 
         # Interval tracking (for periodic reports)
         self._interval_ticks: int = 0
@@ -193,7 +200,6 @@ class LiveClippingMonitor:
                 if self._total_ticks > 0 else 0.0
             ),
             max_queue_depth=self._max_queue_depth,
-            processing_times_ms=self._processing_times_ms,
         )
 
     def get_strategy(self) -> str:

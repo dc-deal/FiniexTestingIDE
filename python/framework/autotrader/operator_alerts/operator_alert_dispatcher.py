@@ -22,7 +22,10 @@ from typing import Callable, Deque, Optional
 from python.framework.autotrader.operator_alerts.abstract_alert_channel import (
     AbstractAlertChannel,
 )
-from python.framework.autotrader.operator_alerts.operator_alert_messages import render_alert_text
+from python.framework.autotrader.operator_alerts.operator_alert_messages import (
+    LEVEL_MARK,
+    render_alert_text,
+)
 from python.framework.exceptions.operator_alert_errors import AlertChannelRateLimitedError
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.types.autotrader_types.operator_alert_types import (
@@ -261,6 +264,11 @@ class OperatorAlertDispatcher:
         self._last_sent_at = self._clock()
         if delivered:
             self._delivered += 1
+            # The run's own account of what reached the operator; the figures stay in the records
+            # the text was rendered from. Delivery time is a provenance stamp, hence wall clock.
+            self._logger.info(
+                f'📣 Sent {alert.kind.value} · {LEVEL_MARK[alert.level]} {alert.title} · raised '
+                f'{alert.raised_at:%H:%M:%S}, delivered {datetime.now(timezone.utc):%H:%M:%S} UTC')
             return
         self._abandoned += 1
         if (self._last_error is not None

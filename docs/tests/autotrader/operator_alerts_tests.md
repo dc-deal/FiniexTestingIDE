@@ -73,6 +73,7 @@ Also pinned in the suites whose code raises the alerts:
 | `test_an_alert_that_cannot_be_written_costs_only_itself` | a text that cannot be rendered is dropped and said; the channel stays open |
 | `test_what_could_not_go_out_is_said_at_the_end` | a bounded flush, and what it left behind named |
 | `test_every_message_names_its_speaker_and_when_it_was_raised` | mark and title, detail, speaker and UTC time |
+| `test_every_delivered_message_leaves_one_line_in_the_session_log` | what reached the operator is in the run's log; a message lost to an outage is not |
 
 ### `test_alert_episode.py` — a flapping symptom is one episode
 
@@ -117,7 +118,7 @@ Also pinned in the suites whose code raises the alerts:
 | `test_missing_figures_are_said_rather_than_shown_as_zero` | no summary, no invented zeros |
 | `test_it_says_whether_real_orders_go_out` | mock, dry run or LIVE |
 | `test_a_duration_reads_the_way_a_person_says_it` | `2d 4h 12m` |
-| `TestTheDayClose` | the sealed booking period rendered — its own figures, an open holding beside the realised one, an unobserved value said rather than shown as zero |
+| `TestTheDayClose` | the sealed booking period rendered one figure per line — its own figures, an open holding beside the realised one, an unobserved value said rather than shown as zero (both ends, or which one), a day that never fell reading `0.00`, and a day the session started in saying it covers only the rest |
 
 ### `test_day_closed_message.py` — the day's close, as the operator hears it
 

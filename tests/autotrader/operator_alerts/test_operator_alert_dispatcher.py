@@ -231,7 +231,26 @@ def test_every_message_names_its_speaker_and_when_it_was_raised():
     dispatcher.start()
     dispatcher.stop(flush_timeout_s=5.0)
 
-    first, detail, speaker = channel.delivered[0].splitlines()
+    first, detail, speaker, raised = channel.delivered[0].splitlines()
     assert first == '⛔ STARTUP FAILED'
     assert detail == 'no tick source'
-    assert speaker.startswith(f'{LABEL} · ') and speaker.endswith(' UTC')
+    assert speaker == LABEL
+    assert raised.endswith(' UTC')
+
+
+def test_every_delivered_message_leaves_one_line_in_the_session_log():
+    """What reached the operator is in the run's log; a message that never went out is not."""
+    logger = RecordingLogger()
+    channel = ScriptedChannel([ConnectionAttemptFailedError('down')] * 3)
+    dispatcher = _dispatcher(channel, FakeTime(), logger)
+    _send(dispatcher, 'lost to the outage')
+    dispatcher.send(OperatorAlertKind.DAY_CLOSED, OperatorAlertLevel.INFO,
+                    'Day closed — 2026-10-08', 'Net P&L: +4.20 USD')
+    dispatcher.start()
+    dispatcher.stop(flush_timeout_s=5.0)
+
+    sent = [line for line in logger.text_at('info').splitlines() if '📣 Sent' in line]
+    assert len(sent) == 1
+    assert 'day_closed · ✅ Day closed — 2026-10-08 · raised ' in sent[0]
+    assert sent[0].endswith(' UTC')
+    assert 'lost to the outage' not in logger.text_at('info')

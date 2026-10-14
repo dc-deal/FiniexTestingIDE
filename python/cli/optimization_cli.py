@@ -6,8 +6,8 @@ combinations and view the parameter sensitivity.
 
 Usage:
     python python/cli/optimization_cli.py run cautious_macd_grid.json
-    python python/cli/optimization_cli.py report sweep_20260621_223000
-    python python/cli/optimization_cli.py report sweep_20260621_223000 --objective net_pnl --top 5
+    python python/cli/optimization_cli.py report sweep_20260621_223000_a1b2c3d4
+    python python/cli/optimization_cli.py report sweep_20260621_223000_a1b2c3d4 --objective net_pnl --top 5
 """
 
 import argparse

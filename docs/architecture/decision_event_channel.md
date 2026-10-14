@@ -49,6 +49,13 @@ No guessing: each event delivers one typed payload to one hook.
 Every payload also carries `tick_time` — the canonical clock: sim time in backtests; in an
 AutoTrader session the tick time, advanced by the wall clock between ticks.
 
+`SESSION_END` names whoever asked for the end: a strategy, a hard stop, or in an AutoTrader
+session an operator's Ctrl+C (`operator interrupt (Ctrl+C)`) or a SIGTERM
+(`termination signal (SIGTERM)`), both at NORMAL severity. A request already made is kept, so a
+signal after a hard stop does not soften its EMERGENCY. Only a session that simply ran out of
+input hears `tick source exhausted`. An end asked for before the loop's first pass — a signal
+during the start — lets the loop make no pass at all, so no decision runs after the stop.
+
 `direction` is the POSITION's on every payload. For a close — a protective order included,
 whose own trading side is the opposite — that is the direction of the position it closes, and
 on a rejected or unaccounted close it is None once that position is gone.

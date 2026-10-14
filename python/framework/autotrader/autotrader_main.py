@@ -109,6 +109,7 @@ from python.framework.types.signal_data_types import (
 )
 from python.framework.types.validation_types import ValidationFinding, ValidationResult
 from python.framework.utils.code_identity_builder import verify_component_digests
+from python.framework.utils.run_id_utils import mint_run_id
 from python.framework.utils.run_origin_builder import build_run_origin, capture_code_identity
 from python.framework.utils.trading_math.price_trigger import mid_price
 from python.framework.validators.algo_clock_validator import validate_algo_clock
@@ -142,13 +143,17 @@ def _mint_deployment_id(run_timestamp: datetime) -> str:
     redeployed in September is two deployments, and from the outside the two look identical —
     which is why the key has to be written WHILE the sessions run rather than derived later.
 
+    It carries a random half, minted the way a run id's is and for the same reason: the
+    deployment history groups by this key alone, so two bots whose first sessions start in the
+    same second — a supervisor bringing several up at once — would otherwise share one history.
+
     Args:
         run_timestamp: The first session's start (UTC)
 
     Returns:
-        A deployment identity of the shape `deploy_<YYYYmmdd>_<HHMMSS>`
+        A deployment identity of the shape `deploy_<YYYYmmdd>_<HHMMSS>_<8 hex>`
     """
-    return f'deploy_{run_timestamp.strftime("%Y%m%d_%H%M%S")}'
+    return f'deploy_{mint_run_id(run_timestamp)}'
 
 
 class AutotraderMain:
@@ -309,6 +314,9 @@ class AutotraderMain:
 
         # Signal handling state
         self._first_interrupt_time: float = 0.0
+        # Why a signal asked the session to end, '' while none has (#348). Kept here because a
+        # signal can arrive before the executor that records the request exists.
+        self._signal_end_reason: str = ''
 
     def run(self) -> AutoTraderResult:
         """
@@ -600,6 +608,9 @@ class AutotraderMain:
             self._print_startup_phase('Entering tick loop')
             self._running = True
 
+            # A Ctrl+C or SIGTERM during the start is a stop the loop honours before its first
+            # pass — the executor that records it may not have existed when the signal came
+            self._request_signal_end()
             self._tick_loop = self._build_tick_loop(run_timestamp, dry_run)
             self._tick_loop_started = True
             self._operator_alerts.start_liveness()
@@ -1250,7 +1261,7 @@ class AutotraderMain:
             ticks_processed=ticks_processed,
             ticks_clipped=ticks_clipped,
             shutdown_mode=self._shutdown_mode,
-            operator_interrupted=self._first_interrupt_time > 0,
+            operator_interrupted=self._interrupted_by_the_operator(),
             emergency_reason=self._emergency_reason,
             emergency_error_type=self._emergency_error_type,
             refused_at_first_tick=self._refused_at_first_tick,
@@ -1506,6 +1517,8 @@ class AutotraderMain:
         self._first_interrupt_time = now
         self._shutdown_mode = 'emergency'
         self._running = False
+        self._signal_end_reason = self._signal_end_reason or 'operator interrupt (Ctrl+C)'
+        self._request_signal_end()
         # No longer "closing positions": the session end finishes ORDERS per policy and
         # leaves open positions where they are (#492).
         print('\n⚠️  Shutdown initiated — finishing orders (Ctrl+C again within 3s to force)')
@@ -1516,14 +1529,52 @@ class AutotraderMain:
             self._global_logger.info('⚠️  Interrupt received — shutting down (Ctrl+C again within 3s to force)')
 
     def _handle_terminate(self, signum: int, frame: Any) -> None:
-        """Handle SIGTERM — normal shutdown."""
-        self._shutdown_mode = 'normal'
+        """Handle SIGTERM — a normal shutdown, unless the session already ends in an emergency."""
+        # A supervisor's stop during the shutdown of a crash or a hard stop must not turn the
+        # emergency into an ordinary end — the grade, the closing alert and the fail ping read it
+        if self._shutdown_mode != 'emergency':
+            self._shutdown_mode = 'normal'
         self._running = False
+        self._signal_end_reason = self._signal_end_reason or 'termination signal (SIGTERM)'
+        self._request_signal_end()
         # Stop tick loop if running
         if self._tick_loop:
             self._tick_loop.stop()
         if self._global_logger:
             self._global_logger.info('🛑 SIGTERM received — normal shutdown')
+
+    def _interrupted_by_the_operator(self) -> bool:
+        """
+        Whether an operator's Ctrl+C is what ended the session, and nothing graver did.
+
+        A Ctrl+C sets the emergency shutdown mode, and the grade forgives that one emergency. It
+        must not forgive another: a crash or a hard stop that came first is a failed session,
+        whatever the operator pressed while it shut down.
+
+        Returns:
+            True when the session was interrupted and neither an abort nor an EMERGENCY
+            session-end request stands beside the interrupt
+        """
+        if self._first_interrupt_time <= 0 or self._emergency_reason:
+            return False
+        return not (self._executor is not None
+                    and self._executor.is_session_end_requested()
+                    and self._executor.get_session_end_severity() == SessionEndSeverity.EMERGENCY)
+
+    def _request_signal_end(self) -> None:
+        """
+        Hand a signal's reason to the executor as a session-end request, once one exists.
+
+        Without it the decision logic heard "tick source exhausted" on an operator's Ctrl+C and
+        a supervisor's SIGTERM alike, and so did the closing message. A request already made
+        is kept — a hard stop's EMERGENCY, a strategy's own end: its reason is the truer one,
+        and its severity decides the shutdown mode. Called again right before the tick loop
+        starts, for a signal that arrived before the executor existed.
+        """
+        if (not self._signal_end_reason or self._executor is None
+                or self._executor.is_session_end_requested()):
+            return
+        self._executor.request_session_end(self._signal_end_reason, SessionEndSeverity.NORMAL)
 
     # =========================================================================
     # HELPERS
@@ -1755,9 +1806,11 @@ class AutotraderMain:
                 # points rather than a cadence of its own: one write plus its index rebuild
                 # costs tens of milliseconds on this tree (§42) and has no business in a tick
                 # loop. A crash between two of them loses the deepening since the last, which
-                # is the report plane's crash-safety and therefore #476's subject.
-                account_drawdown=(portfolio.get_account_drawdown_carry_over()
-                                  if self._config.safety.persist_baseline else None),
+                # is the report plane's crash-safety and therefore #476's subject. Written
+                # whatever `safety.persist_baseline` says, like the denominator above and the
+                # final figures: the switch decides at the READ whether a successor continues
+                # the curve (`_load_carry_over_records`), once for both records.
+                account_drawdown=portfolio.get_account_drawdown_carry_over(),
                 # The join key, written on every one of these points rather than once at boot:
                 # a session that dies before its first structural write must still leave its
                 # membership behind, or its ledger row is an orphan nobody can attach. None

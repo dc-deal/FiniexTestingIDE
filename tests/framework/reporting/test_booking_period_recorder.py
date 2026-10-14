@@ -162,16 +162,16 @@ class TestAPeriodIsNeverFiledInsideOut:
 class TestWhatAPeriodOpenedWith:
     """
     A period's opening equity is the previous period's close, read at the same instant — or a
-    unit's first observed value for its first period. The two pipelines observe in opposite
-    order around the boundary check (the simulation before it, the AutoTrader after), and both
-    must land on the same answer.
+    unit's first observed value for its first period. It is set from the value the seal READ, so
+    it does not depend on the order around the boundary check: both pipelines observe first on a
+    tick, while a heartbeat seal checks without observing at all.
     """
 
     @staticmethod
     def _source(equity: float):
         return lambda: ([], PeriodSnapshot(currency='USD', final_equity=equity))
 
-    def test_the_simulation_order_observes_then_checks(self):
+    def test_observing_before_the_check_opens_at_the_value_the_seal_read(self):
         rec = _recorder()
         rec.observe_equity(10_000.0)
         rec.check_boundary(_MON + timedelta(hours=1), self._source(10_000.0))
@@ -182,7 +182,7 @@ class TestWhatAPeriodOpenedWith:
 
         assert [p.period_opening_equity for p in periods] == [10_000.0, 10_050.0]
 
-    def test_the_autotrader_order_checks_then_observes(self):
+    def test_checking_before_observing_gives_the_same_openings(self):
         rec = _recorder()
         rec.check_boundary(_MON + timedelta(hours=1), self._source(10_000.0))
         rec.observe_equity(10_000.0)

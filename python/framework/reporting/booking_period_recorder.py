@@ -85,9 +85,9 @@ class BookingPeriodRecorder:
         self._max_equity: float = 0.0
         self._min_equity: float = 0.0
         # What the open period began with: the previous period's close, or — for a unit's first
-        # period — its first observed value. Set at a seal from the value the seal READ, so both
-        # pipelines agree although the simulation observes before it checks the boundary and
-        # the AutoTrader after.
+        # period — its first observed value. Set at a seal from the value the seal READ, so it
+        # does not depend on the order around the boundary check: both pipelines observe first on
+        # a tick, and a heartbeat seal observes nothing.
         self._opening_equity: Optional[float] = None
         self._max_drawdown: float = 0.0
 

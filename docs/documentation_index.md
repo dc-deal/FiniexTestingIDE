@@ -139,6 +139,7 @@ Each test suite has its own documentation in [`tests/`](tests/).
 | [Bar Parity Tests](tests/parity/bar_parity_tests.md) | Cross-pipeline parity: simulation vs. AutoTrader bar identity |
 | [Heartbeat Ghost-Pass Parity](tests/parity/heartbeat_ghost_tests.md) | Sim ghost-pass between ticks + weekend-gap gate (#360 Stage 2) |
 | [Close-in-Flight Parity](tests/parity/close_in_flight_parity_tests.md) | A second close for a position joins the close already in flight, in both pipelines |
+| [Booking Period Parity](tests/parity/booking_period_parity_tests.md) | A trading day's booking period holds its own closing value, in both pipelines and both account models |
 | [AutoTrader Config](tests/autotrader/config_tests.md) | What the AutoTrader pipeline resolves before a session starts: `dry_run`, profile loadability, the account fee tier, the run origin, the uncommitted-code guard |
 | [AutoTrader Integration](tests/autotrader/integration_tests.md) | End-to-end mock session validation |
 | [Kraken Adapter Live Integration](tests/live_adapters/kraken_adapter_integration_tests.md) | Full order lifecycle against the real Kraken API — validate-only, real limit orders and a real fill round trip; funded account required, release-gate |

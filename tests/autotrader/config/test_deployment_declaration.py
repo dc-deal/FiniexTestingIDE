@@ -16,6 +16,7 @@ fails at load, before anything runs.
 """
 
 import json
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
@@ -151,6 +152,16 @@ class TestTheCommandLineMayOnlyNarrow:
         minted = resolve(continuous=True)
         assert minted
         assert '20260917' in minted
+
+    def test_two_deployments_started_in_the_same_second_get_two_keys(self):
+        """
+        The deployment history groups by this key alone. Without a random half, two bots whose
+        first sessions start in the same second — a supervisor bringing several up at once —
+        would mint one key and share one history.
+        """
+        first, second = resolve(continuous=True), resolve(continuous=True)
+        assert first != second
+        assert re.fullmatch(r'deploy_20260917_060000_[0-9a-f]{8}', first)
 
     def test_a_continuous_profile_inherits_what_the_predecessor_left(self):
         assert resolve(continuous=True, carried='deploy_20260901_060000_ab12') \

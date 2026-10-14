@@ -234,7 +234,7 @@ Unit tests for `LiveClippingMonitor` — no external dependencies, no tick data,
 | Class | Tests | What it validates |
 |-------|-------|-------------------|
 | `TestClippingDetection` | 5 | Core logic: processing_ms > tick_delta_ms triggers clipping, boundary cases (equal, zero, negative delta) |
-| `TestCounterAccuracy` | 4 | Mixed sequences, max/avg tracking, processing_times_ms list |
+| `TestCounterAccuracy` | 5 | Mixed sequences, max/avg tracking, the processing times reaching the display — and the window behind the display's percentiles keeping only the most recent ticks while the session totals still count every one |
 | `TestQueueDepthTracking` | 2 | Max queue depth updates, zero depth |
 | `TestPeriodicReports` | 5 | Interval timing, report generation, counter reset, zero-tick intervals, session totals persistence |
 | `TestSessionSummaryEdgeCases` | 4 | Empty session, 100% clipping, 0% clipping, single tick |

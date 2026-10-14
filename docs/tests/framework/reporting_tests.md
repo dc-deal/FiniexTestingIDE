@@ -193,9 +193,9 @@ mutation-checked, the two cost tests go red against the uncached recorder (24 co
 of 1) while all five behaviour tests stay green.
 
 `TestWhatAPeriodOpenedWith` pins the opening equity: the previous period's close, or a unit's
-first observed value — and the SAME answer in both orders the pipelines use, the simulation
-observing before its boundary check and the AutoTrader after. A first period nothing was observed
-in opens with nothing, never with a zero.
+first observed value — and the SAME answer whether the caller observes before its boundary check,
+as both pipelines do on a tick, or checks without observing, as a heartbeat seal does. A first
+period nothing was observed in opens with nothing, never with a zero.
 
 ## `test_booking_period_builder.py` — one booking period, from the records inside it
 

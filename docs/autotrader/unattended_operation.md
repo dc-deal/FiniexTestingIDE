@@ -77,11 +77,13 @@ and that is.
 ```
 ⚠️ Safety circuit breaker — new entries blocked
 max_drawdown_abs (412.50 > 400.00) · 1 position(s) open, kept
-eth_daily · kraken_spot ETHUSD · 2026-10-20 03:12:05 UTC
+eth_daily · kraken_spot ETHUSD
+2026-10-20 03:12:05 UTC
 ```
 
-The last line names the speaker, so several bots can share one chat, and the UTC time the
-session raised it — a message may arrive later when Telegram asked us to slow down.
+The last two lines name the speaker, so several bots can share one chat, and the UTC time the
+session raised it — a message may arrive later when Telegram asked us to slow down. Each has a
+line of its own, because a phone breaks a long last line wherever it likes.
 
 **The day's close is one record, distributed.** At the market's trading-day boundary the session
 seals a booking period; its ledger row is the record the reports and the API read, and the session
@@ -90,9 +92,20 @@ for the operator and computes nothing of its own:
 
 ```
 ✅ Day closed — 2026-10-20
-3 trade(s) · net P&L +12.40 USD · fees 1.85 · equity 1,012.40 (opened 1,000.00) · deepest dip -8.20
-eth_daily · kraken_spot ETHUSD · 2026-10-21 00:00:05 UTC
+Trades: 3
+Net P&L: +12.40 USD
+Fees: 1.85 USD
+Equity: 1,000.00 → 1,012.40 USD
+Deepest dip: -8.20 USD
+eth_daily · kraken_spot ETHUSD
+2026-10-21 00:00:05 UTC
 ```
+
+One figure per line, in the account currency; a position still open adds an `Open P&L` line
+beside the realised one, and a day the session only started in opens with a `Covers: from 14:32
+UTC` line, because its figures are the rest of that day, not all of it. The session's own end
+reads the same way — its reason, its duration, its ticks, its figures — and the reason is whoever
+asked: a strategy, a hard stop, an operator's Ctrl+C or a supervisor's SIGTERM.
 
 **What it never does: block the session.** The session hands a message to a queue and goes on;
 a thread of its own paces the messages, honours Telegram's `retry_after`, and retries through the
@@ -101,6 +114,17 @@ An outage costs that one message. A refused token or chat closes the channel for
 said once in the session log — so the run is graded with errors rather than looking clean. A
 full queue drops the oldest alert below CRITICAL first, and says so when it starts. What happens
 to the closing message itself is in the session log only: it goes out after the run was graded.
+
+**What was sent is in the run's own log.** Every message the channel accepted leaves one line in
+the session log — its kind, its title, when the session raised it and when it went out:
+
+```
+📣 Sent day_closed · ✅ Day closed — 2026-10-08 · raised 00:00:05, delivered 00:00:06 UTC
+```
+
+The figures are not repeated there: a message is rendered from the run's records — a day's
+close from its booking period, the end from the run's report — and those records are what to
+open when a number needs checking. A message that never went out leaves no such line.
 
 ## The liveness ping — the alarm the session cannot send
 

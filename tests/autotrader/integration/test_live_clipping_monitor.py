@@ -9,7 +9,10 @@ All tests use controlled inputs (no real ticks, no time dependency).
 
 from unittest.mock import patch
 
-from python.framework.autotrader.live_clipping_monitor import LiveClippingMonitor
+from python.framework.autotrader.live_clipping_monitor import (
+    PERCENTILE_WINDOW_TICKS,
+    LiveClippingMonitor,
+)
 
 # --- Helpers ---
 
@@ -121,17 +124,34 @@ class TestCounterAccuracy:
         assert summary.avg_processing_ms == 4.0
 
     def test_processing_times_list_recorded(self):
-        """All individual processing times stored in processing_times_ms."""
+        """The individual processing times reach the display snapshot, oldest first."""
         monitor = LiveClippingMonitor()
         monitor.record_tick(ms_to_ns(1.5), tick_delta_ms=100.0)
         monitor.record_tick(ms_to_ns(2.5), tick_delta_ms=100.0)
         monitor.record_tick(ms_to_ns(3.5), tick_delta_ms=100.0)
 
+        assert monitor.get_display_stats().processing_times_ms == [1.5, 2.5, 3.5]
+
+    def test_the_percentile_window_keeps_only_the_most_recent_ticks(self):
+        """
+        The list behind the display's percentiles is bounded, the session's totals are not.
+
+        It used to keep every tick of the session, so a month-long session copied millions of
+        entries into each display frame and sorted them on each render.
+        """
+        monitor = LiveClippingMonitor()
+        overflow = 5
+        for index in range(PERCENTILE_WINDOW_TICKS + overflow):
+            monitor.record_tick(ms_to_ns(float(index)), tick_delta_ms=1_000_000.0)
+
+        window = monitor.get_display_stats().processing_times_ms
+        assert len(window) == PERCENTILE_WINDOW_TICKS
+        assert window[0] == float(overflow)
+        assert window[-1] == float(PERCENTILE_WINDOW_TICKS + overflow - 1)
+
         summary = monitor.get_session_summary()
-        assert len(summary.processing_times_ms) == 3
-        assert summary.processing_times_ms[0] == 1.5
-        assert summary.processing_times_ms[1] == 2.5
-        assert summary.processing_times_ms[2] == 3.5
+        assert summary.total_ticks == PERCENTILE_WINDOW_TICKS + overflow
+        assert summary.max_processing_ms == float(PERCENTILE_WINDOW_TICKS + overflow - 1)
 
 
 # ============================================
@@ -256,7 +276,7 @@ class TestSessionSummaryEdgeCases:
         assert summary.avg_stale_ms == 0.0
         assert summary.avg_processing_ms == 0.0
         assert summary.max_queue_depth == 0
-        assert summary.processing_times_ms == []
+        assert monitor.get_display_stats().processing_times_ms == []
 
     def test_all_ticks_clipped(self):
         """100% clipping ratio."""

@@ -78,7 +78,7 @@ from python.framework.reporting.booking_period_recorder import (
     snapshot_from_portfolio,
 )
 from python.framework.types.run_results_types import BookingPeriod, PeriodCloseReason
-from python.framework.utils.trading_day_anchor import trading_day_of
+from python.framework.utils.trading_day_anchor import boundary_opening, trading_day_of
 from python.framework.types.persistence_types import (
     BaselineKind,
     BaselineOrigin,
@@ -422,6 +422,20 @@ class AutotraderTickLoop:
         # placeholder. Subsequent pulses fire from queue.Empty heartbeats.
         self._push_pulse_frame(ticks_processed)
 
+        # #348: an end requested before the first pass — a Ctrl+C or a SIGTERM while the session
+        # was starting — makes no pass at all, so no decision runs after the stop was asked for.
+        # The end-of-run steps below still run and tell the decision logic why.
+        if self._executor.is_session_end_requested():
+            self._logger.info(
+                f'🛑 Session end requested before the first pass: '
+                f'{self._executor.get_session_end_reason()}')
+            self._running = False
+            # No pass means nothing set the canonical clock, and the end-of-run steps read it —
+            # the session-end event's stamp, the disturbance episodes the shutdown collects.
+            # Set it the way an idle pass does, so a stop during the start ends cleanly.
+            if self._executor.get_current_time_if_set() is None:
+                self._executor.set_current_time(datetime.now(timezone.utc))
+
         while self._running:
             # #235: one stamp per pass, tick or heartbeat — a pass that hangs stamps no more,
             # and the liveness ping stops vouching for the loop
@@ -518,8 +532,6 @@ class AutotraderTickLoop:
             # live-adapter session the heartbeat above has almost always rotated first; this
             # covers a replay whose queue never runs empty.
             self._check_daily_rotation()
-            self._booking.check_boundary(
-                self._executor.get_current_time_if_set(), self._seal_source)
 
             # #436: a real tick ends a stale episode (recovery, edge reset).
             if self._market_stale:
@@ -554,6 +566,12 @@ class AutotraderTickLoop:
             # a restart mid-drawdown keeps the reference it had instead of re-anchoring at
             # the drawn-down value. `observe` then advances a high-water mark, and only that.
             self._update_risk_baseline(tick)
+            # #537 — the booking boundary AFTER the valuation above, as the simulation orders
+            # it: the seal reads this tick's value as the closing period's final equity, so the
+            # value has to be inside that period's band. Checked first, the closing value sat
+            # outside the band it closed, and a drop on the boundary tick was in neither day.
+            self._booking.check_boundary(
+                self._executor.get_current_time_if_set(), self._seal_source)
 
             # === 2. Bar Rendering (shared core, #303) ===
             current_bars = render_bars_for_tick(tick, self._bar_controller)
@@ -1234,6 +1252,11 @@ class AutotraderTickLoop:
         self._risk_baseline.ensure_taken(value, mark_price, quantities)
         self._risk_baseline.observe(value, mark_price, quantities)
         self._update_day_baseline(value, mark_price, quantities)
+        # The report's equity curve too, before the booking boundary is checked: a seal reads the
+        # curve's running figures (peak, deepest decline), and the simulation samples before it
+        # seals. The safety pass samples again after the decision, which changes nothing unless
+        # an order filled within this tick.
+        self._executor.portfolio.sample_equity(value)
         # The booking period's VALUATION half, beside the risk one (#537). Same tick, same
         # value, so the two never describe different instants.
         self._booking.observe_equity(value)
@@ -1357,8 +1380,9 @@ class AutotraderTickLoop:
         if period.reason is not PeriodCloseReason.ANCHOR or not self._daily_digest:
             return
         try:
+            trading_day = trading_day_of(period.opened_at, self._day_anchor)
             title, detail = day_closed_text(
-                period, trading_day_of(period.opened_at, self._day_anchor))
+                period, trading_day, boundary_opening(trading_day, self._day_anchor))
         except Exception as error:   # noqa: BLE001 — a message must never end a trading session
             self._logger.error(
                 f'📣 The day-close message for booking period {period.period_no} could not be '

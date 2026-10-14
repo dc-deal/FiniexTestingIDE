@@ -1305,19 +1305,21 @@ class AutoTraderLiveDisplay:
         filled = min(bar_width, int(clipping_pct / 100 * bar_width))
         clip_bar = '█' * filled + '░' * (bar_width - filled)
 
-        # Percentiles from processing_times_ms
+        # Percentiles from processing_times_ms — the monitor's recent window, not the session,
+        # so the line says how many ticks it covers
         p50 = p95 = p99 = 0.0
-        if stats.processing_times_ms:
+        n = len(stats.processing_times_ms)
+        if n:
             sorted_times = sorted(stats.processing_times_ms)
-            n = len(sorted_times)
-            p50 = sorted_times[int(n * 0.50)] if n > 0 else 0.0
-            p95 = sorted_times[min(int(n * 0.95), n - 1)] if n > 0 else 0.0
-            p99 = sorted_times[min(int(n * 0.99), n - 1)] if n > 0 else 0.0
+            p50 = sorted_times[int(n * 0.50)]
+            p95 = sorted_times[min(int(n * 0.95), n - 1)]
+            p99 = sorted_times[min(int(n * 0.99), n - 1)]
 
         lines = [
             f'Avg:      {stats.avg_processing_ms:.2f}ms',
             f'Max:      {stats.max_processing_ms:.2f}ms',
             f'p50={p50:.2f}  p95={p95:.2f}  p99={p99:.2f}',
+            f'          last {n:,} ticks',
             f'Clipped:  [{clip_color}]{stats.total_ticks_clipped} ({clipping_pct:.2f}%)[/{clip_color}]',
             f'          [{clip_color}]{clip_bar}[/{clip_color}]',
             f'Queue:    {stats.queue_depth}',
