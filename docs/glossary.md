@@ -24,6 +24,11 @@ run fit together; the linked documents explain the rest.
 
 ---
 
+**acceptance study** — A real-money session sequence whose record becomes a release certificate:
+the *field study* proves the order path, the *security study* the account's protective rules.
+Both run on one engine and write one capture format. Not a test suite — the suite only validates
+the certificate it left. See [Security Study](tests/security_cert/security_cert_guide.md).
+
 **accepted** (an order event) — The venue took the order: it answered with its reference, the
 order started resting, or it filled in its answer. Recorded once per order, before its first fill;
 in a backtest when the order arrives at the simulated venue. Not an order-history status — the order
@@ -123,7 +128,8 @@ it moves between replay time and the present. See *wall clock*.
 
 **carry-over** — What one session hands the next session of the same bot: the algo's memory, and
 the framework's record of keys, positions and the risk baseline. Keyed by the bot, overwritten, and
-never kept per run. See [Data Storage Layout](architecture/data_storage_layout.md).
+never kept per run. A document written under another profile name is not this bot's, except for a
+*declared continuation*. See [Data Storage Layout](architecture/data_storage_layout.md).
 
 **cascade** — How a configuration value is layered. For a scenario: application defaults, then the
 set's `global` block, then the scenario. For an AutoTrader profile: `app_config.autotrader`
@@ -136,7 +142,7 @@ entry's *current fixture*. Not a *production* profile, which trades real money. 
 [Fixture Catalog](architecture/fixture_catalog.md).
 
 **certificate run** (`run_purpose: certificate`) — A release-gate run whose record becomes a
-release certificate, such as a real-money *field study*. Never produced again and never deleted.
+release certificate, such as a stage of an *acceptance study*. Never produced again and never deleted.
 Not the certificate itself, which is a file beside the gate's test suite. See *run purpose*.
 
 **client order id** (`client_order_id`) — Our key for an order, sent with it on the wire so the
@@ -204,6 +210,12 @@ own glossary.
 
 **decision logic** — The one class that turns worker outputs into decisions. See
 [Quickstart](user_guides/quickstart_guide.md).
+
+**declared continuation** (`carry_over_from` in an AutoTrader profile) — A later stage of one bot
+that starts from what an earlier stage left: the later profile names the earlier one, and the two
+share the bot's carry-over in both directions. Allowed only between a release study's stages or a
+test's fixtures, and held at boot to the conditions that keep it from being mistaken for a copy.
+See [AutoTrader Configuration](autotrader/autotrader_configuration.md).
 
 **deficiency** (`DataDeficiency`; `deficiencies` in the tick index) — What an archived file LACKS:
 `no_quote`, `no_arrival_time`, `arrival_time_reconstructed`, `missing_trades`, `synthetic`. Measured
@@ -554,6 +566,12 @@ order of the stream; never sort by time instead, because several steps often car
 `submitted_seq` is the `seq` of the submission an event belongs to — of the adoption, for an adopted
 order — and is how the steps of one order are grouped, since the *order id* repeats across a
 position's orders.
+
+**security study** — The *acceptance study* that provokes the account's protective rules with real
+money — the order guard's refusals and cooldown, the circuit breaker's soft block and hard stop,
+the risk baseline across a restart — in a sequence of sessions called *stages*, and certifies each
+rule live, offline or as waiting for a margin account. See
+[Security Study](tests/security_cert/security_cert_guide.md).
 
 **server clock** (`server_clock`) — The clock a venue stamps its own data with, declared per broker
 in `market_config.json` as an IANA zone and the whole hours the server runs ahead of it. The MT5

@@ -42,6 +42,22 @@ The file stays `dotlive01_dotusd.json` through any rename of anything else. It i
 the document's own envelope, so the file can say what it is filed under rather than leaving that
 to be recomputed.
 
+**The NAME still decides whose document it is.** The envelope records the profile that wrote it,
+and a store reads a document as this bot's only when that name is this profile's — so a renamed
+profile finds its own document written by "another" profile. Where that document still holds an
+open position or a session key, the boot refuses rather than start over it (#358), names the old
+name and says to restore it:
+
+```
+This bot's carry-over was last written by the profile 'dotusd_production' (run 20261014_…),
+    not by 'dotusd_production_v2', and it still holds 1 open position(s) and 3 session key(s).
+```
+
+Before that refusal, the session's first write replaced the document, and the position it
+described stayed at the venue with nothing left that knew about it. A document that holds neither
+— what a dry run or a mock session writes — may be started over. Taking a renamed profile's
+document over on purpose is not built yet (#597).
+
 **Set it once and never change it.** Changing a `bot_id` is the same event as renaming without
 one: the next session looks somewhere else.
 
@@ -110,6 +126,41 @@ one points the bot at an empty document while the venue still holds the position
 A test holds the shipped profiles to the same three rules, so a new profile cannot arrive without
 an identity, with a malformed one, or with one already taken.
 
+### A declared continuation — `carry_over_from`
+
+One case needs two profiles in one document on purpose: a later stage of one bot that has to start
+from what an earlier stage left. The security study restarts its bot to prove a risk baseline
+survives a restart, and again to prove a hard stop fires on a kept holding
+([security_cert_guide.md](../tests/security_cert/security_cert_guide.md)). The later profile says
+so, naming the earlier one by its `profile_name`:
+
+```json
+{ "profile_name": "kraken_spot_btcusd_security_cert_restart", "bot_id": "scsafe01",
+  "carry_over_from": "kraken_spot_btcusd_security_cert_soft" }
+```
+
+Both stores then read the pair's documents as one bot's, in BOTH directions: the later stage reads
+what the earlier left, and the earlier reads what the later left — a store writes by reading
+first, so an earlier stage that ignored the document would replace the later stage's book on its
+first write.
+
+**The boot holds the pair to every condition that keeps it from being mistaken for a copy**, and
+refuses before any order when one fails:
+
+| Condition | Why |
+|---|---|
+| exactly two profiles claim the identity, the later naming the earlier byte for byte | a third would read the pair's state as its own; the stores compare names exactly |
+| the earlier declares nothing itself, and the two have different names | a chain or a cycle makes both sides accept each other; the stores tell the stages apart by name |
+| both declare `run_purpose` `certificate` or `fixture` | a release study's stages or a test's fixtures — a production bot keeping its identity across a rename is a different question |
+| one `adapter_type`, one `broker_type`, one `cold_start.path` | a mock stage beside a live one would hand a real account a baseline taken from simulated balances |
+| the earlier stage does not leave orders resting at session end | the next boot to meet them would be the later stage's, which never agreed to adopt them |
+| the later stage reads a carry-over at all — its cold start is on, and it is not a study that skips the adoption step | the continuation is carried by the cold-start document alone |
+| the later stage finds its predecessor's document, or its own from an earlier run | starting fresh would run it against a state it was not built for — a restart stage would trade with no risk limit armed |
+| a document the partner wrote comes from a run that completed — reached its ledger row | a run still going and a run that died look the same, and two sessions must not manage one book |
+
+The declaration is read from the profile alone, never from `app_config.json`, and it is left out of
+both fingerprints: which stage came before says nothing about how this one trades.
+
 ## Configuration
 
 Config file: `configs/autotrader_profiles/mock/mock_session_test.json` — own format, NOT scenario-set based.
@@ -152,7 +203,8 @@ Sections not listed here (`execution`, `clipping_monitor`, `order_guard`) inheri
 |---------|---------|-------|
 | `profile_name` | Profile name | **Required.** Used for the run directory (`runs/autotrader/<profile_name>/`) and as the unit name in every report |
 | `bot_id` | Carry-over identity | **Mandatory** — see [`bot_id`](#bot_id--the-identity-a-bots-state-is-filed-under) above |
-| `run_purpose` | What the sessions are FOR (#576) | `regular` (default when omitted), `fixture` or `certificate`. Every profile in `mock/` declares `fixture` — the test session refuses a run whose profile does not; the `field_study/` profiles declare `certificate`. A profile of your own — in a user algo directory or in `user_configs/` — declares none: it always runs as `regular`, and a declaration there is refused. Stamped on the run header; see [Run Kinds](../consumer/run-kinds.md) |
+| `carry_over_from` | The profile whose carry-over this one continues (#358) | Optional; a release study's or a fixture's later stage only — see [A declared continuation](#a-declared-continuation--carry_over_from) above |
+| `run_purpose` | What the sessions are FOR (#576) | `regular` (default when omitted), `fixture` or `certificate`. Every profile in `mock/` declares `fixture` — the test session refuses a run whose profile does not; the `field_study/` and `security_cert/` profiles declare `certificate`. A profile of your own — in a user algo directory or in `user_configs/` — declares none: it always runs as `regular`, and a declaration there is refused. Stamped on the run header; see [Run Kinds](../consumer/run-kinds.md) |
 | `description` | Why the profile exists | Optional text, Markdown allowed; served by the configuration directory as `config_description` |
 | `symbol` | Trading pair | Single symbol per session |
 | `broker_type` | Broker identifier | Maps to MarketType via `market_config.json`; broker connection settings read from there too |
@@ -251,8 +303,8 @@ One wide hash would answer neither. A raised stop level must not read as a diffe
 would put an otherwise comparable run beyond comparison; and a changed RSI threshold must not pass
 as mere operation. Both are computed from the LOADED config, so a value the loader resolved is
 fingerprinted as resolved; `config_path`, `profile_name` and `symbol` are excluded, because where a
-profile sits on disk is not a property of the run. So is `run_purpose`: what a session is FOR
-says nothing about how it trades. A profile's `description` never reaches the loaded configuration
+profile sits on disk is not a property of the run. So are `run_purpose` and `carry_over_from`:
+what a session is FOR and which stage came before it say nothing about how it trades. A profile's `description` never reaches the loaded configuration
 at all, so a reworded one cannot mark a session as an operation change.
 
 **Three identity columns sit beside them on the ledger row, and they answer different

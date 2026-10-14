@@ -13,7 +13,8 @@ temporary directory pytest deletes three sessions later.
 from typing import Iterable
 
 # The marks `tests/conftest.py` gives the release-gate suites, by directory.
-RELEASE_GATE_MARKS = ('live_adapter', 'benchmark', 'live_field_study', 'live_signal_feed')
+RELEASE_GATE_MARKS = (
+    'live_adapter', 'benchmark', 'live_field_study', 'live_signal_feed', 'security_cert')
 
 
 def is_release_gate_session(items: Iterable) -> bool:

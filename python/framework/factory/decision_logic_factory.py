@@ -43,6 +43,9 @@ from python.framework.decision_logic.core.test_probes.outage_probe import (
 from python.framework.decision_logic.core.cautious_macd import CautiousMacd
 from python.framework.decision_logic.core.hybrid_sentiment_reference import HybridSentimentReference
 from python.framework.decision_logic.core.live_field_study.live_field_study import LiveFieldStudy
+from python.framework.decision_logic.core.security_cert_study.security_cert_study import (
+    SecurityCertStudy,
+)
 from python.framework.decision_logic.core.simple_consensus import SimpleConsensus
 from python.framework.decision_logic.core.trend_channel_reference import TrendChannelReference
 from python.framework.logging.abstract_logger import AbstractLogger
@@ -98,6 +101,8 @@ class DecisionLogicFactory:
             self._registry['CORE/test_probes/event_probe'] = (EventProbe, None)
             self._registry['CORE/test_probes/outage_probe'] = (OutageProbe, None)
             self._registry['CORE/live_field_study/live_field_study'] = (LiveFieldStudy, None)
+            self._registry['CORE/security_cert_study/security_cert_study'] = (
+                SecurityCertStudy, None)
 
             self.logger.debug(
                 f'Core decision logics registered: {list(self._registry.keys())}'

@@ -21,9 +21,9 @@ from python.framework.types.certificate_types import CertificateIdentity, Worksp
 from python.framework.utils.config_merge_utils import is_config_isolation_active
 from python.framework.utils.run_origin_builder import capture_code_identity
 
-# The shared validity backstop. One window for all four certificates: they answer questions
-# about the same release, so letting them expire on different dates would mean a release is
-# partly certified — a state with no useful reading.
+# The shared validity backstop. One window for every release certificate: they answer
+# questions about the same release, so letting them expire on different dates would mean a
+# release is partly certified — a state with no useful reading.
 VALIDITY_DAYS = 90
 
 

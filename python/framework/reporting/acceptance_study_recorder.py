@@ -1,7 +1,7 @@
 """
-FiniexTestingIDE - Field Study Recorder (#332)
+FiniexTestingIDE - Acceptance Study Recorder (#332, #358)
 
-Writes the Field Study run as analysis-ready JSONL: one JSON object per line,
+Writes an acceptance study's run as analysis-ready JSONL: one JSON object per line,
 append-only, flushed per event (crash-safe and tail-able during the live run). The
 first line is a header that describes the run. Every event carries a stable shared key
 set so a `jq` one-liner or a 3-line pandas load is enough. An order line joins the session's
@@ -10,22 +10,30 @@ order-event stream by `extra.stream_seq`, and the lines of one submission share
 
 The recorder writes the study's own choreography: the header, every phase's start and result,
 the REST telemetry at the end and the session-end marker. Its order and venue lines are the live
-core's own record, copied in while the executor writes it (`FieldStudyStreamProjection`, #566) —
-the study keeps no second picture of its orders. Both go through this one writer and one sequence.
+core's own record, copied in while the executor writes it (`AcceptanceStudyStreamProjection`,
+#566) — the study keeps no second picture of its orders. Both go through this one writer and one
+sequence. Every acceptance study writes through it; what differs between them is the file and
+the step that follows a finished capture.
 """
 
 from dataclasses import asdict
 from datetime import datetime, timezone
+from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.reporting.io.jsonl_stream_writer import JsonlStreamWriter
-from python.framework.types.autotrader_types.field_study_types import (
-    FieldStudyEvent,
-    FieldStudyHeader,
-    PhaseResult,
+from python.framework.types.acceptance_study_types.study_capture_types import (
+    SESSION_END_PHASE,
+    CaptureCloseReason,
+    CaptureEvent,
+    CaptureHeader,
+    CaptureLineType,
+    status_fits_line,
 )
+from python.framework.types.acceptance_study_types.study_phase_types import PhaseResult
+from python.framework.types.trading_env_types.order_event_types import OrderEventPlane
 from python.framework.types.trading_env_types.order_types import FeeReport
 
 # 2.0 — order and venue lines are projected from the live core's record (#566): they name the
@@ -33,24 +41,15 @@ from python.framework.types.trading_env_types.order_types import FeeReport
 # is one too, and a fill carries what its slippage is measured against.
 _SCHEMA_VERSION = '2.0'
 
-# Plane labels — keep in sync with the certificate analyzer and the operator guide.
-PLANE_BOT = 'bot'
-PLANE_BROKER_TRUTH = 'broker_truth'
-
-# The marker phases outside the sequence: the venue's read before trading, and everything written
-# once the session ends. The certificate selects the end snapshot by the second, never by position.
-PREFLIGHT_PHASE = 'preflight'
-SESSION_END_PHASE = 'session_end'
-
 
 def _utc_now_iso() -> str:
     """Current UTC timestamp as an ISO-8601 string (timezone-aware)."""
     return datetime.now(timezone.utc).isoformat()
 
 
-class FieldStudyRecorder:
+class AcceptanceStudyRecorder:
     """
-    JSONL writer for a single Field Study run.
+    JSONL writer for a single acceptance study run.
 
     Args:
         output_path: Target .jsonl file (parent dirs are created)
@@ -58,6 +57,8 @@ class FieldStudyRecorder:
         symbol: Traded symbol
         phase_ids: Ordered phase ids (for the header)
         logger: Session logger (for the file-path banner, and a write that fails)
+        study_label: The study's name in the session log ('Field Study')
+        next_step: What the operator runs once the capture is complete, said when it closes
         fee_report: Where the session's venue reports the fee of a fill, as its adapter
             declares it (#508); None leaves it out of the header
         venue_fee_expected: Whether the session's fills should carry the venue's own fee, as
@@ -71,11 +72,15 @@ class FieldStudyRecorder:
         symbol: str,
         phase_ids: List[str],
         logger: ScenarioLogger,
+        study_label: str,
+        next_step: str,
         fee_report: Optional[FeeReport] = None,
         venue_fee_expected: Optional[bool] = None,
     ):
         self._path = Path(output_path)
         self._logger = logger
+        self._study_label = study_label
+        self._next_step = next_step
         self._seq = 0
         self._phase = ''
         self._phase_index = -1
@@ -83,7 +88,7 @@ class FieldStudyRecorder:
 
         self._writer = JsonlStreamWriter(self._path)
 
-        header = FieldStudyHeader(
+        header = CaptureHeader(
             schema_version=_SCHEMA_VERSION,
             started_utc=_utc_now_iso(),
             profile=profile,
@@ -96,7 +101,7 @@ class FieldStudyRecorder:
         # The line is where the declaration becomes its value — the header keeps the enum
         line['fee_report'] = fee_report.value if fee_report is not None else None
         self._write_line(line)
-        self._logger.info(f'📝 Field Study recorder → {self._path}')
+        self._logger.info(f'📝 {self._study_label} recorder → {self._path}')
 
     # ============================================
     # Phase context
@@ -122,7 +127,13 @@ class FieldStudyRecorder:
         """
         return self._phase, self._phase_index
 
-    def record_phase_start(self, phase_id: str, phase_index: int, side: Optional[str]) -> None:
+    def record_phase_start(
+        self,
+        phase_id: str,
+        phase_index: int,
+        side: Optional[str],
+        phase_type: Optional[str] = None,
+    ) -> None:
         """
         Record a phase-start marker and switch the phase context.
 
@@ -130,24 +141,29 @@ class FieldStudyRecorder:
             phase_id: Phase id
             phase_index: Phase index
             side: Trade side ('LONG'/'SHORT'/None)
+            phase_type: The phase's kind, in its study's own set — what a phase whose result is
+                meant never to arrive is recognised by
         """
         self.set_phase(phase_id, phase_index)
-        self._emit(PLANE_BOT, 'phase_start', side=side)
+        self._emit(OrderEventPlane.BOT, CaptureLineType.PHASE_START, side=side,
+                   extra={'phase_type': phase_type} if phase_type else None)
 
-    def record_phase_result(self, result: PhaseResult) -> None:
+    def record_phase_result(self, result: PhaseResult, extra: Optional[Dict[str, Any]] = None) -> None:
         """
         Record a phase outcome (PASS/FAIL/SKIPPED/EXPECTED_REJECTION).
 
         Args:
             result: Completed PhaseResult from the phase machine
+            extra: Further fields a study records with its outcome, beside the shared three
         """
         self._emit(
-            PLANE_BOT, 'phase_result',
-            status=result.outcome.value,
+            OrderEventPlane.BOT, CaptureLineType.PHASE_RESULT,
+            status=result.outcome,
             extra={
                 'reason': result.reason,
                 'phase_type': result.phase_type.value,
                 'rearm_attempts': result.rearm_attempts,
+                **(extra or {}),
             },
         )
 
@@ -157,8 +173,8 @@ class FieldStudyRecorder:
 
     def write_projected(
         self,
-        plane: str,
-        event_type: str,
+        plane: OrderEventPlane,
+        event_type: CaptureLineType,
         phase: str,
         phase_index: int,
         **fields: Any,
@@ -171,14 +187,21 @@ class FieldStudyRecorder:
         own marker phase.
 
         Args:
-            plane: 'bot' for an order line, 'broker_truth' for a venue read
+            plane: The bot's account for an order line, the venue's for a venue read
             event_type: The line's type
             phase: The phase it is filed under
             phase_index: Its index; -1 for a marker phase
-            **fields: Further FieldStudyEvent fields
+            **fields: Further CaptureEvent fields
         """
+        status = fields.get('status')
+        if not status_fits_line(event_type, status):
+            # Reported, never raised: this runs inside the executor's listener, and a capture
+            # defect must not end a real-money session. The line is written as it came.
+            self._logger.error(
+                f'❌ {self._study_label} capture: a `{event_type}` line carries the status '
+                f'{status!r}, which is not in the set its type declares.')
         self._seq += 1
-        event = FieldStudyEvent(
+        event = CaptureEvent(
             ts_utc=_utc_now_iso(),
             seq=self._seq,
             plane=plane,
@@ -187,7 +210,7 @@ class FieldStudyRecorder:
             phase_index=phase_index,
             **fields,
         )
-        self._write_line(asdict(event))
+        self._write_line(_line_of(event))
 
     # ============================================
     # Telemetry and lifecycle
@@ -206,7 +229,8 @@ class FieldStudyRecorder:
                 divergences it saw
         """
         self.write_projected(
-            PLANE_BOT, 'reconcile_summary', SESSION_END_PHASE, -1, reconcile=summary)
+            OrderEventPlane.BOT, CaptureLineType.RECONCILE_SUMMARY, SESSION_END_PHASE, -1,
+            reconcile=summary)
 
     def record_api_perf(self, snapshot: Dict[str, Any]) -> None:
         """
@@ -215,29 +239,31 @@ class FieldStudyRecorder:
         Args:
             snapshot: Per-endpoint calls, latency and errors, with the session's totals
         """
-        self.write_projected(PLANE_BOT, 'api_perf', SESSION_END_PHASE, -1, api_perf=snapshot)
+        self.write_projected(
+            OrderEventPlane.BOT, CaptureLineType.API_PERF, SESSION_END_PHASE, -1,
+            api_perf=snapshot)
 
-    def close(self, reason: str = 'session end') -> None:
+    def close(self, reason: CaptureCloseReason = CaptureCloseReason.SESSION_END) -> None:
         """
         Write the session-end marker and close the file.
 
         Args:
-            reason: Human-readable end reason
+            reason: Why the capture closes
         """
         if not self._writer.is_open():
             return
-        self.write_projected(PLANE_BOT, 'session_end', SESSION_END_PHASE, -1, status=reason)
+        self.write_projected(
+            OrderEventPlane.BOT, CaptureLineType.SESSION_END, SESSION_END_PHASE, -1,
+            status=reason)
         self._writer.close()
 
         # Operator next-step hint. The capture (this JSONL) is the durable, expensive
         # artifact; the certificate is a separate, free, re-runnable judgment over it.
-        # Surfacing the generate command here keeps a finished study from being left
-        # un-certified — without a field-study special case in the core shutdown path.
+        # Surfacing the next step here keeps a finished study from being left
+        # un-certified — without a study special case in the core shutdown path.
         self._logger.info(
-            f'✅ Field Study capture complete → {self._path}\n'
-            f'   Next step (no live trade) — generate the acceptance certificate:\n'
-            f'   python python/cli/field_study_certificate_cli.py generate '
-            f'--latest --release-version <X.Y.Z>'
+            f'✅ {self._study_label} capture complete → {self._path}\n'
+            f'   Next step (no live trade): {self._next_step}'
         )
 
     def get_path(self) -> Path:
@@ -248,8 +274,8 @@ class FieldStudyRecorder:
     # Internals
     # ============================================
 
-    def _emit(self, plane: str, event_type: str, **fields: Any) -> None:
-        """Build a FieldStudyEvent with the current phase context and write it."""
+    def _emit(self, plane: OrderEventPlane, event_type: CaptureLineType, **fields: Any) -> None:
+        """Build a CaptureEvent with the current phase context and write it."""
         self.write_projected(plane, event_type, self._phase, self._phase_index, **fields)
 
     def _write_line(self, obj: Dict[str, Any]) -> None:
@@ -269,5 +295,23 @@ class FieldStudyRecorder:
         except OSError as e:
             self._failed = True
             self._logger.error(
-                f'❌ The Field Study capture {self._path} could not be written: {e}. It is '
-                f'incomplete from this line on; the session continues.')
+                f'❌ The {self._study_label} capture {self._path} could not be written: {e}. It '
+                f'is incomplete from this line on; the session continues.')
+
+
+def _line_of(event: CaptureEvent) -> Dict[str, Any]:
+    """
+    The line an event becomes — where its enums turn into the values the JSON carries.
+
+    Args:
+        event: The typed line
+
+    Returns:
+        The line as a dict of JSON-serializable values
+    """
+    line = asdict(event)
+    for key in ('plane', 'event_type', 'status', 'detected_via'):
+        value = line[key]
+        if isinstance(value, Enum):
+            line[key] = value.value
+    return line

@@ -21,16 +21,18 @@ import json
 import os
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import List, Optional, Set
+from typing import List, Optional, Set, Tuple
 
 from pydantic import ValidationError
 
 from python.framework.logging.abstract_logger import AbstractLogger
-from python.framework.persistence.carry_over_identity import carry_over_key
+from python.framework.persistence.carry_over_identity import accepts_carry_over, carry_over_key
 from python.framework.persistence.cold_start_state_index import ColdStartStateIndex
 from python.framework.types.persistence_types import (
     AccountDrawdownCarryOver,
     CarryOverEnvelope,
+    CarryOverLoad,
+    CarryOverLoadOutcome,
     ColdStartPayload,
     PositionCarryOver,
     RiskBaseline,
@@ -60,6 +62,8 @@ class ColdStartStateStore:
             the key, because the successor must find this file without knowing it
         bot_id: The identity the profile DECLARES, which takes precedence over `profile` in the
             key (#538). Empty composes the key from the name, as every profile did before
+        carry_over_from: The profile whose carry-over this profile declares it continues (#358),
+            or empty — its document, and its successor's, are this bot's to read
     """
 
     def __init__(
@@ -70,6 +74,7 @@ class ColdStartStateStore:
         logger: AbstractLogger,
         run_id: Optional[str] = None,
         bot_id: str = '',
+        carry_over_from: str = '',
     ):
         self._root = Path(root)
         self._profile = profile
@@ -77,11 +82,15 @@ class ColdStartStateStore:
         self._logger = logger
         self._run_id = run_id
         self._bot_id = bot_id
+        self._carry_over_from = carry_over_from
         self._path = self._root / f'{carry_over_key(profile, symbol, bot_id)}.json'
         # Provenance from the last load: WHEN the document was written. Kept as the stamp and
         # never turned into an age — deriving one needs a "now", and at boot the canonical
         # clock is not injected yet (§9).
         self._saved_at: Optional[str] = None
+        # What the last load found — what the boot's continuity checks decide on, and what keeps
+        # a write from replacing another bot's open book
+        self._last_load: Optional[CarryOverLoad] = None
 
     def get_saved_at(self) -> Optional[str]:
         """
@@ -91,6 +100,15 @@ class ColdStartStateStore:
             The envelope's stamp, or None when nothing was loaded or there was no file
         """
         return self._saved_at
+
+    def get_last_load(self) -> Optional[CarryOverLoad]:
+        """
+        What the last load found.
+
+        Returns:
+            The outcome, the writer and its open book; None before the first load
+        """
+        return self._last_load
 
     def get_state_path(self) -> Path:
         """
@@ -115,16 +133,24 @@ class ColdStartStateStore:
         ignoring it is bounded — the successor simply cannot recognise its predecessor's
         orders and reports them as foreign, which is the honest fallback.
 
+        A document is this bot's when this profile wrote it, or the profile a declared
+        continuation names on either side (#358, `accepts_carry_over`). Another profile's is
+        ignored — and what it held stays visible in `get_last_load()`, so the boot can refuse
+        rather than overwrite an open book that is not its own.
+
         Returns:
             The stored payload, or an empty one
         """
         self._saved_at = None
+        path = str(self._path)
         if not self._path.exists():
+            self._last_load = CarryOverLoad(path, CarryOverLoadOutcome.ABSENT)
             return ColdStartPayload()
 
         try:
             envelope = CarryOverEnvelope.model_validate_json(self._path.read_bytes())
         except (ValidationError, OSError) as e:
+            self._last_load = CarryOverLoad(path, CarryOverLoadOutcome.UNREADABLE)
             self._logger.warning(
                 f'⚠️ Cold-start carry-over unreadable ({e}) — continuing without it. '
                 f'Orders from an earlier session will read as foreign. File: {self._path}'
@@ -132,13 +158,22 @@ class ColdStartStateStore:
             return ColdStartPayload()
 
         if envelope.schema_version != _SCHEMA_VERSION:
+            self._last_load = CarryOverLoad(
+                path, CarryOverLoadOutcome.OTHER_SCHEMA, envelope.profile,
+                envelope.written_by_run_id)
             self._logger.warning(
                 f'⚠️ Cold-start carry-over has schema_version {envelope.schema_version} '
                 f'(expected {_SCHEMA_VERSION}) — ignored. File: {self._path}'
             )
             return ColdStartPayload()
 
-        if envelope.profile != self._profile or envelope.symbol != self._symbol:
+        if envelope.symbol != self._symbol or not accepts_carry_over(
+                self._profile, self._carry_over_from,
+                envelope.profile, envelope.carry_over_from):
+            positions, keys = _claims_in(envelope.snapshot)
+            self._last_load = CarryOverLoad(
+                path, CarryOverLoadOutcome.FOREIGN, envelope.profile, envelope.written_by_run_id,
+                positions, keys)
             self._logger.warning(
                 f'⚠️ Cold-start carry-over belongs to {envelope.profile}/{envelope.symbol}, '
                 f'not {self._profile}/{self._symbol} — ignored'
@@ -148,12 +183,19 @@ class ColdStartStateStore:
         self._saved_at = envelope.saved_at_utc
 
         try:
-            return ColdStartPayload.model_validate(envelope.snapshot)
+            payload = ColdStartPayload.model_validate(envelope.snapshot)
         except ValidationError as e:
+            self._last_load = CarryOverLoad(
+                path, CarryOverLoadOutcome.UNREADABLE, envelope.profile,
+                envelope.written_by_run_id)
             self._logger.warning(
                 f'⚠️ Cold-start carry-over payload rejected ({e}) — continuing without it'
             )
             return ColdStartPayload()
+        self._last_load = CarryOverLoad(
+            path, CarryOverLoadOutcome.ACCEPTED, envelope.profile, envelope.written_by_run_id,
+            len(payload.open_positions), len(payload.session_keys))
+        return payload
 
     # ============================================
     # Save
@@ -220,6 +262,20 @@ class ColdStartStateStore:
                 rebuilds on the next boot or via `store_cli.py rebuild cold_start_state`
         """
         payload = self.load()
+        foreign = self._last_load
+        if (foreign is not None and foreign.outcome == CarryOverLoadOutcome.FOREIGN
+                and foreign.holds_venue_claims()):
+            # Another profile's open book or session keys under this bot's name. Writing would
+            # replace them with this session's, and what they describe would stay at the venue
+            # with nothing left that knows about it. The boot refuses before it gets here
+            # (`carry_over_continuity_validator`); this is the line that holds when a second
+            # session appears mid-run.
+            self._logger.error(
+                f'❌ Cold-start carry-over NOT written: {self._path} was last written by '
+                f'{foreign.writer_profile} (run {foreign.writer_run_id}) and still holds '
+                f'{foreign.open_positions} open position(s) and {foreign.session_keys} session '
+                f'key(s) — this session will not overwrite them.')
+            return
         protected = set(keys_in_use or ())
 
         keys = [k for k in payload.session_keys if k and k != session_key]
@@ -263,6 +319,7 @@ class ColdStartStateStore:
             # What the FILE NAME was derived from — without it nothing can recompute this
             # document's own name, and anything that tried would orphan it (#538).
             bot_id=self._bot_id,
+            carry_over_from=self._carry_over_from,
             snapshot=payload.model_dump(),
         )
         self._atomic_write(json.dumps(envelope.model_dump(), indent=2))
@@ -306,3 +363,20 @@ class ColdStartStateStore:
             f.write(payload)
         os.replace(tmp_path, self._path)
 
+
+def _claims_in(snapshot: dict) -> Tuple[int, int]:
+    """
+    How many open positions and session keys a document holds, read without accepting it.
+
+    Args:
+        snapshot: The envelope's payload
+
+    Returns:
+        (open positions, session keys); 0 for either list that cannot be read
+    """
+    if not isinstance(snapshot, dict):
+        return 0, 0
+    positions = snapshot.get('open_positions')
+    keys = snapshot.get('session_keys')
+    return (len(positions) if isinstance(positions, list) else 0,
+            len([k for k in keys if k]) if isinstance(keys, list) else 0)

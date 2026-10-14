@@ -5,6 +5,7 @@ Pydantic models for the app_config.json::autotrader section.
 Note: This covers only the app_config defaults section — not the full
 AutoTraderConfig profile type defined in autotrader_config_types.py.
 """
+from enum import StrEnum
 from typing import Literal
 
 from python.framework.types.config_types.operator_alerts_config_types import OperatorAlertsConfig
@@ -312,6 +313,74 @@ class TickSourceConfig(StrictConfigModel):
     freeze_after_ticks: int = 0
     freeze_duration_s: float = 0.0
 
+class BaselineMode(StrEnum):
+    """Which denominator the safety layer measures a drawdown against (#356)."""
+    FIXED = 'fixed'                      # the account value at deployment; it does not move
+    HIGH_WATER_MARK = 'high_water_mark'  # the peak ever seen; it ratchets
+
+
+class SafetyConfig(StrictConfigModel):
+    """
+    Circuit breaker configuration for an AutoTrader session.
+
+    Soft stop: blocks new positions when triggered, existing positions run out normally.
+    Both conditions are OR-combined — either alone triggers the block.
+
+    Args:
+        enabled: Master switch for safety checks
+        min_balance: Block new positions if the ACCOUNT VALUE drops below this floor
+            (margin mode, account currency). Since #356 both floors denominate the same
+            quantity — `get_account_value()` — and the account model only decides which of
+            the two names a profile writes. It used to be settled cash on margin, which
+            moves only on realised P&L, so an open loss could not reach the floor at all
+        min_equity: The same floor, spelled for spot mode (account currency)
+        max_drawdown_pct: Block new positions if the session drawdown exceeds this % of the
+            risk baseline. Measured on the ACCOUNT VALUE in both models since #356
+        max_drawdown_abs: Block new positions if session drawdown exceeds this absolute
+            amount (#314). The sibling of max_drawdown_pct, and the pair is the industry
+            standard for a reason: a percentage auto-scales with the account, an absolute
+            floor stops that percentage from becoming a dangerously large number on a large
+            one. Independent — either can fire first
+        max_daily_loss_abs: Block new positions if the loss since the day's start exceeds
+            this absolute amount (#314). A DAILY limit guards a different failure from a
+            session one: a session accumulates from process start, a day resets, and a bot
+            that loses steadily every day never trips a session limit at all
+        max_daily_loss_pct: The same daily limit as a percentage of the day-start value
+        baseline_mode: Which denominator the drawdown is measured against (#356).
+            `fixed` holds the value at deployment; `high_water_mark` trails the peak ever
+            seen and therefore RATCHETS — profit tightens the limit, which is the prop-firm
+            convention and a deliberate choice rather than a default
+        emergency_flatten_enabled: Master switch for the HARD stop (#356). Distinct from
+            the soft block above, which only stops new entries: this one CLOSES what is
+            open. Default false — turning it on changes what happens to real money
+        max_drawdown_pct_hard: Drawdown %% at which everything is closed. 0.0 disables
+        max_drawdown_abs_hard: Drawdown amount at which everything is closed. 0.0 disables
+        spot_liquidate_to_quote: Whether the hard stop also SELLS a spot holding. Default
+            false, and the asymmetry is real rather than timid: a margin position can lose
+            more than the account holds, so liquidating it is the point; a spot holding
+            cannot, so selling it converts an unrealised loss into a realised one and is a
+            trading decision, not a safety one. Turn it on where the account must end flat
+        persist_baseline: Whether the baseline survives a restart. Default true, because a
+            baseline that does not is the drift this was built to remove: a restart
+            mid-drawdown re-anchors at the drawn-down value and the accumulated loss is
+            forgotten. False is the deliberate escape for a profile that wants a fresh
+            reference on every start
+    """
+    enabled: bool = False
+    min_balance: float = 0.0
+    min_equity: float = 0.0
+    max_drawdown_pct: float = 0.0
+    max_drawdown_abs: float = 0.0
+    max_daily_loss_abs: float = 0.0
+    max_daily_loss_pct: float = 0.0
+    baseline_mode: BaselineMode = BaselineMode.FIXED
+    persist_baseline: bool = True
+    emergency_flatten_enabled: bool = False
+    max_drawdown_pct_hard: float = 0.0
+    max_drawdown_abs_hard: float = 0.0
+    spot_liquidate_to_quote: bool = False
+
+
 class AutotraderDefaultsConfig(StrictConfigModel):
     """
     Top-level model for app_config.json::autotrader.
@@ -322,6 +391,7 @@ class AutotraderDefaultsConfig(StrictConfigModel):
     clipping_monitor: ClippingMonitorDefaults = ClippingMonitorDefaults()
     display: DisplayDefaults = DisplayDefaults()
     order_guard: OrderGuardDefaults = OrderGuardDefaults()
+    safety: SafetyConfig = SafetyConfig()
     drift_audit: DriftAuditConfig = DriftAuditConfig()
     reconciliation: ReconciliationDefaults = ReconciliationDefaults()
     api_monitor: ApiMonitorConfig = ApiMonitorConfig()

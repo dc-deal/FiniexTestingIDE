@@ -17,6 +17,11 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from python.configuration.app_config_manager import AppConfigManager
 from python.configuration.market_config_manager import MarketConfigManager
+from python.framework.acceptance_studies.abstract_acceptance_study import AbstractAcceptanceStudy
+from python.framework.acceptance_studies.acceptance_study_setup import (
+    close_acceptance_study,
+    open_acceptance_study,
+)
 from python.framework.autotrader.startup.autotrader_data_preparer import prepare_mock_session_data
 from python.framework.autotrader.startup.autotrader_startup import (
     create_autotrader_loggers,
@@ -30,7 +35,6 @@ from python.framework.autotrader.cold_start.cold_start_setup import (
 )
 from python.framework.autotrader.deployment_resolver import resolve_deployment
 from python.framework.autotrader.dry_run_resolver import resolve_dry_run
-from python.framework.autotrader.field_study_setup import close_field_study, open_field_study
 from python.framework.autotrader.live_clipping_monitor import LiveClippingMonitor
 from python.framework.autotrader.operator_alerts.operator_alert_messages import (
     session_ended_text,
@@ -59,7 +63,6 @@ from python.framework.config_directory.config_directory_discovery import profile
 from python.framework.stress_test.stale_data_stress_driver import StaleDataStressDriver
 from python.framework.bars.bar_rendering_controller import BarRenderingController
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
-from python.framework.decision_logic.core.live_field_study.live_field_study import LiveFieldStudy
 from python.framework.discoveries.signal_coverage.signal_scenario_info import SignalScenarioInfo
 from python.framework.exceptions.code_identity_errors import CodeIdentityCaptureError
 from python.framework.exceptions.live_execution_errors import StartupRefusedError
@@ -68,8 +71,9 @@ from python.framework.exceptions.warmup_history_errors import WarmupHistoryRefus
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.persistence.algo_state_store import AlgoStateStore
 from python.framework.reporting.api_perf_monitor import ApiPerfMonitor
-from python.framework.reporting.field_study_recorder import FieldStudyRecorder
+from python.framework.reporting.acceptance_study_recorder import AcceptanceStudyRecorder
 from python.framework.reporting.io.order_event_stream_writer import OrderEventStreamWriter
+from python.framework.reporting.store.run_results_ledger import RunResultsLedger
 from python.framework.signal_data.signal_observed_accumulator import SignalObservedAccumulator
 from python.framework.signal_data.transport.abstract_signal_transport import (
     AbstractSignalTransport,
@@ -90,6 +94,7 @@ from python.framework.types.autotrader_types.operator_alert_types import (
     OperatorAlertLevel,
 )
 from python.framework.types.config_types.autotrader_defaults_config_types import (
+    BaselineMode,
     SessionEndDefaults,
 )
 from python.framework.types.decision_event_types import SessionEndSeverity
@@ -97,6 +102,7 @@ from python.framework.types.live_types.broker_truth_types import BrokerTruthRead
 from python.framework.types.persistence_types import (
     AccountDrawdownCarryOver,
     BaselineKind,
+    CarryOverLoad,
     ColdStartPayload,
     RiskBaseline,
 )
@@ -113,6 +119,9 @@ from python.framework.utils.run_origin_builder import build_run_origin, capture_
 from python.framework.utils.trading_math.price_trigger import mid_price
 from python.framework.validators.algo_clock_validator import validate_algo_clock
 from python.framework.validators.algo_state_preflight import validate_state_snapshot_serializable
+from python.framework.validators.carry_over_continuity_validator import (
+    validate_carry_over_continuity,
+)
 from python.framework.validators.carry_over_identity_validator import (
     validate_carry_over_identity_unique,
     validate_bot_id,
@@ -208,6 +217,8 @@ class AutotraderMain:
         self._run_id: Optional[str] = None
         # Read once at boot, before the header that carries the deployment identity.
         self._carried: ColdStartPayload = ColdStartPayload()
+        # What that read found — the startup's continuity checks decide on it (#358)
+        self._carried_load: Optional[CarryOverLoad] = None
         self._deployment_id: str = ''
 
         # Tick communication (Threading model 8.a)
@@ -270,8 +281,9 @@ class AutotraderMain:
         # exists to carry them. Defaults to empty so a startup abort still reports cleanly.
         self._startup_findings: List[ValidationFinding] = []
 
-        # #332 — Field Study recorder (set when the decision logic is LiveFieldStudy)
-        self._field_study_recorder: Optional[FieldStudyRecorder] = None
+        # #332 / #358 — the acceptance study's capture (set when the decision logic is one)
+        self._study_recorder: Optional[AcceptanceStudyRecorder] = None
+        self._study_label = ''
 
         # #362 — the session's order-event stream, written as the steps happen. None until
         # the pipeline exists, so an abort before that point has nothing to close.
@@ -318,7 +330,9 @@ class AutotraderMain:
         # two reads could straddle a write and describe two different predecessors. The
         # cold-start adopter opens it once more for its own step, and only that read's
         # warnings reach the session log — this one comes before the session logger exists.
-        self._carried = read_carry_over(self._config)
+        carried = read_carry_over(self._config)
+        self._carried = carried.payload
+        self._carried_load = carried.load
         deployment_id = resolve_deployment(
             self._config, self._carried, self._one_off, self._new_deployment, run_timestamp)
 
@@ -482,7 +496,7 @@ class AutotraderMain:
                 logger=self._session_logger,
                 run_id=self._run_id,
                 attended=attended,
-                field_study_active=isinstance(self._decision_logic, LiveFieldStudy),
+                adoption_skipped_by=self._study_skipping_adoption(),
                 # RESOLVED here, not re-derived there: the profile field alone would miss the
                 # broker's standing posture, which is the near miss #304 exists for.
                 dry_run=self._is_dry_run(),
@@ -530,13 +544,13 @@ class AutotraderMain:
                 logger=self._session_logger,
             )
 
-            # === FIELD STUDY CAPTURE + FLAT-PREFLIGHT (#332) ===
-            # When the active decision logic is the Live Field Study, open its capture — the
+            # === ACCEPTANCE STUDY CAPTURE + FLAT-PREFLIGHT (#332, #358) ===
+            # When the active decision logic is an acceptance study, open its capture — the
             # recorder for its phases, the projection that copies this session's order-event
             # stream into it (#566) — and assert the account holds no resting order before any
             # phase runs.
-            if isinstance(self._decision_logic, LiveFieldStudy):
-                field_study = open_field_study(
+            if isinstance(self._decision_logic, AbstractAcceptanceStudy):
+                study = open_acceptance_study(
                     decision_logic=self._decision_logic,
                     executor=self._executor,
                     reconciler=self._reconciler,
@@ -546,11 +560,13 @@ class AutotraderMain:
                     symbol=self._config.symbol,
                     logger=self._session_logger,
                 )
-                self._field_study_recorder = field_study.recorder
-                if not field_study.proceed:
+                self._study_recorder = study.recorder
+                self._study_label = self._decision_logic.STUDY_LABEL
+                if not study.proceed:
                     # A refused account or account model — the banner is already printed.
                     raise StartupRefusedError(
-                        field_study.refusal or 'The Field Study refused the account.')
+                        study.refusal
+                        or f'The {self._decision_logic.STUDY_LABEL} refused the account.')
 
             # === SIGNAL TRANSPORT (#141 Part 2a) ===
             self._setup_signal_transport()
@@ -741,7 +757,22 @@ class AutotraderMain:
             self._config.get_unit_name(),
             self._config.symbol,
             self._config.bot_id,
-            profile_homes=profile_homes(AppConfigManager()))
+            profile_homes=profile_homes(AppConfigManager()),
+            carry_over_from=self._config.carry_over_from)
+
+        # === CARRY-OVER CONTINUITY (#358) ===
+        # What the boot's read FOUND, held against what the profile declares — here, before the
+        # cold-start step writes the document back: whatever the read ignored, that write
+        # replaces. A declared continuation must find what it continues, from a run that
+        # completed; another profile's document that still speaks for the venue is never
+        # replaced.
+        validate_carry_over_continuity(
+            self._config.get_unit_name(),
+            self._config.carry_over_from,
+            self._config.cold_start.enabled,
+            self._study_skipping_adoption(),
+            self._carried_load,
+            RunResultsLedger(Path(AppConfigManager().get_run_ledger_path())))
 
         # === UNCOMMITTED CODE (#551) ===
         # Real orders must run code a commit describes: the parity backtest afterwards compares
@@ -917,6 +948,7 @@ class AutotraderMain:
                 logger=self._session_logger,
                 run_id=self._run_id,
                 bot_id=self._config.bot_id,
+                carry_over_from=self._config.carry_over_from,
             )
             loaded = self._state_store.load()
             if loaded is not None:
@@ -1196,15 +1228,16 @@ class AutotraderMain:
             except Exception as e:
                 self._session_logger.error(f'Error during algo state shutdown: {e}')
 
-        # #332 — the Field Study capture ends after the session-end read above, which its
+        # #332 — an acceptance study's capture ends after the session-end read above, which its
         # projection has already copied in (#566): the REST telemetry, then the marker. A
-        # failure here must never keep the file open — close_field_study closes it regardless.
-        if self._field_study_recorder:
+        # failure here must never keep the file open — close_acceptance_study closes it
+        # regardless.
+        if self._study_recorder:
             try:
-                close_field_study(
-                    self._field_study_recorder, self._api_monitor, self._reconciler)
+                close_acceptance_study(
+                    self._study_recorder, self._api_monitor, self._reconciler)
             except Exception as e:
-                self._session_logger.error(f'Error closing the Field Study recorder: {e}')
+                self._session_logger.error(f'Error closing the {self._study_label} recorder: {e}')
 
         # Collect → grade → report, the same order the sim batch runs (batch_orchestrator:
         # PostRunValidator, then BatchReportCoordinator over a finished result).
@@ -1593,7 +1626,7 @@ class AutotraderMain:
         safety = self._config.safety
         return RiskBaselineTracker(
             mode=(BaselineKind.HIGH_WATER_MARK
-                  if safety.baseline_mode == 'high_water_mark'
+                  if safety.baseline_mode is BaselineMode.HIGH_WATER_MARK
                   else BaselineKind.SESSION_FIXED),
             restored=restored,
             spot_mode=self._executor.portfolio.is_spot_mode(),
@@ -1809,6 +1842,18 @@ class AutotraderMain:
             if cadence:
                 self._signal_observed.set_cadence_seconds(cadence)
         return self._signal_observed.get_observed_series()
+
+    def _study_skipping_adoption(self) -> Optional[str]:
+        """
+        The acceptance study that asserts its own flat book and so takes no cold-start adoption.
+
+        Returns:
+            Its name ('Field Study'), or None when this session runs no such study
+        """
+        study = self._decision_logic
+        if isinstance(study, AbstractAcceptanceStudy) and not study.takes_cold_start_adoption():
+            return study.STUDY_LABEL
+        return None
 
     def _is_dry_run(self) -> bool:
         """

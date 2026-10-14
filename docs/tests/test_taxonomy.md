@@ -17,6 +17,7 @@ All tests are classified by **pipeline domain** and **test type**. pytest marks 
 | `live_adapter` | `tests/live_adapters/` | excluded from normal runner — requires real account |
 | `live_field_study` | `tests/live_field_study/` | excluded from normal runner — operator-driven live release gate (#332) |
 | `live_signal_feed` | `tests/live_signal_feed/` | excluded from normal runner — operator-driven producer contract gate (#466) |
+| `security_cert` | `tests/security_cert/` | excluded from normal runner — operator-driven real-money security study gate (#358) |
 
 Every mark above is a **path synonym**: it falls out of the tree, so it cannot drift from the
 suites it claims to cover. A `unit` / `integration` pair used to sit here too and was removed —
@@ -88,6 +89,8 @@ tests/
 │   ├── session_validation/ unit — SessionPostRunValidator: the AutoTrader Tier-1 channel, shared stress/slow-component checks
 │   ├── api_monitor/       unit — broker REST latency/error telemetry (#351)
 │   ├── field_study_machine/  unit — Field Study phase state machine (#332)
+│   ├── security_study/    unit — security study phase machine, phase declarations, lot rules, the
+│                          session's end concluding what the hard stop overtook (#358)
 │   ├── kraken_adapter/    unit — Kraken private-call nonce monotonicity + lock (#332), client-order-id wire key + read-back (#473), dry-run fill rules (#505)
 │   └── tick_sources/      unit — a venue tick before anything sees it: the quote a trade executed
 │                          against, two subscriptions on one connection, recorded Kraken frames (#520)
@@ -122,11 +125,12 @@ tests/
 │   ├── api/               unit — REST API endpoints
 │   ├── live_telemetry/    unit — live-telemetry frame serializer (frame_to_json, #400); every dashboard panel rendered, the progress screen and its senders, render-failure reporting (#586)
 │   ├── field_study_recorder/ unit — Field Study JSONL recorder + stream projection + certificate analyzer (#332, #566)
+│   ├── security_cert_certificate/ unit — security study certificate analyzer over five stage runs + rule catalog completeness (#358)
 │   ├── algo_clock/        unit — wall-clock ban lint (decision logic/workers, CI plane)
 │   ├── algo_clock_validator/ unit — wall-clock ban, runtime startup validator: AST scan of loaded algos (CORE + user) + batch pre-flight (#359)
 │   ├── discovery_validity/ unit — the three discovery caches compare the config fingerprint they were already writing (#486 finding 57); a config change moves no bar file, so mtime alone kept serving a stale cache
 │   ├── static_analysis/   unit — undefined-name gate (pyflakes) over python/ + tests/; the ruff/vulture backlog tier is measured, not gated
-│   └── store/             unit — the store catalog: completeness, what it prints, its two dated-claim advisories, the shared index base (atomic write, delete-and-rebuild, logic version), generic form-A retrieval, carry-over envelope (#486)
+│   └── store/             unit — the store catalog: completeness, what it prints, its two dated-claim advisories, the shared index base (atomic write, delete-and-rebuild, logic version), generic form-A retrieval, carry-over envelope (#486), carry-over identity + declared continuation + boot continuity checks (#358)
 │
 ├── data/
 │   ├── import_pipeline/   unit + integration — tick import, duplicate detection
@@ -149,12 +153,16 @@ tests/
 │   ├── test_field_study_certificate.py  CI-friendly committed-certificate validation
 │   └── reports/           PASS/FAIL acceptance certificates (committed per release)
 │
-└── live_signal_feed/      acceptance — producer contract gate (excluded from runner) (#466)
-    ├── test_signal_feed_transport.py    endpoint, credential, free-routes-only, provenance
-    ├── test_signal_feed_contract.py     envelope shape / stamps / reader — transport-independent
-    ├── test_signal_feed_series.py       seq + epoch in-run, and rewind across two certificates
-    ├── test_signal_feed_certificate.py  CI-friendly committed-certificate validation
-    └── reports/           PASS/FAIL contract certificates (committed per release)
+├── live_signal_feed/      acceptance — producer contract gate (excluded from runner) (#466)
+│   ├── test_signal_feed_transport.py    endpoint, credential, free-routes-only, provenance
+│   ├── test_signal_feed_contract.py     envelope shape / stamps / reader — transport-independent
+│   ├── test_signal_feed_series.py       seq + epoch in-run, and rewind across two certificates
+│   ├── test_signal_feed_certificate.py  CI-friendly committed-certificate validation
+│   └── reports/           PASS/FAIL contract certificates (committed per release)
+│
+└── security_cert/         acceptance — real-money security study gate (excluded from runner) (#358)
+    ├── test_security_cert_certificate.py  CI-friendly committed-certificate validation
+    └── reports/           PASS/FAIL security certificates (committed per release)
 ```
 
 The contract assertions themselves are pure functions over an envelope, so they are also

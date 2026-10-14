@@ -28,16 +28,14 @@ from python.framework.reporting.builders.safety_report_builder import (
     build_safety_report_from_session,
 )
 from python.framework.reporting.console.autotrader_session_summary import AutotraderSessionSummary
-from python.framework.types.autotrader_types.autotrader_config_types import (
-    AutoTraderConfig,
-    SafetyConfig,
-)
+from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
 from python.framework.types.autotrader_types.autotrader_result_types import AutoTraderResult
 from python.framework.types.autotrader_types.safety_session_types import (
     FlattenOutcome,
     SafetyDayRecord,
     SafetySessionRecord,
 )
+from python.framework.types.config_types.autotrader_defaults_config_types import SafetyConfig
 from python.framework.types.config_types.market_config_types import TradingModel
 from python.framework.types.persistence_types import (
     BaselineKind,

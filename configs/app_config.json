@@ -115,6 +115,22 @@
       "max_consecutive_rejections": 2,
       "block_stale_market_data": true
     },
+    "safety": {
+      "_comment": "The circuit breaker. Every limit is off (0.0) until a profile sets one; the hard stop and selling a spot holding stay off unless a profile turns them on.",
+      "enabled": false,
+      "min_balance": 0.0,
+      "min_equity": 0.0,
+      "max_drawdown_pct": 0.0,
+      "max_drawdown_abs": 0.0,
+      "max_daily_loss_abs": 0.0,
+      "max_daily_loss_pct": 0.0,
+      "baseline_mode": "fixed",
+      "persist_baseline": true,
+      "emergency_flatten_enabled": false,
+      "max_drawdown_pct_hard": 0.0,
+      "max_drawdown_abs_hard": 0.0,
+      "spot_liquidate_to_quote": false
+    },
     "drift_audit": {
       "enabled": true,
       "fee_threshold_pct": 0.5,

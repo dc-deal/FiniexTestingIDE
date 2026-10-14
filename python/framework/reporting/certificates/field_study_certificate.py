@@ -38,16 +38,21 @@ that reports the fill. The run traded; one of its figures is not the venue's, an
 """
 
 import json
-import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from python.configuration.app_config_manager import AppConfigManager
-from python.framework.reporting.certificates.certificate_identity_builder import (
-    build_certificate_identity,
+from python.framework.reporting.certificates.study_certificate_writer import (
+    write_study_certificate,
 )
 from python.framework.reporting.io.artifact_specs import FIELD_STUDY_CAPTURE, RUN_SUMMARY_ARTIFACT
 from python.framework.reporting.io.report_artifact_io import read_artifact
+from python.framework.types.acceptance_study_types.study_capture_types import (
+    SESSION_END_PHASE,
+    CaptureLineType,
+)
+from python.framework.types.acceptance_study_types.study_phase_types import PhaseOutcome
+from python.framework.types.live_types.reconciliation_types import ReconcileState
 from python.framework.types.log_layout_types import IO_SUBDIR
 from python.framework.types.trading_env_types.broker_types import FeeSource
 from python.framework.types.trading_env_types.order_types import FeeReport, OrderSide
@@ -56,12 +61,12 @@ from python.framework.utils.trading_math.slippage_math import adverse_slippage
 # Default home for committed certificates — sibling of tests/live_adapters/reports
 # and tests/simulation/benchmark/reports (release-gate suites).
 DEFAULT_REPORTS_DIR = 'tests/live_field_study/reports'
-# Certificate validity window (days) — matches the benchmark certificate backstop.
-VALIDITY_DAYS = 90
 # Phase outcomes that do NOT fail the certificate.
-_PASSING_OUTCOMES = frozenset({'pass', 'expected_rejection', 'skipped', 'inconclusive'})
+_PASSING_OUTCOMES = frozenset({
+    PhaseOutcome.PASS, PhaseOutcome.EXPECTED_REJECTION, PhaseOutcome.SKIPPED,
+    PhaseOutcome.INCONCLUSIVE})
 # The capture's lines that are executions — what fees and slippage are read from.
-_FILL_LINES = frozenset({'order_filled', 'partial_close'})
+_FILL_LINES = frozenset({CaptureLineType.ORDER_FILLED, CaptureLineType.PARTIAL_CLOSE})
 
 
 class FieldStudyCertificate:
@@ -106,7 +111,7 @@ class FieldStudyCertificate:
         phase_ids: List[str] = header.get('phases', [])
 
         results = {
-            e['phase']: e for e in events if e.get('event_type') == 'phase_result'
+            e['phase']: e for e in events if e.get('event_type') == CaptureLineType.PHASE_RESULT
         }
 
         phase_outcomes: List[Dict[str, Any]] = []
@@ -125,7 +130,7 @@ class FieldStudyCertificate:
                     failed.append(pid)
             phase_outcomes.append({'phase': pid, 'outcome': outcome, 'reason': reason})
 
-        broker_snapshots = [e for e in events if e.get('event_type') == 'broker_snapshot']
+        broker_snapshots = [e for e in events if e.get('event_type') == CaptureLineType.BROKER_SNAPSHOT]
         # End-state gate is "no resting orders" — a both-sided-funded study intentionally
         # holds base at the end (balances restored ~to the start), so order-book flatness
         # (no resting orders), not a zero base balance, is the criterion.
@@ -136,7 +141,7 @@ class FieldStudyCertificate:
         # gate then answered from the account state BEFORE the run. A gate must not pass on a
         # measurement it does not have.
         end_snapshot = next(
-            (s for s in reversed(broker_snapshots) if s.get('phase') == 'session_end'),
+            (s for s in reversed(broker_snapshots) if s.get('phase') == SESSION_END_PHASE),
             None,
         )
         # A read that could not see the order book carries no count (status `unread`): the gate
@@ -198,33 +203,14 @@ class FieldStudyCertificate:
             Path to the written certificate
         """
         analysis = FieldStudyCertificate.analyze(jsonl_path)
-
-        identity = build_certificate_identity(
-            release_version=release_version, comment=comment,
-            validity_days=VALIDITY_DAYS, reports_dir=reports_dir)
-        warnings = [w for w in (identity.version_mismatch(),
-                                identity.dirty_tree_warning()) if w]
-        certificate = {
-            **identity.to_dict(),
-            'source_jsonl': str(jsonl_path),
-            **analysis,
-        }
-        # A real-money certificate that names the wrong release, or comes from uncommitted
-        # work, is worse than none: the run cost money and the artifact cannot be tied to
-        # the code that earned it.
-        if warnings:
-            certificate['overall_status'] = 'FAILED'
-            certificate['warnings'] = warnings + certificate.get('warnings', [])
-
-        reports_path = Path(reports_dir)
-        reports_path.mkdir(parents=True, exist_ok=True)
-        version_tag = re.sub(r'[^a-zA-Z0-9._-]', '_', release_version)
-        filename = (f'field_study_report_{version_tag}_'
-                    f"{identity.timestamp.strftime('%Y-%m-%d_%H%M%S')}.json")
-        out_path = reports_path / filename
-        with open(out_path, 'w', encoding='utf-8') as f:
-            json.dump(certificate, f, indent=2)
-
+        out_path, certificate = write_study_certificate(
+            analysis=analysis,
+            sources={'source_jsonl': str(jsonl_path)},
+            release_version=release_version,
+            comment=comment,
+            reports_dir=reports_dir,
+            report_prefix='field_study_report',
+        )
         FieldStudyCertificate._print_summary(out_path, certificate)
         return out_path
 
@@ -426,7 +412,9 @@ class FieldStudyCertificate:
         Returns:
             {'status': 'recorded', 'calls', 'errors', 'slow_calls'}, or {'status': 'not_recorded'}
         """
-        line = next((e for e in reversed(events) if e.get('event_type') == 'api_perf'), None)
+        line = next(
+            (e for e in reversed(events) if e.get('event_type') == CaptureLineType.API_PERF),
+            None)
         if line is None:
             return {'status': 'not_recorded'}
         block = line.get('api_perf') or {}
@@ -457,9 +445,12 @@ class FieldStudyCertificate:
         """
         divergent_records = sum(
             1 for e in events
-            if e.get('event_type') == 'reconcile_alert' and e.get('status') == 'divergent')
-        line = next((e for e in reversed(events) if e.get('event_type') == 'reconcile_summary'),
-                    None)
+            if e.get('event_type') == CaptureLineType.RECONCILE_ALERT
+            and e.get('status') == ReconcileState.DIVERGENT.value)
+        line = next(
+            (e for e in reversed(events)
+             if e.get('event_type') == CaptureLineType.RECONCILE_SUMMARY),
+            None)
         if line is None:
             return {'status': 'not_recorded', 'divergent_records': divergent_records}
         summary = line.get('reconcile') or {}

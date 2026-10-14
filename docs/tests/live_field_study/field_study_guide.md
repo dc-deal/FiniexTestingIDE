@@ -21,10 +21,10 @@ realism subset (real timing, fills, fees, slippage, broker_ref) that mocks canno
 | Piece | Location |
 |---|---|
 | Decision logic | `python/framework/decision_logic/core/live_field_study/live_field_study.py` |
-| Phase state machine | `.../live_field_study/field_study_phase_machine.py` |
-| JSONL recorder (the study's phases) | `python/framework/reporting/field_study_recorder.py` |
-| Stream projection (its order and venue lines) | `python/framework/reporting/field_study_stream_projection.py` |
-| Session wiring + preflight | `python/framework/autotrader/field_study_setup.py` |
+| Phase state machine | `.../live_field_study/field_study_phase_machine.py`, on the engine every acceptance study shares (`python/framework/acceptance_studies/abstract_study_phase_machine.py`) |
+| JSONL recorder (the study's phases) | `python/framework/reporting/acceptance_study_recorder.py` |
+| Stream projection (its order and venue lines) | `python/framework/reporting/acceptance_study_stream_projection.py` |
+| Session wiring + preflight | `python/framework/acceptance_studies/acceptance_study_setup.py` |
 | Certificate analyzer | `python/framework/reporting/certificates/field_study_certificate.py` |
 | Certificate CLI | `python/cli/field_study_certificate_cli.py` |
 | Profiles | `configs/autotrader_profiles/field_study/kraken_spot_{ethusd,btcusd}_field_study.json` |

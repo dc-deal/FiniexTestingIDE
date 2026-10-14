@@ -285,6 +285,26 @@ belongs to is held deterministically by the projection's unit tests.
 
 **Runtime:** ~12 seconds.
 
+### test_security_study_stages.py
+
+Runs the security study's mock rehearsal profiles (`configs/autotrader_profiles/mock/security_cert/`)
+in order, each as a session of its own (#358), and reads what each leaves behind. Held here: every
+stage STARTS — the declared continuation passes the boot's identity and continuity checks — the
+refusals that cost nothing are refused for the reason the guard gives, the restart stages measure
+against the baseline the stage before them took, a phase that ends in the pass it began is filed
+under its own name, and the session's end concludes the phases the hard stop overtook. Outcomes that
+wait for a mock fill are not asserted, for the reason the field study's capture test gives (#494).
+
+| Class | What it validates |
+|-------|-------------------|
+| `TestEveryStageStarts` | every stage writes a capture that reaches its `session_end` line |
+| `TestTheRefusalsThatCostNothing` | the guards stage's refusals pass with the reason the guard gives |
+| `TestAPhaseThatEndsWhereItBegan` | `s_start_flat`'s start and result are filed under its own name |
+| `TestTheRestartStageContinuesTheSoftStage` | the restart stage's baseline is the soft stage's, restored with its stamp, and its first order is suppressed |
+| `TestTheSessionsEndConcludesTheHardStop` | each stop-awaiting phase passes on the stop the breaker records, and the last stage measures against the kept stage's baseline |
+
+**Runtime:** ~32 seconds (measured 2026-10-14).
+
 ## Running the Tests
 
 ```bash

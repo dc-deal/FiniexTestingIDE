@@ -177,6 +177,16 @@ everything else.
 still meet in one document. The startup validator is the answer — it compares every declared
 identity across both profile trees and refuses a duplicate.
 
+**And the name still decides whose document it is.** The envelope records the profile that wrote
+it, and both stores read a document as this bot's only when that name is this profile's — so a
+renamed profile finds its own document written by "another" one. The boot refuses to start over
+such a document while it holds an open position or a session key
+(`carry_over_continuity_validator`, #358), and the store will not write over it either; before
+that, the first write replaced it and the position it described was left at the venue unknown.
+The one deliberate exception is a declared continuation — a later stage naming the earlier in
+`carry_over_from`, read in both directions, and held at boot to the conditions in
+[autotrader_configuration.md](../autotrader/autotrader_configuration.md#a-declared-continuation--carry_over_from).
+
 The declared id also reaches the LEDGER (`bot_id`, IDENTITY reduction), so a report can say
 which BOT a row belongs to rather than only what the profile was called at the time. And the
 carry-over ENVELOPE records it, because a document that cannot say what it is filed under is a
@@ -415,9 +425,11 @@ directory archaeology run identity abolished. Different key, different lifetime.
 
 The envelope every carry-over writes is
 [`CarryOverEnvelope`](../../python/framework/types/persistence_types.py): schema version, store id,
-save time, the bot's identity, and `written_by_run_id`. That last field is **provenance, never
-identity** — it records which session wrote the file so a restored state can be traced back, and it
-is deliberately not part of the key.
+save time, the bot's identity, `written_by_run_id`, and the writer's `carry_over_from`. The run id
+is **provenance, never identity** — it records which session wrote the file so a restored state
+can be traced back, and it is deliberately not part of the key. The writer's declaration is what
+lets the EARLIER stage of a declared continuation recognise its successor's document as its own
+bot's, rather than ignoring it and overwriting the successor's book.
 
 ### Why the SPECIAL stores stay special
 
@@ -702,7 +714,7 @@ than handled automatically. If you ever meet it, this narrows it down:
 | Cause | How likely | How to tell |
 |---|---|---|
 | Someone deleted, moved or restored `data/runtime/` (a "clean start", a machine move, a backup) | the usual one | the carry-over file is missing or its `saved_at_utc` predates the order |
-| Two instances of the same bot ran at once and their key writes crossed | rare — the write is read-modify-write, so it needs overlapping saves | two run ids in `runs_index.parquet` overlapping in time for one profile |
+| Two instances of the same bot ran at once and their key writes crossed | rare — the write is read-modify-write, so it needs overlapping saves; for the two stages of a declared continuation the boot refuses a partner's document whose run has not completed | two run ids in `runs_index.parquet` overlapping in time for one profile |
 | The document was hand-edited or corrupted | rare | the boot log carries the "unreadable" or "payload rejected" warning |
 | A schema version bump discarded it | only right after a deploy | the boot log names the version mismatch |
 | Genuinely another client using the same key format | improbable | the key's session half matches no run id of ours |

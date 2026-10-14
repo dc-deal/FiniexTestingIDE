@@ -23,9 +23,10 @@ from python.framework.utils.declared_id_utils import (
 )
 
 
-class ApiAuthConfig(StrictConfigModel):
+class ApiConfig(StrictConfigModel):
     """
-    Whether the API requires a token, independent of whether any token is configured.
+    The app config's `api` block: whether the API requires a token, independent of whether any
+    token is configured.
 
     The two are separate on purpose, and collapsing them broke the agreed rollout. Issuing a
     consumer's token and switching gating ON are different steps: the consumer needs its token

@@ -36,6 +36,12 @@ Two halves:
 Plus a sweep over every tracked profile asserting the block is actually there — the loadability
 suite would fail too, but as "this file does not parse", which reads like a typo.
 
+### `test_carry_over_declaration.py` (#358)
+
+`carry_over_from` is read from the profile alone: absent it is empty, declared it is read as
+written, anything but a name is refused at load, and `app_config.json` has no field that could
+declare it for every profile — the boot check reads the raw files and would not see one.
+
 ### `test_profile_loadability.py`
 
 Every shipped AutoTrader profile loads. A profile that cannot be constructed is a session that

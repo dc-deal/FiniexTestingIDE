@@ -1,0 +1,72 @@
+{
+  "_comment": "MOCK REHEARSAL of stage 3 OF 5 of the security study (#358) — the same phases on the mock adapter, nothing sent to a venue. Run all five with `security_cert_cli.py run --profile-dir configs/autotrader_profiles/mock/security_cert`. A mock session is a dry run, which persists the baseline but not the position book, so stage 5 finds no lot to take over here. A mock session starts from the balance it declares, so this one declares a little less than the 1000 USD stage 2 took as its baseline — the state the real account is in after stage 2's fees.",
+  "profile_name": "security_cert_mock_restart",
+  "run_purpose": "fixture",
+  "bot_id": "scmsafe01",
+  "carry_over_from": "security_cert_mock_soft",
+  "symbol": "BTCUSD",
+  "broker_type": "kraken_spot",
+  "adapter_type": "mock",
+  "deployment": {
+    "_comment": "A stage of the security study, never a deployment: each session is its own one-off.",
+    "continuous": false
+  },
+  "strategy_config": {
+    "decision_logic_type": "CORE/security_cert_study/security_cert_study",
+    "worker_instances": {
+      "pipeline_rsi": "CORE/rsi"
+    },
+    "workers": {
+      "pipeline_rsi": {
+        "periods": {
+          "M5": 14
+        }
+      }
+    },
+    "decision_logic_config": {
+      "max_session_cost_usd": 0.5,
+      "session_timeout_s": 3600,
+      "halt_after_phase": "",
+      "phase_sequence": [
+        {
+          "phase_id": "r_start_flat",
+          "phase_type": "start_flat"
+        },
+        {
+          "phase_id": "r_blocked_from_start",
+          "phase_type": "submit_expect",
+          "side": "long",
+          "lot_rule": "min_lot",
+          "expect": "suppressed"
+        },
+        {
+          "phase_id": "r_final",
+          "phase_type": "final_summary"
+        }
+      ]
+    }
+  },
+  "safety": {
+    "enabled": true,
+    "max_drawdown_pct": 0.0001,
+    "max_drawdown_abs": 0.001,
+    "max_daily_loss_pct": 0.0001,
+    "max_daily_loss_abs": 0.001,
+    "baseline_mode": "fixed",
+    "persist_baseline": true
+  },
+  "tick_source": {
+    "type": "mock"
+  },
+  "display": {
+    "enabled": false
+  },
+  "scenario_settings": {
+    "start_date": "2026-01-25T02:20:20+00:00",
+    "end_date": "2026-01-26T02:14:00+00:00",
+    "balances": {
+      "USD": 999.9
+    },
+    "account_currency": "USD"
+  }
+}

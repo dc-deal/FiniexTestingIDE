@@ -18,11 +18,13 @@ from datetime import datetime, timedelta, timezone
 from python.framework.decision_logic.core.live_field_study.field_study_phase_machine import (
     FieldStudyPhaseMachine,
 )
-from python.framework.types.autotrader_types.field_study_types import (
+from python.framework.types.acceptance_study_types.field_study_types import (
     FieldStudyPhase,
+    PhaseType,
+)
+from python.framework.types.acceptance_study_types.study_phase_types import (
     PhaseContext,
     PhaseOutcome,
-    PhaseType,
 )
 
 _T0 = datetime(2026, 6, 3, 18, 0, 0, tzinfo=timezone.utc)

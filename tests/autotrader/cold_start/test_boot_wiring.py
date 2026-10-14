@@ -28,13 +28,20 @@ import pytest
 
 from python.framework.autotrader.autotrader_main import AutotraderMain
 from python.framework.autotrader.autotrader_tick_loop import AutotraderTickLoop
-from python.framework.autotrader.cold_start.cold_start_setup import ColdStartSetup, setup_cold_start
+from python.framework.autotrader.cold_start.cold_start_setup import (
+    ColdStartSetup,
+    read_carry_over,
+    setup_cold_start,
+)
 from python.framework.autotrader.safety.risk_baseline_tracker import RiskBaselineTracker
+from python.framework.persistence.cold_start_state_store import ColdStartStateStore
 from python.framework.persistence.position_book_watcher import PositionBookWatcher
-from python.framework.types.autotrader_types.autotrader_config_types import SafetyConfig
+from python.framework.types.config_types.autotrader_defaults_config_types import SafetyConfig
 from python.framework.types.persistence_types import (
     AccountDrawdownCarryOver,
     BaselineKind,
+    BaselineOrigin,
+    CarryOverLoadOutcome,
     ColdStartPayload,
     PositionCarryOver,
     RiskBaseline,
@@ -375,7 +382,7 @@ class TestWhoIsEligible:
         setup = setup_cold_start(
             config=_profile(config, enabled=False), executor=executor,
             decision_logic=None, logger=logger, run_id='r1', attended=False,
-            field_study_active=False, dry_run=True)
+            adoption_skipped_by=None, dry_run=True)
 
         assert setup.proceed is True
         assert setup.store is None
@@ -385,7 +392,7 @@ class TestWhoIsEligible:
         # It funds both sides on purpose and asserts its own flat order book (#332).
         setup = setup_cold_start(
             config=_profile(config), executor=executor, decision_logic=None, logger=logger,
-            run_id='r1', attended=False, field_study_active=True, dry_run=False)
+            run_id='r1', attended=False, adoption_skipped_by='Field Study', dry_run=False)
 
         assert setup.store is None
         assert any('Field Study' in i for i in logger.infos)
@@ -393,10 +400,50 @@ class TestWhoIsEligible:
     def test_a_simulation_executor_has_no_broker_truth(self, config, logger):
         setup = setup_cold_start(
             config=_profile(config), executor=object(), decision_logic=None, logger=logger,
-            run_id='r1', attended=False, field_study_active=False, dry_run=False)
+            run_id='r1', attended=False, adoption_skipped_by=None, dry_run=False)
 
         assert setup.proceed is True
         assert setup.store is None
+
+
+class TestBothReadsHonourADeclaredContinuation:
+    """
+    The boot reads a bot's carry-over twice, and a declared continuation (#358) has to hold for
+    both: the EARLY read hands the baseline, the drawdown curve and the deployment to the session,
+    the cold-start step reads the document again for the keys and the book. One recipe builds the
+    store for both — a continuation honoured by only one would adopt the book and miss the
+    baseline, and a restart stage would then trade with no risk limit armed.
+    """
+
+    @staticmethod
+    def _later_stage(cold_start_config, root):
+        """The restart stage, declaring that it continues 'cert_soft'."""
+        return SimpleNamespace(
+            cold_start=cold_start_config.model_copy(update={'enabled': True, 'path': str(root)}),
+            adapter_type='mock', symbol='BTCUSD', bot_id='cert01',
+            carry_over_from='cert_soft', get_unit_name=lambda: 'cert_restart',
+            capital=SimpleNamespace(exclusive_account=False))
+
+    def test_the_early_read_and_the_adoption_accept_the_same_document(
+            self, executor, config, logger, tmp_path):
+        baseline = RiskBaseline(kind=BaselineKind.SESSION_FIXED, value=23.72,
+                                taken_at_utc='2026-10-14T11:00:01+00:00',
+                                origin=BaselineOrigin.FIRST_TICK)
+        ColdStartStateStore(root=tmp_path, profile='cert_soft', symbol='BTCUSD', logger=logger,
+                            run_id='run_soft', bot_id='cert01').save(
+            session_key='', highest_position_counter=2, risk_baseline=baseline)
+        later = self._later_stage(config, tmp_path)
+
+        early = read_carry_over(later)
+        setup = setup_cold_start(
+            config=later, executor=executor, decision_logic=None, logger=logger,
+            run_id='run_restart', attended=False, adoption_skipped_by=None, dry_run=True)
+
+        assert early.payload.risk_baseline == baseline
+        assert early.load.outcome == CarryOverLoadOutcome.ACCEPTED
+        adopted = setup.store.get_last_load()
+        assert (adopted.outcome, adopted.writer_profile) == (
+            CarryOverLoadOutcome.ACCEPTED, 'cert_soft')
 
 
 class TestTheTickLoopSeam:

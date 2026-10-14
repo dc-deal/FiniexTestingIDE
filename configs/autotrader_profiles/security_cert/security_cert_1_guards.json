@@ -1,0 +1,166 @@
+{
+  "_comment": "STAGE 1 OF 5 of the security study (#358) — the OrderGuard. REAL MONEY: adapter_type live, dry_run false. Every refusal here costs nothing: nothing is sent. The reason a refusal names shows the cooldown's state — `insufficient_funds` while the guard lets an order through to its own checks, `rejection_cooldown` once it holds the direction back. Two fills in all: the one that resets the count, and the close at the end. The circuit breaker is off, so nothing but the guard decides.",
+  "profile_name": "kraken_spot_btcusd_security_cert_guards",
+  "run_purpose": "certificate",
+  "bot_id": "scguard01",
+  "symbol": "BTCUSD",
+  "broker_type": "kraken_spot",
+  "adapter_type": "live",
+  "deployment": {
+    "_comment": "A stage of the security study, never a deployment: each session is its own one-off.",
+    "continuous": false
+  },
+  "dry_run": false,
+  "strategy_config": {
+    "decision_logic_type": "CORE/security_cert_study/security_cert_study",
+    "worker_instances": {
+      "pipeline_rsi": "CORE/rsi"
+    },
+    "workers": {
+      "pipeline_rsi": {
+        "periods": {
+          "M5": 14
+        }
+      }
+    },
+    "decision_logic_config": {
+      "max_session_cost_usd": 0.5,
+      "session_timeout_s": 600,
+      "halt_after_phase": "",
+      "phase_sequence": [
+        {
+          "phase_id": "g_invalid_lot_1",
+          "phase_type": "submit_expect",
+          "side": "long",
+          "lot_rule": "below_min",
+          "expect": "denied",
+          "expect_reason": "invalid_lot_size"
+        },
+        {
+          "phase_id": "g_invalid_lot_2",
+          "phase_type": "submit_expect",
+          "side": "long",
+          "lot_rule": "below_min",
+          "expect": "denied",
+          "expect_reason": "invalid_lot_size"
+        },
+        {
+          "phase_id": "g_funds_not_cooled",
+          "phase_type": "submit_expect",
+          "side": "long",
+          "lot_rule": "beyond_funds",
+          "expect": "denied",
+          "expect_reason": "insufficient_funds",
+          "_comment": "Had the two invalid lots counted, the cooldown would hold LONG back here."
+        },
+        {
+          "phase_id": "g_funds_arms",
+          "phase_type": "submit_expect",
+          "side": "long",
+          "lot_rule": "beyond_funds",
+          "expect": "denied",
+          "expect_reason": "insufficient_funds",
+          "_comment": "The second refusal in a row that counts — it arms the cooldown."
+        },
+        {
+          "phase_id": "g_cooled_buy",
+          "phase_type": "submit_expect",
+          "side": "long",
+          "lot_rule": "min_lot",
+          "expect": "denied",
+          "expect_reason": "rejection_cooldown"
+        },
+        {
+          "phase_id": "g_short_not_cooled",
+          "phase_type": "submit_expect",
+          "side": "short",
+          "lot_rule": "beyond_holding",
+          "expect": "denied",
+          "expect_reason": "insufficient_funds",
+          "_comment": "A sale of more base than the account holds — and SHORT is not held back by LONG's cooldown."
+        },
+        {
+          "phase_id": "g_wait_expiry",
+          "phase_type": "wait",
+          "wait_s": 31
+        },
+        {
+          "phase_id": "g_after_expiry",
+          "phase_type": "submit_expect",
+          "side": "long",
+          "lot_rule": "beyond_funds",
+          "expect": "denied",
+          "expect_reason": "insufficient_funds",
+          "_comment": "The cooldown ran out: the guard lets the order through to its own checks again."
+        },
+        {
+          "phase_id": "g_rearmed",
+          "phase_type": "submit_expect",
+          "side": "long",
+          "lot_rule": "min_lot",
+          "expect": "denied",
+          "expect_reason": "rejection_cooldown",
+          "_comment": "One refusal re-armed it: the count does not decay with time, only a fill resets it."
+        },
+        {
+          "phase_id": "g_wait_expiry_2",
+          "phase_type": "wait",
+          "wait_s": 31
+        },
+        {
+          "phase_id": "g_success",
+          "phase_type": "submit_expect",
+          "side": "long",
+          "lot_rule": "min_lot",
+          "expect": "filled",
+          "_comment": "A fill — it resets the count."
+        },
+        {
+          "phase_id": "g_after_success_1",
+          "phase_type": "submit_expect",
+          "side": "long",
+          "lot_rule": "beyond_funds",
+          "expect": "denied",
+          "expect_reason": "insufficient_funds"
+        },
+        {
+          "phase_id": "g_after_success_2",
+          "phase_type": "submit_expect",
+          "side": "long",
+          "lot_rule": "beyond_funds",
+          "expect": "denied",
+          "expect_reason": "insufficient_funds",
+          "_comment": "Without the reset, the cooldown would already have re-armed at the phase before."
+        },
+        {
+          "phase_id": "g_rearmed_after_two",
+          "phase_type": "submit_expect",
+          "side": "long",
+          "lot_rule": "min_lot",
+          "expect": "denied",
+          "expect_reason": "rejection_cooldown"
+        },
+        {
+          "phase_id": "g_force_close",
+          "phase_type": "force_close",
+          "fill_timeout_s": 30
+        },
+        {
+          "phase_id": "g_final",
+          "phase_type": "final_summary"
+        }
+      ]
+    }
+  },
+  "tick_source": {
+    "type": "kraken"
+  },
+  "order_guard": {
+    "_comment": "30 s rather than the 60 s default, so the stage waits out the cooldown twice in about a minute; two refusals arm it, as by default. Long enough that a quiet stretch between two ticks rarely lets it lapse before the phase that expects it: in the archive's BTCUSD trades of a Sunday (2026-10-04), one gap in a thousand exceeds 22 s and the longest was 41 s.",
+    "cooldown_seconds": 30.0,
+    "max_consecutive_rejections": 2
+  },
+  "safety": {
+    "enabled": false
+  }
+}

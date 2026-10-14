@@ -6,7 +6,7 @@ from typing import List
 
 from python.framework.types.config_types.strict_config_model import StrictConfigModel
 
-from python.framework.types.config_types.api_auth_config_types import ApiAuthConfig
+from python.framework.types.config_types.api_auth_config_types import ApiConfig
 from python.framework.types.config_types.autotrader_defaults_config_types import (
     AutotraderDefaultsConfig,
 )
@@ -68,7 +68,7 @@ class AppConfig(StrictConfigModel):
     file_logging: FileLoggingConfig
     paths: SharedPaths
     history: HistoryConfig = HistoryConfig()
-    api: ApiAuthConfig = ApiAuthConfig()
+    api: ApiConfig = ApiConfig()
     docs_search: DocsSearchConfig = DocsSearchConfig()
     autotrader: AutotraderDefaultsConfig = AutotraderDefaultsConfig()
     backtesting: BacktestingConfig = BacktestingConfig()

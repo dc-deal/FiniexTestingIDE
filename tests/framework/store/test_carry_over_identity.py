@@ -8,7 +8,9 @@ check has to happen ONCE, across the profile tree, before anything reads or writ
 
 These tests pin three things: the key composition now has exactly one home, the boot check fires
 on a real collision and stays silent otherwise, and the exclusions are the ones that were
-reasoned about rather than the ones that were convenient.
+reasoned about rather than the ones that were convenient. The one sanctioned exception — two
+stages of one bot, the later declaring `carry_over_from` (#358) — holds only for a pair that
+cannot be mistaken for anything else, and the boot check and the sweep decide it with one rule.
 """
 
 import json
@@ -20,6 +22,7 @@ from python.framework.config_directory.config_directory_discovery import profile
 from python.framework.exceptions.persistence_errors import (
     BotIdMalformedError,
     BotIdRequiredError,
+    CarryOverContinuationError,
     CarryOverIdentityCollisionError,
 )
 from python.framework.persistence.carry_over_identity import carry_over_key
@@ -52,6 +55,48 @@ def _profile(root: Path, relative: str, name: str, symbol: str,
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps({
         'profile_name': name, 'symbol': symbol, 'adapter_type': adapter}), encoding='utf-8')
+    return path
+
+
+def _names_its_partner(configs) -> bool:
+    """
+    Whether two raw profiles are a declared continuation: one names the other in `carry_over_from`.
+
+    Args:
+        configs: The raw profiles sharing one `bot_id`
+
+    Returns:
+        True for exactly two, exactly one of them naming the other's `profile_name`
+    """
+    if len(configs) != 2:
+        return False
+    first, second = configs
+    return ((first.get('carry_over_from') == second.get('profile_name'))
+            != (second.get('carry_over_from') == first.get('profile_name')))
+
+
+def _stage(root: Path, relative: str, name: str, carry_over_from: str = '', **fields) -> Path:
+    """
+    Write one stage of a release study into a throwaway tree — the shape a continuation needs.
+
+    Args:
+        root: The `autotrader_profiles` directory of the tmp tree
+        relative: Path below it
+        name: The profile's `profile_name`
+        carry_over_from: The profile it declares it continues, or empty
+        **fields: Anything to add or override — `run_purpose`, `adapter_type`, `cold_start`, ...
+
+    Returns:
+        The written file
+    """
+    raw = {'profile_name': name, 'symbol': 'BTCUSD', 'bot_id': 'scsafe01',
+           'run_purpose': 'certificate', 'adapter_type': 'live', 'broker_type': 'kraken_spot'}
+    if carry_over_from:
+        raw['carry_over_from'] = carry_over_from
+    raw.update(fields)
+    path = root / relative
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(raw), encoding='utf-8')
     return path
 
 
@@ -226,10 +271,13 @@ class TestEveryShippedProfileIsWellFormedAndUnique:
             validate_bot_id(cfg.get('name', rel), cfg.get('symbol', ''), cfg['bot_id'])
 
     def test_no_two_profiles_claim_the_same_id(self):
+        # Except the two stages of one bot that a declared continuation joins (#358): the later
+        # names the earlier, and `collisions` below holds the pair to the whole rule.
         seen = {}
         for rel, cfg in self._shipped().items():
-            seen.setdefault(cfg['bot_id'], []).append(rel)
-        shared = {k: v for k, v in seen.items() if len(v) > 1}
+            seen.setdefault(cfg['bot_id'], []).append(cfg)
+        shared = {k: [c.get('profile_name') for c in v] for k, v in seen.items()
+                  if len(v) > 1 and not _names_its_partner(v)}
         assert not shared, f'one identity claimed by several profiles: {shared}'
 
 
@@ -462,3 +510,165 @@ class TestTheCheckReachesTheUserAlgoDirectories:
         assert profile_homes(_Paths()) == [
             Path('configs/autotrader_profiles'), Path('user_configs/autotrader_profiles'),
             Path('user_algos/'), Path('/ext_algos')]
+
+
+class TestADeclaredContinuation:
+    """
+    Two stages of one bot that run in order may share its carry-over (#358).
+
+    The restart stages of the security study have to read what the stage before them left —
+    the baseline that must survive a restart, the lot the hard stop kept. The later stage says
+    so in `carry_over_from`, and everything that would let a session read a document it was not
+    meant to see is refused at boot, before any order.
+    """
+
+    @staticmethod
+    def _pair(profiles: Path, **later_fields):
+        """The soft stage and the restart stage after it. Returns: (earlier, later)."""
+        earlier = _stage(profiles, 'security_cert/2_soft.json', 'cert_soft')
+        later = _stage(profiles, 'security_cert/3_restart.json', 'cert_restart',
+                       carry_over_from='cert_soft', **later_fields)
+        return earlier, later
+
+    def test_a_declared_pair_starts_from_either_side(self, profiles):
+        earlier, later = self._pair(profiles)
+
+        validate_carry_over_identity_unique(later, 'cert_restart', 'BTCUSD', 'scsafe01',
+                                            carry_over_from='cert_soft')
+        validate_carry_over_identity_unique(earlier, 'cert_soft', 'BTCUSD', 'scsafe01')
+
+    def test_the_sweep_does_not_call_it_a_collision(self, profiles):
+        self._pair(profiles)
+        assert collisions([profiles]) == {}
+
+    def test_a_third_profile_is_still_refused_and_the_sweep_says_so(self, profiles):
+        _, later = self._pair(profiles)
+        _stage(profiles, 'production/copy.json', 'cert_copy')
+
+        with pytest.raises(CarryOverContinuationError, match='exactly two profiles'):
+            validate_carry_over_identity_unique(later, 'cert_restart', 'BTCUSD', 'scsafe01',
+                                                carry_over_from='cert_soft')
+        assert list(collisions([profiles])) == ['scsafe01_btcusd']
+
+    def test_the_name_must_match_byte_for_byte(self, profiles):
+        # The stores compare names exactly, so the check may not be looser than they are —
+        # the file's stem, or another spelling, names nothing they would accept.
+        _stage(profiles, 'security_cert/2_soft.json', 'cert_soft')
+        later = _stage(profiles, 'security_cert/3_restart.json', 'cert_restart',
+                       carry_over_from='2_soft')
+
+        with pytest.raises(CarryOverContinuationError, match="other profile is called 'cert_soft'"):
+            validate_carry_over_identity_unique(later, 'cert_restart', 'BTCUSD', 'scsafe01',
+                                                carry_over_from='2_soft')
+
+    def test_a_cycle_is_refused(self, profiles):
+        # Both sides would accept each other's documents, and the earlier stage would no longer
+        # start from its own state.
+        _stage(profiles, 'security_cert/2_soft.json', 'cert_soft', carry_over_from='cert_restart')
+        later = _stage(profiles, 'security_cert/3_restart.json', 'cert_restart',
+                       carry_over_from='cert_soft')
+
+        with pytest.raises(CarryOverContinuationError, match='earlier stage of a continuation'):
+            validate_carry_over_identity_unique(later, 'cert_restart', 'BTCUSD', 'scsafe01',
+                                                carry_over_from='cert_soft')
+
+    def test_two_stages_need_two_names(self, profiles):
+        _stage(profiles, 'security_cert/2_soft.json', 'cert_soft')
+        later = _stage(profiles, 'security_cert/3_restart.json', 'cert_soft',
+                       carry_over_from='cert_soft')
+
+        with pytest.raises(CarryOverContinuationError, match='its own `profile_name`'):
+            validate_carry_over_identity_unique(later, 'cert_soft', 'BTCUSD', 'scsafe01',
+                                                carry_over_from='cert_soft')
+
+    @pytest.mark.parametrize('purpose', [None, 'regular', 'nonsense'])
+    def test_only_a_release_study_or_a_fixture_may_declare_one(self, profiles, purpose):
+        fields = {'run_purpose': purpose} if purpose else {}
+        _stage(profiles, 'security_cert/2_soft.json', 'cert_soft')
+        later = _stage(profiles, 'security_cert/3_restart.json', 'cert_restart',
+                       carry_over_from='cert_soft', **fields)
+        if purpose is None:
+            raw = json.loads(later.read_text(encoding='utf-8'))
+            del raw['run_purpose']
+            later.write_text(json.dumps(raw), encoding='utf-8')
+
+        with pytest.raises(CarryOverContinuationError, match='release-study stages'):
+            validate_carry_over_identity_unique(later, 'cert_restart', 'BTCUSD', 'scsafe01',
+                                                carry_over_from='cert_soft')
+
+    def test_a_fixture_pair_is_allowed(self, profiles):
+        _stage(profiles, 'mock/2_soft.json', 'mock_soft', run_purpose='fixture',
+               adapter_type='mock')
+        later = _stage(profiles, 'mock/3_restart.json', 'mock_restart', run_purpose='fixture',
+                       adapter_type='mock', carry_over_from='mock_soft')
+
+        validate_carry_over_identity_unique(later, 'mock_restart', 'BTCUSD', 'scsafe01',
+                                            carry_over_from='mock_soft')
+
+    def test_a_mock_stage_may_not_feed_a_live_one(self, profiles):
+        # A mock session's baseline comes from simulated balances; a real account measured
+        # against it would arm its limits on a number that never existed.
+        _stage(profiles, 'mock/2_soft.json', 'cert_soft', adapter_type='mock')
+        later = _stage(profiles, 'security_cert/3_restart.json', 'cert_restart',
+                       carry_over_from='cert_soft')
+
+        with pytest.raises(CarryOverContinuationError, match='`adapter_type`'):
+            validate_carry_over_identity_unique(later, 'cert_restart', 'BTCUSD', 'scsafe01',
+                                                carry_over_from='cert_soft')
+
+    def test_an_omitted_adapter_is_the_loader_s_default(self, profiles):
+        earlier = _stage(profiles, 'mock/2_soft.json', 'mock_soft', adapter_type='mock')
+        raw = json.loads(earlier.read_text(encoding='utf-8'))
+        del raw['adapter_type']
+        earlier.write_text(json.dumps(raw), encoding='utf-8')
+        later = _stage(profiles, 'mock/3_restart.json', 'mock_restart', adapter_type='mock',
+                       carry_over_from='mock_soft')
+
+        validate_carry_over_identity_unique(later, 'mock_restart', 'BTCUSD', 'scsafe01',
+                                            carry_over_from='mock_soft')
+
+    def test_two_cold_start_directories_are_refused(self, profiles):
+        # The two would not even read the same document.
+        _stage(profiles, 'security_cert/2_soft.json', 'cert_soft')
+        later = _stage(profiles, 'security_cert/3_restart.json', 'cert_restart',
+                       carry_over_from='cert_soft', cold_start={'path': '/tmp/elsewhere'})
+
+        with pytest.raises(CarryOverContinuationError, match='`cold_start.path`'):
+            validate_carry_over_identity_unique(later, 'cert_restart', 'BTCUSD', 'scsafe01',
+                                                carry_over_from='cert_soft')
+
+    def test_an_earlier_stage_leaving_orders_resting_is_refused(self, profiles):
+        # The next boot to meet them would be the later stage's, which never agreed to adopt them.
+        _stage(profiles, 'security_cert/2_soft.json', 'cert_soft',
+               session_end={'orders': 'leave'})
+        later = _stage(profiles, 'security_cert/3_restart.json', 'cert_restart',
+                       carry_over_from='cert_soft')
+
+        with pytest.raises(CarryOverContinuationError, match='leaves its orders resting'):
+            validate_carry_over_identity_unique(later, 'cert_restart', 'BTCUSD', 'scsafe01',
+                                                carry_over_from='cert_soft')
+
+    def test_a_declaration_that_names_no_partner_is_refused(self, profiles):
+        later = _stage(profiles, 'security_cert/3_restart.json', 'cert_restart',
+                       carry_over_from='cert_soft')
+
+        with pytest.raises(CarryOverContinuationError, match='no other profile'):
+            validate_carry_over_identity_unique(later, 'cert_restart', 'BTCUSD', 'scsafe01',
+                                                carry_over_from='cert_soft')
+
+    def test_a_declaration_nothing_can_check_is_refused_not_skipped(self, tmp_path):
+        loose = tmp_path / 'somewhere' / 'restart.json'
+        loose.parent.mkdir(parents=True)
+        loose.write_text('{}', encoding='utf-8')
+
+        for path in (loose, None):
+            with pytest.raises(CarryOverContinuationError, match='lies in no profile tree'):
+                validate_carry_over_identity_unique(path, 'cert_restart', 'BTCUSD', 'scsafe01',
+                                                    carry_over_from='cert_soft')
+
+    def test_an_undeclared_collision_names_the_continuation_as_a_remedy(self, profiles):
+        mine = _stage(profiles, 'security_cert/2_soft.json', 'cert_soft')
+        _stage(profiles, 'security_cert/3_restart.json', 'cert_restart')
+
+        with pytest.raises(CarryOverIdentityCollisionError, match='`carry_over_from`'):
+            validate_carry_over_identity_unique(mine, 'cert_soft', 'BTCUSD', 'scsafe01')

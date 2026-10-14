@@ -72,3 +72,38 @@ class CarryOverIdentityCollisionError(FiniexError):
     moment on and an AutoTrader session has no second chance (§35).
     """
     pass
+
+
+class CarryOverContinuationError(FiniexError):
+    """
+    A declared continuation of another profile's carry-over that the boot cannot honour.
+
+    `carry_over_from` says a later stage of one bot follows an earlier one and starts from what
+    that one left (#358). The declaration is the statement that a carry-over is EXPECTED, so a
+    session that cannot read it is not a first run but a contradiction — and starting fresh
+    instead would run the later stage against a state it was never meant to see. Raised when
+    the pair is not one (a third claimant, a name that matches nothing, a chain, a mock stage
+    beside a live one), when the predecessor left nothing to read, when the run that wrote it
+    has not completed, or when this session would not read a carry-over at all.
+
+    Raised at startup, before any order: an AutoTrader session has one start, and nothing to
+    exclude while the rest run on.
+    """
+    pass
+
+
+class CarryOverForeignClaimsError(FiniexError):
+    """
+    This bot's carry-over was written by another profile and still speaks for the venue.
+
+    The document is filed under `<bot_id>_<symbol>`, and its writer is recorded by profile name.
+    A document whose writer is neither this profile nor its declared partner is ignored on read —
+    and the session's first write would REPLACE it. Where it still holds an open position or a
+    session key an order resting at the venue may carry, that write is how a position ends up at
+    the venue with nothing left that knows about it. The usual cause is a profile renamed while
+    its `bot_id` stayed.
+
+    Raised at startup rather than survived: only the operator can say which profile the
+    document belongs to.
+    """
+    pass

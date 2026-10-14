@@ -345,9 +345,9 @@ read, so one taken over development ticks was indistinguishable from one over pr
 and a certificate is precisely the artifact somebody believes months later, when the run itself
 has been pruned.
 
-Only ONE of the four certificate families reads the archive at all. The live adapter, field study
-and signal feed certificates consume a venue or a socket, and for them `input_plane: 'stream'` is
-the honest answer rather than a missing stamp. The **benchmark** certificate runs a scenario set
+Only ONE certificate family reads the archive at all. The live adapter, field study, signal feed
+and security study certificates consume a venue or a socket, and for them `input_plane: 'stream'`
+is the honest answer rather than a missing stamp. The **benchmark** certificate runs a scenario set
 over archived ticks, and it now carries a `data_provenance` block beside `config_provenance` —
 what it was configured to run, and what it actually read:
 

@@ -18,11 +18,9 @@ from types import SimpleNamespace
 
 from python.framework.autotrader.safety.safety_circuit_breaker import SafetyCircuitBreaker
 from python.framework.autotrader.operator_alerts.alert_episode import AlertEpisode
-from python.framework.types.autotrader_types.autotrader_config_types import (
-    AutoTraderConfig,
-    SafetyConfig,
-)
+from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
 from python.framework.types.autotrader_types.operator_alert_types import OperatorAlertKind
+from python.framework.types.config_types.autotrader_defaults_config_types import SafetyConfig
 from python.framework.types.config_types.market_config_types import TradingModel
 from tests.shared.operator_alert_recorder import OperatorAlertRecorder
 
@@ -357,7 +355,7 @@ class TestAbsoluteDrawdownCap:
 
         assert stub._safety_blocked
         assert 'max_drawdown_abs' in stub._safety_reason
-        assert 'max_drawdown (' not in stub._safety_reason, (
+        assert 'max_drawdown_pct (' not in stub._safety_reason, (
             'the percentage did not fire, and a reason that claims it did sends the '
             'operator to the wrong knob')
 
@@ -388,7 +386,7 @@ class TestDailyLossLimits:
         stub.check_safety(current_value=9_600.0, initial_balance=10_000.0)
 
         assert stub._safety_blocked
-        assert 'max_daily_loss (' in stub._safety_reason
+        assert 'max_daily_loss_pct (' in stub._safety_reason
 
     def test_it_measures_against_the_DAY_not_the_session(self):
         """
@@ -423,7 +421,7 @@ class TestDailyLossLimits:
 
         stub.check_safety(current_value=9_000.0, initial_balance=10_000.0)
 
-        for expected in ('max_drawdown (', 'max_drawdown_abs', 'max_daily_loss_abs'):
+        for expected in ('max_drawdown_pct (', 'max_drawdown_abs', 'max_daily_loss_abs'):
             assert expected in stub._safety_reason, (
                 f'{expected} fired but is not in "{stub._safety_reason}"')
 

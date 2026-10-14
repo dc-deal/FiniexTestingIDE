@@ -32,14 +32,12 @@ from python.framework.testing.mock_broker_adapter import MockBrokerAdapter, Mock
 from python.framework.trading_env.broker_config import BrokerConfig
 from python.framework.trading_env.decision_trading_api import DecisionTradingApi
 from python.framework.trading_env.live.live_trade_executor import LiveTradeExecutor
-from python.framework.types.autotrader_types.autotrader_config_types import (
-    AutoTraderConfig,
-    SafetyConfig,
-)
+from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
 from python.framework.types.autotrader_types.safety_session_types import (
     FlattenOutcome,
     SafetySessionRecord,
 )
+from python.framework.types.config_types.autotrader_defaults_config_types import SafetyConfig
 from python.framework.types.config_types.market_config_types import TradingModel
 from python.framework.types.decision_event_types import SessionEndSeverity
 from python.framework.types.market_types.market_data_types import TickData

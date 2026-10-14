@@ -74,7 +74,7 @@
 | [Swap / Overnight-Funding Cost Model](trading_realism/swap_cost_model.md) | Overnight swap accrual — signed debit/credit, triple-swap (T+2), DST-aware rollover, MarketClock awareness, per-trade reporting (#365) |
 | [Live Telemetry Stream](architecture/live_telemetry_architecture.md) | The throttled live feed behind the console dashboards (LiveCoreSnapshot + frames), both pipelines, JSON groundwork for the viewer push (#400) — distinct from the report pipeline |
 | [Warnings & Errors Tiers](architecture/warnings_errors_tiers.md) | Tier taxonomy (errors / Tier-1 major → validators / Tier-2 log) + the "no decisions in reports" principle; pre-run vs post-run validators, sim/AutoTrader channels (#395) |
-| [Release Certificates](architecture/release_certificates.md) | The four release-gate certificates (benchmark, live adapter, field study, signal feed), their shared CertificateIdentity, the version/dirty-tree guards and the observed-not-re-read rule |
+| [Release Certificates](architecture/release_certificates.md) | The release-gate certificates, their shared CertificateIdentity, the version/dirty-tree guards and the observed-not-re-read rule |
 | [Mock Adapter Guide](architecture/mock_adapter_guide.md) | MockBrokerAdapter for deterministic pipeline testing |
 | [Order Guard](architecture/order_guard_architecture.md) | Pre-validation guard (SHORT+SPOT, rejection cooldown, async callback) |
 | [Performance Tracking Layers](architecture/performance_tracking_layers.md) | Two-layer model (per-component + tick-loop profiler), defaults, graceful degradation, why no context-manager wrappers in the tick loop |
@@ -145,6 +145,8 @@ Each test suite has its own documentation in [`tests/`](tests/).
 | [Kraken Adapter Live Integration](tests/live_adapters/kraken_adapter_integration_tests.md) | Full order lifecycle against the real Kraken API — validate-only, real limit orders and a real fill round trip; funded account required, release-gate |
 | [Live Field Study](tests/live_field_study/field_study_guide.md) | End-to-end real-money acceptance test + PASS/FAIL certificate — operator-driven, release-gate (#332) |
 | [Field Study Machine](tests/autotrader/field_study_machine_tests.md) | The offline state machine behind that run — every phase outcome reachable without spending money (#332) |
+| [Security Study](tests/security_cert/security_cert_guide.md) | The account's protective rules provoked with real money, stage by stage, and a certificate that says how each rule is proven — operator-driven, release-gate (#358) |
+| [Security Study Tests](tests/autotrader/security_study_tests.md) | The offline phase machine behind that study — every verdict reachable without spending money (#358) |
 | [Live Signal Feed Certificate](tests/live_signal_feed/signal_feed_certificate_guide.md) | Producer contract proof + PASS/FAIL certificate — operator-driven, release-gate (#466) |
 | [Safety Circuit Breaker](tests/autotrader/safety_tests.md) | Account-value safety, phantom drawdown fix, config split, the baseline across a restart, the hard flatten, and what the session recorded |
 | [Tick Sources](tests/autotrader/tick_source_tests.md) | What a venue tick IS before anything sees it: the quote a trade executed against, two subscriptions on one connection (#520) |
@@ -208,6 +210,7 @@ Each test suite has its own documentation in [`tests/`](tests/).
 | [Order Endings Tests](tests/framework/order_endings_tests.md) | One status per way an order ends, in both pipelines — who refused it, who cancelled it, what the end of a run leaves — and the counts declared from them |
 | [Order Events Tests](tests/framework/order_events_tests.md) | Every order transition as one event in both pipelines — the declared vocabulary held to the source, each order life step by step, the stream file, the run index and the route |
 | [Field Study Recorder Tests](tests/framework/field_study_recorder_tests.md) | The field study's capture as a copy of the order-event stream, and the certificate that reads it — offline, no order placed |
+| [Security Study Certificate Tests](tests/framework/security_cert_certificate_tests.md) | The certificate that judges the security study's stages together, and the catalog of how each rule is proven — offline |
 | [Trading Day Anchor Tests](tests/framework/trading_day_anchor_tests.md) | Where a market flips its trading day, and which day an instant belongs to — DST-aware, one answer for the log rotation, the daily-loss baseline and the record seal |
 | [Warmup History Tests](tests/framework/warmup_history_tests.md) | One synthetic stream through the backtest, the mock and the live warmup path — the same history at the first tick, the venue read by period and commit, start invariance, the guard and the outcome table (#588) |
 | [Time Utils UTC Tests](tests/framework/time_utils_tests.md) | Every parsed or normalised datetime comes back in UTC — also on a machine whose own zone is not UTC |

@@ -87,7 +87,13 @@ account is flat before trading (`Reconciler.is_account_flat()`, #151), and self-
 a budget (`max_session_cost_usd`) or wall-clock (`session_timeout_s`) breach.
 
 Operator guide: [field_study_guide.md](../tests/live_field_study/field_study_guide.md).
-The certificate is a release-gate item (see the Release Checklist).
+The certificate is a release-gate item ([release_certificates.md](../architecture/release_certificates.md)).
+
+A second study runs on the same parts: the **security study** (#358) proves the account's
+protective rules fire with real money, in a sequence of sessions — see
+[security_cert_guide.md](../tests/security_cert/security_cert_guide.md). What the two share lives
+in `python/framework/acceptance_studies/`: the phase engine, the interface by which the session
+recognises a study, and the capture's setup and preflight.
 
 ## File Structure
 
@@ -98,7 +104,6 @@ python/framework/autotrader/
   autotrader_display_exporter.py Display frames from the live pipeline state (#400)
   deployment_resolver.py         Whether the session joins a deployment, starts one, or stands alone (#497)
   dry_run_resolver.py            Whether the session places real orders, answered once
-  field_study_setup.py           Field Study capture + preflight (#332)
   kraken_ohlc_bar_fetcher.py     Kraken OHLC bar fetch (public API, no auth)
   live_clipping_monitor.py       Per-tick timing, clipping detection (#197)
   session_log_rotator.py         Rotates the session log at the trading-day boundary (#476)

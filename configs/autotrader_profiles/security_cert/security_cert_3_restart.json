@@ -1,0 +1,62 @@
+{
+  "_comment": "STAGE 3 OF 5 of the security study (#358) — the baseline survives a restart. REAL MONEY, no order placed. The same bot as stage 2, its baseline READ back (persist_baseline true): the account is worth stage 2's fees less than that baseline, so the block engages at the first valued tick. The daily baseline is not carried, so only the session limits fire.",
+  "profile_name": "kraken_spot_btcusd_security_cert_restart",
+  "run_purpose": "certificate",
+  "bot_id": "scsafe01",
+  "carry_over_from": "kraken_spot_btcusd_security_cert_soft",
+  "symbol": "BTCUSD",
+  "broker_type": "kraken_spot",
+  "adapter_type": "live",
+  "deployment": {
+    "_comment": "A stage of the security study, never a deployment: each session is its own one-off.",
+    "continuous": false
+  },
+  "dry_run": false,
+  "strategy_config": {
+    "decision_logic_type": "CORE/security_cert_study/security_cert_study",
+    "worker_instances": {
+      "pipeline_rsi": "CORE/rsi"
+    },
+    "workers": {
+      "pipeline_rsi": {
+        "periods": {
+          "M5": 14
+        }
+      }
+    },
+    "decision_logic_config": {
+      "max_session_cost_usd": 0.5,
+      "session_timeout_s": 600,
+      "halt_after_phase": "",
+      "phase_sequence": [
+        {
+          "phase_id": "r_start_flat",
+          "phase_type": "start_flat"
+        },
+        {
+          "phase_id": "r_blocked_from_start",
+          "phase_type": "submit_expect",
+          "side": "long",
+          "lot_rule": "min_lot",
+          "expect": "suppressed"
+        },
+        {
+          "phase_id": "r_final",
+          "phase_type": "final_summary"
+        }
+      ]
+    }
+  },
+  "tick_source": {
+    "type": "kraken"
+  },
+  "safety": {
+    "enabled": true,
+    "max_drawdown_pct": 0.0001,
+    "max_drawdown_abs": 0.001,
+    "max_daily_loss_pct": 0.0001,
+    "max_daily_loss_abs": 0.001,
+    "baseline_mode": "fixed",
+    "persist_baseline": true
+  }
+}

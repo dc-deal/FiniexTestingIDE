@@ -21,6 +21,8 @@ from python.framework.types.persistence_types import (
     BaselineKind,
     BaselineOrigin,
     BaselineQuantities,
+    CarryOverLoadOutcome,
+    PositionCarryOver,
     RiskBaseline,
 )
 
@@ -354,6 +356,124 @@ class TestUnreadableDocument:
 
         assert store.load().session_keys == []
         assert any('belongs to' in w for w in logger.warnings)
+
+
+class TestADeclaredContinuation:
+    """
+    Two stages of one bot share its document when the later declares `carry_over_from` (#358).
+
+    The later stage reads what the earlier left — the restart stage needs the baseline the soft
+    stage took, the hard-restart stage needs the lot the hard stop kept. And the EARLIER stage
+    reads what the later left, because the store writes by reading first: a stage that ignored
+    the document on read would replace the later stage's book on its first write.
+    """
+
+    @staticmethod
+    def _stage(tmp_path, logger, profile: str, carry_over_from: str = '') -> ColdStartStateStore:
+        """One stage of a bot whose two profiles share `bot_id` 'cert01'."""
+        return ColdStartStateStore(
+            root=tmp_path / 'cold_start_state', profile=profile, symbol='BTCUSD', logger=logger,
+            run_id=f'run_{profile}', bot_id='cert01', carry_over_from=carry_over_from)
+
+    @staticmethod
+    def _lot() -> PositionCarryOver:
+        """The lot a hard stop kept."""
+        return PositionCarryOver(
+            position_id='pos_btcusd_1', symbol='BTCUSD', direction='long', lots=6e-05,
+            original_lots=6e-05, entry_price=100_000.0, entry_time='2026-10-14T12:00:00+00:00',
+            entry_type='market', contract_size=1)
+
+    def test_the_later_stage_reads_the_earlier_one(self, tmp_path, logger):
+        baseline = TestTheRiskBaselineSurvivesTheDisk._baseline()
+        self._stage(tmp_path, logger, 'cert_soft').save(
+            session_key='1641', highest_position_counter=3, risk_baseline=baseline)
+
+        later = self._stage(tmp_path, logger, 'cert_restart', carry_over_from='cert_soft')
+        payload = later.load()
+
+        assert payload.risk_baseline == baseline
+        load = later.get_last_load()
+        assert (load.outcome, load.writer_profile, load.writer_run_id) == (
+            CarryOverLoadOutcome.ACCEPTED, 'cert_soft', 'run_cert_soft')
+
+    def test_the_earlier_stage_reads_and_keeps_what_the_later_one_left(self, tmp_path, logger):
+        # A rerun of the earlier stage after the later one: its first write must carry the lot
+        # on, not replace it with an empty book.
+        self._stage(tmp_path, logger, 'cert_restart', carry_over_from='cert_soft').save(
+            session_key='8b3f', highest_position_counter=1, open_positions=[self._lot()])
+
+        earlier = self._stage(tmp_path, logger, 'cert_soft')
+        assert [p.position_id for p in earlier.load().open_positions] == ['pos_btcusd_1']
+        earlier.save(session_key='77aa', highest_position_counter=1)
+
+        assert [p.position_id for p in earlier.load().open_positions] == ['pos_btcusd_1']
+
+    def test_a_third_profile_is_still_another_bot(self, tmp_path, logger):
+        self._stage(tmp_path, logger, 'cert_soft').save(
+            session_key='1641', highest_position_counter=3, open_positions=[self._lot()])
+
+        copy = self._stage(tmp_path, logger, 'cert_copy')
+
+        assert copy.load().open_positions == []
+        load = copy.get_last_load()
+        assert (load.outcome, load.writer_profile, load.open_positions, load.session_keys) == (
+            CarryOverLoadOutcome.FOREIGN, 'cert_soft', 1, 1)
+
+    def test_the_envelope_records_the_writer_s_declaration(self, tmp_path, logger):
+        later = self._stage(tmp_path, logger, 'cert_restart', carry_over_from='cert_soft')
+        later.save(session_key='1641', highest_position_counter=1)
+
+        envelope = json.loads(later.get_state_path().read_text(encoding='utf-8'))
+        assert envelope['carry_over_from'] == 'cert_soft'
+
+
+class TestAnotherProfilesClaimsAreNeverReplaced:
+    """
+    A document another profile wrote is ignored on read — and the store writes by reading
+    first, so the next write would replace it. Where it still speaks for the venue, that write
+    is how a position stays at the venue with no bot that knows about it: the boot refuses
+    before it gets here, and the store holds the line for a second session that appears mid-run.
+    The usual cause is a profile renamed while its `bot_id` stayed.
+    """
+
+    @staticmethod
+    def _bot(tmp_path, logger, profile: str) -> ColdStartStateStore:
+        return ColdStartStateStore(
+            root=tmp_path / 'cold_start_state', profile=profile, symbol='BTCUSD', logger=logger,
+            run_id=f'run_{profile}', bot_id='bot01')
+
+    def test_an_open_book_is_not_overwritten(self, tmp_path, logger):
+        lot = TestADeclaredContinuation._lot()
+        self._bot(tmp_path, logger, 'old_name').save(
+            session_key='1641', highest_position_counter=1, open_positions=[lot])
+
+        renamed = self._bot(tmp_path, logger, 'new_name')
+        renamed.save(session_key='8b3f', highest_position_counter=1, open_positions=[])
+
+        envelope = json.loads(renamed.get_state_path().read_text(encoding='utf-8'))
+        assert envelope['profile'] == 'old_name'
+        assert len(envelope['snapshot']['open_positions']) == 1
+        assert any('NOT written' in e for e in logger.errors)
+
+    def test_session_keys_alone_are_a_claim_too(self, tmp_path, logger):
+        # A key is how a successor recognises an order resting at the venue under it.
+        self._bot(tmp_path, logger, 'old_name').save(session_key='1641', highest_position_counter=1)
+
+        renamed = self._bot(tmp_path, logger, 'new_name')
+        renamed.save(session_key='8b3f', highest_position_counter=1)
+
+        envelope = json.loads(renamed.get_state_path().read_text(encoding='utf-8'))
+        assert envelope['snapshot']['session_keys'] == ['1641']
+
+    def test_a_document_that_claims_nothing_may_be_started_over(self, tmp_path, logger):
+        # What a dry session writes: no key, no book — nothing at the venue depends on it.
+        self._bot(tmp_path, logger, 'old_name').save(session_key='', highest_position_counter=0)
+
+        renamed = self._bot(tmp_path, logger, 'new_name')
+        renamed.save(session_key='8b3f', highest_position_counter=1)
+
+        envelope = json.loads(renamed.get_state_path().read_text(encoding='utf-8'))
+        assert (envelope['profile'], envelope['snapshot']['session_keys']) == ('new_name', ['8b3f'])
 
 
 class TestIndexHasAProducer:

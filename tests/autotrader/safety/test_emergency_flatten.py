@@ -24,12 +24,10 @@ from types import SimpleNamespace
 from typing import List
 
 from python.framework.autotrader.safety.safety_circuit_breaker import SafetyCircuitBreaker
-from python.framework.types.autotrader_types.autotrader_config_types import (
-    AutoTraderConfig,
-    SafetyConfig,
-)
+from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
 from python.framework.types.autotrader_types.operator_alert_types import OperatorAlertKind
 from python.framework.types.autotrader_types.safety_session_types import FlattenOutcome
+from python.framework.types.config_types.autotrader_defaults_config_types import SafetyConfig
 from python.framework.types.config_types.market_config_types import TradingModel
 from python.framework.types.decision_event_types import SessionEndSeverity
 from tests.shared.operator_alert_recorder import OperatorAlertRecorder

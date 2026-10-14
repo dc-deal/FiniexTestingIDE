@@ -32,7 +32,7 @@ from pydantic import ValidationError
 
 from python.framework.exceptions.persistence_errors import StatePersistenceError
 from python.framework.logging.abstract_logger import AbstractLogger
-from python.framework.persistence.carry_over_identity import carry_over_key
+from python.framework.persistence.carry_over_identity import accepts_carry_over, carry_over_key
 from python.framework.types.config_types.autotrader_defaults_config_types import (
     StatePersistenceDefaults,
 )
@@ -66,6 +66,10 @@ class AlgoStateStore:
         run_id: The writing session's run identity, recorded as PROVENANCE in the
             envelope (#486). Never part of the key — a carry-over is keyed by the bot,
             because a restart mints a new run id and the successor must still find it.
+        bot_id: The identity the profile DECLARES, which the file is named after (#538)
+        carry_over_from: The profile whose carry-over this profile declares it continues
+            (#358), or empty — read through the same rule as the framework's carry-over, so
+            one bot never inherits its book there and starts its algo memory fresh here
     """
 
     def __init__(
@@ -77,6 +81,7 @@ class AlgoStateStore:
         logger: AbstractLogger,
         run_id: Optional[str] = None,
         bot_id: str = '',
+        carry_over_from: str = '',
     ):
         self._config = config
         self._profile = profile
@@ -85,6 +90,7 @@ class AlgoStateStore:
         self._logger = logger
         self._run_id = run_id
         self._bot_id = bot_id
+        self._carry_over_from = carry_over_from
 
         self._path = Path(config.path) / f'{carry_over_key(profile, symbol, bot_id)}.json'
 
@@ -150,6 +156,7 @@ class AlgoStateStore:
             # What the FILE NAME was derived from — without it nothing can recompute this
             # document's own name, and anything that tried would orphan it (#538).
             bot_id=self._bot_id,
+            carry_over_from=self._carry_over_from,
             snapshot=snapshot,
         )
 
@@ -196,9 +203,13 @@ class AlgoStateStore:
                 f'got {envelope.schema_version})'
             )
 
-        # Identity mismatch is not corruption — the file simply is not this bot's
-        # state. The filename is keyed, so this is a defensive check only.
-        if envelope.profile != self._profile or envelope.symbol != self._symbol:
+        # Identity mismatch is not corruption — the file simply is not this bot's state. With
+        # every profile declaring a bot_id the file name no longer tells two profiles apart, so
+        # this check is what separates them — through the same rule as the framework's
+        # carry-over, which admits exactly a declared continuation (#358).
+        if envelope.symbol != self._symbol or not accepts_carry_over(
+                self._profile, self._carry_over_from,
+                envelope.profile, envelope.carry_over_from):
             self._logger.warning(
                 f'⚠️ State file identity mismatch '
                 f'(file: {envelope.profile}/{envelope.symbol}, '

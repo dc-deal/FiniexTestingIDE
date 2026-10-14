@@ -295,7 +295,7 @@ class SafetyCircuitBreaker:
             self._safety_drawdown_pct = max(0.0, drawdown_pct)
             if drawdown_pct > safety.max_drawdown_pct:
                 self._block(
-                    f'max_drawdown ({drawdown_pct:.1f}% > {safety.max_drawdown_pct:.1f}%)')
+                    f'max_drawdown_pct ({drawdown_pct:.1f}% > {safety.max_drawdown_pct:.1f}%)')
         else:
             self._safety_drawdown_pct = 0.0
 
@@ -622,6 +622,6 @@ class SafetyCircuitBreaker:
             daily_loss_pct = daily_loss / day_start * 100.0
             if daily_loss_pct > safety.max_daily_loss_pct:
                 self._block(
-                    f'max_daily_loss ({daily_loss_pct:.1f}% > '
+                    f'max_daily_loss_pct ({daily_loss_pct:.1f}% > '
                     f'{safety.max_daily_loss_pct:.1f}%)')
                 self._day_limit_hit = True

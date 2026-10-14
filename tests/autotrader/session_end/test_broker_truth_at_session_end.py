@@ -85,7 +85,8 @@ class TestTheFieldStudysEnd:
     def test_it_closes_after_the_session_end_read(self, monkeypatch):
         calls: List[str] = []
         session = _session(monkeypatch, calls)
-        session._field_study_recorder = self._capture(calls)
+        session._study_recorder = self._capture(calls)
+        session._study_label = 'Field Study'
 
         session._shutdown(0, 0)
 
@@ -94,7 +95,8 @@ class TestTheFieldStudysEnd:
     def test_it_closes_when_the_telemetry_fails(self, monkeypatch):
         calls: List[str] = []
         session = _session(monkeypatch, calls)
-        session._field_study_recorder = self._capture(calls)
+        session._study_recorder = self._capture(calls)
+        session._study_label = 'Field Study'
 
         def snapshot_fails():
             raise RuntimeError('monitor broken')

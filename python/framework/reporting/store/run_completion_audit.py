@@ -25,7 +25,26 @@ is the whole point.
 from pathlib import Path
 from typing import Callable, Dict, List, Optional
 
+from python.framework.reporting.store.run_results_ledger import RunResultsLedger
 from python.framework.types.api.report_types import ParentKind, RunInfo, RunResultRow
+
+
+def run_completed(ledger: RunResultsLedger, run_id: str) -> bool:
+    """
+    Whether one run reached its close — the ledger holds its row.
+
+    The ledger row is the LAST step of the report coordinator, so a run that has one completed
+    and a run that has none either is still going or died. The same rule `unfinished_runs`
+    applies to every run at once, asked here of one.
+
+    Args:
+        ledger: The run ledger
+        run_id: The run in question
+
+    Returns:
+        True when the ledger holds at least one row of that run
+    """
+    return not ledger.read(run_id=run_id).empty
 
 
 def unfinished_runs(

@@ -37,6 +37,11 @@ What remains, for a profile that declares none: two SPELLINGS of one name — `d
 same symbol. Both resolve to ONE document, and nothing in this module can see it.
 `carry_over_identity_validator` is the check for that, and it lives apart because this module has
 to stay a pure function.
+
+**One deliberate case of two profiles in one document: a declared continuation (#358).** A profile
+may name, in `carry_over_from`, the profile whose carry-over it continues — a later stage of the
+same bot, run strictly after it. Which documents a profile may then read is decided in ONE place,
+`accepts_carry_over`, for both stores.
 """
 
 
@@ -93,3 +98,35 @@ def carry_over_key(profile: str, symbol: str, bot_id: str = '') -> str:
     """
     head = sanitize_identity_part(bot_id) if bot_id else sanitize_identity_part(profile)
     return f'{head}_{sanitize_identity_part(symbol)}'
+
+
+def accepts_carry_over(
+    reader_profile: str,
+    reader_continues: str,
+    writer_profile: str,
+    writer_continues: str,
+) -> bool:
+    """
+    Whether a carry-over document written by one profile is this profile's to read (#358).
+
+    A document belongs to the profile that wrote it — and to exactly one other: the profile a
+    DECLARED continuation names, on either side. The successor reads the document its predecessor
+    left, and the predecessor reads the one its successor left: both are the same bot's state,
+    and a predecessor that ignored it would overwrite what the successor holds. Everything else
+    is another bot's state under the same name, and reading it would hand this bot a position
+    book it never held.
+
+    Args:
+        reader_profile: The reading profile's name
+        reader_continues: The profile the reader declares it continues, or empty
+        writer_profile: The profile that last wrote the document
+        writer_continues: The profile the writer declared it continues, or empty
+
+    Returns:
+        True when the document is the reader's own or its declared partner's
+    """
+    if writer_profile == reader_profile:
+        return True
+    if reader_continues and writer_profile == reader_continues:
+        return True
+    return bool(writer_continues) and writer_continues == reader_profile

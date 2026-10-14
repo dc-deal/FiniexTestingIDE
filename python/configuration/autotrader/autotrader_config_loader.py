@@ -13,7 +13,6 @@ from python.framework.config_directory.config_directory_discovery import is_user
 from python.framework.types.autotrader_types.autotrader_config_types import (
     AutoTraderConfig,
     DeploymentConfig,
-    SafetyConfig,
 )
 from python.framework.types.config_directory_types import ConfigKind
 from python.framework.types.config_types.autotrader_defaults_config_types import (
@@ -26,6 +25,7 @@ from python.framework.types.config_types.autotrader_defaults_config_types import
     DriftAuditConfig,
     OrderGuardDefaults,
     ReconciliationDefaults,
+    SafetyConfig,
     SessionEndDefaults,
     StatePersistenceDefaults,
     TickSourceConfig,
@@ -273,11 +273,20 @@ def load_autotrader_config(config_path: str) -> AutoTraderConfig:
         liveness_enabled_resolved = liveness_raw.get('enabled', False)
 
     run_purpose = read_declared_purpose(raw_profile_only, path.name, is_user_owned(path))
+    # Read from the PROFILE alone, like the purpose above: a continuation is a statement one
+    # profile makes about one other, and a default merged in from app_config would make every
+    # profile claim it — while the boot check, which reads the raw files, would not see it.
+    carry_over_from = raw_profile_only.get('carry_over_from', '')
+    if not isinstance(carry_over_from, str):
+        raise ValueError(
+            f"Profile '{path.name}': `carry_over_from` names the profile_name of the profile it "
+            f'continues and must be a string, not {type(carry_over_from).__name__}.')
 
     config = AutoTraderConfig(
         profile_name=raw.get('profile_name', ''),
         bot_id=raw.get('bot_id', ''),
         run_purpose=run_purpose,
+        carry_over_from=carry_over_from,
         symbol=raw.get('symbol', ''),
         broker_type=raw.get('broker_type', ''),
         adapter_type=adapter_type_resolved,

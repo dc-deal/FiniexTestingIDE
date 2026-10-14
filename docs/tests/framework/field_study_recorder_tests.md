@@ -4,7 +4,7 @@
 certificate that reads it. Runs as the `framework/field_study_recorder` suite, offline: no broker,
 no network, no order placed.
 
-The field study is the acceptance test of the live core, and its certificate is one of the three a
+The field study is the acceptance test of the live core, and its certificate is one of those a
 real-money run starts on. So what the capture says and what the certificate makes of it have to
 hold before a funded run ever writes one. Since #566 the capture keeps no picture of its own: its
 order and venue lines are the session's order-event stream, copied in while the executor writes it.

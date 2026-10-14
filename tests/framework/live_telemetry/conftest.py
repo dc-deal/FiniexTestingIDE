@@ -14,10 +14,7 @@ from typing import List
 import pytest
 
 from python.framework.autotrader.tick_sources.abstract_tick_source import AbstractTickSource
-from python.framework.types.autotrader_types.autotrader_config_types import (
-    AutoTraderConfig,
-    SafetyConfig,
-)
+from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
 from python.framework.types.autotrader_types.autotrader_display_types import (
     AutoTraderDisplayStats,
     PositionSnapshot,
@@ -30,6 +27,7 @@ from python.framework.types.autotrader_types.autotrader_display_types import (
     TradeHistoryEntry,
 )
 from python.framework.types.autotrader_types.display_label_cache import DisplayLabelCache
+from python.framework.types.config_types.autotrader_defaults_config_types import SafetyConfig
 from python.framework.types.decision_logic_types import (
     AwarenessLevel,
     DecisionAwareness,

@@ -27,7 +27,7 @@ from python.framework.types.autotrader_types.cold_start_types import (
     ColdStartSituation,
     ColdStartVerdict,
 )
-from python.framework.types.persistence_types import ColdStartPayload
+from python.framework.types.persistence_types import CarryOverRead, ColdStartPayload
 
 
 @dataclass
@@ -76,7 +76,7 @@ def setup_cold_start(
     logger: AbstractLogger,
     run_id: str,
     attended: bool,
-    field_study_active: bool,
+    adoption_skipped_by: Optional[str],
     dry_run: bool,
     session_end_orders: str = 'cancel',
 ) -> ColdStartSetup:
@@ -97,7 +97,8 @@ def setup_cold_start(
         logger: Session logger — the channel that reaches the run outcome (§35)
         run_id: Recorded as PROVENANCE in the carry-over, never as its key
         attended: A human DECLARED they are watching this start (`--attended`)
-        field_study_active: True when the Field Study owns this session
+        adoption_skipped_by: The acceptance study that asserts its own flat book and so takes no
+            adoption, by its name ('Field Study'); None when adoption runs
         dry_run: The session's RESOLVED dry-run state, passed in rather than re-derived.
             Deriving it from `config.dry_run` here would read the profile field alone and
             miss the broker's standing posture — which is precisely the near miss #304 exists
@@ -113,12 +114,12 @@ def setup_cold_start(
     if not config.cold_start.enabled or not isinstance(executor, LiveTradeExecutor):
         return ColdStartSetup()
 
-    if field_study_active:
+    if adoption_skipped_by is not None:
         # It funds both sides on purpose and asserts its own flat order book (#332), so
         # adoption would claim its funding. Said out loud rather than done silently.
         logger.info(
-            '🧬 Cold start skipped — the Field Study funds both sides on purpose and asserts '
-            'a flat order book itself (#332).'
+            f'🧬 Cold start skipped — the {adoption_skipped_by} funds both sides on purpose and '
+            f'asserts a flat order book itself (#332).'
         )
         return ColdStartSetup()
 
@@ -170,7 +171,7 @@ def setup_cold_start(
     )
 
 
-def read_carry_over(config: AutoTraderConfig) -> ColdStartPayload:
+def read_carry_over(config: AutoTraderConfig) -> CarryOverRead:
     """
     Open this bot's carry-over document before anything else needs it.
 
@@ -179,17 +180,21 @@ def read_carry_over(config: AutoTraderConfig) -> ColdStartPayload:
     path. The deployment, the risk baseline, the drawdown curve and the period floor read
     this payload; the cold-start adopter reads the document again for its own step, and only
     that read's warnings reach the session log — this one comes before the session logger
-    exists.
+    exists. What the read FOUND travels with it: the boot's continuity checks decide on it
+    before anything is written (#358).
 
     Args:
         config: The resolved profile — its `cold_start` block and the bot's identity
 
     Returns:
-        The stored payload, or an empty one when there is nothing to read
+        The stored payload, or an empty one when there is nothing to read, with what the read
+        found — None when cold start is disabled and nothing was read
     """
     if not config.cold_start.enabled:
-        return ColdStartPayload()
-    return _carry_over_store(config, get_global_logger(), run_id=None).load()
+        return CarryOverRead(ColdStartPayload())
+    store = _carry_over_store(config, get_global_logger(), run_id=None)
+    payload = store.load()
+    return CarryOverRead(payload, store.get_last_load())
 
 
 def _carry_over_store(
@@ -216,4 +221,8 @@ def _carry_over_store(
         logger=logger,
         run_id=run_id,
         bot_id=config.bot_id,
+        # In this one recipe, so the boot's early read, the adopter's read and every write
+        # agree on whose documents are this bot's (#358) — a continuation honoured by only one
+        # of them would adopt the book and miss the baseline, or the other way round.
+        carry_over_from=config.carry_over_from,
     )

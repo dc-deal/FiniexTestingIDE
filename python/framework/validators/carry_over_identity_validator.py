@@ -25,6 +25,13 @@ AutoTrader session runs a `LiveTradeExecutor` (the factory only demands `is_live
 which the mock adapter is), so every session builds both carry-over stores. Measured 2026-09-21:
 **15 of the 16 documents in `data/runtime/cold_start_state/` belong to mock profiles.** An
 exclusion would have skipped almost the entire population it exists to protect.
+
+ONE pairing is allowed, and only when declared: two stages of one bot that run in order, the later
+naming the earlier in `carry_over_from` (#358) — the restart stages of the security study, which
+must start from what the stage before them left. `continuation_pair_refusal` holds the pair to
+every condition that keeps it from being mistaken for a copy, and the boot check and the sweep
+both ask it. What a session may do with the document once it is read is the next check's
+question, `carry_over_continuity_validator`.
 """
 
 import json
@@ -35,12 +42,15 @@ from python.framework.config_directory.config_directory_discovery import json_fi
 from python.framework.exceptions.persistence_errors import (
     BotIdMalformedError,
     BotIdRequiredError,
+    CarryOverContinuationError,
     CarryOverIdentityCollisionError,
 )
 from python.framework.persistence.carry_over_identity import (
     carry_over_key,
     sanitize_identity_part,
 )
+from python.framework.types.persistence_types import CarryOverClaim
+from python.framework.types.run_purpose_types import RunPurpose
 from python.framework.utils.declared_id_utils import (
     DECLARED_ID_MAX_LENGTH,
     declared_id_malformed_reason,
@@ -61,6 +71,18 @@ _TRACKED_CONFIG_DIR = 'configs'
 # held in ONE place (`declared_id_utils`) so the two cannot drift apart. The name stays here
 # because the messages below are about a bot, and a bot's ceiling IS the shared one.
 BOT_ID_MAX_LENGTH = DECLARED_ID_MAX_LENGTH
+
+# The purposes a declared continuation is allowed in (#358, operator 2026-10-14): a release
+# study's stages and a test's fixtures. A production bot that keeps its identity across a rename
+# is a different question, with its own answer.
+CONTINUATION_PURPOSES = frozenset({RunPurpose.CERTIFICATE, RunPurpose.FIXTURE})
+
+# The adapter a profile runs on when it names none — the loader's own default, applied here so
+# that a profile which omits the key and one which states it agree.
+_DEFAULT_ADAPTER_TYPE = 'mock'
+
+# The session-end value that leaves orders resting for the next session to adopt.
+_ORDERS_LEFT_RESTING = 'leave'
 
 
 def validate_bot_id(profile_name: str, symbol: str, bot_id: str) -> None:
@@ -129,6 +151,7 @@ def validate_carry_over_identity_unique(
     symbol: str,
     bot_id: str = '',
     profile_homes: Sequence[Path] = (),
+    carry_over_from: str = '',
 ) -> None:
     """
     Refuse to start when another profile claims this session's carry-over identity.
@@ -136,6 +159,10 @@ def validate_carry_over_identity_unique(
     Only a collision involving THIS session is raised. A collision between two other profiles is
     real but is not this run's problem, and it will be raised the moment either of them starts —
     at which point the message is about the session the operator is actually looking at.
+
+    The one exception to "one identity, one profile" is a DECLARED continuation (#358): exactly
+    two profiles, the later naming the earlier in `carry_over_from` — `continuation_pair_refusal`
+    decides, for this check and for the sweep alike.
 
     Args:
         config_path: Where this session's profile was loaded from; None skips the check, because
@@ -148,20 +175,48 @@ def validate_carry_over_identity_unique(
         profile_homes: Every configured root a profile may live under (`profile_homes`) — a
             session whose profile lies in one is compared against all of them. Empty compares
             only the tree the profile sits in and its sibling, which is what a test tree needs
+        carry_over_from: The profile this session declares it continues, or empty
 
     Returns:
-        None — raises CarryOverIdentityCollisionError when the identity is not unique
+        None — raises CarryOverIdentityCollisionError when the identity is not unique, and
+        CarryOverContinuationError when a declared continuation is not a pair
     """
     roots = _profiles_roots(config_path, profile_homes)
     if not roots:
+        if carry_over_from:
+            # A declaration nothing can check is not one to honour: the pair rule is what keeps
+            # a later stage from reading a document it was never meant to see.
+            raise CarryOverContinuationError(
+                f"The profile '{profile_name}' declares `carry_over_from: '{carry_over_from}'`, "
+                f'but it lies in no profile tree,\n'
+                f'    so the profile it names cannot be found and checked. Start it from its '
+                f'place under an\n    `{PROFILES_ROOT_NAME}` folder or a configured profile '
+                f'home.')
         return
 
     key = carry_over_key(profile_name, symbol, bot_id)
-    claimants = [path for path, claimed in _live_identities(roots).items() if claimed == key]
+    claimants = [claim for claim in _claims(roots) if claim.key == key]
     if len(claimants) < 2:
+        if carry_over_from:
+            raise CarryOverContinuationError(
+                f"The profile '{profile_name}' declares `carry_over_from: '{carry_over_from}'`, "
+                f'but no other profile\n'
+                f"    claims its carry-over identity '{key}'. The profile it continues has to "
+                f'declare the same\n'
+                f'    `bot_id` and symbol, and be called exactly that.')
         return
 
-    listed = '\n'.join(f'    {path}' for path in sorted(str(p) for p in claimants))
+    declared = [claim for claim in claimants if claim.carry_over_from]
+    if declared:
+        refusal = continuation_pair_refusal(claimants)
+        if refusal is None:
+            return
+        listed = '\n'.join(f'    {claim.path}' for claim in sorted(claimants, key=_by_path))
+        raise CarryOverContinuationError(
+            f"The profiles claiming the carry-over identity '{key}' are not a continuation:\n"
+            f'{listed}\n    {refusal}')
+
+    listed = '\n'.join(f'    {claim.path}' for claim in sorted(claimants, key=_by_path))
     raise CarryOverIdentityCollisionError(
         f"Two profiles share one carry-over identity '{key}':\n{listed}\n"
         f'    They would share one position book, one position counter and one set of session '
@@ -171,8 +226,83 @@ def validate_carry_over_identity_unique(
         f'    characters of a-z, 0-9 and hyphen. The usual cause is a COPIED profile whose id was '
         f'not changed\n'
         f'    with it; the two need not sit in the same directory, and since 2026-09-24 this check '
-        f'crosses\n    that boundary.'
+        f'crosses\n    that boundary.\n'
+        f'    If one is a later stage of the other — a release study run in order — the later '
+        f'one declares\n'
+        f'    `carry_over_from` with the earlier one\'s `profile_name` instead.'
     )
+
+
+def continuation_pair_refusal(claimants: List[CarryOverClaim]) -> Optional[str]:
+    """
+    Why the profiles claiming one identity are not a declared continuation — None when they are.
+
+    A continuation lets a later stage of one bot start from what the earlier stage left (#358),
+    and the two stores honour it on read in both directions (`accepts_carry_over`). That is safe
+    only for a pair that cannot be mistaken for anything else, so every condition below closes a
+    route by which a session would read a document it was never meant to see:
+
+      - exactly two profiles: a third would read the pair's state as its own
+      - the later names the earlier byte for byte — the stores compare names, nothing looser
+      - the earlier declares nothing itself: a chain or a cycle makes both sides accept each
+        other's documents, and "the earlier stage starts fresh" no longer holds
+      - two different names: the stores tell the two apart by name alone
+      - a release study's stages or a test's fixtures, nothing else
+      - one adapter, one broker, one cold-start directory: a mock stage beside a live one
+        would hand a real account a risk baseline taken from simulated balances
+      - the earlier stage leaves no order resting: the next boot to see it would be the later
+        stage's, which was not the one that agreed to adopt it
+
+    Args:
+        claimants: Every profile claiming one carry-over identity
+
+    Returns:
+        A one-line reason naming the condition that fails, or None for a declared pair
+    """
+    if len(claimants) != 2:
+        return (f'a continuation is exactly two profiles, the later naming the earlier; '
+                f'{len(claimants)} claim this identity')
+    later = [claim for claim in claimants if claim.carry_over_from]
+    if len(later) != 1:
+        return ('both profiles declare `carry_over_from` — the earlier stage of a continuation '
+                'declares none')
+    successor = later[0]
+    predecessor = next(claim for claim in claimants if claim is not successor)
+    if successor.profile_name == predecessor.profile_name:
+        return (f"both profiles are called '{successor.profile_name}' — the stores tell the two "
+                f'stages apart by name, so each needs its own `profile_name`')
+    if successor.carry_over_from != predecessor.profile_name:
+        return (f"{successor.path.name} continues '{successor.carry_over_from}', but the other "
+                f"profile is called '{predecessor.profile_name}' — the name must match exactly")
+    for claim in (successor, predecessor):
+        if claim.run_purpose not in CONTINUATION_PURPOSES:
+            stated = claim.run_purpose.value if claim.run_purpose else 'an unknown purpose'
+            return (f'{claim.path.name} runs as {stated} — a continuation is allowed only '
+                    f'between release-study stages (`certificate`) or test fixtures (`fixture`)')
+    for field, label in (('adapter_type', '`adapter_type`'), ('broker_type', '`broker_type`'),
+                         ('cold_start_path', '`cold_start.path`')):
+        if getattr(successor, field) != getattr(predecessor, field):
+            return (f'the two declare a different {label} '
+                    f'({getattr(predecessor, field)!r} and {getattr(successor, field)!r}) — '
+                    f'both stages have to run on the same venue and read the same document')
+    if predecessor.session_end_orders == _ORDERS_LEFT_RESTING:
+        return (f"{predecessor.path.name} leaves its orders resting at session end "
+                f"(`session_end.orders: '{_ORDERS_LEFT_RESTING}'`) — the stage that would meet "
+                f'them is the later one, which never agreed to adopt them')
+    return None
+
+
+def _by_path(claim: CarryOverClaim) -> str:
+    """
+    Sort key that lists claimants in a stable order.
+
+    Args:
+        claim: One claimant
+
+    Returns:
+        Its path as text
+    """
+    return str(claim.path)
 
 
 def _profiles_roots(config_path: Optional[Path], profile_homes: Sequence[Path]) -> List[Path]:
@@ -238,9 +368,9 @@ def _profiles_roots(config_path: Optional[Path], profile_homes: Sequence[Path]) 
     return roots
 
 
-def _live_identities(roots: List[Path]) -> Dict[Path, str]:
+def _claims(roots: List[Path]) -> List[CarryOverClaim]:
     """
-    The carry-over identity every profile under these roots claims.
+    The carry-over claim every profile under these roots makes.
 
     Read from the RAW json rather than through the config loader: this runs at boot, a full load
     validates and resolves far more than a name and a symbol, and one unrelated profile with a
@@ -252,9 +382,9 @@ def _live_identities(roots: List[Path]) -> Dict[Path, str]:
         roots: The `autotrader_profiles` directories to scan
 
     Returns:
-        Profile path → the identity it would file its carry-over under
+        One claim per readable profile that names a symbol
     """
-    identities: Dict[Path, str] = {}
+    claims: List[CarryOverClaim] = []
     for root in roots:
         # The directory's own walk, which never enters a `.git`: a user algo directory is
         # usually a repository, and walking its objects cost ~1 s on this tree (2026-10-09).
@@ -265,9 +395,53 @@ def _live_identities(roots: List[Path]) -> Dict[Path, str]:
             symbol = raw.get('symbol')
             if not symbol:
                 continue
-            identities[path] = carry_over_key(
-                raw.get('profile_name') or symbol, symbol, raw.get('bot_id') or '')
-    return identities
+            name = raw.get('profile_name') or symbol
+            cold_start = raw.get('cold_start') if isinstance(raw.get('cold_start'), dict) else {}
+            session_end = (raw.get('session_end')
+                           if isinstance(raw.get('session_end'), dict) else {})
+            claims.append(CarryOverClaim(
+                path=path,
+                key=carry_over_key(name, symbol, raw.get('bot_id') or ''),
+                profile_name=name,
+                carry_over_from=_text(raw.get('carry_over_from')),
+                run_purpose=_purpose(raw.get('run_purpose')),
+                adapter_type=_text(raw.get('adapter_type')) or _DEFAULT_ADAPTER_TYPE,
+                broker_type=_text(raw.get('broker_type')),
+                cold_start_path=cold_start.get('path'),
+                session_end_orders=session_end.get('orders'),
+            ))
+    return claims
+
+
+def _purpose(value: object) -> Optional[RunPurpose]:
+    """
+    A raw profile's purpose, read the way the loader reads it.
+
+    Args:
+        value: The raw `run_purpose` value
+
+    Returns:
+        REGULAR when absent, the purpose it names, or None when it names none
+    """
+    if value is None:
+        return RunPurpose.REGULAR
+    try:
+        return RunPurpose(value)
+    except ValueError:
+        return None
+
+
+def _text(value: object) -> str:
+    """
+    A raw profile value as text, tolerating whatever the file holds.
+
+    Args:
+        value: The raw value
+
+    Returns:
+        The value when it is a string, else empty
+    """
+    return value if isinstance(value, str) else ''
 
 
 def _read_profile(path: Path) -> Optional[dict]:
@@ -293,15 +467,18 @@ def collisions(roots: List[Path]) -> Dict[str, List[Path]]:
     Every shared carry-over identity under a profile root, for a sweep rather than a boot.
 
     The boot check deliberately raises only on the running session's own key; this answers the
-    whole question at once, which is what a maintenance command or a test wants.
+    whole question at once, which is what a maintenance command or a test wants. A declared
+    continuation pair is not a collision — the same rule as the boot check decides it.
 
     Args:
         roots: The `autotrader_profiles` directories to scan
 
     Returns:
-        Identity → the profiles claiming it, for identities claimed more than once
+        Identity → the profiles claiming it, for identities claimed more than once that are not
+        a declared continuation
     """
-    claimed: Dict[str, List[Path]] = {}
-    for path, key in _live_identities(roots).items():
-        claimed.setdefault(key, []).append(path)
-    return {key: paths for key, paths in claimed.items() if len(paths) > 1}
+    claimed: Dict[str, List[CarryOverClaim]] = {}
+    for claim in _claims(roots):
+        claimed.setdefault(claim.key, []).append(claim)
+    return {key: [claim.path for claim in group] for key, group in claimed.items()
+            if len(group) > 1 and continuation_pair_refusal(group) is not None}
