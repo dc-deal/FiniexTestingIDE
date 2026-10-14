@@ -3,8 +3,9 @@
 Some questions are not about a run or a venue, and every one of them is expensive to guess at. Did
 this server restart since you last cached anything? Was your token accepted, or is nothing checking
 tokens at all — both of those answer `200`. Which timeframe names will the bar routes take? And a
-finding has just handed you a `check` id, which is a label nobody outside this API can read. These
-routes answer those, and all but one of them need no credentials to ask.
+finding has just handed you a `check` id, which is a label nobody outside this API can read. And
+how full is the machine all of this runs on? These routes answer those, and the ones that only
+state the server's own declarations need no credentials to ask.
 
 **Routes**
 
@@ -13,13 +14,14 @@ GET /api/v1/health
 GET /api/v1/caller
 GET /api/v1/timeframes
 GET /api/v1/validation-checks
+GET /api/v1/machine-resources
 ```
 
 **What is not here:** which contract this server serves and what moved into it. That is
 `/api/v1/contract`, and [the contract log](/api/v1/docs/contract-log) explains how to use it. What
 a refusal means is in [errors](/api/v1/docs/errors).
 
-## Only `/caller` needs a token
+## `/caller` and `/machine-resources` need a token
 
 `/health`, `/timeframes` and `/validation-checks` are open, and that is a decision rather than an
 oversight. A timeframe list and a check vocabulary are this server's own static declaration — what
@@ -27,7 +29,9 @@ a name *means* — and say nothing about a venue, a run or an account. Gating th
 would make a market-data grant the precondition for a list that reveals nothing about market data.
 
 `/caller` needs a token while gating is on, and takes no grant: a grant required in order to ask
-what you hold would be circular.
+what you hold would be circular. `/machine-resources` needs a token and takes no grant either: how
+loaded the machine is is nothing a stranger needs to read, and the route has no path parameter for
+a grant to be about.
 
 ## `/health` — whether it answers, and since when
 
@@ -152,9 +156,48 @@ The list is complete in both directions: every id a finding can carry is declare
 entry in it is an id something emits. So an id you receive that is missing from **your** copy means
 your copy is older than the server, not that the id was never declared.
 
+## `/machine-resources` — how full the machine is
+
+The machine this server runs on is the one the backtests and the live sessions run on too. When
+many scenarios run in parallel they fill it, and memory that runs out is the moment a process is
+ended by the operating system — nothing refuses politely before that. This route says how close
+that moment is.
+
+```json
+{"measured_at": "2026-10-14T12:00:05+00:00",
+ "cpu": {"count": 16.0, "count_source": "machine", "used_pct": 63.2, "window_s": 5.0},
+ "memory": {"limit_bytes": 32495570944, "used_bytes": 13323186176, "used_pct": 41.0,
+            "limit_source": "machine", "warn_at_pct": 80.0, "critical_at_pct": 90.0},
+ "pressure_level": "ok",
+ "pressure_reasons": []}
+```
+
+**The limit is the one that binds.** Where the server runs in a container with a memory limit
+below the machine's, `limit_bytes` is that limit and `limit_source` is `cgroup`; otherwise it is
+the machine's memory and `limit_source` is `machine`. The same for the processors: `count` is a
+container's processor quota where one binds — it may be fractional — otherwise the processors the
+server may run on.
+
+**The processors' busy share has a window.** `used_pct` is how busy the machine's processors were
+over the last `window_s` seconds — the time since the previous reading of this route, by ANY
+caller. Two clients polling share the readings, so each sees shorter windows; the share stays
+correct for the window it states. The very first reading after a restart may have no window yet:
+then both are `null`.
+
+**The level is graded on memory alone.** `pressure_level` is `warn` from `warn_at_pct` and
+`critical` from `critical_at_pct`; both thresholds travel in the answer, so you can draw them
+without knowing this server's configuration. A busy processor is the machine doing its work —
+every backtest uses all of them — and is shown, never graded. `pressure_reasons` holds one sentence
+per reason, written for a person; show it as it comes. It is empty when the level is `ok`.
+
+**How often to ask.** Every few seconds is what this route is made for: one reading costs a fraction
+of a millisecond on the server and touches no file of the project. Hold the last answer and show
+its `measured_at`, so a reading that has stopped arriving is visibly old rather than silently
+current.
+
 ## What to cache, and what tells you to drop it
 
 `/timeframes` and `/validation-checks` change only when the server does. Fetch each once and keep
 it; re-fetch when `/health` answers with a `version` or a `started_at` you have not seen before.
-`/caller` changes when your token or its account changes, which is also a restart. `/health` is the
-one meant to be asked repeatedly.
+`/caller` changes when your token or its account changes, which is also a restart. `/health` and
+`/machine-resources` are the ones meant to be asked repeatedly.

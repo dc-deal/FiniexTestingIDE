@@ -14,8 +14,6 @@ Provides comprehensive summary:
 
 from typing import Dict, List, Optional
 
-import psutil
-
 from python.configuration.app_config_manager import AppConfigManager
 from python.framework.reporting.console.abstract_batch_summary_section import (
     AbstractBatchSummarySection,
@@ -38,6 +36,7 @@ from python.framework.types.trading_env_types.currency_codes import (
     format_currency_simple,
 )
 from python.framework.utils.console_renderer import ConsoleRenderer
+from python.framework.utils.machine_resources_reader import MachineResourcesReader
 
 
 class SimExecutiveSummary(AbstractBatchSummarySection):
@@ -728,19 +727,14 @@ class SimExecutiveSummary(AbstractBatchSummarySection):
 
     def _render_system_resources(self, renderer: ConsoleRenderer):
         """Render system resources section."""
-        try:
-            cpu_count = psutil.cpu_count()
-            mem = psutil.virtual_memory()
-            ram_total_gb = mem.total / (1024**3)
-            ram_available_gb = mem.available / (1024**3)
-        except:
-            cpu_count = 'N/A'
-            ram_total_gb = 0
-            ram_available_gb = 0
+        # Through the one reader every display uses: the processors and the memory that bind
+        machine = MachineResourcesReader().read()
+        ram_total_gb = machine.memory.limit_bytes / (1024**3)
+        ram_available_gb = (machine.memory.limit_bytes - machine.memory.used_bytes) / (1024**3)
 
         renderer.print_bold('SYSTEM RESOURCES')
         renderer.print_separator(width=68)
-        print(f'CPU Cores:          {cpu_count}')
+        print(f'CPU Cores:          {machine.cpu.count:g}')
         print(
             f'RAM:                {ram_available_gb:.1f} GB available / {ram_total_gb:.1f} GB total')
 

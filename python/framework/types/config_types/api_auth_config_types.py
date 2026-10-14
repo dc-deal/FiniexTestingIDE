@@ -12,6 +12,9 @@ from typing import ClassVar, Tuple
 from finiex_auth.consumer_token_base import ConsumerTokenBase
 from pydantic import field_validator
 
+from python.framework.types.config_types.machine_resources_config_types import (
+    MachineResourcesConfig,
+)
 from python.framework.types.config_types.strict_config_model import StrictConfigModel
 from python.framework.types.run_origin_types import OPERATOR_PRINCIPAL
 from python.framework.utils.declared_id_utils import (
@@ -34,9 +37,12 @@ class ApiAuthConfig(StrictConfigModel):
     Default OFF, because the safe direction here is the one that cannot lock out a consumer who
     has not been told yet. It is a state to pass THROUGH, not to stay in: once every consumer
     confirms, this goes to true and the boot line stops saying routes are ungated.
+
+    The `api` block also carries the thresholds of the machine-resources route (#595).
     """
 
     require_auth: bool = False
+    machine_resources: MachineResourcesConfig = MachineResourcesConfig()
 
 
 def _checked_account_id(value: str, field: str) -> str:

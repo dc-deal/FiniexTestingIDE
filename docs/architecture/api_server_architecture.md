@@ -65,6 +65,25 @@ line, so a restart shows in its console which contract it serves and what it mou
 The routes are counted from the routers `ROUTER_SURFACES` mounts plus the ones the factory mounts
 itself; "top-level" is the second group — `/health`, `/contract` and the other app-level reads.
 
+## The access log — a polled route stays out of it
+
+uvicorn writes one line per answered request. A client asking a route every few seconds — the
+viewer reads `/machine-resources` every five — would write a line per reading, and the requests
+that carry meaning disappear between them. So the routes made to be polled are declared in
+`POLLED_PATHS` in `api_app.py`, and `PolledRouteAccessFilter`, put on uvicorn's access logger by
+`create_app()`, drops their **successful** answers. A **failed** answer on the same route — a 401,
+a 405, a 500 — is still written, because the access log is read when something went wrong:
+
+```
+INFO:  127.0.0.1:38750 - "GET /api/v1/caller HTTP/1.1" 200 OK
+INFO:  127.0.0.1:38762 - "POST /api/v1/machine-resources HTTP/1.1" 405 Method Not Allowed
+```
+
+The three successful readings of `/machine-resources` between those two lines were not written.
+This is how the established servers treat their health and readiness probes (nginx
+`access_log off` with a status condition, Envoy's health-check filter); sampling and per-route
+counters, the answer at large scale, would add nothing at this one's.
+
 ## CORS Configuration
 
 During development the Vite dev server runs on `:5173` and the API on `:8000`. Both localhost origins are explicitly allowed:
@@ -154,6 +173,9 @@ surfaces a grant can name, and gating it would make a market-data grant the prec
 that reveals nothing about market data. `/api/v1/brokers` **requires a token** but takes no grant:
 which venues this installation carries is a fact about the installation. `/api/v1/caller` is
 token-only too: it is about the caller, and a grant needed to ask what one holds would be circular.
+`/api/v1/machine-resources` is token-only for the same two reasons as the broker list: it is about
+the machine the server runs on, which no stranger needs to read, and it has no path parameter for a
+grant to be about (#595).
 
 **For a browser client**, `CORSMiddleware` answers the `OPTIONS` preflight before routing, so the
 preflight — which carries no `Authorization`, by specification — is never gated. `expose_headers`
@@ -337,6 +359,9 @@ Routers are split per domain under `python/api/endpoints/`:
    with no repository: no file path, no class name, no issue number, nothing about how this
    project is built
 5. Raise the contract and record the change (below)
+6. A route made to be polled — its document recommends asking it every few seconds — joins
+   `POLLED_PATHS` in `api_app.py`, so its successful readings stay out of the access log (see
+   *The access log* above); a test holds every entry to a mounted route
 
 A new SURFACE is not finished when it is mounted. The tracked placeholder gains the grant, but
 the operator's own token file is theirs — until a consumer's token names the new surface they get

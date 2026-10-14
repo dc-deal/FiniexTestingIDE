@@ -23,7 +23,7 @@ from typing import List
 
 # One monotonic integer. Not a date and not the app version: a consumer compares it for
 # equality, and equality is the only question they have.
-API_CONTRACT_VERSION = 30
+API_CONTRACT_VERSION = 31
 
 # Every response carries it, so a saved fixture carries it too.
 CONTRACT_HEADER = 'X-Api-Contract'
@@ -36,12 +36,8 @@ API_PREFIX = '/api/v1'
 # What moved INTO the current version. One line per change, written for someone who cannot
 # read this repository.
 CHANGES: List[str] = [
-    "Validation checks: spreadless_tick_data is gone; data_no_quote counts every input file without a "
-    "quote, whatever the reason. New: data_no_arrival_time, data_arrival_time_reconstructed, "
-    "data_missing_trades, data_origin_external, and data_synthetic, which takes over the synthetic "
-    "signal warning from signal_availability. A run recorded before may still name "
-    "spreadless_tick_data, which the catalog no longer lists",
-    "origin_classes on a ledger row and in the scenario details may hold external: data no "
-    "collector of ours recorded, such as a venue's published history. It is never admissible for "
-    "a parity measurement",
+    "New route GET /api/v1/machine-resources, token only and no grant: the processors and the "
+    "memory of the machine this server runs on — the limit that binds and where it was read, how "
+    "much is in use, the processors' busy share over the window since the previous reading — and "
+    "a pressure_level with its reasons, graded on memory against the thresholds the answer carries",
 ]

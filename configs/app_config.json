@@ -56,7 +56,12 @@
   },
   "api": {
     "_comment": "require_auth false is the rollout state in which tokens may exist while nothing is gated yet - a consumer needs its token before it can start sending the header. Set true once every consumer confirms it sends one.",
-    "require_auth": false
+    "require_auth": false,
+    "machine_resources": {
+      "_comment": "The thresholds GET /api/v1/machine-resources grades memory against: the share of the binding memory limit in use from which the pressure level is warn, and from which it is critical. Memory alone - a busy processor is the machine doing its work, memory that runs out is the moment the kernel ends a process.",
+      "memory_warn_pct": 80.0,
+      "memory_critical_pct": 90.0
+    }
   },
   "docs_search": {
     "_comment": "The terminal search (docs_search_cli.py) searches the documentation tree. Each entry here is one more command it runs afterwards, with the search term appended as the last argument - for collections a maintainer keeps outside the repository. Empty in a fresh clone.",

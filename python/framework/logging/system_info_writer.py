@@ -33,7 +33,12 @@ from typing import Any, Dict, Optional, Tuple
 from python.configuration.app_config_manager import AppConfigManager
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.types.git_info_types import GitInfo
+from python.framework.types.machine_resources_types import (
+    LimitSource,
+    MachineResourcesReading,
+)
 from python.framework.utils.git_info_utils import get_git_info
+from python.framework.utils.machine_resources_reader import MachineResourcesReader
 
 
 def write_system_version_parameters(logger: ScenarioLogger) -> None:
@@ -56,7 +61,9 @@ def write_system_version_parameters(logger: ScenarioLogger) -> None:
     platform_info = _get_platform_info()
     python_info = _get_python_info()
     cpu_basic, cpu_detailed = _get_cpu_info()
-    ram_info = _get_ram_info()
+    # One reading for the RAM line and the container limits, so both describe the same moment
+    machine = MachineResourcesReader().read()
+    ram_info = _get_ram_info(machine)
     env_info = _get_environment_info()
     git_info = get_git_info()
 
@@ -82,7 +89,7 @@ def write_system_version_parameters(logger: ScenarioLogger) -> None:
     python_detailed = _get_python_detailed()
     dependencies = _get_dependencies()
     paths = _get_paths(logger.get_log_dir())
-    docker_limits = _get_docker_limits() if env_info == 'docker' else None
+    docker_limits = _get_docker_limits(machine) if env_info == 'docker' else None
 
     debug_output = _format_debug_details(
         python_detailed=python_detailed,
@@ -121,7 +128,7 @@ def _get_cpu_info() -> Tuple[str, Dict[str, Any]]:
 
     Returns:
         Tuple of (basic_info, detailed_info)
-        - basic_info: "Intel i7-14700K (16 cores @ 3.4 GHz)"
+        - basic_info: "AMD Ryzen 7 8845HS w/ Radeon 780M Graphics (16 cores @ 3.8 GHz)"
         - detailed_info: Dict with model, frequencies, etc.
     """
     cpu_count = os.cpu_count() or 0
@@ -140,14 +147,6 @@ def _get_cpu_info() -> Tuple[str, Dict[str, Any]]:
     except Exception:
         pass
 
-    # Simplify model name (remove redundant info)
-    cpu_model_short = cpu_model
-    if 'Intel' in cpu_model or 'AMD' in cpu_model:
-        # Extract just the meaningful part
-        parts = cpu_model.split()
-        if len(parts) >= 2:
-            cpu_model_short = f'{parts[0]} {parts[-2]}'  # "Intel i7-14700K"
-
     # Try to get CPU frequency
     cpu_freq_str = ''
     cpu_freq_detailed = {}
@@ -164,7 +163,9 @@ def _get_cpu_info() -> Tuple[str, Dict[str, Any]]:
         pass
 
     # Basic info for INFO level
-    basic_info = f'{cpu_model_short} ({cpu_count} cores{cpu_freq_str})'
+    # The full model name: no rule shortens every vendor's string correctly — taking two of its
+    # words once named this machine's graphics chip as its processor
+    basic_info = f'{cpu_model} ({cpu_count} cores{cpu_freq_str})'
 
     # Detailed info for DEBUG level
     detailed_info = {
@@ -176,17 +177,19 @@ def _get_cpu_info() -> Tuple[str, Dict[str, Any]]:
     return basic_info, detailed_info
 
 
-def _get_ram_info() -> Dict[str, float]:
+def _get_ram_info(machine: MachineResourcesReading) -> Dict[str, float]:
     """
-    Get RAM information.
+    Get RAM information — the memory that binds, the container's where it sets a limit.
+
+    Args:
+        machine: The machine's reading
 
     Returns:
         Dict with total and available RAM in GB
     """
-    mem = psutil.virtual_memory()
     return {
-        'total_gb': mem.total / (1024 ** 3),
-        'available_gb': mem.available / (1024 ** 3)
+        'total_gb': machine.memory.limit_bytes / (1024 ** 3),
+        'available_gb': (machine.memory.limit_bytes - machine.memory.used_bytes) / (1024 ** 3)
     }
 
 
@@ -250,41 +253,24 @@ def _get_paths(log_dir: Optional[Path]) -> Dict[str, str]:
     }
 
 
-def _get_docker_limits() -> Optional[Dict[str, str]]:
+def _get_docker_limits(machine: MachineResourcesReading) -> Dict[str, str]:
     """
     Get Docker resource limits (if running in Docker).
 
+    Args:
+        machine: The machine's reading — cgroup v2 first, v1 second
+
     Returns:
-        Dict with limits or None if not detectable
+        Dict with limits; 'No limit' where the container sets none
     """
-    try:
-        # Try to read cgroup limits
-        cpu_limit = 'No limit'
-        mem_limit = 'No limit'
-
-        # CPU limit
-        cpu_quota_path = Path('/sys/fs/cgroup/cpu/cpu.cfs_quota_us')
-        if cpu_quota_path.exists():
-            quota = int(cpu_quota_path.read_text().strip())
-            if quota > 0:
-                period = int(
-                    Path('/sys/fs/cgroup/cpu/cpu.cfs_period_us').read_text().strip())
-                cpu_limit = f'{quota / period:.1f} cores'
-
-        # Memory limit
-        mem_limit_path = Path('/sys/fs/cgroup/memory/memory.limit_in_bytes')
-        if mem_limit_path.exists():
-            limit = int(mem_limit_path.read_text().strip())
-            # Very high number = no limit
-            if limit < 9223372036854771712:  # Max value
-                mem_limit = f'{limit / (1024 ** 3):.1f} GB'
-
-        return {
-            'cpu_limit': cpu_limit,
-            'memory_limit': mem_limit
-        }
-    except Exception:
-        return None
+    cpu_limit = (f'{machine.cpu.count:.1f} cores'
+                 if machine.cpu.count_source is LimitSource.CGROUP else 'No limit')
+    mem_limit = (f'{machine.memory.limit_bytes / (1024 ** 3):.1f} GB'
+                 if machine.memory.limit_source is LimitSource.CGROUP else 'No limit')
+    return {
+        'cpu_limit': cpu_limit,
+        'memory_limit': mem_limit
+    }
 
 
 def _format_info_summary(

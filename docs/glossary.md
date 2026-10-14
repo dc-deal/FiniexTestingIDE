@@ -454,6 +454,12 @@ a venue with a spread — the traded price for bars and decisions, the mid for e
 event): whose account a record is — `bot`, what this process did and was told, or `broker_truth`,
 what the venue reported when it was asked.
 
+**pressure level** (`pressure_level`) — How close the machine's memory is to the limit that binds
+it: `ok`, `warn` from one threshold, `critical` from the next. Memory alone is graded — a busy
+processor is the machine doing its work, while memory that runs out is the moment the operating
+system ends a process. Not a log level, and not the machine's *host* identity (see
+[Asking the server about itself](consumer/server.md)).
+
 **price · mid · last** — `tick.price` is what the market trades at: the traded price where the
 venue prints one, else the mid. The *mid* is `(bid + ask) / 2`; *last* is the traded price, absent
 (never zero) where the venue prints none. Strategies read the price, valuation reads the mid. See

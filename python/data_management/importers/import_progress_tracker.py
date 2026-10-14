@@ -17,8 +17,6 @@ import time
 from datetime import datetime, timedelta, timezone
 from typing import Callable, Dict, List, Optional, Tuple
 
-import psutil
-
 from python.framework.types.import_types.import_progress_types import (
     BarRenderProgress,
     ImportMessage,
@@ -34,6 +32,7 @@ from python.framework.types.import_types.import_progress_types import (
     RenderWorkerLine,
 )
 from python.framework.types.log_level import LogLevel
+from python.framework.utils.machine_resources_reader import MachineResourcesReader
 
 # Below this share of its work a step's own progress says too little; its rate decides.
 _PROGRESS_SHARE_FOR_ESTIMATE = 0.05
@@ -119,8 +118,9 @@ class ImportProgressTracker:
         # The estimates as they stood once the plan was complete — what the summary checks
         self._plan_estimates: Dict[ImportStepId, Optional[float]] = {}
 
-        # The first cpu_percent() call only starts the measurement and returns 0.0.
-        psutil.cpu_percent(interval=None)
+        # The machine's processors and memory, through the one reader every display uses. Its
+        # first processor sample is taken here, so the first frame already has a window.
+        self._machine = MachineResourcesReader()
 
     # =========================================================================
     # STEPS
@@ -682,7 +682,7 @@ class ImportProgressTracker:
             if step.status == ImportStepStatus.RUNNING:
                 step.elapsed_s = now - self._step_started[step_id]
             step.remaining_s = self._step_remaining(step_id, step, now)
-        memory = psutil.virtual_memory()
+        machine = self._machine.read()
         steps: List[ImportStepFrame] = copy.deepcopy(list(self._steps.values()))
         elapsed = now - self._started_mono
         remaining = self._remaining() if self._outcome is None else 0.0
@@ -696,9 +696,10 @@ class ImportProgressTracker:
             # A point in time to read off a clock, not an event stamp — the wall clock is right
             estimated_finish_at=(datetime.now(timezone.utc) + timedelta(seconds=remaining)
                                  if open_estimate else None),
-            cpu_percent=psutil.cpu_percent(interval=None),
-            ram_used_bytes=memory.total - memory.available,
-            ram_total_bytes=memory.total,
+            # 0.0 only while no window has passed yet — the first frame right after the start
+            cpu_percent=machine.cpu.used_pct if machine.cpu.used_pct is not None else 0.0,
+            ram_used_bytes=machine.memory.used_bytes,
+            ram_total_bytes=machine.memory.limit_bytes,
             tick_files=self._tick_files,
             tick_bytes=self._tick_bytes,
             signal_files=self._signal_files,

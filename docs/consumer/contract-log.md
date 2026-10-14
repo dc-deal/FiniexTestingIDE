@@ -33,6 +33,21 @@ reads downwards from the version their fixtures hold until they reach the one be
 A test holds the newest heading in this log to the number the server answers with, so a version
 cannot ship without its entry.
 
+## Version 31 — 2026-10-14 (#595)
+
+The machine this server runs on can be asked how full it is.
+
+- `GET /api/v1/machine-resources` — new, with a token and no grant: the processors and the memory
+  of the machine the server, the backtests and the live sessions run on. `memory` names the limit
+  that binds — a container's own where one is set below the machine's — and where it was read
+  (`limit_source`: `cgroup` or `machine`), how much is in use, and the two thresholds it is graded
+  against. `cpu` counts the processors that bind and says how busy the machine was over `window_s`,
+  the seconds since the previous reading of this route by any caller. `pressure_level` (`ok`,
+  `warn`, `critical`) grades memory alone, and `pressure_reasons` says why in a sentence for a
+  person. Its document is [server](/api/v1/docs/server).
+
+A route added; no field changed its shape.
+
 ## Version 30 — 2026-10-14 (#561)
 
 A venue's published history can enter the archive, and what an input file lacks is named.
@@ -97,34 +112,13 @@ came from.
   orders. A live event that still says `estimate` where its venue reports the fee means the answer
   came without it; the session's log says so as well.
 
-## Version 26 — 2026-10-09 (#582)
-
-A run's header is served whole, and the run list says who started each run.
-
-- `GET /api/v1/reports/runs/{run_id}/header` — new: the record every run writes at its start —
-  what it is, what it was started from, who started it and which code ran. Every path in it is
-  relative to its repository; no path of the machine is served. `run_not_found` for an unknown run,
-  `run_header_missing` for a run the index lists whose header file is gone, `artifact_unreadable`
-  for a header that no longer matches its model — naming the fields that fail. Its
-  document, [run header](/api/v1/docs/run-header), is the authoritative list of every key, with its
-  meaning and the label to show it under.
-- The run list: every run carries who started it — `origin_channel` (`cli`, `sweep`, `direct` or
-  `api`), `origin_client`, `origin_principal` and `origin_host`, the header's `origin` block
-  flattened. Null on a run that predates the block.
-- *Origin* on its own keeps one meaning: who started a run. Three served fields still carry the
-  word for something else — the configuration directory row's `origin` (where a file lives), a
-  feed-health episode's `origin` (real or stress-injected), and `origin_classes` /
-  `origin_evidence_grades` on scenario details and sweep combinations (the class of instance that
-  produced a run's data); a later contract renames them.
-- The run list: `fixture_superseded` is `true` also for a run of a catalog entry this side no
-  longer declares — nothing can produce it again, so it is current no more.
-
-## Versions 25 and earlier
+## Versions 26 and earlier
 
 One line each. Every one of these moved a shape or a meaning; what they moved is summarised here
 rather than spelled out, because a consumer this far behind needs the list of steps, not each step's
 reasoning. The full text of a compressed version is in this repository's history.
 
+- **Version 26** — 2026-10-09 (#582): A run's header is served whole — `GET /api/v1/reports/runs/{run_id}/header`, with `run_not_found`, `run_header_missing` and `artifact_unreadable` — and the run list says who started each run: `origin_channel`, `origin_client`, `origin_principal` and `origin_host`; `fixture_superseded` is `true` also for a run of an entry no longer declared.
 - **Version 25** — 2026-10-08 (#576): The runs a consumer pins became entries of a fixture catalog — `fixture_superseded` on every run of the run list says whether a run is its entry's current production (`false`), an older or failed one (`true`), or no catalog production at all (`null`).
 - **Version 24** — 2026-10-08 (#576): Every run says what it is for and under which contract its
   reports were written — `run_purpose` (`regular`, `fixture`, `certificate`) and `report_contract`

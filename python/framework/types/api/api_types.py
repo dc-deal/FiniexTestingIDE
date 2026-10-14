@@ -9,6 +9,7 @@ and response serialization.
 from pydantic import BaseModel
 
 from python.framework.types.config_types.api_auth_config_types import AccountKind
+from python.framework.types.machine_resources_types import LimitSource, PressureLevel
 
 
 class ApiContractResponse(BaseModel):
@@ -77,6 +78,61 @@ class CallerResponse(BaseModel):
     display_name: str | None = None
     grants: list[str] = []
     note: str | None = None
+
+
+class MachineCpuResponse(BaseModel):
+    """
+    The processors the server's processes may use, and how busy the machine was (#595).
+
+    Args:
+        count: How many processors bind — a cgroup quota may be fractional
+        count_source: `cgroup` when a quota below the machine's processors binds, else `machine`
+        used_pct: How busy the machine's processors were over `window_s`; None when no time has
+            passed since the previous reading
+        window_s: The seconds since the previous reading of this route, by any caller
+    """
+    count: float
+    count_source: LimitSource
+    used_pct: float | None = None
+    window_s: float | None = None
+
+
+class MachineMemoryResponse(BaseModel):
+    """
+    The memory the server's processes may use, and how much is in use (#595).
+
+    Args:
+        limit_bytes: The limit that binds — the container's where it is set below the machine's
+        used_bytes: How much of it is in use
+        used_pct: The same as a share of the limit
+        limit_source: `cgroup` or `machine` — where the limit was read
+        warn_at_pct: The share from which `pressure_level` is `warn`
+        critical_at_pct: The share from which it is `critical`
+    """
+    limit_bytes: int
+    used_bytes: int
+    used_pct: float
+    limit_source: LimitSource
+    warn_at_pct: float
+    critical_at_pct: float
+
+
+class MachineResourcesResponse(BaseModel):
+    """
+    What the machine this server runs on has and uses, read at one instant (#595).
+
+    Args:
+        measured_at: When it was read, ISO-8601 UTC
+        cpu: The processors
+        memory: The memory, with the thresholds it is graded against
+        pressure_level: `ok`, `warn` or `critical` — graded on memory alone
+        pressure_reasons: One sentence for a person per reason; empty when the level is `ok`
+    """
+    measured_at: str
+    cpu: MachineCpuResponse
+    memory: MachineMemoryResponse
+    pressure_level: PressureLevel
+    pressure_reasons: list[str] = []
 
 
 class BrokerListResponse(BaseModel):
