@@ -75,11 +75,11 @@ tests/
 ├── autotrader/
 │   ├── integration/       integration — mock session, trade lifecycle, trade scenarios (full pipeline)
 │   ├── live_executor/     unit — LiveTradeExecutor, LiveRequestProcessor, async submit/modify/cancel/trades_query/polling_cadence/drift_audit/decision_event_dispatcher, undecided dry-run poll (#319, #321, #318, #326, #320, #327, #348, #505)
-│   ├── loop_cadence/      unit — clock injection + heartbeat re-poll + decision ghost-pass cadence (#360) + market-data staleness contract (#436) + disturbance episodes (#451)
+│   ├── loop_cadence/      unit — clock injection + heartbeat re-poll + decision ghost-pass cadence (#360) + market-data staleness contract (#436) + disturbance episodes (#451) + session-log rotation and retention (#476, #357)
 │   ├── operator_alerts/   unit + integration — operator alerts and the liveness ping (#235): channel, dispatcher,
 │   │                      pinger, messages, setup, and a short mock session end to end
 │   ├── order_guard/       unit — OrderGuard scenarios and unit cases
-│   ├── safety/            unit — circuit breaker (margin + spot)
+│   ├── safety/            unit + integration — circuit breaker (margin + spot), the hard stop through the real loop
 │   ├── cold_start/        unit — boot adoption of our own resting orders + carry-over (#355)
 │   ├── protective_levels/ unit — who enforces a declared stop/target, and the sim/live difference (#500)
 │   ├── reconciliation/    unit — broker truth-pull + Reconciler ALERT_ONLY (#151)

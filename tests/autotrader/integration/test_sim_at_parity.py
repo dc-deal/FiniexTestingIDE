@@ -13,7 +13,7 @@ import pytest
 
 from python.configuration.app_config_manager import AppConfigManager
 from python.configuration.autotrader.autotrader_config_loader import load_autotrader_config
-from python.framework.autotrader.autotrader_data_preparer import (
+from python.framework.autotrader.startup.autotrader_data_preparer import (
     build_scenario_from_config,
     prepare_mock_session_data,
 )

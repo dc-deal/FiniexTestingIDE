@@ -16,7 +16,7 @@ import pytest
 from python.api.api_contract import API_CONTRACT_VERSION
 from python.configuration.app_config_manager import AppConfigManager
 from python.configuration.autotrader.autotrader_config_loader import load_autotrader_config
-from python.framework.autotrader.autotrader_startup import create_autotrader_loggers
+from python.framework.autotrader.startup.autotrader_startup import create_autotrader_loggers
 from python.framework.reporting.io.run_header_io import RUN_HEADER_ARTIFACT, read_run_header
 from python.framework.reporting.store.run_index import RunIndex
 from python.framework.types.api.report_types import RunHeader, RunReporting

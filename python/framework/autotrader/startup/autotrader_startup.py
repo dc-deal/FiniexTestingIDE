@@ -13,20 +13,22 @@ from python.api.api_contract import API_CONTRACT_VERSION
 from python.configuration.app_config_manager import AppConfigManager
 from python.configuration.market_config_manager import MarketConfigManager
 from python.configuration.sentiment_config_manager import SentimentConfigManager
-from python.framework.autotrader.autotrader_account_model import AutotraderAccountModel
-from python.framework.autotrader.autotrader_broker_config_setup import create_broker_config
-from python.framework.autotrader.autotrader_data_preparer import build_scenario_from_config
-from python.framework.autotrader.autotrader_logger_bundle import AutotraderLoggerBundle
-from python.framework.autotrader.autotrader_pipeline_bundle import AutotraderPipelineBundle
-from python.framework.autotrader.autotrader_warmup_preparator import AutotraderWarmupPreparator
 from python.framework.autotrader.dry_run_resolver import resolve_orders_to
 from python.framework.autotrader.live_clipping_monitor import LiveClippingMonitor
+from python.framework.autotrader.session_log_retention import SESSION_LOGS_SUBDIR
+from python.framework.autotrader.startup.autotrader_account_model import AutotraderAccountModel
+from python.framework.autotrader.startup.autotrader_broker_config_setup import create_broker_config
+from python.framework.autotrader.startup.autotrader_data_preparer import build_scenario_from_config
+from python.framework.autotrader.startup.autotrader_logger_bundle import AutotraderLoggerBundle
+from python.framework.autotrader.startup.autotrader_pipeline_bundle import AutotraderPipelineBundle
+from python.framework.autotrader.startup.autotrader_warmup_preparator import (
+    AutotraderWarmupPreparator,
+)
 from python.framework.bars.bar_rendering_controller import BarRenderingController
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.factory.decision_logic_factory import DecisionLogicFactory
 from python.framework.factory.live_trade_executor_factory import build_live_executor
 from python.framework.factory.worker_factory import WorkerFactory
-from python.framework.logging.file_logger import FileLogger
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.process.process_startup_preparation import inject_signal_providers
 from python.framework.reporting.io.run_header_io import data_windows_of
@@ -309,7 +311,7 @@ def create_autotrader_loggers(
 
     # Create session_logs/ subdir (tick loop will create files there)
     if run_dir:
-        session_logs_dir = run_dir / 'session_logs'
+        session_logs_dir = run_dir / SESSION_LOGS_SUBDIR
         session_logs_dir.mkdir(parents=True, exist_ok=True)
 
     return AutotraderLoggerBundle(
@@ -319,32 +321,6 @@ def create_autotrader_loggers(
         run_dir=run_dir,
         run_id=run_id,
     )
-
-
-def create_session_file_logger(run_dir: Path, date_suffix: str) -> FileLogger:
-    """
-    Create a new FileLogger for a specific day's session log.
-
-    Used for daily rotation: when the tick date changes, the tick loop
-    calls this to get a fresh FileLogger for the new day.
-
-    Args:
-        run_dir: Session run directory (contains session_logs/ subdir)
-        date_suffix: Date string for filename (YYYYMMDD)
-
-    Returns:
-        FileLogger writing to session_logs/autotrader_session_YYYYMMDD.log
-    """
-    session_logs_dir = run_dir / 'session_logs'
-    session_logs_dir.mkdir(parents=True, exist_ok=True)
-    return FileLogger(
-        log_filename=f'autotrader_session_{date_suffix}.log',
-        file_path=session_logs_dir,
-        # The threshold the session logger actually gates on, read from config (§28) — not
-        # carried over from the file logger being replaced, which never enforced it anyway.
-        log_level=AppConfigManager().get_file_logging_config_object().scenario_log_level
-    )
-
 
 
 def _newest_bar_close(bar_controller: BarRenderingController, symbol: str) -> Optional[float]:

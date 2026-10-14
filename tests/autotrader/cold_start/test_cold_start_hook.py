@@ -21,7 +21,7 @@ silent in exactly the case it exists for.
 
 from typing import List, Optional
 
-from python.framework.autotrader.cold_start_adopter import ColdStartAdopter
+from python.framework.autotrader.cold_start.cold_start_adopter import ColdStartAdopter
 from python.framework.types.autotrader_types.cold_start_types import (
     ColdStartSituation,
     ColdStartVerdict,

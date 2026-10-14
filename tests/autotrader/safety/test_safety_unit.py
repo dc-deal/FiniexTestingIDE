@@ -1,8 +1,8 @@
 """
 FiniexTestingIDE - Safety Circuit Breaker Unit Tests
 
-Isolated tests for _check_safety logic — no executor, no tick loop, no scenario.
-Uses a lightweight stub that mirrors the instance attributes _check_safety reads/writes.
+Isolated tests for check_safety logic — no executor, no tick loop, no scenario.
+Uses a lightweight stub that mirrors the instance attributes check_safety reads/writes.
 
 Covers:
 - Spot mode: min_equity triggers/clears, min_balance inert
@@ -16,7 +16,7 @@ import logging
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
-from python.framework.autotrader.autotrader_tick_loop import AutotraderTickLoop
+from python.framework.autotrader.safety.safety_circuit_breaker import SafetyCircuitBreaker
 from python.framework.autotrader.operator_alerts.alert_episode import AlertEpisode
 from python.framework.types.autotrader_types.autotrader_config_types import (
     AutoTraderConfig,
@@ -29,10 +29,10 @@ from tests.shared.operator_alert_recorder import OperatorAlertRecorder
 
 class _SafetyStub:
     """
-    Minimal stub exposing only the attributes that _check_safety reads/writes.
+    Minimal stub exposing only the attributes that check_safety reads/writes.
 
-    Avoids constructing a full AutotraderTickLoop (requires executor, tick source, etc.).
-    We bind the real _check_safety method to this stub so the logic under test is
+    Avoids constructing a full SafetyCircuitBreaker (requires executor, alerts, etc.).
+    We bind the real check_safety method to this stub so the logic under test is
     exactly the production code — no reimplementation.
     """
 
@@ -60,23 +60,23 @@ class _SafetyStub:
         self._all_clear_after_s = 300.0
         self._safety_alert = AlertEpisode(self._all_clear_after_s)
         self._market_data_alert = AlertEpisode(self._all_clear_after_s)
-        # #314 — the daily baseline is a tracker in the real loop; here it only has to
+        # #314 — the daily baseline is a tracker in the real breaker; here it only has to
         # answer get_value(), which is all _check_daily_loss reads from it.
         self._day_baseline = (
             SimpleNamespace(get_value=lambda: day_start_value)
             if day_start_value > 0 else None)
 
     def check_safety(self, current_value: float, initial_balance: float) -> None:
-        """Delegate to the real _check_safety method via unbound call."""
-        AutotraderTickLoop._check_safety(self, current_value, initial_balance)
+        """Delegate to the real check_safety method via unbound call."""
+        SafetyCircuitBreaker.check_safety(self, current_value, initial_balance)
 
     def _block(self, reason: str) -> None:
-        """The real accumulator, bound here for the same reason _check_safety is."""
-        AutotraderTickLoop._block(self, reason)
+        """The real accumulator, bound here for the same reason check_safety is."""
+        SafetyCircuitBreaker._block(self, reason)
 
     def _check_daily_loss(self, current_value: float) -> None:
         """The real daily check, bound here for the same reason."""
-        AutotraderTickLoop._check_daily_loss(self, current_value)
+        SafetyCircuitBreaker._check_daily_loss(self, current_value)
 
 
 def _make_stub(

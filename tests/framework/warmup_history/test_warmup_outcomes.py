@@ -18,7 +18,9 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from python.framework.autotrader.autotrader_warmup_preparator import AutotraderWarmupPreparator
+from python.framework.autotrader.startup.autotrader_warmup_preparator import (
+    AutotraderWarmupPreparator,
+)
 from python.framework.autotrader.kraken_ohlc_bar_fetcher import KrakenOhlcBarFetcher
 from python.framework.bars.bar_rendering_controller import BarRenderingController
 from python.framework.exceptions.connection_errors import ConnectionInadmissibleError

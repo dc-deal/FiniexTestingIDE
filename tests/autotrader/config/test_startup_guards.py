@@ -22,7 +22,7 @@ import pytest
 
 from python.configuration.autotrader.autotrader_config_loader import load_autotrader_config
 from python.configuration.market_config_manager import MarketConfigManager
-from python.framework.autotrader.autotrader_startup import setup_pipeline
+from python.framework.autotrader.startup.autotrader_startup import setup_pipeline
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.decision_logic.core.cautious_macd import CautiousMacd
 from python.framework.logging.scenario_logger import ScenarioLogger

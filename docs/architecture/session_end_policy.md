@@ -247,7 +247,7 @@ populated.
 | `check_clean_shutdown(expect_flat)` | [abstract_trade_executor.py:3010](../../python/framework/trading_env/abstract_trade_executor.py#L3010) |
 | The open-position report row | [report_types.py:463](../../python/framework/types/api/report_types.py#L463) |
 | The equity curve, one scale for both writers | [portfolio_manager.py:1595](../../python/framework/trading_env/portfolio_manager.py#L1595) |
-| The adoption prompt that states this policy | [cold_start_adopter.py:1045](../../python/framework/autotrader/cold_start_adopter.py#L1045) |
+| The adoption prompt that states this policy | [cold_start_adopter.py:1045](../../python/framework/autotrader/cold_start/cold_start_adopter.py#L1045) |
 
 ## Related
 

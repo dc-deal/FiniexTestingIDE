@@ -11,9 +11,9 @@ report carries the baseline RECORD, whole.
 The second is the shape of the question. The breaker's own state answers "is the bot blocked
 right now", which is the wrong question at the end of a thirty-day run: a session that
 touched 18 % at hour three and recovered ends looking exactly like one that never moved. So
-the loop keeps running maxima and the report reads those.
+the breaker keeps running maxima and the report reads those.
 
-Split the way the pipeline is (#391): the CAPTURE half is driven against the real tick-loop
+Split the way the pipeline is (#391): the CAPTURE half is driven against the real breaker
 methods bound to a stub, the DERIVE half against the real builder. Nothing here renders.
 """
 
@@ -21,9 +21,9 @@ from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from typing import List, Optional
 
-from python.framework.autotrader.autotrader_tick_loop import AutotraderTickLoop
+from python.framework.autotrader.safety.safety_circuit_breaker import SafetyCircuitBreaker
 from python.framework.autotrader.operator_alerts.alert_episode import AlertEpisode
-from python.framework.autotrader.risk_baseline_tracker import RiskBaselineTracker
+from python.framework.autotrader.safety.risk_baseline_tracker import RiskBaselineTracker
 from python.framework.reporting.builders.safety_report_builder import (
     build_safety_report_from_session,
 )
@@ -142,10 +142,10 @@ class _LoopStub:
         return self
 
     def observe(self, value: float, baseline: float) -> None:
-        AutotraderTickLoop._observe_safety_excursion(self, value, baseline)
+        SafetyCircuitBreaker.observe_excursion(self, value, baseline)
 
     def check(self, value: float, baseline: float) -> None:
-        AutotraderTickLoop._check_safety(self, value, baseline)
+        SafetyCircuitBreaker.check_safety(self, value, baseline)
 
     def start_day(self, day: str, value: float) -> None:
         """Open a new daily baseline, as a tick crossing into a new trading day does."""
@@ -157,16 +157,16 @@ class _LoopStub:
         self._day_baseline.ensure_taken(value, origin=BaselineOrigin.DAY_BOUNDARY)
 
     def _close_safety_day(self) -> None:
-        AutotraderTickLoop._close_safety_day(self)
+        SafetyCircuitBreaker._close_safety_day(self)
 
     def _block(self, reason: str) -> None:
-        AutotraderTickLoop._block(self, reason)
+        SafetyCircuitBreaker._block(self, reason)
 
     def _check_daily_loss(self, current_value: float) -> None:
-        AutotraderTickLoop._check_daily_loss(self, current_value)
+        SafetyCircuitBreaker._check_daily_loss(self, current_value)
 
     def capture(self) -> SafetySessionRecord:
-        return AutotraderTickLoop.get_safety_session(self)
+        return SafetyCircuitBreaker.get_safety_session(self)
 
 
 def _baseline(

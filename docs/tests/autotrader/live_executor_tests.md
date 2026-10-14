@@ -849,6 +849,8 @@ NEXT drain, so a hook that reacts by placing an order cannot extend the pass it 
 | `test_fifo_ordering_across_sources` | Buffered events reach the hooks in arrival order |
 | `test_drain_is_reentrancy_safe` | An event emitted inside a hook lands in the next drain, not the current one |
 | `test_drain_empty_buffer_is_noop` | Draining nothing does nothing |
+| `test_the_session_end_names_the_request_that_ended_it` | `emit_session_end()` — the one call both loops end through — carries the request's reason and severity |
+| `test_a_session_nobody_ended_ran_out_of_input` | Without a request the event says `tick source exhausted`, NORMAL |
 
 ---
 

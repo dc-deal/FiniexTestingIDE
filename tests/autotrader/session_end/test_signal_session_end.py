@@ -53,14 +53,14 @@ def _session(executor=None) -> AutotraderMain:
     """
     A session reduced to what the signal handlers read.
 
-    Built through `__new__`: the handlers touch six attributes, and a real session would bring
-    a broker, a tick source and a decision logic without testing any of them.
+    Built through `__new__`: the handlers touch only the attributes set here, and a real
+    session would bring a broker, a tick source and a decision logic without testing any of
+    them.
     """
     session = AutotraderMain.__new__(AutotraderMain)
     session._first_interrupt_time = 0.0
     session._signal_end_reason = ''
     session._shutdown_mode = 'normal'
-    session._running = True
     session._tick_loop = None
     session._global_logger = None
     session._emergency_reason = None

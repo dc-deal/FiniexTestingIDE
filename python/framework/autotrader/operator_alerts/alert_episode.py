@@ -100,19 +100,27 @@ class AlertEpisode:
         """
         return self._open
 
+    def get_all_clear_after_s(self) -> float:
+        """
+        The quiet period this episode's all-clear waits for.
 
-def all_clear_detail(episode: AlertEpisode, all_clear_after_s: float) -> str:
+        Returns:
+            Seconds the symptom must stay away
+        """
+        return self._all_clear_after_s
+
+
+def all_clear_detail(episode: AlertEpisode) -> str:
     """
     The detail line of an all-clear: how long it held, and whether it flapped meanwhile.
 
     Args:
-        episode: The episode just closed
-        all_clear_after_s: The quiet period it held for
+        episode: The episode just closed — it holds the quiet period it waited for
 
     Returns:
         E.g. 'clear for 300 s · it came back 4 time(s) before that'
     """
-    detail = f'clear for {all_clear_after_s:.0f} s'
+    detail = f'clear for {episode.get_all_clear_after_s():.0f} s'
     recurrences = episode.get_recurrences()
     if recurrences:
         detail += f' · it came back {recurrences} time(s) before that'

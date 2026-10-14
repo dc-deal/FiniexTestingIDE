@@ -28,8 +28,8 @@ import pytest
 
 from python.framework.autotrader.autotrader_main import AutotraderMain
 from python.framework.autotrader.autotrader_tick_loop import AutotraderTickLoop
-from python.framework.autotrader.cold_start_setup import ColdStartSetup, setup_cold_start
-from python.framework.autotrader.risk_baseline_tracker import RiskBaselineTracker
+from python.framework.autotrader.cold_start.cold_start_setup import ColdStartSetup, setup_cold_start
+from python.framework.autotrader.safety.risk_baseline_tracker import RiskBaselineTracker
 from python.framework.persistence.position_book_watcher import PositionBookWatcher
 from python.framework.types.autotrader_types.autotrader_config_types import SafetyConfig
 from python.framework.types.persistence_types import (

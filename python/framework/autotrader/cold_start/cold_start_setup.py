@@ -15,9 +15,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional, Set
 
-from python.framework.autotrader.cold_start_adopter import ColdStartAdopter
+from python.framework.autotrader.cold_start.cold_start_adopter import ColdStartAdopter
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.logging.abstract_logger import AbstractLogger
+from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.persistence.cold_start_state_store import ColdStartStateStore
 from python.framework.trading_env.abstract_trade_executor import AbstractTradeExecutor
 from python.framework.trading_env.live.live_trade_executor import LiveTradeExecutor
@@ -26,6 +27,7 @@ from python.framework.types.autotrader_types.cold_start_types import (
     ColdStartSituation,
     ColdStartVerdict,
 )
+from python.framework.types.persistence_types import ColdStartPayload
 
 
 @dataclass
@@ -120,14 +122,7 @@ def setup_cold_start(
         )
         return ColdStartSetup()
 
-    store = ColdStartStateStore(
-        root=Path(config.cold_start.path),
-        profile=config.get_unit_name(),
-        symbol=config.symbol,
-        logger=logger,
-        run_id=run_id,
-        bot_id=config.bot_id,
-    )
+    store = _carry_over_store(config, logger, run_id)
     adopter = ColdStartAdopter(
         executor=executor,
         store=store,
@@ -172,4 +167,53 @@ def setup_cold_start(
         keys_in_use=adopter.get_venue_session_keys(),
         situation=adopter.get_situation(),
         verdict=adopter.get_verdict(),
+    )
+
+
+def read_carry_over(config: AutoTraderConfig) -> ColdStartPayload:
+    """
+    Open this bot's carry-over document before anything else needs it.
+
+    Early because the run HEADER carries the deployment identity and is written at the
+    run's start with no update path. Constructing the store does no IO — it assembles a
+    path. The deployment, the risk baseline, the drawdown curve and the period floor read
+    this payload; the cold-start adopter reads the document again for its own step, and only
+    that read's warnings reach the session log — this one comes before the session logger
+    exists.
+
+    Args:
+        config: The resolved profile — its `cold_start` block and the bot's identity
+
+    Returns:
+        The stored payload, or an empty one when there is nothing to read
+    """
+    if not config.cold_start.enabled:
+        return ColdStartPayload()
+    return _carry_over_store(config, get_global_logger(), run_id=None).load()
+
+
+def _carry_over_store(
+    config: AutoTraderConfig,
+    logger: AbstractLogger,
+    run_id: Optional[str],
+) -> ColdStartStateStore:
+    """
+    This bot's carry-over document — one recipe for the boot's read and the session's write,
+    so the document read at boot and the one the session writes are addressed the same way.
+
+    Args:
+        config: The resolved profile — its `cold_start` block and the bot's identity
+        logger: Where the store reports its own warnings
+        run_id: Recorded as PROVENANCE in what the store writes; None for the boot's read
+
+    Returns:
+        The store; constructing it does no IO
+    """
+    return ColdStartStateStore(
+        root=Path(config.cold_start.path),
+        profile=config.get_unit_name(),
+        symbol=config.symbol,
+        logger=logger,
+        run_id=run_id,
+        bot_id=config.bot_id,
     )

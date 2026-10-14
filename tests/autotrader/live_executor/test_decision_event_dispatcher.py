@@ -12,7 +12,7 @@ Validates the decision event channel mechanics in isolation:
 """
 
 from datetime import datetime, timezone
-from typing import Callable, List, Optional, Set
+from typing import Callable, List, Optional, Set, Tuple
 
 from python.framework.logging.global_logger import GlobalLogger
 from python.framework.trading_env.decision_event_dispatcher import DecisionEventDispatcher
@@ -51,6 +51,16 @@ class _FakeExecutor:
     def __init__(self) -> None:
         self.outcome_listeners: List[Callable] = []
         self.decision_event_sink: Optional[Callable] = None
+        self.end_request: Optional[Tuple[str, SessionEndSeverity]] = None
+
+    def is_session_end_requested(self) -> bool:
+        return self.end_request is not None
+
+    def get_session_end_reason(self) -> str:
+        return self.end_request[0]
+
+    def get_session_end_severity(self) -> SessionEndSeverity:
+        return self.end_request[1]
 
     def add_order_outcome_listener(self, listener: Callable) -> None:
         self.outcome_listeners.append(listener)
@@ -318,3 +328,25 @@ def test_drain_empty_buffer_is_noop():
         logic, executor, GlobalLogger())
     dispatcher.drain()
     assert logic.order == []
+
+
+def test_the_session_end_names_the_request_that_ended_it():
+    """Both loops end through this one call (#348): the request's reason and severity."""
+    logic = _make_logic(_ALL)
+    executor = _FakeExecutor()
+    executor.end_request = ('emergency flatten complete', SessionEndSeverity.EMERGENCY)
+    dispatcher = DecisionEventDispatcher.create_if_subscribed(
+        logic, executor, GlobalLogger())
+    dispatcher.emit_session_end()
+    assert [(e.reason, e.severity) for e in logic.session_ends] == [
+        ('emergency flatten complete', SessionEndSeverity.EMERGENCY)]
+    assert logic.session_ends[0].tick_time == executor.get_current_time()
+
+
+def test_a_session_nobody_ended_ran_out_of_input():
+    logic = _make_logic(_ALL)
+    dispatcher = DecisionEventDispatcher.create_if_subscribed(
+        logic, _FakeExecutor(), GlobalLogger())
+    dispatcher.emit_session_end()
+    assert [(e.reason, e.severity) for e in logic.session_ends] == [
+        ('tick source exhausted', SessionEndSeverity.NORMAL)]

@@ -230,7 +230,7 @@ The project has two runtime protection mechanisms that operate independently at 
 ┌─────────────────────────────────────────────────────────────┐
 │                    AutoTrader Tick Loop                      │
 │                                                             │
-│  1. _check_safety()          ← ACCOUNT-LEVEL (per-tick)     │
+│  1. check_safety()           ← ACCOUNT-LEVEL (per-tick)     │
 │     "Is the account healthy?"                               │
 │     Blocks ALL new orders if balance/drawdown threshold hit │
 │     Overrides decision to FLAT — send_order() never called  │

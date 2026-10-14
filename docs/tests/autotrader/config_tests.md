@@ -24,7 +24,7 @@ Two halves:
   default, because neither value is safe to inherit: forgotten on a deployed profile the history
   is unrecoverable, set wrongly on a one-off profile unrelated runs are welded together. Pinned
   with the refusal message, which has to name what to write.
-- **`_resolve_deployment()`, every combination.** The profile declares, `--one-off` and
+- **`resolve_deployment()`, every combination.** The profile declares, `--one-off` and
   `--new-deployment` may only narrow. The case that matters most is the one that must NOT work:
   no flag can promote a profile declaring `false`, because an unattended restart re-executes a
   command nobody typed and a command-line deployment would break apart at exactly the restarts it

@@ -14,7 +14,7 @@ import pytest
 from python.configuration.autotrader.autotrader_config_loader import load_autotrader_config
 from python.framework.autotrader import autotrader_main as autotrader_main_module
 from python.framework.autotrader.autotrader_main import AutotraderMain
-from python.framework.autotrader.cold_start_setup import ColdStartSetup
+from python.framework.autotrader.cold_start.cold_start_setup import ColdStartSetup
 from python.framework.autotrader.operator_alerts.liveness_pinger import LivenessPinger
 from python.framework.autotrader.operator_alerts.loop_progress import LoopProgress
 from python.framework.autotrader.operator_alerts.operator_alert_dispatcher import (

@@ -18,7 +18,7 @@ coins than the book claims is normal (the account is shared), fewer is not.
 
 from dataclasses import fields
 
-from python.framework.autotrader.cold_start_adopter import ColdStartAdopter
+from python.framework.autotrader.cold_start.cold_start_adopter import ColdStartAdopter
 from python.framework.persistence.position_book_projection import (
     carry_over_to_position,
     position_to_carry_over,

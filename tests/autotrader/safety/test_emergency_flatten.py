@@ -16,14 +16,14 @@ already refuses `positions='close'` for exactly this reason
 So: send once, keep draining, end when the book is flat — or say out loud which positions were
 never confirmed closed.
 
-Driven against the real `_check_emergency_flatten` / `_drive_emergency_flatten` bound to a
+Driven against the real `check_emergency_flatten` / `drive_emergency_flatten` bound to a
 stub, so the logic under test is the production code.
 """
 
 from types import SimpleNamespace
 from typing import List
 
-from python.framework.autotrader.autotrader_tick_loop import AutotraderTickLoop
+from python.framework.autotrader.safety.safety_circuit_breaker import SafetyCircuitBreaker
 from python.framework.types.autotrader_types.autotrader_config_types import (
     AutoTraderConfig,
     SafetyConfig,
@@ -69,6 +69,7 @@ class _FlattenStub:
         self._flatten_unconfirmed: List[str] = []
         self._flatten_kept: List[str] = []
         self._safety_blocked = False                       # no soft threshold is configured
+        self._on_hard_stop = None                          # #590's seam, unused here
         self.closed: List[str] = []
         self.session_end: List[tuple] = []
         self._open = [SimpleNamespace(position_id=p) for p in positions]
@@ -101,17 +102,17 @@ class _FlattenStub:
         self._open = []
 
     def check(self, value: float, baseline: float, tick_index: int = 0) -> None:
-        AutotraderTickLoop._check_emergency_flatten(self, value, baseline, tick_index)
+        SafetyCircuitBreaker.check_emergency_flatten(self, value, baseline, tick_index)
 
     def _send_emergency_closes(self, reason: str, ticks_processed: int) -> None:
         """The real sender, bound here for the same reason the two entry points are."""
-        AutotraderTickLoop._send_emergency_closes(self, reason, ticks_processed)
+        SafetyCircuitBreaker._send_emergency_closes(self, reason, ticks_processed)
 
     def drive(self, tick_index: int) -> None:
-        AutotraderTickLoop._drive_emergency_flatten(self, tick_index)
+        SafetyCircuitBreaker.drive_emergency_flatten(self, tick_index)
 
     def entries_blocked(self) -> bool:
-        return AutotraderTickLoop._entries_blocked(self)
+        return SafetyCircuitBreaker.entries_blocked(self)
 
 
 def _stub(
@@ -193,6 +194,19 @@ class TestItFiresOnlyWhenItShould:
 
         assert stub.closed == ['pos_1', 'pos_2']
         assert stub._operator_alerts.kinds == [OperatorAlertKind.EMERGENCY_STOP]   # #235, once
+
+    def test_the_moment_it_fires_reaches_the_latch_seam_once(self):
+        """#590 latches the hard stop here, so it is called once, with the reason, at the trip."""
+        stub = _stub(pct_hard=20.0)
+        fired: List[str] = []
+        stub._on_hard_stop = fired.append
+
+        stub.check(value=8_500.0, baseline=10_000.0)
+        assert fired == [], 'inside the threshold nothing fires'
+        stub.check(value=7_000.0, baseline=10_000.0)
+        stub.check(value=6_000.0, baseline=10_000.0)
+
+        assert fired == ['hard drawdown 30.0% > 20.0%']
 
 
 class TestItBlocksEntriesWithoutASoftThreshold:

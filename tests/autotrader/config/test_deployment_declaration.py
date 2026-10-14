@@ -24,7 +24,7 @@ from types import SimpleNamespace
 import pytest
 
 from python.configuration.autotrader.autotrader_config_loader import load_autotrader_config
-from python.framework.autotrader.autotrader_main import AutotraderMain
+from python.framework.autotrader.deployment_resolver import resolve_deployment
 from python.framework.exceptions.live_execution_errors import OneOffInsideDeploymentError
 from python.framework.types.autotrader_types.autotrader_config_types import DeploymentConfig
 from python.framework.types.persistence_types import ColdStartPayload
@@ -62,10 +62,6 @@ def resolve(continuous: bool, carried: str = '',
     """
     Resolve one profile/CLI combination to the identity the session records.
 
-    Exercised through `__new__`: the method reads three attributes, and building a real
-    session would drag in a broker, a tick source and a decision logic without testing any
-    of them.
-
     Args:
         continuous: What the profile declares
         carried: The deployment the predecessor left in the carry-over, '' for none
@@ -75,12 +71,10 @@ def resolve(continuous: bool, carried: str = '',
     Returns:
         The resolved identity, '' for a session that stands alone
     """
-    session = AutotraderMain.__new__(AutotraderMain)
-    session._config = SimpleNamespace(deployment=DeploymentConfig(continuous=continuous))
-    session._carried = ColdStartPayload(deployment_id=carried or None)
-    session._one_off = one_off
-    session._new_deployment = new_deployment
-    return session._resolve_deployment(datetime(2026, 9, 17, 6, 0, tzinfo=timezone.utc))
+    return resolve_deployment(
+        SimpleNamespace(deployment=DeploymentConfig(continuous=continuous)),
+        ColdStartPayload(deployment_id=carried or None),
+        one_off, new_deployment, datetime(2026, 9, 17, 6, 0, tzinfo=timezone.utc))
 
 
 class TestTheProfileMustSay:
