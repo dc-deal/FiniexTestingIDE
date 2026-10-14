@@ -1833,8 +1833,11 @@ class AbstractTradeExecutor(ABC):
         # LIVE books the AMOUNT from the venue's answer wherever the venue reports it (#508),
         # and this category is then the one part of the fee that stays derived there too: the
         # venue states maker or taker per execution only, never on the order, and nothing here
-        # reads that flag yet. Measured 2026-10-11 over 15 Kraken orders, the venue's flag
-        # agreed with this derivation every time.
+        # reads that flag — decided 2026-10-14, because over 15 Kraken orders (2026-10-11) the
+        # venue's flag agreed with this derivation every time. Where the two would most likely
+        # part: one order whose executions split between taking and resting. The money stays
+        # right even then; only the maker/taker split of the fee reports would be off, which
+        # matters to whoever reads it to judge whether limit orders actually rested.
         is_maker = fill_type is FillType.LIMIT
         entry_fee = self._create_entry_fee(
             symbol_spec=symbol_spec,
