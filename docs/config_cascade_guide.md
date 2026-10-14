@@ -593,6 +593,31 @@ These parameters are **scenario-specific only** - no inheritance:
 
 **These are NOT overrides** - they define what the scenario tests!
 
+### Set-Level Declarations
+
+The set's own top level says what the set IS. None of it cascades, and every key there is checked:
+a key the loader does not know is refused, so a misspelt one cannot silently read as absent.
+
+```json
+{
+  "scenario_set_name": "report_coverage_reference", // the set's name — its run name
+  "run_purpose": "fixture",                         // what its runs are FOR (#576)
+  "description": "Every report state in one run.",  // why the set exists, Markdown allowed
+  "version": "1.0",                                 // generator provenance
+  "created": "2026-10-08",                          // generator provenance
+  "robustness": { ... },                            // set-wide robustness mode
+  "global": { ... },
+  "scenarios": [ ... ]
+}
+```
+
+`run_purpose` is `regular` (the default when omitted), `fixture` or `certificate`, and it is
+stamped on every run the set starts. Every set a test runs — everything in
+`configs/scenario_sets/backtesting/` and `tests/fixtures/` — declares `fixture`, and the test
+session refuses a run whose set does not. A set of your own — in a user algo directory or in
+`user_configs/` — declares none: it always runs as `regular`, and a declaration there is refused.
+See [Run Kinds](consumer/run-kinds.md).
+
 ---
 
 ### Strategy Config Architecture

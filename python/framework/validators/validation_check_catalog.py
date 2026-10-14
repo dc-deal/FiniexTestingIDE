@@ -94,8 +94,16 @@ VALIDATION_CHECKS: Tuple[ValidationCheckInfo, ...] = (
         "The tick data has a gap inside the scenario's window that is longer than allowed."),
     ValidationCheckInfo(
         'warmup_quality', 'Not enough warmup bars',
-        "A timeframe has fewer bars before the scenario's start than its indicators need to "
-        'settle.'),
+        "A timeframe has fewer bars complete at the scenario's first tick than its indicators "
+        'need to settle, because the archive holds no more; the scenario runs and says so.'),
+    ValidationCheckInfo(
+        'warmup_history_empty', 'No warmup bars',
+        "A timeframe the workers read has not a single bar complete at the scenario's first "
+        'tick, so its indicators would start from nothing; the scenario is refused.'),
+    ValidationCheckInfo(
+        'warmup_capacity', 'Warmup larger than the bar history',
+        'A worker requires more bars than the renderer keeps per timeframe (bar_max_history), '
+        'so its history would be cut short at the start; the scenario is refused.'),
     ValidationCheckInfo(
         'tick_data_missing', 'No tick data loaded',
         'No tick data could be loaded for the scenario.'),
@@ -141,8 +149,30 @@ VALIDATION_CHECKS: Tuple[ValidationCheckInfo, ...] = (
         'Some data files the run read carry no origin stamped by their producer, so they are '
         'usable but cannot enter a parity comparison.'),
     ValidationCheckInfo(
-        'spreadless_tick_data', 'Ticks without a spread',
-        'Some tick data the run read has no bid/ask spread, so trades crossed no spread.'),
+        'data_origin_external', 'External data read',
+        "Some data files the run read, or the bars a warmup history started from, are a "
+        "venue's published history rather than our own collection; such ticks are never "
+        'admissible for a parity comparison.'),
+    # --- What the data LACKS (#561) — one per DataDeficiency, worded from its declaration ------
+    ValidationCheckInfo(
+        'data_no_quote', 'Ticks without a quote',
+        'Some tick files the run read carry no quote (bid equals ask), so no fill crossed a '
+        'spread.'),
+    ValidationCheckInfo(
+        'data_no_arrival_time', 'Ticks without an arrival time',
+        'Some tick files the run read record no receive time, so tick timing falls back to the '
+        'event time.'),
+    ValidationCheckInfo(
+        'data_arrival_time_reconstructed', 'Arrival time reconstructed',
+        'Some tick files the run read carry an arrival time that was reconstructed after the '
+        'fact rather than recorded on arrival.'),
+    ValidationCheckInfo(
+        'data_missing_trades', 'Trades missing from the data',
+        "Some tick files the run read miss more of the venue's trades than reconnect noise "
+        'explains.'),
+    ValidationCheckInfo(
+        'data_synthetic', 'Synthetic signal data',
+        'Some signal data the run read is generated rather than a market record.'),
     ValidationCheckInfo(
         'multi_currency', 'Several account currencies',
         'The run mixes account currencies; profit and loss is shown per currency and never added '

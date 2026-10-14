@@ -68,6 +68,7 @@ from python.framework.reporting.builders.booking_periods_report_builder import (
 from python.framework.reporting.console.booking_periods_summary import BookingPeriodsSummary
 from python.framework.reporting.store.run_results_ledger import append_run_to_ledger
 from python.framework.trading_env.broker_config import BrokerConfig
+from python.framework.types.api.report_types import RunSummary
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
 from python.framework.types.autotrader_types.autotrader_result_types import AutoTraderResult
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
@@ -144,8 +145,14 @@ class AutotraderReportCoordinator:
         self._replayed_scenario = replayed_scenario
         self._observed_feed = observed_feed
 
-    def generate_and_log(self) -> None:
-        """Write all session artifacts + print the post-session summary."""
+    def generate_and_log(self) -> RunSummary:
+        """
+        Write all session artifacts + print the post-session summary.
+
+        Returns:
+            The run's figures as the report built them — the operator's closing alert reads
+            them from here rather than computing its own (#235)
+        """
         result = self._result
 
         # Long-format event-stream CSV (#330) — replaces the previous
@@ -325,3 +332,4 @@ class AutotraderReportCoordinator:
             f'📋 Session summary written — {result.ticks_processed} ticks, '
             f'{result.count_logged(LogLevel.WARNING)} warnings, '
             f'{result.count_logged(LogLevel.ERROR)} errors')
+        return unified.run_summary

@@ -1,5 +1,6 @@
 {
   "profile_name": "diagnostics_probe_test",
+  "run_purpose": "fixture",
   "bot_id": "diagprb01",
   "symbol": "BTCUSD",
   "broker_type": "kraken_spot",
@@ -24,9 +25,6 @@
   },
   "tick_source": {
     "type": "mock"
-  },
-  "execution": {
-    "bar_max_history": 30
   },
   "display": {
     "enabled": false

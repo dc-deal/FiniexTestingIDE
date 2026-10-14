@@ -202,10 +202,15 @@ def has_currency_symbol(currency_code: str) -> bool:
 
 def format_currency_simple(amount: float, currency_code: str, use_decimals: bool = True) -> str:
     """
-    Simple currency formatter with symbol.
+    Simple currency formatter with symbol — for a MAGNITUDE.
 
     Uses symbol if available, otherwise currency code.
     Symbol is placed before amount with no space.
+
+    It formats the amount's absolute value and drops its sign, and callers rely on that: the
+    console's P&L formatter and the live progress display's P&L put the sign in front themselves. A
+    figure that can be negative and carries no sign of its own goes through
+    `format_currency_signed`, or a loss prints as a gain.
 
     Args:
         amount: Monetary amount
@@ -247,3 +252,47 @@ def format_currency_simple(amount: float, currency_code: str, use_decimals: bool
         return f'{symbol} {formatted_amount}'
     else:
         return f'{symbol}{formatted_amount}'
+
+
+def format_currency_signed(
+    amount: float, currency_code: str, use_decimals: bool = True, plus_sign: bool = False) -> str:
+    """
+    Currency formatter for a SIGNED figure — a P&L, a mark, a balance, a swap credit.
+
+    The minus goes in front of the currency symbol, where Unicode CLDR / ICU and JavaScript's
+    Intl.NumberFormat put it by default: '-$0.49', '-€44,56'. The number itself is
+    `format_currency_simple`'s.
+
+    Args:
+        amount: Monetary amount, with its sign
+        currency_code: ISO 4217 currency code
+        use_decimals: Whether to print two decimals
+        plus_sign: Also mark an amount that is not negative with '+', as the '+' flag of a
+            format specification does
+
+    Returns:
+        Formatted string (e.g., "-$0.49", "+€44,56", "$100.50")
+    """
+    magnitude = format_currency_simple(amount, currency_code, use_decimals)
+    if amount < 0:
+        return f'-{magnitude}'
+    return f'+{magnitude}' if plus_sign else magnitude
+
+
+def format_currency_cost(cost: float, currency_code: str, use_decimals: bool = True) -> str:
+    """
+    Currency formatter for a COST in the P&L sign — a charge negative, a credit with '+'.
+
+    The sign convention of a broker statement and of the console's cost lines: a fee or a swap
+    charged reads '-$0.45', a swap credit or a price improvement reads '+$3.80', nothing reads
+    '$0.00'.
+
+    Args:
+        cost: The cost as the books carry it — positive where charged, negative where credited
+        currency_code: ISO 4217 currency code
+        use_decimals: Whether to print two decimals
+
+    Returns:
+        Formatted string (e.g., "-$0.45", "+$3.80", "$0.00")
+    """
+    return format_currency_signed(-cost, currency_code, use_decimals, plus_sign=cost < 0)

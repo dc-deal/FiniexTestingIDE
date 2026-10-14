@@ -4,8 +4,9 @@ FiniexTestingIDE - Field Study Stream Projection Tests (#566)
 The field study's order and venue lines are the live core's own record, copied in as the executor
 writes it. These tests hold the copy to the record: every event type is either written or declared
 silent, a line names the phase that submitted its order, a fill becomes an open, a partial close or
-a full close by what its position still holds, a refusal made before sending is a line, and the
-venue's reads become the snapshots and alerts the certificate reads.
+a full close by what its position still holds and says whose figure its fee is, a refusal made
+before sending is a line, and the venue's reads become the snapshots and alerts the certificate
+reads.
 """
 
 import json
@@ -31,6 +32,7 @@ from python.framework.types.live_types.reconciliation_types import (
     ReconcileDivergence,
     ReconcileState,
 )
+from python.framework.types.trading_env_types.broker_types import FeeSource
 from python.framework.types.trading_env_types.order_event_types import OrderEvent, OrderEventType
 from python.framework.types.trading_env_types.order_types import (
     OpenOrderRequest,
@@ -192,6 +194,42 @@ class TestOpenPartialAndFullClose:
             ('order_filled', 'open'), ('partial_close', 'close'), ('order_filled', 'close')]
         assert fills[1]['extra']['remaining_lots'] == pytest.approx(0.01)
         assert all(line['extra'].get('fee') is not None for line in fills)
+        # The mock venue reports each fill's fee in the answer that reports it, as Kraken does
+        assert {line['extra'].get('fee_source') for line in fills} == {FeeSource.VENUE.value}
+
+
+class TestTheFeeSource:
+    """A fill line says whose figure its fee is, copied from the event its fee comes from (#508)."""
+
+    @pytest.mark.parametrize('fee_source', list(FeeSource), ids=lambda source: source.value)
+    def test_it_is_the_event_s_own(self, tmp_path, fee_source):
+        recorder = _capture(tmp_path)
+        projection = FieldStudyStreamProjection(recorder, 'prof')
+        projection(_event(1, OrderEventType.FILLED, submitted_seq=1, lots=0.01, fill_price=100.0,
+                          fee=0.0026, fee_currency='USD', fee_source=fee_source))
+
+        fill = _lines(recorder)[-1]
+        assert (fill['extra']['fee'], fill['extra']['fee_source']) == (0.0026, fee_source.value)
+
+    def test_a_partial_close_carries_it_too(self, tmp_path):
+        recorder = _capture(tmp_path)
+        projection = FieldStudyStreamProjection(recorder, 'prof')
+        projection(_event(1, OrderEventType.FILLED, submitted_seq=1, lots=0.02, fill_price=100.0,
+                          fee_source=FeeSource.VENUE))
+        projection(_event(2, OrderEventType.FILLED, submitted_seq=2, lots=0.01, fill_price=101.0,
+                          action=OrderAction.CLOSE, fee_source=FeeSource.ESTIMATE))
+
+        partial = _lines(recorder)[-1]
+        assert (partial['event_type'], partial['extra']['fee_source']) == (
+            'partial_close', FeeSource.ESTIMATE.value)
+
+    def test_an_event_that_names_none_leaves_it_out(self, tmp_path):
+        """No source on the event is no source on the line — never a guessed one."""
+        recorder = _capture(tmp_path)
+        projection = FieldStudyStreamProjection(recorder, 'prof')
+        projection(_event(1, OrderEventType.FILLED, submitted_seq=1, lots=0.01, fill_price=100.0))
+
+        assert 'fee_source' not in _lines(recorder)[-1]['extra']
 
 
 class TestTheSlippageSources:

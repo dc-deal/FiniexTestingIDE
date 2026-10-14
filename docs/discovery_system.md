@@ -268,7 +268,7 @@ actually-loaded tick stretch:
 | Case | Phase | Outcome |
 |---|---|---|
 | scenario binds no signal source | — | skipped |
-| source declares `data_origin: synthetic` | 2 | **warning** — generated data, not a market record |
+| source declares `data_origin: synthetic` | 2 | **warning** `data_synthetic` — envelopes the mock producer generated (the `*_mock` sources), not a market record (the deficiency `synthetic`) |
 | source/symbol not imported | 2 | **error** — scenario excluded, batch continues |
 | window closes before the series opens | 2 | **error** — no snapshot can ever resolve |
 | no snapshot at or before `start_date` | 2 | **warning** — run starts blind, blind duration named |

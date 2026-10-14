@@ -89,21 +89,38 @@ the run would do does not.
 
 ## A) Data Pipeline - Import
 
-Tick data is collected by the **TickCollector** (MQL5 Expert Advisor) and exported as JSON. The import converts these to optimized Parquet files and automatically renders bars for all timeframes.
+Tick data is collected by the **TickCollector** (MQL5 Expert Advisor) and exported as JSON; signal
+data arrives as JSONL from the signal producer. One import takes both import inboxes, converts
+them to Parquet and renders the bars for every configured timeframe.
 
 > 📖 See `tick_collector_guide.md` for details on data collection.
 
-### 📥 Import (Override)
+### 📥 Import
 
 | | |
 |---|---|
-| **VS Code** | `📥 Import (Override)` |
-| **CLI** | `python python/cli/data_index_cli.py import [--override]` |
-| **Purpose** | Convert JSON tick files to Parquet, render bars |
+| **VS Code** | `📥 Import` · `📥 Import (Override)` |
+| **CLI** | `python python/cli/data_index_cli.py import [--override] [--only ticks\|signals] [--include-finished] [--no-display]` |
+| **Purpose** | Import the tick and the signal import inbox, render bars, rebuild the discovery caches |
 
 Each broker's timestamps are converted to UTC through its server clock rule in `market_config.json`
 (see [Data Import Pipeline](data_pipeline/data_import_pipeline.md)); `--override` re-imports files that
-already have a Parquet. After import, bars are automatically rendered for all timeframes (M1, M5, M15, M30, H1, H4, D1).
+already have a Parquet. Ticks come first, then the signals, then the discovery caches once.
+
+**Flags:**
+- `--override` — replace an existing Parquet instead of skipping the file
+- `--only ticks` / `--only signals` — import only one of the two import inboxes
+- `--include-finished` — also re-read the finished signal archive
+- `--no-display` — log line by line instead of showing the live screen
+
+In a terminal the import shows one live screen with every step, machine memory as a bar and an
+estimate from earlier imports; every line also goes to its own log file, which the summary names
+at the end (`📝 Full log: logs/imports/import_<import_id>.log`). Exit code `0` = everything
+imported, `1` = errors were counted, `130` = stopped. The screen, the log and the estimate are
+described in [The import screen, its log and its estimate](data_pipeline/data_import_pipeline.md#the-import-screen-its-log-and-its-estimate).
+
+Without the screen (`--no-display`, or output that is not a terminal) the import logs line by
+line, each rendered symbol the moment it finishes:
 
 ```
 📄 Processing: EURGBP_20251128_235635_ticks.json
@@ -113,13 +130,16 @@ already have a Parquet. After import, bars are automatically rendered for all ti
    ✅ Server clock America/New_York+7h → UTC offset -2h (broker_type=mt5)
    ✅ Sessions recalculated based on UTC time
 ✅ mt5/ticks/EURGBP/EURGBP_20251128_235635.parquet: 50,000 Ticks (UTC), Compression 20.0:1
-
-🔄 AUTO-TRIGGERING BAR RENDERING
-   ├─ M1: 5,650 bars rendered
-   ├─ M5: 1,130 bars rendered
-   ├─ M15: 377 bars rendered
-   ...
-✅ Rendered Bars: 7,470
+...
+Bar Pre-Rendering - Batch Mode (mt5)
+[1/8] mt5/EURGBP:
+  ├─ Loading tick data for mt5/EURGBP...
+  ├─ Loaded 24,509,346 ticks
+  ├─ M1: 388,082 bars rendered
+  ...
+  └─ ✅ mt5/EURGBP: 552,214 bars across 8 timeframes in 50.56s
+...
+✅ Rendered Bars: 4,417,712
 ```
 
 ---
@@ -241,7 +261,7 @@ hidden.
 | | |
 |---|---|
 | **VS Code** | `📈 Run Index: Prune (preview)` |
-| **CLI** | `python run_index_cli.py prune [--orphans] [--keep-last N] [--older-than AGE] [--apply]` |
+| **CLI** | `python run_index_cli.py prune [--orphans] [--keep-last N] [--older-than AGE] [--release-fixtures] [--apply]` |
 | **Purpose** | Remove what the run tree no longer needs — after showing exactly what that is |
 
 **The preview is the default and it IS the product.** Without `--apply` nothing is touched. A run
@@ -258,17 +278,32 @@ deletes without ceremony because a cache is rebuildable — this is not that.
   DELETE     12 · sweep directories left without a single combination   17.8 MB
   KEEP       35 · reporting=expected, no artifacts — crashed or still running
   KEEP        2 · hold field_study.jsonl (evidence behind a release gate)
-  KEEP       34 · complete
+  KEEP        2 · current catalog fixtures — what a consumer pins now
+  KEEP       32 · complete
   SKIP       17 · sweep directories — not runs, deliberately header-less
 
   The run-results ledger KEEPS its rows: 430 fragment(s) remain, including those of the runs above.
 ```
 
-**Two things it will never delete, whatever flags are given:**
+**What it will never delete, whatever flags are given:**
 
 - a run with `reporting=expected` and **no artifacts** — it crashed before reporting or is still
   going. A crashed run is the only record of that failure and the most valuable directory there is
 - a run holding `field_study.jsonl` — the raw evidence behind a real-money release certificate
+- a run whose own header says `run_purpose: certificate` — asked of the header on disk, never of
+  the index, whose purpose of an older run is derived from today's configuration
+
+- a directory holding a run header that the index does not list — a run, not an orphan; a lost
+  index row is repaired by a rebuild, never by deleting the run
+- a run whose header exists and cannot be read — no guard can clear it
+
+**What it keeps, and what it keeps until told otherwise:** every run of an entry's CURRENT fixture
+catalog production is kept, whatever the selectors and flags say — it is what a consumer pins now,
+and to drop one, produce the entry again ([Fixture Catalog](architecture/fixture_catalog.md)). An
+entry the catalog no longer declares has no current production, so its runs count as superseded. A
+SUPERSEDED production that passed its check is kept too, because a consumer may still pin it until
+they have moved to the new ids; the selectors reach it only with `--release-fixtures`, given once
+the consumer has re-pinned. A production that failed its check protects nothing.
 
 **The selectors** (`--keep-last`, `--older-than` and `--orphans` are opt-in; the last one is
 always on):
@@ -277,7 +312,8 @@ always on):
 |---|---|
 | `--keep-last N` | per scenario set / AutoTrader profile, all but the N newest complete runs. **A sweep is the unit, not the combination** — the N newest sweeps survive WHOLE, the rest go WHOLE, because a half-pruned sweep leaves a `ranked.csv` ranking runs that no longer exist |
 | `--older-than AGE` | runs that started longer ago than `AGE`, written as whole days or hours (`30d`, `12h`). The age comes from the run header's own start time; a run that records none is KEPT and reported separately, because an age nobody can measure is not a reason to delete |
-| `--orphans` | directories that are not runs: no header, not in the index. Never sweep directories (correctly header-less) and never a run's own `io/`, `scenario_logs/`, … |
+| `--orphans` | directories that are not runs: no header, not in the index, and no run anywhere below them — a set's directory holding a stray file beside its runs is never one. Never sweep directories (correctly header-less) and never a run's own `io/`, `scenario_logs/`, … |
+| `--release-fixtures` | nothing by itself — it lets the selectors above reach the runs of the fixture catalog's superseded productions; a current production is never released |
 | *(always on)* | `reporting=none` with no artifacts — commissioned to produce nothing, and it did not |
 
 **`--keep-last` and `--older-than` compose as KEEP rules, not as delete rules.** "Keep the
@@ -306,7 +342,7 @@ running, where nobody is present to trigger anything (see below).
 
 | | |
 |---|---|
-| **VS Code** | `🔄 Rebuild: runs` |
+| **VS Code** | `🔄 Rebuild index: runs` |
 | **CLI** | `python run_index_cli.py rebuild` |
 | **Purpose** | Rebuild the index from the per-run `header.json` files |
 
@@ -839,34 +875,48 @@ only with `--accept-loss`.
 
 | | |
 |---|---|
-| **VS Code** | `🔄 Rebuild: ticks (own manager, #175)` / `🔄 Rebuild: bars (own manager, #175)` |
-| **CLI** | `python tick_index_cli.py rebuild` / `python bar_index_cli.py rebuild` |
+| **VS Code** | `🔄 Rebuild index: ticks (own manager, #583)` / `🔄 Rebuild index: bars, then the discovery caches (own manager, #583)` |
+| **CLI** | `python tick_index_cli.py rebuild` / `python bar_index_cli.py rebuild [--no-caches]` |
 | **Purpose** | Rebuild index in case of inconsistencies |
 
 > ⚠️ Normally not needed - the import updates indices automatically.
+
+Each rebuilds an index from the files that are there and changes nothing in the archive. The bar
+index's rebuild then also recomputes every discovery cache, which takes minutes; `--no-caches`
+leaves them alone. The other `🔄 Rebuild index: …` entries do the same for the stores the
+`store_cli.py` catalog owns — `discovery_caches` among them, whose INDEX is rebuilt there and
+whose caches are recomputed only by `🔍 Disc - Cache: Rebuild All`.
 
 ### Bar Import / Render
 
 | | |
 |---|---|
-| **VS Code** | `📥 Bar Render --all` |
-| **CLI** | `python bar_index_cli.py render BROKER_TYPE [--clean]` |
+| **VS Code** | `📥 Bar Render --all` · `📥 Bar Render kraken_spot` |
+| **CLI** | `python bar_index_cli.py render BROKER_TYPE` · `python bar_index_cli.py render --all` |
 | **Purpose** | Re-render bars for a broker type or all |
 
 **Flags:**
 - `BROKER_TYPE` — Render a single broker type (e.g. `mt5`)
 - `--all` — Render all broker types from `market_config.json`
-- `--clean` — Delete existing bars before rendering
+
+Each bar file is replaced only once its new version is written and verified, and files without a
+source (a symbol without ticks, a timeframe no longer in `render_timeframes`) are removed only
+after every symbol rendered. A render stopped with Ctrl+C or SIGTERM keeps the previous bars of
+every symbol it did not reach, rebuilds the bar index from the files that are there, and names the
+command that finishes it. A hard kill skips that rebuild; its workers end with it — see [An
+interrupted render](data_pipeline/data_import_pipeline.md#an-interrupted-render). Each symbol is
+logged the moment it finishes.
 
 > ⚠️ **Warning:** Can take a very long time with large datasets!
 >
 > Bar rendering runs symbols in parallel via `ProcessPoolExecutor`. Worker count is configured in `import_config.json` → `processing.bar_render_workers` (default: 2). Set to `1` for sequential mode.
 >
-> ⚠️ **Known issue (work in progress):** each worker loads its symbol's complete tick history into
-> RAM. On large tick archives, too many parallel workers can exceed the available memory — the OS
-> kills a worker and the run aborts with
+> Each worker loads its symbol's complete tick history into RAM, so workers start only while
+> their estimated memory fits `processing.bar_render_max_ram_mb`; a symbol larger than that
+> renders alone. Should the OS still kill a worker, the run aborts with
 > `A process in the process pool was terminated abruptly while the future was running or pending.`
-> The conservative default of `2` avoids this; memory-aware worker scheduling is planned.
+> and the render names it as a likely out-of-memory end and the setting to lower — see
+> [What one render worker holds](data_pipeline/data_import_pipeline.md#what-one-render-worker-holds).
 
 ---
 
@@ -874,7 +924,7 @@ only with `--accept-loss`.
 
 | Task | VS Code Launch | CLI |
 |------|----------------|-----|
-| **Import data** | `📥 Import (Override)` | `data_index_cli.py import [--override]` |
+| **Import data** (ticks + signals) | `📥 Import` · `📥 Import (Override)` | `data_index_cli.py import [--override] [--only ticks\|signals]` |
 | **Data overview** | `📊 Tick Data Report: mt5` | `data_index_cli.py tick-data-report [broker_type]` |
 | **Tick Index Status** | `📚 Tick Index: Status` | `tick_index_cli.py status` |
 | **Gap check (all)** | `🔍 Disc - Data Coverage: Validate All` | `discoveries_cli.py data-coverage validate` |
@@ -897,7 +947,7 @@ only with `--accept-loss`.
 ```
 1. Collect tick data (TickCollector on MT5)
          ↓
-2. Import:          📥 Import (Override)
+2. Import:          📥 Import (ticks and signals; 📥 Import (Override) re-imports)
          ↓
 3. Build cache:     🔍 Disc - Cache: Rebuild All
          ↓

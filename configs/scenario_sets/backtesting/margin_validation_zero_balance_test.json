@@ -1,6 +1,7 @@
 {
     "version": "1.0",
     "scenario_set_name": "margin_validation_zero_balance_test",
+    "run_purpose": "fixture",
     "created": "2026-02-19T00:00:00.000000",
     "description": "Zero Balance Validation - All orders rejected due to insufficient margin with zero starting balance",
     "global": {

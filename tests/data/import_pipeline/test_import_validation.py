@@ -295,14 +295,14 @@ class TestMissingColumns:
         assert result.is_valid
 
     def test_zero_collected_msc_warns_only(self, validator):
-        """The importer defaults the column to 0 when the source lacks it."""
+        """A zeroed column (written by importers before #561) records no arrival time."""
         df = build_frame()
         df['collected_msc'] = 0
 
         result = validator.validate_file(df, 'zeroed.json')
 
         assert result.is_valid
-        assert any('pre-V1.3.0' in w for w in result.warnings)
+        assert any('records no arrival time' in w for w in result.warnings)
 
 
 class TestArchiveOrdering:

@@ -9,7 +9,10 @@ from typing import Any, Dict, List
 
 from python.configuration.import_config_loader import ImportConfigFileLoader
 from python.framework.exceptions.timeframe_errors import UnsupportedTimeframeError
+from python.framework.types.config_types.import_config_types import ImportDisplayConfig
 from python.framework.utils.timeframe_config_utils import TimeframeConfig
+
+DEFAULT_IMPORT_TIMINGS_PATH = 'data/runtime/import_timings.json'
 
 
 class ImportConfigManager:
@@ -90,6 +93,32 @@ class ImportConfigManager:
                 "Add to 'paths' section: \"data_finished\": \"data/finished\""
             )
         return path
+
+    def get_data_external_path(self) -> str:
+        """
+        Get the external history store — a venue's published archives, kept unchanged.
+
+        Returns:
+            Path string for the external history root
+        """
+        paths = self._config.get('paths', {})
+        path = paths.get('data_external')
+        if not path:
+            raise ValueError(
+                "Missing required path 'data_external' in import_config.json. "
+                "Add to 'paths' section: \"data_external\": \"data/external\""
+            )
+        return path
+
+    def get_import_timings_path(self) -> str:
+        """
+        Get the file of measured import step durations.
+
+        Returns:
+            Path of the timings file (default: data/runtime/import_timings.json)
+        """
+        paths = self._config.get('paths', {})
+        return paths.get('import_timings', DEFAULT_IMPORT_TIMINGS_PATH)
 
     # ============================================
     # Paths — Signal Data Source (#429)
@@ -237,6 +266,16 @@ class ImportConfigManager:
         processing = self.get_processing_config()
         return processing.get('bar_render_workers', 2)
 
+    def get_bar_render_max_ram_mb(self) -> int:
+        """
+        Get the memory the bar-render workers may hold together.
+
+        Returns:
+            Budget in MB (default: 20000)
+        """
+        processing = self.get_processing_config()
+        return processing.get('bar_render_max_ram_mb', 20000)
+
     def get_render_timeframes(self) -> List[str]:
         """
         Get the timeframes the import materializes.
@@ -260,3 +299,16 @@ class ImportConfigManager:
                 )
 
         return [tf for tf in TimeframeConfig.sorted() if tf in configured]
+
+    # ============================================
+    # Display
+    # ============================================
+
+    def get_display_config(self) -> ImportDisplayConfig:
+        """
+        Get the import screen's settings, built from the display block as a whole.
+
+        Returns:
+            ImportDisplayConfig (defaults when the block is absent)
+        """
+        return ImportDisplayConfig(**self._config.get('display', {}))

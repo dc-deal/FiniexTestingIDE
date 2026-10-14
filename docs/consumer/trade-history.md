@@ -103,7 +103,7 @@ One execution is:
 
 | Field | Meaning |
 |---|---|
-| `trade_id` | the venue's identifier for this one execution |
+| `trade_id` | our identifier for this one execution, assigned when the fill was booked — the venue's own execution ids are not served |
 | `side` | `buy` or `sell` |
 | `volume` · `price` | the size and price of **this fill** |
 | `fee` · `fee_currency` | what this fill was charged, and in which currency |

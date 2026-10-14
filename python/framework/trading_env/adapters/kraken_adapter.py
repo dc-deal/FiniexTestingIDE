@@ -23,12 +23,16 @@ import time
 import urllib.parse
 from dataclasses import replace
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import requests
 
 from python.configuration.credential_guard import assert_real_credential
+from python.configuration.credentials_cascade import (
+    resolve_credentials_file,
+    tracked_credentials_path,
+    workspace_credentials_path,
+)
 from python.framework.exceptions.connection_errors import ConnectionAttemptFailedError
 from python.framework.types.config_types.market_config_types import BrokerTransportConfig
 from python.framework.types.live_types.live_execution_types import BrokerOrderStatus, BrokerResponse
@@ -43,6 +47,7 @@ from python.framework.types.trading_env_types.broker_types import (
     SymbolSpecification,
 )
 from python.framework.types.trading_env_types.order_types import (
+    FeeReport,
     IcebergOrder,
     LimitOrder,
     MarketOrder,
@@ -230,6 +235,12 @@ class KrakenAdapter(AbstractAdapter):
             # rests over a spot holding and fires while this process is gone. Kraken
             # links nothing — no reserve, no OCO — so the pairing is our work (#503).
             venue_held_protective_orders=True,
+            # Measured 2026-10-11 with real orders (probe_kraken_fee_at_fill): QueryOrders
+            # carries the order's total `fee` in the FIRST answer that says closed, and it
+            # does not change afterwards (#508). Declared in a dry run too: a capability
+            # describes the venue, and a session caches it before it knows whether it is a
+            # dry run. The executor tells a dry run's answers apart by where they come from.
+            fee_report=FeeReport.STATUS_ANSWER,
         )
 
     # ============================================
@@ -712,6 +723,14 @@ class KrakenAdapter(AbstractAdapter):
         if client_order_id:
             data['cl_ord_id'] = str(client_order_id)[:_CL_ORD_ID_MAX_LEN]
 
+        # The fee in the QUOTE currency, on both sides (#508). The spot books charge it there,
+        # and the fee read from the venue's answer is stated there. Kraken's documentation
+        # names `fcib` (the base currency) as the default when selling; measured 2026-10-11,
+        # this account was charged in ZUSD on every sell and every order read back `fciq`
+        # although none was sent. Sending it makes the books' assumption a guarantee rather
+        # than the account's present habit. `validate=true` accepts it on both sides.
+        data['oflags'] = 'fciq'
+
         return data
 
     @classmethod
@@ -1164,12 +1183,19 @@ class KrakenAdapter(AbstractAdapter):
         filled_lots = executed if executed > 0.0 else None
         fill_price = (float(order_info.get('price', 0.0) or 0.0)
                       if filled_lots is not None else None)
+        # `fee` is the order's total fee in the quote currency, for everything it has executed
+        # (#508). Measured 2026-10-11: present in the first answer that says closed, equal to
+        # the sum of the order's trade fees, unchanged on later reads. Read where volume is,
+        # like the price beside it; an answer with volume and no fee field reports none.
+        raw_fee = order_info.get('fee') if filled_lots is not None else None
+        fill_fee = float(raw_fee) if raw_fee not in (None, '') else None
 
         return BrokerResponse(
             broker_ref=broker_ref,
             status=status,
             fill_price=fill_price,
             filled_lots=filled_lots,
+            fill_fee=fill_fee,
             timestamp=timestamp,
             raw_response=raw,
         )
@@ -1898,18 +1924,14 @@ class KrakenAdapter(AbstractAdapter):
         Returns:
             (api_key, api_secret) tuple
         """
-        user_path = Path('user_configs/credentials') / credentials_filename
-        default_path = Path('configs/credentials') / credentials_filename
-
-        if user_path.exists():
-            cred_path = user_path
-        elif default_path.exists():
-            cred_path = default_path
-        else:
+        # The cascade is the framework's, so a venue package carries no copy of it (#328);
+        # what this venue adds is which keys it reads from the file.
+        cred_path = resolve_credentials_file(credentials_filename)
+        if cred_path is None:
             raise FileNotFoundError(
                 f"Credentials file not found. Expected at:\n"
-                f"  {user_path} (user override)\n"
-                f"  {default_path} (default)\n"
+                f"  {workspace_credentials_path(credentials_filename)} (user override)\n"
+                f"  {tracked_credentials_path(credentials_filename)} (default)\n"
                 f"Create one with {{'api_key': '...', 'api_secret': '...'}}"
             )
 

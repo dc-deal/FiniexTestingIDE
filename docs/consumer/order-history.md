@@ -34,10 +34,22 @@ An order that ends without filling has a row for that ending too: its `status` s
 ended, and on a cancelled, expired or unaccounted row `initiator` and `end_reason` say who ended it
 and why.
 
+**A protective order is the exception, twice.** The stop or target this side places at the venue
+for a position carries an `order_id` of its own — `protect_` and the position's id — and it is not
+recorded `pending` when it is placed: its placement is in the
+[order-event stream](/api/v1/docs/order-events), and the history records only how it ended.
+
+**The last row under an `order_id` is not what became of the position.** It says how the latest of
+the orders under that id ended. What the position became is in
+[trade history](/api/v1/docs/trade-history) — each closed part, with `close_type` and
+`position_closes` — and, for a position still open when the run ended, in
+[portfolio](/api/v1/docs/portfolio) under `open_positions`. A position whose entry never executed
+appears in neither.
+
 ## `order_id` is the position's id, so it repeats
 
-It is minted when the position opens and carried by every later order belonging to that position.
-It does not identify a row and it does not identify an order.
+It is minted when the position opens and carried by every later order belonging to that position,
+a protective order excepted (above). It does not identify a row and it does not identify an order.
 
 An executed row's `scenario_name` and `position_id` together name the same position as a trade
 row does. One counter per unit mints it and no id is used twice, so that pair is a reliable join
@@ -64,6 +76,7 @@ matching their contents.
 | `order_type` | the type the order was asked as — on every row, a refusal included |
 | `close_type` | on a close row: whether it closed all of the position or part of it |
 | `commission` | the fee this event cost |
+| `fee_source` | where `commission` came from: `venue` — the figure the venue reported for the fill, what the account was charged; `estimate` — our fee model's, the declared rate times the order's value. A backtest's is always `estimate` |
 | `rejection_reason` · `rejection_message` | why it was refused, as a code and as a sentence |
 | `initiator` · `end_reason` | who ended the order, and why — on a cancelled, expired or unaccounted row |
 
@@ -75,8 +88,8 @@ submission on a `pending` row, else the fill, the refusal, the cancel, the expir
 triggered, a close is `market`, and an exit through a protective order the venue held carries that
 order's type.
 
-`direction`, `action`, `status`, `order_type`, `close_type`, `rejection_reason`, `initiator` and
-`end_reason` are closed vocabularies and appear in the schema with their values.
+`direction`, `action`, `status`, `fee_source`, `order_type`, `close_type`, `rejection_reason`,
+`initiator` and `end_reason` are closed vocabularies and appear in the schema with their values.
 
 ## What is null, and the one field that never is
 
@@ -88,6 +101,7 @@ read as a price is a mistake that cannot be undone further down.
 | `position_id` | no position exists yet |
 | `requested_lots` | the order did not know the size |
 | `executed_lots` · `executed_price` | nothing executed |
+| `fee_source` | nothing executed, or the row was recorded before the field existed |
 | `close_type` | the row is not a close, or the close did not execute |
 | `rejection_reason` · `rejection_message` | the order was neither denied nor rejected |
 | `initiator` · `end_reason` | the row is not a cancel, an expiry or an order unaccounted for |

@@ -63,6 +63,7 @@ from python.framework.types.signal_data_types import (
     SignalStreamCursor,
     SignalStreamEventName,
     SignalStreamFrame,
+    SignalTransportState,
     StreamControlFrame,
     StreamHeartbeatFrame,
     schema_major,
@@ -237,7 +238,7 @@ class SignalStreamSource(AbstractSignalTransport):
         self._replays = 0
         self._transport_errors = 0
         self._contract_errors = 0
-        self._state = 'connecting'
+        self._state = SignalTransportState.CONNECTING
         self._last_seq: Optional[int] = None
         self._last_epoch: Optional[int] = cursor.epoch if cursor else None
         self._last_envelope_at: Optional[datetime] = None
@@ -441,7 +442,8 @@ class SignalStreamSource(AbstractSignalTransport):
         self._replaying = self._cursor is not None
         with self._stats_lock:
             self._connections += 1
-            self._state = 'replay' if self._replaying else 'connecting'
+            self._state = (SignalTransportState.REPLAY if self._replaying
+                           else SignalTransportState.CONNECTING)
 
         try:
             response = self._open()
@@ -740,7 +742,8 @@ class SignalStreamSource(AbstractSignalTransport):
             # An accepted envelope means the transport is working, so it also CLEARS a
             # previous fault state — a contract error would otherwise sit on the panel
             # until the next reconnect, a healthy feed reading as a broken one.
-            self._state = 'replay' if self._replaying else 'live'
+            self._state = (SignalTransportState.REPLAY if self._replaying
+                           else SignalTransportState.LIVE)
             self._last_seq = snapshot.seq
             self._last_epoch = snapshot.stream_epoch
             self._last_envelope_at = snapshot.get_resolution_key()
@@ -896,7 +899,7 @@ class SignalStreamSource(AbstractSignalTransport):
         """
         self._replaying = False
         with self._stats_lock:
-            self._state = 'live'
+            self._state = SignalTransportState.LIVE
         head = control.head_seq
         if head == 0:
             self._record('live · producer has never published')
@@ -996,7 +999,7 @@ class SignalStreamSource(AbstractSignalTransport):
         """
         self._terminal = True
         with self._stats_lock:
-            self._state = 'cursor_ahead'
+            self._state = SignalTransportState.CURSOR_AHEAD
         self._record(f'cursor ahead of producer head {control.head_seq}',
                      AwarenessLevel.ALERT)
         self._logger.error(
@@ -1022,7 +1025,7 @@ class SignalStreamSource(AbstractSignalTransport):
         detail = control.detail or 'no detail given'
         self._terminal = True
         with self._stats_lock:
-            self._state = 'unauthorized'
+            self._state = SignalTransportState.UNAUTHORIZED
         self._record('credential revoked mid-stream', AwarenessLevel.ALERT)
         self._logger.error(
             f'📡 Producer revoked our credential mid-stream ({detail}) — this is NOT a '
@@ -1046,7 +1049,7 @@ class SignalStreamSource(AbstractSignalTransport):
         """
         self._terminal = True
         with self._stats_lock:
-            self._state = 'unauthorized'
+            self._state = SignalTransportState.UNAUTHORIZED
         self._record(f'credential rejected ({status_code})', AwarenessLevel.ALERT)
         self._logger.error(
             f'📡 Producer rejected our credential ({status_code}) — this is NOT a producer '
@@ -1069,7 +1072,7 @@ class SignalStreamSource(AbstractSignalTransport):
         """
         self._terminal = True
         with self._stats_lock:
-            self._state = 'misconfigured'
+            self._state = SignalTransportState.MISCONFIGURED
         self._record(f'request refused ({status_code})', AwarenessLevel.ALERT)
         named = ('the pipeline id is not registered with this producer'
                  if status_code == 404
@@ -1159,7 +1162,7 @@ class SignalStreamSource(AbstractSignalTransport):
         """
         with self._stats_lock:
             self._transport_errors += 1
-            self._state = 'error'
+            self._state = SignalTransportState.ERROR
         self._record(f'connection failed: {type(error).__name__}', AwarenessLevel.ALERT)
         self._logger.warning(f'📡 Signal stream failed: {error}')
 
@@ -1184,7 +1187,7 @@ class SignalStreamSource(AbstractSignalTransport):
         """
         with self._stats_lock:
             self._contract_errors += 1
-            self._state = 'contract'
+            self._state = SignalTransportState.CONTRACT
         self._record(f'frame unreadable: {location}', AwarenessLevel.ALERT)
         self._logger.error(
             f'📡 Producer frame failed OUR schema at `{location}`: {detail}. '

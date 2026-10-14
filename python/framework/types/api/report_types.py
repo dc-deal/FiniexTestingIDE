@@ -13,6 +13,7 @@ from typing import Any, Dict, Optional
 
 from pydantic import BaseModel, Field, computed_field
 
+from python.framework.types.autotrader_types.safety_session_types import FlattenOutcome
 from python.framework.types.live_types.broker_truth_types import (
     BrokerTruthPart,
     BrokerTruthReadReason,
@@ -24,8 +25,10 @@ from python.framework.types.live_types.reconciliation_types import ReconcileStat
 # re-derived from — and the safety report's job is to surface exactly that record. A parallel
 # row type would be a hand-maintained copy of it, and a copy is what silently drops a field.
 from python.framework.types.persistence_types import RiskBaseline
-from python.framework.types.run_origin_types import CodeIdentity, RunOrigin
+from python.framework.types.run_origin_types import CodeIdentity, RunChannel, RunOrigin
 from python.framework.types.run_outcome_types import RunOutcome
+from python.framework.types.run_purpose_types import RunPurpose
+from python.framework.types.trading_env_types.broker_types import FeeSource
 from python.framework.types.trading_env_types.order_event_types import (
     OrderEventPlane,
     OrderEventType,
@@ -264,6 +267,9 @@ class OrderHistoryRow(BaseModel):
                                                 # on a `pending` row, else the fill, the refusal,
                                                 # the cancel, the expiry
     commission: float
+    fee_source: Optional[FeeSource] = None      # where `commission` came from — the venue's own
+                                                # figure, or our model's estimate; null unless
+                                                # something executed
     order_type: Optional[OrderType] = None      # the type the order was ASKED as, refusals
                                                 # included; a close is `market`
     close_type: Optional[CloseType] = None      # full / partial — close rows only
@@ -313,6 +319,7 @@ class OrderEventRow(BaseModel):
     trigger_price: Optional[float] = None
     fee: Optional[float] = None
     fee_currency: Optional[str] = None
+    fee_source: Optional[FeeSource] = None      # the venue's own figure, or our model's estimate
     submission_mid: Optional[float] = None
     submission_time_msc: Optional[int] = None
     in_flight_ms: Optional[float] = None        # the answer to a submission: modelled / measured
@@ -496,6 +503,20 @@ class OpenPositionRow(BaseModel):
     take_profit_enforcement: str = ''
 
 
+class FeeSourceFills(BaseModel):
+    """
+    The fills whose fee came from ONE fee source, and what those fees came to (#508).
+
+    Folded from the order-event stream, where every event that executed something says whether
+    its fee is the venue's own figure or our fee model's estimate. `fill_count` is the control
+    total: the executed events `fill_fees` is the sum of. Swap is not a fill's fee and is not in
+    it. A close the venue executed for a position no longer held here is in it with the venue's
+    figure, although nothing could be booked for it and no fee total of the portfolio holds it.
+    """
+    fill_count: int         # executed events carrying this fee source
+    fill_fees: float        # the sum of their fee, in the account currency
+
+
 class PortfolioUnitRow(BaseModel):
     """Headline P&L of one run unit (sim: a scenario; live: the session)."""
     name: str               # scenario name (sim) / profile/session label (live)
@@ -556,6 +577,10 @@ class PortfolioUnitRow(BaseModel):
     total_swap: float = 0.0
     maker_fee: float = 0.0       # spot maker-side fee
     taker_fee: float = 0.0       # spot taker-side fee
+    # The unit's fill fees by where each came from (#508): the venue's own figure, or our fee
+    # model's estimate — every fee of a backtest is the estimate. One entry per fee source that
+    # occurs, so an empty map is a unit that executed nothing.
+    fill_fees_by_source: dict[FeeSource, FeeSourceFills] = {}
     has_error: bool = False     # hybrid unit (partial data + error) → CRITICAL marker
     # Spot mode — dual-balance + estimated portfolio value
     balances: dict[str, float] = {}
@@ -610,6 +635,8 @@ class PortfolioAggregateRow(BaseModel):
     account_max_drawdown_unit: str = ''
     total_fees: float               # Σ the units' closed-trade fees
     fees_charged: float = 0.0       # Σ what the units charged, open positions included
+    # Σ the units' fill fees per fee source — counts and fees both add up across accounts
+    fill_fees_by_source: dict[FeeSource, FeeSourceFills] = {}
     # #492 — the wealth view beside the realised one. Summed across the currency's units,
     # never folded into net_profit.
     unrealized_pnl: float = 0.0
@@ -971,6 +998,14 @@ class RunHeader(BaseModel):
         orders_to: Where its orders went, from the RESOLVED dry-run rule. None as above, and on
             a session whose profile the dry-run rule refuses (it never trades)
         data_windows: The market window each unit was declared to cover; None as above
+        run_purpose: What the run is FOR (#576), from its configuration's declaration — absent
+            there means REGULAR, so every run started since the field exists carries a value. A
+            header written before that takes its configuration's current declaration; None where
+            that configuration is gone or cannot be read
+        report_contract: The API contract the run's reports were written under (#576) — the
+            contract version of the code that started it. A later contract can add a figure that
+            an older run serves as 0 or null; this is what tells such a run apart from a wrong
+            one. None on a header written before the field existed
     """
     run_id: str
     start_time: datetime
@@ -989,6 +1024,8 @@ class RunHeader(BaseModel):
     ticks_from: Optional[TicksFrom] = None
     orders_to: Optional[OrdersTo] = None
     data_windows: Optional[list[DataWindow]] = None
+    run_purpose: Optional[RunPurpose] = None
+    report_contract: Optional[int] = None
 
 
 class RunConfigSnapshot(BaseModel):
@@ -1105,6 +1142,28 @@ class RunInfo(BaseModel):
     # The market window each unit was DECLARED to cover — what a date filter asks, where
     # `start_time` is only when the run was executed. None as above.
     data_windows: Optional[list[DataWindow]] = None
+    # What the run is FOR (contract 24, #576): `regular`, `fixture` — a test's run or one a
+    # consumer pins, its numbers built rather than earned — or `certificate`. Stamped at the
+    # start. For a run older than the field, filled in when the index is rebuilt from the CURRENT
+    # declaration of its configuration where that configuration can still be read, else None.
+    run_purpose: Optional[RunPurpose] = None
+    # The API contract the run's reports were written under (contract 24). A run older than a
+    # contract that added a figure serves that figure as 0 or null — compare this with
+    # `/api/v1/contract` to tell an old run from a wrong one. None on a run from before the field.
+    report_contract: Optional[int] = None
+    # WHO started the run (contract 26, #582) — the header's `origin` block, flattened so a
+    # list can be filtered by it: how it was started, the client that did it, the principal it
+    # acted for — `operator` or an account, a person or a service — and the installation it ran
+    # on. The one meaning the word `origin` keeps. None on a run from before the block (#551).
+    origin_channel: Optional[RunChannel] = None
+    origin_client: Optional[str] = None
+    origin_principal: Optional[str] = None
+    origin_host: Optional[str] = None
+    # Whether a run of the fixture catalog is NOT the current fixture of its entry (contract 25,
+    # #576) — derived from the catalog's production record each time the list is served, never
+    # written into the run. True: an older catalog production made it, or one that failed its
+    # check. False: the entry's current one made it. None: no catalog production made this run.
+    fixture_superseded: Optional[bool] = None
     # What the run DID, joined from the run-results ledger (contract 15) so the list needs no
     # request per run. `results` has THREE states: None — the ledger holds nothing for this run
     # (still going, died before its close, or never commissioned to report; read it with
@@ -2379,11 +2438,13 @@ class SafetyReport(RunScopedReport):
         worst_day_loss_pct: That day's loss as a share of ITS OWN day-start baseline
         flatten_fired: Whether the HARD stop tripped
         flatten_reason: What tripped it, with its numbers
-        flatten_completed: Whether the book was confirmed flat before the session ended.
-            None when the hard stop never fired — which a reader must be able to tell apart
-            from "fired and did not finish"
-        flatten_unconfirmed: Positions still open when the session ended anyway. These are
-            at the venue and nobody has confirmed otherwise
+        flatten_outcome: How the hard stop ended — complete, holdings_kept or unconfirmed.
+            None when it never fired, which a reader must be able to tell apart from every
+            outcome it can have
+        flatten_unconfirmed: Positions whose close was sent and not confirmed. These are at
+            the venue and nobody has confirmed otherwise
+        flatten_kept: Spot holdings the hard stop kept on purpose (spot_liquidate_to_quote
+            off): open at the venue by decision, not by failure
     """
     symbol: str = ''
     enabled: bool = False
@@ -2408,8 +2469,9 @@ class SafetyReport(RunScopedReport):
     worst_day_loss_pct: float = 0.0
     flatten_fired: bool = False
     flatten_reason: str = ''
-    flatten_completed: Optional[bool] = None
+    flatten_outcome: Optional[FlattenOutcome] = None
     flatten_unconfirmed: list[str] = []
+    flatten_kept: list[str] = []
 
 
 class SignalUsageRow(BaseModel):
@@ -2603,6 +2665,10 @@ class WarningsErrorsOutcome(BaseModel):
     # An operator Ctrl+C also arrives as shutdown_mode='emergency', so the mode alone cannot
     # separate a deliberate stop from a crash — this flag is the discriminator get_outcome() uses.
     operator_interrupted: bool = False
+    # A live session that could not complete its warmup history at its first tick also ends as
+    # 'emergency' and is graded FAILED, but it refused rather than crashed (#588) — this flag
+    # tells the two apart. False on a sim run (not applicable).
+    refused_at_first_tick: bool = False
     # How many entries each channel held, counted HERE the same way in both pipelines — the rows
     # above cannot be counted instead, because the simulation summarizes its whole log pot in ONE
     # warning row while the AutoTrader writes a row per entry. None only where nothing recorded

@@ -103,7 +103,9 @@ class TestContinuousSplit:
         assert ws.mode == 'continuous'
         assert ws.block_count == 1
         assert ws.windows[0].split_reason == 'continuous_region'
-        assert ws.windows[0].regime == VolatilityRegime.HIGH
+        # Labelled HIGH against the whole history, the periods are measured against their own
+        # range: six alike are ordinary among themselves
+        assert ws.windows[0].regime == VolatilityRegime.MEDIUM
 
     @patch(f'{_PROFILE_CACHE_PATH}.DiscoveryCacheManager')
     @patch(f'{_PROFILE_CACHE_PATH}.VolatilityProfileAnalyzerCache')

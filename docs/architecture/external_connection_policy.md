@@ -261,12 +261,14 @@ one classification that must not be guessed.
 ## Who owns the wait
 
 The ladder is **pure arithmetic plus classification — it never sleeps.** Waiting belongs to
-the caller, because the four contexts have four different primitives. A ladder that owned
-the wait would need a plugin point to serve them all.
+the caller, because each context has a primitive of its own. A ladder that owned the wait would
+need a plugin point to serve them all.
 
 | Context | Connections | How it waits |
 |---|---|---|
 | Own thread with a stop event | signal stream, health probe | `stop.wait(ladder.next_delay(n))` — cancels cleanly on shutdown |
+| Own thread with a queue | operator alerts (Telegram) | `run_with_ladder` on the dispatcher's thread — the delay, or Telegram's `retry_after` when it asked for longer |
+| Own thread on an interval | liveness ping | not at all — a failed ping is not repeated, the next one is due within the interval |
 | asyncio | broker tick socket | `await asyncio.sleep(...)` |
 | Broker worker thread | order submit / cancel / query jobs | blocking; **does not block the tick loop** |
 | **Inside the tick loop** | reconcile pull, order re-poll | **it does not wait at all** |
@@ -290,14 +292,14 @@ wearing the face of "still checking".
 
 ## Boot is not one switch
 
-The three reads at boot deserve different answers, and only one of them is an operator
-choice:
+The reads at boot deserve different answers, and only one of them is an operator choice:
 
 | Boot read | On give-up | Why |
 |---|---|---|
 | Signal producer registry | **degrade** (configurable) | the staleness contracts (#434 / #436) describe the reduced state, and the boot bridge mounts the archive slice — the session starts STALE, out loud, not blind |
 | Warmup bars | **INADMISSIBLE** | there is no contract for an empty indicator history. The worker still emits a number, that number is wrong, and nothing declares it wrong |
 | Account balance | **INADMISSIBLE** | position sizing has no defined answer without it |
+| Operator alerts — the Telegram check (#235) | a refusal **refuses the start**; unreachable **goes on** | a token or chat the bot may not use would silence every later alert; an outage must not keep a supervised restart down — it is logged, and each message is tried again when it is due |
 
 Degraded start, as the operator reads it:
 
@@ -319,7 +321,7 @@ Refusal, as the operator reads it:
 
 ---
 
-## The seven connections
+## The connections
 
 | # | Connection | Ladder | Gives up when |
 |---|---|---|---|
@@ -330,6 +332,8 @@ Refusal, as the operator reads it:
 | 5 | Broker REST (orders, truth pull) | classification only; the caller's cadence waits | see "who owns the wait" |
 | 6 | Broker warmup bars (boot) | broker policy, budget 3 | short read → **refuse to start** |
 | 7 | Broker config + balance (boot) | broker policy, budget 3 | falls back to a cached copy, warning louder as it ages; no cache → refuse |
+| 8 | Operator alerts — Telegram (#235) | 2 s → 60 s, jitter, budget 5 per message — never unlimited, or the boot check would wait out a whole outage; `retry_after` honoured | an exhausted budget drops that one message; a refused token or chat closes the channel for the session. At boot a refusal refuses the start, an unreachable Telegram does not |
+| 9 | Liveness ping (#235) | its interval (60 s) is the ladder | a 4xx on the ping URL — wrong URL, deleted check — or a URL the HTTP stack cannot request stops the pings, and the monitor then raises its alarm; the same on the fail URL stops only the fail pings. A URL nothing could request is refused at boot |
 
 Row 7 is a fourth pattern worth naming: it does not retry into the void, it **degrades to an
 older copy and gets louder the staler that copy is**. That is a TRANSIENT whose answer in
@@ -349,6 +353,7 @@ names, same defaults — into the config block that owns each domain:
 | `configs/sentiment_config.json` → `stream.connection` / `stream.boot_connection` | 1, 2 |
 | AutoTrader profile → `tick_source` | 4 |
 | `configs/market_config.json` → `broker_transport.connection` | 5, 6, 7 |
+| `configs/app_config.json` → `autotrader.operator_alerts.telegram.connection` | 8 |
 
 **A live session refuses a broker ladder that never gives up.** Budget 0 means retry for ever —
 right for a tick socket (row 4), wrong for broker REST: the broker-truth reads at a session's start

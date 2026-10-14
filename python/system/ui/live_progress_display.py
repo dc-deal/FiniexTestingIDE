@@ -20,9 +20,9 @@ Usage:
     display.stop()
 """
 
+import queue
 import threading
 import time
-import traceback
 from multiprocessing import Queue
 from typing import Dict, List, Optional, Union
 
@@ -31,8 +31,10 @@ from rich import box
 from rich.console import Console
 from rich.layout import Layout
 from rich.live import Live
+from rich.markup import escape
 from rich.panel import Panel
 from rich.table import Table
+from rich.text import Text
 
 from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.types.live_types.live_core_snapshot_types import LiveCoreSnapshot
@@ -42,7 +44,12 @@ from python.framework.types.live_types.live_scenario_stats_types import (
     ScenarioStatus,
 )
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
-from python.framework.types.trading_env_types.currency_codes import format_currency_simple
+from python.framework.types.trading_env_types.currency_codes import (
+    format_currency_signed,
+    format_currency_simple,
+)
+from python.system.ui.render_failure_reporter import RenderFailureReporter
+from python.system.ui.ui_render_utils import prove_printable
 
 vLog = get_global_logger()
 
@@ -59,6 +66,11 @@ class LiveProgressDisplay:
     - Number of running/completed scenarios
     - Per-scenario progress bars with stats
     - Real-time updates every 300ms
+
+    A failure here never ends the batch and is never silent (#586): a frame that cannot be
+    read is reported and skipped, a screen that cannot be drawn is replaced by a failure
+    screen, and either reaches the global log. The scenarios hand their frames over without
+    waiting, so the batch runs on even if this thread ends.
     """
 
     def __init__(
@@ -95,6 +107,8 @@ class LiveProgressDisplay:
         # Runtime tracking
         self._start_time: Optional[float] = None
 
+        self._failure_reporter = RenderFailureReporter(vLog.error)
+
     def _init_stats_cache(self) -> None:
         """Initialize stats cache with INITIALIZED status."""
         for idx, scenario in enumerate(self.scenarios):
@@ -124,10 +138,12 @@ class LiveProgressDisplay:
         # Final render BEFORE stopping
         if self._live:
             try:
-                self._live.update(self._render())
+                self._live.update(self._screen())
                 time.sleep(0.5)  # Give it time to display
-            except:
-                pass
+            except Exception as error:
+                self._failure_reporter.report(
+                    'The final progress screen', error,
+                    'The screen keeps the frame before it; the batch is unaffected.')
 
         with self._lock:
             self._running = False
@@ -140,41 +156,113 @@ class LiveProgressDisplay:
             self._live.stop()
 
     def _update_loop(self) -> None:
-        """Main update loop running in thread."""
-        with Live(
-            self._render(),
-            console=self.console,
-            refresh_per_second=2
-        ) as live:
-            self._live = live
+        """
+        Main update loop running in thread.
 
-            while self._running:
-                try:
+        Printing happens here, inside the guards, and never in a refresh thread of rich's own:
+        a screen whose markup only fails when it is printed is caught like one that cannot be
+        built (#586). Only a failure of the live display itself ends the loop, and it is
+        reported.
+        """
+        try:
+            # No first screen here: Live prints it on entry, before any guard could catch a
+            # screen that fails to print — the loop's first _show() puts it up instead
+            with Live(
+                console=self.console,
+                auto_refresh=False
+            ) as live:
+                self._live = live
+
+                while self._running:
                     # === 1. Read queue aggressively — do NOT check empty()! ===
-                    updates_processed = 0
                     max_updates_per_cycle = 100  # Prevent infinite loop
 
                     for _ in range(max_updates_per_cycle):
                         try:
-                            # Try to read — throws exception when empty
+                            # Try to read — raises queue.Empty when empty
                             update = self.live_queue.get_nowait()
-                            self._process_update(update)
-                            updates_processed += 1
-                        except:
+                        except queue.Empty:
                             # Queue is truly empty
                             break
+                        self._take_update(update)
 
                     # === 2. Render display (always!) ===
-                    live.update(self._render())
+                    self._show(live)
 
-                    # === 3. HART warten ===
+                    # === 3. Wait for the next cycle ===
                     time.sleep(self.update_interval)
+        except Exception as error:
+            self._running = False
+            self._failure_reporter.report(
+                'The progress display', error,
+                'The display has stopped; the batch is unaffected.')
 
-                except Exception:
-                    vLog.error('\n❌ CRITICAL ERROR in LiveProgressDisplay:')
-                    vLog.error(traceback.format_exc())
-                    self._running = False
-                    raise
+    def _take_update(self, update: Union[LiveScenarioStats, LiveStatusFrame]) -> None:
+        """
+        Apply one frame; a frame that cannot be applied is reported and skipped (#586).
+
+        Args:
+            update: A frame from a scenario process
+        """
+        try:
+            self._process_update(update)
+        except Exception as error:
+            self._failure_reporter.report(
+                'A progress frame', error, 'The frame is skipped; the batch is unaffected.')
+
+    def _show(self, live: Live) -> None:
+        """
+        Render and print one screen; a screen that cannot be printed is replaced by a failure
+        screen and tried again on the next cycle (#586).
+
+        The screen is proven printable BEFORE the live display holds it: a held screen is
+        re-rendered whenever any thread prints, and the batch logs to the console while this
+        runs — a report of the failure included.
+
+        Args:
+            live: The live display that owns the console
+        """
+        screen = self._screen()
+        try:
+            prove_printable(screen, self.console.size.width, self.console.size.height)
+        except Exception as error:
+            screen = self._failure_screen(error)
+            self._failure_reporter.report(
+                'The progress screen', error,
+                'A failure screen replaces it until it draws again; the batch is unaffected.')
+        live.update(screen, refresh=True)
+
+    def _screen(self) -> Panel:
+        """
+        The progress screen for this moment; one that cannot be built is a failure screen.
+
+        Returns:
+            Rich Panel with overhead + scenario progress
+        """
+        try:
+            return self.render()
+        except Exception as error:
+            self._failure_reporter.report(
+                'The progress screen', error,
+                'A failure screen replaces it until it draws again; the batch is unaffected.')
+            return self._failure_screen(error)
+
+    @staticmethod
+    def _failure_screen(error: Exception) -> Panel:
+        """
+        What stands on screen while the progress cannot be drawn.
+
+        Args:
+            error: The failure
+
+        Returns:
+            A plain panel naming it
+        """
+        return Panel(
+            Text(f'⚠ progress display failed: {type(error).__name__} — see the global log',
+                 style='yellow'),
+            title='[bold cyan]🔬 Strategy Execution Progress[/bold cyan]',
+            border_style='yellow', box=box.ROUNDED)
 
     def _process_update(self, update: Union[LiveScenarioStats, LiveStatusFrame]) -> None:
         """
@@ -196,9 +284,10 @@ class LiveProgressDisplay:
             # Full progress frame replaces the cache entry.
             self._stats_cache[update.scenario_index] = update
 
-    def _render(self) -> Panel:
+    def render(self) -> Panel:
         """
-        Render the live display.
+        Render the live display from the frames taken so far (#586: public, so a test renders
+        it without the display thread).
 
         Returns:
             Rich Panel with overhead + scenario progress
@@ -441,10 +530,12 @@ class LiveProgressDisplay:
                 else:
                     a_suffix_color = 'dim'
                     a_icon = 'i'
-                awareness_suffix = f' [{a_suffix_color}]· {a_icon} {a_msg}[/{a_suffix_color}]'
+                # The strategy's words are text, never markup (#586)
+                awareness_suffix = (f' [{a_suffix_color}]· {a_icon} {escape(a_msg)}'
+                                    f'[/{a_suffix_color}]')
 
             stats_text = (
-                f'[{pnl_color}]{format_currency_simple(portfolio_value, account_currency)}{dirty_flag}[/{pnl_color}] '
+                f'[{pnl_color}]{format_currency_signed(portfolio_value, account_currency)}{dirty_flag}[/{pnl_color}] '
                 f'[dim]({pnl_sign}{format_currency_simple(pnl, account_currency)})[/dim] \n'
                 f'[blue]{trades}[/blue]{awareness_suffix}'
             )
@@ -452,7 +543,7 @@ class LiveProgressDisplay:
             # Add row
             table.add_row(
                 icon,
-                f'[{name_color}]{name}[/{name_color}]',
+                f'[{name_color}]{escape(name)}[/{name_color}]',
                 progress_text,
                 stats_text
             )

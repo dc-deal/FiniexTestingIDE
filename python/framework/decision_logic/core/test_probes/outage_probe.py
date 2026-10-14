@@ -199,7 +199,7 @@ class OutageProbe(AbstractDecisionLogic):
 
         # One deliberate entry per stale episode — the guard MUST reject it.
         # tick is None on a ghost pass (AT freeze) → symbol from the context.
-        symbol = tick.symbol if tick is not None else self._trading_context.symbol
+        symbol = tick.symbol if tick is not None else self.get_trading_context().symbol
         self._probed_this_episode = True
         self._entry_probe_pending = False
         result = self.trading_api.send_order(

@@ -1,6 +1,7 @@
 {
     "version": "1.0",
     "scenario_set_name": "stale_stress_probe",
+    "run_purpose": "fixture",
     "created": "2026-07-03T00:00:00.000000",
     "description": "Stale-data stress integration (#436): planned stale windows block DATA SOURCES and drive BOTH staleness contracts deterministically \u2014 the tick source (status-plane, guard entry-block) and the signal source (data-plane carve, #434 chain). Includes a no-stress control, an overlap-guard warning case, and an unknown-source exclusion case.",
     "global": {

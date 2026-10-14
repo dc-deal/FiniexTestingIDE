@@ -33,174 +33,113 @@ reads downwards from the version their fixtures hold until they reach the one be
 A test holds the newest heading in this log to the number the server answers with, so a version
 cannot ship without its entry.
 
-## Version 23 — 2026-10-07 (#362)
+## Version 30 — 2026-10-14 (#561)
 
-Every step of an order's life is recorded, and the order counts, the order history and the
-pending-order section are counted from that record — one status for each way an order can end.
+A venue's published history can enter the archive, and what an input file lacks is named.
 
-- New: `GET /api/v1/reports/runs/{run_id}/order-events`, the run's order-event stream. `events`
-  holds one line per step in an order's life — submitted, accepted, refused, triggered, modified,
-  cancelled, filled, expired, an answer that was lost and how it was settled — and for a live
-  session `broker_truth` holds what the venue reported when the session asked it: at its start, at
-  its end, and when the session's comparison with the venue changed. `keys` declares both lists
-  `["scenario_name", "seq"]`, and `seq` runs across both within a unit. It is served while a run
-  is still going; `truncated_tail` says a session was stopped in the middle of a line, and
-  `scenario_name` and `order_id` narrow it. The run list names a run's streams in the new
-  `stream_files`.
-- New: `GET /api/v1/reports/runs/{run_id}/venue-account`, live sessions only — what the venue held
-  at the session's start and at its end (open orders and positions counted, the balances as the
-  venue reported them, a part it could not read named in `unread_parts`) and the reconciliation in
-  between: `reconcile_lines`, `divergent_lines`, `last_reconcile_state`, `last_divergence`. `key` is
-  `["name"]`. A backtest has none, and neither has a dry run against a real venue, whose account
-  reads never reach the venue — 404 `artifact_not_produced`.
-- The order counts — `execution-stats` (every unit and `totals`), `run-summary`,
-  `aggregated-portfolio` and a sweep's `combinations`: `orders_sent` is gone. In its place there is
-  one count per way an order starts or ends — `orders_submitted`, `orders_adopted` (an order a
-  previous session sent, taken over at this session's start), `orders_executed`, `orders_denied`
-  (refused before anything was sent), `orders_rejected`, `orders_cancelled`, `orders_expired`,
-  `orders_undelivered` and `orders_unaccounted`. **Two meanings changed:** `orders_executed` now
-  counts the fills of closing orders too, and `orders_rejected` counts the venue's refusals only.
-  `execution-stats` adds `orders_failed` — denied, rejected, undelivered and unaccounted together —
-  so a consumer need not add them up.
-- `order-history` keeps a row per submission and one per way an order ended. `status` gains
-  `denied`, `undelivered` and `unaccounted` and loses `submitted` and `partial`. New:
-  `order_type` (as the order was asked), `close_type` (`full` or `partial`, on a close row),
-  `initiator` — who ended the order: `strategy`, `framework` or `venue` — and `end_reason`:
-  `cancel_requested`, `protection_released`, `order_timeout`, `resolution_ceiling`, `session_end`,
-  `scenario_end`, `venue_cancelled`, `venue_expired`. `swap` and `slippage_points` were removed.
-- `rejection_reason` gains `unaccounted_order`, `position_not_found` and `close_withheld` and loses
-  `broker_unreachable` and `unresolved_write`: an answer that never came is not a refusal, and the
-  order events follow it as `unresolved` and then `resolved`.
-- `pending-orders` is counted from the order events, and **an AutoTrader session now has a row** —
-  it had none. The counters carry the names of what they count: `total_submitted`,
-  `total_accepted`, `total_rejected`, `total_never_confirmed` (undelivered and unaccounted) and
-  `total_expired` replace `total_resolved`, `total_filled`, `total_timed_out` and
-  `total_force_closed`. `avg_in_flight_ms`, `min_in_flight_ms`, `max_in_flight_ms` and
-  `in_flight_count` — the time from a submission to the venue's answer — replace the four
-  `*_latency_*` fields, and `never_confirmed_orders` lists the orders behind
-  `total_never_confirmed`. The `pending_*` fields of `aggregated-portfolio` follow the same names.
-- `trade-history` adds `close_type`, `entry_lots` (the position's size when it opened) and
-  `position_closes` (how many records the position produced in its unit).
-- Deployments say whether real money moved. `GET /api/v1/deployments` adds `orders_to` per row —
-  where its sessions' orders went, each value once: `["venue"]` real money, `["simulated"]` a
-  rehearsal, both a deployment that did each — and a row mixing the two is `changed`. On
-  `GET /api/v1/deployments/{deployment_id}` each session carries `orders_to` and
-  `orders_to_changed`, the advisory carries `orders_to` and now also fires on a mix alone, and a
-  sweep's `combinations` carry `orders_to` too. A single run said it already, as `orders_to` on the
-  run list.
+- `GET /api/v1/validation-checks` and the findings of a run: `spreadless_tick_data` is gone.
+  `data_no_quote` counts every input file without a quote, whatever the reason — an older
+  collector format or a venue's history that keeps no quote. New beside it: `data_no_arrival_time`,
+  `data_arrival_time_reconstructed`, `data_missing_trades` and `data_origin_external`, and
+  `data_synthetic`, which takes over the synthetic-signal warning that `signal_availability`
+  carried. A run recorded before this contract may still name `spreadless_tick_data`; the catalog
+  no longer lists it, so show the id itself.
+- `origin_classes` on a ledger row and in the scenario details may hold `external`: data no
+  collector of ours recorded, such as a venue's published history. It is never admissible for a
+  parity measurement.
 
-A run recorded before this contract serves `0` in the new counts and the pending-order counters,
-and `null` in the new order-history fields and in `orders_to` on deployments, until it is run
-again.
+An id removed and a value added; no field changed its shape.
 
-## Version 22 — 2026-10-06 (#524, #568)
+## Version 29 — 2026-10-13 (#588)
 
-The documentation this API answers with is now served by it, and every route says which document
-describes it.
+A live session that refused at its first tick is told apart from one that crashed.
 
-- `GET /api/v1/docs` lists every document this server carries, each with the routes it describes;
-  `key` is `["name"]`. `GET /api/v1/docs/{name}` serves one in full as `text/markdown` — this
-  API's only answer that is not JSON.
-- `GET /api/v1/docs/search?q=…` ranks the documentation's PASSAGES — the text under one heading —
-  against a query, best first. A hit names its document, its heading and the line it starts at, so
-  it can be opened at the answer rather than at the top; `key` is `["document", "heading", "line"]`.
-  It is called a passage and not a section because in this API a *section* is one section of a run
-  report, and one word carrying two contracts is how a reader comes to hold the wrong one.
-  `terms_not_matched` lists the query's words that appear in no document at all — the field to
-  read when a result looks wrong, because a word that is not our vocabulary contributes nothing to
-  the ranking and that is invisible from outside.
-- A new grant surface, `docs`: a token needs `docs:*`. **A token that enumerates its surfaces is
-  refused on these three routes until it is re-minted**, and the server reads its tokens at boot,
-  so the new grant takes effect on a restart.
-- Three new error codes — `document_not_found` (404), `empty_query` (400) and `query_too_long`
-  (400). An empty `q` is refused rather than answered with everything or with nothing: one
-  character is enough to search, so an empty query is an error and not a stage of typing.
-- Every route now answers with `Link: <…>; rel="describedby"`, naming the document that describes
-  it. It is a header rather than a field so it also reaches the routes whose body is a bare array,
-  and so a client that ignores it is unaffected.
-- `Link` and the seven `X-Bar-*` headers are now published cross-origin. The bar headers were
-  already served and were invisible to a browser client, which hides every response header that is
-  not safelisted — and three of them carry semantics a caller cannot infer from the rows at all.
+- `warnings-errors`: the `outcome` carries `refused_at_first_tick` — `true` when a live session
+  stopped at its first tick because the warmup history it starts from could not be completed
+  there: the venue had not yet committed the period that ended since the session read it, or could
+  not be read again. Such a session reads `shutdown_mode: emergency` and is graded `failed`, exactly
+  like a crash, so without this flag the two look the same; the reason is in `emergency_reason`.
+  `false` on every other run and on a backtest.
 
-## Version 21 — 2026-10-02 (#555, viewer#21)
+An addition; no existing field changed. A run recorded before this contract serves `false`.
 
+## Version 28 — 2026-10-11 (#508)
 
-The worker-decision report says "not counted" instead of zero.
+A run says how many of its fills were booked at the venue's own fee and how many at our estimate,
+and what each came to.
 
-- `GET /api/v1/reports/runs/{run_id}/worker-decision`: every unit carries `worker_decision_tracked`
-  — whether it counted its decisions and timed its workers. A backtest leaves it off by default,
-  because the tracker sits on the hot path. Untracked, `decision_count`, `buy_signals`,
-  `sell_signals`, `flat_signals`, `trades_requested` and the four `decision_*_time_ms` are null;
-  they read 0, so a logic that decided on 2,737 ticks said it decided nothing. The unit still names
-  its logic (`decision_logic_type`, `decision_logic_name`), which an untracked unit left empty, and
-  `ticks_processed` is counted either way. `workers` stays empty when untracked — that empty list is
-  true.
-- `worker-decision`: a worker row's `compute_ratio_pct` is null when no tick was processed, and
-  `ticks_idle` is null when the worker never computed — it read 0, which says "just computed". On
-  `worker_totals`, which span several units' tick counts, both are null.
+- `portfolio`: every unit row carries `fill_fees_by_source` — one entry per fee source its fills
+  carry, `venue` or `estimate` as on the order-event stream's `fee_source`, each with `fill_count`
+  (the fills) and `fill_fees` (what their fees came to, in the account currency). A backtest has
+  only `estimate`: it has no venue to ask. Empty where the unit executed nothing. Every
+  per-currency row carries the same, summed over its units — and so does the `headline` of every
+  block on `aggregated-portfolio`.
+- `order-history`: every row carries `fee_source` — where its `commission` came from, `venue` or
+  `estimate`. Null where nothing executed.
 
-Every stored run was carried over: a unit with no logic type was not tracked — a tracker stamps the
-type on every unit it counts — so its counters are null now; a unit with one is marked tracked and
-keeps its figures. The logic name of an old untracked unit stays null, because only a new run
-stamps it.
+Both are additions; no existing field changed. A run recorded before this contract serves an empty
+`fill_fees_by_source` and a null `fee_source`, until it is run again.
 
-## Version 20 — 2026-10-02 (viewer#21, #557)
+## Version 27 — 2026-10-11 (#508)
 
+A live fill's fee is the venue's own charge, and every executed order event says where its fee
+came from.
 
-A refused order now says what was refused, and the order history says "absent" as null.
+- The order-event stream: `fee_source` on every event that executed something — `venue` where
+  `fee` is the figure the venue reported for that fill, `estimate` where it is our fee model's
+  (the declared rate times the order's value). A backtest is always `estimate`: it has no venue to
+  ask. Null on an event that executed nothing, on a fill nothing could be booked for whose venue
+  reported no fee, and on every event recorded before this contract.
+- `fee` on a live fill — and with it the order history's `commission`, the trade history's fees
+  and every fee figure summed from them — is now the venue's own charge wherever the venue reports
+  it in the answer that says the order filled, no longer the declared rate's estimate. Same fields,
+  another source: a live run before this contract and one after can differ in fees for the same
+  orders. A live event that still says `estimate` where its venue reports the fee means the answer
+  came without it; the session's log says so as well.
 
-- `GET /api/v1/reports/runs/{run_id}/order-history`: a rejected row states its side (`action`), its
-  `symbol`, its `direction` and its `requested_lots`, and when it was refused. Every rejection used
-  to leave them empty, so `?symbol=` dropped all of them without a word — 12 rows with 2 rejections
-  unfiltered, 10 rows and none with the filter. A rejection can be on either side: a partial close
-  below the symbol's minimum is refused on the close side. Runs recorded before this contract carry
-  the symbol and the side, taken from their own records; their direction, size and time stay null,
-  because the records never had them.
-- `order-history`: `execution_time` is renamed `event_time`. On these rows it is a point in time —
-  when the row's event happened, on the run's clock: the fill, the refusal, the expiry; null on a
-  `pending` row. Every other `execution_time` in the API is how long something ran.
-- `order-history`: a value that does not exist is null, never an empty string or `0.0` —
-  `position_id`, `direction`, `action`, `requested_lots`, `executed_lots`, `executed_price`,
-  `event_time`, `rejection_reason`, `rejection_message`. A zero price reads as a price. `direction`,
-  `action`, `status` and `rejection_reason` are enums, so the schema lists their values; the values
-  themselves are unchanged.
-- `order-history`: an expired row states its direction and its requested lots, and the expiry of a
-  close-side order — a protective stop — says `close`; it said `open` for every expiry.
-- `GET /api/v1/reports/runs/{run_id}/pending-orders`: an active order's `order_type` (`limit`,
-  `stop`, `stop_limit`) and `direction` are enums. The two active-order lists hold the orders still
-  resting when the unit's data ended; in a backtest the same orders are recorded `expired` in
-  `order-history` in that same step, so they are not open. A STOP or STOP_LIMIT whose trigger was not
-  reached sits in the stop list; a STOP_LIMIT whose stop triggered becomes a limit order.
+## Version 26 — 2026-10-09 (#582)
 
-Every stored run was carried over to this shape, so an old run answers like a new one.
+A run's header is served whole, and the run list says who started each run.
 
-## Version 19 — 2026-10-01 (#547, viewer#21)
+- `GET /api/v1/reports/runs/{run_id}/header` — new: the record every run writes at its start —
+  what it is, what it was started from, who started it and which code ran. Every path in it is
+  relative to its repository; no path of the machine is served. `run_not_found` for an unknown run,
+  `run_header_missing` for a run the index lists whose header file is gone, `artifact_unreadable`
+  for a header that no longer matches its model — naming the fields that fail. Its
+  document, [run header](/api/v1/docs/run-header), is the authoritative list of every key, with its
+  meaning and the label to show it under.
+- The run list: every run carries who started it — `origin_channel` (`cli`, `sweep`, `direct` or
+  `api`), `origin_client`, `origin_principal` and `origin_host`, the header's `origin` block
+  flattened. Null on a run that predates the block.
+- *Origin* on its own keeps one meaning: who started a run. Three served fields still carry the
+  word for something else — the configuration directory row's `origin` (where a file lives), a
+  feed-health episode's `origin` (real or stress-injected), and `origin_classes` /
+  `origin_evidence_grades` on scenario details and sweep combinations (the class of instance that
+  produced a run's data); a later contract renames them.
+- The run list: `fixture_superseded` is `true` also for a run of a catalog entry this side no
+  longer declares — nothing can produce it again, so it is current no more.
 
-
-A session now records the broker configuration it traded with, and one more list says what keys
-its rows.
-
-- `GET /api/v1/reports/runs/{run_id}/broker`: every unit carries `broker_config_id` beside
-  `config_hash`. It is the run-config store id of the broker configuration an AutoTrader session
-  froze at its start — the symbol specifications from the venue's cache, the seed's fee structure
-  and the fee tier the venue reported — which `config_hash` only digests in eight characters. A
-  later backtest of the same window reads that frozen copy instead of whatever the cache holds by
-  then. Empty for a simulation unit, which reads the archive's broker files when it runs, and on a
-  session recorded before the freeze existed.
-- `GET /api/v1/reports/runs/{run_id}/pending-orders` declares `key: ["name"]` for `units` — the
-  unit name, which a scenario set cannot repeat (it is refused at validation) and an AutoTrader
-  session has once. The nested `active_limit_orders` / `active_stop_orders` lists and
-  `order-history` declare no key yet; both come with #557. Old runs serve the key too: the
-  default fills in on read, nothing to re-fetch.
-
-Both are additions with a default; no existing field changed.
-
-## Versions 18 and earlier
+## Versions 25 and earlier
 
 One line each. Every one of these moved a shape or a meaning; what they moved is summarised here
 rather than spelled out, because a consumer this far behind needs the list of steps, not each step's
 reasoning. The full text of a compressed version is in this repository's history.
 
+- **Version 25** — 2026-10-08 (#576): The runs a consumer pins became entries of a fixture catalog — `fixture_superseded` on every run of the run list says whether a run is its entry's current production (`false`), an older or failed one (`true`), or no catalog production at all (`null`).
+- **Version 24** — 2026-10-08 (#576): Every run says what it is for and under which contract its
+  reports were written — `run_purpose` (`regular`, `fixture`, `certificate`) and `report_contract`
+  on the run list; `run_purpose` and `config_description` on the configuration directory.
+- **Version 23** — 2026-10-07 (#362): Every step of an order's life is recorded —
+  `order-events` and `venue-account` were added — and the order counts, the order history and
+  the pending-order counters are counted from that record, one status per way an order can end:
+  `orders_sent` was replaced, and `orders_executed` and `orders_rejected` changed meaning.
+- **Version 22** — 2026-10-06 (#524, #568): The documentation is served by the API — `GET /api/v1/docs`, `GET /api/v1/docs/{name}` (markdown) and `GET /api/v1/docs/search` over passages — behind a new `docs` grant surface (tokens re-minted, server restarted); three error codes (`document_not_found`, `empty_query`, `query_too_long`); every route answers with `Link: …; rel="describedby"`, and `Link` and the `X-Bar-*` headers are published cross-origin.
+- **Version 21** — 2026-10-02 (#555, viewer#21): The worker-decision report says "not counted" instead of zero — `worker_decision_tracked` per unit, null counters and timings on an untracked one, and null `compute_ratio_pct` / `ticks_idle` where nothing was measured.
+- **Version 20** — 2026-10-02 (viewer#21, #557): A refused order says what was refused — its side,
+  symbol, direction and size — `execution_time` became `event_time`, and the order history says
+  "absent" as null and its closed values as enums.
+- **Version 19** — 2026-10-01 (#547, viewer#21): A session records the broker configuration it
+  traded with (`broker_config_id` on `broker`), and the pending-orders unit list declares its key.
 - **Version 18** — 2026-09-29 (viewer#21, #557): The figures an aggregate inventory found wrong were
   corrected: `total_fees` is the closed trades' fees beside a new `fees_charged`, a trade that
   realised nothing is neither a winner nor a loser, streaks and the drawdown trio are one account's,

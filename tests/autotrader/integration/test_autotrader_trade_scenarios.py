@@ -185,23 +185,24 @@ class TestDuplicateSignalGuard:
 
 class TestMinimalWarmup:
     """
-    Minimal warmup: bar_max_history=30, workers cannot satisfy all warmup periods.
-    Session must complete without crash — no exception, result returned.
+    A warmup the bar history cannot hold is refused at startup (#588).
 
-    Workers (RSI periods=M5:14, Bollinger periods=M30:20) are starved of M30 history.
-    Bollinger stays below warmup threshold for the entire 300-tick session.
-    Decision logic receives empty/partial worker results and must not crash.
+    bar_max_history=30 against the 71 M5 bars the RSI worker (periods=M5:14) requires. The
+    renderer keeps at most bar_max_history bars per timeframe, so the workers would run on a
+    trimmed history and nothing would say so. This profile once asserted the opposite — that a
+    session starved this way completes — and ran its RSI on 30 bars for every session it made.
     """
 
-    def test_session_completes(self, warmup_session):
-        assert warmup_session is not None, 'Session did not complete'
-
-    def test_no_fatal_errors(self, warmup_session):
-        assert len(logged_messages(warmup_session, LogLevel.ERROR)) == 0, (
-            f'Unexpected errors with bar_max_history=30: {logged_messages(warmup_session, LogLevel.ERROR)}'
+    def test_session_refuses_before_the_first_tick(self, warmup_session):
+        assert warmup_session.shutdown_mode == 'emergency', (
+            f"Expected a refusal at startup, got shutdown_mode='{warmup_session.shutdown_mode}'"
+        )
+        assert warmup_session.ticks_processed == 0, (
+            f'The refused session processed {warmup_session.ticks_processed} ticks'
         )
 
-    def test_ticks_were_processed(self, warmup_session):
-        assert warmup_session.ticks_processed > 0, (
-            'Expected ticks to be processed — session failed before tick loop started'
+    def test_refusal_names_the_timeframe_and_the_capacity(self, warmup_session):
+        reason = warmup_session.emergency_reason or ''
+        assert 'M5: 30/71' in reason and 'bar_max_history' in reason, (
+            f'The refusal must name the timeframe, the numbers and the setting: {reason!r}'
         )

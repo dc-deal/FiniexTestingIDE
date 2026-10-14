@@ -1,12 +1,16 @@
+import queue
 from multiprocessing import Queue
 from typing import Optional
 
+from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.types.live_types.live_scenario_stats_types import LiveStatusFrame
 from python.framework.types.live_types.live_stats_config_types import (
     LiveStatsExportConfig,
     ScenarioStatus,
 )
 from python.framework.types.process_data_types import ProcessScenarioConfig
+
+vLog = get_global_logger()
 
 
 def send_status_update_process(
@@ -45,12 +49,19 @@ def broadcast_status_update(
     if not live_queue or not live_stats_config.enabled:
         return
 
+    # === NORMAL STATUS UPDATE (all scenarios) ===
+    # Built outside the try: a frame that cannot be built is a defect and propagates (#586)
+    frame = LiveStatusFrame(
+        scenario_index=scenario_index,
+        scenario_name=scenario_name,
+        status=status,
+    )
     try:
-        # === NORMAL STATUS UPDATE (all scenarios) ===
-        live_queue.put_nowait(LiveStatusFrame(
-            scenario_index=scenario_index,
-            scenario_name=scenario_name,
-            status=status,
-        ))
-    except:
+        live_queue.put_nowait(frame)
+    except queue.Full:
         pass  # Queue full - skip update
+    except Exception as error:
+        # The progress screen is the only reader: reported, never raised (#586)
+        vLog.error(f'❌ [DISPLAY] A scenario status frame was not sent — '
+                   f'{type(error).__name__}: {error}. The progress screen misses it; '
+                   f'the scenario is unaffected.')

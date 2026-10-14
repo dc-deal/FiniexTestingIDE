@@ -53,6 +53,14 @@ one took over at its start: a resting order found at the venue under this bot's 
 order carried over with its position. Counted apart from `orders_submitted`, which is what this
 session sent; an execution rate divides by both. See *carry-over*.
 
+**alert episode** — One symptom as the operator hears it: an *operator alert* when it starts, the
+all-clear once it has stayed away for `all_clear_after_s`, and a recurrence before the all-clear
+inside the same episode — so a breaker or a feed flapping around its threshold is two messages,
+not one per crossing. Not the *disturbance episode* a run report counts
+(`disturbance_episode_count`), one per stale stretch of an input: one alert episode can span
+several of them. See [Unattended Operation](autotrader/unattended_operation.md) and, for the
+disturbance episode, [Outage Handling](user_guides/outage_handling_guide.md).
+
 **algo** — The user-authored code of a strategy, kept in `user_algos/`. See
 [User Algo Workspace](user_guides/user_modules_and_hot_reload_mechanics.md).
 
@@ -122,6 +130,15 @@ set's `global` block, then the scenario. For an AutoTrader profile: `app_config.
 defaults under the profile. The `user_configs/` override is a separate mechanism, not a level.
 See [Config Cascade](config_cascade_guide.md).
 
+**catalog production** — One run of the fixture catalog's `produce` for one entry: the runs it
+made and whether they carried every property the entry asserts. The newest one that passed is the
+entry's *current fixture*. Not a *production* profile, which trades real money. See
+[Fixture Catalog](architecture/fixture_catalog.md).
+
+**certificate run** (`run_purpose: certificate`) — A release-gate run whose record becomes a
+release certificate, such as a real-money *field study*. Never produced again and never deleted.
+Not the certificate itself, which is a file beside the gate's test suite. See *run purpose*.
+
 **client order id** (`client_order_id`) — Our key for an order, sent with it on the wire so the
 venue's answers and its list of open orders can be matched back to us — and to this session, whose
 run id it carries a piece of, beside a counter. Live only; a backtest sends none. Not the *order id*
@@ -133,8 +150,19 @@ position (`full`) or part of it (`partial`). Set once the close fills; empty on 
 **combination** — One point of a sweep's parameter grid, run as one ordinary backtest. See
 [Parameter Optimization](architecture/parameter_optimization_system.md).
 
+**complete at** (a bar) — A bar is complete at an instant when its period has ended by then: its
+opening time plus its timeframe's duration lies at or before that instant. A bar is stamped with
+the instant its period opens but known only when it ends, so a bar that *opened* before a start is
+not therefore complete at it — the bar holding the start opened before it and closes after. See
+[Warmup History](architecture/warmup_history.md).
+
 **compute basis** — When a worker recomputes: `live` on every tick (the forming bar included) or
 `bar_close` only when a bar closes. Not a kind of run. See [Worker Naming](user_guides/worker_naming_doc.md).
+
+**config description** (`config_description`; `description` in the file) — Why a configuration
+exists, in its own words, declared at the top of a scenario set or a profile; Markdown allowed.
+Served on the configuration's directory row. Not the one-sentence description of a validation
+check. See [Directory](consumer/directory.md).
 
 **config snapshot** — The FILE NAME of the configuration a run started from, recorded in its
 header (`config_snapshot`). The full strategy configuration a ledger row carries is a different
@@ -158,21 +186,29 @@ session reads its own broker's feed. In a report it is each unit's `data_broker_
 configuration directory, a row's `data_broker_types`.
 
 **data origin** — Which kind of source produced an archived file: `origin_class` (`production`,
-`development`, `unknown`) with its evidence grade, stamped at import and carried into every run's
-consumption record. Not the *broker*. See [Data Provenance](architecture/data_provenance.md).
+`development`, `unknown`, `external`) with its evidence grade, stamped at import and carried into
+every run's consumption record. Not the *broker*. See [Data Provenance](architecture/data_provenance.md).
 
 **data source** — One of the inputs a scenario reads, named by its key: its *data broker* for the
 ticks, its `data_sentiment_type` for the signals. A stale-data stress event names the one it makes
 stale in `stale_data_source`. See [Stress Test](stress_test.md).
 
 **data window** — The market window one run unit was declared to cover (`data_windows` on the run
-header): a start, and an end unless it is open. Not a span over several units.
+header): a start, and an end unless it is open. Not a span over several units. On this side a
+*window* is always a span of TIME — the served `window_start`, `window_end`, `window_count` and
+`windows` mean the same — never a docked panel: that is the FiniexViewer's `window`, defined in its
+own glossary.
 
 **decision basis** — The fresh / stale / blind counts of the inputs a decision was made on. See
 [Signal Data Source](data_pipeline/signal_data_source.md).
 
 **decision logic** — The one class that turns worker outputs into decisions. See
 [Quickstart](user_guides/quickstart_guide.md).
+
+**deficiency** (`DataDeficiency`; `deficiencies` in the tick index) — What an archived file LACKS:
+`no_quote`, `no_arrival_time`, `arrival_time_reconstructed`, `missing_trades`, `synthetic`. Measured
+from the data, never inferred from a format version, and counted once per run. Not a gap in time,
+and not a property of the venue. See [Data Provenance](architecture/data_provenance.md).
 
 **denied** (an order status and an order event) — Refused HERE, before anything was sent: a lot
 size the venue would not take, funds already committed, the order guard. Never submitted, so a
@@ -209,6 +245,27 @@ the `session_start` *broker truth* line. A point in time — not the
 about how much market time was processed — that is the *tick timespan* — and it is never a point
 in time: when an order's event happened is its *event time*.
 
+**external** (`origin_class: external`) — Data no instance of ours recorded: a venue's published
+history, brought in by a converter that stamps its own identity. A backtest reads it only where
+`admitted_origin_classes` admits it, and it is never admissible for a parity measurement. Not
+*unknown*, which means nobody could be named. See [Data Provenance](architecture/data_provenance.md).
+
+**fee report** (`fee_report`) — Where a venue reports the fee it charged for a fill, as its adapter
+declares it: `status_answer` — in the answer that reports the order filled, as Kraken does;
+`executions` — only with the order's executions, after the fill; `not_reported` — no fee per fill,
+as at a spread broker. A declaration, not a report of fees: it decides whether a live fill can carry
+the venue's own figure (*fee source*). A field study's capture records it in its header. See
+[Broker Trade Records](architecture/broker_trade_records.md).
+
+**fee source** (`fee_source`, `fill_fees_by_source`) — Where the fee booked for a fill came from:
+`venue` — the figure the venue reported for that fill, in the answer that reported it, which is
+what the account was charged; `estimate` — our fee model's, the declared rate times the order's
+value. A backtest is always `estimate`; a live fill is `venue` wherever its venue reports the fee
+there. Where the venue does is declared on the adapter (`fee_report`). On the portfolio report,
+`fill_fees_by_source` counts a unit's fills per fee source (`fill_count`) and what their fees came
+to (`fill_fees`) — neither of the two fee totals: swap is not a fill's fee. Not a *source* in the
+signal sense. See [Portfolio](consumer/portfolio.md).
+
 **fees charged** · **total fees** (`fees_charged`, `total_fees`) — Two fee totals of one run.
 *Total fees* are the fees of the trades it CLOSED — the population every trade row, booking period
 and trade analytic sums. *Fees charged* are everything the run charged, entry and exit fees and
@@ -217,6 +274,14 @@ swap on every position, open ones included. They differ by the fees of what is s
 **field study** — The real-money acceptance test of the live execution stack, whose record becomes
 a release certificate. See [Field Study](tests/live_field_study/field_study_guide.md).
 
+**fixture** — Never used alone. *Fixture run* (`run_purpose: fixture`): a run constructed to show
+something — every run a test starts, and every run a consumer pins; its numbers are built, not
+earned. *Test fixture*: the data a test reads from `tests/fixtures/`, or a pytest fixture in a
+`conftest.py`. A consumer's *fixtures* are the answers it captured from this API to test against.
+A *current fixture* is the run a catalog entry's newest verified production made — see
+[Fixture Catalog](architecture/fixture_catalog.md); a *superseded* one (`fixture_superseded: true`)
+was made by an older or a failed production. See *run purpose*.
+
 **fragment** — One ledger file, written per run. Nothing else is called a fragment.
 
 **in flight** — A pending order that was sent and not yet acknowledged: in a backtest the latency
@@ -224,6 +289,19 @@ simulator still holds it, in a session the venue has not yet answered. `in_fligh
 event is how long that took, on the acceptance or refusal that answers the submission — the modelled
 delay in a backtest, measured live, and empty where the answer was learned by asking. See
 [Pending Orders](architecture/pending_order_architecture.md).
+
+**inbox** — Three different places, so the bare word is not used alone:
+- **import inbox** — the folder a producer's files wait in until an import takes them: `data/raw/`
+  for tick exports, `data/raw/signals/` for signal JSONL. An import writes the archive from it and
+  moves each file it imported to `data/finished/`; a file it refused, or skipped as a duplicate,
+  stays where it is. The import screen's first step scans both. See [Data Import
+  Pipeline](data_pipeline/data_import_pipeline.md#the-import-screen-its-log-and-its-estimate).
+- **signal inbox** (`SignalInbox`) — the buffer between a signal stream's transport thread and the
+  loop: it holds the snapshots that arrived until the loop takes them. See [Signal Data
+  Source](data_pipeline/signal_data_source.md).
+- **executor inbox** — where a session's broker answers (acknowledgements, fills, query results)
+  wait until the executor drains them, on every pass of the loop, tick and heartbeat alike. See
+  [Live Execution](architecture/live_execution_architecture.md).
 
 **index** — A derived single file, `<store>_index.parquet`, at the root of its store and rebuilt
 from the store's own entries. See [Data Storage Layout](architecture/data_storage_layout.md).
@@ -241,7 +319,9 @@ many periods, such as a deployment's total or a month's drawdown. Sealing one bo
 `ExecutorMode.LIVE`, `live_types/` — it names the live execution stack that every AutoTrader
 session runs, mock sessions included. For the kinds of run say *AutoTrader session*, *live-adapter
 session* or *real-money session*; for the other senses see *compute basis*, *live transport*,
-*stream state*, *data origin* and *live telemetry*.
+*stream state* and *live telemetry*. A signal's `data_origin` is `live` when the producer's output
+was real and `synthetic` when it was generated — not the *data origin* entry, which names the
+class of instance that produced an archived file.
 
 **live-adapter session** — An AutoTrader session on a real venue's adapter: a dry run or a
 real-money session.
@@ -256,6 +336,12 @@ exports as it goes. Here *live* means "as it happens", which is why the code und
 
 **live transport** — Signals arriving over the network from the producer, as opposed to a mounted
 archive. See [Signal Data Source](data_pipeline/signal_data_source.md).
+
+**liveness ping** — The ping an AutoTrader session sends a monitoring service every interval while
+its tick loop is still passing; the monitor raises the alarm when pings stop. It vouches for the
+LOOP, not the process, so a hung session goes silent too — and for one bot: each bot pings a check
+of its own. Not the *heartbeat*: that is the tick
+loop's idle pass when no tick arrives. See [Unattended Operation](autotrader/unattended_operation.md).
 
 **log warning count** (`log_warning_count`) — The WARNING records in a run's log pot, Tier 2 —
 ignorable by design. Not the *warning count*. See [Warnings & Errors](architecture/warnings_errors_tiers.md).
@@ -292,6 +378,14 @@ previous period's close, read at the same instant, or a unit's first observed va
 `final_equity − net_pnl`, which would drop what was still open. See
 [Accounting Periods](architecture/accounting_periods.md).
 
+**operator alert** — A message an AutoTrader session sends its operator out of band, over Telegram:
+a start that failed or was refused, an abort, an emergency stop, the breaker, stale inputs, a
+stalled loop, the session's end. Always *operator* alert — `AwarenessLevel.ALERT` is a display
+severity, `alert_only` a reconciliation mode, and `on_give_up: alert` a connection's give-up rule
+(log an error and go on — for the alert channel's own ladder, the one message is dropped); none of
+them sends anything. A symptom is one *alert episode*. See
+[Unattended Operation](autotrader/unattended_operation.md).
+
 **order event** · **order-event stream** — One step in an order's life — submitted, accepted,
 triggered, a cancel or modification asked for and how it was answered, an answer lost and the
 asking that settled it, the fill or the ending — and the run's file that holds them,
@@ -322,6 +416,14 @@ and never acted on. What a venue offers of the types is its order capabilities.
 the only value that means real money. Recorded on every run header and every ledger row; a
 deployment lists the values of its sessions, and both together mean it mixed a rehearsal with real
 money. See [Introduction](introduction_to_the_ide.md#the-kinds-of-run).
+
+**origin** (`origin`) — Who started a run: how (`cli`, `sweep`, `direct`, `api`), which client, for
+which account and on which installation — the block every run header records at its start, served
+on the run list as `origin_channel`, `origin_client`, `origin_principal` and `origin_host`. The word
+keeps this one meaning: the configuration directory row's `origin` (where a file lives), a
+feed-health episode's `origin` (real or stress-injected) and the `origin_classes` /
+`origin_evidence_grades` of a run's data (see *data origin*) are being renamed (#581, #582). See
+[Run Origin & Code Identity](architecture/run_origin_and_code_identity.md).
 
 **paper** — The planned name for a dry run, not yet a configuration value (#304).
 
@@ -364,6 +466,11 @@ for an order-driven venue, the mid for a quote-driven one. See [Market Model](ar
 trade prints) or `quote_driven` (a dealer quotes both sides, nothing prints). See
 [Market Model](architecture/market_model.md).
 
+**principal** (`origin.principal`, served as `origin_principal`) — On whose behalf a run was
+started: `operator`, the console's own principal, or the account an API token acts for — which may
+be a person or a service. Not *person*, which in the account vocabulary is a KIND of account, and
+not *account* in this glossary's sense, a run unit's balance. See *origin*.
+
 **profile** — Never used alone outside the AutoTrader context. *AutoTrader profile*: one bot's
 configuration file. *Generator profile*: a set of generated scenario windows, run by a *profile
 run*. *Volatility profile*: a discovery cache of volatility statistics. *Profiling*: measuring
@@ -371,6 +478,15 @@ where tick-processing time goes.
 
 **real-money session** — A live-adapter session with `dry_run` false: its orders are placed at the
 venue and move the account.
+
+**refused at the first tick** (`refused_at_first_tick`) — A live-adapter session that stopped at its
+first tick because its *warmup history* could not be completed there: the venue had not yet
+committed the period that ended since the boot read, or could not be read again. A refusal of the
+SESSION, never of an order — no order is *denied* or *rejected* by it. Graded `failed` like any
+emergency. The tick's workers and decision did not run, but the executor's stop and take-profit
+check of that tick may have sent a close. Not a start refused before the loop — by the cold start
+or the Field Study's preflight: that one is graded by what it logged, and its operator alert reads
+STARTUP REFUSED. See [Warmup History](architecture/warmup_history.md).
 
 **rendered configuration** (`rendered_config_id`) — What an AutoTrader session RAN with, as
 opposed to the profile file it was GIVEN: the profile with the `app_config.autotrader` layer merged
@@ -382,6 +498,11 @@ a schema — a later algo version may drop a parameter and the document stays tr
 **replay** — Feeding archived data through a pipeline in recorded order: a backtest replays its
 scenarios, a mock session its window. The producer's *replay window* — envelopes re-sent after a
 reconnect — is a different thing.
+
+**report contract** (`report_contract`) — The API contract version a run's reports were written
+under, stamped at its start. Compared with the contract the server answers with, it tells an old
+run from a wrong one: a figure a later contract added reads `0` or `null` on an older run. See
+[Contract Log](consumer/contract-log.md).
 
 **resolved · unresolved** — Two meanings, told apart by where they stand. On an order event,
 `unresolved` is a request whose answer was lost or named nothing, and `resolved` the asking that
@@ -398,6 +519,11 @@ session. See [Batch Data Flow](architecture/batch_data_flow.md).
 `finished_with_errors` (it completed, but errors were logged), `failed` (units failed, or the session
 ended in an emergency) or `crashed` (the process did not complete). The exit code says the same. See
 [Warnings & Errors](architecture/warnings_errors_tiers.md).
+
+**run purpose** (`run_purpose`) — What a run is FOR: `regular`, `fixture` or `certificate`,
+declared at the top of the configuration it started from — absent means `regular`, and a
+configuration the user owns never declares one — and stamped on its header. It never says whether money moved; `orders_to` does. See *fixture*, *certificate run*
+and [Run Kinds](consumer/run-kinds.md).
 
 **report section** (served as a route segment and in a run's `artifacts`) — One part of a run's
 report: `trade-history`, `portfolio`, `booking-periods` and the rest. Which sections a run holds
@@ -514,6 +640,13 @@ the reconciliation lines between, derived from the *broker truth* and served as 
 **wall clock** — The machine's clock. It stamps when WE did or saw something (`ts_init`, a run's
 `start_time`) and measures durations — on its monotonic form, because the wall clock itself can
 step backwards. Never the time a decision reads — that is the *canonical clock*.
+
+**warmup history** — The bars of each timeframe a run hands its workers before their first tick:
+the last N bars *complete at* that tick, N being what the most demanding worker reading the
+timeframe requires. A backtest and a mock session select it from the archive, a live-adapter
+session reads it from the venue. Not the *warmup requirement* a worker declares (that N), and not
+the history a recursive average needs before it forgets its seed. See
+[Warmup History](architecture/warmup_history.md).
 
 **warning count** (`warning_count`) — A run's Tier-1 findings: advisories a validator decided.
 Not the log's warnings, which are its *log warning count*. See

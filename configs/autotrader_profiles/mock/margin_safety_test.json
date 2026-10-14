@@ -1,5 +1,6 @@
 {
   "profile_name": "margin_safety_test",
+  "run_purpose": "fixture",
   "bot_id": "marginsf01",
   "symbol": "EURUSD",
   "broker_type": "mt5",

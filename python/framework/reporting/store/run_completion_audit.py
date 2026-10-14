@@ -46,11 +46,12 @@ def unfinished_runs(
         ledger_rows: Every ledger row
         parent_id: Restrict to the runs belonging to this parent (a deployment or a sweep),
             or None for all of them
-        parent_kind: Restrict further to parents of this kind. Both kinds of id are a timestamp
-            plus a hash, so an id alone cannot say which it is — a caller asking a DEPLOYMENT
-            question says so here rather than trusting the id to be unambiguous (#386). A row
-            indexed before the discriminator existed carries no kind and is therefore NOT
-            matched: an unknown kind is not a claim that it is this one
+        parent_kind: Restrict further to parents of this kind. A parent id is an opaque key:
+            it reads as a kind word and a timestamp (`deploy_20261008_110304_a1b2c3d4`), but
+            that is for a person reading a listing, and nothing may parse it — so a caller
+            asking a DEPLOYMENT question says so here rather than reading the kind from the id
+            (#386). A row indexed before the discriminator existed carries no kind and is
+            therefore NOT matched: an unknown kind is not a claim that it is this one
 
     Returns:
         The unfinished runs, oldest first

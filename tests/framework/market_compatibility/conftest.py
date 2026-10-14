@@ -44,7 +44,7 @@ def worker_factory(mock_logger):
 def app_config():
     """Minimal app_config mock for ScenarioDataValidator."""
     config = MagicMock()
-    config.get_warmup_quality_mode = MagicMock(return_value='standard')
+    config.get_bar_max_history = MagicMock(return_value=1000)
     config.get_allowed_gap_categories = MagicMock(return_value=['seamless'])
     return config
 

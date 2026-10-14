@@ -12,10 +12,14 @@ from abc import abstractmethod
 from datetime import datetime, timezone
 from typing import Dict, List, Optional
 
+from python.configuration.discoveries_config_loader import DiscoveriesConfigLoader
 from python.framework.discoveries.data_coverage.data_coverage_report_cache import (
     DataCoverageReportCache,
 )
 from python.framework.discoveries.discovery_cache_manager import DiscoveryCacheManager
+from python.framework.discoveries.volatility_profile_analyzer.volatility_regime import (
+    measured_against_themselves,
+)
 from python.framework.discoveries.volatility_profile_analyzer.volatility_profile_analyzer_cache import (
     VolatilityProfileAnalyzerCache,
 )
@@ -64,6 +68,8 @@ class AbstractVolatilityProfileSplitter(AbstractSplitter):
         self._volatility_cache = VolatilityProfileAnalyzerCache(logger=self._logger)
         self._discovery_manager = DiscoveryCacheManager(logger=self._logger)
         self._region_extractor = ContinuousRegionExtractor()
+        self._regime_thresholds = DiscoveriesConfigLoader().get_volatility_profile_config(
+        ).regime_thresholds
 
     @abstractmethod
     def _get_strategy(self) -> GenerationStrategy:
@@ -158,6 +164,10 @@ class AbstractVolatilityProfileSplitter(AbstractSplitter):
             p for p in vol_profile.periods
             if p.end_time > start_time and p.start_time < end_time
         ]
+        # Measured against this range rather than the symbol's whole history (#561): the regime
+        # and ATR number a window carries then depend on the range alone, so a profile over our
+        # own collection derives from it — also where a venue's history precedes it
+        periods = measured_against_themselves(periods, self._regime_thresholds)
 
         if not periods:
             raise ValueError(

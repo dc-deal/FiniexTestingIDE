@@ -13,7 +13,7 @@ from datetime import datetime
 from enum import Enum
 from typing import List, Optional
 
-from python.framework.types.trading_env_types.order_types import OrderDirection
+from python.framework.types.trading_env_types.order_types import OrderAction, OrderDirection
 
 
 class DriftType(Enum):
@@ -63,22 +63,25 @@ class AuditContext:
     """
     Snapshot of the synthetic state captured at outcome time.
 
-    Held in DriftAuditor._pending_audits between the outcome-listener
-    invocation (where it is created) and the trades-response consumer
-    invocation (where it is popped and compared).
+    Held in DriftAuditor._pending_audits between the fill it was taken at — an entry's
+    outcome, or a booked close (#508) — and the trades-response consumer invocation (where it
+    is popped and compared).
 
     Args:
-        order_id: Internal order_id (also the dict key)
-        broker_ref: Broker-side order reference
+        order_id: Internal order_id
+        broker_ref: Broker-side order reference — the dict key: an entry and its position's
+            close share one order_id, and both can be in flight at once
         symbol: Trading symbol
-        direction: Order direction (LONG/SHORT)
-        requested_lots: Lots requested by the algo at submit
-        synthetic_cumulative_fee: pending.fills.cumulative_fee at outcome time (local fee model)
+        direction: Order direction (LONG/SHORT) — the POSITION's, for a close
+        requested_lots: Lots requested by the algo at submit — for a close, the lots it booked
+        synthetic_cumulative_fee: pending.fills.cumulative_fee at fill time — the fee that was
+            BOOKED, which live is the venue's own figure wherever its answer reported one (#508)
         synthetic_cumulative_avg_price: pending.fills.cumulative_avg_price at outcome time
         synthetic_cumulative_filled_lots: pending.fills.cumulative_filled_lots at outcome time
         fee_currency: Currency of the synthetic fee (from pending.fills.trades[0].fee_currency)
         submission_tick_mid_price: Trade-channel mid price observed at submission
             (None for synthetic cleanup pendings — SLIPPAGE compare is skipped). #340
+        action: Which leg the fill was — an entry or a close
     """
     order_id: str
     broker_ref: str
@@ -90,6 +93,7 @@ class AuditContext:
     synthetic_cumulative_filled_lots: float
     fee_currency: Optional[str] = None
     submission_tick_mid_price: Optional[float] = None
+    action: OrderAction = OrderAction.OPEN
 
 
 @dataclass
@@ -97,8 +101,8 @@ class DriftAuditSummary:
     """
     Aggregate counters and history for one DriftAuditor session.
 
-    Surfaced at session exit (one-line summary) and via
-    DriftAuditor.get_summary() for analysis.
+    Surfaced at session exit as one session-log line; no report carries it.
+    DriftAuditor.get_summary() returns it, and today only the tests read it.
 
     Args:
         total_orders_audited: Number of orders that completed audit comparison

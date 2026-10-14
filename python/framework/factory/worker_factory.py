@@ -20,6 +20,7 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple, Type
 
+from python.framework.exceptions.warmup_history_errors import WarmupRequirementMismatchError
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.types.market_types.market_types import TradingContext
 from python.framework.types.parameter_types import ValidatedParameters
@@ -160,12 +161,49 @@ class WorkerFactory:
             trading_context=trading_context,
         )
 
+        self._require_one_warmup_answer(worker_type, worker_config, worker_instance)
+
         self._logger.debug(
             f'✅ Created worker: {instance_name} ({worker_type}) '
             f'with {len(merged_params)} parameters'
         )
 
         return worker_instance
+
+    @staticmethod
+    def _require_one_warmup_answer(
+        worker_type: str,
+        worker_config: Dict[str, Any],
+        worker_instance: AbstractWorker,
+    ) -> None:
+        """
+        Refuse a worker whose two answers to "how many bars do I need" differ.
+
+        The batch sizes a backtest's bar load with the classmethod before any worker exists,
+        from the same configuration handed in here; an AutoTrader session loads by the instance.
+        Asked through both doors at creation, so a CORE worker and a user's worker are held to
+        it alike, in both pipelines — measured once as `Insufficient bars: H1: 50/150`, when a
+        CORE worker's two answers had drifted apart (#517).
+
+        Args:
+            worker_type: The worker's type string, for the message
+            worker_config: The configuration as given, which the classmethod reads
+            worker_instance: The created worker
+
+        Returns:
+            None
+        """
+        from_pipeline = type(worker_instance).calculate_requirements(worker_config)
+        from_instance = worker_instance.get_warmup_requirements()
+        if from_pipeline == from_instance:
+            return
+        raise WarmupRequirementMismatchError(
+            f"Worker '{worker_instance.name}' ({worker_type}) states two different warmups: "
+            f'calculate_requirements gives {from_pipeline}, get_warmup_requirements gives '
+            f'{from_instance}. A backtest loads the first and a session the second, so the two '
+            f'would start from different histories — let get_warmup_requirements return what '
+            f'calculate_requirements does.'
+        )
 
     def resolve_parameters(
         self,

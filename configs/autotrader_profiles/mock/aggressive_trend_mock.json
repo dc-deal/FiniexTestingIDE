@@ -1,5 +1,6 @@
 {
   "profile_name": "aggressive_trend_mock",
+  "run_purpose": "fixture",
   "bot_id": "aggtrend01",
   "symbol": "BTCUSD",
   "broker_type": "kraken_spot",

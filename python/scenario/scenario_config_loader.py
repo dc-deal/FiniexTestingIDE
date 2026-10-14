@@ -5,12 +5,13 @@ Config Loader (FIXED: Deep copy prevents config mutation)
 
 import json
 from pathlib import Path
-from typing import List
+from typing import Any, Dict, List
 
 from python.configuration.app_config_manager import AppConfigManager
 from python.framework.store.run_config_store import RunConfigStore
 from python.scenario.scenario_set_resolver import resolve_scenario_set_path
 from python.framework.logging.bootstrap_logger import get_global_logger
+from python.framework.config_directory.config_directory_discovery import is_user_owned
 from python.framework.types.config_directory_types import ConfigKind
 from python.framework.types.config_types.autotrader_defaults_config_types import OrderGuardDefaults
 from python.framework.types.config_types.backtesting_config_types import (
@@ -21,12 +22,14 @@ from python.framework.types.config_types.robustness_config_types import (
     RobustnessConfig,
     RobustnessRole,
 )
+from python.framework.types.run_purpose_types import RunPurpose
 from python.framework.types.scenario_types.scenario_set_types import (
     LoadedScenarioConfig,
     SingleScenario,
 )
 from python.framework.types.scenario_types.window_set_types import WindowSet
 from python.framework.utils.config_merge_utils import check_unknown_keys, validate_merged_config
+from python.framework.utils.declared_purpose_utils import read_declared_purpose
 from python.framework.utils.parameter_override_detector import ParameterOverrideDetector
 from python.framework.utils.time_utils import parse_datetime
 from python.framework.validators.config_name_validator import refuse_config_name_conflict
@@ -55,6 +58,28 @@ _KNOWN_ORDER_GUARD_KEYS: frozenset = frozenset({
 _KNOWN_STRESS_TEST_KEYS: frozenset = frozenset({
     'reject_open_order', 'stale_data_stress',
 })
+# The set's own top level. `version` and `created` are the generator's provenance stamps;
+# `description` and `run_purpose` say why the set exists and what its runs are for (#576). A
+# misspelt `run_purpose` would otherwise read as absent — a fixture silently run as regular.
+_KNOWN_SCENARIO_SET_TOP_KEYS: frozenset = frozenset({
+    'scenario_set_name', 'version', 'created', 'description', 'run_purpose',
+    'global', 'robustness', 'scenarios',
+})
+
+
+def _declared_purpose(config: Dict[str, Any], config_path: Path) -> RunPurpose:
+    """
+    Read what a scenario set's runs are for, after checking its top-level keys.
+
+    Args:
+        config: The set's raw JSON
+        config_path: Where it was read from — named in a refusal, and whether the user owns it
+
+    Returns:
+        What its runs are for — REGULAR when the set says nothing
+    """
+    check_unknown_keys(f'{config_path.name} (top level)', config, _KNOWN_SCENARIO_SET_TOP_KEYS)
+    return read_declared_purpose(config, config_path.name, is_user_owned(config_path))
 
 
 class ScenarioConfigLoader:
@@ -117,6 +142,8 @@ class ScenarioConfigLoader:
 
         with open(config_path, 'r') as f:
             config = json.load(f)
+
+        run_purpose = _declared_purpose(config, config_path)
 
         # Parse global defaults
         global_config = config.get('global', {})
@@ -290,6 +317,7 @@ class ScenarioConfigLoader:
             config_path=config_path,
             robustness=robustness,
             disabled_count=disabled_count,
+            run_purpose=run_purpose,
         )
 
     def load_from_profiles(
@@ -319,6 +347,8 @@ class ScenarioConfigLoader:
 
         with open(config_path, 'r') as f:
             config = json.load(f)
+
+        run_purpose = _declared_purpose(config, config_path)
 
         # Parse global defaults from scenario set
         global_config = config.get('global', {})
@@ -389,4 +419,5 @@ class ScenarioConfigLoader:
             config_path=config_path,
             generator_profiles=window_sets,
             robustness=robustness,
+            run_purpose=run_purpose,
         )

@@ -11,6 +11,7 @@ rarely to be the only guard on how our payloads reach the venue.
 | `test_dry_run_fill_rules.py` | what the simulated venue does with an order in dry-run mode (#505) |
 | `test_client_order_id.py` | the key WE choose, on the wire and read back (#473) |
 | `test_conditional_order_payloads.py` | stop / stop-limit price semantics, both directions (#500) |
+| `test_venue_fee_report.py` | the fee in the status answer, the fee currency on every order, the declared capability (#508) |
 
 ## Nonce — `test_nonce.py`
 
@@ -133,6 +134,21 @@ our key without a txid, so for an unresolved submit — the case where no txid e
 | `TestThePayload` | the range goes out as unix seconds, an absent key sends no field, a key narrows the range, and a long key is truncated to the venue's 18 characters |
 | `TestTheAnswer` | a filled order is visible where the open pull is blind, a cancelled one is not a filled one, TWO orders can answer to one key, and an unmappable status becomes UNKNOWN rather than "still working" |
 | `TestDryRun` | in a dry run the query reaches no venue and answers nothing, rather than something |
+
+## The fee in the status answer — `test_venue_fee_report.py`
+
+The answer that says an order filled carries the order's total fee — measured with real orders on
+2026-10-11: QueryOrders' `fee` is in the first answer that says closed and does not change after.
+The adapter reads it into `BrokerResponse.fill_fee` beside the executed volume and the price, sends
+`oflags=fciq` on every order so the fee is charged in the quote currency the spot books charge it
+in, and declares `fee_report = status_answer`, in a dry run too: a capability describes the venue,
+and the executor knows a dry run's answers come from our own simulator, which reports no fee (#508).
+
+| Test class | Asserts |
+|---|---|
+| `TestTheFeeIsReadFromTheStatusAnswer` | a closed order carries its total fee (the measured answer's shape); an open order with executed volume carries that volume's fee; nothing executed → no fee; volume without a fee field → `None`, never zero |
+| `TestEveryOrderAsksForTheFeeInTheQuote` | `oflags=fciq` on market, limit, stop and stop-limit, buy and sell |
+| `TestTheCapabilityIsDeclared` | `status_answer` with dry run off, and in a dry run too — the capability describes the venue |
 
 ## Run
 

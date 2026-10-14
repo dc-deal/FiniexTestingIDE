@@ -84,6 +84,14 @@ The one alternative anybody would ever configure is the one that must not be pos
 `class: production`; both pass every gate. That is the payoff of an opaque, unbounded identity
 beside a small closed classification.
 
+**The classes are `production`, `development`, `unknown` and `external`.** The first three judge
+an instance of ours — or admit that nobody could be named. `external` says something else: no
+instance of ours produced the data at all, such as a venue's published trade history. It still
+arrives with an identity, because the converter that brings it in states its own, registered
+under `external` — so its files are stamped and their origin is known. Whether a backtest may read
+them is the admission gate's decision; its default leaves `external` out, and the rule for a
+parity measurement (production AND stamped) never admits it.
+
 ### The attestation — a predicate, never a file list
 
 Files written before their producer could state an identity are covered by a dated claim. It is
@@ -249,6 +257,30 @@ the backtest's. A mock session is not the exception: it replays the archive, so 
 measured from the bar files its mount read, like a backtest's — and is empty where it read none,
 never declared.
 
+### A bar file carries the origins of its ticks, and a warmup says when it reached back
+
+A bar file covers a symbol's whole history in one file, so once a venue's published history
+precedes our own collection (#561) one file holds both. Its stamp says so: `origin_classes`, the
+classes of every tick file it was rendered from, and `collected_from`, the instant our collection
+takes over — empty unless external history precedes it. Both reach the bar index beside the price
+basis, and a file rendered before the stamp answers nothing rather than "collected".
+
+A backtest's warmup is selected from those files, and its first bar can open years before its first
+tick: a trend over 768 daily bars warming up for a backtest in August 2026 reads bars from 2024.
+When a selected bar opens before the seam, the scenario records that timeframe in
+`external_warmup_timeframes`, and the run's `data_origin_external` finding says so:
+
+```
+EXTERNAL DATA — the warmup history reached back before our collection, into a venue's published history
+  → the ticks traded on are our own; the indicators started from bars rendered from external ticks
+  → warmup from external history: trend_eth (D1, H4)
+```
+
+It is said, not refused. Admission guards the ticks a scenario trades on; a warmup decides only
+where the indicators start, and a live session warms up from the venue's own bars anyway — the
+venue's record, not ours. The ledger does not carry it yet: that column arrives with the
+API surface that serves it.
+
 ## The gate, and why it starts open
 
 Two questions, two places:
@@ -340,6 +372,44 @@ the pair that eventually disagrees, and the half nobody reads is the one that de
 **Nothing is written retroactively.** A report produced before the block existed FAILS its
 integrity check rather than being tolerated — the certificate suite already tells the reader to
 re-run the benchmark, and a release re-runs it anyway.
+
+## What a file LACKS — the declared deficiencies
+
+The origin says WHO produced a file. It does not say what the file lacks, and that is what a
+reader of a result needs: a venue's published history has real trades and no quotes, and a file
+our own collector wrote under an older format may lack the receive time. So the lack is a closed
+vocabulary of its own, `DataDeficiency`, and every value is declared beside it in
+`python/framework/types/data_deficiency_types.py` — how it is established, what it costs a run,
+and the check id its finding carries. A test holds the declarations complete against the enum.
+
+| Deficiency | Established by | What a run reading it cannot say |
+|---|---|---|
+| `no_quote` | bid equals ask on every row | whether a fill crossed a spread |
+| `no_arrival_time` | no `collected_msc` column, or only zeros | when a tick reached us |
+| `arrival_time_reconstructed` | the two reconstruction fingerprints: every multi-tick second ending on .999, or the arrival time copied from the event time | a recorded receive time |
+| `missing_trades` | gaps in the venue's trade ids — a count always, a deficiency above 1 % of the id span or one run longer than five minutes | every trade the venue printed |
+| `synthetic` | the producer's own `data_origin` on the signal envelope | anything about a market |
+
+**Measured, never inferred from a version.** A data format version states what a collector was
+configured to declare, and the reconstructed arrival times run straight through the middle of one
+declared version. The tick index measures every file it scans — it reads each file in full anyway —
+so a file imported before the vocabulary existed is measured on the next rebuild, without being
+imported again. A file without an arrival time stores no `collected_msc` column at all; the reader
+restores the tick loop's own convention for "not recorded" (zero) when it loads one.
+
+**Said once per run, counted.** The post-run validator gives one finding per deficiency present,
+over every input file of every scenario, grouped by where the files came from:
+
+```
+NO QUOTE — 41 of 63 input file(s): bid = ask = traded price, so no fill crossed a spread
+  → 17 collected at format 1.2.0 · 24 external
+```
+
+`synthetic` is the one value said BEFORE the run, per scenario (`data_synthetic`), because both
+pipelines mount their signals through that check and an AutoTrader session has no post-run counter
+of this kind. A run that read a venue's published history also gets `EXTERNAL DATA`
+(`data_origin_external`) — such files are stamped by their converter, so they are not counted as
+unstamped beside it.
 
 ## What is deliberately not here
 

@@ -171,6 +171,8 @@ class FieldStudyStreamProjection:
         extra = self._shared_extra(event)
         extra['fee'] = event.fee
         extra['fee_currency'] = event.fee_currency
+        # Whose figure that fee is — the venue's own, or our fee model's estimate (#508)
+        extra['fee_source'] = event.fee_source.value if event.fee_source is not None else None
         line = 'order_filled'
         if event.action is OrderAction.CLOSE and event.position_id is not None:
             held = self._position_lots.get(event.position_id)

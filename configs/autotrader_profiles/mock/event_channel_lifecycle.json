@@ -1,5 +1,6 @@
 {
   "profile_name": "event_channel_lifecycle",
+  "run_purpose": "fixture",
   "bot_id": "evtchan01",
   "symbol": "USDJPY",
   "broker_type": "mt5",

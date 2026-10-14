@@ -46,7 +46,7 @@ class StoreDescriptor:
         index_path: The index file, or None when the store has none
         index_factory: Builds the index object — None when the store has no index, or when the
             index is one this model does not own (the three data-index managers, which converge
-            under #175)
+            under #583)
         derived_from: The store this one is BUILT FROM. Mandatory for every DERIVED store and
             None otherwise. It is the EDGE, not the rule: WHICH store is the source is catalog
             data, while WHICH FILE a single entry watches stays with the family that owns the

@@ -355,3 +355,45 @@ class TestAnUntrackedLogicNamesItself:
         assert stats.tracked is False
         assert stats.decision_logic_type == 'CORE/aggressive_trend'
         assert stats.decision_logic_name == logic.name
+
+
+class TestCautiousMacdTakesItsPipSizeFromTheContext:
+    """
+    pip_size left unset is derived from the broker's authoritative pip size (#167). It used to
+    read an attribute the base class never set, so every such config failed to build (#586).
+    """
+
+    @staticmethod
+    def _context(pip_size: float) -> TradingContext:
+        """
+        The instrument facts a pipeline hands the logic.
+
+        Args:
+            pip_size: The broker's pip size
+
+        Returns:
+            The trading context
+        """
+        return TradingContext(broker_type='kraken_spot', market_type=MarketType.CRYPTO,
+                              symbol='BTCUSD', pip_size=pip_size)
+
+    def test_without_pip_size_the_context_supplies_it(self, strict_logic_factory, mock_logger):
+        logic = strict_logic_factory.create_logic(
+            logic_type='CORE/cautious_macd', logger=mock_logger, logic_config={},
+            trading_context=self._context(0.01))
+
+        assert logic.pip_size == 0.01
+        assert logic.get_trading_context().symbol == 'BTCUSD'
+
+    def test_an_explicit_pip_size_wins(self, strict_logic_factory, mock_logger):
+        logic = strict_logic_factory.create_logic(
+            logic_type='CORE/cautious_macd', logger=mock_logger,
+            logic_config={'pip_size': 1.0}, trading_context=self._context(0.01))
+
+        assert logic.pip_size == 1.0
+
+    def test_without_either_it_refuses_to_be_built(self, strict_logic_factory, mock_logger):
+        """Every *_pips distance needs the unit — refused at construction, not at the first entry."""
+        with pytest.raises(ValueError, match='pip_size is not configured'):
+            strict_logic_factory.create_logic(
+                logic_type='CORE/cautious_macd', logger=mock_logger, logic_config={})

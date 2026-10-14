@@ -20,7 +20,7 @@ from python.framework.types.autotrader_types.autotrader_display_types import (
     SignalTransportStats,
 )
 from python.framework.types.decision_logic_types import AwarenessLevel
-from python.framework.types.signal_data_types import SignalHealthStatus
+from python.framework.types.signal_data_types import SignalHealthStatus, SignalTransportState
 from python.system.ui.autotrader_live_display import AutoTraderLiveDisplay
 
 
@@ -56,20 +56,30 @@ class TestLiveTransport:
 
     def test_position_and_age(self, now):
         out = render(SignalTransportStats(
-            configured=True, state='live', last_seq=4914, stream_epoch=1,
+            configured=True, state=SignalTransportState.LIVE, last_seq=4914, stream_epoch=1,
             last_envelope_at=now - timedelta(seconds=42)))
         assert 'epoch 1  seq 4914' in out
         assert '42s ago' in out
 
+    @pytest.mark.parametrize('state', list(SignalTransportState), ids=lambda s: s.value)
+    def test_every_state_reads_as_its_word(self, now, state):
+        """
+        The state is an enum, and an f-string renders one as its class and member name —
+        `SignalTransportState.LIVE` — unless the panel asks for its value.
+        """
+        out = render(SignalTransportStats(configured=True, state=state, last_envelope_at=now))
+        assert f' {state.value} ' in out
+        assert 'SignalTransportState' not in out
+
     def test_before_the_first_envelope(self):
         """A fresh session has a transport but no position yet — say so, do not print None."""
-        out = render(SignalTransportStats(configured=True, state='live'))
+        out = render(SignalTransportStats(configured=True, state=SignalTransportState.LIVE))
         assert 'awaiting first envelope' in out
         assert 'None' not in out
 
     def test_tape_is_newest_first(self, now):
         out = render(SignalTransportStats(
-            configured=True, state='live', last_seq=2, stream_epoch=1,
+            configured=True, state=SignalTransportState.LIVE, last_seq=2, stream_epoch=1,
             last_envelope_at=now,
             tape=[SignalTransportEvent('seq 1 scheduled', now - timedelta(minutes=10)),
                   SignalTransportEvent('seq 2 breaking', now)],
@@ -78,7 +88,7 @@ class TestLiveTransport:
 
     def test_older_events_are_counted_not_dropped_silently(self, now):
         out = render(SignalTransportStats(
-            configured=True, state='live', last_seq=9, stream_epoch=1,
+            configured=True, state=SignalTransportState.LIVE, last_seq=9, stream_epoch=1,
             last_envelope_at=now,
             tape=[SignalTransportEvent('seq 9 scheduled', now)],
             total_events=14))
@@ -88,16 +98,9 @@ class TestLiveTransport:
 class TestTrouble:
     """The states the panel exists for."""
 
-    def test_degraded_producer_is_visible(self, now):
-        out = render(SignalTransportStats(
-            configured=True, state='degraded', last_seq=4914, stream_epoch=1,
-            last_envelope_at=now - timedelta(minutes=8), degraded_responses=3))
-        assert 'degraded' in out
-        assert '3 degraded' in out
-
     def test_transport_errors_are_counted(self, now):
         out = render(SignalTransportStats(
-            configured=True, state='error', transport_errors=2,
+            configured=True, state=SignalTransportState.ERROR, transport_errors=2,
             last_envelope_at=now - timedelta(minutes=30)))
         assert '2 transport' in out
 
@@ -111,12 +114,13 @@ class TestTrouble:
         act on rendered as no failure at all.
         """
         out = render(SignalTransportStats(
-            configured=True, state='contract', contract_errors=3,
+            configured=True, state=SignalTransportState.CONTRACT, contract_errors=3,
             last_envelope_at=now - timedelta(minutes=12)))
         assert 'Feed Issues' in out
         assert '3 contract' in out
 
-    @pytest.mark.parametrize('state', ['cursor_ahead', 'misconfigured'])
+    @pytest.mark.parametrize('state', [SignalTransportState.CURSOR_AHEAD,
+                                       SignalTransportState.MISCONFIGURED])
     def test_the_terminal_stream_states_are_not_rendered_dim(self, now, state):
         """
         Both stop the feed for the rest of the session and both need a human (#468):
@@ -132,13 +136,13 @@ class TestTrouble:
     def test_a_healthy_transport_shows_no_issue_line(self, now):
         """Noise in the quiet case is how a panel stops being read."""
         out = render(SignalTransportStats(
-            configured=True, state='live', last_seq=1, stream_epoch=1,
+            configured=True, state=SignalTransportState.LIVE, last_seq=1, stream_epoch=1,
             last_envelope_at=now))
         assert 'Feed Issues' not in out
 
     def test_severity_reaches_the_tape(self, now):
         out = render(SignalTransportStats(
-            configured=True, state='error', last_envelope_at=now,
+            configured=True, state=SignalTransportState.ERROR, last_envelope_at=now,
             tape=[SignalTransportEvent('transport failed: URLError', now,
                                        AwarenessLevel.ALERT)],
             total_events=1))
@@ -156,7 +160,7 @@ class TestJournalIdentity:
 
     def test_the_id_is_shown_with_its_name(self, now):
         out = render(SignalTransportStats(
-            configured=True, state='live', last_seq=4914,
+            configured=True, state=SignalTransportState.LIVE, last_seq=4914,
             health=SignalHealthStatus(journal_id='9c3fa4c80d95', journal_name='dev',
                                       probed_at=now)))
         assert '9c3fa4c80d95' in out
@@ -164,13 +168,14 @@ class TestJournalIdentity:
 
     def test_no_probe_renders_no_journal_line(self):
         """A transport without a probe must not render an empty identity."""
-        out = render(SignalTransportStats(configured=True, state='live', last_seq=4914))
+        out = render(SignalTransportStats(configured=True, state=SignalTransportState.LIVE,
+                                          last_seq=4914))
         assert 'Journal' not in out
 
     def test_an_unnamed_journal_still_shows_its_id(self, now):
         """The id binds; a missed name lookup on the producer side is not an alarm."""
         out = render(SignalTransportStats(
-            configured=True, state='live',
+            configured=True, state=SignalTransportState.LIVE,
             health=SignalHealthStatus(journal_id='138c68e48b15', journal_name='unknown',
                                       probed_at=now)))
         assert '138c68e48b15' in out
@@ -179,7 +184,7 @@ class TestJournalIdentity:
     def test_unidentified_is_marked(self, now):
         """No store attached or an unreadable identifier — the session is not certifiable."""
         out = render(SignalTransportStats(
-            configured=True, state='live',
+            configured=True, state=SignalTransportState.LIVE,
             health=SignalHealthStatus(journal_id=None, probed_at=now)))
         assert 'unidentified' in out
         assert 'red' in out
@@ -187,7 +192,7 @@ class TestJournalIdentity:
     def test_a_changed_journal_is_marked(self, now):
         """The seq position on the line above belongs to the previous journal."""
         out = render(SignalTransportStats(
-            configured=True, state='live', last_seq=4914,
+            configured=True, state=SignalTransportState.LIVE, last_seq=4914,
             health=SignalHealthStatus(journal_id='138c68e48b15', journal_name='production',
                                       probed_at=now, journal_changed=True)))
         assert 'CHANGED' in out
@@ -200,7 +205,7 @@ class TestJournalIdentity:
         healthy feed going stale and looks for a fault on our side.
         """
         out = render(SignalTransportStats(
-            configured=True, state='live', last_seq=4914,
+            configured=True, state=SignalTransportState.LIVE, last_seq=4914,
             health=SignalHealthStatus(journal_id='9c3fa4c80d95', journal_name='dev',
                                       probed_at=now, budget_suspended=True,
                                       budget_reason='daily cap reached')))
@@ -210,7 +215,7 @@ class TestJournalIdentity:
     def test_a_healthy_producer_adds_no_line(self):
         """Noise in the quiet case is how a panel stops being read."""
         out = render(SignalTransportStats(
-            configured=True, state='live',
+            configured=True, state=SignalTransportState.LIVE,
             health=SignalHealthStatus(journal_id='9c3fa4c80d95', journal_name='dev',
                                       probed_at=datetime.now(timezone.utc))))
         assert 'Producer:' not in out
@@ -218,7 +223,7 @@ class TestJournalIdentity:
     def test_the_journal_line_sits_above_the_arrival_age(self, now):
         """Identity qualifies the position; both belong to the same reading."""
         out = render(SignalTransportStats(
-            configured=True, state='live', last_seq=4914, last_envelope_at=now,
+            configured=True, state=SignalTransportState.LIVE, last_seq=4914, last_envelope_at=now,
             health=SignalHealthStatus(journal_id='9c3fa4c80d95', journal_name='dev',
                                       probed_at=now)))
         assert out.index('Journal:') < out.index('Last Envelope:')

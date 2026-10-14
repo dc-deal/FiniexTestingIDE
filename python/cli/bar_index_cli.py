@@ -5,8 +5,12 @@ Command-line tools for pre-rendered bar index management
 Usage:
     python python/cli/bar_index_cli.py rebuild
     python python/cli/bar_index_cli.py status
-    python python/cli/bar_index_cli.py render BROKER_TYPE [--clean]
-    python python/cli/bar_index_cli.py render --all [--clean]
+    python python/cli/bar_index_cli.py render BROKER_TYPE
+    python python/cli/bar_index_cli.py render --all
+
+A render replaces each bar file only once its new version is written and verified, and
+removes files without a source (a symbol without ticks, a timeframe no longer configured)
+only after every symbol rendered — an interrupted render keeps the previous bars.
 """
 
 import argparse
@@ -20,6 +24,7 @@ from python.data_management.index.bars_index_manager import BarsIndexManager
 from python.framework.discoveries.discovery_cache_manager import DiscoveryCacheManager
 from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.utils.activity_volume_provider import get_activity_provider
+from python.framework.utils.interrupt_utils import sigterm_as_interrupt
 
 vLog = get_global_logger()
 
@@ -177,13 +182,12 @@ class BarIndexCli:
 
         print()
 
-    def cmd_render(self, broker_type: str = None, clean: bool = False, render_all: bool = False):
+    def cmd_render(self, broker_type: str = None, render_all: bool = False):
         """
         Render bars from tick data.
 
         Args:
             broker_type: Broker type identifier (required unless render_all=True)
-            clean: If True, delete existing bars before rendering
             render_all: If True, render all known broker types from market_config
         """
         if render_all:
@@ -194,27 +198,26 @@ class BarIndexCli:
             print('\n' + '='*80)
             print(
                 f"🔄 Bar Rendering — ALL broker types ({', '.join(broker_types)})")
-            print(f"Clean Mode: {'ENABLED' if clean else 'DISABLED'}")
             print('='*80 + '\n')
         else:
             broker_types = [broker_type]
             print('\n' + '='*80)
             print(f'🔄 Bar Rendering (broker_type: {broker_type})')
-            print('='*80)
-            print(
-                f"Clean Mode: {'ENABLED (delete all bars first)' if clean else 'DISABLED (skip symbols without ticks)'}")
             print('='*80 + '\n')
 
         try:
             bar_importer = BarImporter()
 
-            bar_importer.render_bars_for_all_symbols(
-                broker_types=broker_types,
-                clean_mode=clean
-            )
-
-            # Rebuild index and caches once after all rendering
-            bar_importer.update_bar_index()
+            # The index is rebuilt even when the render is interrupted — by Ctrl+C or by
+            # SIGTERM, which raises the same interrupt here — so it describes the files that are
+            # there; the caches only after a complete render over a sound index
+            with sigterm_as_interrupt():
+                try:
+                    bar_importer.render_bars_for_all_symbols(broker_types=broker_types)
+                finally:
+                    indexed = bar_importer.update_bar_index()
+            if indexed:
+                bar_importer.rebuild_discovery_caches()
 
             print('\n✅ Bar rendering completed!')
             print('='*80 + '\n')
@@ -257,9 +260,6 @@ def main():
         'broker_type', nargs='?', default=None,
         help='Broker type identifier (omit when using --all)')
     render_parser.add_argument(
-        '--clean', action='store_true', default=False,
-        help='Delete existing bars before rendering')
-    render_parser.add_argument(
         '--all', action='store_true', default=False,
         dest='render_all',
         help='Render all known broker types from market_config')
@@ -289,7 +289,6 @@ def main():
                     'broker_type is required unless --all is used')
             cli.cmd_render(
                 broker_type=args.broker_type,
-                clean=args.clean,
                 render_all=args.render_all
             )
 

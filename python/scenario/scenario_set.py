@@ -21,6 +21,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional
 
+from python.api.api_contract import API_CONTRACT_VERSION
 from python.configuration.app_config_manager import AppConfigManager
 from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.logging.scenario_logger import ScenarioLogger
@@ -108,6 +109,7 @@ class ScenarioSet:
         self._generator_profile_paths = scenario_config.generator_profile_paths
         self._robustness = scenario_config.robustness or RobustnessConfig()
         self._disabled_count = scenario_config.disabled_count
+        self._run_purpose = scenario_config.run_purpose
         # Where this run's logs land, from config (file_logging.run_logs) — the same paths the
         # API reads. A sweep's combinations nest under their sweep id, a standalone run does
         # not: a directory level, while the run TYPE stays `simulation` for both.
@@ -178,6 +180,10 @@ class ScenarioSet:
                 ticks_from=TicksFrom.ARCHIVE,
                 orders_to=OrdersTo.SIMULATED,
                 data_windows=data_windows_of(self._scenarios),
+                # What the run is FOR, as the set declares it (#576) — a sweep's combinations
+                # inherit it with the rest of their base set.
+                run_purpose=self._run_purpose,
+                report_contract=API_CONTRACT_VERSION,
             )
             RunIndex(app_config.get_file_logging_config_object().run_index).register_run(
                 header, self.logger.get_log_dir())

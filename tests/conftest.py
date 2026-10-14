@@ -26,17 +26,68 @@ specific failing test against a user config).
 import hashlib
 import os
 from copy import deepcopy
+from pathlib import Path
 
 os.environ.setdefault('FINIEX_CONFIG_ISOLATION', '1')
 
 import pytest
 
 from python.configuration.app_config_manager import AppConfigManager
+from python.framework.reporting.store.run_index import RunIndex
 from python.framework.store.abstract_store_index import store_index_filename
 from python.framework.store.run_patch_store import RunPatchStore
+from python.framework.types.api.report_types import RunHeader
 from python.framework.types.config_types.file_logging_config_types import RunLogPaths
+from python.framework.types.run_purpose_types import RunPurpose
 from python.framework.types.store_types import StoreId
 from tests.shared.release_gate_session import is_release_gate_session
+
+# Switched on by `any_run_purpose` for the one test that requests it.
+_ANY_RUN_PURPOSE_ALLOWED = {'active': False}
+
+
+@pytest.fixture(scope='session', autouse=True)
+def _refuse_runs_that_are_not_fixtures():
+    """
+    Refuse every run a test starts from a configuration that does not declare itself a fixture.
+
+    A run a test starts is constructed to show something, and #576 says so on its header. Both
+    pipelines register a run's header through `RunIndex.register_run` — the one call they share —
+    so the declaration is checked there, at one place, from the side of the session every test
+    run passes through. A configuration that says `regular` or `certificate` is in the wrong
+    folder, or about to put a test's numbers among real runs.
+
+    `pytest.fail` rather than an exception of our own: the runners catch `Exception` on their way
+    out and turn it into an exit code, and the failure `pytest.fail` raises is a `BaseException`,
+    so the refusal reaches the test that started the run. A header without a purpose passes —
+    only a header built by hand in an index test lacks one.
+    """
+    register_run = RunIndex.register_run
+
+    def refusing_register_run(index: RunIndex, header: RunHeader, run_dir: Path) -> None:
+        purpose = header.run_purpose
+        if (purpose is not None and purpose != RunPurpose.FIXTURE
+                and not _ANY_RUN_PURPOSE_ALLOWED['active']):
+            pytest.fail(
+                f'{header.config_snapshot or header.run_name} declares run_purpose '
+                f'"{purpose}" — a run a test starts must come from a configuration that declares '
+                f'"run_purpose": "fixture"', pytrace=False)
+        return register_run(index, header, run_dir)
+
+    mp = pytest.MonkeyPatch()
+    mp.setattr(RunIndex, 'register_run', refusing_register_run)
+    yield
+    mp.undo()
+
+
+@pytest.fixture
+def any_run_purpose():
+    """
+    Let the requesting test start a run of any purpose — for a test that proves the stamp itself.
+    """
+    _ANY_RUN_PURPOSE_ALLOWED['active'] = True
+    yield
+    _ANY_RUN_PURPOSE_ALLOWED['active'] = False
 
 
 @pytest.fixture(scope='session', autouse=True)

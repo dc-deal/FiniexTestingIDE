@@ -113,7 +113,7 @@ realistic grant there — the model degrades to surface level by design.
 |---|---|---|
 | `brokers` | `broker_router` | `brokers:*` |
 | `bars` | `bars_router` | `bars:kraken_spot`, `bars:mt5` |
-| `deployments` | `deployments_router` | `deployments:*`, `deployments:deploy_20260918_091413` |
+| `deployments` | `deployments_router` | `deployments:*`, `deployments:deploy_20260918_091413_a1b2c3d4` |
 | `directory` | `directory_router` | `directory:*` — it names the operator's own configuration files |
 | `docs` | `docs_router` | `docs:*` — the documents are one set, and a grant per document would name files rather than data |
 | `reports` | `reports_router` | `reports:*` |

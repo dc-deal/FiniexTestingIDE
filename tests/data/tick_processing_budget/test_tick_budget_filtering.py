@@ -193,13 +193,13 @@ class TestEdgeCases:
         assert len(filtered['ticks'][SYMBOL]) == 3
 
     def test_pre_v13_logs_warning(self, preparator, pre_v13_ticks, mock_logger):
-        """Pre-V1.3.0 data must log a warning."""
+        """Data without an arrival time must log a warning naming the deficiency."""
         scenario_ticks = make_scenario_ticks(SYMBOL, pre_v13_ticks)
         preparator._apply_tick_budget(scenario_ticks, SYMBOL, 2.0)
 
         mock_logger.warning.assert_called_once()
         call_args = mock_logger.warning.call_args[0][0]
-        assert 'pre-V1.3.0' in call_args
+        assert 'no_arrival_time' in call_args
 
     def test_sub_ms_budget_no_clipping(self, preparator, regular_ticks):
         """

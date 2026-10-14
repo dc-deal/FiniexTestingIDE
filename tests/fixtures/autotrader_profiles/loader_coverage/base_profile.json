@@ -1,5 +1,6 @@
 {
   "profile_name": "loader_field_coverage",
+  "run_purpose": "fixture",
   "symbol": "BTCUSD",
   "broker_type": "kraken_spot",
   "adapter_type": "mock",

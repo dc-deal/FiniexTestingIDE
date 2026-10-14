@@ -18,6 +18,10 @@ from python.framework.discoveries.data_coverage.data_coverage_report_cache impor
 )
 from python.framework.discoveries.signal_coverage.signal_coverage_report import SignalCoverageReport
 from python.framework.logging.abstract_logger import AbstractLogger
+from python.framework.types.data_deficiency_types import (
+    DEFICIENCY_DECLARATIONS,
+    DataDeficiency,
+)
 from python.framework.types.process_data_types import ProcessDataPackage, RequirementsMap
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
 from python.framework.types.validation_types import (
@@ -197,10 +201,17 @@ class DataCoverageReportManager:
             # === STEP 4: Validate signal availability (#429 sources only) ===
             signal_errors, signal_warnings = self._validator.validate_signal_availability(
                 scenario)
+            # What the signal data LACKS, under its own check id rather than the thin-data one
+            synthetic = self._validator.validate_signal_synthetic(scenario)
+            synthetic_findings = [ValidationFinding(
+                severity=DEFICIENCY_DECLARATIONS[DataDeficiency.SYNTHETIC].severity,
+                check=DEFICIENCY_DECLARATIONS[DataDeficiency.SYNTHETIC].check,
+                domain=ValidationDomain.DATA,
+                message=synthetic, scope=scenario.name)] if synthetic else []
 
             for error in signal_errors:
                 self._logger.error(f'❌ {scenario.name}: {error}')
-            for warning in signal_warnings:
+            for warning in signal_warnings + ([synthetic] if synthetic else []):
                 self._logger.warning(f'⚠️  {scenario.name}: {warning}')
 
             if signal_errors:
@@ -214,7 +225,7 @@ class DataCoverageReportManager:
                         severity=Severity.WARNING, check='signal_availability',
                         domain=ValidationDomain.DATA,
                         message=warning, scope=scenario.name)
-                    for warning in signal_warnings])
+                    for warning in signal_warnings] + synthetic_findings)
                 scenario.validation_result.append(validation_result)
                 continue
 
@@ -224,7 +235,7 @@ class DataCoverageReportManager:
                     severity=Severity.WARNING, check='signal_availability',
                     domain=ValidationDomain.DATA,
                     message=warning, scope=scenario.name)
-                for warning in signal_warnings])
+                for warning in signal_warnings] + synthetic_findings)
             scenario.validation_result.append(validation_result)
 
     def validate_after_load(

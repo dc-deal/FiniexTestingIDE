@@ -8,6 +8,7 @@ Designed for queue transport: all fields are primitives, lists, or dicts.
 
 from dataclasses import dataclass, field
 from datetime import datetime
+from enum import Enum
 from typing import Dict, List, Optional
 
 from python.framework.types.decision_logic_types import (
@@ -19,15 +20,15 @@ from python.framework.types.live_types.api_perf_types import ApiPerfSnapshot
 from python.framework.types.live_types.live_core_snapshot_types import LiveCoreSnapshot
 from python.framework.types.parameter_types import OutputValue
 from python.framework.types.portfolio_types.portfolio_trade_record_types import CloseReason
-from python.framework.types.signal_data_types import SignalHealthStatus
+from python.framework.types.signal_data_types import SignalHealthStatus, SignalTransportState
+from python.framework.types.trading_env_types.active_orders_snapshot_types import (
+    ActiveOrderSnapshot,
+)
 from python.framework.types.trading_env_types.broker_trade_types import BrokerTrade
 from python.framework.types.trading_env_types.order_types import (
     CloseType,
     OrderDirection,
     OrderSide,
-)
-from python.framework.types.trading_env_types.active_orders_snapshot_types import (
-    ActiveOrderSnapshot,
 )
 
 
@@ -36,7 +37,7 @@ class PositionSnapshot:
     """
     Lightweight open position state for display queue transport.
 
-    Built from Position objects in _build_display_stats().
+    Built from Position objects in AutotraderDisplayExporter.build().
     Contains only the fields needed for display rendering.
 
     Args:
@@ -75,6 +76,10 @@ class TradeHistoryEntry:
         exit_price: Exit price
         net_pnl: Net P&L after fees
         close_reason: How the trade was closed
+        close_type: Whether the close took the whole position or a part of it
+        entry_lots: The position's size when it opened, from TradeRecord.entry_lots — larger
+            than lots on the last close of a position closed in parts. None where the record
+            carries none
         entry_trades: Per-execution BrokerTrade list from TradeRecord.entry_trades (#330).
             Shared across all derived TradeRecords on a partially-closed position.
         exit_trades: Per-execution BrokerTrade list from TradeRecord.exit_trades (#330).
@@ -89,6 +94,7 @@ class TradeHistoryEntry:
     net_pnl: float
     close_reason: CloseReason
     close_type: CloseType = CloseType.FULL
+    entry_lots: Optional[float] = None
     entry_trades: List[BrokerTrade] = field(default_factory=list)
     exit_trades: List[BrokerTrade] = field(default_factory=list)
     # Trade-event side (BUY/SELL) for the close — used by Live TRADE HISTORY
@@ -135,6 +141,19 @@ class RejectionEntry:
     tick_time: Optional[datetime] = None
 
 
+class QuoteFeedState(str, Enum):
+    """
+    The condition of a tick source's quote channel, as the CONNECTION panel shows it (#520).
+
+    OFF: the channel is not subscribed · WAITING: subscribed, no quote yet · LIVE · DEGRADED: the
+    subscription failed, and trades still flow without a quote.
+    """
+    OFF = 'off'
+    WAITING = 'waiting'
+    LIVE = 'live'
+    DEGRADED = 'degraded'
+
+
 @dataclass(frozen=True)
 class QuoteFeedStats:
     """
@@ -151,8 +170,7 @@ class QuoteFeedStats:
     warning is a verdict, and verdicts belong to a validator (§12).
 
     Args:
-        state: 'off' (the channel is not subscribed) · 'waiting' (subscribed, no quote yet) ·
-            'live' · 'degraded' (the subscription failed; trades still flow without a quote)
+        state: The channel's condition
         bid: Best bid of the last observed quote, 0.0 while there is none
         ask: Best ask of the last observed quote, 0.0 while there is none
         quote_age_ms: How old that quote is NOW, from the monotonic clock. None — never 0 —
@@ -161,7 +179,7 @@ class QuoteFeedStats:
         quotes_received: Quote updates accepted this session. A frozen spread beside a rising
             count means the venue is quiet; a frozen count means we stopped receiving
     """
-    state: str = 'off'
+    state: QuoteFeedState = QuoteFeedState.OFF
     bid: float = 0.0
     ask: float = 0.0
     quote_age_ms: Optional[int] = None
@@ -191,6 +209,29 @@ class QuoteFeedStats:
         if self.bid <= 0:
             return 0.0
         return (self.ask - self.bid) / self.bid * 100.0
+
+
+@dataclass(frozen=True)
+class TickSourceSnapshot:
+    """
+    What the dashboard reads from the tick source, once per frame (#586).
+
+    The CONNECTION panel was the one place the dashboard read a live object while it
+    rendered. With the readings handed in, every panel renders from data alone, and a test
+    renders the whole dashboard without a running tick source.
+
+    Args:
+        reconnect_count: Reconnects since the session started
+        ticks_emitted: Ticks the source has emitted
+        last_message_time: When the last transport message arrived, heartbeats included
+        last_tick_time: When the last trade tick arrived
+        quote: The quote channel's state, None for a source without one
+    """
+    reconnect_count: int = 0
+    ticks_emitted: int = 0
+    last_message_time: Optional[datetime] = None
+    last_tick_time: Optional[datetime] = None
+    quote: Optional[QuoteFeedStats] = None
 
 
 @dataclass
@@ -223,21 +264,12 @@ class SignalTransportStats:
     Args:
         configured: False in a mounted session — then the panel says so instead of
             rendering an idle transport that was never meant to run
-        state: Transport condition. Shared by both live transports, so it carries the
-            pull path's 'degraded' (the producer could not serve from its store) and the
-            stream's 'connecting' / 'replay' / 'cursor_ahead' / 'misconfigured' alongside
-            'mounted' / 'live' / 'error' / 'unauthorized' / 'contract'. Three of them are
-            TERMINAL — 'unauthorized', 'cursor_ahead' and 'misconfigured' end the feed for
-            the rest of the session, because no amount of retrying fixes a token, a
-            restored consumer store or a wrong request. 'error' and 'contract' are not:
-            the first retries, and the second keeps the connection open because the
-            producer answered and it is our reader that could not follow
+        state: Transport condition — which ones end the feed is said on the enum
         source: The signal source being consumed
         last_seq: Position of the newest envelope received ('' era: None)
         stream_epoch: Series generation of that envelope
         last_envelope_at: Availability stamp of the newest envelope
         envelopes_received: New envelopes accepted this session
-        degraded_responses: Times the producer could not serve from its store
         transport_errors: Times the transport itself failed
         contract_errors: Times the producer answered but we could not read the envelope —
             counted apart from transport_errors on purpose, because blaming their
@@ -249,13 +281,12 @@ class SignalTransportStats:
             a session's measurements belong to
     """
     configured: bool = False
-    state: str = 'mounted'
+    state: SignalTransportState = SignalTransportState.MOUNTED
     source: str = ''
     last_seq: Optional[int] = None
     stream_epoch: Optional[int] = None
     last_envelope_at: Optional[datetime] = None
     envelopes_received: int = 0
-    degraded_responses: int = 0
     transport_errors: int = 0
     contract_errors: int = 0
     tape: List[SignalTransportEvent] = field(default_factory=list)
@@ -268,7 +299,7 @@ class AutoTraderDisplayStats:
     """
     Stats snapshot pushed to display queue after each tick.
 
-    Built by AutotraderTickLoop._build_display_stats().
+    Built by AutotraderDisplayExporter.build().
     Consumed by AutoTraderLiveDisplay for rendering.
 
     All fields are primitives or lists of dataclasses for
@@ -292,7 +323,7 @@ class AutoTraderDisplayStats:
         max_processing_ms: Maximum tick processing time in ms
         queue_depth: Current tick queue depth
         total_ticks_clipped: Total clipped ticks
-        processing_times_ms: Per-tick processing times for percentile calculation
+        processing_times_ms: The most recent ticks' processing times — a bounded window, for the percentiles
         ticks_per_min: Session-average tick rate (ticks / uptime_minutes)
         last_price: Mid price of last tick ((bid+ask)/2), 0.0 if no ticks yet
         worker_times_ms: Worker name to average computation time in ms
@@ -408,7 +439,7 @@ class AutoTraderDisplayStats:
     seconds_since_last_tick: float = 0.0
 
     # #327 — Drift Audit footer counters
-    # Populated from DriftAuditor.get_display_counters() during _build_display_stats.
+    # Populated from DriftAuditor.get_display_counters() by AutotraderDisplayExporter.
     # Renderer conditionally appends an "Audit:" line to the SESSION panel when
     # drift_enabled is True. PRICE counter measures Kraken-intra-reporting
     # consistency (dim). SLIPPAGE counter (#340) measures the real submission-tick

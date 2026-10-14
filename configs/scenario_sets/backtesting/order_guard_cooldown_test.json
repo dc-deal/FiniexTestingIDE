@@ -1,6 +1,7 @@
 {
     "version": "1.0",
     "scenario_set_name": "order_guard_cooldown_test",
+    "run_purpose": "fixture",
     "created": "2026-04-08T00:00:00.000000",
     "description": "OrderGuard Rejection Cooldown — Verifies that consecutive broker rejections arm the cooldown and subsequent orders are blocked by the guard",
     "global": {

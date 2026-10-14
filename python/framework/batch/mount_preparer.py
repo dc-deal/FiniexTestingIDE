@@ -174,9 +174,9 @@ class MountPreparer:
         Args:
             scenarios: The scenarios to prepare data for (mutated in place: validation_result).
                 A backtest's scenarios and a mock session's one replayed scenario alike: both
-                get the same ticks, signals AND warmup bars — the last N bars before each
-                window's start — so a mock session warms up on exactly what a backtest of its
-                window warms up on
+                get the same ticks, signals AND warmup bars — the last N bars complete at each
+                window's first tick — so a mock session warms up on exactly what a backtest of
+                its window warms up on
 
         Returns:
             MountPackage with the loaded per-scenario data and the data identity that keys it

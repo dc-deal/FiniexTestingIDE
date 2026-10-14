@@ -13,7 +13,7 @@ from finiex_auth.consumer_token_base import ConsumerTokenBase
 from pydantic import field_validator
 
 from python.framework.types.config_types.strict_config_model import StrictConfigModel
-from python.framework.types.run_origin_types import OPERATOR_PERSON
+from python.framework.types.run_origin_types import OPERATOR_PRINCIPAL
 from python.framework.utils.declared_id_utils import (
     DECLARED_ID_MAX_LENGTH,
     declared_id_malformed_reason,
@@ -52,11 +52,11 @@ def _checked_account_id(value: str, field: str) -> str:
     """
     if not value:
         raise ValueError(f'`{field}` is empty — every account has an id')
-    if value == OPERATOR_PERSON:
+    if value == OPERATOR_PRINCIPAL:
         # The console operator is a principal of its own. A token acting as it would let an API
         # client hold the one identity that may start real-money runs from a terminal.
         raise ValueError(
-            f"`{field}: '{OPERATOR_PERSON}'` is reserved — it is the console operator, which is "
+            f"`{field}: '{OPERATOR_PRINCIPAL}'` is reserved — it is the console operator, which is "
             f'a principal of its own and never an account a token can act for')
     reason = declared_id_malformed_reason(value)
     if reason is not None:
@@ -124,9 +124,9 @@ class ConsumerToken(ConsumerTokenBase):
     A surface is a ROUTER, not a route — the closed list is `GRANT_SURFACES` below.
     What a grant
     names is the thing a route addresses — its first path parameter — so `bars:kraken_spot` is
-    one venue's bar data and `deployments:deploy_20260918_091413` is one bot's history, while
-    `reports:*` is every run report, because a run id is generated and nobody would write one
-    into a token.
+    one venue's bar data and `deployments:deploy_20260918_091413_a1b2c3d4` is one bot's
+    history, while `reports:*` is every run report, because a run id is generated and nobody
+    would write one into a token.
 
     The vocabulary is CLOSED on purpose. A grant naming anything else fails when the
     credentials file is parsed, at boot, instead of becoming a denial at request time that

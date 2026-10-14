@@ -12,6 +12,7 @@ are tested here with real tick-loop / profiling fixtures.
 from datetime import datetime, timezone
 
 from python.framework.types.batch_execution_types import BatchExecutionSummary
+from python.framework.types.data_deficiency_types import DataDeficiency
 from python.framework.types.performance_types.performance_stats_types import (
     DecisionLogicStats,
     WorkerCoordinatorPerformanceStats,
@@ -143,61 +144,96 @@ def test_budget_granularity():
 
 
 def test_clean_batch_no_warnings():
-    # 1.7.0 rather than 1.3.0: on Kraken the older formats carry no quote, and saying so is
-    # now an advisory. A clean batch is one whose data can answer every question asked of it.
+    # A clean batch is one whose data can answer every question asked of it: a known format,
+    # and no deficiency measured in what it read.
     assert _warnings(_batch([_scenario(versions=['1.7.0'])])) == {}
 
 
-class TestTheSpreadlessAdvisory:
+def _read(scenario: SingleScenario, *inputs) -> SingleScenario:
     """
-    A Kraken file below collector format 1.6.0 holds `bid == ask`, so its fills crossed no
-    spread. The cost breakdown then shows 0.00, and without a word beside it that reads as
-    "nothing was crossed" rather than "these data cannot say".
+    Give a scenario the input files it read: (origin class, format version or None, deficiencies).
+
+    Args:
+        scenario: The scenario
+        *inputs: One tuple per file — a None version marks a signal file
+
+    Returns:
+        The scenario, filled
+    """
+    scenario.origin_classes = [origin for origin, _, _ in inputs]
+    scenario.origin_evidence_grades = ['stamped' for _ in inputs]
+    scenario.data_format_versions = [version for _, version, _ in inputs if version is not None]
+    scenario.data_deficiencies = [list(deficiencies) for _, _, deficiencies in inputs]
+    return scenario
+
+
+class TestTheDeficiencyCount:
+    """
+    What the data a run read LACKS is said once per run and counted (#561), measured from the
+    files rather than guessed from venue and format version — which is how the spreadless
+    advisory it replaces stayed silent for converted history declaring format 1.7.0.
     """
 
-    def test_a_pre_quote_kraken_file_is_reported(self):
-        out = _warnings(_batch([_scenario(versions=['1.5.0'])]))
+    def test_a_file_without_a_quote_is_counted(self):
+        out = _warnings(_batch([_read(
+            _scenario(), ('production', '1.5.0', [DataDeficiency.NO_QUOTE]))]))
 
-        assert 'spreadless_tick_data' in out
-        assert '1/1 Kraken tick file(s)' in out['spreadless_tick_data']
-        assert 'crossed NO spread' in out['spreadless_tick_data']
+        assert 'NO QUOTE — 1 of 1 input file(s)' in out['data_no_quote']
+        assert 'no fill crossed a spread' in out['data_no_quote']
+        assert '1 collected at format 1.5.0' in out['data_no_quote']
 
-    def test_quoted_kraken_data_says_nothing(self):
-        assert 'spreadless_tick_data' not in _warnings(
-            _batch([_scenario(versions=['1.7.0'])]))
+    def test_complete_data_says_nothing(self):
+        # Measured, not inferred: an old MT5 format with a real spread lacks nothing, and the
+        # venue no longer has to be asked first.
+        assert _warnings(_batch([_read(
+            _scenario(broker='mt5'), ('production', '1.0.3', []))])) == {}
 
-    def test_MT5_IS_NOT_THIS_CASE_however_old_its_format(self):
-        """
-        The venue gate, and it carries the whole check.
+    def test_external_and_collected_are_counted_apart(self):
+        # The same lack has a different reason in a venue's history than in an older format.
+        out = _warnings(_batch([_read(
+            _scenario(),
+            ('external', '1.7.0', [DataDeficiency.NO_QUOTE, DataDeficiency.NO_ARRIVAL_TIME]),
+            ('production', '1.2.0', [DataDeficiency.NO_QUOTE]))]))
 
-        MT5 numbers its collector formats independently and its archive sits entirely below
-        1.6.0 — measured 2026-09-20 from the tick index: 1.0.3 through 1.5.0, 244.8 M ticks,
-        every one of them carrying a real spread since the day it was written. A version test
-        without the venue in front of it would report the entire forex archive as spreadless.
-        """
-        assert 'spreadless_tick_data' not in _warnings(
-            _batch([_scenario(versions=['1.0.3', '1.5.0'], broker='mt5')]))
+        assert 'NO QUOTE — 2 of 2 input file(s)' in out['data_no_quote']
+        assert '1 collected at format 1.2.0 · 1 external' in out['data_no_quote']
+        assert 'NO ARRIVAL TIME — 1 of 2 input file(s)' in out['data_no_arrival_time']
 
-    def test_a_window_spanning_the_rollout_is_named(self):
-        """
-        The one distinction that carries a decision: wholly in the old regime, or across the
-        boundary. A mixed scenario is named, because its curve mixes two cost worlds.
-        """
-        out = _warnings(_batch([_scenario(name='spans', versions=['1.5.0', '1.7.0'])]))
+    def test_synthetic_is_left_to_the_signal_check_before_the_run(self):
+        # Both pipelines mount signals through the pre-run check, and it says it there; a
+        # post-run count would say it twice for a backtest and never for a session.
+        out = _warnings(_batch([_read(
+            _scenario(), ('production', None, [DataDeficiency.SYNTHETIC]))]))
+        assert 'data_synthetic' not in out
 
-        assert '1/2 Kraken tick file(s)' in out['spreadless_tick_data']
-        assert 'span the boundary' in out['spreadless_tick_data']
-        assert 'spans' in out['spreadless_tick_data']
+    def test_external_data_has_a_finding_of_its_own_and_is_not_unstamped(self):
+        # The converter stamps what it brings in, so counting it as unstamped would contradict
+        # the external finding beside it.
+        out = _warnings(_batch([_read(_scenario(name='history'), ('external', '1.7.0', []))]))
 
-    def test_it_counts_FILES_and_says_so(self):
-        """
-        Not ticks. A scenario reads a SLICE of a file, so a tick-exact share would need the
-        loaded frame rather than the index — a per-tick allocation on the data path for a
-        refinement nobody decides on. Saying "file(s)" is what keeps the number honest.
-        """
-        out = _warnings(_batch([_scenario(versions=['1.2.0', '1.3.0', '1.7.0'])]))
+        assert 'EXTERNAL DATA — 1 of 1 input file(s)' in out['data_origin_external']
+        assert 'never admissible for a parity measurement' in out['data_origin_external']
+        assert 'history' in out['data_origin_external']
+        assert 'data_origin_unstamped' not in out
 
-        assert '2/3 Kraken tick file(s)' in out['spreadless_tick_data']
+    def test_a_warmup_from_external_history_is_said_although_the_ticks_are_our_own(self):
+        # Needs no admission — the ticks traded on are what admission guards — and is recorded,
+        # so a run whose indicators started from external bars cannot pass for one that did not.
+        scenario = _read(_scenario(name='trend'), ('production', '1.7.0', []))
+        scenario.external_warmup_timeframes = ['D1', 'H4']
+        out = _warnings(_batch([scenario]))
+
+        assert 'warmup history reached back before our collection' in out['data_origin_external']
+        assert 'warmup from external history: trend (D1, H4)' in out['data_origin_external']
+        assert 'never admissible' not in out['data_origin_external']
+
+    def test_external_ticks_and_an_external_warmup_share_one_finding(self):
+        scenario = _read(_scenario(name='history'), ('external', '1.7.0', []))
+        scenario.external_warmup_timeframes = ['D1']
+        out = _warnings(_batch([scenario]))
+
+        assert 'EXTERNAL DATA — 1 of 1 input file(s)' in out['data_origin_external']
+        assert 'warmup from external history: history (D1)' in out['data_origin_external']
 
 
 def test_coordination_overhead():

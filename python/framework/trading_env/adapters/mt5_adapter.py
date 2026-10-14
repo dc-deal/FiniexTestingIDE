@@ -29,6 +29,7 @@ from python.framework.types.trading_env_types.broker_types import (
     SymbolSpecification,
 )
 from python.framework.types.trading_env_types.order_types import (
+    FeeReport,
     LimitOrder,
     MarketOrder,
     OrderCapabilities,
@@ -108,6 +109,15 @@ class Mt5Adapter(AbstractAdapter):
             # False is not a gap: MT5 holds the level ON the position rather than as a
             # separate order, which is a different mechanism and belongs to #209 (#503).
             venue_held_protective_orders=False,
+            # No trades query is built yet: HistoryDealsGetByOrder is #209's deal layer, and
+            # declaring True before it exists sends the drift auditor to a method that raises.
+            trade_level_reporting=False,
+            # A spread broker charges no fee per fill. Where an account charges a commission,
+            # MT5 keeps it on the deal (DEAL_COMMISSION, read from the deal history), and
+            # some brokers book it as deals of its own; the OrderSend answer (MqlTradeResult)
+            # carries the deal's ticket and no fee. #209 measures where and when it appears
+            # before it declares — on the documentation alone, EXECUTIONS (#508, 2026-10-11).
+            fee_report=FeeReport.NOT_REPORTED,
         )
 
     # ============================================

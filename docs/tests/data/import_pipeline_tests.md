@@ -120,17 +120,25 @@ Validates Parquet file header metadata.
 - `source_meta_symbol_info` is valid JSON string
 - Parsed nested metadata has correct content
 - Already-captured keys (`symbol`, `broker`) not duplicated as `source_meta_`
+- A converter's `external_source` block lands as JSON, not as a Python repr (#561)
 
 ---
 
 ### test_duplicate_detection.py
 
-Validates hash-based duplicate detection.
+Validates duplicate detection by source file NAME, answered from the tick index, and the refusal of
+a file that overlaps the archive.
 
 - First import succeeds (no duplicate)
 - Second import of same file detected as duplicate (0 processed)
 - Override mode allows re-import of duplicate
 - Different source file not flagged as duplicate
+
+**TestTheArchiveIsCheckedBeforeTheWrite** (#561):
+- A file whose ticks fall inside an archived file's span is refused and nothing is written
+- A refused `--override` keeps the parquet it would have replaced — the check runs before the delete
+- Touching edges are not an overlap
+- A batch is checked against itself: of two overlapping files in one inbox, the second is refused
 
 **DUPLICATE AT LAST Policy:** The `populate_persistent_test_output` session fixture imports 4
 reference files into `data/test/import/processed/` at session start. All duplicate detection tests
@@ -138,6 +146,56 @@ use `tmp_path` for full isolation, so they don't conflict with the persistent im
 persistent import must complete first — if duplicate detection tests ever run against shared
 directories, they must be ordered last (after the reference data is established and directories are
 clean).
+
+---
+
+### test_bar_render_admission.py
+
+Render workers start by memory (#442):
+
+- **TestTheEstimate** — the measured symbol is estimated at its measured peak; an empty symbol
+  costs the process alone
+- **TestTheAdmission** — two large symbols never run side by side; a freed worker takes the largest
+  that fits; a symbol larger than the budget renders alone; the worker count still caps
+
+### test_kraken_history_converter.py
+
+Kraken's published trade history through the converter and the real import (#561). Every test
+builds its own small archive — a zip with Kraken's manifest, cut into byte-range parts with a
+checksum list — so nothing binary is committed.
+
+- **TestTheArchiveIsCheckedBeforeItIsRead** — verified parts are recorded with their checksums; a
+  part differing from its checksum, a manifest of another schema, and parts nobody verified are
+  refused
+- **TestAPairIsReadExactly** — BTCUSD is the member `XBTUSD.csv` and never `XBTUSDC.csv`; a header
+  in another column order and a pair the archive does not hold are refused
+- **TestEachTradeBecomesOneTick** — Kraken's first BTCUSD trade maps field by field, with no
+  `collected_msc`; the file names its converter identity and its parts; the same parts give the
+  same ticks
+- **TestWhereConversionStopsAndSplits** — conversion stops before our first collected tick; one
+  file per month, never more ticks than the cap
+- **TestTheImportStampsItExternal** — a converted file imports as `external`, stamped, with the
+  deficiencies `no_quote` and `no_arrival_time` in the index
+- **TestTheArchiveStepProvesBeforeItRemoves** — an imported conversion is zipped intact and its
+  loose copies removed, the record marked; a conversion not yet imported is refused, nothing is
+  zipped and nothing removed
+
+---
+
+### test_data_deficiency.py
+
+What a tick file LACKS, measured from its rows when the tick index scans it (#561).
+
+- **TestTheVocabularyIsDeclared** — every `DataDeficiency` has its declaration, and every declared
+  check id is in the validation check catalog
+- **TestWhatAFileLacksIsMeasured** — a recorded, quoted file lacks nothing; bid = ask throughout is
+  `no_quote`; an absent or zeroed arrival column is `no_arrival_time`; both reconstruction
+  fingerprints (every multi-tick second ending on .999, the arrival copied from the event time) are
+  `arrival_time_reconstructed`
+- **TestMissingTradesAreCountedAlways** — a few missing trade ids are a count, not a deficiency; a
+  run of missing ids spanning more than five minutes is one; no trade ids means "not measurable"
+- **TestTheIndexCarriesThem** — a file imported without a quote and without an arrival time is
+  indexed with both deficiencies, through a persisted index
 
 ---
 
@@ -150,7 +208,8 @@ Tests for the `collected_msc` field (V1.3.0), `time_msc` offset consistency, tic
 - `collected_msc` dtype is int64
 
 **TestCollectedMscBackwardCompat:**
-- Old JSON without `collected_msc` imports with default value 0
+- JSON without `collected_msc` imports WITHOUT the column (no zero is written); the reader adds the
+  tick loop's zero when it loads the file
 
 **TestCollectedMscValues:**
 - V1.3.0 data preserves `collected_msc` values through import
@@ -213,7 +272,8 @@ constants it enforces are measured values; each test names the measurement it re
 - A gap past the 7-day threshold is
 
 **TestMissingColumns:**
-- Missing or all-zero `collected_msc` warns, never rejects (pre-V1.3.0 data has no arrival clock)
+- Missing or all-zero `collected_msc` never rejects; an all-zero column warns that the file records
+  no arrival time
 
 **TestWeekendOpen:**
 - A regular winter open (Sunday 17:01 New York = 22:01 UTC) passes; the same in summer at 21:01 UTC
@@ -259,17 +319,117 @@ given, and a bar file is proven readable at the moment it is written.
 - A file the scan cannot read is named in an error-level block, with the balance (`N of M bar files`) and the repair command
 - A build in which every file reads produces no error block
 
+**TestThePriceBasisSurvivesIntoTheIndex:**
+- The stamped basis reaches the index, survives a reload and is a column of the persisted index
+- A file written before the stamp reads as `unknown`, never as today's declaration
+
+**TestTheOriginOfABarFileSurvivesIntoTheIndex** (#561):
+- `origin_classes` and the seam `collected_from` survive a reload; a file from before the stamp answers nothing
+- The seam is the start of the first tick file not from a venue's published history; one origin alone has no seam
+- A warmup whose first bar opens before the seam is external; a file of external history only is external throughout; collected data alone never is
+
 Uses `RecordingLogger` (`tests/shared/recording_logger.py`): the project's loggers do not
 route through the stdlib `logging` module, so `caplog` cannot see them, and these cases
 assert what was REPORTED rather than what was returned.
 
+
+### test_import_coordinator.py
+
+The one import over both import inboxes (`ImportCoordinator`, #175), run against a temporary
+tree:
+
+- **TestBothArchives** — ticks and signals are imported, moved and rendered; every step ends
+  done, except the caches, which a scoped import shows skipped as `not the production archive`;
+  the import's own log holds both importers' lines, the summary and the line naming itself; the
+  frame serializes to JSON; the scan names the broker from each file's metadata head
+- **TestPinnedIssue** — a duplicate is counted and pinned as the bottom line; an `--override` run,
+  which logs a warning per replaced file but counts none, pins nothing
+- **TestOnlyOneArchive** — `--only ticks` and `--only signals` leave the other import inbox
+  untouched
+- **TestEmptyInboxes** — with nothing to import every step after the scan is shown skipped
+- **TestInterruptedRender** — a stop at the third symbol leaves its previous bars untouched,
+  removes nothing and leaves no `.partial`; the bar index is REBUILT — a symbol new in this import
+  and rendered before the stop is in it; the stop is a counted warning, pinned and in the
+  summary's warning list; the outcome maps to exit code `130`
+- **TestFailedSteps** — a bar index that cannot be rebuilt, a signal index that cannot be rebuilt,
+  and a bar, tick or signal file an index rebuild cannot read each end their step failed, count
+  an error and store no rate; a tick index missing an unreadable file still serves the render;
+  the caches are not rebuilt over a failed bar index; the pinned error is the newest one even when
+  it lands in a list the summary prints first
+- **TestWithTheScreen** — the default path from a terminal: the screen starts and stops, the lines
+  logged while it runs reach the import's own log but not the console, and the summary reaches
+  the console after it
+- **TestStops** — a code crash is raised after the summary, stores no rates and restores the
+  previous SIGTERM handler; a SIGTERM ends the import as interrupted, the running step says so
+- **TestSigtermBlock** — the block the import and a standalone render run under turns SIGTERM into
+  a stop and gives the previous handler back
+- **TestTimings** — the step rates are stored after a complete production import only, never
+  after a scoped or interrupted one; the next import's summary holds each step's estimate against
+  what it took
+- **TestExitCodes** — every outcome has an exit code, and an import with errors is not reported
+  as success
+- `test_bar_files_carry_the_render_after_a_complete_import` — a complete import leaves only
+  finished bar files, each readable in full
+
+### test_bar_render_replace.py
+
+- **TestReplaceAndClean** — a second render replaces every file and leaves no `.partial`; a new
+  file that fails its verification never replaces the good one, which stays byte-identical; a
+  leftover `.partial` of a timeframe the render does not write is removed at the start; files
+  without a source (a symbol without ticks, a timeframe not configured) are removed after a
+  complete render, never after an interrupted one; bars whose tick files are on disk are kept,
+  with a warning, when the tick index does not list their symbol
+- **TestBarIndexUpdate** — an unreadable bar file makes the index rebuild report failure and
+  count one error that names the repair
+- **TestWorkerLifetime** — a parent that starts a pool with the render's initializer and is then
+  killed outright takes its workers with it (Linux; the test runs that parent as a process of its
+  own and ends any worker left behind)
+- **TestParallelRender** — two workers report every phase of their symbols with their memory, and
+  each finished symbol is counted
+- **TestCrashDiagnosis** — an abruptly ended worker is named as a likely out-of-memory end, with
+  the setting to lower and its current value (#442)
+
+### test_import_progress_tracker.py
+
+The state behind the import screen: a stored rate times this import's quantity is a step's
+estimate (only in the same unit, and for the render only at the same worker count); one step
+without an estimate leaves the total unknown; a running step below 5 % of its work counts down its
+estimate and past it extrapolates its own progress, pinned with exact numbers on a clock the test
+moves by hand, and the step carries the same figure the header sums; a pending step carries its
+estimate, a finished one none; the frame carries the whole import's estimated duration and end
+time while it runs; the comparison holds each step's estimate at the start against its duration,
+and its total sums only the steps that ran and had an estimate, saying so when that is not every
+planned step; only finished steps yield a rate to store; the newest counted issue is pinned by its
+first line, without the emoji variation selector; worker lines follow their events, leave with
+their symbol and keep their number across symbols; a full queue keeps the newest frame; a frame
+shares nothing with the tracker; the refresh keeps publishing while nothing reports — the clock
+moves and a report the throttle dropped still reaches the screen — and stops when told, and
+without a queue it never starts.
+
+### test_import_live_display.py
+
+The screen rendered into a recording console — no live terminal: at 80 and at 160 columns every
+step, the render workers, the memory bar, the counters with the last warning, and the remaining
+time with the total and the end time are shown; each step's time is the frame's own figure, never
+one the screen derives; a finished import names its outcome and its log file and shows no estimate
+any more; every step status and every outcome renders (a missing icon would end the display
+thread); at 64 columns every status icon stays visible; a note cut for width ends in `…` rather
+than in a smaller number; sizes use one MB. A frame the screen cannot draw is reported once to the
+log files and the screen goes on — the next frame still appears (#586); before, the display
+thread ended unseen, the console being muted while the import runs.
+
+### test_import_config_display.py
+
+The screen's settings and the timings path are declared in the model or manager and in
+`configs/import_config.json`, with the same values.
 
 ---
 
 ## Architecture
 
 - Tests are **fully isolated** — each test creates temporary directories, no shared state
-- Uses `TickDataImporter` directly (not via CLI) for precise control
+- The importer tests use `TickDataImporter` directly (not via CLI) for precise control; the
+  coordinator and render tests build `ImportCoordinator` and `BarImporter` against a temporary tree
 - `auto_render_bars=False` in most tests to skip bar rendering overhead — `test_bar_archive_integrity.py` deliberately sets it `True`, because the scope of the bar render is what it examines
 - Synthetic data covers both `kraken_spot` (server clock `UTC+0h`) and `mt5` (`America/New_York+7h`) broker types; the default fixture date, 2026-01-15, lies in US winter
 - No production data required — all test data generated by `build_minimal_tick_json()`

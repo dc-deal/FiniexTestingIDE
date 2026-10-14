@@ -12,7 +12,7 @@ import json
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Callable, Dict, List, Optional
 
 import pandas as pd
 import pyarrow as pa
@@ -32,8 +32,8 @@ vLog = get_global_logger()
 # existed stays "valid" and keeps serving rows without it. The field was already being written
 # and read by nothing; giving it a read path is what makes a column addition safe to deploy.
 # The proper mechanism is `AbstractStoreIndex.LOGIC_VERSION`, which this legacy manager does not
-# have — adopting it is #175's, and this is the stopgap until then.
-INDEX_SCHEMA_VERSION = b'2.0'
+# have — adopting it is #583's, and this is the stopgap until then.
+INDEX_SCHEMA_VERSION = b'2.1'
 
 # What a bar file answers when it was written before the price basis was stamped, or when it
 # is not in the index at all. Never a declared basis: 'unknown' is a statement, a borrowed
@@ -75,12 +75,16 @@ class BarsIndexManager:
         # {broker_type: {symbol: {timeframe: entry}}} - unchanged API
         self.index: Dict[str, Dict[str, Dict[str, Dict]]] = {}
         self.logger = logger
+        # The bar files the last scan could not read — kept for a caller to COUNT, because
+        # the missing index row they leave announces nothing on its own
+        self._unreadable_files: List[str] = []
 
     # =========================================================================
     # INDEX BUILDING
     # =========================================================================
 
-    def build_index(self, force_rebuild: bool = False, check_stale: bool = False) -> None:
+    def build_index(self, force_rebuild: bool = False, check_stale: bool = False,
+                    on_file_scanned: Optional[Callable[[int, int], None]] = None) -> None:
         """
         Build or load index from bar parquet files.
 
@@ -88,6 +92,7 @@ class BarsIndexManager:
             force_rebuild: Force complete rebuild, ignore existing index
             check_stale: Check if index is outdated (expensive filesystem scan)
                         Default False - assumes index is current
+            on_file_scanned: Called with (file number, file count) for each file a rebuild scans
         """
         # An index written under an older schema is rebuilt regardless of mtimes: its
         # rows are complete for the columns that existed then and silently missing the
@@ -119,7 +124,7 @@ class BarsIndexManager:
                 return
 
         self.logger.info('🔍 Scanning bar files for index...')
-        start_time = time.time()
+        start_time = time.monotonic()
 
         # Scan pattern: */bars/**/*.parquet
         bar_files = list(self.data_dir.glob('*/bars/**/*_BARS.parquet'))
@@ -135,7 +140,9 @@ class BarsIndexManager:
         unreadable: List[str] = []
 
         # Process each file
-        for bar_file in bar_files:
+        for file_no, bar_file in enumerate(bar_files, 1):
+            if on_file_scanned is not None:
+                on_file_scanned(file_no, len(bar_files))
             try:
                 entry = self._scan_bar_file(bar_file)
                 broker_type = entry['broker_type']
@@ -155,9 +162,10 @@ class BarsIndexManager:
                     f'Failed to index bar file {bar_file.name}: {e}')
                 unreadable.append(f'{bar_file.name}: {e}')
 
+        self._unreadable_files = unreadable
         self._save_index()
 
-        elapsed = time.time() - start_time
+        elapsed = time.monotonic() - start_time
         total_entries = sum(
             len(tfs)
             for symbols in self.index.values()
@@ -198,8 +206,18 @@ class BarsIndexManager:
             self.logger.error(f'   - {entry}')
         self.logger.error(
             '   Re-render the affected symbols: '
-            'python python/cli/bar_index_cli.py render --all --clean'
+            'python python/cli/bar_index_cli.py render --all'
         )
+
+    def get_unreadable_files(self) -> List[str]:
+        """
+        The bar files the last scan could not read.
+
+        Returns:
+            One 'filename: error' entry per file; empty when the scan read every file, or
+            when the index was loaded instead of scanned
+        """
+        return list(self._unreadable_files)
 
     def _count_symbols(self) -> int:
         """Count total unique symbols across all broker types."""
@@ -270,6 +288,12 @@ class BarsIndexManager:
         # rather than by opening 128.
         price_basis = metadata.get('price_basis', 'unknown')
 
+        # Which origins the ticks behind this file came from, and where our own collection
+        # takes over from a venue's published history (#561). Empty for a file rendered before
+        # either was stamped — read as "not recorded", never as "collected".
+        origin_classes = metadata.get('origin_classes', '')
+        collected_from = metadata.get('collected_from', '')
+
         return {
             'file': bar_file.name,
             'path': str(bar_file.absolute()),
@@ -289,6 +313,8 @@ class BarsIndexManager:
             'source_version_min': source_version_min,
             'source_version_max': source_version_max,
             'price_basis': price_basis,
+            'origin_classes': origin_classes,
+            'collected_from': collected_from,
             'broker_type': metadata.get('broker_type') or metadata.get('data_collector', 'mt5'),
             'total_trade_volume': round(total_trade_volume, 6) if total_trade_volume is not None else None,
             'avg_volume_per_bar': round(avg_volume_per_bar, 6) if avg_volume_per_bar is not None else None,
@@ -367,6 +393,46 @@ class BarsIndexManager:
             return PRICE_BASIS_UNKNOWN
         return entry.get('price_basis') or PRICE_BASIS_UNKNOWN
 
+    def get_origin_classes(self, broker_type: str, symbol: str, timeframe: str) -> List[str]:
+        """
+        The origin classes of the ticks one bar file was rendered from (#561).
+
+        Args:
+            broker_type: Broker the bars belong to
+            symbol: Trading symbol
+            timeframe: Timeframe key
+
+        Returns:
+            The distinct classes, empty where the file predates the stamp or is not indexed
+        """
+        entry = self.index.get(broker_type, {}).get(symbol, {}).get(timeframe)
+        if not entry or not entry.get('origin_classes'):
+            return []
+        return entry['origin_classes'].split(',')
+
+    def get_collected_from(self, broker_type: str, symbol: str,
+                           timeframe: str) -> Optional[datetime]:
+        """
+        Where our own collection takes over from a venue's published history in one bar file.
+
+        A bar opening before this instant was rendered from external ticks (#561). Read from the
+        index row for the same reason as the price basis: the file says what it was rendered
+        from, configuration does not.
+
+        Args:
+            broker_type: Broker the bars belong to
+            symbol: Trading symbol
+            timeframe: Timeframe key
+
+        Returns:
+            The seam as a UTC datetime, or None where the file holds no external history
+            before collected data, or predates the stamp
+        """
+        entry = self.index.get(broker_type, {}).get(symbol, {}).get(timeframe)
+        if not entry or not entry.get('collected_from'):
+            return None
+        return pd.Timestamp(entry['collected_from']).tz_convert('UTC').to_pydatetime()
+
     def get_available_timeframes(self, broker_type: str, symbol: str) -> List[str]:
         """Get list of available timeframes for a symbol."""
         if broker_type not in self.index:
@@ -408,6 +474,8 @@ class BarsIndexManager:
                         'source_version_min': entry.get('source_version_min', ''),
                         'source_version_max': entry.get('source_version_max', ''),
                         'price_basis': entry.get('price_basis', 'unknown'),
+                        'origin_classes': entry.get('origin_classes', ''),
+                        'collected_from': entry.get('collected_from', ''),
                         'total_trade_volume': entry.get('total_trade_volume'),
                         'avg_volume_per_bar': entry.get('avg_volume_per_bar'),
                     }
@@ -421,6 +489,7 @@ class BarsIndexManager:
                 'avg_ticks_per_bar', 'min_ticks_per_bar', 'max_ticks_per_bar',
                 'real_bar_count', 'source_version_min',
                 'source_version_max', 'price_basis',
+                'origin_classes', 'collected_from',
                 'total_trade_volume', 'avg_volume_per_bar'
             ])
         else:
@@ -499,6 +568,8 @@ class BarsIndexManager:
                 'source_version_min': row.get('source_version_min', ''),
                 'source_version_max': row.get('source_version_max', ''),
                 'price_basis': row.get('price_basis', 'unknown'),
+                'origin_classes': row.get('origin_classes', '') or '',
+                'collected_from': row.get('collected_from', '') or '',
                 'broker_type': broker_type,
                 'total_trade_volume': float(row['total_trade_volume']) if pd.notna(row.get('total_trade_volume')) else None,
                 'avg_volume_per_bar': float(row['avg_volume_per_bar']) if pd.notna(row.get('avg_volume_per_bar')) else None,

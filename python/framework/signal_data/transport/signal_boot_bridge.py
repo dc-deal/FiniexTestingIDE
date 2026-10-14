@@ -80,6 +80,12 @@ class SignalBootBridge:
                 series=empty,
                 reason='no pipeline configured — the session starts empty')
 
+        # A whole replay window, where a backtest mounts only the last snapshot before its start —
+        # and still the same warmup: a SIGNAL worker reads the provider through `nearest` alone,
+        # the newest snapshot at or before the tick, so at the first tick both pipelines resolve
+        # the same snapshot and the rest of this window is never read (checked 2026-10-13, #588).
+        # Only snapshots the archive and the stream do not share differ, which is #512's input
+        # divergence, not a warmup one.
         start = now - timedelta(hours=replay_window_hours)
         index = index_manager or SignalIndexManager(logger=logger)
         # Loaded before it is asked. Every other caller does this — the shared data

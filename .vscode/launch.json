@@ -250,7 +250,7 @@
             "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
             "args": [
                 "run",
-                "report_coverage_reference.json"
+                "backtesting/report_coverage_reference.json"
             ],
             "console": "integratedTerminal",
             "justMyCode": false,
@@ -450,6 +450,36 @@
             }
         },
         {
+            "name": "🤖 AutoTrader: Operator alerts — check",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/operator_alerts_cli.py",
+            "args": [
+                "check"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "02_runs_autotrader",
+                "order": 9
+            }
+        },
+        {
+            "name": "🤖 AutoTrader: Operator alerts — find the chat id",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/operator_alerts_cli.py",
+            "args": [
+                "chat-id"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "02_runs_autotrader",
+                "order": 10
+            }
+        },
+        {
             "name": "🤖 AutoTrader: SOLUSD Production",
             "type": "debugpy",
             "request": "launch",
@@ -463,7 +493,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "02_runs_autotrader",
-                "order": 9
+                "order": 11
             }
         },
         {
@@ -481,7 +511,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "02_runs_autotrader",
-                "order": 10
+                "order": 12
             }
         },
         // ====================================================
@@ -494,8 +524,7 @@
             "program": "${workspaceFolder}/python/cli/bar_index_cli.py",
             "args": [
                 "render",
-                "--all",
-                "--clean"
+                "--all"
             ],
             "console": "integratedTerminal",
             "justMyCode": false,
@@ -505,20 +534,68 @@
             }
         },
         {
-            "name": "📥 Bar Render kraken_spot --clean",
+            "name": "📥 Bar Render kraken_spot",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/bar_index_cli.py",
             "args": [
                 "render",
-                "kraken_spot",
-                "--clean"
+                "kraken_spot"
             ],
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
                 "group": "03_import",
                 "order": 2
+            }
+        },
+        {
+            "name": "📥 External History: Convert (dry run)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/external_history_cli.py",
+            "args": [
+                "convert",
+                "--fetch",
+                "${input:externalHistoryFetch}",
+                "--symbols",
+                "${input:externalHistorySymbols}",
+                "--dry-run"
+            ],
+            "console": "integratedTerminal",
+            "presentation": {
+                "group": "03_import",
+                "order": 3
+            }
+        },
+        {
+            "name": "📥 External History: List",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/external_history_cli.py",
+            "args": [
+                "list",
+                "--fetch",
+                "${input:externalHistoryFetch}"
+            ],
+            "console": "integratedTerminal",
+            "presentation": {
+                "group": "03_import",
+                "order": 4
+            }
+        },
+        {
+            "name": "📥 Import",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/data_index_cli.py",
+            "args": [
+                "import"
+            ],
+            "console": "integratedTerminal",
+            "presentation": {
+                "group": "03_import",
+                "order": 5
             }
         },
         {
@@ -533,22 +610,7 @@
             "console": "integratedTerminal",
             "presentation": {
                 "group": "03_import",
-                "order": 3
-            }
-        },
-        {
-            "name": "📥 Signal Import (Override)",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/python/cli/signal_index_cli.py",
-            "args": [
-                "import",
-                "--override"
-            ],
-            "console": "integratedTerminal",
-            "presentation": {
-                "group": "03_import",
-                "order": 4
+                "order": 6
             }
         },
         // ====================================================
@@ -930,29 +992,15 @@
         // ====================================================
         // 🔄 REBUILDS
         // ====================================================
-        // One entry per store that HAS an index (§44). The three marked "own manager"
-        // do not go through store_cli — they predate the shared base and #175 converges
-        // them; until then the split is real and this group shows it.
+        // One entry per store that has an index. Each rebuilds that INDEX from the store's own
+        // files and changes nothing in the store itself — except that the bar index's CLI then
+        // also recomputes the discovery caches; the caches alone are recomputed by
+        // "🔍 Disc - Cache: Rebuild All". The three marked "own manager" do not go through
+        // store_cli: they predate the shared base, and #583 converges them. run_configs has no
+        // entry on purpose: its index holds what nothing else does, so a rebuild would lose it
+        // (store_cli refuses one without --accept-loss).
         {
-            "name": "📡 Signal Index: Rebuild",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/python/cli/signal_index_cli.py",
-            "args": [
-                "rebuild"
-            ],
-            "console": "integratedTerminal",
-            "justMyCode": false,
-            "presentation": {
-                "group": "06_rebuild",
-                "order": 1
-            }
-        },
-        // One entry per store that HAS an index (§44). The three marked "own manager"
-        // do not go through store_cli — they predate the shared base and #175 converges
-        // them; until then the split is real and this group shows it.
-        {
-            "name": "🔄 Rebuild: All indexes a rebuild restores fully",
+            "name": "🔄 Rebuild index: all store_cli indexes (not ticks, bars, signals)",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/store_cli.py",
@@ -964,11 +1012,11 @@
             "justMyCode": false,
             "presentation": {
                 "group": "06_rebuild",
-                "order": 2
+                "order": 1
             }
         },
         {
-            "name": "🔄 Rebuild: bars (own manager, #175)",
+            "name": "🔄 Rebuild index: bars, then the discovery caches (own manager, #583)",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/bar_index_cli.py",
@@ -979,11 +1027,11 @@
             "justMyCode": false,
             "presentation": {
                 "group": "06_rebuild",
-                "order": 3
+                "order": 2
             }
         },
         {
-            "name": "🔄 Rebuild: certificates",
+            "name": "🔄 Rebuild index: certificates",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/store_cli.py",
@@ -995,11 +1043,11 @@
             "justMyCode": false,
             "presentation": {
                 "group": "06_rebuild",
-                "order": 4
+                "order": 3
             }
         },
         {
-            "name": "🔄 Rebuild: cold_start_state",
+            "name": "🔄 Rebuild index: cold_start_state",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/store_cli.py",
@@ -1011,11 +1059,27 @@
             "justMyCode": false,
             "presentation": {
                 "group": "06_rebuild",
+                "order": 4
+            }
+        },
+        {
+            "name": "🔄 Rebuild index: config_directory",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/store_cli.py",
+            "args": [
+                "rebuild",
+                "config_directory"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "06_rebuild",
                 "order": 5
             }
         },
         {
-            "name": "🔄 Rebuild: discovery_caches",
+            "name": "🔄 Rebuild index: discovery_caches",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/store_cli.py",
@@ -1031,7 +1095,7 @@
             }
         },
         {
-            "name": "🔄 Rebuild: run_ledger",
+            "name": "🔄 Rebuild index: run_ledger",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/store_cli.py",
@@ -1047,7 +1111,7 @@
             }
         },
         {
-            "name": "🔄 Rebuild: runs",
+            "name": "🔄 Rebuild index: runs",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/store_cli.py",
@@ -1063,7 +1127,7 @@
             }
         },
         {
-            "name": "🔄 Rebuild: signals (own manager, #175)",
+            "name": "🔄 Rebuild index: signals (own manager, #583)",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/signal_index_cli.py",
@@ -1078,7 +1142,7 @@
             }
         },
         {
-            "name": "🔄 Rebuild: ticks (own manager, #175)",
+            "name": "🔄 Rebuild index: ticks (own manager, #583)",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/tick_index_cli.py",
@@ -1781,6 +1845,21 @@
             }
         },
         {
+            "name": "📈 Fixture Catalog: list",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/fixture_catalog_cli.py",
+            "args": [
+                "list"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "11_maintenance",
+                "order": 2
+            }
+        },
+        {
             "name": "📈 Run Index: Prune (APPLY — DELETES run directories)",
             "type": "debugpy",
             "request": "launch",
@@ -1796,7 +1875,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "11_maintenance",
-                "order": 2
+                "order": 3
             }
         },
         {
@@ -1814,7 +1893,23 @@
             "justMyCode": false,
             "presentation": {
                 "group": "11_maintenance",
-                "order": 3
+                "order": 4
+            }
+        },
+        {
+            "name": "🔄 Fixture Catalog: produce (pick an entry)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/fixture_catalog_cli.py",
+            "args": [
+                "produce",
+                "${input:fixtureEntry}"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "11_maintenance",
+                "order": 5
             }
         },
         {
@@ -1829,7 +1924,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "11_maintenance",
-                "order": 4
+                "order": 6
             }
         },
         // ====================================================
@@ -2321,6 +2416,22 @@
             }
         },
         {
+            "name": "🧩 Pytest: Fixture Catalog (All)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/framework/fixture_catalog/",
+                "-v"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "13_pytest_validation",
+                "order": 25
+            }
+        },
+        {
             "name": "🧩 Pytest: Import Pipeline (All)",
             "type": "debugpy",
             "request": "launch",
@@ -2334,7 +2445,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 25
+                "order": 26
             }
         },
         {
@@ -2351,7 +2462,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 26
+                "order": 27
             }
         },
         {
@@ -2368,7 +2479,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 27
+                "order": 28
             }
         },
         {
@@ -2385,7 +2496,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 28
+                "order": 29
             }
         },
         {
@@ -2402,7 +2513,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 29
+                "order": 30
             }
         },
         {
@@ -2419,7 +2530,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 30
+                "order": 31
             }
         },
         {
@@ -2436,7 +2547,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 31
+                "order": 32
             }
         },
         {
@@ -2453,7 +2564,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 32
+                "order": 33
             }
         },
         {
@@ -2470,7 +2581,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 33
+                "order": 34
             }
         },
         {
@@ -2487,7 +2598,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 34
+                "order": 35
             }
         },
         {
@@ -2504,7 +2615,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 35
+                "order": 36
             }
         },
         {
@@ -2521,7 +2632,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 36
+                "order": 37
             }
         },
         {
@@ -2539,7 +2650,7 @@
             "cwd": "${workspaceFolder}",
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 37
+                "order": 38
             }
         },
         {
@@ -2556,7 +2667,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 38
+                "order": 39
             }
         },
         {
@@ -2573,7 +2684,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 39
+                "order": 40
             }
         },
         {
@@ -2591,7 +2702,7 @@
             "cwd": "${workspaceFolder}",
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 40
+                "order": 41
             }
         },
         {
@@ -2610,7 +2721,24 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 41
+                "order": 42
+            }
+        },
+        {
+            "name": "🧩 Pytest: Operator Alerts (All)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/autotrader/operator_alerts/",
+                "-v",
+                "--tb=short"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "13_pytest_validation",
+                "order": 43
             }
         },
         {
@@ -2627,7 +2755,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 42
+                "order": 44
             }
         },
         {
@@ -2644,7 +2772,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 43
+                "order": 45
             }
         },
         {
@@ -2662,7 +2790,7 @@
             "cwd": "${workspaceFolder}",
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 44
+                "order": 46
             }
         },
         {
@@ -2679,7 +2807,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 45
+                "order": 47
             }
         },
         {
@@ -2696,7 +2824,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 46
+                "order": 48
             }
         },
         {
@@ -2714,7 +2842,7 @@
             "cwd": "${workspaceFolder}",
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 47
+                "order": 49
             }
         },
         {
@@ -2729,7 +2857,7 @@
             "console": "integratedTerminal",
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 48
+                "order": 50
             }
         },
         {
@@ -2746,7 +2874,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 49
+                "order": 51
             }
         },
         {
@@ -2763,7 +2891,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 50
+                "order": 52
             }
         },
         {
@@ -2780,7 +2908,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 51
+                "order": 53
             }
         },
         {
@@ -2797,7 +2925,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 52
+                "order": 54
             }
         },
         {
@@ -2814,7 +2942,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 53
+                "order": 55
             }
         },
         {
@@ -2825,7 +2953,7 @@
             "console": "integratedTerminal",
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 54
+                "order": 56
             }
         },
         {
@@ -2842,7 +2970,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 55
+                "order": 57
             }
         },
         {
@@ -2859,7 +2987,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 56
+                "order": 58
             }
         },
         {
@@ -2876,7 +3004,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 57
+                "order": 59
             }
         },
         {
@@ -2893,7 +3021,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 58
+                "order": 60
             }
         },
         {
@@ -2910,7 +3038,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 59
+                "order": 61
             }
         },
         {
@@ -2927,7 +3055,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 60
+                "order": 62
             }
         },
         {
@@ -2944,7 +3072,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 61
+                "order": 63
             }
         },
         {
@@ -2961,7 +3089,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 62
+                "order": 64
             }
         },
         {
@@ -2978,7 +3106,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 63
+                "order": 65
             }
         },
         {
@@ -2995,7 +3123,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 64
+                "order": 66
             }
         },
         {
@@ -3012,7 +3140,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 65
+                "order": 67
             }
         },
         {
@@ -3029,7 +3157,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 66
+                "order": 68
             }
         },
         {
@@ -3046,7 +3174,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 67
+                "order": 69
             }
         },
         {
@@ -3063,7 +3191,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 68
+                "order": 70
             }
         },
         {
@@ -3080,7 +3208,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 69
+                "order": 71
             }
         },
         {
@@ -3097,7 +3225,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 70
+                "order": 72
             }
         },
         {
@@ -3114,7 +3242,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 71
+                "order": 73
             }
         },
         {
@@ -3131,7 +3259,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 72
+                "order": 74
             }
         },
         {
@@ -3148,7 +3276,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 73
+                "order": 75
             }
         },
         {
@@ -3165,7 +3293,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 74
+                "order": 76
             }
         },
         {
@@ -3182,7 +3310,24 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 75
+                "order": 77
+            }
+        },
+        {
+            "name": "🧩 Pytest: Warmup History (All)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/framework/warmup_history/",
+                "-v",
+                "--tb=short"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "13_pytest_validation",
+                "order": 78
             }
         },
         {
@@ -3199,7 +3344,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 76
+                "order": 79
             }
         },
         // ====================================================
@@ -4048,6 +4193,24 @@
         }
     ],
     "inputs": [
+        {
+            "id": "externalHistoryFetch",
+            "type": "promptString",
+            "description": "Fetch folder of the external history store",
+            "default": "data/external/kraken/trades/2026-10-13"
+        },
+        {
+            "id": "externalHistorySymbols",
+            "type": "promptString",
+            "description": "Symbols to convert, comma-separated",
+            "default": "ETHUSD"
+        },
+        {
+            "id": "fixtureEntry",
+            "type": "promptString",
+            "description": "Fixture catalog entry (the list entry names them), or --all",
+            "default": "report_coverage"
+        },
         {
             "id": "docsSearchQuery",
             "type": "promptString",

@@ -1,5 +1,6 @@
 {
   "profile_name": "deployment_continuity_test",
+  "run_purpose": "fixture",
   "bot_id": "deploy01",
   "symbol": "BTCUSD",
   "broker_type": "kraken_spot",
@@ -45,9 +46,6 @@
   },
   "tick_source": {
     "type": "mock"
-  },
-  "execution": {
-    "bar_max_history": 30
   },
   "cold_start": {
     "_comment": "The carry-over is what hands the deployment identity from one session to the next. 'auto' because an unattended restart is the case this exists for — a prompt would hang it.",

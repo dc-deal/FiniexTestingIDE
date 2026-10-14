@@ -45,6 +45,15 @@ Two details worth knowing about:
   and `print_buffer` did not, so a warning the threshold suppressed still reached the console
   through the batch flush. Both are pinned now.
 
+## `test_global_logger_tee.py` — an import's own log
+
+While an import runs, `GlobalLogger.tee_to()` writes every line to a second file as well, and a
+live screen can keep lines off the console with `set_console_muted()`. The screen's counters do not
+come from here: they count the issues the importers record. The tests pin that the second file
+gets exactly the lines of the block, that a muted console prints nothing while the file still gets
+the line, that the console is audible again after the block, and that a second tee inside the
+first is refused — its end would close the outer file and give the console back too early.
+
 ## Running the Tests
 
 ```bash

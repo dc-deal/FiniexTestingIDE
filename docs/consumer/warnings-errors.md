@@ -69,6 +69,15 @@ mode alone cannot separate a deliberate stop from a crash.
 not the mode: `emergency` beside `operator_interrupted: true` is somebody stopping a session, and
 `emergency_reason` carries the sentence where one was attached.
 
+`refused_at_first_tick` separates a second kind of `emergency` from a crash. A live session reads
+the bars its strategy starts from before its first trade arrives, and completes them when that
+trade comes; when the market's venue cannot supply the period that ended in between, the session
+stops right there rather than trading on a history with a gap. It is graded `failed`, because a
+restart is the remedy and a supervisor restarts on a failure — but nothing broke, and
+`emergency_reason` says what was missing. A close the session sent on that first tick, protecting
+a position it had carried over, may still have reached the market; the session's own console and
+log name it.
+
 ## A warning's tier says which channel produced it, not how bad it is
 
 `tier` has two values, and their wire spelling reads like a severity although it is not one:

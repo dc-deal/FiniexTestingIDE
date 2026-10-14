@@ -161,11 +161,29 @@ class PendingOrderExecutionState:
     in_flight_query: bool = False
     last_polled_at_ms: float = 0.0
     # How much of a VENUE-HELD protective order is already written into the position book
-    # (#503). It is the resolver's idempotency key and deliberately NOT
-    # fills.cumulative_filled_lots: that one answers how much the VENUE filled, and on a
-    # venue with trade-level reporting the trades drain sets it to the full amount before
-    # anything has been booked. One number cannot answer both questions.
+    # (#503). It is the resolver's idempotency key: the venue reports the order's volume,
+    # value and fee as TOTALS for everything it executed so far — through several routes,
+    # and after a restart once more — and each step books what a total has grown by since
+    # the last one. Deliberately NOT fills.cumulative_filled_lots: that holds the executions
+    # booked, and the key also has to advance where nothing could be booked (the position
+    # already gone), or the same report would raise its error again on every poll. All three
+    # follow the BOOKING, and the position keeps a copy for the cold-start carry-over —
+    # a restart that forgot them would book a step a second time (#508).
     venue_close_applied_lots: float = 0.0
+    # The fee booked for that volume, in the symbol's quote currency: the venue's figure, or
+    # the estimate where its answer carried none (#508)
+    venue_close_applied_fee: float = 0.0
+    # The part of it booked from the estimate that no total of the venue's has covered yet. The
+    # next total settles it — or finds it exceeded, the excess then staying booked until a later
+    # total above the books absorbs it — and that step's
+    # event says so: its fee is not what the total grew by (#508). In-session only, unlike the
+    # other three: a restart between an estimated step and the next total is rare, and the
+    # booking does not depend on this — the next total still books what it exceeds the books
+    # by. Only the sentence on that step's event is lost.
+    venue_close_estimated_fee: float = 0.0
+    # Lots times price booked for that volume. The venue reports one average price over all
+    # the order executed, and the next step's own price follows from it and this (#508).
+    venue_close_applied_value: float = 0.0
     # === Resolution of a lost write answer (#487) ===
     # `resolution_deadline is not None` IS the selector: the unresolved handler ARMS the
     # resolution and the scheduler drives it, so nothing has to scan for orders that "look
@@ -197,8 +215,10 @@ class PendingOrderFills:
 
     trades: per-execution BrokerTrade records produced by this order.
       Single fill orders typically produce 1 record; partial fills produce N.
-      Live: populated by _handle_trades_response after FILLED detection.
-      Sim: populated by TradeSimulator._fill_open_order on synthetic fill.
+      Both pipelines: one execution synthesized where the fill is booked, carrying the fee
+      that was booked — live, the venue's own figure where its answer reported one (#508).
+      The venue's real executions are read by the drift auditor and never written here:
+      a second writer onto the order is how one fill came to be booked twice.
     cumulative_*: derived aggregates over trades, cached on append_trade.
     """
     trades: List[BrokerTrade] = field(default_factory=list)

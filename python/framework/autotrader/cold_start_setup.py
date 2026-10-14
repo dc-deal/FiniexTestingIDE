@@ -55,6 +55,7 @@ class ColdStartSetup:
         situation: What the boot found, as the decision logic saw it — None for a dry run,
             an unreachable venue, or a session with no cold start at all
         verdict: What the decision logic answered, when it was asked
+        refusal: Why the boot was refused, as the session log says it — '' when it was not
     """
     proceed: bool = True
     store: Optional[ColdStartStateStore] = None
@@ -63,6 +64,7 @@ class ColdStartSetup:
     keys_in_use: Set[str] = field(default_factory=set)
     situation: Optional[ColdStartSituation] = None
     verdict: Optional[ColdStartVerdict] = None
+    refusal: str = ''
 
 
 def setup_cold_start(
@@ -153,6 +155,7 @@ def setup_cold_start(
             store=store,
             situation=adopter.get_situation(),
             verdict=adopter.get_verdict(),
+            refusal=adopter.get_refusal(),
         )
 
     return ColdStartSetup(

@@ -49,3 +49,20 @@ class AbstractTradingFee(ABC):
         """Mark fee as applied to balance"""
         self.status = FeeStatus.APPLIED
 
+    def apply_reported_cost(self, reported_cost: float) -> None:
+        """
+        Replace the computed cost with the one the venue reported for this fill (#508).
+
+        The fee keeps its type and its category — a maker/taker fee stays one with its maker
+        flag unchanged — so every reader that sorts costs by kind keeps working. What the model
+        computed stays readable in `metadata['estimated_cost']`: the gap between the two is the
+        model's error, which is the reason the venue's figure is the one worth booking. The same
+        call serves every model that charges per fill, a percentage or a commission per lot.
+
+        Args:
+            reported_cost: The venue's fee for the volume this fee covers, in the same currency
+                the model computes in
+        """
+        self.metadata['estimated_cost'] = self.cost
+        self.cost = abs(reported_cost)
+

@@ -15,6 +15,8 @@ Matching literals would catch only the first, and only until someone renames the
 
 from pathlib import Path
 
+from python.configuration.credentials_cascade import workspace_credentials_path
+
 # Home of the committed placeholder credentials, as the two directory names that identify
 # it. Compared part by part and NOT as a substring, because 'configs/credentials' is a
 # substring of 'user_configs/credentials' — a substring test refuses the real key too, and
@@ -60,10 +62,29 @@ def assert_real_credential(credential_path: Path, purpose: str) -> None:
     if not is_tracked_credential(path):
         return
 
+    # The advice names the subfolder too (`venues/…`): the file's bare name pointed at the
+    # flat location the cascade stopped reading when the folder was split.
     raise ValueError(
         f'{purpose} would run on the tracked default credentials at {path}, which is a '
         f'committed placeholder by design.\n'
-        f'  Put the real key in user_configs/credentials/{path.name} — it takes '
-        f'precedence in the cascade.\n'
+        f'  Put the real key in {workspace_credentials_path(_below_credentials_dir(path))} — '
+        f'it takes precedence in the cascade.\n'
         f'  If a real key IS in the tracked file: remove it. That file is committed.'
     )
+
+
+def _below_credentials_dir(credential_path: Path) -> str:
+    """
+    The part of a tracked credentials path below `configs/credentials`.
+
+    Args:
+        credential_path: A path for which is_tracked_credential() holds
+
+    Returns:
+        The relative path, e.g. 'venues/kraken_credentials.json'
+    """
+    parts = credential_path.parts
+    for i in range(len(parts) - 1):
+        if parts[i] == TRACKED_CREDENTIALS_PARENT and parts[i + 1] == CREDENTIALS_DIR_NAME:
+            return str(Path(*parts[i + 2:]))
+    return credential_path.name

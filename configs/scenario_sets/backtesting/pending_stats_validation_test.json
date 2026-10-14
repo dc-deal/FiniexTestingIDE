@@ -1,6 +1,7 @@
 {
   "version": "1.0",
   "scenario_set_name": "pending_stats_validation_test",
+  "run_purpose": "fixture",
   "created": "2026-02-18T00:00:00.000000",
   "description": "Pending Order Statistics Validation - Tests synthetic close, force-close detection, and latency stats",
   "global": {

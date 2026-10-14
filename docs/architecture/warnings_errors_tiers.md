@@ -244,10 +244,13 @@ rendered to console / file / API identically:
   unexplained 500.
 - `outcome: WarningsErrorsOutcome` — `run_outcome` (the canonical grading, below) plus
   `failed_count` / `failed_unit_names` / `first_failure_*` (sim) and `emergency_reason` /
-  `shutdown_mode` / `operator_interrupted` (AutoTrader). The Executive headline reads this — it does
-  not re-scan. `operator_interrupted` rides along for the reason given above: `shutdown_mode` alone
-  cannot separate a Ctrl+C from a crash, so a surface that carried only the mode would show
-  'emergency' beside a run graded `SUCCESS` and have no way to explain it. The AutoTrader-only
+  `shutdown_mode` / `operator_interrupted` / `refused_at_first_tick` (AutoTrader). The Executive
+  headline reads this — it does not re-scan. `operator_interrupted` rides along for the reason given
+  above: `shutdown_mode` alone cannot separate a Ctrl+C from a crash, so a surface that carried only
+  the mode would show 'emergency' beside a run graded `SUCCESS` and have no way to explain it.
+  `refused_at_first_tick` does the same for a session that could not complete its warmup history at
+  its first tick (#588): graded `FAILED` like a crash, and told apart from one by this flag — the
+  console's closing block reads it from here too. The AutoTrader-only
   fields are `''` / `False` on a sim run — that means *not applicable*, never *unknown*.
 - The outcome also COUNTS the channels, once and the same way in both pipelines: `error_count` (ERROR
   records in the error pot), `warning_count` (Tier-1 findings) and `log_warning_count` (Tier-2 WARNING

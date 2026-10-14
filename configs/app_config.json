@@ -116,8 +116,7 @@
       "volume_threshold_pct": 0.1,
       "price_threshold_pct": 1.0,
       "slippage_threshold_pct": 0.5,
-      "log_all": false,
-      "sample_rate": 1.0
+      "log_all": false
     },
     "reconciliation": {
       "enabled": true,
@@ -151,6 +150,38 @@
     },
     "capital": {
       "exclusive_account": false
+    },
+    "operator_alerts": {
+      "telegram": {
+        "enabled": false,
+        "active": "production",
+        "endpoints": {
+          "production": {
+            "base_url": "https://api.telegram.org",
+            "credentials_file": "services/telegram_credentials.json"
+          }
+        },
+        "min_send_interval_s": 3.0,
+        "queue_capacity": 100,
+        "all_clear_after_s": 300.0,
+        "daily_digest": true,
+        "connection": {
+          "initial_delay_s": 2.0,
+          "max_delay_s": 60.0,
+          "jitter": true,
+          "attempt_budget": 5,
+          "request_timeout_s": 10.0,
+          "on_give_up": "alert"
+        }
+      },
+      "liveness": {
+        "enabled": false,
+        "credentials_file": "",
+        "interval_s": 60.0,
+        "loop_stall_after_s": 120.0,
+        "liveness_stamp_file": "",
+        "request_timeout_s": 10.0
+      }
     }
   },
   "backtesting": {
@@ -190,14 +221,13 @@
       "event_tape_size": 5
     },
     "data_validation": {
-      "warmup_quality_mode": "standard",
       "allowed_gap_categories": [
         "seamless",
         "short",
         "weekend",
         "holiday"
       ],
-      "_comment_admitted_origin_classes": "Which data origins a scenario may READ (#518). Open on purpose until producers stamp an identity and the legacy archive is attested — a scenario reading anything but producer-stamped production data is WARNED about meanwhile, so the refusal can be measured before it is armed. Narrow this list to arm it.",
+      "_comment_admitted_origin_classes": "Which data origins a scenario may READ (#518). Open on purpose until producers stamp an identity and the legacy archive is attested — a scenario reading anything but producer-stamped production data is WARNED about meanwhile, so the refusal can be measured before it is armed. Narrow this list to arm it. `external` (a venue's published history, #561) is left out on purpose: such ticks are refused until a configuration admits them.",
       "admitted_origin_classes": [
         "production",
         "development",

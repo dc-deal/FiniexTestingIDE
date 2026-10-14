@@ -19,6 +19,7 @@ from python.framework.reporting import booking_period_recorder
 from python.framework.reporting.booking_period_recorder import BookingPeriodRecorder
 from python.framework.reporting.builders.booking_period_builder import PeriodSnapshot
 from python.framework.types.config_types.market_config_types import DayAnchorConfig
+from python.framework.types.run_results_types import PeriodCloseReason
 
 # Crypto: the day flips at midnight UTC. Forex: at the 17:00 New York swap rollover, which is
 # 21:00 UTC in summer and 22:00 in winter — the case a midnight assumption gets wrong.
@@ -161,16 +162,16 @@ class TestAPeriodIsNeverFiledInsideOut:
 class TestWhatAPeriodOpenedWith:
     """
     A period's opening equity is the previous period's close, read at the same instant — or a
-    unit's first observed value for its first period. The two pipelines observe in opposite
-    order around the boundary check (the simulation before it, the AutoTrader after), and both
-    must land on the same answer.
+    unit's first observed value for its first period. It is set from the value the seal READ, so
+    it does not depend on the order around the boundary check: both pipelines observe first on a
+    tick, while a heartbeat seal checks without observing at all.
     """
 
     @staticmethod
     def _source(equity: float):
         return lambda: ([], PeriodSnapshot(currency='USD', final_equity=equity))
 
-    def test_the_simulation_order_observes_then_checks(self):
+    def test_observing_before_the_check_opens_at_the_value_the_seal_read(self):
         rec = _recorder()
         rec.observe_equity(10_000.0)
         rec.check_boundary(_MON + timedelta(hours=1), self._source(10_000.0))
@@ -181,7 +182,7 @@ class TestWhatAPeriodOpenedWith:
 
         assert [p.period_opening_equity for p in periods] == [10_000.0, 10_050.0]
 
-    def test_the_autotrader_order_checks_then_observes(self):
+    def test_checking_before_observing_gives_the_same_openings(self):
         rec = _recorder()
         rec.check_boundary(_MON + timedelta(hours=1), self._source(10_000.0))
         rec.observe_equity(10_000.0)
@@ -197,3 +198,29 @@ class TestWhatAPeriodOpenedWith:
         periods = rec.close(_MON + timedelta(hours=2), self._source(10_000.0))
 
         assert periods[0].period_opening_equity is None
+
+
+class TestEverySealIsHandedOn:
+    """A live session renders each sealed period for its operator (#235) — handed over once."""
+
+    def test_a_boundary_and_the_close_each_hand_over_their_period(self):
+        handed = []
+        rec = BookingPeriodRecorder('unit', _CRYPTO, on_seal=handed.append)
+        rec.check_boundary(_MON + timedelta(hours=1), _seal_source)
+        rec.check_boundary(_MON + timedelta(days=1, seconds=1), _seal_source)
+        periods = rec.close(_MON + timedelta(days=1, hours=2), _seal_source)
+
+        assert handed == periods
+        assert [p.reason for p in handed] == [PeriodCloseReason.ANCHOR,
+                                              PeriodCloseReason.SESSION_END]
+
+    def test_the_listener_sees_a_recorder_that_is_consistent_again(self):
+        """Called last: the period is filed and counted before anyone is told."""
+        seen = []
+        rec = BookingPeriodRecorder(
+            'unit', _CRYPTO,
+            on_seal=lambda period: seen.append((period.period_no, rec.get_highest_period_no())))
+        rec.check_boundary(_MON + timedelta(hours=1), _seal_source)
+        rec.check_boundary(_MON + timedelta(days=1, seconds=1), _seal_source)
+
+        assert seen == [(1, 1)]

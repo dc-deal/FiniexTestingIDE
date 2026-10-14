@@ -64,7 +64,8 @@ All three blocks have the same shape, so a renderer written for one renders all 
 
 Every block opens with `headline`, which has the shape of the per-currency row
 [portfolio](/api/v1/docs/portfolio) serves — trade counts, win rate, profit factor, profit, loss,
-net profit, the two fee totals, the drawdown trio, `final_equity` and the sums beside it. Its
+net profit, the two fee totals, the fills split by where their fee came from
+(`fill_fees_by_source`), the drawdown trio, `final_equity` and the sums beside it. Its
 rules hold here unchanged, including the ones that matter most: `final_equity` is null over
 several accounts, and the drawdown trio belongs to the deepest single account.
 
@@ -121,6 +122,10 @@ the fees a venue that charges per side took for orders that rested before they f
 for orders that took the book (taker). Such a venue books its fees there rather than in
 `total_commission`. How a single period's split relates to its fee total
 is stated on [booking periods](/api/v1/docs/booking-periods).
+
+`headline.fill_fees_by_source` says where the fills' fees came from, summed over the block's units.
+In a backtest every fill is `estimate` — our fee model's figure, with no venue to ask; what the
+split means where a venue does report its fee is on [portfolio](/api/v1/docs/portfolio).
 
 `avg_win` and `avg_loss` are the mean winning and losing trade, and `total_long_trades` /
 `total_short_trades` split the block's trades by direction.

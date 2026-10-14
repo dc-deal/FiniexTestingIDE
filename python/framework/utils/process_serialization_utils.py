@@ -190,7 +190,6 @@ def deserialize_bars_batch(symbol: str, bars_tuple: Tuple[Any, ...]) -> Tuple[Ba
             close=float(bar_dict['close']),
             volume=float(bar_dict['volume']),
             tick_count=int(bar_dict['tick_count']),
-            is_complete=True
         )
         result.append(bar)
 

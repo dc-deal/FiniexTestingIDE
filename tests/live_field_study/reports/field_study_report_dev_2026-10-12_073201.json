@@ -1,0 +1,215 @@
+{
+  "record_kind": "certificate",
+  "release_version": "dev",
+  "app_version": "1.4.0",
+  "timestamp": "2026-10-12T07:32:01.053172+00:00",
+  "valid_until": "2027-01-10T07:32:01.053172+00:00",
+  "git_commit": "85b5b314",
+  "git_branch": "dev-v-1-4",
+  "git_dirty": false,
+  "uncommitted_count": 0,
+  "comment": "Intermediate dev certificate, kept as a checkpoint of the live core after a series of core changes; not a release certificate. First field study with the venue's own fee booked on every fill (#508): 13 of 13 fills priced by the venue, the booked fees equal to what the account was charged. This comment was added by hand after generation; every other field is as the generator wrote it.",
+  "isolation_active": false,
+  "workspace_overrides": {
+    "files_present": [
+      "app_config.json",
+      "data_origins.json",
+      "market_config.json",
+      "sentiment_config.json"
+    ],
+    "unnamed_files": 1,
+    "applied": true
+  },
+  "code_identity": {
+    "framework": {
+      "root": "/app",
+      "in_repository": true,
+      "commit": "85b5b314",
+      "branch": "dev-v-1-4",
+      "dirty": false,
+      "uncommitted_count": 0,
+      "changes": [],
+      "diff_hash": null,
+      "patch_ref": null,
+      "patch_excluded": [],
+      "restorable": true
+    },
+    "repositories": [],
+    "components": []
+  },
+  "source_jsonl": "runs/autotrader/kraken_spot_ethusd_field_study/20261012_072038_b60404ee/field_study.jsonl",
+  "profile": "kraken_spot_ethusd_field_study",
+  "symbol": "ETHUSD",
+  "started_utc": "2026-10-12T07:20:42.541504+00:00",
+  "overall_status": "PASSED",
+  "phase_count": 21,
+  "phases": [
+    {
+      "phase": "market_long_open",
+      "outcome": "pass",
+      "reason": "filled"
+    },
+    {
+      "phase": "market_long_close",
+      "outcome": "pass",
+      "reason": "flat"
+    },
+    {
+      "phase": "market_short_open",
+      "outcome": "pass",
+      "reason": "filled"
+    },
+    {
+      "phase": "market_short_close",
+      "outcome": "pass",
+      "reason": "flat"
+    },
+    {
+      "phase": "reject_below_min",
+      "outcome": "expected_rejection",
+      "reason": "rejected as expected"
+    },
+    {
+      "phase": "reject_oversized",
+      "outcome": "expected_rejection",
+      "reason": "rejected as expected"
+    },
+    {
+      "phase": "limit_long_near_price",
+      "outcome": "pass",
+      "reason": "filled"
+    },
+    {
+      "phase": "limit_long_close",
+      "outcome": "pass",
+      "reason": "flat"
+    },
+    {
+      "phase": "limit_short_near_price",
+      "outcome": "pass",
+      "reason": "filled"
+    },
+    {
+      "phase": "limit_short_close",
+      "outcome": "pass",
+      "reason": "flat"
+    },
+    {
+      "phase": "limit_modify_test",
+      "outcome": "inconclusive",
+      "reason": "no fill after modify"
+    },
+    {
+      "phase": "limit_modify_close",
+      "outcome": "pass",
+      "reason": "flat"
+    },
+    {
+      "phase": "limit_cancel_test",
+      "outcome": "pass",
+      "reason": "cancelled, no position"
+    },
+    {
+      "phase": "stop_cancel_test",
+      "outcome": "pass",
+      "reason": "cancelled, no position"
+    },
+    {
+      "phase": "protective_level_test",
+      "outcome": "pass",
+      "reason": "venue held it, then released it"
+    },
+    {
+      "phase": "multi_concurrent_limits",
+      "outcome": "pass",
+      "reason": "all watching"
+    },
+    {
+      "phase": "multi_cancel_all",
+      "outcome": "pass",
+      "reason": "all cancelled"
+    },
+    {
+      "phase": "partial_close_test",
+      "outcome": "pass",
+      "reason": "half then flat"
+    },
+    {
+      "phase": "idle_heartbeat_test",
+      "outcome": "pass",
+      "reason": "idle complete"
+    },
+    {
+      "phase": "force_close_all",
+      "outcome": "skipped",
+      "reason": "already flat"
+    },
+    {
+      "phase": "final_summary",
+      "outcome": "pass",
+      "reason": "session end requested"
+    }
+  ],
+  "failed_phases": [],
+  "missing_phases": [],
+  "flat_at_session_end": true,
+  "fees_charged": {
+    "value": 0.4932,
+    "currency": "USD",
+    "source": "run_record"
+  },
+  "fee_source": {
+    "status": "recorded",
+    "fills": 13,
+    "by_source": {
+      "venue": 13,
+      "estimate": 0
+    },
+    "not_recorded": 0,
+    "fee_report": "status_answer"
+  },
+  "account_delta": {
+    "status": "ok",
+    "per_asset": {
+      "ZUSD": -0.4967000000000006
+    }
+  },
+  "slippage": {
+    "measured_against": {
+      "limit": "limit_price",
+      "market": "submission_mid"
+    },
+    "sign": "positive = adverse",
+    "by_order_type": {
+      "limit": {
+        "legs": 2,
+        "measured": 2,
+        "vs_limit_max_pct": 0.0
+      },
+      "market": {
+        "legs": 11,
+        "measured": 11,
+        "adverse_avg_pct": 0.003804989151106256,
+        "adverse_max_pct": 0.025882787946014483
+      }
+    },
+    "status": "measured"
+  },
+  "api_calls": {
+    "status": "recorded",
+    "calls": 235,
+    "errors": 1,
+    "slow_calls": 0
+  },
+  "reconciliation": {
+    "status": "checked",
+    "cycles": 10,
+    "skipped": 0,
+    "divergences_seen": 1,
+    "divergent_records": 1
+  },
+  "detected_via": {
+    "poll": 40
+  },
+  "warnings": []
+}

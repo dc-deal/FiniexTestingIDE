@@ -44,6 +44,7 @@ from python.framework.types.trading_env_types.broker_types import (
 )
 from python.framework.utils.trading_math.price_trigger import taken_price
 from python.framework.types.trading_env_types.order_types import (
+    FeeReport,
     LimitOrder,
     MarketOrder,
     OrderCapabilities,
@@ -197,6 +198,16 @@ class MockBrokerAdapter(AbstractAdapter):
         self._mock_trades: Dict[str, List[Dict[str, Any]]] = {}
         self._trade_counter: int = 0
 
+        # === #508 The venue's own fee ===
+        # The rates this mock VENUE charges, as (maker %, taker %). None charges the rates the
+        # broker configuration declares — a resting limit the maker rate, every other fill the
+        # taker rate, as the executor files them — so the fee it reports equals the executor's
+        # estimate; a test sets its own to play an account whose real tier is not the declared one.
+        self._venue_fee_rates: Optional[Tuple[float, float]] = None
+        # Whether a fill's answer carries the fee — off plays a venue that declares the fee in
+        # its answer and then sends an answer without it, which must be booked visibly.
+        self._fee_in_status_answer: bool = True
+
         # === #151 Broker Truth-Pull state ===
         # Settable broker-side truth for reconciliation tests, returned by the
         # get_broker_* pulls (perturbed by _divergence_mode). Seeded directly by
@@ -253,6 +264,10 @@ class MockBrokerAdapter(AbstractAdapter):
             trade_level_reporting=True,
             # No venue at all, so nothing can rest at one (#503).
             venue_held_protective_orders=False,
+            # Like Kraken, the answer that reports a fill carries its fee — where the broker's
+            # fee model charges one per fill at all; a spread broker's does not (#508).
+            fee_report=(FeeReport.STATUS_ANSWER if self._charges_fee_per_fill()
+                        else FeeReport.NOT_REPORTED),
         )
 
     # ============================================
@@ -550,7 +565,7 @@ class MockBrokerAdapter(AbstractAdapter):
         if self._mode == MockExecutionMode.INSTANT_FILL:
             fill_price = market_price + self._slippage_points
             # #326: emit synthetic trade records for this fill
-            self._record_mock_trades(
+            fill_fee = self._record_mock_trades(
                 broker_ref=broker_ref,
                 symbol=symbol,
                 direction=direction,
@@ -558,12 +573,7 @@ class MockBrokerAdapter(AbstractAdapter):
                 fill_price=fill_price,
                 is_maker=False,  # mock submits are market = taker
             )
-            return {
-                'status': 'FILLED',
-                'broker_ref': broker_ref,
-                'fill_price': fill_price,
-                'filled_lots': lots,
-            }
+            return self._filled_answer(broker_ref, fill_price, lots, fill_fee)
 
         # DELAYED_FILL or TIMEOUT: return pending, track internally for later fill
         self._mock_pending[broker_ref] = {
@@ -572,6 +582,8 @@ class MockBrokerAdapter(AbstractAdapter):
             'lots': lots,
             'submitted_at': datetime.now(timezone.utc),
             'expected_price': market_price,
+            # A limit that rested and filled later provided liquidity — the maker rate (#508)
+            'order_type': payload.get('order_type'),
         }
         return {
             'status': 'PENDING',
@@ -606,20 +618,15 @@ class MockBrokerAdapter(AbstractAdapter):
         order_data = self._mock_pending.pop(broker_ref)
         fill_price = order_data['expected_price'] + self._slippage_points
         # #326: emit synthetic trade records for this DELAYED_FILL resolution
-        self._record_mock_trades(
+        fill_fee = self._record_mock_trades(
             broker_ref=broker_ref,
             symbol=order_data['symbol'],
             direction=order_data['direction'],
             total_lots=order_data['lots'],
             fill_price=fill_price,
-            is_maker=False,
+            is_maker=order_data['order_type'] is OrderType.LIMIT,
         )
-        return {
-            'status': 'FILLED',
-            'broker_ref': broker_ref,
-            'fill_price': fill_price,
-            'filled_lots': order_data['lots'],
-        }
+        return self._filled_answer(broker_ref, fill_price, order_data['lots'], fill_fee)
 
     def do_request_cancel(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -712,6 +719,7 @@ class MockBrokerAdapter(AbstractAdapter):
             status=self._STATUS_MAP[raw['status']],
             fill_price=raw.get('fill_price'),
             filled_lots=raw.get('filled_lots'),
+            fill_fee=raw.get('fill_fee'),
             rejection_reason=raw.get('rejection_reason'),
             timestamp=timestamp,
         )
@@ -728,6 +736,7 @@ class MockBrokerAdapter(AbstractAdapter):
             status=self._STATUS_MAP[raw['status']],
             fill_price=raw.get('fill_price'),
             filled_lots=raw.get('filled_lots'),
+            fill_fee=raw.get('fill_fee'),
             rejection_reason=raw.get('rejection_reason'),
             timestamp=timestamp,
         )
@@ -796,7 +805,7 @@ class MockBrokerAdapter(AbstractAdapter):
         total_lots: float,
         fill_price: float,
         is_maker: bool,
-    ) -> None:
+    ) -> float:
         """
         Synthesize per-execution trade records for a mock fill (#326).
 
@@ -812,18 +821,13 @@ class MockBrokerAdapter(AbstractAdapter):
             total_lots: Filled volume to split across trades
             fill_price: Center price; multi-trade splits offset around this
             is_maker: True for limit/maker, False for market/taker
+
+        Returns:
+            The fee charged for the whole fill — the sum of its records' fees
         """
         n = self._trades_per_fill
-        quote_currency = (
-            self.broker_config.get('symbols', {})
-            .get(symbol, {})
-            .get('quote_currency', 'USD')
-        )
-        # Read fee rate from the same broker_config the executor uses (MakerTakerFee).
-        # Hardcoding here caused drift vs. the executor's synthesis whenever the
-        # broker config rates changed (e.g. fee-tier update). #327 surfaced this.
-        fee_pct = self.get_maker_fee() if is_maker else self.get_taker_fee()
-        fee_rate = fee_pct / 100.0
+        symbol_config = self.broker_config.get('symbols', {}).get(symbol, {})
+        quote_currency = symbol_config.get('quote_currency', 'USD')
         # Adapter receives `direction` as the OUTBOUND trade operation —
         # the executor already reversed it for close orders. Direct mapping
         # LONG → BUY, SHORT → SELL (no action lookup needed at this layer).
@@ -841,13 +845,121 @@ class MockBrokerAdapter(AbstractAdapter):
                 'trade_id': f'MOCK-TRADE-{self._trade_counter:06d}',
                 'volume': volume,
                 'price': price,
-                'fee': volume * price * fee_rate,
+                # One fee rule for the records and the answers. A spread broker charges nothing
+                # per fill — its cost is the spread inside the fill price — so its executions
+                # carry no fee: they used to carry the maker/taker fallback rates, which the
+                # executor never books for such a broker (#508).
+                'fee': self.venue_fee_for(symbol, volume, price, is_maker) or 0.0,
                 'fee_currency': quote_currency,
                 'timestamp': datetime.now(timezone.utc),
                 'side': side,
                 'is_maker': is_maker,
             })
         self._mock_trades[broker_ref] = records
+        return sum(record['fee'] for record in records)
+
+    def _filled_answer(
+        self,
+        broker_ref: str,
+        fill_price: float,
+        filled_lots: float,
+        fill_fee: float,
+    ) -> Dict[str, Any]:
+        """
+        The raw answer that reports an order filled — with its fee, where this venue reports
+        one there (#508).
+
+        Args:
+            broker_ref: The order's reference
+            fill_price: The price it filled at
+            filled_lots: The volume it filled
+            fill_fee: The fee charged for that volume
+
+        Returns:
+            The raw answer, FILLED
+        """
+        answer: Dict[str, Any] = {
+            'status': 'FILLED',
+            'broker_ref': broker_ref,
+            'fill_price': fill_price,
+            'filled_lots': filled_lots,
+        }
+        if self._charges_fee_per_fill() and self._fee_in_status_answer:
+            answer['fill_fee'] = fill_fee
+        return answer
+
+    def _charges_fee_per_fill(self) -> bool:
+        """
+        Whether the broker this mock stands in for charges a fee on every fill.
+
+        Returns:
+            True for a maker/taker fee model; False for a spread model, whose cost is inside
+            the fill price
+        """
+        return self.broker_config.get('fee_structure', {}).get('model') == 'maker_taker'
+
+    def _venue_fee_pct(self, is_maker: bool) -> float:
+        """
+        The rate this mock venue charges a fill — its own where a test set one, otherwise the
+        rate the broker configuration declares.
+
+        Args:
+            is_maker: True for a maker fill
+
+        Returns:
+            The rate in percent
+        """
+        if self._venue_fee_rates is not None:
+            return self._venue_fee_rates[0] if is_maker else self._venue_fee_rates[1]
+        return self.get_maker_fee() if is_maker else self.get_taker_fee()
+
+    def venue_fee_for(
+        self,
+        symbol: str,
+        lots: Optional[float],
+        price: Optional[float],
+        is_maker: bool = False,
+    ) -> Optional[float]:
+        """
+        The fee this venue charges for an executed volume — for a test venue that builds its
+        own answers and has to report the fee in them the way this one does (#508).
+
+        Args:
+            symbol: The instrument
+            lots: The executed volume; None or zero where nothing executed
+            price: Its average price
+            is_maker: True for a maker fill
+
+        Returns:
+            The fee, or None where nothing executed or the broker charges nothing per fill
+        """
+        if not lots or price is None or not self._charges_fee_per_fill():
+            return None
+        contract_size = (self.broker_config.get('symbols', {}).get(symbol, {})
+                         .get('contract_size', 1))
+        return lots * contract_size * price * self._venue_fee_pct(is_maker) / 100.0
+
+    def set_venue_fee_rates(self, maker_pct: float, taker_pct: float) -> None:
+        """
+        Charge rates of this venue's own instead of the declared ones (#508) — the account whose
+        real tier differs from what the configuration says, which is what makes the venue's
+        reported fee differ from the executor's estimate.
+
+        Args:
+            maker_pct: The maker rate in percent
+            taker_pct: The taker rate in percent
+        """
+        self._venue_fee_rates = (maker_pct, taker_pct)
+
+    def set_fee_in_status_answer(self, enabled: bool) -> None:
+        """
+        Send a fill's answer with or without its fee (#508). Off plays a venue that declares
+        the fee in its answer and then sends one without it.
+
+        Args:
+            enabled: True to report the fee in the answer
+        """
+        self._fee_in_status_answer = enabled
 
     def add_symbol(self, symbol: str, spec: Dict[str, Any]) -> None:
         """

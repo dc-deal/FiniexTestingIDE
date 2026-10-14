@@ -54,6 +54,7 @@ nothing in the payload to notice it by. The route is not proof; the body is. Ass
 | `max_equity` | the peak this account's equity reached |
 | `total_commission` · `total_swap` · `total_spread_cost` | the unit's cost split |
 | `maker_fee` · `taker_fee` | on a venue that charges per side: the fees for orders that rested before they filled (maker) and for orders that took the book (taker) — booked here rather than in `total_commission` |
+| `fill_fees_by_source` | the unit's fills split by where their fee came from — the venue or our estimate; see below |
 | `has_error` | the unit produced figures **and** failed |
 
 `has_error` is the one to branch on before rendering anything else as clean. It marks partial
@@ -68,6 +69,34 @@ positions included. The two differ by exactly the fees of what was still open at
 
 Reading one as the other is how one unit comes to show two fee totals in two places. The split
 arrived with contract 18; see [the contract log](/api/v1/docs/contract-log).
+
+## Where each fill's fee came from
+
+A live fill is booked at the fee the venue reported for it, wherever the venue reports one in the
+answer that says the order filled, and at our fee model's estimate — the declared rate times the
+order's value — where it does not. `fill_fees_by_source` splits a unit's fills by that, so a
+reader comparing a live session with a backtest of the same period can see how much of the
+session's fee figure is the venue's and how much is estimated:
+
+```json
+{ "fill_fees_by_source": { "venue":    { "fill_count": 12, "fill_fees": 0.4532 },
+                          "estimate": { "fill_count": 1,  "fill_fees": 0.0412 } } }
+```
+
+- **One entry per source that occurs.** A missing key means no fill carried that source; an empty
+  object means the unit executed nothing. A backtest has only `estimate`: it has no venue to ask.
+  In a mock session the `venue` figures are the mock venue's.
+- **`fill_count` counts the fills as the [order events](/api/v1/docs/order-events) record them** —
+  each event that executed something, under its `fee_source`. That is not always one per order: a
+  protective order the venue reports as one growing total is booked in steps, one fill each.
+  `fill_fees` is what their fees came to, in the unit's account currency.
+- **It is neither of the two fee totals.** Swap is not a fill's fee and is not in it. And a close
+  the venue executed for a position no longer held here is in it, at the venue's figure, although
+  no fee total holds that fee — nothing could be booked for it.
+
+The per-currency row carries the same split, summed over its units. A run recorded before contract
+28 serves an empty object here, whatever it executed — `report_contract` on the
+[run list](/api/v1/docs/runs) says which contract a run was written under.
 
 ## A trade that realised nothing is neither a winner nor a loser
 

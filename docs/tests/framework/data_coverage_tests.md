@@ -54,6 +54,12 @@ How long a gap was, in the units a reader thinks in: hours always, calendar days
 being readable, and — only on a market that closes — the trading time actually lost. A 24/7 market is
 never asked for trading weeks.
 
+### test_coverage_report_text.py
+
+A symbol with no bars — a mistyped one, or bars never rendered — gets a report that says so,
+`(no bar data for this symbol)`, rather than a traceback from a time range that does not exist
+(#586). That report is what `discoveries_cli.py data-coverage show` prints.
+
 ---
 
 ## Architecture

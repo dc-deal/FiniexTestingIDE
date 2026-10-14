@@ -138,6 +138,8 @@ data/raw/signals/*
 !data/raw/signals/.gitkeep
 data/finished/*
 !data/finished/.gitkeep
+# A venue's published history (#561) — downloaded, never versioned, never published
+data/external/
 data/cache/
 # Parameter Optimization run-results ledger (generated runtime data)
 
@@ -238,6 +240,7 @@ SUMMARY_*.md
 # Root-anchored: unanchored these match at any depth, and with core.ignorecase=true on this
 # filesystem that silently swallowed docs/tests/**/session_*.md.
 /INTERNAL_*.md
+/JOBS_*.md
 /ISSUE_*.md
 /SESSION_*.md
 /HANDOFF_*.md

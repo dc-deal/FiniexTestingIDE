@@ -22,7 +22,7 @@ does not describe the stores themselves (that is
 | Log rotation | the SAME anchor, read from the canonical clock | A new session log file. Fires on the heartbeat too, so a silent feed over the boundary still rotates |  AutoTrader only |
 | Algo state | hybrid tick / second cadence | What the algo chose to remember. Discarded once older than `max_age_trading_days` | AutoTrader |
 | Cold-start state | boot, shutdown, and a structural change of the open book; excursion extrema on a tick cadence | Session keys, the position-counter high-water mark, the open position book. Never discarded for age | AutoTrader |
-| **Booking period** | the SAME trading-day anchor, read from the canonical clock | One sealed `BookingPeriod` per run unit: the period's realised figures, its control total and its own equity band. Fires on the heartbeat too, so a quiet feed over the boundary still books | both — AutoTrader per session, simulation per SCENARIO |
+| **Booking period** | the SAME trading-day anchor, read from the canonical clock | One sealed `BookingPeriod` per run unit: the period's realised figures, its control total and its own equity band. Fires on the heartbeat too, so a quiet feed over the boundary still books. A live session also tells its operator how the day closed — the same period, rendered for Telegram ([Unattended Operation](../autotrader/unattended_operation.md)) | both — AutoTrader per session, simulation per SCENARIO |
 | Session end | once, when the run ends | The final equity sample, the report, and the ledger rows — one per booking period, not one per session | both |
 
 **Both of those used to read midnight UTC off the TICK stamp, and both were corrected on
@@ -120,6 +120,13 @@ whose account movement disagree, and conclude that something is broken.
   where it is known and never computed as `final_equity − net_pnl`: `net_pnl` is realised, while
   the equity also values what is still open, so that difference is off by exactly the unrealized
   movement described above.
+- **Its own close, inside its band — when a tick seals it.** A period sealed by the first tick
+  past the boundary reads the account value after that tick: that value is the period's
+  `final_equity`, and both pipelines observe it into the band BEFORE sealing, so the closing value
+  lies inside the band it closes and a drop on the boundary tick is in the closing day's deepest
+  decline. Pinned as parity in `tests/parity/test_booking_period_parity.py`. A period sealed by an
+  idle pass, or at the session's end, reads the account value without a fresh observation: a fill
+  that resolved since the last tick is in its `final_equity` but not in its band.
 - **Its costs, split.** `commission_cost`, `swap_cost` and `spread_cost`, summed over the same
   trades `total_fees` is — the ones the period closed. Commission and swap add up to `total_fees`;
   the spread is measured against the mid and stands beside the fees, never inside them. A swap

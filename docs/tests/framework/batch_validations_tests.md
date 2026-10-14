@@ -268,6 +268,7 @@ the structured finding rather than on printed text.
 | `test_unknown_version_advisory` / `test_unknown_counted_against_all_files` | A missing version IS flagged, and the count is against all files — the advisory claims only the field's absence, never anything about the data |
 | `test_stress_test` | An active stress config is surfaced, so a stressed run cannot read as clean (shared with the AutoTrader session validator) |
 | `test_budget_granularity` | A budget below data granularity has no effect and says so |
+| `TestTheDeficiencyCount` | What the data LACKS is said once per run and counted, grouped by where the files came from (#561): a file without a quote is counted; complete data says nothing whatever its format; external and collected files are counted apart; `synthetic` is left to the pre-run signal check; external data gets `data_origin_external` and is not counted as unstamped; a warmup from external history is said in the same finding although the ticks are our own, and shares it with external ticks |
 | `test_clean_batch_no_warnings` | The zero state — nothing invented |
 | `test_coordination_overhead` / `test_no_overhead_when_low` | Coordination cost above half the computation is flagged; below it is not |
 | `test_infra_bottleneck` / `test_expected_bottleneck_no_warning` | A non-hot-path operation dominating is flagged; `worker_decision` dominating is normal |

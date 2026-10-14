@@ -15,6 +15,9 @@ import pandas as pd
 from python.configuration.discoveries_config_loader import DiscoveriesConfigLoader
 from python.configuration.market_config_manager import MarketConfigManager
 from python.data_management.index.bars_index_manager import BarsIndexManager
+from python.framework.discoveries.volatility_profile_analyzer.volatility_regime import (
+    classify_volatility_regime,
+)
 from python.framework.factory.broker_config_factory import BrokerConfigFactory
 from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.types.config_types.market_config_types import MarketType
@@ -587,18 +590,7 @@ class VolatilityProfileAnalyzer:
         """
 
         # Relative thresholds
-        thresholds = self._config.regime_thresholds
-
-        if ratio < thresholds[0]:
-            return VolatilityRegime.VERY_LOW
-        elif ratio < thresholds[1]:
-            return VolatilityRegime.LOW
-        elif ratio < thresholds[2]:
-            return VolatilityRegime.MEDIUM
-        elif ratio < thresholds[3]:
-            return VolatilityRegime.HIGH
-        else:
-            return VolatilityRegime.VERY_HIGH
+        return classify_volatility_regime(ratio, self._config.regime_thresholds)
 
     # =========================================================================
     # AGGREGATIONS

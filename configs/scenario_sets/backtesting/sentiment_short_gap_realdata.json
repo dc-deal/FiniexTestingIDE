@@ -1,6 +1,7 @@
 {
     "version": "1.0",
     "scenario_set_name": "sentiment_short_gap_realdata",
+    "run_purpose": "fixture",
     "created": "2026-08-16T00:00:00.000000",
     "description": "The archive-gap-versus-stale-run demonstration on REAL data: live kraken_spot BTCUSD ticks plus the live crypto_sentiment archive, over the 22-minute producer gap on 2026-07-23 (09:30 → 09:52, a SHORT GAP in the coverage report). Both scenarios read the identical archive and the identical window — only max_staleness_minutes differs. At 30 minutes the snapshot is 21 minutes old when the next arrives, so the run never notices the gap; at 15 minutes the same gap turns roughly seven minutes of ticks stale. The 📡 SIGNAL CONFIGURATION section shows the archive plane once and the two decision bases side by side. Didactic — not a profit claim.",
     "global": {

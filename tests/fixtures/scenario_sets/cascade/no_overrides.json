@@ -1,6 +1,7 @@
 {
   "version": "1.0",
   "scenario_set_name": "cascade_no_overrides",
+  "run_purpose": "fixture",
   "description": "Cascade test fixture — neither global nor scenario overrides execution_config. App defaults must apply (Level 1 only).",
   "global": {
     "strategy_config": {

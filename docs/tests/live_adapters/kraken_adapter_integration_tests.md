@@ -39,7 +39,8 @@ tests/live_adapters/
 ├── test_live_adapter_certificate.py             # Validates the committed certificate (no broker contact)
 ├── test_kraken_adapter_order_lifecycle_dry.py    # AddOrder dry-run (validate=true), no funds
 ├── test_kraken_adapter_order_lifecycle_live.py   # Full lifecycle, real orders, no fills
-└── test_kraken_adapter_order_lifecycle_fill.py   # Fill validation, real MARKET execution
+├── test_kraken_adapter_order_lifecycle_fill.py   # Fill validation, real MARKET execution
+└── test_kraken_ohlc_answer_shape.py              # The OHLC answer still has the recorded shape (public, no credentials)
 ```
 
 ## Dry-Run Limitations
@@ -59,7 +60,8 @@ require a real order reference and therefore real funds (Phase 2).
 
 **Phase 1 (dry-run, no funds):**
 - Kraken account with API key (trade permission)
-- Credentials file at `user_configs/credentials/kraken_credentials.json`:
+- Credentials file at `user_configs/credentials/venues/kraken_credentials.json` (the name the
+  broker entry in `market_config.json` configures):
   ```json
   { "api_key": "...", "api_secret": "..." }
   ```
@@ -79,14 +81,18 @@ unchanged — no Kraken access required.
 
 ```bash
 # Run all live adapter tests (Phase 1 + Phase 2)
-pytest tests/live_adapters/ -v -m live_adapter
+pytest tests/live_adapters/ -v -m live_adapter --place-real-orders
 
 # Run dry-run tests only (no funds needed)
 pytest tests/live_adapters/test_kraken_adapter_order_lifecycle_dry.py -v
 
 # Run live tests only (real orders, funds required)
-pytest tests/live_adapters/test_kraken_adapter_order_lifecycle_live.py -v
+pytest tests/live_adapters/test_kraken_adapter_order_lifecycle_live.py -v --place-real-orders
 ```
+
+Without `--place-real-orders` the `_live` and `_fill` phases skip, so a whole-tree `pytest` on a
+machine holding credentials cannot trade by accident; the certificate of such a run carries the
+`NO REAL ORDER` warning.
 
 VS Code, in launch.json:
 - `🧩 Pytest: Live Adapters — 1 dry-run only (free, validate=true)`
@@ -107,6 +113,29 @@ VS Code, in launch.json:
 The error cases (`XXXUSD`, below-min-lot) reach the real Kraken API — `execute_order()`
 does not pre-validate. Kraken returns an error which the adapter catches and returns
 as `BrokerOrderStatus.REJECTED`.
+
+## The OHLC Answer the Warmup Reads (#588)
+
+`test_kraken_ohlc_answer_shape.py` keeps a recording honest. The warmup suite pins the live warmup
+read against two Kraken OHLC answers recorded verbatim around the moment the venue committed a
+just-ended minute (`tests/fixtures/warmup_history/kraken_ohlc_answers.json`). A recording ages
+without any test noticing, so this check asks the venue now — public market data, no credentials,
+nothing placed — and holds its answer to the recording's shape:
+
+| Test | What it holds |
+|------|---------------|
+| `test_no_error_and_the_same_result_keys` | the pair key (`XETHZUSD`, not the requested `ETHUSD`) and `last` |
+| `test_every_field_keeps_its_type` | an int opening time, string prices, an int trade count |
+| `test_rows_are_still_stamped_with_their_opening_minute` | every row on the interval's grid, and the newest — the period still forming — opens no later than the venue's own clock (`/0/public/Time`); a closing stamp would lie in the future |
+| `test_the_commit_marker_still_precedes_the_forming_row` | the newest row stands after `last` |
+| `test_the_reader_takes_only_committed_bars` | the real fetcher over the live answer, read once every row's period has ended: only `last` keeps the uncommitted rows out, so the newest bar opens at `last` |
+| `test_the_reader_reads_the_venue` | the real request path end to end — the venue answers and the reader takes the bars asked for |
+
+It runs with the rest of this suite at release time, so the recording's freshness follows the
+release rhythm. When the venue cannot be asked at all, the checks error in their setup, and the
+certificate counts that as a failure rather than leaving them out. Red means the recording no longer describes the venue: record it again with
+`python/experiments/venue_probes/probe_kraken_ohlc_commit.py --record …` and look at what changed. It
+builds no adapter, so on its own it writes no certificate.
 
 ## Test Cases — Phase 2
 
@@ -146,7 +175,7 @@ in `OrderCapabilities`); the adapter uses `StopLimit` instead.
 Both phases are part of the release checklist. Run before cutting a new version:
 
 ```bash
-pytest tests/live_adapters/ -v -m live_adapter --release-version X.Y.Z
+pytest tests/live_adapters/ -v -m live_adapter --place-real-orders --release-version X.Y.Z
 ```
 
 On completion, a JSON receipt is written to `tests/live_adapters/reports/`:

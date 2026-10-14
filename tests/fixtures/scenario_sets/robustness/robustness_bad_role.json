@@ -1,6 +1,7 @@
 {
   "version": "1.0",
   "scenario_set_name": "robustness_bad_role_fixture",
+  "run_purpose": "fixture",
   "robustness": {
     "enabled": true
   },

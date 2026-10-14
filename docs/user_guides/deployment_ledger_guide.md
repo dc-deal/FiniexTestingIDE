@@ -78,15 +78,15 @@ python python/cli/run_index_cli.py deployments
 
 ```
 3 deployment(s)
-──────────────────────────────────────────────────────────────────────────────────────────────────
-deployment                     bot                    sessions since             net P&L    max DD  idle max
-──────────────────────────────────────────────────────────────────────────────────────────────────
-deploy_20260820_090000_5e3f    ethusd_production                   1 2026-08-20 09:00    12.00    -30.00        —
-deploy_20260901_060000_ab12    dotusd_production                   2 2026-09-01 06:00    60.80   -212.75   14.5 d ⚠
-deploy_20260712_051500_77c1    dotusd_production                   2 2026-07-12 05:15  -402.88   -991.40    2.1 d
-──────────────────────────────────────────────────────────────────────────────────────────────────
+───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+deployment                       bot                    bot id               orders to        sessions since                 net P&L      max DD  idle max
+───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+deploy_20260820_090000_5e3f91a7  ethusd_production      ethlive01            venue                   1 2026-08-20 09:00        12.00      -30.00         —
+deploy_20260901_060000_ab12c9d0  dotusd_production      dotlive01            venue                   4 2026-09-01 06:00       136.10     -212.75     6.6 d ⚠
+deploy_20260712_051500_77c1e4b2  dotusd_production      dotlive01            venue                   2 2026-07-12 05:15      -402.88     -991.40     2.1 d
+───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 ⚠ = the sessions were not all produced by the same configuration; the detail view draws the break.
-Two rows for one bot = it was restarted with --new-deployment. The older history stays readable.
+Two rows sharing a BOT ID = one bot restarted with --new-deployment. The older history stays readable.
 Open one with `run_index_cli.py deployments --id <deployment>`.
 ```
 
@@ -100,11 +100,11 @@ not** — it is the largest of them. The reason is in the detail view below.
 **With an id you descend into one** — what happened inside it:
 
 ```bash
-python python/cli/run_index_cli.py deployments --id deploy_20260901_060000_ab12
+python python/cli/run_index_cli.py deployments --id deploy_20260901_060000_ab12c9d0
 ```
 
 ```
-deploy_20260901_060000_ab12 — 4 session(s) · since 2026-09-01 06:00 UTC
+deploy_20260901_060000_ab12c9d0 — 4 session(s) · since 2026-09-01 06:00 UTC
 ────────────────────────────────────────────────────────────────────────────────────────────────
 ⚠️  THIS DEPLOYMENT SPANS MORE THAN ONE CONFIGURATION
     2 strategy stand(s) and 2 operational stand(s) over 4 sessions.
@@ -113,12 +113,12 @@ deploy_20260901_060000_ab12 — 4 session(s) · since 2026-09-01 06:00 UTC
     is attributable; a P&L column summed across the change is a number about two bots.
 ────────────────────────────────────────────────────────────────────────────────────────────────
 run id                     started               ran     net P&L  max DD (cum)   share   notes
-20260916_060500_8e10       2026-09-16 06:05   11.8 h       19.60       -212.75   2.05%   idle 4.5 d
+20260916_060500_8e10a4f3   2026-09-16 06:05   11.8 h       19.60       -212.75   2.05%   idle 4.5 d
 ·························· STRATEGY CHANGED HERE — rows above and below answer different questions ···
-20260911_063000_c07d       2026-09-11 06:30   11.5 h       88.05       -134.10   1.33%   idle 2.5 d
+20260911_063000_c07d93b5   2026-09-11 06:30   11.5 h       88.05       -134.10   1.33%   idle 2.5 d
 ·························· OPERATION CHANGED HERE — rows above and below answer different questions ···
-20260908_071500_41ab       2026-09-08 07:15   10.4 h      -12.75       -134.10   1.33%   idle 6.6 d
-20260901_060000_9f2c       2026-09-01 06:00   12.0 h       41.20        -58.40   0.58%
+20260908_071500_41ab6e02   2026-09-08 07:15   10.4 h      -12.75       -134.10   1.33%   idle 6.6 d
+20260901_060000_9f2c17d8   2026-09-01 06:00   12.0 h       41.20        -58.40   0.58%
 ────────────────────────────────────────────────────────────────────────────────────────────────
 Amounts in USD. Newest session first. …
 Descend into one session: runs/autotrader/<profile>/<run id>/
@@ -232,7 +232,7 @@ while its drawdown keeps running *inside* that history — the account's risk cu
 what stood on the command line. Two columns of one table would then describe different periods.
 
 ```
-🔗 --one-off refused: this bot already belongs to deployment deploy_20260901_060000_ab12.
+🔗 --one-off refused: this bot already belongs to deployment deploy_20260901_060000_ab12c9d0.
    A one-off start would still trade this account with real money — its P&L would be MISSING
    from the deployment history while its drawdown keeps running inside it, so two columns of
    one table would describe different periods.
@@ -437,10 +437,10 @@ restarted for an update it is minutes, and on one that was off over a weekend it
 
 ```
 run id                     started            ran     net P&L   max DD (cum)   notes
-20260916_060500_8e10       2026-09-16 06:05  11.8 h     19.60       -212.75    idle 4.5 d
-20260911_063000_c07d       2026-09-11 06:30  11.5 h     88.05       -134.10    idle 2.5 d
-20260908_071500_41ab       2026-09-08 07:15  10.4 h    -12.75       -134.10    idle 6.6 d
-20260901_060000_9f2c       2026-09-01 06:00  12.0 h     41.20        -58.40
+20260916_060500_8e10a4f3   2026-09-16 06:05  11.8 h     19.60       -212.75    idle 4.5 d
+20260911_063000_c07d93b5   2026-09-11 06:30  11.5 h     88.05       -134.10    idle 2.5 d
+20260908_071500_41ab6e02   2026-09-08 07:15  10.4 h    -12.75       -134.10    idle 6.6 d
+20260901_060000_9f2c17d8   2026-09-01 06:00  12.0 h     41.20        -58.40
 ```
 
 The first session of a deployment has none — there is nothing before it. And a gap measured

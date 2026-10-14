@@ -61,7 +61,7 @@ FiniexTestingIDE is a high-performance backtesting and live trading framework fo
 ### Data Pipeline
 - **TickCollector (MQL5)** - Live tick collection from MT5 brokers
 - **Parquet Storage** - Compressed, indexed tick data with quality metrics
-- **Multi-Timeframe Bars** - Auto-rendered M1, M5, M15, M30, H1, H4, D1
+- **Multi-Timeframe Bars** - Auto-rendered for every timeframe in `processing.render_timeframes` (M1 to D1 by default)
 - **Gap Detection** - Weekend, holiday, and data quality analysis
 - **Discovery Caching** - Unified cache system for all discoveries (gap reports, volatility profiles, extreme moves)
 

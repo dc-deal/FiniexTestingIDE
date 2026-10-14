@@ -7,7 +7,7 @@ Tests that the importer correctly handles valid and invalid JSON structures.
 
 
 from python.data_management.importers.tick_data_importer import TickDataImporter
-from python.framework.types.import_schema_types import (
+from python.framework.types.import_types.import_schema_types import (
     BROKER_IDENTIFICATION_FIELDS,
     MANDATORY_METADATA_FIELDS,
     MANDATORY_TICK_FIELDS,

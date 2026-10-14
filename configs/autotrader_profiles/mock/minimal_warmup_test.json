@@ -1,5 +1,6 @@
 {
   "profile_name": "minimal_warmup_test",
+  "run_purpose": "fixture",
   "bot_id": "minwarm01",
   "symbol": "BTCUSD",
   "broker_type": "kraken_spot",
@@ -46,6 +47,7 @@
   "tick_source": {
     "type": "mock"
   },
+  "_comment": "execution.bar_max_history is deliberately below the 71 M5 bars the RSI worker requires: the session must REFUSE to start rather than run its workers on a history the renderer would trim.",
   "execution": {
     "bar_max_history": 30
   },

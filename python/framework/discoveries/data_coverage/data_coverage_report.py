@@ -5,7 +5,8 @@ Validates time range coverage and detects gaps in tick data
 Gap detection and human-readable coverage reports
 """
 
-from typing import Dict, List
+from datetime import datetime
+from typing import Dict, List, Optional
 
 import pandas as pd
 
@@ -57,8 +58,9 @@ class DataCoverageReport:
         """
         self.symbol = symbol
         self.broker_type = broker_type
-        self.start_time = None
-        self.end_time = None
+        # Set by analyze() from the bar file; both stay None where the symbol has no bars
+        self.start_time: Optional[datetime] = None
+        self.end_time: Optional[datetime] = None
 
         # Get market rules for weekend closure detection
         market_config = MarketConfigManager()
@@ -394,6 +396,13 @@ class DataCoverageReport:
         report.append(
             f'📊 DATA COVERAGE REPORT: {self.broker_type}/{self.symbol}')
         report.append(f"{'='*60}")
+
+        if self.start_time is None or self.end_time is None:
+            # No bar file for this symbol, or an empty one — a mistyped symbol, or bars never
+            # rendered. Said as such rather than failing on a range that does not exist (#586).
+            report.append('(no bar data for this symbol)')
+            report.append(f"{'='*60}\n")
+            return '\n'.join(report)
 
         market_config = MarketConfigManager()
         market_type = market_config.get_market_type(self.broker_type)

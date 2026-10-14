@@ -25,6 +25,7 @@ from python.framework.types.signal_data_types import (
     ProducerPipelineInfo,
     ProducerPipelineRegistry,
     ProducerStreamSettings,
+    SignalTransportState,
 )
 
 PIPELINE = 'crypto_sentiment'
@@ -107,7 +108,7 @@ class TestTheVerdict:
         """
         answering(registry())
         result = probe(seconds=0.0)
-        assert result.state in ('connecting', 'error')
+        assert result.state in (SignalTransportState.CONNECTING, SignalTransportState.ERROR)
         assert result.ok is False
 
     def test_the_probe_claims_no_cursor_of_its_own(self, answering):

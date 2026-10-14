@@ -13,14 +13,18 @@ Covers:
 """
 
 import logging
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
 from python.framework.autotrader.autotrader_tick_loop import AutotraderTickLoop
+from python.framework.autotrader.operator_alerts.alert_episode import AlertEpisode
 from python.framework.types.autotrader_types.autotrader_config_types import (
     AutoTraderConfig,
     SafetyConfig,
 )
+from python.framework.types.autotrader_types.operator_alert_types import OperatorAlertKind
 from python.framework.types.config_types.market_config_types import TradingModel
+from tests.shared.operator_alert_recorder import OperatorAlertRecorder
 
 
 class _SafetyStub:
@@ -46,6 +50,16 @@ class _SafetyStub:
         self._safety_block_count = 0
         self._day_limit_hit = False
         self._logger = logging.getLogger('test_safety_stub')
+        # #235 — an engagement and its clearing reach the operator out of band; the alert
+        # names how many positions the soft stop keeps open
+        self._operator_alerts = OperatorAlertRecorder()
+        self._now = datetime(2026, 10, 13, 8, 0, tzinfo=timezone.utc)
+        self._executor = SimpleNamespace(
+            portfolio=SimpleNamespace(get_open_positions=lambda: []),
+            get_current_time=lambda: self._now)
+        self._all_clear_after_s = 300.0
+        self._safety_alert = AlertEpisode(self._all_clear_after_s)
+        self._market_data_alert = AlertEpisode(self._all_clear_after_s)
         # #314 — the daily baseline is a tracker in the real loop; here it only has to
         # answer get_value(), which is all _check_daily_loss reads from it.
         self._day_baseline = (
@@ -412,3 +426,36 @@ class TestDailyLossLimits:
         for expected in ('max_drawdown (', 'max_drawdown_abs', 'max_daily_loss_abs'):
             assert expected in stub._safety_reason, (
                 f'{expected} fired but is not in "{stub._safety_reason}"')
+
+
+class TestTheOperatorHearsOneEpisode:
+    """
+    #235 — a breaker that flaps around its limit is one episode out of band, not a storm.
+
+    Measured before this existed: 600 ticks of noise around a drawdown limit sent 28 alerts.
+    """
+
+    def test_flapping_sends_one_alert_and_one_all_clear(self):
+        stub = _make_stub(TradingModel.SPOT, min_equity=5.0)
+        for value in (4.8, 5.2, 4.9, 5.1, 4.7, 5.3):           # crossing the floor six times
+            stub.check_safety(current_value=value, initial_balance=12.49)
+            stub._now += timedelta(seconds=10)
+        assert stub._operator_alerts.kinds == [OperatorAlertKind.SAFETY_BLOCKED]
+
+        stub._now += timedelta(seconds=300)                   # clear for the quiet period
+        stub.check_safety(current_value=6.0, initial_balance=12.49)
+
+        assert stub._operator_alerts.kinds == [
+            OperatorAlertKind.SAFETY_BLOCKED, OperatorAlertKind.SAFETY_CLEARED]
+        assert stub._safety_block_count == 3                  # the record still counts each one
+
+    def test_the_all_clear_waits_for_the_quiet_period(self):
+        stub = _make_stub(TradingModel.SPOT, min_equity=5.0)
+        stub.check_safety(current_value=4.8, initial_balance=12.49)
+        stub._now += timedelta(seconds=10)
+        stub.check_safety(current_value=6.0, initial_balance=12.49)
+        stub._now += timedelta(seconds=290)
+        stub.check_safety(current_value=6.0, initial_balance=12.49)
+
+        assert stub._operator_alerts.kinds == [OperatorAlertKind.SAFETY_BLOCKED]
+

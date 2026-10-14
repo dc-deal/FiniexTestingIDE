@@ -64,6 +64,42 @@ def discover_all_config_files(app_config: AppConfigManager) -> List[DiscoveredCo
     return candidates
 
 
+def is_user_owned(path: Path) -> bool:
+    """
+    Whether a configuration file is the user's own — under `user_configs/` or a user algo
+    directory, the roots the walk covers besides `configs/` (#576).
+
+    A file anywhere else is neither: a test's temporary copy and a fixture production's workspace
+    belong to no root, and keep what they declare.
+
+    Args:
+        path: The configuration file
+
+    Returns:
+        True when it lies under one of those roots
+    """
+    resolved = Path(path).resolve()
+    return any(resolved.is_relative_to(root.resolve())
+               for root, origin, _ in _roots(AppConfigManager())
+               if origin is not ConfigOrigin.CONFIGS)
+
+
+def profile_homes(app_config: AppConfigManager) -> List[Path]:
+    """
+    Every root an AutoTrader profile may live under — the shipped and the workspace profile trees
+    and each user algo directory (#581).
+
+    Args:
+        app_config: Supplies the configured paths
+
+    Returns:
+        The roots, as configured
+    """
+    return [Path(app_config.get_autotrader_profiles_path()),
+            Path(app_config.get_user_autotrader_profiles_path()),
+            *(Path(directory) for directory in app_config.get_user_algo_dirs())]
+
+
 def location_label(origin: ConfigOrigin, folder: str) -> str:
     """
     Where a configuration file lives, as the directory names it — never an operator's own path.
@@ -101,9 +137,35 @@ def _roots(app_config: AppConfigManager) -> List[Tuple[Path, ConfigOrigin, bool]
     return roots
 
 
+def json_files_under(root: Path) -> List[Path]:
+    """
+    The JSON files under one directory, recursively, skipping hidden and bytecode directories —
+    the walk every reader of the configuration roots shares, so none of them crosses a `.git`.
+
+    Args:
+        root: The directory to walk; a missing one yields nothing and is never created
+
+    Returns:
+        The files, sorted within each directory
+    """
+    if not root.is_dir():
+        return []
+    files: List[Path] = []
+    # Pruned BEFORE descending, not filtered after: measured 2026-09-27, 241 of the 275 entries
+    # under `user_algos/` sit in its `.git`, and every one is a request across the bridged mount
+    # (§42) — a filter after `rglob` paid ~640 ms to walk what it then threw away. Sorted, so a
+    # same-named file inside one root resolves the same way on every walk.
+    for directory, dir_names, file_names in os.walk(root):
+        dir_names[:] = sorted(name for name in dir_names
+                              if not name.startswith('.') and name not in _SKIPPED_DIR_NAMES)
+        files += [Path(directory) / file_name for file_name in sorted(file_names)
+                  if not file_name.startswith('.') and file_name.endswith('.json')]
+    return files
+
+
 def _walk(root: Path, origin: ConfigOrigin, keeps_folder: bool) -> List[DiscoveredConfigFile]:
     """
-    The JSON files under one root, recursively, skipping hidden and bytecode directories.
+    The JSON files under one root as candidates, each with its stat.
 
     Args:
         root: The directory to walk; a missing one yields nothing and is never created
@@ -113,26 +175,14 @@ def _walk(root: Path, origin: ConfigOrigin, keeps_folder: bool) -> List[Discover
     Returns:
         One candidate per JSON file
     """
-    if not root.is_dir():
-        return []
     candidates = []
-    # Pruned BEFORE descending, not filtered after: measured 2026-09-27, 241 of the 275 entries
-    # under `user_algos/` sit in its `.git`, and every one is a request across the bridged mount
-    # (§42) — a filter after `rglob` paid ~640 ms to walk what it then threw away. Sorted, so a
-    # same-named file inside one root resolves the same way on every walk.
-    for directory, dir_names, file_names in os.walk(root):
-        dir_names[:] = sorted(name for name in dir_names
-                              if not name.startswith('.') and name not in _SKIPPED_DIR_NAMES)
-        for file_name in sorted(file_names):
-            if file_name.startswith('.') or not file_name.endswith('.json'):
-                continue
-            path = Path(directory) / file_name
-            try:
-                stat = path.stat()
-            except OSError:
-                continue
-            relative = path.relative_to(root)
-            folder = relative.parent.as_posix() if keeps_folder and relative.parent.parts else ''
-            candidates.append(DiscoveredConfigFile(
-                path=path, origin=origin, folder=folder, mtime=stat.st_mtime, size=stat.st_size))
+    for path in json_files_under(root):
+        try:
+            stat = path.stat()
+        except OSError:
+            continue
+        relative = path.relative_to(root)
+        folder = relative.parent.as_posix() if keeps_folder and relative.parent.parts else ''
+        candidates.append(DiscoveredConfigFile(
+            path=path, origin=origin, folder=folder, mtime=stat.st_mtime, size=stat.st_size))
     return candidates

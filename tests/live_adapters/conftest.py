@@ -11,7 +11,7 @@ own adapter and place real orders, while the broker's configured `dry_run` says 
 certificate that re-read the config understated exactly what it existed to prove.
 
 Usage:
-    pytest tests/live_adapters/ -v -m live_adapter --release-version 1.2.2
+    pytest tests/live_adapters/ -v -m live_adapter --place-real-orders --release-version 1.2.2
 """
 
 import json
@@ -21,6 +21,8 @@ from typing import Any, Dict, List
 
 import pytest
 
+from python.configuration.credentials_cascade import workspace_credentials_path
+from python.configuration.market_config_manager import MarketConfigManager
 from python.framework.reporting.certificates.certificate_identity_builder import (
     build_certificate_identity,
 )
@@ -55,9 +57,18 @@ class _ResultCollector:
         self.observed_phases: List[Dict[str, Any]] = []
 
     def pytest_runtest_logreport(self, report):
-        if report.when != 'call':
-            return
         test_name = report.nodeid.split('::')[-1]
+        if report.when != 'call':
+            # A fixture that raises is an ERROR in setup or teardown, and no call report
+            # follows a failed setup. Counted as a failure here — otherwise a check that could
+            # not run at all (the OHLC shape check, whose venue answer one module fixture
+            # fetches) is simply missing from a certificate that reads PASSED.
+            if report.failed and test_name not in self.failures:
+                if test_name not in self.tests_run:
+                    self.tests_run.append(test_name)
+                self.failed += 1
+                self.failures.append(test_name)
+            return
         if test_name not in self.tests_run:
             self.tests_run.append(test_name)
         if report.passed:
@@ -107,6 +118,26 @@ def record_observed_adapter(request, phase: str, dry_run: bool, api_base_url: st
 def pytest_configure(config):
     config._live_adapter_results = _ResultCollector()
     config.pluginmanager.register(config._live_adapter_results)
+
+
+def venue_credentials_path(broker_type: str) -> Path:
+    """
+    Where the operator's key for a venue lives — the override a live session reads first.
+
+    Built from the broker entry's configured name through the shared credentials cascade, the
+    way the adapter resolves it. A fixed path here went stale when the credentials folder was
+    split, and every phase then skipped as if no key existed. The tracked default beside it
+    holds a placeholder the adapter refuses, so only the override counts. Venue-neutral, so
+    the next adapter's suite (#209) asks the same question with its own broker type.
+
+    Args:
+        broker_type: The broker entry in `market_config.json`, e.g. 'kraken_spot'
+
+    Returns:
+        The override path of the configured credentials file, whether or not it exists
+    """
+    entry = MarketConfigManager().get_broker_entry(broker_type)
+    return workspace_credentials_path(entry.credentials_file)
 
 
 @pytest.fixture(scope='module')

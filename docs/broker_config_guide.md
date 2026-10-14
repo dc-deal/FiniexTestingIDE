@@ -45,7 +45,7 @@ Mt5Adapter / KrakenAdapter  → Broker-specific implementation
 | `company` | string | Always | Broker name |
 | `server` | string | Always | Server identifier |
 | `trade_mode` | string | Always | The ACCOUNT's trade mode as its source reports it: `"demo"`, `"contest"` or `"real"` from the MQL5 exporter (`"unknown"` when MT5 reports none), `"live"` from the Kraken fetcher |
-| `leverage` | int | Always | Account leverage (1 = spot, no margin) |
+| `leverage` | int | Always | Account leverage (1 = spot, no margin). Account-wide: no broker declares one per symbol. An algo reads it as `trading_api.get_leverage()` — the figure the margin calculation divides by |
 | `hedging_allowed` | bool | Always | Allow opposite positions on same symbol |
 | `margin_mode` | string | If leverage > 1 | `"retail_hedging"`, `"retail_netting"`, `"exchange"`, `"none"` |
 | `margin_call_level` | float | If leverage > 1 | Margin call threshold (%) |
@@ -343,7 +343,7 @@ crypto by 10× (and `tick * 10` is float-dirty for tiny ticks). The derivation l
 
 **How a decision logic accesses it:** the adapter's `get_pip_size(symbol)` fills
 `TradingContext.pip_size` at scenario startup (both pipelines). A decision logic reads
-`self.trading_context.pip_size` when its own `pip_size` parameter is left unset; an explicit
+`self.get_trading_context().pip_size` when its own `pip_size` parameter is left unset; an explicit
 `pip_size` in the config always wins (non-standard instruments). The same authoritative value is
 stamped on each `TradeRecord` at the source, so the run report shows MAE/MFE in the correct unit
 (`pip` on Forex, `tick` on crypto) without any renderer re-deriving it.

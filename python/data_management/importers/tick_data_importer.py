@@ -13,7 +13,7 @@ import json
 import re
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, Optional, Set, Tuple
+from typing import Callable, Dict, List, Optional, Set, Tuple
 
 import pandas as pd
 import pyarrow as pa
@@ -32,7 +32,8 @@ from python.framework.exceptions.data_quality_errors import (
 from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.reporting.duplicate_report import DuplicateReport
 from python.framework.types.config_types.market_config_types import ServerClockConfig
-from python.framework.types.import_schema_types import (
+from python.framework.types.import_types.import_coverage_types import ArchivedTickFile
+from python.framework.types.import_types.import_schema_types import (
     ALREADY_CAPTURED_METADATA_KEYS,
     DISCARDED_METADATA_KEYS,
     NESTED_METADATA_KEYS,
@@ -113,6 +114,10 @@ class TickDataImporter:
         # Track processed broker_types for bar rendering
         self._processed_broker_types: Set[str] = set()
 
+        # What the archive holds per (broker_type, symbol), read from the tick index on first
+        # use and extended by every file this import writes (see _archived_files)
+        self._archive_coverage: Optional[Dict[Tuple[str, str], List[ArchivedTickFile]]] = None
+
         self._validator = TickImportValidator()
 
     def _normalize_broker_type(self, broker_type: str) -> str:
@@ -134,53 +139,29 @@ class TickDataImporter:
         """
         Finds all TickCollector exports and converts them sequentially.
         Errors do not stop processing of remaining files.
+
+        The import's own steps, run one after the other — the same methods the import
+        coordinator calls one by one, so both paths share one implementation.
         """
-        json_files = list(self.source_dir.glob('*_ticks.json'))
+        json_files = self.collect_files()
 
         if not json_files:
             vLog.warning(
                 f'No JSON files found in {self.source_dir}. Just rebuilding index.')
-            self.rebuild_parquet_index()
+            index_manager = self.rebuild_parquet_index()
+            if index_manager is not None:
+                self.validate_archive_ordering(index_manager)
             return
 
-        vLog.info('\n' + '=' * 80)
-        vLog.info(f'FiniexTestingIDE Tick Data Importer V{self.VERSION}')
-        vLog.info('=' * 80)
-        vLog.info(f'Found: {len(json_files)} JSON files')
-        vLog.info(
-            f"Override Mode: {'ENABLED' if self.override else 'DISABLED'}")
-        market_config = MarketConfigManager()
-        for broker_type in market_config.get_all_broker_types():
-            clock = market_config.get_server_clock(broker_type)
-            vLog.info(f'Server clock: {broker_type} → {_server_clock_label(clock)}')
-        vLog.info('=' * 80 + '\n')
+        self.log_header(len(json_files))
 
         # Sequential processing with error recovery
         for json_file in json_files:
-            vLog.info(f'\n📄 Processing: {json_file.name}')
-            try:
-                self.convert_json_to_parquet(json_file)
-                self.processed_files += 1
-            except ArtificialDuplicateException as e:
-                # Special handling for duplicate detection
-                warning_msg = f'DUPLICATE DETECTED in {json_file.name}'
-                vLog.warning(warning_msg)
-                vLog.warning(str(e))
-                self.warnings.append(warning_msg)
-                vLog.info('→ Skipping import (duplicate already exists)')
-            except TickFileValidationException as e:
-                # Structural defect in the source file — refuse it, keep the batch running
-                error_msg = f'VALIDATION FAILED in {json_file.name}'
-                vLog.error(error_msg)
-                vLog.error(str(e))
-                self.errors.append(error_msg)
-                vLog.info('→ Skipping import (file not written)')
-            except Exception as e:
-                error_msg = f'ERROR in {json_file.name}: {str(e)}'
-                vLog.error(error_msg)
-                self.errors.append(error_msg)
+            self.import_file(json_file)
 
-        self.rebuild_parquet_index()
+        index_manager = self.rebuild_parquet_index()
+        if index_manager is not None:
+            self.validate_archive_ordering(index_manager)
 
         # === AUTO-TRIGGER BAR RENDERING ===
         # After all ticks imported, render bars automatically
@@ -189,24 +170,132 @@ class TickDataImporter:
 
         self._print_summary()
 
-    def rebuild_parquet_index(self):
-        """Rebuild index after successful imports"""
+    def collect_files(self) -> List[Path]:
+        """
+        The tick exports waiting in the inbox.
+
+        Returns:
+            The *_ticks.json files of source_dir, sorted by name
+        """
+        return sorted(self.source_dir.glob('*_ticks.json'))
+
+    def log_header(self, file_count: int) -> None:
+        """
+        Log the import's header: version, file count, override mode, each broker's clock.
+
+        Args:
+            file_count: Number of files about to be imported
+
+        Returns:
+            None
+        """
+        vLog.info('\n' + '=' * 80)
+        vLog.info(f'FiniexTestingIDE Tick Data Importer V{self.VERSION}')
+        vLog.info('=' * 80)
+        vLog.info(f'Found: {file_count} JSON files')
+        vLog.info(
+            f"Override Mode: {'ENABLED' if self.override else 'DISABLED'}")
+        market_config = MarketConfigManager()
+        for broker_type in market_config.get_all_broker_types():
+            clock = market_config.get_server_clock(broker_type)
+            vLog.info(f'Server clock: {broker_type} → {_server_clock_label(clock)}')
+        vLog.info('=' * 80 + '\n')
+
+    def import_file(self, json_file: Path) -> bool:
+        """
+        Import one tick export. A refused, duplicate or failing file is counted and logged,
+        never raised — the batch goes on with the next file.
+
+        Args:
+            json_file: The export to import
+
+        Returns:
+            True when the file was processed, False when it was skipped or failed
+        """
+        vLog.info(f'\n📄 Processing: {json_file.name}')
+        try:
+            self.convert_json_to_parquet(json_file)
+            self.processed_files += 1
+            return True
+        except ArtificialDuplicateException as e:
+            # Special handling for duplicate detection
+            warning_msg = f'DUPLICATE DETECTED in {json_file.name}'
+            vLog.warning(warning_msg)
+            vLog.warning(str(e))
+            self.warnings.append(warning_msg)
+            vLog.info('→ Skipping import (duplicate already exists)')
+        except TickFileValidationException as e:
+            # Structural defect in the source file — refuse it, keep the batch running
+            error_msg = f'VALIDATION FAILED in {json_file.name}'
+            vLog.error(error_msg)
+            vLog.error(str(e))
+            self.errors.append(error_msg)
+            vLog.info('→ Skipping import (file not written)')
+        except Exception as e:
+            error_msg = f'ERROR in {json_file.name}: {str(e)}'
+            vLog.error(error_msg)
+            self.errors.append(error_msg)
+        return False
+
+    def rebuild_parquet_index(
+        self,
+        on_file_scanned: Optional[Callable[[int, int], None]] = None
+    ) -> Optional[TickIndexManager]:
+        """
+        Rebuild index after successful imports. A failure is counted among the errors, and so
+        is a tick file the scan could not read, so the summary cannot read `Errors: 0` over an
+        index that no longer describes the archive.
+
+        Args:
+            on_file_scanned: Called with (file number, file count) for each tick file scanned
+
+        Returns:
+            The rebuilt index — also when files were missing from it — or None when the
+            rebuild failed
+        """
         vLog.info('\n🔄 Rebuilding Parquet index...')
         try:
 
             index_manager = TickIndexManager(data_dir=str(self.target_dir))
-            index_manager.build_index(force_rebuild=True)
+            index_manager.build_index(force_rebuild=True, on_file_scanned=on_file_scanned)
 
             symbols = index_manager.list_symbols()
             vLog.info(f'✅ Index rebuilt: {len(symbols)} symbols indexed')
-
-            self._validate_archive_ordering(index_manager)
+            unreadable = index_manager.get_unreadable_files()
+            if unreadable:
+                # The ticks are the archive, not derived: the repair is a re-import
+                self.errors.append(
+                    f'Tick index: {len(unreadable)} tick file(s) could not be read and are '
+                    f'missing from the index (first: {unreadable[0]}) — re-import them from '
+                    f'the raw archive')
+            return index_manager
 
         except Exception as e:
             vLog.error(f'❌ Failed to rebuild index: {e}')
             vLog.error('   Index may be outdated - run manual rebuild!')
+            self.errors.append(f'Tick index rebuild failed: {e}')
+            return None
 
-    def _validate_archive_ordering(self, index_manager: TickIndexManager) -> None:
+    def get_applied_offsets(self) -> Dict[str, Dict[str, int]]:
+        """
+        Per broker, how many files resolved to each UTC offset — the summary's evidence that
+        a season boundary was crossed rather than one constant applied to everything.
+
+        Returns:
+            Offset counts by broker type
+        """
+        return self._applied_offsets
+
+    def get_processed_broker_types(self) -> List[str]:
+        """
+        The broker types whose files this import processed — the ones whose bars it renders.
+
+        Returns:
+            Broker type identifiers, sorted
+        """
+        return sorted(self._processed_broker_types)
+
+    def validate_archive_ordering(self, index_manager: TickIndexManager) -> None:
         """
         Check the archive across file boundaries: no overlapping event ranges
         per symbol, and collected_msc continuous from one file to the next.
@@ -286,21 +375,21 @@ class TickDataImporter:
             vLog.info(f'   Detected Offset: GMT{sign}{detected_offset}')
         else:
             vLog.info(
-                f'   Detected Offset: Not available (pre v1.0.5 data, version: {data_version})')
+                f'   Detected Offset: Not recorded in this file (format {data_version})')
 
         # Local Device Time (planned for v1.0.5+, but not yet implemented in MQL5)
         local_device = metadata.get('local_device_time', None)
         if local_device:
             vLog.info(f'   Local Device:    {local_device}')
         else:
-            vLog.info('   Local Device:    Not available (pre v1.0.5 data)')
+            vLog.info('   Local Device:    Not recorded in this file')
 
         # Broker Time (planned for v1.0.5+, but not yet implemented in MQL5)
         broker_time = metadata.get('broker_server_time', None)
         if broker_time:
             vLog.info(f'   Broker Time:     {broker_time}')
         else:
-            vLog.info('   Broker Time:     Not available (pre v1.0.5 data)')
+            vLog.info('   Broker Time:     Not recorded in this file')
 
         # ===========================================
         # 3. CREATE AND OPTIMIZE DATAFRAME
@@ -308,9 +397,10 @@ class TickDataImporter:
 
         df = pd.DataFrame(ticks)
 
-        # Ensure collected_msc column exists (missing in pre-V1.3.0 data)
-        if 'collected_msc' not in df.columns:
-            df['collected_msc'] = 0
+        # A file without an arrival time stores none. The absent column IS the statement, and
+        # the tick index measures it as the deficiency `no_arrival_time` (#561). A zero written
+        # here once made every such file read as pre-1.3.0 collector data — wrong for a
+        # venue's published history, which never had a receive time to record.
 
         df = self._optimize_datatypes(df)
 
@@ -470,11 +560,23 @@ class TickDataImporter:
             parquet_path
         )
 
+        # Checked BEFORE an override deletes anything: a file refused here must leave the
+        # archive exactly as it was, including the parquet it would have replaced.
+        first_tick = pd.Timestamp(df['timestamp'].min()).tz_localize('UTC').to_pydatetime()
+        last_tick = pd.Timestamp(df['timestamp'].max()).tz_localize('UTC').to_pydatetime()
+        overlap = self._find_overlap(
+            broker_type_normalized, symbol, json_file.name, first_tick, last_tick)
+        if overlap:
+            refusal = TickFileValidationResult(is_valid=True, file_name=json_file.name)
+            refusal.add_error(overlap)
+            raise TickFileValidationException(refusal)
+
         if duplicate_report:
             if self.override:
                 vLog.warning('⚠️  Override enabled - deleting existing file')
                 for dup_file in duplicate_report.duplicate_files:
                     dup_file.unlink()
+                    self._forget_archived(dup_file)
                     vLog.info(f'   🗑️  Deleted: {dup_file.name}')
             else:
                 raise ArtificialDuplicateException(duplicate_report)
@@ -509,6 +611,20 @@ class TickDataImporter:
                 finished_file = self._finished_dir / json_file.name
                 json_file.rename(finished_file)
                 vLog.info(f'→ Moved {json_file.name} to finished/')
+
+            self._remember_archived(ArchivedTickFile(
+                broker_type=broker_type_normalized,
+                symbol=symbol,
+                path=parquet_path,
+                source_file=json_file.name,
+                first_tick=first_tick,
+                last_tick=last_tick,
+                tick_count=len(df),
+                file_size_mb=parquet_size / (1024 * 1024),
+                metadata={key: parquet_metadata[key] for key in (
+                    'source_file', 'symbol', 'broker', 'broker_type', 'data_format_version',
+                    'tick_count', 'processed_at')},
+            ))
 
             self.total_ticks += len(df)
             offset_counts = self._applied_offsets.setdefault(broker_type_normalized, {})
@@ -612,64 +728,147 @@ class TickDataImporter:
         Returns:
             DuplicateReport if duplicate found, None otherwise
         """
-
-        # OPTION 2: Cross-Collector Search (as documented)
-        search_pattern = f'*/ticks/{symbol}/{symbol}_*.parquet'
-        existing_files = list(self.target_dir.glob(search_pattern))
-
-        if not existing_files:
+        # Cross-broker on purpose: the same raw file imported under two broker types is still
+        # one source imported twice. Answered from the index — before #561 this opened one
+        # parquet footer per file of the symbol for every imported file, quadratic in the count.
+        self._archived_files(broker_type, symbol)
+        duplicates = [
+            archived
+            for (_, archived_symbol), files in self._archive_coverage.items()
+            if archived_symbol == symbol
+            for archived in files
+            if archived.source_file == source_json_name]
+        if not duplicates:
             return None
 
-        for existing_file in existing_files:
-            try:
-                parquet_file = pq.ParquetFile(existing_file)
-                metadata_raw = parquet_file.metadata.metadata
+        for archived in duplicates:
+            vLog.warning(
+                f'⚠️  Found existing Parquet: {archived.broker_type}/{symbol}/{archived.path.name}')
+            vLog.warning(
+                f"    Existing: broker_type='{archived.broker_type}' | "
+                f"Importing: broker_type='{broker_type}'")
 
-                existing_metadata = {
-                    key.decode('utf-8') if isinstance(key, bytes) else key:
-                    value.decode('utf-8') if isinstance(value,
-                                                        bytes) else value
-                    for key, value in metadata_raw.items()
-                }
+        return DuplicateReport(
+            source_file=source_json_name,
+            duplicate_files=[archived.path for archived in duplicates],
+            tick_counts=[archived.tick_count for archived in duplicates],
+            time_ranges=[(archived.first_tick, archived.last_tick) for archived in duplicates],
+            file_sizes_mb=[archived.file_size_mb for archived in duplicates],
+            metadata=[archived.metadata for archived in duplicates],
+        )
 
-                existing_source = existing_metadata.get('source_file', '')
-                # legacy compability : data_collector
-                existing_broker = existing_metadata.get(
-                    'broker_type') or existing_metadata.get('data_collector', 'unknown')
+    def _find_overlap(self, broker_type: str, symbol: str, source_file: str,
+                      first_tick: datetime, last_tick: datetime) -> Optional[str]:
+        """
+        Refuse a file whose ticks fall inside time the archive already covers.
 
-                if existing_source == source_json_name:
-                    relative_path = existing_file.relative_to(self.target_dir)
-                    collector_path = relative_path.parts[0] if len(
-                        relative_path.parts) > 0 else 'unknown'
+        Two files covering the same stretch would put the same trades into a backtest twice.
+        The archive holds no such overlap today, so a new one is a defect of the incoming file —
+        refused before anything is written, where the batch check after the import could only
+        warn. A file with the same source file is not counted: it is what an override replaces.
+        Touching edges are not an overlap, the same rule as the archive ordering check.
 
-                    vLog.warning(
-                        f'⚠️  Found existing Parquet: {collector_path}/{symbol}/{existing_file.name}'
-                    )
-                    vLog.warning(
-                        f"    Existing: broker_type='{existing_broker}' | "
-                        f"Importing: broker_type='{broker_type}'"
-                    )
+        Args:
+            broker_type: Archive the file goes into
+            symbol: Trading symbol
+            source_file: Raw file being imported
+            first_tick: Event time of its first tick (UTC)
+            last_tick: Event time of its last tick (UTC)
 
-                    existing_df = pd.read_parquet(existing_file)
-
-                    return DuplicateReport(
-                        source_file=source_json_name,
-                        duplicate_files=[existing_file],
-                        tick_counts=[len(existing_df)],
-                        time_ranges=[
-                            (existing_df['timestamp'].min(),
-                             existing_df['timestamp'].max())
-                        ],
-                        file_sizes_mb=[
-                            existing_file.stat().st_size / (1024 * 1024)],
-                        metadata=[existing_metadata]
-                    )
-
-            except Exception as e:
-                vLog.warning(
-                    f'Could not read metadata from {existing_file.name}: {e}')
-
+        Returns:
+            The refusal message, or None when the file fits
+        """
+        for archived in self._archived_files(broker_type, symbol):
+            if archived.source_file == source_file:
+                continue
+            if archived.first_tick < last_tick and first_tick < archived.last_tick:
+                return (
+                    f'Overlaps the archive: {archived.path.name} already covers '
+                    f'{archived.first_tick:%Y-%m-%d %H:%M:%S} → {archived.last_tick:%Y-%m-%d %H:%M:%S} '
+                    f'UTC, this file {first_tick:%Y-%m-%d %H:%M:%S} → {last_tick:%Y-%m-%d %H:%M:%S} UTC. '
+                    f'A backtest over the overlap would read the same trades twice; nothing was written.')
         return None
+
+    def _archived_files(self, broker_type: str, symbol: str) -> List[ArchivedTickFile]:
+        """
+        The archive's files of one broker type and symbol, read from the tick index once.
+
+        Files this import writes are added as they are written, so a batch is checked against
+        itself as well as against what was there before.
+
+        Args:
+            broker_type: Archive to look in
+            symbol: Trading symbol
+
+        Returns:
+            The archived files, possibly none
+        """
+        if self._archive_coverage is None:
+            index = TickIndexManager(data_dir=str(self.target_dir))
+            # The duplicate and overlap checks answer from this map alone, so an index that
+            # missed a file would let that file's source or time range through
+            index.build_index(check_stale=True)
+            self._archive_coverage = {
+                (indexed_broker, indexed_symbol): [
+                    self._archived_file_from_entry(indexed_broker, indexed_symbol, entry)
+                    for entry in index.get_symbol_entries(indexed_broker, indexed_symbol)
+                    if entry.get('start_time') and entry.get('end_time')]
+                for indexed_broker in index.list_broker_types()
+                for indexed_symbol in index.list_symbols(indexed_broker)
+            }
+        return self._archive_coverage.get((broker_type, symbol), [])
+
+    @staticmethod
+    def _archived_file_from_entry(broker_type: str, symbol: str, entry: Dict) -> ArchivedTickFile:
+        """
+        Turn one tick index entry into what the import checks against.
+
+        Args:
+            broker_type: Archive the entry belongs to
+            symbol: Trading symbol
+            entry: The index entry
+
+        Returns:
+            The archived file
+        """
+        return ArchivedTickFile(
+            broker_type=broker_type,
+            symbol=symbol,
+            path=Path(entry['path']),
+            source_file=entry['source_file'],
+            first_tick=pd.to_datetime(entry['start_time'], utc=True).to_pydatetime(),
+            last_tick=pd.to_datetime(entry['end_time'], utc=True).to_pydatetime(),
+            tick_count=int(entry['tick_count']),
+            file_size_mb=float(entry['file_size_mb']),
+            metadata={
+                'source_file': entry['source_file'],
+                'symbol': symbol,
+                'broker_type': broker_type,
+                'data_format_version': str(entry.get('data_format_version', 'unknown')),
+                'tick_count': str(entry['tick_count']),
+            },
+        )
+
+    def _remember_archived(self, archived: ArchivedTickFile) -> None:
+        """
+        Add a file this import wrote to the coverage the next file is checked against.
+
+        Args:
+            archived: The written file
+        """
+        self._archived_files(archived.broker_type, archived.symbol)
+        self._archive_coverage.setdefault((archived.broker_type, archived.symbol), []).append(
+            archived)
+
+    def _forget_archived(self, path: Path) -> None:
+        """
+        Drop a file an override deleted from the coverage.
+
+        Args:
+            path: The deleted parquet file
+        """
+        for files in self._archive_coverage.values():
+            files[:] = [archived for archived in files if archived.path != path]
 
     def _optimize_datatypes(self, df: pd.DataFrame) -> pd.DataFrame:
         """Optimizes DataFrame datatypes for performance."""
@@ -741,6 +940,9 @@ class TickDataImporter:
         """
         Trigger automatic bar rendering after tick import.
         Renders bars for all broker_types that were processed.
+
+        The bar index is rebuilt even when the render is interrupted, so it describes the bar
+        files that are actually there; render failures count as import errors.
         """
         vLog.info('\n' + '=' * 80)
         vLog.info('🔄 AUTO-TRIGGERING BAR RENDERING')
@@ -749,18 +951,24 @@ class TickDataImporter:
         try:
             bar_importer = BarImporter(data_dir=str(self.target_dir))
 
-            bar_importer.render_bars_for_all_symbols(
-                broker_types=list(self._processed_broker_types),
-                clean_mode=True
-            )
-            bar_importer.update_bar_index()
+            try:
+                bar_importer.render_bars_for_all_symbols(
+                    broker_types=self.get_processed_broker_types())
+            finally:
+                indexed = bar_importer.update_bar_index()
+            # The caches read the bar index: over a failed one they would describe stale bars
+            if indexed:
+                bar_importer.rebuild_discovery_caches()
+            self.warnings.extend(bar_importer.warnings)
+            self.errors.extend(bar_importer.errors)
 
             vLog.info('✅ Bar rendering completed!')
 
         except Exception as e:
             vLog.error(f'❌ Bar rendering failed: {e}')
             vLog.error('   You can manually trigger it later with:')
-            vLog.error('   python python/cli/bar_index_cli.py render --all --clean')
+            vLog.error('   python python/cli/bar_index_cli.py render --all')
+            self.errors.append(f'Bar rendering failed: {e}')
 
     def _validate_broker_type(self, metadata: dict) -> str:
         """

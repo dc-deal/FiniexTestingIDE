@@ -237,17 +237,17 @@ populated.
 
 | What | Where |
 |---|---|
-| The config block | [autotrader_defaults_config_types.py:188](../../python/framework/types/config_types/autotrader_defaults_config_types.py#L188) |
-| The broker posture | [market_config_types.py:107](../../python/framework/types/config_types/market_config_types.py#L107) · [market_config_manager.py:216](../../python/configuration/market_config_manager.py#L216) |
+| The config block | [autotrader_defaults_config_types.py:242](../../python/framework/types/config_types/autotrader_defaults_config_types.py#L242) |
+| The broker posture | [market_config_types.py:174](../../python/framework/types/config_types/market_config_types.py#L174) · [market_config_manager.py:285](../../python/configuration/market_config_manager.py#L285) |
 | Policy resolution + the three refusals | [session_end_validator.py:36](../../python/framework/validators/session_end_validator.py#L36) |
 | The incoherent pair | [session_end_validator.py:80](../../python/framework/validators/session_end_validator.py#L80) |
-| Resolved at startup, before anything is touched | [autotrader_main.py:347](../../python/framework/autotrader/autotrader_main.py#L347) |
-| The shutdown call site | [autotrader_main.py:615](../../python/framework/autotrader/autotrader_main.py#L615) |
-| The contract | [abstract_trade_executor.py:1726](../../python/framework/trading_env/abstract_trade_executor.py#L1726) |
-| `check_clean_shutdown(expect_flat)` | [abstract_trade_executor.py:1756](../../python/framework/trading_env/abstract_trade_executor.py#L1756) |
-| The open-position report row | [report_types.py:164](../../python/framework/types/api/report_types.py#L164) |
-| The equity curve, one scale for both writers | [portfolio_manager.py:1138](../../python/framework/trading_env/portfolio_manager.py#L1138) |
-| The adoption prompt that states this policy | [cold_start_adopter.py:811](../../python/framework/autotrader/cold_start_adopter.py#L811) |
+| Resolved at startup, before anything is touched | [autotrader_main.py:479](../../python/framework/autotrader/autotrader_main.py#L479) |
+| The shutdown call site | [autotrader_main.py:1158](../../python/framework/autotrader/autotrader_main.py#L1158) |
+| The contract | [abstract_trade_executor.py:2981](../../python/framework/trading_env/abstract_trade_executor.py#L2981) |
+| `check_clean_shutdown(expect_flat)` | [abstract_trade_executor.py:3010](../../python/framework/trading_env/abstract_trade_executor.py#L3010) |
+| The open-position report row | [report_types.py:463](../../python/framework/types/api/report_types.py#L463) |
+| The equity curve, one scale for both writers | [portfolio_manager.py:1595](../../python/framework/trading_env/portfolio_manager.py#L1595) |
+| The adoption prompt that states this policy | [cold_start_adopter.py:1045](../../python/framework/autotrader/cold_start_adopter.py#L1045) |
 
 ## Related
 

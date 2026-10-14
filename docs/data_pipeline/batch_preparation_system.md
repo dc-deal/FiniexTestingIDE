@@ -143,8 +143,13 @@ and the Phase 7 `BrokerSummary`.
 **Purpose:** Load shared data once for all scenarios  
 **Mode:** Serial (main process)  
 **Key Operations:**
-- Load ticks from parquet (based on RequirementsMap)
-- Load warmup bars (filtered to start_time)
+- Load ticks from parquet (based on RequirementsMap). A scenario bounded by `max_ticks` rather
+  than by `end_date` reads only the files it needs: where reading stops is counted from the tick
+  index's per-file tick counts, so the files read hold the same first `max_ticks` ticks the whole
+  archive would — without it, such a scenario read every file up to the archive's end, which
+  grows with every import
+- Select warmup bars: per scenario, the last N bars complete at its first tick
+  ([Warmup History](../architecture/warmup_history.md))
 - Package into ProcessDataPackage (broker configs from Phase 0 injected here)
 
 **Optimization:** 
@@ -368,8 +373,12 @@ Phase 7: Building summary...
 **Solution:** Adjust start_date to avoid gap period. Weekend/holiday gaps are allowed by default (`app_config.json` → `allowed_gap_categories`). Only real data gaps (MODERATE/LARGE) block scenarios.
 
 ### Issue: "Only X warmup bars available (requested Y)"
-**Phase:** 4 (Data Loading) - Warning only  
-**Solution:** Adjust start_date earlier, or accept partial warmup
+**Phase:** 4 (Data Loading), judged in Phase 5 — a warning (`warmup_quality`); the scenario runs  
+**Solution:** Adjust start_date later (the archive holds no earlier bars), or accept partial warmup
+
+### Issue: "No warmup bars for M5" / "Warmup for M5 requires 71 bars, more than the bar history keeps"
+**Phase:** 5 (Quality Validation) — the scenario is refused (`warmup_history_empty` / `warmup_capacity`)  
+**Solution:** Start later than the archive's first bars of that timeframe; raise `bar_max_history`
 
 ### Issue: Scenario skipped with no clear error
 **Check:** scenario.validation_result for detailed error info  

@@ -98,6 +98,40 @@ so in a comment beside a `True` — the intersection already refuses the order.
 
 If a Tier-3 operation is declared but not implementable for some order type, the `build_<op>_payload` layer should raise — fail fast at build time rather than send a malformed payload.
 
+**Not declared, deliberately: a venue dead man's timer.** Kraken offers one (`CancelAllOrdersAfter`
+cancels every order of the account once the client stops refreshing it), and this project does not
+arm it — it would cancel a stop the venue holds exactly when the stop is needed
+([Protective Levels](../../architecture/protective_levels.md), section 7). So there is no
+capability, no config key and no adapter method for it. If a venue's timer is ever to be armed, it
+arrives as a declared capability with a reader, and its collision with a venue-held stop is part of
+its contract — not as a call one adapter makes on its own.
+
+### What a Fill Costs — Declared, Not Assumed
+
+Two more declarations say how the venue reports a fill, and the executor reads both:
+
+- **`fee_report`** — where the venue reports the fee it charged for a fill. `status_answer`: in the
+  answer that reports the order filled — then put it into `BrokerResponse.fill_fee`, in the
+  symbol's quote currency, beside `filled_lots` and `fill_price`, and the fill is booked with the
+  venue's own figure instead of the fee model's estimate. `fill_fee`, `filled_lots` and
+  `fill_price` are TOTALS for everything the order executed so far — the price is the average over
+  all of it, never the price of the latest part — because the executor books a partly executed
+  order in steps and derives each step from them. `executions`: only with the executions,
+  after the fill — the books cannot use that yet and book the estimate. `not_reported` (the
+  default): nothing per fill, as with a spread broker. A dry run declares what its venue does; the
+  executor knows its answers come from our own simulator and books them from the estimate without a
+  warning. A venue that declares `status_answer` and then answers a fill without a fee is booked
+  from the estimate WITH a warning in the session's log; measure where your venue reports it before
+  declaring it — Kraken's QueryOrders `fee` was read from real orders before it was declared.
+- **`trade_level_reporting`** — whether the venue answers a trades query with per-execution detail.
+  The drift auditor asks for it after every fill, entry and exit, and compares it with what was
+  booked. Declare `False` until your `*_trades_query` triple exists: a `True` sends the auditor to a
+  method that raises.
+
+The fee CURRENCY matters as much as the amount: the spot books charge a fee in the quote currency.
+Where a venue lets the order choose — Kraken's `oflags=fciq` — choose it explicitly on every order
+rather than relying on a default, and check what the account's ledger actually debited.
+
 ---
 
 ## Files to Create
@@ -256,14 +290,22 @@ proving something about settings nobody obeys is not a gate.
 
 ## Credentials Cascade
 
-`_load_credentials(filename)` (implement in your adapter) follows this cascade:
+The cascade is the framework's, not the adapter's. `python/configuration/credentials_cascade.py`
+turns the configured name (`venues/<venue>_credentials.json`) into a file: the workspace copy in
+`user_configs/credentials/` first (gitignored, real keys), the tracked placeholder in
+`configs/credentials/` second. An adapter asks it and adds only what is its own — which keys it
+reads from the file — and refuses the placeholder before a real call:
 
 ```python
-user_path = Path('user_configs/credentials') / filename     # gitignored, real keys
-default_path = Path('configs/credentials') / filename       # checked in, placeholder
+cred_path = resolve_credentials_file(credentials_filename)
+if cred_path is None:
+    raise FileNotFoundError(...)            # name workspace_credentials_path(...) in the message
+assert_real_credential(cred_path, 'Enabling live <venue> execution')
 ```
 
-Prefer `user_path`. Never log credentials. Store only in short-lived `_api_key` / `_api_secret` fields.
+A copy of the cascade inside an adapter is the rule written twice, and it would travel with the
+adapter when #328 moves every venue into a package of its own. Never log credentials. Store only in
+short-lived `_api_key` / `_api_secret` fields.
 
 ---
 
@@ -629,6 +671,33 @@ AutoTrader profile references only the broker type and adapter type:
 `market_config.json` resolves `broker_type` → `broker_config_path` (path to the symbol-specs JSON), and carries the connection settings on the same entry — `credentials_file`, `dry_run` and `broker_transport`.
 
 The `BrokerType` enum (`python/framework/types/trading_env_types/broker_types.py`) must include the new type. The adapter factory (`python/framework/factory/`) maps `BrokerType` → concrete adapter class.
+
+---
+
+## Warmup Bars From the Venue
+
+A live-adapter session warms its workers up on the venue's own bar history, read at boot and read
+again at the first tick where a period ended in between. Whatever the venue, its bars must satisfy
+the rule every other path selects by: the history at the first tick holds the last N bars
+**complete** at that tick — bars whose period has ended. The rule, the seam and the guard are in
+[Warmup History](../../architecture/warmup_history.md); what a venue's reader owes it:
+
+- **Take a row by what it is, never by where it stands.** A row is taken only when its period has
+  ended by the instant of the read (`bar_period.is_complete_at`) AND the venue says it is final.
+  Kraken names the newest committed period in its answer's `last` field and commits within about
+  two seconds after a period ends (measured 0.8 s on 2026-10-12, 1.5–2.2 s on 2026-10-13, with
+  `python/experiments/venue_probes/probe_kraken_ohlc_commit.py`). A venue with a completeness flag
+  of its own reads that
+  flag; a venue with none is MEASURED before the reader is written — a probe against the live
+  endpoint around a period boundary, not an inference from its documentation.
+- **Stamp a bar with its period's opening instant**, on the UTC grid every timeframe shares. A venue
+  that stamps the close, or a broker-local timezone, converts at the reader — a bar stamped an hour
+  late passes every count check and is still the wrong bar.
+- **Declare which intervals it publishes** (`PUBLISHED_INTERVAL_MINUTES` on the Kraken reader): a
+  timeframe the venue does not serve is refused at boot, naming every one of them.
+- **Hand back what it read, judged by nothing else.** Counting, refusing and warning belong to the
+  shared shortfall rule, not to the reader; injection goes through
+  `BarRenderingController.inject_warmup_bars`, which checks every bar again.
 
 ---
 

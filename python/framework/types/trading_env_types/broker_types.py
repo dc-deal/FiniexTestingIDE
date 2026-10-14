@@ -47,6 +47,19 @@ class FeeType(Enum):
     MAKER_TAKER = 'maker_taker'
 
 
+class FeeSource(Enum):
+    """
+    Where the fee booked for a fill came from (#508).
+
+    VENUE: the venue's own figure for the fill, read from its answer — what the account was
+        charged
+    ESTIMATE: our fee model's figure — the declared rate times the order value. Always so in a
+        backtest, which has no venue to ask; live wherever the venue reports no fee per fill
+    """
+    VENUE = 'venue'
+    ESTIMATE = 'estimate'
+
+
 class FeeStatus(Enum):
     """Fee payment status"""
     PENDING = 'pending'      # Fee calculated but not yet applied

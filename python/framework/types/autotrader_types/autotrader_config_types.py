@@ -21,9 +21,11 @@ from python.framework.types.config_types.autotrader_defaults_config_types import
     StatePersistenceDefaults,
     TickSourceConfig,
 )
+from python.framework.types.config_types.operator_alerts_config_types import OperatorAlertsConfig
 from python.framework.types.config_types.scenario_settings_config_types import (
     ScenarioSettingsConfig,
 )
+from python.framework.types.run_purpose_types import RunPurpose
 
 
 @dataclass
@@ -137,6 +139,10 @@ class AutoTraderConfig:
             when a profile is RENAMED: a display name is something an operator improves, and
             without a declared id the improvement points the bot at a new, empty document while
             the venue still holds its position. It survives every rename of everything else
+        run_purpose: What this profile's sessions are FOR (#576) — the top-level `run_purpose`,
+            absent meaning REGULAR. Every mock profile a test runs is a FIXTURE, the real-money
+            field study a CERTIFICATE. Says what the session is, not how it trades, so neither
+            fingerprint of the profile covers it
         symbol: Trading symbol (e.g., 'BTCUSD')
         broker_type: Broker type identifier (e.g., 'kraken_spot')
         adapter_type: Adapter type ('mock' or 'live')
@@ -151,6 +157,8 @@ class AutoTraderConfig:
         session_end: What the session does with resting orders and open positions when it
             ends (#492). Two axes; `orders: 'leave'` is the loosening one and needs the
             broker's posture behind it, the same way `dry_run` does
+        operator_alerts: The out-of-band channels to the operator (#235) — Telegram alerts and
+            the liveness ping, both off by default
         deployment: Whether this profile's sessions form one continuous deployment (#497).
             MANDATORY — the loader refuses a profile without it, because neither value is
             safe to inherit (see DeploymentConfig)
@@ -162,6 +170,7 @@ class AutoTraderConfig:
     """
     profile_name: str = ''
     bot_id: str = ''
+    run_purpose: RunPurpose = RunPurpose.REGULAR
     symbol: str = ''
     broker_type: str = ''
     adapter_type: str = 'mock'
@@ -184,6 +193,7 @@ class AutoTraderConfig:
     cold_start: ColdStartDefaults = field(default_factory=ColdStartDefaults)
     session_end: SessionEndDefaults = field(default_factory=SessionEndDefaults)
     capital: CapitalDefaults = field(default_factory=CapitalDefaults)
+    operator_alerts: OperatorAlertsConfig = field(default_factory=OperatorAlertsConfig)
     config_path: Optional[Path] = None
     dry_run: Optional[bool] = None
 

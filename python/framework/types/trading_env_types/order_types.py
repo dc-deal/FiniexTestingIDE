@@ -12,6 +12,7 @@ from datetime import datetime
 from enum import Enum, StrEnum
 from typing import Any, Dict, Optional
 
+from python.framework.types.trading_env_types.broker_types import FeeSource
 from python.framework.types.trading_env_types.submission_metadata_types import SubmissionMetadata
 from python.framework.utils.process_serialization_utils import serialize_value
 
@@ -274,6 +275,27 @@ class ProtectiveLevelEnforcement(Enum):
     LOCAL = 'local'
     VENUE = 'venue'
 
+class FeeReport(Enum):
+    """
+    Where a venue reports the fee it charged for a fill (#508) — so the books can use the
+    venue's own figure, and know when they cannot.
+
+    STATUS_ANSWER: in the answer that reports the order filled — a status read, or the submit
+        answer of a venue that fills there. Kraken's QueryOrders carries the order's total
+        `fee` in the first answer that says closed (measured 2026-10-11)
+    EXECUTIONS: only with the order's executions, after the fill — a broker that sends its
+        commission in a report of its own (#210), or keeps it on the deal in its history
+        (MT5's DEAL_COMMISSION, #209). Booking from it needs the order kept open until that
+        report arrives, or the estimate corrected afterwards; neither is built
+    NOT_REPORTED: no fee per fill — a spread broker, whose cost is inside the fill price. The
+        fee model's estimate is booked. A dry run declares what its venue does; the executor
+        knows its answers come from our own simulator
+    """
+    STATUS_ANSWER = 'status_answer'
+    EXECUTIONS = 'executions'
+    NOT_REPORTED = 'not_reported'
+
+
 # ============================================
 # Order Capability System
 # ============================================
@@ -312,13 +334,18 @@ class OrderCapabilities:
     native_position_sl_tp: bool = False
 
     # Trade-record reporting (#326)
-    # trade_level_reporting: broker exposes per-execution detail (Kraken
-    # QueryTrades, MT5 HistoryDealsGet). When True, the executor queries
-    # trade records on FILLED via the Tier-3 trades_query layer and
-    # populates pending.fills.trades + cumulative_* aggregates. When False,
-    # the executor synthesizes a single aggregate BrokerTrade from the
-    # query response — the data model stays consistent.
+    # trade_level_reporting: the venue answers a trades query with per-execution detail
+    # (Kraken QueryTrades, MT5 HistoryDealsGet once #209 builds it). The drift auditor asks
+    # for it after every fill, entry and exit, and compares it with what was booked. The
+    # books never wait for it: a fill is booked from the answer that reports it, and its
+    # record carries one execution synthesized from that answer (#508).
     trade_level_reporting: bool = True
+
+    # Fee reporting (#508)
+    # fee_report: where the venue reports the fee of a fill — see FeeReport. Read where a
+    # fill is booked: a venue that reports it in the status answer and whose answer comes
+    # without one is booked from the estimate, and that is said in the session's log.
+    fee_report: FeeReport = FeeReport.NOT_REPORTED
 
     # Venue-held protective orders (#503)
     # venue_held_protective_orders: the venue accepts a STANDALONE order that can hold a
@@ -465,6 +492,9 @@ class OrderResult:
     execution_time: Optional[datetime] = None
 
     commission: float = 0.0
+    # Where `commission` came from (#508): the venue's own figure or our fee model's. Set on
+    # every executed result; None where nothing executed.
+    fee_source: Optional[FeeSource] = None
 
     rejection_reason: Optional[RejectionReason] = None
     rejection_message: str = ''
@@ -540,6 +570,7 @@ class OrderResult:
             'execution_time': self.execution_time.isoformat() if self.execution_time else None,
 
             'commission': self.commission,
+            'fee_source': self.fee_source.value if self.fee_source else None,
 
             'rejection_reason': self.rejection_reason.value if self.rejection_reason else None,
             'rejection_message': self.rejection_message,

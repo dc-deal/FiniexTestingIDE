@@ -31,7 +31,9 @@ class ConfigDirectoryIndex(AbstractStoreIndex):
     # older logic read the retired `name` keys and is re-read rather than trusted.
     # 2 → 3: `broker_types` / `broker_type` are `data_broker_types` / `data_broker_type`, and a
     # profile's data broker follows its `scenario_settings` (2026-09-29).
-    LOGIC_VERSION = 3
+    # 3 → 4: the builder reads `run_purpose` and `description` (#576); an older row lacks both.
+    # 4 → 5: a file outside `configs/` that declares a `run_purpose` is unreadable (#576).
+    LOGIC_VERSION = 5
 
     def __init__(self, root: Path):
         super().__init__(Path(root) / CONFIG_DIRECTORY_INDEX_FILE)

@@ -16,6 +16,7 @@ from python.framework.types.config_directory_types import (
     ConfigOrigin,
     ConfigReadStatus,
 )
+from python.framework.types.run_purpose_types import RunPurpose
 
 # What makes one directory row unique (§49): the FILE NAME, across every root and both kinds.
 # A name is how a configuration is addressed everywhere — the run's `config_snapshot`, the
@@ -55,6 +56,11 @@ class DirectoryRow(BaseModel):
         adapter_type: The profile's adapter (`mock` | `live`), '' for a scenario set
         dry_run_declared: What the profile declares for `dry_run` — None means the broker's
             default applies, resolved at session start; always None for a scenario set
+        run_purpose: What runs started from this file are FOR (#576) — `regular` when the file
+            declares nothing; None when the file could not be read, which includes a file outside
+            `configs/` that declares one — a run started from it is refused the same way
+        config_description: Why the configuration exists, as its `description` says — Markdown
+            allowed; None when it has none
         run_count: Runs on record that were started from this file (runs pruned from the run tree
             no longer count)
         last_run_at: Start of the newest of them, '' when none
@@ -83,6 +89,8 @@ class DirectoryRow(BaseModel):
     bot_id: str = ''
     adapter_type: str = ''
     dry_run_declared: Optional[bool] = None
+    run_purpose: Optional[RunPurpose] = None
+    config_description: Optional[str] = None
     run_count: int = 0
     last_run_at: str = ''
     last_run_id: str = ''

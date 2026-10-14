@@ -157,6 +157,12 @@ class PositionCarryOver(BaseModel):
             same reason as the reference and it cannot be recomputed either — it holds the
             discriminator of the session that minted it, and re-deriving one from the
             session doing the reading would claim a predecessor's order as this one's
+        protective_applied_lots: How much of that order is already booked (#508). The venue
+            reports the order as totals for all it executed, so a successor that started
+            from nothing would book an executed step a second time
+        protective_applied_fee: The fee booked for that volume, in the quote currency
+        protective_applied_value: Lots times price booked for it — the next step's own
+            price follows from the venue's average and this
         fees: Fees already incurred
         entry_trades: The atomic executions behind the entry
         entry_submission: Submission-moment audit values of the entry
@@ -185,6 +191,9 @@ class PositionCarryOver(BaseModel):
     protective_order_id: Optional[str] = None
     protective_broker_ref: Optional[str] = None
     protective_client_order_id: Optional[str] = None
+    protective_applied_lots: float = 0.0
+    protective_applied_fee: float = 0.0
+    protective_applied_value: float = 0.0
     mae_pnl: float = 0.0
     mfe_pnl: float = 0.0
     mae_price: float = 0.0

@@ -247,6 +247,30 @@ Tests end-to-end factory workflows: config → validation → instantiation for 
 |------|-------------|
 | `test_the_type_and_name_come_back_without_a_tracker` | Without a performance tracker (the simulation's default) `get_statistics()` still names the logic's type and name, unflagged as tracked — so a report can name it and mark its counters as not counted |
 
+#### TestCautiousMacdTakesItsPipSizeFromTheContext
+
+| Test | Description |
+|------|-------------|
+| `test_without_pip_size_the_context_supplies_it` | `pip_size` left unset is taken from the trading context the factory hands in — the broker's authoritative pip size (#167). It used to read an attribute the base class never set, so every such config failed to build (#586) |
+| `test_an_explicit_pip_size_wins` | A configured `pip_size` overrides the context's |
+| `test_without_either_it_refuses_to_be_built` | No `pip_size` and no context: refused at construction with a clear message, rather than failing at the first entry |
+
+---
+
+### test_warmup_requirement_agreement.py
+
+A worker states its warmup through two doors — the classmethod `calculate_requirements(config)`,
+which a backtest asks before any worker exists, and the instance's `get_warmup_requirements()`,
+which a session loads by — and the two must be one answer (#517). Since #588 the factory asks both
+whenever it creates a worker and refuses one whose answers differ.
+
+| Test / Class | Description |
+|------|-------------|
+| `test_the_classmethod_and_the_instance_agree` | per CORE case (RSI, OBV, MACD, Bollinger and MA trend under both averages) — parametrized |
+| `test_the_requirement_covers_every_configured_timeframe` | no timeframe dropped, never fewer bars than the period |
+| `TestARecursiveAverageAsksForMoreThanItsPeriod` | an EMA or a Wilder average over exactly its period returns its seed, so these ask for more |
+| `TestTheFactoryRefusesTwoAnswers` | every CORE case is created through the factory; a path-loaded worker answering 14 and 42 (`tests/fixtures/warmup_history/two_answers_worker.py`) is refused |
+
 ---
 
 ### worker_computation_tests/

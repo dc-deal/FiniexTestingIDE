@@ -11,6 +11,18 @@ The `tests/framework/config/` suite holds complementary test files:
 - **`test_autotrader_loader_field_coverage.py`** — one property over the AutoTrader
   profile loader: every field of every config block is reachable from JSON. See
   [Loader Field Coverage](#loader-field-coverage) below.
+- **`test_run_purpose_declaration.py`** — what a configuration declares about its runs
+  (#576): both loaders read `run_purpose` and `description` (absent is `regular`; an
+  unknown value and a misspelt top-level key are refused); a configuration in a user algo
+  directory declares no purpose, whatever its value; neither moves a profile's
+  fingerprints; and the folder rule — every configuration in the test folders declares
+  `fixture`, the field-study profiles `certificate`, no production or observation profile
+  anything else.
+- **`test_committed_data_origin.py`** — nothing kept in `configs/` or `tests/fixtures/` rests
+  on external data (#561): no generator profile records `external` among its origin classes,
+  and one without the field predates external data; no scenario set's window or warmup reaches
+  an external file of the LOCAL archive. Where the archive holds no external data there is
+  nothing to reach, and the scenario-set case skips saying so.
 
 | Item | Value |
 |---|---|
@@ -130,12 +142,16 @@ fallback) and makes forgetting a field impossible.
 |---|---|
 | `test_every_field_of_every_block_is_reachable_from_json` | The property itself — a profile value differing from the default arrives, for every field of every block. The field list is DERIVED from the models |
 | `test_the_two_fields_that_were_actually_lost` | Named regression for the two real cases. A generic failure says "something is unreachable"; this says which |
-| `test_the_mock_auto_disable_still_wins_when_the_profile_stays_silent` | The other half of the provenance rule — a profile that says nothing still gets the mock auto-disable for drift audit / reconciliation / API monitor / state persistence |
+| `test_the_mock_auto_disable_still_wins_when_the_profile_stays_silent` | The other half of the provenance rule — a profile that says nothing still gets the mock auto-disable for drift audit / reconciliation / API monitor / state persistence. The operator alerts auto-disable too, but their defaults are already off, so a silent profile would prove nothing here: [Operator Alerts Tests](../autotrader/operator_alerts_tests.md) switch the defaults on first |
 
 **The field list is never written down in the test.** A static fixture would have to be
 extended for every new field, which is the maintenance trap the test exists to close — so it
-must not reproduce it. Values are generated per type: another `Literal` member, the negated
-boolean, a shifted number, a suffixed string.
+must not reproduce it. Values are generated per type: another `Literal` member, another enum
+member, the negated boolean, a shifted number, a suffixed string. The derivation goes as deep
+as the blocks do: a nested block is probed field by field, starting from the default its PARENT
+gives it (the Telegram retry ladder waits 2 s where the ladder's own default is 1 s), and a
+dict of blocks — the Telegram `endpoints` — gains a key the defaults do not hold. A field whose
+type no probe covers fails the test by name, so the guard cannot go blind to it.
 
 ## Price Formation Declared (`test_price_formation_declared.py`)
 
@@ -180,9 +196,12 @@ The conversion itself is tested in [Server Clock Tests](server_clock_tests.md).
 
 - **A new config block on `AutoTraderConfig`** — nothing to do; it is discovered automatically
 - **A new field on an existing block** — nothing to do, same reason
-- **A field type the generator cannot vary** (a dict, a list, a new nested model deeper than
-  one level) — extend `_probe_value` / the nesting branch, or the field is silently skipped
-- **A new mock-auto-disable resolution** — add it to the third test
+- **A field type the generator cannot vary** (a list, a dict of plain values) — the first test
+  names it; extend `_probe_value` or the dict branch of `_probes`
+- **A value some block refuses by design** (`abort` for the Telegram ladder) — add it to
+  `_REFUSED_PROBES`, so the probe takes another
+- **A new mock-auto-disable resolution** — add it to the third test when its default is on;
+  when it is off, pin it where the default can be switched on first, as the operator alerts do
 
 
 ## `test_data_origin_registry.py` — what an identity MEANS here

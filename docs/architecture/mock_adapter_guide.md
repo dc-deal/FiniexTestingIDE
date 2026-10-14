@@ -55,6 +55,23 @@ open_order() → adapter.execute_order() → BrokerResponse → LiveRequestProce
 - Simulates: Unresponsive broker, network issues
 - Use for: Timeout detection via `LiveRequestProcessor.check_timeouts()`
 
+### The fee a fill reports
+
+Like Kraken, the answer that reports a fill carries the fill's total fee (`fill_fee`), and the
+mock declares `fee_report=status_answer` — where the broker's fee model charges per fill at all; a
+spread model's fills carry no fee (#508). By default the mock charges the rates the broker
+configuration declares — a limit that rested and filled later the maker rate, every other fill the
+taker rate, as the executor files them — so the fee it reports equals the executor's estimate. Two settings make
+the difference testable:
+
+- `set_venue_fee_rates(maker_pct, taker_pct)` — the venue charges rates of its own, the account
+  whose real tier is not the declared one; the booked fee is then the venue's, not the estimate
+- `set_fee_in_status_answer(False)` — the answer arrives without the fee although the mock
+  declares it there; the fill is booked from the estimate and the session's log warns
+
+A test venue that builds its own answers reports the fee the same way through
+`venue_fee_for(symbol, lots, price, is_maker)`.
+
 ---
 
 ## Usage

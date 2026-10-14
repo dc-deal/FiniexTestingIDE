@@ -6,7 +6,8 @@ A slot left `None` is skipped (render-if-present) — so an AutoTrader session o
 sections (run-meta header, scenario details, profiling, worker-decision breakdown, block-splitting)
 automatically. The per-currency AGGREGATE blocks render only for a multi-unit run
 (`unit_count > 1`): they are redundant for a single-scenario sim run and for the always-single live
-session. The closing block is pipeline-specific (sim → Executive Summary, live → Session Summary).
+session — all but the trade section's slippage block, which a single unit prints after its table.
+The closing block is pipeline-specific (sim → Executive Summary, live → Session Summary).
 
 The sub-presenters print to stdout via the ConsoleRenderer; the capture/strip/file-log of that output
 stays with each coordinator (sim's two-pass detail vs the live single pass).
@@ -126,6 +127,10 @@ class RunConsoleRenderer:
         if self._trade_history_summary:
             if summary_detail:
                 self._trade_history_summary.render_per_scenario(renderer)
+                # The slippage block lives in the aggregated statistics, which a single unit
+                # skips — so it follows that unit's table instead, and is printed once either way
+                if not is_multi_unit:
+                    self._trade_history_summary.render_slippage(renderer)
             if is_multi_unit:
                 self._trade_history_summary.render_aggregated(renderer)
 

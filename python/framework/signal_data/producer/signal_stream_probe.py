@@ -18,17 +18,17 @@ producer that spends is not registered in production at all.
 import time
 
 from python.framework.logging.scenario_logger import ScenarioLogger
-from python.framework.signal_data.transport.signal_inbox import SignalInbox
 from python.framework.signal_data.producer.signal_pipelines_reader import (
     describe_registry,
     fetch_pipeline_registry,
 )
+from python.framework.signal_data.transport.signal_inbox import SignalInbox
 from python.framework.signal_data.transport.signal_stream_source import SignalStreamSource
 from python.framework.types.config_types.sentiment_config_types import (
     ActiveProducer,
     SentimentStreamConfig,
 )
-from python.framework.types.signal_data_types import StreamProbeResult
+from python.framework.types.signal_data_types import SignalTransportState, StreamProbeResult
 
 # How long the probe holds the connection when the caller names no duration. Long enough
 # to see the connect, the replay boundary and at least one keep-alive at their 20 s beat.
@@ -92,7 +92,7 @@ def run_stream_probe(
     # 'connecting' is deliberately NOT a success: it means the socket opened and nothing
     # ever came back, which is the exact case a probe exists to expose.
     return StreamProbeResult(
-        ok=stats.state in ('live', 'replay'),
+        ok=stats.state in (SignalTransportState.LIVE, SignalTransportState.REPLAY),
         detail=describe_registry(registry),
         state=stats.state,
         seconds=seconds,
@@ -121,7 +121,8 @@ def print_stream_probe(result: StreamProbeResult) -> None:
         return
 
     print(f'Registry:   {result.detail}')
-    print(f'State:      {result.state} after {result.seconds:.0f}s, '
+    state = result.state.value if result.state else '—'
+    print(f'State:      {state} after {result.seconds:.0f}s, '
           f'{result.connections} connection(s)')
     print(f'Cursor:     {result.cursor or "none — the probe claims no position"}')
     print(f'Arrivals:   {len(result.arrivals)} envelope(s)')

@@ -239,14 +239,17 @@ pressure.
 
 ### Drift Audit (#327)
 
-After every EXECUTED outcome the `DriftAuditor` (wired in `autotrader_main.py` when
-`drift_audit.enabled=True`) captures a snapshot of the synthetic state (`pending.cumulative_fee` /
-`cumulative_avg_price` / `cumulative_filled_lots`) and fires a one-shot
-`submit_trades_query_async()` against the broker. When the per-execution `TradesQueryResponse`
-arrives via `drain_inbox`, the executor's `_handle_trades_response` fan-outs to all registered
-`_trades_response_consumers` — including DriftAuditor — which then compares snapshot vs. broker
-truth across FEE / VOLUME / PRICE dimensions, logs drift events above their thresholds, and surfaces
-counters in the SESSION panel `Audit:` line.
+After every booked fill — an entry's EXECUTED outcome and, since #508, a close — the `DriftAuditor`
+(wired in `autotrader_main.py` when `drift_audit.enabled=True`, and asking only a venue that
+declares `trade_level_reporting`) captures a snapshot of what was booked (`pending.cumulative_fee` /
+`cumulative_avg_price` / `cumulative_filled_lots`; a close's booked lots and fee) and fires a
+one-shot `submit_trades_query_async()` against the broker. A venue that reports its fee in the
+answer that reports the fill has that figure booked, so the snapshot carries the venue's own fee
+there; otherwise it carries the fee model's estimate. When the per-execution `TradesQueryResponse`
+arrives via `drain_inbox`, the executor's `_handle_trades_response` fans out to all registered
+`_trades_response_consumers` — including DriftAuditor — which then compares what was booked with
+the venue's own executions across FEE / VOLUME / PRICE / SLIPPAGE, logs drift events above their
+thresholds, and surfaces counters in the SESSION panel `Audit:` line.
 
 Strict read-only — no state mutation, no portfolio adjustment. Correction is deferred to the future Reconciliation Layer (#151). Detailed architecture: [architecture/drift_audit.md](../architecture/drift_audit.md).
 
@@ -262,8 +265,8 @@ Standard symbols (e.g., `BTCUSD`) are mapped to Kraken pair names (e.g., `XBTUSD
 
 ## External Connections — one ladder, one give-up rule (#473)
 
-A live-adapter session holds seven connections to things outside its own process. They now share
-one classification and one vocabulary; the full policy is
+A live-adapter session holds several connections to things outside its own process. They share
+one classification and one vocabulary; the list and the full policy are in
 [architecture/external_connection_policy.md](../architecture/external_connection_policy.md).
 Two consequences visible in this pipeline:
 

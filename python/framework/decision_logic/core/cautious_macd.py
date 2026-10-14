@@ -111,8 +111,15 @@ class CautiousMacd(AbstractDecisionLogic):
         # authoritative pip size via the trading context (#167). The *_pips params
         # below are denominated in this unit.
         self.pip_size = self.params.get('pip_size')
-        if self.pip_size is None and self.trading_context is not None:
-            self.pip_size = self.trading_context.pip_size
+        trading_context = self.get_trading_context()
+        if self.pip_size is None and trading_context is not None:
+            self.pip_size = trading_context.pip_size
+        if not self.pip_size:
+            # Every *_pips distance is denominated in it: without one the first entry would
+            # fail mid-session, so the logic refuses to be built instead
+            raise ValueError(
+                f"CautiousMacd '{name}': pip_size is not configured and no trading context "
+                f"supplies one — set pip_size in the decision logic's config")
         self.break_even_trigger_pips = self.params.get(
             'break_even_trigger_pips')
         self.min_histogram = self.params.get('min_histogram')

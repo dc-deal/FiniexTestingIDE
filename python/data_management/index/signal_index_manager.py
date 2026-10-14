@@ -12,7 +12,7 @@ Storage: Parquet (flat table). Memory: {data_sentiment_type: {symbol: [entries]}
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Callable, Dict, List, Optional
 
 import pandas as pd
 import pyarrow as pa
@@ -33,7 +33,7 @@ vLog = get_global_logger()
 # existed stays "valid" and keeps serving rows without it. The field was already being written
 # and read by nothing; giving it a read path is what makes a column addition safe to deploy.
 # The proper mechanism is `AbstractStoreIndex.LOGIC_VERSION`, which this legacy manager does not
-# have — adopting it is #175's, and this is the stopgap until then.
+# have — adopting it is #583's, and this is the stopgap until then.
 INDEX_SCHEMA_VERSION = b'1.1'
 
 
@@ -142,19 +142,23 @@ class SignalIndexManager:
 
         # {data_sentiment_type: {symbol: [entries]}}
         self.index: Dict[str, Dict[str, List[Dict]]] = {}
+        # The files the last scan could not read (see get_unreadable_files)
+        self._unreadable_files: List[str] = []
         self.logger.info('📡 Signal Index Manager initialized.')
 
     # =========================================================================
     # INDEX BUILDING
     # =========================================================================
 
-    def build_index(self, force_rebuild: bool = False, check_stale: bool = False) -> None:
+    def build_index(self, force_rebuild: bool = False, check_stale: bool = False,
+                    on_file_scanned: Optional[Callable[[int, int], None]] = None) -> None:
         """
         Build or load the index from the signal parquet files.
 
         Args:
             force_rebuild: Force complete rebuild, ignore an existing index
             check_stale: Rebuild only if newer parquet files exist (filesystem scan)
+            on_file_scanned: Called with (file number, file count) for each file a rebuild scans
         """
         # An index written under an older schema is rebuilt regardless of mtimes: its
         # rows are complete for the columns that existed then and silently missing the
@@ -177,7 +181,7 @@ class SignalIndexManager:
                 return
 
         self.logger.info('🔍 Scanning signal parquet files...')
-        start_time = time.time()
+        start_time = time.monotonic()
 
         parquet_files = self._parquet_files()
         if not parquet_files:
@@ -185,7 +189,10 @@ class SignalIndexManager:
             self.index = {}
             return
 
-        for parquet_file in parquet_files:
+        unreadable: List[str] = []
+        for file_no, parquet_file in enumerate(parquet_files, 1):
+            if on_file_scanned is not None:
+                on_file_scanned(file_no, len(parquet_files))
             try:
                 base = self._scan_file(parquet_file)
                 sentiment_type = base['data_sentiment_type']
@@ -206,6 +213,8 @@ class SignalIndexManager:
             except Exception as e:
                 self.logger.warning(
                     f'Failed to index {parquet_file.name}: {e}')
+                unreadable.append(f'{parquet_file.name}: {e}')
+        self._unreadable_files = unreadable
 
         for sentiment_type in self.index:
             for symbol in self.index[sentiment_type]:
@@ -214,7 +223,7 @@ class SignalIndexManager:
 
         self._save_index()
 
-        elapsed = time.time() - start_time
+        elapsed = time.monotonic() - start_time
         total_files = sum(
             len(files)
             for st in self.index.values()
@@ -224,6 +233,17 @@ class SignalIndexManager:
             f'✅ Signal index built: {total_files} file-entries across '
             f'{len(self.index)} sources in {elapsed:.2f}s'
         )
+
+    def get_unreadable_files(self) -> List[str]:
+        """
+        The files the last scan could not read — each one is missing from the index, which
+        announces nothing on its own, so a caller counts them.
+
+        Returns:
+            One 'filename: error' entry per file; empty when the scan read every file, or
+            when the index was loaded instead of scanned
+        """
+        return list(self._unreadable_files)
 
     def _parquet_files(self) -> List[Path]:
         """Signal parquet files (<pipeline_id>/*.parquet — excludes the index file at root)."""

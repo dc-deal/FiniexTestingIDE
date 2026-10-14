@@ -8,10 +8,10 @@ Flow: MARKET buy 0.001 ETHUSD → poll until filled → MARKET sell 0.001 ETHUSD
 Net exposure: ~0. Cost: ~$0.012 in maker/taker fees.
 
 Run explicitly:
-    pytest tests/live_adapters/ -v -m live_adapter
+    pytest tests/live_adapters/ -v -m live_adapter --place-real-orders
 
 Skipped by default and excluded from the unified test runner.
-Requires: user_configs/credentials/kraken_credentials.json
+Requires: user_configs/credentials/venues/kraken_credentials.json
           Active Kraken account (funds not required beyond fees)
 """
 
@@ -30,10 +30,9 @@ from python.framework.types.live_types.live_execution_types import (
     TimeoutConfig,
 )
 from python.framework.types.trading_env_types.order_types import OrderDirection, OrderType
-from tests.live_adapters.conftest import record_observed_adapter
+from tests.live_adapters.conftest import record_observed_adapter, venue_credentials_path
 
 _BROKER_CONFIG_PATH = Path('configs/brokers/kraken/kraken_spot_broker_config.json')
-_CREDENTIALS_PATH = Path('user_configs/credentials/kraken_credentials.json')
 
 _POLL_MAX = 10  # max query_order_sync attempts before giving up
 
@@ -46,8 +45,9 @@ def live_adapter_fill(request, real_orders_authorised):
     Returns:
         KrakenAdapter with Tier 3 enabled and dry_run disabled
     """
-    if not _CREDENTIALS_PATH.exists():
-        pytest.skip(f'Kraken credentials not found: {_CREDENTIALS_PATH}')
+    credentials_path = venue_credentials_path('kraken_spot')
+    if not credentials_path.exists():
+        pytest.skip(f'Kraken credentials not found: {credentials_path}')
 
     with open(_BROKER_CONFIG_PATH, 'r') as f:
         broker_config = json.load(f)

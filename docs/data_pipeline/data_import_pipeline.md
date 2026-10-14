@@ -8,30 +8,41 @@ bars are pre-rendered for all standard timeframes (M1 through D1).
 
 **Related**: [tick_collector_guide.md](tick_collector_guide.md) — MQL5 collector usage, JSON schema, error classification.
 
-**Scope — this doc covers the TICK path only.** Signal data (LLM sentiment envelopes, JSONL → parquet) has its own importer with its own duplicate rule; see [signal_data_source.md](signal_data_source.md).
+**Scope — this doc covers the TICK path.** One command imports both import inboxes — tick exports first,
+then signal JSONL — and shows one screen for both (see [The import screen](#the-import-screen-its-log-and-its-estimate)).
+Signal data (LLM sentiment envelopes, JSONL → parquet) has its own importer with its own duplicate
+rule; see [signal_data_source.md](signal_data_source.md).
 
 **Flow:**
 ```
+data_index_cli.py import → ImportCoordinator
+  ├─ Scan both import inboxes (each file's size; a tick file's broker from the metadata at its head)
+  ├─ Ticks (below) → Signals (signal_data_source.md) → discovery caches, once
+  └─ Its own log: logs/imports/import_<import_id>.log
+       ↓
 Data Collectors (JSON)
 ├─ MQL5 TickCollector (MT5 broker ticks)
 └─ Kraken Data Collector (Kraken WebSocket ticks)
        ↓
   TickDataImporter
   ├─ Validate JSON schema
-  ├─ Detect duplicates (by source file name)
+  ├─ Detect duplicates (by source file name) and refuse overlap with the archive — both off the tick index
   ├─ Convert the server clock to UTC (the broker's rule, market_config.json)
   ├─ Recalculate sessions (UTC-based)
   ├─ Quality checks (prices, spreads)
   └─ Write Parquet (with source metadata)
        ↓
-  BarImporter (auto-triggered, same target_dir)
-  ├─ Load all ticks for symbol (from target_dir, not config)
-  ├─ VectorizedBarRenderer → M1, M5, M15, M30, H1, H4, D1
-  │   └─ Weekend/holiday exclusion (Forex only, see below)
-  ├─ Parallel rendering (symbol-level, ProcessPoolExecutor)
-  └─ Write bar Parquet files
+  Tick index rebuild, then the archive order check (target_dir-aware)
        ↓
-  Index Update (tick + bar indexes, target_dir-aware)
+  BarImporter (same target_dir, the broker types this import wrote)
+  ├─ Load all ticks for symbol (from target_dir, not config)
+  ├─ VectorizedBarRenderer → every timeframe in processing.render_timeframes
+  │   └─ Weekend/holiday exclusion (Forex only, see below)
+  ├─ Parallel rendering (symbol-level, ProcessPoolExecutor), each symbol logged as it finishes
+  ├─ Write each bar file beside the old one, verify it, then replace the old one
+  └─ After a COMPLETE render: remove bar files without a source
+       ↓
+  Bar index rebuild (also after an interrupted render)
 ```
 
 ---
@@ -111,7 +122,7 @@ opened at 17:40:06 UTC.
 | `tick_flags` | string | Tick type flags (e.g. "BUY") |
 | `session` | string | Trading session label |
 | `time_msc` | int64 | Broker matching engine timestamp (Unix epoch ms) — the event time. UTC-converted by importer. Non-decreasing; ties are normal on burst-heavy feeds |
-| `collected_msc` | int64 | Local clock at tick receipt (Unix epoch ms) — the arrival time. Already UTC from data format 1.5.0, so the importer does not convert it. Non-decreasing. Default `0` for pre-V1.3.0 data |
+| `collected_msc` | int64 | Local clock at tick receipt (Unix epoch ms) — the arrival time. Already UTC from data format 1.5.0, so the importer does not convert it. Non-decreasing. Absent when the file records no arrival time — no zero is written; the tick index measures `no_arrival_time` |
 
 > **Note — `timestamp` redundancy**: The mandatory `timestamp` field (human-readable, seconds
 > precision) is derivable from `time_msc` with the broker UTC offset. It remains mandatory for
@@ -200,8 +211,9 @@ The absolute minimum the importer accepts:
 | Unknown `broker_type` (not in market_config) | Error collected, file skipped |
 | Empty ticks array | File skipped silently (no error, no output) |
 | Already imported (same source file name in parquet metadata) | `ArtificialDuplicateException`, warning + skipped (use `--override`) |
+| Ticks inside time the archive already covers for the symbol | Refused before the write (`TickFileValidationException`); an `--override` deletes nothing |
 
-Full TypedDict definitions: `python/framework/types/import_schema_types.py`
+Full TypedDict definitions: `python/framework/types/import_types/import_schema_types.py`
 
 ### Structural Validation — the importer refuses, it never repairs
 
@@ -221,7 +233,8 @@ migration in `python/experiments/`.
 | A week that opens inside the file (Friday close, a 40–56 h gap) opens a whole number of hours away from the market's day anchor (17:00 New York for forex) | File rejected — the server clock was converted by the wrong number of hours. A late open that is no whole hour (a holiday, a feed gap) is only a warning. Markets without weekends are not checked |
 | A tick inside the hour a daylight saving change repeats or skips | File rejected — that wall-clock time has no single UTC time (forex is closed then, so the archive has none) |
 | Wide spread within the file's declared `max_spread_percent` | Warning, import continues |
-| `collected_msc` absent or zero throughout | Warning, import continues (pre-V1.3.0 data has no arrival clock) |
+| `collected_msc` absent | Imported without the column; the tick index records the deficiency `no_arrival_time` |
+| `collected_msc` zero throughout | Warning naming `no_arrival_time`, import continues |
 | Ticks sharing an arrival millisecond | Metric only, never a verdict — bursts are legitimate |
 
 The window and threshold constants are measured, not chosen. The ±5 min plausibility window has to
@@ -273,7 +286,8 @@ Import configuration lives in `configs/import_config.json` with optional user ov
     "paths": {
         "data_raw": "data/raw",
         "import_output": "data/processed",
-        "data_finished": "data/finished"
+        "data_finished": "data/finished",
+        "import_timings": "data/runtime/import_timings.json"
     },
     "test_paths": {
         "data_raw": "data/test/import/raw",
@@ -283,18 +297,42 @@ Import configuration lives in `configs/import_config.json` with optional user ov
     "processing": {
         "move_processed_files": true,
         "auto_render_bars": true,
-        "bar_render_workers": 2
+        "bar_render_workers": 2,
+        "bar_render_max_ram_mb": 20000,
+        "render_timeframes": ["M1", "M5", "M10", "M15", "M30", "H1", "H4", "D1"]
+    },
+    "display": {
+        "enabled": true,
+        "update_interval_ms": 250
     }
 }
 ```
 
-> ⚠️ **Known issue — parallel bar rendering can exhaust memory (work in progress):**
-> Each render worker loads the complete tick history of its symbol into RAM. On large tick
-> archives (multi-GB per broker type), too many parallel workers can exceed the available
-> memory — the OS kills a worker and the whole pool aborts with
-> `A process in the process pool was terminated abruptly while the future was running or pending.`
-> (`BrokenProcessPool`). Until memory-aware worker scheduling lands, `bar_render_workers`
-> stays at a conservative default of `2`. Raise it only for small datasets or RAM-rich systems.
+- `paths.import_timings` — where the measured step rates are kept between imports (see
+  [The import screen](#the-import-screen-its-log-and-its-estimate)).
+- `display.enabled` — the live screen of `data_index_cli.py import`; off, the import logs line
+  by line. `display.update_interval_ms` — how often the screen redraws.
+
+#### What one render worker holds
+
+Each render worker loads the complete tick history of its symbol into one frame — only the
+columns the renderer reads: event time and its order, the price, a tick to count, the volume.
+Measured on ETHUSD's 60 million ticks: 8.4 GB at the peak, against 20.5 GB when every column was
+loaded, with every bar identical. So a worker's size follows its symbol's tick count, and with
+years of history it differs by a factor of ten between symbols.
+
+`processing.bar_render_max_ram_mb` is the memory the workers may hold together. Each symbol is
+estimated from its tick count in the index (about 140 bytes per tick plus the process); a worker
+starts only while the estimates of the running ones plus its own fit the budget, the largest
+first, and never more than `bar_render_workers` at once. A symbol larger than the whole budget
+renders alone, with a warning, rather than not at all.
+
+> ⚠️ **Known limit — a symbol's whole history is still one frame.** The budget keeps two large
+> symbols apart; it cannot make one smaller. Should the OS still kill a worker, the pool aborts
+> with `A process in the process pool was terminated abruptly while the future was running or
+> pending.` (`BrokenProcessPool`); the import names it as a likely out-of-memory end and says
+> which setting to lower, and the screen shows machine memory while it renders. Rendering in
+> time slices, and re-rendering only what an import touched, is the structural answer (#442).
 
 ### Server Clock
 
@@ -348,6 +386,10 @@ data/test/import/
 | `get_move_processed_files()` | bool |
 | `get_auto_render_bars()` | bool |
 | `get_bar_render_workers()` | int (fallback: 2, see `processing.bar_render_workers` in config) |
+| `get_bar_render_max_ram_mb()` | int — the memory the render workers may hold together (fallback: 20000) |
+| `get_render_timeframes()` | The timeframes a render writes |
+| `get_import_timings_path()` | The measured step rates file |
+| `get_display_config()` | `ImportDisplayConfig` — the `display` block |
 
 ---
 
@@ -419,12 +461,22 @@ how a field was obtained. See [discovery_system.md](../discovery_system.md).
 ## CLI Usage
 
 ```bash
-# Standard import — each broker's server clock (market_config.json) converts its times to UTC
+# Standard import of both import inboxes — each broker's server clock (market_config.json) converts
+# its times to UTC
 python -m python.cli.data_index_cli import
 
 # Override mode (re-import existing files)
 python -m python.cli.data_index_cli import --override
+
+# One archive only, or without the live screen
+python -m python.cli.data_index_cli import --only ticks
+python -m python.cli.data_index_cli import --only signals --include-finished
+python -m python.cli.data_index_cli import --no-display
 ```
+
+The command exits `0` when everything imported, `1` when the import counted errors (a refused
+file, a failed index or cache rebuild, a symbol that did not render), and `130` when it was
+stopped.
 
 The importer names the server clock of every configured broker when a batch starts:
 ```
@@ -437,6 +489,101 @@ and, in its summary, how many files each resolved offset converted:
 ```
 ✅ UTC offsets applied: mt5: -2h × 12 file(s) · -3h × 40 file(s)
 ```
+
+---
+
+## The import screen, its log and its estimate
+
+A terminal run shows one live screen for the whole import. It opens once both import inboxes
+are scanned, with every step listed — pending, with what it has to do and its estimate — and fills
+in as the steps run:
+
+```
+╭─ 📥 Import 20261010_124705_a3f9c2d1 ─────────────────────────────────────────────────────────╮
+│ ticks    40 files · 749.9 MB · 1,993,661 ticks written                                       │
+│ signals  6 files · 38.0 MB · 0 rows written                                                  │
+│ elapsed 2m 5s · remaining ~14m 25s · total ~16m 30s · ends ~13:03 UTC (estimate)             │
+│ CPU  22 %   RAM ████░░░░░░░░░░░░░░░░░░░░ 4.8 / 30.3 GB  16 %                                 │
+│  ✅  Scan import inboxes              46/46 files  kraken_spot 16 · mt5 24 · signals 6    0s  │
+│ ticks ──────────────────────────────────────────────────────────────────────────────────────  │
+│  ✅  Import tick files                40/40 files  100 % ████████████████████       1m 53s  │
+│  ⏳  Rebuild tick index           384/6427 files    6 % █░░░░░░░░░░░░░░░░░░░       ~3m 5s  │
+│  ⬜  Render bars                     0/17 symbols                                   ~6m 4s  │
+│        #1 kraken_spot/DASHUSD      rendering 5/8                                    1.3 GB  │
+│ ⚠ 0 warning(s)   ❌ 0 error(s)                                                              │
+╰──────────────────────────────────────────────────────────────────────────────────────────────╯
+```
+
+- **The screen computes nothing.** Every figure — memory, the estimate, the counts, each step's
+  remaining time — travels in an `ImportProgressFrame` the import publishes; the screen only
+  draws it, so another surface can show the same frame unchanged. A step's remaining time follows
+  the same rule as the import's, so the step lines and the header cannot disagree. A note or file
+  name too long for the terminal ends in `…`. The memory bar turns yellow above 70 % and red
+  above 85 %.
+- **The screen never stands still.** A fresh frame goes out every `display.update_interval_ms`,
+  also while one step is inside a long call — a tick file of hundreds of MB, one cache family, a
+  render on one worker — so the clock, the memory bar and the current file keep moving.
+- **Off the screen**, the import logs line by line as before: with `--no-display`, with
+  `display.enabled: false` in `configs/import_config.json`, or when the output is not a terminal.
+  A render still logs each symbol the moment it finishes.
+- **The import's own log** is `logs/imports/import_<import_id>.log`. The import id is its UTC
+  start plus a random half, in the form run ids have, so two imports started in the same second
+  cannot share a file. It holds every line the import produced, in the format of `global.log`,
+  which keeps receiving the same lines. The summary's last line names the file:
+  `📝 Full log: logs/imports/import_20261010_090011_a3f9c2d1.log`.
+- **The estimate comes from earlier imports.** After a complete import into the production
+  archive, each step's rate is stored in `data/runtime/import_timings.json` — seconds per MB of
+  JSON, per index file, per million ticks at a given worker count, per bar file for the caches —
+  as a moving average. The next import multiplies the rates by what its scan found and shows the
+  remaining time, the whole import's estimated duration and the time it should end. Without that
+  file, the first time, the screen shows `remaining —`. Once a step is past 5 % of its work, its
+  own progress decides. A step that ended ❌ — an index that could not be rebuilt, a render in
+  which a symbol failed — stores no rate: its time measured less than the whole work. After a bar
+  index that could not be rebuilt, the discovery caches are skipped, because they read it. Both
+  files are in the store catalog: [Data Storage
+  Layout](../architecture/data_storage_layout.md#an-imports-log-and-its-timings).
+- **The summary checks the estimate.** When steps had an estimate, the summary lists each one as
+  it stood once the scan had run against what the step took, with the deviation, and the same
+  summed over the steps that ran and had an estimate — a skipped or stopped step is not an
+  estimate error, and the label says when the total covers fewer steps than were planned:
+  ```
+  ⏱  Estimated at the start → took:
+     Import tick files             ~1m 28s  →  1m 53s     +28 %
+     Rebuild tick index            ~3m 18s  →  3m 50s     +16 %
+     Total                        ~15m 53s  →  17m 6s     +8 %
+  ```
+- **The counters and the bottom line** count the warnings and errors the importers record — the
+  ones the summary lists — and pin the newest of them. An interrupted render and bars kept because
+  the tick index does not list their symbol are counted warnings; an index rebuild that failed or
+  could not read a file is a counted error. A file replaced under `--override` logs a warning but
+  is not counted, so it is not pinned either.
+
+### An interrupted render
+
+A render never deletes a bar file before its new version is written and verified: each file is
+written as `…_BARS.parquet.partial` beside the old one and replaces it only once it reads back in
+full. Files without a source — a symbol with no ticks, a timeframe no longer in
+`render_timeframes` — are removed only after every symbol rendered. Stopping a render with
+Ctrl+C therefore leaves every symbol it did not reach with its previous bars, and a symbol stopped
+while it was being written may hold new and previous timeframes side by side until it is
+rendered again. The bar index is rebuilt from the files that are there, and the import says what
+is unfinished — counted as a warning, so the summary lists it once the screen has closed:
+
+```
+⚠️  Bar render INTERRUPTED after 14 of 17 symbols — not finished: mt5/USDCAD, mt5/USDCHF,
+mt5/USDJPY. A symbol the render never reached keeps its previous bars; one stopped while writing
+may mix new and previous timeframes until it is rendered again. Re-run: python
+python/cli/bar_index_cli.py render mt5
+```
+
+**SIGTERM** — a `kill`, a debugger's stop — ends `data_index_cli.py import` and a standalone
+`bar_index_cli.py render` the same way, because both turn it into a stop for as long as they
+run. **A hard kill** (SIGKILL) cannot be caught: the bar index is not rebuilt, so it still
+describes the previous files, and a half-written file is only a `.partial`, which the next render
+removes. The render workers end with their parent even then — on Linux the import asks the
+system to stop each worker the moment its parent dies; without that request they went on
+replacing bar files and then stayed idle until ended by hand. After a hard kill, rebuild the index
+with `python python/cli/bar_index_cli.py rebuild --no-caches`, or render again.
 
 ---
 
@@ -488,7 +635,7 @@ Parquet (data/processed/{broker_type}/ticks/{SYMBOL}/)
   ProcessTickLoop
   ├─ Iterates TickData objects in order
   ├─ Inter-tick interval: collected_msc (arrival clock, preferred)
-  │   Fallback: time_msc when collected_msc == 0 (pre-V1.3.0 data)
+  │   Fallback: time_msc when collected_msc == 0 (data without an arrival time)
   └─ Feeds TradingEnvironment per tick
 ```
 
@@ -499,7 +646,7 @@ Only fields defined in `TickTransportColumn` (`market_data_types.py`) cross the 
 | Transport Field | Parquet Column | TickData Field | Notes |
 |----------------|---------------|----------------|-------|
 | `TIME_MSC` | `time_msc` (int64) | `time_msc` + `timestamp` | timestamp derived via `datetime.fromtimestamp()` |
-| `COLLECTED_MSC` | `collected_msc` (int64) | `collected_msc` | Optional, default 0 (pre-V1.3.0) |
+| `COLLECTED_MSC` | `collected_msc` (int64) | `collected_msc` | 0 where the file stores none — `read_tick_parquet` adds it |
 | `BID` | `bid` (float) | `bid` | Mandatory |
 | `ASK` | `ask` (float) | `ask` | Mandatory |
 | `VOLUME` | `volume` (float) | `volume` | Optional, default 0.0 |
@@ -526,8 +673,11 @@ These fields exist in Parquet but are **not** transported to subprocesses:
 ## Duplicate Detection
 
 The importer stores each source file's **name** in the parquet metadata (`source_file`) and, before
-writing, searches every collector directory for a parquet claiming the same name. On a match it
-raises `ArtificialDuplicateException` — a warning, the file is skipped, the batch continues. Use
+writing, looks that name up across every broker type in the tick index. The index is read once per
+import, checked for staleness first, and every file the import writes is added to it as it goes —
+so a batch is checked against itself as well. Until #561 the check opened one parquet footer per
+existing file of the symbol for every imported file, which is quadratic in the file count. On a
+match it raises `ArtificialDuplicateException` — a warning, the file is skipped, the batch continues. Use
 `--override` to delete the existing parquet and re-import. A file the structural validation refuses
 is refused before this step, so `--override` deletes nothing for it: its old parquet stays — which is
 why a re-import is checked by more than count and names (see *Re-importing from the raw archive*).
@@ -538,11 +688,60 @@ with different content is refused as a duplicate. What the check actually protec
 common case — the same export handed to the importer twice, possibly from a different collector
 directory, which is why the search is cross-collector.
 
+**A file reaching into time the archive already covers is refused before the write.** The same
+index answers it: a file whose first and last tick fall into the span of a parquet of the same
+broker type and symbol would put the same trades into a backtest twice. The archive held no such
+overlap when the check arrived (6,427 files, 2026-10-13), so an overlap is a defect of the incoming
+file. Touching edges are allowed, the rule of the archive ordering check above, and a parquet of the
+same source file does not count — it is what an `--override` replaces. The check runs before an
+override deletes anything, so a refused file leaves the archive exactly as it was. The ordering
+check after the import stays as the archive-wide second plane.
+
 The signal importer has no equivalent check: it decides on the presence of the target parquet
 (`SignalAlreadyImportedError`, also a warning + skip), because a signal day's file name IS its date
 and the projection is per day.
 
 ---
+
+## A venue's published history — external data
+
+Our Kraken archive starts with our first collected tick. Kraken publishes its complete trade record
+since every pair's first trade, and it enters through this same import, under the data origin
+`external` (#561). A converter writes it as collector-shaped files; everything after that is the
+ordinary import above.
+
+```
+data/external/kraken/trades/<fetch>/   the parts as Kraken publishes them + its checksum list
+   │  verify   — every part against Kraken's checksum → this side's manifest.json
+   │  convert  — one file per symbol and month, ≤ 500,000 ticks, stopping at our first collected tick
+   ▼
+data/raw/          SYMBOL_YYYYMMDD_HHMMSS_ticks.json, format 1.7.0
+   │  import   — data_index_cli.py import --only ticks
+   ▼
+tick parquet       origin_class external · stamped · deficiencies no_quote, no_arrival_time
+   │  archive  — the four checks, then data/finished/Archives/<zip>, the loose copies removed
+```
+
+```bash
+F=data/external/kraken/trades/2026-10-13
+python python/cli/external_history_cli.py verify  --fetch $F
+python python/cli/external_history_cli.py list    --fetch $F
+python python/cli/external_history_cli.py convert --fetch $F --symbols ETHUSD [--dry-run]
+python python/cli/data_index_cli.py import --only ticks
+python python/cli/external_history_cli.py archive --fetch $F --zip kraken_history_files_v1.zip
+```
+
+What makes the files recognisable is stated in them, never guessed afterwards: the origin block
+names the converter's own identity, registered as `external` in `configs/data_origins.json`; an
+`external_source` block names the parts, their checksums and the member read; and there is no
+`collected_msc`, because nothing was received. The converter refuses rather than survives: a part
+that differs from its published checksum, a vendor manifest of another schema (schema 1 led with
+the price), a member whose header is in another order, a pair name that is only a near match
+(`XBTUSDC` is another market than `XBTUSD`).
+
+A backtest reads such ticks only where `backtesting.data_validation.admitted_origin_classes`
+admits `external`, and they are never admissible for a parity measurement. None of it enters the
+repository or a data package.
 
 ## Re-importing from the raw archive
 
@@ -557,7 +756,7 @@ plan      which members a scope selects — by the member's own name, never the 
           needs, and whether extract may start                                  (reads only)
 extract   streams the selected members into data/raw/ and writes a manifest beside them
           ... a migration the change needs runs on these extracted copies, never inside a zip
-import    python python/cli/data_index_cli.py import --override
+import    python python/cli/data_index_cli.py import --override --only ticks
 verify    count · names · inbox · rewritten — exit code 0 only when all four pass (reads only)
 clean     deletes each moved copy that is byte-identical to its archived member; keeps one that
           differs, which then awaits archiving
@@ -656,11 +855,12 @@ schedule: between one render and the next index build, a file damaged by somethi
 outside this pipeline is unnoticed.
 
 **The repair is always the same, because bars are DERIVED** — see
-[Data Storage Layout](../architecture/data_storage_layout.md): delete and re-render.
-Nothing is lost.
+[Data Storage Layout](../architecture/data_storage_layout.md): render again. A render replaces
+each file only once its new version reads back in full, so nothing has to be deleted first, and
+nothing is lost.
 
 ```bash
-python python/cli/bar_index_cli.py render --all --clean
+python python/cli/bar_index_cli.py render --all
 ```
 
 ## Scope of an import
@@ -672,6 +872,7 @@ real archive alone.
 The discovery caches are the one exception, and it is a stated limitation rather than an
 oversight: `DiscoveryCacheManager` resolves its own paths through `AppConfigManager` and
 builds four sub-caches that each do the same, so it cannot be pointed anywhere. An
-import that is scoped elsewhere therefore **skips** the cache rebuild and says so,
-instead of rebuilding production caches from bars it never touched. Scoping them belongs
-to the index-manager convergence in #175.
+import that is scoped elsewhere therefore **skips** the cache rebuild and says so — its
+screen shows the step as skipped, `not the production archive` — instead of rebuilding
+production caches from bars it never touched. Scoping them belongs
+to the index-manager convergence in #583.

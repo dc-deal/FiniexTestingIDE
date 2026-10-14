@@ -40,3 +40,7 @@ IO_SUBDIR = 'io'
 # as the rest: the logger writes it and the store catalog registers it, and two literals for one
 # file is how they drift apart.
 GLOBAL_LOG_FILE = 'global.log'
+
+# The subfolder of file_logging.global_log_dir that holds one log file per data import. The
+# import coordinator writes it and the store catalog registers it.
+IMPORT_LOG_SUBDIR = 'imports'

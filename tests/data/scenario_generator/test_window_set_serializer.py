@@ -9,7 +9,7 @@ resolution is patched so the test stays free of broker-config data.
 """
 
 from datetime import datetime, timezone
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from tests.data.scenario_generator.conftest import utc
 
@@ -20,6 +20,7 @@ from python.framework.types.market_types.market_volatility_profile_types import 
 )
 from python.framework.types.scenario_types.scenario_generator_types import GenerationStrategy
 from python.framework.types.scenario_types.window_set_types import GeneratedWindow, WindowSet
+from python.scenario.generator.generation_coordinator import GenerationCoordinator
 from python.scenario.generator.window_set_serializer import WindowSetSerializer
 
 _RESOLVE_PATH = 'python.scenario.generator.window_set_serializer.resolve_quote_currency'
@@ -91,3 +92,44 @@ class TestMultiSymbolAssembly:
         assert 'USD' in balances
         # Both symbols quote USD → resolved once per distinct currency
         assert _mock_quote.call_count == 2  # called per symbol, deduped before seeding
+
+
+class TestTheOriginOfAProfile:
+    """A profile records what it was derived from (#561), and generation warns on external data."""
+
+    def test_origin_classes_survive_the_profile_round_trip(self):
+        window_set = _blocks_window_set('ETHUSD', 1)
+        window_set.origin_classes = ['external', 'production']
+        data = WindowSetSerializer().to_profile_dict(window_set)
+
+        assert data['profile_meta']['origin_classes'] == ['external', 'production']
+        assert WindowSetSerializer.from_profile_dict(data).origin_classes == [
+            'external', 'production']
+
+    def test_a_profile_from_before_the_field_reads_as_not_recorded(self):
+        data = WindowSetSerializer().to_profile_dict(_blocks_window_set('ETHUSD', 1))
+        del data['profile_meta']['origin_classes']
+        assert WindowSetSerializer.from_profile_dict(data).origin_classes == []
+
+    def test_only_the_span_a_set_was_derived_from_decides_its_origin(self, capsys):
+        # Windows on 2025-10-01 … 2025-10-02; external history ends 2025-09-30
+        index = MagicMock()
+        index.get_symbol_entries.return_value = [
+            {'origin_class': 'external', 'start_time': '2025-09-01T00:00:00+00:00',
+             'end_time': '2025-09-30T23:59:00+00:00'},
+            {'origin_class': 'production', 'start_time': '2025-10-01T00:00:00+00:00',
+             'end_time': '2025-10-31T00:00:00+00:00'},
+        ]
+
+        blocks = _blocks_window_set('ETHUSD', 2)
+        GenerationCoordinator._stamp_origin(
+            blocks, index, *GenerationCoordinator._window_span(blocks))
+        assert blocks.origin_classes == ['production']
+        assert 'EXTERNAL DATA' not in capsys.readouterr().out
+
+        # A profile whose range reaches back across the seam
+        profile = _blocks_window_set('ETHUSD', 2)
+        GenerationCoordinator._stamp_origin(
+            profile, index, utc(2025, 9, 15), utc(2025, 10, 3))
+        assert profile.origin_classes == ['external', 'production']
+        assert 'never commit it' in capsys.readouterr().out

@@ -81,6 +81,11 @@ class AutoTraderResult:
         emergency_reason: Fatal cause when shutdown_mode == 'emergency' (None otherwise)
         emergency_error_type: The class of the exception that caused it, None when no
             exception did — the cause as a code, beside the sentence
+        refused_at_first_tick: The session stopped at its first tick, before that tick's workers
+            and decision ran, because the venue's warmup history could not be completed there
+            (#588). A refusal rather than a crash, and shown as one; still graded FAILED, so
+            whoever relaunches sessions relaunches it. The executor's stop and take-profit check
+            of that tick runs before the refusal, so a close may have been sent
         cold_start_situation: What the boot step found at the venue (#355 / #493). None for
             a simulation, a dry run and a Field Study — the three cases with nothing to find.
             Captured raw; the report model is derived from it
@@ -121,6 +126,7 @@ class AutoTraderResult:
     operator_interrupted: bool = False
     emergency_reason: Optional[str] = None
     emergency_error_type: Optional[str] = None
+    refused_at_first_tick: bool = False
     session_logger_buffer: List[LogRecord] = field(default_factory=list)
     cold_start_situation: Optional[ColdStartSituation] = None
     cold_start_verdict: Optional[ColdStartVerdict] = None

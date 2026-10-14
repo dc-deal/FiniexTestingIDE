@@ -6,6 +6,7 @@ Renders (purely from the unified report model, #393):
 - Per-scenario trade tables (chronological by entry_tick_index) + #330 execution sub-lines
 - Entry/exit prices, SL/TP, fees, P&L, MAE/MFE/R (#389) columns
 - Aggregated trade statistics + the #389 analytics block + failed-order breakdown
+- The #340 submission-vs-fill slippage block — inside the aggregate, or on its own for one unit
 """
 
 from typing import Dict, List
@@ -89,6 +90,21 @@ class TradeHistorySummary(AbstractBatchSummarySection):
                 renderer.print_separator(width=120, char='·')
                 print()
             self._render_scenario_trades(scenario_name, rows, renderer)
+
+    def render_slippage(self, renderer: ConsoleRenderer) -> None:
+        """
+        Render the submission-vs-fill slippage block on its own (#340) — for a single-unit run.
+
+        A run of several units prints it inside the aggregated statistics, once per currency. A
+        single unit skips those as redundant with its own table, and the slippage is the one
+        figure in them that the table does not show — an AutoTrader session, always one unit,
+        would have no slippage line at all without this.
+
+        Args:
+            renderer: ConsoleRenderer instance
+        """
+        if self._report.trades:
+            self._render_slippage_stats(self._report.trades, renderer)
 
     def render_aggregated(self, renderer: ConsoleRenderer) -> None:
         """

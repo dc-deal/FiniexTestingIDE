@@ -1,6 +1,7 @@
 {
     "version": "1.0",
     "scenario_set_name": "multi_position_test",
+    "run_purpose": "fixture",
     "created": "2026-02-14T00:00:00.000000",
     "description": "Multi-Position Validation Testing (#114) - Overlapping positions, hedging, selective close, margin recovery",
     "global": {

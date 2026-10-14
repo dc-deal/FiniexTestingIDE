@@ -102,6 +102,7 @@ def build_warnings_errors_report_from_session(
         emergency_reason=result.emergency_reason or '',
         shutdown_mode=result.shutdown_mode,
         operator_interrupted=result.operator_interrupted,
+        refused_at_first_tick=result.refused_at_first_tick,
         error_count=len(logged_errors),
         warning_count=tier_one_count,
         log_warning_count=len(logged_warnings))

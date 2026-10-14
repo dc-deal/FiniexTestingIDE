@@ -65,7 +65,8 @@ def debug_warmup_bars_check(warmup_bars: Dict[str, Tuple[Any, ...]],
                             logger: ScenarioLogger,
                             bar_rendering_controller: BarRenderingController):
     """
-    Check: Wurden die Bars korrekt deserialisiert?
+    Check: were the warmup bars deserialized and injected correctly? Logs each timeframe's
+    count, first and last bar (DEBUG only).
     """
     if not logger.should_log_level(LogLevel.DEBUG):
         return

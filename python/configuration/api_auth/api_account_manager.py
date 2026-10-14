@@ -13,10 +13,8 @@ from typing import Dict, Optional
 
 from pydantic import ValidationError
 
-from python.configuration.api_auth.inbound_credentials_cascade import (
-    WORKSPACE_CREDENTIALS_DIR,
-    read_inbound_section,
-)
+from python.configuration.api_auth.inbound_credentials_cascade import read_inbound_section
+from python.configuration.credentials_cascade import WORKSPACE_CREDENTIALS_DIR
 from python.framework.exceptions.api_errors import ApiConfigurationError
 from python.framework.types.config_types.api_auth_config_types import ApiAccount
 

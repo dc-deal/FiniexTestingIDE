@@ -36,6 +36,7 @@ from python.framework.types.live_types.api_perf_types import ApiPerfSnapshot
 from python.framework.types.live_types.live_core_snapshot_types import LiveCoreSnapshot
 from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.parameter_types import OutputValue
+from python.framework.types.portfolio_types.portfolio_trade_record_types import TradeRecord
 from python.framework.workers.worker_orchestrator import WorkerOrchestrator
 
 
@@ -218,21 +219,7 @@ class AutotraderDisplayExporter:
         recent_trades: List[TradeHistoryEntry] = []
         trade_history = self._executor.get_trade_history()
         for trade in trade_history[-10:][::-1]:
-            recent_trades.append(TradeHistoryEntry(
-                trade_id=trade.position_id,
-                symbol=trade.symbol,
-                direction=trade.direction,
-                lots=trade.lots,
-                entry_price=trade.entry_price,
-                exit_price=trade.exit_price,
-                net_pnl=trade.net_pnl,
-                close_reason=trade.close_reason,
-                close_type=trade.close_type,
-                entry_trades=list(trade.entry_trades),
-                exit_trades=list(trade.exit_trades),
-                exit_side=trade.exit_side,
-                exit_time=trade.exit_time,
-            ))
+            recent_trades.append(self.trade_history_entry(trade))
 
         # Clipping — lightweight snapshot (avoids full session summary construction)
         clipping_stats = self._clipping_monitor.get_display_stats()
@@ -364,6 +351,38 @@ class AutotraderDisplayExporter:
             **self._drift_display_counters(),
             **self._reconcile_display_counters(),
             api_perf=self._api_perf_snapshot(),
+        )
+
+    @staticmethod
+    def trade_history_entry(record: TradeRecord) -> TradeHistoryEntry:
+        """
+        The dashboard's row for one closed trade, copied from its record (#586).
+
+        Static so a test reaches it without the exporter's collaborators: a field the row
+        declares and this copy forgets is exactly how the trade-history panel came to read an
+        attribute nothing ever set.
+
+        Args:
+            record: The trade record the portfolio wrote at the close
+
+        Returns:
+            The display row
+        """
+        return TradeHistoryEntry(
+            trade_id=record.position_id,
+            symbol=record.symbol,
+            direction=record.direction,
+            lots=record.lots,
+            entry_price=record.entry_price,
+            exit_price=record.exit_price,
+            net_pnl=record.net_pnl,
+            close_reason=record.close_reason,
+            close_type=record.close_type,
+            entry_lots=record.entry_lots,
+            entry_trades=list(record.entry_trades),
+            exit_trades=list(record.exit_trades),
+            exit_side=record.exit_side,
+            exit_time=record.exit_time,
         )
 
     def _drift_display_counters(self) -> Dict[str, object]:

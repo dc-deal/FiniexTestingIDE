@@ -26,6 +26,7 @@ from python.framework.types.config_types.market_config_types import (
     DayAnchorConfig,
     PriceFormation,
 )
+from python.framework.types.data_deficiency_types import DataDeficiency
 from python.framework.types.data_origin_types import (
     ORIGIN_BLOCK_REQUIRED_FROM,
     origin_block_is_required,
@@ -363,8 +364,8 @@ class TickImportValidator:
 
         if not collected.any():
             result.add_warning(
-                'collected_msc is zero throughout — pre-V1.3.0 data, no arrival '
-                'timing available'
+                'collected_msc is zero throughout — the file records no arrival time '
+                '(measured by the tick index as the deficiency no_arrival_time)'
             )
             return
 
@@ -523,6 +524,7 @@ class TickImportValidator:
         """
         findings: List[str] = []
         unchecked = 0
+        not_applicable = 0
         transitions = 0
 
         for broker_type, symbols in index_entries.items():
@@ -535,15 +537,16 @@ class TickImportValidator:
                      pd.to_datetime(e['end_time'], utc=True),
                      int(e.get('collected_start', 0)),
                      int(e.get('collected_end', 0)),
-                     e['file'])
+                     e['file'],
+                     DataDeficiency.NO_ARRIVAL_TIME in e.get('deficiencies', []))
                     for e in entries
                 ]
                 bounds.sort(key=lambda b: b[0])
                 transitions += max(len(bounds) - 1, 0)
 
                 for previous, current in zip(bounds, bounds[1:]):
-                    _, prev_end, _, prev_arrival_end, prev_file = previous
-                    cur_start, _, cur_arrival_start, _, cur_file = current
+                    _, prev_end, _, prev_arrival_end, prev_file, prev_without = previous
+                    cur_start, _, cur_arrival_start, _, cur_file, cur_without = current
 
                     if cur_start < prev_end:
                         findings.append(
@@ -552,10 +555,15 @@ class TickImportValidator:
                         )
 
                     # Arrival is a physical sequence: a tick cannot be observed
-                    # before one that arrived earlier. Zero means the index
-                    # carries no arrival bounds — nothing to compare, and the
-                    # skip is reported rather than silent: an unverified plane
-                    # that logs like a passed one is worse than no plane.
+                    # before one that arrived earlier. A file that records no
+                    # arrival time at all has nothing to compare — by nature, not
+                    # by a defect of the index. Any other zero means the index
+                    # carries no arrival bounds. Both skips are reported rather
+                    # than silent: an unverified plane that logs like a passed one
+                    # is worse than no plane.
+                    if prev_without or cur_without:
+                        not_applicable += 1
+                        continue
                     if not prev_arrival_end or not cur_arrival_start:
                         unchecked += 1
                         continue
@@ -572,6 +580,11 @@ class TickImportValidator:
                 f'Arrival bounds missing on {unchecked} of {transitions} file '
                 f'transitions — collected_msc continuity NOT verified there. '
                 f'Rebuild the tick index.'
+            )
+        if not_applicable:
+            findings.append(
+                f'Arrival continuity not applicable on {not_applicable} of {transitions} file '
+                f'transitions — a file there records no arrival time (no_arrival_time)'
             )
 
         return findings

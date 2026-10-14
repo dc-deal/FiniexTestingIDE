@@ -129,6 +129,17 @@ class TestColumnNormalization:
         assert 'tick_flags' in df.columns
         assert 'time_msc' in df.columns
 
+    def test_a_projected_read_derives_the_same_price_and_volume(self, crypto_parquet: Path) -> None:
+        """Reading only some columns changes what is held, never what is derived (#442)."""
+        full = read_tick_parquet(crypto_parquet)
+        projected = read_tick_parquet(
+            crypto_parquet, columns=['timestamp', 'time_msc', 'bid', 'ask', 'last', 'real_volume'])
+
+        assert 'tick_flags' not in projected.columns
+        assert 'collected_msc' not in projected.columns
+        for column in ['timestamp', 'time_msc', 'price', 'volume']:
+            assert projected[column].equals(full[column])
+
 
 # ============================================================================
 # Integration Test — Full Volume Chain

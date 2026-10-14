@@ -34,10 +34,11 @@ def render_deployment_list(summaries: List[DeploymentSummary]) -> None:
         summaries: The roll-ups, already ordered
     """
     print(f'\n{len(summaries)} deployment(s)')
-    print('─' * 153)
-    print(f'{"deployment":<30} {"bot":<22} {"bot id":<20} {"orders to":<16} {"sessions":>8} '
+    print('─' * 155)
+    # 32 holds a deployment id with its random half (31 characters) and the gap after it
+    print(f'{"deployment":<32} {"bot":<22} {"bot id":<20} {"orders to":<16} {"sessions":>8} '
           f'{"since":<17} {"net P&L":>11} {"max DD":>11} {"idle max":>9}')
-    print('─' * 153)
+    print('─' * 155)
     # Grouped by BOT so a deliberate restart reads as what it is. `--new-deployment` mints a
     # fresh identity and stores no link back to the one it replaced, so two deployments of one
     # bot would otherwise sit among the others as strangers.
@@ -51,11 +52,11 @@ def render_deployment_list(summaries: List[DeploymentSummary]) -> None:
         # Where the orders went — `venue` is real money. Both values: a rehearsal and real money
         # in one history; a dash: not recorded.
         orders_to = ','.join(value.value for value in summary.orders_to) or '—'
-        print(f'{summary.deployment_id:<30} {summary.bot:<22} '
+        print(f'{summary.deployment_id:<32} {summary.bot:<22} '
               f'{(summary.bot_id or "—"):<20} {orders_to:<16} {summary.sessions:>8} '
               f'{since:<17} {summary.net_pnl:>11.2f} {-abs(summary.max_drawdown):>11.2f} '
               f'{gap:>9}{mark}')
-    print('─' * 153)
+    print('─' * 155)
     if any(s.changed for s in summaries):
         print('⚠ = the sessions were not all produced by the same configuration; the detail '
               'view draws the break.')

@@ -32,7 +32,11 @@ from python.framework.types.api.report_types import (
     WarningsErrorsReport,
 )
 from python.framework.types.scenario_types.window_set_types import WindowSet
-from python.framework.types.trading_env_types.currency_codes import format_currency_simple
+from python.framework.types.trading_env_types.currency_codes import (
+    format_currency_cost,
+    format_currency_signed,
+    format_currency_simple,
+)
 from python.framework.utils.console_renderer import ConsoleRenderer
 
 
@@ -424,9 +428,12 @@ class SimExecutiveSummary(AbstractBatchSummarySection):
         renderer.print_bold(section_title)
         renderer.print_separator(width=68)
         print(f'Scenarios:          {scenario_count}')
+        # A figure that can go below zero keeps its sign, in front of the symbol: a balance, an
+        # equity, the unrealized mark, the spread and the swap — both are signed costs. Fees, the
+        # starting capital, a peak and the drawdown's magnitude are printed as magnitudes.
         print(
             f'Initial Capital:    {format_currency_simple(initial, currency)} (avg {format_currency_simple(row.avg_initial, currency)}/scenario)')
-        print(f'Final Balance:      {format_currency_simple(final, currency)}')
+        print(f'Final Balance:      {format_currency_signed(final, currency)}')
 
         print(f'Total P&L:          {renderer.pnl(pnl, currency)} ({pnl_pct:+.2f}%)')
         # Order execution stats
@@ -467,14 +474,14 @@ class SimExecutiveSummary(AbstractBatchSummarySection):
             print('')
             print(
                 f'Open at end:        {h.open_position_count} position(s) '
-                f'({format_currency_simple(h.unrealized_pnl, currency)} unrealized)')
+                f'({format_currency_signed(h.unrealized_pnl, currency)} unrealized)')
             if h.final_equity is not None:
                 print(
-                    f'Final Equity:       {format_currency_simple(h.final_equity, currency)}')
+                    f'Final Equity:       {format_currency_signed(h.final_equity, currency)}')
             else:
                 # Several accounts: their sum, said as one, beside the capital it began from.
                 print(
-                    f'Total Final Equity: {format_currency_simple(h.total_final_equity, currency)}'
+                    f'Total Final Equity: {format_currency_signed(h.total_final_equity, currency)}'
                     f'  ({h.unit_count} accounts, initial '
                     f'{format_currency_simple(h.total_initial_balance, currency)})')
 
@@ -498,15 +505,15 @@ class SimExecutiveSummary(AbstractBatchSummarySection):
             print(f'Recovery Factor:    {row.recovery_factor:.2f}')
         print('')
         print(
-            f'Spread Cost:        {format_currency_simple(row.total_spread_cost, currency)} (avg {format_currency_simple(row.avg_spread, currency)}/trade)')
+            f'Spread Cost:        {format_currency_cost(row.total_spread_cost, currency)} (avg {format_currency_cost(row.avg_spread, currency)}/trade)')
         print(
-            f'Commission:         {format_currency_simple(row.total_commission, currency)}')
+            f'Commission:         {format_currency_cost(row.total_commission, currency)}')
         print(
-            f'Swap:               {format_currency_simple(row.total_swap, currency)}')
+            f'Swap:               {format_currency_cost(row.total_swap, currency)}')
         print(
-            f'Maker Fee:          {format_currency_simple(row.maker_fee, currency)}')
+            f'Maker Fee:          {format_currency_cost(row.maker_fee, currency)}')
         print(
-            f'Taker Fee:          {format_currency_simple(row.taker_fee, currency)}')
+            f'Taker Fee:          {format_currency_cost(row.taker_fee, currency)}')
 
     def _render_spot_portfolio(
         self, renderer: ConsoleRenderer, currency: str, row: AggregatedPortfolioRow
@@ -534,22 +541,22 @@ class SimExecutiveSummary(AbstractBatchSummarySection):
         for s in row.spot_scenarios:
             base_fmt = f'{s.base_balance:,.4f}' if s.base_balance < 100 else f'{s.base_balance:,.2f}'
             print(f'  {s.scenario_name}:')
-            print(f'    Balances: {format_currency_simple(s.quote_balance, s.quote_currency)} | {s.base_currency} {base_fmt}')
+            print(f'    Balances: {format_currency_signed(s.quote_balance, s.quote_currency)} | {s.base_currency} {base_fmt}')
             if s.has_base_holdings:
-                print(f'    Est. Value: {format_currency_simple(s.est_current, s.quote_currency)} @ {s.base_currency} {format_currency_simple(s.last_price, s.quote_currency)}')
+                print(f'    Est. Value: {format_currency_signed(s.est_current, s.quote_currency)} @ {s.base_currency} {format_currency_simple(s.last_price, s.quote_currency)}')
 
         # Totals
         print('')
         if row.spot_has_base_holdings and row.spot_total_est_initial > 0:
             total_pnl = row.spot_total_est_current - row.spot_total_est_initial
             total_pnl_pct = (total_pnl / row.spot_total_est_initial * 100)
-            print(f'Est. Portfolio:     {format_currency_simple(row.spot_total_est_current, currency)}')
+            print(f'Est. Portfolio:     {format_currency_signed(row.spot_total_est_current, currency)}')
             print(f'Total P&L:          {renderer.pnl(total_pnl, currency)} ({total_pnl_pct:+.2f}%)')
         else:
             # Simple P&L when no base holdings (same as margin)
             pnl = row.final_balance - row.initial_balance
             pnl_pct = (pnl / row.initial_balance * 100) if row.initial_balance > 0 else 0
-            print(f'Final Balance:      {format_currency_simple(row.final_balance, currency)}')
+            print(f'Final Balance:      {format_currency_signed(row.final_balance, currency)}')
             print(f'Total P&L:          {renderer.pnl(pnl, currency)} ({pnl_pct:+.2f}%)')
 
         # Trade stats
@@ -566,15 +573,15 @@ class SimExecutiveSummary(AbstractBatchSummarySection):
         # Costs (layout A — all five categories, zeros where n/a; spot fees are maker/taker)
         print('')
         print(
-            f'Spread Cost:        {format_currency_simple(row.total_spread_cost, currency)}')
+            f'Spread Cost:        {format_currency_cost(row.total_spread_cost, currency)}')
         print(
-            f'Commission:         {format_currency_simple(row.total_commission, currency)}')
+            f'Commission:         {format_currency_cost(row.total_commission, currency)}')
         print(
-            f'Swap:               {format_currency_simple(row.total_swap, currency)}')
+            f'Swap:               {format_currency_cost(row.total_swap, currency)}')
         print(
-            f'Maker Fee:          {format_currency_simple(row.maker_fee, currency)}')
+            f'Maker Fee:          {format_currency_cost(row.maker_fee, currency)}')
         print(
-            f'Taker Fee:          {format_currency_simple(row.taker_fee, currency)}')
+            f'Taker Fee:          {format_currency_cost(row.taker_fee, currency)}')
 
     @staticmethod
     def _format_pending_latency(renderer: ConsoleRenderer, row: AggregatedPortfolioRow) -> str:

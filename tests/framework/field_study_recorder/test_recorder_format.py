@@ -1,13 +1,15 @@
 """
 FiniexTestingIDE - Field Study Recorder Format Tests (#332)
 
-Verifies the analysis-ready JSONL contract: a header first line, stable core keys on
-every event, monotonic sequence, two recorded planes, None-field omission, and the
-session-end marker. The order and venue lines themselves are written by the stream projection
+Verifies the analysis-ready JSONL contract: a header first line — with where the venue
+reports a fill's fee, where the session knew it — stable core keys on every event, monotonic
+sequence, two recorded planes, None-field omission, and the session-end marker. The order and venue lines themselves are written by the stream projection
 (#566); what is held here is the recorder's own format and the phase it hands the projection.
 """
 
 import json
+
+import pytest
 
 from python.framework.reporting.field_study_recorder import (
     PLANE_BOT,
@@ -21,6 +23,7 @@ from python.framework.types.autotrader_types.field_study_types import (
     PhaseResult,
     PhaseType,
 )
+from python.framework.types.trading_env_types.order_types import FeeReport
 
 
 class _StubLogger:
@@ -52,6 +55,38 @@ def test_header_is_first_line(tmp_path):
     assert header['phases'] == ['p1', 'p2']
     assert header['symbol'] == 'ETHUSD'
     assert 'release_target' not in header, 'never read — the certificate takes the release'
+
+
+@pytest.mark.parametrize('fee_report', list(FeeReport), ids=lambda report: report.value)
+def test_the_header_records_where_the_venue_reports_a_fill_s_fee(tmp_path, fee_report):
+    """The venue's declaration (#508), as its value."""
+    path = tmp_path / 'field_study.jsonl'
+    recorder = FieldStudyRecorder(str(path), 'prof', 'ETHUSD', ['p1'], _StubLogger(),
+                                  fee_report=fee_report)
+    recorder.close()
+    header, _ = _read(path)
+    assert header['fee_report'] == fee_report.value
+
+
+@pytest.mark.parametrize('expected', [True, False])
+def test_the_header_records_what_the_executor_expects_of_a_fill_s_fee(tmp_path, expected):
+    """The answer the certificate judges an estimated fee by (#508) — false is a value too."""
+    path = tmp_path / 'field_study.jsonl'
+    recorder = FieldStudyRecorder(str(path), 'prof', 'ETHUSD', ['p1'], _StubLogger(),
+                                  venue_fee_expected=expected)
+    recorder.close()
+    header, _ = _read(path)
+    assert header['venue_fee_expected'] is expected
+
+
+def test_a_header_opened_without_the_declaration_leaves_it_out(tmp_path):
+    """Absent, never a guessed value — the certificate then judges no estimate."""
+    path = tmp_path / 'field_study.jsonl'
+    recorder = FieldStudyRecorder(str(path), 'prof', 'ETHUSD', ['p1'], _StubLogger())
+    recorder.close()
+    header, _ = _read(path)
+    assert 'fee_report' not in header
+    assert 'venue_fee_expected' not in header
 
 
 def test_events_carry_stable_core_keys_and_monotonic_seq(tmp_path):

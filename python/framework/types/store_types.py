@@ -67,6 +67,7 @@ class StoreId(StrEnum):
     RUN_CONFIGS = 'run_configs'
     RUN_PATCHES = 'run_patches'
     RUN_LEDGER = 'run_ledger'
+    FIXTURE_PRODUCTIONS = 'fixture_productions'
     CERTIFICATES = 'certificates'
     SESSION_STATE = 'session_state'
     COLD_START_STATE = 'cold_start_state'
@@ -79,7 +80,10 @@ class StoreId(StrEnum):
     CONFIG_DIRECTORY = 'config_directory'
     RAW_INBOX = 'raw_inbox'
     FINISHED_ARCHIVE = 'finished_archive'
+    EXTERNAL_HISTORY = 'external_history'
     GLOBAL_LOG = 'global_log'
+    IMPORT_LOGS = 'import_logs'
+    IMPORT_TIMINGS = 'import_timings'
     HOST_IDENTITY = 'host_identity'
 
 

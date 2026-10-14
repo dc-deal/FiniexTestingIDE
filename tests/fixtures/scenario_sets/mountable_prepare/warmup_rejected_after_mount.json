@@ -1,8 +1,9 @@
 {
   "version": "1.0",
   "scenario_set_name": "warmup_rejected_after_mount",
+  "run_purpose": "fixture",
   "created": "2026-09-25T00:00:00+00:00",
-  "description": "Three ETHUSD windows. The first starts at the head of the archive, so its M30 warmup is short and the data quality phase rejects it AFTER its package was built; the second is ordinary; the third is switched off, so the set DECLARES three, attempts two and produces one.",
+  "description": "Three windows. The first starts at the head of the EURUSD archive, so not a single bar is complete at its first tick and the data quality phase rejects it AFTER its package was built — an MT5 symbol, because the Kraken archives now reach back into a venue's published history, which a fixture may not read; the second is ordinary; the third is switched off, so the set DECLARES three, attempts two and produces one.",
   "global": {
     "strategy_config": {
       "decision_logic_type": "CORE/aggressive_trend",
@@ -39,11 +40,11 @@
   },
   "scenarios": [
     {
-      "scenario_name": "archive_head_short_warmup",
-      "symbol": "ETHUSD",
-      "data_broker_type": "kraken_spot",
-      "start_date": "2026-01-24T14:20:00+00:00",
-      "end_date": "2026-01-24T20:20:00+00:00",
+      "scenario_name": "archive_head_no_warmup",
+      "symbol": "EURUSD",
+      "data_broker_type": "mt5",
+      "start_date": "2025-09-17T17:58:00+00:00",
+      "end_date": "2025-09-17T23:58:00+00:00",
       "max_ticks": null,
       "enabled": true
     },

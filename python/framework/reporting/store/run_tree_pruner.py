@@ -7,6 +7,7 @@ the index follow afterwards. A prune that edited index rows without removing dir
 the reverse — would break the one invariant #475 rests on.
 """
 
+import json
 import os
 import shutil
 from collections import defaultdict
@@ -15,8 +16,14 @@ from pathlib import Path
 from typing import Callable, Dict, List, Optional
 
 from python.configuration.app_config_manager import AppConfigManager
+from python.framework.config_directory.config_directory import declared_run_purposes
+from python.framework.fixture_catalog.fixture_catalog import entry_ids
+from python.framework.fixture_catalog.fixture_production_store import (
+    PRODUCTION_RECORD_FILE,
+    FixtureProductionStore,
+)
 from python.framework.reporting.io.artifact_specs import FIELD_STUDY_CAPTURE
-from python.framework.reporting.io.run_header_io import RUN_HEADER_ARTIFACT
+from python.framework.reporting.io.run_header_io import RUN_HEADER_ARTIFACT, read_run_header
 from python.framework.reporting.store.run_index import (
     RunIndex,
     dir_size,
@@ -33,11 +40,35 @@ from python.framework.types.run_prune_types import (
     PruneResult,
     PruneSelectors,
 )
+from python.framework.types.run_purpose_types import RunPurpose
 from python.framework.utils.time_utils import ensure_utc_aware, parse_datetime
 
 # A run's own substructure. These are never candidates in their own right; they go with the run
 # directory that contains them.
 _RUN_SUBDIRS = {IO_SUBDIR, 'scenario_logs', 'session_logs', 'diagnostics', 'events'}
+
+
+def _declared_purpose(run_dir: Path) -> Optional[str]:
+    """
+    What a run's own header says it is for — read from the run's directory, not the index, and
+    from the raw JSON rather than the model, so a header an older or newer version wrote still
+    answers.
+
+    Args:
+        run_dir: The run's directory
+
+    Returns:
+        The declared value; '' for a header older than the field; None when the header exists and
+        cannot be read — which no guard can clear
+    """
+    header_path = run_dir / RUN_HEADER_ARTIFACT
+    if not header_path.exists():
+        return ''
+    try:
+        header = json.loads(header_path.read_text(encoding='utf-8'))
+    except (OSError, ValueError):
+        return None
+    return header.get('run_purpose') or '' if isinstance(header, dict) else None
 
 
 class RunTreePruner:
@@ -60,7 +91,16 @@ class RunTreePruner:
         app_config = AppConfigManager()
         file_logging = app_config.get_file_logging_config_object()
         self._roots = run_logs or file_logging.run_logs
-        self._index = RunIndex(run_index_path or file_logging.run_index, self._roots)
+        index_path = Path(run_index_path or file_logging.run_index)
+        # The real index is rebuilt with every configuration's declared purpose, so a run older
+        # than `run_purpose` keeps the one it was given (#576); an injected index is a test's
+        # isolated tree and is rebuilt from its headers alone.
+        self._index = RunIndex(
+            index_path, self._roots,
+            declared_purposes=None if run_index_path else declared_run_purposes)
+        # The fixture catalog's record lives beside the index it describes runs of (#576).
+        self._fixture_record = FixtureProductionStore(index_path.parent / PRODUCTION_RECORD_FILE,
+                                                      declared_entries=set(entry_ids()))
         self._ledger_dir = Path(run_ledger_path or app_config.get_run_ledger_path())
 
     def size_figures_available(self) -> bool:
@@ -169,6 +209,9 @@ class RunTreePruner:
         # this is an operator action asking "how old is this today", not an event stamp (§9).
         now = datetime.now(timezone.utc)
         deletable: List[Path] = []
+        # The runs a consumer may pin — read once, from the catalog's RECORD (#576).
+        current_fixtures = self._fixture_record.current_run_ids()
+        superseded_fixtures = self._fixture_record.verified_run_ids() - current_fixtures
 
         for done, run in enumerate(runs, 1):
             if progress is not None:
@@ -204,6 +247,28 @@ class RunTreePruner:
             # archive — no selector reaches it.
             if (run_dir / FIELD_STUDY_CAPTURE).exists():
                 report.kept_field_study.append(candidate)
+                continue
+            # A certificate run is never deleted (#576) — asked of the run's own HEADER, for the
+            # same reason the guard above asks the filesystem: the index's purpose of an older
+            # run is derived from today's configuration, and a guard must not hang on that. A
+            # header that cannot be read stays too: it is the one case this guard cannot clear.
+            declared = _declared_purpose(run_dir)
+            if declared is None:
+                report.kept_unreadable_header.append(candidate)
+                continue
+            if declared == RunPurpose.CERTIFICATE.value:
+                report.kept_certificate.append(candidate)
+                continue
+            # What a consumer pins now (#576): no flag releases it. Released together with the
+            # superseded ones, a run newer than it in its family would push it past `--keep-last`
+            # and delete the very ids the consumer had just moved to.
+            if run.run_id in current_fixtures:
+                report.kept_current_fixture.append(candidate)
+                continue
+            # A superseded production — a consumer may still pin it until it has moved, which only
+            # the operator knows.
+            if run.run_id in superseded_fixtures and not selectors.release_fixtures:
+                report.kept_superseded_fixture.append(candidate)
                 continue
             # Always-on: commissioned to produce nothing, and it produced nothing.
             if run.reporting == RunReporting.NONE and not run.artifacts:
@@ -343,6 +408,7 @@ class RunTreePruner:
             known_dirs: The directories the index lists
             report: Filled in place
         """
+        found: List[PruneCandidate] = []
         for root in (Path(self._roots.simulation), Path(self._roots.autotrader)):
             if not root.exists():
                 continue
@@ -366,9 +432,31 @@ class RunTreePruner:
                     report.skipped_sweep_dirs.append(
                         PruneCandidate(path=path, size_bytes=own_files_size(path)))
                     continue
-                if filenames:
-                    report.to_delete_orphans.append(
+                if RUN_HEADER_ARTIFACT in filenames:
+                    # A run the index lost a row for — a concurrent write can do that. It is a
+                    # run, so no guard below the index ever saw it; a rebuild re-indexes it.
+                    report.kept_unindexed_run.append(
                         PruneCandidate(path=path, size_bytes=dir_size(path)))
+                    dirnames[:] = []
+                    continue
+                if filenames:
+                    found.append(PruneCandidate(path=path, size_bytes=dir_size(path)))
+        # A directory that HOLDS a run is never an orphan, whatever else lies in it: deleting it
+        # deletes the runs inside. A set's directory with one stray file beside its runs — an
+        # editor's backup, a desktop.ini — was classified whole, field-study evidence and the
+        # current catalog fixtures included. Decided after the walk, because a walk from the top
+        # meets the parent before the runs below it.
+        # Compared resolved, so a relative root and an absolute index entry still meet — a
+        # comparison that silently never matched would protect nothing. Only paid when a
+        # candidate exists, which is rare.
+        if not found:
+            return
+        holders = [Path(held).resolve() for held in
+                   list(known_dirs) + [c.path for c in report.kept_unindexed_run]
+                   + [c.path for c in report.skipped_sweep_dirs]]
+        report.to_delete_orphans.extend(
+            candidate for candidate in found
+            if not any(held.is_relative_to(candidate.path.resolve()) for held in holders))
 
     @staticmethod
     def _inside_run_dir(path: Path, known_dirs: set) -> bool:

@@ -5,7 +5,16 @@ archived ticks, a rehearsal against a live feed that places nothing, and a sessi
 money all produce the same report sections — so a reader who treats them alike will present a
 rehearsal's figures as money that moved.
 
-Three fields say which kind you have, and none of them has to be inferred.
+The fields below say which kind you have, and none of them has to be inferred.
+
+| Question | Field on the run list |
+|---|---|
+| Which pipeline ran it? | `group` |
+| Which kind of run is it? | `ticks_from` · `orders_to` |
+| Does it stand alone? | `parent_kind` · `parent_id` |
+| Which configuration did it run? | `config_snapshot` · `config_id` — the configuration itself is [config](/api/v1/docs/config) |
+| What is it FOR? | `run_purpose` |
+| Why does its configuration exist? | `config_description` on that configuration's [directory](/api/v1/docs/directory) row |
 
 ## The two axes
 
@@ -25,6 +34,31 @@ rehearsal with real money; see [deployments](/api/v1/docs/deployments).
 
 Both are null on a run recorded before these fields existed. See
 [nulls](/api/v1/docs/nulls) for what to render then.
+
+## `run_purpose` says what the run is FOR
+
+The two axes say what a run did; `run_purpose` says why it was started.
+
+| `run_purpose` | What the run is |
+|---|---|
+| `regular` | an ordinary run — a backtest, a sweep, a session of a bot |
+| `fixture` | a run constructed to show something — every run a test starts, and every run a consumer pins. Its numbers are built, not earned: a failed scenario, a refused order or a strategy change may be there because the run was told to produce it |
+| `certificate` | a release-gate run whose record becomes a certificate — never produced again and never deleted |
+
+It is what the configuration the run started from declares, stamped at the start. It never says
+whether money moved: a real-money field study is `certificate` with `orders_to: venue`, and a bot
+trading real money is `regular` with `orders_to: venue`. A list that leaves out the `fixture` runs
+hides every test and reference run and nothing else; a list showing only `regular` would also hide
+the real-money `certificate` runs and every run whose purpose is unknown.
+
+For a run recorded before the field, the value is filled in when the run index is rebuilt, from
+the CURRENT declaration of its configuration where that configuration can still be read, and is
+`null` before that rebuild and where none is found — see [nulls](/api/v1/docs/nulls).
+
+The `fixture` runs this side produces for a consumer to pin come from its fixture catalog, and a
+catalog entry is produced again whenever its shape has to follow a contract. The newest catalog
+production that passed its check is the current one; `fixture_superseded` on the [run list](/api/v1/docs/runs) says whether a run is
+still it.
 
 ## `group` is the pipeline, never the nesting
 

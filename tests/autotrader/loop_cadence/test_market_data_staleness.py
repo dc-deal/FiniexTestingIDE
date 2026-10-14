@@ -16,6 +16,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from python.framework.autotrader.autotrader_tick_loop import AutotraderTickLoop
+from python.framework.autotrader.operator_alerts.alert_episode import AlertEpisode
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.process.market_data_episode_tracker import MarketDataEpisodeTracker
 from python.framework.stress_test.stale_data_stress_driver import (
@@ -24,6 +25,7 @@ from python.framework.stress_test.stale_data_stress_driver import (
     warn_events_outside_range,
 )
 from python.framework.trading_env.order_guard import OrderGuard
+from python.framework.types.autotrader_types.operator_alert_types import OperatorAlertKind
 from python.framework.types.disturbance_episode_types import DisturbanceOrigin
 from python.framework.types.trading_env_types.market_data_status_types import MarketDataStatus
 from python.framework.types.trading_env_types.order_types import (
@@ -38,6 +40,7 @@ from python.framework.types.trading_env_types.stress_test_types import (
     StressTestStaleDataConfig,
 )
 from python.framework.workers.worker_orchestrator import WorkerOrchestrator
+from tests.shared.operator_alert_recorder import OperatorAlertRecorder
 
 
 def _utc(*args) -> datetime:
@@ -87,6 +90,10 @@ def _make_loop(stale_after_s: float, last_tick_wall: float,
                now: datetime, tick_source=None, stress_driver=None):
     """Bare loop carrying only the #436/#451/#444 state (ctor bypassed)."""
     loop = object.__new__(AutotraderTickLoop)
+    loop._operator_alerts = OperatorAlertRecorder()
+    loop._all_clear_after_s = 300.0
+    loop._market_data_alert = AlertEpisode(loop._all_clear_after_s)
+    loop._loop_started_monotonic = 0.0
     loop._market_data_stale_after_s = stale_after_s
     loop._market_stale = False
     loop._market_stale_since = None
@@ -107,6 +114,10 @@ def _observe_tick(loop, now: datetime) -> None:
     loop._executor._now = now
     if loop._market_stale:
         loop._end_market_stale_episode()
+    elif loop._last_real_tick_wall_time <= 0 and loop._market_data_alert.is_open():
+        loop._market_data_alert.clears(now)
+    if loop._market_data_alert.is_open():
+        loop._send_market_data_all_clear_if_due()
     if loop._stale_stress_driver is not None:
         loop._stale_stress_driver.on_tick(now)
     loop._market_data_tracker.on_tick(
@@ -154,6 +165,37 @@ class TestLoopEvaluation:
         loop._evaluate_market_data_staleness()
         assert loop._market_stale is False
 
+    def test_a_first_tick_that_never_comes_is_said_once(self, monkeypatch):
+        """#235: a feed that never starts must not leave 'Session started' as the last word."""
+        loop = _make_loop(300.0, last_tick_wall=0.0, now=_utc(2026, 1, 15, 8, 0))
+        loop._loop_started_monotonic = 500.0
+        monkeypatch.setattr(time_module, 'monotonic', lambda: 700.0)
+        loop._evaluate_market_data_staleness()
+        assert loop._operator_alerts.kinds == []                  # inside the threshold
+
+        monkeypatch.setattr(time_module, 'monotonic', lambda: 801.0)
+        loop._evaluate_market_data_staleness()
+        loop._evaluate_market_data_staleness()
+
+        assert loop._operator_alerts.kinds == [OperatorAlertKind.MARKET_DATA_STALE]
+        loop._logger.warning.assert_called_once()
+        # Only the operator hears it: the status stays a startup wait, not a stale feed (#436)
+        assert loop._market_stale is False
+        assert loop._decision_logic.calls == []
+
+    def test_the_first_tick_ends_that_wait(self, monkeypatch):
+        loop = _make_loop(300.0, last_tick_wall=0.0, now=_utc(2026, 1, 15, 8, 0))
+        loop._loop_started_monotonic = 500.0
+        monkeypatch.setattr(time_module, 'monotonic', lambda: 801.0)
+        loop._evaluate_market_data_staleness()
+
+        _observe_tick(loop, _utc(2026, 1, 15, 8, 1))              # the first tick
+        loop._last_real_tick_wall_time = 1000.0
+        _observe_tick(loop, _utc(2026, 1, 15, 8, 6, 1))           # fresh for longer than 300 s
+
+        assert loop._operator_alerts.kinds == [
+            OperatorAlertKind.MARKET_DATA_STALE, OperatorAlertKind.MARKET_DATA_RECOVERED]
+
     def test_recovery_resets_edge_and_logs_span(self, monkeypatch):
         loop = _make_loop(300.0, last_tick_wall=1000.0, now=_utc(2026, 1, 15, 7, 55))
         # A tick at 07:55 is the last one seen as fresh — the episode anchors there.
@@ -182,6 +224,23 @@ class TestLoopEvaluation:
         monkeypatch.setattr(time_module, 'time', lambda: 2301.0)
         loop._evaluate_market_data_staleness()
         assert len(loop._decision_logic.calls) == 2
+
+        # The operator heard it once (#235): the second silence came before the data had
+        # stayed fresh for the quiet period, so it is the same episode — not a new message
+        assert loop._operator_alerts.kinds == [OperatorAlertKind.MARKET_DATA_STALE]
+
+    def test_the_all_clear_comes_once_the_data_stayed_fresh(self, monkeypatch):
+        """#235: stale once, then fresh again only after the quiet period — one pair."""
+        loop = _make_loop(300.0, last_tick_wall=1000.0, now=_utc(2026, 1, 15, 8, 0))
+        monkeypatch.setattr(time_module, 'time', lambda: 1301.0)
+        loop._evaluate_market_data_staleness()
+
+        _observe_tick(loop, _utc(2026, 1, 15, 8, 5))          # fresh again
+        assert loop._operator_alerts.kinds == [OperatorAlertKind.MARKET_DATA_STALE]
+        _observe_tick(loop, _utc(2026, 1, 15, 8, 10, 1))      # fresh for longer than 300 s
+
+        assert loop._operator_alerts.kinds == [
+            OperatorAlertKind.MARKET_DATA_STALE, OperatorAlertKind.MARKET_DATA_RECOVERED]
 
     def test_episode_opens_on_the_heartbeat_and_closes_on_the_tick(self, monkeypatch):
         """The outage began when ticks stopped — not when the threshold revealed it."""

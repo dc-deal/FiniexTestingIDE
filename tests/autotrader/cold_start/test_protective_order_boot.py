@@ -487,3 +487,59 @@ class TestTheVenueAlsoLISTSTheProtectiveOrder:
 
         assert started is True, (
             'Its own protective order is accounted for — it is not a reason to stay flat')
+
+
+class TestAStopBookedInPartBeforeTheRestart:
+    """
+    The venue reports a protective order as totals for everything it executed. A session that
+    booked part of it and then stopped carries what it booked, so the next boot books only
+    what is new — the volume, at its own price, with the fee the total grew by (#508).
+    """
+
+    @staticmethod
+    def _carried_after_a_step() -> PositionCarryOver:
+        """
+        The note after the venue executed 0.004 of 0.01 and that step was booked.
+
+        Returns:
+            The carry-over record
+        """
+        return _carried_long().model_copy(update={
+            'lots': 0.006, 'protective_applied_lots': 0.004,
+            'protective_applied_fee': 1.568, 'protective_applied_value': 196.0})
+
+    def test_a_stop_that_finished_overnight_books_only_the_rest(
+            self, spot_executor, store, logger):
+        events = []
+        spot_executor.add_order_event_listener(events.append)
+        store.save(session_key='paa53', highest_position_counter=1,
+                   open_positions=[self._carried_after_a_step()])
+        _boot(spot_executor, store, logger, BrokerResponse(
+            broker_ref=_PROTECTIVE_REF, status=BrokerOrderStatus.FILLED, filled_lots=0.01,
+            fill_price=48950.0, fill_fee=3.918,
+            timestamp=parse_datetime('2026-09-10T06:00:00+00:00')))
+
+        spot_executor.on_tick(TickData(
+            timestamp=parse_datetime('2026-09-10T06:00:01+00:00'),
+            symbol='BTCUSD', bid=49000.0, ask=49001.0, volume=1.0))
+
+        fills = [e for e in events if e.event_type.value == 'filled']
+        assert len(fills) == 1
+        assert fills[0].lots == pytest.approx(0.006)
+        assert fills[0].fill_price == pytest.approx((0.01 * 48950.0 - 196.0) / 0.006)
+        assert fills[0].fee == pytest.approx(3.918 - 1.568)
+        assert spot_executor.portfolio.get_position('pos_btcusd_1') is None
+
+    def test_one_still_resting_is_adopted_with_what_it_had_booked(
+            self, spot_executor, store, logger):
+        store.save(session_key='paa53', highest_position_counter=1,
+                   open_positions=[self._carried_after_a_step()])
+        _boot(spot_executor, store, logger, _answer(BrokerOrderStatus.PENDING))
+
+        adopted = [o for o in spot_executor.get_active_orders()
+                   if o.closes_position_id == 'pos_btcusd_1']
+        assert len(adopted) == 1
+        state = adopted[0].execution_state
+        assert (state.venue_close_applied_lots, state.venue_close_applied_fee,
+                state.venue_close_applied_value) == (
+            pytest.approx(0.004), pytest.approx(1.568), pytest.approx(196.0))

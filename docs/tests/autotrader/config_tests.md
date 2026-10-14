@@ -29,6 +29,9 @@ Two halves:
   no flag can promote a profile declaring `false`, because an unattended restart re-executes a
   command nobody typed and a command-line deployment would break apart at exactly the restarts it
   exists to span.
+- **Two deployments started in the same second get two keys.** The deployment history groups by
+  the key alone, so its random half is what keeps two bots a supervisor brings up at once from
+  sharing one history.
 
 Plus a sweep over every tracked profile asserting the block is actually there — the loadability
 suite would fail too, but as "this file does not parse", which reads like a typo.

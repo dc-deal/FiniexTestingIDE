@@ -1,6 +1,7 @@
 {
     "version": "1.0",
     "scenario_set_name": "spot_sell_test",
+    "run_purpose": "fixture",
     "created": "2026-04-10T00:00:00.000000",
     "description": "Spot SELL validation — Verifies that SELL signals on spot correctly sell held base currency (SHORT direction passes through guard and executor) and that SELL with insufficient base balance produces INSUFFICIENT_FUNDS rejection",
     "global": {

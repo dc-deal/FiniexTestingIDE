@@ -3,22 +3,26 @@ Portfolio report builder (#391) — the headline-P&L + full-projection postproce
 
 The unified array model: a run is a list of units (sim: N scenarios; live: 1 session) plus a
 per-currency roll-up. Consumes the run's `RunUnit` list and maps each unit's `PortfolioStats`
-to the full per-unit projection (the per-scenario linear console block renders purely from it).
+to the full per-unit projection (the per-scenario linear console block renders purely from it);
+the fill fees per fee source are folded from the unit's order events (#508).
 The per-currency roll-up is derived from the rows via the shared `aggregate_portfolio_by_currency`
 (one builder for both pipelines; mirrors the console `PortfolioAggregator` formulas).
 """
 
-from typing import List
+from typing import Dict, List
 
 from python.framework.reporting.builders.report_aggregators import aggregate_portfolio_by_currency
 from python.framework.reporting.builders.run_unit import RunUnit
 from python.framework.types.api.report_types import (
+    FeeSourceFills,
     OpenPositionRow,
     PortfolioReport,
     PortfolioUnitRow,
 )
 from python.framework.types.portfolio_types.portfolio_aggregation_types import PortfolioStats
 from python.framework.types.portfolio_types.portfolio_types import Position
+from python.framework.types.trading_env_types.broker_types import FeeSource
+from python.framework.types.trading_env_types.order_event_types import OrderEvent
 from python.framework.types.trading_env_types.order_types import ProtectiveLevelEnforcement
 
 
@@ -184,6 +188,34 @@ def _usable_funds(stats: PortfolioStats) -> dict:
     }
 
 
+def fill_fees_by_source(events: List[OrderEvent]) -> Dict[FeeSource, FeeSourceFills]:
+    """
+    A unit's fill fees split by where each came from — the venue's own figure, or our fee
+    model's estimate (#508).
+
+    Folded over the order events rather than read from the portfolio: an event is the one record
+    of a fill that says where its fee came from, and the stream holds every fill, where the
+    order history keeps only its newest rows. Only an event that executed something carries a
+    fee source, so the count is the fills behind each total.
+
+    Args:
+        events: The unit's order events, in their recorded order
+
+    Returns:
+        One entry per fee source that occurs, in the order FeeSource declares them; empty where
+        nothing executed
+    """
+    counts: Dict[FeeSource, int] = {}
+    fees: Dict[FeeSource, float] = {}
+    for event in events:
+        if event.fee_source is None:
+            continue
+        counts[event.fee_source] = counts.get(event.fee_source, 0) + 1
+        fees[event.fee_source] = fees.get(event.fee_source, 0.0) + (event.fee or 0.0)
+    return {source: FeeSourceFills(fill_count=counts[source], fill_fees=fees[source])
+            for source in FeeSource if source in counts}
+
+
 def _to_unit_row(unit: RunUnit) -> PortfolioUnitRow:
     """Map a unit's portfolio stats to the full per-unit projection row."""
     stats = unit.portfolio_stats
@@ -224,6 +256,7 @@ def _to_unit_row(unit: RunUnit) -> PortfolioUnitRow:
         total_swap=stats.total_swap,
         maker_fee=stats.maker_fee,
         taker_fee=stats.taker_fee,
+        fill_fees_by_source=fill_fees_by_source(unit.order_events),
         has_error=unit.has_error,
         balances=stats.balances,
         initial_balances=stats.initial_balances,

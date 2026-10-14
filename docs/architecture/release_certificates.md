@@ -15,7 +15,7 @@ and spread into every certificate body.
 |---|---|---|---|
 | **Benchmark** | Throughput has not regressed on registered hardware | nothing | `tests/simulation/benchmark/conftest.py` |
 | **Live Adapter** | The broker adapter really places, modifies, cancels and fills orders | ~$0.01 in fees | `tests/live_adapters/conftest.py` |
-| **Field Study** | The full live execution stack works on a funded account | ~$0.08–0.20 | `certificates/field_study_certificate.py` |
+| **Field Study** | The full live execution stack works on a funded account | ~$0.50 | `certificates/field_study_certificate.py` |
 | **Signal Feed** | The producer contract holds against the running production journal | nothing (3 free GETs) | `certificates/signal_feed_certificate.py` |
 
 Each has a validation test that reads the committed artifact without re-running anything:
@@ -138,7 +138,7 @@ pytest tests/simulation/benchmark/test_throughput_regression.py -v --release-ver
 pytest tests/simulation/benchmark/test_benchmark_certificate.py -v
 
 # 2. live adapters — PLACES REAL ORDERS (~$0.01 fees, ~$10 briefly reserved)
-pytest tests/live_adapters/ -v -m live_adapter --release-version X.Y.Z
+pytest tests/live_adapters/ -v -m live_adapter --place-real-orders --release-version X.Y.Z
 pytest tests/live_adapters/test_live_adapter_certificate.py -v
 
 # 3. signal feed — needs the production endpoint, so isolation must be OFF

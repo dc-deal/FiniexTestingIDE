@@ -28,6 +28,13 @@
       "name": "MT5 terminal — production",
       "note": "Minted 2026-09-19 07:51:01 UTC by the MT5 collector in the production terminal's own Files directory; one identity for the whole terminal, shared by every symbol it collects. It writes data_format_version 1.7.0, so from its first file MT5 states its own identity and the 1.5.0 attestation can never reach it. The development terminal dc0db6a25f15 is a DIFFERENT machine and stays development. Registered before the first tick arrives (expected 2026-09-20 evening) so that nothing imports as `unknown` and silently leaves the admissible set.",
       "registered_at": "2026-09-19"
+    },
+    "d351d787e800": {
+      "class": "external",
+      "role": "converter",
+      "name": "Kraken trade history converter",
+      "note": "Minted 2026-10-13 for the converter that turns Kraken's published time-and-sales archive into collector-shaped files (#561). No instance of ours produced that data; every file the converter writes states this identity, so it resolves `external` and stamped — a known origin that is still never admissible for a parity measurement.",
+      "registered_at": "2026-10-13"
     }
   },
   "attestations": [

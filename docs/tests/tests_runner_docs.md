@@ -166,6 +166,25 @@ thing to look at. Redirecting keeps all of that and still leaves the operator's 
 Measured 2026-08-30, before `_isolate_run_tree` existed: **134 of 138 rows** in the operator's
 production run index came from two suite runs. The API served them and the viewer listed them.
 
+### Every run a test starts is a fixture (#576)
+
+A test's run is constructed to show something, and its header says so: every configuration a test
+runs declares `"run_purpose": "fixture"` at its top level — everything in
+`configs/scenario_sets/backtesting/`, `configs/autotrader_profiles/mock/` and `tests/fixtures/`.
+`tests/framework/config/test_run_purpose_declaration.py` holds the folders to it.
+
+The session checks it from the other side. `_refuse_runs_that_are_not_fixtures` wraps
+`RunIndex.register_run` — the one call both pipelines make when a run starts — and fails the test
+whose run carries any other purpose, naming the configuration:
+
+```
+regular_no_overrides.json declares run_purpose "regular" — a run a test starts must come from a
+configuration that declares "run_purpose": "fixture"
+```
+
+A test that proves the stamp of a `regular` or `certificate` run itself requests the
+`any_run_purpose` fixture, which lifts the refusal for that one test.
+
 ### Where the redirected output lands
 
 `tmp_path_factory` is a pytest built-in, not something this project configures — pytest picks the

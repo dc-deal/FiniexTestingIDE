@@ -345,22 +345,18 @@ class BrokerConfig:
     # Broker-Specific Features (Optional)
     # ============================================
 
-    def get_max_leverage(self, symbol: Optional[str] = None) -> int:
+    def get_max_leverage(self) -> int:
         """
-        Get maximum leverage (if applicable).
+        The account's leverage, as the broker configuration declares it (`broker_info.leverage`).
 
-        MT5: Account-level leverage (e.g., 500)
-        Kraken: Symbol-specific leverage (e.g., 5 for crypto)
-
-        Args:
-            symbol: Optional symbol (some brokers have symbol-specific leverage)
+        Account-wide at every shipped venue — MT5 1:500, Kraken spot 1 — and the figure the
+        adapter's margin calculation divides by. No configuration declares a leverage per
+        symbol; that would be new work for #209.
 
         Returns:
-            Maximum leverage multiplier
+            Leverage multiplier
         """
-        if hasattr(self.adapter, 'get_leverage'):
-            return self.adapter.get_leverage()
-        return 1  # Default: No leverage
+        return self.adapter.get_leverage()
 
     def calculate_margin(
         self,

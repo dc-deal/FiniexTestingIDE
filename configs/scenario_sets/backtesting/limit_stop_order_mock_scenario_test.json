@@ -1,6 +1,7 @@
 {
   "version": "1.0",
   "scenario_set_name": "limit_stop_order_mock_scenario_test",
+  "run_purpose": "fixture",
   "created": "2026-02-22T00:00:00.000000",
   "global": {
     "strategy_config": {

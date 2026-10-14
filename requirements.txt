@@ -9,6 +9,10 @@ tzdata>=2024.1  # IANA timezone DB for stdlib zoneinfo (DST-aware local<->UTC, e
 polars>=0.18.0
 fastparquet>=2023.4.0
 
+# Raw archive zips — some are Deflate64-compressed, which the standard zipfile module cannot
+# read; `import zipfile_deflate64` registers the method with zipfile
+zipfile-deflate64>=0.2.0
+
 # Development & Debugging
 ipython>=8.14.0
 

@@ -24,6 +24,7 @@ from python.framework.types.api.report_types import (
     WarningsErrorsReport,
 )
 from python.framework.types.autotrader_types.autotrader_result_types import AutoTraderResult
+from python.framework.types.autotrader_types.safety_session_types import FlattenOutcome
 from python.framework.types.live_types.broker_truth_types import BrokerTruthPart
 from python.framework.types.live_types.reconciliation_types import ReconcileState
 from python.framework.types.log_level import LogLevel
@@ -193,8 +194,15 @@ class AutotraderSessionSummary:
 
         if report.flatten_fired:
             print(renderer.red(f'  🚨 HARD STOP fired: {report.flatten_reason}'))
-            if report.flatten_completed:
+            if report.flatten_outcome is FlattenOutcome.COMPLETE:
                 print('     the book was confirmed flat before the session ended')
+            elif report.flatten_outcome is FlattenOutcome.HOLDINGS_KEPT:
+                # Kept by decision, not left by a failure — "check the account by hand" here
+                # would invite the sale that realises the loss the switch keeps unrealised
+                kept = ', '.join(report.flatten_kept) or 'none reported'
+                print(renderer.yellow(
+                    f'     spot holdings kept, not sold (safety.spot_liquidate_to_quote is off): '
+                    f'{kept} — the loss stays unrealised'))
             else:
                 still = ', '.join(report.flatten_unconfirmed) or 'none reported'
                 print(renderer.red(
@@ -244,9 +252,20 @@ class AutotraderSessionSummary:
         # A Ctrl+C also ends as 'emergency' — name it, so a deliberate stop does not
         # read like a crash on the operator's own screen.
         operator_stop = ' (operator stop)' if result.operator_interrupted else ''
-        print(f'  Shutdown:       {result.shutdown_mode}{operator_stop}')
+        # #588: a refusal at the first tick ends as 'emergency' too, before that tick's workers
+        # and decision ran — named, so it does not read like a crash. Read from the outcome
+        # model, which is what the API serves, so the console and a served reader agree.
+        refused_at_first_tick = bool(
+            self._warnings_errors_report
+            and self._warnings_errors_report.outcome.refused_at_first_tick)
+        refused = ' (refused at the first tick)' if refused_at_first_tick else ''
+        print(f'  Shutdown:       {result.shutdown_mode}{operator_stop}{refused}')
         if result.shutdown_mode == 'emergency' and result.emergency_reason:
-            print(renderer.red(f'  ❌ EMERGENCY CAUSE: {result.emergency_reason}'))
+            if refused_at_first_tick:
+                print(renderer.yellow(
+                    f'  ⛔ REFUSED AT THE FIRST TICK: {result.emergency_reason}'))
+            else:
+                print(renderer.red(f'  ❌ EMERGENCY CAUSE: {result.emergency_reason}'))
         outcome = (self._warnings_errors_report.outcome.run_outcome
                    if self._warnings_errors_report else None)
         if outcome is RunOutcome.FINISHED_WITH_ERRORS:

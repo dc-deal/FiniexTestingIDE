@@ -1,6 +1,7 @@
 {
     "version": "1.0",
     "scenario_set_name": "margin_validation_test",
+    "run_purpose": "fixture",
     "created": "2026-02-14T00:00:00.000000",
     "description": "Margin Validation & Stress Testing - Margin exhaustion, recovery, lot validation, edge cases",
     "global": {

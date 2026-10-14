@@ -5,8 +5,7 @@ An indicator worker states its warmup twice, for two different readers:
 
     calculate_requirements(config)   CLASSMETHOD — the batch pipeline calls it before any
                                      worker exists, to size the bar LOAD
-    get_warmup_requirements()        instance — checked against the loaded history at
-                                     runtime, and what raises INSUFFICIENT WARMUP BARS
+    get_warmup_requirements()        instance — what an AutoTrader session loads by
 
 Nothing connected them. Measured 2026-09-14: the instance method was moved to the real
 warmup of a recursive average while the classmethod still returned the bare period, so the
@@ -17,13 +16,17 @@ data problem and is not one. The data preparation was right the whole time: it t
 
 That is why the existing warmup coverage could not catch it. Those tests check that the
 pipeline HONOURS a requirement; this one checks that the requirement is the same number
-whichever door you come through.
+whichever door you come through. Since #588 the worker factory asks both doors whenever it
+creates a worker, CORE or a user's, and refuses one whose answers differ — the last class here
+holds it to that.
 """
 
 from unittest.mock import MagicMock
 
 import pytest
 
+from python.framework.exceptions.warmup_history_errors import WarmupRequirementMismatchError
+from python.framework.factory.worker_factory import WorkerFactory
 from python.framework.workers.core.bollinger_worker import BollingerWorker
 from python.framework.workers.core.ma_trend_worker import MaTrendWorker
 from python.framework.workers.core.macd_worker import MacdWorker
@@ -101,3 +104,25 @@ class TestARecursiveAverageAsksForMoreThanItsPeriod:
         requirement = RsiWorker.calculate_requirements({'periods': {'M5': 14}})
 
         assert requirement['M5'] > 14 + 1
+
+
+class TestTheFactoryRefusesTwoAnswers:
+    """A worker is held to one warmup at the moment it is created, in both pipelines."""
+
+    CORE_TYPES = {RsiWorker: 'CORE/rsi', ObvWorker: 'CORE/obv', MacdWorker: 'CORE/macd',
+                  BollingerWorker: 'CORE/bollinger', MaTrendWorker: 'CORE/ma_trend'}
+
+    @pytest.mark.parametrize('label, worker_class, config', CASES, ids=[c[0] for c in CASES])
+    def test_every_core_case_is_created(self, label, worker_class, config):
+        factory = WorkerFactory(logger=MagicMock())
+        worker = factory.create_worker(f'test_{label}', self.CORE_TYPES[worker_class], config)
+        assert isinstance(worker, worker_class)
+        assert worker.get_warmup_requirements() == worker_class.calculate_requirements(config)
+
+    def test_a_worker_whose_answers_differ_is_refused(self):
+        factory = WorkerFactory(logger=MagicMock())
+        with pytest.raises(WarmupRequirementMismatchError, match=r"\{'M5': 14\}.*\{'M5': 42\}"):
+            factory.create_worker(
+                'two_answers', 'tests/fixtures/warmup_history/two_answers_worker.py',
+                {'periods': {'M5': 14}})
+

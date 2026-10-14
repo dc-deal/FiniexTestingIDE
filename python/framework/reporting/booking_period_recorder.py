@@ -54,6 +54,8 @@ class BookingPeriodRecorder:
         log: Where the one line per seal goes, or None to stay silent. That line carries every
             figure the ledger row will — it is the safety net for the deferred write, so a
             process that dies before the report phase still leaves its periods recoverable
+        on_seal: Called with each period once it is filed, or None. A live session renders it
+            for its operator (#235); the simulation passes nothing
     """
 
     def __init__(
@@ -62,11 +64,13 @@ class BookingPeriodRecorder:
         anchor: Optional[DayAnchorConfig],
         carried_period_no: int = 0,
         log: Optional[Callable[[str], None]] = None,
+        on_seal: Optional[Callable[[BookingPeriod], None]] = None,
     ):
         self._unit_name = unit_name
         self._anchor = anchor
         self._period_no = carried_period_no
         self._log = log
+        self._on_seal = on_seal
         self._segments: List[BookingPeriod] = []
         self._opened_at: Optional[datetime] = None
         self._current_day: Optional[date] = None
@@ -81,9 +85,9 @@ class BookingPeriodRecorder:
         self._max_equity: float = 0.0
         self._min_equity: float = 0.0
         # What the open period began with: the previous period's close, or — for a unit's first
-        # period — its first observed value. Set at a seal from the value the seal READ, so both
-        # pipelines agree although the simulation observes before it checks the boundary and
-        # the AutoTrader after.
+        # period — its first observed value. Set at a seal from the value the seal READ, so it
+        # does not depend on the order around the boundary check: both pipelines observe first on
+        # a tick, and a heartbeat seal observes nothing.
         self._opening_equity: Optional[float] = None
         self._max_drawdown: float = 0.0
 
@@ -240,6 +244,9 @@ class BookingPeriodRecorder:
         self._max_equity = 0.0
         self._min_equity = 0.0
         self._max_drawdown = 0.0
+        # Last, once the recorder is consistent again — a listener cannot leave it half-sealed
+        if self._on_seal is not None:
+            self._on_seal(period)
 
     def close(self, now: Optional[datetime], snapshot_for_seal) -> List[BookingPeriod]:
         """

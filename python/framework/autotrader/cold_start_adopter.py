@@ -139,6 +139,7 @@ class ColdStartAdopter:
         self._exclusive_account = exclusive_account
         self._situation: Optional[ColdStartSituation] = None
         self._verdict: Optional[ColdStartVerdict] = None
+        self._refusal: str = ''
         self._restored_count: int = 0
         # Session halves of every key OF OUR SHAPE the venue reported, whether we could
         # attribute it or not. The carry-over uses this to protect a key that a resting order
@@ -153,6 +154,15 @@ class ColdStartAdopter:
             The situation, or None for a dry run / an unreachable venue / before run()
         """
         return self._situation
+
+    def get_refusal(self) -> str:
+        """
+        Why the boot was refused, as the session log says it — what an operator alert quotes.
+
+        Returns:
+            The refusal line, '' when the boot was not refused
+        """
+        return self._refusal
 
     def get_verdict(self) -> Optional[ColdStartVerdict]:
         """
@@ -212,12 +222,11 @@ class ColdStartAdopter:
 
         broker_orders = self._pull_broker_orders()
         if broker_orders is None:
-            self._logger.error(
+            return self._refuse(
                 '❌ COLD START ABORTED — broker truth is unreachable, so the session cannot '
                 'know what it already has resting at the venue. Starting blind is the one '
                 'thing this step exists to prevent.'
             )
-            return False
 
         # What the note offers, and whether this session may take it. Nothing is APPLIED in
         # this whole stretch: a boot that goes on to refuse must leave the executor exactly as
@@ -600,8 +609,9 @@ class ColdStartAdopter:
                 continue
             if _protection_filled(response):
                 self._executor.apply_carried_venue_close(
-                    position, response.filled_lots or position.lots,
-                    response.fill_price, response.status, response.rejection_reason)
+                    position, response.filled_lots,
+                    response.fill_price, response.status, response.rejection_reason,
+                    fill_fee=response.fill_fee)
                 continue
             if response.status == BrokerOrderStatus.PENDING:
                 self._executor.adopt_carried_protective_order(position)
@@ -1024,14 +1034,13 @@ class ColdStartAdopter:
                 )
                 return True
 
-            self._logger.error(
+            return self._refuse(
                 f'❌ COLD START ABORTED — {count} resting order(s) of ours need confirmation '
                 f"and nobody declared themselves present (adoption_mode='operator_confirm'). "
                 f'The session stays flat and trades nothing. Either start it with --attended '
                 f"from a terminal, set adoption_mode='auto' for unattended running, or cancel "
                 f'the orders at the broker.'
             )
-            return False
 
         # The prompt says what adoption COSTS, not only what it does — and the cost now
         # depends on the session-end policy (#492), so it is read from there rather than
@@ -1052,12 +1061,25 @@ class ColdStartAdopter:
             f'    Note: {consequence}. [y/N] '
         ).strip().lower()
         if answer not in ('y', 'yes'):
-            self._logger.error(
+            return self._refuse(
                 '❌ COLD START ABORTED — the operator declined adoption. The session stays '
                 'flat; the orders are untouched at the broker.'
             )
-            return False
         return True
+
+    def _refuse(self, message: str) -> bool:
+        """
+        Refuse the boot: say why in the session log, and keep the line for the operator alert.
+
+        Args:
+            message: The refusal, as the session log shows it
+
+        Returns:
+            False — what run() answers for a refused boot
+        """
+        self._logger.error(message)
+        self._refusal = message
+        return False
 
     def _accounting_is_complete(
         self,

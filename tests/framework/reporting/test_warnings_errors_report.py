@@ -286,11 +286,26 @@ class TestBuildFromSession:
         assert crashed.outcome.operator_interrupted is False
         assert crashed.outcome.run_outcome == RunOutcome.FAILED
 
+    def test_a_refusal_at_the_first_tick_is_told_apart_from_a_crash(self):
+        """#588: graded FAILED like a crash, but the served outcome says it refused."""
+        refused = build_warnings_errors_report_from_session(_RUN_ID,
+            AutoTraderResult(shutdown_mode='emergency', refused_at_first_tick=True,
+                             emergency_reason='ETHUSD M1: the venue has not yet committed'),
+            'p', 'ETHUSD')
+        assert refused.outcome.refused_at_first_tick is True
+        assert refused.outcome.run_outcome == RunOutcome.FAILED
+
+        crashed = build_warnings_errors_report_from_session(_RUN_ID,
+            AutoTraderResult(shutdown_mode='emergency', emergency_reason='tick loop died'),
+            'p', 'ETHUSD')
+        assert crashed.outcome.refused_at_first_tick is False
+
     def test_sim_outcome_leaves_the_live_only_fields_empty(self):
         """shutdown_mode '' on a sim run means 'not applicable', not 'unknown'."""
         report = build_warnings_errors_report_from_batch(_RUN_ID, _batch([], []))
         assert report.outcome.shutdown_mode == ''
         assert report.outcome.operator_interrupted is False
+        assert report.outcome.refused_at_first_tick is False
 
 
 class TestTheCountsAreOneDefinition:

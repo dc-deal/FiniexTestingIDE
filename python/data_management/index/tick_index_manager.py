@@ -6,9 +6,10 @@ TickIndexManager - Fast File Selection via Metadata Index
 
 import json
 import time
+from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Callable, Dict, List, Optional
 
 import pandas as pd
 import pyarrow as pa
@@ -22,7 +23,9 @@ from python.configuration.data_origin_registry import (
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.store.abstract_store_index import store_index_filename
+from python.framework.types.data_deficiency_types import DataDeficiency, TradeIdGaps
 from python.framework.types.store_types import StoreId
+from python.framework.utils.tick_deficiency_scan import measure_tick_deficiencies
 
 vLog = get_global_logger()
 
@@ -33,8 +36,8 @@ vLog = get_global_logger()
 # it until an import happens to touch a parquet. The field was already being written and read
 # by nothing; giving it a read path is what makes a column addition safe to deploy.
 # The proper mechanism is `AbstractStoreIndex.LOGIC_VERSION`, which these three legacy managers
-# do not have — adopting it is #175's, and this is the stopgap until then.
-INDEX_SCHEMA_VERSION = b'2.2'
+# do not have — adopting it is #583's, and this is the stopgap until then.
+INDEX_SCHEMA_VERSION = b'2.3'
 
 
 def _json_or_none(raw: Optional[bytes]) -> Optional[dict]:
@@ -93,13 +96,16 @@ class TickIndexManager:
 
         # {broker_type: {symbol: [files]}} - unchanged API
         self.index: Dict[str, Dict[str, List[Dict]]] = {}
+        # The files the last scan could not read (see get_unreadable_files)
+        self._unreadable_files: List[str] = []
         self.logger.info('📚 Parquet Tick Index Manager initialized.')
 
     # =========================================================================
     # INDEX BUILDING
     # =========================================================================
 
-    def build_index(self, force_rebuild: bool = False, check_stale: bool = False) -> None:
+    def build_index(self, force_rebuild: bool = False, check_stale: bool = False,
+                    on_file_scanned: Optional[Callable[[int, int], None]] = None) -> None:
         """
         Build or load index from Parquet files.
 
@@ -107,6 +113,7 @@ class TickIndexManager:
             force_rebuild: Force complete rebuild, ignore existing index
             check_stale: Check if index is outdated (expensive filesystem scan)
                         Default False - assumes index is current
+            on_file_scanned: Called with (file number, file count) for each file a rebuild scans
         """
         # An index written under an older schema is rebuilt regardless of mtimes: its rows are
         # complete for the columns that existed then and silently missing the ones added since.
@@ -137,7 +144,7 @@ class TickIndexManager:
                 return
 
         self.logger.info('🔍 Scanning Parquet files for tick index...')
-        start_time = time.time()
+        start_time = time.monotonic()
 
         # Pattern: mt5/ticks/EURUSD/*.parquet
         parquet_files = list(self.data_dir.glob('*/ticks/**/*.parquet'))
@@ -147,7 +154,10 @@ class TickIndexManager:
             self.index = {}
             return
 
-        for parquet_file in parquet_files:
+        unreadable: List[str] = []
+        for file_no, parquet_file in enumerate(parquet_files, 1):
+            if on_file_scanned is not None:
+                on_file_scanned(file_no, len(parquet_files))
             try:
                 entry = self._scan_file(parquet_file)
                 broker_type = entry['broker_type']
@@ -164,6 +174,8 @@ class TickIndexManager:
             except Exception as e:
                 self.logger.warning(
                     f'Failed to index {parquet_file.name}: {e}')
+                unreadable.append(f'{parquet_file.name}: {e}')
+        self._unreadable_files = unreadable
 
         # Sort files chronologically per broker_type/symbol
         for broker_type in self.index:
@@ -173,7 +185,7 @@ class TickIndexManager:
 
         self._save_index()
 
-        elapsed = time.time() - start_time
+        elapsed = time.monotonic() - start_time
         total_files = sum(
             len(files)
             for bt in self.index.values()
@@ -287,6 +299,11 @@ class TickIndexManager:
             {ORIGIN_METADATA_KEY: _json_or_none(
                 custom_metadata.get(b'source_meta_origin'))})
 
+        # What the file LACKS, measured from its rows (#561) — here, because the index reads
+        # every file in full anyway, so a file imported before the measurement existed is
+        # measured on the next rebuild without being imported again.
+        measurement = measure_tick_deficiencies(df)
+
         return {
             'file': parquet_file.name,
             'path': str(parquet_file.absolute()),
@@ -317,6 +334,8 @@ class TickIndexManager:
             'origin_collected_on': origin_collected_on,
             'origin_class': origin_class,
             'origin_evidence': origin_evidence,
+            'deficiencies': measurement.deficiencies,
+            'trade_id_gaps': measurement.trade_id_gaps,
         }
 
     @staticmethod
@@ -432,6 +451,11 @@ class TickIndexManager:
                         'origin_class': entry.get('origin_class', 'unknown'),
                         'origin_evidence': entry.get('origin_evidence', 'unknown'),
                         'origin_collected_on': entry.get('origin_collected_on', ''),
+                        'deficiencies': ','.join(
+                            deficiency.value for deficiency in entry.get('deficiencies', [])),
+                        'trade_id_gaps': (
+                            json.dumps(asdict(entry['trade_id_gaps']))
+                            if entry.get('trade_id_gaps') else ''),
                     }
                     rows.append(row)
 
@@ -444,7 +468,7 @@ class TickIndexManager:
             'anchor_resyncs', 'anchor_max_correction_ms',
             'statistics', 'sessions', 'data_format_version',
             'origin_instance_id', 'origin_collected_on', 'origin_class',
-            'origin_evidence',
+            'origin_evidence', 'deficiencies', 'trade_id_gaps',
         ]
         df = pd.DataFrame(rows, columns=columns) if rows else pd.DataFrame(
             columns=columns)
@@ -535,6 +559,14 @@ class TickIndexManager:
                 'origin_class': row.get('origin_class', 'unknown'),
                 'origin_evidence': row.get('origin_evidence', 'unknown'),
                 'origin_collected_on': row.get('origin_collected_on', ''),
+                # Written by every index of this schema version, so no tolerance is needed:
+                # an older index is rebuilt before it is read (_schema_outdated)
+                'deficiencies': [
+                    DataDeficiency(value) for value in (row['deficiencies'] or '').split(',')
+                    if value],
+                'trade_id_gaps': (
+                    TradeIdGaps(**json.loads(row['trade_id_gaps']))
+                    if row['trade_id_gaps'] else None),
             }
 
             result[broker_type][symbol].append(entry)
@@ -581,6 +613,17 @@ class TickIndexManager:
     # =========================================================================
     # FILE COVERAGE
     # =========================================================================
+
+    def get_unreadable_files(self) -> List[str]:
+        """
+        The files the last scan could not read — each one is missing from the index, which
+        announces nothing on its own, so a caller counts them.
+
+        Returns:
+            One 'filename: error' entry per file; empty when the scan read every file, or
+            when the index was loaded instead of scanned
+        """
+        return list(self._unreadable_files)
 
     def get_symbol_entries(self, broker_type: str, symbol: str) -> List[Dict]:
         """

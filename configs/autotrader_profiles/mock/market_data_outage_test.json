@@ -1,5 +1,6 @@
 {
   "profile_name": "market_data_outage_test",
+  "run_purpose": "fixture",
   "bot_id": "mktoutg01",
   "symbol": "BTCUSD",
   "broker_type": "kraken_spot",

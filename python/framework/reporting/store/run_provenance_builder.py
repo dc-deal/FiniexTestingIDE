@@ -277,9 +277,11 @@ def _profile_fingerprint(config: AutoTraderConfig) -> str:
 # What `profile_hash` deliberately leaves out. `strategy_config` belongs to `param_hash`
 # and must not be counted twice — that is the whole point of having two. The rest are the
 # run's own identity rather than its configuration: a renamed profile or a moved file is not
-# an operational change.
+# an operational change, and neither is what the session is for (#576) — declaring it would
+# otherwise mark a deployment's next session `operation_changed`.
 _NON_OPERATIONAL_FIELDS = frozenset({
     'strategy_config', 'config_path', 'profile_name', 'symbol', 'broker_type', 'scenario_settings',
+    'run_purpose',
 })
 
 

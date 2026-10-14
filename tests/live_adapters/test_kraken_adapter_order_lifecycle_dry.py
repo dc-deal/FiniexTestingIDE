@@ -9,7 +9,7 @@ Run explicitly:
     pytest tests/live_adapters/ -v -m live_adapter
 
 Skipped by default and excluded from the unified test runner.
-Requires: user_configs/credentials/kraken_credentials.json
+Requires: user_configs/credentials/venues/kraken_credentials.json
 """
 
 import json
@@ -23,10 +23,9 @@ from python.framework.trading_env.adapters.kraken_adapter import KrakenAdapter
 from python.framework.trading_env.live.live_request_processor import LiveRequestProcessor
 from python.framework.types.live_types.live_execution_types import BrokerOrderStatus, TimeoutConfig
 from python.framework.types.trading_env_types.order_types import OrderDirection, OrderType
-from tests.live_adapters.conftest import record_observed_adapter
+from tests.live_adapters.conftest import record_observed_adapter, venue_credentials_path
 
 _BROKER_CONFIG_PATH = Path('configs/brokers/kraken/kraken_spot_broker_config.json')
-_CREDENTIALS_PATH = Path('user_configs/credentials/kraken_credentials.json')
 
 
 @pytest.fixture(scope='module')
@@ -37,8 +36,9 @@ def live_adapter(request):
     Returns:
         KrakenAdapter with Tier 3 enabled and dry_run mode active
     """
-    if not _CREDENTIALS_PATH.exists():
-        pytest.skip(f'Kraken credentials not found: {_CREDENTIALS_PATH}')
+    credentials_path = venue_credentials_path('kraken_spot')
+    if not credentials_path.exists():
+        pytest.skip(f'Kraken credentials not found: {credentials_path}')
 
     with open(_BROKER_CONFIG_PATH, 'r') as f:
         broker_config = json.load(f)

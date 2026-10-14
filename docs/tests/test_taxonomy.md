@@ -76,6 +76,8 @@ tests/
 │   ├── integration/       integration — mock session, trade lifecycle, trade scenarios (full pipeline)
 │   ├── live_executor/     unit — LiveTradeExecutor, LiveRequestProcessor, async submit/modify/cancel/trades_query/polling_cadence/drift_audit/decision_event_dispatcher, undecided dry-run poll (#319, #321, #318, #326, #320, #327, #348, #505)
 │   ├── loop_cadence/      unit — clock injection + heartbeat re-poll + decision ghost-pass cadence (#360) + market-data staleness contract (#436) + disturbance episodes (#451)
+│   ├── operator_alerts/   unit + integration — operator alerts and the liveness ping (#235): channel, dispatcher,
+│   │                      pinger, messages, setup, and a short mock session end to end
 │   ├── order_guard/       unit — OrderGuard scenarios and unit cases
 │   ├── safety/            unit — circuit breaker (margin + spot)
 │   ├── cold_start/        unit — boot adoption of our own resting orders + carry-over (#355)
@@ -99,8 +101,11 @@ tests/
 │   │                      AutoTrader loader field coverage (every block field reachable from JSON)
 │   ├── connection_ladder/ unit — shared retry decision for every external connection: classification, backoff, jitter, budget, give-up (#473)
 │   ├── config_directory/  unit — every configuration that can start a run: what a file declares, unreadable files as rows, precedence, the per-file cache, run figures from the run index, and the console views over it (#554)
+│   ├── fixture_catalog/   unit + one real production — the runs a consumer pins: the catalog's completeness, the production record and the current fixture, a session sequence's profiles, the report-coverage run carrying every asserted property (#576)
 │   ├── indicators/        unit — the shared indicator library: what each name means (Wilder vs EMA vs simple), the scalar/series parity, and the warmup each recursive average needs (#517)
 │   ├── worker_tests/      unit — worker computation, parameter schema, factory
+│   ├── warmup_history/    unit + cross-path — the bars a run starts from: one synthetic stream through the backtest, mock and live
+│   │                      warmup paths, the venue read by period and commit, start invariance, the injection guard, the outcome table (#588)
 │   ├── signal_workers/    unit — SIGNAL worker type, provider, llm_sentiment, hybrid decision (#141), outage contract + episode capture (#434/#451)
 │   ├── reporting/         unit — report builders, aggregators, IO/store, console renderers (#391/#433/#451)
 │   ├── signal_coverage/   unit — SignalCoverageReport gap detection + scenario signal-window validation
@@ -115,7 +120,7 @@ tests/
 │   ├── tick_parquet_reader/  unit — parquet reader normalization
 │   ├── path_based_loading/ unit — workers and decision logics loaded by CORE name or file path
 │   ├── api/               unit — REST API endpoints
-│   ├── live_telemetry/    unit — live-telemetry frame serializer (frame_to_json, #400)
+│   ├── live_telemetry/    unit — live-telemetry frame serializer (frame_to_json, #400); every dashboard panel rendered, the progress screen and its senders, render-failure reporting (#586)
 │   ├── field_study_recorder/ unit — Field Study JSONL recorder + stream projection + certificate analyzer (#332, #566)
 │   ├── algo_clock/        unit — wall-clock ban lint (decision logic/workers, CI plane)
 │   ├── algo_clock_validator/ unit — wall-clock ban, runtime startup validator: AST scan of loaded algos (CORE + user) + batch pre-flight (#359)

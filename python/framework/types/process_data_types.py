@@ -148,7 +148,7 @@ class ProcessDataPackage:
 
     DATA STRUCTURE:
     - ticks: Dict with single key (scenario symbol) → Tuple of Ticks
-    - bars: Dict with keys matching this scenario's symbol + start_time
+    - bars: the scenario's warmup history, by timeframe, selected for warmup_reference_time
 
     METADATA: Minimal human-readable info for debugging/logging.
     NOT used in processing - only for monitoring.
@@ -158,9 +158,9 @@ class ProcessDataPackage:
     # NOTE: Scenario-specific package has only 1 symbol key
     ticks: Dict[str, Tuple[Any, ...]]
 
-    # Bars: (Symbol, Timeframe, StartTime) → Tuple of Bar objects
-    # NOTE: All keys match this scenario's symbol + start_time
-    bars: Dict[Tuple[str, str, datetime], Tuple[Any, ...]]
+    # Warmup bars: Timeframe → Tuple of bar dicts, oldest first — every bar complete at
+    # warmup_reference_time (the scenario's first tick)
+    bars: Dict[str, Tuple[Any, ...]]
 
     # === Broker config for subprocess re-hydration ===
     # Broker config: Serialized dict for subprocess re-hydration (CoW-safe)
@@ -176,9 +176,12 @@ class ProcessDataPackage:
     tick_ranges: Dict[str, Tuple[datetime, datetime]
                       ] = field(default_factory=dict)
 
-    # Bar counts per (symbol, timeframe, start_time)
-    bar_counts: Dict[Tuple[str, str, datetime],
-                     int] = field(default_factory=dict)
+    # Bar counts per timeframe
+    bar_counts: Dict[str, int] = field(default_factory=dict)
+
+    # The instant the warmup history was selected for: the scenario's first tick. None when
+    # the package carries no warmup bars to judge.
+    warmup_reference_time: Optional[datetime] = None
 
     # Signal data per source (e.g. 'llm_sentiment' → SignalSeries) — loaded for
     # the scenario range; the SignalDataProvider is built + injected subprocess-side.

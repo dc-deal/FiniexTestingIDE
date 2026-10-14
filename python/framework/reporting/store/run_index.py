@@ -6,7 +6,7 @@ The derived, compacted table the API reads instead of walking the run tree.
 import json
 import os
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Any, Callable, Dict, Iterable, List, Optional
 
 import pandas as pd
 
@@ -21,6 +21,7 @@ from python.framework.store.abstract_store_index import AbstractStoreIndex
 from python.framework.types.api.report_types import DataWindow, RunHeader, RunInfo, RunReporting
 from python.framework.types.config_types.file_logging_config_types import RunLogPaths
 from python.framework.types.log_layout_types import IO_SUBDIR
+from python.framework.types.run_purpose_types import RunPurpose
 
 
 def _or_none(value) -> Optional[str]:
@@ -57,7 +58,8 @@ def _origin_columns(header: RunHeader) -> Dict[str, Any]:
     framework_known = framework is not None and framework.commit is not None
     return {
         'origin_channel': str(origin.channel) if origin is not None else None,
-        'origin_person': origin.person if origin is not None else None,
+        'origin_client': origin.client if origin is not None else None,
+        'origin_principal': origin.principal if origin is not None else None,
         'host_id': origin.host if origin is not None else None,
         'framework_dirty': framework.dirty if framework_known else None,
         'code_dirty': identity.is_dirty() if identity is not None else None,
@@ -129,6 +131,49 @@ def _kind_columns(header: RunHeader) -> Dict[str, Any]:
         'data_windows': (json.dumps([w.model_dump() for w in header.data_windows])
                          if header.data_windows is not None else None),
     }
+
+
+def _purpose_columns(header: RunHeader, declared: Dict[str, RunPurpose]) -> Dict[str, Any]:
+    """
+    What the run is for, and the contract its reports were written under (#576), for both writers.
+
+    A header written before `run_purpose` existed carries none. For such a run the index takes
+    its configuration's CURRENT declaration, found by the file name the header recorded, where
+    that configuration still exists; otherwise the cell stays empty, which means unknown. It is
+    the one column derived rather than copied, and deliberately unlike `ticks_from`: that one a
+    run RESOLVED from its configuration and its command line, which a file read today cannot
+    reproduce, while a purpose is nothing but what the file declares. The header itself is never
+    rewritten. `report_contract` has no such source and stays empty on an older header.
+
+    Args:
+        header: The run's header
+        declared: Configuration file name → its declared purpose; empty on the append path,
+            where every header already carries its own
+
+    Returns:
+        The two columns
+    """
+    purpose = header.run_purpose or declared.get(header.config_snapshot)
+    return {
+        'run_purpose': str(purpose) if purpose else None,
+        'report_contract': header.report_contract,
+    }
+
+
+def _int_or_none(value: Any) -> Optional[int]:
+    """
+    Read a stored integer that may be missing — NaN on a row written before its column.
+
+    Args:
+        value: The raw cell
+
+    Returns:
+        The value as an int, or None when nothing was recorded
+    """
+    try:
+        return None if pd.isna(value) else int(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _data_windows(value) -> Optional[List[DataWindow]]:
@@ -253,16 +298,19 @@ class RunIndex(AbstractStoreIndex):
         # above already carries: listing at read time is the cost this index exists to remove.
         'size_bytes',
         # Where a run came from and whether its code can be reproduced from commits (#551),
-        # flattened from the header so a selection by channel, person, host or dirty state is a
-        # column filter rather than a header read per run. Not served on `RunInfo`: the API
-        # contract changes of #551 are the `caller` route and the meaning of the ledger's
-        # `git_dirty`, neither of which touches this list.
-        'origin_channel', 'origin_person', 'host_id', 'framework_dirty', 'code_dirty',
+        # flattened from the header so a selection by channel, principal, host or dirty state is a
+        # column filter rather than a header read per run. The origin columns are served on
+        # `RunInfo` since contract 26 (#582), `host_id` as `origin_host`; the dirty flags are not.
+        'origin_channel', 'origin_principal', 'host_id', 'framework_dirty', 'code_dirty',
         # Which kind of run and the market windows it covers (contract 12), from the header.
         'ticks_from', 'orders_to', 'data_windows',
         # The streams the run wrote while it ran (#362) — kept apart from `artifacts`, which a
         # stream must not fill: see _artifact_names.
         'stream_files',
+        # What the run is for and the contract its reports were written under (#576).
+        'run_purpose', 'report_contract',
+        # The client that started the run — the one origin field the list lacked (#582).
+        'origin_client',
     ]
 
     # 1 → 2: `size_bytes` appended. A row written before it reads back as NaN, which means
@@ -276,17 +324,28 @@ class RunIndex(AbstractStoreIndex):
     # and a header older than the fields reads as unknown.
     # 6 → 7 (#362): `stream_files` appended, and `artifacts` no longer lists a stream. A rebuild
     # fills it from io/; a row written before it reads as no streams, which is what those runs had.
-    LOGIC_VERSION: int = 7
+    # 7 → 8 (#576): `run_purpose` and `report_contract` appended. A rebuild fills them; for a
+    # header older than the fields the purpose comes from its configuration's current
+    # declaration where one is found (_purpose_columns), and the contract stays unknown.
+    # 8 → 9 (#582): `origin_client` appended, so the run list can serve the whole origin, and
+    # `origin_person` renamed `origin_principal` — `person` is an account KIND (#551).
+    LOGIC_VERSION: int = 9
 
-    def __init__(self, path: Path, roots: Optional[RunLogPaths] = None):
+    def __init__(self, path: Path, roots: Optional[RunLogPaths] = None,
+                 declared_purposes: Optional[Callable[[], Dict[str, RunPurpose]]] = None):
         """
         Args:
             path: The index file (file_logging.run_index)
             roots: The run-type roots `rebuild()` scans. Optional because most callers only
                 register and read; a caller that rebuilds must supply them
+            declared_purposes: What every configuration declares its runs are for, by file
+                name — asked once per `rebuild()` for the headers older than `run_purpose`.
+                Handed in rather than imported: the configuration directory that answers it
+                reads this index itself. None means no such run is given a purpose
         """
         super().__init__(path)
         self._roots = roots
+        self._declared_purposes = declared_purposes
 
     def register_run(self, header: RunHeader, run_dir: Path) -> None:
         """
@@ -323,6 +382,7 @@ class RunIndex(AbstractStoreIndex):
             **_origin_columns(header),
             **_kind_columns(header),
             'stream_files': [],
+            **_purpose_columns(header, {}),
         }])
         self.write_incremental(pd.concat([frame, row], ignore_index=True))
 
@@ -414,7 +474,13 @@ class RunIndex(AbstractStoreIndex):
                         ticks_from=_or_none(getattr(r, 'ticks_from', None)),
                         orders_to=_or_none(getattr(r, 'orders_to', None)),
                         data_windows=_data_windows(getattr(r, 'data_windows', None)),
-                        stream_files=list(_stream_list(getattr(r, 'stream_files', None))))
+                        stream_files=list(_stream_list(getattr(r, 'stream_files', None))),
+                        run_purpose=_or_none(getattr(r, 'run_purpose', None)),
+                        report_contract=_int_or_none(getattr(r, 'report_contract', None)),
+                        origin_channel=_or_none(getattr(r, 'origin_channel', None)),
+                        origin_client=_or_none(getattr(r, 'origin_client', None)),
+                        origin_principal=_or_none(getattr(r, 'origin_principal', None)),
+                        origin_host=_or_none(getattr(r, 'host_id', None)))
                 for r in frame.itertuples()]
 
     def run_dirs_of(self, run_ids: Iterable[str]) -> List[Optional[str]]:
@@ -468,6 +534,7 @@ class RunIndex(AbstractStoreIndex):
                 'RunIndex.rebuild() needs the run-type roots — construct it as '
                 'RunIndex(path, roots) when the index is to be rebuilt.'
             )
+        declared = self._declared_purposes() if self._declared_purposes is not None else {}
         rows = []
         for root in (self._roots.simulation, self._roots.autotrader):
             for header_path in Path(root).rglob(RUN_HEADER_ARTIFACT):
@@ -494,6 +561,7 @@ class RunIndex(AbstractStoreIndex):
                     **_origin_columns(header),
                     **_kind_columns(header),
                     'stream_files': _stream_names(run_dir),
+                    **_purpose_columns(header, declared),
                 })
         self.write(pd.DataFrame(rows, columns=self.COLUMNS))
         return len(rows)

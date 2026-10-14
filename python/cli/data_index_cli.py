@@ -3,25 +3,31 @@ FiniexTestingIDE - Data Index CLI
 Command-line tools for tick data import and inspection
 
 Usage:
-    python python/cli/data_index_cli.py import [--override]
+    python python/cli/data_index_cli.py import [--override] [--only ticks|signals]
+                                               [--include-finished] [--no-display]
     python python/cli/data_index_cli.py tick-data-report [BROKER_TYPE]
     python python/cli/data_index_cli.py inspect BROKER_TYPE SYMBOL [TIMEFRAME]
 
-Import configuration is driven by configs/import_config.json (with user_configs override).
-Offsets are applied automatically per broker_type from the offset registry.
+One import covers both inboxes — tick exports, then signal JSONL — and ends with the bars
+and the discovery caches. Import configuration is driven by configs/import_config.json (with
+user_configs override); each broker's server clock (market_config.json) converts its times.
 """
 
 import argparse
 import sys
 import traceback
 
-from python.configuration.import_config_manager import ImportConfigManager
-from python.data_management.importers.tick_data_importer import TickDataImporter
+from python.data_management.importers.import_coordinator import (
+    IMPORT_EXIT_CODES,
+    ImportCoordinator,
+    import_paths_from_config,
+)
 from python.data_management.importers.tick_data_reporter import run_summary_report
 from python.data_management.index.bars_index_manager import BarsIndexManager
 from python.data_management.index.data_inspector import DataInspector
 from python.data_management.index.tick_index_manager import TickIndexManager
 from python.framework.logging.bootstrap_logger import get_global_logger
+from python.framework.types.import_types.import_progress_types import ImportSection
 
 vLog = get_global_logger()
 
@@ -38,39 +44,31 @@ class DataIndexCli:
 
     def __init__(self):
         """Initialize CLI with config managers."""
-        self._import_config = ImportConfigManager()
         self.index_manager = TickIndexManager()
         self.bar_index_manager = BarsIndexManager()
 
-    def cmd_import(self, override: bool = False):
+    def cmd_import(self, override: bool = False, only: str = None,
+                   include_finished: bool = False, show_display: bool = True) -> int:
         """
-        Import tick data from JSON to Parquet with UTC conversion.
-        Each broker's server clock rule (market_config.json) converts its times to UTC.
+        Import both inboxes: tick exports, then signal JSONL.
 
         Args:
             override: If True, overwrite existing Parquet files
+            only: 'ticks' or 'signals' to import one archive only, None for both
+            include_finished: If True, also re-read the finished signal archive
+            show_display: If False, log line by line instead of the live screen
+
+        Returns:
+            The process exit code for the import's outcome
         """
-        print('\n' + '='*80)
-        print('📥 Tick Data Import')
-        print('='*80)
-        print(f"Override Mode:  {'ENABLED' if override else 'DISABLED'}")
-        print(
-            f"Move Files:     {'YES' if self._import_config.get_move_processed_files() else 'NO'}")
-        print(
-            f"Auto Bars:      {'YES' if self._import_config.get_auto_render_bars() else 'NO'}")
-
-        print('='*80 + '\n')
-
-        importer = TickDataImporter(
-            source_dir=self._import_config.get_data_raw_path(),
-            target_dir=self._import_config.get_import_output_path(),
+        coordinator = ImportCoordinator(
+            paths=import_paths_from_config(),
             override=override,
-            move_processed_files=self._import_config.get_move_processed_files(),
-            finished_dir=self._import_config.get_data_finished_path(),
-            auto_render_bars=self._import_config.get_auto_render_bars(),
+            only=ImportSection(only) if only else None,
+            include_finished=include_finished,
+            show_display=show_display,
         )
-
-        importer.process_all_exports()
+        return IMPORT_EXIT_CODES[coordinator.run()]
 
     def cmd_tick_data_report(self, broker_type: str = None):
         """
@@ -130,10 +128,19 @@ def main():
     # IMPORT command
     # ─────────────────────────────────────────────────────────────────────────
     import_parser = subparsers.add_parser(
-        'import', help='Import tick data from JSON to Parquet')
+        'import', help='Import the tick and signal inboxes, render bars, rebuild caches')
     import_parser.add_argument(
         '--override', action='store_true', default=False,
         help='Overwrite existing Parquet files')
+    import_parser.add_argument(
+        '--only', choices=[ImportSection.TICKS.value, ImportSection.SIGNALS.value],
+        default=None, help='Import one archive only')
+    import_parser.add_argument(
+        '--include-finished', action='store_true', default=False,
+        help='Also re-read the finished signal archive, re-projecting every day ever imported')
+    import_parser.add_argument(
+        '--no-display', action='store_true', default=False,
+        help='Log line by line instead of showing the live screen')
 
     # ─────────────────────────────────────────────────────────────────────────
     # TICK-DATA-REPORT command
@@ -170,7 +177,12 @@ def main():
 
     try:
         if args.command == 'import':
-            cli.cmd_import(override=args.override)
+            sys.exit(cli.cmd_import(
+                override=args.override,
+                only=args.only,
+                include_finished=args.include_finished,
+                show_display=not args.no_display,
+            ))
 
         elif args.command == 'tick-data-report':
             cli.cmd_tick_data_report(broker_type=args.broker_type)

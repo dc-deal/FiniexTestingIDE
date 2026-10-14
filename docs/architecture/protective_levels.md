@@ -187,6 +187,27 @@ still claims the coin because it was written before the stop fired, so a closed 
 otherwise be reported as "somebody sold outside this bot" — the feature's most ordinary success
 raising an alarm on every restart.
 
+**The note also carries how much of the order is already booked** — `protective_applied_lots`,
+`protective_applied_fee` and `protective_applied_value` on the position (#508). The venue reports
+a protective order as TOTALS for everything it executed: the volume, its average price, its fee.
+A session books them in steps, each step what a total grew by since the last one. Without the
+note, the boot would rebuild the order from nothing and book the venue's totals in full: the step
+the previous session already booked a second time, at the average over both steps, with the whole
+fee.
+
+```
+  session 1   venue: 0.04 of 0.10 executed, fee 15.68     → booked 0.04 @ 49000, fee 15.68
+              note:  applied lots 0.04 · fee 15.68 · value 1960.00
+  restart
+  session 2   venue: FILLED 0.10, average 48950, fee 39.18 → books 0.06 @ 48916.67, fee 23.50
+              without the note: 0.10 against the 0.06 left → an "unattributable excess" error,
+              and the fee 39.18 booked again in full
+```
+
+Spot only: a margin position comes back from the venue rather than from the note (#209). The
+three values are reset wherever the protective order stops existing, because the next protective
+order for the position starts from nothing.
+
 ---
 
 ## 6 · Who holds it, as the report says it
@@ -196,6 +217,26 @@ position whose protective order the venue confirmed answers for itself
 (`Position.protective_enforcement`, derived from the broker reference and never stored beside it).
 Every open position in the run report carries that answer next to its levels — an operator reading
 a stop can always read who is behind it.
+
+## 7 · The venue's dead man's timer — deliberately never armed
+
+Exchanges offer a mirror of our own liveness ping: Kraken's `CancelAllOrdersAfter` counts down,
+we refresh it while we live, and when we stop, the venue cancels the account's orders. It is the
+standard institutional answer to "the client vanished", and this project does **not** arm it —
+decided on 2026-10-13 (#235), recorded here because an absent answer would read as an
+unasked question.
+
+The reason is this section's subject. Kraken documents that the timer cancels **all** client
+orders and names no exception, so a stop the venue holds would be cancelled at exactly the moment
+it exists for: the process is gone, the position is open, and nothing watches it for as long as
+the outage lasts. The two mechanisms protect against opposite failures and cannot both be armed
+as they are.
+
+What covers "the client vanished" instead: the stop the venue holds keeps the position protected,
+and the liveness ping ([Unattended Operation](../autotrader/unattended_operation.md)) tells the
+operator that the session has gone silent. A venue timer that may be armed beside a protective order would be a
+capability an adapter DECLARES, with a reader and a contract for that collision — none exists
+today, deliberately.
 
 ---
 

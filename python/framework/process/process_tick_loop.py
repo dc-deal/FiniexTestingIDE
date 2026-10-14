@@ -52,7 +52,7 @@ from python.framework.types.process_data_types import (
     ProcessScenarioConfig,
     ProcessTickLoopResult,
 )
-from python.framework.types.trading_env_types.currency_codes import format_currency_simple
+from python.framework.types.trading_env_types.currency_codes import format_currency_signed
 from python.framework.types.trading_env_types.order_event_types import OrderEvent
 from python.framework.utils.process_debug_info_utils import (
     get_tick_range_stats,
@@ -587,4 +587,4 @@ def _print_tick_loop_finishing_log(
     scenario_logger.debug(
         f'Live update count: {live_update_count}')
     scenario_logger.info(
-        f'💰 Portfolio P&L: {format_currency_simple(total_pnl, currency)}')
+        f'💰 Portfolio P&L: {format_currency_signed(total_pnl, currency, plus_sign=True)}')

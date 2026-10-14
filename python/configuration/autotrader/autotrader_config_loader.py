@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any, Dict
 
 from python.configuration.app_config_manager import AppConfigManager
+from python.framework.config_directory.config_directory_discovery import is_user_owned
 from python.framework.types.autotrader_types.autotrader_config_types import (
     AutoTraderConfig,
     DeploymentConfig,
@@ -29,6 +30,7 @@ from python.framework.types.config_types.autotrader_defaults_config_types import
     StatePersistenceDefaults,
     TickSourceConfig,
 )
+from python.framework.types.config_types.operator_alerts_config_types import OperatorAlertsConfig
 from python.framework.types.config_types.performance_tracking_config_types import (
     AutoTraderPerformanceTrackingConfig,
 )
@@ -40,6 +42,7 @@ from python.framework.utils.config_merge_utils import (
     deep_merge,
     without_meta_keys,
 )
+from python.framework.utils.declared_purpose_utils import read_declared_purpose
 from python.framework.validators.adapter_wiring_validator import (
     refuse_live_adapter_on_replayed_ticks,
 )
@@ -62,8 +65,10 @@ def _allowlist_from(cls) -> frozenset:
 
 # Top-level keys include load-time meta (`config_path`) that must NOT appear
 # in profile JSON. Filter that out so the allowlist matches the JSON surface.
+# `description` (#576) is a key with no field: it is checked on load and served by the
+# configuration directory from the file itself, and nothing that runs reads it.
 _KNOWN_PROFILE_TOP_KEYS: frozenset = (
-    _allowlist_from(AutoTraderConfig) - {'config_path'}
+    (_allowlist_from(AutoTraderConfig) - {'config_path'}) | {'description'}
 )
 _KNOWN_EXECUTION_KEYS: frozenset            = _allowlist_from(AutotraderExecutionDefaults)
 _KNOWN_CLIPPING_KEYS: frozenset             = _allowlist_from(ClippingMonitorDefaults)
@@ -76,6 +81,7 @@ _KNOWN_API_MONITOR_KEYS: frozenset          = _allowlist_from(ApiMonitorConfig)
 _KNOWN_STATE_PERSISTENCE_KEYS: frozenset    = _allowlist_from(StatePersistenceDefaults)
 _KNOWN_COLD_START_KEYS: frozenset           = _allowlist_from(ColdStartDefaults)
 _KNOWN_SESSION_END_KEYS: frozenset          = _allowlist_from(SessionEndDefaults)
+_KNOWN_OPERATOR_ALERTS_KEYS: frozenset      = _allowlist_from(OperatorAlertsConfig)
 _KNOWN_CAPITAL_KEYS: frozenset              = _allowlist_from(CapitalDefaults)
 _KNOWN_DEPLOYMENT_KEYS: frozenset           = _allowlist_from(DeploymentConfig)
 _KNOWN_PERFORMANCE_TRACKING_KEYS: frozenset = _allowlist_from(AutoTraderPerformanceTrackingConfig)
@@ -162,6 +168,7 @@ def load_autotrader_config(config_path: str) -> AutoTraderConfig:
     state_persistence_raw = raw.get('state_persistence', {})
     cold_start_raw = raw.get('cold_start', {})
     session_end_raw = raw.get('session_end', {})
+    operator_alerts_raw = raw.get('operator_alerts', {})
     capital_raw = raw.get('capital', {})
     deployment_raw = raw.get('deployment', None)
     performance_tracking_raw = execution_raw.get('performance_tracking', {})
@@ -203,6 +210,7 @@ def load_autotrader_config(config_path: str) -> AutoTraderConfig:
     check_unknown_keys('state_persistence',   state_persistence_raw, _KNOWN_STATE_PERSISTENCE_KEYS)
     check_unknown_keys('cold_start',          cold_start_raw,   _KNOWN_COLD_START_KEYS)
     check_unknown_keys('session_end',         session_end_raw,  _KNOWN_SESSION_END_KEYS)
+    check_unknown_keys('operator_alerts',     operator_alerts_raw, _KNOWN_OPERATOR_ALERTS_KEYS)
     check_unknown_keys('capital',             capital_raw,      _KNOWN_CAPITAL_KEYS)
     check_unknown_keys('deployment',          deployment_raw,   _KNOWN_DEPLOYMENT_KEYS)
     check_unknown_keys('tick_source',         tick_source_raw,  _KNOWN_TICK_SOURCE_KEYS)
@@ -248,9 +256,28 @@ def load_autotrader_config(config_path: str) -> AutoTraderConfig:
     else:
         state_persistence_enabled_resolved = state_persistence_raw.get('enabled', True)
 
+    # Operator alerts and the liveness ping auto-disable for mock adapters too (#235): a mock
+    # session is a replay, and one switched on through user_configs/app_config.json would page
+    # the operator for every test run — and ping the live bot's monitor check. A profile that
+    # sets `enabled` explicitly keeps its own answer (same provenance pattern as above).
+    profile_alerts_raw = raw_profile_only.get('operator_alerts', {})
+    telegram_raw = operator_alerts_raw.get('telegram', {})
+    liveness_raw = operator_alerts_raw.get('liveness', {})
+    if adapter_type_resolved == 'mock' and 'enabled' not in profile_alerts_raw.get('telegram', {}):
+        telegram_enabled_resolved = False
+    else:
+        telegram_enabled_resolved = telegram_raw.get('enabled', False)
+    if adapter_type_resolved == 'mock' and 'enabled' not in profile_alerts_raw.get('liveness', {}):
+        liveness_enabled_resolved = False
+    else:
+        liveness_enabled_resolved = liveness_raw.get('enabled', False)
+
+    run_purpose = read_declared_purpose(raw_profile_only, path.name, is_user_owned(path))
+
     config = AutoTraderConfig(
         profile_name=raw.get('profile_name', ''),
         bot_id=raw.get('bot_id', ''),
+        run_purpose=run_purpose,
         symbol=raw.get('symbol', ''),
         broker_type=raw.get('broker_type', ''),
         adapter_type=adapter_type_resolved,
@@ -281,6 +308,10 @@ def load_autotrader_config(config_path: str) -> AutoTraderConfig:
         cold_start=ColdStartDefaults(**_block(cold_start_raw)),
         session_end=SessionEndDefaults(**_block(session_end_raw)),
         capital=CapitalDefaults(**_block(capital_raw)),
+        operator_alerts=OperatorAlertsConfig(**_block(
+            operator_alerts_raw,
+            telegram={**telegram_raw, 'enabled': telegram_enabled_resolved},
+            liveness={**liveness_raw, 'enabled': liveness_enabled_resolved})),
         deployment=DeploymentConfig(**_block(deployment_raw)),
         state_persistence=StatePersistenceDefaults(**_block(state_persistence_raw, enabled=state_persistence_enabled_resolved)),
         config_path=path,

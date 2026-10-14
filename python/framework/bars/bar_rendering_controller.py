@@ -1,15 +1,17 @@
 """
 FiniexTestingIDE - Bar Rendering Controller
 Main orchestrator for bar rendering system: renders bars from ticks for the timeframes the
-registered workers require, holds their history, and takes the prepared warmup bars at startup.
+registered workers require, holds their history, and takes the warmup history at startup.
 The symbol comes from the configuration, never from a bar dict.
 """
-from typing import Any, Dict, List, Optional, Set, Tuple
+from datetime import datetime
+from typing import Callable, Dict, List, Optional, Sequence, Set
 
 from python.framework.bars.bar_renderer import BarRenderer
+from python.framework.exceptions.warmup_history_errors import WarmupHistoryDefectError
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.types.market_types.market_data_types import Bar, BarRenderState, TickData
-from python.framework.utils.process_serialization_utils import deserialize_bars_batch
+from python.framework.utils.bar_period import is_complete_at, open_time_of
 
 
 class BarRenderingController:
@@ -49,6 +51,10 @@ class BarRenderingController:
         # until the next non-clipped pass calls consume_bar_render_state().
         self._pending_closed_timeframes: Set[str] = set()
 
+        # Closes the gap between the warmup history and the first tick, once, before that
+        # tick is rendered (registered by WarmupHistory; None once it has run)
+        self._warmup_seam: Optional[Callable[[datetime], None]] = None
+
     def register_workers(self, workers):
         """
         Register workers and analyze their bar requirements.
@@ -79,6 +85,10 @@ class BarRenderingController:
         Returns:
             Dict[timeframe, Bar] - Updated current bars
         """
+        if self._warmup_seam is not None:
+            close_seam, self._warmup_seam = self._warmup_seam, None
+            close_seam(tick_data.timestamp)
+
         current_bars, closed_bars = self.bar_renderer.update_current_bars(
             tick_data, self._required_timeframes
         )
@@ -167,39 +177,92 @@ class BarRenderingController:
     def inject_warmup_bars(
         self,
         symbol: str,
-        warmup_bars: Dict[str, Tuple[Any, ...]]
+        bars_by_timeframe: Dict[str, Sequence[Bar]],
+        reference_time: datetime,
     ) -> None:
         """
-        Inject prepared warmup bars WITHOUT validation.
+        Set the warmup history — the ONE route into the renderer's history, in both pipelines.
 
-        Two operations per timeframe:
-        1. Convert bar dicts to Bar objects (via deserialize_bars_batch)
-        2. Initialize bar_renderer history (fills completed_bars deque)
-
-        NO VALIDATION: Trusts SharedDataPreparator's pre-filtering.
+        Checks every bar before it enters: complete at the reference instant (its period has
+        ended by then), and opening instants strictly increasing. A bar failing either is a
+        defect in the selection that produced it, so the history is refused whole rather than
+        trimmed — a trimmed history would hide the defect and still differ from every other
+        path. Each bar's is_complete is stamped here, from the rule, once it has passed.
 
         Args:
             symbol: Trading symbol from config.symbol (authoritative)
-            warmup_bars: {timeframe: tuple_of_bar_dicts}
+            bars_by_timeframe: {timeframe: bars, oldest first}
+            reference_time: The instant the history was selected for
 
         Returns:
             None
         """
-        # 1. Convert bar dicts to Bar objects and initialize renderer
-        for timeframe, bars_tuple in warmup_bars.items():
-            # Deserialize using top-level function (no import needed)
-            bars_list = deserialize_bars_batch(symbol, bars_tuple)
-
-            # 2. Initialize bar history in BarRenderer
+        for timeframe, bars in bars_by_timeframe.items():
+            self._require_complete_history(symbol, timeframe, bars, reference_time)
+            for bar in bars:
+                bar.is_complete = True
             self.bar_renderer.initialize_historical_bars(
                 symbol=symbol,
                 timeframe=timeframe,
-                bars=bars_list
+                bars=bars
             )
             # Invalidate cache for this timeframe after injection
             self._cache_valid_per_timeframe[timeframe] = False
 
         self.logger.debug(
             f"✅ Injected warmup bars: "
-            f"{', '.join(f'{tf}:{len(warmup_bars[tf])}' for tf in warmup_bars)}"
+            f"{', '.join(f'{tf}:{len(bars)}' for tf, bars in bars_by_timeframe.items())}"
         )
+
+    def register_warmup_seam(self, close_seam: Callable[[datetime], None]) -> None:
+        """
+        Register what closes the gap between the warmup history and the first tick.
+
+        Called with the first tick's instant, once, before that tick is rendered — the moment
+        the session's own bars begin. Lives here rather than in either tick loop because both
+        loops render through this controller, so the seam closes at the same point in both.
+
+        Args:
+            close_seam: Called once with the first tick's timestamp
+
+        Returns:
+            None
+        """
+        self._warmup_seam = close_seam
+
+    @staticmethod
+    def _require_complete_history(
+        symbol: str,
+        timeframe: str,
+        bars: Sequence[Bar],
+        reference_time: datetime,
+    ) -> None:
+        """
+        Refuse a warmup history that holds an unfinished, repeated or out-of-order bar.
+
+        Args:
+            symbol: Trading symbol
+            timeframe: The bars' timeframe
+            bars: The bars, oldest first
+            reference_time: The instant they were selected for
+
+        Returns:
+            None
+        """
+        previous_open: Optional[datetime] = None
+        for bar in bars:
+            open_time = open_time_of(bar)
+            if bar.timeframe != timeframe:
+                raise WarmupHistoryDefectError(
+                    f'{symbol} {timeframe}: a {bar.timeframe} bar ({bar.timestamp}) was handed '
+                    f'in as part of the {timeframe} warmup history.')
+            if not is_complete_at(open_time, timeframe, reference_time):
+                raise WarmupHistoryDefectError(
+                    f'{symbol} {timeframe}: warmup bar {bar.timestamp} is not complete at '
+                    f'{reference_time.isoformat()}, the instant the history was selected for — '
+                    f'its high, low and close come from after that instant.')
+            if previous_open is not None and open_time <= previous_open:
+                raise WarmupHistoryDefectError(
+                    f'{symbol} {timeframe}: warmup bar {bar.timestamp} does not follow '
+                    f'{previous_open.isoformat()} — the history repeats or reorders a period.')
+            previous_open = open_time

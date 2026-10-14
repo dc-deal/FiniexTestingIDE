@@ -243,15 +243,19 @@ bars = self.effective_bars(timeframe, bar_history, current_bars, count=period + 
 every compute materializes the whole history just to use its last `period` bars. With `count`
 the per-compute cost is **O(count)** instead of **O(bar_max_history)** — and stays constant if the
 operator raises `bar_max_history`. The result is bit-identical for a worker that only reads its
-tail (an SMA / RSI band over the last `period` bars); it is **not** correct to bound a worker whose
-output is path-dependent over the whole history — a cumulative indicator (OBV) or a recursive EMA
-(MACD) reads `len(bars)` and must keep the full (timeframe-filtered) history, so it omits `count`.
+tail (an SMA / Bollinger band over the last `period` bars); it is **not** correct to bound a worker
+whose output depends on the whole history — a cumulative indicator (OBV) reads every bar it has, so
+it omits `count`. A recursive average sits in between: MACD and RSI read a FIXED window as long as
+their warmup (`count=window`), long enough for the average to forget its seed. Their value then does
+not depend on how long the run has been going, so a backtest and a live session that warmed up on
+the same bars compute the same number — and for the same data they do: both start from the last N
+bars complete at their first tick ([Warmup History](../architecture/warmup_history.md)).
 
 **Two different "how many bars" concerns — do not conflate them:**
 
 | Declaration | Question it answers | Who consumes it |
 |---|---|---|
-| `get_warmup_requirements()` | how much history to **pre-load** so the worker is warm at tick 0 | data preparation / startup (coarse — "enough") |
+| `calculate_requirements(config)` = `get_warmup_requirements()` | how much history to **pre-load** so the worker is warm at tick 0 — one answer through two doors: a backtest asks the classmethod before the worker exists, a session asks the instance, and a worker whose two answers differ is refused when it is created | data preparation / startup (coarse — "enough") |
 | the `count` window | how much of the available history the worker **reads this compute** | the worker itself, at the point it knows |
 
 The framework filters the **coarse** axis for you — the orchestrator hands each worker only the

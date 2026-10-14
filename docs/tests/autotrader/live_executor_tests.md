@@ -40,7 +40,8 @@ tests/autotrader/live_executor/
 │                                           (the deferred-cancel duty lives here too)
 ├── test_decision_event_dispatcher.py    ← Level 12: the decision event channel's mechanics (#348)
 ├── test_unresolved_order_outcome.py     ← Level 13: a transport fault is not a venue rejection (#473)
-└── test_order_type_gate.py              ← Level 14: what the pipeline has BUILT vs what the venue offers (#500 sibling)
+├── test_order_type_gate.py              ← Level 14: what the pipeline has BUILT vs what the venue offers (#500 sibling)
+└── test_venue_reported_fee.py           ← Level 15: the venue's own fee in the books, both account models (#508)
 ```
 
 **Why this pattern?**
@@ -557,7 +558,8 @@ For test isolation, `MockOrderExecution` provides two drain helpers:
 
 Validates the order ↔ executions pairing model: `BrokerTrade` aggregation on `PendingOrder`, the
 polling-path synthesis baseline, the async `submit_trades_query_async` roundtrip via worker + drain,
-the stale-broker_ref guard, and the `trade_level_reporting` capability flag.
+and the `trade_level_reporting` capability flag. That a trades response books nothing is pinned in
+`test_venue_reported_fee.py` (#508).
 
 #### TestPendingOrderAppendTrade
 
@@ -580,12 +582,6 @@ the stale-broker_ref guard, and the `trade_level_reporting` capability flag.
 | `test_submit_trades_query_async_returns_records_via_drain` | Enqueue `TradesQueryJob` → worker dispatches → `TradesQueryResponse` arrives via `drain_inbox` → `trades_response_hook` fires with parsed `List[BrokerTrade]` |
 | `test_multi_trade_mock_yields_n_records` | `trades_per_fill=3` on the mock → drain delivers 3 records with total volume preserved |
 | `test_unknown_broker_ref_yields_empty_trades` | Querying an unrecorded broker_ref returns success=True with empty trades list (graceful) |
-
-#### TestStaleResponseGuard
-
-| Test | Description |
-|---|---|
-| `test_stale_trades_response_does_not_remove_pending` | Drain handler discards response when `response.broker_ref != pending.broker_ref` — order stays in `_active_limit_orders`, no trades appended |
 
 #### TestCapabilityFlag
 
@@ -659,9 +655,11 @@ Validates the read-only drift telemetry pipeline established by #327: outcome-li
 synthetic snapshot, async trades-query roundtrip, multi-consumer fan-out, comparison + counter
 classification, currency-aware FEE skip, coexistence with OrderGuard, leak-free response handling,
 and consumer-exception isolation. The SLIPPAGE channel added by #340 reuses the same pipeline
-pattern with a fourth `DriftType` comparison branch.
+pattern with a fourth `DriftType` comparison branch. Since #508 a booked close is audited as well,
+through the executor's close-fill listeners; snapshots are keyed by the venue's reference, and a
+venue that declares no trade-level reporting is not asked at all.
 
-Uses a `_FakeExecutor` stub that records listener / consumer registrations and lets tests drive `fire_outcome()` / `fire_trades_response()` directly — no worker thread, no real adapter.
+Uses a `_FakeExecutor` stub that records listener / consumer registrations and lets tests drive `fire_outcome()` / `fire_close_fill()` / `fire_trades_response()` directly — no worker thread, no real adapter; its broker declares `trade_level_reporting` as each test needs.
 
 #### TestDisabledAudit
 
@@ -734,7 +732,72 @@ gracefully.
 | `test_missing_submission_tick_gracefully_skips` | `submission_tick_mid_price=None` → no SLIPPAGE record, no exception, other dimensions still ran (no leak) |
 | `test_slippage_always_marked_structural` | Every SLIPPAGE record carries `is_structural=True` regardless of threshold breach (sub + over case) |
 | `test_slippage_zero_when_tick_matches_fill` | Exact match → `relative_delta_pct=0`, counter stays 0, record still appended as evidence-of-compare |
-| `test_slippage_captured_on_close_order` | `PendingOrderAction.CLOSE` pending with submission_tick set → SLIPPAGE record produced (action-agnostic compare verification — partial-close slippage path) |
+| `test_slippage_captured_on_close_order` | A booked close, reaching the auditor through the close-fill listener, with submission_tick set → SLIPPAGE record produced, compared exactly like an entry |
+
+#### TestTheExitLegIsAudited — #508
+
+| Test | Description |
+|---|---|
+| `test_a_close_is_queried_and_compared` | A booked close triggers its own trades query, by its own reference, and is compared with what was booked |
+| `test_an_entry_and_its_close_in_flight_together_keep_their_own_snapshots` | An entry and its position's close share one `order_id`; both in flight at once, each keeps its own snapshot and is compared with its own executions |
+
+#### TestAProtectiveOrderIsAuditedOnceItCloses — #508
+
+| Test | Description |
+|---|---|
+| `test_a_step_that_leaves_the_position_open_asks_nothing` | A protective order's booking that leaves the position open starts no audit |
+| `test_the_closing_step_is_compared_with_everything_booked` | The closing booking is compared with all that was booked for the order — no drift, and no SLIPPAGE against its placement mid |
+
+#### TestTheExecutorAuditsBothLegs — #508
+
+| Test | Description |
+|---|---|
+| `test_an_entry_and_its_close_each_ask_for_their_executions` [margin, spot] | The real executor tells the auditor of both legs; each asks by its own reference |
+
+#### TestAVenueWithoutExecutionsIsNotAsked — #508
+
+| Test | Description |
+|---|---|
+| `test_neither_leg_is_queried` | `trade_level_reporting=False` → no query for an entry or a close, nothing audited |
+
+---
+
+### test_venue_reported_fee.py — #508 The Venue's Own Fee
+
+A live fill is booked once, from the answer that reports it, with the fee that answer carries. The
+mock venue charges rates of its own (0.40 / 0.80 %) while the broker configuration declares 0.16 /
+0.26 %, so the venue's figure and the estimate differ and each test can tell which was booked.
+Money paths run in both account models.
+
+| Test | Description |
+|---|---|
+| `test_the_fill_its_event_and_its_execution_carry_the_venues_figure` [margin, spot] | The entry's fill event, order-history row, cost breakdown and synthesized execution all carry the venue's figure, `fee_source=venue` |
+| `test_on_spot_the_balance_pays_the_venues_figure` | The spot quote balance moves by notional plus the venue's fee |
+| `test_a_fill_in_the_submit_answer_carries_it_too` [margin, spot] | INSTANT_FILL — the fee in the submit answer is booked the same way |
+| `test_the_round_trip_costs_the_venues_two_fees` [margin, spot] | The close books its own answer's fee; the trade record's total fees are the two venue fees, net P&L is gross minus both, the balance agrees |
+| `test_an_answer_without_the_fee_is_booked_from_the_estimate_and_warned` [margin, spot] | The venue declares the fee in its answer and sends one without → the estimate is booked, `fee_source=estimate`, and the session's log warns |
+| `test_a_venue_that_charges_nothing_per_fill_is_not_warned_about` | A spread model: no fee, `fee_source=estimate`, no warning |
+| `test_a_fee_the_model_does_not_charge_is_warned_about_and_not_booked` | A spread model whose venue reports a fee anyway → warned about, NOT booked |
+| `test_two_steps_book_the_growth_of_each_total` [margin, spot] | A protective order the venue holds reports totals; booked in two steps, each books what the fee total grew by, the second step at its own price rather than the average over both — the records' fees, the exit prices and the balance agree |
+| `test_a_step_booked_from_the_estimate_is_settled_by_the_next_total` [margin, spot] | A step whose answer had no fee is booked from the estimate; the next total books only what it exceeds the books by, so the order costs the venue's figure once |
+| `test_the_step_that_settles_an_estimate_says_so` [margin, spot] | The settling step's event carries the sentence — the venue's total less what is already booked, and how much of that was the estimate; the step after it books what the total grew by and says nothing |
+| `test_a_settling_step_with_an_excess_names_the_share_it_books` [margin, spot] | A settling step that also reports more than the position holds books the position's share of what the total grew by, and its sentence names that share rather than the whole difference |
+| `test_an_estimate_above_the_venues_later_total_stays_booked_at_that_step` [margin, spot] | The venue's total comes in below the estimate already booked: the step books a fee of `0.0`, the excess stays booked — the records' fees and the balance agree — and the session log warns in the words the step's event carries |
+| `test_a_later_total_above_the_books_absorbs_the_excess` [margin, spot] | After such a step, the next total above what is booked books only its growth beyond the books: the order ends at the venue's figure |
+| `test_steps_that_all_carry_the_venues_fee_say_nothing_more` [margin, spot] | Two steps that each carry the venue's figure: no sentence on either event, no warning |
+| `test_an_excess_books_only_the_positions_share_of_the_fee` [margin, spot] | The venue reports more than the position holds: the excess is not booked, and neither is its share of the fee |
+| `test_the_same_total_arriving_again_books_nothing` | The same total reported twice is booked once |
+| `test_a_filled_answer_without_volume_after_a_step_closes_the_rest` [margin, spot] | FILLED with no volume after a booked step closes what the position still holds — read as the last step's size, it booked nothing |
+| `test_a_fill_for_a_position_already_gone_still_carries_the_venues_fee` | Nothing can be booked, and the event still carries the venue's fee, `fee_source=venue` |
+| `test_what_was_booked_travels_with_the_position_into_the_carry_over` | The booked lots, fee and value reach the carry-over note, so a restart does not book a step again |
+| `test_a_fill_without_a_fee_is_booked_from_the_estimate_silently` | A dry run declares the venue's capability; its fill without a fee is the estimate, with no warning |
+| `test_a_venue_that_reports_it_in_the_answer` | `expects_venue_fee_in_fill_answer()` — the one answer the session's warning and the field study's certificate both read — is true against a venue that reports the fee in its answer |
+| `test_not_in_a_dry_run` | …false in a dry run, whose answers are our simulator's |
+| `test_not_on_a_venue_that_charges_nothing_per_fill` | …false where the broker's fee model charges no fee per fill |
+| `test_not_in_a_simulation` [margin, spot] | …false in a backtest, whatever the configured venue declares |
+| `test_the_fee_in_its_fill_answer` [limit, market] | The mock venue charges a limit that rested the maker rate and a market order the taker rate |
+| `test_a_response_for_a_working_order_leaves_it_working_and_still_reaches_consumers` | A trades response for a still-working order books nothing and writes nothing onto it — and still reaches the consumers |
+| `test_a_simulated_fill_says_estimate` [margin, spot] | A backtest's fill event says `fee_source=estimate` |
 
 ---
 
@@ -981,4 +1044,18 @@ insufficient funds.
 | `TestAFailedReadIsNotARejection` | a status read refused with `EAPI:Invalid nonce` keeps the market order and the resting order alike; the failure is an error, reported once per order |
 | `TestTheTimeoutRunsOnTheMonotonicClock` | a timeout re-armed by the resolution survives a canonical clock months in the past — the shape of a mock session's tick |
 | `TestAnOrderTheVenueEnded` | a market order the venue cancels without executing is dropped and reported cancelled, never rejected; what an expired order executed is booked as its fill |
+
+---
+
+## test_active_order_snapshot.py — what the ORDERS panel's partial-fill row reads (#586)
+
+The row needs what an order asked for and what has executed of it. Both fields were declared on
+`ActiveOrderSnapshot` and set by nothing, so the row could never appear; the two order lists now
+share one snapshot helper that sets them.
+
+| Test | What it pins |
+|---|---|
+| `test_an_order_partly_filled_says_how_far_it_got` | requested lots from the order, executed lots from its fill record |
+| `test_an_order_nothing_has_executed_of` | executed reads 0.0 — the row stays off |
+| `test_a_protective_order_reads_nothing_requested_rather_than_none` | a venue-held protective order carries its size as `close_lots`; requested reads 0.0, never None, so the panel's comparison cannot raise |
 

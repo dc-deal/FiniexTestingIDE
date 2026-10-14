@@ -2,7 +2,7 @@
 Tests for the live-telemetry frame serializer (#400).
 
 Verifies frame_to_json produces a JSON-safe dict (enums -> values, datetime ->
-isoformat, nested dataclasses -> dicts) for all three frame kinds, built from
+isoformat, nested dataclasses -> dicts) for every frame kind, built from
 REAL framework types (no stand-ins) so a structural drift fails the test.
 """
 
@@ -18,12 +18,22 @@ from python.framework.types.decision_logic_types import (
     DecisionAwareness,
     DecisionLogicAction,
 )
+from python.framework.types.import_types.import_progress_types import (
+    ImportMessage,
+    ImportOutcome,
+    ImportProgressFrame,
+    ImportSection,
+    ImportStepFrame,
+    ImportStepId,
+    ImportStepStatus,
+)
 from python.framework.types.live_types.live_core_snapshot_types import LiveCoreSnapshot
 from python.framework.types.live_types.live_scenario_stats_types import (
     LiveScenarioStats,
     LiveStatusFrame,
 )
 from python.framework.types.live_types.live_stats_config_types import ScenarioStatus
+from python.framework.types.log_level import LogLevel
 from python.framework.types.trading_env_types.order_types import OrderDirection
 from python.framework.utils.live_frame_serialization_utils import frame_to_json
 
@@ -107,3 +117,27 @@ def test_live_session_nested_lists_serialized():
     assert encoded['last_decision_action'] == 'BUY'              # DecisionLogicAction -> value
     assert encoded['open_positions'][0]['direction'] == 'long'  # OrderDirection -> value
     json.dumps(encoded)
+
+
+def test_import_progress_frame_serialized():
+    """The import's frame (#175) encodes like the others: enums to values, time to isoformat."""
+    frame = ImportProgressFrame(
+        import_id='20261010T090011Z',
+        started_at=datetime(2026, 10, 10, 9, 0, 11, tzinfo=timezone.utc),
+        elapsed_s=12.0, remaining_s=None, estimated_total_s=None, estimated_finish_at=None,
+        cpu_percent=30.0,
+        ram_used_bytes=1, ram_total_bytes=2, tick_files=1, tick_bytes=10,
+        signal_files=0, signal_bytes=0, ticks_written=5, signal_rows_written=0,
+        warning_count=1, error_count=0,
+        last_message=ImportMessage(LogLevel.WARNING, 'a warning'),
+        steps=[ImportStepFrame(ImportStepId.SCAN, ImportSection.INBOXES, 'Scan import inboxes',
+                               ImportStepStatus.DONE, 1, 1, 'files')],
+        log_path='logs/imports/import_20261010T090011Z.log',
+        outcome=ImportOutcome.COMPLETED)
+
+    encoded = frame_to_json(frame)
+    json.dumps(encoded)
+    assert encoded['started_at'] == '2026-10-10T09:00:11+00:00'
+    assert encoded['steps'][0]['status'] == 'done'
+    assert encoded['last_message']['level'] == LogLevel.WARNING.value
+    assert encoded['outcome'] == 'completed'

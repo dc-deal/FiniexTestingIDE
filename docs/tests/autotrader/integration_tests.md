@@ -202,7 +202,7 @@ Each class runs an independent session from its own profile. Sessions are module
 | `TestStopLossConfiguration` | 3 | The stop ACTED: an exit carries `SL_TRIGGERED` and nothing is left open; the exit price is a real fill at or below the 89200.0 level, never the level itself; no session errors |
 | `TestTakeProfitConfiguration` | 3 | The target ACTED: an exit carries `TP_TRIGGERED` and nothing is left open; the exit price is a real fill at or above the 89350.0 level; no session errors |
 | `TestDuplicateSignalGuard` | 3 | Exactly 1 position opened despite 490 repeated BUY signals (hold_ticks=5000 > max_ticks=500); the session end fabricates no exit; no errors |
-| `TestMinimalWarmup` | 3 | Session completes without crash when bar_max_history=30 starves M30 workers; ticks processed; no errors |
+| `TestMinimalWarmup` | 2 | A warmup the bar history cannot hold is REFUSED at startup: bar_max_history=30 against the RSI's 71 M5 bars ends the session before its first tick, naming `M5: 30/71` and the setting |
 
 **Data Dependency:** All four profiles use BTCUSD parquet `BTCUSD_20260124_141946.parquet`, from
 windows that start twelve (the take profit: fourteen) hours into the archive so their warmup bars
@@ -234,7 +234,7 @@ Unit tests for `LiveClippingMonitor` — no external dependencies, no tick data,
 | Class | Tests | What it validates |
 |-------|-------|-------------------|
 | `TestClippingDetection` | 5 | Core logic: processing_ms > tick_delta_ms triggers clipping, boundary cases (equal, zero, negative delta) |
-| `TestCounterAccuracy` | 4 | Mixed sequences, max/avg tracking, processing_times_ms list |
+| `TestCounterAccuracy` | 5 | Mixed sequences, max/avg tracking, the processing times reaching the display — and the window behind the display's percentiles keeping only the most recent ticks while the session totals still count every one |
 | `TestQueueDepthTracking` | 2 | Max queue depth updates, zero depth |
 | `TestPeriodicReports` | 5 | Interval timing, report generation, counter reset, zero-tick intervals, session totals persistence |
 | `TestSessionSummaryEdgeCases` | 4 | Empty session, 100% clipping, 0% clipping, single tick |
@@ -251,7 +251,7 @@ so no second preparation path can grow back beside the shared one.
 | Test | What it validates |
 |------|-------------------|
 | `test_mock_session_prepares_exactly_the_backtests_data` | Ticks, signal sources AND warmup bars equal those of a backtest over the same window |
-| `test_mock_session_warms_up_on_bars_before_its_window` | Every warmup bar lies before the replayed window's start — none from after it, which would be look-ahead |
+| `test_mock_session_warms_up_on_bars_complete_at_its_first_tick` | The warmup was selected for the first tick replayed, and every bar's PERIOD has ended by then — judged by its end, not its opening stamp, which let through a bar ending 219 s after the start |
 | `test_mock_session_records_the_price_basis_of_its_warmup_bars` | The consumption record carries the price basis of the bar files the warmup read, measured like a backtest's |
 
 **Data Dependency:** `configs/autotrader_profiles/mock/sentiment_mock_test.json` — BTCUSD, the
@@ -272,14 +272,16 @@ belongs to is held deterministically by the projection's unit tests.
 | Test | What it validates |
 |------|-------------------|
 | `test_it_is_the_projected_schema` | The header is schema 2.0 and carries no `release_target` |
+| `test_the_header_records_where_the_venue_reports_a_fill_s_fee` | The header's `fee_report` is the mock venue's declaration, `status_answer` — as Kraken's — and `venue_fee_expected` is true: the mock session reads its venue's account |
 | `test_a_fill_names_the_phase_that_submitted_its_order` | The first order's fill is filed under the first phase |
 | `test_the_session_ended_cleanly` | Normal shutdown and no ERROR — a failure inside the projection would show here, since the run itself survives it |
-| `test_every_execution_of_the_stream_is_one_fill_line` | Every `filled` / `partially_filled` event of `io/order_events.jsonl` is exactly one fill line, joined by `extra.stream_seq`, with its lots, fee and action — a close included, however many the run's timing let fill |
+| `test_every_execution_of_the_stream_is_one_fill_line` | Every `filled` / `partially_filled` event of `io/order_events.jsonl` is exactly one fill line, joined by `extra.stream_seq`, with its lots, fee, fee source and action — a close included, however many the run's timing let fill |
 | `test_the_rejection_battery_writes_its_refusals` | The lot-size refusals made before sending are `order_rejected` lines with status `denied` |
 | `test_the_venue_reads_bracket_the_session` | A `preflight` and a `session_end` snapshot, each with its order count |
 | `test_it_reads_the_fees_and_measures_the_slippage` | The certificate analysis reads `fees_charged` from the run's report, measures market slippage, and derives the account delta |
 | `test_the_report_s_fees_are_the_capture_s` | The run's `fees_charged` equals the sum of the capture's fill fees |
 | `test_a_mock_session_says_it_did_not_reconcile` | The certificate's `reconciliation` reads `disabled` for a mock session, never a bare zero |
+| `test_every_fee_is_the_venue_s_own` | The certificate's `fee_source` counts every fill as the venue's — the mock venue reports each fill's fee in its answer — and warns of nothing |
 
 **Runtime:** ~12 seconds.
 

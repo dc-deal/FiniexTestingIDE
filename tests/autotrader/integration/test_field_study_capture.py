@@ -4,8 +4,8 @@ FiniexTestingIDE - The Field Study's Capture through the AutoTrader Pipeline (#5
 Runs the mock field study profile end to end and reads what it leaves behind: a capture whose
 order lines are the live core's own record — each under the phase that submitted its order, a
 close as a line of its own, the rejection battery's refusals as lines, the venue's start and end
-reads as its snapshots — and a certificate analysis over it that measures slippage and reads the
-fees from the run's own report.
+reads as its snapshots — and a certificate analysis over it that measures slippage, reads the
+fees from the run's own report and counts whose figure each fill's fee is.
 
 The phases' OUTCOMES are not asserted. A mock venue fills on the first status read, and those
 reads are paced on the machine's clock while the ticks replay at full speed, so whether a fill
@@ -26,6 +26,8 @@ from python.framework.reporting.certificates.field_study_certificate import Fiel
 from python.framework.reporting.io.artifact_specs import ORDER_EVENTS_STREAM
 from python.framework.types.log_layout_types import IO_SUBDIR
 from python.framework.types.log_level import LogLevel
+from python.framework.types.trading_env_types.broker_types import FeeSource
+from python.framework.types.trading_env_types.order_types import FeeReport
 from tests.shared.fixture_helpers import logged_messages, remove_run_dir
 
 MOCK_PROFILE = 'configs/autotrader_profiles/mock/field_study_mock.json'
@@ -69,6 +71,15 @@ class TestTheCapture:
         assert header['schema_version'] == '2.0'
         assert 'release_target' not in header
 
+    def test_the_header_records_where_the_venue_reports_a_fill_s_fee(self, capture):
+        """
+        The mock venue declares it as Kraken does — in the answer that reports the fill — and
+        the session reads its account, so the executor expects the venue's fee there.
+        """
+        _, header, _ = capture
+        assert header['fee_report'] == FeeReport.STATUS_ANSWER.value
+        assert header['venue_fee_expected'] is True
+
     def test_a_fill_names_the_phase_that_submitted_its_order(self, capture):
         """The study's first order is sent by its first phase — whenever its fill arrives."""
         _, header, lines = capture
@@ -99,6 +110,7 @@ class TestTheCapture:
         for seq, row in executions.items():
             assert fills[seq]['lots'] == pytest.approx(row['lots'])
             assert fills[seq]['extra']['fee'] == pytest.approx(row['fee'])
+            assert fills[seq]['extra']['fee_source'] == row['fee_source']
             assert fills[seq]['extra']['action'] == row['action']
 
     def test_the_rejection_battery_writes_its_refusals(self, capture):
@@ -139,3 +151,13 @@ class TestTheCertificateOverIt:
         analysis = FieldStudyCertificate.analyze(str(path))
 
         assert analysis['reconciliation'] == {'status': 'disabled'}
+
+    def test_every_fee_is_the_venue_s_own(self, capture):
+        """The mock venue reports each fill's fee, so no fill is an estimate and none is warned."""
+        path, _, lines = capture
+        analysis = FieldStudyCertificate.analyze(str(path))
+
+        fee_source = analysis['fee_source']
+        assert fee_source['status'] == 'recorded'
+        assert fee_source['by_source'][FeeSource.VENUE.value] == len(_fills(lines)) > 0
+        assert analysis['warnings'] == []

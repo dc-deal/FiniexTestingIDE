@@ -7,15 +7,15 @@ or live run required. Covers mapping (incl. None-safe optional fields + rejected
 orders), the filter path (symbol / status), distinct symbols, and the empty case.
 """
 
+import csv
 from datetime import datetime, timezone
 
 from python.framework.reporting.builders.order_history_report_builder import (
     build_order_history_report,
 )
 from python.framework.reporting.builders.run_unit import RunUnit
-
-# Every report artifact names its run (#475); the value is opaque to these tests.
-_RUN_ID = '20260830_120000_a1b2c3d4'
+from python.framework.reporting.io.report_csv_io import write_order_history_csv
+from python.framework.types.trading_env_types.broker_types import FeeSource
 from python.framework.types.trading_env_types.order_types import (
     CloseType,
     OrderAction,
@@ -25,6 +25,9 @@ from python.framework.types.trading_env_types.order_types import (
     OrderType,
     RejectionReason,
 )
+
+# Every report artifact names its run (#475); the value is opaque to these tests.
+_RUN_ID = '20260830_120000_a1b2c3d4'
 
 _T0 = datetime(2025, 10, 13, 8, 0, 0, tzinfo=timezone.utc)
 
@@ -167,3 +170,39 @@ class TestWhatTheRowSaysAboutTheOrder:
         assert 'swap' not in row
         assert 'slippage_points' not in row
 
+
+class TestWhereTheCommissionCameFrom:
+    """
+    An executed row says whether its commission is the venue's own figure or our fee model's
+    estimate (#508) — the same answer its fill event gives on the order-event stream.
+    """
+
+    def test_an_executed_row_carries_its_fee_source(self):
+        venue = _order(order_id='o1')
+        venue.fee_source = FeeSource.VENUE
+        estimate = _order(order_id='o2')
+        estimate.fee_source = FeeSource.ESTIMATE
+
+        rows = build_order_history_report(_RUN_ID, _units([venue, estimate])).orders
+
+        assert [row.fee_source for row in rows] == [FeeSource.VENUE, FeeSource.ESTIMATE]
+        assert rows[0].model_dump(mode='json')['fee_source'] == 'venue'
+
+    def test_a_row_that_executed_nothing_has_none(self):
+        row = build_order_history_report(_RUN_ID, _units([_rejected()])).orders[0]
+
+        assert row.fee_source is None
+        assert row.model_dump(mode='json')['fee_source'] is None
+
+    def test_the_csv_has_the_column_beside_the_commission(self, tmp_path):
+        venue = _order(order_id='o1')
+        venue.fee_source = FeeSource.VENUE
+        report = build_order_history_report(_RUN_ID, _units([venue, _rejected()]))
+
+        with write_order_history_csv(report, tmp_path).open(encoding='utf-8') as handle:
+            reader = csv.DictReader(handle)
+            columns = reader.fieldnames
+            cells = [row['fee_source'] for row in reader]
+
+        assert columns.index('fee_source') == columns.index('commission') + 1
+        assert cells == ['venue', '']

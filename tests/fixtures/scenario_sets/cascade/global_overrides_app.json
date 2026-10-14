@@ -1,6 +1,7 @@
 {
   "version": "1.0",
   "scenario_set_name": "cascade_global_overrides_app",
+  "run_purpose": "fixture",
   "description": "Cascade test fixture — global overrides app defaults (Level 2 wins over Level 1).",
   "global": {
     "strategy_config": {

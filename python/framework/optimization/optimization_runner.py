@@ -21,6 +21,7 @@ from python.framework.optimization.parameter_override import apply_overrides
 from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.run_origin_types import RunChannel
 from python.framework.types.run_results_types import SweepContext
+from python.framework.utils.run_id_utils import mint_run_id
 from python.scenario.scenario_set import ScenarioSet
 from python.framework.validators.sweep_grid_validator import validate_sweep_grid
 from python.scenario.scenario_config_loader import ScenarioConfigLoader
@@ -59,7 +60,9 @@ class OptimizationRunner:
         validate_sweep_grid(spec.grid, vLog)
 
         combos = expand_grid(spec.grid)
-        sweep_id = f"sweep_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}"
+        # A random half, minted the way a run id's is: the sweep's runs share a directory and a
+        # ranking under this key, so two sweeps started in the same second would merge
+        sweep_id = f'sweep_{mint_run_id(datetime.now(timezone.utc))}'
         vLog.info(
             f"🎛 Sweep {sweep_id}: {len(combos)} combination(s) over "
             f"'{spec.base_scenario_set}' (objective: {spec.objective})")

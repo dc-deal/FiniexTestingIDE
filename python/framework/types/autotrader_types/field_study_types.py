@@ -12,6 +12,8 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Any, Dict, List, Optional
 
+from python.framework.types.trading_env_types.order_types import FeeReport
+
 
 class PhaseType(StrEnum):
     """The kind of operation a phase exercises."""
@@ -246,6 +248,15 @@ class FieldStudyHeader:
         profile: AutoTrader profile name
         symbol: Traded symbol
         phases: Ordered phase ids in the run
+        fee_report: Where the session's venue reports the fee of a fill, as its adapter declared
+            it when the capture opened (#508) — a description of the venue; whether a fill should
+            have carried the venue's fee is venue_fee_expected's. None where the capture was
+            opened without it
+        venue_fee_expected: Whether this session's fills should carry the venue's own fee, as
+            the executor answered it when the capture opened (#508) — False in a dry run, where
+            the venue's declaration still stands but its answers are our simulator's. What the
+            certificate judges an estimated fee against. None where the capture was opened
+            without it
         record_kind: Constant marker ('header')
     """
     schema_version: str
@@ -253,6 +264,8 @@ class FieldStudyHeader:
     profile: str
     symbol: str
     phases: List[str]
+    fee_report: Optional[FeeReport] = None
+    venue_fee_expected: Optional[bool] = None
     record_kind: str = 'header'
 
 

@@ -36,9 +36,11 @@ class FieldStudySetup:
     Args:
         proceed: False when the session must not trade — the reason is already in the session log
         recorder: The capture's writer, closed at shutdown; None when no capture was opened
+        refusal: Why the session must not trade, as the session log says it — '' when it may
     """
     proceed: bool = True
     recorder: Optional[FieldStudyRecorder] = None
+    refusal: str = ''
 
 
 def open_field_study(
@@ -84,7 +86,7 @@ def open_field_study(
         # report does not know about is an abort nobody sees.
         logger.error(banner)
         print(f"\n{'=' * 60}\n  ❌ {banner}\n{'=' * 60}\n")
-        return FieldStudySetup(proceed=False)
+        return FieldStudySetup(proceed=False, refusal=banner)
 
     recorder = FieldStudyRecorder(
         output_path=str(run_dir / FIELD_STUDY_CAPTURE),
@@ -92,19 +94,24 @@ def open_field_study(
         symbol=symbol,
         phase_ids=decision_logic.get_phase_ids(),
         logger=logger,
+        # What the session's adapter declares, and what the executor makes of it when it books
+        # a fill — the certificate judges an estimated fee against the executor's answer, never
+        # against a config or a second copy of its rule
+        fee_report=executor.broker.adapter.get_order_capabilities().fee_report,
+        venue_fee_expected=executor.expects_venue_fee_in_fill_answer(),
     )
     decision_logic.set_recorder(recorder)
     projection = FieldStudyStreamProjection(recorder, unit_name)
     executor.add_order_event_listener(projection)
     executor.add_broker_truth_listener(projection.write_broker_truth)
     try:
-        proceed = _preflight(reconciler, logger)
+        refusal = _preflight(reconciler, logger)
     except Exception:
         # The capture is open and the session never learns of it — close it here, so a venue
         # that cannot be read at the preflight leaves a terminated file behind, not a header.
         recorder.close('preflight failed')
         raise
-    return FieldStudySetup(proceed=proceed, recorder=recorder)
+    return FieldStudySetup(proceed=not refusal, recorder=recorder, refusal=refusal)
 
 
 def close_field_study(
@@ -131,7 +138,7 @@ def close_field_study(
         recorder.close('session end')
 
 
-def _preflight(reconciler: Optional[Reconciler], logger: AbstractLogger) -> bool:
+def _preflight(reconciler: Optional[Reconciler], logger: AbstractLogger) -> str:
     """
     Refuse to trade beside a resting order (#332 / #151).
 
@@ -145,11 +152,11 @@ def _preflight(reconciler: Optional[Reconciler], logger: AbstractLogger) -> bool
         logger: The session channel
 
     Returns:
-        True if clear (or reconciliation disabled), False to abort the run
+        '' if clear (or reconciliation disabled), else the refusal that aborts the run
     """
     if reconciler is None:
         logger.warning('Field Study preflight skipped — reconciliation is disabled')
-        return True
+        return ''
 
     flat = reconciler.is_account_flat()
     if flat.open_orders:
@@ -159,14 +166,14 @@ def _preflight(reconciler: Optional[Reconciler], logger: AbstractLogger) -> bool
         )
         logger.error(banner)
         print(f"\n{'=' * 60}\n  ❌ {banner}\n{'=' * 60}\n")
-        return False
+        return banner
 
     logger.info(
         f"✅ Field Study preflight: no resting orders "
         f"(starting balances: {flat.asset_balances or 'quote-only'})"
     )
     print('  ▸ Field Study preflight: no resting orders')
-    return True
+    return ''
 
 
 def _reconcile_block(reconciler: Optional[Reconciler]) -> Dict[str, Any]:

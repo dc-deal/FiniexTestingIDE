@@ -21,6 +21,9 @@ Informational (not pass-gating), each saying where it came from or that it is mi
 silent zero:
 - `fees_charged` — what the run booked, read from the run's own report beside the capture; the sum
   of the capture's fill fees where that report is gone, unreadable or names no single currency
+- `fee_source` — how many fills were booked with the venue's own fee and how many with our fee
+  model's estimate (#508), beside where the venue declared it reports one; `not_recorded` for a
+  capture from before the source was recorded
 - `account_delta` — what the venue's account moved between the first and the session-end snapshot,
   the one figure that can contradict our booking
 - `slippage` — each fill against what it is measured by: a market order against the mid when it was
@@ -29,6 +32,9 @@ silent zero:
 - `reconciliation` — whether the session reconciled, how many cycles ran or were skipped, and the
   divergences it saw
 - the detected-via mix
+
+Warned, never failed: a fill booked from the estimate on a venue that reports its fee in the answer
+that reports the fill. The run traded; one of its figures is not the venue's, and `warnings` says so.
 """
 
 import json
@@ -43,7 +49,8 @@ from python.framework.reporting.certificates.certificate_identity_builder import
 from python.framework.reporting.io.artifact_specs import FIELD_STUDY_CAPTURE, RUN_SUMMARY_ARTIFACT
 from python.framework.reporting.io.report_artifact_io import read_artifact
 from python.framework.types.log_layout_types import IO_SUBDIR
-from python.framework.types.trading_env_types.order_types import OrderSide
+from python.framework.types.trading_env_types.broker_types import FeeSource
+from python.framework.types.trading_env_types.order_types import FeeReport, OrderSide
 from python.framework.utils.trading_math.slippage_math import adverse_slippage
 
 # Default home for committed certificates — sibling of tests/live_adapters/reports
@@ -92,7 +99,8 @@ class FieldStudyCertificate:
             jsonl_path: Path to the run's field_study.jsonl
 
         Returns:
-            Analysis dict (overall_status + per-phase outcomes + summaries)
+            Analysis dict (overall_status + per-phase outcomes + summaries + the warnings that
+            do not fail it)
         """
         header, events = FieldStudyCertificate._read(jsonl_path)
         phase_ids: List[str] = header.get('phases', [])
@@ -147,6 +155,7 @@ class FieldStudyCertificate:
                 detected_via[via] = detected_via.get(via, 0) + 1
 
         overall = 'PASSED' if (not failed and not missing and flat_at_end) else 'FAILED'
+        fee_source = FieldStudyCertificate._fee_source(header, events)
 
         return {
             'profile': header.get('profile'),
@@ -159,11 +168,14 @@ class FieldStudyCertificate:
             'missing_phases': missing,
             'flat_at_session_end': flat_at_end,
             'fees_charged': FieldStudyCertificate._fees_charged(jsonl_path, events),
+            'fee_source': fee_source,
             'account_delta': account_delta,
             'slippage': FieldStudyCertificate._slippage(events),
             'api_calls': FieldStudyCertificate._api_calls(events),
             'reconciliation': FieldStudyCertificate._reconciliation(events),
             'detected_via': detected_via,
+            # Said, never failed on — `generate` puts the identity's own warnings in front
+            'warnings': FieldStudyCertificate._fee_source_warnings(fee_source),
         }
 
     @staticmethod
@@ -229,7 +241,8 @@ class FieldStudyCertificate:
         positions included. Where that report is gone, no longer reads, or names no single
         currency, the capture's fill lines carry each execution's fee and add up to the same
         bookings; the source says which was read. Neither can show a fee we computed wrong — both
-        are our booking. The control is `account_delta`.
+        are our booking. The control is `account_delta`; whose figure each fill's fee is, the
+        venue's or our estimate, says `fee_source`.
 
         Args:
             jsonl_path: The capture, in its run directory
@@ -257,6 +270,87 @@ class FieldStudyCertificate:
             return {'value': None, 'currency': None, 'source': 'not_available'}
         currency = next((fill['fee_currency'] for fill in fills if fill.get('fee_currency')), None)
         return {'value': sum(fees), 'currency': currency, 'source': 'event_sum'}
+
+    @staticmethod
+    def _fee_source(header: Dict[str, Any], events: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """
+        Whose figure each fill's fee is — the venue's own, or our fee model's estimate (#508).
+
+        Counted over the capture's fill lines, beside what the venue declared about where it
+        reports a fill's fee. A fill line without a source counts as `not_recorded` — every line
+        of a capture from before the source was recorded, so such a capture reads `not_recorded`
+        as a whole: a missing measurement, never a failure, and never the venue's figure.
+
+        Args:
+            header: The capture's header
+            events: The capture's lines
+
+        Returns:
+            {'status', 'fills', 'by_source', 'not_recorded', 'fee_report', 'venue_fee_expected'}
+            — status 'recorded', 'partly_recorded', 'not_recorded' or 'no_fills'; `by_source`
+            names every source, at zero too; `fee_report` and `venue_fee_expected` are None
+            where the header does not record them
+        """
+        by_source: Dict[str, int] = {source.value: 0 for source in FeeSource}
+        fills = 0
+        not_recorded = 0
+        for event in events:
+            if event.get('event_type') not in _FILL_LINES:
+                continue
+            fills += 1
+            source = (event.get('extra') or {}).get('fee_source')
+            if source is None:
+                not_recorded += 1
+            else:
+                by_source[source] = by_source.get(source, 0) + 1
+
+        if fills == 0:
+            status = 'no_fills'
+        elif not_recorded == fills:
+            status = 'not_recorded'
+        elif not_recorded:
+            status = 'partly_recorded'
+        else:
+            status = 'recorded'
+        return {
+            'status': status,
+            'fills': fills,
+            'by_source': by_source,
+            'not_recorded': not_recorded,
+            'fee_report': header.get('fee_report'),
+            'venue_fee_expected': header.get('venue_fee_expected'),
+        }
+
+    @staticmethod
+    def _fee_source_warnings(fee_source: Dict[str, Any]) -> List[str]:
+        """
+        Fills booked from the estimate where the venue should have stated the fee (#508).
+
+        Said only where the session's executor expected the venue's fee — the venue reports it
+        in the answer that reports the fill, and the session read a real account: there an
+        estimate means that answer came without one, and the session's log names the order. A
+        warning, never a failure — the run traded, one of its figures is ours rather than the
+        venue's. The expectation is the executor's own answer, stamped into the capture's
+        header, so the certificate and the session's warning cannot disagree about a dry run or
+        a venue that reports no fee there. Where the capture does not record it, nothing can be
+        judged.
+
+        Args:
+            fee_source: The certificate's fee-source block
+
+        Returns:
+            The warning, or an empty list
+        """
+        estimated = fee_source['by_source'].get(FeeSource.ESTIMATE.value, 0)
+        if fee_source['venue_fee_expected'] is not True or not estimated:
+            return []
+        return [
+            f"ESTIMATED FEES: {estimated} of {fee_source['fills']} fills booked from the fee "
+            f"model's estimate, although this venue reports the fee in the answer that reports a "
+            f'fill (fee_report {FeeReport.STATUS_ANSWER.value}). Those fees are ours, not what the '
+            f'account was charged; the session log names each order, and the venue has its own '
+            f'figure in its execution records.'
+        ]
 
     @staticmethod
     def _slippage(events: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -449,12 +543,14 @@ class FieldStudyCertificate:
             print(f"  missing: {cert['missing_phases']}")
         # The source is printed beside the figure: a total read from the run's report and one
         # added up from the capture are the same bookings, but only the first is the run's own.
+        # Whose figure the fills' fees are follows it.
         fees = cert.get('fees_charged') or {}
+        sources = FieldStudyCertificate._fee_source_text(cert.get('fee_source') or {})
         if fees.get('value') is None:
-            print('  fees charged: not available')
+            print(f'  fees charged: not available{sources}')
         else:
             print(f"  fees charged: {fees['value']:.6f} {fees.get('currency') or ''} "
-                  f"({fees.get('source')})")
+                  f"({fees.get('source')}){sources}")
         # The account's own movement beside our booking — a missing measurement is printed
         # as such rather than as a silent absence.
         delta = cert.get('account_delta') or {}
@@ -488,8 +584,34 @@ class FieldStudyCertificate:
         api = cert.get('api_calls') or {}
         if api.get('status') == 'recorded':
             print(f"  api: {api['calls']} calls, {api['errors']} errors, {api['slow_calls']} slow")
+        # Every warning the file holds — the identity's, which fail it, and the analysis's, which
+        # do not — is printed, or a FAILED would arrive here without its reason
+        for warning in cert.get('warnings') or []:
+            print(f'  ⚠️  {warning}')
         print(f'  certificate: {out_path}')
         print(f"{'=' * 60}\n")
+
+    @staticmethod
+    def _fee_source_text(fee_source: Dict[str, Any]) -> str:
+        """
+        The fee-source tally as the summary prints it after the fees.
+
+        Args:
+            fee_source: The certificate's fee-source block; empty on a certificate without one
+
+        Returns:
+            ' · venue 13/13 fills', ' · source not recorded', or '' where no fill was captured
+        """
+        status = fee_source.get('status')
+        if status is None or status == 'no_fills':
+            return ''
+        if status == 'not_recorded':
+            return ' · source not recorded'
+        venue = fee_source['by_source'].get(FeeSource.VENUE.value, 0)
+        text = f" · venue {venue}/{fee_source['fills']} fills"
+        if fee_source['not_recorded']:
+            text += f", {fee_source['not_recorded']} without a source"
+        return text
 
     @staticmethod
     def _read(jsonl_path: str) -> tuple:

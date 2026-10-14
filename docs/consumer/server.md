@@ -68,7 +68,7 @@ A token says which **client** is calling. The account says on whose **behalf**.
 | `note` | the token's own note — who holds it |
 
 Until a login exists, presenting a token **is** acting as its account, so this is also what a run
-started through the API would record as the person behind it.
+started through the API would record as its principal — `origin_principal` on the run list.
 
 `account_kind: service` is a sibling service, not a person who happens to be named after one: a
 record saying a run was started for a service must not read as though somebody by that name asked
@@ -95,7 +95,7 @@ should not be possible.
 
 A grant is `<surface>:<name>`. The **surface** is a group of routes; the **name** is the route's
 first path parameter. So `bars:kraken_spot` is one venue's bar data and
-`deployments:deploy_20260918_091413` is one deployment.
+`deployments:deploy_20260918_091413_a1b2c3d4` is one deployment.
 
 Where that first parameter is a generated id nobody would write into a token — a run id, for
 instance — the realistic grant is `<surface>:*`. The model degrades to surface level there by

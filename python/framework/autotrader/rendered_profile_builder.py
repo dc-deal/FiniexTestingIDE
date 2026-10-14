@@ -33,8 +33,9 @@ from python.framework.workers.abstract_worker import AbstractWorker
 
 # Fields the document carries elsewhere or not at all: where the profile sits on disk is the
 # SOURCE's provenance, kept in the store index under `config_id`; the strategy is rendered on its
-# own, with its defaults filled in.
-_NOT_A_BLOCK = frozenset({'config_path', 'strategy_config'})
+# own, with its defaults filled in. What the session is FOR (#576) is not what it ran with: the
+# header carries it.
+_NOT_A_BLOCK = frozenset({'config_path', 'strategy_config', 'run_purpose'})
 
 # The two strategy keys that are replaced by their rendered form rather than copied.
 _RENDERED_STRATEGY_KEYS = frozenset({'decision_logic_config', 'workers'})
