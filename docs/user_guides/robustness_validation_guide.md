@@ -72,7 +72,7 @@ The block is set-wide (a sibling of `scenario_set_name`, never inside `global`):
 | Field | Default | Meaning |
 |---|---|---|
 | `enabled` | `false` | Turn robustness mode on |
-| `metric` | `expectancy` | The per-window metric: `expectancy` (mean R, currency-neutral) or `net_pnl` |
+| `metric` | `expectancy` | The per-window metric: `expectancy` (mean R, currency-neutral), `net_pnl`, or `equity_return_pct` (final equity against the start, open positions marked) |
 | `oos_split` | `0.3` | Trailing fraction assigned to Out-of-Sample by the generator |
 | `min_windows` | `3` | Below this the distribution is statistically weak (advisory) |
 | `overfit_wfe_threshold` | `0.5` | WFE below → OVERFIT verdict |
@@ -82,6 +82,14 @@ The block is set-wide (a sibling of `scenario_set_name`, never inside `global`):
 **`expectancy` vs `net_pnl`:** expectancy (mean R-multiple) is comparable across instruments and
 currencies and is the recommended default. It requires trades with a stop loss (no stop → no
 R-multiple → expectancy 0). `net_pnl` is intuitive but not comparable across currencies.
+
+**`equity_return_pct` — for a strategy that is invested all the time.** Both metrics above are
+read from the trades a window CLOSED. A strategy that holds an allocation for weeks closes little
+inside a window, so its result sits in what it still holds at the end, and they never see it. A
+window that bought 0.35 ETH at 2,000 USD and ends with ETH at 2,300 closed nothing: `net_pnl`
+reads 0, while the account went from 1,000 to 1,105 USD. `equity_return_pct` reads +10.5: the
+final equity against the window's starting value, in percent, with everything still open marked
+at the last price — comparable across currencies like `expectancy`, and needing no stop loss.
 
 ## Reading the report
 
@@ -110,12 +118,17 @@ The ROBUST/OVERFIT **verdict** also fires as an advisory in the **Warnings & Err
 
 ## The trust gate — block-splitting distortion
 
-When a window is cut from continuous history, positions still open at the cut are force-closed.
-If a large share of each window's P&L comes from these artificial closes (high
-**block-splitting disposition**), the per-window numbers are artifacts and the robustness verdict
-would be built on sand. When the disposition exceeds `disposition_trust_pct`, the verdict is
-**suppressed** with a caveat — fix the distortion first (continuous mode / larger blocks; see the
+When a window is cut from continuous history, positions still open at the cut stay open: the
+window ends holding them, and a closed-trade metric never sees what they are worth. If a large
+share of each window's P&L rides on them (high **block-splitting disposition**), the per-window
+numbers are artifacts and the robustness verdict would be built on sand. When the disposition
+exceeds `disposition_trust_pct`, the verdict is **suppressed** with a caveat — fix the distortion
+first (continuous mode / larger blocks; see the
 [Generator & Block Splitting Architecture](../generator/generator_block_splitting_architecture.md)).
+
+The gate applies to the closed-trade metrics only. `equity_return_pct` values what a window still
+holds, so nothing open at the edge is missing from its number; the disposition is still shown,
+marked as no trust input.
 
 ## Per-bucket sufficiency
 

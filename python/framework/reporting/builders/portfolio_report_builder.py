@@ -9,7 +9,7 @@ The per-currency roll-up is derived from the rows via the shared `aggregate_port
 (one builder for both pipelines; mirrors the console `PortfolioAggregator` formulas).
 """
 
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from python.framework.reporting.builders.report_aggregators import aggregate_portfolio_by_currency
 from python.framework.reporting.builders.run_unit import RunUnit
@@ -165,6 +165,27 @@ def _final_equity(stats, unrealized_pnl: float, est_current: float) -> float:
     if stats.spot_mode:
         return est_current if est_current > 0 else stats.current_balance
     return stats.current_balance + unrealized_pnl
+
+
+def equity_return_pct(row: PortfolioUnitRow) -> Optional[float]:
+    """
+    A unit's final equity against what it started with, in percent.
+
+    The starting value follows the same two account models as `_final_equity`: at spot the
+    initial balances valued at the last price — for an account that starts in cash alone,
+    that cash — and at margin the initial balance.
+
+    Args:
+        row: The unit's portfolio row
+
+    Returns:
+        The return in percent, or None when the unit has no starting value to measure against
+    """
+    initial = (row.spot_est_initial if row.spot_mode and row.spot_est_initial > 0
+               else row.initial_balance)
+    if initial <= 0:
+        return None
+    return (row.final_equity - initial) / initial * 100
 
 
 def _usable_funds(stats: PortfolioStats) -> dict:

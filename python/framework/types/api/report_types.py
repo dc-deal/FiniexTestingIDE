@@ -2818,9 +2818,12 @@ class RobustnessWindowRow(BaseModel):
     regime: str = ''            # Profile Runs only (from the source block)
     session: str = ''           # Profile Runs only
     currency: str = ''
-    metric_value: float = 0.0   # the configured primary metric (expectancy or net_pnl)
+    metric_value: float = 0.0   # the configured primary metric (a RobustnessMetric value)
     net_pnl: float = 0.0        # secondary, non-aggregated reference
     expectancy: float = 0.0
+    # Final equity against the starting value, in percent, open positions marked; None when
+    # the window had no starting value to measure against.
+    equity_return_pct: float | None = None
     total_trades: int = 0
     profitable: bool = False
 
@@ -2874,6 +2877,9 @@ class RobustnessReport(RunScopedReport):
     params_constant: bool = True            # all windows share the resolved strategy_config
     drifting_windows: list[str] = []        # windows whose params differ from the first
     disposition_pct: float = 0.0            # block-splitting distortion (trust-gate input)
+    # Whether the disposition can suppress the verdict: False for a metric that values what a
+    # window still holds, which nothing left open at an edge distorts.
+    disposition_gates_verdict: bool = True
     regime_breakdown: list[RobustnessRegimeRow] = []
     # Config thresholds carried for a self-describing render (display class) + API consistency.
     overfit_wfe_threshold: float = 0.5

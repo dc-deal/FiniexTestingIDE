@@ -16,7 +16,10 @@ from python.framework.reporting.builders.block_splitting_report_builder import (
 from python.framework.reporting.builders.execution_stats_report_builder import (
     build_execution_stats_report,
 )
-from python.framework.reporting.builders.portfolio_report_builder import build_portfolio_report
+from python.framework.reporting.builders.portfolio_report_builder import (
+    build_portfolio_report,
+    equity_return_pct,
+)
 from python.framework.reporting.builders.run_summary_builder import build_run_summary
 from python.framework.reporting.builders.run_unit import RunUnit, run_units_from_batch
 from python.framework.reporting.builders.trade_history_report_builder import (
@@ -86,6 +89,7 @@ def build_robustness_report_from_batch(run_id: str, batch: BatchExecutionSummary
         params_constant=params_constant,
         drifting_windows=drifting,
         disposition_pct=disposition,
+        disposition_gates_verdict=not config.metric.values_open_positions(),
         regime_breakdown=_regime_breakdown(rows),
         overfit_wfe_threshold=config.overfit_wfe_threshold,
         robust_wfe_threshold=config.robust_wfe_threshold,
@@ -106,7 +110,15 @@ def _window_row(
 
     expectancy = ccy.expectancy if ccy else 0.0
     net_pnl = ccy.net_pnl if ccy else 0.0
-    metric_value = expectancy if metric == RobustnessMetric.EXPECTANCY else net_pnl
+    equity_return = equity_return_pct(portfolio.units[0]) if portfolio.units else None
+    # One entry per member, so a metric added without its value fails here rather than
+    # silently ranking by another one. A window with no starting value to measure against
+    # ranks as 0.0; its row keeps the None.
+    metric_value = {
+        RobustnessMetric.EXPECTANCY: expectancy,
+        RobustnessMetric.NET_PNL: net_pnl,
+        RobustnessMetric.EQUITY_RETURN_PCT: equity_return if equity_return is not None else 0.0,
+    }[metric]
 
     return RobustnessWindowRow(
         name=unit.name,
@@ -117,6 +129,7 @@ def _window_row(
         metric_value=metric_value,
         net_pnl=net_pnl,
         expectancy=expectancy,
+        equity_return_pct=equity_return,
         total_trades=ccy.total_trades if ccy else 0,
         profitable=metric_value > 0,
     )

@@ -2,7 +2,7 @@
 
 `tests/simulation/robustness/` — multi-window + In-Sample/Out-of-Sample validation (#367),
 sim-only. Unit-level, real types (`BatchExecutionSummary` / `ProcessResult` /
-`ProcessTickLoopResult` / `PortfolioStats` / `SingleScenario`), synthetic per-window net-P&L —
+`ProcessTickLoopResult` / `PortfolioStats` / `SingleScenario`), synthetic per-window net-P&L or end equity —
 no full pipeline run.
 
 See the feature: [Robustness Validation guide](../../user_guides/robustness_validation_guide.md).
@@ -62,6 +62,21 @@ See the feature: [Robustness Validation guide](../../user_guides/robustness_vali
 | `test_param_drift_advisory` | param drift → fair-test warning |
 | `test_low_windows_advisory` | windows < `min_windows` → statistically-weak warning |
 | `test_disposition_suppresses_verdict` | high distortion → verdict suppressed (only the trust caveat fires) |
+
+### `TestEquityReturnMetric` — a strategy invested all the time (both account models)
+| Test | Description |
+|------|-------------|
+| `test_a_held_gain_is_the_windows_result` | a window that closed nothing and ends 1,000 → 1,105 USD reads +10.5 %, `net_pnl` 0 |
+| `test_a_closed_trade_metric_reads_the_same_window_as_nothing` | the same window under `net_pnl` → 0, not profitable |
+| `test_holding_at_the_edge_does_not_suppress_the_verdict` | disposition 100 % → no trust suppression, the OVERFIT verdict fires on its WFE |
+| `test_the_same_holding_suppresses_a_closed_trade_verdict` | the same windows under `net_pnl` → suppressed as before |
+
+### `TestEveryMetricHasAValue` — the metric set held to the builder
+| Test | Description |
+|------|-------------|
+| `test_the_builder_knows_every_member` | every `RobustnessMetric` member builds a report — a member without a value fails |
+| `test_only_the_equity_metric_values_open_positions` | the trust-gate exemption is declared for exactly one member |
+| `test_a_window_without_a_starting_value_has_no_return` | no starting value → `equity_return_pct` None, ranked 0.0 |
 | `test_insufficient_oos_bucket_suppresses_verdict` | overall ≥ `min_windows` but OOS bucket below it → verdict suppressed |
 
 ### `TestLoaderParsing` — config wiring

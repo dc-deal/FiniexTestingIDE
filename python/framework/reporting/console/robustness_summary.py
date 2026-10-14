@@ -121,7 +121,11 @@ class RobustnessSummary(AbstractBatchSummarySection):
         if not report.params_constant:
             print(renderer.gray(
                 f'    Parameters vary across windows ({len(report.drifting_windows)} drift)'))
-        if report.disposition_pct > 0:
+        if report.disposition_pct > 0 and report.disposition_gates_verdict:
             print(renderer.gray(
                 f'    Block-splitting distortion: {report.disposition_pct:.1f}% '
                 f'(trust threshold {report.disposition_trust_pct:.0f}%)'))
+        elif report.disposition_pct > 0:
+            print(renderer.gray(
+                f'    Block-splitting distortion: {report.disposition_pct:.1f}% '
+                f'(no trust input — {report.metric} values what is still open)'))

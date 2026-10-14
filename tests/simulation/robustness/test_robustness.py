@@ -3,9 +3,10 @@ Robustness Validation Tests (#367).
 
 Multi-window + IS/OOS validation, sim-only. Covers: the time-ordered role policy, the generator
 `to_scenario_dict` cleanliness, the parameter-constancy guard, the RobustnessConfig schema, the
-DERIVE builder (distribution / IS-OOS / WFE / regime / disposition) against a REAL
-BatchExecutionSummary, and the PostRunValidator verdict (OVERFIT / drift / low-N / trust gate).
+DERIVE builder (distribution / IS-OOS / WFE / regime / disposition / the equity metric) against a
+REAL BatchExecutionSummary, and the PostRunValidator verdict (OVERFIT / drift / low-N / trust gate).
 """
+from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -110,6 +111,49 @@ def _batch(nets, roles=None, regimes=None, metric=RobustnessMetric.NET_PNL,
         batch_execution_time=0.0, batch_warmup_time=0.0, batch_tickrun_time=0.0,
         process_result_list=results, single_scenario_list=scenarios,
         robustness_config=RobustnessConfig(enabled=True, metric=metric, **cfg))
+
+
+def _equity_result(name: str, idx: int, end_equity: float, spot_mode: bool) -> ProcessResult:
+    """
+    A window that closed nothing and ends holding — its whole result in what it still holds.
+
+    Args:
+        name: Scenario name
+        idx: Scenario index
+        end_equity: What the account is worth at the end, having started with 1,000 USD
+        spot_mode: True for the spot account model, False for margin
+
+    Returns:
+        The window's process result
+    """
+    held = end_equity - 1000.0
+    stats = replace(_stats(0.0), total_trades=0, losing_trades=0, initial_balance=1000.0)
+    if spot_mode:
+        # 0.35 ETH marked at 2,300 plus the cash left over
+        cash = end_equity - 0.35 * 2300.0
+        stats = replace(
+            stats, spot_mode=True, base_currency='ETH', quote_currency='USD',
+            initial_balances={'USD': 1000.0}, balances={'USD': cash, 'ETH': 0.35},
+            last_price=2300.0, current_balance=cash)
+    else:
+        stats = replace(stats, current_balance=1000.0, unrealized_pnl=held)
+    return ProcessResult(
+        success=True, scenario_name=name, scenario_index=idx,
+        tick_loop_results=ProcessTickLoopResult(
+            portfolio_stats=stats, open_positions=make_open_positions(1, held)))
+
+
+def _equity_batch(end_equities, roles, spot_mode: bool,
+                  metric=RobustnessMetric.EQUITY_RETURN_PCT) -> BatchExecutionSummary:
+    """Build a real batch of holding windows, one per end equity, under the given metric."""
+    results = [_equity_result(f'ETHUSD_blocks_{i:02d}', i, end_equities[i], spot_mode)
+               for i in range(len(end_equities))]
+    scenarios = [_scenario(f'ETHUSD_blocks_{i:02d}', i, roles[i])
+                 for i in range(len(end_equities))]
+    return BatchExecutionSummary(
+        batch_execution_time=0.0, batch_warmup_time=0.0, batch_tickrun_time=0.0,
+        process_result_list=results, single_scenario_list=scenarios,
+        robustness_config=RobustnessConfig(enabled=True, metric=metric))
 
 
 def _verdicts(batch) -> dict:
@@ -297,6 +341,61 @@ class TestPostRunVerdict:
         out = _verdicts(b)
         assert 'robustness_low_trust' in out
         assert 'robustness_overfit' not in out   # suppressed when distortion is high
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# The equity metric — a strategy that is invested all the time
+# ─────────────────────────────────────────────────────────────────────────────
+
+@pytest.mark.parametrize('spot_mode', [False, True])
+class TestEquityReturnMetric:
+    _ROLES_6 = [RobustnessRole.IN_SAMPLE] * 3 + [RobustnessRole.OUT_OF_SAMPLE] * 3
+
+    def test_a_held_gain_is_the_windows_result(self, spot_mode):
+        r = build_robustness_report_from_batch(
+            _RUN_ID, _equity_batch([1105.0], [RobustnessRole.UNASSIGNED], spot_mode))
+        row = r.windows[0]
+        assert row.net_pnl == 0.0                       # nothing was closed
+        assert row.equity_return_pct == pytest.approx(10.5)
+        assert row.metric_value == pytest.approx(10.5) and row.profitable
+
+    def test_a_closed_trade_metric_reads_the_same_window_as_nothing(self, spot_mode):
+        r = build_robustness_report_from_batch(_RUN_ID, _equity_batch(
+            [1105.0], [RobustnessRole.UNASSIGNED], spot_mode, metric=RobustnessMetric.NET_PNL))
+        assert r.windows[0].metric_value == 0.0 and not r.windows[0].profitable
+
+    def test_holding_at_the_edge_does_not_suppress_the_verdict(self, spot_mode):
+        b = _equity_batch([1105.0] * 3 + [1010.5] * 3, self._ROLES_6, spot_mode)
+        report = build_robustness_report_from_batch(_RUN_ID, b)
+        assert report.disposition_pct == pytest.approx(100.0)
+        assert report.disposition_gates_verdict is False
+        assert report.walk_forward_efficiency == pytest.approx(0.1)
+        out = _verdicts(b)
+        assert 'robustness_low_trust' not in out
+        assert 'robustness_overfit' in out
+
+    def test_the_same_holding_suppresses_a_closed_trade_verdict(self, spot_mode):
+        b = _equity_batch([1105.0] * 3 + [1010.5] * 3, self._ROLES_6, spot_mode,
+                          metric=RobustnessMetric.NET_PNL)
+        assert build_robustness_report_from_batch(_RUN_ID, b).disposition_gates_verdict is True
+        assert 'robustness_low_trust' in _verdicts(b)
+
+
+class TestEveryMetricHasAValue:
+    @pytest.mark.parametrize('metric', list(RobustnessMetric))
+    def test_the_builder_knows_every_member(self, metric):
+        r = build_robustness_report_from_batch(
+            _RUN_ID, _equity_batch([1105.0], [RobustnessRole.UNASSIGNED], True, metric=metric))
+        assert r.metric == metric.value and len(r.windows) == 1
+
+    def test_only_the_equity_metric_values_open_positions(self):
+        assert [m for m in RobustnessMetric if m.values_open_positions()] == [
+            RobustnessMetric.EQUITY_RETURN_PCT]
+
+    def test_a_window_without_a_starting_value_has_no_return(self):
+        b = _batch([5.0], metric=RobustnessMetric.EQUITY_RETURN_PCT)   # initial balance 0
+        row = build_robustness_report_from_batch(_RUN_ID, b).windows[0]
+        assert row.equity_return_pct is None and row.metric_value == 0.0
 
 
 # ─────────────────────────────────────────────────────────────────────────────

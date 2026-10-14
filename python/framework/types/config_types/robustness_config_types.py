@@ -22,6 +22,22 @@ class RobustnessMetric(StrEnum):
     """The per-window metric the robustness report distributes + compares IS vs OOS over."""
     EXPECTANCY = 'expectancy'   # mean R-multiple — currency/instrument-neutral (default)
     NET_PNL = 'net_pnl'         # account-currency P&L — not comparable across currencies
+    # Final equity against the window's starting value, in percent, with everything still open
+    # marked at the last price. The measure for a strategy that is invested all the time: its
+    # result sits in what it holds, which the two closed-trade metrics above never see.
+    EQUITY_RETURN_PCT = 'equity_return_pct'
+
+    def values_open_positions(self) -> bool:
+        """
+        Whether this metric values what a window still holds when it ends.
+
+        Such a metric is not distorted by positions left open at a block edge, so the
+        block-splitting disposition is no trust input for it.
+
+        Returns:
+            True for a mark-to-market metric, False for a closed-trade metric
+        """
+        return self is RobustnessMetric.EQUITY_RETURN_PCT
 
 
 class RobustnessConfig(BaseModel):

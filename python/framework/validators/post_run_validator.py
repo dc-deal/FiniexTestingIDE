@@ -479,8 +479,10 @@ class PostRunValidator:
                 f'(< {config.min_windows}) — the distribution is statistically weak; add more '
                 f'windows before trusting it.'))
 
-        # Trust gate: block-splitting distortion makes the per-window numbers artifacts.
-        if report.disposition_pct > config.disposition_trust_pct:
+        # Trust gate: block-splitting distortion makes the per-window numbers artifacts — of a
+        # closed-trade metric. A metric that values what is still open misses nothing at the edge.
+        if (report.disposition_gates_verdict
+                and report.disposition_pct > config.disposition_trust_pct):
             self._add('robustness_low_trust', ValidationDomain.ROBUSTNESS, (
                 f'ROBUSTNESS: verdict suppressed — block-splitting distortion '
                 f'{report.disposition_pct:.1f}% exceeds {config.disposition_trust_pct:.0f}%; the '
