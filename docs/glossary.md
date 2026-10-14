@@ -199,16 +199,16 @@ header): a start, and an end unless it is open. Not a span over several units. O
 `windows` mean the same — never a docked panel: that is the FiniexViewer's `window`, defined in its
 own glossary.
 
-**deficiency** (`DataDeficiency`; `deficiencies` in the tick index) — What an archived file LACKS:
-`no_quote`, `no_arrival_time`, `arrival_time_reconstructed`, `missing_trades`, `synthetic`. Measured
-from the data, never inferred from a format version, and counted once per run. Not a gap in time,
-and not a property of the venue. See [Data Provenance](architecture/data_provenance.md).
-
 **decision basis** — The fresh / stale / blind counts of the inputs a decision was made on. See
 [Signal Data Source](data_pipeline/signal_data_source.md).
 
 **decision logic** — The one class that turns worker outputs into decisions. See
 [Quickstart](user_guides/quickstart_guide.md).
+
+**deficiency** (`DataDeficiency`; `deficiencies` in the tick index) — What an archived file LACKS:
+`no_quote`, `no_arrival_time`, `arrival_time_reconstructed`, `missing_trades`, `synthetic`. Measured
+from the data, never inferred from a format version, and counted once per run. Not a gap in time,
+and not a property of the venue. See [Data Provenance](architecture/data_provenance.md).
 
 **denied** (an order status and an order event) — Refused HERE, before anything was sent: a lot
 size the venue would not take, funds already committed, the order guard. Never submitted, so a

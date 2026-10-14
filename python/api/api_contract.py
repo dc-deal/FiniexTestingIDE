@@ -23,7 +23,7 @@ from typing import List
 
 # One monotonic integer. Not a date and not the app version: a consumer compares it for
 # equality, and equality is the only question they have.
-API_CONTRACT_VERSION = 29
+API_CONTRACT_VERSION = 30
 
 # Every response carries it, so a saved fixture carries it too.
 CONTRACT_HEADER = 'X-Api-Contract'
@@ -36,8 +36,12 @@ API_PREFIX = '/api/v1'
 # What moved INTO the current version. One line per change, written for someone who cannot
 # read this repository.
 CHANGES: List[str] = [
-    "The warnings-errors outcome: refused_at_first_tick — true when a live session stopped at its "
-    "first tick because the warmup history it starts from could not be completed there. Such a "
-    "session is graded failed and its shutdown_mode reads emergency, like a crash; this flag says "
-    "it refused instead. False on every other run, a backtest, and a run recorded before",
+    "Validation checks: spreadless_tick_data is gone; data_no_quote counts every input file without a "
+    "quote, whatever the reason. New: data_no_arrival_time, data_arrival_time_reconstructed, "
+    "data_missing_trades, data_origin_external, and data_synthetic, which takes over the synthetic "
+    "signal warning from signal_availability. A run recorded before may still name "
+    "spreadless_tick_data, which the catalog no longer lists",
+    "origin_classes on a ledger row and in the scenario details may hold external: data no "
+    "collector of ours recorded, such as a venue's published history. It is never admissible for "
+    "a parity measurement",
 ]

@@ -33,6 +33,23 @@ reads downwards from the version their fixtures hold until they reach the one be
 A test holds the newest heading in this log to the number the server answers with, so a version
 cannot ship without its entry.
 
+## Version 30 — 2026-10-14 (#561)
+
+A venue's published history can enter the archive, and what an input file lacks is named.
+
+- `GET /api/v1/validation-checks` and the findings of a run: `spreadless_tick_data` is gone.
+  `data_no_quote` counts every input file without a quote, whatever the reason — an older
+  collector format or a venue's history that keeps no quote. New beside it: `data_no_arrival_time`,
+  `data_arrival_time_reconstructed`, `data_missing_trades` and `data_origin_external`, and
+  `data_synthetic`, which takes over the synthetic-signal warning that `signal_availability`
+  carried. A run recorded before this contract may still name `spreadless_tick_data`; the catalog
+  no longer lists it, so show the id itself.
+- `origin_classes` on a ledger row and in the scenario details may hold `external`: data no
+  collector of ours recorded, such as a venue's published history. It is never admissible for a
+  parity measurement.
+
+An id removed and a value added; no field changed its shape.
+
 ## Version 29 — 2026-10-13 (#588)
 
 A live session that refused at its first tick is told apart from one that crashed.
@@ -102,26 +119,13 @@ A run's header is served whole, and the run list says who started each run.
 - The run list: `fixture_superseded` is `true` also for a run of a catalog entry this side no
   longer declares — nothing can produce it again, so it is current no more.
 
-## Version 25 — 2026-10-08 (#576)
-
-The runs a consumer pins are now entries of a fixture catalog on this side — produced and checked
-by one command — and the run list says which of them is current.
-
-- The run list: every run carries `fixture_superseded`. `false` — the run was made by its catalog
-  entry's CURRENT catalog production, so it is the one to pin. `true` — an older catalog production
-  made it, or one that failed its check. A replaced run that passed its check stays until this side
-  releases it, so a pin on it keeps working until you move it. `null` — no catalog production made
-  this run, which is every ordinary run and every test run. Derived each time the list is served;
-  nothing in the run changes.
-
-An addition; no existing field changed.
-
-## Versions 24 and earlier
+## Versions 25 and earlier
 
 One line each. Every one of these moved a shape or a meaning; what they moved is summarised here
 rather than spelled out, because a consumer this far behind needs the list of steps, not each step's
 reasoning. The full text of a compressed version is in this repository's history.
 
+- **Version 25** — 2026-10-08 (#576): The runs a consumer pins became entries of a fixture catalog — `fixture_superseded` on every run of the run list says whether a run is its entry's current production (`false`), an older or failed one (`true`), or no catalog production at all (`null`).
 - **Version 24** — 2026-10-08 (#576): Every run says what it is for and under which contract its
   reports were written — `run_purpose` (`regular`, `fixture`, `certificate`) and `report_contract`
   on the run list; `run_purpose` and `config_description` on the configuration directory.
