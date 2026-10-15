@@ -188,6 +188,27 @@ class TestRecommendationsAreForOurOwnCollection:
 
 
 @pytest.mark.usefixtures('unread_index')
+class TestValidateJudgesOurOwnCollection:
+    """`data-coverage validate` asks `has_issues()`: the venue's silence is not an issue of ours."""
+
+    def test_the_venue_s_history_alone_is_no_issue(self):
+        report = _report('kraken_spot', _gap(T, 6.7, GapCategory.LARGE, EXTERNAL),
+                         _gap(T + timedelta(days=1), 1.0, GapCategory.MODERATE, EXTERNAL))
+        assert not report.has_issues() and report.unjudged_gap_count() == 0
+
+    def test_a_large_gap_in_our_collection_is_counted_as_ours(self):
+        report = _report('kraken_spot', _gap(T, 6.7, GapCategory.LARGE, EXTERNAL),
+                         _gap(T + timedelta(days=1), 5.1, GapCategory.LARGE, PRODUCTION))
+        assert report.has_issues()
+        assert report.collected_gap_counts()[GapCategory.LARGE] == 1
+
+    def test_a_gap_no_tick_file_was_found_for_is_not_judged(self):
+        report = _report('mt5', _gap(T, 2.0, GapCategory.MODERATE, None,
+                                     file_before=None, file_after=None))
+        assert not report.has_issues() and report.unjudged_gap_count() == 1
+
+
+@pytest.mark.usefixtures('unread_index')
 class TestThePrintedReport:
 
     def _text(self):

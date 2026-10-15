@@ -40,6 +40,7 @@ from python.framework.discoveries.volatility_profile_analyzer.volatility_profile
     print_volatility_profile,
 )
 from python.framework.logging.bootstrap_logger import get_global_logger
+from python.framework.types.coverage_report_types import GapCategory
 from python.framework.types.market_types.market_volatility_profile_types import (
     SymbolVolatilityProfile,
 )
@@ -282,10 +283,14 @@ class DiscoveriesCli:
                         continue
 
                     if report.has_issues():
-                        moderate = report.gap_counts.get('moderate', 0)
-                        large = report.gap_counts.get('large', 0)
+                        collected = report.collected_gap_counts()
                         print(
-                            f'  ⚠️  {symbol}: {moderate} moderate, {large} large gaps')
+                            f'  ⚠️  {symbol}: {collected[GapCategory.MODERATE]} moderate, '
+                            f'{collected[GapCategory.LARGE]} large gaps in our collection')
+                        issues_found = True
+                    elif report.unjudged_gap_count():
+                        print(f'  ❔ {symbol}: {report.unjudged_gap_count()} gaps not judged — '
+                              f'no tick file was found for them')
                         issues_found = True
                     else:
                         print(f'  ✅ {symbol}: No issues')

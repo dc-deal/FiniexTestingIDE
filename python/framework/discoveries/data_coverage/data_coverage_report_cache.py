@@ -66,10 +66,8 @@ class DataCoverageReportCache:
         self.data_dir = Path(self._app_config.get_data_processed_path())
         self.cache_dir = self.data_dir / self.CACHE_PARENT_DIR / self.CACHE_SUB_DIR
 
-        # Read granularity from discoveries config (consistent with DataCoverageReport)
-        discoveries_config = DiscoveriesConfigLoader().get_config_raw()
-        gap_config = discoveries_config.get('data_coverage', {})
-        self._granularity = gap_config.get('granularity', 'M5')
+        # The timeframe the gaps are detected on, read where the detection reads it
+        self._granularity = DataCoverageReport.detection_granularity()
 
         # Ensure cache directory exists
         self.cache_dir.mkdir(parents=True, exist_ok=True)

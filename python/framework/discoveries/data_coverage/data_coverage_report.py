@@ -143,7 +143,7 @@ class DataCoverageReport:
 
         # Get configuration
         gap_config = config.get('data_coverage', {})
-        granularity = self._detection_granularity()
+        granularity = self.detection_granularity()
         thresholds = gap_config.get(
             'thresholds', {'short': 0.5, 'moderate': 4.0})
 
@@ -224,12 +224,39 @@ class DataCoverageReport:
 
     def has_issues(self) -> bool:
         """
-        Check if there are any problematic gaps.
+        Whether our own collection has moderate or large gaps.
+
+        A gap in a venue's published history is the venue's silence, and one no tick file was
+        found for is not ours to judge (`unjudged_gap_count`). Render path: the gaps are
+        attributed first.
 
         Returns:
-            True if moderate or large gaps exist
+            True if our collection has moderate or large gaps
         """
-        return self.gap_counts['moderate'] + self.gap_counts['large'] > 0
+        collected = self.collected_gap_counts()
+        return collected[GapCategory.MODERATE] + collected[GapCategory.LARGE] > 0
+
+    def collected_gap_counts(self) -> Counter:
+        """
+        The gaps of our own collection, counted per category. Render path: attributes first.
+
+        Returns:
+            GapCategory → count
+        """
+        self.attribute_gaps()
+        return Counter(gap.category for gap in self.gaps if _is_collected(gap))
+
+    def unjudged_gap_count(self) -> int:
+        """
+        The moderate and large gaps no tick file was found for — whose they are is unknown.
+
+        Returns:
+            Their count
+        """
+        self.attribute_gaps()
+        return sum(1 for gap in self.gaps
+                   if gap.origin_class is None
+                   and gap.category in (GapCategory.MODERATE, GapCategory.LARGE))
 
     def gaps_in_window(self, start: datetime, end: datetime) -> List[Gap]:
         """
@@ -279,8 +306,7 @@ class DataCoverageReport:
         Returns:
             List of recommendation strings
         """
-        self.attribute_gaps()
-        collected = Counter(gap.category for gap in self.gaps if _is_collected(gap))
+        collected = self.collected_gap_counts()
         mt5 = self._broker_value() in _MT5_BROKER_VALUES
 
         recommendations = []
@@ -421,12 +447,12 @@ class DataCoverageReport:
         self._gaps_attributed = True
 
         server_clock = MarketConfigManager().get_server_clock(self.broker_type)
-        granularity = self._detection_granularity()
+        granularity = self.detection_granularity()
         bar_interval = timedelta(minutes=TimeframeConfig.get_minutes(granularity))
         attribute_gaps_to_files(self.gaps, self._tick_entries(), server_clock, bar_interval)
 
     @staticmethod
-    def _detection_granularity() -> str:
+    def detection_granularity() -> str:
         """
         The bar timeframe gaps are detected on, as the discoveries config sets it.
 
