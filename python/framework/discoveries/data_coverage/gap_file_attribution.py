@@ -8,12 +8,13 @@ everything needed, so no data file is opened.
 """
 
 import re
-from bisect import bisect_left, bisect_right
-from datetime import datetime
+from bisect import bisect_left
+from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 
 import pandas as pd
 
+from python.data_management.index.index_entry_times import entry_time_bounds
 from python.framework.types.config_types.data_origin_config_types import OriginClass
 from python.framework.types.config_types.market_config_types import ServerClockConfig
 from python.framework.types.coverage_report_types import Gap
@@ -63,7 +64,8 @@ def parse_file_open_time(file_name: str,
 def attribute_gaps_to_files(
     gaps: List[Gap],
     entries: List[Dict],
-    server_clock: ServerClockConfig
+    server_clock: ServerClockConfig,
+    bar_interval: timedelta
 ) -> None:
     """
     Stamp each gap with the file holding the data before it, the file holding the
@@ -78,14 +80,12 @@ def attribute_gaps_to_files(
         gaps: Gaps to attribute (modified in place)
         entries: Tick index entries for one broker/symbol
         server_clock: The broker's server clock rule, for the open time in each file name
+        bar_interval: The interval of the bars the gaps were detected on
     """
     if not gaps or not entries:
         return
 
-    # The entries' times converted in two calls rather than two per entry: pandas infers the
-    # format once per call, and per entry this cost 0.9 s over 644 files (measured 2026-10-15)
-    file_starts = pd.to_datetime([entry['start_time'] for entry in entries], utc=True)
-    file_ends = pd.to_datetime([entry['end_time'] for entry in entries], utc=True)
+    file_starts, file_ends = entry_time_bounds(entries)
     bounds = sorted(
         zip(file_starts, file_ends,
             [entry['file'] for entry in entries],
@@ -99,7 +99,10 @@ def attribute_gaps_to_files(
         if gap.gap_start is None or gap.gap_end is None:
             continue
 
-        before = _last_file_at_or_before(bounds, starts, pd.Timestamp(gap.gap_start))
+        # A gap starts at the OPEN of the last bar before it, and that bar's ticks run on to
+        # its end — a file whose first tick falls inside the bar holds the data before the gap
+        before = _last_file_opened_before(
+            bounds, starts, pd.Timestamp(gap.gap_start + bar_interval))
         after = _first_file_at_or_after(bounds, ends, pd.Timestamp(gap.gap_end))
         if before is None or after is None:
             continue
@@ -141,11 +144,11 @@ def _origin_class_of(entry: Dict) -> OriginClass:
         return OriginClass.UNKNOWN
 
 
-def _last_file_at_or_before(
+def _last_file_opened_before(
     bounds: List, starts: List, moment: pd.Timestamp
 ) -> Optional[tuple]:
     """
-    The last file holding data at or before a moment.
+    The last file opened before a moment — the one holding the data just before it.
 
     Located by start time rather than by exact match — bar timestamps are floored
     to the bar interval, so equality would never hit. When the moment falls in a
@@ -156,12 +159,12 @@ def _last_file_at_or_before(
     Args:
         bounds: (start_time, end_time, file, origin_class) tuples sorted ascending
         starts: The start_time values, for the search
-        moment: The instant to locate
+        moment: The instant to locate — the END of the last bar before a gap
 
     Returns:
-        The bounds tuple, or None when the moment precedes the first file
+        The bounds tuple, or None when no file opened before the moment
     """
-    idx = bisect_right(starts, moment) - 1
+    idx = bisect_left(starts, moment) - 1
     if idx < 0:
         return None
     return bounds[idx]

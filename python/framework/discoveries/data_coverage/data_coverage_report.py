@@ -6,9 +6,10 @@ Gap detection and human-readable coverage reports
 """
 
 from collections import Counter
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple
 
+import numpy as np
 import pandas as pd
 
 from python.configuration.discoveries_config_loader import DiscoveriesConfigLoader
@@ -142,7 +143,7 @@ class DataCoverageReport:
 
         # Get configuration
         gap_config = config.get('data_coverage', {})
-        granularity = gap_config.get('granularity', 'M5')
+        granularity = self._detection_granularity()
         thresholds = gap_config.get(
             'thresholds', {'short': 0.5, 'moderate': 4.0})
 
@@ -173,49 +174,51 @@ class DataCoverageReport:
 
         # Ensure timestamps are UTC-aware and sorted
         bars_df = bars_df.sort_values('timestamp').reset_index(drop=True)
-        timestamps = bars_df['timestamp'].apply(ensure_utc_aware)
+        timestamps = pd.to_datetime(bars_df['timestamp'], utc=True)
 
         # Detect gaps via timestamp jumps between consecutive bars
         # A gap exists when the interval exceeds 2x the expected bar interval
         # (allows for minor timing jitter without false positives)
         gap_threshold_s = expected_interval_s * 2
 
-        for i in range(1, len(timestamps)):
+        # The jumps are found over the whole column at once, and only they reach the loop: a
+        # loop over every bar cost 110 s for a symbol with years of minute bars (measured
+        # 2026-10-15, 2.4 million bars), nearly all of it reading one row at a time
+        deltas_s = timestamps.diff().dt.total_seconds().to_numpy()
+        for i in np.flatnonzero(deltas_s > gap_threshold_s):
             prev_ts = timestamps.iloc[i - 1]
             curr_ts = timestamps.iloc[i]
-            delta_s = (curr_ts - prev_ts).total_seconds()
 
-            if delta_s > gap_threshold_s:
-                # Split gap at market boundaries (weekends) to prevent
-                # data loss from being masked as expected closures.
-                # Only affects forex gaps > 80h spanning multiple weekends.
-                if self._weekend_closure:
-                    sub_gaps = MarketCalendar.split_gap_at_market_boundaries(
-                        prev_ts, curr_ts
-                    )
-                else:
-                    sub_gaps = [(prev_ts, curr_ts)]
+            # Split gap at market boundaries (weekends) to prevent
+            # data loss from being masked as expected closures.
+            # Only affects forex gaps > 80h spanning multiple weekends.
+            if self._weekend_closure:
+                sub_gaps = MarketCalendar.split_gap_at_market_boundaries(
+                    prev_ts, curr_ts
+                )
+            else:
+                sub_gaps = [(prev_ts, curr_ts)]
 
-                for seg_start, seg_end in sub_gaps:
-                    seg_seconds = (seg_end - seg_start).total_seconds()
+            for seg_start, seg_end in sub_gaps:
+                seg_seconds = (seg_end - seg_start).total_seconds()
 
-                    category, reason = MarketCalendar.classify_gap(
-                        seg_start,
-                        seg_end,
-                        seg_seconds,
-                        thresholds,
-                        weekend_closure=self._weekend_closure
-                    )
+                category, reason = MarketCalendar.classify_gap(
+                    seg_start,
+                    seg_end,
+                    seg_seconds,
+                    thresholds,
+                    weekend_closure=self._weekend_closure
+                )
 
-                    gap = Gap(
-                        gap_seconds=seg_seconds,
-                        category=category,
-                        reason=f'{reason} [detected via {granularity}]',
-                        gap_start=seg_start,
-                        gap_end=seg_end
-                    )
+                gap = Gap(
+                    gap_seconds=seg_seconds,
+                    category=category,
+                    reason=f'{reason} [detected via {granularity}]',
+                    gap_start=seg_start,
+                    gap_end=seg_end
+                )
 
-                    gaps.append(gap)
+                gaps.append(gap)
 
         return gaps
 
@@ -418,21 +421,38 @@ class DataCoverageReport:
         self._gaps_attributed = True
 
         server_clock = MarketConfigManager().get_server_clock(self.broker_type)
-        attribute_gaps_to_files(self.gaps, self._tick_entries(), server_clock)
+        granularity = self._detection_granularity()
+        bar_interval = timedelta(minutes=TimeframeConfig.get_minutes(granularity))
+        attribute_gaps_to_files(self.gaps, self._tick_entries(), server_clock, bar_interval)
+
+    @staticmethod
+    def _detection_granularity() -> str:
+        """
+        The bar timeframe gaps are detected on, as the discoveries config sets it.
+
+        A cached report was detected on the same one: the cache is invalid once it changes.
+
+        Returns:
+            The timeframe, e.g. 'M1'
+        """
+        return DiscoveriesConfigLoader().get_config_raw().get(
+            'data_coverage', {}).get('granularity', 'M5')
 
     def _tick_entries(self) -> List[Dict]:
         """
         This symbol's tick index entries, read once per report.
 
-        Render path only: the version spans and the attribution both read them, and reading
-        the index is what they cost (measured 2026-10-15: 0.9 s on this archive).
+        Render path only: the version spans and the attribution both read them. Loaded, never
+        built: the render path includes an API route, and a build scans every tick file and
+        rewrites the index — that belongs to the import and to the batch. An index that cannot
+        be read leaves the gaps unattributed, and the report says they were not judged.
 
         Returns:
             The entries, chronologically sorted
         """
         if self._tick_index_entries is None:
             tick_index = TickIndexManager()
-            tick_index.build_index()
+            tick_index.load_index()
             self._tick_index_entries = tick_index.get_symbol_entries(
                 self.broker_type, self.symbol)
         return self._tick_index_entries
@@ -689,6 +709,10 @@ class DataCoverageReport:
         elif not missing:
             report.append(
                 '\n✅ All files form continuous timeline - no action needed!')
+        elif any(gap.origin_class is None for gap in missing):
+            # No clean bill: a gap no tick file was found for was not judged at all
+            report.append(f'\n⚠️  Not judged — {_no_action_reason(missing)}, so whose data '
+                          f'they lie in is unknown')
         else:
             report.append(f'\n✅ No gap in our own collection — {_no_action_reason(missing)}')
 

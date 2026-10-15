@@ -20,6 +20,7 @@ from python.framework.reporting.console.abstract_batch_summary_section import (
 )
 from python.framework.reporting.console.feed_stability_summary import format_disturbance_line
 from python.framework.reporting.console.order_counts_line import order_endings_text
+from python.framework.reporting.console.portfolio_summary import SPREAD_NOT_MEASURED
 from python.framework.types.api.report_types import (
     AggregatedPortfolioReport,
     AggregatedPortfolioRow,
@@ -503,8 +504,11 @@ class SimExecutiveSummary(AbstractBatchSummarySection):
         else:
             print(f'Recovery Factor:    {row.recovery_factor:.2f}')
         print('')
-        print(
-            f'Spread Cost:        {format_currency_cost(row.total_spread_cost, currency)} (avg {format_currency_cost(row.avg_spread, currency)}/trade)')
+        if row.total_spread_cost is None:
+            print(f'Spread Cost:        {SPREAD_NOT_MEASURED}')
+        else:
+            print(
+                f'Spread Cost:        {format_currency_cost(row.total_spread_cost, currency)} (avg {format_currency_cost(row.avg_spread, currency)}/trade)')
         print(
             f'Commission:         {format_currency_cost(row.total_commission, currency)}')
         print(
@@ -571,8 +575,9 @@ class SimExecutiveSummary(AbstractBatchSummarySection):
 
         # Costs (layout A — all five categories, zeros where n/a; spot fees are maker/taker)
         print('')
-        print(
-            f'Spread Cost:        {format_currency_cost(row.total_spread_cost, currency)}')
+        spread = (SPREAD_NOT_MEASURED if row.total_spread_cost is None
+                  else format_currency_cost(row.total_spread_cost, currency))
+        print(f'Spread Cost:        {spread}')
         print(
             f'Commission:         {format_currency_cost(row.total_commission, currency)}')
         print(

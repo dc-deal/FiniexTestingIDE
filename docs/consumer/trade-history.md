@@ -192,6 +192,14 @@ periods can be one run of 5. Do not aggregate these two across currencies, units
 `total_fees` and `total_swap`, the signed swap summed over the unit. It is the footer line, served
 so that no consumer has to re-sum the rows and arrive at a different number.
 
+`total_spread_cost` is the unit's `spread_cost` summed — measured, so it stands beside `total_fees`
+and never inside it. On a quote-driven market such as forex it is usually the main cost — the
+dealer earns the spread — while `total_fees` may read zero. It is **null where the unit read data
+without a quote**: there bid and ask are the traded price, no fill crossed a recorded spread, and a
+sum of those zeros would look like a measurement. A unit that read such data for part of its window
+is null too, rather than a partial sum. It is also null on a run recorded before contract 32. A
+live session's total is always a sum: it reads its venue's feed, not archived data.
+
 ## Retention: this list has a ceiling
 
 A run keeps its closed trades in a buffer whose size the server that produced the run sets, and

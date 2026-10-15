@@ -205,6 +205,11 @@ class TradeScenarioTotals(BaseModel):
     net_pnl: float
     total_fees: float
     total_swap: float = 0.0  # Σ signed swap over the scenario (#365)
+    # Σ the trades' measured `spread_cost` — beside total_fees, never inside it, because it is
+    # already in gross_pnl. None where the unit read a tick file without a quote: there no fill
+    # crossed a recorded spread, so the sum of those zeros would read as a measurement it is
+    # not. None as well on a report written before contract 32.
+    total_spread_cost: float | None = None
 
 
 class RunScopedReport(BaseModel):
@@ -572,7 +577,9 @@ class PortfolioUnitRow(BaseModel):
     spot_est_initial: float = 0.0
     spot_est_pnl: float = 0.0
     spot_est_pnl_pct: float = 0.0
-    total_spread_cost: float = 0.0
+    # None where the unit read a tick file without a quote, as on the trade history's totals:
+    # no fill crossed a recorded spread there, and a zero would read as a measurement
+    total_spread_cost: float | None = 0.0
     total_commission: float = 0.0
     total_swap: float = 0.0
     maker_fee: float = 0.0       # spot maker-side fee
@@ -2744,13 +2751,14 @@ class AggregatedPortfolioRow(BaseModel):
     # one scenario's decline beside another's peak.
     highest_equity: float = 0.0
     highest_equity_scenario: str = ''
-    # Cost split
-    total_spread_cost: float = 0.0
+    # Cost split. The spread is None as soon as one unit's is: a sum over the units that had a
+    # quote would read as the whole
+    total_spread_cost: float | None = 0.0
     total_commission: float = 0.0
     total_swap: float = 0.0
     maker_fee: float = 0.0
     taker_fee: float = 0.0
-    avg_spread: float = 0.0
+    avg_spread: float | None = 0.0
     # Execution (per currency)
     orders_submitted: int = 0
     orders_adopted: int = 0

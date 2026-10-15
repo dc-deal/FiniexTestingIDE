@@ -562,10 +562,12 @@ configuration (`scenario_name` in the file). A scenario set is the file holding 
 the scenarios (`scenario_set_name`). See [Process Execution](process_execution_guide.md).
 
 **seam** (of data origins) — Where one origin's tick files end and another's begin: Kraken's
-published history and our first collected tick, for instance. A gap there takes the origin class
-of the file before it, and the coverage report and the gaps route name it a seam (`origin_class`
-and `origin_class_after` differ). Not the seam of the code — a point where a later change attaches,
-such as the hard stop's hook for its latch — which stays inside the code and its documents.
+published history and our first collected tick, for instance. A gap there takes the origin class of
+the file before it. The coverage report words it as "where the external data ends and the production
+data begins", and the gaps route serves two different classes in `origin_class` and
+`origin_class_after`; "seam" is the documents' word for it. Not the seam of the code — a point where
+a later change attaches, such as the hard stop's hook for its latch — which stays inside the code
+and its documents.
 
 **security study** — The *acceptance study* that provokes the account's protective rules with real
 money — the order guard's refusals and cooldown, the circuit breaker's soft block and hard stop,

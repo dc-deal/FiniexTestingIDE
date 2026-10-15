@@ -14,6 +14,7 @@ from typing import Optional
 import pandas as pd
 from fastapi import APIRouter, Query, Response
 
+from python.api.api_query_params import parse_iso_query
 from python.api.api_route_documents import describes
 from python.data_management.index.bars_index_manager import BarsIndexManager
 from python.framework.discoveries.data_coverage.data_coverage_report_cache import (
@@ -212,7 +213,7 @@ def get_gaps(
     broker: str,
     symbol: str,
     origin_class: Optional[OriginClass] = Query(None),
-    since: Optional[datetime] = Query(None),
+    since: Optional[str] = Query(None, description='ISO-8601; naive reads as UTC'),
 ) -> CoverageGapsResponse:
     """
     Return the interruptions in a symbol's archive, with what each one was and whose data it
@@ -236,7 +237,8 @@ def get_gaps(
         broker: Broker type identifier
         symbol: Trading symbol
         origin_class: Only the gaps in data of this origin class
-        since: Only the gaps that start at or after this instant (ISO-8601; naive reads as UTC)
+        since: Only the gaps that start at or after this instant (ISO-8601; naive reads as UTC;
+            anything else is refused with a 400)
 
     Returns:
         The coverage span, the gap count per category, the gaps per year and origin, and the
@@ -249,8 +251,9 @@ def get_gaps(
     if report is None or report.start_time is None:
         raise api_error(COVERAGE_REPORT_UNAVAILABLE, broker=broker, symbol=symbol)
 
+    since_at = parse_iso_query(since, 'since')
     report.attribute_gaps()
-    since_utc = _utc(since) if since is not None else None
+    since_utc = _utc(since_at) if since_at is not None else None
     served = [
         gap for gap in report.gaps
         if (origin_class is None or gap.origin_class == origin_class)

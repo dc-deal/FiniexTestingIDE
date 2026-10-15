@@ -18,7 +18,7 @@ GET /api/v1/brokers/{broker}/symbols/{symbol}/gaps?origin_class=production&since
 | Parameter | Narrows `gaps` to |
 |---|---|
 | `origin_class` | the gaps in data of that origin class — see [whose silence it is](#whose-silence-it-is) |
-| `since` | the gaps that start at or after this instant, ISO-8601; a value without an offset is read as UTC |
+| `since` | the gaps that start at or after this instant, ISO-8601; a value without an offset is read as UTC, and anything else — a bare year, a Unix time — is refused with `400 invalid_timestamp` |
 
 Both are optional, and without them every gap is served. They narrow `gaps` only: `gap_counts` and
 `gaps_by_year` always describe the whole archive, so the overview stays whole while the list is
@@ -156,7 +156,9 @@ last bar before the interruption and `end` the open of the first one after it �
 therefore up to one bar period longer than the silence itself. Where a gap was split at a market
 boundary, that boundary is the split point instead.
 
-The answer is served from a cache that is rebuilt when the underlying bars or its own configuration
-change; this route computes nothing of its own. A symbol the cache has not analysed yet answers
-`404 coverage_report_unavailable` — that is "not computed", not "no gaps". See
-[errors](/api/v1/docs/errors).
+The gaps are served from a cache that is rebuilt when the underlying bars or its own
+configuration change. Whose data each gap lies in — `origin_class`, `origin_class_after` and
+`gaps_by_year` — is read from the archive's file index on every request, so it follows a new
+import without waiting for the cache, and a request costs that read. A symbol the cache has not
+analysed yet answers `404 coverage_report_unavailable` — that is "not computed", not "no gaps".
+See [errors](/api/v1/docs/errors).

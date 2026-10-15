@@ -141,6 +141,12 @@ class TestTheEdges:
         timeline = GapTimeline([unplaced, placed])
         assert timeline.gaps_in_window(EPOCH, EPOCH + timedelta(days=1)) == [placed]
 
+    def test_a_naive_time_reads_as_utc(self):
+        naive = Gap(gap_seconds=3600.0, category=GapCategory.SHORT, reason='test',
+                    gap_start=datetime(2020, 1, 1, 10), gap_end=datetime(2020, 1, 1, 11))
+        timeline = GapTimeline([naive])
+        assert timeline.gap_containing(datetime(2020, 1, 1, 10, 30, tzinfo=timezone.utc)) is naive
+
     def test_no_gaps_answers_nothing(self):
         timeline = GapTimeline([])
         assert timeline.gap_containing(EPOCH) is None

@@ -37,17 +37,23 @@ class GapTimeline:
             gaps: The report's gaps. A gap without a start or an end cannot be placed in time
                 and is left out — a detected gap always carries both
         """
-        placed = sorted(
-            (
-                (ensure_utc_aware(gap.gap_start), ensure_utc_aware(gap.gap_end), gap)
-                for gap in gaps
-                if gap.gap_start is not None and gap.gap_end is not None
-            ),
-            key=lambda item: item[0]
-        )
-        self._starts = [start for start, _, _ in placed]
-        self._ends = [end for _, end, _ in placed]
-        self._gaps = [gap for _, _, gap in placed]
+        placed = [gap for gap in gaps if gap.gap_start is not None and gap.gap_end is not None]
+        # Built once per symbol and batch, so it is kept lean: an aware time compares by its
+        # instant whatever its zone, so only a naive one is converted, and the cache hands the
+        # gaps over sorted, which a check finds faster than a sort would. Converting and sorting
+        # every gap cost 194 ms for 117,757 gaps and 776 ms for 375,682 (measured 2026-10-15).
+        starts = [gap.gap_start if gap.gap_start.tzinfo is not None
+                  else ensure_utc_aware(gap.gap_start) for gap in placed]
+        ends = [gap.gap_end if gap.gap_end.tzinfo is not None
+                else ensure_utc_aware(gap.gap_end) for gap in placed]
+        if any(later < earlier for earlier, later in zip(starts, starts[1:])):
+            order = sorted(range(len(placed)), key=starts.__getitem__)
+            placed = [placed[i] for i in order]
+            starts = [starts[i] for i in order]
+            ends = [ends[i] for i in order]
+        self._starts = starts
+        self._ends = ends
+        self._gaps = placed
         # The list it was built over, and its length then: a report fills its list after
         # construction (the cache hydrates it, analyze() appends), so a timeline built early
         # must be rebuilt rather than answer for gaps it never saw

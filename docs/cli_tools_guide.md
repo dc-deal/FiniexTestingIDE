@@ -420,31 +420,47 @@ Use 'show BROKER_TYPE SYMBOL' for detailed gap analysis
 Classifies gaps automatically:
 - ✅ **Weekend** - Expected market closure (Friday 17:00 → Sunday 17:00 New York: 21:00 UTC in summer, 22:00 in winter)
 - ✅ **Holiday** - Holidays (Christmas, New Year)
-- ⚠️ **Short** - Small gaps < 30min (MT5 restarts, connection drops)
+- ⚠️ **Short** - Small gaps < 30min
 - ⚠️ **Moderate** - 30min to 4h
-- 🔴 **Large** - > 4h (check data collection!)
+- 🔴 **Large** - > 4h
+
+Each gap is read by whose data it lies in — the origin class of the tick files around it. In a
+venue's published history (`external`) nobody traded there and there is nothing to re-collect; in
+our own collection the line says whether the collector was running. The newest ten of each category
+are listed, the rest are counted by year and origin, and the recommendations are for our own
+collection only. Details: [discovery_system.md](discovery_system.md), *Data Coverage Details*.
 
 ```
-📊 DATA COVERAGE REPORT: GBPUSD
-Time Range:   2025-09-17 17:55:00 UTC → 2026-01-02 20:55:00 UTC
-Duration:     107d 3h
+📊 DATA COVERAGE REPORT: mt5/GBPUSD
+Market Type:  forex
+Time Range:   2025-09-17 17:58:00 UTC
+           → 2026-10-09 20:56:00 UTC
 
 GAP ANALYSIS:
-✅ Weekend:      15 gaps (expected)
+✅ Weekend:      54 gaps (expected)
 ✅ Holiday:      2 gaps (expected)
-⚠️  Short:        22 gaps (< 30 min)
+⚠️  Short:        340 gaps (< 30 min)
 ⚠️  Moderate:     1 gaps (30min - 4h)
-🔴 Large:        2 gaps (> 4h)
+🔴 Large:        4 gaps (> 4h)
 
-🔴 LARGE GAP:
-   Start:  2025-11-12 15:45:00 UTC
-   End:    2025-11-13 21:15:00 UTC
-   Gap:    29h 30m
-   Reason: 🔴 Large gap - check data collection
+GAPS — the most recent of each category, newest first:
+🔴 LARGE — all 4
+   2026-09-18 20:56 → 09-21 08:39   59h 43m (59.72h · 2.5d)   between two files, collection resumed 59h 42m later · lost 2 trading days   [production]
+   2026-07-29 15:34 → 20:42         5h 8m (5.13h)             inside GBPUSD_20260729_161731.parquet, the collector was running   [production]
+   …
+ℹ️  SHORT — the last 10 of 340
+   2026-10-08 20:57 → 21:00         3m (0.05h)                inside GBPUSD_20261008_174312.parquet, the collector was running   [production]
+   …
 
-💡 RECOMMENDATIONS:
-   • Short gaps detected - likely MT5 restarts (usually harmless)
-   • 🔴 Large gaps detected - consider re-collecting data
+BY YEAR AND ORIGIN (short · moderate · large, and the hours without data):
+   year  origin            short  moderate   large       hours
+   2025  production          153         1       2        62.8
+   2026  production          187         0       2        75.1
+
+💡 RECOMMENDATIONS (our own collection):
+   • Short gaps in our collection - likely MT5 restarts or connection blips (usually harmless)
+   • 🔴 Large gaps in our collection - consider re-collecting data for these periods
+   …
 ```
 
 ### 📊 Data Coverage: Build Cache

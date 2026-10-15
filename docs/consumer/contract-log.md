@@ -36,7 +36,7 @@ cannot ship without its entry.
 ## Version 32 — 2026-10-15 (#599)
 
 A gap says whose silence it is, and a symbol with years of a venue's history no longer has to be
-read in one piece.
+read in one piece. And a unit's trade totals carry the spread it paid.
 
 - `GET /api/v1/brokers/{broker}/symbols/{symbol}/gaps`: every gap carries `origin_class` — the
   origin class of the tick file it lies in or follows (`production`, `development`, `unknown`,
@@ -50,15 +50,26 @@ read in one piece.
   `{"gaps": ["start"], "gaps_by_year": ["year", "origin_class"]}`. Read the gaps' key from
   `keys.gaps`.
 - Two query parameters narrow `gaps`, never `gap_counts` or `gaps_by_year`: `origin_class` (only
-  the gaps in data of that class) and `since` (only the gaps that start at or after it, ISO-8601).
-  Without them every gap is served, as before.
+  the gaps in data of that class) and `since` (only the gaps that start at or after it, ISO-8601;
+  anything else is refused with `400 invalid_timestamp`). Without them every gap is served, as
+  before.
 - `reason` no longer guesses at a cause: "check data collection" and "restart/connection?" are
   gone, because the reason cannot know whose data surrounds a gap. A coverage cache built before
   this contract still serves the old words until it is rebuilt.
 - `category` declares its closed set in the schema; its values are unchanged.
+- `GET /api/v1/reports/runs/{run_id}/trade-history`: every `scenario_totals` row carries
+  `total_spread_cost` — the unit's measured `spread_cost` summed, beside `total_fees` and never
+  inside it. On a quote-driven market it is usually the main cost while `total_fees` reads zero.
+  It is null where the unit read data without a quote, for the whole unit even where only part of
+  its window lacked one, and on a run recorded before this contract.
+- The portfolio's `total_spread_cost` follows the same rule, and is therefore now nullable: null
+  for a unit that read data without a quote, where it read `0.0`, and on the aggregated portfolio
+  — with `avg_spread` — null as soon as one unit's is.
 
-Fields and parameters added, `key` replaced by `keys`, and one wording changed. Its document is
-[gaps](/api/v1/docs/gaps).
+Fields and parameters added, `key` replaced by `keys`, one wording changed, and three spread
+figures may be null. Its documents are [gaps](/api/v1/docs/gaps),
+[trade history](/api/v1/docs/trade-history), [portfolio](/api/v1/docs/portfolio) and
+[aggregated portfolio](/api/v1/docs/aggregated-portfolio).
 
 ## Version 31 — 2026-10-14 (#595)
 
@@ -128,7 +139,7 @@ One line each. Every one of these moved a shape or a meaning; what they moved is
 rather than spelled out, because a consumer this far behind needs the list of steps, not each step's
 reasoning. The full text of a compressed version is in this repository's history.
 
-- **Version 27** — 2026-10-11 (#508): A live fill's fee is the venue's own charge wherever the venue reports it, and every executed order event says where its fee came from — `fee_source` (`venue` or `estimate`, null where nothing executed); the same fee fields from another source, so a live run before and one after can differ in fees for the same orders.
+- **Version 27** — 2026-10-11 (#508): A live fill's fee is the venue's own charge wherever the venue reports it, and every executed order event says where its fee came from — `fee_source` (`venue` or `estimate`; null on an event that executed nothing, on a fill nothing could be booked for whose venue reported no fee, and on every event recorded before it); the same fee fields from another source, so a live run before and one after can differ in fees for the same orders.
 - **Version 26** — 2026-10-09 (#582): A run's header is served whole — `GET /api/v1/reports/runs/{run_id}/header`, with `run_not_found`, `run_header_missing` and `artifact_unreadable` — and the run list says who started each run: `origin_channel`, `origin_client`, `origin_principal` and `origin_host`; `fixture_superseded` is `true` also for a run of an entry no longer declared.
 - **Version 25** — 2026-10-08 (#576): The runs a consumer pins became entries of a fixture catalog — `fixture_superseded` on every run of the run list says whether a run is its entry's current production (`false`), an older or failed one (`true`), or no catalog production at all (`null`).
 - **Version 24** — 2026-10-08 (#576): Every run says what it is for and under which contract its

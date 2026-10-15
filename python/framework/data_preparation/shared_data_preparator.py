@@ -19,6 +19,7 @@ import pandas as pd
 
 from python.configuration.market_config_manager import MarketConfigManager
 from python.data_management.index.bars_index_manager import BarsIndexManager
+from python.data_management.index.index_entry_times import entry_time_bounds
 from python.data_management.index.signal_index_manager import SignalIndexManager
 from python.data_management.index.tick_index_manager import TickIndexManager
 from python.framework.data_preparation.tick_parquet_reader import read_tick_parquet
@@ -472,17 +473,12 @@ class SharedDataPreparator:
 
         # Pre-convert file timestamps once per (broker_type, symbol).
         # pd.to_datetime on a single string is ~150-200µs — calling it N_scenarios × N_files
-        # times blows up to 10-20s for large symbol sets. Cache eliminates all repeated calls.
+        # times blows up to 10-20s for large symbol sets. Cache eliminates all repeated calls,
+        # and the one conversion left runs over the whole list at once.
         cache_key = (broker_type, symbol)
         if cache_key not in self._file_ts_cache:
-            self._file_ts_cache[cache_key] = [
-                (
-                    pd.to_datetime(f['start_time'], utc=True),
-                    pd.to_datetime(f['end_time'], utc=True),
-                    f
-                )
-                for f in files
-            ]
+            starts, ends = entry_time_bounds(files)
+            self._file_ts_cache[cache_key] = list(zip(starts, ends, files))
         file_ranges = self._file_ts_cache[cache_key]
 
         # File overlaps if it starts before range ends AND ends after range starts

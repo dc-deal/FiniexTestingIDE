@@ -140,9 +140,10 @@ classifier cannot know whose data surrounds a gap.
 ### What the report lists
 
 A venue's published history holds tens of thousands of gaps — `kraken_spot/BTCUSD` 117,757, LTCUSD
-375,682, against about 400 for an MT5 symbol with one year of our own collection — and a report
-that printed every moderate and large one ran to 61,178 lines. The report lists the **newest ten of
-each category**, newest first, one line each, and counts the rest by year and data origin:
+375,682, against about 400 for an MT5 symbol with one year of our own collection (measured
+2026-10-15) — and a report that printed every moderate and large one ran to 61,178 lines. The report
+lists the **newest ten of each category**, newest first, one line each, and counts the rest by year
+and data origin:
 
 ```
 🔴 LARGE — the last 10 of 1,034
@@ -169,8 +170,14 @@ Every tick file carries its **origin class** (`production`, `development`, `unkn
 and a gap takes the class of the file it lies in or follows. In a venue's published history
 (`external`) no collector of ours was running: a gap there is a stretch in which nobody traded at
 the venue, and there is nothing to re-collect — the line says so and the recommendations leave it
-out. Where the class before and after a gap differ, the gap is the **seam** between two origins and
-is named as such. A gap no tick file could be found for is `unattributed`.
+out. Where the class before and after a gap differ, the gap is the **seam** between two origins: the
+line reads "where the external data ends and the production data begins", and the gaps route serves
+two different classes in `origin_class` and `origin_class_after`. A gap no tick file could be found
+for is `unattributed`, and a report holding one closes with "Not judged" rather than a clean bill.
+
+A gap starts at the open of the last bar before it, and that bar's ticks run on to its end, so the
+file before a gap is the last one that opened before that bar closed — a file whose first tick falls
+inside the bar holds the data before the gap.
 
 ### What a run asks of the report, and what it costs
 
@@ -178,7 +185,8 @@ Every batch loads each symbol's report from the cache once and asks it, per scen
 contains the scenario's start and which gaps lie inside its tick stretch. Both questions are a
 binary search over the gaps' start times (`gap_timeline.py`), because a linear scan grew with the
 archive's depth: 166 ms per scenario on BTCUSD's 117,757 gaps against 0.7 ms on an MT5 symbol
-(measured 2026-10-15). The cache is read column by column for the same reason — 480 ms for BTCUSD
+(measured 2026-10-15). The search is built once per symbol and batch — 29 ms for BTCUSD, 102 ms for
+LTCUSD's 375,682 gaps. The cache is read column by column for the same reason — 480 ms for BTCUSD
 where the row-by-row read took 3.4 s. Nothing the report adds for a reader (origin, listing,
 summary) runs on that path.
 
@@ -232,7 +240,9 @@ a judgment, and it stays with the reader.
 
 Resolved **at render time, from the tick index** — like the version spans below, and for the same
 reason: the batch validation path never renders the report and must not pay for the index load. The
-origin class is read from the same entries in the same pass, and the index is read once per report.
+origin class is read from the same entries in the same pass, and the index is read once per report —
+loaded, never built: an index that cannot be read leaves the gaps unattributed rather than a report,
+or an API request, rebuilding it.
 
 ### Data format version spans
 

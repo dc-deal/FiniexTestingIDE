@@ -928,7 +928,7 @@ def _report_with_origins() -> DataCoverageReport:
 class TestGapsSayWhoseSilenceTheyAre:
     """A venue's history holds tens of thousands of gaps in which nobody traded; ours, a few."""
 
-    def _get(self, client, query=''):
+    def _get(self, client, query='', status=200):
         cache = MagicMock()
         cache.get_report.return_value = _report_with_origins()
         with (
@@ -937,7 +937,7 @@ class TestGapsSayWhoseSilenceTheyAre:
             patch.object(DataCoverageReport, 'attribute_gaps'),
         ):
             r = client.get(f'/api/v1/brokers/kraken_spot/symbols/BTCUSD/gaps{query}')
-        assert r.status_code == 200, r.text
+        assert r.status_code == status, r.text
         return r.json()
 
     def test_every_gap_carries_its_origin_and_the_seam_its_second(self, client):
@@ -963,6 +963,16 @@ class TestGapsSayWhoseSilenceTheyAre:
         gaps = self._get(client, '?since=2026-01-24T14:00:00')['gaps']
         assert [g['start'] for g in gaps] == ['2026-01-24T14:00:00+00:00',
                                               '2026-09-20T19:00:00+00:00']
+
+    def test_a_since_that_is_no_iso_timestamp_is_refused(self, client):
+        # Read as a datetime parameter, a bare year became Unix seconds in 1970, and the filter
+        # silently served every gap
+        body = self._get(client, '?since=2026', status=400)
+        assert body['error'] == 'invalid_timestamp'
+
+    def test_a_since_in_the_basic_iso_form_reads_as_that_day(self, client):
+        gaps = self._get(client, '?since=20260901')['gaps']
+        assert [g['start'] for g in gaps] == ['2026-09-20T19:00:00+00:00']
 
 
 # ---------------------------------------------------------------------------

@@ -16,6 +16,7 @@ from typing import Any, Dict, List, Optional
 from python.framework.types.api.report_types import AbsentUnitRow, UnitRoster
 from python.framework.types.autotrader_types.autotrader_result_types import AutoTraderResult
 from python.framework.types.batch_execution_types import BatchExecutionSummary
+from python.framework.types.data_deficiency_types import DataDeficiency
 from python.framework.types.disturbance_episode_types import DisturbanceEpisode, MarketDataTickStats
 from python.framework.types.live_types.broker_truth_types import BrokerTruthRecord
 from python.framework.types.performance_types.performance_stats_types import (
@@ -52,6 +53,10 @@ class RunUnit:
                                     # API is addressed by, so a consumer can link unit → chart.
     data_sentiment_type: str = ''   # sentiment feed label (#429 sim scenario / #438 mock session; '' if none)
     has_error: bool = False         # hybrid: partial data + error (sim) / emergency (live)
+    # The unit read at least one archived tick file without a quote (the `no_quote` deficiency
+    # the tick index measures): its fills crossed no recorded spread. Sim only — a live session
+    # reads its venue's feed, which carries the quote unless the profile switched it off.
+    input_without_quote: bool = False
     trade_history: List[TradeRecord] = field(default_factory=list)
     # Positions still OPEN when the unit ended (#492). A run end no longer flattens, so
     # this is a normal outcome rather than a failure — and it is what the portfolio
@@ -126,6 +131,8 @@ def run_units_from_batch(batch: BatchExecutionSummary) -> List[RunUnit]:
             data_broker_type=scenario.data_broker_type,
             data_sentiment_type=scenario.data_sentiment_type,
             has_error=bool(result.error_type or result.error_message),
+            input_without_quote=any(DataDeficiency.NO_QUOTE in deficiencies
+                                    for deficiencies in scenario.data_deficiencies),
             trade_history=tick_loop.trade_history or [],
             open_positions=tick_loop.open_positions or [],
             order_history=tick_loop.order_history or [],

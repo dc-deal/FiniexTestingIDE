@@ -44,7 +44,15 @@ CHANGES: List[str] = [
     "The gaps answer's key is replaced by keys, one entry per list: gaps by start, gaps_by_year by "
     "year and origin_class",
     "Two query parameters narrow the gaps, never the counts or gaps_by_year: origin_class and "
-    "since (the gaps that start at or after it)",
+    "since (the gaps that start at or after it; anything not ISO-8601 is refused with 400 "
+    "invalid_timestamp)",
     "A gap's reason no longer guesses at a cause: 'check data collection' and "
-    "'restart/connection?' are gone, because the reason cannot know whose data surrounds a gap",
+    "'restart/connection?' are gone, because the reason cannot know whose data surrounds a gap "
+    "(a coverage cache built before this contract serves the old words until it is rebuilt)",
+    "GET /api/v1/reports/runs/{run_id}/trade-history: every scenario_totals row carries "
+    "total_spread_cost — the unit's measured spread cost summed, null where the unit read data "
+    "without a quote and on a run recorded before this contract",
+    "The portfolio's total_spread_cost follows the same rule and is now nullable: null for a unit "
+    "that read data without a quote, and on the aggregated portfolio — with avg_spread — null as "
+    "soon as one unit's is",
 ]

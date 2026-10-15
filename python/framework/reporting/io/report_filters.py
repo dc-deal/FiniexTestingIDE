@@ -50,12 +50,16 @@ def filter_trade_history_report(
             continue
         rows.append(row)
 
+    # Which units read input without a quote is known only where the report was built; its
+    # totals carry that as a None spread total, so a filtered view keeps it.
+    without_quote = {totals.scenario_name for totals in report.scenario_totals
+                     if totals.total_spread_cost is None}
     symbols = sorted({row.symbol for row in rows})
     return TradeHistoryReport(
         run_id=report.run_id,
         trades=rows, count=len(rows), symbols=symbols,
         analytics=aggregate_trade_analytics(rows),
-        scenario_totals=aggregate_trade_scenario_totals(rows))
+        scenario_totals=aggregate_trade_scenario_totals(rows, without_quote))
 
 
 def filter_order_history_report(

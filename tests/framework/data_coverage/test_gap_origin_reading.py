@@ -182,7 +182,9 @@ class TestRecommendationsAreForOurOwnCollection:
         report = _report('kraken_spot', _gap(T, 5.1, GapCategory.LARGE, None,
                                              file_before=None, file_after=None))
         assert report.get_recommendations() == []
-        assert 'could not be matched to a tick file' in report.generate_report()
+        closing = report.generate_report().strip('\n=').split('\n')[-1]
+        assert 'could not be matched to a tick file' in closing
+        assert closing.startswith('⚠️  Not judged') and '✅' not in closing
 
 
 @pytest.mark.usefixtures('unread_index')

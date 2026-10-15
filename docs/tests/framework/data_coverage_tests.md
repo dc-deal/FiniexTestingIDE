@@ -100,7 +100,7 @@ scans answered. The scans are reproduced in the test as they stood.
 **TestTheSearchAnswersWhatTheScanAnswered:** over random archives of non-overlapping gaps, adjacent
 split segments included, at every edge, a second either side of it and at random instants — the
 containing gap, the gaps inside a window, and a window exactly on a gap's edges. Counter-checked:
-a search off by one at the edges disagrees with the scan at 453 probe moments.
+a search off by one at the edges disagrees with the scan at 453 probe moments (measured 2026-10-15).
 
 **TestTheEdges:** a moment on an edge is not inside · the seam between two split segments is in
 neither · an unsorted list is sorted first · a gap without a time is left out · no gaps answer

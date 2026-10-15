@@ -15,8 +15,7 @@ for the index.
 
 from typing import Dict, List
 
-import pandas as pd
-
+from python.data_management.index.index_entry_times import entry_time_bounds
 from python.framework.types.coverage_report_types import DataFormatVersionSpan
 
 
@@ -33,10 +32,9 @@ def build_version_spans(entries: List[Dict]) -> List[DataFormatVersionSpan]:
     """
     spans: List[DataFormatVersionSpan] = []
 
-    for entry in entries:
+    starts, ends = entry_time_bounds(entries)
+    for entry, start_time, end_time in zip(entries, starts, ends):
         version = entry.get('data_format_version', 'unknown')
-        start_time = pd.to_datetime(entry['start_time'], utc=True)
-        end_time = pd.to_datetime(entry['end_time'], utc=True)
         tick_count = int(entry['tick_count'])
 
         # Extend the open span while the version holds
