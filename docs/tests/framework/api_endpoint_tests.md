@@ -237,6 +237,18 @@ read the ledger and only the ledger.
 | `test_empty_categories_are_not_reported` | A zero count is noise; the reader wants what DID happen |
 | `test_missing_report_is_a_404` | No coverage report is a 404, not an empty success |
 
+## TestGapsSayWhoseSilenceTheyAre — `/brokers/{broker}/symbols/{symbol}/gaps` (#599)
+
+A venue's history holds tens of thousands of gaps in which nobody traded; our own collection a few.
+The report's gaps carry their origin already, the tick-index read is replaced.
+
+| Test | Description |
+|------|-------------|
+| `test_every_gap_carries_its_origin_and_the_seam_its_second` | `origin_class` and `origin_class_after` per gap; they differ only at a seam |
+| `test_the_yearly_summary_counts_per_origin_and_declares_its_key` | `gaps_by_year` per year and origin, and `keys` names both lists' keys |
+| `test_origin_class_narrows_the_gaps_and_never_the_overview` | The filter cuts `gaps`; `gap_counts` and `gaps_by_year` stay those of the whole archive |
+| `test_since_keeps_the_gaps_that_start_at_or_after_it` | A gap starting exactly at `since` is kept, an earlier one dropped |
+
 ## TestAtrIndicator — `/brokers/{broker}/symbols/{symbol}/indicators/atr`
 
 | Test | Description |

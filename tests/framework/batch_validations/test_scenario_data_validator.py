@@ -7,11 +7,16 @@ Covers:
   a range is present
 - the data-origin gate (#518) — which origins a scenario may READ, and the warning that
   measures what arming the gate would cost before it is armed
+- the gap checks (#599) — a start inside a gap and the gaps inside a tick stretch, asked of the
+  report by time window rather than by scanning every gap, with unchanged conclusions
 """
 
-from datetime import datetime, timezone
-from unittest.mock import MagicMock
+from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
+from unittest.mock import MagicMock, patch
 
+from python.framework.discoveries.data_coverage.data_coverage_report import DataCoverageReport
+from python.framework.types.coverage_report_types import Gap, GapCategory
 from python.framework.validators.scenario_data_validator import ScenarioDataValidator
 
 
@@ -213,3 +218,90 @@ class TestTheDataOriginGate:
     def test_a_scenario_that_loaded_nothing_is_not_judged(self):
         assert _origin_validator(['production'])._validate_data_origin(
             _origin_scenario([], [])) == []
+
+
+GAP_T = datetime(2026, 3, 4, 10, 0, tzinfo=timezone.utc)
+
+
+def _gap_at(start: datetime, minutes: float, category: GapCategory) -> Gap:
+    """
+    A gap of a category and a length.
+
+    Args:
+        start: Gap start
+        minutes: Length in minutes
+        category: Its category
+
+    Returns:
+        The gap
+    """
+    return Gap(gap_seconds=minutes * 60, category=category, reason='test',
+               gap_start=start, gap_end=start + timedelta(minutes=minutes))
+
+
+def _gap_validator() -> ScenarioDataValidator:
+    """A validator that allows weekend, holiday and short gaps inside a tick stretch."""
+    app_config = MagicMock()
+    app_config.get_allowed_gap_categories.return_value = ['weekend', 'holiday', 'short']
+    app_config.get_admitted_origin_classes.return_value = []
+    return ScenarioDataValidator(
+        data_coverage_reports={}, app_config=app_config, logger=MagicMock())
+
+
+def _gap_report(*gaps: Gap) -> DataCoverageReport:
+    """A real coverage report holding the given gaps — its window queries are the real ones."""
+    report = DataCoverageReport(symbol='BTCUSD', broker_type='kraken_spot')
+    report.gaps = list(gaps)
+    return report
+
+
+class TestTheGapChecksSearchTheReport:
+    """
+    A symbol with years of a venue's history holds hundreds of thousands of gaps, and these two
+    checks run once per scenario: they ask the report by time window now instead of scanning
+    every gap (#599). What they conclude must not change.
+    """
+
+    def test_a_start_inside_a_short_gap_moves_to_its_end(self):
+        gap = _gap_at(GAP_T, 10, GapCategory.SHORT)
+        scenario = SimpleNamespace(start_date=GAP_T + timedelta(minutes=4))
+
+        errors, warnings = _gap_validator()._validate_start_date_not_in_gap(
+            scenario, _gap_report(gap))
+
+        assert errors == []
+        assert scenario.start_date == gap.gap_end
+        assert warnings and warnings[0].startswith('start_date shifted')
+
+    def test_a_start_inside_a_large_gap_is_an_error(self):
+        scenario = SimpleNamespace(start_date=GAP_T + timedelta(hours=1))
+
+        errors, warnings = _gap_validator()._validate_start_date_not_in_gap(
+            scenario, _gap_report(_gap_at(GAP_T, 300, GapCategory.LARGE)))
+
+        assert warnings == [] and 'is inside large gap' in errors[0]
+
+    def test_a_start_on_a_gap_s_edge_is_not_inside_it(self):
+        scenario = SimpleNamespace(start_date=GAP_T)
+
+        errors, warnings = _gap_validator()._validate_start_date_not_in_gap(
+            scenario, _gap_report(_gap_at(GAP_T, 300, GapCategory.LARGE)))
+
+        assert (errors, warnings) == ([], [])
+        assert scenario.start_date == GAP_T
+
+    def test_a_stretch_reports_only_the_forbidden_gaps_wholly_inside_it(self):
+        first, last = GAP_T, GAP_T + timedelta(days=1)
+        inside_large = _gap_at(GAP_T + timedelta(hours=2), 300, GapCategory.LARGE)
+        inside_short = _gap_at(GAP_T + timedelta(hours=9), 10, GapCategory.SHORT)
+        across_the_end = _gap_at(last - timedelta(hours=1), 300, GapCategory.LARGE)
+        scenario = SimpleNamespace(name='scenario_1')
+        package = SimpleNamespace(ticks={'scenario_1': object()})
+
+        with patch('python.framework.validators.scenario_data_validator.'
+                   'time_range_from_transport_ticks', return_value=(first, last)):
+            errors = _gap_validator()._validate_tick_stretch(
+                scenario, _gap_report(inside_large, inside_short, across_the_end), package)
+
+        assert len(errors) == 1
+        assert inside_large.gap_start.strftime('%Y-%m-%d %H:%M:%S') in errors[0]

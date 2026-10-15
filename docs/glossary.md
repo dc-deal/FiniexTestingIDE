@@ -561,17 +561,23 @@ three field names. See [API Server](architecture/api_server_architecture.md).
 configuration (`scenario_name` in the file). A scenario set is the file holding a `global` block and
 the scenarios (`scenario_set_name`). See [Process Execution](process_execution_guide.md).
 
-**seq** · **submitted_seq** (on an order event) — `seq` numbers a run unit's order events and IS the
-order of the stream; never sort by time instead, because several steps often carry the same instant.
-`submitted_seq` is the `seq` of the submission an event belongs to — of the adoption, for an adopted
-order — and is how the steps of one order are grouped, since the *order id* repeats across a
-position's orders.
+**seam** (of data origins) — Where one origin's tick files end and another's begin: Kraken's
+published history and our first collected tick, for instance. A gap there takes the origin class
+of the file before it, and the coverage report and the gaps route name it a seam (`origin_class`
+and `origin_class_after` differ). Not the seam of the code — a point where a later change attaches,
+such as the hard stop's hook for its latch — which stays inside the code and its documents.
 
 **security study** — The *acceptance study* that provokes the account's protective rules with real
 money — the order guard's refusals and cooldown, the circuit breaker's soft block and hard stop,
 the risk baseline across a restart — in a sequence of sessions called *stages*, and certifies each
 rule live, offline or as waiting for a margin account. See
 [Security Study](tests/security_cert/security_cert_guide.md).
+
+**seq** · **submitted_seq** (on an order event) — `seq` numbers a run unit's order events and IS the
+order of the stream; never sort by time instead, because several steps often carry the same instant.
+`submitted_seq` is the `seq` of the submission an event belongs to — of the adoption, for an adopted
+order — and is how the steps of one order are grouped, since the *order id* repeats across a
+position's orders.
 
 **server clock** (`server_clock`) — The clock a venue stamps its own data with, declared per broker
 in `market_config.json` as an IANA zone and the whole hours the server runs ahead of it. The MT5

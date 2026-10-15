@@ -2,16 +2,28 @@
 
 Bars stop for several different reasons, and from a duration alone you cannot tell which. Two hours
 of nothing on a Sunday is a market that was shut; two hours of nothing on a Wednesday afternoon is
-collection that failed. Present them alike and you will either raise an alarm every weekend or
-quietly miss real data loss. This route names every interruption in a symbol's archive and gives
-each one a **category**, so the difference is read off the answer instead of inferred from a
+collection that failed — or, in a venue's published history, an afternoon nobody traded. Present
+them alike and you will either raise an alarm every weekend or quietly miss real data loss. This
+route names every interruption in a symbol's archive, gives each one a **category**, and says
+**whose data** it lies in, so the difference is read off the answer instead of inferred from a
 number.
 
 **Routes**
 
 ```
 GET /api/v1/brokers/{broker}/symbols/{symbol}/gaps
+GET /api/v1/brokers/{broker}/symbols/{symbol}/gaps?origin_class=production&since=2026-01-01
 ```
+
+| Parameter | Narrows `gaps` to |
+|---|---|
+| `origin_class` | the gaps in data of that origin class — see [whose silence it is](#whose-silence-it-is) |
+| `since` | the gaps that start at or after this instant, ISO-8601; a value without an offset is read as UTC |
+
+Both are optional, and without them every gap is served. They narrow `gaps` only: `gap_counts` and
+`gaps_by_year` always describe the whole archive, so the overview stays whole while the list is
+cut to what you asked for. A symbol with years of a venue's history holds tens of thousands of
+gaps, so a consumer interested in recent collection asks for it rather than reading everything.
 
 **What is not here:** the data itself, and the span it lies in. Which venues and symbols exist,
 what range they cover and the bars themselves are in [market data](/api/v1/docs/market-data). This
@@ -29,7 +41,8 @@ it. An answer per timeframe would be the same answer, repeated.
 
 ```json
 {"start": "2026-02-13T21:59:47+00:00", "end": "2026-02-16T22:03:11+00:00",
- "seconds": 259404.0, "category": "weekend", "reason": "…"}
+ "seconds": 259404.0, "category": "weekend", "reason": "…",
+ "origin_class": "production", "origin_class_after": "production"}
 ```
 
 | Field | Meaning |
@@ -38,14 +51,51 @@ it. An answer per timeframe would be the same answer, repeated.
 | `seconds` | how long it lasted |
 | `category` | what kind of interruption it was |
 | `reason` | the same judgement as a sentence, for a person to read |
+| `origin_class` | whose data the gap lies in — the origin class of the tick file it lies in or follows; null where no tick file could be found for it |
+| `origin_class_after` | the origin class of the tick file after the gap — different from `origin_class` only at a seam |
 
-`key` is `["start"]`: a gap is identified by **when it opened**. Two gaps of one symbol cannot open
-at the same instant, and the category is a classification of the same interruption rather than a
-second one. See [row keys](/api/v1/docs/row-keys).
+`keys.gaps` is `["start"]`: a gap is identified by **when it opened**. Two gaps of one symbol cannot
+open at the same instant, and the category is a classification of the same interruption rather than
+a second one. See [row keys](/api/v1/docs/row-keys).
 
 `reason` is written for whoever reads the answer, not to be parsed — branch on `category`. It
 begins with a status icon, names the classification with the measured duration, and ends with the
-bar timeframe the gap was detected at, in brackets.
+bar timeframe the gap was detected at, in brackets. It gives no advice: whether a gap calls for
+checking the collector depends on whose data it lies in, which `origin_class` says.
+
+## Whose silence it is
+
+| `origin_class` | The data was recorded by | A gap in it is |
+|---|---|---|
+| `production` | a collector of ours in production | an interruption of our collection — worth looking into when it is long |
+| `development` | a collector of ours in development | the same, on a development instance |
+| `unknown` | a collector nobody has named | not attributable to an instance |
+| `external` | nobody of ours — a venue's published history | a stretch in which nobody traded at the venue; there is nothing to re-collect |
+
+`null` means no tick file could be found for the gap — at the very edge of the archive, typically.
+Where `origin_class` and `origin_class_after` differ, the gap is the **seam** between two origins,
+such as the end of a venue's history and our first collected tick.
+
+A venue's history from the years when the market was thin holds a great many such silences: one
+symbol's archive can carry a hundred thousand gaps in `external` data against a few hundred in our
+own. `gaps_by_year` keeps the two apart.
+
+## Per year and origin — `gaps_by_year`
+
+```json
+{"gaps_by_year": [
+   {"year": 2025, "origin_class": "external", "short": 66, "moderate": 5, "large": 1,
+    "hours_without_data": 21.9},
+   {"year": 2026, "origin_class": "production", "short": 365, "moderate": 3, "large": 2,
+    "hours_without_data": 46.7}],
+ "keys": {"gaps": ["start"], "gaps_by_year": ["year", "origin_class"]}}
+```
+
+The gaps that mean missing data — `short`, `moderate`, `large` — counted per year and origin class,
+with the hours they span; weekend and holiday closures are not counted, they are a market's expected
+silence. A gap belongs to the year it **started** in. `keys.gaps_by_year` is `["year",
+"origin_class"]`: a year holds one row per origin, and keying on the year alone folds them together.
+Always over the whole archive, whatever the filters.
 
 ## The categories
 
@@ -54,7 +104,7 @@ bar timeframe the gap was detected at, in brackets.
 | `seamless` | under five seconds — continuity, not an interruption |
 | `weekend` | the venue's regular weekend closure |
 | `holiday` | a closure of twenty hours or more containing a market holiday |
-| `short` | a brief interruption, by default under thirty minutes — a restart or a dropped connection |
+| `short` | a brief interruption, by default under thirty minutes |
 | `moderate` | longer, by default under four hours |
 | `large` | anything above that — worth looking into |
 

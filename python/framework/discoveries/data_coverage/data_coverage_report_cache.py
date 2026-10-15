@@ -15,7 +15,7 @@ import json
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 
 import pandas as pd
 import pyarrow as pa
@@ -244,19 +244,26 @@ class DataCoverageReportCache:
                 metadata.get(b'gap_counts', b'{}').decode()
             )
 
-            # Hydrate gaps from DataFrame
-            report.gaps = []
-            for _, row in df.iterrows():
-                gap = Gap(
-                    gap_seconds=float(row['gap_seconds']),
-                    category=GapCategory(row['category']),
-                    reason=row['reason'],
-                    gap_start=row['gap_start'].to_pydatetime(
-                    ) if pd.notna(row['gap_start']) else None,
-                    gap_end=row['gap_end'].to_pydatetime() if pd.notna(
-                        row['gap_end']) else None,
+            # Hydrate gaps column by column. A venue's published history holds hundreds of
+            # thousands of gaps, and row by row this cost 3.4 s for kraken_spot BTCUSD's
+            # 117,757 — paid by every run that validates a scenario on the symbol (measured
+            # 2026-10-15). A cache with no gaps has untyped columns, so it is read as empty.
+            report.gaps = [] if df.empty else [
+                Gap(
+                    gap_seconds=seconds,
+                    category=_CATEGORY_BY_VALUE[category],
+                    reason=reason,
+                    gap_start=start,
+                    gap_end=end,
                 )
-                report.gaps.append(gap)
+                for seconds, category, reason, start, end in zip(
+                    df['gap_seconds'].astype(float).tolist(),
+                    df['category'].tolist(),
+                    df['reason'].tolist(),
+                    _datetimes_or_none(df['gap_start']),
+                    _datetimes_or_none(df['gap_end']),
+                )
+            ]
 
             return report
 
@@ -439,3 +446,22 @@ class DataCoverageReportCache:
         print(f"  ⚠️  Stale:    {status['stale_symbols']}")
         print(f"  ❌ Missing:  {status['missing_symbols']}")
         print('='*60 + '\n')
+
+
+# A cached category value back to its member, without an enum lookup per gap
+_CATEGORY_BY_VALUE = {category.value: category for category in GapCategory}
+
+
+def _datetimes_or_none(column: pd.Series) -> List[Optional[datetime]]:
+    """
+    A cached time column as UTC datetimes, an empty cell as None.
+
+    Args:
+        column: A datetime column of the cache file
+
+    Returns:
+        One datetime (or None) per row, in row order
+    """
+    missing = column.isna().tolist()
+    values = column.dt.to_pydatetime().tolist()
+    return [None if gone else value for value, gone in zip(values, missing)]

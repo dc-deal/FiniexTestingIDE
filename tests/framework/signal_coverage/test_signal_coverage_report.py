@@ -432,3 +432,26 @@ class TestEmptySource:
 
         assert report.snapshot_count == 1
         assert report.gaps == []
+
+
+class TestTheGapListing:
+    """
+    The signal report lists by the rule the tick report lists by (#599): the newest gaps of each
+    category, newest first, the rest counted — it printed every moderate and large gap before.
+    """
+
+    def test_the_newest_ten_are_listed_and_the_rest_counted(self, tmp_path):
+        moments = []
+        cursor = datetime(2026, 7, 1, tzinfo=timezone.utc)
+        for _ in range(15):
+            moments += _grid(cursor, 3)
+            cursor = moments[-1] + timedelta(hours=2)
+        moments += _grid(cursor, 3)
+        report = SignalCoverageReport('crypto_sentiment', 'BTCUSD')
+        report.analyze([_write_series(tmp_path, moments)])
+
+        text = report.generate_report()
+
+        assert 'LARGE — the last 10 of 15' in text
+        listed = [line for line in text.split('\n') if line.startswith('   2026-07')]
+        assert len(listed) == 10 and listed == sorted(listed, reverse=True)

@@ -5,8 +5,9 @@ Validates time range coverage and detects gaps in tick data
 Gap detection and human-readable coverage reports
 """
 
+from collections import Counter
 from datetime import datetime
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 import pandas as pd
 
@@ -19,7 +20,14 @@ from python.framework.discoveries.data_coverage.gap_file_attribution import (
     ROLLOVER_TOLERANCE_S,
     attribute_gaps_to_files,
 )
-from python.framework.types.coverage_report_types import Gap
+from python.framework.discoveries.data_coverage.gap_listing import (
+    MISSING_DATA_CATEGORIES,
+    gap_span,
+    recent_gap_listing,
+)
+from python.framework.discoveries.data_coverage.gap_timeline import GapTimeline
+from python.framework.types.config_types.data_origin_config_types import OriginClass
+from python.framework.types.coverage_report_types import Gap, GapYearOriginSummary
 from python.framework.types.trading_env_types.broker_types import BrokerType
 from python.framework.utils.market_calendar import GapCategory, MarketCalendar
 from python.framework.utils.time_utils import ensure_utc_aware, format_duration
@@ -33,6 +41,13 @@ DAY_SCALE_THRESHOLD_H = 24
 
 # Mon-Fri — the unit a gap is measured in on a market that closes
 TRADING_DAYS_PER_WEEK = 5
+
+# The broker types whose collector is the MQL5 TickCollector — the only ones its advice is for
+_MT5_BROKER_VALUES = {
+    BrokerType.MT5_FOREX.value, BrokerType.MT5_CFD.value, BrokerType.MT5_CRYPTO.value}
+
+# What a gap no tick file could be found for is called where an origin class would stand
+UNATTRIBUTED_LABEL = 'unattributed'
 
 
 class DataCoverageReport:
@@ -54,7 +69,6 @@ class DataCoverageReport:
         Args:
             symbol: Trading symbol
             broker_type: Broker type identifier (e.g., 'mt5', 'kraken_spot')
-            data_dir: Data directory for bar access (optional, for intra-file gaps)
         """
         self.symbol = symbol
         self.broker_type = broker_type
@@ -66,6 +80,13 @@ class DataCoverageReport:
         market_config = MarketConfigManager()
         market_rules = market_config.get_market_rules_for_broker(broker_type)
         self._weekend_closure = market_rules.weekend_closure
+
+        # Whether the gaps carry their files and origin classes yet (render path only)
+        self._gaps_attributed = False
+        # This symbol's tick index entries, read on first use (render path only)
+        self._tick_index_entries: Optional[List[Dict]] = None
+        # The gaps in start order for window queries, built on first use
+        self._gap_timeline: Optional[GapTimeline] = None
 
         # Analysis results
         self.gaps: List[Gap] = []
@@ -207,40 +228,146 @@ class DataCoverageReport:
         """
         return self.gap_counts['moderate'] + self.gap_counts['large'] > 0
 
+    def gaps_in_window(self, start: datetime, end: datetime) -> List[Gap]:
+        """
+        Gaps fully contained in a window — the question a run's validation asks per scenario.
+
+        Args:
+            start: Window start (UTC-aware)
+            end: Window end (UTC-aware)
+
+        Returns:
+            The gaps whose start and end both fall inside the window, oldest first
+        """
+        return self._timeline().gaps_in_window(start, end)
+
+    def gap_containing(self, moment: datetime) -> Optional[Gap]:
+        """
+        The gap a moment lies strictly inside, if any.
+
+        Args:
+            moment: The instant to locate (UTC-aware)
+
+        Returns:
+            The gap with gap_start < moment < gap_end, or None
+        """
+        return self._timeline().gap_containing(moment)
+
+    def _timeline(self) -> GapTimeline:
+        """
+        The gaps in start order, built on first use and again whenever the gap list changed.
+
+        Returns:
+            The timeline over the current gap list
+        """
+        if self._gap_timeline is None or not self._gap_timeline.covers(self.gaps):
+            self._gap_timeline = GapTimeline(self.gaps)
+        return self._gap_timeline
+
     def get_recommendations(self) -> List[str]:
         """
-        Generate actionable recommendations based on gaps.
+        Generate actionable recommendations for the gaps of our OWN collection.
+
+        A gap in a venue's published history (`external`) is the venue's own silence: there is
+        nothing to re-collect and nothing to recommend. A gap no tick file could be found for is
+        not ours to judge either. The MT5 advice names the MQL5 TickCollector, so it is given
+        for an MT5 broker only. Render path: the gaps are attributed first.
 
         Returns:
             List of recommendation strings
         """
+        self.attribute_gaps()
+        collected = Counter(gap.category for gap in self.gaps if _is_collected(gap))
+        mt5 = self._broker_value() in _MT5_BROKER_VALUES
+
         recommendations = []
 
-        if self.gap_counts['short'] > 0:
+        if collected[GapCategory.SHORT] > 0:
             recommendations.append(
-                'Short gaps detected - likely MT5 restarts or connection blips (usually harmless)'
+                'Short gaps in our collection - likely MT5 restarts or connection blips '
+                '(usually harmless)' if mt5 else
+                'Short gaps in our collection - likely collector reconnects (usually harmless)'
             )
 
-        if self.gap_counts['moderate'] > 0:
-            recommendations.append(
-                'Check MQL5 TickCollector logs for moderate gaps'
-            )
-            recommendations.append(
-                'Verify broker connection stability during gap periods'
-            )
+        if collected[GapCategory.MODERATE] > 0:
+            if mt5:
+                recommendations.append(
+                    'Check MQL5 TickCollector logs for moderate gaps'
+                )
+                recommendations.append(
+                    'Verify broker connection stability during gap periods'
+                )
+            else:
+                recommendations.append(
+                    "Check the collector's logs for the moderate gaps listed above"
+                )
 
-        if self.gap_counts['large'] > 0:
+        if collected[GapCategory.LARGE] > 0:
             recommendations.append(
-                '🔴 Large gaps detected - consider re-collecting data for these periods'
+                '🔴 Large gaps in our collection - consider re-collecting data for these periods'
             )
-            recommendations.append(
-                'Check if MQL5 TickCollector was stopped intentionally'
-            )
-            recommendations.append(
-                'Review broker connection logs for extended outages'
-            )
+            if mt5:
+                recommendations.append(
+                    'Check if MQL5 TickCollector was stopped intentionally'
+                )
+                recommendations.append(
+                    'Review broker connection logs for extended outages'
+                )
+            else:
+                recommendations.append(
+                    "Check whether the collector was stopped, and the venue's status for those hours"
+                )
 
         return recommendations
+
+    def summary_by_year_and_origin(self) -> List[GapYearOriginSummary]:
+        """
+        The gaps that mean missing data, counted per year and data origin.
+
+        Computed here rather than in the printout, so every surface reads the same figures.
+        Render path: the gaps are attributed first, which reads the tick index once.
+
+        Returns:
+            One row per year and origin class: oldest year first, within a year the origin
+            classes in their declared order and the unattributed gaps last
+        """
+        self.attribute_gaps()
+        rows: Dict[Tuple[int, Optional[OriginClass]], GapYearOriginSummary] = {}
+        for gap in self.gaps:
+            if gap.category not in MISSING_DATA_CATEGORIES or gap.gap_start is None:
+                continue
+            key = (ensure_utc_aware(gap.gap_start).year, gap.origin_class)
+            row = rows.get(key)
+            if row is None:
+                row = GapYearOriginSummary(
+                    year=key[0], origin_class=key[1],
+                    short=0, moderate=0, large=0, hours_without_data=0.0)
+                rows[key] = row
+            if gap.category == GapCategory.SHORT:
+                row.short += 1
+            elif gap.category == GapCategory.MODERATE:
+                row.moderate += 1
+            else:
+                row.large += 1
+            row.hours_without_data += gap.gap_hours
+
+        declared = list(OriginClass)
+        return sorted(
+            rows.values(),
+            key=lambda row: (row.year, declared.index(row.origin_class)
+                             if row.origin_class is not None else len(declared))
+        )
+
+    def _broker_value(self) -> str:
+        """
+        The broker type as its string value — the report is built from either form.
+
+        Returns:
+            The broker type's value, e.g. 'mt5' or 'kraken_spot'
+        """
+        if isinstance(self.broker_type, BrokerType):
+            return self.broker_type.value
+        return str(self.broker_type)
 
     def _version_spans_section(self) -> List[str]:
         """
@@ -252,13 +379,9 @@ class DataCoverageReport:
         Returns:
             Report lines for the section
         """
-        tick_index = TickIndexManager()
-        tick_index.build_index()
-        entries = tick_index.get_symbol_entries(self.broker_type, self.symbol)
-
         lines = [f"\n{'─'*60}", 'DATA FORMAT VERSION:', f"{'─'*60}"]
 
-        spans = build_version_spans(entries)
+        spans = build_version_spans(self._tick_entries())
 
         if not spans:
             lines.append('   (no tick index entries for this symbol)')
@@ -281,20 +404,38 @@ class DataCoverageReport:
 
         return lines
 
-    def _attribute_gaps(self) -> None:
+    def attribute_gaps(self) -> None:
         """
-        Resolve which file(s) each gap falls in, from the tick index.
+        Resolve which file(s) each gap falls in, and whose data they are, from the tick index.
 
         Render path only, for the same reason as the version spans: the batch
         validation path never reads the attribution and must not pay for the
-        index load. No data file is opened.
+        index load. No data file is opened. Runs once per report — the listing, the
+        summary, the recommendations and the API's gap route all read it.
         """
-        tick_index = TickIndexManager()
-        tick_index.build_index()
-        entries = tick_index.get_symbol_entries(self.broker_type, self.symbol)
+        if self._gaps_attributed:
+            return
+        self._gaps_attributed = True
 
         server_clock = MarketConfigManager().get_server_clock(self.broker_type)
-        attribute_gaps_to_files(self.gaps, entries, server_clock)
+        attribute_gaps_to_files(self.gaps, self._tick_entries(), server_clock)
+
+    def _tick_entries(self) -> List[Dict]:
+        """
+        This symbol's tick index entries, read once per report.
+
+        Render path only: the version spans and the attribution both read them, and reading
+        the index is what they cost (measured 2026-10-15: 0.9 s on this archive).
+
+        Returns:
+            The entries, chronologically sorted
+        """
+        if self._tick_index_entries is None:
+            tick_index = TickIndexManager()
+            tick_index.build_index()
+            self._tick_index_entries = tick_index.get_symbol_entries(
+                self.broker_type, self.symbol)
+        return self._tick_index_entries
 
     def _gap_extent(self, gap: Gap) -> str:
         """
@@ -352,12 +493,15 @@ class DataCoverageReport:
 
     def _gap_location(self, gap: Gap) -> str:
         """
-        Describe where a gap sits relative to the collector's files.
+        Describe where a gap sits and whose silence it is.
 
-        States the observation, never the conclusion: a boundary reports how long
-        after the gap started collection resumed, and whether that was the file
-        rolling over. Whether a pause was the venue or the operator is a judgment
-        and stays with the reader.
+        The data's origin decides the reading. In a venue's published history (`external`)
+        no collector of ours was running: a gap there is a stretch in which nobody traded at
+        the venue, and there is nothing to re-collect. Only in a file our collector wrote does
+        the file layout say something about the collector — and then it states the
+        observation, never the conclusion: a boundary reports how long after the gap started
+        collection resumed, and whether that was the file rolling over. Whether a pause was
+        the venue or the operator is a judgment and stays with the reader.
 
         Args:
             gap: The gap to describe
@@ -368,19 +512,65 @@ class DataCoverageReport:
         if gap.file_before is None or gap.file_after is None:
             return 'unattributed (no tick index entry)'
 
-        if gap.file_before == gap.file_after:
-            return f'Intra-file — {gap.file_before} (collector was running)'
+        if gap.is_origin_seam:
+            return (f'where the {gap.origin_class_before.value} data ends and the '
+                    f'{gap.origin_class_after.value} data begins')
 
-        transition = f'File boundary — {gap.file_before} → {gap.file_after}'
+        if gap.origin_class == OriginClass.EXTERNAL:
+            if gap.file_before == gap.file_after:
+                return f'inside {gap.file_before} — no trades at the venue, nothing to re-collect'
+            return "between two files of the venue's history — no trades at the venue"
+
+        if gap.file_before == gap.file_after:
+            return f'inside {gap.file_before}, the collector was running'
 
         resumed = gap.next_file_opened_after_s
         if resumed is None:
-            return transition
+            return 'between two files'
 
         if abs(resumed) < ROLLOVER_TOLERANCE_S:
-            return f'{transition} (rollover, collection continued)'
+            return 'between two files, at a rollover — collection continued'
 
-        return f'{transition} (collection resumed {format_duration(resumed)} later)'
+        return f'between two files, collection resumed {format_duration(resumed)} later'
+
+    def _gap_line(self, gap: Gap) -> str:
+        """
+        One gap on one line: when, how long, where, and whose data it lies in.
+
+        Args:
+            gap: The gap to describe
+
+        Returns:
+            The report line
+        """
+        line = f'   {gap_span(gap)}{self._gap_extent(gap):<24}  {self._gap_location(gap)}'
+
+        trading_loss = self._trading_time_lost(gap)
+        if trading_loss:
+            line += f' · lost {trading_loss}'
+
+        return f'{line}   [{_origin_label(gap.origin_class)}]'
+
+    def _summary_section(self) -> List[str]:
+        """
+        Render the yearly summary by data origin.
+
+        Returns:
+            Report lines for the section
+        """
+        lines = [
+            f"\n{'─'*60}",
+            'BY YEAR AND ORIGIN (short · moderate · large, and the hours without data):',
+            f"{'─'*60}",
+            f"   {'year':<6}{'origin':<14}{'short':>9}{'moderate':>10}{'large':>8}{'hours':>12}",
+        ]
+        for row in self.summary_by_year_and_origin():
+            lines.append(
+                f'   {row.year:<6}{_origin_label(row.origin_class):<14}'
+                f'{row.short:>9,}{row.moderate:>10,}{row.large:>8,}'
+                f'{row.hours_without_data:>12,.1f}'
+            )
+        return lines
 
     def generate_report(self) -> str:
         """
@@ -471,66 +661,86 @@ class DataCoverageReport:
                 f"({', '.join(holiday_dates)})"
             )
 
-        # === SECTION 4: Detailed Gap List ===
-        problematic_gaps = [g for g in self.gaps if g.category in [
-            GapCategory.MODERATE, GapCategory.LARGE]]
+        # === SECTION 4: The most recent gaps of each category ===
+        # A decade of a venue's history holds tens of thousands of gaps; the report lists the
+        # newest of each category and counts the rest by year and origin below.
+        missing = [g for g in self.gaps if g.category in MISSING_DATA_CATEGORIES]
 
-        if problematic_gaps:
+        if missing:
+            self.attribute_gaps()
+
             report.append(f"\n{'─'*60}")
-            report.append('⚠️  GAP DETAILS:')
+            report.append('GAPS — the most recent of each category, newest first:')
             report.append(f"{'─'*60}")
+            report.extend(recent_gap_listing(missing, self._gap_line))
 
-            self._attribute_gaps()
-
-            for gap in problematic_gaps:
-                report.append(
-                    f'\n{gap.severity_icon} {gap.category.value.upper()} GAP:')
-
-                report.append(f'   Type:   {self._gap_location(gap)}')
-                report.append(
-                    f"   Start:  {gap.gap_start.strftime('%Y-%m-%d %H:%M:%S')} UTC")
-                report.append(
-                    f"   End:    {gap.gap_end.strftime('%Y-%m-%d %H:%M:%S')} UTC")
-
-                report.append(f'   Gap:    {self._gap_extent(gap)}')
-
-                trading_loss = self._trading_time_lost(gap)
-                if trading_loss:
-                    report.append(f'   Lost:   {trading_loss}')
-
-                report.append(f'   Reason: {gap.reason}')
-
-        # Show short gaps if present (compact format, capped display)
-        short_gaps = [g for g in self.gaps if g.category == GapCategory.SHORT]
-        if short_gaps:
-            max_display = 20
-            report.append(f"\n{'─'*60}")
-            report.append(
-                f'ℹ️  SHORT GAPS (< 30 min): {len(short_gaps)} total')
-            report.append(f"{'─'*60}")
-            for gap in short_gaps[:max_display]:
-                report.append(
-                    f"   {gap.gap_start.strftime('%Y-%m-%d %H:%M')} → "
-                    f"{gap.gap_end.strftime('%H:%M')} ({gap.duration_human})"
-                )
-            if len(short_gaps) > max_display:
-                report.append(
-                    f'   ... and {len(short_gaps) - max_display} more short gaps'
-                )
+            # === SECTION 4b: By year and origin ===
+            report.extend(self._summary_section())
 
         # === SECTION 5: Recommendations ===
         recommendations = self.get_recommendations()
 
         if recommendations:
             report.append(f"\n{'─'*60}")
-            report.append('💡 RECOMMENDATIONS:')
+            report.append('💡 RECOMMENDATIONS (our own collection):')
             report.append(f"{'─'*60}")
             for rec in recommendations:
                 report.append(f'   • {rec}')
-        else:
+        elif not missing:
             report.append(
                 '\n✅ All files form continuous timeline - no action needed!')
+        else:
+            report.append(f'\n✅ No gap in our own collection — {_no_action_reason(missing)}')
 
         report.append(f"{'='*60}\n")
 
         return '\n'.join(report)
+
+
+def _is_collected(gap: Gap) -> bool:
+    """
+    Whether a gap lies in data a collector recorded — ours, as opposed to a venue's published
+    history or a stretch no tick file could be found for.
+
+    Args:
+        gap: An attributed gap
+
+    Returns:
+        True for a gap whose origin class is known and not external
+    """
+    return gap.origin_class is not None and gap.origin_class != OriginClass.EXTERNAL
+
+
+def _origin_label(origin_class: Optional[OriginClass]) -> str:
+    """
+    The word a report line shows for an origin class.
+
+    Args:
+        origin_class: The gap's or the summary row's origin class, None when unattributed
+
+    Returns:
+        The class value, or the unattributed label
+    """
+    return origin_class.value if origin_class is not None else UNATTRIBUTED_LABEL
+
+
+def _no_action_reason(missing: List[Gap]) -> str:
+    """
+    Say why gaps exist and none of them calls for action — they all lie outside our own
+    collection.
+
+    Args:
+        missing: The gaps that mean missing data, none of them in collected data
+
+    Returns:
+        The reason, counted per kind
+    """
+    external = sum(1 for gap in missing if gap.origin_class == OriginClass.EXTERNAL)
+    unattributed = sum(1 for gap in missing if gap.origin_class is None)
+    parts = []
+    if external:
+        parts.append(f"{external:,} lie in the venue's own history (external): no trades at "
+                     f'the venue, nothing to re-collect')
+    if unattributed:
+        parts.append(f'{unattributed:,} could not be matched to a tick file')
+    return '; '.join(parts)

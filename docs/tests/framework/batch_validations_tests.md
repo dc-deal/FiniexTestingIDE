@@ -79,6 +79,25 @@ The guard must not swallow the checks it stands in front of.
 | `test_start_before_available_data_is_reported` | `start_date` earlier than the first tick → error naming BEFORE |
 | `test_end_after_available_data_is_reported` | `end_date` later than the last tick → error naming AFTER |
 
+#### `TestTheGapChecksSearchTheReport` (#599)
+
+The start-date and tick-stretch checks run once per scenario, and a symbol with years of a venue's
+history holds hundreds of thousands of gaps: they ask the report by time window now
+(`gap_containing`, `gaps_in_window`) instead of scanning every gap. A real report holds the gaps, so
+the window queries are the real ones; that they answer what the scans answered is pinned in
+`tests/framework/data_coverage/test_gap_timeline.py`.
+
+| Test | Description |
+|---|---|
+| `test_a_start_inside_a_short_gap_moves_to_its_end` | The start shifts to the gap's end, with a warning and no error |
+| `test_a_start_inside_a_large_gap_is_an_error` | An error naming the gap, no warning |
+| `test_a_start_on_a_gap_s_edge_is_not_inside_it` | On the edge there is data on one side: no finding, the start stays |
+| `test_a_stretch_reports_only_the_forbidden_gaps_wholly_inside_it` | A large gap inside is reported, a short one inside is allowed, one across the stretch's end is not judged |
+
+A test that drives the validator with a STUB report builds it through
+`tests/shared/coverage_report_stub.py`: a bare `MagicMock` would answer the window queries with
+another mock, which the validator reads as a gap.
+
 ### `test_broker_data_preparator.py`
 
 #### `TestGetValidBrokerScenarioMap`

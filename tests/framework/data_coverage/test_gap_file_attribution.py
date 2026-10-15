@@ -15,6 +15,7 @@ from python.framework.discoveries.data_coverage.gap_file_attribution import (
     parse_file_open_time,
 )
 from python.framework.types.config_types.market_config_types import ServerClockConfig
+from python.framework.types.config_types.data_origin_config_types import OriginClass
 from python.framework.types.coverage_report_types import Gap
 from python.framework.utils.market_calendar import GapCategory
 
@@ -187,3 +188,46 @@ class TestAttribution:
 
         assert gaps[0].file_before == 'BTC_20260728_000000.parquet'
         assert gaps[0].file_after == 'BTC_20260729_153354.parquet'
+
+
+class TestOrigin:
+    """Whose data surrounds a gap — read from the same index entries, in the same pass."""
+
+    def test_each_gap_carries_the_origin_class_of_the_files_around_it(self):
+        entries = [
+            dict(_entry('BTC_20260124_000000.parquet',
+                        '2026-01-24T00:00:00+00:00', '2026-01-24T14:18:52+00:00'),
+                 origin_class='external'),
+            dict(_entry('BTC_20260124_141946.parquet',
+                        '2026-01-24T14:19:46+00:00', '2026-01-25T00:00:00+00:00'),
+                 origin_class='production'),
+        ]
+        inside = _gap('2026-01-24T03:00:00+00:00', '2026-01-24T09:52:00+00:00')
+        seam = _gap('2026-01-24T14:18:52+00:00', '2026-01-24T14:19:46+00:00')
+
+        attribute_gaps_to_files([inside, seam], entries, UTC_CLOCK)
+
+        assert (inside.origin_class_before, inside.origin_class_after) == (
+            OriginClass.EXTERNAL, OriginClass.EXTERNAL)
+        assert (seam.origin_class_before, seam.origin_class_after) == (
+            OriginClass.EXTERNAL, OriginClass.PRODUCTION)
+        assert seam.is_origin_seam and not inside.is_origin_seam
+
+    def test_an_entry_without_a_known_class_reads_as_unknown(self):
+        entries = [dict(_entry('BTC_20260728_233104.parquet',
+                               '2026-07-28T23:31:04+00:00', '2026-08-02T09:30:53+00:00'),
+                        origin_class='not-a-class')]
+        gaps = [_gap('2026-07-29T15:33:54+00:00', '2026-07-29T20:43:12+00:00')]
+
+        attribute_gaps_to_files(gaps, entries, UTC_CLOCK)
+
+        assert gaps[0].origin_class == OriginClass.UNKNOWN
+
+    def test_a_gap_outside_the_indexed_range_gets_no_origin(self):
+        entries = [_entry('BTC_20260728_233104.parquet',
+                          '2026-07-28T23:31:04+00:00', '2026-08-02T09:30:53+00:00')]
+        gaps = [_gap('2026-07-01T00:00:00+00:00', '2026-07-02T00:00:00+00:00')]
+
+        attribute_gaps_to_files(gaps, entries, UTC_CLOCK)
+
+        assert gaps[0].origin_class is None

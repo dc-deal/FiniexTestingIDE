@@ -6,9 +6,13 @@ because FastAPI requires Pydantic for automatic OpenAPI schema generation
 and response serialization.
 """
 
+from typing import Optional
+
 from pydantic import BaseModel
 
 from python.framework.types.config_types.api_auth_config_types import AccountKind
+from python.framework.types.config_types.data_origin_config_types import OriginClass
+from python.framework.types.coverage_report_types import GapCategory
 from python.framework.types.machine_resources_types import LimitSource, PressureLevel
 
 
@@ -205,29 +209,55 @@ class IndicatorPointResponse(BaseModel):
 
 class GapResponse(BaseModel):
     """
-    One interruption in a symbol's archive, with what it was.
+    One interruption in a symbol's archive, with what it was and whose data it lies in.
 
     A venue outage and a quiet weekend are different facts, and `category` is what keeps
-    them apart — the reader never has to infer it from the duration.
+    them apart — the reader never has to infer it from the duration. `origin_class` says whose
+    silence it is: in a venue's published history (`external`) nobody of ours was collecting,
+    so a gap there is a stretch without trades at the venue, with nothing to re-collect.
     """
 
     start: str                  # ISO-8601 UTC
     end: str                    # ISO-8601 UTC
     seconds: float
-    category: str               # seamless | weekend | holiday | short | moderate | large
+    category: GapCategory
     reason: str
+    # The origin class of the tick file the gap lies in or follows; null when no tick file
+    # could be found for it
+    origin_class: Optional[OriginClass] = None
+    # The origin class of the tick file after the gap — it differs from `origin_class` only at
+    # a seam, where one origin's data ends and another's begins
+    origin_class_after: Optional[OriginClass] = None
+
+
+class GapYearResponse(BaseModel):
+    """The gaps that mean missing data, of one year and one data origin, counted per category."""
+
+    year: int                   # the year a gap STARTED in
+    # null for the gaps no tick file could be found for
+    origin_class: Optional[OriginClass] = None
+    short: int
+    moderate: int
+    large: int
+    hours_without_data: float
 
 
 class CoverageGapsResponse(BaseModel):
-    """Coverage span plus every gap inside it, categorised."""
+    """
+    Coverage span, the gap count per category, the gaps counted per year and origin, and the
+    gaps themselves — all of them, or those the filters asked for.
+    """
 
     symbol: str
     broker: str
     start: str                  # ISO-8601 UTC
     end: str                    # ISO-8601 UTC
-    gap_counts: dict[str, int]  # per category
-    # A gap is identified by when it STARTED: two gaps of one symbol cannot open at the
-    # same instant, and the category is a classification of the same interruption rather
-    # than a second one.
-    key: list[str] = ['start']
+    gap_counts: dict[str, int]  # per category, over the whole archive
+    # Weekend and holiday closures are not counted here: they are a market's expected silence.
+    # Always over the whole archive — the filters narrow `gaps` only, so the overview stays whole.
+    gaps_by_year: list[GapYearResponse]
+    # What makes one row of each list unique. A gap is identified by when it STARTED: two gaps
+    # of one symbol cannot open at the same instant, and the category is a classification of
+    # the same interruption rather than a second one. A year holds one row per data origin.
+    keys: dict[str, list[str]] = {'gaps': ['start'], 'gaps_by_year': ['year', 'origin_class']}
     gaps: list[GapResponse]

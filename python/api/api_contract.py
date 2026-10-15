@@ -23,7 +23,7 @@ from typing import List
 
 # One monotonic integer. Not a date and not the app version: a consumer compares it for
 # equality, and equality is the only question they have.
-API_CONTRACT_VERSION = 31
+API_CONTRACT_VERSION = 32
 
 # Every response carries it, so a saved fixture carries it too.
 CONTRACT_HEADER = 'X-Api-Contract'
@@ -36,8 +36,15 @@ API_PREFIX = '/api/v1'
 # What moved INTO the current version. One line per change, written for someone who cannot
 # read this repository.
 CHANGES: List[str] = [
-    "New route GET /api/v1/machine-resources, token only and no grant: the processors and the "
-    "memory of the machine this server runs on — the limit that binds and where it was read, how "
-    "much is in use, the processors' busy share over the window since the previous reading — and "
-    "a pressure_level with its reasons, graded on memory against the thresholds the answer carries",
+    "GET /api/v1/brokers/{broker}/symbols/{symbol}/gaps: every gap carries origin_class — the "
+    "origin class of the tick file it lies in or follows, null where none could be found — and "
+    "origin_class_after, which differs from it only at a seam between two origins",
+    "The gaps answer carries gaps_by_year — per year and origin class the short, moderate and "
+    "large gaps and the hours without data, over the whole archive",
+    "The gaps answer's key is replaced by keys, one entry per list: gaps by start, gaps_by_year by "
+    "year and origin_class",
+    "Two query parameters narrow the gaps, never the counts or gaps_by_year: origin_class and "
+    "since (the gaps that start at or after it)",
+    "A gap's reason no longer guesses at a cause: 'check data collection' and "
+    "'restart/connection?' are gone, because the reason cannot know whose data surrounds a gap",
 ]

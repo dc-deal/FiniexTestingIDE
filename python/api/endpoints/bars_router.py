@@ -2,12 +2,14 @@
 Coverage and bars endpoints.
 
 GET /api/v1/brokers/{broker}/symbols/{symbol}/coverage
-GET /api/v1/brokers/{broker}/symbols/{symbol}/gaps
+GET /api/v1/brokers/{broker}/symbols/{symbol}/gaps?origin_class=<class>&since=<iso>
 GET /api/v1/brokers/{broker}/symbols/{symbol}/bars?timeframe=M30&from=<iso>&to=<iso>&limit=<n>
 GET /api/v1/brokers/{broker}/symbols/{symbol}/indicators/atr?timeframe=M5&from=&to=&period=14
 """
 
+from dataclasses import asdict
 from datetime import datetime, timezone
+from typing import Optional
 
 import pandas as pd
 from fastapi import APIRouter, Query, Response
@@ -35,8 +37,10 @@ from python.framework.types.api.api_types import (
     CoverageGapsResponse,
     CoverageResponse,
     GapResponse,
+    GapYearResponse,
     IndicatorPointResponse,
 )
+from python.framework.types.config_types.data_origin_config_types import OriginClass
 from python.framework.types.indicator_types import MaType
 from python.framework.utils.timeframe_config_utils import TimeframeConfig
 from python.framework.utils.trading_math.indicators.atr import atr_series
@@ -204,23 +208,39 @@ def get_bars(
 
 @router.get('/brokers/{broker}/symbols/{symbol}/gaps', response_model=CoverageGapsResponse,
             openapi_extra=describes('gaps'))
-def get_gaps(broker: str, symbol: str) -> CoverageGapsResponse:
+def get_gaps(
+    broker: str,
+    symbol: str,
+    origin_class: Optional[OriginClass] = Query(None),
+    since: Optional[datetime] = Query(None),
+) -> CoverageGapsResponse:
     """
-    Return every interruption in a symbol's archive, with what each one was.
+    Return the interruptions in a symbol's archive, with what each one was and whose data it
+    lies in.
 
     A venue outage and a quiet weekend are different facts, and a caller should not have to
     infer which from a duration. The categories come from the market's own rules — a forex
-    weekend is expected closure, a crypto one is not, because crypto never closes.
+    weekend is expected closure, a crypto one is not, because crypto never closes. The origin
+    says whose silence a gap is: a venue's published history holds tens of thousands of gaps in
+    which nobody traded, and our own collection a few in which the collector was down.
+
+    The filters narrow `gaps` only: `origin_class` to the gaps in data of that origin, `since`
+    to the gaps that start at or after it. `gap_counts` and `gaps_by_year` always describe the
+    whole archive.
 
     Served from the discovery cache, which invalidates on the source bars and on its own
-    configuration; this route computes nothing of its own.
+    configuration; each gap's origin is read from the tick index, as the coverage report reads
+    it. This route computes nothing of its own.
 
     Args:
         broker: Broker type identifier
         symbol: Trading symbol
+        origin_class: Only the gaps in data of this origin class
+        since: Only the gaps that start at or after this instant (ISO-8601; naive reads as UTC)
 
     Returns:
-        The coverage span, the gap count per category, and every gap
+        The coverage span, the gap count per category, the gaps per year and origin, and the
+        gaps the filters asked for
     """
     index = _load_index()
     _require_broker_symbol(index, broker, symbol)
@@ -229,21 +249,34 @@ def get_gaps(broker: str, symbol: str) -> CoverageGapsResponse:
     if report is None or report.start_time is None:
         raise api_error(COVERAGE_REPORT_UNAVAILABLE, broker=broker, symbol=symbol)
 
+    report.attribute_gaps()
+    since_utc = _utc(since) if since is not None else None
+    served = [
+        gap for gap in report.gaps
+        if (origin_class is None or gap.origin_class == origin_class)
+        and (since_utc is None or (gap.gap_start is not None and _utc(gap.gap_start) >= since_utc))
+    ]
+
     return CoverageGapsResponse(
         symbol=symbol,
         broker=broker,
         start=report.start_time.isoformat(),
         end=report.end_time.isoformat(),
         gap_counts={k: v for k, v in report.gap_counts.items() if v},
+        gaps_by_year=[
+            GapYearResponse(**asdict(row)) for row in report.summary_by_year_and_origin()
+        ],
         gaps=[
             GapResponse(
                 start=gap.gap_start.isoformat() if gap.gap_start else '',
                 end=gap.gap_end.isoformat() if gap.gap_end else '',
                 seconds=gap.gap_seconds,
-                category=gap.category.value,
+                category=gap.category,
                 reason=gap.reason,
+                origin_class=gap.origin_class,
+                origin_class_after=gap.origin_class_after,
             )
-            for gap in report.gaps
+            for gap in served
         ],
     )
 

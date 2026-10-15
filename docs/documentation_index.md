@@ -199,7 +199,7 @@ Each test suite has its own documentation in [`tests/`](tests/).
 | [Logging Tests](tests/framework/logging_tests.md) | The log buffer carries records, not rendered lines: the fact survives, the rendering is reproduced character-identically, and a display setting cannot hide a report input |
 | [Signal Worker Tests](tests/framework/signal_workers_tests.md) | SIGNAL worker type (#141): types, provider, llm_sentiment, hybrid decision, orchestrator dispatch, live transports (#468) |
 | [Signal Coverage Tests](tests/framework/signal_coverage_tests.md) | Signal-series gap detection + scenario signal-window validation |
-| [Data Coverage Tests](tests/framework/data_coverage_tests.md) | Data format version spans — which collector schema produced which archive window |
+| [Data Coverage Tests](tests/framework/data_coverage_tests.md) | Data format version spans, the gap listing and its origin reading, the window queries a run asks |
 | [Normalizer Tests](tests/framework/normalizer_tests.md) | Central rescale/clamp/normalize apparatus |
 | [Account Value Tests](tests/framework/account_value_tests.md) | One account-value definition per account model — the input every circuit-breaker limit sits on, and why spot answers None rather than guessing |
 | [Account Leverage Tests](tests/framework/account_leverage_tests.md) | What an algo's `get_leverage()` answers — the account's leverage from the broker configuration, the figure margin divides by |

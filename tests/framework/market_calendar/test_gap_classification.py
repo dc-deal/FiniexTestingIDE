@@ -48,6 +48,8 @@ class TestCategoryThresholds:
         category, reason = _classify(WEDNESDAY, 0.25, weekend_closure=False)
         assert category == GapCategory.SHORT
         assert 'Short interruption' in reason
+        # No guess at a cause: the classifier cannot know whose data surrounds the gap
+        assert 'restart' not in reason
 
     def test_between_thresholds_is_moderate(self):
         category, _ = _classify(WEDNESDAY, 2.0, weekend_closure=False)
@@ -56,7 +58,9 @@ class TestCategoryThresholds:
     def test_above_four_hours_is_large(self):
         category, reason = _classify(WEDNESDAY, 5.17, weekend_closure=False)
         assert category == GapCategory.LARGE
-        assert 'check data collection' in reason
+        assert reason.startswith('🔴 Large gap (5.17h')
+        # No advice: in a venue's published history there is no collection to check
+        assert 'collection' not in reason
 
 
 class TestMarketTypeGating:

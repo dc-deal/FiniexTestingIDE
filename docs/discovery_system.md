@@ -127,11 +127,60 @@ The filter uses `DataCoverageReportCache` to load the gap report for the broker/
 Detects gaps via timestamp jumps between consecutive bars at the configured granularity (default: M1):
 - **Weekend**: Expected closure (Friday 17:00 - Sunday 17:00 New York: 21:00 UTC in summer, 22:00 in winter)
 - **Holiday**: Dec 25, Jan 1
-- **Short**: < 30min (MT5 restarts)
+- **Short**: < 30min
 - **Moderate**: 30min - 4h
-- **Large**: > 4h (data collection issue)
+- **Large**: > 4h
 
-Provides `has_issues()` check and actionable `get_recommendations()`.
+Provides `has_issues()` and `get_recommendations()`. The recommendations are for the gaps of our
+OWN collection only (see *Whose silence a gap is* below), and the MT5 advice — the MQL5
+TickCollector's logs — is given for an MT5 broker only; a Kraken collection gets a general hint at
+the collector's logs. A gap's `reason` names the category and the length and gives no advice: the
+classifier cannot know whose data surrounds a gap.
+
+### What the report lists
+
+A venue's published history holds tens of thousands of gaps — `kraken_spot/BTCUSD` 117,757, LTCUSD
+375,682, against about 400 for an MT5 symbol with one year of our own collection — and a report
+that printed every moderate and large one ran to 61,178 lines. The report lists the **newest ten of
+each category**, newest first, one line each, and counts the rest by year and data origin:
+
+```
+🔴 LARGE — the last 10 of 1,034
+   2026-09-20 19:48 → 09-21 08:39  12h 51m (12.85h)  between two files, collection resumed 12h 50m later   [production]
+   2025-11-01 15:02 → 21:46        6h 44m (6.73h)    inside BTCUSD_20251101_000000.parquet — no trades at the venue, nothing to re-collect   [external]
+⚠️  MODERATE — the last 10 of 7,694
+ℹ️  SHORT — the last 10 of 109,029
+
+BY YEAR AND ORIGIN (short · moderate · large, and the hours without data):
+   year  origin            short  moderate   large       hours
+   2016  external         48,138     1,422       8     6,908.9
+   2026  production          365         3       2        46.7
+```
+
+Per category, so a burst of recent short gaps never pushes out the one large gap. The rule lives in
+`gap_listing.py` and the signal coverage report lists by it too. The yearly summary is computed on
+the report (`summary_by_year_and_origin()`), not in the printout, and the API serves the same rows.
+Weekend and holiday closures are not counted in it — they are a market's expected silence. A gap
+belongs to the year it started in.
+
+### Whose silence a gap is
+
+Every tick file carries its **origin class** (`production`, `development`, `unknown`, `external`),
+and a gap takes the class of the file it lies in or follows. In a venue's published history
+(`external`) no collector of ours was running: a gap there is a stretch in which nobody traded at
+the venue, and there is nothing to re-collect — the line says so and the recommendations leave it
+out. Where the class before and after a gap differ, the gap is the **seam** between two origins and
+is named as such. A gap no tick file could be found for is `unattributed`.
+
+### What a run asks of the report, and what it costs
+
+Every batch loads each symbol's report from the cache once and asks it, per scenario, whether a gap
+contains the scenario's start and which gaps lie inside its tick stretch. Both questions are a
+binary search over the gaps' start times (`gap_timeline.py`), because a linear scan grew with the
+archive's depth: 166 ms per scenario on BTCUSD's 117,757 gaps against 0.7 ms on an MT5 symbol
+(measured 2026-10-15). The cache is read column by column for the same reason — 480 ms for BTCUSD
+where the row-by-row read took 3.4 s. Nothing the report adds for a reader (origin, listing,
+summary) runs on that path.
 
 Categories are gated on the market type. `MarketCalendar` is forex-shaped — its weekend and
 trading-hour methods hard-code Mon–Fri — so a 24/7 market never receives the weekend/holiday
@@ -157,14 +206,14 @@ Wednesday gap as "1 trading day".
 
 ### Which file(s) a gap falls in
 
-Each moderate or large gap states where it sits relative to the collector's files. This answers the
-operator question behind every outage: **was the collector running through it, or not collecting at
-all?**
+Each listed gap states where it sits relative to the collector's files. In our own collection this
+answers the operator question behind every outage: **was the collector running through it, or not
+collecting at all?**
 
 ```
-Type:   Intra-file — ADAUSD_20260728_233104.parquet (collector was running)
-Type:   File boundary — A.parquet → B.parquet (rollover, collection continued)
-Type:   File boundary — A.parquet → B.parquet (collection resumed 336h later)
+inside ADAUSD_20260728_233104.parquet, the collector was running
+between two files, at a rollover — collection continued
+between two files, collection resumed 336h later
 ```
 
 **A file boundary on its own proves nothing.** Files roll at `max_ticks_per_file`, not on a clock,
@@ -182,7 +231,8 @@ The report states the observation and stops there. Whether a pause was the venue
 a judgment, and it stays with the reader.
 
 Resolved **at render time, from the tick index** — like the version spans below, and for the same
-reason: the batch validation path never renders the report and must not pay for the index load.
+reason: the batch validation path never renders the report and must not pay for the index load. The
+origin class is read from the same entries in the same pass, and the index is read once per report.
 
 ### Data format version spans
 

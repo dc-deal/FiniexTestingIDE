@@ -33,6 +33,33 @@ reads downwards from the version their fixtures hold until they reach the one be
 A test holds the newest heading in this log to the number the server answers with, so a version
 cannot ship without its entry.
 
+## Version 32 — 2026-10-15 (#599)
+
+A gap says whose silence it is, and a symbol with years of a venue's history no longer has to be
+read in one piece.
+
+- `GET /api/v1/brokers/{broker}/symbols/{symbol}/gaps`: every gap carries `origin_class` — the
+  origin class of the tick file it lies in or follows (`production`, `development`, `unknown`,
+  `external`), null where no tick file could be found — and `origin_class_after`, which differs
+  from it only at a seam, where one origin's data ends and another's begins. A gap in `external`
+  data lies in a venue's published history: nobody traded there, and there is nothing to
+  re-collect.
+- New beside the gaps: `gaps_by_year` — per year and origin class the short, moderate and large
+  gaps and the hours without data, always over the whole archive.
+- **`key` is replaced by `keys`**, one entry per list, because the answer now carries two:
+  `{"gaps": ["start"], "gaps_by_year": ["year", "origin_class"]}`. Read the gaps' key from
+  `keys.gaps`.
+- Two query parameters narrow `gaps`, never `gap_counts` or `gaps_by_year`: `origin_class` (only
+  the gaps in data of that class) and `since` (only the gaps that start at or after it, ISO-8601).
+  Without them every gap is served, as before.
+- `reason` no longer guesses at a cause: "check data collection" and "restart/connection?" are
+  gone, because the reason cannot know whose data surrounds a gap. A coverage cache built before
+  this contract still serves the old words until it is rebuilt.
+- `category` declares its closed set in the schema; its values are unchanged.
+
+Fields and parameters added, `key` replaced by `keys`, and one wording changed. Its document is
+[gaps](/api/v1/docs/gaps).
+
 ## Version 31 — 2026-10-14 (#595)
 
 The machine this server runs on can be asked how full it is.
@@ -95,29 +122,13 @@ and what each came to.
 Both are additions; no existing field changed. A run recorded before this contract serves an empty
 `fill_fees_by_source` and a null `fee_source`, until it is run again.
 
-## Version 27 — 2026-10-11 (#508)
-
-A live fill's fee is the venue's own charge, and every executed order event says where its fee
-came from.
-
-- The order-event stream: `fee_source` on every event that executed something — `venue` where
-  `fee` is the figure the venue reported for that fill, `estimate` where it is our fee model's
-  (the declared rate times the order's value). A backtest is always `estimate`: it has no venue to
-  ask. Null on an event that executed nothing, on a fill nothing could be booked for whose venue
-  reported no fee, and on every event recorded before this contract.
-- `fee` on a live fill — and with it the order history's `commission`, the trade history's fees
-  and every fee figure summed from them — is now the venue's own charge wherever the venue reports
-  it in the answer that says the order filled, no longer the declared rate's estimate. Same fields,
-  another source: a live run before this contract and one after can differ in fees for the same
-  orders. A live event that still says `estimate` where its venue reports the fee means the answer
-  came without it; the session's log says so as well.
-
-## Versions 26 and earlier
+## Versions 27 and earlier
 
 One line each. Every one of these moved a shape or a meaning; what they moved is summarised here
 rather than spelled out, because a consumer this far behind needs the list of steps, not each step's
 reasoning. The full text of a compressed version is in this repository's history.
 
+- **Version 27** — 2026-10-11 (#508): A live fill's fee is the venue's own charge wherever the venue reports it, and every executed order event says where its fee came from — `fee_source` (`venue` or `estimate`, null where nothing executed); the same fee fields from another source, so a live run before and one after can differ in fees for the same orders.
 - **Version 26** — 2026-10-09 (#582): A run's header is served whole — `GET /api/v1/reports/runs/{run_id}/header`, with `run_not_found`, `run_header_missing` and `artifact_unreadable` — and the run list says who started each run: `origin_channel`, `origin_client`, `origin_principal` and `origin_host`; `fixture_superseded` is `true` also for a run of an entry no longer declared.
 - **Version 25** — 2026-10-08 (#576): The runs a consumer pins became entries of a fixture catalog — `fixture_superseded` on every run of the run list says whether a run is its entry's current production (`false`), an older or failed one (`true`), or no catalog production at all (`null`).
 - **Version 24** — 2026-10-08 (#576): Every run says what it is for and under which contract its

@@ -69,7 +69,16 @@ from `trigger_reasons` so no renderer can lose it.
 
 `has_snapshot_at_or_before` / `latest_snapshot_at_or_before` mirror the worker's
 own resolution (nearest snapshot at or before the tick), so the validator's
-verdict matches what the run will actually see.
+verdict matches what the run will actually see. `gaps_in_window` answers through
+the same timeline the tick report uses (`gap_timeline.py`, #599) — a binary
+search rather than a scan — and returns only the gaps wholly inside the window.
+
+### The gap listing
+
+`TestTheGapListing` (#599): the report lists the newest ten gaps of each
+category, newest first, and counts the rest (`LARGE — the last 10 of 15`) — the
+rule the tick coverage report lists by, from `gap_listing.py`. It printed every
+moderate and large gap before.
 
 ### Validator behaviour
 
