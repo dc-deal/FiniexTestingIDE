@@ -8,7 +8,7 @@ name without the import turning circular (§6, same reason as `reporting/builder
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Optional
+from typing import Callable, Optional, Tuple, Union
 
 from python.framework.store.abstract_store_index import AbstractStoreIndex
 from python.framework.types.store_types import (
@@ -42,7 +42,9 @@ class StoreDescriptor:
             registries (#418 mount registry, #21 file cache) dock here later instead of becoming
             a third independent registry
         entry_glob: Pattern identifying ONE entry below root, for counting a store that has no
-            index of ours. None when entries cannot be counted that way
+            index of ours — or several patterns, where one entry can take more than one form (a
+            loose file and the zip it later moves into). None when entries cannot be counted
+            that way
         index_path: The index file, or None when the store has none
         index_factory: Builds the index object — None when the store has no index, or when the
             index is one this model does not own (the three data-index managers, which converge
@@ -72,7 +74,7 @@ class StoreDescriptor:
     key: str
     form: RetrievalForm
     backend: StoreBackend
-    entry_glob: Optional[str] = None
+    entry_glob: Optional[Union[str, Tuple[str, ...]]] = None
     index_path: Optional[Path] = None
     index_factory: Optional[Callable[[], AbstractStoreIndex]] = None
     derived_from: Optional[StoreId] = None

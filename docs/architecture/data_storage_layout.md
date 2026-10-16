@@ -46,7 +46,7 @@ worse. What they *can* share is how they describe themselves.
 | 10 | `data/runtime/brokers/` | DERIVED ← a remote API | `broker_type` | none — one file per broker | A · document |
 | 10b | `data/runtime/config_directory/` | DERIVED ← the configuration files (not a store) | path of the configuration file | `config_directory_index.parquet` | B · set |
 | 10c | `data/runtime/import_timings.json` | DERIVED ← the imports' own durations (not a store) | none | none — one file | A · document |
-| 11 | `data/finished/` | ARCHIVE | file name | none — opened by name | A · document |
+| 11 | `data/finished/` | ARCHIVE | zip or file name | none — opened by name | A · document |
 | 11b | `data/external/` | ARCHIVE | vendor / dataset / fetch folder | none — a fetch is opened by its folder, its `manifest.json` keyed on part SHA-256 and fetch time | A · document |
 | 12 | `data/raw/` → `data/finished/` | **SPECIAL** | file name | none — conveyor | — |
 | 13 | `logs/global.log` | **SPECIAL** | none | none — append stream | — |
@@ -72,8 +72,14 @@ vendor publishes them, the vendor's checksum list, and this side's `manifest.jso
 keyed on each part's SHA-256 and the time it was fetched, never on the vendor's release label: a
 vendor may re-upload a release under the same label, so the label alone does not pin the bytes.
 Conversion records (`conversions/`) beside the manifest say which collector-shaped files each run
-wrote into the import inbox. The store is append-only, the importer never reads it — the converter
-does — and nothing in it ever enters a data package or the repository.
+wrote into the import inbox. The store is never rewritten, the importer never reads it — the
+converter does — and nothing in it ever enters a data package or the repository.
+
+A fetch's parts may be removed once its conversion has been imported and verified. The converted
+files then live in the finished archive (`data/finished/`, zipped there like the collector's own
+files), and each of them names the parts it came from and their checksums. The store can therefore
+be empty while the history it held is complete — which is why the catalog counts the finished
+archive by its zips as well as by its loose files.
 
 See it live, with entry counts and the stated reasons:
 

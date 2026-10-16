@@ -369,16 +369,22 @@ def build_registrations() -> Dict[StoreId, StoreDescriptor]:
         StoreId.FINISHED_ARCHIVE: StoreDescriptor(
             store_id=StoreId.FINISHED_ARCHIVE,
             kind=StoreKind.ARCHIVE,
-            purpose='collector files after import, kept unchanged',
+            purpose='collector files after import, loose or zipped',
             doc='docs/architecture/data_storage_layout.md#why-the-special-stores-stay-special',
             root=Path(ImportConfigManager().get_data_finished_path()),
-            key='file name',
+            key='zip or file name',
             form=RetrievalForm.DOCUMENT,
             backend=StoreBackend.DISK,
-            entry_glob='**/*.json',
-            note=('Where the conveyor ends: the raw collector JSON the whole archive was imported '
-                  'from, moved here unchanged. No index — nothing searches it; it is opened by '
-                  'name when a file has to be re-examined.'),
+            entry_glob=('**/*.json', '**/*.zip'),
+            note=('Where the conveyor ends: the raw collector files the whole archive was imported '
+                  'from, moved here unchanged by the import and later zipped by hand — the tick '
+                  'files under Archives/, the signal envelopes under Archives/signals/. An entry '
+                  'is one zip or one loose file: a loose file is a copy once a zip holds it and '
+                  'is then removed, one in no zip yet is a source file. A history fetch whose '
+                  'parts were removed after its verified import exists only here, as its '
+                  'converted files. '
+                  'No index — nothing searches it; a zip\'s member list is read without '
+                  'extracting it when a file has to be re-examined.'),
         ),
         StoreId.EXTERNAL_HISTORY: StoreDescriptor(
             store_id=StoreId.EXTERNAL_HISTORY,
@@ -390,11 +396,15 @@ def build_registrations() -> Dict[StoreId, StoreDescriptor]:
             form=RetrievalForm.DOCUMENT,
             backend=StoreBackend.DISK,
             entry_glob='*/*/*/manifest.json',
-            note=('The source of truth for data no instance of ours recorded (#561): the parts '
-                  'exactly as the vendor publishes them, with a manifest keyed on each part\'s '
-                  'SHA-256 and the time it was fetched — a vendor may re-upload under the same '
-                  'release label. Append-only, never rewritten; no index, a fetch is opened by '
-                  'its folder. Stays on this machine and never enters a data package.'),
+            note=('The source of truth for data no instance of ours recorded (#561), for as long '
+                  'as a fetch is kept: the parts exactly as the vendor publishes them, with a '
+                  'manifest keyed on each part\'s SHA-256 and the time it was fetched — a vendor '
+                  'may re-upload under the same release label. Never rewritten; no index, a fetch '
+                  'is opened by its folder. A fetch\'s parts may be removed once its conversion is '
+                  'imported and verified: the converted files then live in the finished archive, '
+                  'each naming its parts and their checksums, so the store can be empty while the '
+                  'history it held is complete. Stays on this machine and never enters a data '
+                  'package.'),
         ),
         StoreId.RAW_INBOX: StoreDescriptor(
             store_id=StoreId.RAW_INBOX,

@@ -22,7 +22,7 @@ from python.framework.store.abstract_store_index import (
     store_index_filename,
 )
 from python.framework.store.store_catalog import StoreCatalog
-from python.framework.store.store_descriptor import PURPOSE_MAX_LENGTH
+from python.framework.store.store_descriptor import PURPOSE_MAX_LENGTH, StoreDescriptor
 from python.framework.types.store_types import (
     RetrievalForm,
     StoreBackend,
@@ -372,6 +372,31 @@ class TestStatus:
         rows = {r.store_id: r for r in StoreCatalog().status()}
         assert rows[StoreId.RAW_INBOX].stale_reason is None
         assert rows[StoreId.TICKS].stale_reason is None, 'a foreign index is not ours to grade'
+
+    def test_a_store_counted_by_several_patterns_counts_each_file_once(self, tmp_path,
+                                                                       monkeypatch):
+        """A loose collector file and the zip it later moves into are both entries."""
+        (tmp_path / 'Archives' / 'signals').mkdir(parents=True)
+        for name in ['ETHUSD_ticks.json', 'Archives/All_ticks.zip', 'Archives/signals/sig.zip',
+                     '.gitkeep']:
+            (tmp_path / name).write_text('x')
+
+        def _store(store_id: StoreId, patterns) -> StoreDescriptor:
+            return StoreDescriptor(
+                store_id=store_id, kind=StoreKind.ARCHIVE, purpose='toy archive', doc='docs/x.md',
+                root=tmp_path, key='file name', form=RetrievalForm.DOCUMENT,
+                backend=StoreBackend.DISK, entry_glob=patterns)
+
+        monkeypatch.setattr('python.framework.store.store_catalog.build_registrations', lambda: {
+            StoreId.FINISHED_ARCHIVE: _store(StoreId.FINISHED_ARCHIVE, ('**/*.json', '**/*.zip')),
+            StoreId.EXTERNAL_HISTORY: _store(StoreId.EXTERNAL_HISTORY,
+                                             ('**/*.zip', 'Archives/*.zip')),
+        })
+        rows = {r.store_id: r for r in StoreCatalog().status(with_sizes=True)}
+
+        assert rows[StoreId.FINISHED_ARCHIVE].entries == 3, 'the dotfile is no entry'
+        assert rows[StoreId.FINISHED_ARCHIVE].size_bytes == 3
+        assert rows[StoreId.EXTERNAL_HISTORY].entries == 2, 'a zip matched twice is one entry'
 
 
 class TestStalenessReason:
