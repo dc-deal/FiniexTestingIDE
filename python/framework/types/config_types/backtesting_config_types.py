@@ -54,7 +54,7 @@ class TradeSimulatorDefaults(StrictConfigModel):
     Declaring it is permissive only: the value is still read from the raw dict by
     `ScenarioValidator.set_scenario_account_currency`, which is what actually applies it.
     """
-    balances: Dict[str, float] = {'USD': 10000}
+    balances: Dict[str, float] = {}
     seeds: TradeSimulatorSeeds = TradeSimulatorSeeds()
     # Declared so the strict model accepts it on the SCENARIO level, where it is really used.
     # None = the account currency is derived from the symbol's quote currency (#265).
