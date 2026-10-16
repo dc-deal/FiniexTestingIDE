@@ -322,8 +322,7 @@ class DataCoverageReportCache:
                 **metadata
             })
 
-            pq.write_table(table, cache_path)
-            DiscoveryCacheIndex(self.cache_dir.parent).record_file(cache_path)
+            DiscoveryCacheIndex(self.cache_dir.parent).write_cache_file(table, cache_path)
             self.logger.debug(f'💾 Cached: {broker_type}/{symbol}')
 
         except Exception as e:

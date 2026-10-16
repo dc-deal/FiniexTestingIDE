@@ -18,7 +18,6 @@ Cache Structure:
 
 import hashlib
 import json
-import os
 import time
 from datetime import date, datetime, timezone
 from pathlib import Path
@@ -26,7 +25,6 @@ from typing import Dict, List, Optional, Tuple
 
 import pandas as pd
 import pyarrow as pa
-import pyarrow.parquet as pq
 
 from python.configuration.app_config_manager import AppConfigManager
 from python.data_management.index.tick_index_manager import TickIndexManager
@@ -298,10 +296,7 @@ class SpreadEstimateCache:
             b'symbol': symbol.encode(),
             b'generated_at': datetime.now(timezone.utc).isoformat().encode(),
         })
-        tmp_path = cache_path.with_suffix('.parquet.tmp')
-        pq.write_table(table, tmp_path)
-        os.replace(tmp_path, cache_path)
-        DiscoveryCacheIndex(self.cache_dir.parent).record_file(cache_path)
+        DiscoveryCacheIndex(self.cache_dir.parent).write_cache_file(table, cache_path)
         self._logger.debug(f'💾 Cached spread estimate: {broker_type}/{symbol}')
 
 

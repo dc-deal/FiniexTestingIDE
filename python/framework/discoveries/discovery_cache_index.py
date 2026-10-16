@@ -12,11 +12,13 @@ computes per-symbol validity against the bar index — a different question with
 input, and this index deliberately does not pretend to replace it.
 """
 
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional
 
 import pandas as pd
+import pyarrow as pa
 import pyarrow.parquet as pq
 
 from python.framework.store.abstract_store_index import (
@@ -96,16 +98,31 @@ class DiscoveryCacheIndex(AbstractStoreIndex):
         self.write(pd.DataFrame(rows, columns=self.COLUMNS))
         return len(rows)
 
-    def record_file(self, path: Path) -> None:
+    def write_cache_file(self, table: pa.Table, cache_path: Path) -> None:
         """
-        Enter one cache file a family has just written, replacing its earlier row.
+        Write one family's cache file and enter it in the index — the one way a family writes.
 
         A family that writes a cache on demand — a report computed because its cache was invalid —
-        otherwise leaves the index describing the generation before it, and the catalog reports a
-        stale index nobody asked to rebuild. One row costs a read and a write of this file (about
-        45 ms measured 2026-10-16) where a full rebuild opens every cache file (about 850 ms).
-        It does not repair an index that was already behind for other files: the count check
-        still says so.
+        would otherwise leave the index describing the generation before it, and the catalog
+        would report a stale index nobody asked to rebuild. Written beside its place and then
+        moved there, so a reader never opens half a file.
+
+        Args:
+            table: The cache content, its metadata included
+            cache_path: Where the family keeps it
+        """
+        tmp_path = cache_path.with_suffix('.parquet.tmp')
+        pq.write_table(table, tmp_path)
+        os.replace(tmp_path, cache_path)
+        self._record_file(cache_path)
+
+    def _record_file(self, path: Path) -> None:
+        """
+        Enter one cache file just written, replacing its earlier row.
+
+        One row costs a read and a write of this file (about 45 ms measured 2026-10-16) where a
+        full rebuild opens every cache file (about 850 ms). It does not repair an index that was
+        already behind for other files: the count check still says so.
 
         Args:
             path: The cache file just written
