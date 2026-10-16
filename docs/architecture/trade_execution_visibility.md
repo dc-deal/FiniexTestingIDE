@@ -205,7 +205,7 @@ Long-format / FIX-`ExecutionReport`-style — one row per event, `event_type` as
 file per AutoTrader session, one per scenario in sim (`events_<scenario>.csv` inside an `events/`
 subfolder of the scenario-set log dir).
 
-Canonical column order ([event_stream_csv_writer.py:EVENT_FIELDS](../../python/framework/reporting/event_stream_csv_writer.py)):
+Canonical column order — the fields of `TradeEvent`, in their order ([event_stream_csv_writer.py:EVENT_FIELDS](../../python/framework/reporting/event_stream_csv_writer.py)):
 
 ```
 ts, event_type, order_id, position_id, trade_id,
@@ -269,7 +269,8 @@ Where an `OrderResult` is constructed:
 | `python/framework/types/portfolio_types/portfolio_trade_record_types.py` | `TradeRecord.entry_trades`, `TradeRecord.exit_trades` |
 | `python/framework/trading_env/abstract_trade_executor.py` | Propagation at `_fill_open_order` + `_fill_close_order`; `_synthesize_pending_trade` |
 | `python/framework/trading_env/portfolio_manager.py` | Signature extensions on `open_position`, `close_position_portfolio`, `partial_close_position`, `_create_trade_record` |
-| `python/framework/reporting/event_stream_csv_writer.py` | `EventStreamWriter`, `EventType` enum, `TradeEvent`, `EVENT_FIELDS` |
+| `python/framework/reporting/event_stream_csv_writer.py` | `EventStreamWriter`, `EVENT_FIELDS` (derived from `TradeEvent`'s fields) |
+| `python/framework/types/event_stream_types.py` | `TradeEventType` enum, `TradeEvent` |
 | `python/framework/reporting/console/trade_history_summary.py` | Sim sub-line renderer + `shared(Nx)` + `(this trade: X of Y)` |
 | `python/system/ui/autotrader_live_display.py` | Live panel sub-rows + `partial` / `remain` reason markers |
 | `python/framework/types/autotrader_types/autotrader_display_types.py` | `TradeHistoryEntry` — the dashboard's row, `entry_lots` included |

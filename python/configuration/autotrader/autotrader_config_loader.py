@@ -3,7 +3,6 @@ FiniexTestingIDE - AutoTrader Config Loader
 Loads AutoTraderConfig from JSON file.
 """
 
-import dataclasses
 import json
 from pathlib import Path
 from typing import Any, Dict
@@ -38,6 +37,7 @@ from python.framework.types.config_types.scenario_settings_config_types import (
     ScenarioSettingsConfig,
 )
 from python.framework.utils.config_merge_utils import (
+    allowlist_from,
     check_unknown_keys,
     deep_merge,
     without_meta_keys,
@@ -56,37 +56,30 @@ from python.framework.validators.config_name_validator import refuse_config_name
 # allowlist; no parallel hardcoded list to forget. Mixed support for both
 # Pydantic BaseModel (model_fields) and @dataclass (dataclasses.fields).
 
-def _allowlist_from(cls) -> frozenset:
-    """Field-name allowlist derived from a Pydantic model or @dataclass."""
-    if hasattr(cls, 'model_fields'):
-        return frozenset(cls.model_fields.keys())
-    return frozenset(f.name for f in dataclasses.fields(cls))
-
-
 # Top-level keys include load-time meta (`config_path`) that must NOT appear
 # in profile JSON. Filter that out so the allowlist matches the JSON surface.
 # `description` (#576) is a key with no field: it is checked on load and served by the
 # configuration directory from the file itself, and nothing that runs reads it.
 _KNOWN_PROFILE_TOP_KEYS: frozenset = (
-    (_allowlist_from(AutoTraderConfig) - {'config_path'}) | {'description'}
+    (allowlist_from(AutoTraderConfig) - {'config_path'}) | {'description'}
 )
-_KNOWN_EXECUTION_KEYS: frozenset            = _allowlist_from(AutotraderExecutionDefaults)
-_KNOWN_CLIPPING_KEYS: frozenset             = _allowlist_from(ClippingMonitorDefaults)
-_KNOWN_DISPLAY_KEYS: frozenset              = _allowlist_from(DisplayDefaults)
-_KNOWN_SAFETY_KEYS: frozenset               = _allowlist_from(SafetyConfig)
-_KNOWN_ORDER_GUARD_KEYS: frozenset          = _allowlist_from(OrderGuardDefaults)
-_KNOWN_DRIFT_AUDIT_KEYS: frozenset          = _allowlist_from(DriftAuditConfig)
-_KNOWN_RECONCILIATION_KEYS: frozenset       = _allowlist_from(ReconciliationDefaults)
-_KNOWN_API_MONITOR_KEYS: frozenset          = _allowlist_from(ApiMonitorConfig)
-_KNOWN_STATE_PERSISTENCE_KEYS: frozenset    = _allowlist_from(StatePersistenceDefaults)
-_KNOWN_COLD_START_KEYS: frozenset           = _allowlist_from(ColdStartDefaults)
-_KNOWN_SESSION_END_KEYS: frozenset          = _allowlist_from(SessionEndDefaults)
-_KNOWN_OPERATOR_ALERTS_KEYS: frozenset      = _allowlist_from(OperatorAlertsConfig)
-_KNOWN_CAPITAL_KEYS: frozenset              = _allowlist_from(CapitalDefaults)
-_KNOWN_DEPLOYMENT_KEYS: frozenset           = _allowlist_from(DeploymentConfig)
-_KNOWN_PERFORMANCE_TRACKING_KEYS: frozenset = _allowlist_from(AutoTraderPerformanceTrackingConfig)
-_KNOWN_TICK_SOURCE_KEYS: frozenset          = _allowlist_from(TickSourceConfig)
-_KNOWN_SCENARIO_SETTINGS_KEYS: frozenset    = _allowlist_from(ScenarioSettingsConfig)
+_KNOWN_EXECUTION_KEYS: frozenset            = allowlist_from(AutotraderExecutionDefaults)
+_KNOWN_CLIPPING_KEYS: frozenset             = allowlist_from(ClippingMonitorDefaults)
+_KNOWN_DISPLAY_KEYS: frozenset              = allowlist_from(DisplayDefaults)
+_KNOWN_SAFETY_KEYS: frozenset               = allowlist_from(SafetyConfig)
+_KNOWN_ORDER_GUARD_KEYS: frozenset          = allowlist_from(OrderGuardDefaults)
+_KNOWN_DRIFT_AUDIT_KEYS: frozenset          = allowlist_from(DriftAuditConfig)
+_KNOWN_RECONCILIATION_KEYS: frozenset       = allowlist_from(ReconciliationDefaults)
+_KNOWN_API_MONITOR_KEYS: frozenset          = allowlist_from(ApiMonitorConfig)
+_KNOWN_STATE_PERSISTENCE_KEYS: frozenset    = allowlist_from(StatePersistenceDefaults)
+_KNOWN_COLD_START_KEYS: frozenset           = allowlist_from(ColdStartDefaults)
+_KNOWN_SESSION_END_KEYS: frozenset          = allowlist_from(SessionEndDefaults)
+_KNOWN_OPERATOR_ALERTS_KEYS: frozenset      = allowlist_from(OperatorAlertsConfig)
+_KNOWN_CAPITAL_KEYS: frozenset              = allowlist_from(CapitalDefaults)
+_KNOWN_DEPLOYMENT_KEYS: frozenset           = allowlist_from(DeploymentConfig)
+_KNOWN_PERFORMANCE_TRACKING_KEYS: frozenset = allowlist_from(AutoTraderPerformanceTrackingConfig)
+_KNOWN_TICK_SOURCE_KEYS: frozenset          = allowlist_from(TickSourceConfig)
+_KNOWN_SCENARIO_SETTINGS_KEYS: frozenset    = allowlist_from(ScenarioSettingsConfig)
 
 
 def _block(raw: Dict[str, Any], **overrides: Any) -> Dict[str, Any]:

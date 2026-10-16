@@ -25,8 +25,6 @@ from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.types.market_types.market_types import TradingContext
 from python.framework.types.parameter_types import ValidatedParameters
 from python.framework.validators.parameter_validator import apply_defaults
-from python.framework.workers.abstract_indicator_worker import AbstractIndicatorWorker
-from python.framework.workers.abstract_signal_worker import AbstractSignalWorker
 from python.framework.workers.abstract_worker import AbstractWorker
 from python.framework.workers.core.test_probes.sample_probe_worker import (
     SampleProbeWorker,
@@ -38,10 +36,6 @@ from python.framework.workers.core.ma_trend_worker import MaTrendWorker
 from python.framework.workers.core.macd_worker import MacdWorker
 from python.framework.workers.core.obv_worker import ObvWorker
 from python.framework.workers.core.rsi_worker import RsiWorker
-
-# Abstract worker bases — excluded when introspecting a user file for its one
-# concrete worker subclass (a path worker subclasses one of these).
-_ABSTRACT_WORKER_BASES = (AbstractWorker, AbstractIndicatorWorker, AbstractSignalWorker)
 
 
 class WorkerFactory:
@@ -409,11 +403,13 @@ class WorkerFactory:
         except (SyntaxError, ImportError) as e:
             raise ValueError(f"Failed to load worker file '{p}': {e}") from e
 
+        # Only the classes the file itself defines: an imported one — a base, or a CORE worker
+        # the file's class extends — is not the file's worker
         candidates = [
             cls for cls in vars(module).values()
             if isinstance(cls, type)
             and issubclass(cls, AbstractWorker)
-            and cls not in _ABSTRACT_WORKER_BASES
+            and cls.__module__ == module.__name__
         ]
 
         if len(candidates) != 1:

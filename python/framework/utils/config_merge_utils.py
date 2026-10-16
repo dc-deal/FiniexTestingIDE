@@ -4,6 +4,7 @@ Shared deep merge helper for all configuration loaders.
 """
 
 import copy
+import dataclasses
 import os
 from typing import Any, Dict, Optional, Set, Type
 
@@ -141,6 +142,24 @@ def is_meta_key(key: str) -> bool:
         True for `_comment` and any `_comment_<what>` variant
     """
     return key.startswith(_CONFIG_META_PREFIX)
+
+
+def allowlist_from(schema: type) -> frozenset:
+    """
+    The keys a config section may carry: the field names of the schema that holds its defaults.
+
+    Derived rather than listed, so a field added to the schema is accepted in the section
+    without a second list to extend.
+
+    Args:
+        schema: A Pydantic model or a dataclass
+
+    Returns:
+        Its field names
+    """
+    if hasattr(schema, 'model_fields'):
+        return frozenset(schema.model_fields.keys())
+    return frozenset(f.name for f in dataclasses.fields(schema))
 
 
 def check_unknown_keys(

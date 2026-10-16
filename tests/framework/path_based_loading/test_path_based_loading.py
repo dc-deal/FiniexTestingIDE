@@ -113,6 +113,21 @@ class HelperClass:
         assert worker_class.__name__ == 'WorkerWithHelper'
         cleanup_user_loaded()
 
+    def test_load_worker_extending_a_core_worker(self, mock_logger, tmp_path):
+        """A file whose class extends a CORE worker loads that class — the import is not a second."""
+        code = (
+            'from python.framework.workers.core.bollinger_worker import BollingerWorker\n\n\n'
+            'class MyBollinger(BollingerWorker):\n'
+            '    pass\n'
+        )
+        py_file = write_module(tmp_path, 'my_bollinger.py', code)
+
+        factory = WorkerFactory(logger=mock_logger)
+        worker_class, _ = factory._load_path_worker(str(py_file))
+
+        assert worker_class.__name__ == 'MyBollinger'
+        cleanup_user_loaded()
+
     def test_registry_cached_after_load(self, mock_logger, tmp_path):
         """Second call with same path returns cached result (no re-load)."""
         code = VALID_WORKER_CODE.format(class_name='CachedWorker', marker_value='3.0')
@@ -144,6 +159,21 @@ class TestPathDecisionLogicLoading:
 
         assert logic_class.__name__ == 'MyStrategy'
         assert source_path == py_file.resolve()
+        cleanup_user_loaded()
+
+    def test_load_logic_extending_a_core_logic(self, mock_logger, tmp_path):
+        """A file whose class extends a CORE logic loads that class — the import is not a second."""
+        code = (
+            'from python.framework.decision_logic.core.simple_consensus import SimpleConsensus\n\n\n'
+            'class MyConsensus(SimpleConsensus):\n'
+            '    pass\n'
+        )
+        py_file = write_module(tmp_path, 'my_consensus.py', code)
+
+        factory = DecisionLogicFactory(logger=mock_logger)
+        logic_class, _ = factory._load_path_logic(str(py_file))
+
+        assert logic_class.__name__ == 'MyConsensus'
         cleanup_user_loaded()
 
     def test_load_logic_zero_subclasses(self, mock_logger, tmp_path):

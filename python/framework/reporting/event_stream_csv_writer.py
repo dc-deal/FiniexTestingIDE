@@ -17,40 +17,20 @@ instrumentation needed — keeps the hot path untouched.
 """
 
 import csv
-from dataclasses import dataclass
+from dataclasses import fields
 from datetime import datetime, timezone
-from enum import Enum
 from pathlib import Path
 from typing import Dict, List, Optional
 
+from python.framework.types.event_stream_types import TradeEvent, TradeEventType
 from python.framework.types.portfolio_types.portfolio_trade_record_types import TradeRecord
 from python.framework.types.trading_env_types.broker_trade_types import BrokerTrade
 from python.framework.types.trading_env_types.order_types import (
     CloseType,
     OrderAction,
-    OrderDirection,
     OrderResult,
-    OrderSide,
     OrderStatus,
 )
-
-
-class EventType(Enum):
-    """
-    Discriminator for event-stream CSV rows.
-
-    Built from the finished trade and order records, so it holds what those records hold. An
-    order's acceptance by the venue and its amends are not among them — they are steps in the
-    order-event stream (#362), which records every transition as it happens.
-    """
-    ORDER_SUBMIT = 'ORDER_SUBMIT'        # Trigger sent (algo decision)
-    ORDER_REJECT = 'ORDER_REJECT'        # Refused — by us (status denied) or by the venue (rejected)
-    FILL = 'FILL'                        # One BrokerTrade — atomic execution
-    POSITION_OPEN = 'POSITION_OPEN'      # _fill_open_order finalized
-    CLOSE_SUBMIT = 'CLOSE_SUBMIT'        # Close trigger sent
-    POSITION_CLOSE = 'POSITION_CLOSE'    # _fill_close_order finalized (full or partial)
-    ORDER_CANCEL = 'ORDER_CANCEL'        # Active order cancelled
-    ORDER_END = 'ORDER_END'              # Ended unfilled and unrefused: expired, undelivered, unaccounted — the status says which
 
 
 # The statuses that end an order without a fill — each gets an event of its own (#362)
@@ -60,47 +40,9 @@ _UNFILLED_ENDINGS = frozenset({
 })
 
 
-# Canonical column order. Stable contract for downstream consumers.
-EVENT_FIELDS = (
-    'ts', 'event_type', 'order_id', 'position_id', 'trade_id',
-    'broker_ref', 'direction', 'side', 'lots', 'price', 'fee', 'fee_currency',
-    'status', 'close_type', 'close_reason', 'is_maker',
-    'submission_tick_mid_price', 'submission_tick_time_msc',  # #340
-    'notes',
-)
-
-
-@dataclass
-class TradeEvent:
-    """
-    One event row in the long-format CSV. Optional fields stay empty per type.
-
-    direction (LONG/SHORT) is the *position view* — populated on POSITION_OPEN
-    and POSITION_CLOSE events. side (BUY/SELL) is the *trade-event view* —
-    populated on FILL events (one row per BrokerTrade). The two columns are
-    mutually exclusive per row: FIX-style separation of OrdSide vs PositionSide.
-    """
-    ts: datetime
-    event_type: EventType
-    order_id: str = ''
-    position_id: str = ''
-    trade_id: str = ''
-    broker_ref: str = ''
-    direction: Optional[OrderDirection] = None
-    side: Optional[OrderSide] = None
-    lots: Optional[float] = None
-    price: Optional[float] = None
-    fee: Optional[float] = None
-    fee_currency: str = ''
-    status: str = ''
-    close_type: str = ''
-    close_reason: str = ''
-    is_maker: Optional[bool] = None
-    # #340 — Submission slippage. Populated on ORDER_SUBMIT and CLOSE_SUBMIT
-    # rows (the algo decision moments). Empty on FILL / POSITION_* rows.
-    submission_tick_mid_price: Optional[float] = None
-    submission_tick_time_msc: Optional[int] = None
-    notes: str = ''
+# Canonical column order: the fields of one row, in their order. Stable contract for downstream
+# consumers.
+EVENT_FIELDS = tuple(f.name for f in fields(TradeEvent))
 
 
 class EventStreamWriter:
@@ -236,11 +178,11 @@ def _end_event(order_id: str, ended: OrderResult) -> TradeEvent:
         The event
     """
     if ended.is_refused:
-        event_type = EventType.ORDER_REJECT
+        event_type = TradeEventType.ORDER_REJECT
         reason = ended.rejection_reason.value if ended.rejection_reason else ''
     else:
-        event_type = (EventType.ORDER_CANCEL if ended.status is OrderStatus.CANCELLED
-                      else EventType.ORDER_END)
+        event_type = (TradeEventType.ORDER_CANCEL if ended.status is OrderStatus.CANCELLED
+                      else TradeEventType.ORDER_END)
         reason = ended.end_reason.value if ended.end_reason else ''
     return TradeEvent(
         ts=ended.execution_time,
@@ -321,7 +263,7 @@ def _build_events(
         )
         events.append(TradeEvent(
             ts=ts,
-            event_type=EventType.ORDER_SUBMIT,
+            event_type=TradeEventType.ORDER_SUBMIT,
             order_id=order_id,
             position_id=rep.position_id or '',
             lots=rep.executed_lots,
@@ -345,7 +287,7 @@ def _build_events(
 
             events.append(TradeEvent(
                 ts=trade.entry_time,
-                event_type=EventType.POSITION_OPEN,
+                event_type=TradeEventType.POSITION_OPEN,
                 order_id=trade.position_id,
                 position_id=trade.position_id,
                 direction=trade.direction,
@@ -365,7 +307,7 @@ def _build_events(
         events.append(TradeEvent(
             ts=(datetime.fromtimestamp(close_submitted / 1000.0, tz=timezone.utc)
                 if close_submitted is not None else trade.exit_time),
-            event_type=EventType.CLOSE_SUBMIT,
+            event_type=TradeEventType.CLOSE_SUBMIT,
             order_id=trade.position_id,
             position_id=trade.position_id,
             direction=trade.direction,
@@ -382,7 +324,7 @@ def _build_events(
 
         events.append(TradeEvent(
             ts=trade.exit_time,
-            event_type=EventType.POSITION_CLOSE,
+            event_type=TradeEventType.POSITION_CLOSE,
             order_id=trade.position_id,
             position_id=trade.position_id,
             direction=trade.direction,
@@ -410,7 +352,7 @@ def _fill_event(bt: BrokerTrade, position_id: str) -> TradeEvent:
     """
     return TradeEvent(
         ts=bt.timestamp,
-        event_type=EventType.FILL,
+        event_type=TradeEventType.FILL,
         order_id=bt.order_id,
         position_id=position_id,
         trade_id=bt.trade_id,

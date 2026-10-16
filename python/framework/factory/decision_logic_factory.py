@@ -367,11 +367,13 @@ class DecisionLogicFactory:
         except (SyntaxError, ImportError) as e:
             raise ValueError(f"Failed to load decision logic file '{p}': {e}") from e
 
+        # Only the classes the file itself defines: an imported one — the base, or a CORE logic
+        # the file's class extends — is not the file's logic
         candidates = [
             cls for cls in vars(module).values()
             if isinstance(cls, type)
             and issubclass(cls, AbstractDecisionLogic)
-            and cls is not AbstractDecisionLogic
+            and cls.__module__ == module.__name__
         ]
 
         if len(candidates) != 1:
