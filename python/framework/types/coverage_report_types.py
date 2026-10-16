@@ -16,6 +16,25 @@ class GapCategory(Enum):
     MODERATE = 'moderate'
     LARGE = 'large'
 
+    def is_data_gap(self) -> bool:
+        """
+        Whether this category is a stretch of the open market with no tick — nobody traded, or
+        nothing was recorded — as opposed to a market closure or no gap at all.
+
+        Returns:
+            True for short, moderate and large
+        """
+        return self in (GapCategory.SHORT, GapCategory.MODERATE, GapCategory.LARGE)
+
+    def is_market_closure(self) -> bool:
+        """
+        Whether this category is a time the market was closed.
+
+        Returns:
+            True for weekend and holiday
+        """
+        return self in (GapCategory.WEEKEND, GapCategory.HOLIDAY)
+
 
 @dataclass
 class IndexEntry:

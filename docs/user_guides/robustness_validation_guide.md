@@ -130,6 +130,30 @@ The gate applies to the closed-trade metrics only. `equity_return_pct` values wh
 holds, so nothing open at the edge is missing from its number; the disposition is still shown,
 marked as no trust input.
 
+## What a cut costs — measured
+
+Splitting history into blocks raises a fair question: does a strategy that starts flat in every
+block earn what the same strategy earns running through? Each block pays an entry the continuous
+account does not, and starts at its exact target where the continuous account carries a holding
+from before. Measured 2026-10-15 for a slow strategy — a daily trend-following allocator on
+ETHUSD, one decision a day, its holding between none and the whole account — over two stretches of
+Kraken history. Every 30-day block's `equity_return_pct` was set against the continuous account's
+own return over the same dates:
+
+| Stretch | Blocks | Mean holding | Cut cost, mean | Median | Mean absolute | Of it, the entry fee |
+|---|---|---|---|---|---|---|
+| bear, 2022-01 → 2024-01 | 24 | 16 % | −0.06 pts | 0.00 pts | 0.47 pts | 0.12 pts |
+| bull, 2020-01 → 2021-07 | 18 | 43 % | −0.43 pts | +0.20 pts | 2.10 pts | 0.35 pts |
+
+The cut biases nothing in either regime: mean and median sit at zero, and a block reads as an
+unbiased sample of the strategy. What grows with the holding is the noise of ONE block — two
+points either way when the strategy holds a lot — so a judgement rests on the distribution of
+many blocks, never on one.
+
+The measurement holds for what it covered: fixed 30-day blocks, a strategy deciding once a day,
+and a metric that values the holding. A fast strategy that carries positions through the cut and
+is judged on closed trades is the case the trust gate above exists for.
+
 ## Per-bucket sufficiency
 
 The Walk-Forward Efficiency rests on BOTH the in-sample and the out-of-sample mean. The overall

@@ -239,10 +239,18 @@ def _gap_at(start: datetime, minutes: float, category: GapCategory) -> Gap:
                gap_start=start, gap_end=start + timedelta(minutes=minutes))
 
 
-def _gap_validator() -> ScenarioDataValidator:
-    """A validator that allows weekend, holiday and short gaps inside a tick stretch."""
+def _gap_validator(*also_allowed: str) -> ScenarioDataValidator:
+    """
+    A validator that allows weekend, holiday and short gaps inside a tick stretch.
+
+    Args:
+        also_allowed: Further gap categories the run admits ('moderate', 'large')
+
+    Returns:
+        The validator
+    """
     app_config = MagicMock()
-    app_config.get_allowed_gap_categories.return_value = ['weekend', 'holiday', 'short']
+    app_config.get_allowed_gap_categories.return_value = ['weekend', 'holiday', 'short', *also_allowed]
     app_config.get_admitted_origin_classes.return_value = []
     return ScenarioDataValidator(
         data_coverage_reports={}, app_config=app_config, logger=MagicMock())
@@ -305,3 +313,51 @@ class TestTheGapChecksSearchTheReport:
 
         assert len(errors) == 1
         assert inside_large.gap_start.strftime('%Y-%m-%d %H:%M:%S') in errors[0]
+
+
+class TestAStartInsideAnAdmittedGap:
+    """
+    The start check and the tick-stretch check answer one question — may this gap be in the
+    window — and must agree: a gap the run admits in the middle of a window is admitted at its
+    start too, by moving the start to the gap's end. Measured 2026-10-15: a 30-day block of
+    ETHUSD 2017 starting inside an admitted moderate gap (09:10 → 09:41) was excluded, while
+    the same gap one minute later passed.
+    """
+
+    def test_a_start_inside_an_admitted_moderate_gap_moves_to_its_end(self):
+        gap = _gap_at(GAP_T, 31, GapCategory.MODERATE)
+        scenario = SimpleNamespace(start_date=GAP_T + timedelta(minutes=15))
+
+        errors, warnings = _gap_validator('moderate')._validate_start_date_not_in_gap(
+            scenario, _gap_report(gap))
+
+        assert errors == []
+        assert scenario.start_date == gap.gap_end
+        assert 'inside moderate gap, +16min' in warnings[0]
+
+    def test_a_start_inside_a_moderate_gap_not_admitted_is_an_error(self):
+        scenario = SimpleNamespace(start_date=GAP_T + timedelta(minutes=15))
+
+        errors, warnings = _gap_validator()._validate_start_date_not_in_gap(
+            scenario, _gap_report(_gap_at(GAP_T, 31, GapCategory.MODERATE)))
+
+        assert warnings == [] and 'is inside moderate gap' in errors[0]
+        assert scenario.start_date == GAP_T + timedelta(minutes=15)
+
+    def test_a_start_inside_an_admitted_large_gap_moves_too(self):
+        gap = _gap_at(GAP_T, 300, GapCategory.LARGE)
+        scenario = SimpleNamespace(start_date=GAP_T + timedelta(hours=1))
+
+        errors, warnings = _gap_validator('large')._validate_start_date_not_in_gap(
+            scenario, _gap_report(gap))
+
+        assert errors == [] and scenario.start_date == gap.gap_end
+        assert 'inside large gap' in warnings[0]
+
+    def test_a_start_inside_a_market_closure_stays_an_error(self):
+        scenario = SimpleNamespace(start_date=GAP_T + timedelta(hours=3))
+
+        errors, warnings = _gap_validator()._validate_start_date_not_in_gap(
+            scenario, _gap_report(_gap_at(GAP_T, 48 * 60, GapCategory.WEEKEND)))
+
+        assert warnings == [] and 'is inside weekend gap' in errors[0]

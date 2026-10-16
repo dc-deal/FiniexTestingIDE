@@ -243,6 +243,7 @@
       "event_tape_size": 5
     },
     "data_validation": {
+      "_comment_allowed_gap_categories": "Which gaps a scenario's window may contain: a data gap (short, moderate, large — the open market with no tick) or a market closure (weekend, holiday). A start inside an admitted data gap moves to the gap's end; a start inside a closure, or inside a gap not listed here, is refused. A list in user_configs replaces this one as a whole.",
       "allowed_gap_categories": [
         "seamless",
         "short",

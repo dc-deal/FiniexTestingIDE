@@ -13,7 +13,8 @@ and the cache **load** every run pays.
 **Test Location:** `tests/framework/data_coverage/`
 **Units under test:** `python/framework/discoveries/data_coverage/data_format_version_spans.py`,
 `gap_file_attribution.py`, `gap_listing.py` and `gap_timeline.py` beside it, the rendering and the
-yearly summary of `DataCoverageReport`, and the load of `DataCoverageReportCache`.
+yearly summary of `DataCoverageReport`, the load of `DataCoverageReportCache`, and the kinds of
+`GapCategory` (`python/framework/types/coverage_report_types.py`).
 The units take index entries or gaps; where a report would read the tick index, the read is
 replaced, so no test depends on this machine's archive. Only the cache-load test writes a file, into
 the test's own directory.
@@ -127,6 +128,16 @@ never asked for trading weeks.
 A symbol with no bars — a mistyped one, or bars never rendered — gets a report that says so,
 `(no bar data for this symbol)`, rather than a traceback from a time range that does not exist
 (#586). That report is what `discoveries_cli.py data-coverage show` prints.
+
+### test_gap_category_kinds.py
+
+**TestEveryGapCategoryIsOneKind:** each gap category is exactly one kind — a data gap (the open
+market with no tick), a market closure, or no gap at all (`seamless`). The kind decides what a check
+may do with a gap: a start inside an admitted data gap moves to its end, a start inside a closure is
+refused. A new category without a kind fails here instead of being treated as neither.
+- Every member answers to exactly one kind
+- Short, moderate and large are data gaps
+- Weekend and holiday are market closures
 
 ---
 

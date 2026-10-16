@@ -569,8 +569,10 @@ class ScenarioDataValidator:
         """
         Validate that start_date is not inside a gap.
 
-        For short gaps, auto-corrects start_date to gap_end and emits
-        a warning instead of an error. Moderate/large gaps remain errors.
+        For a short gap — and for a moderate or large one the run admits in
+        backtesting.data_validation.allowed_gap_categories — auto-corrects start_date
+        to gap_end and emits a warning instead of an error. A data gap the run does
+        not admit, and any market closure, remain errors.
 
         Args:
             scenario: Scenario to validate
@@ -594,14 +596,18 @@ class ScenarioDataValidator:
         gap_start = ensure_utc_aware(gap.gap_start)
         gap_end = ensure_utc_aware(gap.gap_end)
 
-        if gap.category == GapCategory.SHORT:
-            # Auto-correct: shift start_date past the short gap
+        # A data gap the run admits is moved past, as the stretch check admits it mid-window; a short
+        # one always. A market closure stays an error.
+        shiftable = gap.category == GapCategory.SHORT or (
+            gap.category.is_data_gap() and gap.category in self._allowed_gap_categories)
+        if shiftable:
+            # Auto-correct: shift start_date past the data gap
             scenario.start_date = gap_end
             gap_minutes = (gap_end - start_date).total_seconds() / 60
             warnings.append(
                 f"start_date shifted {start_date.strftime('%Y-%m-%d %H:%M:%S')} → "
                 f"{gap_end.strftime('%Y-%m-%d %H:%M:%S')} UTC "
-                f"(inside short gap, +{gap_minutes:.0f}min)"
+                f'(inside {gap.category.value} gap, +{gap_minutes:.0f}min)'
             )
         else:
             errors.append(
