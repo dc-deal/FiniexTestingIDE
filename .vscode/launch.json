@@ -1406,6 +1406,23 @@
             }
         },
         {
+            "name": "🔍 Disc - Spread Estimate: kraken_spot/ETHUSD",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/spread_estimate_cli.py",
+            "args": [
+                "show",
+                "kraken_spot",
+                "ETHUSD"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "08_discovery_analysis",
+                "order": 3
+            }
+        },
+        {
             "name": "🔍 Disc - Volatility Profile: kraken_spot/BTCUSD",
             "type": "debugpy",
             "request": "launch",
@@ -1419,7 +1436,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "08_discovery_analysis",
-                "order": 3
+                "order": 4
             }
         },
         {
@@ -1436,7 +1453,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "08_discovery_analysis",
-                "order": 4
+                "order": 5
             }
         },
         {
@@ -1453,7 +1470,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "08_discovery_analysis",
-                "order": 5
+                "order": 6
             }
         },
         // ====================================================
@@ -3146,6 +3163,23 @@
             }
         },
         {
+            "name": "🧩 Pytest: Spread Estimate (All)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/framework/spread_estimate/",
+                "-v",
+                "--tb=short"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "13_pytest_validation",
+                "order": 68
+            }
+        },
+        {
             "name": "🧩 Pytest: Sim Modify Lifecycle",
             "type": "debugpy",
             "request": "launch",
@@ -3159,7 +3193,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 68
+                "order": 69
             }
         },
         {
@@ -3176,7 +3210,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 69
+                "order": 70
             }
         },
         {
@@ -3193,7 +3227,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 70
+                "order": 71
             }
         },
         {
@@ -3210,7 +3244,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 71
+                "order": 72
             }
         },
         {
@@ -3227,7 +3261,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 72
+                "order": 73
             }
         },
         {
@@ -3244,7 +3278,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 73
+                "order": 74
             }
         },
         {
@@ -3261,7 +3295,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 74
+                "order": 75
             }
         },
         {
@@ -3278,7 +3312,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 75
+                "order": 76
             }
         },
         {
@@ -3295,7 +3329,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 76
+                "order": 77
             }
         },
         {
@@ -3312,7 +3346,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 77
+                "order": 78
             }
         },
         {
@@ -3329,7 +3363,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 78
+                "order": 79
             }
         },
         {
@@ -3346,7 +3380,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 79
+                "order": 80
             }
         },
         {
@@ -3363,7 +3397,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 80
+                "order": 81
             }
         },
         {
@@ -3380,7 +3414,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 81
+                "order": 82
             }
         },
         // ====================================================

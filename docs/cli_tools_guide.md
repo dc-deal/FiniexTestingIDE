@@ -606,6 +606,38 @@ LONG Extreme Moves (top 10)
 - `--force` — Ignore cache and re-scan
 - `--timeframe` — Timeframe override (default: M5)
 
+### 🔍 SPREAD ESTIMATE
+
+| | |
+|---|---|
+| **VS Code** | `🔍 Disc - Spread Estimate: kraken_spot/ETHUSD` |
+| **CLI** | `python spread_estimate_cli.py show kraken_spot ETHUSD` |
+| **Purpose** | How wide the spread was in years whose ticks recorded no quote |
+
+A tick without a quote carries bid = ask = the traded price, so a backtest over it crosses no
+spread. The spread can still be estimated from the trades: Kraken records the aggressor of every
+trade, and a buy and a sell close together in time straddle the spread. The command reads the
+symbol's tick files one at a time and prints, per year, origin class and quote regime, the
+estimate from consecutive opposite-side trades within one second — a burst of fills of one order
+counted once — beside Roll's textbook estimator. Where a file did record a quote, the quoted and
+the effective spread stand beside the estimate, which is how it is checked.
+
+```
+   year  origin      quote           pairs  median    mean     p90    roll  quoted  effective
+   2018  external    no_quote      192,838    4.58    8.81   24.65    3.57       —          —
+   2024  external    no_quote      182,140    0.04    1.60    5.69    1.83       —          —
+   2026  production  quoted        101,118    0.08    0.52    1.60    0.64    0.35       0.75
+```
+
+All figures are in basis points of the price. `mean` is capped at the 99th percentile: it is the
+expected cost, half of it per fill. The median is shown but is no cost measure — where more than
+half the pairs print at one price, it reads zero. Measured 2026-10-15 over all ETHUSD files, in
+18 s: on the files with a quote the estimate's mean (0.52) lies between the quoted (0.35) and the
+effective spread (0.75).
+
+**Parameters:**
+- `--year` — print that year's days instead of the yearly table
+
 ---
 
 ## E) Scenario Generation
@@ -947,6 +979,7 @@ logged the moment it finishes.
 | **Gap details** | `🔍 Disc - Data Coverage: mt5/EURUSD` | `discoveries_cli.py data-coverage show mt5 EURUSD` |
 | **Volatility profile** | `🔍 Disc - Volatility Profile: mt5/USDJPY` | `discoveries_cli.py volatility-profile mt5 USDJPY` |
 | **Extreme Moves** | `🔍 Disc - Extreme Moves: mt5/USDJPY` | `discoveries_cli.py extreme-moves mt5 USDJPY` |
+| **Spread estimate** | `🔍 Disc - Spread Estimate: kraken_spot/ETHUSD` | `spread_estimate_cli.py show kraken_spot ETHUSD [--year 2021]` |
 | **Discovery Cache Status** | `🔍 Disc - Cache: Status` | `discoveries_cli.py cache status` |
 | **Discovery Cache Rebuild** | `🔍 Disc - Cache: Rebuild All` | `discoveries_cli.py cache rebuild-all` |
 | **Generate Blocks** | `⚡ Generator - 40 Blocks mt5/USDJPY` | `generator_cli.py generate-blocks mt5 USDJPY --block-size 12 --count 40` |

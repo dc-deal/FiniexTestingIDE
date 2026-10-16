@@ -112,6 +112,7 @@ tests/
 │   ├── signal_workers/    unit — SIGNAL worker type, provider, llm_sentiment, hybrid decision (#141), outage contract + episode capture (#434/#451)
 │   ├── reporting/         unit — report builders, aggregators, IO/store, console renderers (#391/#433/#451)
 │   ├── signal_coverage/   unit — SignalCoverageReport gap detection + scenario signal-window validation
+│   ├── spread_estimate/   unit — the spread estimated from the trades' aggressor sides, and its measurement over an archive with the quoted truth beside it (#602)
 │   ├── data_coverage/     unit — data format version spans (#453), which file a gap falls in (open times through the server clock, #562), how long a gap reads, which gaps are listed and whose silence each is, the window queries a run asks and the cache load it pays (#599)
 │   ├── market_calendar/  unit — swap-rollover + DST calendar helpers + MarketClock awareness (#365)
 │   ├── test_price_trigger.py  unit — the shared order-vs-quote predicate: limit/stop reached, book side (#505)
