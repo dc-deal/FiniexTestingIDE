@@ -140,7 +140,7 @@ class TestCatalogCompleteness:
     def test_a_derived_store_names_what_it_derives_from(self):
         """DERIVED without a source is a claim with no address."""
         for descriptor in StoreCatalog().all():
-            if descriptor.kind is StoreKind.DERIVED and descriptor.derived_from is None:
+            if descriptor.kind is StoreKind.DERIVED and not descriptor.derived_from:
                 assert descriptor.note, (
                     f'{descriptor.store_id} is DERIVED with neither a source store nor a stated '
                     f'reason for having none')
@@ -149,9 +149,9 @@ class TestCatalogCompleteness:
         """An edge to a store the catalog does not carry is worse than no edge."""
         registered = {d.store_id for d in StoreCatalog().all()}
         for descriptor in StoreCatalog().all():
-            if descriptor.derived_from is not None:
-                assert descriptor.derived_from in registered, descriptor.store_id
-                assert descriptor.derived_from is not descriptor.store_id, 'self-derivation'
+            for source in descriptor.derived_from:
+                assert source in registered, descriptor.store_id
+                assert source is not descriptor.store_id, 'self-derivation'
 
     def test_an_owned_index_is_named_after_its_store(self):
         """

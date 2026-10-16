@@ -268,7 +268,7 @@ def build_registrations() -> Dict[StoreId, StoreDescriptor]:
             # count what the index holds, not a wider set that happens to be identical today.
             entry_glob='*/bars/**/*_BARS.parquet',
             index_path=processed / BarsIndexManager.INDEX_FILE_PARQUET,
-            derived_from=StoreId.TICKS,
+            derived_from=(StoreId.TICKS,),
             note=('DERIVED, not archive: rendered from the tick archive, and today only by a full '
                   're-render that replaces each file once its new version is verified, and removes '
                   'files without a source only after every symbol rendered '
@@ -293,7 +293,7 @@ def build_registrations() -> Dict[StoreId, StoreDescriptor]:
         StoreId.DISCOVERY_CACHES: StoreDescriptor(
             store_id=StoreId.DISCOVERY_CACHES,
             kind=StoreKind.DERIVED,
-            purpose='coverage, volatility and extreme-move analyses',
+            purpose='analyses derived from the archive',
             doc='docs/discovery_system.md#cache-system',
             root=discovery_root,
             key='family / broker_symbol',
@@ -302,7 +302,7 @@ def build_registrations() -> Dict[StoreId, StoreDescriptor]:
             entry_glob='**/*.parquet',
             index_path=discovery_root / DISCOVERY_INDEX_FILE,
             index_factory=lambda: DiscoveryCacheIndex(discovery_root),
-            derived_from=StoreId.BARS,
+            derived_from=(StoreId.BARS, StoreId.TICKS),
         ),
         StoreId.BROKER_RUNTIME: StoreDescriptor(
             store_id=StoreId.BROKER_RUNTIME,
@@ -314,8 +314,7 @@ def build_registrations() -> Dict[StoreId, StoreDescriptor]:
             form=RetrievalForm.DOCUMENT,
             backend=StoreBackend.DISK,
             entry_glob='*/*_broker_config.json',
-            derived_from=None,
-            note=('No index: one file per broker, opened by a known key. `derived_from` stays None '
+            note=('No index: one file per broker, opened by a known key. `derived_from` stays empty '
                   'on purpose — its source is a remote broker API, which is not a store and cannot '
                   'be named as one. Its own freshness ladder lives in the fetcher (7/30 days).'),
         ),
@@ -331,14 +330,13 @@ def build_registrations() -> Dict[StoreId, StoreDescriptor]:
             entry_glob=CONFIG_DIRECTORY_INDEX_FILE,
             index_path=config_directory_root / CONFIG_DIRECTORY_INDEX_FILE,
             index_factory=lambda: ConfigDirectoryIndex(config_directory_root),
-            derived_from=None,
             # Its rebuild only deletes the file; the directory's next read re-reads every file and
             # writes it again, and does the same for a file from other logic. Without the flag the
             # catalog answered its own rebuild with "never built — rebuild", which deletes again.
             self_healing=True,
             note=('The directory of every configuration that can start a run (#554): one cached '
                   'reading per scenario set or AutoTrader profile, keyed on its path, mtime and '
-                  'size, so a request reads only files that changed. `derived_from` stays None on '
+                  'size, so a request reads only files that changed. `derived_from` stays empty on '
                   'purpose — its sources are hand-written configuration files, which are not a '
                   'store. Deleting it costs one re-read of every file and loses nothing. A read '
                   'never writes the run-config store.'),
@@ -359,9 +357,9 @@ def build_registrations() -> Dict[StoreId, StoreDescriptor]:
             form=RetrievalForm.DOCUMENT,
             backend=StoreBackend.DISK,
             entry_glob='*/*/*.json',
-            derived_from=StoreId.DISCOVERY_CACHES,
+            derived_from=(StoreId.DISCOVERY_CACHES,),
             note=('Generated window sets. Each carries `profile_meta.discovery_fingerprints` for '
-                  'all three cache families, and '
+                  'the cache families the generator reads, and '
                   '`GeneratorProfileLoader.validate_fingerprints` already compares them — the one derived store in this project whose validity rule was '
                   'complete before the model existed. Lives under configs/ and is VERSIONED, which '
                   'is unusual for a DERIVED store; the kind describes its nature, not its tracking.'),
@@ -454,9 +452,8 @@ def build_registrations() -> Dict[StoreId, StoreDescriptor]:
             key='—',
             form=RetrievalForm.DOCUMENT,
             backend=StoreBackend.DISK,
-            derived_from=None,
             note=("One file, written once after a complete import into the production archive. "
-                  "`derived_from` stays None on purpose — its source is the imports' own "
+                  "`derived_from` stays empty on purpose — its source is the imports' own "
                   'durations, not a store. Deleting it loses nothing but the next estimate.'),
         ),
         StoreId.HOST_IDENTITY: StoreDescriptor(

@@ -172,6 +172,9 @@ class PortfolioSummary(AbstractBatchSummarySection):
         # zero — so they are negated rather than forced negative, which printed a credit as zero.
         spread = (SPREAD_NOT_MEASURED if unit.total_spread_cost is None
                   else renderer.pnl(-unit.total_spread_cost, unit.currency))
+        # The spread crossed against quotes modelled for data without one (#602), named apart
+        if unit.total_modelled_spread_cost:
+            spread += f' · modelled {renderer.pnl(-unit.total_modelled_spread_cost, unit.currency)}'
         print(
             f'   Cost: spread {spread} | '
             f'comm {renderer.pnl(force_negative(unit.total_commission), unit.currency)} | '
@@ -550,11 +553,15 @@ class PortfolioSummary(AbstractBatchSummarySection):
 
         # Cost breakdown (layout A — all five categories, zeros where n/a). A spread that was
         # not measured stays out of the total, and the total says so.
-        total_costs = ((row.total_spread_cost or 0.0) + row.total_commission + row.total_swap
-                       + row.maker_fee + row.taker_fee)
+        total_costs = ((row.total_spread_cost or 0.0) + row.total_modelled_spread_cost
+                       + row.total_commission + row.total_swap + row.maker_fee + row.taker_fee)
         spread = (SPREAD_NOT_MEASURED if row.total_spread_cost is None
                   else renderer.pnl(-row.total_spread_cost, currency))
-        total_note = ' (without the spread)' if row.total_spread_cost is None else ''
+        if row.total_modelled_spread_cost:
+            spread += f' · modelled {renderer.pnl(-row.total_modelled_spread_cost, currency)}'
+        total_note = (' (without the spread)'
+                      if row.total_spread_cost is None and not row.total_modelled_spread_cost
+                      else '')
 
         print(f"\n{renderer.bold('   💸 COST BREAKDOWN:')}")
         # Spread and swap negated, not forced negative: a credit is a signed cost (unit block)

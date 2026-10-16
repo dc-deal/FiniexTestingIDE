@@ -495,6 +495,10 @@ class TestTheNoteCoversPosition:
         # yet, and a carried value would be a claim about a fill that never happened (#244).
         'exit_bid': 'only set once the position is closed',
         'exit_ask': 'only set once the position is closed',
+        # The carry-over is the live session's, and a live quote is always the venue's own:
+        # only the simulation models a quote, for ticks from files without one (#602)
+        'entry_quote_modelled': 'simulation only — a live quote is never modelled',
+        'exit_quote_modelled': 'simulation only, and set once the position is closed',
     }
 
     def test_every_position_field_is_carried_or_declared_not_to_be(self):

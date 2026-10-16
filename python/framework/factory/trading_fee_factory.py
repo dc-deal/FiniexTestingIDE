@@ -7,45 +7,7 @@ Creates appropriate fee objects based on broker type and order context.
 
 from datetime import datetime
 
-from python.framework.trading_env.trading_fees import MakerTakerFee, SpreadFee
-from python.framework.types.market_types.market_data_types import TickData
-
-
-# UNCALLED since the spread stopped being booked as a fee (#244): a quote-driven venue's
-# spread is paid inside the crossing fill price, so charging it again here was an exact double
-# count. Kept for one step only — #244's reporting half replaces this with an ATTRIBUTED
-# effective half-spread that is measured and never subtracted, and deletes both this factory
-# and SpreadFee in the same change.
-def create_spread_fee_from_tick(
-    tick: TickData,
-    lots: float,
-    timestamp: datetime,
-    tick_value: float = 1.0,
-    digits: int = 5
-) -> SpreadFee:
-    """
-    Create SpreadFee from live tick data.
-
-    Use in TradeSimulator when executing orders on spread-based brokers (MT5).
-
-    Args:
-        tick: Current tick data with bid/ask
-        lots: Order size
-        timestamp: Fee timestamp, from the executor's canonical clock
-        tick_value: Value per tick per lot
-        digits: Symbol decimal places
-
-    Returns:
-        SpreadFee instance with calculated cost
-    """
-    return SpreadFee(
-        bid=tick.bid,
-        ask=tick.ask,
-        lots=lots,
-        tick_value=tick_value,
-        timestamp=timestamp,
-        digits=digits
-    )
+from python.framework.trading_env.trading_fees import MakerTakerFee
 
 
 def create_maker_taker_fee(

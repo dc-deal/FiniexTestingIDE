@@ -27,6 +27,10 @@ MAX_PAIR_GAP_MS = 1_000
 BPS = 10_000.0
 MS_PER_DAY = 86_400_000
 
+# The version of the method: the pair rule and the burst collapse here, the capped mean the
+# measurement takes over them. A cached day estimate is valid only under the version that wrote it.
+ESTIMATOR_VERSION = 1
+
 
 def collapse_bursts(time_msc: np.ndarray, buy: np.ndarray) -> np.ndarray:
     """

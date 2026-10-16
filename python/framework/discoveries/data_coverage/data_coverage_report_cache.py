@@ -25,6 +25,7 @@ from python.configuration.app_config_manager import AppConfigManager
 from python.configuration.discoveries_config_loader import DiscoveriesConfigLoader
 from python.data_management.index.bars_index_manager import BarsIndexManager
 from python.framework.discoveries.data_coverage.data_coverage_report import DataCoverageReport
+from python.framework.discoveries.discovery_cache_index import DiscoveryCacheIndex
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.types.coverage_report_types import Gap, GapCategory
@@ -322,6 +323,7 @@ class DataCoverageReportCache:
             })
 
             pq.write_table(table, cache_path)
+            DiscoveryCacheIndex(self.cache_dir.parent).record_file(cache_path)
             self.logger.debug(f'💾 Cached: {broker_type}/{symbol}')
 
         except Exception as e:

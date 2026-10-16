@@ -209,6 +209,8 @@ class BookingPeriod:
             splits them, summed over the same trades `figures.total_fees` is — the ones the
             period CLOSED. `commission_cost + swap_cost` is `total_fees`; `spread_cost` is
             measured and stands beside it, never inside it
+        modelled_spread_cost: The spread the same trades crossed against quotes the simulation
+            modelled for ticks without one (#602) — beside `spread_cost`, the two adding up
     """
     period_no: int
     unit_name: str
@@ -224,6 +226,7 @@ class BookingPeriod:
     commission_cost: float = 0.0
     swap_cost: float = 0.0
     spread_cost: float = 0.0
+    modelled_spread_cost: float = 0.0
 
 
 class Reduction(Enum):

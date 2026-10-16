@@ -155,7 +155,9 @@ class CostBreakdown:
     All costs are in account currency.
 
     Attributes:
-        total_spread_cost: Bid-ask spread cost (implicit)
+        total_spread_cost: Bid-ask spread cost (implicit), crossed against recorded quotes
+        total_modelled_spread_cost: Bid-ask spread cost (implicit) crossed against quotes the
+            simulation modelled for ticks without one (#602)
         total_commission: Broker commission (explicit)
         total_swap: Overnight interest (can be negative/positive)
         maker_fee: Maker-side trading fee (spot, liquidity-providing fills)
@@ -163,6 +165,7 @@ class CostBreakdown:
         total_fees: Sum of all costs
     """
     total_spread_cost: float = 0
+    total_modelled_spread_cost: float = 0
     total_commission: float = 0
     total_swap: float = 0
     maker_fee: float = 0

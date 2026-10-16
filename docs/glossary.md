@@ -202,7 +202,7 @@ stale in `stale_data_source`. See [Stress Test](stress_test.md).
 **data window** — The market window one run unit was declared to cover (`data_windows` on the run
 header): a start, and an end unless it is open. Not a span over several units. On this side a
 *window* is always a span of TIME — the served `window_start`, `window_end`, `window_count` and
-`windows` mean the same — never a docked panel: that is the FiniexViewer's `window`, defined in its
+`windows` mean the same — never a docked panel: that is the FiniexViewer's *panel*, defined in its
 own glossary.
 
 **decision basis** — The fresh / stale / blind counts of the inputs a decision was made on. See
@@ -229,6 +229,12 @@ denied order event carries no `submitted_seq`. A refusal the venue made is *reje
 **deployment** — The sessions of one bot joined into one history by a `deployment_id`, because its
 profile declares `deployment.continuous: true`. Not itself a run. See
 [Deployment Ledger](user_guides/deployment_ledger_guide.md).
+
+**discovery** — An analysis the IDE derives from the archive, such as the coverage report or the
+spread estimate: regenerable at any time and cached against its source. Not a store of its own —
+every family lives in the `discovery_caches` store — and never something the IDE records about
+itself: a run, a certificate or a carry-over is not a discovery, because deleting it loses what
+happened. See [Discovery System](discovery_system.md).
 
 **dry run** — An AutoTrader session on a live adapter whose `dry_run` resolves true: real ticks,
 every order validated by the venue and never placed, fills simulated locally. A mock session is not
@@ -370,6 +376,13 @@ events](consumer/order-events.md).
 `scenario_settings` window from the archive through the whole AutoTrader stack against the
 `MockBrokerAdapter`, places nothing, and is reported like every AutoTrader session. See
 [Mock Adapter](architecture/mock_adapter_guide.md).
+
+**modelled spread** (`modelled_spread_cost`, `modelled_spread_factor`) — The spread a backtest charges
+where the data recorded no quote: such a tick is given bid and ask half the spread estimated
+for the previous day below and above its traded price, times the factor, and a fill against it
+crosses that spread. Reported as its own figure beside `spread_cost`, which stays what was
+measured against a recorded quote — the two add up. Not *synthetic*, which here means generated
+data. See [Discovery System](discovery_system.md).
 
 **modify · amend** — *Modify* is this project's word for changing a working order's price or
 size: `modify_requested`, `modified`, `modify_rejected`, and `modify` as a lost request. *Amend* is

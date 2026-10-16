@@ -74,6 +74,7 @@ across the scenario's files, sorted**: one scenario reads many files and they ne
 | `origin_classes` | what the producing instance was — `production`, `development` or `unknown` |
 | `origin_evidence_grades` | how well that is known — `stamped`, `attested` or `unknown` |
 | `price_bases` | which price the scenario's bars were rendered from |
+| `modelled_spread` | what the scenario's ticks recorded without a quote were given instead — null where it read none |
 
 **Read the class and the grade together.** `production` from the producer's own stamp and
 `production` from a claim recorded afterwards are the same word and a different fact. `stamped`
@@ -86,6 +87,14 @@ stamps a basis — and it is never filled in from what the broker is *declared* 
 a file was rendered from and what a render would produce today are two questions that disagree
 while a re-render is unfinished. The vocabulary is the one
 [market data](/api/v1/docs/market-data) serves beside its bars.
+
+`modelled_spread` describes the quote a backtest gives a tick whose file recorded none: bid and
+ask half the spread estimated for the previous day below and above the traded price. `factor` is
+the share of that estimate applied (0 gives none), `ticks_modelled` of `ticks_without_quote` the
+ones that received a quote — the rest had no usable estimate before their day and kept bid equal
+to ask — and `median_spread_bps` the median full spread given, in basis points of the price.
+`estimator_version` and `day_digest` identify what was charged: two runs with the same digest
+priced their fills from the same day estimates by the same rules.
 
 The sorting is not cosmetic. The same set of files produces the same string whatever order they
 were read in, so two runs over the same data compare as strings. The run as a whole records the

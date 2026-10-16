@@ -5,7 +5,7 @@ Central coordinator for all discovery cache systems.
 
 Provides a single entry point for rebuilding, clearing, and
 inspecting all discovery caches (Extreme Moves, Coverage/Gap,
-and Volatility Profile cache).
+Volatility Profile and Spread Estimate cache).
 
 Used by:
 - bar_importer.py (rebuild after bar import)
@@ -22,6 +22,9 @@ from python.framework.discoveries.data_coverage.data_coverage_report_cache impor
 )
 from python.framework.discoveries.discovery_cache import DiscoveryCache
 from python.framework.discoveries.discovery_cache_index import DiscoveryCacheIndex
+from python.framework.discoveries.spread_estimate.spread_estimate_cache import (
+    SpreadEstimateCache,
+)
 from python.framework.discoveries.volatility_profile_analyzer.volatility_profile_analyzer_cache import (
     VolatilityProfileAnalyzerCache,
 )
@@ -48,6 +51,7 @@ class DiscoveryCacheManager:
         self._discovery_cache = DiscoveryCache(logger=self._logger)
         self._data_coverage_cache = DataCoverageReportCache()
         self._volatility_profile_cache = VolatilityProfileAnalyzerCache(logger=self._logger)
+        self._spread_estimate_cache = SpreadEstimateCache(logger=self._logger)
 
     def rebuild_all(
         self,
@@ -72,6 +76,12 @@ class DiscoveryCacheManager:
             'coverage': self._data_coverage_cache.build_all,
             'extreme_moves': self._discovery_cache.build_all,
             'volatility_profile': self._volatility_profile_cache.build_all,
+            # `force` does not reach this family: its validity is exact — the files without a
+            # quote and the estimator version — so a forced rebuild would write the same rows,
+            # and re-measuring the history costs minutes after every import that forces the
+            # bar-derived families. `spread_estimate_cli.py build --force` forces it on purpose.
+            'spread_estimate': lambda force_rebuild: self._spread_estimate_cache.build_all(
+                force_rebuild=False),
         }
         for done, (name, build_all) in enumerate(builders.items(), 1):
             results[name] = build_all(force_rebuild=force)
@@ -109,6 +119,7 @@ class DiscoveryCacheManager:
             'coverage': self._data_coverage_cache.get_cache_status(),
             'extreme_moves': self._discovery_cache.get_cache_status(),
             'volatility_profile': self._volatility_profile_cache.get_cache_status(),
+            'spread_estimate': self._spread_estimate_cache.get_cache_status(),
         }
 
     def get_fingerprints(self, broker_type: str, symbol: str) -> Dict[str, Optional[str]]:

@@ -50,6 +50,8 @@ class DataIdentityKey:
     max_ticks: Optional[int]
     warmup_bars: Tuple[Tuple[str, int], ...]
     tick_processing_budget_ms: float
+    # It decides the quote the ticks without one are given (#602), so it is part of what loaded
+    modelled_spread_factor: float = 0.0
 
     @classmethod
     def from_scenario(
@@ -83,6 +85,7 @@ class DataIdentityKey:
             max_ticks=scenario.max_ticks,
             warmup_bars=warmup_bars,
             tick_processing_budget_ms=budget_ms,
+            modelled_spread_factor=scenario.get_modelled_spread_factor(),
         )
 
 

@@ -33,6 +33,37 @@ reads downwards from the version their fixtures hold until they reach the one be
 A test holds the newest heading in this log to the number the server answers with, so a version
 cannot ship without its entry.
 
+## Version 33 — 2026-10-16 (#602)
+
+A backtest over data recorded without a quote now pays a spread. Each such tick is given the quote
+the spread estimated for the previous day implies, and what the fills crossed against it is
+reported as a figure of its own beside the measured spread.
+
+- `GET /api/v1/reports/runs/{run_id}/trade-history`: every trade row carries
+  `modelled_spread_cost` — the spread its fills crossed against a modelled quote. It is inside
+  `gross_pnl` like `spread_cost`, beside `total_fees` and never inside it, and the two add up to
+  the trade's effective spread: a fill against a recorded quote counts in `spread_cost`, one
+  against a modelled quote in `modelled_spread_cost`. 0 where every quote was recorded. Every
+  `scenario_totals` row carries `total_modelled_spread_cost`, always a number.
+- `portfolio`: every unit row carries `total_modelled_spread_cost`; `aggregated-portfolio` sums it
+  per block.
+- `booking-periods`: every period carries `modelled_spread_cost` beside `spread_cost`; the
+  deployment rows carry it as `period_modelled_spread_cost`. Null on a period recorded before this
+  contract.
+- `scenario-details`: every row carries `modelled_spread` — `factor`, `estimator_version`,
+  `ticks_without_quote`, `ticks_modelled`, `median_spread_bps` and `day_digest` — null where the
+  scenario read no tick without a quote.
+- **A change of meaning on data without a quote:** a backtest's fills, the marks of its open
+  positions and its stops now see a spread there, so its `gross_pnl` and `net_pnl` are lower than
+  those of the same set run before this contract. `spread_cost` there stays what contract 32 made
+  it — nothing was measured.
+
+Fields added, none removed or renamed; the P&L of a backtest over data without a quote changes.
+Its documents are [trade history](/api/v1/docs/trade-history),
+[portfolio](/api/v1/docs/portfolio), [aggregated portfolio](/api/v1/docs/aggregated-portfolio),
+[booking periods](/api/v1/docs/booking-periods) and
+[scenario details](/api/v1/docs/scenario-details).
+
 ## Version 32 — 2026-10-15 (#599)
 
 A gap says whose silence it is, and a symbol with years of a venue's history no longer has to be
@@ -116,29 +147,13 @@ A live session that refused at its first tick is told apart from one that crashe
 
 An addition; no existing field changed. A run recorded before this contract serves `false`.
 
-## Version 28 — 2026-10-11 (#508)
-
-A run says how many of its fills were booked at the venue's own fee and how many at our estimate,
-and what each came to.
-
-- `portfolio`: every unit row carries `fill_fees_by_source` — one entry per fee source its fills
-  carry, `venue` or `estimate` as on the order-event stream's `fee_source`, each with `fill_count`
-  (the fills) and `fill_fees` (what their fees came to, in the account currency). A backtest has
-  only `estimate`: it has no venue to ask. Empty where the unit executed nothing. Every
-  per-currency row carries the same, summed over its units — and so does the `headline` of every
-  block on `aggregated-portfolio`.
-- `order-history`: every row carries `fee_source` — where its `commission` came from, `venue` or
-  `estimate`. Null where nothing executed.
-
-Both are additions; no existing field changed. A run recorded before this contract serves an empty
-`fill_fees_by_source` and a null `fee_source`, until it is run again.
-
-## Versions 27 and earlier
+## Versions 28 and earlier
 
 One line each. Every one of these moved a shape or a meaning; what they moved is summarised here
 rather than spelled out, because a consumer this far behind needs the list of steps, not each step's
 reasoning. The full text of a compressed version is in this repository's history.
 
+- **Version 28** — 2026-10-11 (#508): A run says how many of its fills were booked at the venue's own fee and how many at our estimate — `fill_fees_by_source` on every portfolio unit row, per-currency row and aggregated `headline` (entries `venue` / `estimate` with `fill_count` and `fill_fees`; empty where nothing executed), and `fee_source` on every order-history row (null where nothing executed).
 - **Version 27** — 2026-10-11 (#508): A live fill's fee is the venue's own charge wherever the venue reports it, and every executed order event says where its fee came from — `fee_source` (`venue` or `estimate`; null on an event that executed nothing, on a fill nothing could be booked for whose venue reported no fee, and on every event recorded before it); the same fee fields from another source, so a live run before and one after can differ in fees for the same orders.
 - **Version 26** — 2026-10-09 (#582): A run's header is served whole — `GET /api/v1/reports/runs/{run_id}/header`, with `run_not_found`, `run_header_missing` and `artifact_unreadable` — and the run list says who started each run: `origin_channel`, `origin_client`, `origin_principal` and `origin_host`; `fixture_superseded` is `true` also for a run of an entry no longer declared.
 - **Version 25** — 2026-10-08 (#576): The runs a consumer pins became entries of a fixture catalog — `fixture_superseded` on every run of the run list says whether a run is its entry's current production (`false`), an older or failed one (`true`), or no catalog production at all (`null`).

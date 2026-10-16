@@ -175,8 +175,8 @@ that moment is.
 **The limit is the one that binds.** Where the server runs in a container with a memory limit
 below the machine's, `limit_bytes` is that limit and `limit_source` is `cgroup`; otherwise it is
 the machine's memory and `limit_source` is `machine`. The same for the processors: `count` is a
-container's processor quota where one binds — it may be fractional — otherwise the processors the
-server may run on.
+container's processor quota where one binds — it may be fractional — and `count_source` is then
+`cgroup`; otherwise it is the processors the server may run on, and `count_source` is `machine`.
 
 **The processors' busy share has a window.** `used_pct` is how busy the machine's processors were
 over the last `window_s` seconds — the time since the previous reading of this route, by ANY

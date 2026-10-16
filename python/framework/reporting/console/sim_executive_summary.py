@@ -509,6 +509,9 @@ class SimExecutiveSummary(AbstractBatchSummarySection):
         else:
             print(
                 f'Spread Cost:        {format_currency_cost(row.total_spread_cost, currency)} (avg {format_currency_cost(row.avg_spread, currency)}/trade)')
+        if row.total_modelled_spread_cost:
+            print(f'Modelled Spread:    '
+                  f'{format_currency_cost(row.total_modelled_spread_cost, currency)}')
         print(
             f'Commission:         {format_currency_cost(row.total_commission, currency)}')
         print(
@@ -578,6 +581,9 @@ class SimExecutiveSummary(AbstractBatchSummarySection):
         spread = (SPREAD_NOT_MEASURED if row.total_spread_cost is None
                   else format_currency_cost(row.total_spread_cost, currency))
         print(f'Spread Cost:        {spread}')
+        if row.total_modelled_spread_cost:
+            print(f'Modelled Spread:    '
+                  f'{format_currency_cost(row.total_modelled_spread_cost, currency)}')
         print(
             f'Commission:         {format_currency_cost(row.total_commission, currency)}')
         print(

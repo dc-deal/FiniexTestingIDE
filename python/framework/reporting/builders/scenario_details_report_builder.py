@@ -8,11 +8,12 @@ batch directly — NOT via `RunUnit`, because failed scenarios carry no `tick_lo
 must still appear (the section is the full scenario status view).
 """
 
-from typing import Dict
+from typing import Dict, Optional
 
 from python.configuration.market_config_manager import MarketConfigManager
 from python.framework.types.api.report_types import (
     DataBrokerRow,
+    ModelledSpreadDetail,
     ScenarioDetailsReport,
     ScenarioDetailsRow,
 )
@@ -20,6 +21,7 @@ from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.data_origin_types import joined_distinct
 from python.framework.types.process_data_types import ProcessResult
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
+from python.framework.types.spread_estimate_types import ModelledSpreadSummary
 
 
 def build_scenario_details_report_from_batch(
@@ -97,6 +99,24 @@ def _data_brokers(rows: list, market_types: Dict[str, str]) -> list:
     ]
 
 
+def _modelled_spread(summary: Optional[ModelledSpreadSummary]) -> Optional[ModelledSpreadDetail]:
+    """
+    The served form of what a scenario's ticks without a quote were given.
+
+    Args:
+        summary: The preparation's summary, None where the scenario read no such tick
+
+    Returns:
+        The detail, None where there is nothing to say
+    """
+    if summary is None:
+        return None
+    return ModelledSpreadDetail(
+        factor=summary.factor, estimator_version=summary.estimator_version,
+        ticks_without_quote=summary.ticks_without_quote, ticks_modelled=summary.ticks_modelled,
+        median_spread_bps=summary.median_spread_bps, day_digest=summary.day_digest)
+
+
 def _to_row(result: ProcessResult, scenario: SingleScenario,
             market_types: Dict[str, str]) -> ScenarioDetailsRow:
     """Map one ProcessResult (+ scenario) to a row — success / failed / hybrid."""
@@ -113,6 +133,7 @@ def _to_row(result: ProcessResult, scenario: SingleScenario,
         origin_classes=joined_distinct(scenario.origin_classes),
         origin_evidence_grades=joined_distinct(scenario.origin_evidence_grades),
         price_bases=joined_distinct(scenario.price_bases),
+        modelled_spread=_modelled_spread(scenario.modelled_spread),
         account_currency=scenario.account_currency or '',
         account_currency_explicit=bool(
             (scenario.trade_simulator_config or {}).get('account_currency')),

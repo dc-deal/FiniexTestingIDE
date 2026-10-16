@@ -71,6 +71,14 @@ the effective spread the fills crossed, and it is already inside `gross_pnl`. So
 **beside** `total_fees` and never inside it. It is signed like the swap, and a negative value is a
 price improvement — what a resting limit order earns by filling inside the spread.
 
+`modelled_spread_cost` is the same quantity where there was no quote to measure against. Data
+recorded without a quote carries bid and ask at the traded price; a backtest over it gives each
+such tick the quote the spread estimated for the previous day implies, and a fill against that
+quote crosses a modelled spread rather than a measured one. It is inside `gross_pnl` too, beside
+`total_fees` and never inside it, and on every row `spread_cost + modelled_spread_cost` is the
+effective spread of its fills — each fill counts in exactly one of the two. It is 0 where every
+quote was recorded, which includes every live session.
+
 ## How far it went while it was open
 
 The excursion fields are the worst and the best the position reached between its two ends, which
@@ -199,6 +207,9 @@ without a quote**: there bid and ask are the traded price, no fill crossed a rec
 sum of those zeros would look like a measurement. A unit that read such data for part of its window
 is null too, rather than a partial sum. It is also null on a run recorded before contract 32. A
 live session's total is always a sum: it reads its venue's feed, not archived data.
+
+`total_modelled_spread_cost` is the unit's `modelled_spread_cost` summed — always a number, 0 where
+nothing was modelled, and 0 on a run recorded before contract 33, when nothing was.
 
 ## Retention: this list has a ceiling
 

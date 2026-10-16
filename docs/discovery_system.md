@@ -10,6 +10,7 @@ The discovery system provides pre-computed market analyses with automatic cache 
 | **Extreme Move Scanner** | Directional price movements (strong LONG/SHORT trends) | `ExtremeMoveResult` |
 | **Data Coverage** | Gap detection, data quality assessment | `DataCoverageReport` |
 | **Signal Coverage** | Gap detection on a signal series (#429) | `SignalCoverageReport` |
+| **Spread Estimate** | The spread of days whose ticks recorded no quote, from the trades' aggressor sides (#602) | `SpreadMeasurement`, cached day estimates |
 
 ## Architecture
 
@@ -19,13 +20,18 @@ discoveries_cli.py
     ├── extreme-moves      → DiscoveryCache                 → ExtremeMoveScanner
     ├── data-coverage      → DataCoverageReportCache        → DataCoverageReport
     ├── signal-coverage    → SignalCoverageReportManager    → SignalCoverageReport
-    └── cache              → DiscoveryCacheManager            (coordinates the cached three)
+    └── cache              → DiscoveryCacheManager            (coordinates the cached families)
+
+spread_estimate_cli.py
+    ├── show               → SpreadEstimateMeasurement       (the whole history, measured)
+    └── build              → SpreadEstimateCache             (the day estimates a backtest reads)
 ```
 
 **Code locations:**
 - Volatility profiling: `python/framework/discoveries/volatility_profile_analyzer/`
 - Data coverage: `python/framework/discoveries/data_coverage/`
 - Signal coverage: `python/framework/discoveries/signal_coverage/`
+- Spread estimate: `python/framework/discoveries/spread_estimate/`, types in `spread_estimate_types.py`
 - Types: `python/framework/types/market_types/market_volatility_profile_types.py`, `coverage_report_types.py`
 - Config: `configs/discoveries/discoveries_config.json` (volatility_profile, cross_instrument_ranking, extreme_moves, data_coverage, signal_coverage)
 - CLI: `python/cli/discoveries_cli.py`
@@ -34,9 +40,17 @@ discoveries_cli.py
 
 All caches follow the same pattern:
 - **Storage**: Parquet files with Arrow metadata
-- **Invalidation**: Source M5 bar file mtime comparison (stale if source newer than cache)
-- **Lazy loading**: Bar index only loaded on first cache check
+- **Invalidation**: against the source each family reads, plus a fingerprint of what produced it.
+  The three bar-derived families compare the M5 bar file's mtime (stale if the source is newer)
+  and their config section. The spread estimate compares the set of the symbol's files without a
+  quote — names, tick counts and time ranges as the tick index lists them — and the estimator's
+  version, so neither a quoted import nor a config change elsewhere touches it, while a changed
+  method does
+- **Lazy loading**: the bar or tick index is only loaded on the first cache check
 - **Bulk operations**: `build_all()`, `clear_cache()`, `get_cache_status()`
+- **The store index keeps up**: every cache write enters its file in
+  `discovery_caches_index.parquet`, so a report computed on demand does not leave the store catalog
+  reporting a stale index. One row costs about 45 ms, a full index rebuild about 850 ms
 
 ### Directory Structure
 
@@ -46,8 +60,10 @@ data/processed/discovery_caches/
 │   └── {broker}_{symbol}.parquet
 ├── extreme_moves_cache/            # DiscoveryCache
 │   └── {broker}_{symbol}_extreme_moves.parquet
-└── volatility_profile_cache/       # VolatilityProfileAnalyzerCache
-    └── {broker}_{symbol}_volatility_profile.parquet
+├── volatility_profile_cache/       # VolatilityProfileAnalyzerCache
+│   └── {broker}_{symbol}_volatility_profile.parquet
+└── spread_estimate_cache/          # SpreadEstimateCache — only symbols with a file without a quote
+    └── {broker}_{symbol}.parquet
 ```
 
 ### DiscoveryCacheManager
@@ -56,7 +72,13 @@ Central coordinator (`discovery_cache_manager.py`). Used by:
 - `bar_importer.py` — auto-rebuild after bar import
 - `discoveries_cli.py` — `cache rebuild-all`, `cache status`
 
-Methods: `rebuild_all(force)`, `status()`, `clear_all()`
+Methods: `rebuild_all(force)`, `status()`, `get_fingerprints(broker, symbol)`
+
+`force` reaches the bar-derived families only. The spread estimate's validity is exact — the files
+without a quote and the estimator version — so a forced rebuild would write the same rows, and
+re-measuring the whole history after every import that forces the others would cost minutes
+(about two for every Kraken symbol, measured 2026-10-16). `spread_estimate_cli.py build --force`
+forces it on purpose.
 
 ### Serialization
 
@@ -65,6 +87,7 @@ Methods: `rebuild_all(force)`, `status()`, `clear_all()`
 | **Volatility Profile** | `VolatilityPeriod` list (enums as strings) | Scalars, regime dicts, session summaries (JSON) |
 | **Extreme Moves** | `ExtremeMove` list (direction as string) | Timeframe, ATR, pip_size, scanned_bars |
 | **Data Coverage** | `Gap` list (category as string) | Start/end time, gap_counts (JSON) |
+| **Spread Estimate** | One row per UTC day: pairs, median, p90 and capped mean in bps | Estimator-version fingerprint, source fingerprint, number of files without a quote |
 
 ## CLI Reference
 
@@ -80,6 +103,8 @@ discoveries_cli.py signal-coverage show <data_sentiment_type> <symbol>
 discoveries_cli.py signal-coverage validate
 discoveries_cli.py cache rebuild-all [--force]
 discoveries_cli.py cache status
+spread_estimate_cli.py show <broker> <symbol> [--year 2021]
+spread_estimate_cli.py build [<broker> <symbol>] [--force]
 ```
 
 **`--force`** bypasses cache and recomputes from source data.
@@ -360,6 +385,36 @@ Example — a scenario left on an old window after its source was re-imported:
 There is **no warmup concept for signals** — a SIGNAL worker resolves the nearest snapshot
 at or before the tick and needs no history window. The precondition the Phase 2 check
 enforces is the signal analogue: *a snapshot must already exist at the first tick*.
+
+## Spread Estimate Details
+
+A tick recorded without a quote — Kraken's published history, and our own collection before
+format 1.6.0 — carries bid = ask = the traded price, so a backtest over it would cross no spread.
+Kraken marks the aggressor of every trade, so the spread is estimated from the trades: two
+consecutive trades of opposite sides within one second straddle it, a burst of fills of one order
+counted once. Per UTC day the cache keeps the pairs, the median, the 90th percentile and the mean
+capped at the 99th percentile — the mean is the expected cost, the median is not one: in 2017 more
+than half of ETHUSD's pairs crossed at an unchanged price. On the files that did record a quote the
+estimate lies between the quoted and the effective spread (`spread_estimate_cli.py show`).
+
+**How a backtest uses it.** While the ticks are prepared for a scenario, each tick from a file
+without a quote is given bid and ask half the estimate below and above its traded price, times
+`trade_simulator_config.modelled_spread_factor` (see
+[Configuration Cascade](config_cascade_guide.md)). From there every rule that reads a quote reads
+it unchanged: a market order, a triggered stop and a close take its side, a resting order is reached
+by it, an open position is marked at it — in both account models. The archive, the bars and the
+traded price stay as recorded.
+
+- **A day is priced by the days before it, never by itself:** the last day with at least 20 pairs,
+  at most 30 days back. A tick with no such day keeps bid = ask and is counted as not modelled.
+- **What it was given is recorded.** Each fill says whether its quote was modelled, and its spread
+  is `modelled_spread_cost` rather than `spread_cost`; the run's scenario details carry the
+  factor, the estimator version and a digest of the day estimates used; one run line counts the
+  modelled ticks.
+- **If the estimates cannot be built**, the scenario is refused (`modelled_spread_unavailable`)
+  rather than run without a spread.
+- **Not modelled:** mock AutoTrader sessions, which rehearse the live path whose venue sends a
+  quote, and every tick that recorded one.
 
 ## VS Code Launch Configs
 

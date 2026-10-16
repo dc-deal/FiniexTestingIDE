@@ -65,6 +65,9 @@ class TickRequirement:
     max_ticks: Optional[int] = None      # None = timespan mode
     start_readable: str = ''
     end_readable: str = ''
+    # The share of the estimated spread its ticks without a quote are given as a quote (#602);
+    # the requirements aggregator always sets the scenario's own, 0 models nothing
+    modelled_spread_factor: float = 0.0
 
 
 @dataclass
@@ -186,6 +189,10 @@ class ProcessDataPackage:
     # Signal data per source (e.g. 'llm_sentiment' → SignalSeries) — loaded for
     # the scenario range; the SignalDataProvider is built + injected subprocess-side.
     signal_series: Dict[str, SignalSeries] = field(default_factory=dict)
+
+    # The stretches whose ticks carry a modelled quote (#602), as (first, last) tick time in
+    # epoch milliseconds — a few pairs, never a column per tick
+    modelled_quote_runs: Tuple[Tuple[int, int], ...] = ()
 
 
 # ============================================================================

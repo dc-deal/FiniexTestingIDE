@@ -49,11 +49,12 @@ class StoreDescriptor:
         index_factory: Builds the index object — None when the store has no index, or when the
             index is one this model does not own (the three data-index managers, which converge
             under #583)
-        derived_from: The store this one is BUILT FROM. Mandatory for every DERIVED store and
-            None otherwise. It is the EDGE, not the rule: WHICH store is the source is catalog
-            data, while WHICH FILE a single entry watches stays with the family that owns the
-            resolution — the catalog cannot enumerate (broker, symbol) pairs without importing
-            the very index it would then have to keep fresh
+        derived_from: The stores this one is BUILT FROM — every one, where its families read
+            different sources (the discovery caches read bars and ticks). Mandatory for every
+            DERIVED store and empty otherwise. It is the EDGE, not the rule: WHICH store is the
+            source is catalog data, while WHICH FILE a single entry watches stays with the
+            family that owns the resolution — the catalog cannot enumerate (broker, symbol)
+            pairs without importing the very index it would then have to keep fresh
         self_healing: True when the store's OWN read path rebuilds a stale index before serving
             it, so staleness is a note rather than a task. The run-results ledger is one: every
             run appends a fragment, which makes the index stale by construction, and
@@ -77,7 +78,7 @@ class StoreDescriptor:
     entry_glob: Optional[Union[str, Tuple[str, ...]]] = None
     index_path: Optional[Path] = None
     index_factory: Optional[Callable[[], AbstractStoreIndex]] = None
-    derived_from: Optional[StoreId] = None
+    derived_from: Tuple[StoreId, ...] = ()
     self_healing: bool = False
     note: str = ''
     rebuild_loses: str = ''

@@ -41,7 +41,7 @@ worse. What they *can* share is how they describe themselves.
 | 5 | `data/processed/{broker}/ticks` | ARCHIVE | broker / symbol / file | `ticks_index.parquet` | C · bulk |
 | 6 | `data/processed/{broker}/bars` | **DERIVED** ← ticks | broker / symbol / timeframe | `bars_index.parquet` | C · bulk |
 | 7 | `data/processed/signals/` | ARCHIVE | type / symbol / day | `signals_index.parquet` | C · bulk |
-| 8 | `data/processed/discovery_caches/` | DERIVED ← bars | family / broker_symbol | `discovery_caches_index.parquet` | A · document |
+| 8 | `data/processed/discovery_caches/` | DERIVED ← bars, ticks | family / broker_symbol | `discovery_caches_index.parquet` | A · document |
 | 9 | `configs/generator_profiles/` | DERIVED ← discovery caches | mode / broker / symbol | none — its own fingerprints | A · document |
 | 10 | `data/runtime/brokers/` | DERIVED ← a remote API | `broker_type` | none — one file per broker | A · document |
 | 10b | `data/runtime/config_directory/` | DERIVED ← the configuration files (not a store) | path of the configuration file | `config_directory_index.parquet` | B · set |
@@ -418,6 +418,20 @@ rather than serving it.
 | **DERIVED** | mirrors its source | **deletable** | none — *if deleting it loses something, it is misfiled* |
 | **SPECIAL** | — | — | catalogued with a stated reason, nothing else |
 
+### A new thing joins an existing store before it becomes a new one
+
+The store is the umbrella, and its kind says what the content is. So something new that has to
+persist first looks for the store whose kind, source and lifecycle it shares, and becomes a family
+or an entry there; a new store is created only where none fits, and its `note` says why. The spread
+estimate is the example: an analysis computed from the tick archive, regenerable at any time, is a
+family in `discovery_caches` (whose sources are therefore bars AND ticks), not a store of its own.
+
+**"Discovery" names a content type, not a store kind**: a DERIVED analysis computed from the
+archive, regenerable at any time and cached against its source — and against the version of its
+method where the family records one, as the spread estimate does.
+What the IDE produces itself — a run, a certificate, a carry-over — is RECORD or CARRY-OVER and
+never a discovery: deleting it loses what happened.
+
 ### RECORD and CARRY-OVER are never merged
 
 ```
@@ -594,6 +608,9 @@ just invalidated — but the reason line is what makes the remaining cases actio
 
 ## Adding a store
 
+0. Check first whether an existing store already holds things of its kind, from its source and
+   with its lifecycle — then it is a family or an entry there, not a new store (see *A new thing
+   joins an existing store before it becomes a new one* above).
 1. Add a `StoreId` value in [`store_types.py`](../../python/framework/types/store_types.py).
 2. Register it in [`store_registrations.py`](../../python/framework/store/store_registrations.py)
    with its kind, root, key, form and — unless it is SPECIAL — its index or a stated reason for

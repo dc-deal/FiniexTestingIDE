@@ -273,6 +273,7 @@ def _to_unit_row(unit: RunUnit) -> PortfolioUnitRow:
         initial_balance=stats.initial_balance,
         conversion_rate=stats.current_conversion_rate,
         total_spread_cost=None if unit.input_without_quote else stats.total_spread_cost,
+        total_modelled_spread_cost=stats.total_modelled_spread_cost,
         total_commission=stats.total_commission,
         total_swap=stats.total_swap,
         maker_fee=stats.maker_fee,

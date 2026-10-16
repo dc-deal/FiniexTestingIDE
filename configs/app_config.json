@@ -228,7 +228,8 @@
         "inbound_latency_seed": 42
       },
       "inbound_latency_min_ms": 20,
-      "inbound_latency_max_ms": 80
+      "inbound_latency_max_ms": 80,
+      "modelled_spread_factor": 1.0
     },
     "monitoring": {
       "enabled": true,

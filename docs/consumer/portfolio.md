@@ -53,6 +53,7 @@ nothing in the payload to notice it by. The route is not proof; the body is. Ass
 | `initial_balance` · `current_balance` | what the unit started with, and the **realised** balance at the end |
 | `max_equity` | the peak this account's equity reached |
 | `total_commission` · `total_swap` · `total_spread_cost` | the unit's cost split. `total_spread_cost` is measured, not charged, and is **null where the unit read data without a quote** — there no fill crossed a recorded spread, so a zero would look like a measurement; the trade history's per-unit total follows the same rule |
+| `total_modelled_spread_cost` | the spread the unit's fills crossed against quotes the backtest modelled for data recorded without one — beside `total_spread_cost`, the two adding up; 0 where nothing was modelled |
 | `maker_fee` · `taker_fee` | on a venue that charges per side: the fees for orders that rested before they filled (maker) and for orders that took the book (taker) — booked here rather than in `total_commission` |
 | `fill_fees_by_source` | the unit's fills split by where their fee came from — the venue or our estimate; see below |
 | `has_error` | the unit produced figures **and** failed |

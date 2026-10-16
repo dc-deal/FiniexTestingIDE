@@ -26,6 +26,7 @@ from python.framework.types.process_data_types import (
 )
 from python.framework.types.run_origin_types import CodeIdentity, RepositoryState
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
+from python.framework.types.spread_estimate_types import ModelledSpreadSummary
 from python.framework.types.trading_env_types.order_event_types import OrderEvent, OrderEventType
 from python.framework.types.trading_env_types.trading_env_stats_types import ExecutionStats
 from python.framework.validators.post_run_validator import PostRunValidator
@@ -179,7 +180,7 @@ class TestTheDeficiencyCount:
             _scenario(), ('production', '1.5.0', [DataDeficiency.NO_QUOTE]))]))
 
         assert 'NO QUOTE — 1 of 1 input file(s)' in out['data_no_quote']
-        assert 'no fill crossed a spread' in out['data_no_quote']
+        assert 'no spread was measured there' in out['data_no_quote']
         assert '1 collected at format 1.5.0' in out['data_no_quote']
 
     def test_complete_data_says_nothing(self):
@@ -234,6 +235,38 @@ class TestTheDeficiencyCount:
 
         assert 'EXTERNAL DATA — 1 of 1 input file(s)' in out['data_origin_external']
         assert 'warmup from external history: history (D1)' in out['data_origin_external']
+
+
+def _modelled(ticks: int, modelled: int, factor: float = 1.0,
+              median: float = 0.6) -> ModelledSpreadSummary:
+    return ModelledSpreadSummary(
+        factor=factor, estimator_version=1, ticks_without_quote=ticks, ticks_modelled=modelled,
+        median_spread_bps=median if modelled else None, day_digest='d')
+
+
+class TestTheModelledSpreadIsSaidOnce:
+    """What the ticks without a quote were charged instead (#602): one line, with its counts."""
+
+    def test_the_modelled_ticks_are_counted_with_median_factor_and_version(self):
+        first, second = _scenario(name='a'), _scenario(name='b', idx=1)
+        first.modelled_spread = _modelled(1_000, 990, median=0.6)
+        second.modelled_spread = _modelled(500, 500, median=1.4)
+        out = _warnings(_batch([first, second]))['data_modelled_spread']
+
+        assert '1,490 of 1,500 tick(s) without a quote were given a modelled quote' in out
+        assert 'median spread 0.60–1.40 bps by scenario, factor 1, estimator v1' in out
+        assert '10 kept bid = ask: no usable estimate before their day' in out
+
+    def test_factor_zero_says_no_spread_was_charged(self):
+        scenario = _scenario()
+        scenario.modelled_spread = _modelled(800, 0, factor=0.0)
+        out = _warnings(_batch([scenario]))['data_modelled_spread']
+
+        assert '800 tick(s) without a quote kept bid = ask (factor 0)' in out
+        assert 'no spread was charged' in out
+
+    def test_a_run_without_such_ticks_says_nothing(self):
+        assert 'data_modelled_spread' not in _warnings(_batch([_scenario()]))
 
 
 def test_coordination_overhead():

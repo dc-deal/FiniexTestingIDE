@@ -51,6 +51,7 @@ _KNOWN_EXECUTION_KEYS: frozenset = frozenset({
 _KNOWN_TRADE_SIM_KEYS: frozenset = frozenset({
     'balances', 'seeds', 'inbound_latency_min_ms',
     'inbound_latency_max_ms', 'broker_config_path', 'account_currency',
+    'modelled_spread_factor',
 })
 _KNOWN_ORDER_GUARD_KEYS: frozenset = frozenset({
     'cooldown_seconds', 'max_consecutive_rejections', 'block_stale_market_data',

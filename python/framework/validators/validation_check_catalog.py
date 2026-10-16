@@ -114,6 +114,11 @@ VALIDATION_CHECKS: Tuple[ValidationCheckInfo, ...] = (
         'signal_data_load', 'Signal data unavailable',
         'The signal data the scenario binds could not be loaded.'),
     ValidationCheckInfo(
+        'modelled_spread_unavailable', 'Spread of the ticks without a quote unavailable',
+        'The scenario reads ticks that recorded no quote and models their spread, but the day '
+        'estimates it is priced from could not be built; the scenario is refused rather than '
+        'run without a spread.'),
+    ValidationCheckInfo(
         'signal_availability', 'Signal data thin in the window',
         "The scenario's signal source has little or patchy data in its window; the scenario "
         'still runs.'),
@@ -156,8 +161,14 @@ VALIDATION_CHECKS: Tuple[ValidationCheckInfo, ...] = (
     # --- What the data LACKS (#561) — one per DataDeficiency, worded from its declaration ------
     ValidationCheckInfo(
         'data_no_quote', 'Ticks without a quote',
-        'Some tick files the run read carry no quote (bid equals ask), so no fill crossed a '
-        'spread.'),
+        'Some tick files the run read carry no quote (bid equals ask as recorded), so no spread '
+        'was measured on them; what a backtest charged there instead is the modelled spread.'),
+    ValidationCheckInfo(
+        'data_modelled_spread', 'Modelled spread on ticks without a quote',
+        'A backtest gave its ticks without a quote the quote the spread estimated for the '
+        'previous day implies, so its fills, marks and stops crossed a modelled spread there; '
+        'the count says how many such ticks were given one and at what median, factor and '
+        'estimator version.'),
     ValidationCheckInfo(
         'data_no_arrival_time', 'Ticks without an arrival time',
         'Some tick files the run read record no receive time, so tick timing falls back to the '

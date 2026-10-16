@@ -8,10 +8,12 @@ and a buy and a sell close together in time straddle the spread. This suite hold
 pure functions to that reading, and the measurement over an archive to what its files contain.
 
 **Test Location:** `tests/framework/spread_estimate/`
-**Units under test:** `spread_estimator.py` and `spread_estimate_measurement.py` in
-`python/framework/discoveries/spread_estimate/`.
-The measurement tests write small tick files into the test's own directory and pass their index
-entries in directly, so no test reads this machine's archive.
+**Units under test:** `spread_estimator.py`, `spread_estimate_measurement.py` and
+`spread_estimate_cache.py` in `python/framework/discoveries/spread_estimate/`, and the discovery
+index's one-row update the cache writes through.
+The measurement and cache tests write small tick files into the test's own directory
+(`tests/shared/spread_tick_files.py`) and hand their index entries in directly, so no test reads
+this machine's archive or writes its caches.
 
 ---
 
@@ -54,3 +56,23 @@ entries in directly, so no test reads this machine's archive.
 
 **Standalone:**
 - A file across New Year splits its figures by year
+
+### test_spread_estimate_cache.py
+
+**TestTheCacheHoldsTheDayEstimates:**
+- A built cache reads back the day, the pairs and the capped mean that were measured
+- A valid cache is read without measuring the history again
+- A symbol whose every file recorded a quote caches nothing and writes no file
+
+**TestItsValidityIsTheSourceAndTheMethod:**
+- A new file without a quote, or a changed one, makes the cache invalid
+- A new quoted file leaves it valid — an import of quoted data does not re-measure the history
+- A new estimator version makes it invalid
+
+**TestBuildingEverySymbol:**
+- Only symbols with a file without a quote are built; a second run skips them as valid
+
+**TestTheDiscoveryIndexKeepsUp:**
+- A cache written on demand is entered in the discovery index, which then reports nothing stale
+- A rewritten file keeps one row
+- An index already behind for other files stays reported as behind

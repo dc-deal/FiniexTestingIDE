@@ -67,4 +67,5 @@ def prepare_trade_executor_for_scenario(
         inbound_latency_max_ms=config.inbound_latency_max_ms,
         spot_mode=spot_mode,
         initial_balances=initial_balances,
+        modelled_quote_runs=shared_data.modelled_quote_runs,
     )

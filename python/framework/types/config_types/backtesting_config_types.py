@@ -4,7 +4,7 @@ Pydantic models for the app_config.json::backtesting section.
 """
 from typing import Dict, List, Optional
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from python.framework.types.config_types.data_origin_config_types import OriginClass
 from python.framework.types.config_types.strict_config_model import StrictConfigModel
@@ -61,6 +61,9 @@ class TradeSimulatorDefaults(StrictConfigModel):
     account_currency: Optional[str] = None
     inbound_latency_min_ms: int = 20
     inbound_latency_max_ms: int = 80
+    # The share of the estimated spread a tick without a quote is given as its quote (#602):
+    # 1.0 charges the estimate, 0 leaves bid = ask = the traded price as recorded
+    modelled_spread_factor: float = Field(1.0, ge=0.0)
 
 
 class DetailedLiveStatsExports(StrictConfigModel):

@@ -23,7 +23,7 @@ from typing import List
 
 # One monotonic integer. Not a date and not the app version: a consumer compares it for
 # equality, and equality is the only question they have.
-API_CONTRACT_VERSION = 32
+API_CONTRACT_VERSION = 33
 
 # Every response carries it, so a saved fixture carries it too.
 CONTRACT_HEADER = 'X-Api-Contract'
@@ -36,23 +36,17 @@ API_PREFIX = '/api/v1'
 # What moved INTO the current version. One line per change, written for someone who cannot
 # read this repository.
 CHANGES: List[str] = [
-    "GET /api/v1/brokers/{broker}/symbols/{symbol}/gaps: every gap carries origin_class — the "
-    "origin class of the tick file it lies in or follows, null where none could be found — and "
-    "origin_class_after, which differs from it only at a seam between two origins",
-    "The gaps answer carries gaps_by_year — per year and origin class the short, moderate and "
-    "large gaps and the hours without data, over the whole archive",
-    "The gaps answer's key is replaced by keys, one entry per list: gaps by start, gaps_by_year by "
-    "year and origin_class",
-    "Two query parameters narrow the gaps, never the counts or gaps_by_year: origin_class and "
-    "since (the gaps that start at or after it; anything not ISO-8601 is refused with 400 "
-    "invalid_timestamp)",
-    "A gap's reason no longer guesses at a cause: 'check data collection' and "
-    "'restart/connection?' are gone, because the reason cannot know whose data surrounds a gap "
-    "(a coverage cache built before this contract serves the old words until it is rebuilt)",
-    "GET /api/v1/reports/runs/{run_id}/trade-history: every scenario_totals row carries "
-    "total_spread_cost — the unit's measured spread cost summed, null where the unit read data "
-    "without a quote and on a run recorded before this contract",
-    "The portfolio's total_spread_cost follows the same rule and is now nullable: null for a unit "
-    "that read data without a quote, and on the aggregated portfolio — with avg_spread — null as "
-    "soon as one unit's is",
+    "GET /api/v1/reports/runs/{run_id}/trade-history: every trade row carries "
+    "modelled_spread_cost — the spread its fills crossed against a quote the backtest modelled "
+    "for data recorded without one; inside gross_pnl like spread_cost, beside total_fees, and the "
+    "two add up to the trade's effective spread. Every scenario_totals row carries "
+    "total_modelled_spread_cost",
+    "portfolio and aggregated-portfolio: total_modelled_spread_cost per unit and per block",
+    "booking-periods: modelled_spread_cost per period, and period_modelled_spread_cost on the "
+    "deployment rows; null on a period recorded before this contract",
+    "scenario-details: every row carries modelled_spread — factor, estimator_version, "
+    "ticks_without_quote, ticks_modelled, median_spread_bps and day_digest — null where the "
+    "scenario read no tick without a quote",
+    "On data without a quote a backtest's fills, marks and stops now see a modelled spread, so "
+    "its gross_pnl and net_pnl are lower than before this contract; spread_cost there stays null",
 ]

@@ -323,7 +323,7 @@ class DiscoveriesCli:
 
     def cmd_cache_rebuild_all(self, force: bool = False) -> None:
         """
-        Rebuild all discovery caches (coverage + extreme moves + market analyzer).
+        Rebuild every discovery cache family the cache manager registers.
 
         Args:
             force: Force rebuild even if cache is valid

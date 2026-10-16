@@ -460,10 +460,20 @@ across different account configurations. App-level defaults are defined in
 "backtesting": {
   "default_trade_simulator_config": {
     "inbound_latency_min_ms": 20,
-    "inbound_latency_max_ms": 80
+    "inbound_latency_max_ms": 80,
+    "modelled_spread_factor": 1.0
   }
 }
 ```
+
+`modelled_spread_factor` is the share of the estimated spread a tick recorded **without a quote**
+is given as its quote: bid and ask sit half the estimated spread below and above the traded price,
+so market orders, stops and closes cross it and open positions are marked at it. 1.0 charges the
+estimate, 2.0 twice it, 0 leaves the ticks as recorded (bid = ask = the traded price). Ticks that
+recorded a quote are never touched. The estimate per day comes from the trades themselves — see
+the spread estimate in [Discovery System](discovery_system.md) — and each scenario's details say
+what it was given. Set it per run in `global`, or per scenario; a sweep cannot vary it, so three
+factors are three scenario sets.
 
 **Global:**
 ```json

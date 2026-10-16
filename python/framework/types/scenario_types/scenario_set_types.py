@@ -12,6 +12,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from python.framework.types.config_types.backtesting_config_types import TradeSimulatorDefaults
 from python.framework.types.data_deficiency_types import DataDeficiency
 from python.framework.types.run_purpose_types import RunPurpose
 from python.framework.types.trading_env_types.broker_types import BrokerType
@@ -20,6 +21,7 @@ from python.framework.types.config_types.robustness_config_types import (
     RobustnessRole,
 )
 from python.framework.types.scenario_types.window_set_types import WindowSet
+from python.framework.types.spread_estimate_types import ModelledSpreadSummary
 from python.framework.types.validation_types import ValidationResult
 
 
@@ -110,6 +112,9 @@ class SingleScenario:
     # the scenario trades on are what admission guards — and recorded, so a run whose
     # indicators started from external bars is never mistaken for one that did not.
     external_warmup_timeframes: List[str] = field(default_factory=list)
+    # What the ticks without a quote were given in place of one (#602); None when the scenario
+    # read no file without a quote
+    modelled_spread: Optional[ModelledSpreadSummary] = None
 
     # === PROFILE RUN METADATA (populated from a WindowSet) ===
     is_profile_run: bool = False
@@ -135,6 +140,21 @@ class SingleScenario:
                 # True = abort on boundary violations, False = warn only
                 'strict_parameter_validation': True,
             }
+
+    def get_modelled_spread_factor(self) -> float:
+        """
+        The factor this scenario's ticks without a quote are modelled with.
+
+        The merged simulator configuration always carries it (the app defaults are its base
+        layer); a scenario built without one takes the model's own default.
+
+        Returns:
+            The factor, 0 for none
+        """
+        config = self.trade_simulator_config or {}
+        if 'modelled_spread_factor' in config:
+            return float(config['modelled_spread_factor'])
+        return TradeSimulatorDefaults().modelled_spread_factor
 
     def to_config_string_for_display(self) -> str:
         """

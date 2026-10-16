@@ -151,6 +151,7 @@ def aggregate_trade_scenario_totals(
             total_swap=sum(r.swap_cost for r in group),
             total_spread_cost=(None if name in units_without_quote
                                else sum(r.spread_cost for r in group)),
+            total_modelled_spread_cost=sum(r.modelled_spread_cost for r in group),
         )
         for name, group in groups.items()
     ]
@@ -363,6 +364,7 @@ def aggregate_full_portfolio(
         highest_equity=max_eq,
         highest_equity_scenario=max_eq_scn,
         total_spread_cost=total_spread,
+        total_modelled_spread_cost=sum(r.total_modelled_spread_cost for r in rows),
         total_commission=sum(r.total_commission for r in rows),
         total_swap=sum(r.total_swap for r in rows),
         maker_fee=sum(r.maker_fee for r in rows),

@@ -159,6 +159,7 @@ LEDGER_COLUMNS: List[str] = [
     # books no period, and on periods recorded before contract 17 unless back-filled.
     'period_opening_equity',
     'period_commission_cost', 'period_swap_cost', 'period_spread_cost',
+    'period_modelled_spread_cost',
     # Excursion, holding time and streaks — what a period looks like beyond its net result.
     'avg_mae_winners', 'avg_mae_losers', 'avg_mfe_losers', 'largest_mae', 'largest_mfe',
     'avg_trade_duration_s', 'max_consecutive_wins', 'max_consecutive_losses',
@@ -311,6 +312,7 @@ COLUMN_REDUCTION: Dict[str, Reduction] = {
     'period_commission_cost': Reduction.SUM,
     'period_swap_cost': Reduction.SUM,
     'period_spread_cost': Reduction.SUM,
+    'period_modelled_spread_cost': Reduction.SUM,
     # The worst single excursion combines by magnitude; its MEANS do not.
     'largest_mae': Reduction.MAX_ABS,
     'largest_mfe': Reduction.MAX_ABS,
@@ -774,6 +776,7 @@ def period_ledger_fields(period: BookingPeriod) -> Dict[str, Any]:
         'period_commission_cost': period.commission_cost,
         'period_swap_cost': period.swap_cost,
         'period_spread_cost': period.spread_cost,
+        'period_modelled_spread_cost': period.modelled_spread_cost,
     }
 
 

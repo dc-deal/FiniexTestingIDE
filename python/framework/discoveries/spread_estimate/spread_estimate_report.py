@@ -7,7 +7,7 @@ and the effective spread the estimate is checked against. Renders only; every fi
 by the measurement.
 """
 
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from python.framework.types.spread_estimate_types import (
     SpreadDayEstimate,
@@ -27,6 +27,34 @@ def print_spread_measurement(measurement: SpreadMeasurement,
     lines = (_day_lines(measurement, year) if year is not None
              else _year_lines(measurement))
     print('\n'.join(lines))
+
+
+def print_spread_cache_built(broker_type: str, symbol: str,
+                             estimates: List[SpreadDayEstimate]) -> None:
+    """
+    Print what one symbol's cache now holds.
+
+    Args:
+        broker_type: The broker
+        symbol: The symbol
+        estimates: Its day estimates
+    """
+    if not estimates:
+        print(f'\n📏 {broker_type}/{symbol}: every file recorded a quote — nothing to cache')
+        return
+    print(f'\n📏 {broker_type}/{symbol}: {len(estimates):,} day(s) cached, '
+          f'{estimates[0].day.isoformat()} → {estimates[-1].day.isoformat()}')
+
+
+def print_spread_cache_build_all(stats: Dict[str, int]) -> None:
+    """
+    Print the outcome of building every symbol's cache.
+
+    Args:
+        stats: {generated, skipped, failed}
+    """
+    print(f"\n📏 Spread estimate cache: {stats['generated']} generated, "
+          f"{stats['skipped']} skipped (still valid), {stats['failed']} failed")
 
 
 def _year_lines(measurement: SpreadMeasurement) -> List[str]:

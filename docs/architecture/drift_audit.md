@@ -253,7 +253,8 @@ during the submission-to-fill window, **plus** book-walking on larger orders. Fo
 trade-channel feeds (Kraken `bid == ask == last`) slippage is dominated by the spread component but
 the metric remains event-based and post-fill. MT5-style brokers with real bid/ask in the tick data
 still feed the same formula — `submission.tick_mid_price = (bid + ask) / 2` — and the audit
-value-add is the latency-window drift component on top of what `SpreadFee` already accounts for.
+value-add is the latency-window drift component on top of the half spread the fill price already
+carries.
 
 ### What the literature calls this
 

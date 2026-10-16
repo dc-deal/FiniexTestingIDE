@@ -11,7 +11,7 @@ quoted truth where the archive recorded a quote.
 from dataclasses import dataclass
 from datetime import date
 from enum import Enum
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 
 class QuoteRegime(str, Enum):
@@ -103,6 +103,33 @@ class SpreadDayValidation:
     pairs: int
     estimate_median_bps: Optional[float]
     quoted_median_bps: Optional[float]
+
+
+@dataclass
+class ModelledSpreadSummary:
+    """
+    What a scenario's ticks without a quote were given in place of one.
+
+    Args:
+        factor: The factor the estimated spread was multiplied by; 0 models nothing
+        estimator_version: The estimator version the day estimates came from
+        ticks_without_quote: The scenario's ticks from files that recorded no quote
+        ticks_modelled: Of those, the ones that received a modelled quote — the rest had no
+            usable estimate before their day and kept bid = ask
+        median_spread_bps: The median full spread the modelled ticks received, in basis points
+            of the price; None when none was modelled
+        day_digest: SHA256 of the day estimates used and the factor, so two runs can be told
+            apart by what their fills were charged
+        quote_runs: The modelled stretches of the scenario's ticks, as (first, last) tick time in
+            epoch milliseconds — what a fill's tick is looked up in
+    """
+    factor: float
+    estimator_version: int
+    ticks_without_quote: int
+    ticks_modelled: int
+    median_spread_bps: Optional[float]
+    day_digest: str
+    quote_runs: Tuple[Tuple[int, int], ...] = ()
 
 
 @dataclass

@@ -1173,6 +1173,21 @@
                 "order": 11
             }
         },
+        {
+            "name": "🔍 Disc - Spread Estimate: Build Cache (all symbols)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/spread_estimate_cli.py",
+            "args": [
+                "build"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "06_rebuild",
+                "order": 12
+            }
+        },
         // ====================================================
         // 🛠️ INSPECT & PROBE
         // ====================================================

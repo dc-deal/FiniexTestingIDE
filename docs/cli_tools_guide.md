@@ -610,8 +610,8 @@ LONG Extreme Moves (top 10)
 
 | | |
 |---|---|
-| **VS Code** | `🔍 Disc - Spread Estimate: kraken_spot/ETHUSD` |
-| **CLI** | `python spread_estimate_cli.py show kraken_spot ETHUSD` |
+| **VS Code** | `🔍 Disc - Spread Estimate: kraken_spot/ETHUSD` · `🔍 Disc - Spread Estimate: Build Cache (all symbols)` |
+| **CLI** | `python spread_estimate_cli.py show kraken_spot ETHUSD` · `python spread_estimate_cli.py build` |
 | **Purpose** | How wide the spread was in years whose ticks recorded no quote |
 
 A tick without a quote carries bid = ask = the traded price, so a backtest over it crosses no
@@ -637,6 +637,18 @@ effective spread (0.75).
 
 **Parameters:**
 - `--year` — print that year's days instead of the yearly table
+
+**`build` — the cache a backtest reads.** `python spread_estimate_cli.py build` measures the day
+estimates of every symbol with a file without a quote and caches them in
+`discovery_caches/spread_estimate_cache/`; `build kraken_spot ETHUSD` does one symbol. A valid
+cache is skipped — it stays valid until a new file without a quote arrives or the estimator
+changes — and `--force` measures again anyway. The import's cache rebuild and
+`discoveries_cli.py cache rebuild-all` build it too. Measured 2026-10-16: ETHUSD 21 s, every
+Kraken symbol about two minutes, a valid cache read in under a second.
+
+```
+📏 kraken_spot/ETHUSD: 3,869 day(s) cached, 2015-08-11 → 2026-09-18
+```
 
 ---
 
@@ -980,6 +992,7 @@ logged the moment it finishes.
 | **Volatility profile** | `🔍 Disc - Volatility Profile: mt5/USDJPY` | `discoveries_cli.py volatility-profile mt5 USDJPY` |
 | **Extreme Moves** | `🔍 Disc - Extreme Moves: mt5/USDJPY` | `discoveries_cli.py extreme-moves mt5 USDJPY` |
 | **Spread estimate** | `🔍 Disc - Spread Estimate: kraken_spot/ETHUSD` | `spread_estimate_cli.py show kraken_spot ETHUSD [--year 2021]` |
+| **Spread estimate cache** | `🔍 Disc - Spread Estimate: Build Cache (all symbols)` | `spread_estimate_cli.py build [kraken_spot ETHUSD] [--force]` |
 | **Discovery Cache Status** | `🔍 Disc - Cache: Status` | `discoveries_cli.py cache status` |
 | **Discovery Cache Rebuild** | `🔍 Disc - Cache: Rebuild All` | `discoveries_cli.py cache rebuild-all` |
 | **Generate Blocks** | `⚡ Generator - 40 Blocks mt5/USDJPY` | `generator_cli.py generate-blocks mt5 USDJPY --block-size 12 --count 40` |
