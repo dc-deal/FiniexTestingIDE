@@ -10,7 +10,9 @@ rest. Per category, so a burst of recent short gaps never pushes out the one lar
 from datetime import datetime, timedelta, timezone
 
 from python.framework.discoveries.data_coverage.gap_listing import (
+    CATEGORY_ICONS,
     GAPS_LISTED_PER_CATEGORY,
+    MISSING_DATA_CATEGORIES,
     gap_span,
     listing_heading,
     newest_gaps,
@@ -62,6 +64,17 @@ class TestTheNewestOfACategory:
                     if not line.startswith('   ')]
         assert [heading.split(' — ')[0].split()[-1] for heading in headings] == [
             'LARGE', 'MODERATE', 'SHORT']
+
+
+class TestEveryDataGapIsListed:
+    """The listing order is the report's own; which categories are data gaps is the category's."""
+
+    def test_the_order_names_every_data_gap_category_once(self):
+        assert sorted(category.value for category in MISSING_DATA_CATEGORIES) == sorted(
+            category.value for category in GapCategory if category.is_data_gap())
+
+    def test_every_listed_category_has_an_icon(self):
+        assert all(category in CATEGORY_ICONS for category in MISSING_DATA_CATEGORIES)
 
 
 class TestTheHeadingSaysHowMuchIsShown:

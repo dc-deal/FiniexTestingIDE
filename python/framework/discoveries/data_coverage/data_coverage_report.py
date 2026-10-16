@@ -22,7 +22,6 @@ from python.framework.discoveries.data_coverage.gap_file_attribution import (
     attribute_gaps_to_files,
 )
 from python.framework.discoveries.data_coverage.gap_listing import (
-    MISSING_DATA_CATEGORIES,
     gap_span,
     recent_gap_listing,
 )
@@ -363,7 +362,7 @@ class DataCoverageReport:
         self.attribute_gaps()
         rows: Dict[Tuple[int, Optional[OriginClass]], GapYearOriginSummary] = {}
         for gap in self.gaps:
-            if gap.category not in MISSING_DATA_CATEGORIES or gap.gap_start is None:
+            if not gap.category.is_data_gap() or gap.gap_start is None:
                 continue
             key = (ensure_utc_aware(gap.gap_start).year, gap.origin_class)
             row = rows.get(key)
@@ -710,7 +709,7 @@ class DataCoverageReport:
         # === SECTION 4: The most recent gaps of each category ===
         # A decade of a venue's history holds tens of thousands of gaps; the report lists the
         # newest of each category and counts the rest by year and origin below.
-        missing = [g for g in self.gaps if g.category in MISSING_DATA_CATEGORIES]
+        missing = [g for g in self.gaps if g.category.is_data_gap()]
 
         if missing:
             self.attribute_gaps()

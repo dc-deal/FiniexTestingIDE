@@ -67,6 +67,10 @@ rule both coverage reports list by.
 gaps never pushes out the one large gap · the categories run large, moderate, short, and expected
 closures are never listed
 
+**TestEveryDataGapIsListed:** the listing order names each data-gap category exactly once — which
+categories those are is the category's own answer (`GapCategory.is_data_gap()`) — and each carries
+an icon, so a new data-gap category cannot be moved past by a run and left out of the report
+
 **TestTheHeadingSaysHowMuchIsShown:** `the last 10 of 1,034` for a cut list, `all 3` for a whole one
 
 **TestTheSpan:** the end is shortened to what differs from the start — time, date, or year

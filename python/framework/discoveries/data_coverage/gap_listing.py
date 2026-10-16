@@ -18,8 +18,9 @@ from python.framework.utils.time_utils import ensure_utc_aware
 # How many gaps of one category a report lists — the newest ones
 GAPS_LISTED_PER_CATEGORY = 10
 
-# The categories that mean data is MISSING, in the order a report lists them. Weekend and
-# holiday closures are a market's expected silence and are summarised separately.
+# The order a report lists the categories that mean data is MISSING in. Which categories those
+# are is the category's own answer (`GapCategory.is_data_gap()`); a test holds this order to it.
+# Weekend and holiday closures are a market's expected silence and are summarised separately.
 MISSING_DATA_CATEGORIES = (GapCategory.LARGE, GapCategory.MODERATE, GapCategory.SHORT)
 
 # The icon each listed category's heading carries
@@ -78,7 +79,7 @@ def recent_gap_listing(gaps: List[Gap], render_line: Callable[[Gap], str]) -> Li
     Returns:
         The section's lines; empty when no gap means missing data
     """
-    missing = [gap for gap in gaps if gap.category in MISSING_DATA_CATEGORIES]
+    missing = [gap for gap in gaps if gap.category.is_data_gap()]
     counts = Counter(gap.category for gap in missing)
     lines = []
     for category in MISSING_DATA_CATEGORIES:
