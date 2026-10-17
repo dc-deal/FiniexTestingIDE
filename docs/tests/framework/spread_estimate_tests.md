@@ -67,6 +67,8 @@ this machine's archive or writes its caches.
 **TestItsValidityIsTheSourceAndTheMethod:**
 - A new file without a quote, or a changed one, makes the cache invalid
 - A new quoted file leaves it valid — an import of quoted data does not re-measure the history
+- A file re-imported with other values makes it invalid — it keeps its name, count and range,
+  and the importer's `processed_at` stamp is what tells
 - A new estimator version makes it invalid
 
 **TestBuildingEverySymbol:**

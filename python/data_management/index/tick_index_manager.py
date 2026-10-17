@@ -38,7 +38,7 @@ vLog = get_global_logger()
 # by nothing; giving it a read path is what makes a column addition safe to deploy.
 # The proper mechanism is `AbstractStoreIndex.LOGIC_VERSION`, which these three legacy managers
 # do not have — adopting it is #583's, and this is the stopgap until then.
-INDEX_SCHEMA_VERSION = b'2.3'
+INDEX_SCHEMA_VERSION = b'2.4'
 
 
 def _json_or_none(raw: Optional[bytes]) -> Optional[dict]:
@@ -318,6 +318,9 @@ class TickIndexManager:
             'tick_count': tick_count,
             'file_size_mb': file_size_mb,
             'source_file': source_file,
+            # When the importer wrote the file. A re-import that changes only VALUES keeps
+            # the name, the count and the range; this is what still tells the file is new.
+            'processed_at': custom_metadata.get(b'processed_at', b'').decode('utf-8'),
             'num_row_groups': pq_file.num_row_groups,
 
             'statistics': {
@@ -434,6 +437,7 @@ class TickIndexManager:
                         'tick_count': entry['tick_count'],
                         'file_size_mb': entry['file_size_mb'],
                         'source_file': entry['source_file'],
+                        'processed_at': entry.get('processed_at', ''),
                         'num_row_groups': entry['num_row_groups'],
                         'collected_start': entry.get('collected_start', 0),
                         'collected_end': entry.get('collected_end', 0),
@@ -461,7 +465,7 @@ class TickIndexManager:
         # data_format_version got lost on persist in the first place.
         columns = [
             'broker_type', 'symbol', 'file', 'path', 'start_time', 'end_time',
-            'tick_count', 'file_size_mb', 'source_file', 'num_row_groups',
+            'tick_count', 'file_size_mb', 'source_file', 'processed_at', 'num_row_groups',
             'collected_start', 'collected_end',
             'anchor_resyncs', 'anchor_max_correction_ms',
             'statistics', 'sessions', 'data_format_version',
@@ -570,6 +574,7 @@ class TickIndexManager:
                 'origin_collected_on': row.get('origin_collected_on', ''),
                 # Written by every index of this schema version, so no tolerance is needed:
                 # an older index is rebuilt before it is read (_schema_outdated)
+                'processed_at': row['processed_at'],
                 'deficiencies': [
                     DataDeficiency(value) for value in (row['deficiencies'] or '').split(',')
                     if value],

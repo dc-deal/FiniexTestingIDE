@@ -70,7 +70,10 @@ Validates end-to-end conversion from JSON to Parquet.
 - Output contains expected columns (timestamp, bid, ask, last, etc.)
 - Tick count in Parquet matches JSON input
 - Directory structure follows `{broker_type}/ticks/{SYMBOL}/` pattern
-- Numeric columns use optimized dtypes (float32, int32)
+- `tick_volume` is narrowed to int32; bid, ask, last and `real_volume` stay float64
+- Prices and volumes read back as exactly the double their written decimal parses to — the
+  number a live session reads from the venue — also beyond float32's seven or so significant
+  digits
 - Timestamps parsed as datetime64 with UTC timezone
 
 ---

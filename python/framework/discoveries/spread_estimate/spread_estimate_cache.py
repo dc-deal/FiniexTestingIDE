@@ -304,8 +304,10 @@ def _source_fingerprint(entries: List[Dict]) -> str:
     """
     The identity of a set of tick files, from what the tick index says about each.
 
-    Name, tick count and time range: a re-import that changed a file changes its count or its
-    range, and the check opens no tick file — on the bridged disk one open costs milliseconds.
+    Name, tick count, time range and when the importer wrote the file. The last one is what sees
+    a re-import that changed only values: a file re-imported with exact prices keeps its name,
+    its count and its range. The check opens no tick file — on the bridged disk one open costs
+    milliseconds.
 
     Args:
         entries: Tick index entries
@@ -314,7 +316,8 @@ def _source_fingerprint(entries: List[Dict]) -> str:
         A SHA256 hex digest
     """
     described = sorted((str(entry.get('file')), int(entry.get('tick_count') or 0),
-                        str(entry.get('start_time')), str(entry.get('end_time')))
+                        str(entry.get('start_time')), str(entry.get('end_time')),
+                        str(entry.get('processed_at') or ''))
                        for entry in entries)
     return hashlib.sha256(json.dumps(described).encode()).hexdigest()
 

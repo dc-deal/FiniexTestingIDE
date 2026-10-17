@@ -132,6 +132,17 @@ class TestItsValidityIsTheSourceAndTheMethod:
 
         assert not _cache(cache_dir, entries).is_cache_valid('kraken_spot', 'ETHUSD')
 
+    def test_a_file_re_imported_with_other_values_makes_it_invalid(self, setup):
+        """A re-import that changes only values keeps name, count and range; the importer's
+        stamp is what tells the file is new."""
+        ticks, cache_dir, entries = setup
+        _cache(cache_dir, entries).get_day_estimates('kraken_spot', 'ETHUSD')
+        entries['kraken_spot']['ETHUSD'][1] = {
+            **write_tick_file(ticks, 'd1.parquet', _trades(1, 0.05)),
+            'processed_at': '2026-10-17T12:00:00+00:00'}
+
+        assert not _cache(cache_dir, entries).is_cache_valid('kraken_spot', 'ETHUSD')
+
     def test_a_new_estimator_version_makes_it_invalid(self, setup, monkeypatch):
         _, cache_dir, entries = setup
         _cache(cache_dir, entries).get_day_estimates('kraken_spot', 'ETHUSD')
