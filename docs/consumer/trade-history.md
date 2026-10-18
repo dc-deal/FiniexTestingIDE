@@ -229,3 +229,6 @@ A run with no trade-history artifact answers 404, and the refusal names which of
 was: the run is unknown, it was started without reports, it has produced none yet, or it produced
 other sections and not this one. See [errors](/api/v1/docs/errors) and
 [run kinds](/api/v1/docs/run-kinds) for what a run was commissioned to write.
+
+Which of these prices are the venue's decimals and which are computed, and how to round them
+for display: [prices](/api/v1/docs/prices).

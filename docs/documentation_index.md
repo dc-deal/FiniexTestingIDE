@@ -96,6 +96,7 @@
 |----------|-------------|
 | [Reading the documentation from the API](consumer/docs.md) | The three documentation routes, the ranked search, and the `Link` header every answer carries |
 | [Why a field is null](consumer/nulls.md) | The three causes of a null — not applicable, not measured, not recorded — and what to render for each |
+| [How a price is read](consumer/prices.md) | Which prices are the venue's decimals and which are computed, and how to round a computed one for display |
 | [What makes one row unique](consumer/row-keys.md) | The declared row key, the several-lists form, and the one-unit-four-names join |
 | [Which kind of run this is](consumer/run-kinds.md) | `group`, `ticks_from` and `orders_to`; which combination means money moved |
 | [The run header](consumer/run-header.md) | Every key a run's header holds, its meaning, and the label to show it under |

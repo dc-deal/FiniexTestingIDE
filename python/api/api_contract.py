@@ -23,7 +23,7 @@ from typing import List
 
 # One monotonic integer. Not a date and not the app version: a consumer compares it for
 # equality, and equality is the only question they have.
-API_CONTRACT_VERSION = 33
+API_CONTRACT_VERSION = 34
 
 # Every response carries it, so a saved fixture carries it too.
 CONTRACT_HEADER = 'X-Api-Contract'
@@ -36,17 +36,11 @@ API_PREFIX = '/api/v1'
 # What moved INTO the current version. One line per change, written for someone who cannot
 # read this repository.
 CHANGES: List[str] = [
-    "GET /api/v1/reports/runs/{run_id}/trade-history: every trade row carries "
-    "modelled_spread_cost — the spread its fills crossed against a quote the backtest modelled "
-    "for data recorded without one; inside gross_pnl like spread_cost, beside total_fees, and the "
-    "two add up to the trade's effective spread. Every scenario_totals row carries "
-    "total_modelled_spread_cost",
-    "portfolio and aggregated-portfolio: total_modelled_spread_cost per unit and per block",
-    "booking-periods: modelled_spread_cost per period, and period_modelled_spread_cost on the "
-    "deployment rows; null on a period recorded before this contract",
-    "scenario-details: every row carries modelled_spread — factor, estimator_version, "
-    "ticks_without_quote, ticks_modelled, median_spread_bps and day_digest — null where the "
-    "scenario read no tick without a quote",
-    "On data without a quote a backtest's fills, marks and stops now see a modelled spread, so "
-    "its gross_pnl and net_pnl are lower than before this contract; spread_cost there stays null",
+    "Every price a run read from the tick archive (a tick's bid, ask and last, an order-driven "
+    "bar's open, high, low and close, a fill at a recorded quote) is the decimal the venue wrote: "
+    "0.87957 where a run before this contract read 0.8795700073242188; the archive was "
+    "re-imported on 2026-10-17",
+    "real_volume keeps every decimal the venue reported",
+    "New document prices: which prices are the venue's decimals and which are computed, and "
+    "rounding a computed one by the instrument's tick_size for display",
 ]

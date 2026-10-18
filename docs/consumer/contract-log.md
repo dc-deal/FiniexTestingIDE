@@ -33,6 +33,21 @@ reads downwards from the version their fixtures hold until they reach the one be
 A test holds the newest heading in this log to the number the server answers with, so a version
 cannot ship without its entry.
 
+## Version 34 — 2026-10-18 (#606)
+
+A price the venue quoted or traded is now served as the decimal the venue wrote.
+
+- Every price a run read from the tick archive — a tick's `bid`, `ask` and `last`, the open, high,
+  low and close of a bar whose price basis is `order_driven`, a fill at a recorded quote — is the
+  decimal the collector recorded: `0.87957`, where a run before this contract read
+  `0.8795700073242188`. The archive was re-imported from its raw files on 2026-10-17 and keeps
+  double precision from now on.
+- `real_volume` keeps every decimal the venue reported.
+- New document [prices](/api/v1/docs/prices): which prices are the venue's decimals and which are
+  computed, and how to round a computed one for display by the instrument's `tick_size`.
+
+No field was added or removed. A run recorded before this contract keeps the values it read.
+
 ## Version 33 — 2026-10-16 (#602)
 
 A backtest over data recorded without a quote now pays a spread. Each such tick is given the quote
@@ -134,25 +149,13 @@ A venue's published history can enter the archive, and what an input file lacks 
 
 An id removed and a value added; no field changed its shape.
 
-## Version 29 — 2026-10-13 (#588)
-
-A live session that refused at its first tick is told apart from one that crashed.
-
-- `warnings-errors`: the `outcome` carries `refused_at_first_tick` — `true` when a live session
-  stopped at its first tick because the warmup history it starts from could not be completed
-  there: the venue had not yet committed the period that ended since the session read it, or could
-  not be read again. Such a session reads `shutdown_mode: emergency` and is graded `failed`, exactly
-  like a crash, so without this flag the two look the same; the reason is in `emergency_reason`.
-  `false` on every other run and on a backtest.
-
-An addition; no existing field changed. A run recorded before this contract serves `false`.
-
-## Versions 28 and earlier
+## Versions 29 and earlier
 
 One line each. Every one of these moved a shape or a meaning; what they moved is summarised here
 rather than spelled out, because a consumer this far behind needs the list of steps, not each step's
 reasoning. The full text of a compressed version is in this repository's history.
 
+- **Version 29** — 2026-10-13 (#588): A live session that refused at its first tick is told apart from one that crashed — `refused_at_first_tick` on the `warnings-errors` outcome, `true` when the warmup history could not be completed at the first tick, `false` on every other run, on a backtest and on a run recorded before.
 - **Version 28** — 2026-10-11 (#508): A run says how many of its fills were booked at the venue's own fee and how many at our estimate — `fill_fees_by_source` on every portfolio unit row, per-currency row and aggregated `headline` (entries `venue` / `estimate` with `fill_count` and `fill_fees`; empty where nothing executed), and `fee_source` on every order-history row (null where nothing executed).
 - **Version 27** — 2026-10-11 (#508): A live fill's fee is the venue's own charge wherever the venue reports it, and every executed order event says where its fee came from — `fee_source` (`venue` or `estimate`; null on an event that executed nothing, on a fill nothing could be booked for whose venue reported no fee, and on every event recorded before it); the same fee fields from another source, so a live run before and one after can differ in fees for the same orders.
 - **Version 26** — 2026-10-09 (#582): A run's header is served whole — `GET /api/v1/reports/runs/{run_id}/header`, with `run_not_found`, `run_header_missing` and `artifact_unreadable` — and the run list says who started each run: `origin_channel`, `origin_client`, `origin_principal` and `origin_host`; `fixture_superseded` is `true` also for a run of an entry no longer declared.

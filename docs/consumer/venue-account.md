@@ -93,3 +93,5 @@ The answer is a 404 that names its cause, as for every section — see
 there is nothing to ask. Neither has a dry run against a real venue, whose account reads are
 answered by the session itself rather than by the venue. And a session from before this section
 existed has none until it is run again.
+
+The account's values are the venue's own decimals: [prices](/api/v1/docs/prices).
