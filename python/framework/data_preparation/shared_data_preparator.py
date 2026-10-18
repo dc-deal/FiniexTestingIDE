@@ -13,15 +13,28 @@ UTC-FIX:
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
+import numpy as np
 import pandas as pd
 
 from python.configuration.market_config_manager import MarketConfigManager
 from python.data_management.index.bars_index_manager import BarsIndexManager
+from python.data_management.index.index_entry_times import entry_time_bounds
 from python.data_management.index.signal_index_manager import SignalIndexManager
 from python.data_management.index.tick_index_manager import TickIndexManager
+from python.framework.data_preparation.modelled_quote import (
+    day_digest,
+    median_spread_bps,
+    modelled_quote,
+    modelled_runs,
+    usable_days,
+)
 from python.framework.data_preparation.tick_parquet_reader import read_tick_parquet
+from python.framework.discoveries.spread_estimate.spread_estimate_cache import (
+    SpreadEstimateCache,
+)
+from python.framework.discoveries.spread_estimate.spread_estimator import ESTIMATOR_VERSION
 from python.framework.exceptions.data_quality_errors import TradedPriceMissingException
 from python.framework.exceptions.signal_data_errors import SignalDataUnavailableError
 from python.framework.logging.scenario_logger import ScenarioLogger
@@ -41,6 +54,7 @@ from python.framework.types.process_data_types import (
 )
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
 from python.framework.types.signal_data_types import SignalSeries
+from python.framework.types.spread_estimate_types import ModelledSpreadSummary
 from python.framework.types.trading_env_types.stress_test_types import (
     StressTestConfig,
     StressTestStaleDataConfig,
@@ -57,6 +71,10 @@ from python.framework.utils.process_serialization_utils import (
     time_range_from_transport_ticks,
 )
 from python.framework.utils.time_utils import ensure_utc_aware
+
+
+# The temporary column that marks a row from a file without a quote — never transported
+_WITHOUT_QUOTE = '_without_quote'
 
 
 class SharedDataPreparator:
@@ -172,6 +190,17 @@ class SharedDataPreparator:
 
         for idx, scenario in enumerate(scenarios):
             scenario_index = scenario.scenario_index
+            # Ticks without a quote that were to be modelled but could not be: refused as a data
+            # error (§33) rather than run silently without a spread
+            spread_failure = self.get_modelled_spread_failure(scenario.name)
+            if spread_failure is not None:
+                self._logger.error(f'❌ {scenario.name}: {spread_failure}')
+                scenario.validation_result.append(ValidationResult(
+                    scenario.name, [ValidationFinding(
+                        severity=Severity.ERROR, check='modelled_spread_unavailable',
+                        domain=ValidationDomain.DATA,
+                        message=spread_failure, scope=scenario.name)]))
+                continue
             # Filter ticks for this scenario
             scenario_ticks = self._filter_ticks_for_scenario(
                 scenario, all_ticks_dict, all_tick_counts, all_tick_ranges
@@ -230,6 +259,7 @@ class SharedDataPreparator:
                 continue
 
             # Create scenario-specific package
+            scenario.modelled_spread = self.get_modelled_spread(scenario.name)
             scenario_packages[scenario_index] = ProcessDataPackage(
                 ticks=scenario_ticks['ticks'],
                 bars=scenario_bars['bars'],
@@ -239,6 +269,8 @@ class SharedDataPreparator:
                 bar_counts=scenario_bars['counts'],
                 warmup_reference_time=warmup_references.get(scenario.name),
                 signal_series=signal_series,
+                modelled_quote_runs=(scenario.modelled_spread.quote_runs
+                                     if scenario.modelled_spread else ()),
             )
 
             # What this scenario actually read, taken from the index entries of the files its
@@ -472,17 +504,12 @@ class SharedDataPreparator:
 
         # Pre-convert file timestamps once per (broker_type, symbol).
         # pd.to_datetime on a single string is ~150-200µs — calling it N_scenarios × N_files
-        # times blows up to 10-20s for large symbol sets. Cache eliminates all repeated calls.
+        # times blows up to 10-20s for large symbol sets. Cache eliminates all repeated calls,
+        # and the one conversion left runs over the whole list at once.
         cache_key = (broker_type, symbol)
         if cache_key not in self._file_ts_cache:
-            self._file_ts_cache[cache_key] = [
-                (
-                    pd.to_datetime(f['start_time'], utc=True),
-                    pd.to_datetime(f['end_time'], utc=True),
-                    f
-                )
-                for f in files
-            ]
+            starts, ends = entry_time_bounds(files)
+            self._file_ts_cache[cache_key] = list(zip(starts, ends, files))
         file_ranges = self._file_ts_cache[cache_key]
 
         # File overlaps if it starts before range ends AND ends after range starts
@@ -762,6 +789,10 @@ class SharedDataPreparator:
         ticks_data = {}
         tick_counts = {}
         tick_ranges = {}
+        # What each scenario's ticks without a quote were given in place of one (#602), and the
+        # scenarios whose day estimates could not be had — read by prepare_scenario_packages
+        self._modelled_spread_summaries: Dict[str, ModelledSpreadSummary] = {}
+        self._modelled_spread_failures: Dict[str, str] = {}
 
         # === STEP 1: Group requirements by (broker_type, symbol) ===
         # All scenarios for the same symbol share one Parquet load.
@@ -817,12 +848,17 @@ class SharedDataPreparator:
                 )
                 continue
 
-            # Load and concat all relevant files into one in-memory DataFrame
+            # Load and concat all relevant files into one in-memory DataFrame. A file without a
+            # quote marks its rows, one byte each, so the sort below carries the mark along
+            # (#602) — exact where a time range would have to guess at a shared second.
+            no_quote_paths = self._no_quote_paths(broker_type, symbol)
             dfs = []
             for file_path in relevant_files:
                 df = read_tick_parquet(file_path)
                 if 'timestamp' in df.columns:
                     df['timestamp'] = pd.to_datetime(df['timestamp'], utc=True)
+                if no_quote_paths:
+                    df[_WITHOUT_QUOTE] = str(Path(file_path)) in no_quote_paths
                 dfs.append(df)
             # Stable, fine-grained order: 'timestamp' is second-resolution with many
             # duplicates, so a non-stable sort on it alone scrambles the sub-second order
@@ -839,11 +875,31 @@ class SharedDataPreparator:
                 f'({union_start} → {union_end})'
             )
 
+            # The day estimates the ticks without a quote are priced from — once per symbol,
+            # only where a scenario models them (#602)
+            spread_days = None
+            if (_WITHOUT_QUOTE in full_df.columns and full_df[_WITHOUT_QUOTE].any()
+                    and any(req.modelled_spread_factor > 0.0 for req in reqs)):
+                try:
+                    spread_days = usable_days(SpreadEstimateCache(
+                        logger=self._logger, tick_index=self.tick_index_manager
+                    ).get_day_estimates(broker_type, symbol))
+                except (OSError, ValueError) as error:
+                    for req in reqs:
+                        if req.modelled_spread_factor > 0.0:
+                            self._modelled_spread_failures[req.scenario_name] = (
+                                f'the spread of its ticks without a quote could not be '
+                                f'estimated ({error}) — rebuild it with '
+                                f'`spread_estimate_cli.py build {broker_type} {symbol}`, or set '
+                                f'trade_simulator_config.modelled_spread_factor to 0')
+
             # === STEP 4: Filter per requirement using searchsorted (O(log n)) ===
             # Pre-extract timestamp Series once — searchsorted avoids O(n) boolean scan
             timestamps = full_df['timestamp']
 
             for req in reqs:
+                if req.scenario_name in self._modelled_spread_failures:
+                    continue
                 req_start = ensure_utc_aware(req.start_time)
                 start_idx = timestamps.searchsorted(req_start, side='left')
 
@@ -856,7 +912,10 @@ class SharedDataPreparator:
                     end_idx = timestamps.searchsorted(req_end, side='right')
                     filtered_df = full_df.iloc[start_idx:end_idx]
 
-                ticks = serialize_ticks_for_transport(filtered_df)
+                quote = None
+                if _WITHOUT_QUOTE in filtered_df.columns:
+                    quote = self._model_quote(req, filtered_df, spread_days)
+                ticks = serialize_ticks_for_transport(filtered_df, quote)
 
                 if not ticks:
                     self._logger.warning(
@@ -877,6 +936,88 @@ class SharedDataPreparator:
                 )
 
         return ticks_data, tick_counts, tick_ranges
+
+    def get_modelled_spread(self, scenario_name: str) -> Optional[ModelledSpreadSummary]:
+        """
+        What the last `prepare_ticks` gave a scenario's ticks without a quote.
+
+        Args:
+            scenario_name: The scenario
+
+        Returns:
+            The summary; None when the scenario read no file without a quote
+        """
+        return self._modelled_spread_summaries.get(scenario_name)
+
+    def get_modelled_spread_failure(self, scenario_name: str) -> Optional[str]:
+        """
+        Why the last `prepare_ticks` could not model a scenario's ticks without a quote.
+
+        Args:
+            scenario_name: The scenario
+
+        Returns:
+            The reason, written for the operator; None when nothing failed
+        """
+        return self._modelled_spread_failures.get(scenario_name)
+
+    def _no_quote_paths(self, broker_type: str, symbol: str) -> Set[str]:
+        """
+        The paths of the symbol's tick files that recorded no quote.
+
+        Args:
+            broker_type: Broker type identifier
+            symbol: Trading symbol
+
+        Returns:
+            Their paths as strings; empty when every file recorded a quote
+        """
+        return {str(Path(entry['path']))
+                for entry in self.tick_index_manager.get_symbol_entries(broker_type, symbol)
+                if DataDeficiency.NO_QUOTE in entry.get('deficiencies', [])}
+
+    def _model_quote(
+        self,
+        req: TickRequirement,
+        ticks: pd.DataFrame,
+        spread_days: Optional[Tuple[np.ndarray, np.ndarray]]
+    ) -> Optional[Tuple[np.ndarray, np.ndarray]]:
+        """
+        Give one scenario's ticks without a quote the quote their day estimate implies, and
+        record what they were given.
+
+        Args:
+            req: The scenario's tick requirement, with its factor
+            ticks: The scenario's ticks, carrying the without-quote mark
+            spread_days: (usable day numbers, half spreads), None when not loaded
+
+        Returns:
+            (bid, ask) for every tick, or None when no tick's quote changed
+        """
+        without_quote = ticks[_WITHOUT_QUOTE].to_numpy(dtype=bool)
+        if not without_quote.any():
+            return None
+        time_msc = ticks['time_msc'].to_numpy(dtype=np.int64)
+        days, half_spread = spread_days if spread_days is not None else (
+            np.empty(0, dtype=np.int64), np.empty(0, dtype=np.float64))
+        bid, ask, modelled, used = modelled_quote(
+            time_msc, ticks['price'].to_numpy(dtype=np.float64),
+            ticks['bid'].to_numpy(dtype=np.float64), ticks['ask'].to_numpy(dtype=np.float64),
+            without_quote, days, half_spread, req.modelled_spread_factor)
+        any_modelled = bool(modelled.any())
+        self._modelled_spread_summaries[req.scenario_name] = ModelledSpreadSummary(
+            factor=req.modelled_spread_factor,
+            estimator_version=ESTIMATOR_VERSION,
+            ticks_without_quote=int(without_quote.sum()),
+            ticks_modelled=int(modelled.sum()),
+            median_spread_bps=(median_spread_bps(half_spread, used, modelled,
+                                                 req.modelled_spread_factor)
+                               if any_modelled else None),
+            day_digest=day_digest(days, half_spread, used, modelled,
+                                  req.modelled_spread_factor, ESTIMATOR_VERSION),
+            quote_runs=modelled_runs(time_msc, modelled),
+        )
+        return (bid, ask) if any_modelled else None
 
     def _max_ticks_end(
         self,

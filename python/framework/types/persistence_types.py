@@ -8,9 +8,12 @@ payload (#486).
 from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
+
+from python.framework.types.run_purpose_types import RunPurpose
 
 
 @dataclass
@@ -394,6 +397,95 @@ class ColdStartPayload(BaseModel):
     deployment_id: Optional[str] = None
 
 
+class CarryOverLoadOutcome(StrEnum):
+    """What a carry-over store found when it opened a bot's document (#358)."""
+    ABSENT = 'absent'              # no document — a bot's first run
+    UNREADABLE = 'unreadable'      # a document that does not parse
+    OTHER_SCHEMA = 'other_schema'  # a document in another envelope format
+    FOREIGN = 'foreign'            # written by a profile that is neither this one nor its partner
+    ACCEPTED = 'accepted'          # this profile's own, or its declared partner's
+
+
+@dataclass
+class CarryOverLoad:
+    """
+    What the last load of a carry-over document found — what the boot checks decide on.
+
+    Args:
+        path: The document's path
+        outcome: What was found
+        writer_profile: The profile that last wrote it; None when nothing was read
+        writer_run_id: The run that last wrote it; None when nothing was read or it had none
+        open_positions: How many open positions its book holds — counted for a FOREIGN
+            document too, because that is the one a boot must not overwrite
+        session_keys: How many session keys it holds — the keys a successor recognises its
+            resting orders by; counted for a FOREIGN document for the same reason
+    """
+    path: str
+    outcome: CarryOverLoadOutcome
+    writer_profile: Optional[str] = None
+    writer_run_id: Optional[str] = None
+    open_positions: int = 0
+    session_keys: int = 0
+
+    def holds_venue_claims(self) -> bool:
+        """
+        Whether the document speaks for something the venue may still hold.
+
+        An open position, or a session key an order resting at the venue may carry. Exactly what
+        a dry session leaves out of what it writes (`persist_venue_claims`), so a document a
+        dry session wrote holds none.
+
+        Returns:
+            True when it holds an open position or a session key
+        """
+        return self.open_positions > 0 or self.session_keys > 0
+
+
+@dataclass
+class CarryOverRead:
+    """
+    The boot's early read of a bot's carry-over: what it holds, and what the read found.
+
+    Args:
+        payload: The stored payload, or an empty one
+        load: What the read found; None when no read was made (cold start disabled)
+    """
+    payload: ColdStartPayload
+    load: Optional[CarryOverLoad] = None
+
+
+@dataclass
+class CarryOverClaim:
+    """
+    One profile's claim on a carry-over identity, as its raw file states it (#358).
+
+    Read from the RAW profile, the way the identity check reads every profile: a full load would
+    validate far more than this check answers for.
+
+    Args:
+        path: The profile file
+        key: The identity it files its carry-over under
+        profile_name: Its run unit name — `profile_name`, else the symbol
+        carry_over_from: The profile whose carry-over it declares it continues, or empty
+        run_purpose: Its declared purpose — REGULAR when it declares none, as for every run;
+            None when the value is not a purpose at all
+        adapter_type: Its adapter, with the loader's default applied
+        broker_type: Its broker, or empty
+        cold_start_path: The cold-start directory it declares, or None when it declares none
+        session_end_orders: What it declares for its orders at session end, or None
+    """
+    path: Path
+    key: str
+    profile_name: str
+    carry_over_from: str = ''
+    run_purpose: Optional[RunPurpose] = RunPurpose.REGULAR
+    adapter_type: str = ''
+    broker_type: str = ''
+    cold_start_path: Optional[str] = None
+    session_end_orders: Optional[str] = None
+
+
 class CarryOverEnvelope(BaseModel):
     """
     The header every CARRY-OVER store writes around its payload (#486).
@@ -416,7 +508,8 @@ class CarryOverEnvelope(BaseModel):
         store_id: Which registered store wrote this (the catalog's StoreId value)
         saved_at_utc: When the file was written, ISO-8601 UTC
         written_by_run_id: The run that wrote it, or None when the writer had no run identity
-        profile: The bot's profile name — half of the identity check on load
+        profile: The profile of the session that last WROTE this — half of the identity check on
+            load, compared with the reader and the continuation either side declared
         symbol: The traded symbol — the other half
         bot_id: The identity the profile DECLARED when this was written, or empty when it
             declared none (#538). It is what the FILE NAME was derived from, so without it the
@@ -424,6 +517,9 @@ class CarryOverEnvelope(BaseModel):
             `profile` and `symbol` alone would compute a different one and orphan the file. Read
             it together with the two above: they answer "whose state is this", this answers
             "under which name does it live"
+        carry_over_from: The profile whose carry-over the WRITER declared it continues (#358), or
+            empty. Recorded so the predecessor recognises its successor's document as its own
+            bot's, rather than ignoring it and overwriting what the successor holds
         snapshot: The store's own payload, opaque to the envelope
     """
     schema_version: int
@@ -433,4 +529,5 @@ class CarryOverEnvelope(BaseModel):
     profile: str
     symbol: str
     bot_id: str = ''
+    carry_over_from: str = ''
     snapshot: Dict[str, Any] = Field(default_factory=dict)

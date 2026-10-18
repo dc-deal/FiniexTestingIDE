@@ -24,6 +24,7 @@ from python.framework.reporting.builders.run_unit import (
 from python.framework.types.api.report_types import PortfolioReport
 from python.framework.types.autotrader_types.autotrader_result_types import AutoTraderResult
 from python.framework.types.batch_execution_types import BatchExecutionSummary
+from python.framework.types.data_deficiency_types import DataDeficiency
 from python.framework.types.portfolio_types.portfolio_aggregation_types import PortfolioStats
 from python.framework.types.process_data_types import ProcessResult, ProcessTickLoopResult
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
@@ -65,7 +66,7 @@ def _stats(
         total_profit=total_profit, total_loss=total_loss,
         account_max_drawdown=account_max_drawdown, max_equity=1100.0, account_max_drawdown_pct=0.0,
         win_rate=win_rate, profit_factor=profit_factor,
-        total_spread_cost=2.0, total_commission=2.0, total_swap=1.0,
+        total_spread_cost=2.0, total_modelled_spread_cost=0.0, total_commission=2.0, total_swap=1.0,
         maker_fee=0.7, taker_fee=0.9, total_fees=total_fees, fees_charged=total_fees,
         currency=currency, broker_name='kraken', current_conversion_rate=1.0,
         current_balance=1060.0, initial_balance=1000.0, symbol='BTCUSD',
@@ -147,6 +148,23 @@ class TestBatch:
             success=False, scenario_name='bad', scenario_index=2, tick_loop_results=None)
         report = build_portfolio_report(_RUN_ID, run_units_from_batch(_batch(extra_results=[bad])))
         assert [u.name for u in report.units] == ['s1', 's2']
+
+
+class TestASpreadOnDataWithoutAQuote:
+    """The unit's spread total is None where the scenario read a tick file without a quote."""
+
+    def _report(self, deficiencies):
+        batch = _batch()
+        batch.single_scenario_list[1].data_deficiencies = deficiencies
+        return build_portfolio_report(_RUN_ID, run_units_from_batch(batch))
+
+    def test_a_unit_on_data_without_a_quote_has_no_spread_total(self):
+        report = self._report([[DataDeficiency.NO_QUOTE]])
+        assert [u.total_spread_cost for u in report.units] == [2.0, None]
+
+    def test_other_deficiencies_leave_it_measured(self):
+        report = self._report([[DataDeficiency.NO_ARRIVAL_TIME]])
+        assert [u.total_spread_cost for u in report.units] == [2.0, 2.0]
 
 
 class TestBatchExtraction:

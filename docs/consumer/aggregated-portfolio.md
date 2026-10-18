@@ -117,7 +117,10 @@ as alternatives.
 ## What the trading cost
 
 `total_commission`, `total_swap` and `total_spread_cost` are the cost split summed across the
-block's units; `avg_spread` stands with them. `maker_fee` and `taker_fee` are summed the same way:
+block's units; `avg_spread` stands with them. `total_spread_cost` and `avg_spread` are **null as
+soon as one unit's spread is**: that unit read data without a quote, and a sum over the others
+would read as the whole. `total_modelled_spread_cost` is always summed: it is the spread crossed
+against the quotes a backtest modelled for such data, 0 where nothing was modelled. `maker_fee` and `taker_fee` are summed the same way:
 the fees a venue that charges per side took for orders that rested before they filled (maker) and
 for orders that took the book (taker). Such a venue books its fees there rather than in
 `total_commission`. How a single period's split relates to its fee total

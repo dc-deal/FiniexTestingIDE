@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Dict, List, Optional, Tuple
 
+import numpy as np
 import pandas as pd
 
 from python.framework.types.market_types.market_data_types import Bar, TickData, TickTransportColumn
@@ -21,7 +22,9 @@ from python.framework.types.market_types.market_data_types import Bar, TickData,
 # ============================================================================
 
 
-def serialize_ticks_for_transport(df: pd.DataFrame) -> List[Dict[str, Any]]:
+def serialize_ticks_for_transport(
+        df: pd.DataFrame,
+        quote: Optional[Tuple[np.ndarray, np.ndarray]] = None) -> List[Dict[str, Any]]:
     """
     Trim DataFrame to transport columns and convert to list of dicts.
 
@@ -35,6 +38,9 @@ def serialize_ticks_for_transport(df: pd.DataFrame) -> List[Dict[str, Any]]:
 
     Args:
         df: DataFrame with tick data (normalized columns from read_tick_parquet)
+        quote: (bid, ask) arrays that replace the frame's own, one value per row — the quote a
+            tick without one is given (#602). The frame itself is left as it is: it may be a
+            slice of the frame other scenarios are cut from
 
     Returns:
         List of dicts with only transport-relevant fields
@@ -51,7 +57,12 @@ def serialize_ticks_for_transport(df: pd.DataFrame) -> List[Dict[str, Any]]:
     if last_col in available_cols and not (df[last_col] > 0).any():
         available_cols.remove(last_col)
 
-    return df[available_cols].to_dict('records')
+    if quote is None:
+        return df[available_cols].to_dict('records')
+    # Built from the columns' arrays: one copy of the transport columns, as `df[...]` makes
+    columns = {column: df[column].to_numpy() for column in available_cols}
+    columns[TickTransportColumn.BID.value], columns[TickTransportColumn.ASK.value] = quote
+    return pd.DataFrame(columns).to_dict('records')
 
 
 # ============================================================================

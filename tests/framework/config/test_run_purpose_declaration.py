@@ -16,7 +16,9 @@ import pytest
 
 from python.configuration.app_config_manager import AppConfigManager
 from python.configuration.autotrader.autotrader_config_loader import load_autotrader_config
-from python.framework.autotrader.rendered_profile_builder import render_autotrader_profile
+from python.framework.autotrader.run_record.rendered_profile_builder import (
+    render_autotrader_profile,
+)
 from python.framework.config_directory.config_directory_builder import config_kind_of
 from python.framework.reporting.store.run_provenance_builder import _profile_fingerprint
 from python.framework.types.config_directory_types import ConfigKind

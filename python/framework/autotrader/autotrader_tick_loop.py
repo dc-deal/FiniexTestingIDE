@@ -13,13 +13,10 @@ import time
 from collections import deque
 from datetime import date, datetime, timezone
 from pathlib import Path
-from typing import Callable, Deque, Dict, List, Optional, Set, Tuple
+from typing import Callable, Deque, Dict, List, Optional, Tuple
 
-from python.configuration.app_config_manager import AppConfigManager
 from python.configuration.market_config_manager import MarketConfigManager
 from python.framework.autotrader.autotrader_display_exporter import AutotraderDisplayExporter
-from python.framework.autotrader.autotrader_startup import create_session_file_logger
-from python.framework.autotrader.session_log_retention import prune_rotated_session_logs
 from python.framework.autotrader.live_clipping_monitor import LiveClippingMonitor
 from python.framework.autotrader.operator_alerts.alert_episode import (
     AlertEpisode,
@@ -30,7 +27,12 @@ from python.framework.autotrader.operator_alerts.operator_alerts import Operator
 from python.framework.autotrader.operator_alerts.operator_alerts_setup import (
     disabled_operator_alerts,
 )
-from python.framework.autotrader.risk_baseline_tracker import RiskBaselineTracker
+from python.framework.autotrader.operator_alerts.signal_staleness_alerter import (
+    SignalStalenessAlerter,
+)
+from python.framework.autotrader.safety.risk_baseline_tracker import RiskBaselineTracker
+from python.framework.autotrader.safety.safety_circuit_breaker import SafetyCircuitBreaker
+from python.framework.autotrader.session_log_rotator import SessionLogRotator
 from python.framework.autotrader.tick_sources.abstract_tick_source import AbstractTickSource
 from python.framework.bars.bar_rendering_controller import BarRenderingController
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
@@ -44,6 +46,10 @@ from python.framework.process.tick_pipeline_core import (
     run_ghost_pass,
 )
 from python.framework.reporting.api_perf_monitor import ApiPerfMonitor
+from python.framework.reporting.booking_period_recorder import (
+    BookingPeriodRecorder,
+    snapshot_from_portfolio,
+)
 from python.framework.signal_data.transport.abstract_signal_transport import (
     AbstractSignalTransport,
 )
@@ -54,48 +60,23 @@ from python.framework.trading_env.decision_event_dispatcher import DecisionEvent
 from python.framework.trading_env.live.drift_auditor import DriftAuditor
 from python.framework.trading_env.live.reconciler import Reconciler
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
-from python.framework.types.autotrader_types.autotrader_display_types import (
-    RejectionEntry,
-    SafetyState,
-)
+from python.framework.types.autotrader_types.autotrader_display_types import RejectionEntry
 from python.framework.types.autotrader_types.display_label_cache import DisplayLabelCache
 from python.framework.types.autotrader_types.operator_alert_types import (
     OperatorAlertKind,
     OperatorAlertLevel,
 )
-from python.framework.types.autotrader_types.safety_session_types import (
-    FlattenOutcome,
-    SafetyDayRecord,
-    SafetySessionRecord,
-)
+from python.framework.types.autotrader_types.safety_session_types import SafetySessionRecord
 from python.framework.types.config_types.market_config_types import TradingModel
-from python.framework.types.decision_event_types import SessionEndEvent, SessionEndSeverity
 from python.framework.types.decision_logic_types import Decision, DecisionLogicAction
 from python.framework.types.disturbance_episode_types import DisturbanceEpisode, MarketDataTickStats
 from python.framework.types.market_types.market_data_types import TickData
-from python.framework.reporting.booking_period_recorder import (
-    BookingPeriodRecorder,
-    snapshot_from_portfolio,
-)
+from python.framework.types.persistence_types import BaselineQuantities
 from python.framework.types.run_results_types import BookingPeriod, PeriodCloseReason
-from python.framework.utils.trading_day_anchor import boundary_opening, trading_day_of
-from python.framework.types.persistence_types import (
-    BaselineKind,
-    BaselineOrigin,
-    BaselineQuantities,
-)
 from python.framework.types.trading_env_types.market_data_status_types import MarketDataStatus
 from python.framework.types.trading_env_types.order_types import OrderResult
+from python.framework.utils.trading_day_anchor import boundary_opening, trading_day_of
 from python.framework.workers.worker_orchestrator import WorkerOrchestrator
-
-# How many ticks the hard stop keeps draining before it ends the session with positions
-# still open (#356). A close is asynchronous: it is sent on one tick and its fill arrives on
-# a later one, so ending immediately would report a flat book that is not flat. The window
-# is generous because the alternative — exiting early — is the failure it exists to prevent,
-# and it is BOUNDED because a venue that never answers must not hold the session open for
-# the rest of the month. What happens at the end of it is not a silent exit: every position
-# still open is named into the error pot (§35).
-_FLATTEN_DRAIN_TICKS = 200
 
 
 class AutotraderTickLoop:
@@ -181,17 +162,17 @@ class AutotraderTickLoop:
         # inputs — each once per edge, never per tick.
         self._operator_alerts = operator_alerts or disabled_operator_alerts()
         self._loop_progress = self._operator_alerts.get_loop_progress()
-        self._seen_signal_stale_flips = 0
-        self._stale_signals_seen: Set[str] = set()
         # One episode per symptom: the opening alert, then the all-clear only once the symptom
         # stayed away this long — a breaker or a feed flapping around its threshold is one
         # episode, not a message per crossing
         self._all_clear_after_s = config.operator_alerts.telegram.all_clear_after_s
         # Each trading day's close, rendered for the operator from the period it sealed
         self._daily_digest = config.operator_alerts.telegram.daily_digest
-        self._safety_alert = AlertEpisode(self._all_clear_after_s)
         self._market_data_alert = AlertEpisode(self._all_clear_after_s)
-        self._signal_alerts: Dict[str, AlertEpisode] = {}
+        # Each signal input is its own episode; the orchestrator owns the stale edge
+        self._signal_staleness_alerter = SignalStalenessAlerter(
+            worker_orchestrator, self._operator_alerts, self._all_clear_after_s,
+            executor.get_current_time_if_set)
         # When the loop started, on the monotonic clock: a first tick that never comes is an
         # outage the operator hears about, though the status calls it a startup wait (#436)
         self._loop_started_monotonic: float = 0.0
@@ -210,21 +191,6 @@ class AutotraderTickLoop:
         self._api_monitor = api_monitor
         self._state_store = state_store
         self._risk_baseline = risk_baseline
-        # #314 — the DAILY denominator. A second record of the same type, and a second
-        # tracker rather than a mutable field: "a new day is a new baseline" is then
-        # literal, and the session tracker keeps its one job of never moving backwards.
-        # Deliberately NOT persisted: a daily limit that survived a restart would carry
-        # yesterday's loss into today, which is the opposite of what daily means.
-        self._day_baseline: Optional[RiskBaselineTracker] = None
-        self._safety_current_day: Optional[str] = None
-        # #356 — the HARD stop, and it is a two-step because a close is ASYNCHRONOUS. The
-        # session-end validator already refuses `positions='close'` for exactly this reason:
-        # the fill arrives on a later tick, and EMERGENCY means immediate exit. Sending the
-        # closes and ending in the same breath would leave positions open at the venue while
-        # the books called them closed. So: send once, keep draining, end when the book is
-        # flat or the window runs out — and say which positions were never confirmed.
-        self._flatten_sent_at_tick: Optional[int] = None
-        self._flatten_reason: str = ''
         # #355 — the open book is written when it CHANGES, in two classes. A STRUCTURAL
         # change (a position opens, closes, is partially closed) is written at once: it cannot
         # be recovered, and waiting out an interval is exactly the window a hard kill takes
@@ -288,33 +254,18 @@ class AutotraderTickLoop:
         self._base_currency = symbol_spec.base_currency
         self._quote_currency = symbol_spec.quote_currency
 
-        # Safety / circuit breaker state
-        self._safety_blocked = False
-        self._safety_reason = ''
-        self._safety_current_value: float = 0.0
-        self._safety_drawdown_pct: float = 0.0
-
-        # #356 — what the breaker SAW, for the end-of-session report. The live state above
-        # answers "is the bot blocked right now", which is the wrong question after a
-        # thirty-day run: a session that touched 18 % at hour three and recovered ends
-        # looking exactly like one that never moved. These are running maxima, and they are
-        # kept whether the breaker is ENABLED or not — a session with the limits off still
-        # measures its drawdown, and that record is what says what would have fired.
-        self._safety_final_value: float = 0.0
-        self._safety_worst_dd_abs: float = 0.0
-        self._safety_worst_dd_abs_at: str = ''
-        self._safety_worst_dd_pct: float = 0.0
-        self._safety_worst_dd_pct_at: str = ''
-        self._safety_block_count: int = 0
-        self._safety_days: List[SafetyDayRecord] = []
-        self._day_worst_loss_abs: float = 0.0
-        self._day_worst_loss_pct: float = 0.0
-        self._day_worst_loss_at: str = ''
-        self._day_limit_hit: bool = False
-        self._flatten_outcome: Optional[FlattenOutcome] = None
-        self._flatten_unconfirmed: List[str] = []
-        self._flatten_kept: List[str] = []
-
+        # #356 / #314 — the safety layer: soft breaker, hard stop, daily loss and their record.
+        # Built before the display exporter, which shows its state on every frame.
+        self._safety = SafetyCircuitBreaker(
+            config=config,
+            executor=executor,
+            trading_model=trading_model,
+            risk_baseline=risk_baseline,
+            logger=logger,
+            operator_alerts=self._operator_alerts,
+            all_clear_after_s=self._all_clear_after_s,
+            trading_day=self._trading_day,
+        )
 
         # Last rejection (displayed until overwritten by next rejection)
         self._recent_rejections: Deque[RejectionEntry] = deque(maxlen=5)
@@ -362,8 +313,9 @@ class AutotraderTickLoop:
             on_seal=self._announce_day_closed,
         )
 
-        # Daily rotation state
-        self._current_log_date: Optional[str] = None
+        # The session log rotates on this market's trading day — the same day the booking
+        # period and the daily loss limit read
+        self._log_rotator = SessionLogRotator(run_dir, logger, self._trading_day)
 
         # #400 — Display stats builder (extracted from this loop). Holds the
         # stable collaborators; the volatile per-frame state (safety, rejections,
@@ -412,11 +364,6 @@ class AutotraderTickLoop:
         last_tick: Optional[TickData] = None
         last_decision: Optional[Decision] = None
 
-        # Daily rotation: date initialized from first tick (not wall clock)
-        # This prevents spurious rotation in mock/replay mode where tick
-        # timestamps differ from current date.
-        self._current_log_date = None
-
         # #320 — Push an initial startup pulse frame so the display renders
         # the full dashboard from t=0 instead of falling back to a wait
         # placeholder. Subsequent pulses fire from queue.Empty heartbeats.
@@ -440,7 +387,7 @@ class AutotraderTickLoop:
             # #235: one stamp per pass, tick or heartbeat — a pass that hangs stamps no more,
             # and the liveness ping stops vouching for the loop
             self._loop_progress.stamp()
-            self._alert_on_signal_staleness()
+            self._signal_staleness_alerter.check()
             try:
                 tick = self._tick_queue.get(timeout=self._heartbeat_interval_s)
             except queue.Empty:
@@ -456,7 +403,7 @@ class AutotraderTickLoop:
                 # #476: the boundary is checked HERE too, and this is the half that makes
                 # it reliable — a feed that goes quiet across the rollover would otherwise
                 # never rotate. The clock is set one line above, so the day is current.
-                self._check_daily_rotation()
+                self._log_rotator.check_daily_rotation()
                 # #537: the booking period seals on the SAME boundary, in its own pass — a
                 # booking must not depend on whether logs are being written.
                 self._booking.check_boundary(
@@ -531,7 +478,7 @@ class AutotraderTickLoop:
             # tick's time — before it, the clock still holds the previous pass. In a
             # live-adapter session the heartbeat above has almost always rotated first; this
             # covers a replay whose queue never runs empty.
-            self._check_daily_rotation()
+            self._log_rotator.check_daily_rotation()
 
             # #436: a real tick ends a stale episode (recovery, edge reset).
             if self._market_stale:
@@ -596,7 +543,7 @@ class AutotraderTickLoop:
             # the holdings cannot be valued yet; the breaker then does not measure rather
             # than measuring against a guess.
             safety_value = self._executor.portfolio.get_account_value()
-            safety_baseline = self._safety_baseline_value()
+            safety_baseline = self._safety.baseline_value()
             if safety_value is not None:
                 # #497 — the REPORT's drawdown reads the same per-tick value the breaker
                 # does, and pays nothing for it: the evaluation above is already done. The
@@ -610,16 +557,16 @@ class AutotraderTickLoop:
                 # Record the excursion BEFORE the checks and from the same two values they
                 # read. A report measuring a different number from the one that decides is
                 # the defect this issue removes, one layer up.
-                self._observe_safety_excursion(safety_value, safety_baseline)
-                self._check_safety(safety_value, safety_baseline)
+                self._safety.observe_excursion(safety_value, safety_baseline)
+                self._safety.check_safety(safety_value, safety_baseline)
                 # #356 — the HARD stop, checked after the soft one so a session that trips
                 # both reports both. Sends the closes ONCE; the drain below carries them.
-                self._check_emergency_flatten(
+                self._safety.check_emergency_flatten(
                     safety_value, safety_baseline, ticks_processed)
-            self._drive_emergency_flatten(ticks_processed)
+            self._safety.drive_emergency_flatten(ticks_processed)
 
             # === 6. Order Execution ===
-            if self._entries_blocked():
+            if self._safety.entries_blocked():
                 decision.action = DecisionLogicAction.FLAT
             order_result = self._decision_logic.execute_decision(decision, tick)
             self._record_rejection(order_result, decision)
@@ -672,7 +619,7 @@ class AutotraderTickLoop:
             if self._display_queue is not None:
                 display_stats = self._display_exporter.build(
                     decision, ticks_processed, tick,
-                    safety=self._safety_state(),
+                    safety=self._safety.get_display_state(),
                     recent_rejections=list(self._recent_rejections),
                     total_rejections=self._rejection_count,
                     initial_spot_equity=self._initial_spot_equity)
@@ -692,18 +639,7 @@ class AutotraderTickLoop:
         # === Session end event (#348) — emitted once the loop ends, whether by
         # request, tick-source exhaustion, or stop(). Delivered before teardown.
         if self._decision_event_dispatcher is not None:
-            if self._executor.is_session_end_requested():
-                end_reason = self._executor.get_session_end_reason()
-                end_severity = self._executor.get_session_end_severity()
-            else:
-                end_reason = 'tick source exhausted'
-                end_severity = SessionEndSeverity.NORMAL
-            self._decision_event_dispatcher.submit(SessionEndEvent(
-                reason=end_reason,
-                severity=end_severity,
-                tick_time=self._executor.get_current_time(),
-            ))
-            self._decision_event_dispatcher.drain()
+            self._decision_event_dispatcher.emit_session_end()
 
         # Final display snapshot — ensures the last rendered frame reflects
         # the terminal pipeline state regardless of display refresh timing.
@@ -719,7 +655,7 @@ class AutotraderTickLoop:
                     break
             final_stats = self._display_exporter.build(
                 last_decision, ticks_processed, last_tick,
-                safety=self._safety_state(),
+                safety=self._safety.get_display_state(),
                 recent_rejections=list(self._recent_rejections),
                 total_rejections=self._rejection_count,
                 initial_spot_equity=self._initial_spot_equity)
@@ -949,7 +885,7 @@ class AutotraderTickLoop:
         if decision is None:
             return
         self._ghost_pass_count += 1
-        if self._entries_blocked():
+        if self._safety.entries_blocked():
             decision.action = DecisionLogicAction.FLAT
         order_result = self._decision_logic.execute_decision(decision, tick=None)
         if order_result is not None:
@@ -978,7 +914,7 @@ class AutotraderTickLoop:
             seconds_since = time.time() - self._last_real_tick_wall_time
             stats = self._display_exporter.build(
                 self._last_real_decision, ticks_processed, self._last_real_tick,
-                safety=self._safety_state(),
+                safety=self._safety.get_display_state(),
                 recent_rejections=list(self._recent_rejections),
                 total_rejections=self._rejection_count,
                 initial_spot_equity=self._initial_spot_equity)
@@ -1108,43 +1044,7 @@ class AutotraderTickLoop:
             self._operator_alerts.send(
                 OperatorAlertKind.MARKET_DATA_RECOVERED, OperatorAlertLevel.INFO,
                 'Market data fresh again',
-                all_clear_detail(self._market_data_alert, self._all_clear_after_s))
-
-    def _alert_on_signal_staleness(self) -> None:
-        """
-        Tell the operator when a SIGNAL input turns stale, and when it has stayed fresh again.
-
-        The orchestrator owns the stale edge — it fires `on_signal_stale` there, in both
-        pipelines. The loop only compares the orchestrator's flip count with the one it last
-        saw, so a pass with nothing new costs one integer comparison, and reads the state itself
-        only when something moved. Each worker is its own episode (#235): its all-clear waits
-        until it has stayed fresh for the quiet period.
-        """
-        now = self._executor.get_current_time_if_set()
-        if now is None:
-            return
-        flips = self._worker_orchestrator.get_signal_stale_flip_count()
-        if flips != self._seen_signal_stale_flips:
-            self._seen_signal_stale_flips = flips
-            stale_now = set(self._worker_orchestrator.get_stale_signal_workers())
-            for name in sorted(stale_now - self._stale_signals_seen):
-                episode = self._signal_alerts.setdefault(
-                    name, AlertEpisode(self._all_clear_after_s))
-                if episode.opens(now):
-                    self._operator_alerts.send(
-                        OperatorAlertKind.SIGNAL_STALE, OperatorAlertLevel.WARNING,
-                        f'Signal input stale — {name}',
-                        'The decision now reads it as stale; the strategy decides what that '
-                        'means.')
-            for name in sorted(self._stale_signals_seen - stale_now):
-                self._signal_alerts[name].clears(now)
-            self._stale_signals_seen = stale_now
-        for name, episode in self._signal_alerts.items():
-            if episode.is_open() and episode.all_clear_due(now):
-                self._operator_alerts.send(
-                    OperatorAlertKind.SIGNAL_RECOVERED, OperatorAlertLevel.INFO,
-                    f'Signal input fresh again — {name}',
-                    all_clear_detail(episode, self._all_clear_after_s))
+                all_clear_detail(self._market_data_alert))
 
     def _injected_outage_label(self) -> str:
         """
@@ -1190,15 +1090,6 @@ class AutotraderTickLoop:
             MarketDataTickStats for the session's tick source
         """
         return self._market_data_tracker.get_tick_stats()
-
-    def _safety_state(self) -> SafetyState:
-        """Bundle the current circuit-breaker state for the display exporter."""
-        return SafetyState(
-            blocked=self._safety_blocked,
-            reason=self._safety_reason,
-            current_value=self._safety_current_value,
-            drawdown_pct=self._safety_drawdown_pct,
-        )
 
     def _check_new_maxes(self) -> None:
         """Log new all-time max execution times for workers and decision logic."""
@@ -1251,7 +1142,7 @@ class AutotraderTickLoop:
 
         self._risk_baseline.ensure_taken(value, mark_price, quantities)
         self._risk_baseline.observe(value, mark_price, quantities)
-        self._update_day_baseline(value, mark_price, quantities)
+        self._safety.update_day_baseline(value, mark_price, quantities)
         # The report's equity curve too, before the booking boundary is checked: a seal reads the
         # curve's running figures (peak, deepest decline), and the simulation samples before it
         # seals. The safety pass samples again after the decision, which changes nothing unless
@@ -1260,52 +1151,6 @@ class AutotraderTickLoop:
         # The booking period's VALUATION half, beside the risk one (#537). Same tick, same
         # value, so the two never describe different instants.
         self._booking.observe_equity(value)
-
-    def _update_day_baseline(
-        self,
-        value: float,
-        mark_price: Optional[float],
-        quantities: Optional[BaselineQuantities],
-    ) -> None:
-        """
-        Start a new daily baseline when the market crosses into a new trading day (#314).
-
-        The day comes from the canonical clock and this market's anchor (#476), never from
-        the wall clock and no longer from the tick stamp: both event sources advance that
-        clock, so a mock session and a live-adapter session still answer alike, and a quiet
-        feed over the boundary no longer hides it. The check stays deliberately independent of
-        `_check_daily_rotation`: that one rotates a LOG file and returns early when there is
-        no run directory, and a loss limit must not depend on whether logs are being written.
-
-        Same ANCHOR as that rotation, but not the same MOMENT: the rotation also runs on the
-        heartbeat, while this reaches the boundary only on the next real TICK, because at spot
-        the baseline needs a mark price and a heartbeat carries none. The lateness is
-        self-limiting rather than a gap — nothing can move the account until a tick arrives,
-        and that is the same tick which resets the denominator.
-
-        Args:
-            value: The account value at this moment
-            mark_price: The price the holdings are valued at (spot only)
-            quantities: What is held at that instant (spot only)
-        """
-        current_day = self._trading_day()
-        if current_day is None:
-            return
-        day = current_day.isoformat()
-        if day == self._safety_current_day:
-            return
-        self._close_safety_day()
-        self._safety_current_day = day
-        self._day_baseline = RiskBaselineTracker(
-            mode=BaselineKind.DAY_START,
-            restored=None,
-            spot_mode=self._trading_model == TradingModel.SPOT,
-            exclusive_account=self._config.capital.exclusive_account,
-            clock_fn=self._executor.get_current_time_if_set,
-            logger=self._logger,
-        )
-        self._day_baseline.ensure_taken(
-            value, mark_price, quantities, origin=BaselineOrigin.DAY_BOUNDARY)
 
     def _trading_day(self) -> Optional[date]:
         """
@@ -1316,30 +1161,6 @@ class AutotraderTickLoop:
         """
         now = self._executor.get_current_time_if_set()
         return trading_day_of(now, self._day_anchor) if now else None
-
-    def _close_safety_day(self) -> None:
-        """
-        File the day that is ending and reset the per-day counters (#314).
-
-        One row per day rather than one maximum across all of them: a daily limit is
-        measured against a denominator that is struck fresh every morning, so a maximum over
-        thirty days would be a maximum over thirty different references — a number about
-        nothing. The rows are bounded by the run's length in days.
-        """
-        if self._safety_current_day is None or self._day_baseline is None:
-            return
-        self._safety_days.append(SafetyDayRecord(
-            day=self._safety_current_day,
-            baseline=self._day_baseline.get_baseline(),
-            worst_loss_abs=self._day_worst_loss_abs,
-            worst_loss_pct=self._day_worst_loss_pct,
-            worst_loss_at=self._day_worst_loss_at,
-            limit_hit=self._day_limit_hit,
-        ))
-        self._day_worst_loss_abs = 0.0
-        self._day_worst_loss_pct = 0.0
-        self._day_worst_loss_at = ''
-        self._day_limit_hit = False
 
     def _seal_source(self):
         """
@@ -1405,95 +1226,14 @@ class AutotraderTickLoop:
         return self._booking.close(
             self._executor.get_current_time_if_set(), self._seal_source)
 
-    def _observe_safety_excursion(self, current_value: float, baseline: float) -> None:
-        """
-        Record how far the account moved BELOW its two denominators (#356).
-
-        Runs whether the breaker is enabled or not, because a session with the limits off
-        still measures a drawdown — and for a parity proof that record is the interesting
-        one: it says what WOULD have fired before anything is armed.
-
-        The absolute and the percentage low are tracked as SEPARATE instants. A
-        high-water-mark baseline moves, so the deepest amount and the deepest share are not
-        the same moment, and one figure alone always understates one of the two limits. With
-        the default fixed baseline they coincide and agree by construction.
-
-        Args:
-            current_value: The account value the breaker is about to check
-            baseline: The session denominator it measures against
-        """
-        self._safety_final_value = current_value
-        stamp = self._executor.get_current_time_if_set()
-        stamp_utc = stamp.isoformat() if stamp is not None else ''
-
-        if baseline > 0:
-            drawdown_abs = baseline - current_value
-            drawdown_pct = drawdown_abs / baseline * 100.0
-            if drawdown_abs > self._safety_worst_dd_abs:
-                self._safety_worst_dd_abs = drawdown_abs
-                self._safety_worst_dd_abs_at = stamp_utc
-            if drawdown_pct > self._safety_worst_dd_pct:
-                self._safety_worst_dd_pct = drawdown_pct
-                self._safety_worst_dd_pct_at = stamp_utc
-
-        if self._day_baseline is None:
-            return
-        day_start = self._day_baseline.get_value()
-        if day_start <= 0:
-            return
-        daily_loss = day_start - current_value
-        if daily_loss > self._day_worst_loss_abs:
-            self._day_worst_loss_abs = daily_loss
-            self._day_worst_loss_pct = daily_loss / day_start * 100.0
-            self._day_worst_loss_at = stamp_utc
-
     def get_safety_session(self) -> SafetySessionRecord:
         """
         What the circuit breaker saw over this session, for the report (#356 / #314).
 
-        Closes the day that was still running, so the final — necessarily incomplete — day
-        is filed like every other one rather than dropped for having no successor.
-
-        A hard stop whose drain never concluded is resolved here rather than left at None.
-        The session can end for a reason of its own while the closes are still in flight
-        (the tick source dies, the operator interrupts), and an unresolved drain reported as
-        "did not fire" would hide open positions at the venue behind a blank field.
-
         Returns:
-            The captured record; its baseline is None when none was ever taken
+            The breaker's record; its baseline is None when none was ever taken
         """
-        self._close_safety_day()
-        self._safety_current_day = None
-
-        flatten_fired = bool(self._flatten_reason)
-        flatten_outcome = self._flatten_outcome
-        flatten_unconfirmed = list(self._flatten_unconfirmed)
-        if flatten_fired and flatten_outcome is None:
-            flatten_outcome = FlattenOutcome.UNCONFIRMED
-            flatten_unconfirmed = [
-                position.position_id
-                for position in self._executor.portfolio.get_open_positions()]
-
-        return SafetySessionRecord(
-            enabled=self._config.safety.enabled,
-            spot_mode=self._trading_model == TradingModel.SPOT,
-            baseline=(self._risk_baseline.get_baseline()
-                      if self._risk_baseline is not None else None),
-            final_value=self._safety_final_value,
-            worst_drawdown_abs=self._safety_worst_dd_abs,
-            worst_drawdown_abs_at=self._safety_worst_dd_abs_at,
-            worst_drawdown_pct=self._safety_worst_dd_pct,
-            worst_drawdown_pct_at=self._safety_worst_dd_pct_at,
-            block_count=self._safety_block_count,
-            blocked_at_end=self._safety_blocked,
-            reason_at_end=self._safety_reason,
-            days=list(self._safety_days),
-            flatten_fired=flatten_fired,
-            flatten_reason=self._flatten_reason,
-            flatten_outcome=flatten_outcome,
-            flatten_unconfirmed=flatten_unconfirmed,
-            flatten_kept=list(self._flatten_kept),
-        )
+        return self._safety.get_safety_session()
 
     def _spot_quantities(self) -> BaselineQuantities:
         """
@@ -1516,390 +1256,3 @@ class AutotraderTickLoop:
             base=sum(amount for currency, amount in balances.items()
                      if currency != account_currency),
         )
-
-    def _safety_baseline_value(self) -> float:
-        """
-        The denominator the circuit breaker measures its drawdown against.
-
-        The tracker's record when there is one, and the portfolio's opening balance
-        otherwise — which is the pre-#356 behaviour and the honest answer for a session that
-        has not taken a baseline yet. Zero is what the breaker already reads as "no drawdown
-        check", so a spot session before its first tick is unchanged.
-
-        Returns:
-            The baseline value in account currency
-        """
-        if self._risk_baseline is not None:
-            value = self._risk_baseline.get_value()
-            if value > 0:
-                return value
-        return self._executor.portfolio.initial_balance
-
-    def _check_safety(self, current_value: float, initial_balance: float) -> None:
-        """
-        Evaluate circuit breaker conditions and update safety state.
-
-        Soft stop: sets _safety_blocked flag. Existing positions continue,
-        new entries are blocked by overriding decision to FLAT.
-
-        Args:
-            current_value: The account value — one definition per model (#356), never
-                settled cash
-            initial_balance: Session start balance (== initial equity, no positions at start)
-        """
-        safety = self._config.safety
-        if not safety.enabled:
-            return
-
-        # Already blocked — check if conditions cleared (value recovered)
-        was_blocked = self._safety_blocked
-        self._safety_blocked = False
-        self._safety_reason = ''
-        self._safety_current_value = current_value
-
-        # Min threshold: spot checks min_equity, margin checks min_balance — and since #356
-        # both denominate the SAME quantity, the account value, so the account model only
-        # decides which config key a profile writes.
-        # ⚠️ #209 (2026-09-14, §31b): whether MARGIN also needs a floor on SETTLED CASH,
-        # separate from the account value, is open. "Can I still cover a margin call" is a
-        # question the account value does not answer, and merging the two fields would delete
-        # the ability to ask it. Decided with a real margin account, not from here.
-        if self._trading_model == TradingModel.SPOT:
-            min_threshold = safety.min_equity
-            min_label = 'min_equity'
-        else:
-            min_threshold = safety.min_balance
-            min_label = 'min_balance'
-
-        if min_threshold > 0 and current_value < min_threshold:
-            self._block(f'{min_label} ({current_value:.4f} < {min_threshold:.4f})')
-
-        # Drawdown against the risk baseline, on the ACCOUNT VALUE in both models (#356)
-        if safety.max_drawdown_pct > 0 and initial_balance > 0:
-            drawdown_pct = (initial_balance - current_value) / \
-                initial_balance * 100.0
-            self._safety_drawdown_pct = max(0.0, drawdown_pct)
-            if drawdown_pct > safety.max_drawdown_pct:
-                self._block(
-                    f'max_drawdown ({drawdown_pct:.1f}% > {safety.max_drawdown_pct:.1f}%)')
-        else:
-            self._safety_drawdown_pct = 0.0
-
-        # #314 — the ABSOLUTE sibling of the percentage above, and independent of it. A
-        # percentage auto-scales with the account; an absolute floor is what stops that
-        # percentage from meaning a dangerously large number once the account has grown.
-        if safety.max_drawdown_abs > 0 and initial_balance > 0:
-            drawdown_abs = initial_balance - current_value
-            if drawdown_abs > safety.max_drawdown_abs:
-                self._block(
-                    f'max_drawdown_abs ({drawdown_abs:.2f} > {safety.max_drawdown_abs:.2f})')
-
-        self._check_daily_loss(current_value)
-
-        if self._safety_blocked and not was_blocked:
-            # Count the ENGAGEMENT, not the ticks spent blocked. "Blocked on 40 000 ticks"
-            # is one event read as forty thousand; "engaged 3 times" is the number an
-            # operator can act on.
-            self._safety_block_count += 1
-            self._logger.warning(
-                f'⛔ Safety circuit breaker triggered: {self._safety_reason}')
-            if self._safety_alert.opens(self._executor.get_current_time()):
-                self._operator_alerts.send(
-                    OperatorAlertKind.SAFETY_BLOCKED, OperatorAlertLevel.WARNING,
-                    'Safety circuit breaker — new entries blocked',
-                    f'{self._safety_reason} · '
-                    f'{len(self._executor.portfolio.get_open_positions())} position(s) open, kept')
-        elif was_blocked and not self._safety_blocked:
-            self._logger.info('✅ Safety circuit breaker cleared')
-            self._safety_alert.clears(self._executor.get_current_time())
-        if (self._safety_alert.is_open()
-                and self._safety_alert.all_clear_due(self._executor.get_current_time())):
-            self._operator_alerts.send(
-                OperatorAlertKind.SAFETY_CLEARED, OperatorAlertLevel.INFO,
-                'Safety circuit breaker cleared — entries allowed again',
-                all_clear_detail(self._safety_alert, self._all_clear_after_s))
-
-    def _check_emergency_flatten(
-        self,
-        current_value: float,
-        baseline: float,
-        ticks_processed: int,
-    ) -> None:
-        """
-        Trip the HARD stop, once, when the drawdown passes a hard threshold (#356).
-
-        Three severities exist and this is the third. A soft block stops new entries and
-        leaves what is open; HALT (#349) freezes orders and waits for a human; this CLOSES.
-        The distinction matters because the soft block is the wrong answer to a runaway: it
-        stops the bot from making things worse and does nothing about what it already holds.
-
-        Sends the closes and returns. It does NOT end the session here — see
-        `_drive_emergency_flatten` for why that is a second step rather than the next line.
-
-        Args:
-            current_value: The account value being checked
-            baseline: The denominator the drawdown is measured against
-            ticks_processed: The loop's tick counter, recorded as the drain window's start
-        """
-        safety = self._config.safety
-        if not (safety.enabled and safety.emergency_flatten_enabled):
-            return
-        if self._flatten_sent_at_tick is not None or baseline <= 0:
-            return
-
-        drawdown_abs = baseline - current_value
-        drawdown_pct = drawdown_abs / baseline * 100.0
-        reason = ''
-        if safety.max_drawdown_pct_hard > 0 and drawdown_pct > safety.max_drawdown_pct_hard:
-            reason = (f'hard drawdown {drawdown_pct:.1f}% > '
-                      f'{safety.max_drawdown_pct_hard:.1f}%')
-        elif safety.max_drawdown_abs_hard > 0 and drawdown_abs > safety.max_drawdown_abs_hard:
-            reason = (f'hard drawdown {drawdown_abs:.2f} > '
-                      f'{safety.max_drawdown_abs_hard:.2f}')
-        if not reason:
-            return
-
-        self._flatten_reason = reason
-        self._send_emergency_closes(reason, ticks_processed)
-
-    def _send_emergency_closes(self, reason: str, ticks_processed: int) -> None:
-        """
-        Ask the venue to close everything this bot holds.
-
-        SPOT is gated behind its own switch and defaults OFF, and the asymmetry is not
-        timidity. A margin position can lose more than the account holds, so liquidating it
-        is the entire point of a hard stop. A spot holding cannot — the worst case is the
-        asset going to zero, which is bounded by what was spent — so selling it converts an
-        unrealised loss into a realised one, which is a trading decision rather than a
-        safety one. A profile that must end flat turns it on.
-
-        Args:
-            reason: What tripped, for the log and the session end
-            ticks_processed: The loop's tick counter, recorded as the drain window's start
-        """
-        positions = list(self._executor.portfolio.get_open_positions())
-        spot = self._trading_model == TradingModel.SPOT
-        if spot and not self._config.safety.spot_liquidate_to_quote:
-            self._logger.error(
-                f'🚨 EMERGENCY STOP: {reason}. New entries are blocked and the session will '
-                f'end. The {len(positions)} open spot holding(s) are NOT sold — '
-                f'safety.spot_liquidate_to_quote is off, so the position stays and its loss '
-                f'stays unrealized.')
-            self._operator_alerts.send(
-                OperatorAlertKind.EMERGENCY_STOP, OperatorAlertLevel.CRITICAL,
-                'EMERGENCY STOP — the session ends',
-                f'{reason}. {len(positions)} spot holding(s) are NOT sold '
-                f'(safety.spot_liquidate_to_quote is off).')
-            self._flatten_sent_at_tick = -1
-            return
-
-        self._logger.error(
-            f'🚨 EMERGENCY STOP: {reason}. Closing {len(positions)} open position(s) now, '
-            f'then ending the session. This is the HARD stop, not the entry block.')
-        self._operator_alerts.send(
-            OperatorAlertKind.EMERGENCY_STOP, OperatorAlertLevel.CRITICAL,
-            'EMERGENCY STOP — closing everything, then the session ends',
-            f'{reason}. Closing {len(positions)} open position(s).')
-        for position in positions:
-            try:
-                self._executor.close_position(position.position_id)
-            except Exception as e:                       # noqa: BLE001 — reported below
-                # A close that could not even be SENT is the worst case of the three, and
-                # it must not stop the loop from trying the others.
-                self._logger.error(
-                    f'❌ EMERGENCY STOP could not send the close for '
-                    f'{position.position_id}: {e}. It is still open at the venue.')
-        self._flatten_sent_at_tick = ticks_processed
-
-    def _drive_emergency_flatten(self, ticks_processed: int) -> None:
-        """
-        End the session once the closes have actually landed — or say they did not.
-
-        This is the second step, and it exists because a close is ASYNCHRONOUS. It is sent
-        on one tick and its fill arrives on a later one, through the same drain every other
-        fill uses. `SessionEndSeverity.EMERGENCY` means immediate exit, so requesting it in
-        the same breath as the closes would tear the session down before the fills arrived —
-        the books would report a flat account while the positions sat at the venue. The
-        session-end validator already refuses `positions='close'` for exactly this reason.
-
-        So the loop keeps running, the drain keeps working, and the session ends when the
-        book is flat. The window is bounded: a venue that never answers must not hold the
-        session open indefinitely, and what happens at the ceiling is loud rather than
-        silent.
-
-        Args:
-            ticks_processed: The loop's own tick counter
-        """
-        if self._flatten_sent_at_tick is None:
-            return
-        open_positions = self._executor.portfolio.get_open_positions()
-        if not open_positions:
-            self._flatten_outcome = FlattenOutcome.COMPLETE
-            self._executor.request_session_end(
-                f'emergency flatten complete ({self._flatten_reason})',
-                SessionEndSeverity.EMERGENCY)
-            self._flatten_sent_at_tick = None
-            return
-
-        if self._flatten_sent_at_tick < 0:
-            # Spot holdings kept on purpose (safety.spot_liquidate_to_quote is off): no close was
-            # sent, and the first error line already said the holdings are not sold. The session
-            # ends — without a second alarm that would invite selling by hand, which realises
-            # exactly the loss the switch exists to keep unrealised (#235). The record says KEPT,
-            # never "not confirmed": that phrase asks the operator to check the account by hand.
-            self._flatten_outcome = FlattenOutcome.HOLDINGS_KEPT
-            self._flatten_kept = [p.position_id for p in open_positions]
-            self._executor.request_session_end(
-                f'emergency stop, spot holdings kept ({self._flatten_reason})',
-                SessionEndSeverity.EMERGENCY)
-            self._flatten_sent_at_tick = None
-            return
-
-        waited = ticks_processed - self._flatten_sent_at_tick
-        if waited >= _FLATTEN_DRAIN_TICKS:
-            self._flatten_outcome = FlattenOutcome.UNCONFIRMED
-            self._flatten_unconfirmed = [p.position_id for p in open_positions]
-            still_open = ', '.join(p.position_id for p in open_positions)
-            self._logger.error(
-                f'🚨 EMERGENCY STOP ending the session with {len(open_positions)} '
-                f'position(s) still open: {still_open}. They were not confirmed closed '
-                f'within the drain window — check the account by hand.')
-            self._operator_alerts.send(
-                OperatorAlertKind.EMERGENCY_STOP, OperatorAlertLevel.CRITICAL,
-                'EMERGENCY STOP incomplete — check the account by hand',
-                f'{len(open_positions)} position(s) not confirmed closed: {still_open}')
-            self._executor.request_session_end(
-                f'emergency flatten incomplete ({self._flatten_reason})',
-                SessionEndSeverity.EMERGENCY)
-            self._flatten_sent_at_tick = None
-
-    def _entries_blocked(self) -> bool:
-        """
-        Whether a decision is forced FLAT now — by the soft block, or once the hard stop fired.
-
-        The hard stop blocks entries as well (#356): it is the stronger stop, and must not need a
-        soft threshold configured to do what the soft one does. Its closes are draining, and an
-        entry during the drain would keep the book from ever reaching flat.
-
-        Returns:
-            True when no new entry may be opened
-        """
-        return self._safety_blocked or bool(self._flatten_reason)
-
-    def _block(self, reason: str) -> None:
-        """
-        Record one breached condition.
-
-        Conditions are OR-combined and every one that fired is named, because an operator
-        reading a blocked session needs to know whether one limit was touched or three were
-        blown through. The reasons accumulate in the order they are checked.
-
-        Args:
-            reason: What tripped, with its numbers
-        """
-        self._safety_blocked = True
-        self._safety_reason = (
-            f'{self._safety_reason} + {reason}' if self._safety_reason else reason)
-
-    def _check_daily_loss(self, current_value: float) -> None:
-        """
-        Evaluate the DAILY loss limits against the day's own baseline (#314).
-
-        A daily limit guards a different failure from a session one. A session drawdown
-        accumulates from process start; a day resets. A bot that loses a little every single
-        day never trips a session limit at all, and that is exactly the shape a thirty-day
-        unattended run is exposed to.
-
-        Silent until a day baseline exists, which is the first tick of the session.
-
-        Args:
-            current_value: The account value being checked
-        """
-        safety = self._config.safety
-        if self._day_baseline is None:
-            return
-        day_start = self._day_baseline.get_value()
-        if day_start <= 0:
-            return
-
-        daily_loss = day_start - current_value
-        if safety.max_daily_loss_abs > 0 and daily_loss > safety.max_daily_loss_abs:
-            self._block(
-                f'max_daily_loss_abs ({daily_loss:.2f} > {safety.max_daily_loss_abs:.2f})')
-            self._day_limit_hit = True
-
-        if safety.max_daily_loss_pct > 0:
-            daily_loss_pct = daily_loss / day_start * 100.0
-            if daily_loss_pct > safety.max_daily_loss_pct:
-                self._block(
-                    f'max_daily_loss ({daily_loss_pct:.1f}% > '
-                    f'{safety.max_daily_loss_pct:.1f}%)')
-                self._day_limit_hit = True
-
-    def _check_daily_rotation(self) -> None:
-        """
-        Rotate the session log when the market crosses into a new trading day (#476).
-
-        On the first pass: set the initial date and rotate to a file named for the trading
-        day (startup creates one from the wall clock, which may differ in replay mode).
-
-        The day comes from the canonical clock and this market's anchor, not from the tick
-        stamp. Two things that fixes: a forex session rolls at its swap rollover instead of
-        at midnight UTC, and a feed that goes silent across the boundary no longer keeps the
-        old file growing — the heartbeat advances the clock and calls this too.
-        """
-        if not self._run_dir:
-            return
-
-        current_day = self._trading_day()
-        if current_day is None:
-            return
-        day_label = current_day.strftime('%Y%m%d')
-
-        if self._current_log_date is None:
-            # First pass — ensure the file matches the trading day
-            new_file_logger = create_session_file_logger(
-                self._run_dir, day_label
-            )
-            self._logger.swap_file_logger(new_file_logger)
-            self._current_log_date = day_label
-            # The file startup created from the WALL clock stays: it holds the pre-tick log
-            # (warmup bars, pipeline setup), and in a replay its name is a different day from
-            # the one this session trades — which is also why the retention below cannot reach
-            # it, a future-dated file being outside the window by construction.
-            self._prune_rotated_session_logs(day_label)
-            return
-
-        if day_label != self._current_log_date:
-            self._logger.info(
-                f'📅 Date change detected: {self._current_log_date} → {day_label} — rotating session log'
-            )
-            new_file_logger = create_session_file_logger(
-                self._run_dir, day_label
-            )
-            self._logger.swap_file_logger(new_file_logger)
-            self._current_log_date = day_label
-            self._logger.info(
-                f'📅 Session log rotated to autotrader_session_{day_label}.log'
-            )
-            self._prune_rotated_session_logs(day_label)
-
-    def _prune_rotated_session_logs(self, day_label: str) -> None:
-        """
-        Apply the configured retention to the rotated session logs (#357).
-
-        Called on EVERY rotation, which includes the first pass — so a session that runs
-        long enough to rotate is also the one that prunes, and a session that never rotates
-        never deletes anything. The window is read per call rather than cached: it costs one
-        dictionary lookup a day, and it is what lets an operator widen the window on a
-        running deployment by editing the config before the next restart.
-
-        Args:
-            day_label: The trading day just rotated to (YYYYMMDD) — never deleted
-        """
-        if not self._run_dir:
-            return
-        retention_days = (AppConfigManager().get_file_logging_config_object()
-                          .session_logs.retention_days)
-        prune_rotated_session_logs(
-            self._run_dir, day_label, retention_days, self._logger)

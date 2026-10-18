@@ -159,7 +159,7 @@ and the route cannot describe a line differently. Empty fields are left out of a
   every unit's events at report time, unit after unit. A backtest whose scenarios placed no order
   writes no stream.
 - **Live session** — `open_order_event_stream`
-  (`python/framework/autotrader/order_event_stream_setup.py`) opens the writer after the pipeline is
+  (`python/framework/autotrader/run_record/order_event_stream_setup.py`) opens the writer after the pipeline is
   built and before the cold start, whose adoptions are the first steps a session can record,
   registers it as an executor listener, and names the stream in the run index. Every event is
   written and flushed as it is recorded; the writer closes after the session's order cleanup, whose

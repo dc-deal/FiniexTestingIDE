@@ -13,7 +13,7 @@ here; the analytics roll-up is the shared aggregator (`report_aggregators`).
 from collections import Counter
 from datetime import datetime
 from enum import Enum
-from typing import List, Optional
+from typing import AbstractSet, List, Optional
 
 from python.framework.reporting.builders.report_aggregators import (
     aggregate_trade_analytics,
@@ -73,7 +73,9 @@ def build_trade_history_report(
         shared = _execution_counts(unit.trade_history)
         closes = Counter(trade.position_id for trade in unit.trade_history)
         rows.extend(_to_row(trade, unit.name, shared, closes) for trade in unit.trade_history)
-    return _assemble(run_id, rows, symbol, close_reason, start, end, window_basis)
+    without_quote = {unit.name for unit in units if unit.input_without_quote}
+    return _assemble(run_id, rows, symbol, close_reason, start, end, window_basis,
+                     without_quote)
 
 
 def _execution_counts(trades: List[TradeRecord]) -> Counter:
@@ -102,6 +104,7 @@ def _assemble(
     start: Optional[datetime],
     end: Optional[datetime],
     window_basis: TradeWindowBasis = TradeWindowBasis.ENTRY,
+    units_without_quote: AbstractSet[str] = frozenset(),
 ) -> TradeHistoryReport:
     """Apply the shared row filter + analytics and assemble the report (the one filter path)."""
     filtered: List[TradeHistoryRow] = []
@@ -128,7 +131,7 @@ def _assemble(
         run_id=run_id,
         trades=filtered, count=len(filtered), symbols=symbols,
         analytics=aggregate_trade_analytics(filtered),
-        scenario_totals=aggregate_trade_scenario_totals(filtered))
+        scenario_totals=aggregate_trade_scenario_totals(filtered, units_without_quote))
 
 
 def _to_row(trade: TradeRecord, scenario_name: str = '',
@@ -173,6 +176,7 @@ def _to_row(trade: TradeRecord, scenario_name: str = '',
         swap_cost=trade.swap_cost,
         commission_cost=trade.commission_cost,
         spread_cost=trade.spread_cost,
+        modelled_spread_cost=trade.modelled_spread_cost,
         mae_price=trade.mae_price,
         mfe_price=trade.mfe_price,
         mae_pnl=trade.mae_pnl,

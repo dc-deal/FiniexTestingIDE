@@ -16,7 +16,7 @@ refuse and stay flat rather than wait for an answer nobody is there to give, and
 venue must stop the boot rather than let it start blind.
 """
 
-from python.framework.autotrader.cold_start_adopter import ColdStartAdopter
+from python.framework.autotrader.cold_start.cold_start_adopter import ColdStartAdopter
 from python.framework.exceptions.connection_errors import ConnectionAttemptFailedError
 from python.framework.types.autotrader_types.cold_start_types import SkipReason
 from python.framework.types.config_types.autotrader_defaults_config_types import ColdStartDefaults

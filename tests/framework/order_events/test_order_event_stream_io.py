@@ -18,7 +18,7 @@ import pytest
 
 from python.framework.exceptions.report_artifact_errors import ReportArtifactUnreadableError
 from python.framework.logging.global_logger import GlobalLogger
-from python.framework.reporting.field_study_recorder import FieldStudyRecorder
+from python.framework.reporting.acceptance_study_recorder import AcceptanceStudyRecorder
 from python.framework.reporting.io.artifact_specs import ORDER_EVENTS_STREAM
 from python.framework.reporting.io.jsonl_stream_writer import JsonlStreamWriter
 from python.framework.reporting.io.order_event_stream_io import (
@@ -312,10 +312,11 @@ class TestTheSharedWriter:
 
     def test_the_field_study_header_is_written_as_before(self, tmp_path):
         path = tmp_path / 'field_study.jsonl'
-        recorder = FieldStudyRecorder(
+        recorder = AcceptanceStudyRecorder(
             output_path=str(path), profile='fs', symbol='ETHUSD',
-            phase_ids=['p1'], logger=GlobalLogger('FieldStudyStream'))
-        recorder.close('done')
+            phase_ids=['p1'], logger=GlobalLogger('FieldStudyStream'),
+            study_label='Field Study', next_step='generate the acceptance certificate')
+        recorder.close()
 
         lines = path.read_text(encoding='utf-8').splitlines()
         assert all(line == json.dumps(json.loads(line)) for line in lines), (

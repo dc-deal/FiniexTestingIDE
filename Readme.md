@@ -86,12 +86,12 @@ FiniexTestingIDE is a high-performance backtesting and live trading framework fo
 ### Trade Simulation & Execution
 - **Realistic Execution** - Inbound latency simulation with ms-timestamp fill detection (seeded)
 - **Live Trade Executor** - Broker adapter communication with pending order tracking
-- **Spread Calculation** - Live bid/ask spread from tick data
+- **Spread Calculation** - The bid/ask spread from tick data where it was recorded; where it was not, a spread estimated from the trades' own sides, reported as its own figure
 - **Margin Management** - Position sizing with margin checks
 - **Order Lifecycle** - PENDING → EXECUTED status tracking (Market, Limit, Stop, Stop-Limit)
 - **Limit Orders** - Two-phase lifecycle: latency simulation → price trigger monitoring
 - **Stop Orders** - Breakout entry with market fill (STOP) or limit conversion (STOP_LIMIT)
-- **Multi-Broker Fees** - Spread-based (MT5, charged once at entry) and maker/taker (Kraken, charged on every fill so a round trip pays twice; maker fee for limit fills)
+- **Multi-Broker Fees** - Spread-based (MT5, paid inside the fill price, no per-side fee) and maker/taker (Kraken, charged on every fill so a round trip pays twice; maker fee for limit fills)
 - **Mock Testing** - MockBrokerAdapter for deterministic pipeline verification
 
 ### Signal Data (External / Model-Produced Input)

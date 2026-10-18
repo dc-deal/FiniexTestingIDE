@@ -1,7 +1,7 @@
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 from python.framework.trading_env.abstract_trading_fee import AbstractTradingFee
 from python.framework.types.portfolio_types.portfolio_trade_record_types import EntryType
@@ -98,6 +98,11 @@ class Position:
     # (#340) and answers how far the market moved while the order was in flight.
     exit_bid: float = 0.0
     exit_ask: float = 0.0
+    # Whether the book at each fill was MODELLED rather than recorded (#602): the simulation
+    # gives a tick from a file without a quote the quote its day estimate implies, and the
+    # spread crossed against it is the modelled spread, not a measured one
+    entry_quote_modelled: bool = False
+    exit_quote_modelled: bool = False
     exit_tick_value: float = 0.0
     digits: int = 5
     contract_size: int = 100000
@@ -260,7 +265,7 @@ class Position:
 
     def get_spread_cost(self) -> float:
         """
-        The spread this position crossed — MEASURED, never charged.
+        The spread this position crossed against a recorded quote — MEASURED, never charged.
 
         It used to sum `SpreadFee` objects, and that was the double charge (#244): a market
         entry takes the ask and the close takes the bid, so one full spread width is already
@@ -276,23 +281,44 @@ class Position:
         by the closed fraction; the shrinking `lots` would apply that ratio twice.
 
         Returns:
-            The effective spread cost of both legs, entry only while still open
+            The effective spread cost of both legs, entry only while still open; a leg whose
+            quote was modelled counts in `get_modelled_spread_cost` instead
         """
-        cost = self._spread_leg(
+        return self._spread_costs()[0]
+
+    def get_modelled_spread_cost(self) -> float:
+        """
+        The spread this position crossed against a modelled quote (#602).
+
+        Returns:
+            The effective spread cost of the legs whose quote was modelled
+        """
+        return self._spread_costs()[1]
+
+    def _spread_costs(self) -> Tuple[float, float]:
+        """
+        Both legs' effective spread, split by whether their quote was recorded or modelled.
+
+        Returns:
+            (measured, modelled)
+        """
+        legs = [(self._spread_leg(
             self.entry_price, self.entry_bid, self.entry_ask,
-            self.entry_tick_value, self.original_lots, is_entry=True)
-
+            self.entry_tick_value, self.original_lots, is_entry=True),
+            self.entry_quote_modelled)]
         if self.close_price is not None:
-            cost += self._spread_leg(
+            legs.append((self._spread_leg(
                 self.close_price, self.exit_bid, self.exit_ask,
-                self.exit_tick_value, self.original_lots, is_entry=False)
-        return cost
+                self.exit_tick_value, self.original_lots, is_entry=False),
+                self.exit_quote_modelled))
+        return _split_by_quote(legs)
 
-    def spread_cost_for_partial(self, close_ratio: float, exit_price: float,
-                                exit_bid: float, exit_ask: float,
-                                exit_tick_value: float) -> float:
+    def spread_costs_for_partial(self, close_ratio: float, exit_price: float,
+                                 exit_bid: float, exit_ask: float, exit_tick_value: float,
+                                 exit_quote_modelled: bool = False) -> Tuple[float, float]:
         """
-        The spread attributable to ONE partial close.
+        The spread attributable to ONE partial close, split by whether each leg's quote was
+        recorded or modelled.
 
         The position is still open here, so its own exit book is not set and cannot be —
         the closing book belongs to this partial, not to the position. Hence the explicit
@@ -305,9 +331,10 @@ class Position:
             exit_bid: Bid at that fill
             exit_ask: Ask at that fill
             exit_tick_value: Tick value at that fill
+            exit_quote_modelled: Whether that fill's quote was modelled (#602)
 
         Returns:
-            The partial's effective spread cost
+            (measured, modelled) effective spread cost of the partial
         """
         entry_leg = self._spread_leg(
             self.entry_price, self.entry_bid, self.entry_ask,
@@ -317,7 +344,8 @@ class Position:
             exit_price, exit_bid, exit_ask,
             exit_tick_value, self.lots * close_ratio, is_entry=False)
 
-        return entry_leg + exit_leg
+        return _split_by_quote([(entry_leg, self.entry_quote_modelled),
+                                (exit_leg, exit_quote_modelled)])
 
     def get_commission_cost(self) -> float:
         """
@@ -435,3 +463,18 @@ class Position:
     def is_open(self) -> bool:
         """Check if position is still open (includes partially closed)"""
         return self.status in (PositionStatus.OPEN, PositionStatus.PARTIALLY_CLOSED)
+
+
+def _split_by_quote(legs: List[Tuple[float, bool]]) -> Tuple[float, float]:
+    """
+    Sum spread legs by the kind of quote they crossed.
+
+    Args:
+        legs: (cost, quote modelled) per leg
+
+    Returns:
+        (sum over recorded quotes, sum over modelled quotes)
+    """
+    measured = sum((cost for cost, modelled in legs if not modelled), 0.0)
+    modelled = sum((cost for cost, modelled in legs if modelled), 0.0)
+    return measured, modelled

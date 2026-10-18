@@ -203,3 +203,43 @@ class TestWeekendAware:
         assert loaded is not None
         _, ctx = loaded
         assert ctx.trading_days == 3  # Fri → Mon = 3 calendar days
+
+
+class TestADeclaredContinuation:
+    """
+    The later stage of one bot reads the earlier stage's algo memory, through the same rule as
+    the framework's carry-over (#358) — so one bot never inherits its book there and starts its
+    memory fresh here.
+    """
+
+    @staticmethod
+    def _stage(config, logger, profile, carry_over_from=''):
+        """One stage of a bot whose two profiles share `bot_id` 'cert01'."""
+        return AlgoStateStore(config=config, profile=profile, symbol='BTCUSD',
+                              weekend_aware=False, logger=logger, run_id=f'run_{profile}',
+                              bot_id='cert01', carry_over_from=carry_over_from)
+
+    def test_the_later_stage_reads_the_earlier_one(self, store_config, logger):
+        self._stage(store_config, logger, 'cert_soft').save({'phase': 4}, tick_counter=1)
+
+        later = self._stage(store_config, logger, 'cert_restart', carry_over_from='cert_soft')
+
+        assert later.load()[0] == {'phase': 4}
+
+    def test_the_earlier_stage_reads_what_the_later_one_left(self, store_config, logger):
+        self._stage(store_config, logger, 'cert_restart',
+                    carry_over_from='cert_soft').save({'phase': 7}, tick_counter=1)
+
+        assert self._stage(store_config, logger, 'cert_soft').load()[0] == {'phase': 7}
+
+    def test_a_third_profile_is_still_ignored(self, store_config, logger):
+        self._stage(store_config, logger, 'cert_soft').save({'phase': 4}, tick_counter=1)
+
+        assert self._stage(store_config, logger, 'cert_copy').load() is None
+
+    def test_the_envelope_records_the_writer_s_declaration(self, store_config, logger):
+        later = self._stage(store_config, logger, 'cert_restart', carry_over_from='cert_soft')
+        later.save({'phase': 4}, tick_counter=1)
+
+        envelope = json.loads(later.get_state_path().read_text(encoding='utf-8'))
+        assert envelope['carry_over_from'] == 'cert_soft'

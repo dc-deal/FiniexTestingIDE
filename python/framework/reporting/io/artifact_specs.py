@@ -95,6 +95,8 @@ WORKER_DECISION_ARTIFACT: ArtifactSpec[WorkerDecisionReport] = ArtifactSpec(
 ORDER_EVENTS_STREAM = 'order_events.jsonl'
 STREAM_FILENAMES: FrozenSet[str] = frozenset({ORDER_EVENTS_STREAM})
 
-# The field study's capture (#332) — a stream too, but at the run directory's root rather than in
-# io/, and read by its certificate rather than served, so it is not among the streams above.
+# The acceptance studies' captures (#332, #358) — streams too, but at the run directory's root
+# rather than in io/, and read by their certificates rather than served, so they are not among the
+# streams above.
 FIELD_STUDY_CAPTURE = 'field_study.jsonl'
+SECURITY_CERT_CAPTURE = 'security_cert.jsonl'

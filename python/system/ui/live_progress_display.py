@@ -26,7 +26,6 @@ import time
 from multiprocessing import Queue
 from typing import Dict, List, Optional, Union
 
-import psutil
 from rich import box
 from rich.console import Console
 from rich.layout import Layout
@@ -48,6 +47,7 @@ from python.framework.types.trading_env_types.currency_codes import (
     format_currency_signed,
     format_currency_simple,
 )
+from python.framework.utils.machine_resources_reader import MachineResourcesReader
 from python.system.ui.render_failure_reporter import RenderFailureReporter
 from python.system.ui.ui_render_utils import prove_printable
 
@@ -106,6 +106,11 @@ class LiveProgressDisplay:
 
         # Runtime tracking
         self._start_time: Optional[float] = None
+
+        # The machine's processors and memory, through the one reader every display uses — with
+        # its own window, so a refresh measures since the previous one instead of blocking for a
+        # sample of its own
+        self._machine = MachineResourcesReader()
 
         self._failure_reporter = RenderFailureReporter(vLog.error)
 
@@ -347,16 +352,11 @@ class LiveProgressDisplay:
         completed_count = sum(1 for s in all_stats if s.status == ScenarioStatus.COMPLETED)
         total_count = len(self.scenarios)
 
-        # System resources
-        try:
-            cpu_percent = psutil.cpu_percent(interval=0.1)
-            mem = psutil.virtual_memory()
-            ram_used_gb = mem.used / (1024**3)
-            ram_total_gb = mem.total / (1024**3)
-        except Exception:
-            cpu_percent = 0.0
-            ram_used_gb = 0.0
-            ram_total_gb = 0.0
+        # System resources — 0.0 CPU only while no window has passed yet, right after the start
+        machine = self._machine.read()
+        cpu_percent = machine.cpu.used_pct if machine.cpu.used_pct is not None else 0.0
+        ram_used_gb = machine.memory.used_bytes / (1024**3)
+        ram_total_gb = machine.memory.limit_bytes / (1024**3)
 
         # Total runtime
         runtime_str = '—'

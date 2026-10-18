@@ -9,7 +9,7 @@ group per account currency; ratios (win rate / profit factor) are recomputed fro
 components, never summed.
 """
 
-from typing import Dict, List, Optional
+from typing import AbstractSet, Dict, List, Optional
 
 from python.framework.types.api.report_types import (
     AggregatedPortfolioRow,
@@ -121,13 +121,18 @@ def _longest_streak(rows: List[TradeHistoryRow], winners: bool) -> int:
 
 # --- Trade per-scenario totals (the per-scenario table footer) ------------------------
 
-def aggregate_trade_scenario_totals(rows: List[TradeHistoryRow]) -> List[TradeScenarioTotals]:
+def aggregate_trade_scenario_totals(
+        rows: List[TradeHistoryRow],
+        units_without_quote: AbstractSet[str] = frozenset()) -> List[TradeScenarioTotals]:
     """
     Per-scenario trade-table totals (the footer line): group the rows by `scenario_name`
-    and sum gross / net / fees, so the console (and the API) read the footer off the model.
+    and sum gross / net / fees / spread, so the console (and the API) read the footer off the
+    model.
 
     Args:
         rows: The report's trade rows (already filtered)
+        units_without_quote: Units that read a tick file without a quote — their spread
+            total is None, because no fill of theirs crossed a recorded spread
 
     Returns:
         One TradeScenarioTotals per scenario present (first-appearance order)
@@ -144,6 +149,9 @@ def aggregate_trade_scenario_totals(rows: List[TradeHistoryRow]) -> List[TradeSc
             net_pnl=sum(r.net_pnl for r in group),
             total_fees=sum(r.total_fees for r in group),
             total_swap=sum(r.swap_cost for r in group),
+            total_spread_cost=(None if name in units_without_quote
+                               else sum(r.spread_cost for r in group)),
+            total_modelled_spread_cost=sum(r.modelled_spread_cost for r in group),
         )
         for name, group in groups.items()
     ]
@@ -322,7 +330,8 @@ def aggregate_full_portfolio(
     count = len(rows)
     balance_pnl = final - initial
 
-    total_spread = sum(r.total_spread_cost for r in rows)
+    spreads = [r.total_spread_cost for r in rows]
+    total_spread = None if None in spreads else sum(spreads)
 
     ex = [exec_by_name[r.name] for r in rows if r.name in exec_by_name]
     pend = [pending_by_name[r.name] for r in rows if r.name in pending_by_name]
@@ -355,11 +364,13 @@ def aggregate_full_portfolio(
         highest_equity=max_eq,
         highest_equity_scenario=max_eq_scn,
         total_spread_cost=total_spread,
+        total_modelled_spread_cost=sum(r.total_modelled_spread_cost for r in rows),
         total_commission=sum(r.total_commission for r in rows),
         total_swap=sum(r.total_swap for r in rows),
         maker_fee=sum(r.maker_fee for r in rows),
         taker_fee=sum(r.taker_fee for r in rows),
-        avg_spread=total_spread / total_trades if total_trades > 0 else 0.0,
+        avg_spread=(None if total_spread is None
+                    else total_spread / total_trades if total_trades > 0 else 0.0),
         **counts,
         execution_rate_pct=(counts['orders_executed'] / handled * 100) if handled > 0 else 0.0,
         pending_total_submitted=sum(p.total_submitted for p in pend),

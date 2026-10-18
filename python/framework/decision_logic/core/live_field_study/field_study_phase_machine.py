@@ -13,26 +13,31 @@ Common flow per phase:
     REJECTED → expected → PASS  |  unexpected → FAIL
 """
 
-from datetime import datetime
-from typing import Callable, Dict, List, Optional
+from enum import StrEnum
+from typing import Dict, List, Optional
 
-from python.framework.types.autotrader_types.field_study_types import (
+from python.framework.acceptance_studies.abstract_study_phase_machine import (
+    AbstractStudyPhaseMachine,
+    PhaseHandler,
+)
+from python.framework.types.acceptance_study_types.field_study_types import (
     FieldStudyPhase,
+    PhaseType,
+)
+from python.framework.types.acceptance_study_types.study_phase_types import (
     PhaseAction,
     PhaseActionKind,
     PhaseContext,
     PhaseOutcome,
-    PhaseResult,
     PhaseSide,
     PhaseState,
-    PhaseType,
 )
 
 # Lots-comparison epsilon for partial-close detection.
 _LOTS_EPS = 1e-9
 
 
-class FieldStudyPhaseMachine:
+class FieldStudyPhaseMachine(AbstractStudyPhaseMachine):
     """
     Drives the Field Study phase sequence from per-tick observations.
 
@@ -53,25 +58,19 @@ class FieldStudyPhaseMachine:
         max_rearm_attempts: int,
         rearm_shrink_pct: float,
     ):
-        self._phases = phases
+        super().__init__(phases)
         self._default_lot = default_lot
         self._default_offset = default_limit_offset_pct
         self._max_rearm = max_rearm_attempts
         self._rearm_shrink = rearm_shrink_pct
 
-        self._idx = 0
-        self._state = PhaseState.PENDING
         self._step = 0
-        self._phase_start: Optional[datetime] = None
-        self._submit_time: Optional[datetime] = None
-        self._rearm_attempts = 0
         self._submitted_count = 0
         self._cur_offset = default_limit_offset_pct
         self._full_lots: Optional[float] = None
 
-        self._results: List[PhaseResult] = []
-
-        self._handlers: Dict[PhaseType, Callable[[FieldStudyPhase, PhaseContext], PhaseAction]] = {
+    def _build_handlers(self) -> Dict[StrEnum, PhaseHandler]:
+        return {
             PhaseType.MARKET_OPEN: self._handle_market_open,
             PhaseType.MARKET_CLOSE_ALL: self._handle_close_all,
             PhaseType.FORCE_CLOSE: self._handle_close_all,
@@ -87,128 +86,18 @@ class FieldStudyPhaseMachine:
             PhaseType.FINAL_SUMMARY: self._handle_final,
         }
 
-    # ============================================
-    # Public surface
-    # ============================================
-
-    def advance(self, ctx: PhaseContext) -> PhaseAction:
-        """
-        Advance the machine by one observation tick.
-
-        Args:
-            ctx: Per-tick observation (time, prices, counts, event flags)
-
-        Returns:
-            The PhaseAction to perform this tick (NONE = wait)
-        """
-        if self.is_complete():
-            return PhaseAction(PhaseActionKind.NONE, '', reason='all phases complete')
-
-        phase = self._phases[self._idx]
-
-        # Phase entry — initialize per-phase state once.
-        if self._phase_start is None:
-            self._phase_start = ctx.now
-            self._state = PhaseState.PENDING
-            self._step = 0
-            self._rearm_attempts = 0
-            self._submitted_count = 0
-            self._full_lots = None
-            self._cur_offset = (
-                phase.limit_offset_pct if phase.limit_offset_pct is not None
-                else self._default_offset
-            )
-            if not phase.enabled:
-                return self._finish(phase, PhaseOutcome.SKIPPED, 'disabled', ctx.now)
-
-        return self._handlers[phase.phase_type](phase, ctx)
-
-    def is_complete(self) -> bool:
-        """Whether every phase has been processed."""
-        return self._idx >= len(self._phases)
-
-    def get_results(self) -> List[PhaseResult]:
-        """Completed phase results (oldest first) — for the recorder/certificate."""
-        return list(self._results)
-
-    def get_current_phase_id(self) -> Optional[str]:
-        """The phase currently in progress, or None when complete."""
-        if self.is_complete():
-            return None
-        return self._phases[self._idx].phase_id
-
-    def get_current_phase_index(self) -> Optional[int]:
-        """The index of the phase currently in progress, or None when complete."""
-        if self.is_complete():
-            return None
-        return self._idx
-
-    def get_state(self) -> PhaseState:
-        """Current per-phase sub-state (PENDING/AWAIT_FILL/POST_CLOSE_WAIT/…) — for tracing."""
-        return self._state
-
-    def get_submit_time(self) -> Optional[datetime]:
-        """Wall/tick time the current wait clock started (last issued op) — for tracing."""
-        return self._submit_time
+    def _on_phase_entry(self, phase: FieldStudyPhase) -> None:
+        self._step = 0
+        self._submitted_count = 0
+        self._full_lots = None
+        self._cur_offset = (
+            phase.limit_offset_pct if phase.limit_offset_pct is not None
+            else self._default_offset
+        )
 
     # ============================================
     # Transition helpers
     # ============================================
-
-    def _act(self, ctx: PhaseContext, action: PhaseAction) -> PhaseAction:
-        """Issue an operation and (re)start the wait clock for the next observation."""
-        self._submit_time = ctx.now
-        return action
-
-    def _finish(
-        self,
-        phase: FieldStudyPhase,
-        outcome: PhaseOutcome,
-        reason: str,
-        now: datetime,
-    ) -> PhaseAction:
-        """Record the phase outcome, advance to the next phase, and wait this tick."""
-        self._results.append(PhaseResult(
-            phase_id=phase.phase_id,
-            phase_type=phase.phase_type,
-            outcome=outcome,
-            reason=reason,
-            started_utc=self._phase_start,
-            ended_utc=now,
-            rearm_attempts=self._rearm_attempts,
-        ))
-        self._idx += 1
-        self._phase_start = None
-        self._submit_time = None
-        return PhaseAction(
-            PhaseActionKind.NONE, phase.phase_id,
-            reason=f'{phase.phase_id} → {outcome.value}: {reason}',
-        )
-
-    def _finish_unaccounted(self, phase: FieldStudyPhase, ctx: PhaseContext) -> PhaseAction:
-        """
-        Fail the phase on an order the framework stopped asking about (#566).
-
-        Such an order used to arrive as a rejection, and in a phase that expects one it passed as
-        the refusal the phase was waiting for — while the venue may still hold it. Checked wherever
-        a phase reads a rejection, before it; a phase that reads none (a close-out, the final
-        summary) runs on, so the session still cleans up and still ends.
-
-        Args:
-            phase: The phase in progress
-            ctx: The observation that carried it
-
-        Returns:
-            The action that finishes the phase
-        """
-        return self._finish(phase, PhaseOutcome.FAIL,
-                            'order unaccounted — the venue may still hold it', ctx.now)
-
-    def _timed_out(self, phase: FieldStudyPhase, ctx: PhaseContext) -> bool:
-        """Whether the current wait exceeded the phase fill timeout."""
-        if self._submit_time is None:
-            return False
-        return (ctx.now - self._submit_time).total_seconds() > phase.fill_timeout_s
 
     def _lots(self, phase: FieldStudyPhase) -> float:
         """Resolve the order size for a phase (phase override or default)."""
@@ -283,27 +172,7 @@ class FieldStudyPhaseMachine:
         return PhaseAction(PhaseActionKind.NONE, phase.phase_id)
 
     def _handle_close_all(self, phase: FieldStudyPhase, ctx: PhaseContext) -> PhaseAction:
-        is_force = phase.phase_type == PhaseType.FORCE_CLOSE
-
-        if self._state == PhaseState.PENDING:
-            if ctx.open_position_count == 0 and ctx.active_limit_count == 0:
-                return self._finish(phase, PhaseOutcome.SKIPPED, 'already flat', ctx.now)
-            self._state = PhaseState.CLOSE
-            if is_force and ctx.active_limit_count > 0:
-                return self._act(ctx, PhaseAction(PhaseActionKind.CANCEL_ALL, phase.phase_id, reason='force cancel resting'))
-            return self._act(ctx, PhaseAction(PhaseActionKind.CLOSE_ALL, phase.phase_id, reason='close all positions'))
-
-        flat = ctx.open_position_count == 0 and (not is_force or ctx.active_limit_count == 0)
-        if flat:
-            return self._finish(phase, PhaseOutcome.PASS, 'flat', ctx.now)
-        if self._timed_out(phase, ctx):
-            return self._finish(phase, PhaseOutcome.FAIL, 'not flat within timeout', ctx.now)
-        if not ctx.has_pending:
-            if is_force and ctx.active_limit_count > 0:
-                return self._act(ctx, PhaseAction(PhaseActionKind.CANCEL_ALL, phase.phase_id, reason='retry cancel'))
-            if ctx.open_position_count > 0:
-                return self._act(ctx, PhaseAction(PhaseActionKind.CLOSE_ALL, phase.phase_id, reason='retry close'))
-        return PhaseAction(PhaseActionKind.NONE, phase.phase_id)
+        return self._close_out(phase, ctx, is_force=phase.phase_type == PhaseType.FORCE_CLOSE)
 
     def _handle_limit_open(self, phase: FieldStudyPhase, ctx: PhaseContext) -> PhaseAction:
         if self._state == PhaseState.PENDING:
@@ -630,15 +499,4 @@ class FieldStudyPhaseMachine:
         return PhaseAction(PhaseActionKind.NONE, phase.phase_id)
 
     def _handle_final(self, phase: FieldStudyPhase, ctx: PhaseContext) -> PhaseAction:
-        self._results.append(PhaseResult(
-            phase_id=phase.phase_id,
-            phase_type=phase.phase_type,
-            outcome=PhaseOutcome.PASS,
-            reason='session end requested',
-            started_utc=self._phase_start,
-            ended_utc=ctx.now,
-        ))
-        self._idx += 1
-        self._phase_start = None
-        self._submit_time = None
-        return PhaseAction(PhaseActionKind.END_SESSION, phase.phase_id, reason='field study complete')
+        return self._end_sequence(phase, ctx, 'field study complete')

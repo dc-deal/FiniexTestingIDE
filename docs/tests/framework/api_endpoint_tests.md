@@ -46,7 +46,7 @@ is the one that gets forgotten.
 | `TestTheTokenFileIsRefusedWhenItIsTheTrackedOne` | Against real files at their real paths in a throwaway tree: a live token answering from the committed `inbound/` file refuses the boot, and that refusal comes BEFORE the missing-account one, the parse and the account binding — each of those would tell the operator to edit a file whose only right edit is moving the key out; the consumer is named and its token never is. An entry not declared off counts as live, a value the token model cannot read included; one declared off in any spelling the model reads passes. The workspace file is not mistaken for the tracked one, an inactive entry there is fine, which is what lets the placeholder carry examples, and the path the loader REALLY answers from under isolation is recognised. The earlier version passed a path string of the flat layout, so it stayed green while the check never fired on the real path |
 | `TestTheSurfaceVocabularyIsClosed` | An unknown surface fails when the token is parsed, not at request time; and the vocabulary is held to the same set as `api_app.ROUTER_SURFACES`, so a router mounted under a surface no token can name — or a surface no router serves — fails here rather than becoming a denial nobody can explain |
 | `TestACollectionRouteIsGatedToo` | The hole the walk cannot see: a route with no path parameter had nothing for a grant to be about, so `/reports/runs`, `/sweeps` and `/deployments` would answer any authenticated token. Refusal and admission are both named by hand — a new collection route needs its own pair or nothing looks at it |
-| `TestTheAppLevelRoutesAreADecision` | `/timeframes` and `/validation-checks` open beside `/health`, `/brokers` requiring a token and taking no grant — pinned so none drifts back to being accidental |
+| `TestTheAppLevelRoutesAreADecision` | `/timeframes` and `/validation-checks` open beside `/health`, `/brokers` and `/machine-resources` requiring a token and taking no grant — pinned so none drifts back to being accidental |
 | `TestTheCallerRouteSaysWhoIsCalling` | `/caller` (#551): a valid token is answered with its client, account, account kind, display name, grants as a list and note; a wrong token is a 401 with `WWW-Authenticate: Bearer`, and so is no header; a token holding NOTHING still reaches it, because it is token-only like `/brokers`; with gating off it names nobody even for a valid token (`enforced: false`), and the real scaffold boot answers the same; the real boot from files on disk reaches the route; a verified consumer with no account is a 500 `identity_unbound`, not an anonymous caller; the route is on no grant surface; and it answers under contract 4 or later, which catches a forgotten bump |
 | `TestTheSchemaSurfaceIsOffWhereItCannotBeGuarded` | `/openapi.json`, `/docs` and `/redoc` are FastAPI's own routes at the APP ROOT — outside `/api/v1`, uncoverable by a router dependency, and outside the walk by construction (it filters on a path parameter). They are tied to the auth posture instead: present while nobody is configured, gone once somebody is, and a token does not bring them back |
 | `TestTheCorsPreflightIsNeverGated` | An `OPTIONS` without `Authorization` is not refused, and `WWW-Authenticate` / `Retry-After` are exposed — invisible from every seat but a browser's |
@@ -143,6 +143,29 @@ absolute paths throughout — so the tests can see what the route makes of them.
 | `TestTheRunListSaysWhoStartedEachRun` | `origin_channel`, `origin_client`, `origin_principal` and `origin_host` on the run's row, from the header's origin block |
 | `TestAPathFromAnotherSystemIsServedTheSameWay` | a header written on Windows — drive letter, backslashes — has its paths made relative the same way |
 
+## Machine resources (`test_machine_resources.py`)
+
+What the machine the server runs on has and uses (#595) — the route the viewer polls before
+anything else, so its numbers have to be the ones that bind.
+
+| Class / test | What it validates |
+|---|---|
+| `TestTheLimitThatBinds` | a cgroup v2 memory limit below the machine binds and says `cgroup`; `memory.max` reading `max` — this container's own state — reads the machine and says `machine`; a cgroup limit ABOVE the machine does not bind; cgroup v1 binds the same way, and its "unlimited" value is no limit; a processor quota below the machine binds and may be fractional, none counts the usable processors |
+| `TestTheBusyShareHasAWindow` | the processors' busy share is measured since the previous reading and served with that window; no time spent gives no share rather than zero |
+| `TestThePressureVerdict` | below the warning it is `ok` and says nothing; from the warning it warns and names the critical mark; from the critical mark it says what is at stake — that the kernel ends a process — and whose limit it is; thresholds that cannot grade are refused at load |
+| `test_the_route_serves_the_reading_with_its_verdict_and_thresholds` | the served answer carries the reading, the verdict and both thresholds, from the real machine |
+
+## Polled routes in the access log (`test_polled_route_access_filter.py`)
+
+A route made to be polled stays out of the server's access log while it answers successfully
+(#595) — the viewer asks `/machine-resources` every few seconds, and a line per reading buried the
+requests that carry meaning.
+
+| Class / test | What it validates |
+|---|---|
+| `TestOnlyASuccessfulReadingIsDropped` | a successful answer (200, 304) on a polled route is dropped; a failed one (401, 403, 500) stays; another route stays; a query string does not hide the path; a record not shaped like an access line is left alone |
+| `TestTheDeclarationHoldsToTheApp` | every path in `POLLED_PATHS` is a mounted route, so a renamed route cannot leave a declaration that filters nothing; the factory installs one filter however often it runs |
+
 ## Row keys (`test_row_keys.py`)
 
 Every list the API serves says what makes one of its rows unique, and this file is what makes
@@ -213,6 +236,18 @@ read the ledger and only the ledger.
 | `test_gaps_ok` | Both categories survive the projection — a weekend closure and a real outage |
 | `test_empty_categories_are_not_reported` | A zero count is noise; the reader wants what DID happen |
 | `test_missing_report_is_a_404` | No coverage report is a 404, not an empty success |
+
+## TestGapsSayWhoseSilenceTheyAre — `/brokers/{broker}/symbols/{symbol}/gaps` (#599)
+
+A venue's history holds tens of thousands of gaps in which nobody traded; our own collection a few.
+The report's gaps carry their origin already, the tick-index read is replaced.
+
+| Test | Description |
+|------|-------------|
+| `test_every_gap_carries_its_origin_and_the_seam_its_second` | `origin_class` and `origin_class_after` per gap; they differ only at a seam |
+| `test_the_yearly_summary_counts_per_origin_and_declares_its_key` | `gaps_by_year` per year and origin, and `keys` names both lists' keys |
+| `test_origin_class_narrows_the_gaps_and_never_the_overview` | The filter cuts `gaps`; `gap_counts` and `gaps_by_year` stay those of the whole archive |
+| `test_since_keeps_the_gaps_that_start_at_or_after_it` | A gap starting exactly at `since` is kept, an earlier one dropped |
 
 ## TestAtrIndicator — `/brokers/{broker}/symbols/{symbol}/indicators/atr`
 

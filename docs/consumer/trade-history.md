@@ -71,6 +71,14 @@ the effective spread the fills crossed, and it is already inside `gross_pnl`. So
 **beside** `total_fees` and never inside it. It is signed like the swap, and a negative value is a
 price improvement — what a resting limit order earns by filling inside the spread.
 
+`modelled_spread_cost` is the same quantity where there was no quote to measure against. Data
+recorded without a quote carries bid and ask at the traded price; a backtest over it gives each
+such tick the quote the spread estimated for the previous day implies, and a fill against that
+quote crosses a modelled spread rather than a measured one. It is inside `gross_pnl` too, beside
+`total_fees` and never inside it, and on every row `spread_cost + modelled_spread_cost` is the
+effective spread of its fills — each fill counts in exactly one of the two. It is 0 where every
+quote was recorded, which includes every live session.
+
 ## How far it went while it was open
 
 The excursion fields are the worst and the best the position reached between its two ends, which
@@ -192,6 +200,17 @@ periods can be one run of 5. Do not aggregate these two across currencies, units
 `total_fees` and `total_swap`, the signed swap summed over the unit. It is the footer line, served
 so that no consumer has to re-sum the rows and arrive at a different number.
 
+`total_spread_cost` is the unit's `spread_cost` summed — measured, so it stands beside `total_fees`
+and never inside it. On a quote-driven market such as forex it is usually the main cost — the
+dealer earns the spread — while `total_fees` may read zero. It is **null where the unit read data
+without a quote**: there bid and ask are the traded price, no fill crossed a recorded spread, and a
+sum of those zeros would look like a measurement. A unit that read such data for part of its window
+is null too, rather than a partial sum. It is also null on a run recorded before contract 32. A
+live session's total is always a sum: it reads its venue's feed, not archived data.
+
+`total_modelled_spread_cost` is the unit's `modelled_spread_cost` summed — always a number, 0 where
+nothing was modelled, and 0 on a run recorded before contract 33, when nothing was.
+
 ## Retention: this list has a ceiling
 
 A run keeps its closed trades in a buffer whose size the server that produced the run sets, and
@@ -210,3 +229,6 @@ A run with no trade-history artifact answers 404, and the refusal names which of
 was: the run is unknown, it was started without reports, it has produced none yet, or it produced
 other sections and not this one. See [errors](/api/v1/docs/errors) and
 [run kinds](/api/v1/docs/run-kinds) for what a run was commissioned to write.
+
+Which of these prices are the venue's decimals and which are computed, and how to round them
+for display: [prices](/api/v1/docs/prices).

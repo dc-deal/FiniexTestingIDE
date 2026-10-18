@@ -1,10 +1,10 @@
 """
-FiniexTestingIDE - Field Study Stream Projection (#566)
+FiniexTestingIDE - Acceptance Study Stream Projection (#566, #358)
 
-The field study's order and venue lines, copied from the live core's own record while it is written.
-Every order transition and every venue read of the session reaches this listener at the moment the
-executor records it, and the line written here is that record in the field study's schema. The study
-keeps no picture of its orders beside the session's any more — it reads the one the session keeps.
+An acceptance study's order and venue lines, copied from the live core's own record while it is
+written. Every order transition and every venue read of the session reaches this listener at the
+moment the executor records it, and the line written here is that record in the capture's schema.
+A study keeps no picture of its orders beside the session's — it reads the one the session keeps.
 What the study owns is its choreography, phases and their outcomes, which the recorder writes; both
 go through the recorder's one writer, so the capture keeps one sequence.
 
@@ -15,19 +15,24 @@ the submission because a position's open and its closes share one order id.
 
 from typing import Any, Dict, Optional, Tuple
 
-from python.framework.reporting.field_study_recorder import (
-    PLANE_BOT,
-    PLANE_BROKER_TRUTH,
+from python.framework.reporting.acceptance_study_recorder import AcceptanceStudyRecorder
+from python.framework.reporting.io.order_event_stream_io import broker_truth_row
+from python.framework.types.acceptance_study_types.study_capture_types import (
     PREFLIGHT_PHASE,
     SESSION_END_PHASE,
-    FieldStudyRecorder,
+    CaptureLineType,
+    DetectedVia,
+    SnapshotStatus,
 )
-from python.framework.reporting.io.order_event_stream_io import broker_truth_row
 from python.framework.types.live_types.broker_truth_types import (
     BrokerTruthReadReason,
     BrokerTruthRecord,
 )
-from python.framework.types.trading_env_types.order_event_types import OrderEvent, OrderEventType
+from python.framework.types.trading_env_types.order_event_types import (
+    OrderEvent,
+    OrderEventPlane,
+    OrderEventType,
+)
 from python.framework.types.trading_env_types.order_types import (
     OrderAction,
     OrderDirection,
@@ -36,17 +41,15 @@ from python.framework.types.trading_env_types.order_types import (
     direction_to_side,
 )
 
-# A fill is written as an open, a partial close or a full close — decided per event, from the lots
-# its position still holds.
-FILL_LINE = 'fill'
-
 # Which line each order event becomes. None writes no line, and the reason stands beside it; a test
-# holds this map to the enum, so a new event type cannot arrive here unwritten by accident.
-FIELD_STUDY_LINE_BY_EVENT: Dict[OrderEventType, Optional[str]] = {
+# holds this map to the enum, so a new event type cannot arrive here unwritten by accident. A fill
+# is listed as `order_filled` and written as an open, a partial close or a full close — decided per
+# event, from the lots its position still holds.
+CAPTURE_LINE_BY_EVENT: Dict[OrderEventType, Optional[CaptureLineType]] = {
     OrderEventType.SUBMITTED: None,          # kept for its phase and mid; the outcome is the line
     OrderEventType.ACCEPTED: None,           # the outcome that follows is the line
-    OrderEventType.REJECTED: 'order_rejected',
-    OrderEventType.DENIED: 'order_rejected',  # refused here before anything was sent
+    OrderEventType.REJECTED: CaptureLineType.ORDER_REJECTED,
+    OrderEventType.DENIED: CaptureLineType.ORDER_REJECTED,  # refused here before anything was sent
     OrderEventType.UNRESOLVED: None,         # a question; the outcome that settles it is the line
     OrderEventType.RESOLVED: None,
     OrderEventType.TRIGGERED: None,          # the simulation's alone; a live stop shows as its fill
@@ -55,13 +58,13 @@ FIELD_STUDY_LINE_BY_EVENT: Dict[OrderEventType, Optional[str]] = {
     OrderEventType.MODIFY_REJECTED: None,
     OrderEventType.CANCEL_REQUESTED: None,   # the ending is the line
     OrderEventType.CANCEL_DEFERRED: None,
-    OrderEventType.CANCELLED: 'order_cancelled',
+    OrderEventType.CANCELLED: CaptureLineType.ORDER_CANCELLED,
     OrderEventType.CANCEL_REJECTED: None,    # the order goes on; whatever ends it is the line
-    OrderEventType.PARTIALLY_FILLED: FILL_LINE,
-    OrderEventType.FILLED: FILL_LINE,
-    OrderEventType.EXPIRED: 'order_cancelled',     # its status says expired
-    OrderEventType.UNDELIVERED: 'order_rejected',  # its status says undelivered
-    OrderEventType.UNACCOUNTED: 'order_unaccounted',
+    OrderEventType.PARTIALLY_FILLED: CaptureLineType.ORDER_FILLED,
+    OrderEventType.FILLED: CaptureLineType.ORDER_FILLED,
+    OrderEventType.EXPIRED: CaptureLineType.ORDER_CANCELLED,     # its status says expired
+    OrderEventType.UNDELIVERED: CaptureLineType.ORDER_REJECTED,  # its status says undelivered
+    OrderEventType.UNACCOUNTED: CaptureLineType.ORDER_UNACCOUNTED,
     OrderEventType.ADOPTED: None,            # a field study starts flat; the preflight sees to it
 }
 
@@ -69,16 +72,16 @@ FIELD_STUDY_LINE_BY_EVENT: Dict[OrderEventType, Optional[str]] = {
 _LOTS_EPSILON = 1e-9
 
 
-class FieldStudyStreamProjection:
+class AcceptanceStudyStreamProjection:
     """
-    The executor's order-event and broker-truth listener for a Field Study session.
+    The executor's order-event and broker-truth listener for an acceptance study session.
 
     Args:
         recorder: The study's recorder — its writer, its sequence and its current phase
         unit_name: The session's unit, which a broker-truth row is filed under
     """
 
-    def __init__(self, recorder: FieldStudyRecorder, unit_name: str):
+    def __init__(self, recorder: AcceptanceStudyRecorder, unit_name: str):
         self._recorder = recorder
         self._unit_name = unit_name
         # Per submission: the phase that sent it, and what its fill is measured against
@@ -98,7 +101,7 @@ class FieldStudyStreamProjection:
             self._phase_of[event.seq] = self._recorder.get_phase()
             self._submission_mid[event.seq] = event.submission_mid
             return
-        line = FIELD_STUDY_LINE_BY_EVENT[event.event_type]
+        line = CAPTURE_LINE_BY_EVENT[event.event_type]
         if line is None:
             return
         # The phase that submitted THIS order: one the framework places later (a protective
@@ -106,18 +109,18 @@ class FieldStudyStreamProjection:
         submitted_in = (self._phase_of.get(event.submitted_seq)
                         if event.submitted_seq is not None else None)
         phase, phase_index = submitted_in or self._recorder.get_phase()
-        if line == FILL_LINE:
+        if line is CaptureLineType.ORDER_FILLED:
             self._write_fill(event, phase, phase_index)
             return
         extra: Dict[str, Any] = self._shared_extra(event)
-        if line == 'order_rejected':
+        if line is CaptureLineType.ORDER_REJECTED:
             extra['reason'] = event.rejection_reason.value if event.rejection_reason else None
             extra['message'] = event.message
             extra['venue_reason'] = event.venue_reason
         self._recorder.write_projected(
-            PLANE_BOT, line, phase, phase_index,
+            OrderEventPlane.BOT, line, phase, phase_index,
             order_id=event.order_id, side=_side_name(event.direction),
-            lots=event.lots, status=event.event_type.value, detected_via='poll',
+            lots=event.lots, status=event.event_type, detected_via=DetectedVia.POLL,
             extra=_without_none(extra))
 
     def write_broker_truth(self, record: BrokerTruthRecord) -> None:
@@ -140,10 +143,12 @@ class FieldStudyStreamProjection:
         })
         if record.read_reason is BrokerTruthReadReason.RECONCILE:
             phase, phase_index = self._recorder.get_phase()
-            state = record.reconcile_state.value if record.reconcile_state is not None else None
+            state = record.reconcile_state
             self._recorder.write_projected(
-                PLANE_BROKER_TRUTH, 'reconcile_alert', phase, phase_index,
-                status=state, reconcile={'state': state, 'divergence': row['divergence']},
+                OrderEventPlane.BROKER_TRUTH, CaptureLineType.RECONCILE_ALERT, phase, phase_index,
+                status=state,
+                reconcile={'state': state.value if state is not None else None,
+                           'divergence': row['divergence']},
                 extra=extra)
             return
         phase = (PREFLIGHT_PHASE if record.read_reason is BrokerTruthReadReason.SESSION_START
@@ -152,11 +157,12 @@ class FieldStudyStreamProjection:
         # and an empty sheet would say the account holds nothing
         extra['balances'] = record.snapshot.venue_balances
         if order_count is None:
-            status = 'unread'
+            status = SnapshotStatus.UNREAD
         else:
-            status = 'flat' if order_count == 0 else 'not_flat'
+            status = SnapshotStatus.FLAT if order_count == 0 else SnapshotStatus.NOT_FLAT
         self._recorder.write_projected(
-            PLANE_BROKER_TRUTH, 'broker_snapshot', phase, -1, status=status, extra=extra)
+            OrderEventPlane.BROKER_TRUTH, CaptureLineType.BROKER_SNAPSHOT, phase, -1,
+            status=status, extra=extra)
 
     def _write_fill(self, event: OrderEvent, phase: str, phase_index: int) -> None:
         """
@@ -173,23 +179,23 @@ class FieldStudyStreamProjection:
         extra['fee_currency'] = event.fee_currency
         # Whose figure that fee is — the venue's own, or our fee model's estimate (#508)
         extra['fee_source'] = event.fee_source.value if event.fee_source is not None else None
-        line = 'order_filled'
+        line = CaptureLineType.ORDER_FILLED
         if event.action is OrderAction.CLOSE and event.position_id is not None:
             held = self._position_lots.get(event.position_id)
             if held is not None:
                 remaining = max(held - executed, 0.0)
                 self._position_lots[event.position_id] = remaining
                 if remaining > _LOTS_EPSILON:
-                    line = 'partial_close'
+                    line = CaptureLineType.PARTIAL_CLOSE
                     extra['remaining_lots'] = remaining
         elif event.position_id is not None:
             self._position_lots[event.position_id] = (
                 self._position_lots.get(event.position_id, 0.0) + executed)
         self._recorder.write_projected(
-            PLANE_BOT, line, phase, phase_index,
+            OrderEventPlane.BOT, line, phase, phase_index,
             order_id=event.order_id, side=_side_name(event.direction),
-            lots=event.lots, price=event.fill_price, status=event.event_type.value,
-            detected_via='poll', slippage=self._slippage_source(event),
+            lots=event.lots, price=event.fill_price, status=event.event_type,
+            detected_via=DetectedVia.POLL, slippage=self._slippage_source(event),
             extra=_without_none(extra))
 
     def _slippage_source(self, event: OrderEvent) -> Dict[str, Any]:
@@ -247,7 +253,7 @@ class FieldStudyStreamProjection:
 
 def _side_name(direction: Optional[OrderDirection]) -> Optional[str]:
     """
-    The position's direction as the study's lines have always named it.
+    The position's direction as the capture's lines have always named it.
 
     Args:
         direction: The event's position direction

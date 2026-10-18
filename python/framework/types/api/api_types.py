@@ -6,9 +6,14 @@ because FastAPI requires Pydantic for automatic OpenAPI schema generation
 and response serialization.
 """
 
+from typing import Optional
+
 from pydantic import BaseModel
 
 from python.framework.types.config_types.api_auth_config_types import AccountKind
+from python.framework.types.config_types.data_origin_config_types import OriginClass
+from python.framework.types.coverage_report_types import GapCategory
+from python.framework.types.machine_resources_types import LimitSource, PressureLevel
 
 
 class ApiContractResponse(BaseModel):
@@ -77,6 +82,61 @@ class CallerResponse(BaseModel):
     display_name: str | None = None
     grants: list[str] = []
     note: str | None = None
+
+
+class MachineCpuResponse(BaseModel):
+    """
+    The processors the server's processes may use, and how busy the machine was (#595).
+
+    Args:
+        count: How many processors bind — a cgroup quota may be fractional
+        count_source: `cgroup` when a quota below the machine's processors binds, else `machine`
+        used_pct: How busy the machine's processors were over `window_s`; None when no time has
+            passed since the previous reading
+        window_s: The seconds since the previous reading of this route, by any caller
+    """
+    count: float
+    count_source: LimitSource
+    used_pct: float | None = None
+    window_s: float | None = None
+
+
+class MachineMemoryResponse(BaseModel):
+    """
+    The memory the server's processes may use, and how much is in use (#595).
+
+    Args:
+        limit_bytes: The limit that binds — the container's where it is set below the machine's
+        used_bytes: How much of it is in use
+        used_pct: The same as a share of the limit
+        limit_source: `cgroup` or `machine` — where the limit was read
+        warn_at_pct: The share from which `pressure_level` is `warn`
+        critical_at_pct: The share from which it is `critical`
+    """
+    limit_bytes: int
+    used_bytes: int
+    used_pct: float
+    limit_source: LimitSource
+    warn_at_pct: float
+    critical_at_pct: float
+
+
+class MachineResourcesResponse(BaseModel):
+    """
+    What the machine this server runs on has and uses, read at one instant (#595).
+
+    Args:
+        measured_at: When it was read, ISO-8601 UTC
+        cpu: The processors
+        memory: The memory, with the thresholds it is graded against
+        pressure_level: `ok`, `warn` or `critical` — graded on memory alone
+        pressure_reasons: One sentence for a person per reason; empty when the level is `ok`
+    """
+    measured_at: str
+    cpu: MachineCpuResponse
+    memory: MachineMemoryResponse
+    pressure_level: PressureLevel
+    pressure_reasons: list[str] = []
 
 
 class BrokerListResponse(BaseModel):
@@ -149,29 +209,55 @@ class IndicatorPointResponse(BaseModel):
 
 class GapResponse(BaseModel):
     """
-    One interruption in a symbol's archive, with what it was.
+    One interruption in a symbol's archive, with what it was and whose data it lies in.
 
     A venue outage and a quiet weekend are different facts, and `category` is what keeps
-    them apart — the reader never has to infer it from the duration.
+    them apart — the reader never has to infer it from the duration. `origin_class` says whose
+    silence it is: in a venue's published history (`external`) nobody of ours was collecting,
+    so a gap there is a stretch without trades at the venue, with nothing to re-collect.
     """
 
     start: str                  # ISO-8601 UTC
     end: str                    # ISO-8601 UTC
     seconds: float
-    category: str               # seamless | weekend | holiday | short | moderate | large
+    category: GapCategory
     reason: str
+    # The origin class of the tick file the gap lies in or follows; null when no tick file
+    # could be found for it
+    origin_class: Optional[OriginClass] = None
+    # The origin class of the tick file after the gap — it differs from `origin_class` only at
+    # a seam, where one origin's data ends and another's begins
+    origin_class_after: Optional[OriginClass] = None
+
+
+class GapYearResponse(BaseModel):
+    """The gaps that mean missing data, of one year and one data origin, counted per category."""
+
+    year: int                   # the year a gap STARTED in
+    # null for the gaps no tick file could be found for
+    origin_class: Optional[OriginClass] = None
+    short: int
+    moderate: int
+    large: int
+    hours_without_data: float
 
 
 class CoverageGapsResponse(BaseModel):
-    """Coverage span plus every gap inside it, categorised."""
+    """
+    Coverage span, the gap count per category, the gaps counted per year and origin, and the
+    gaps themselves — all of them, or those the filters asked for.
+    """
 
     symbol: str
     broker: str
     start: str                  # ISO-8601 UTC
     end: str                    # ISO-8601 UTC
-    gap_counts: dict[str, int]  # per category
-    # A gap is identified by when it STARTED: two gaps of one symbol cannot open at the
-    # same instant, and the category is a classification of the same interruption rather
-    # than a second one.
-    key: list[str] = ['start']
+    gap_counts: dict[str, int]  # per category, over the whole archive
+    # Weekend and holiday closures are not counted here: they are a market's expected silence.
+    # Always over the whole archive — the filters narrow `gaps` only, so the overview stays whole.
+    gaps_by_year: list[GapYearResponse]
+    # What makes one row of each list unique. A gap is identified by when it STARTED: two gaps
+    # of one symbol cannot open at the same instant, and the category is a classification of
+    # the same interruption rather than a second one. A year holds one row per data origin.
+    keys: dict[str, list[str]] = {'gaps': ['start'], 'gaps_by_year': ['year', 'origin_class']}
     gaps: list[GapResponse]

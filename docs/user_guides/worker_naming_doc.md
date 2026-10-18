@@ -118,6 +118,9 @@ If zero or more than one matching class is found, the factory raises a `ValueErr
 
 Helper classes (not inheriting from any abstract base) in the same file are fine and ignored by the loader.
 
+Only classes DEFINED in the file count. A class the file imports — a base, or a CORE worker or
+logic your class extends (`class MyBollinger(BollingerWorker)`) — is not a second one.
+
 ---
 
 ## Mandatory Worker Classmethod — Market Compatibility

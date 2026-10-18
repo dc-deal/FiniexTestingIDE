@@ -24,7 +24,7 @@ Two halves:
   default, because neither value is safe to inherit: forgotten on a deployed profile the history
   is unrecoverable, set wrongly on a one-off profile unrelated runs are welded together. Pinned
   with the refusal message, which has to name what to write.
-- **`_resolve_deployment()`, every combination.** The profile declares, `--one-off` and
+- **`resolve_deployment()`, every combination.** The profile declares, `--one-off` and
   `--new-deployment` may only narrow. The case that matters most is the one that must NOT work:
   no flag can promote a profile declaring `false`, because an unattended restart re-executes a
   command nobody typed and a command-line deployment would break apart at exactly the restarts it
@@ -35,6 +35,12 @@ Two halves:
 
 Plus a sweep over every tracked profile asserting the block is actually there — the loadability
 suite would fail too, but as "this file does not parse", which reads like a typo.
+
+### `test_carry_over_declaration.py` (#358)
+
+`carry_over_from` is read from the profile alone: absent it is empty, declared it is read as
+written, anything but a name is refused at load, and `app_config.json` has no field that could
+declare it for every profile — the boot check reads the raw files and would not see one.
 
 ### `test_profile_loadability.py`
 

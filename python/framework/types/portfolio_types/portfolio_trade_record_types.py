@@ -170,3 +170,12 @@ class TradeRecord:
     # (pip on Forex, tick on crypto) without a renderer ever re-deriving it.
     pip_size: float = 0.0
     price_unit: str = ''
+
+    # === Modelled Spread (#602) ===
+    # A leg whose tick came from a file without a quote filled against a MODELLED quote. Its
+    # crossed spread is then `modelled_spread_cost`, never `spread_cost`, which stays what was
+    # measured against a recorded quote: per record the two add up to the effective spread
+    # of its fills.
+    modelled_spread_cost: float = 0.0
+    entry_quote_modelled: bool = False
+    exit_quote_modelled: bool = False

@@ -420,31 +420,47 @@ Use 'show BROKER_TYPE SYMBOL' for detailed gap analysis
 Classifies gaps automatically:
 - ✅ **Weekend** - Expected market closure (Friday 17:00 → Sunday 17:00 New York: 21:00 UTC in summer, 22:00 in winter)
 - ✅ **Holiday** - Holidays (Christmas, New Year)
-- ⚠️ **Short** - Small gaps < 30min (MT5 restarts, connection drops)
+- ⚠️ **Short** - Small gaps < 30min
 - ⚠️ **Moderate** - 30min to 4h
-- 🔴 **Large** - > 4h (check data collection!)
+- 🔴 **Large** - > 4h
+
+Each gap is read by whose data it lies in — the origin class of the tick files around it. In a
+venue's published history (`external`) nobody traded there and there is nothing to re-collect; in
+our own collection the line says whether the collector was running. The newest ten of each category
+are listed, the rest are counted by year and origin, and the recommendations are for our own
+collection only. Details: [discovery_system.md](discovery_system.md), *Data Coverage Details*.
 
 ```
-📊 DATA COVERAGE REPORT: GBPUSD
-Time Range:   2025-09-17 17:55:00 UTC → 2026-01-02 20:55:00 UTC
-Duration:     107d 3h
+📊 DATA COVERAGE REPORT: mt5/GBPUSD
+Market Type:  forex
+Time Range:   2025-09-17 17:58:00 UTC
+           → 2026-10-09 20:56:00 UTC
 
 GAP ANALYSIS:
-✅ Weekend:      15 gaps (expected)
+✅ Weekend:      54 gaps (expected)
 ✅ Holiday:      2 gaps (expected)
-⚠️  Short:        22 gaps (< 30 min)
+⚠️  Short:        340 gaps (< 30 min)
 ⚠️  Moderate:     1 gaps (30min - 4h)
-🔴 Large:        2 gaps (> 4h)
+🔴 Large:        4 gaps (> 4h)
 
-🔴 LARGE GAP:
-   Start:  2025-11-12 15:45:00 UTC
-   End:    2025-11-13 21:15:00 UTC
-   Gap:    29h 30m
-   Reason: 🔴 Large gap - check data collection
+GAPS — the most recent of each category, newest first:
+🔴 LARGE — all 4
+   2026-09-18 20:56 → 09-21 08:39   59h 43m (59.72h · 2.5d)   between two files, collection resumed 59h 42m later · lost 2 trading days   [production]
+   2026-07-29 15:34 → 20:42         5h 8m (5.13h)             inside GBPUSD_20260729_161731.parquet, the collector was running   [production]
+   …
+ℹ️  SHORT — the last 10 of 340
+   2026-10-08 20:57 → 21:00         3m (0.05h)                inside GBPUSD_20261008_174312.parquet, the collector was running   [production]
+   …
 
-💡 RECOMMENDATIONS:
-   • Short gaps detected - likely MT5 restarts (usually harmless)
-   • 🔴 Large gaps detected - consider re-collecting data
+BY YEAR AND ORIGIN (short · moderate · large, and the hours without data):
+   year  origin            short  moderate   large       hours
+   2025  production          153         1       2        62.8
+   2026  production          187         0       2        75.1
+
+💡 RECOMMENDATIONS (our own collection):
+   • Short gaps in our collection - likely MT5 restarts or connection blips (usually harmless)
+   • 🔴 Large gaps in our collection - consider re-collecting data for these periods
+   …
 ```
 
 ### 📊 Data Coverage: Build Cache
@@ -589,6 +605,50 @@ LONG Extreme Moves (top 10)
 - `--top` — Number of top results per direction in the display (default: 10, all are cached)
 - `--force` — Ignore cache and re-scan
 - `--timeframe` — Timeframe override (default: M5)
+
+### 🔍 SPREAD ESTIMATE
+
+| | |
+|---|---|
+| **VS Code** | `🔍 Disc - Spread Estimate: kraken_spot/ETHUSD` · `🔍 Disc - Spread Estimate: Build Cache (all symbols)` |
+| **CLI** | `python spread_estimate_cli.py show kraken_spot ETHUSD` · `python spread_estimate_cli.py build` |
+| **Purpose** | How wide the spread was in years whose ticks recorded no quote |
+
+A tick without a quote carries bid = ask = the traded price, so a backtest over it crosses no
+spread. The spread can still be estimated from the trades: Kraken records the aggressor of every
+trade, and a buy and a sell close together in time straddle the spread. The command reads the
+symbol's tick files one at a time and prints, per year, origin class and quote regime, the
+estimate from consecutive opposite-side trades within one second — a burst of fills of one order
+counted once — beside Roll's textbook estimator. Where a file did record a quote, the quoted and
+the effective spread stand beside the estimate, which is how it is checked.
+
+```
+   year  origin      quote           pairs  median    mean     p90    roll  quoted  effective
+   2018  external    no_quote      192,838    4.58    8.81   24.65    3.57       —          —
+   2024  external    no_quote      182,140    0.04    1.60    5.69    1.83       —          —
+   2026  production  quoted        101,118    0.08    0.52    1.60    0.64    0.35       0.75
+```
+
+All figures are in basis points of the price. `mean` is capped at the 99th percentile: it is the
+expected cost, half of it per fill. The median is shown but is no cost measure — where more than
+half the pairs print at one price, it reads zero. Measured 2026-10-15 over all ETHUSD files, in
+18 s: on the files with a quote the estimate's mean (0.52) lies between the quoted (0.35) and the
+effective spread (0.75).
+
+**Parameters:**
+- `--year` — print that year's days instead of the yearly table
+
+**`build` — the cache a backtest reads.** `python spread_estimate_cli.py build` measures the day
+estimates of every symbol with a file without a quote and caches them in
+`discovery_caches/spread_estimate_cache/`; `build kraken_spot ETHUSD` does one symbol. A valid
+cache is skipped — it stays valid until a new file without a quote arrives or the estimator
+changes — and `--force` measures again anyway. The import's cache rebuild and
+`discoveries_cli.py cache rebuild-all` build it too. Measured 2026-10-16: ETHUSD 21 s, every
+Kraken symbol about two minutes, a valid cache read in under a second.
+
+```
+📏 kraken_spot/ETHUSD: 3,869 day(s) cached, 2015-08-11 → 2026-09-18
+```
 
 ---
 
@@ -931,6 +991,8 @@ logged the moment it finishes.
 | **Gap details** | `🔍 Disc - Data Coverage: mt5/EURUSD` | `discoveries_cli.py data-coverage show mt5 EURUSD` |
 | **Volatility profile** | `🔍 Disc - Volatility Profile: mt5/USDJPY` | `discoveries_cli.py volatility-profile mt5 USDJPY` |
 | **Extreme Moves** | `🔍 Disc - Extreme Moves: mt5/USDJPY` | `discoveries_cli.py extreme-moves mt5 USDJPY` |
+| **Spread estimate** | `🔍 Disc - Spread Estimate: kraken_spot/ETHUSD` | `spread_estimate_cli.py show kraken_spot ETHUSD [--year 2021]` |
+| **Spread estimate cache** | `🔍 Disc - Spread Estimate: Build Cache (all symbols)` | `spread_estimate_cli.py build [kraken_spot ETHUSD] [--force]` |
 | **Discovery Cache Status** | `🔍 Disc - Cache: Status` | `discoveries_cli.py cache status` |
 | **Discovery Cache Rebuild** | `🔍 Disc - Cache: Rebuild All` | `discoveries_cli.py cache rebuild-all` |
 | **Generate Blocks** | `⚡ Generator - 40 Blocks mt5/USDJPY` | `generator_cli.py generate-blocks mt5 USDJPY --block-size 12 --count 40` |

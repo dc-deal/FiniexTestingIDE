@@ -129,6 +129,15 @@ Also pinned in the suites whose code raises the alerts:
 | `test_switched_off_it_stays_silent` | `daily_digest: false` |
 | `test_a_message_that_cannot_be_written_does_not_end_the_session` | a failure is said in the session log; the trading session goes on |
 
+### `test_signal_staleness_alerter.py` — a stale signal input reaches the operator
+
+| Test | What it verifies |
+|---|---|
+| `test_a_stale_input_is_said_once_and_its_recovery_after_the_quiet_period` | one alert per edge, not per pass; the all-clear only once the input stayed fresh for the quiet period |
+| `test_an_input_that_flaps_inside_the_quiet_period_stays_one_episode` | stale and fresh three times inside the quiet period: one alert and one all-clear |
+| `test_each_input_is_its_own_episode` | two signal workers, two alerts |
+| `test_nothing_is_said_before_the_clock_is_set` | the edge waits for the canonical clock |
+
 ### `test_operator_alerts_setup.py` — what a profile switches on, and what is refused
 
 | Test | What it verifies |

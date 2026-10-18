@@ -1,15 +1,15 @@
 # Release Certificates
 
-**Four artifacts prove a release. They share one identity and one rule.**
+**A set of artifacts proves a release. They share one identity and one rule.**
 
-Each certificate answers a different question, but all four must first answer the same one:
+Each certificate answers a different question, but every one must first answer the same one:
 *what am I certifying, and from what code and environment?* That half is built once, in
 [`certificate_identity_builder.py`](../../python/framework/reporting/certificates/certificate_identity_builder.py),
 and spread into every certificate body.
 
 ---
 
-## The four
+## The certificates
 
 | Certificate | Proves | Costs | Producer |
 |---|---|---|---|
@@ -17,11 +17,13 @@ and spread into every certificate body.
 | **Live Adapter** | The broker adapter really places, modifies, cancels and fills orders | ~$0.01 in fees | `tests/live_adapters/conftest.py` |
 | **Field Study** | The full live execution stack works on a funded account | ~$0.50 | `certificates/field_study_certificate.py` |
 | **Signal Feed** | The producer contract holds against the running production journal | nothing (3 free GETs) | `certificates/signal_feed_certificate.py` |
+| **Security Study** | The account's protective rules fire on a funded account — the order guard, the circuit breaker's soft block and hard stop, the risk baseline across a restart (#358) | ~$0.25 (measured 2026-10-14) | `certificates/security_cert_certificate.py` |
 
 Each has a validation test that reads the committed artifact without re-running anything:
 `test_benchmark_certificate.py`, `test_live_adapter_certificate.py`,
-`test_field_study_certificate.py`, `test_signal_feed_certificate.py`. All four suites are
-excluded from the daily runner, so those validators run at release time via the checklist.
+`test_field_study_certificate.py`, `test_signal_feed_certificate.py`,
+`test_security_cert_certificate.py`. Every one of these suites is excluded from the daily runner,
+so the validators run at release time.
 
 ---
 
@@ -80,7 +82,7 @@ Two guards come with it, and both exempt `dev` because a rehearsal declares noth
   produced the artifact. **Commit before taking any certificate.**
 
 `isolation_active` and `workspace_overrides` describe the *environment*, which means the same
-thing for all four. What was *exercised* — a scenario set, a broker, a profile, a producer —
+thing for every certificate. What was *exercised* — a scenario set, a broker, a profile, a producer —
 stays with the producer that knows it.
 
 `python_version` joined them because the interpreter is part of what ran and nothing recorded
@@ -149,10 +151,14 @@ pytest tests/live_signal_feed/test_signal_feed_certificate.py -v
 #    (launch.json → 🧪 AutoTrader: Field Study, then generate + validate)
 python python/cli/field_study_certificate_cli.py generate --latest --release-version X.Y.Z
 pytest tests/live_field_study/test_field_study_certificate.py -v
+
+# 5. security study — REAL MONEY, five sessions in a row, writes its certificate at the end
+python python/cli/security_cert_cli.py run --release-version X.Y.Z
+pytest tests/security_cert/test_security_cert_certificate.py -v
 ```
 
 Commit the generated artifacts from each suite's `reports/` directory.
 
-**Changing the identity invalidates all four**, because every artifact carries it. That is the
-cost of the shared shape, and it is the right cost: four certificates that disagree about what
+**Changing the identity invalidates every certificate**, because every artifact carries it. That
+is the cost of the shared shape, and it is the right cost: certificates that disagree about what
 they are describing is the state this replaced.

@@ -63,5 +63,5 @@ def test_the_all_clear_says_how_long_it_held_and_whether_it_flapped():
     for second in (10, 30, 50):
         episode.clears(_at(second))
         episode.opens(_at(second + 5))
-    assert all_clear_detail(episode, 300.0) == (
+    assert all_clear_detail(episode) == (
         'clear for 300 s · it came back 3 time(s) before that')

@@ -28,7 +28,12 @@ from python.framework.types.scenario_types.scenario_set_types import (
     SingleScenario,
 )
 from python.framework.types.scenario_types.window_set_types import WindowSet
-from python.framework.utils.config_merge_utils import check_unknown_keys, validate_merged_config
+from python.framework.types.trading_env_types.stress_test_types import StressTestConfig
+from python.framework.utils.config_merge_utils import (
+    allowlist_from,
+    check_unknown_keys,
+    validate_merged_config,
+)
 from python.framework.utils.declared_purpose_utils import read_declared_purpose
 from python.framework.utils.parameter_override_detector import ParameterOverrideDetector
 from python.framework.utils.time_utils import parse_datetime
@@ -43,21 +48,13 @@ vLog = get_global_logger()
 # Known config keys per cascade section
 # ============================================
 
-_KNOWN_EXECUTION_KEYS: frozenset = frozenset({
-    'parallel_workers', 'worker_parallel_threshold_ms',
-    'adaptive_parallelization', 'performance_tracking',
-    'strict_parameter_validation', 'tick_processing_budget_ms',
-})
-_KNOWN_TRADE_SIM_KEYS: frozenset = frozenset({
-    'balances', 'seeds', 'inbound_latency_min_ms',
-    'inbound_latency_max_ms', 'broker_config_path', 'account_currency',
-})
-_KNOWN_ORDER_GUARD_KEYS: frozenset = frozenset({
-    'cooldown_seconds', 'max_consecutive_rejections', 'block_stale_market_data',
-})
-_KNOWN_STRESS_TEST_KEYS: frozenset = frozenset({
-    'reject_open_order', 'stale_data_stress',
-})
+# Derived from the schema that holds each section's defaults, so a field added there is accepted
+# here without a second list to extend.
+_KNOWN_EXECUTION_KEYS: frozenset = allowlist_from(DefaultScenarioExecutionConfig)
+# `broker_config_path` is set per set or scenario only, so no defaults schema holds it
+_KNOWN_TRADE_SIM_KEYS: frozenset = allowlist_from(TradeSimulatorDefaults) | {'broker_config_path'}
+_KNOWN_ORDER_GUARD_KEYS: frozenset = allowlist_from(OrderGuardDefaults)
+_KNOWN_STRESS_TEST_KEYS: frozenset = allowlist_from(StressTestConfig)
 # The set's own top level. `version` and `created` are the generator's provenance stamps;
 # `description` and `run_purpose` say why the set exists and what its runs are for (#576). A
 # misspelt `run_purpose` would otherwise read as absent — a fixture silently run as regular.

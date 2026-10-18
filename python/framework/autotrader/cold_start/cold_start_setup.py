@@ -15,9 +15,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional, Set
 
-from python.framework.autotrader.cold_start_adopter import ColdStartAdopter
+from python.framework.autotrader.cold_start.cold_start_adopter import ColdStartAdopter
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.logging.abstract_logger import AbstractLogger
+from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.persistence.cold_start_state_store import ColdStartStateStore
 from python.framework.trading_env.abstract_trade_executor import AbstractTradeExecutor
 from python.framework.trading_env.live.live_trade_executor import LiveTradeExecutor
@@ -26,6 +27,7 @@ from python.framework.types.autotrader_types.cold_start_types import (
     ColdStartSituation,
     ColdStartVerdict,
 )
+from python.framework.types.persistence_types import CarryOverRead, ColdStartPayload
 
 
 @dataclass
@@ -74,7 +76,7 @@ def setup_cold_start(
     logger: AbstractLogger,
     run_id: str,
     attended: bool,
-    field_study_active: bool,
+    adoption_skipped_by: Optional[str],
     dry_run: bool,
     session_end_orders: str = 'cancel',
 ) -> ColdStartSetup:
@@ -95,7 +97,8 @@ def setup_cold_start(
         logger: Session logger — the channel that reaches the run outcome (§35)
         run_id: Recorded as PROVENANCE in the carry-over, never as its key
         attended: A human DECLARED they are watching this start (`--attended`)
-        field_study_active: True when the Field Study owns this session
+        adoption_skipped_by: The acceptance study that asserts its own flat book and so takes no
+            adoption, by its name ('Field Study'); None when adoption runs
         dry_run: The session's RESOLVED dry-run state, passed in rather than re-derived.
             Deriving it from `config.dry_run` here would read the profile field alone and
             miss the broker's standing posture — which is precisely the near miss #304 exists
@@ -111,23 +114,16 @@ def setup_cold_start(
     if not config.cold_start.enabled or not isinstance(executor, LiveTradeExecutor):
         return ColdStartSetup()
 
-    if field_study_active:
+    if adoption_skipped_by is not None:
         # It funds both sides on purpose and asserts its own flat order book (#332), so
         # adoption would claim its funding. Said out loud rather than done silently.
         logger.info(
-            '🧬 Cold start skipped — the Field Study funds both sides on purpose and asserts '
-            'a flat order book itself (#332).'
+            f'🧬 Cold start skipped — the {adoption_skipped_by} funds both sides on purpose and '
+            f'asserts a flat order book itself (#332).'
         )
         return ColdStartSetup()
 
-    store = ColdStartStateStore(
-        root=Path(config.cold_start.path),
-        profile=config.get_unit_name(),
-        symbol=config.symbol,
-        logger=logger,
-        run_id=run_id,
-        bot_id=config.bot_id,
-    )
+    store = _carry_over_store(config, logger, run_id)
     adopter = ColdStartAdopter(
         executor=executor,
         store=store,
@@ -172,4 +168,61 @@ def setup_cold_start(
         keys_in_use=adopter.get_venue_session_keys(),
         situation=adopter.get_situation(),
         verdict=adopter.get_verdict(),
+    )
+
+
+def read_carry_over(config: AutoTraderConfig) -> CarryOverRead:
+    """
+    Open this bot's carry-over document before anything else needs it.
+
+    Early because the run HEADER carries the deployment identity and is written at the
+    run's start with no update path. Constructing the store does no IO — it assembles a
+    path. The deployment, the risk baseline, the drawdown curve and the period floor read
+    this payload; the cold-start adopter reads the document again for its own step, and only
+    that read's warnings reach the session log — this one comes before the session logger
+    exists. What the read FOUND travels with it: the boot's continuity checks decide on it
+    before anything is written (#358).
+
+    Args:
+        config: The resolved profile — its `cold_start` block and the bot's identity
+
+    Returns:
+        The stored payload, or an empty one when there is nothing to read, with what the read
+        found — None when cold start is disabled and nothing was read
+    """
+    if not config.cold_start.enabled:
+        return CarryOverRead(ColdStartPayload())
+    store = _carry_over_store(config, get_global_logger(), run_id=None)
+    payload = store.load()
+    return CarryOverRead(payload, store.get_last_load())
+
+
+def _carry_over_store(
+    config: AutoTraderConfig,
+    logger: AbstractLogger,
+    run_id: Optional[str],
+) -> ColdStartStateStore:
+    """
+    This bot's carry-over document — one recipe for the boot's read and the session's write,
+    so the document read at boot and the one the session writes are addressed the same way.
+
+    Args:
+        config: The resolved profile — its `cold_start` block and the bot's identity
+        logger: Where the store reports its own warnings
+        run_id: Recorded as PROVENANCE in what the store writes; None for the boot's read
+
+    Returns:
+        The store; constructing it does no IO
+    """
+    return ColdStartStateStore(
+        root=Path(config.cold_start.path),
+        profile=config.get_unit_name(),
+        symbol=config.symbol,
+        logger=logger,
+        run_id=run_id,
+        bot_id=config.bot_id,
+        # In this one recipe, so the boot's early read, the adopter's read and every write
+        # agree on whose documents are this bot's (#358) — a continuation honoured by only one
+        # of them would adopt the book and miss the baseline, or the other way round.
+        carry_over_from=config.carry_over_from,
     )

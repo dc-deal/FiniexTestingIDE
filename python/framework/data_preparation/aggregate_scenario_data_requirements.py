@@ -86,7 +86,8 @@ class AggregateScenarioDataRequirements:
             max_ticks=scenario.max_ticks,
             start_readable=start_time.strftime('%Y-%m-%d %H:%M:%S'),
             end_readable=end_time.strftime(
-                '%Y-%m-%d %H:%M:%S') if end_time else ''
+                '%Y-%m-%d %H:%M:%S') if end_time else '',
+            modelled_spread_factor=scenario.get_modelled_spread_factor(),
         )
         self.requirements.add_tick_requirement(tick_req)
 

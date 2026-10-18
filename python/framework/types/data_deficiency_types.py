@@ -59,7 +59,7 @@ DEFICIENCY_DECLARATIONS: Dict[DataDeficiency, DeficiencyDeclaration] = {
         check='data_no_quote',
         title='NO QUOTE',
         established='measured: bid equals ask on every row of the file',
-        consequence='bid = ask = traded price, so no fill crossed a spread',
+        consequence='bid = ask = traded price as recorded, so no spread was measured there',
         severity=Severity.WARNING),
     DataDeficiency.NO_ARRIVAL_TIME: DeficiencyDeclaration(
         check='data_no_arrival_time',

@@ -26,6 +26,7 @@ from python.api.api_error_catalog import IDENTITY_UNBOUND, api_error
 from python.api.api_route_documents import describes
 from python.api.head_request_middleware import HeadRequestMiddleware
 from python.api.link_header_middleware import LinkHeaderMiddleware
+from python.api.polled_route_access_filter import PolledRouteAccessFilter
 from python.api.endpoints import (
     bars_router,
     broker_router,
@@ -46,12 +47,21 @@ from python.framework.types.api.api_types import (
     BrokerListResponse,
     CallerResponse,
     HealthResponse,
+    MachineCpuResponse,
+    MachineMemoryResponse,
+    MachineResourcesResponse,
     TimeframeInfo,
     TimeframeListResponse,
     ValidationCheckListResponse,
     ValidationCheckRow,
 )
+from python.framework.types.config_types.machine_resources_config_types import (
+    MachineResourcesConfig,
+)
+from python.framework.types.machine_resources_types import MachineResourcesReading
+from python.framework.utils.machine_resources_reader import MachineResourcesReader
 from python.framework.utils.timeframe_config_utils import TimeframeConfig
+from python.framework.validators.machine_pressure_validator import judge_memory_pressure
 from python.framework.validators.validation_check_catalog import VALIDATION_CHECKS
 
 # Every gated router and the surface its grants name. The surface is the ROUTER's name, and a
@@ -72,6 +82,14 @@ ROUTER_SURFACES = (
     (reports_router.router, 'reports'),
     (sweeps_router.router, 'sweeps'),
 )
+
+# The routes made to be polled. A client asks them every few seconds, so a successful answer stays
+# out of the server's access log, which would otherwise write a line per reading and bury the
+# requests that carry meaning; a failed answer is still logged. A route joins when its document
+# recommends asking it in a steady rhythm (#595).
+POLLED_PATHS = frozenset({
+    '/api/v1/machine-resources',
+})
 
 # The bar routes answer with a bare array, so everything a consumer needs ABOUT the rows travels
 # as a header. A browser hides every response header that is not CORS-safelisted, which made all
@@ -119,6 +137,40 @@ def _describe_caller(request: Request, enforced: bool,
         display_name=identity.account.display_name,
         grants=list(identity.grants),
         note=identity.note,
+    )
+
+
+def _describe_machine(reading: MachineResourcesReading,
+                      thresholds: MachineResourcesConfig) -> MachineResourcesResponse:
+    """
+    Serve one reading of the machine, with the pressure verdict on its memory.
+
+    Args:
+        reading: The processors and the memory, read now
+        thresholds: Where `warn` and `critical` begin
+
+    Returns:
+        The reading as served, its thresholds beside the memory they grade
+    """
+    level, reasons = judge_memory_pressure(reading.memory, thresholds)
+    return MachineResourcesResponse(
+        measured_at=reading.measured_at.isoformat(),
+        cpu=MachineCpuResponse(
+            count=reading.cpu.count,
+            count_source=reading.cpu.count_source,
+            used_pct=reading.cpu.used_pct,
+            window_s=reading.cpu.window_s,
+        ),
+        memory=MachineMemoryResponse(
+            limit_bytes=reading.memory.limit_bytes,
+            used_bytes=reading.memory.used_bytes,
+            used_pct=reading.memory.used_pct,
+            limit_source=reading.memory.limit_source,
+            warn_at_pct=thresholds.memory_warn_pct,
+            critical_at_pct=thresholds.memory_critical_pct,
+        ),
+        pressure_level=level,
+        pressure_reasons=reasons,
     )
 
 
@@ -170,6 +222,10 @@ def create_app() -> FastAPI:
     # the server look younger or older than it is.
     started_at = datetime.now(timezone.utc)
     started_monotonic = time.monotonic()
+    # Built here, so its first processor sample is the server's start and the first reading
+    # already has a window to measure over (#595)
+    machine_reader = MachineResourcesReader()
+    machine_thresholds = AppConfigManager().get_machine_resources_config()
     auth = setup_api_auth()
     print(auth.boot_line)
 
@@ -298,6 +354,16 @@ def create_app() -> FastAPI:
              openapi_extra=describes('server'))
     def caller(request: Request) -> CallerResponse:
         return _describe_caller(request, auth.bearer is not None, auth.identities)
+
+    # Token-only like /brokers and /caller, and for the same reason it takes no grant: it is about
+    # the machine this server runs on, and there is no path parameter for a grant to name (#595).
+    # Not open like /health: a machine's load is nothing a stranger needs to read.
+    @app.get('/api/v1/machine-resources', response_model=MachineResourcesResponse,
+             dependencies=guarded, openapi_extra=describes('server'))
+    def machine_resources() -> MachineResourcesResponse:
+        return _describe_machine(machine_reader.read(), machine_thresholds)
+
+    PolledRouteAccessFilter.install(POLLED_PATHS)
 
     for router, surface in ROUTER_SURFACES:
         app.include_router(

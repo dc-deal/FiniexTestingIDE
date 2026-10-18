@@ -167,7 +167,7 @@ _fee_model()                       ← ONE lookup: fee_structure.model, default 
     │                                 read by both factories so the two legs cannot disagree
     ├── _create_entry_fee()   (from _fill_open_order)
     │       if MAKER_TAKER → create_maker_taker_fee()
-    │       else           → create_spread_fee_from_tick()
+    │       else           → None                       ← the spread is in the fill price
     │
     └── _create_exit_fee()    (from _fill_close_order)
             if MAKER_TAKER → create_maker_taker_fee()   ← on close_lots, taker rate

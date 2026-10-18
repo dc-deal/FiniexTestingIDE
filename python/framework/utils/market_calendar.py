@@ -353,7 +353,11 @@ class MarketCalendar:
         """
         Classify a time gap between two timestamps.
 
-        Used for data continuity validation and gap analysis.
+        Used for data continuity validation and gap analysis. The reason names what this
+        function knows — the category and the length — and gives no advice: whose data
+        surrounds the gap, a venue's published history or our own collection, is not known
+        here, and only for our own collection would "check the collector" be the right
+        reading. The coverage report knows the origin and says what to do.
 
         Args:
             start: Gap start timestamp (end of first file)
@@ -402,7 +406,7 @@ class MarketCalendar:
 
         # 3. SHORT GAP
         if gap_hours < thresholds['short']:
-            return GapCategory.SHORT, f'⚠️  Short interruption ({int(gap_seconds/60)} min - restart/connection?)'
+            return GapCategory.SHORT, f'⚠️  Short interruption ({int(gap_seconds/60)} min)'
 
         # 4. MODERATE GAP
         if gap_hours < thresholds['moderate']:
@@ -418,7 +422,7 @@ class MarketCalendar:
                 return GapCategory.MODERATE, f'ℹ️  Moderate gap outside trading hours ({gap_hours:.2f}h)'
 
         # 5. LARGE GAP (> 4h)
-        return GapCategory.LARGE, f'🔴 Large gap - check data collection ({gap_hours:.2f}h)'
+        return GapCategory.LARGE, f'🔴 Large gap ({gap_hours:.2f}h)'
 
     # =========================================================================
     # GAP SPLITTING AT MARKET BOUNDARIES

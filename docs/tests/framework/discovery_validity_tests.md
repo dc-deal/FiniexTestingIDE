@@ -1,7 +1,8 @@
 # Discovery Cache Validity Tests
 
-`tests/framework/discovery_validity/` — the config-fingerprint comparison across all three
-discovery cache families (#486 finding 57).
+`tests/framework/discovery_validity/` — the config-fingerprint comparison across the bar-derived
+discovery cache families (#486 finding 57), and the rule that every family's cache write reaches
+the discovery index (#602).
 
 Run: `python -m pytest tests/framework/discovery_validity/ -v`
 
@@ -44,3 +45,17 @@ opens once and returns the decoded dict, so the comparison adds **one config loa
 
 The current fingerprint is memoized per instance for the same reason: `DiscoveriesConfigLoader` reads
 its JSON twice per construction, and a validity check runs once per cached entry.
+
+## Every cache write reaches the index
+
+A family that writes its cache on demand — a report computed because its cache was invalid — used
+to leave `discovery_caches_index.parquet` describing the generation before it, and
+`store_cli.py catalog` reported a stale index nobody had asked to rebuild. Every family now writes
+through `DiscoveryCacheIndex.write_cache_file`, which writes the file beside its place, moves it
+there and enters it in the index in the same step.
+
+| Test | Asserts |
+|---|---|
+| `test_the_file_is_written_and_the_index_stays_current` | One write leaves the file on disk, its row in the index, and the index current |
+| `test_a_rewritten_file_keeps_one_row_and_leaves_no_temporary_file` | A second write of the same file replaces its row, and nothing but the file is left in the folder |
+| `test_no_module_writes_a_parquet_file_past_it` | No module under `python/framework/discoveries/` other than the index unit calls `write_table` or `to_parquet` — a family writing past the index would bring the stale index back with the suite green |

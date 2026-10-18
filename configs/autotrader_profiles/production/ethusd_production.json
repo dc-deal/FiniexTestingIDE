@@ -40,7 +40,7 @@
     "type": "kraken"
   },
   "safety": {
-    "enabled": false,
+    "enabled": true,
     "min_balance": 5.0,
     "min_equity": 5.0,
     "max_drawdown_pct": 30.0

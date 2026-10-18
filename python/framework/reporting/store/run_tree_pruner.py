@@ -23,7 +23,7 @@ from python.framework.fixture_catalog.fixture_production_store import (
     FixtureProductionStore,
 )
 from python.framework.reporting.io.artifact_specs import FIELD_STUDY_CAPTURE
-from python.framework.reporting.io.run_header_io import RUN_HEADER_ARTIFACT, read_run_header
+from python.framework.reporting.io.run_header_io import RUN_HEADER_ARTIFACT
 from python.framework.reporting.store.run_index import (
     RunIndex,
     dir_size,

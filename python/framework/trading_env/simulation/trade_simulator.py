@@ -13,7 +13,8 @@ Key Simulation Features:
 - Pending order lifecycle: PENDING → EXECUTED with realistic timing
 - Fill processing: Inherited from AbstractTradeExecutor (shared with live)
 """
-from typing import Dict, FrozenSet, List, Optional, Union
+from bisect import bisect_right
+from typing import Dict, FrozenSet, List, Optional, Tuple, Union
 
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.stress_test.stress_test_rejection import StressTestRejection
@@ -91,6 +92,7 @@ class TradeSimulator(AbstractTradeExecutor):
         inbound_latency_max_ms: int = 80,
         spot_mode: bool = False,
         initial_balances: Optional[Dict[str, float]] = None,
+        modelled_quote_runs: Tuple[Tuple[int, int], ...] = (),
     ):
         """
         Initialize trade simulator.
@@ -108,6 +110,8 @@ class TradeSimulator(AbstractTradeExecutor):
             inbound_latency_max_ms: Maximum inbound latency in ms (order → broker)
             spot_mode: Enable spot trading mode (asset transfer instead of P&L accumulation)
             initial_balances: Asset inventory for spot mode (e.g., {'USD': 50.0, 'ETH': 0.0})
+            modelled_quote_runs: The stretches whose ticks carry a modelled quote, as (first,
+                last) tick time in epoch milliseconds (#602)
         """
         # Initialize common infrastructure (portfolio, broker, counters, fill logic)
         super().__init__(
@@ -151,6 +155,26 @@ class TradeSimulator(AbstractTradeExecutor):
         # the synchronous portfolio.modify_position call (current behavior).
         self._pending_position_modifications: Dict[str, ModificationRequest] = {}
         self._modify_cancel_delay_msc: int = 1  # cosmetic single-msc delay default
+
+        # The stretches whose ticks carry a modelled quote (#602), split for a binary search
+        self._modelled_run_starts: List[int] = [first for first, _ in modelled_quote_runs]
+        self._modelled_run_ends: List[int] = [last for _, last in modelled_quote_runs]
+
+    def _current_quote_modelled(self) -> bool:
+        """
+        Whether the current tick's bid/ask were modelled for a tick without a quote (#602).
+
+        Looked up by the tick's own time among the modelled stretches the preparation recorded —
+        the tick a fill priced from, which in a ghost pass is the last one, not the clock.
+
+        Returns:
+            True when the current tick lies in a modelled stretch
+        """
+        if not self._modelled_run_starts or self._current_tick is None:
+            return False
+        time_msc = self._current_tick.time_msc
+        run = bisect_right(self._modelled_run_starts, time_msc) - 1
+        return run >= 0 and time_msc <= self._modelled_run_ends[run]
 
     # ============================================
     # Pending Order Processing (simulation-specific)

@@ -1,0 +1,61 @@
+{
+  "_comment": "STAGE 4 OF 5 of the security study (#358) — the hard stop at spot, the holding kept. REAL MONEY. One min-lot fill crosses the hard limit; with spot_liquidate_to_quote off the stop sells nothing, keeps the lot and ends the session. The lot is meant to stay: stage 5 takes it over. A fresh baseline (persist_baseline false).",
+  "profile_name": "kraken_spot_btcusd_security_cert_hard_kept",
+  "run_purpose": "certificate",
+  "bot_id": "schard01",
+  "symbol": "BTCUSD",
+  "broker_type": "kraken_spot",
+  "adapter_type": "live",
+  "deployment": {
+    "_comment": "A stage of the security study, never a deployment: each session is its own one-off.",
+    "continuous": false
+  },
+  "dry_run": false,
+  "strategy_config": {
+    "decision_logic_type": "CORE/security_cert_study/security_cert_study",
+    "worker_instances": {
+      "pipeline_rsi": "CORE/rsi"
+    },
+    "workers": {
+      "pipeline_rsi": {
+        "periods": {
+          "M5": 14
+        }
+      }
+    },
+    "decision_logic_config": {
+      "max_session_cost_usd": 0.5,
+      "session_timeout_s": 600,
+      "halt_after_phase": "",
+      "phase_sequence": [
+        {
+          "phase_id": "h_start_flat",
+          "phase_type": "start_flat"
+        },
+        {
+          "phase_id": "h_buy",
+          "phase_type": "submit_expect",
+          "side": "long",
+          "lot_rule": "min_lot",
+          "expect": "filled"
+        },
+        {
+          "phase_id": "h_await_stop",
+          "phase_type": "await_session_end",
+          "fill_timeout_s": 60,
+          "_comment": "The hard stop ends the session while this waits — a result here means it never came."
+        }
+      ]
+    }
+  },
+  "tick_source": {
+    "type": "kraken"
+  },
+  "safety": {
+    "enabled": true,
+    "emergency_flatten_enabled": true,
+    "max_drawdown_abs_hard": 0.001,
+    "spot_liquidate_to_quote": false,
+    "persist_baseline": false
+  }
+}

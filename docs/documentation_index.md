@@ -59,6 +59,7 @@
 | [Trade Execution Visibility](architecture/trade_execution_visibility.md) | Trigger / BrokerOrder / Fills three-level model, Position.entry_trades + TradeRecord.entry_trades / exit_trades propagation, sub-line rendering, long-format event-stream CSV (#330) |
 | [Warmup History](architecture/warmup_history.md) | The bars a run starts from — the last N bars complete at its first tick in every path, the seam a live session closes at that tick, the one checked route into the renderer, and what each pipeline does when a history falls short (#588) |
 | [Market Model](architecture/market_model.md) | The three independent axes describing a venue — asset class, how a position is financed, and how prices come about — all eight combinations with what this project supports, and which price the strategy plane reads against the valuation plane |
+| [Price representation](architecture/price_representation.md) | How a price is stored, computed and served, why float64 and not Decimal, and when to re-open it |
 | [Data Storage Layout](architecture/data_storage_layout.md) | The store catalog — every data store by kind (record · carry-over · archive · derived · special) and retrieval form, the index obligation, why the bulk form stays outside the abstraction (#486) |
 | [Accounting Periods](architecture/accounting_periods.md) | Which clock resets what — the swap rollover at 17:00 New York against the risk day at midnight UTC, the tick-level equity sample, the two carry-over cadences, and what deliberately does not reset |
 | [Data Provenance](architecture/data_provenance.md) | Who wrote an imported file and what that is allowed to mean — the identity a producer states, the registry that maps it here, the three evidence grades, and the gate that keeps development data out of a measurement |
@@ -74,7 +75,7 @@
 | [Swap / Overnight-Funding Cost Model](trading_realism/swap_cost_model.md) | Overnight swap accrual — signed debit/credit, triple-swap (T+2), DST-aware rollover, MarketClock awareness, per-trade reporting (#365) |
 | [Live Telemetry Stream](architecture/live_telemetry_architecture.md) | The throttled live feed behind the console dashboards (LiveCoreSnapshot + frames), both pipelines, JSON groundwork for the viewer push (#400) — distinct from the report pipeline |
 | [Warnings & Errors Tiers](architecture/warnings_errors_tiers.md) | Tier taxonomy (errors / Tier-1 major → validators / Tier-2 log) + the "no decisions in reports" principle; pre-run vs post-run validators, sim/AutoTrader channels (#395) |
-| [Release Certificates](architecture/release_certificates.md) | The four release-gate certificates (benchmark, live adapter, field study, signal feed), their shared CertificateIdentity, the version/dirty-tree guards and the observed-not-re-read rule |
+| [Release Certificates](architecture/release_certificates.md) | The release-gate certificates, their shared CertificateIdentity, the version/dirty-tree guards and the observed-not-re-read rule |
 | [Mock Adapter Guide](architecture/mock_adapter_guide.md) | MockBrokerAdapter for deterministic pipeline testing |
 | [Order Guard](architecture/order_guard_architecture.md) | Pre-validation guard (SHORT+SPOT, rejection cooldown, async callback) |
 | [Performance Tracking Layers](architecture/performance_tracking_layers.md) | Two-layer model (per-component + tick-loop profiler), defaults, graceful degradation, why no context-manager wrappers in the tick loop |
@@ -96,6 +97,7 @@
 |----------|-------------|
 | [Reading the documentation from the API](consumer/docs.md) | The three documentation routes, the ranked search, and the `Link` header every answer carries |
 | [Why a field is null](consumer/nulls.md) | The three causes of a null — not applicable, not measured, not recorded — and what to render for each |
+| [How a price is read](consumer/prices.md) | Which prices are the venue's decimals and which are computed, and how to round a computed one for display |
 | [What makes one row unique](consumer/row-keys.md) | The declared row key, the several-lists form, and the one-unit-four-names join |
 | [Which kind of run this is](consumer/run-kinds.md) | `group`, `ticks_from` and `orders_to`; which combination means money moved |
 | [The run header](consumer/run-header.md) | Every key a run's header holds, its meaning, and the label to show it under |
@@ -145,6 +147,8 @@ Each test suite has its own documentation in [`tests/`](tests/).
 | [Kraken Adapter Live Integration](tests/live_adapters/kraken_adapter_integration_tests.md) | Full order lifecycle against the real Kraken API — validate-only, real limit orders and a real fill round trip; funded account required, release-gate |
 | [Live Field Study](tests/live_field_study/field_study_guide.md) | End-to-end real-money acceptance test + PASS/FAIL certificate — operator-driven, release-gate (#332) |
 | [Field Study Machine](tests/autotrader/field_study_machine_tests.md) | The offline state machine behind that run — every phase outcome reachable without spending money (#332) |
+| [Security Study](tests/security_cert/security_cert_guide.md) | The account's protective rules provoked with real money, stage by stage, and a certificate that says how each rule is proven — operator-driven, release-gate (#358) |
+| [Security Study Tests](tests/autotrader/security_study_tests.md) | The offline phase machine behind that study — every verdict reachable without spending money (#358) |
 | [Live Signal Feed Certificate](tests/live_signal_feed/signal_feed_certificate_guide.md) | Producer contract proof + PASS/FAIL certificate — operator-driven, release-gate (#466) |
 | [Safety Circuit Breaker](tests/autotrader/safety_tests.md) | Account-value safety, phantom drawdown fix, config split, the baseline across a restart, the hard flatten, and what the session recorded |
 | [Tick Sources](tests/autotrader/tick_source_tests.md) | What a venue tick IS before anything sees it: the quote a trade executed against, two subscriptions on one connection (#520) |
@@ -188,7 +192,7 @@ Each test suite has its own documentation in [`tests/`](tests/).
 | [Inter-Tick Interval](tests/data/inter_tick_interval_tests.md) | Market-side interval measurement |
 | [Tick Processing Budget](tests/data/tick_processing_budget_tests.md) | Virtual clock filtering, ClippingStats |
 | [Raw Archive Re-import](tests/data/raw_archive_reimport_tests.md) | The re-import tool over a temp archive: selection by member name, extract, verify's checks, clean's SHA-256 proof (#562) |
-| [Scenario Generator](generator/tests_scenario_generator_docs.md) | Block generation tests |
+| [Scenario Generator](tests/data/scenario_generator_tests.md) | Block generation tests |
 | [Batch Validations](tests/framework/batch_validations_tests.md) | Phase 0 validation: ScenarioValidator, BrokerDataPreparator map filtering |
 | [Config Tests (Cascade + Merge Utility + Loader Field Coverage)](tests/framework/config_cascade_tests.md) | execution_config 3-level cascade, nested sub-group merge, unknown-key safety net (#137), deep_merge list_merge_keys unit tests, every AutoTrader config-block field reachable from JSON, app_config strictness, what a producing instance's identity means here, and the installation's minted host identity |
 | [Worker Tests](tests/framework/worker_tests.md) | Worker framework validation |
@@ -197,7 +201,8 @@ Each test suite has its own documentation in [`tests/`](tests/).
 | [Logging Tests](tests/framework/logging_tests.md) | The log buffer carries records, not rendered lines: the fact survives, the rendering is reproduced character-identically, and a display setting cannot hide a report input |
 | [Signal Worker Tests](tests/framework/signal_workers_tests.md) | SIGNAL worker type (#141): types, provider, llm_sentiment, hybrid decision, orchestrator dispatch, live transports (#468) |
 | [Signal Coverage Tests](tests/framework/signal_coverage_tests.md) | Signal-series gap detection + scenario signal-window validation |
-| [Data Coverage Tests](tests/framework/data_coverage_tests.md) | Data format version spans — which collector schema produced which archive window |
+| [Data Coverage Tests](tests/framework/data_coverage_tests.md) | Data format version spans, the gap listing and its origin reading, the window queries a run asks |
+| [Spread Estimate Tests](tests/framework/spread_estimate_tests.md) | The spread from trades without a quote, and the measurement checked against recorded quotes |
 | [Normalizer Tests](tests/framework/normalizer_tests.md) | Central rescale/clamp/normalize apparatus |
 | [Account Value Tests](tests/framework/account_value_tests.md) | One account-value definition per account model — the input every circuit-breaker limit sits on, and why spot answers None rather than guessing |
 | [Account Leverage Tests](tests/framework/account_leverage_tests.md) | What an algo's `get_leverage()` answers — the account's leverage from the broker configuration, the figure margin divides by |
@@ -208,6 +213,7 @@ Each test suite has its own documentation in [`tests/`](tests/).
 | [Order Endings Tests](tests/framework/order_endings_tests.md) | One status per way an order ends, in both pipelines — who refused it, who cancelled it, what the end of a run leaves — and the counts declared from them |
 | [Order Events Tests](tests/framework/order_events_tests.md) | Every order transition as one event in both pipelines — the declared vocabulary held to the source, each order life step by step, the stream file, the run index and the route |
 | [Field Study Recorder Tests](tests/framework/field_study_recorder_tests.md) | The field study's capture as a copy of the order-event stream, and the certificate that reads it — offline, no order placed |
+| [Security Study Certificate Tests](tests/framework/security_cert_certificate_tests.md) | The certificate that judges the security study's stages together, and the catalog of how each rule is proven — offline |
 | [Trading Day Anchor Tests](tests/framework/trading_day_anchor_tests.md) | Where a market flips its trading day, and which day an instant belongs to — DST-aware, one answer for the log rotation, the daily-loss baseline and the record seal |
 | [Warmup History Tests](tests/framework/warmup_history_tests.md) | One synthetic stream through the backtest, the mock and the live warmup path — the same history at the first tick, the venue read by period and commit, start invariance, the guard and the outcome table (#588) |
 | [Time Utils UTC Tests](tests/framework/time_utils_tests.md) | Every parsed or normalised datetime comes back in UTC — also on a machine whose own zone is not UTC |

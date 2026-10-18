@@ -17,6 +17,7 @@ from python.framework.types.config_types.autotrader_defaults_config_types import
     DriftAuditConfig,
     OrderGuardDefaults,
     ReconciliationDefaults,
+    SafetyConfig,
     SessionEndDefaults,
     StatePersistenceDefaults,
     TickSourceConfig,
@@ -26,69 +27,6 @@ from python.framework.types.config_types.scenario_settings_config_types import (
     ScenarioSettingsConfig,
 )
 from python.framework.types.run_purpose_types import RunPurpose
-
-
-@dataclass
-class SafetyConfig:
-    """
-    Circuit breaker configuration for an AutoTrader session.
-
-    Soft stop: blocks new positions when triggered, existing positions run out normally.
-    Both conditions are OR-combined — either alone triggers the block.
-
-    Args:
-        enabled: Master switch for safety checks
-        min_balance: Block new positions if the ACCOUNT VALUE drops below this floor
-            (margin mode, account currency). Since #356 both floors denominate the same
-            quantity — `get_account_value()` — and the account model only decides which of
-            the two names a profile writes. It used to be settled cash on margin, which
-            moves only on realised P&L, so an open loss could not reach the floor at all
-        min_equity: The same floor, spelled for spot mode (account currency)
-        max_drawdown_pct: Block new positions if the session drawdown exceeds this % of the
-            risk baseline. Measured on the ACCOUNT VALUE in both models since #356
-        max_drawdown_abs: Block new positions if session drawdown exceeds this absolute
-            amount (#314). The sibling of max_drawdown_pct, and the pair is the industry
-            standard for a reason: a percentage auto-scales with the account, an absolute
-            floor stops that percentage from becoming a dangerously large number on a large
-            one. Independent — either can fire first
-        max_daily_loss_abs: Block new positions if the loss since the day's start exceeds
-            this absolute amount (#314). A DAILY limit guards a different failure from a
-            session one: a session accumulates from process start, a day resets, and a bot
-            that loses steadily every day never trips a session limit at all
-        max_daily_loss_pct: The same daily limit as a percentage of the day-start value
-        baseline_mode: Which denominator the drawdown is measured against (#356).
-            'fixed' holds the value at deployment; 'high_water_mark' trails the peak ever
-            seen and therefore RATCHETS — profit tightens the limit, which is the prop-firm
-            convention and a deliberate choice rather than a default
-        emergency_flatten_enabled: Master switch for the HARD stop (#356). Distinct from
-            the soft block above, which only stops new entries: this one CLOSES what is
-            open. Default false — turning it on changes what happens to real money
-        max_drawdown_pct_hard: Drawdown %% at which everything is closed. 0.0 disables
-        max_drawdown_abs_hard: Drawdown amount at which everything is closed. 0.0 disables
-        spot_liquidate_to_quote: Whether the hard stop also SELLS a spot holding. Default
-            false, and the asymmetry is real rather than timid: a margin position can lose
-            more than the account holds, so liquidating it is the point; a spot holding
-            cannot, so selling it converts an unrealised loss into a realised one and is a
-            trading decision, not a safety one. Turn it on where the account must end flat
-        persist_baseline: Whether the baseline survives a restart. Default true, because a
-            baseline that does not is the drift this was built to remove: a restart
-            mid-drawdown re-anchors at the drawn-down value and the accumulated loss is
-            forgotten. False is the deliberate escape for a profile that wants a fresh
-            reference on every start
-    """
-    enabled: bool = False
-    min_balance: float = 0.0
-    min_equity: float = 0.0
-    max_drawdown_pct: float = 0.0
-    max_drawdown_abs: float = 0.0
-    max_daily_loss_abs: float = 0.0
-    max_daily_loss_pct: float = 0.0
-    baseline_mode: str = 'fixed'
-    persist_baseline: bool = True
-    emergency_flatten_enabled: bool = False
-    max_drawdown_pct_hard: float = 0.0
-    max_drawdown_abs_hard: float = 0.0
-    spot_liquidate_to_quote: bool = False
 
 
 @dataclass
@@ -143,6 +81,12 @@ class AutoTraderConfig:
             absent meaning REGULAR. Every mock profile a test runs is a FIXTURE, the real-money
             field study a CERTIFICATE. Says what the session is, not how it trades, so neither
             fingerprint of the profile covers it
+        carry_over_from: The `profile_name` of the profile whose carry-over this one CONTINUES —
+            a later stage of the same bot, run strictly after it, never beside it (#358). Empty
+            for every ordinary profile, which owns its carry-over alone. Only an acceptance
+            study's or a test's profile may declare one, with the same `bot_id`, symbol, adapter,
+            broker and carry-over directory as the profile it names. Says where the state comes
+            from, not how the session trades, so neither fingerprint covers it
         symbol: Trading symbol (e.g., 'BTCUSD')
         broker_type: Broker type identifier (e.g., 'kraken_spot')
         adapter_type: Adapter type ('mock' or 'live')
@@ -171,6 +115,7 @@ class AutoTraderConfig:
     profile_name: str = ''
     bot_id: str = ''
     run_purpose: RunPurpose = RunPurpose.REGULAR
+    carry_over_from: str = ''
     symbol: str = ''
     broker_type: str = ''
     adapter_type: str = 'mock'

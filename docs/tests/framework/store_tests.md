@@ -186,6 +186,29 @@ profile may live; the tests pin a copy caught from either side, distinct ids pas
 in a temporary tree still compared only with its own tree, because a test's copy of a shipped
 profile would otherwise collide with its original.
 
+**One pairing is allowed, and only when declared** (`TestADeclaredContinuation`, #358): two stages
+of one bot that run in order, the later naming the earlier in `carry_over_from`. The tests pin the
+pair starting from either side and the sweep not calling it a collision — and every way it is
+refused: a third claimant, a name that does not match byte for byte, a cycle, two stages with one
+name, a purpose other than `certificate` or `fixture`, a mock stage beside a live one (an omitted
+adapter counting as the loader's default), two cold-start directories, an earlier stage that
+leaves orders resting, a declaration that names no partner, and one that lies in no profile tree,
+which is refused rather than skipped. An undeclared collision names the declaration as the
+remedy for a deliberate later stage.
+
+## `test_carry_over_continuity.py`
+
+What a boot may do with the carry-over it just read (#358). The store writes by reading first, so
+whatever a boot ignores on read, its first write replaces; the tests hold the rules that stand
+between that and a session trading against a state that is not its own:
+
+| Class | What it pins |
+|---|---|
+| `TestADeclaredContinuationReadsACarryOver` | a declaration with the cold start off, or on a study that skips the adoption step, is refused |
+| `TestADeclaredContinuationFindsWhatItContinues` | no document, an unreadable one, one in another format, or one another profile wrote is refused, naming the stage to run first; its own document from an earlier run passes without asking the ledger |
+| `TestAPartnersDocumentComesFromACompletedRun` | a partner's document is taken only from a run with a ledger row — in both directions — and the refusal says "not completed", never "aborted" |
+| `TestAnotherProfilesClaimsStopTheBoot` | another profile's document holding an open position or a session key refuses the boot, naming the writer, its run and the name to restore; one that claims nothing may be started over |
+
 ---
 
 ## `test_run_config_store.py`

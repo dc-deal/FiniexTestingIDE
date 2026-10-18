@@ -1173,6 +1173,21 @@
                 "order": 11
             }
         },
+        {
+            "name": "🔍 Disc - Spread Estimate: Build Cache (all symbols)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/spread_estimate_cli.py",
+            "args": [
+                "build"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "06_rebuild",
+                "order": 12
+            }
+        },
         // ====================================================
         // 🛠️ INSPECT & PROBE
         // ====================================================
@@ -1406,6 +1421,23 @@
             }
         },
         {
+            "name": "🔍 Disc - Spread Estimate: kraken_spot/ETHUSD",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/spread_estimate_cli.py",
+            "args": [
+                "show",
+                "kraken_spot",
+                "ETHUSD"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "08_discovery_analysis",
+                "order": 3
+            }
+        },
+        {
             "name": "🔍 Disc - Volatility Profile: kraken_spot/BTCUSD",
             "type": "debugpy",
             "request": "launch",
@@ -1419,7 +1451,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "08_discovery_analysis",
-                "order": 3
+                "order": 4
             }
         },
         {
@@ -1436,7 +1468,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "08_discovery_analysis",
-                "order": 4
+                "order": 5
             }
         },
         {
@@ -1453,7 +1485,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "08_discovery_analysis",
-                "order": 5
+                "order": 6
             }
         },
         // ====================================================
@@ -3025,6 +3057,42 @@
             }
         },
         {
+            "name": "🧩 Pytest: Security Study (All)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/autotrader/security_study/",
+                "-v",
+                "--tb=short"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "cwd": "${workspaceFolder}",
+            "presentation": {
+                "group": "13_pytest_validation",
+                "order": 61
+            }
+        },
+        {
+            "name": "🧩 Pytest: Security Study Certificate (All)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/framework/security_cert_certificate/",
+                "-v",
+                "--tb=short"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "cwd": "${workspaceFolder}",
+            "presentation": {
+                "group": "13_pytest_validation",
+                "order": 62
+            }
+        },
+        {
             "name": "🧩 Pytest: Session End (#492)",
             "type": "debugpy",
             "request": "launch",
@@ -3038,7 +3106,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 61
+                "order": 63
             }
         },
         {
@@ -3055,7 +3123,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 62
+                "order": 64
             }
         },
         {
@@ -3072,7 +3140,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 63
+                "order": 65
             }
         },
         {
@@ -3089,7 +3157,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 64
+                "order": 66
             }
         },
         {
@@ -3106,7 +3174,24 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 65
+                "order": 67
+            }
+        },
+        {
+            "name": "🧩 Pytest: Spread Estimate (All)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/framework/spread_estimate/",
+                "-v",
+                "--tb=short"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "13_pytest_validation",
+                "order": 68
             }
         },
         {
@@ -3123,7 +3208,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 66
+                "order": 69
             }
         },
         {
@@ -3140,7 +3225,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 67
+                "order": 70
             }
         },
         {
@@ -3157,7 +3242,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 68
+                "order": 71
             }
         },
         {
@@ -3174,7 +3259,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 69
+                "order": 72
             }
         },
         {
@@ -3191,7 +3276,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 70
+                "order": 73
             }
         },
         {
@@ -3208,7 +3293,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 71
+                "order": 74
             }
         },
         {
@@ -3225,7 +3310,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 72
+                "order": 75
             }
         },
         {
@@ -3242,7 +3327,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 73
+                "order": 76
             }
         },
         {
@@ -3259,7 +3344,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 74
+                "order": 77
             }
         },
         {
@@ -3276,7 +3361,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 75
+                "order": 78
             }
         },
         {
@@ -3293,7 +3378,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 76
+                "order": 79
             }
         },
         {
@@ -3310,7 +3395,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 77
+                "order": 80
             }
         },
         {
@@ -3327,7 +3412,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 78
+                "order": 81
             }
         },
         {
@@ -3344,7 +3429,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 79
+                "order": 82
             }
         },
         // ====================================================
@@ -4053,6 +4138,23 @@
             }
         },
         {
+            "name": "🧩 Pytest: Live Field Study Certificate (validate committed)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/live_field_study/test_field_study_certificate.py",
+                "-v",
+                "--tb=short"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "14_release_gate",
+                "order": 5
+            }
+        },
+        {
             "name": "🧩 Pytest: Live Signal Feed (All) - production producer",
             "type": "debugpy",
             "request": "launch",
@@ -4073,7 +4175,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "14_release_gate",
-                "order": 5
+                "order": 6
             }
         },
         {
@@ -4090,7 +4192,24 @@
             "justMyCode": false,
             "presentation": {
                 "group": "14_release_gate",
-                "order": 6
+                "order": 7
+            }
+        },
+        {
+            "name": "🧩 Pytest: Security Study Certificate (validate committed)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/security_cert/test_security_cert_certificate.py",
+                "-v",
+                "--tb=short"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "14_release_gate",
+                "order": 8
             }
         },
         // #505 probe — a dry-run RESTING order against the real venue. Places NOTHING
@@ -4116,7 +4235,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "14_release_gate",
-                "order": 7
+                "order": 9
             }
         },
         {
@@ -4136,7 +4255,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "14_release_gate",
-                "order": 8
+                "order": 10
             }
         },
         {
@@ -4156,7 +4275,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "14_release_gate",
-                "order": 9
+                "order": 11
             }
         },
         {
@@ -4172,7 +4291,60 @@
             "justMyCode": false,
             "presentation": {
                 "group": "14_release_gate",
-                "order": 10
+                "order": 12
+            }
+        },
+        // #358 — the security study runs every stage as a session of its own and writes its
+        // certificate at the end. The real-money entry asks for the release version; on an
+        // uncommitted tree add --allow-dirty to args, and its certificate fails on purpose.
+        {
+            "name": "🧪 AutoTrader: Security Study (Kraken Spot BTCUSD) - real money",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/security_cert_cli.py",
+            "args": [
+                "run",
+                "--release-version",
+                "${input:securityStudyReleaseVersion}"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "14_release_gate",
+                "order": 13
+            }
+        },
+        {
+            "name": "🧪 AutoTrader: Security Study (mock rehearsal)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/security_cert_cli.py",
+            "args": [
+                "run",
+                "--profile-dir",
+                "configs/autotrader_profiles/mock/security_cert"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "14_release_gate",
+                "order": 14
+            }
+        },
+        {
+            "name": "🧪 AutoTrader: Security Study Certificate (latest runs)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/security_cert_cli.py",
+            "args": [
+                "generate",
+                "--latest"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "14_release_gate",
+                "order": 15
             }
         },
         {
@@ -4188,11 +4360,17 @@
             "justMyCode": false,
             "presentation": {
                 "group": "14_release_gate",
-                "order": 11
+                "order": 16
             }
         }
     ],
     "inputs": [
+        {
+            "id": "securityStudyReleaseVersion",
+            "type": "promptString",
+            "description": "Release version the security study's certificate names ('dev' for a rehearsal)",
+            "default": "dev"
+        },
         {
             "id": "externalHistoryFetch",
             "type": "promptString",

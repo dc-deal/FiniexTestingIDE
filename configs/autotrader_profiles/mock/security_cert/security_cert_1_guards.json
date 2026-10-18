@@ -1,0 +1,177 @@
+{
+  "_comment": "MOCK REHEARSAL of stage 1 OF 5 of the security study (#358) — the same phases on the mock adapter, nothing sent to a venue. Run all five with `security_cert_cli.py run --profile-dir configs/autotrader_profiles/mock/security_cert`. A mock session is a dry run, which persists the baseline but not the position book, so stage 5 finds no lot to take over here. Every duration is scaled up from the real stage: the mock replays archived ticks, and in this quiet window up to a minute passes between two of them — longer than the real cooldown, so the real values would let it lapse between two phases.",
+  "profile_name": "security_cert_mock_guards",
+  "run_purpose": "fixture",
+  "bot_id": "scmguard01",
+  "symbol": "BTCUSD",
+  "broker_type": "kraken_spot",
+  "adapter_type": "mock",
+  "deployment": {
+    "_comment": "A stage of the security study, never a deployment: each session is its own one-off.",
+    "continuous": false
+  },
+  "strategy_config": {
+    "decision_logic_type": "CORE/security_cert_study/security_cert_study",
+    "worker_instances": {
+      "pipeline_rsi": "CORE/rsi"
+    },
+    "workers": {
+      "pipeline_rsi": {
+        "periods": {
+          "M5": 14
+        }
+      }
+    },
+    "decision_logic_config": {
+      "max_session_cost_usd": 0.5,
+      "session_timeout_s": 3600,
+      "halt_after_phase": "",
+      "phase_sequence": [
+        {
+          "phase_id": "g_invalid_lot_1",
+          "phase_type": "submit_expect",
+          "side": "long",
+          "lot_rule": "below_min",
+          "expect": "denied",
+          "expect_reason": "invalid_lot_size"
+        },
+        {
+          "phase_id": "g_invalid_lot_2",
+          "phase_type": "submit_expect",
+          "side": "long",
+          "lot_rule": "below_min",
+          "expect": "denied",
+          "expect_reason": "invalid_lot_size"
+        },
+        {
+          "phase_id": "g_funds_not_cooled",
+          "phase_type": "submit_expect",
+          "side": "long",
+          "lot_rule": "beyond_funds",
+          "expect": "denied",
+          "expect_reason": "insufficient_funds",
+          "_comment": "Had the two invalid lots counted, the cooldown would hold LONG back here."
+        },
+        {
+          "phase_id": "g_funds_arms",
+          "phase_type": "submit_expect",
+          "side": "long",
+          "lot_rule": "beyond_funds",
+          "expect": "denied",
+          "expect_reason": "insufficient_funds",
+          "_comment": "The second refusal in a row that counts — it arms the cooldown."
+        },
+        {
+          "phase_id": "g_cooled_buy",
+          "phase_type": "submit_expect",
+          "side": "long",
+          "lot_rule": "min_lot",
+          "expect": "denied",
+          "expect_reason": "rejection_cooldown"
+        },
+        {
+          "phase_id": "g_short_not_cooled",
+          "phase_type": "submit_expect",
+          "side": "short",
+          "lot_rule": "beyond_holding",
+          "expect": "denied",
+          "expect_reason": "insufficient_funds",
+          "_comment": "A sale of more base than the account holds — and SHORT is not held back by LONG's cooldown."
+        },
+        {
+          "phase_id": "g_wait_expiry",
+          "phase_type": "wait",
+          "wait_s": 610
+        },
+        {
+          "phase_id": "g_after_expiry",
+          "phase_type": "submit_expect",
+          "side": "long",
+          "lot_rule": "beyond_funds",
+          "expect": "denied",
+          "expect_reason": "insufficient_funds",
+          "_comment": "The cooldown ran out: the guard lets the order through to its own checks again."
+        },
+        {
+          "phase_id": "g_rearmed",
+          "phase_type": "submit_expect",
+          "side": "long",
+          "lot_rule": "min_lot",
+          "expect": "denied",
+          "expect_reason": "rejection_cooldown",
+          "_comment": "One refusal re-armed it: the count does not decay with time, only a fill resets it."
+        },
+        {
+          "phase_id": "g_wait_expiry_2",
+          "phase_type": "wait",
+          "wait_s": 610
+        },
+        {
+          "phase_id": "g_success",
+          "phase_type": "submit_expect",
+          "side": "long",
+          "lot_rule": "min_lot",
+          "expect": "filled",
+          "_comment": "A fill — it resets the count.",
+          "fill_timeout_s": 300
+        },
+        {
+          "phase_id": "g_after_success_1",
+          "phase_type": "submit_expect",
+          "side": "long",
+          "lot_rule": "beyond_funds",
+          "expect": "denied",
+          "expect_reason": "insufficient_funds"
+        },
+        {
+          "phase_id": "g_after_success_2",
+          "phase_type": "submit_expect",
+          "side": "long",
+          "lot_rule": "beyond_funds",
+          "expect": "denied",
+          "expect_reason": "insufficient_funds",
+          "_comment": "Without the reset, the cooldown would already have re-armed at the phase before."
+        },
+        {
+          "phase_id": "g_rearmed_after_two",
+          "phase_type": "submit_expect",
+          "side": "long",
+          "lot_rule": "min_lot",
+          "expect": "denied",
+          "expect_reason": "rejection_cooldown"
+        },
+        {
+          "phase_id": "g_force_close",
+          "phase_type": "force_close",
+          "fill_timeout_s": 300
+        },
+        {
+          "phase_id": "g_final",
+          "phase_type": "final_summary"
+        }
+      ]
+    }
+  },
+  "order_guard": {
+    "_comment": "600 s, the real stage's 30 s scaled past the replay's longest gap between two ticks; two refusals arm it, as by default.",
+    "cooldown_seconds": 600.0,
+    "max_consecutive_rejections": 2
+  },
+  "safety": {
+    "enabled": false
+  },
+  "tick_source": {
+    "type": "mock"
+  },
+  "display": {
+    "enabled": false
+  },
+  "scenario_settings": {
+    "start_date": "2026-01-25T02:20:20+00:00",
+    "end_date": "2026-01-26T02:14:00+00:00",
+    "balances": {
+      "USD": 1000.0
+    },
+    "account_currency": "USD"
+  }
+}

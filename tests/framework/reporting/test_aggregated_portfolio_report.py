@@ -179,6 +179,34 @@ class TestRender:
         assert 'Maker:' in out and 'Taker:' in out and 'Total Fees:' in out
 
 
+class TestASpreadNobodyMeasuredIsNotASum:
+    """
+    A unit that read data without a quote crossed no recorded spread: its spread total is None,
+    and a sum over the other units would read as the whole.
+    """
+
+    def test_measured_units_add_up(self):
+        c = _build([_pf('s1', spread=3.0), _pf('s2', spread=2.0)]).currencies[0].combined
+        assert c.total_spread_cost == 5.0 and c.avg_spread == 5.0 / 4
+
+    def test_one_unit_without_a_quote_leaves_the_sum_undefined(self):
+        c = _build([_pf('s1', spread=3.0), _pf('s2', spread=None)]).currencies[0].combined
+        assert c.total_spread_cost is None and c.avg_spread is None
+
+    def test_the_cost_breakdown_says_the_spread_was_not_measured(self):
+        rep = _build([_pf('s1', spread=None, maker=1.5, taker=2.5)], [_ex('s1')], [_pe('s1')])
+        summary = PortfolioSummary(
+            PortfolioReport(run_id=_RUN_ID, units=[], aggregates=[]),
+            PendingOrdersReport(run_id=_RUN_ID, units=[]),
+            ExecutionStatsReport(run_id=_RUN_ID, units=[], totals=_ZERO_TOTALS),
+            rep)
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            summary.render_aggregated(ConsoleRenderer())
+        out = re.sub(r'\x1b\[[0-9;]*m', '', buf.getvalue())
+        assert 'Spread: n/a (no quote)' in out and '(without the spread)' in out
+
+
 class TestExecutionRateDerived:
     """The executive used to divide in the printout — the rate is a model figure now (#391)."""
 

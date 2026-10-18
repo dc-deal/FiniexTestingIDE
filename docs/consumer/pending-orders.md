@@ -139,3 +139,6 @@ with it. This route serves that stored result; nothing is recomputed when you as
 A run that holds no such result answers 404, and the refusal names which of four causes it is:
 the run is unknown, it was started without reports, it has produced none yet, or it produced
 other sections but not this one. [Errors](/api/v1/docs/errors) has the vocabulary.
+
+Which of these prices are the venue's decimals and which are computed, and how to round them
+for display: [prices](/api/v1/docs/prices).

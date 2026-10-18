@@ -116,7 +116,7 @@ class TestBasicConversion:
         assert parts[3].endswith('.parquet')
 
     def test_datatype_optimization_applied(self, tmp_path):
-        """bid/ask/last should be float32, tick_volume should be int32."""
+        """tick_volume is narrowed to int32; prices and volumes are not narrowed at all."""
         source = tmp_path / 'source'
         target = tmp_path / 'target'
         data = build_minimal_tick_json(
@@ -135,9 +135,42 @@ class TestBasicConversion:
 
         parquet_file = find_tick_parquets(target)[0]
         df = pd.read_parquet(parquet_file)
-        assert df['bid'].dtype.name == 'float32'
-        assert df['ask'].dtype.name == 'float32'
         assert df['tick_volume'].dtype.name == 'int32'
+        for column in ('bid', 'ask', 'last', 'real_volume'):
+            assert df[column].dtype.name == 'float64', column
+
+    def test_prices_and_volumes_are_stored_as_the_source_wrote_them(self, tmp_path):
+        """
+        Every price and volume reads back as the double its decimal parses to — the number a
+        live session reads from the venue — including decimals beyond float32's seven or so
+        significant digits (an early BTC price with five decimals, an eight-decimal volume).
+        """
+        source = tmp_path / 'source'
+        target = tmp_path / 'target'
+        data = build_minimal_tick_json(
+            symbol='DOTUSD',
+            broker_type='kraken_spot',
+            tick_count=4,
+        )
+        written = [('133.85816', '133.85826', '1.47741803'), ('133.85815', '133.85825', '0.35824604'),
+                   ('133.85817', '133.85827', '0.00012345'), ('133.85818', '133.85828', '12.3')]
+        for tick, (bid, ask, volume) in zip(data['ticks'], written):
+            tick['bid'], tick['ask'], tick['last'] = float(bid), float(ask), float(bid)
+            tick['real_volume'] = float(volume)
+        write_json_fixture(source, 'DOTUSD_ticks.json', data)
+
+        importer = TickDataImporter(
+            source_dir=str(source),
+            target_dir=str(target),
+            auto_render_bars=False,
+        )
+        importer.process_all_exports()
+
+        df = pd.read_parquet(find_tick_parquets(target)[0]).sort_values('time_msc')
+        assert df['bid'].tolist() == [float(bid) for bid, _, _ in written]
+        assert df['ask'].tolist() == [float(ask) for _, ask, _ in written]
+        assert df['last'].tolist() == [float(bid) for bid, _, _ in written]
+        assert df['real_volume'].tolist() == [float(volume) for _, _, volume in written]
 
     def test_timestamps_parsed_as_datetime(self, tmp_path):
         """Timestamp column should be datetime64 dtype."""

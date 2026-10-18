@@ -17,7 +17,7 @@ claims the coin, the account no longer holds it, and the cross-check calls that 
 
 import pytest
 
-from python.framework.autotrader.cold_start_adopter import ColdStartAdopter
+from python.framework.autotrader.cold_start.cold_start_adopter import ColdStartAdopter
 from python.framework.types.config_types.autotrader_defaults_config_types import (
     ColdStartDefaults,
 )

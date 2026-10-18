@@ -44,7 +44,6 @@ from python.framework.stress_test.stale_data_stress_driver import (
 )
 from python.framework.trading_env.abstract_trade_executor import AbstractTradeExecutor
 from python.framework.trading_env.decision_event_dispatcher import DecisionEventDispatcher
-from python.framework.types.decision_event_types import SessionEndEvent, SessionEndSeverity
 from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.portfolio_types.portfolio_aggregation_types import PortfolioStats
 from python.framework.types.process_data_types import (
@@ -428,18 +427,7 @@ def execute_tick_loop(
         # === Session end event (#348) — emitted once the loop ends (tick
         # exhaustion or session-end request). Delivered before reporting.
         if decision_event_dispatcher is not None:
-            if trade_simulator.is_session_end_requested():
-                end_reason = trade_simulator.get_session_end_reason()
-                end_severity = trade_simulator.get_session_end_severity()
-            else:
-                end_reason = 'tick source exhausted'
-                end_severity = SessionEndSeverity.NORMAL
-            decision_event_dispatcher.submit(SessionEndEvent(
-                reason=end_reason,
-                severity=end_severity,
-                tick_time=trade_simulator.get_current_time(),
-            ))
-            decision_event_dispatcher.drain()
+            decision_event_dispatcher.emit_session_end()
 
         if has_clipping:
             scenario_logger.info(

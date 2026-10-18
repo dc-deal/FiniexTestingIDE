@@ -47,6 +47,13 @@ the age reported beside the spread says so by growing.
 A tick's spread is therefore a property of the **format version it came from**, never of the venue.
 A backtest window spanning the rollout sees both regimes.
 
+**A backtest and a mock session part here, on purpose.** A backtest gives a tick recorded without
+a quote the quote the spread estimated for its previous day implies (`modelled_spread_factor`, see
+[Discovery System](../discovery_system.md)); a mock session does not. It rehearses the live path,
+whose venue always sends a quote, and its executor books every crossed spread as measured — so it
+replays such ticks as recorded, bid equal to ask. On a window from before format 1.6.0 a mock
+session therefore crosses no spread where a backtest of the same window crosses a modelled one.
+
 What this does *not* change is the strategy's price. `last` is the traded price on both sides, and
 bars, indicators and decisions read `tick.price` — see [Market Model](../architecture/market_model.md).
 The quote moves `mid`, and with it the valuation plane: equity, drawdown, the mark price and the

@@ -17,7 +17,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from python.framework.autotrader.autotrader_broker_config_setup import create_broker_config
+from python.framework.autotrader.startup.autotrader_broker_config_setup import create_broker_config
 from python.framework.autotrader.dry_run_resolver import resolve_dry_run
 from python.framework.exceptions.live_execution_errors import DryRunConflictError
 from python.framework.types.config_types.market_config_types import ConfigMode
@@ -104,11 +104,11 @@ class TestTheAdapterIsNeverArmedAgainstTheRule:
 
     def test_a_loosening_profile_is_refused_before_anything_is_fetched(self):
         entry = SimpleNamespace(dry_run=True)
-        with patch('python.framework.autotrader.autotrader_broker_config_setup'
+        with patch('python.framework.autotrader.startup.autotrader_broker_config_setup'
                    '.MarketConfigManager') as setup_manager, \
                 patch('python.framework.autotrader.dry_run_resolver.MarketConfigManager') \
                 as resolver_manager, \
-                patch('python.framework.autotrader.autotrader_broker_config_setup'
+                patch('python.framework.autotrader.startup.autotrader_broker_config_setup'
                       '.BrokerConfigFetcherFactory') as fetcher_factory:
             setup_manager.return_value.get_config_mode.return_value = ConfigMode.DYNAMIC
             setup_manager.return_value.get_broker_entry.return_value = entry

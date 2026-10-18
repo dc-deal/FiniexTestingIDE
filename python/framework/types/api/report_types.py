@@ -116,6 +116,10 @@ class TradeHistoryRow(BaseModel):
     # limit order earns by filling inside the spread.
     commission_cost: float = 0.0
     spread_cost: float = 0.0
+    # The spread its fills crossed against a quote the simulation MODELLED for ticks without
+    # one (#602): in gross_pnl like `spread_cost`, beside it and never inside it, so the two
+    # add up to the effective spread of the fills. 0 where every quote was recorded.
+    modelled_spread_cost: float = 0.0
     # Trade analytics (#389) — excursion + risk-normalized result (defaulted: additive columns)
     mae_price: float = 0.0      # most adverse price reached while open
     mfe_price: float = 0.0      # most favorable price reached while open
@@ -205,6 +209,13 @@ class TradeScenarioTotals(BaseModel):
     net_pnl: float
     total_fees: float
     total_swap: float = 0.0  # Σ signed swap over the scenario (#365)
+    # Σ the trades' measured `spread_cost` — beside total_fees, never inside it, because it is
+    # already in gross_pnl. None where the unit read a tick file without a quote: there no fill
+    # crossed a recorded spread, so the sum of those zeros would read as a measurement it is
+    # not. None as well on a report written before contract 32.
+    total_spread_cost: float | None = None
+    # Σ the trades' `modelled_spread_cost` (#602) — always a figure: 0 where nothing was modelled
+    total_modelled_spread_cost: float = 0.0
 
 
 class RunScopedReport(BaseModel):
@@ -572,7 +583,11 @@ class PortfolioUnitRow(BaseModel):
     spot_est_initial: float = 0.0
     spot_est_pnl: float = 0.0
     spot_est_pnl_pct: float = 0.0
-    total_spread_cost: float = 0.0
+    # None where the unit read a tick file without a quote, as on the trade history's totals:
+    # no fill crossed a recorded spread there, and a zero would read as a measurement
+    total_spread_cost: float | None = 0.0
+    # The spread crossed against quotes modelled for ticks without one (#602)
+    total_modelled_spread_cost: float = 0.0
     total_commission: float = 0.0
     total_swap: float = 0.0
     maker_fee: float = 0.0       # spot maker-side fee
@@ -781,6 +796,19 @@ class PendingOrdersReport(RunScopedReport):
     key: list[str] = ['name']
 
 
+class ModelledSpreadDetail(BaseModel):
+    """
+    What a scenario's ticks without a quote were given in place of one (#602) — enough to tell two
+    runs apart by what their fills were charged, and to re-derive the charge from the archive.
+    """
+    factor: float                    # the share of the estimated spread applied; 0 models nothing
+    estimator_version: int           # the version of the method the day estimates came from
+    ticks_without_quote: int         # the scenario's ticks from files that recorded no quote
+    ticks_modelled: int              # of those, the ones given a quote; the rest kept bid = ask
+    median_spread_bps: float | None  # median full spread given, bps of the price; None if none
+    day_digest: str                  # SHA256 over the day estimates used, the factor and the rules
+
+
 class ScenarioDetailsRow(BaseModel):
     """Per-scenario execution + signal metadata (sim batch — the SCENARIO DETAILS section)."""
     name: str
@@ -800,6 +828,8 @@ class ScenarioDetailsRow(BaseModel):
     # Empty where the scenario mounted no BAR file — the only archive that stamps a basis.
     # Not filled from the broker declaration: that is the borrowing the stamp prevents (§31c).
     price_bases: str = ''
+    # What its ticks without a quote were given instead (#602); None where it read none
+    modelled_spread: ModelledSpreadDetail | None = None
     account_currency: str = ''      # resolved P&L denomination currency
     account_currency_explicit: bool = False  # True when set in config (not auto-derived)
     status: str = 'success'         # 'success' | 'failed' | 'hybrid' (partial + error)
@@ -1297,6 +1327,8 @@ class BookingPeriodRow(BaseModel):
     commission_cost: float | None = None
     swap_cost: float | None = None
     spread_cost: float | None = None
+    # Crossed against modelled quotes (#602); None on a period recorded before contract 33
+    modelled_spread_cost: float | None = None
     win_rate: float
     profit_factor: float | None
     # What the account stood at when the period OPENED — the previous period's close, or a
@@ -1331,6 +1363,7 @@ class BookingUnitTotalRow(BaseModel):
     commission_cost: float | None = None
     swap_cost: float | None = None
     spread_cost: float | None = None
+    modelled_spread_cost: float | None = None
     gross_profit: float = 0.0
     gross_loss: float = 0.0
     win_rate: float
@@ -1573,6 +1606,7 @@ class RunResultRow(BaseModel):
     period_commission_cost: float | None = None
     period_swap_cost: float | None = None
     period_spread_cost: float | None = None
+    period_modelled_spread_cost: float | None = None
     # What a period looks like beyond its net result.
     avg_mae_winners: float | None = None
     avg_mae_losers: float | None = None
@@ -2744,13 +2778,15 @@ class AggregatedPortfolioRow(BaseModel):
     # one scenario's decline beside another's peak.
     highest_equity: float = 0.0
     highest_equity_scenario: str = ''
-    # Cost split
-    total_spread_cost: float = 0.0
+    # Cost split. The spread is None as soon as one unit's is: a sum over the units that had a
+    # quote would read as the whole
+    total_spread_cost: float | None = 0.0
+    total_modelled_spread_cost: float = 0.0
     total_commission: float = 0.0
     total_swap: float = 0.0
     maker_fee: float = 0.0
     taker_fee: float = 0.0
-    avg_spread: float = 0.0
+    avg_spread: float | None = 0.0
     # Execution (per currency)
     orders_submitted: int = 0
     orders_adopted: int = 0
@@ -2818,9 +2854,12 @@ class RobustnessWindowRow(BaseModel):
     regime: str = ''            # Profile Runs only (from the source block)
     session: str = ''           # Profile Runs only
     currency: str = ''
-    metric_value: float = 0.0   # the configured primary metric (expectancy or net_pnl)
+    metric_value: float = 0.0   # the configured primary metric (a RobustnessMetric value)
     net_pnl: float = 0.0        # secondary, non-aggregated reference
     expectancy: float = 0.0
+    # Final equity against the starting value, in percent, open positions marked; None when
+    # the window had no starting value to measure against.
+    equity_return_pct: float | None = None
     total_trades: int = 0
     profitable: bool = False
 
@@ -2874,6 +2913,9 @@ class RobustnessReport(RunScopedReport):
     params_constant: bool = True            # all windows share the resolved strategy_config
     drifting_windows: list[str] = []        # windows whose params differ from the first
     disposition_pct: float = 0.0            # block-splitting distortion (trust-gate input)
+    # Whether the disposition can suppress the verdict: False for a metric that values what a
+    # window still holds, which nothing left open at an edge distorts.
+    disposition_gates_verdict: bool = True
     regime_breakdown: list[RobustnessRegimeRow] = []
     # Config thresholds carried for a self-describing render (display class) + API consistency.
     overfit_wfe_threshold: float = 0.5

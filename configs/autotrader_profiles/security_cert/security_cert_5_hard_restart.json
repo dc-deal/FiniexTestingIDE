@@ -1,0 +1,54 @@
+{
+  "_comment": "STAGE 5 OF 5 of the security study (#358) — a restart after the hard stop. REAL MONEY. The same bot as stage 4: the boot takes over the lot stage 4 kept, the baseline comes back with it, and the stop fires again at the first valued tick — today's behaviour; #590 will refuse the start instead and change this stage's expectation. With spot_liquidate_to_quote on it sells the lot, and the account ends flat.",
+  "profile_name": "kraken_spot_btcusd_security_cert_hard_restart",
+  "run_purpose": "certificate",
+  "bot_id": "schard01",
+  "carry_over_from": "kraken_spot_btcusd_security_cert_hard_kept",
+  "symbol": "BTCUSD",
+  "broker_type": "kraken_spot",
+  "adapter_type": "live",
+  "deployment": {
+    "_comment": "A stage of the security study, never a deployment: each session is its own one-off.",
+    "continuous": false
+  },
+  "dry_run": false,
+  "strategy_config": {
+    "decision_logic_type": "CORE/security_cert_study/security_cert_study",
+    "worker_instances": {
+      "pipeline_rsi": "CORE/rsi"
+    },
+    "workers": {
+      "pipeline_rsi": {
+        "periods": {
+          "M5": 14
+        }
+      }
+    },
+    "decision_logic_config": {
+      "max_session_cost_usd": 0.5,
+      "session_timeout_s": 600,
+      "halt_after_phase": "",
+      "phase_sequence": [
+        {
+          "phase_id": "hr_await_stop",
+          "phase_type": "await_session_end",
+          "fill_timeout_s": 60
+        }
+      ]
+    }
+  },
+  "tick_source": {
+    "type": "kraken"
+  },
+  "safety": {
+    "enabled": true,
+    "emergency_flatten_enabled": true,
+    "max_drawdown_abs_hard": 0.001,
+    "spot_liquidate_to_quote": true,
+    "persist_baseline": true
+  },
+  "cold_start": {
+    "_comment": "The stage restarts unattended and must take over the kept lot without asking.",
+    "adoption_mode": "auto"
+  }
+}

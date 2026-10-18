@@ -84,6 +84,7 @@ class PostRunValidator:
         self._check_data_version()
         self._check_data_origin()
         self._check_data_deficiencies()
+        self._check_modelled_spread()
         self._check_budget()
         self._check_budget_granularity()
         self._check_budget_too_high()
@@ -272,6 +273,38 @@ class PostRunValidator:
                 f'{declaration.title} — {sum(groups.values())} of {total_files} input file(s): '
                 f'{declaration.consequence}\n'
                 f'  → {breakdown}'))
+
+    def _check_modelled_spread(self) -> None:
+        """
+        Say once per run what the ticks without a quote were charged instead (#602).
+
+        A standing condition like the missing quote it answers, so it is one line with its counts:
+        how many such ticks received a modelled quote, at which median spread, factor and estimator
+        version — and how many kept bid = ask for want of an estimate before their day.
+        """
+        summaries = [scenario.modelled_spread for scenario in self._batch.single_scenario_list
+                     if scenario.modelled_spread is not None]
+        if not summaries:
+            return
+        without_quote = sum(s.ticks_without_quote for s in summaries)
+        modelled = sum(s.ticks_modelled for s in summaries)
+        factors = ', '.join(f'{f:g}' for f in sorted({s.factor for s in summaries}))
+        versions = ', '.join(f'v{v}' for v in sorted({s.estimator_version for s in summaries}))
+        if modelled == 0:
+            self._add('data_modelled_spread', ValidationDomain.DATA, (
+                f'MODELLED SPREAD — none: {without_quote:,} tick(s) without a quote kept bid = ask '
+                f'(factor {factors}) — no spread was charged on them'))
+            return
+        medians = sorted(s.median_spread_bps for s in summaries if s.median_spread_bps is not None)
+        spread = (f'{medians[0]:.2f} bps' if medians[0] == medians[-1]
+                  else f'{medians[0]:.2f}–{medians[-1]:.2f} bps by scenario')
+        lines = (f'MODELLED SPREAD — {modelled:,} of {without_quote:,} tick(s) without a quote '
+                 f'were given a modelled quote: median spread {spread}, factor {factors}, '
+                 f'estimator {versions}')
+        if modelled < without_quote:
+            lines += (f'\n  → {without_quote - modelled:,} kept bid = ask: no usable estimate '
+                      f'before their day')
+        self._add('data_modelled_spread', ValidationDomain.DATA, lines)
 
     def _check_budget(self) -> None:
         """Warn when avg tick processing exceeds the P5 interval (consider setting a budget)."""
@@ -479,8 +512,10 @@ class PostRunValidator:
                 f'(< {config.min_windows}) — the distribution is statistically weak; add more '
                 f'windows before trusting it.'))
 
-        # Trust gate: block-splitting distortion makes the per-window numbers artifacts.
-        if report.disposition_pct > config.disposition_trust_pct:
+        # Trust gate: block-splitting distortion makes the per-window numbers artifacts — of a
+        # closed-trade metric. A metric that values what is still open misses nothing at the edge.
+        if (report.disposition_gates_verdict
+                and report.disposition_pct > config.disposition_trust_pct):
             self._add('robustness_low_trust', ValidationDomain.ROBUSTNESS, (
                 f'ROBUSTNESS: verdict suppressed — block-splitting distortion '
                 f'{report.disposition_pct:.1f}% exceeds {config.disposition_trust_pct:.0f}%; the '

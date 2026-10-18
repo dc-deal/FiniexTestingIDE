@@ -80,12 +80,12 @@ To override any field, create `user_configs/market_config.json` with only the ch
 
 ### Dry-Run Mode
 
-When `dry_run: true`, the adapter sends `validate=true` to Kraken's AddOrder endpoint. Kraken validates the order completely (pair, volume, balance, permissions) but **does not execute it**. No money is moved, no txid is generated.
+When `dry_run: true`, the adapter sends `validate=true` to Kraken's AddOrder endpoint. Kraken validates the order (pair, volume, permissions) but **does not execute it**. No money is moved, no txid is generated. **It does not check the account's balance for a sell:** measured 2026-10-17, a validate-only market sell of 0.05 ETH was accepted on an account holding 0.0166 ETH. A buy's funds check was not measured. A dry run is therefore no proof that the real order would be funded.
 
 The submit goes to Kraken with `validate=true` — checked, never placed — and `DryRunOrderSimulator`
 then plays the order's lifecycle locally, filling it when the market reaches its price (#505). The
-venue's check catches real API errors (bad permissions, insufficient balance, invalid pair) without
-risking funds.
+venue's check catches real API errors (bad permissions, invalid pair, a volume below the minimum)
+without risking funds — but not a sell larger than the holding (measured 2026-10-17, above).
 
 **Kraken Spot has no testnet/sandbox.** Dry-run mode is the only way to test order flow without real execution.
 

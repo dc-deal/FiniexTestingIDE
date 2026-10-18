@@ -15,7 +15,7 @@ import pytest
 
 from python.configuration.autotrader.autotrader_config_loader import load_autotrader_config
 from python.configuration.market_config_manager import MarketConfigManager
-from python.framework.autotrader.rendered_profile_builder import (
+from python.framework.autotrader.run_record.rendered_profile_builder import (
     assert_rendered_parameters_match,
     render_autotrader_profile,
 )

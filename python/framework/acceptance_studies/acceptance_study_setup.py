@@ -1,34 +1,38 @@
 """
-FiniexTestingIDE - Field Study Setup (#332)
+FiniexTestingIDE - Acceptance Study Setup (#332, #358)
 
-Builds a Field Study session's capture and runs its preflight, so `AutotraderMain.run()` keeps a
-call instead of a block — the shape of `cold_start_setup` and `order_event_stream_setup`: one
-function that constructs, wires and decides, and hands back what the session holds on to.
+Builds an acceptance study session's capture and runs its preflight, so `AutotraderMain.run()`
+keeps a call instead of a block — the shape of `cold_start_setup` and `order_event_stream_setup`:
+one function that constructs, wires and decides, and hands back what the session holds on to.
 
 The capture is two writers on one file (#566): the recorder for the study's own choreography, and
 the projection that copies the live core's order-event stream into it while the executor records.
+Every acceptance study is set up here; what differs between them — its name, its capture file, the
+step after it — the study declares itself.
 """
 
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-from python.framework.decision_logic.core.live_field_study.live_field_study import LiveFieldStudy
+from python.framework.acceptance_studies.abstract_acceptance_study import AbstractAcceptanceStudy
 from python.framework.logging.abstract_logger import AbstractLogger
+from python.framework.reporting.acceptance_study_recorder import AcceptanceStudyRecorder
+from python.framework.reporting.acceptance_study_stream_projection import (
+    AcceptanceStudyStreamProjection,
+)
 from python.framework.reporting.api_perf_monitor import ApiPerfMonitor
-from python.framework.reporting.field_study_recorder import FieldStudyRecorder
-from python.framework.reporting.field_study_stream_projection import FieldStudyStreamProjection
-from python.framework.reporting.io.artifact_specs import FIELD_STUDY_CAPTURE
 from python.framework.trading_env.abstract_trade_executor import AbstractTradeExecutor
 from python.framework.trading_env.live.reconciler import Reconciler
+from python.framework.types.acceptance_study_types.study_capture_types import CaptureCloseReason
 from python.framework.types.config_types.market_config_types import TradingModel
 from python.framework.types.live_types.api_perf_types import ApiPerfSnapshot
 
 
 @dataclass
-class FieldStudySetup:
+class AcceptanceStudySetup:
     """
-    What a Field Study session keeps after its setup.
+    What an acceptance study session keeps after its setup.
 
     Lives beside its builder rather than in `framework/types/`: the recorder is a live
     collaborator, not data.
@@ -39,12 +43,12 @@ class FieldStudySetup:
         refusal: Why the session must not trade, as the session log says it — '' when it may
     """
     proceed: bool = True
-    recorder: Optional[FieldStudyRecorder] = None
+    recorder: Optional[AcceptanceStudyRecorder] = None
     refusal: str = ''
 
 
-def open_field_study(
-    decision_logic: LiveFieldStudy,
+def open_acceptance_study(
+    decision_logic: AbstractAcceptanceStudy,
     executor: AbstractTradeExecutor,
     reconciler: Optional[Reconciler],
     trading_model: TradingModel,
@@ -52,7 +56,7 @@ def open_field_study(
     unit_name: str,
     symbol: str,
     logger: AbstractLogger,
-) -> FieldStudySetup:
+) -> AcceptanceStudySetup:
     """
     Open the capture, attach it to the live core's record, and check the account before trading.
 
@@ -61,7 +65,7 @@ def open_field_study(
     written; nothing in the decision logic records an order any more.
 
     Args:
-        decision_logic: The Live Field Study driving this session
+        decision_logic: The acceptance study driving this session
         executor: The session's executor — what records every order transition
         reconciler: The venue reconciler, or None when reconciliation is disabled
         trading_model: The account model the session trades
@@ -73,27 +77,30 @@ def open_field_study(
     Returns:
         Whether the session may trade, and the open capture
     """
+    label = decision_logic.STUDY_LABEL
     if trading_model != TradingModel.SPOT:
-        # The Field Study assumes SPOT semantics (sell held base, 50/50 funding,
+        # The acceptance studies assume SPOT semantics (sell held base, funding on both sides,
         # order-book flat-preflight). The MARGIN variant (short = margin position,
         # flat = no positions + free margin) lands with #209 — fail fast until then.
         banner = (
-            f"FIELD STUDY ABORTED — trading_model '{trading_model.value}' "
-            f"is not supported. The Live Field Study currently supports SPOT only "
+            f"{label.upper()} ABORTED — trading_model '{trading_model.value}' "
+            f"is not supported. The {label} currently supports SPOT only "
             f"(Kraken); the MARGIN variant lands with #209."
         )
         # The SESSION channel — the global log never reaches the summary, and an abort the
         # report does not know about is an abort nobody sees.
         logger.error(banner)
         print(f"\n{'=' * 60}\n  ❌ {banner}\n{'=' * 60}\n")
-        return FieldStudySetup(proceed=False, refusal=banner)
+        return AcceptanceStudySetup(proceed=False, refusal=banner)
 
-    recorder = FieldStudyRecorder(
-        output_path=str(run_dir / FIELD_STUDY_CAPTURE),
+    recorder = AcceptanceStudyRecorder(
+        output_path=str(run_dir / decision_logic.get_capture_name()),
         profile=unit_name,
         symbol=symbol,
         phase_ids=decision_logic.get_phase_ids(),
         logger=logger,
+        study_label=label,
+        next_step=decision_logic.get_capture_next_step(),
         # What the session's adapter declares, and what the executor makes of it when it books
         # a fill — the certificate judges an estimated fee against the executor's answer, never
         # against a config or a second copy of its rule
@@ -101,21 +108,21 @@ def open_field_study(
         venue_fee_expected=executor.expects_venue_fee_in_fill_answer(),
     )
     decision_logic.set_recorder(recorder)
-    projection = FieldStudyStreamProjection(recorder, unit_name)
+    projection = AcceptanceStudyStreamProjection(recorder, unit_name)
     executor.add_order_event_listener(projection)
     executor.add_broker_truth_listener(projection.write_broker_truth)
     try:
-        refusal = _preflight(reconciler, logger)
+        refusal = _preflight(reconciler, logger, label)
     except Exception:
         # The capture is open and the session never learns of it — close it here, so a venue
         # that cannot be read at the preflight leaves a terminated file behind, not a header.
-        recorder.close('preflight failed')
+        recorder.close(CaptureCloseReason.PREFLIGHT_FAILED)
         raise
-    return FieldStudySetup(proceed=not refusal, recorder=recorder, refusal=refusal)
+    return AcceptanceStudySetup(proceed=not refusal, recorder=recorder, refusal=refusal)
 
 
-def close_field_study(
-    recorder: FieldStudyRecorder,
+def close_acceptance_study(
+    recorder: AcceptanceStudyRecorder,
     api_monitor: Optional[ApiPerfMonitor],
     reconciler: Optional[Reconciler],
 ) -> None:
@@ -135,14 +142,14 @@ def close_field_study(
         if api_monitor is not None:
             recorder.record_api_perf(_api_perf_block(api_monitor.get_snapshot()))
     finally:
-        recorder.close('session end')
+        recorder.close(CaptureCloseReason.SESSION_END)
 
 
-def _preflight(reconciler: Optional[Reconciler], logger: AbstractLogger) -> str:
+def _preflight(reconciler: Optional[Reconciler], logger: AbstractLogger, label: str) -> str:
     """
     Refuse to trade beside a resting order (#332 / #151).
 
-    The Field Study is funded with assets on both sides (e.g. ~50/50 base/quote) so the SELL
+    An acceptance study is funded with assets on both sides (e.g. ~50/50 base/quote) so its SELL
     phases sell held base — a non-quote balance is therefore EXPECTED, not a contaminant. The hard
     requirement is only: no resting broker orders, which would contaminate the run. What the venue
     held is written by the session-start read that follows, as the capture's preflight snapshot.
@@ -150,18 +157,19 @@ def _preflight(reconciler: Optional[Reconciler], logger: AbstractLogger) -> str:
     Args:
         reconciler: The venue reconciler, or None when reconciliation is disabled
         logger: The session channel
+        label: The study's name, as the banner and the log say it
 
     Returns:
         '' if clear (or reconciliation disabled), else the refusal that aborts the run
     """
     if reconciler is None:
-        logger.warning('Field Study preflight skipped — reconciliation is disabled')
+        logger.warning(f'{label} preflight skipped — reconciliation is disabled')
         return ''
 
     flat = reconciler.is_account_flat()
     if flat.open_orders:
         banner = (
-            f'FIELD STUDY ABORTED — {len(flat.open_orders)} resting broker order(s) '
+            f'{label.upper()} ABORTED — {len(flat.open_orders)} resting broker order(s) '
             f'present; cancel them before the run'
         )
         logger.error(banner)
@@ -169,10 +177,10 @@ def _preflight(reconciler: Optional[Reconciler], logger: AbstractLogger) -> str:
         return banner
 
     logger.info(
-        f"✅ Field Study preflight: no resting orders "
+        f"✅ {label} preflight: no resting orders "
         f"(starting balances: {flat.asset_balances or 'quote-only'})"
     )
-    print('  ▸ Field Study preflight: no resting orders')
+    print(f'  ▸ {label} preflight: no resting orders')
     return ''
 
 

@@ -117,6 +117,12 @@ class TestWhatItDeliberatelyIgnores:
         after = _profile_fingerprint(make_config(profile_name='renamed_but_identical'))
         assert before == after
 
+    def test_a_declared_continuation_is_not_operational(self, make_config):
+        # Which stage came before says nothing about how this one trades (#358).
+        before = _profile_fingerprint(make_config())
+        after = _profile_fingerprint(make_config(carry_over_from='an_earlier_stage'))
+        assert before == after
+
 
 class TestTheProjection:
     """`to_plain` has to survive both config shapes §6 allows, plus what sits inside them."""

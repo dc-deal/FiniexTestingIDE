@@ -20,6 +20,7 @@ from python.configuration.data_origin_registry import (
     ORIGIN_METADATA_KEY,
     DataOriginRegistry,
 )
+from python.data_management.index.index_entry_times import entry_time_bounds
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.store.abstract_store_index import store_index_filename
@@ -37,7 +38,7 @@ vLog = get_global_logger()
 # by nothing; giving it a read path is what makes a column addition safe to deploy.
 # The proper mechanism is `AbstractStoreIndex.LOGIC_VERSION`, which these three legacy managers
 # do not have — adopting it is #583's, and this is the stopgap until then.
-INDEX_SCHEMA_VERSION = b'2.3'
+INDEX_SCHEMA_VERSION = b'2.4'
 
 
 def _json_or_none(raw: Optional[bytes]) -> Optional[dict]:
@@ -317,6 +318,9 @@ class TickIndexManager:
             'tick_count': tick_count,
             'file_size_mb': file_size_mb,
             'source_file': source_file,
+            # When the importer wrote the file. A re-import that changes only VALUES keeps
+            # the name, the count and the range; this is what still tells the file is new.
+            'processed_at': custom_metadata.get(b'processed_at', b'').decode('utf-8'),
             'num_row_groups': pq_file.num_row_groups,
 
             'statistics': {
@@ -404,16 +408,13 @@ class TickIndexManager:
                 f"Symbol '{symbol}' not found in index for broker_type '{broker_type}'")
             return []
 
-        relevant = []
-
-        for entry in self.index[broker_type][symbol]:
-            file_start = pd.to_datetime(entry['start_time'], utc=True)
-            file_end = pd.to_datetime(entry['end_time'], utc=True)
-
-            if file_start <= end_date and file_end >= start_date:
-                relevant.append(Path(entry['path']))
-
-        return relevant
+        entries = self.index[broker_type][symbol]
+        starts, ends = entry_time_bounds(entries)
+        return [
+            Path(entry['path'])
+            for entry, file_start, file_end in zip(entries, starts, ends)
+            if file_start <= end_date and file_end >= start_date
+        ]
 
     # =========================================================================
     # INDEX PERSISTENCE - PARQUET FORMAT
@@ -436,6 +437,7 @@ class TickIndexManager:
                         'tick_count': entry['tick_count'],
                         'file_size_mb': entry['file_size_mb'],
                         'source_file': entry['source_file'],
+                        'processed_at': entry.get('processed_at', ''),
                         'num_row_groups': entry['num_row_groups'],
                         'collected_start': entry.get('collected_start', 0),
                         'collected_end': entry.get('collected_end', 0),
@@ -463,7 +465,7 @@ class TickIndexManager:
         # data_format_version got lost on persist in the first place.
         columns = [
             'broker_type', 'symbol', 'file', 'path', 'start_time', 'end_time',
-            'tick_count', 'file_size_mb', 'source_file', 'num_row_groups',
+            'tick_count', 'file_size_mb', 'source_file', 'processed_at', 'num_row_groups',
             'collected_start', 'collected_end',
             'anchor_resyncs', 'anchor_max_correction_ms',
             'statistics', 'sessions', 'data_format_version',
@@ -506,17 +508,28 @@ class TickIndexManager:
     def _load_index(self) -> None:
         """Load index from Parquet file and convert to nested dict."""
         try:
-            df = pd.read_parquet(self.index_file)
-            self.index = self._dataframe_to_nested_dict(df)
+            # Straight to Python records, without a DataFrame: every backtest batch loads the
+            # index, and a Series built per row cost 0.65–0.8 s over 7,726 rows where this
+            # read costs about 0.1 s (measured 2026-10-15)
+            records = pq.read_table(self.index_file).to_pylist()
+            self.index = self._records_to_nested_dict(records)
         except Exception as e:
             self.logger.warning(f'Failed to load tick index: {e}')
             self.index = {}
 
-    def _dataframe_to_nested_dict(self, df: pd.DataFrame) -> Dict[str, Dict[str, List[Dict]]]:
-        """Convert flat DataFrame to nested dict structure."""
+    def _records_to_nested_dict(self, records: List[Dict]) -> Dict[str, Dict[str, List[Dict]]]:
+        """
+        Convert the index's flat rows to the nested dict structure.
+
+        Args:
+            records: One dict per index row, as the parquet file holds it
+
+        Returns:
+            broker_type → symbol → entries, each list sorted by start time
+        """
         result = {}
 
-        for _, row in df.iterrows():
+        for row in records:
             broker_type = row['broker_type']
             symbol = row['symbol']
 
@@ -561,6 +574,7 @@ class TickIndexManager:
                 'origin_collected_on': row.get('origin_collected_on', ''),
                 # Written by every index of this schema version, so no tolerance is needed:
                 # an older index is rebuilt before it is read (_schema_outdated)
+                'processed_at': row['processed_at'],
                 'deficiencies': [
                     DataDeficiency(value) for value in (row['deficiencies'] or '').split(',')
                     if value],

@@ -48,6 +48,8 @@ class BasePortfolioStats:
 
     # Cost breakdown
     total_spread_cost: float
+    # Crossed against quotes modelled for ticks without one (#602), beside the measured spread
+    total_modelled_spread_cost: float
     total_commission: float
     total_swap: float
     maker_fee: float

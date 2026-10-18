@@ -353,6 +353,8 @@ class TestTheAppLevelRoutesAreADecision:
     - `/brokers` requires a token. It names which venues this installation carries, which is
       a fact about the installation. It takes no grant, because it has no path parameter for
       one to be about.
+    - `/machine-resources` requires a token and takes no grant, for the same two reasons: the
+      machine's load is nothing a stranger needs, and there is no path parameter (#595).
     """
 
     def test_timeframes_is_open(self):
@@ -381,6 +383,17 @@ class TestTheAppLevelRoutesAreADecision:
         # takes an explicit list of routes that are token-only by design, and this is ours.
         client = _client(_token(token='t-none', grants=[], note='c'))
         assert client.get('/api/v1/brokers', headers=_headers('t-none')).status_code == 200
+
+
+    def test_the_machine_resources_require_a_token(self):
+        client = _client(_token(token='t-any', grants=['bars:*'], note='c'))
+        assert client.get('/api/v1/machine-resources').status_code == 401
+
+    def test_a_token_holding_NOTHING_still_reaches_the_machine_resources(self):
+        """Token-only by design, like the broker list — not a surface whose scope was forgotten."""
+        client = _client(_token(token='t-none', grants=[], note='c'))
+        assert client.get('/api/v1/machine-resources',
+                          headers=_headers('t-none')).status_code == 200
 
 
 class TestTheCallerRouteSaysWhoIsCalling:

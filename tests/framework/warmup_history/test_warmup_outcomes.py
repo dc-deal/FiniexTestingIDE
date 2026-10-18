@@ -18,7 +18,9 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from python.framework.autotrader.autotrader_warmup_preparator import AutotraderWarmupPreparator
+from python.framework.autotrader.startup.autotrader_warmup_preparator import (
+    AutotraderWarmupPreparator,
+)
 from python.framework.autotrader.kraken_ohlc_bar_fetcher import KrakenOhlcBarFetcher
 from python.framework.bars.bar_rendering_controller import BarRenderingController
 from python.framework.exceptions.connection_errors import ConnectionInadmissibleError
@@ -36,6 +38,7 @@ from tests.framework.warmup_history.warmup_history_builders import (
     requirements_for,
     session_config,
 )
+from tests.shared.coverage_report_stub import coverage_report_stub
 
 UTC = timezone.utc
 START = datetime(2026, 8, 5, 13, 2, 30, tzinfo=UTC)
@@ -48,8 +51,7 @@ def _validate(package: ProcessDataPackage, required: Dict[str, int],
     app_config = MagicMock()
     app_config.get_bar_max_history.return_value = bar_max_history
     app_config.get_allowed_gap_categories.return_value = []
-    report = MagicMock()
-    report.gaps = []
+    report = coverage_report_stub()
     validator = ScenarioDataValidator(
         data_coverage_reports={('kraken_spot', SYMBOL): report},
         app_config=app_config, logger=MagicMock())

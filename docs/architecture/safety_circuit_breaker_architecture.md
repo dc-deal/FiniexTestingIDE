@@ -11,7 +11,7 @@
 
 ## Overview
 
-The Safety Circuit Breaker is an account-level protection mechanism in the AutoTrader tick loop. It monitors balance/equity and drawdown thresholds on every tick and blocks all new position entries when thresholds are breached.
+The Safety Circuit Breaker is an account-level protection mechanism of the AutoTrader session (`SafetyCircuitBreaker`, which the tick loop feeds on every tick). It monitors balance/equity and drawdown thresholds on every tick and blocks all new position entries when thresholds are breached.
 
 **Key characteristic: AutoTrader pipeline only.** The Safety Circuit Breaker does not exist in
 backtesting. In simulation, you want to see the full consequences of an algorithm's behavior —
@@ -31,7 +31,7 @@ AutoTrader Tick Loop (every tick)
     │       ├── SPOT:   balance + held assets at the current mid price
     │       └── MARGIN: balance + unrealized P&L
     │
-    ├── _check_safety(safety_value, baseline)
+    ├── SafetyCircuitBreaker.check_safety(safety_value, baseline)
     │   ├── min threshold check:  SPOT → min_equity, MARGIN → min_balance
     │   ├── drawdown checks:      pct and abs, against the risk baseline
     │   ├── daily loss checks:    pct and abs, against the DAY's baseline
@@ -170,7 +170,7 @@ holdings — so a bare "−12 %" could not be traced back to the denominator tha
 
 The report is written to `io/safety.json` and rendered as a block in the AutoTrader session
 summary. It goes through the unified reporting pipeline (`docs/architecture/reporting_pipeline.md`):
-the tick loop CAPTURES, `safety_report_builder.py` DERIVES, the console only formats.
+the safety circuit breaker CAPTURES, `safety_report_builder.py` DERIVES, the console only formats.
 
 ### What it answers, and why each answer has the shape it has
 
@@ -237,13 +237,14 @@ Absent only when no baseline was ever taken — a session that saw no tick it co
 
 | File | Role |
 |------|------|
-| `python/framework/autotrader/autotrader_tick_loop.py` | `_check_safety()` implementation, equity computation at call site |
+| `python/framework/autotrader/safety/safety_circuit_breaker.py` | The breaker: soft block, hard stop, daily loss, and the record for the report |
+| `python/framework/autotrader/autotrader_tick_loop.py` | Feeds it: the account value per tick, the entry block before each decision |
 | `python/framework/types/autotrader_types/autotrader_config_types.py` | `SafetyConfig` dataclass |
 | `python/configuration/autotrader/autotrader_config_loader.py` | Config parsing |
 | `python/system/ui/autotrader_live_display.py` | Safety status + detail line rendering |
 | `python/framework/trading_env/portfolio_manager.py` | `get_spot_equity()` — equity computation for spot mode |
 | `configs/autotrader_profiles/*.json` | Per-symbol safety thresholds |
-| `python/framework/autotrader/risk_baseline_tracker.py` | `RiskBaselineTracker` — takes, restores and advances the denominator |
-| `python/framework/types/autotrader_types/safety_session_types.py` | What the loop captures for the report |
+| `python/framework/autotrader/safety/risk_baseline_tracker.py` | `RiskBaselineTracker` — takes, restores and advances the denominator |
+| `python/framework/types/autotrader_types/safety_session_types.py` | What the breaker captures for the report |
 | `python/framework/reporting/builders/safety_report_builder.py` | DERIVE — the `SafetyReport` model |
 | `python/framework/reporting/console/autotrader_session_summary.py` | PRESENT — the closing-block safety section |

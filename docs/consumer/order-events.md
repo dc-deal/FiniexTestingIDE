@@ -229,3 +229,6 @@ A run from before the stream existed has none, and a backtest whose scenarios ne
 order writes none. The answer is a 404 that names the cause, as for every section — see
 [errors](/api/v1/docs/errors). A stream written in an earlier form of the stream — before the
 venue's lines — is answered as unreadable (409) until its run is run again.
+
+Which of these prices are the venue's decimals and which are computed, and how to round them
+for display: [prices](/api/v1/docs/prices).

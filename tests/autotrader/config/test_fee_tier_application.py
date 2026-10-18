@@ -21,7 +21,7 @@ human can re-freeze the seed, so only a warning can ask for it.
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
-from python.framework.autotrader.autotrader_broker_config_setup import _apply_fee_tier
+from python.framework.autotrader.startup.autotrader_broker_config_setup import _apply_fee_tier
 from python.framework.types.trading_env_types.broker_types import FeeTierInfo
 
 _DECLARED = {'model': 'maker_taker', 'maker_fee': 0.25, 'taker_fee': 0.40,

@@ -24,6 +24,11 @@ run fit together; the linked documents explain the rest.
 
 ---
 
+**acceptance study** — A real-money session sequence whose record becomes a release certificate:
+the *field study* proves the order path, the *security study* the account's protective rules.
+Both run on one engine and write one capture format. Not a test suite — the suite only validates
+the certificate it left. See [Security Study](tests/security_cert/security_cert_guide.md).
+
 **accepted** (an order event) — The venue took the order: it answered with its reference, the
 order started resting, or it filled in its answer. Recorded once per order, before its first fill;
 in a backtest when the order arrives at the simulated venue. Not an order-history status — the order
@@ -123,7 +128,8 @@ it moves between replay time and the present. See *wall clock*.
 
 **carry-over** — What one session hands the next session of the same bot: the algo's memory, and
 the framework's record of keys, positions and the risk baseline. Keyed by the bot, overwritten, and
-never kept per run. See [Data Storage Layout](architecture/data_storage_layout.md).
+never kept per run. A document written under another profile name is not this bot's, except for a
+*declared continuation*. See [Data Storage Layout](architecture/data_storage_layout.md).
 
 **cascade** — How a configuration value is layered. For a scenario: application defaults, then the
 set's `global` block, then the scenario. For an AutoTrader profile: `app_config.autotrader`
@@ -136,7 +142,7 @@ entry's *current fixture*. Not a *production* profile, which trades real money. 
 [Fixture Catalog](architecture/fixture_catalog.md).
 
 **certificate run** (`run_purpose: certificate`) — A release-gate run whose record becomes a
-release certificate, such as a real-money *field study*. Never produced again and never deleted.
+release certificate, such as a stage of an *acceptance study*. Never produced again and never deleted.
 Not the certificate itself, which is a file beside the gate's test suite. See *run purpose*.
 
 **client order id** (`client_order_id`) — Our key for an order, sent with it on the wire so the
@@ -196,7 +202,7 @@ stale in `stale_data_source`. See [Stress Test](stress_test.md).
 **data window** — The market window one run unit was declared to cover (`data_windows` on the run
 header): a start, and an end unless it is open. Not a span over several units. On this side a
 *window* is always a span of TIME — the served `window_start`, `window_end`, `window_count` and
-`windows` mean the same — never a docked panel: that is the FiniexViewer's `window`, defined in its
+`windows` mean the same — never a docked panel: that is the FiniexViewer's *panel*, defined in its
 own glossary.
 
 **decision basis** — The fresh / stale / blind counts of the inputs a decision was made on. See
@@ -204,6 +210,12 @@ own glossary.
 
 **decision logic** — The one class that turns worker outputs into decisions. See
 [Quickstart](user_guides/quickstart_guide.md).
+
+**declared continuation** (`carry_over_from` in an AutoTrader profile) — A later stage of one bot
+that starts from what an earlier stage left: the later profile names the earlier one, and the two
+share the bot's carry-over in both directions. Allowed only between a release study's stages or a
+test's fixtures, and held at boot to the conditions that keep it from being mistaken for a copy.
+See [AutoTrader Configuration](autotrader/autotrader_configuration.md).
 
 **deficiency** (`DataDeficiency`; `deficiencies` in the tick index) — What an archived file LACKS:
 `no_quote`, `no_arrival_time`, `arrival_time_reconstructed`, `missing_trades`, `synthetic`. Measured
@@ -217,6 +229,12 @@ denied order event carries no `submitted_seq`. A refusal the venue made is *reje
 **deployment** — The sessions of one bot joined into one history by a `deployment_id`, because its
 profile declares `deployment.continuous: true`. Not itself a run. See
 [Deployment Ledger](user_guides/deployment_ledger_guide.md).
+
+**discovery** — An analysis the IDE derives from the archive, such as the coverage report or the
+spread estimate: regenerable at any time and cached against its source. Not a store of its own —
+every family lives in the `discovery_caches` store — and never something the IDE records about
+itself: a run, a certificate or a carry-over is not a discovery, because deleting it loses what
+happened. See [Discovery System](discovery_system.md).
 
 **dry run** — An AutoTrader session on a live adapter whose `dry_run` resolves true: real ticks,
 every order validated by the venue and never placed, fills simulated locally. A mock session is not
@@ -359,6 +377,13 @@ events](consumer/order-events.md).
 `MockBrokerAdapter`, places nothing, and is reported like every AutoTrader session. See
 [Mock Adapter](architecture/mock_adapter_guide.md).
 
+**modelled spread** (`modelled_spread_cost`, `modelled_spread_factor`) — The spread a backtest charges
+where the data recorded no quote: such a tick is given bid and ask half the spread estimated
+for the previous day below and above its traded price, times the factor, and a fill against it
+crosses that spread. Reported as its own figure beside `spread_cost`, which stays what was
+measured against a recorded quote — the two add up. Not *synthetic*, which here means generated
+data. See [Discovery System](discovery_system.md).
+
 **modify · amend** — *Modify* is this project's word for changing a working order's price or
 size: `modify_requested`, `modified`, `modify_rejected`, and `modify` as a lost request. *Amend* is
 one venue's name for the same request and stays inside that venue's adapter.
@@ -454,6 +479,12 @@ a venue with a spread — the traded price for bars and decisions, the mid for e
 event): whose account a record is — `bot`, what this process did and was told, or `broker_truth`,
 what the venue reported when it was asked.
 
+**pressure level** (`pressure_level`) — How close the machine's memory is to the limit that binds
+it: `ok`, `warn` from one threshold, `critical` from the next. Memory alone is graded — a busy
+processor is the machine doing its work, while memory that runs out is the moment the operating
+system ends a process. Not a log level, and not the machine's *host* identity (see
+[Asking the server about itself](consumer/server.md)).
+
 **price · mid · last** — `tick.price` is what the market trades at: the traded price where the
 venue prints one, else the mid. The *mid* is `(bid + ask) / 2`; *last* is the traded price, absent
 (never zero) where the venue prints none. Strategies read the price, valuation reads the mid. See
@@ -542,6 +573,20 @@ three field names. See [API Server](architecture/api_server_architecture.md).
 **scenario** · **scenario set** — A scenario is one symbol over one market window with its merged
 configuration (`scenario_name` in the file). A scenario set is the file holding a `global` block and
 the scenarios (`scenario_set_name`). See [Process Execution](process_execution_guide.md).
+
+**seam** (of data origins) — Where one origin's tick files end and another's begin: Kraken's
+published history and our first collected tick, for instance. A gap there takes the origin class of
+the file before it. The coverage report words it as "where the external data ends and the production
+data begins", and the gaps route serves two different classes in `origin_class` and
+`origin_class_after`; "seam" is the documents' word for it. Not the seam of the code — a point where
+a later change attaches, such as the hard stop's hook for its latch — which stays inside the code
+and its documents.
+
+**security study** — The *acceptance study* that provokes the account's protective rules with real
+money — the order guard's refusals and cooldown, the circuit breaker's soft block and hard stop,
+the risk baseline across a restart — in a sequence of sessions called *stages*, and certifies each
+rule live, offline or as waiting for a margin account. See
+[Security Study](tests/security_cert/security_cert_guide.md).
 
 **seq** · **submitted_seq** (on an order event) — `seq` numbers a run unit's order events and IS the
 order of the stream; never sort by time instead, because several steps often carry the same instant.

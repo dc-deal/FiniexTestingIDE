@@ -317,6 +317,10 @@ def pytest_collection_modifyitems(items):
         if '/tests/live_signal_feed/' in path:
             item.add_marker(pytest.mark.live_signal_feed)
 
+        # Security study (excluded from normal runner — operator-driven live release gate)
+        if '/tests/security_cert/' in path:
+            item.add_marker(pytest.mark.security_cert)
+
         # `unit` and `integration` used to be applied here too. They were the only two rules
         # that needed a maintained LIST rather than falling out of the tree, they were the only
         # two that were measurably wrong (8 of 14 autotrader suites were missing from the unit

@@ -23,8 +23,8 @@ from python.framework.types.api.report_types import (
     SafetyLimits,
     SafetyReport,
 )
-from python.framework.types.autotrader_types.autotrader_config_types import SafetyConfig
 from python.framework.types.autotrader_types.safety_session_types import SafetySessionRecord
+from python.framework.types.config_types.autotrader_defaults_config_types import SafetyConfig
 from python.framework.types.persistence_types import BaselineOrigin
 
 

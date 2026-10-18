@@ -6,7 +6,6 @@ report (the same canonical model the console + CSV render), with parameter
 filtering pre-applied so the frontend renders, not derives.
 """
 
-from datetime import datetime
 from typing import Optional
 
 from fastapi import APIRouter, Query
@@ -15,13 +14,13 @@ from python.api.api_error_catalog import (
     ARTIFACT_NOT_PRODUCED,
     ARTIFACT_UNREADABLE,
     CONFIG_SNAPSHOT_MISSING,
-    INVALID_TIMESTAMP,
     REPORTS_NOT_COMMISSIONED,
     RUN_HEADER_MISSING,
     RUN_NOT_COMPLETED,
     RUN_NOT_FOUND,
     api_error,
 )
+from python.api.api_query_params import parse_iso_query
 from python.api.api_route_documents import describes
 from python.framework.exceptions.api_errors import ApiException
 from python.framework.exceptions.report_artifact_errors import ReportArtifactUnreadableError
@@ -140,8 +139,8 @@ def get_trade_history(
         run_id,
         symbol=symbol,
         close_reason=close_reason,
-        start=_parse_iso(start, 'start'),
-        end=_parse_iso(end, 'end'),
+        start=parse_iso_query(start, 'start'),
+        end=parse_iso_query(end, 'end'),
     )
     if report is None:
         raise _missing_artifact(run_id, 'trade-history')
@@ -473,14 +472,6 @@ def get_venue_account(run_id: str) -> VenueAccountReport:
     return report
 
 
-def _parse_iso(value: Optional[str], field: str) -> Optional[datetime]:
-    """Parse an ISO-8601 query param, or raise a 400 ApiException."""
-    if value is None:
-        return None
-    try:
-        return datetime.fromisoformat(value)
-    except ValueError:
-        raise api_error(INVALID_TIMESTAMP, field=field, value=value)
 
 @router.get('/reports/runs/{run_id}/config', response_model=RunConfigSnapshot,
             openapi_extra=describes('config'))

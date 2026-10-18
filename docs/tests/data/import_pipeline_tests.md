@@ -70,7 +70,10 @@ Validates end-to-end conversion from JSON to Parquet.
 - Output contains expected columns (timestamp, bid, ask, last, etc.)
 - Tick count in Parquet matches JSON input
 - Directory structure follows `{broker_type}/ticks/{SYMBOL}/` pattern
-- Numeric columns use optimized dtypes (float32, int32)
+- `tick_volume` is narrowed to int32; bid, ask, last and `real_volume` stay float64
+- Prices and volumes read back as exactly the double their written decimal parses to — the
+  number a live session reads from the venue — also beyond float32's seven or so significant
+  digits
 - Timestamps parsed as datetime64 with UTC timezone
 
 ---
@@ -300,6 +303,22 @@ Validates that `data_format_version` survives the tick index write/read cycle �
 
 **TestLegacyIndexTolerance:**
 - An index file without the version column still loads (entries intact) and reads as `'unknown'` — never an exception that silently empties the index
+
+### test_tick_index_lookup.py
+
+Every backtest batch asks the tick index which files cover a symbol's window. The lookup used to
+convert two time strings per file on every call — 0.4 s for a symbol of 641 files. It now
+converts the entries' times once per list (`entry_time_bounds`), and these tests hold it to the
+former scan, which they reproduce as it stood.
+
+**TestTheBoundsOfTheEntries:**
+- Times with and without a fraction of a second read side by side — without the ISO-8601 format, pandas takes the format from the first string and refuses the next
+- An entry without a time reads as no time rather than failing
+
+**TestTheLookupSelectsWhatTheScanSelected:**
+- Random windows over files that touch or lie apart select exactly what the former scan selected
+- Windows on a file's edges, one instant wide or reaching to either side, do too
+- An entry without a time is never selected, where the former scan raised on it
 
 ### test_bar_archive_integrity.py
 

@@ -1,18 +1,21 @@
 """
-Gap File Attribution - Which File(s) a Gap Falls In
+Gap File Attribution - Which File(s) a Gap Falls In, and Whose Data They Are
 
-Answers the operator question behind every large gap: was the collector running
-through it, or was it not collecting at all? The tick index carries everything
-needed, so no data file is opened.
+Answers the operator question behind every large gap: whose silence is it — a venue's
+published history, where nobody traded, or our own collection — and, in our own data, was
+the collector running through it, or was it not collecting at all? The tick index carries
+everything needed, so no data file is opened.
 """
 
 import re
-from bisect import bisect_left, bisect_right
-from datetime import datetime
+from bisect import bisect_left
+from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 
 import pandas as pd
 
+from python.data_management.index.index_entry_times import entry_time_bounds
+from python.framework.types.config_types.data_origin_config_types import OriginClass
 from python.framework.types.config_types.market_config_types import ServerClockConfig
 from python.framework.types.coverage_report_types import Gap
 from python.framework.utils.time_utils import server_clock_to_utc
@@ -61,11 +64,13 @@ def parse_file_open_time(file_name: str,
 def attribute_gaps_to_files(
     gaps: List[Gap],
     entries: List[Dict],
-    server_clock: ServerClockConfig
+    server_clock: ServerClockConfig,
+    bar_interval: timedelta
 ) -> None:
     """
     Stamp each gap with the file holding the data before it, the file holding the
-    data after it, and how long after that data ended the following file opened.
+    data after it, the origin class of each, and how long after that data ended the
+    following file opened.
 
     Stamps in place — the gaps are already held by the report and a parallel
     result list would only invite an index mismatch. Gaps outside the indexed
@@ -75,33 +80,37 @@ def attribute_gaps_to_files(
         gaps: Gaps to attribute (modified in place)
         entries: Tick index entries for one broker/symbol
         server_clock: The broker's server clock rule, for the open time in each file name
+        bar_interval: The interval of the bars the gaps were detected on
     """
     if not gaps or not entries:
         return
 
+    file_starts, file_ends = entry_time_bounds(entries)
     bounds = sorted(
-        (
-            (pd.to_datetime(entry['start_time'], utc=True),
-             pd.to_datetime(entry['end_time'], utc=True),
-             entry['file'])
-            for entry in entries
-        ),
+        zip(file_starts, file_ends,
+            [entry['file'] for entry in entries],
+            [_origin_class_of(entry) for entry in entries]),
         key=lambda item: item[0]
     )
-    starts = [start for start, _, _ in bounds]
-    ends = [end for _, end, _ in bounds]
+    starts = [bound[0] for bound in bounds]
+    ends = [bound[1] for bound in bounds]
 
     for gap in gaps:
         if gap.gap_start is None or gap.gap_end is None:
             continue
 
-        before = _last_file_at_or_before(bounds, starts, pd.Timestamp(gap.gap_start))
+        # A gap starts at the OPEN of the last bar before it, and that bar's ticks run on to
+        # its end — a file whose first tick falls inside the bar holds the data before the gap
+        before = _last_file_opened_before(
+            bounds, starts, pd.Timestamp(gap.gap_start + bar_interval))
         after = _first_file_at_or_after(bounds, ends, pd.Timestamp(gap.gap_end))
         if before is None or after is None:
             continue
 
         gap.file_before = before[2]
         gap.file_after = after[2]
+        gap.origin_class_before = before[3]
+        gap.origin_class_after = after[3]
 
         if before is after:
             continue
@@ -116,11 +125,30 @@ def attribute_gaps_to_files(
         gap.next_file_opened_after_s = (opened - before[1]).total_seconds()
 
 
-def _last_file_at_or_before(
+def _origin_class_of(entry: Dict) -> OriginClass:
+    """
+    Read a tick index entry's origin class.
+
+    The index writes 'unknown' for a file that carries no origin stamp, so an absent or
+    unrecognised value reads as UNKNOWN — never as a class nobody declared.
+
+    Args:
+        entry: One tick index entry
+
+    Returns:
+        The file's origin class
+    """
+    try:
+        return OriginClass(entry.get('origin_class', OriginClass.UNKNOWN.value))
+    except ValueError:
+        return OriginClass.UNKNOWN
+
+
+def _last_file_opened_before(
     bounds: List, starts: List, moment: pd.Timestamp
 ) -> Optional[tuple]:
     """
-    The last file holding data at or before a moment.
+    The last file opened before a moment — the one holding the data just before it.
 
     Located by start time rather than by exact match — bar timestamps are floored
     to the bar interval, so equality would never hit. When the moment falls in a
@@ -129,14 +157,14 @@ def _last_file_at_or_before(
     which the import's archive-ordering check enforces.
 
     Args:
-        bounds: (start_time, end_time, file) triples sorted ascending
+        bounds: (start_time, end_time, file, origin_class) tuples sorted ascending
         starts: The start_time values, for the search
-        moment: The instant to locate
+        moment: The instant to locate — the END of the last bar before a gap
 
     Returns:
-        The bounds triple, or None when the moment precedes the first file
+        The bounds tuple, or None when no file opened before the moment
     """
-    idx = bisect_right(starts, moment) - 1
+    idx = bisect_left(starts, moment) - 1
     if idx < 0:
         return None
     return bounds[idx]
@@ -152,12 +180,12 @@ def _first_file_at_or_after(
     it, so the first file still running at or past it is the one that resumes.
 
     Args:
-        bounds: (start_time, end_time, file) triples sorted ascending
+        bounds: (start_time, end_time, file, origin_class) tuples sorted ascending
         ends: The end_time values, for the search
         moment: The instant to locate
 
     Returns:
-        The bounds triple, or None when the moment follows the last file
+        The bounds tuple, or None when the moment follows the last file
     """
     idx = bisect_left(ends, moment)
     if idx >= len(bounds):

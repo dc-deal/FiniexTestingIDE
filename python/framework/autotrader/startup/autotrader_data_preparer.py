@@ -36,7 +36,10 @@ def build_scenario_from_config(config: AutoTraderConfig) -> SingleScenario:
         The single SingleScenario (scenario_index 0)
     """
     settings = config.scenario_settings
-    trade_simulator_config = {'balances': dict(settings.balances)}
+    # A mock session rehearses the live path, whose venue sends a quote: its ticks stay as
+    # recorded, never given a modelled one (#602) — a live executor books every crossed spread
+    # as measured, so a modelled quote here would be reported as a measurement
+    trade_simulator_config = {'balances': dict(settings.balances), 'modelled_spread_factor': 0.0}
     if settings.account_currency:
         trade_simulator_config['account_currency'] = settings.account_currency
 

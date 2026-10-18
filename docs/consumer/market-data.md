@@ -176,3 +176,5 @@ points, not bars.
 A range that matches no bars answers `200` with an empty array on `/bars`, and
 `404 no_bars_in_range` on the indicator route. It is the one asymmetry between the two, and worth
 handling once rather than discovering.
+
+Which bar prices are the venue's decimals and which are midpoints: [prices](/api/v1/docs/prices).

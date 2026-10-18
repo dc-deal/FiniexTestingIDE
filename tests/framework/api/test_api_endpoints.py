@@ -22,11 +22,14 @@ from python.api.api_app import create_app
 from python.api.api_contract import API_CONTRACT_VERSION, CHANGES
 from python.configuration.app_config_manager import AppConfigManager
 from python.data_management.index.bars_index_manager import BarsIndexManager
+from python.framework.discoveries.data_coverage.data_coverage_report import DataCoverageReport
 from python.framework.types.api.report_types import (
     RunConfigSnapshot,
     RunInfo,
     RunResultRow,
 )
+from python.framework.types.config_types.data_origin_config_types import OriginClass
+from python.framework.types.coverage_report_types import Gap, GapCategory
 from python.framework.validators.validation_check_catalog import VALIDATION_CHECKS_BY_ID
 
 # ---------------------------------------------------------------------------
@@ -841,8 +844,6 @@ class TestDeployments:
 
 def _mock_coverage_report():
     """A coverage report with one expected closure and one real outage."""
-    from python.framework.types.coverage_report_types import Gap, GapCategory
-
     report = MagicMock()
     report.start_time = datetime(2026, 1, 1, tzinfo=timezone.utc)
     report.end_time = datetime(2026, 1, 31, tzinfo=timezone.utc)
@@ -898,6 +899,80 @@ class TestGaps:
             r = client.get('/api/v1/brokers/kraken_spot/symbols/BTCUSD/gaps')
 
         assert r.status_code == 404
+
+
+def _report_with_origins() -> DataCoverageReport:
+    """A report whose gaps lie in a venue's history and in our own collection, attributed."""
+    report = DataCoverageReport(symbol='BTCUSD', broker_type='kraken_spot')
+    report.start_time = datetime(2025, 1, 1, tzinfo=timezone.utc)
+    report.end_time = datetime(2026, 10, 1, tzinfo=timezone.utc)
+
+    def gap(start, hours, category, before, after=None):
+        return Gap(gap_seconds=hours * 3600, category=category, reason='test',
+                   gap_start=start, gap_end=start + timedelta(hours=hours),
+                   file_before='A.parquet', file_after='A.parquet',
+                   origin_class_before=before, origin_class_after=after or before)
+
+    report.gaps = [
+        gap(datetime(2025, 11, 1, 15, tzinfo=timezone.utc), 6.7, GapCategory.LARGE,
+            OriginClass.EXTERNAL),
+        gap(datetime(2026, 1, 24, 14, tzinfo=timezone.utc), 0.2, GapCategory.SHORT,
+            OriginClass.EXTERNAL, OriginClass.PRODUCTION),
+        gap(datetime(2026, 9, 20, 19, tzinfo=timezone.utc), 12.8, GapCategory.LARGE,
+            OriginClass.PRODUCTION),
+    ]
+    report.gap_counts = {'short': 1, 'large': 2}
+    return report
+
+
+class TestGapsSayWhoseSilenceTheyAre:
+    """A venue's history holds tens of thousands of gaps in which nobody traded; ours, a few."""
+
+    def _get(self, client, query='', status=200):
+        cache = MagicMock()
+        cache.get_report.return_value = _report_with_origins()
+        with (
+            patch('python.api.endpoints.bars_router.BarsIndexManager', return_value=_mock_index()),
+            patch('python.api.endpoints.bars_router.DataCoverageReportCache', return_value=cache),
+            patch.object(DataCoverageReport, 'attribute_gaps'),
+        ):
+            r = client.get(f'/api/v1/brokers/kraken_spot/symbols/BTCUSD/gaps{query}')
+        assert r.status_code == status, r.text
+        return r.json()
+
+    def test_every_gap_carries_its_origin_and_the_seam_its_second(self, client):
+        gaps = self._get(client)['gaps']
+        assert [(g['origin_class'], g['origin_class_after']) for g in gaps] == [
+            ('external', 'external'), ('external', 'production'), ('production', 'production')]
+
+    def test_the_yearly_summary_counts_per_origin_and_declares_its_key(self, client):
+        body = self._get(client)
+        rows = {(row['year'], row['origin_class']): row for row in body['gaps_by_year']}
+        assert rows[(2025, 'external')]['large'] == 1
+        assert rows[(2026, 'production')]['large'] == 1
+        assert body['keys'] == {'gaps': ['start'], 'gaps_by_year': ['year', 'origin_class']}
+
+    def test_origin_class_narrows_the_gaps_and_never_the_overview(self, client):
+        whole = self._get(client)
+        narrowed = self._get(client, '?origin_class=production')
+        assert [g['start'] for g in narrowed['gaps']] == ['2026-09-20T19:00:00+00:00']
+        assert narrowed['gap_counts'] == whole['gap_counts']
+        assert narrowed['gaps_by_year'] == whole['gaps_by_year']
+
+    def test_since_keeps_the_gaps_that_start_at_or_after_it(self, client):
+        gaps = self._get(client, '?since=2026-01-24T14:00:00')['gaps']
+        assert [g['start'] for g in gaps] == ['2026-01-24T14:00:00+00:00',
+                                              '2026-09-20T19:00:00+00:00']
+
+    def test_a_since_that_is_no_iso_timestamp_is_refused(self, client):
+        # Read as a datetime parameter, a bare year became Unix seconds in 1970, and the filter
+        # silently served every gap
+        body = self._get(client, '?since=2026', status=400)
+        assert body['error'] == 'invalid_timestamp'
+
+    def test_a_since_in_the_basic_iso_form_reads_as_that_day(self, client):
+        gaps = self._get(client, '?since=20260901')['gaps']
+        assert [g['start'] for g in gaps] == ['2026-09-20T19:00:00+00:00']
 
 
 # ---------------------------------------------------------------------------

@@ -38,6 +38,9 @@ tests/autotrader/state_persistence/
 - Stale policy — a backdated file (>`max_age_trading_days`) under `warn_reset` returns `None` +
   warns; under `halt` raises; a within-age file loads.
 - Identity mismatch — a file from a different profile/symbol is ignored, not treated as corrupt.
+- Declared continuation (#358) — the later stage reads the earlier stage's memory and the earlier
+  reads what the later left, through the framework carry-over's own rule; a third profile is still
+  ignored, and the envelope records the writer's declaration.
 - Weekend-aware staleness — `weekend_aware=True` counts a Fri→Mon span as 1 trading day;
   `weekend_aware=False` (crypto) counts 3 calendar days (the store's `datetime.now` is frozen to a
   known Monday for determinism).

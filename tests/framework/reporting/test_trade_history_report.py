@@ -10,16 +10,23 @@ reason / time range), distinct symbols, and the empty case.
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 
-from python.framework.reporting.builders.run_unit import RunUnit
+import pytest
+
+from python.framework.reporting.builders.run_unit import RunUnit, run_units_from_batch
 from python.framework.reporting.builders.trade_history_report_builder import (
     build_trade_history_report,
 )
+from python.framework.reporting.io.report_filters import filter_trade_history_report
+from python.framework.types.batch_execution_types import BatchExecutionSummary
+from python.framework.types.data_deficiency_types import DataDeficiency
 from python.framework.types.portfolio_types.portfolio_trade_record_types import (
     CloseReason,
     CloseType,
     EntryType,
     TradeRecord,
 )
+from python.framework.types.process_data_types import ProcessResult, ProcessTickLoopResult
+from python.framework.types.scenario_types.scenario_set_types import SingleScenario
 from python.framework.types.trading_env_types.broker_trade_types import BrokerTrade
 from python.framework.types.trading_env_types.order_types import OrderDirection, OrderSide
 
@@ -324,3 +331,82 @@ class TestWhatBelongsToTheTrade:
             _RUN_ID, _units(self._chain()), close_reason=CloseReason.TP_TRIGGERED.value).trades
         assert [(row.position_id, row.position_closes) for row in rows] == [('p1', 2), ('p2', 1)]
 
+
+
+class TestTheSpreadTotal:
+    """
+    A unit's spread total, and why it is null where the unit's data carried no quote.
+
+    On a quote-driven market the spread is what trading costs while the fees read zero, so a
+    footer without it says "free" (measured 2026-10-14 on a forex fixture run: two trades,
+    spread 1.48 + 1.48 EUR, fees 0.00). Where a tick file recorded no quote, bid and ask are the
+    traded price and every fill's spread reads zero — a sum of those would look like a
+    measurement.
+    """
+
+    def _units(self, eurgbp_without_quote: bool = False):
+        """Two units with two trades each, the second possibly on data without a quote."""
+        quoted = [replace(_trade(position_id='p1'), spread_cost=1.4776),
+                  replace(_trade(position_id='p2', entry_offset_min=60), spread_cost=1.4779)]
+        other = [replace(_trade(position_id='p1', symbol='EURGBP'), spread_cost=0.0),
+                 replace(_trade(position_id='p2', symbol='EURGBP', entry_offset_min=60),
+                         spread_cost=0.0)]
+        return [RunUnit(name='EURUSD_01', symbol='EURUSD', trade_history=quoted),
+                RunUnit(name='EURGBP_01', symbol='EURGBP', trade_history=other,
+                        input_without_quote=eurgbp_without_quote)]
+
+    def _totals(self, report):
+        return {totals.scenario_name: totals.total_spread_cost
+                for totals in report.scenario_totals}
+
+    def test_the_trades_spread_costs_are_summed_per_unit(self):
+        report = build_trade_history_report(_RUN_ID, self._units())
+        assert self._totals(report)['EURUSD_01'] == pytest.approx(2.9555)
+
+    def test_a_measured_zero_stays_a_zero(self):
+        assert self._totals(build_trade_history_report(_RUN_ID, self._units()))['EURGBP_01'] == 0.0
+
+    def test_a_unit_that_read_data_without_a_quote_has_no_total(self):
+        totals = self._totals(build_trade_history_report(
+            _RUN_ID, self._units(eurgbp_without_quote=True)))
+        assert totals['EURGBP_01'] is None
+        assert totals['EURUSD_01'] == pytest.approx(2.9555)
+
+    def test_a_filtered_view_keeps_the_missing_quote(self):
+        # The API filters the persisted report, where the units are no longer at hand
+        report = build_trade_history_report(_RUN_ID, self._units(eurgbp_without_quote=True))
+        filtered = filter_trade_history_report(report, start=_T0 + timedelta(minutes=30))
+        assert self._totals(filtered) == {'EURUSD_01': pytest.approx(1.4779), 'EURGBP_01': None}
+
+    def test_a_report_written_before_the_total_existed_serves_none(self):
+        report = build_trade_history_report(_RUN_ID, self._units())
+        dumped = report.model_dump()
+        for totals in dumped['scenario_totals']:
+            del totals['total_spread_cost']
+        old = type(report).model_validate(dumped)
+        assert set(self._totals(filter_trade_history_report(old)).values()) == {None}
+
+
+class TestTheUnitKnowsItsDataLackedAQuote:
+    """The fact is taken from what the tick index measured per file the scenario read."""
+
+    def _units(self, deficiencies):
+        scenario = SingleScenario(
+            name='s1', scenario_index=0, symbol='EURGBP', data_broker_type='mt5',
+            start_date=_T0, data_deficiencies=deficiencies)
+        result = ProcessResult(success=True, scenario_name='s1', scenario_index=0,
+                               tick_loop_results=ProcessTickLoopResult())
+        return run_units_from_batch(BatchExecutionSummary(
+            batch_execution_time=0.0, batch_warmup_time=0.0, batch_tickrun_time=0.0,
+            process_result_list=[result], single_scenario_list=[scenario]))
+
+    def test_one_file_without_a_quote_is_enough(self):
+        units = self._units([[], [DataDeficiency.NO_QUOTE, DataDeficiency.NO_ARRIVAL_TIME]])
+        assert units[0].input_without_quote is True
+
+    def test_the_index_hands_the_deficiency_over_as_its_value(self):
+        assert self._units([['no_quote']])[0].input_without_quote is True
+
+    def test_other_deficiencies_do_not_count(self):
+        units = self._units([[DataDeficiency.NO_ARRIVAL_TIME], [DataDeficiency.SYNTHETIC]])
+        assert units[0].input_without_quote is False

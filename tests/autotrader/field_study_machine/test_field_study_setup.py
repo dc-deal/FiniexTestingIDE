@@ -1,9 +1,10 @@
 """
 Field Study — the session wiring and its preflight (#332, #566).
 
-`open_field_study` opens the capture with the venue's declared fee reporting in its header, hangs
-the projection on the executor's record and refuses to trade beside a resting order;
-`close_field_study` writes what reconciliation did and the REST telemetry before the end marker.
+`open_acceptance_study` opens the capture with the venue's declared fee reporting in its header,
+hangs the projection on the executor's record and refuses to trade beside a resting order;
+`close_acceptance_study` writes what reconciliation did and the REST telemetry before the end
+marker. The study it opens tells it its name and its capture file.
 Every refusal and every end leaves a terminated capture behind — a header with no end is a run
 that cannot be told from one still going.
 """
@@ -15,8 +16,13 @@ from typing import Any, Dict, List
 
 import pytest
 
-from python.framework.autotrader.field_study_setup import close_field_study, open_field_study
-from python.framework.reporting.field_study_stream_projection import FieldStudyStreamProjection
+from python.framework.acceptance_studies.acceptance_study_setup import (
+    close_acceptance_study,
+    open_acceptance_study,
+)
+from python.framework.reporting.acceptance_study_stream_projection import (
+    AcceptanceStudyStreamProjection,
+)
 from python.framework.types.config_types.market_config_types import TradingModel
 from python.framework.types.live_types.api_perf_types import ApiEndpointStats, ApiPerfSnapshot
 from python.framework.types.live_types.live_execution_types import BrokerOrderStatus
@@ -60,7 +66,10 @@ class _Executor:
 
 
 def _study() -> SimpleNamespace:
-    return SimpleNamespace(get_phase_ids=lambda: ['p1'], set_recorder=lambda recorder: None)
+    return SimpleNamespace(
+        STUDY_LABEL='Field Study', get_phase_ids=lambda: ['p1'],
+        set_recorder=lambda recorder: None, get_capture_name=lambda: 'field_study.jsonl',
+        get_capture_next_step=lambda: 'generate the acceptance certificate')
 
 
 def _reconciler(open_orders=(), raises=None, counters: Dict[str, int] = None) -> SimpleNamespace:
@@ -77,7 +86,7 @@ def _reconciler(open_orders=(), raises=None, counters: Dict[str, int] = None) ->
 def _open(tmp_path: Path, reconciler, trading_model=TradingModel.SPOT,
           fee_report: FeeReport = FeeReport.STATUS_ANSWER, venue_fee_expected: bool = True):
     executor = _Executor(fee_report, venue_fee_expected)
-    setup = open_field_study(
+    setup = open_acceptance_study(
         decision_logic=_study(), executor=executor, reconciler=reconciler,
         trading_model=trading_model, run_dir=tmp_path, unit_name='fs', symbol='ETHUSD',
         logger=RecordingLogger())
@@ -114,7 +123,7 @@ class TestTheRefusals:
         setup, executor = _open(tmp_path, None)
 
         assert (setup.proceed, setup.refusal) == (True, '')
-        assert isinstance(executor.order_listeners[0], FieldStudyStreamProjection)
+        assert isinstance(executor.order_listeners[0], AcceptanceStudyStreamProjection)
         assert len(executor.truth_listeners) == 1
 
     def test_a_preflight_that_raises_leaves_a_terminated_capture(self, tmp_path):
@@ -154,7 +163,7 @@ class TestTheEnd:
                                         max_ms=150.0, total_ms=360.0)],
             slow_count=1, total_errors=0))
 
-        close_field_study(setup.recorder, monitor, _reconciler())
+        close_acceptance_study(setup.recorder, monitor, _reconciler())
 
         tail = [line['event_type'] for line in _lines(tmp_path)][-3:]
         assert tail == ['reconcile_summary', 'api_perf', 'session_end']
@@ -168,7 +177,7 @@ class TestTheEnd:
     def test_reconciliation_switched_off_says_so(self, tmp_path):
         setup, _ = _open(tmp_path, None)
 
-        close_field_study(setup.recorder, None, None)
+        close_acceptance_study(setup.recorder, None, None)
 
         summary = next(line for line in _lines(tmp_path)
                        if line['event_type'] == 'reconcile_summary')

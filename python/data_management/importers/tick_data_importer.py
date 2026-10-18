@@ -873,7 +873,12 @@ class TickDataImporter:
     def _optimize_datatypes(self, df: pd.DataFrame) -> pd.DataFrame:
         """Optimizes DataFrame datatypes for performance."""
 
-        float_cols = ['bid', 'ask', 'last', 'spread_pct', 'real_volume']
+        # Prices and volumes are NOT narrowed: they stay the doubles the source's decimals parse
+        # to, the same doubles a live session reads from the venue. As float32 they came back
+        # widened (0.87957 → 0.8795700073242188), and a decimal with more than about seven
+        # significant digits lost its last one (#606). Stored as a dictionary, they cost the
+        # file about 0.4 % more.
+        float_cols = ['spread_pct']
         for col in float_cols:
             if col in df.columns:
                 df[col] = df[col].astype('float32')

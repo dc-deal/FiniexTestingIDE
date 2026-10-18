@@ -24,7 +24,7 @@ from typing import List, Optional
 
 import pytest
 
-from python.framework.autotrader.risk_baseline_tracker import RiskBaselineTracker
+from python.framework.autotrader.safety.risk_baseline_tracker import RiskBaselineTracker
 from python.framework.types.persistence_types import (
     BaselineKind,
     BaselineOrigin,

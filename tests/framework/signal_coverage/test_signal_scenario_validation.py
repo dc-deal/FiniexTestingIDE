@@ -28,6 +28,7 @@ from python.framework.types.process_data_types import ProcessDataPackage, Requir
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
 from python.framework.types.signal_data_types import SIGNAL_ENVELOPE_SYMBOL, SignalParquetColumn
 from python.framework.validators.scenario_data_validator import ScenarioDataValidator
+from tests.shared.coverage_report_stub import coverage_report_stub
 
 CADENCE = timedelta(minutes=10)
 SOURCE = 'crypto_sentiment'
@@ -243,8 +244,7 @@ class TestAvailabilityWiring:
 
     def _tick_report(self):
         """A clean tick coverage report — only the signal checks may fire."""
-        tick_report = MagicMock()
-        tick_report.gaps = []
+        tick_report = coverage_report_stub()
         tick_report.start_time = datetime(2026, 7, 1, tzinfo=timezone.utc)
         tick_report.end_time = datetime(2026, 9, 1, tzinfo=timezone.utc)
         return tick_report
@@ -338,8 +338,7 @@ class TestSignalStretch:
 
         # The tick coverage report is a separate concern here — a clean stub so
         # only the signal checks can produce findings.
-        tick_report = MagicMock()
-        tick_report.gaps = []
+        tick_report = coverage_report_stub()
         validator._data_coverage_reports[
             (scenario.data_broker_type, scenario.symbol)] = tick_report
 

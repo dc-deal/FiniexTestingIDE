@@ -87,7 +87,13 @@ account is flat before trading (`Reconciler.is_account_flat()`, #151), and self-
 a budget (`max_session_cost_usd`) or wall-clock (`session_timeout_s`) breach.
 
 Operator guide: [field_study_guide.md](../tests/live_field_study/field_study_guide.md).
-The certificate is a release-gate item (see the Release Checklist).
+The certificate is a release-gate item ([release_certificates.md](../architecture/release_certificates.md)).
+
+A second study runs on the same parts: the **security study** (#358) proves the account's
+protective rules fire with real money, in a sequence of sessions — see
+[security_cert_guide.md](../tests/security_cert/security_cert_guide.md). What the two share lives
+in `python/framework/acceptance_studies/`: the phase engine, the interface by which the session
+recognises a study, and the capture's setup and preflight.
 
 ## File Structure
 
@@ -95,26 +101,31 @@ The certificate is a release-gate item (see the Release Checklist).
 python/framework/autotrader/
   autotrader_main.py             Runner: run(), shutdown, signal handling
   autotrader_tick_loop.py        Tick processing loop (main thread, hot path)
-  autotrader_startup.py          Pipeline object creation, phase by phase
-  autotrader_pipeline_bundle.py  What setup_pipeline hands back (named, not positional)
-  autotrader_logger_bundle.py    The session's three log channels + run identity
-  autotrader_account_model.py    Market, trading model and book currency of the session's account
-  autotrader_broker_config_setup.py  Broker config load + adapter (mock static / live dynamic / live static)
-  autotrader_data_preparer.py    A mock session's one scenario, prepared through the shared MountPreparer (#438)
-  autotrader_warmup_preparator.py  Warmup bar loading (mock: the mount's package, live adapter: API) into a WarmupHistory
   autotrader_display_exporter.py Display frames from the live pipeline state (#400)
-  kraken_ohlc_bar_fetcher.py     Kraken OHLC bar fetch (public API, no auth)
-  cold_start_setup.py            Builds the cold start and runs its boot step (#355)
-  cold_start_adopter.py          Takes over what an earlier session left at the venue — or refuses (#355)
-  risk_baseline_tracker.py       The one number every risk limit measures against (#356)
+  deployment_resolver.py         Whether the session joins a deployment, starts one, or stands alone (#497)
   dry_run_resolver.py            Whether the session places real orders, answered once
-  field_study_setup.py           Field Study capture + preflight (#332)
-  order_event_stream_setup.py    The order-event stream: opened, registered, read back (#362)
-  rendered_profile_builder.py    What the session runs with, as one document (#547)
+  kraken_ohlc_bar_fetcher.py     Kraken OHLC bar fetch (public API, no auth)
   live_clipping_monitor.py       Per-tick timing, clipping detection (#197)
+  session_log_rotator.py         Rotates the session log at the trading-day boundary (#476)
   session_log_retention.py       Prunes rotated daily session logs (#357)
-  reporting/
+  startup/                       Building the session, phase by phase
+    autotrader_startup.py          Pipeline object creation, the loggers and the run header
+    autotrader_pipeline_bundle.py  What setup_pipeline hands back (named, not positional)
+    autotrader_logger_bundle.py    The session's three log channels + run identity
+    autotrader_account_model.py    Market, trading model and book currency of the session's account
+    autotrader_broker_config_setup.py  Broker config load + adapter (mock static / live dynamic / live static)
+    autotrader_data_preparer.py    A mock session's one scenario, prepared through the shared MountPreparer (#438)
+    autotrader_warmup_preparator.py  Warmup bar loading (mock: the mount's package, live adapter: API) into a WarmupHistory
+  cold_start/                    What an earlier session left behind (#355)
+    cold_start_setup.py            Reads the carry-over at boot, builds the cold start, runs its boot step
+    cold_start_adopter.py          Takes over what an earlier session left at the venue — or refuses
+  run_record/                    What the run leaves as its record
+    rendered_profile_builder.py    What the session runs with, as one document (#547)
+    order_event_stream_setup.py    The order-event stream: opened, registered, read back (#362)
     autotrader_report_coordinator.py  Writes every run output from the finished result (#391)
+  safety/                        The safety layer #358 certifies with real money
+    safety_circuit_breaker.py      Soft breaker, hard stop, daily loss and their record (#356, #314)
+    risk_baseline_tracker.py       The one number every risk limit measures against (#356)
   operator_alerts/               Telegram alerts and the liveness ping (#235) — unattended_operation.md
   tick_sources/
     abstract_tick_source.py      AbstractTickSource ABC
@@ -122,7 +133,6 @@ python/framework/autotrader/
     kraken_tick_source.py        Kraken WS v2 tick source (#232)
     kraken_tick_message_parser.py  WS JSON → TickData parser (#232)
     tick_source_setup.py         Builds the profile's tick source and starts its feeder thread
-
 python/configuration/autotrader/
   autotrader_config_loader.py          JSON → AutoTraderConfig
   abstract_broker_config_fetcher.py    ABC for venue config fetchers
@@ -168,8 +178,8 @@ configs/credentials/venues/
 
 ## Session logs — daily rotation and what is kept
 
-The tick loop rotates its session log at the market's own trading-day boundary
-(`framework/utils/trading_day_anchor.py`), so a
+The session log rotates at the market's own trading-day boundary
+(`framework/utils/trading_day_anchor.py`; the rotation is `session_log_rotator.py`), so a
 long-running session writes `session_logs/autotrader_session_YYYYMMDD.log` once per day rather
 than one file that grows for a month. The rotation is driven by BOTH event sources — a feed
 that goes quiet across the boundary still rotates, because the heartbeat advances the canonical

@@ -444,13 +444,14 @@ class TestTheTier1Warning:
 
 
 class TestTheGuardIsPartOfStartup:
-    """It runs inside `_validate_startup`, after the carry-over identity and before anything else."""
+    """It runs inside `_validate_startup`, after the carry-over checks and before anything else."""
 
     @staticmethod
     def _startup_session(monkeypatch, identity, calls):
         session = _session(identity, None)
         session._decision_logic = SimpleNamespace()
         session._worker_orchestrator = SimpleNamespace(workers={})
+        session._carried_load = None
 
         def refuse_swap_check(symbol):
             calls.append('swap')
@@ -463,8 +464,10 @@ class TestTheGuardIsPartOfStartup:
         monkeypatch.setattr(autotrader_main_module, 'validate_bot_id',
                             lambda name, symbol, bot_id: calls.append('bot_id'))
         monkeypatch.setattr(autotrader_main_module, 'validate_carry_over_identity_unique',
-                            lambda path, name, symbol, bot_id, profile_homes: calls.append(
-                                'unique'))
+                            lambda path, name, symbol, bot_id, profile_homes, carry_over_from:
+                            calls.append('unique'))
+        monkeypatch.setattr(autotrader_main_module, 'validate_carry_over_continuity',
+                            lambda *args: calls.append('continuity'))
         return session
 
     def test_a_dirty_real_money_start_is_refused_there(self, monkeypatch):
@@ -474,7 +477,7 @@ class TestTheGuardIsPartOfStartup:
             manager.return_value.get_dry_run.return_value = False
             with pytest.raises(UncommittedCodeError):
                 session._validate_startup()
-        assert calls == ['clock', 'bot_id', 'unique']
+        assert calls == ['clock', 'bot_id', 'unique', 'continuity']
 
     def test_a_clean_start_passes_on_to_the_next_check(self, monkeypatch):
         calls = []
@@ -483,7 +486,7 @@ class TestTheGuardIsPartOfStartup:
             manager.return_value.get_dry_run.return_value = False
             with pytest.raises(RuntimeError, match='swap-mode'):
                 session._validate_startup()
-        assert calls == ['clock', 'bot_id', 'unique', 'swap']
+        assert calls == ['clock', 'bot_id', 'unique', 'continuity', 'swap']
 
 
 # =============================================================================

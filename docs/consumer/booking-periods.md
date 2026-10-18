@@ -48,6 +48,7 @@ read the deployment-wide route or the ledger rows behind it.
 | `trade_count` · `net_pnl` · `total_fees` | what the period's **closed** trades did |
 | `commission_cost` + `swap_cost` | equals `total_fees` |
 | `spread_cost` | measured, and stands **beside** `total_fees`, never inside it |
+| `modelled_spread_cost` | crossed against quotes a backtest modelled for data without one — beside `spread_cost`, the two adding up |
 | `opening_equity` | what the account stood at when the period opened |
 | `final_equity` | what it stood at when the period closed |
 | `min_equity` · `max_equity` · `max_drawdown` | the period's **own** band and decline |
@@ -59,7 +60,8 @@ The band and the decline are the period's own, not running totals. On this table
 what each period did; a cumulative figure would repeat the same number down the column.
 
 `commission_cost`, `swap_cost`, `spread_cost` and `opening_equity` are null on a period recorded
-before contract 17 — see [nulls](/api/v1/docs/nulls).
+before contract 17, and `modelled_spread_cost` on one recorded before contract 33 — see
+[nulls](/api/v1/docs/nulls).
 
 ## What a unit total says, and where it differs
 

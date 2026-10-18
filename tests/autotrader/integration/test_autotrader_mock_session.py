@@ -15,7 +15,9 @@ import pytest
 from python.configuration.app_config_manager import AppConfigManager
 from python.configuration.autotrader.autotrader_config_loader import load_autotrader_config
 from python.framework.autotrader.autotrader_main import AutotraderMain
-from python.framework.autotrader.rendered_profile_builder import render_autotrader_profile
+from python.framework.autotrader.run_record.rendered_profile_builder import (
+    render_autotrader_profile,
+)
 from python.framework.reporting.io.artifact_specs import (
     BOOKING_PERIODS_ARTIFACT,
     BROKER_ARTIFACT,

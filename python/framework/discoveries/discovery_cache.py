@@ -26,6 +26,7 @@ import pyarrow.parquet as pq
 from python.configuration.app_config_manager import AppConfigManager
 from python.configuration.discoveries_config_loader import DiscoveriesConfigLoader
 from python.data_management.index.bars_index_manager import BarsIndexManager
+from python.framework.discoveries.discovery_cache_index import DiscoveryCacheIndex
 from python.framework.discoveries.extreme_move_scanner import ExtremeMoveScanner
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.logging.bootstrap_logger import get_global_logger
@@ -312,7 +313,7 @@ class DiscoveryCache:
                 **metadata
             })
 
-            pq.write_table(table, cache_path)
+            DiscoveryCacheIndex(self.cache_dir.parent).write_cache_file(table, cache_path)
             self._logger.debug(f'Cached: {broker_type}/{symbol} extreme_moves')
 
         except Exception as e:

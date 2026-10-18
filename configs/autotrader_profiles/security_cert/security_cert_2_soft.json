@@ -1,0 +1,80 @@
+{
+  "_comment": "STAGE 2 OF 5 of the security study (#358) — the soft circuit breaker. REAL MONEY. Four limits so small that one min-lot fill's fee crosses all of them: the block engages on the real account value and names every limit that fired. The account must hold none of the base at the start (`start_flat`) — a held base moves the account value with every tick and would trip these limits at a moment nobody chose. A fresh baseline (persist_baseline false), so an earlier attempt's record never decides this one.",
+  "profile_name": "kraken_spot_btcusd_security_cert_soft",
+  "run_purpose": "certificate",
+  "bot_id": "scsafe01",
+  "symbol": "BTCUSD",
+  "broker_type": "kraken_spot",
+  "adapter_type": "live",
+  "deployment": {
+    "_comment": "A stage of the security study, never a deployment: each session is its own one-off.",
+    "continuous": false
+  },
+  "dry_run": false,
+  "strategy_config": {
+    "decision_logic_type": "CORE/security_cert_study/security_cert_study",
+    "worker_instances": {
+      "pipeline_rsi": "CORE/rsi"
+    },
+    "workers": {
+      "pipeline_rsi": {
+        "periods": {
+          "M5": 14
+        }
+      }
+    },
+    "decision_logic_config": {
+      "max_session_cost_usd": 0.5,
+      "session_timeout_s": 600,
+      "halt_after_phase": "",
+      "phase_sequence": [
+        {
+          "phase_id": "s_start_flat",
+          "phase_type": "start_flat"
+        },
+        {
+          "phase_id": "s_buy",
+          "phase_type": "submit_expect",
+          "side": "long",
+          "lot_rule": "min_lot",
+          "expect": "filled"
+        },
+        {
+          "phase_id": "s_wait",
+          "phase_type": "wait",
+          "wait_s": 10,
+          "_comment": "The breaker values the account on each tick; ten seconds of ticks see the fill's cost."
+        },
+        {
+          "phase_id": "s_blocked_buy",
+          "phase_type": "submit_expect",
+          "side": "long",
+          "lot_rule": "min_lot",
+          "expect": "suppressed"
+        },
+        {
+          "phase_id": "s_force_close",
+          "phase_type": "force_close",
+          "fill_timeout_s": 30,
+          "_comment": "Closing is never blocked — only new entries are."
+        },
+        {
+          "phase_id": "s_final",
+          "phase_type": "final_summary"
+        }
+      ]
+    }
+  },
+  "tick_source": {
+    "type": "kraken"
+  },
+  "safety": {
+    "enabled": true,
+    "max_drawdown_pct": 0.0001,
+    "max_drawdown_abs": 0.001,
+    "max_daily_loss_pct": 0.0001,
+    "max_daily_loss_abs": 0.001,
+    "baseline_mode": "fixed",
+    "persist_baseline": false
+  }
+}

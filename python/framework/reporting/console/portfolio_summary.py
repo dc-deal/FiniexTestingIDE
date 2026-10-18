@@ -35,6 +35,9 @@ from python.framework.types.trading_env_types.order_types import ProtectiveLevel
 from python.framework.utils.console_renderer import ConsoleRenderer
 from python.framework.utils.math_utils import force_negative, force_positive
 
+# A spread total the model leaves None: the unit read data without a quote
+SPREAD_NOT_MEASURED = 'n/a (no quote)'
+
 
 class PortfolioSummary(AbstractBatchSummarySection):
     """
@@ -167,8 +170,13 @@ class PortfolioSummary(AbstractBatchSummarySection):
 
         # Spread and swap are SIGNED costs — a price improvement and a swap credit are below
         # zero — so they are negated rather than forced negative, which printed a credit as zero.
+        spread = (SPREAD_NOT_MEASURED if unit.total_spread_cost is None
+                  else renderer.pnl(-unit.total_spread_cost, unit.currency))
+        # The spread crossed against quotes modelled for data without one (#602), named apart
+        if unit.total_modelled_spread_cost:
+            spread += f' · modelled {renderer.pnl(-unit.total_modelled_spread_cost, unit.currency)}'
         print(
-            f'   Cost: spread {renderer.pnl(-unit.total_spread_cost, unit.currency)} | '
+            f'   Cost: spread {spread} | '
             f'comm {renderer.pnl(force_negative(unit.total_commission), unit.currency)} | '
             f'swap {renderer.pnl(-unit.total_swap, unit.currency)} | '
             f'maker {renderer.pnl(force_negative(unit.maker_fee), unit.currency)} | '
@@ -543,20 +551,28 @@ class PortfolioSummary(AbstractBatchSummarySection):
         # Pending order statistics (green)
         self._render_pending_stats(renderer, row)
 
-        # Cost breakdown (layout A — all five categories, zeros where n/a)
-        total_costs = (row.total_spread_cost + row.total_commission + row.total_swap
-                       + row.maker_fee + row.taker_fee)
+        # Cost breakdown (layout A — all five categories, zeros where n/a). A spread that was
+        # not measured stays out of the total, and the total says so.
+        total_costs = ((row.total_spread_cost or 0.0) + row.total_modelled_spread_cost
+                       + row.total_commission + row.total_swap + row.maker_fee + row.taker_fee)
+        spread = (SPREAD_NOT_MEASURED if row.total_spread_cost is None
+                  else renderer.pnl(-row.total_spread_cost, currency))
+        if row.total_modelled_spread_cost:
+            spread += f' · modelled {renderer.pnl(-row.total_modelled_spread_cost, currency)}'
+        total_note = (' (without the spread)'
+                      if row.total_spread_cost is None and not row.total_modelled_spread_cost
+                      else '')
 
         print(f"\n{renderer.bold('   💸 COST BREAKDOWN:')}")
         # Spread and swap negated, not forced negative: a credit is a signed cost (unit block)
-        print(f'      Spread: {renderer.pnl(-row.total_spread_cost, currency)} |  '
+        print(f'      Spread: {spread} |  '
               f'Commission: {renderer.pnl(force_negative(row.total_commission), currency)} |  '
               f'Swap: {renderer.pnl(-row.total_swap, currency)}')
         print(f'      Maker: {renderer.pnl(force_negative(row.maker_fee), currency)} |  '
               f'Taker: {renderer.pnl(force_negative(row.taker_fee), currency)} |  '
               # Signed like its parts, so a net credit prints as one. The sum is still taken
               # here; moving it onto the model, and settling its label, belongs to #557.
-              f'Total Fees: {renderer.pnl(-total_costs, currency)}')
+              f'Total Fees: {renderer.pnl(-total_costs, currency)}{total_note}')
 
         print('\n   📉 RISK METRICS:')
         print(f'      Max Drawdown (account, curve): '

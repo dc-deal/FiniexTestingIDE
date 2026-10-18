@@ -15,11 +15,15 @@ from typing import Optional
 
 import pytest
 
+from python.framework.reporting.acceptance_study_recorder import AcceptanceStudyRecorder
+from python.framework.reporting.acceptance_study_stream_projection import (
+    AcceptanceStudyStreamProjection,
+)
 from python.framework.reporting.certificates.field_study_certificate import FieldStudyCertificate
-from python.framework.reporting.field_study_recorder import FieldStudyRecorder
-from python.framework.reporting.field_study_stream_projection import FieldStudyStreamProjection
 from python.framework.reporting.io.artifact_specs import RUN_SUMMARY_ARTIFACT
 from python.framework.reporting.io.report_artifact_io import write_artifact
+from python.framework.types.acceptance_study_types.study_capture_types import CaptureLineType
+from python.framework.types.acceptance_study_types.study_phase_types import PhaseOutcome
 from python.framework.types.api.report_types import RunSummary, RunSummaryCurrency
 from python.framework.types.live_types.broker_truth_types import (
     BrokerTruthPart,
@@ -29,6 +33,7 @@ from python.framework.types.live_types.broker_truth_types import (
 )
 from python.framework.types.log_layout_types import IO_SUBDIR
 from python.framework.types.trading_env_types.broker_types import FeeSource
+from python.framework.types.trading_env_types.order_event_types import OrderEventPlane
 from python.framework.types.trading_env_types.order_types import FeeReport
 
 _FIXTURES = Path('tests/fixtures/field_study')
@@ -411,14 +416,16 @@ class TestTheGateWithoutAMeasurement:
 
     def test_an_unread_order_book_at_the_session_end_does_not_pass(self, tmp_path):
         """Built through the projection, so the producer and the reader share one shape."""
-        recorder = FieldStudyRecorder(str(tmp_path / 'field_study.jsonl'), 'p', 'ETHUSD', ['a'],
-                                      _QuietLogger())
-        projection = FieldStudyStreamProjection(recorder, 'p')
+        recorder = AcceptanceStudyRecorder(str(tmp_path / 'field_study.jsonl'), 'p', 'ETHUSD',
+                                           ['a'], _QuietLogger(), 'Field Study',
+                                           'generate the acceptance certificate')
+        projection = AcceptanceStudyStreamProjection(recorder, 'p')
         projection.write_broker_truth(BrokerTruthRecord(
             seq=1, read_reason=BrokerTruthReadReason.SESSION_START,
             snapshot=BrokerTruthSnapshot(venue_orders=[], venue_balances={'ZUSD': 10.0})))
         recorder.record_phase_start('a', 0, None)
-        recorder.write_projected('bot', 'phase_result', 'a', 0, status='pass')
+        recorder.write_projected(OrderEventPlane.BOT, CaptureLineType.PHASE_RESULT, 'a', 0,
+                                 status=PhaseOutcome.PASS)
         projection.write_broker_truth(BrokerTruthRecord(
             seq=2, read_reason=BrokerTruthReadReason.SESSION_END,
             snapshot=BrokerTruthSnapshot(unread_parts=[BrokerTruthPart.VENUE_ORDERS,

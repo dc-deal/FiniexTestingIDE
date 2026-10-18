@@ -10,6 +10,9 @@ from python.framework.types.config_types.app_config_types import AppConfig
 from python.framework.types.config_types.console_logging_config_types import ConsoleLoggingConfig
 from python.framework.types.config_types.data_origin_config_types import OriginClass
 from python.framework.types.config_types.file_logging_config_types import FileLoggingConfig
+from python.framework.types.config_types.machine_resources_config_types import (
+    MachineResourcesConfig,
+)
 
 
 class AppConfigManager:
@@ -235,6 +238,15 @@ class AppConfigManager:
             True when gating is enforced
         """
         return self._app_config.api.require_auth
+
+    def get_machine_resources_config(self) -> MachineResourcesConfig:
+        """
+        The thresholds the machine-resources route grades memory against (#595).
+
+        Returns:
+            The `api.machine_resources` block
+        """
+        return self._app_config.api.machine_resources
 
     # ============================================
     # Documentation Search Config

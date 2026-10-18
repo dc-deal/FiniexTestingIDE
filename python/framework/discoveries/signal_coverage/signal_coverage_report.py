@@ -29,7 +29,9 @@ import pandas as pd
 import pyarrow.parquet as pq
 
 from python.configuration.discoveries_config_loader import DiscoveriesConfigLoader
-from python.framework.types.coverage_report_types import Gap, GapCategory
+from python.framework.discoveries.data_coverage.gap_listing import gap_span, recent_gap_listing
+from python.framework.discoveries.data_coverage.gap_timeline import GapTimeline
+from python.framework.types.coverage_report_types import Gap
 from python.framework.types.signal_data_types import (
     SIGNAL_ENVELOPE_SYMBOL,
     SignalObservedSeries,
@@ -93,6 +95,8 @@ class SignalCoverageReport:
 
         # Analysis results
         self.gaps: List[Gap] = []
+        # The gaps in start order for window queries, built on first use
+        self._gap_timeline: Optional[GapTimeline] = None
         self.gap_counts = {
             'seamless': 0,
             'weekend': 0,
@@ -427,12 +431,11 @@ class SignalCoverageReport:
             end: Window end (UTC-aware)
 
         Returns:
-            Gaps whose start and end both fall inside the window
+            Gaps whose start and end both fall inside the window, oldest first
         """
-        return [
-            gap for gap in self.gaps
-            if gap.gap_start >= start and gap.gap_end <= end
-        ]
+        if self._gap_timeline is None or not self._gap_timeline.covers(self.gaps):
+            self._gap_timeline = GapTimeline(self.gaps)
+        return self._gap_timeline.gaps_in_window(start, end)
 
     def coverage_ratio_in_window(self, start: datetime, end: datetime) -> float:
         """
@@ -531,6 +534,18 @@ class SignalCoverageReport:
     # REPORT
     # =========================================================================
 
+    def _gap_line(self, gap: Gap) -> str:
+        """
+        One gap on one line: when and how long.
+
+        Args:
+            gap: The gap to describe
+
+        Returns:
+            The report line
+        """
+        return f'   {gap_span(gap)}{gap.duration_human} ({gap.gap_hours:.2f}h)'
+
     def generate_report(self) -> str:
         """
         Generate human-readable signal coverage report.
@@ -606,40 +621,13 @@ class SignalCoverageReport:
         report.append(
             f"🔴 Large:        {self.gap_counts['large']} gaps")
 
-        problematic = [
-            g for g in self.gaps
-            if g.category in (GapCategory.MODERATE, GapCategory.LARGE)
-        ]
-
-        if problematic:
+        # The newest gaps of each category, the rule both coverage reports list by
+        listing = recent_gap_listing(self.gaps, self._gap_line)
+        if listing:
             report.append(f"\n{'─'*60}")
-            report.append('⚠️  GAP DETAILS:')
+            report.append('GAPS — the most recent of each category, newest first:')
             report.append(f"{'─'*60}")
-            for gap in problematic:
-                report.append(
-                    f'\n{gap.severity_icon} {gap.category.value.upper()} GAP:')
-                report.append(
-                    f"   Start:  {gap.gap_start.strftime('%Y-%m-%d %H:%M:%S')} UTC")
-                report.append(
-                    f"   End:    {gap.gap_end.strftime('%Y-%m-%d %H:%M:%S')} UTC")
-                report.append(
-                    f'   Gap:    {gap.duration_human} ({gap.gap_hours:.2f}h)')
-                report.append(f'   Reason: {gap.reason}')
-
-        short_gaps = [g for g in self.gaps if g.category == GapCategory.SHORT]
-        if short_gaps:
-            max_display = 20
-            report.append(f"\n{'─'*60}")
-            report.append(f'ℹ️  SHORT GAPS: {len(short_gaps)} total')
-            report.append(f"{'─'*60}")
-            for gap in short_gaps[:max_display]:
-                report.append(
-                    f"   {gap.gap_start.strftime('%Y-%m-%d %H:%M')} → "
-                    f"{gap.gap_end.strftime('%H:%M')} ({gap.duration_human})"
-                )
-            if len(short_gaps) > max_display:
-                report.append(
-                    f'   ... and {len(short_gaps) - max_display} more short gaps')
+            report.extend(listing)
 
         if not self.gaps:
             report.append('\n✅ Continuous signal series - no gaps detected!')

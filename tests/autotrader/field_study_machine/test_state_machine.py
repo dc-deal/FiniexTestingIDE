@@ -11,8 +11,8 @@ from datetime import datetime, timedelta, timezone
 from python.framework.decision_logic.core.live_field_study.field_study_phase_machine import (
     FieldStudyPhaseMachine,
 )
-from python.framework.types.autotrader_types.field_study_types import (
-    FieldStudyPhase,
+from python.framework.types.acceptance_study_types.field_study_types import FieldStudyPhase
+from python.framework.types.acceptance_study_types.study_phase_types import (
     PhaseActionKind,
     PhaseContext,
     PhaseOutcome,
@@ -252,6 +252,19 @@ def test_force_close_already_flat_skipped():
     m = _machine([_phase('p', 'force_close')])
     m.advance(_ctx(1, open_pos=0, limits=0))
     assert m.get_results()[0].outcome == PhaseOutcome.SKIPPED
+
+
+def test_force_close_cancels_a_resting_stop_and_waits_for_it_to_go():
+    """
+    The safety net clears a stop as well as a limit: counting limits alone let a resting stop
+    pass as flat, and it stayed armed at the venue after the study.
+    """
+    m = _machine([_phase('p', 'force_close')])
+    assert m.advance(_ctx(1, open_pos=0, limits=0, stops=1)).kind == PhaseActionKind.CANCEL_ALL
+    m.advance(_ctx(2, open_pos=0, limits=0, stops=1, pending=True))
+    assert m.get_results() == [], 'still resting — not flat yet'
+    m.advance(_ctx(3, open_pos=0, limits=0, stops=0))
+    assert m.get_results()[0].outcome == PhaseOutcome.PASS
 
 
 def test_close_all_closes_then_flat():

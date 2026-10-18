@@ -24,7 +24,7 @@ import pytest
 
 from python.framework.autotrader.autotrader_tick_loop import AutotraderTickLoop
 from python.framework.autotrader.live_clipping_monitor import LiveClippingMonitor
-from python.framework.autotrader.risk_baseline_tracker import RiskBaselineTracker
+from python.framework.autotrader.safety.risk_baseline_tracker import RiskBaselineTracker
 from python.framework.bars.bar_rendering_controller import BarRenderingController
 from python.framework.decision_logic.core.test_probes.deterministic_probe import (
     DeterministicProbe,

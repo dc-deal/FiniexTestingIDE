@@ -1993,6 +1993,7 @@ class AbstractTradeExecutor(ABC):
             entry_submission=pending_order.submission,
             pip_size=adapter.get_pip_size(pending_order.symbol),
             price_unit=adapter.get_pip_mode().unit_label,
+            entry_quote_modelled=self._current_quote_modelled(),
         )
 
         # Create order result for history
@@ -2258,6 +2259,7 @@ class AbstractTradeExecutor(ABC):
                 # fact (#244).
                 exit_bid=bid,
                 exit_ask=ask,
+                exit_quote_modelled=self._current_quote_modelled(),
             )
             self.logger.debug(
                 f'📊 Partial close: {position_id} '
@@ -2286,6 +2288,7 @@ class AbstractTradeExecutor(ABC):
                 # fact (#244).
                 exit_bid=bid,
                 exit_ask=ask,
+                exit_quote_modelled=self._current_quote_modelled(),
             )
             self.logger.debug(
                 f'💰 Position closed: {position_id} '
@@ -2863,6 +2866,18 @@ class AbstractTradeExecutor(ABC):
         if not self._current_tick or self._current_tick.symbol != symbol:
             raise ValueError(f'No current price data for {symbol}')
         return self._current_tick.bid, self._current_tick.ask
+
+    def _current_quote_modelled(self) -> bool:
+        """
+        Whether the current tick's bid/ask were modelled rather than recorded (#602).
+
+        A live executor reads the venue's own quote, which is always recorded; only the
+        simulation over ticks without a quote models one, and it overrides this.
+
+        Returns:
+            False
+        """
+        return False
 
     def set_current_time(self, now: datetime) -> None:
         """

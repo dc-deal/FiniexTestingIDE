@@ -41,12 +41,12 @@ worse. What they *can* share is how they describe themselves.
 | 5 | `data/processed/{broker}/ticks` | ARCHIVE | broker / symbol / file | `ticks_index.parquet` | C · bulk |
 | 6 | `data/processed/{broker}/bars` | **DERIVED** ← ticks | broker / symbol / timeframe | `bars_index.parquet` | C · bulk |
 | 7 | `data/processed/signals/` | ARCHIVE | type / symbol / day | `signals_index.parquet` | C · bulk |
-| 8 | `data/processed/discovery_caches/` | DERIVED ← bars | family / broker_symbol | `discovery_caches_index.parquet` | A · document |
+| 8 | `data/processed/discovery_caches/` | DERIVED ← bars, ticks | family / broker_symbol | `discovery_caches_index.parquet` | A · document |
 | 9 | `configs/generator_profiles/` | DERIVED ← discovery caches | mode / broker / symbol | none — its own fingerprints | A · document |
 | 10 | `data/runtime/brokers/` | DERIVED ← a remote API | `broker_type` | none — one file per broker | A · document |
 | 10b | `data/runtime/config_directory/` | DERIVED ← the configuration files (not a store) | path of the configuration file | `config_directory_index.parquet` | B · set |
 | 10c | `data/runtime/import_timings.json` | DERIVED ← the imports' own durations (not a store) | none | none — one file | A · document |
-| 11 | `data/finished/` | ARCHIVE | file name | none — opened by name | A · document |
+| 11 | `data/finished/` | ARCHIVE | zip or file name | none — opened by name | A · document |
 | 11b | `data/external/` | ARCHIVE | vendor / dataset / fetch folder | none — a fetch is opened by its folder, its `manifest.json` keyed on part SHA-256 and fetch time | A · document |
 | 12 | `data/raw/` → `data/finished/` | **SPECIAL** | file name | none — conveyor | — |
 | 13 | `logs/global.log` | **SPECIAL** | none | none — append stream | — |
@@ -72,8 +72,14 @@ vendor publishes them, the vendor's checksum list, and this side's `manifest.jso
 keyed on each part's SHA-256 and the time it was fetched, never on the vendor's release label: a
 vendor may re-upload a release under the same label, so the label alone does not pin the bytes.
 Conversion records (`conversions/`) beside the manifest say which collector-shaped files each run
-wrote into the import inbox. The store is append-only, the importer never reads it — the converter
-does — and nothing in it ever enters a data package or the repository.
+wrote into the import inbox. The store is never rewritten, the importer never reads it — the
+converter does — and nothing in it ever enters a data package or the repository.
+
+A fetch's parts may be removed once its conversion has been imported and verified. The converted
+files then live in the finished archive (`data/finished/`, zipped there like the collector's own
+files), and each of them names the parts it came from and their checksums. The store can therefore
+be empty while the history it held is complete — which is why the catalog counts the finished
+archive by its zips as well as by its loose files.
 
 See it live, with entry counts and the stated reasons:
 
@@ -176,6 +182,16 @@ everything else.
 **What remains is uniqueness**: two profiles declaring the same `bot_id` for the same symbol would
 still meet in one document. The startup validator is the answer — it compares every declared
 identity across both profile trees and refuses a duplicate.
+
+**And the name still decides whose document it is.** The envelope records the profile that wrote
+it, and both stores read a document as this bot's only when that name is this profile's — so a
+renamed profile finds its own document written by "another" one. The boot refuses to start over
+such a document while it holds an open position or a session key
+(`carry_over_continuity_validator`, #358), and the store will not write over it either; before
+that, the first write replaced it and the position it described was left at the venue unknown.
+The one deliberate exception is a declared continuation — a later stage naming the earlier in
+`carry_over_from`, read in both directions, and held at boot to the conditions in
+[autotrader_configuration.md](../autotrader/autotrader_configuration.md#a-declared-continuation--carry_over_from).
 
 The declared id also reaches the LEDGER (`bot_id`, IDENTITY reduction), so a report can say
 which BOT a row belongs to rather than only what the profile was called at the time. And the
@@ -402,6 +418,20 @@ rather than serving it.
 | **DERIVED** | mirrors its source | **deletable** | none — *if deleting it loses something, it is misfiled* |
 | **SPECIAL** | — | — | catalogued with a stated reason, nothing else |
 
+### A new thing joins an existing store before it becomes a new one
+
+The store is the umbrella, and its kind says what the content is. So something new that has to
+persist first looks for the store whose kind, source and lifecycle it shares, and becomes a family
+or an entry there; a new store is created only where none fits, and its `note` says why. The spread
+estimate is the example: an analysis computed from the tick archive, regenerable at any time, is a
+family in `discovery_caches` (whose sources are therefore bars AND ticks), not a store of its own.
+
+**"Discovery" names a content type, not a store kind**: a DERIVED analysis computed from the
+archive, regenerable at any time and cached against its source — and against the version of its
+method where the family records one, as the spread estimate does.
+What the IDE produces itself — a run, a certificate, a carry-over — is RECORD or CARRY-OVER and
+never a discovery: deleting it loses what happened.
+
 ### RECORD and CARRY-OVER are never merged
 
 ```
@@ -415,9 +445,11 @@ directory archaeology run identity abolished. Different key, different lifetime.
 
 The envelope every carry-over writes is
 [`CarryOverEnvelope`](../../python/framework/types/persistence_types.py): schema version, store id,
-save time, the bot's identity, and `written_by_run_id`. That last field is **provenance, never
-identity** — it records which session wrote the file so a restored state can be traced back, and it
-is deliberately not part of the key.
+save time, the bot's identity, `written_by_run_id`, and the writer's `carry_over_from`. The run id
+is **provenance, never identity** — it records which session wrote the file so a restored state
+can be traced back, and it is deliberately not part of the key. The writer's declaration is what
+lets the EARLIER stage of a declared continuation recognise its successor's document as its own
+bot's, rather than ignoring it and overwriting the successor's book.
 
 ### Why the SPECIAL stores stay special
 
@@ -576,6 +608,9 @@ just invalidated — but the reason line is what makes the remaining cases actio
 
 ## Adding a store
 
+0. Check first whether an existing store already holds things of its kind, from its source and
+   with its lifecycle — then it is a family or an entry there, not a new store (see *A new thing
+   joins an existing store before it becomes a new one* above).
 1. Add a `StoreId` value in [`store_types.py`](../../python/framework/types/store_types.py).
 2. Register it in [`store_registrations.py`](../../python/framework/store/store_registrations.py)
    with its kind, root, key, form and — unless it is SPECIAL — its index or a stated reason for
@@ -702,7 +737,7 @@ than handled automatically. If you ever meet it, this narrows it down:
 | Cause | How likely | How to tell |
 |---|---|---|
 | Someone deleted, moved or restored `data/runtime/` (a "clean start", a machine move, a backup) | the usual one | the carry-over file is missing or its `saved_at_utc` predates the order |
-| Two instances of the same bot ran at once and their key writes crossed | rare — the write is read-modify-write, so it needs overlapping saves | two run ids in `runs_index.parquet` overlapping in time for one profile |
+| Two instances of the same bot ran at once and their key writes crossed | rare — the write is read-modify-write, so it needs overlapping saves; for the two stages of a declared continuation the boot refuses a partner's document whose run has not completed | two run ids in `runs_index.parquet` overlapping in time for one profile |
 | The document was hand-edited or corrupted | rare | the boot log carries the "unreadable" or "payload rejected" warning |
 | A schema version bump discarded it | only right after a deploy | the boot log names the version mismatch |
 | Genuinely another client using the same key format | improbable | the key's session half matches no run id of ours |

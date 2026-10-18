@@ -17,6 +17,7 @@ fake executor + recording logic (no broker, no worker thread):
 - Unsubscribed event types are filtered out
 - `drain()` delivers buffered events in FIFO order
 - Re-entrancy: an event emitted from inside a hook lands in the **next** drain
+- `emit_session_end()`: the session-end event both loops send, the request's reason or `tick source exhausted`
 
 ### Dual-world parity (full pipeline)
 

@@ -46,12 +46,6 @@ SCANNED = ('python', 'tests')
 # been read at its sites. The reason is the entry — a bare shape here would be a waiver
 # nobody can re-judge.
 ACCEPTED_LEAKS: Dict[str, str] = {
-    '(_*(10**_))':
-        'THE FOUNDING CASE, and it is on its way out. `pnl_math.gross_pnl_from_price_diff` '
-        'against `SpreadFee.calculate_cost`. Since the spread stopped being booked as a fee '
-        'the SpreadFee is uncalled, and #244\'s reporting half deletes it together with its '
-        'factory. When that lands this entry must go with it.',
-
     '((_+_)/2.0)':
         '`price_trigger.mid_price` against three sites, NONE of them a defect. '
         '`market_data_types.TickData.mid` is inline on purpose and says so: delegating was '

@@ -10,6 +10,7 @@ The discovery system provides pre-computed market analyses with automatic cache 
 | **Extreme Move Scanner** | Directional price movements (strong LONG/SHORT trends) | `ExtremeMoveResult` |
 | **Data Coverage** | Gap detection, data quality assessment | `DataCoverageReport` |
 | **Signal Coverage** | Gap detection on a signal series (#429) | `SignalCoverageReport` |
+| **Spread Estimate** | The spread of days whose ticks recorded no quote, from the trades' aggressor sides (#602) | `SpreadMeasurement`, cached day estimates |
 
 ## Architecture
 
@@ -19,13 +20,18 @@ discoveries_cli.py
     ├── extreme-moves      → DiscoveryCache                 → ExtremeMoveScanner
     ├── data-coverage      → DataCoverageReportCache        → DataCoverageReport
     ├── signal-coverage    → SignalCoverageReportManager    → SignalCoverageReport
-    └── cache              → DiscoveryCacheManager            (coordinates the cached three)
+    └── cache              → DiscoveryCacheManager            (coordinates the cached families)
+
+spread_estimate_cli.py
+    ├── show               → SpreadEstimateMeasurement       (the whole history, measured)
+    └── build              → SpreadEstimateCache             (the day estimates a backtest reads)
 ```
 
 **Code locations:**
 - Volatility profiling: `python/framework/discoveries/volatility_profile_analyzer/`
 - Data coverage: `python/framework/discoveries/data_coverage/`
 - Signal coverage: `python/framework/discoveries/signal_coverage/`
+- Spread estimate: `python/framework/discoveries/spread_estimate/`, types in `spread_estimate_types.py`
 - Types: `python/framework/types/market_types/market_volatility_profile_types.py`, `coverage_report_types.py`
 - Config: `configs/discoveries/discoveries_config.json` (volatility_profile, cross_instrument_ranking, extreme_moves, data_coverage, signal_coverage)
 - CLI: `python/cli/discoveries_cli.py`
@@ -34,9 +40,17 @@ discoveries_cli.py
 
 All caches follow the same pattern:
 - **Storage**: Parquet files with Arrow metadata
-- **Invalidation**: Source M5 bar file mtime comparison (stale if source newer than cache)
-- **Lazy loading**: Bar index only loaded on first cache check
+- **Invalidation**: against the source each family reads, plus a fingerprint of what produced it.
+  The three bar-derived families compare the M5 bar file's mtime (stale if the source is newer)
+  and their config section. The spread estimate compares the set of the symbol's files without a
+  quote — names, tick counts and time ranges as the tick index lists them — and the estimator's
+  version, so neither a quoted import nor a config change elsewhere touches it, while a changed
+  method does
+- **Lazy loading**: the bar or tick index is only loaded on the first cache check
 - **Bulk operations**: `build_all()`, `clear_cache()`, `get_cache_status()`
+- **The store index keeps up**: every cache write enters its file in
+  `discovery_caches_index.parquet`, so a report computed on demand does not leave the store catalog
+  reporting a stale index. One row costs about 45 ms, a full index rebuild about 850 ms
 
 ### Directory Structure
 
@@ -46,8 +60,10 @@ data/processed/discovery_caches/
 │   └── {broker}_{symbol}.parquet
 ├── extreme_moves_cache/            # DiscoveryCache
 │   └── {broker}_{symbol}_extreme_moves.parquet
-└── volatility_profile_cache/       # VolatilityProfileAnalyzerCache
-    └── {broker}_{symbol}_volatility_profile.parquet
+├── volatility_profile_cache/       # VolatilityProfileAnalyzerCache
+│   └── {broker}_{symbol}_volatility_profile.parquet
+└── spread_estimate_cache/          # SpreadEstimateCache — only symbols with a file without a quote
+    └── {broker}_{symbol}.parquet
 ```
 
 ### DiscoveryCacheManager
@@ -56,7 +72,13 @@ Central coordinator (`discovery_cache_manager.py`). Used by:
 - `bar_importer.py` — auto-rebuild after bar import
 - `discoveries_cli.py` — `cache rebuild-all`, `cache status`
 
-Methods: `rebuild_all(force)`, `status()`, `clear_all()`
+Methods: `rebuild_all(force)`, `status()`, `get_fingerprints(broker, symbol)`
+
+`force` reaches the bar-derived families only. The spread estimate's validity is exact — the files
+without a quote and the estimator version — so a forced rebuild would write the same rows, and
+re-measuring the whole history after every import that forces the others would cost minutes
+(about two for every Kraken symbol, measured 2026-10-16). `spread_estimate_cli.py build --force`
+forces it on purpose.
 
 ### Serialization
 
@@ -65,6 +87,7 @@ Methods: `rebuild_all(force)`, `status()`, `clear_all()`
 | **Volatility Profile** | `VolatilityPeriod` list (enums as strings) | Scalars, regime dicts, session summaries (JSON) |
 | **Extreme Moves** | `ExtremeMove` list (direction as string) | Timeframe, ATR, pip_size, scanned_bars |
 | **Data Coverage** | `Gap` list (category as string) | Start/end time, gap_counts (JSON) |
+| **Spread Estimate** | One row per UTC day: pairs, median, p90 and capped mean in bps | Estimator-version fingerprint, source fingerprint, number of files without a quote |
 
 ## CLI Reference
 
@@ -80,6 +103,8 @@ discoveries_cli.py signal-coverage show <data_sentiment_type> <symbol>
 discoveries_cli.py signal-coverage validate
 discoveries_cli.py cache rebuild-all [--force]
 discoveries_cli.py cache status
+spread_estimate_cli.py show <broker> <symbol> [--year 2021]
+spread_estimate_cli.py build [<broker> <symbol>] [--force]
 ```
 
 **`--force`** bypasses cache and recomputes from source data.
@@ -127,11 +152,68 @@ The filter uses `DataCoverageReportCache` to load the gap report for the broker/
 Detects gaps via timestamp jumps between consecutive bars at the configured granularity (default: M1):
 - **Weekend**: Expected closure (Friday 17:00 - Sunday 17:00 New York: 21:00 UTC in summer, 22:00 in winter)
 - **Holiday**: Dec 25, Jan 1
-- **Short**: < 30min (MT5 restarts)
+- **Short**: < 30min
 - **Moderate**: 30min - 4h
-- **Large**: > 4h (data collection issue)
+- **Large**: > 4h
 
-Provides `has_issues()` check and actionable `get_recommendations()`.
+Provides `has_issues()` and `get_recommendations()`. The recommendations are for the gaps of our
+OWN collection only (see *Whose silence a gap is* below), and the MT5 advice — the MQL5
+TickCollector's logs — is given for an MT5 broker only; a Kraken collection gets a general hint at
+the collector's logs. A gap's `reason` names the category and the length and gives no advice: the
+classifier cannot know whose data surrounds a gap.
+
+### What the report lists
+
+A venue's published history holds tens of thousands of gaps — `kraken_spot/BTCUSD` 117,757, LTCUSD
+375,682, against about 400 for an MT5 symbol with one year of our own collection (measured
+2026-10-15) — and a report that printed every moderate and large one ran to 61,178 lines. The report
+lists the **newest ten of each category**, newest first, one line each, and counts the rest by year
+and data origin:
+
+```
+🔴 LARGE — the last 10 of 1,034
+   2026-09-20 19:48 → 09-21 08:39  12h 51m (12.85h)  between two files, collection resumed 12h 50m later   [production]
+   2025-11-01 15:02 → 21:46        6h 44m (6.73h)    inside BTCUSD_20251101_000000.parquet — no trades at the venue, nothing to re-collect   [external]
+⚠️  MODERATE — the last 10 of 7,694
+ℹ️  SHORT — the last 10 of 109,029
+
+BY YEAR AND ORIGIN (short · moderate · large, and the hours without data):
+   year  origin            short  moderate   large       hours
+   2016  external         48,138     1,422       8     6,908.9
+   2026  production          365         3       2        46.7
+```
+
+Per category, so a burst of recent short gaps never pushes out the one large gap. The rule lives in
+`gap_listing.py` and the signal coverage report lists by it too. The yearly summary is computed on
+the report (`summary_by_year_and_origin()`), not in the printout, and the API serves the same rows.
+Weekend and holiday closures are not counted in it — they are a market's expected silence. A gap
+belongs to the year it started in.
+
+### Whose silence a gap is
+
+Every tick file carries its **origin class** (`production`, `development`, `unknown`, `external`),
+and a gap takes the class of the file it lies in or follows. In a venue's published history
+(`external`) no collector of ours was running: a gap there is a stretch in which nobody traded at
+the venue, and there is nothing to re-collect — the line says so and the recommendations leave it
+out. Where the class before and after a gap differ, the gap is the **seam** between two origins: the
+line reads "where the external data ends and the production data begins", and the gaps route serves
+two different classes in `origin_class` and `origin_class_after`. A gap no tick file could be found
+for is `unattributed`, and a report holding one closes with "Not judged" rather than a clean bill.
+
+A gap starts at the open of the last bar before it, and that bar's ticks run on to its end, so the
+file before a gap is the last one that opened before that bar closed — a file whose first tick falls
+inside the bar holds the data before the gap.
+
+### What a run asks of the report, and what it costs
+
+Every batch loads each symbol's report from the cache once and asks it, per scenario, whether a gap
+contains the scenario's start and which gaps lie inside its tick stretch. Both questions are a
+binary search over the gaps' start times (`gap_timeline.py`), because a linear scan grew with the
+archive's depth: 166 ms per scenario on BTCUSD's 117,757 gaps against 0.7 ms on an MT5 symbol
+(measured 2026-10-15). The search is built once per symbol and batch — 29 ms for BTCUSD, 102 ms for
+LTCUSD's 375,682 gaps. The cache is read column by column for the same reason — 480 ms for BTCUSD
+where the row-by-row read took 3.4 s. Nothing the report adds for a reader (origin, listing,
+summary) runs on that path.
 
 Categories are gated on the market type. `MarketCalendar` is forex-shaped — its weekend and
 trading-hour methods hard-code Mon–Fri — so a 24/7 market never receives the weekend/holiday
@@ -157,14 +239,14 @@ Wednesday gap as "1 trading day".
 
 ### Which file(s) a gap falls in
 
-Each moderate or large gap states where it sits relative to the collector's files. This answers the
-operator question behind every outage: **was the collector running through it, or not collecting at
-all?**
+Each listed gap states where it sits relative to the collector's files. In our own collection this
+answers the operator question behind every outage: **was the collector running through it, or not
+collecting at all?**
 
 ```
-Type:   Intra-file — ADAUSD_20260728_233104.parquet (collector was running)
-Type:   File boundary — A.parquet → B.parquet (rollover, collection continued)
-Type:   File boundary — A.parquet → B.parquet (collection resumed 336h later)
+inside ADAUSD_20260728_233104.parquet, the collector was running
+between two files, at a rollover — collection continued
+between two files, collection resumed 336h later
 ```
 
 **A file boundary on its own proves nothing.** Files roll at `max_ticks_per_file`, not on a clock,
@@ -182,7 +264,10 @@ The report states the observation and stops there. Whether a pause was the venue
 a judgment, and it stays with the reader.
 
 Resolved **at render time, from the tick index** — like the version spans below, and for the same
-reason: the batch validation path never renders the report and must not pay for the index load.
+reason: the batch validation path never renders the report and must not pay for the index load. The
+origin class is read from the same entries in the same pass, and the index is read once per report —
+loaded, never built: an index that cannot be read leaves the gaps unattributed rather than a report,
+or an API request, rebuilding it.
 
 ### Data format version spans
 
@@ -300,6 +385,36 @@ Example — a scenario left on an old window after its source was re-imported:
 There is **no warmup concept for signals** — a SIGNAL worker resolves the nearest snapshot
 at or before the tick and needs no history window. The precondition the Phase 2 check
 enforces is the signal analogue: *a snapshot must already exist at the first tick*.
+
+## Spread Estimate Details
+
+A tick recorded without a quote — Kraken's published history, and our own collection before
+format 1.6.0 — carries bid = ask = the traded price, so a backtest over it would cross no spread.
+Kraken marks the aggressor of every trade, so the spread is estimated from the trades: two
+consecutive trades of opposite sides within one second straddle it, a burst of fills of one order
+counted once. Per UTC day the cache keeps the pairs, the median, the 90th percentile and the mean
+capped at the 99th percentile — the mean is the expected cost, the median is not one: in 2017 more
+than half of ETHUSD's pairs crossed at an unchanged price. On the files that did record a quote the
+estimate lies between the quoted and the effective spread (`spread_estimate_cli.py show`).
+
+**How a backtest uses it.** While the ticks are prepared for a scenario, each tick from a file
+without a quote is given bid and ask half the estimate below and above its traded price, times
+`trade_simulator_config.modelled_spread_factor` (see
+[Configuration Cascade](config_cascade_guide.md)). From there every rule that reads a quote reads
+it unchanged: a market order, a triggered stop and a close take its side, a resting order is reached
+by it, an open position is marked at it — in both account models. The archive, the bars and the
+traded price stay as recorded.
+
+- **A day is priced by the days before it, never by itself:** the last day with at least 20 pairs,
+  at most 30 days back. A tick with no such day keeps bid = ask and is counted as not modelled.
+- **What it was given is recorded.** Each fill says whether its quote was modelled, and its spread
+  is `modelled_spread_cost` rather than `spread_cost`; the run's scenario details carry the
+  factor, the estimator version and a digest of the day estimates used; one run line counts the
+  modelled ticks.
+- **If the estimates cannot be built**, the scenario is refused (`modelled_spread_unavailable`)
+  rather than run without a spread.
+- **Not modelled:** mock AutoTrader sessions, which rehearse the live path whose venue sends a
+  quote, and every tick that recorded one.
 
 ## VS Code Launch Configs
 

@@ -19,6 +19,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 
 from python.configuration.app_config_manager import AppConfigManager
+from python.data_management.index.index_entry_times import entry_time_bounds
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.store.abstract_store_index import store_index_filename
@@ -413,10 +414,9 @@ class SignalIndexManager:
         covers_start = False
         preceding: Optional[Dict] = None
 
-        for entry in self.index[data_sentiment_type][symbol]:
-            file_start = pd.to_datetime(entry['start_time'], utc=True)
-            file_end = pd.to_datetime(entry['end_time'], utc=True)
-
+        entries = self.index[data_sentiment_type][symbol]
+        starts, ends = entry_time_bounds(entries)
+        for entry, file_start, file_end in zip(entries, starts, ends):
             if file_start <= end_date and file_end >= start_date:
                 relevant.append(entry)
                 if file_start <= start_date:
@@ -498,16 +498,26 @@ class SignalIndexManager:
     def _load_index(self) -> None:
         """Load the index from parquet into the nested dict."""
         try:
-            df = pd.read_parquet(self.index_file)
-            self.index = self._dataframe_to_nested_dict(df)
+            # Straight to Python records, as the tick index reads: every backtest batch loads
+            # this index, and a Series built per row cost 0.4 s over 4,201 rows (2026-10-15)
+            records = pq.read_table(self.index_file).to_pylist()
+            self.index = self._records_to_nested_dict(records)
         except Exception as e:
             self.logger.warning(f'Failed to load signal index: {e}')
             self.index = {}
 
-    def _dataframe_to_nested_dict(self, df: pd.DataFrame) -> Dict[str, Dict[str, List[Dict]]]:
-        """Convert the flat index DataFrame to the nested dict structure."""
+    def _records_to_nested_dict(self, records: List[Dict]) -> Dict[str, Dict[str, List[Dict]]]:
+        """
+        Convert the index's flat rows to the nested dict structure.
+
+        Args:
+            records: One dict per index row, as the parquet file holds it
+
+        Returns:
+            data_sentiment_type → symbol → entries, each list sorted by start time
+        """
         result: Dict[str, Dict[str, List[Dict]]] = {}
-        for _, row in df.iterrows():
+        for row in records:
             sentiment_type = row['data_sentiment_type']
             symbol = row['symbol']
             entry = {

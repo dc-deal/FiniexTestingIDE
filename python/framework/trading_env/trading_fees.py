@@ -3,8 +3,6 @@ FiniexTestingIDE - Trading Fee System
 Polymorphic fee objects for different broker cost models
 
 Architecture:
-- SpreadFee - Bid/Ask spread cost. NO LONGER BOOKED (#244) — the crossing fill price
-  already carries it; scheduled for removal with #244's reporting half
 - SwapFee - Overnight interest (prepared, calculation deferred)
 - CommissionFee - ECN commission (prepared, calculation deferred)
 - MakerTakerFee - Crypto exchange fees (fully implemented)
@@ -22,94 +20,6 @@ from python.framework.types.trading_env_types.broker_types import FeeStatus, Fee
 # ============================================
 # Concrete Fee Types
 # ============================================
-
-
-@dataclass
-class SpreadFee(AbstractTradingFee):
-    """
-    Spread Fee - Implicit cost from bid/ask difference.
-
-    FULLY IMPLEMENTED - Calculated from LIVE tick data at order entry.
-
-    Calculation:
-        spread_points = (ask - bid) * (10 ** digits)
-        cost = spread_points * tick_value * lots
-
-    Example (EURUSD):
-        bid = 1.17408, ask = 1.17433
-        spread = 0.00025 (2.5 pips)
-        digits = 5
-        spread_points = 0.00025 * 100000 = 25 points
-        cost = 25 * 0.85155 * 0.1 = 2.13 EUR
-    """
-
-    # Required for calculation
-    bid: float = 0.0
-    ask: float = 0.0
-    lots: float = 0.0
-    tick_value: float = 0.0
-    digits: int = 5
-
-    def __init__(
-        self,
-        bid: float,
-        ask: float,
-        lots: float,
-        tick_value: float,
-        timestamp: datetime,
-        digits: int = 5
-    ):
-        """
-        Initialize spread fee from live tick data.
-
-        Args:
-            bid: Current bid price
-            ask: Current ask price
-            lots: Order size
-            tick_value: Value per tick per lot
-            timestamp: Fee timestamp, from the executor's canonical clock
-            digits: Symbol decimal places
-        """
-        super().__init__(
-            fee_type=FeeType.SPREAD,
-            status=FeeStatus.APPLIED,  # Spread is immediate
-            timestamp=timestamp
-        )
-
-        self.bid = bid
-        self.ask = ask
-        self.lots = lots
-        self.tick_value = tick_value
-        self.digits = digits
-
-        # Calculate cost immediately
-        self.cost = self.calculate_cost()
-
-        # Store metadata
-        self.metadata = {
-            'bid': bid,
-            'ask': ask,
-            'spread_raw': ask - bid,
-            'spread_points': (ask - bid) * (10 ** digits),
-            'lots': lots
-        }
-
-    def calculate_cost(self, **kwargs) -> float:
-        """
-        Calculate spread cost.
-
-        Formula:
-            spread_points = (ask - bid) * (10^digits)
-            cost = spread_points * tick_value * lots
-
-        Returns:
-            Spread cost in account currency
-        """
-        spread_raw = self.ask - self.bid
-        spread_points = spread_raw * (10 ** self.digits)
-        cost = spread_points * self.tick_value * self.lots
-
-        return abs(cost)  # Always positive
 
 
 @dataclass

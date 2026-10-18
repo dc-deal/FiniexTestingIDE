@@ -8,6 +8,8 @@ running session by coincidence (measured: 97 of 178 archive cases). The file's o
 separates the two. Pure function over index entries — no index, no IO.
 """
 
+from datetime import timedelta
+
 import pandas as pd
 
 from python.framework.discoveries.data_coverage.gap_file_attribution import (
@@ -15,12 +17,15 @@ from python.framework.discoveries.data_coverage.gap_file_attribution import (
     parse_file_open_time,
 )
 from python.framework.types.config_types.market_config_types import ServerClockConfig
+from python.framework.types.config_types.data_origin_config_types import OriginClass
 from python.framework.types.coverage_report_types import Gap
 from python.framework.utils.market_calendar import GapCategory
 
 # Kraken's clock is UTC; the MT5 server runs on New York close time (New York + 7 h).
 UTC_CLOCK = ServerClockConfig(timezone='UTC', hours_ahead=0)
 NEW_YORK_CLOSE = ServerClockConfig(timezone='America/New_York', hours_ahead=7)
+# The gaps are detected on one-minute bars
+M1 = timedelta(minutes=1)
 
 
 def _entry(file_name, start, end):
@@ -41,8 +46,8 @@ def _gap(start, end):
     """Build a gap between two ISO timestamps.
 
     Args:
-        start: Gap start (last tick before)
-        end: Gap end (first tick after)
+        start: Gap start — the open of the last bar before the gap, as detection writes it
+        end: Gap end — the open of the first bar after it
 
     Returns:
         Gap with the file fields still unattributed
@@ -94,7 +99,7 @@ class TestAttribution:
                           '2026-07-28T23:31:04+00:00', '2026-08-02T09:30:53+00:00')]
         gaps = [_gap('2026-07-29T15:33:54+00:00', '2026-07-29T20:43:12+00:00')]
 
-        attribute_gaps_to_files(gaps, entries, UTC_CLOCK)
+        attribute_gaps_to_files(gaps, entries, UTC_CLOCK, M1)
 
         assert gaps[0].file_before == 'BTC_20260728_233104.parquet'
         assert gaps[0].file_after == 'BTC_20260728_233104.parquet'
@@ -110,7 +115,7 @@ class TestAttribution:
         ]
         gaps = [_gap('2026-07-29T15:33:54+00:00', '2026-07-29T20:43:12+00:00')]
 
-        attribute_gaps_to_files(gaps, entries, UTC_CLOCK)
+        attribute_gaps_to_files(gaps, entries, UTC_CLOCK, M1)
 
         assert gaps[0].file_before == 'BTC_20260728_000000.parquet'
         assert gaps[0].file_after == 'BTC_20260729_153354.parquet'
@@ -126,7 +131,7 @@ class TestAttribution:
         ]
         gaps = [_gap('2025-09-26T20:56:41+00:00', '2025-10-12T21:01:00+00:00')]
 
-        attribute_gaps_to_files(gaps, entries, NEW_YORK_CLOSE)
+        attribute_gaps_to_files(gaps, entries, NEW_YORK_CLOSE, M1)
 
         # Opened 2025-10-10 20:56:59 UTC — 14 days after the last tick, inside the gap
         assert gaps[0].next_file_opened_after_s == 14 * 24 * 3600 + 18
@@ -148,7 +153,7 @@ class TestAttribution:
         # after the first file ended and before the second one started.
         gaps = [_gap('2025-09-28T22:00:00+00:00', '2025-10-03T20:00:00+00:00')]
 
-        attribute_gaps_to_files(gaps, entries, NEW_YORK_CLOSE)
+        attribute_gaps_to_files(gaps, entries, NEW_YORK_CLOSE, M1)
 
         assert gaps[0].file_before == 'EUR_20250926_194306.parquet'
         assert gaps[0].file_after == 'EUR_20251010_235659.parquet'
@@ -160,7 +165,7 @@ class TestAttribution:
                           '2026-07-28T00:00:00+00:00', '2026-07-29T00:00:00+00:00')]
         gaps = [_gap('2026-07-01T00:00:00+00:00', '2026-07-02T00:00:00+00:00')]
 
-        attribute_gaps_to_files(gaps, entries, UTC_CLOCK)
+        attribute_gaps_to_files(gaps, entries, UTC_CLOCK, M1)
 
         assert gaps[0].file_before is None
         assert gaps[0].file_after is None
@@ -169,7 +174,7 @@ class TestAttribution:
         """An unindexed symbol must not crash the report."""
         gaps = [_gap('2026-07-29T15:33:54+00:00', '2026-07-29T20:43:12+00:00')]
 
-        attribute_gaps_to_files(gaps, [], UTC_CLOCK)
+        attribute_gaps_to_files(gaps, [], UTC_CLOCK, M1)
 
         assert gaps[0].file_before is None
 
@@ -183,7 +188,92 @@ class TestAttribution:
         ]
         gaps = [_gap('2026-07-29T15:33:54+00:00', '2026-07-29T20:43:12+00:00')]
 
-        attribute_gaps_to_files(gaps, entries, UTC_CLOCK)
+        attribute_gaps_to_files(gaps, entries, UTC_CLOCK, M1)
 
         assert gaps[0].file_before == 'BTC_20260728_000000.parquet'
         assert gaps[0].file_after == 'BTC_20260729_153354.parquet'
+
+
+class TestOrigin:
+    """Whose data surrounds a gap — read from the same index entries, in the same pass."""
+
+    def test_each_gap_carries_the_origin_class_of_the_files_around_it(self):
+        entries = [
+            dict(_entry('BTC_20260124_000000.parquet',
+                        '2026-01-24T00:00:00+00:00', '2026-01-24T14:18:52+00:00'),
+                 origin_class='external'),
+            dict(_entry('BTC_20260124_141946.parquet',
+                        '2026-01-24T14:19:46+00:00', '2026-01-25T00:00:00+00:00'),
+                 origin_class='production'),
+        ]
+        inside = _gap('2026-01-24T03:00:00+00:00', '2026-01-24T09:52:00+00:00')
+        seam = _gap('2026-01-24T14:18:00+00:00', '2026-01-24T14:19:00+00:00')
+
+        attribute_gaps_to_files([inside, seam], entries, UTC_CLOCK, M1)
+
+        assert (inside.origin_class_before, inside.origin_class_after) == (
+            OriginClass.EXTERNAL, OriginClass.EXTERNAL)
+        assert (seam.origin_class_before, seam.origin_class_after) == (
+            OriginClass.EXTERNAL, OriginClass.PRODUCTION)
+        assert seam.is_origin_seam and not inside.is_origin_seam
+
+    def test_an_entry_without_a_known_class_reads_as_unknown(self):
+        entries = [dict(_entry('BTC_20260728_233104.parquet',
+                               '2026-07-28T23:31:04+00:00', '2026-08-02T09:30:53+00:00'),
+                        origin_class='not-a-class')]
+        gaps = [_gap('2026-07-29T15:33:54+00:00', '2026-07-29T20:43:12+00:00')]
+
+        attribute_gaps_to_files(gaps, entries, UTC_CLOCK, M1)
+
+        assert gaps[0].origin_class == OriginClass.UNKNOWN
+
+    def test_a_gap_outside_the_indexed_range_gets_no_origin(self):
+        entries = [_entry('BTC_20260728_233104.parquet',
+                          '2026-07-28T23:31:04+00:00', '2026-08-02T09:30:53+00:00')]
+        gaps = [_gap('2026-07-01T00:00:00+00:00', '2026-07-02T00:00:00+00:00')]
+
+        attribute_gaps_to_files(gaps, entries, UTC_CLOCK, M1)
+
+        assert gaps[0].origin_class is None
+
+
+class TestTheBarBeforeTheGap:
+    """
+    A gap starts at the OPEN of the last bar before it, and that bar's ticks run on to its end.
+    Measured 2026-10-15 on the real caches: located by the open alone, the first gap of six Kraken
+    histories read as unattributed, and ADAUSD showed a second seam inside a production file.
+    """
+
+    def test_a_file_whose_first_tick_falls_inside_that_bar_is_the_file_before(self):
+        entries = [_entry('BTCUSD_20131006_213416.parquet',
+                          '2013-10-06T21:34:16+00:00', '2013-10-08T00:00:00+00:00')]
+        gaps = [_gap('2013-10-06T21:34:00+00:00', '2013-10-07T20:50:00+00:00')]
+
+        attribute_gaps_to_files(gaps, entries, UTC_CLOCK, M1)
+
+        assert gaps[0].file_before == 'BTCUSD_20131006_213416.parquet'
+
+    def test_a_gap_inside_a_file_that_opened_in_that_bar_is_no_seam(self):
+        entries = [
+            dict(_entry('ADAUSD_20260124_000000.parquet',
+                        '2026-01-24T00:00:00+00:00', '2026-01-24T14:22:05+00:00'),
+                 origin_class='external'),
+            dict(_entry('ADAUSD_20260124_142211.parquet',
+                        '2026-01-24T14:22:11+00:00', '2026-01-25T00:00:00+00:00'),
+                 origin_class='production'),
+        ]
+        gaps = [_gap('2026-01-24T14:22:00+00:00', '2026-01-24T14:25:00+00:00')]
+
+        attribute_gaps_to_files(gaps, entries, UTC_CLOCK, M1)
+
+        assert gaps[0].file_before == gaps[0].file_after == 'ADAUSD_20260124_142211.parquet'
+        assert not gaps[0].is_origin_seam
+
+    def test_a_file_that_opens_when_the_bar_ends_is_after_the_gap(self):
+        entries = [_entry('A.parquet', '2026-01-24T00:00:00+00:00', '2026-01-24T14:22:30+00:00'),
+                   _entry('B.parquet', '2026-01-24T14:23:00+00:00', '2026-01-25T00:00:00+00:00')]
+        gaps = [_gap('2026-01-24T14:22:00+00:00', '2026-01-24T14:30:00+00:00')]
+
+        attribute_gaps_to_files(gaps, entries, UTC_CLOCK, M1)
+
+        assert (gaps[0].file_before, gaps[0].file_after) == ('A.parquet', 'B.parquet')

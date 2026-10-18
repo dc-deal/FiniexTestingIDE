@@ -329,9 +329,10 @@ class PortfolioManager:
 
         self._cost_tracking.total_fees += fee.cost
 
-    def _record_spread_attribution(self, spread_cost: float) -> None:
+    def _record_spread_attribution(self, trade_record: TradeRecord) -> None:
         """
-        Accumulate one trade's measured spread into the run's cost breakdown.
+        Accumulate one trade's spread into the run's cost breakdown — measured and modelled
+        apart (#602).
 
         Its own path, beside `_record_fee_cost` and deliberately not inside it: everything
         that enters there also enters `total_fees` on the line below, and the whole point of
@@ -339,9 +340,10 @@ class PortfolioManager:
         second time (#244). The field it feeds has always been labelled "(implicit)".
 
         Args:
-            spread_cost: The trade's effective spread cost, signed
+            trade_record: The trade, carrying its effective spread costs, signed
         """
-        self._cost_tracking.total_spread_cost += spread_cost
+        self._cost_tracking.total_spread_cost += trade_record.spread_cost
+        self._cost_tracking.total_modelled_spread_cost += trade_record.modelled_spread_cost
 
     def open_position(
         self,
@@ -366,6 +368,7 @@ class PortfolioManager:
         entry_submission: Optional[SubmissionMetadata] = None,
         pip_size: float = 0.0,
         price_unit: str = '',
+        entry_quote_modelled: bool = False,
     ) -> Position:
         """
         Open new position.
@@ -379,6 +382,8 @@ class PortfolioManager:
             entry_submission: Submission-moment snapshot from PendingOrder (#340/#345)
             pip_size: Authoritative pip size for the symbol (#167)
             price_unit: Report unit label for pip_size ('pip' / 'tick', #167)
+            entry_quote_modelled: Whether entry_bid/entry_ask were modelled for a tick without
+                a quote (#602)
         """
         # order_id becomes position id.
         position_id = order_id
@@ -408,6 +413,7 @@ class PortfolioManager:
             entry_submission=entry_submission if entry_submission else SubmissionMetadata(),
             pip_size=pip_size,
             price_unit=price_unit,
+            entry_quote_modelled=entry_quote_modelled,
         )
 
         # Attach entry fee
@@ -451,6 +457,7 @@ class PortfolioManager:
         exit_submission: Optional[SubmissionMetadata] = None,
         exit_bid: float = 0.0,
         exit_ask: float = 0.0,
+        exit_quote_modelled: bool = False,
     ) -> float:
         """
         Close position and realize P&L.
@@ -468,6 +475,8 @@ class PortfolioManager:
                 crossed. It is what keeps the spread MEASURABLE after the fact (#244):
                 the spread is not charged as a fee, so nothing else records it
             exit_ask: Ask at the closing fill
+            exit_quote_modelled: Whether exit_bid/exit_ask were modelled for a tick without a
+                quote (#602)
 
         Returns:
             Realized P&L amount
@@ -535,6 +544,7 @@ class PortfolioManager:
         # `get_spread_cost()` reads it to measure the exit half-spread (#244).
         position.exit_bid = exit_bid
         position.exit_ask = exit_ask
+        position.exit_quote_modelled = exit_quote_modelled
 
         # Create TradeRecord from closed position
         trade_record = self._create_trade_record(
@@ -542,7 +552,7 @@ class PortfolioManager:
             exit_trades=exit_trades,
             exit_submission=exit_submission,
         )
-        self._record_spread_attribution(trade_record.spread_cost)
+        self._record_spread_attribution(trade_record)
         if (self._trade_history_max > 0
                 and not self._trade_history_limit_warned
                 and len(self._trade_history) >= self._trade_history_max):
@@ -573,6 +583,7 @@ class PortfolioManager:
         exit_submission: Optional[SubmissionMetadata] = None,
         exit_bid: float = 0.0,
         exit_ask: float = 0.0,
+        exit_quote_modelled: bool = False,
     ) -> float:
         """
         Partially close a position: realize P&L on closed lots, keep remainder open.
@@ -591,6 +602,8 @@ class PortfolioManager:
                 crossed. It is what keeps the spread MEASURABLE after the fact (#244):
                 the spread is not charged as a fee, so nothing else records it
             exit_ask: Ask at the closing fill
+            exit_quote_modelled: Whether exit_bid/exit_ask were modelled for a tick without a
+                quote (#602)
 
         Returns:
             Realized P&L for the closed portion
@@ -651,6 +664,8 @@ class PortfolioManager:
 
 
         # --- Create TradeRecord for closed portion (BEFORE mutating position) ---
+        spread_cost, modelled_spread_cost = position.spread_costs_for_partial(
+            close_ratio, exit_price, exit_bid, exit_ask, exit_tick_value, exit_quote_modelled)
         trade_record = TradeRecord(
             position_id=position.position_id,
             symbol=position.symbol,
@@ -670,8 +685,7 @@ class PortfolioManager:
             exit_tick_index=exit_tick_index,
             digits=position.digits,
             contract_size=position.contract_size,
-            spread_cost=position.spread_cost_for_partial(
-                close_ratio, exit_price, exit_bid, exit_ask, exit_tick_value),
+            spread_cost=spread_cost,
             commission_cost=position.get_commission_cost() * close_ratio + exit_commission,
             swap_cost=position.get_swap_cost() * close_ratio + exit_swap,
             total_fees=closed_fees,
@@ -696,8 +710,11 @@ class PortfolioManager:
             exit_submission=exit_submission if exit_submission else SubmissionMetadata(),
             pip_size=position.pip_size,
             price_unit=position.price_unit,
+            modelled_spread_cost=modelled_spread_cost,
+            entry_quote_modelled=position.entry_quote_modelled,
+            exit_quote_modelled=exit_quote_modelled,
         )
-        self._record_spread_attribution(trade_record.spread_cost)
+        self._record_spread_attribution(trade_record)
 
         # Append to trade history (with limit warning)
         if (self._trade_history_max > 0
@@ -858,6 +875,9 @@ class PortfolioManager:
             exit_submission=exit_submission if exit_submission else SubmissionMetadata(),
             pip_size=position.pip_size,
             price_unit=position.price_unit,
+            modelled_spread_cost=position.get_modelled_spread_cost(),
+            entry_quote_modelled=position.entry_quote_modelled,
+            exit_quote_modelled=position.exit_quote_modelled,
         )
 
     # ============================================
@@ -1642,6 +1662,7 @@ class PortfolioManager:
             win_rate=win_rate,
             profit_factor=profit_factor,
             total_spread_cost=self._cost_tracking.total_spread_cost,
+            total_modelled_spread_cost=self._cost_tracking.total_modelled_spread_cost,
             total_commission=self._cost_tracking.total_commission,
             total_swap=self._cost_tracking.total_swap,
             maker_fee=self._cost_tracking.maker_fee,

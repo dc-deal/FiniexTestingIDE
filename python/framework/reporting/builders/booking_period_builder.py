@@ -125,6 +125,7 @@ def derive_booking_period(
         commission_cost=sum(r.commission_cost for r in rows),
         swap_cost=sum(r.swap_cost for r in rows),
         spread_cost=sum(r.spread_cost for r in rows),
+        modelled_spread_cost=sum(r.modelled_spread_cost for r in rows),
     )
 
 

@@ -24,10 +24,18 @@ WARMUP_GRID = 'tests/fixtures/optimization/btcusd_mini_grid_warmup.json'
 
 
 def _kpis_by_hash(rows):
-    """Map each ledger row to a deterministic KPI signature, keyed by param_hash."""
+    """
+    Map each ledger row to a deterministic signature, keyed by param_hash: its KPIs, and what
+    the run recorded about the data it read. A combination on the shared mount loads nothing
+    itself — it carries these facts only because it is copied from the base configuration after
+    the mount build filled them in, and nothing but this comparison says so.
+    """
     return {
         row.param_hash: (row.status, round(row.net_pnl, 6),
-                         row.total_trades, round(row.win_rate, 6))
+                         row.total_trades, round(row.win_rate, 6),
+                         row.data_format_versions, row.origin_classes,
+                         row.origin_evidence_grades, row.price_bases,
+                         row.input_files, row.unstamped_input_files)
         for row in rows
     }
 
@@ -49,6 +57,9 @@ def test_sweep_warm_equals_cold(monkeypatch):
     """A mount-reused (warm) sweep yields ledger results identical to the cold reload path (#368)."""
     warm, cold = _warm_then_cold(MINI_GRID, monkeypatch)
     assert warm, 'warm sweep produced no ledger rows'
+    origin_classes = 5
+    assert all(signature[origin_classes] for signature in warm.values()), (
+        'a combination on the shared mount recorded no origin for the data it read')
     assert warm == cold
 
 

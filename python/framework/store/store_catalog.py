@@ -198,8 +198,14 @@ class StoreCatalog:
             descriptor: The store to list
 
         Returns:
-            Iterator over the entry paths
+            Iterator over the entry paths, each once although several patterns may match it
         """
         index_name = descriptor.index_path.name if descriptor.index_path else None
-        return (path for path in descriptor.root.glob(descriptor.entry_glob)
-                if path.is_file() and path.name != index_name)
+        patterns = ((descriptor.entry_glob,) if isinstance(descriptor.entry_glob, str)
+                    else descriptor.entry_glob)
+        seen = set()
+        for pattern in patterns:
+            for path in descriptor.root.glob(pattern):
+                if path.is_file() and path.name != index_name and path not in seen:
+                    seen.add(path)
+                    yield path

@@ -2,8 +2,9 @@
 
 ## Overview
 
-The safety circuit breaker test suite validates the account-level protection mechanism in the
-AutoTrader tick loop. It covers the equity-based evaluation for spot mode, balance-based evaluation
+The safety circuit breaker test suite validates the account-level protection mechanism of an
+AutoTrader session — `SafetyCircuitBreaker` in `python/framework/autotrader/safety/`, which the
+tick loop feeds on every tick. It covers the equity-based evaluation for spot mode, balance-based evaluation
 for margin mode, the config split (`min_balance` / `min_equity`), and the live display state
 tracking.
 
@@ -23,12 +24,13 @@ Two-level coverage:
 
 ```
 tests/autotrader/safety/
-├── test_safety_unit.py                  ← Level 1: _check_safety isolated (stub, no tick loop)
+├── test_safety_unit.py                  ← Level 1: check_safety isolated (stub, no tick loop)
 ├── test_risk_baseline.py                ← Level 1: the denominator, and its survival of a restart
 ├── test_emergency_flatten.py            ← Level 1: the HARD stop — close, drain, then end
 ├── test_safety_report.py                ← Level 1: what the session RECORDED, capture + derive
 ├── test_safety_integration.py           ← Level 2: Spot mock sessions (kraken_spot/BTCUSD)
-└── test_margin_safety_integration.py    ← Level 2: Margin mock sessions (mt5/EURUSD)
+├── test_margin_safety_integration.py    ← Level 2: Margin mock sessions (mt5/EURUSD)
+└── test_hard_stop_integration.py        ← Level 2: the hard stop through the real tick loop
 ```
 
 The quantity all of them measure against lives one suite away:
@@ -36,7 +38,7 @@ The quantity all of them measure against lives one suite away:
 
 ### Level 1 — Unit Tests
 
-Direct tests against `_check_safety` using a lightweight stub that mirrors the instance attributes the method reads/writes. No executor, no tick source, no bar rendering — pure logic validation.
+Direct tests against `check_safety` using a lightweight stub that mirrors the instance attributes the method reads/writes. No executor, no tick source, no bar rendering — pure logic validation.
 
 | Class | What it validates |
 |-------|-------------------|
@@ -67,12 +69,12 @@ forgotten. A thirty-day unattended run will restart.
 ### Level 1 — The Hard Stop (`test_emergency_flatten.py`, #356)
 
 Three severities exist and this is the third: a soft block stops new entries, HALT (#349) freezes
-and waits for a human, this CLOSES. Driven against the real `_check_emergency_flatten` /
-`_drive_emergency_flatten` bound to a stub.
+and waits for a human, this CLOSES. Driven against the real `check_emergency_flatten` /
+`drive_emergency_flatten` bound to a stub.
 
 | Class | What it validates |
 |-------|-------------------|
-| `TestItFiresOnlyWhenItShould` | a hard breach closes everything; a loss inside the threshold closes nothing; the master switch and `enabled=False` both close nothing; the absolute threshold fires too; it sends ONCE, not on every tick — a second round would double-sell what the first is already closing |
+| `TestItFiresOnlyWhenItShould` | a hard breach closes everything; a loss inside the threshold closes nothing; the master switch and `enabled=False` both close nothing; the absolute threshold fires too; it sends ONCE, not on every tick — a second round would double-sell what the first is already closing; the moment it fires reaches the seam #590's latch attaches to, once, with the reason |
 | `TestItBlocksEntriesWithoutASoftThreshold` | once it fires, new entries are blocked with no soft threshold configured — through the drain and on the spot path that keeps its holdings — so an entry cannot keep the book from reaching flat |
 | `TestTheSessionEndsOnlyAfterTheFillsArrive` | it does not end while positions are open (EMERGENCY means immediate exit, and the fills arrive later); it ends once the book is flat (`complete`); it ends anyway at the drain ceiling and NAMES what is still open (`unconfirmed`); it ends once, not on every later tick |
 | `TestSpotIsGatedAndTheAsymmetryIsDeliberate` | a spot holding is not sold by default and the operator hears why; the session still ends — without a second "check the account by hand" alarm, since nothing was sent, and the record says `holdings_kept`; with the switch on it is sold |
@@ -125,6 +127,21 @@ adapter, `margin_stress_probe` with deterministic `trade_sequence`). Three sessi
 on open). The trigger session uses `min_balance=10001` (above the 10000 initial balance) to trigger
 immediately, validating that the margin path correctly checks `min_balance`.
 
+### Level 2 — The Hard Stop Through the Real Loop (`test_hard_stop_integration.py`, #356)
+
+The unit tests drive the hard stop's methods against a stub; this drives the path a session
+takes. A real `LiveTradeExecutor` on the INSTANT_FILL mock adapter, the deterministic probe
+opening one position before a price drop, and the real tick loop: the loop values the account,
+the breaker sees the drawdown pass `max_drawdown_abs_hard`, sends the closes, the fills arrive
+through the executor's ordinary drain, and the session ends as an EMERGENCY before its input
+runs out. No mock-session profile, so it runs in seconds.
+
+| Test | What it validates |
+|------|-------------------|
+| `test_the_hard_stop_closes_everything_and_ends_the_session[margin]` | the margin position is closed, the record says `complete` |
+| `test_the_hard_stop_closes_everything_and_ends_the_session[spot_liquidated]` | with `spot_liquidate_to_quote` on, the spot holding is sold, `complete` |
+| `test_a_spot_holding_is_kept_when_the_stop_may_not_sell_it` | with it off, the holding stays unsold, the record says `holdings_kept` and names it |
+
 ---
 
 ## Key Mechanisms Tested
@@ -136,7 +153,7 @@ The central test case (`test_spot_no_phantom_drawdown_after_buy`) validates:
 2. After BUY: equity = 12.48 (spread cost only)
 3. Drawdown < 1% — not the phantom 17.2% from raw balance
 
-This is the #270 fix: `_check_safety` receives equity (balance + held asset value) in spot mode, not raw balance.
+This is the #270 fix: `check_safety` receives equity (balance + held asset value) in spot mode, not raw balance.
 
 ### Config Split: `min_balance` vs `min_equity`
 
@@ -156,7 +173,7 @@ Integration test `TestSpotSafetyTriggers` confirms that aggressive thresholds tr
 
 ### Unit Test Fixtures
 
-No shared fixtures. Each test creates its own `_SafetyStub` via `_make_stub()`. The stub binds `AutotraderTickLoop._check_safety` as an unbound method call — the logic under test is exactly the production code.
+No shared fixtures. Each test creates its own `_SafetyStub` via `_make_stub()`. The stub binds `SafetyCircuitBreaker.check_safety` as an unbound method call — the logic under test is exactly the production code.
 
 ### Integration Test Fixtures — Spot
 

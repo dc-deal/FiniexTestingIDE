@@ -72,7 +72,7 @@ The block is set-wide (a sibling of `scenario_set_name`, never inside `global`):
 | Field | Default | Meaning |
 |---|---|---|
 | `enabled` | `false` | Turn robustness mode on |
-| `metric` | `expectancy` | The per-window metric: `expectancy` (mean R, currency-neutral) or `net_pnl` |
+| `metric` | `expectancy` | The per-window metric: `expectancy` (mean R, currency-neutral), `net_pnl`, or `equity_return_pct` (final equity against the start, open positions marked) |
 | `oos_split` | `0.3` | Trailing fraction assigned to Out-of-Sample by the generator |
 | `min_windows` | `3` | Below this the distribution is statistically weak (advisory) |
 | `overfit_wfe_threshold` | `0.5` | WFE below → OVERFIT verdict |
@@ -82,6 +82,14 @@ The block is set-wide (a sibling of `scenario_set_name`, never inside `global`):
 **`expectancy` vs `net_pnl`:** expectancy (mean R-multiple) is comparable across instruments and
 currencies and is the recommended default. It requires trades with a stop loss (no stop → no
 R-multiple → expectancy 0). `net_pnl` is intuitive but not comparable across currencies.
+
+**`equity_return_pct` — for a strategy that is invested all the time.** Both metrics above are
+read from the trades a window CLOSED. A strategy that holds an allocation for weeks closes little
+inside a window, so its result sits in what it still holds at the end, and they never see it. A
+window that bought 0.35 ETH at 2,000 USD and ends with ETH at 2,300 closed nothing: `net_pnl`
+reads 0, while the account went from 1,000 to 1,105 USD. `equity_return_pct` reads +10.5: the
+final equity against the window's starting value, in percent, with everything still open marked
+at the last price — comparable across currencies like `expectancy`, and needing no stop loss.
 
 ## Reading the report
 
@@ -110,12 +118,41 @@ The ROBUST/OVERFIT **verdict** also fires as an advisory in the **Warnings & Err
 
 ## The trust gate — block-splitting distortion
 
-When a window is cut from continuous history, positions still open at the cut are force-closed.
-If a large share of each window's P&L comes from these artificial closes (high
-**block-splitting disposition**), the per-window numbers are artifacts and the robustness verdict
-would be built on sand. When the disposition exceeds `disposition_trust_pct`, the verdict is
-**suppressed** with a caveat — fix the distortion first (continuous mode / larger blocks; see the
+When a window is cut from continuous history, positions still open at the cut stay open: the
+window ends holding them, and a closed-trade metric never sees what they are worth. If a large
+share of each window's P&L rides on them (high **block-splitting disposition**), the per-window
+numbers are artifacts and the robustness verdict would be built on sand. When the disposition
+exceeds `disposition_trust_pct`, the verdict is **suppressed** with a caveat — fix the distortion
+first (continuous mode / larger blocks; see the
 [Generator & Block Splitting Architecture](../generator/generator_block_splitting_architecture.md)).
+
+The gate applies to the closed-trade metrics only. `equity_return_pct` values what a window still
+holds, so nothing open at the edge is missing from its number; the disposition is still shown,
+marked as no trust input.
+
+## What a cut costs — measured
+
+Splitting history into blocks raises a fair question: does a strategy that starts flat in every
+block earn what the same strategy earns running through? Each block pays an entry the continuous
+account does not, and starts at its exact target where the continuous account carries a holding
+from before. Measured 2026-10-15 for a slow strategy — a daily trend-following allocator on
+ETHUSD, one decision a day, its holding between none and the whole account — over two stretches of
+Kraken history. Every 30-day block's `equity_return_pct` was set against the continuous account's
+own return over the same dates:
+
+| Stretch | Blocks | Mean holding | Cut cost, mean | Median | Mean absolute | Of it, the entry fee |
+|---|---|---|---|---|---|---|
+| bear, 2022-01 → 2024-01 | 24 | 16 % | −0.06 pts | 0.00 pts | 0.47 pts | 0.12 pts |
+| bull, 2020-01 → 2021-07 | 18 | 43 % | −0.43 pts | +0.20 pts | 2.10 pts | 0.35 pts |
+
+The cut biases nothing in either regime: mean and median sit at zero, and a block reads as an
+unbiased sample of the strategy. What grows with the holding is the noise of ONE block — two
+points either way when the strategy holds a lot — so a judgement rests on the distribution of
+many blocks, never on one.
+
+The measurement holds for what it covered: fixed 30-day blocks, a strategy deciding once a day,
+and a metric that values the holding. A fast strategy that carries positions through the cut and
+is judged on closed trades is the case the trust gate above exists for.
 
 ## Per-bucket sufficiency
 

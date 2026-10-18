@@ -372,6 +372,15 @@ Phase 7: Building summary...
 **Phase:** 5 (Quality Validation)
 **Solution:** Adjust start_date to avoid gap period. Weekend/holiday gaps are allowed by default (`app_config.json` → `allowed_gap_categories`). Only real data gaps (MODERATE/LARGE) block scenarios.
 
+### Issue: "start_date … is inside moderate gap … Next valid start: …"
+**Phase:** 5 (Quality Validation)
+**Solution:** A start inside a data gap moves to the gap's end by itself when the run admits that
+gap: a short gap always, a moderate or large one when `allowed_gap_categories` lists it — the same
+gap would pass in the middle of the window, so the start check agrees with the stretch check. The
+shift is reported as a warning (`start_date shifted … (inside moderate gap, +16min)`). A gap the run
+does not admit, and a market closure (weekend, holiday), stay an error: move the start to the time
+the message names, or admit the category deliberately.
+
 ### Issue: "Only X warmup bars available (requested Y)"
 **Phase:** 4 (Data Loading), judged in Phase 5 — a warning (`warmup_quality`); the scenario runs  
 **Solution:** Adjust start_date later (the archive holds no earlier bars), or accept partial warmup

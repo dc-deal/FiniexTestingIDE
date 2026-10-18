@@ -67,6 +67,13 @@ gone stale is worse than no number, because it looks verified.
 goes stale on the next addition, and the enumeration is directly underneath. What counts at
 **runtime** may be printed, because it is derived and cannot drift.
 
+The same holds for a list. A sentence that names the members of a growing set — the families a
+cache covers, the stores a command walks — is extended with every addition, so each one grows the
+diff by a line that says nothing, and the copy nobody extends goes wrong. Name where the set lives
+instead (the command that prints it, the section that has it whole), or mark an example as one
+(*such as*). A list stays where the document IS the source, or where it describes a fixed set —
+one release's changes, a decision's options.
+
 ## 7. One H1 per document
 
 The H1 is the document's identity. A second one means the file is two documents.

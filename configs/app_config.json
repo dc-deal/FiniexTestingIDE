@@ -56,7 +56,12 @@
   },
   "api": {
     "_comment": "require_auth false is the rollout state in which tokens may exist while nothing is gated yet - a consumer needs its token before it can start sending the header. Set true once every consumer confirms it sends one.",
-    "require_auth": false
+    "require_auth": false,
+    "machine_resources": {
+      "_comment": "The thresholds GET /api/v1/machine-resources grades memory against: the share of the binding memory limit in use from which the pressure level is warn, and from which it is critical. Memory alone - a busy processor is the machine doing its work, memory that runs out is the moment the kernel ends a process.",
+      "memory_warn_pct": 80.0,
+      "memory_critical_pct": 90.0
+    }
   },
   "docs_search": {
     "_comment": "The terminal search (docs_search_cli.py) searches the documentation tree. Each entry here is one more command it runs afterwards, with the search term appended as the last argument - for collections a maintainer keeps outside the repository. Empty in a fresh clone.",
@@ -109,6 +114,22 @@
       "cooldown_seconds": 60.0,
       "max_consecutive_rejections": 2,
       "block_stale_market_data": true
+    },
+    "safety": {
+      "_comment": "The circuit breaker. Every limit is off (0.0) until a profile sets one; the hard stop and selling a spot holding stay off unless a profile turns them on.",
+      "enabled": false,
+      "min_balance": 0.0,
+      "min_equity": 0.0,
+      "max_drawdown_pct": 0.0,
+      "max_drawdown_abs": 0.0,
+      "max_daily_loss_abs": 0.0,
+      "max_daily_loss_pct": 0.0,
+      "baseline_mode": "fixed",
+      "persist_baseline": true,
+      "emergency_flatten_enabled": false,
+      "max_drawdown_pct_hard": 0.0,
+      "max_drawdown_abs_hard": 0.0,
+      "spot_liquidate_to_quote": false
     },
     "drift_audit": {
       "enabled": true,
@@ -207,7 +228,8 @@
         "inbound_latency_seed": 42
       },
       "inbound_latency_min_ms": 20,
-      "inbound_latency_max_ms": 80
+      "inbound_latency_max_ms": 80,
+      "modelled_spread_factor": 1.0
     },
     "monitoring": {
       "enabled": true,
@@ -221,6 +243,7 @@
       "event_tape_size": 5
     },
     "data_validation": {
+      "_comment_allowed_gap_categories": "Which gaps a scenario's window may contain: a data gap (short, moderate, large — the open market with no tick) or a market closure (weekend, holiday). A start inside an admitted data gap moves to the gap's end; a start inside a closure, or inside a gap not listed here, is refused. A list in user_configs replaces this one as a whole.",
       "allowed_gap_categories": [
         "seamless",
         "short",

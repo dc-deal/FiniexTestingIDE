@@ -30,6 +30,7 @@ from python.framework.types.decision_event_types import (
     PartialCloseEvent,
     PositionClosedEvent,
     SessionEndEvent,
+    SessionEndSeverity,
 )
 from python.framework.types.trading_env_types.latency_simulator_types import PendingOrder
 from python.framework.types.trading_env_types.order_types import (
@@ -139,6 +140,27 @@ class DecisionEventDispatcher:
         self._buffer = []
         for event in pending:
             self._dispatch(event)
+
+    def emit_session_end(self) -> None:
+        """
+        Tell the decision logic why the session ended, once its loop is over (#348).
+
+        Both pipelines end the same way, so the event is built here rather than in each loop:
+        the reason and severity of the request when one was made, otherwise the input ran out.
+        Delivered at once, before teardown and reporting.
+        """
+        if self._executor.is_session_end_requested():
+            end_reason = self._executor.get_session_end_reason()
+            end_severity = self._executor.get_session_end_severity()
+        else:
+            end_reason = 'tick source exhausted'
+            end_severity = SessionEndSeverity.NORMAL
+        self.submit(SessionEndEvent(
+            reason=end_reason,
+            severity=end_severity,
+            tick_time=self._executor.get_current_time(),
+        ))
+        self.drain()
 
     def _on_order_outcome(
         self,

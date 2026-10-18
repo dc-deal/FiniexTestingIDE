@@ -23,7 +23,7 @@ from typing import List
 
 # One monotonic integer. Not a date and not the app version: a consumer compares it for
 # equality, and equality is the only question they have.
-API_CONTRACT_VERSION = 30
+API_CONTRACT_VERSION = 34
 
 # Every response carries it, so a saved fixture carries it too.
 CONTRACT_HEADER = 'X-Api-Contract'
@@ -36,12 +36,11 @@ API_PREFIX = '/api/v1'
 # What moved INTO the current version. One line per change, written for someone who cannot
 # read this repository.
 CHANGES: List[str] = [
-    "Validation checks: spreadless_tick_data is gone; data_no_quote counts every input file without a "
-    "quote, whatever the reason. New: data_no_arrival_time, data_arrival_time_reconstructed, "
-    "data_missing_trades, data_origin_external, and data_synthetic, which takes over the synthetic "
-    "signal warning from signal_availability. A run recorded before may still name "
-    "spreadless_tick_data, which the catalog no longer lists",
-    "origin_classes on a ledger row and in the scenario details may hold external: data no "
-    "collector of ours recorded, such as a venue's published history. It is never admissible for "
-    "a parity measurement",
+    "Every price a run read from the tick archive (a tick's bid, ask and last, an order-driven "
+    "bar's open, high, low and close, a fill at a recorded quote) is the decimal the venue wrote: "
+    "0.87957 where a run before this contract read 0.8795700073242188; the archive was "
+    "re-imported on 2026-10-17",
+    "real_volume keeps every decimal the venue reported",
+    "New document prices: which prices are the venue's decimals and which are computed, and "
+    "rounding a computed one by the instrument's tick_size for display",
 ]

@@ -32,7 +32,7 @@ that is not safelisted, so they are published deliberately.
 
 | HTTP | `error` | Cause |
 |---|---|---|
-| 400 | `invalid_timestamp` | a report filter is not ISO-8601 |
+| 400 | `invalid_timestamp` | a timestamp filter is not ISO-8601 |
 | 400 | `invalid_timeframe` | the timeframe is not one this server carries — `/api/v1/timeframes` lists them |
 | 400 | `invalid_limit` | `limit` is outside the route's range — refused, never clamped |
 | 400 | `invalid_period` | an indicator period is outside its range |

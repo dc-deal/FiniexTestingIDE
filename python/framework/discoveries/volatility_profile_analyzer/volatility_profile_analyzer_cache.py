@@ -32,6 +32,7 @@ import pyarrow.parquet as pq
 from python.configuration.app_config_manager import AppConfigManager
 from python.configuration.discoveries_config_loader import DiscoveriesConfigLoader
 from python.data_management.index.bars_index_manager import BarsIndexManager
+from python.framework.discoveries.discovery_cache_index import DiscoveryCacheIndex
 from python.framework.discoveries.volatility_profile_analyzer.volatility_profile_analyzer import (
     VolatilityProfileAnalyzer,
 )
@@ -332,7 +333,7 @@ class VolatilityProfileAnalyzerCache:
                 **metadata
             })
 
-            pq.write_table(table, cache_path)
+            DiscoveryCacheIndex(self.cache_dir.parent).write_cache_file(table, cache_path)
             self._logger.debug(f'Cached: {broker_type}/{symbol} volatility profile')
 
         except Exception as e:

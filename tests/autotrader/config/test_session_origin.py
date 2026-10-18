@@ -27,7 +27,7 @@ from python.configuration.autotrader.autotrader_config_loader import load_autotr
 from python.configuration.host_identity_manager import HostIdentityManager
 from python.framework.autotrader import autotrader_main as autotrader_main_module
 from python.framework.autotrader.autotrader_main import AutotraderMain
-from python.framework.autotrader.autotrader_startup import create_autotrader_loggers
+from python.framework.autotrader.startup.autotrader_startup import create_autotrader_loggers
 from python.framework.exceptions.host_identity_errors import HostIdentityError
 from python.framework.reporting.io.run_header_io import RUN_HEADER_ARTIFACT, read_run_header
 from python.framework.types.config_types.host_identity_config_types import TEST_HOST_ID

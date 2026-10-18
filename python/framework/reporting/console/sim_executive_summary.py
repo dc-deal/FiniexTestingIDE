@@ -14,14 +14,13 @@ Provides comprehensive summary:
 
 from typing import Dict, List, Optional
 
-import psutil
-
 from python.configuration.app_config_manager import AppConfigManager
 from python.framework.reporting.console.abstract_batch_summary_section import (
     AbstractBatchSummarySection,
 )
 from python.framework.reporting.console.feed_stability_summary import format_disturbance_line
 from python.framework.reporting.console.order_counts_line import order_endings_text
+from python.framework.reporting.console.portfolio_summary import SPREAD_NOT_MEASURED
 from python.framework.types.api.report_types import (
     AggregatedPortfolioReport,
     AggregatedPortfolioRow,
@@ -38,6 +37,7 @@ from python.framework.types.trading_env_types.currency_codes import (
     format_currency_simple,
 )
 from python.framework.utils.console_renderer import ConsoleRenderer
+from python.framework.utils.machine_resources_reader import MachineResourcesReader
 
 
 class SimExecutiveSummary(AbstractBatchSummarySection):
@@ -504,8 +504,14 @@ class SimExecutiveSummary(AbstractBatchSummarySection):
         else:
             print(f'Recovery Factor:    {row.recovery_factor:.2f}')
         print('')
-        print(
-            f'Spread Cost:        {format_currency_cost(row.total_spread_cost, currency)} (avg {format_currency_cost(row.avg_spread, currency)}/trade)')
+        if row.total_spread_cost is None:
+            print(f'Spread Cost:        {SPREAD_NOT_MEASURED}')
+        else:
+            print(
+                f'Spread Cost:        {format_currency_cost(row.total_spread_cost, currency)} (avg {format_currency_cost(row.avg_spread, currency)}/trade)')
+        if row.total_modelled_spread_cost:
+            print(f'Modelled Spread:    '
+                  f'{format_currency_cost(row.total_modelled_spread_cost, currency)}')
         print(
             f'Commission:         {format_currency_cost(row.total_commission, currency)}')
         print(
@@ -572,8 +578,12 @@ class SimExecutiveSummary(AbstractBatchSummarySection):
 
         # Costs (layout A — all five categories, zeros where n/a; spot fees are maker/taker)
         print('')
-        print(
-            f'Spread Cost:        {format_currency_cost(row.total_spread_cost, currency)}')
+        spread = (SPREAD_NOT_MEASURED if row.total_spread_cost is None
+                  else format_currency_cost(row.total_spread_cost, currency))
+        print(f'Spread Cost:        {spread}')
+        if row.total_modelled_spread_cost:
+            print(f'Modelled Spread:    '
+                  f'{format_currency_cost(row.total_modelled_spread_cost, currency)}')
         print(
             f'Commission:         {format_currency_cost(row.total_commission, currency)}')
         print(
@@ -728,19 +738,14 @@ class SimExecutiveSummary(AbstractBatchSummarySection):
 
     def _render_system_resources(self, renderer: ConsoleRenderer):
         """Render system resources section."""
-        try:
-            cpu_count = psutil.cpu_count()
-            mem = psutil.virtual_memory()
-            ram_total_gb = mem.total / (1024**3)
-            ram_available_gb = mem.available / (1024**3)
-        except:
-            cpu_count = 'N/A'
-            ram_total_gb = 0
-            ram_available_gb = 0
+        # Through the one reader every display uses: the processors and the memory that bind
+        machine = MachineResourcesReader().read()
+        ram_total_gb = machine.memory.limit_bytes / (1024**3)
+        ram_available_gb = (machine.memory.limit_bytes - machine.memory.used_bytes) / (1024**3)
 
         renderer.print_bold('SYSTEM RESOURCES')
         renderer.print_separator(width=68)
-        print(f'CPU Cores:          {cpu_count}')
+        print(f'CPU Cores:          {machine.cpu.count:g}')
         print(
             f'RAM:                {ram_available_gb:.1f} GB available / {ram_total_gb:.1f} GB total')
 

@@ -6,55 +6,40 @@ through a deterministic, wall-clock phase sequence (every order type, modify/can
 path, rejection battery, partial close, idle heartbeat) against a real broker. It is
 the live equivalent of the plan-driven MarginStressProbe.
 
-The phase logic lives in FieldStudyPhaseMachine (a pure state machine). This class is
-the AbstractDecisionLogic adapter: it builds the per-tick observation, asks the machine
-for the next PhaseAction, dispatches that action via DecisionTradingApi, and feeds
-order/lifecycle events (#348) back as observations. Submits route through the standard
-Decision action so the safety circuit breaker can suppress them; closes/cancels are not
-suppressed. Phase 19 ends the session via the existing request_session_end API (#348).
+The phase logic lives in FieldStudyPhaseMachine (a pure state machine); what every
+acceptance study shares — the per-tick observation, the dispatch, the session guards and
+the capture of the phases — lives in AbstractAcceptanceStudy. This class adds the field
+study's own: its order-type families and the capability check over them, the partial
+close and the modify of a resting order. Phase 19 ends the session via the existing
+request_session_end API (#348).
 """
 
-from datetime import datetime
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List
 
-from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
+from python.framework.acceptance_studies.abstract_acceptance_study import (
+    STOP_WORLD_TYPES,
+    AbstractAcceptanceStudy,
+)
 from python.framework.decision_logic.core.live_field_study.field_study_phase_machine import (
     FieldStudyPhaseMachine,
 )
 from python.framework.logging.scenario_logger import ScenarioLogger
-from python.framework.reporting.field_study_recorder import FieldStudyRecorder
+from python.framework.reporting.io.artifact_specs import FIELD_STUDY_CAPTURE
+from python.framework.types.acceptance_study_types.field_study_types import (
+    FieldStudyPhase,
+    PhaseType,
+)
+from python.framework.types.acceptance_study_types.study_phase_types import (
+    PhaseAction,
+    PhaseActionKind,
+)
 from python.framework.types.autotrader_types.cold_start_types import (
     ColdStartSituation,
     ColdStartVerdict,
 )
-from python.framework.types.autotrader_types.field_study_types import (
-    FieldStudyPhase,
-    PhaseAction,
-    PhaseActionKind,
-    PhaseContext,
-    PhaseSide,
-    PhaseType,
-)
-from python.framework.types.decision_event_types import (
-    DecisionEventType,
-    OrderCancelledEvent,
-    OrderFilledEvent,
-    OrderRejectedEvent,
-    OrderUnaccountedEvent,
-    SessionEndSeverity,
-)
-from python.framework.types.decision_logic_types import (
-    AwarenessLevel,
-    Decision,
-    DecisionLogicAction,
-)
-from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.market_types.market_types import TradingContext
-from python.framework.types.parameter_types import InputParamDef, OutputParamDef
-from python.framework.types.trading_env_types.latency_simulator_types import PendingOrder
-from python.framework.types.trading_env_types.market_data_status_types import MarketDataStatus
-from python.framework.types.trading_env_types.order_types import OrderResult, OrderSide, OrderType
-from python.framework.types.worker_types import WorkerRequirement, WorkerResult
+from python.framework.types.parameter_types import InputParamDef
+from python.framework.types.trading_env_types.order_types import OrderType
 
 # Limit-family phases require broker LIMIT support — auto-skipped on adapters without it.
 _LIMIT_FAMILY = frozenset({
@@ -72,35 +57,21 @@ _STOP_FAMILY = frozenset({
     PhaseType.STOP_CANCEL,
 })
 
-# Which order type each submit action places. A dict rather than a chain of conditionals,
-# so a new submit kind fails with a KeyError at its first use instead of silently becoming
-# whatever the final `else` happens to be — the shape that let a STOP go on the wire as a
-# priceless LIMIT (#500).
-# Which types live in the STOP resting world. Their cancel and modify paths are separate
-# from the limit world's, and sending one through the other silently does nothing.
-_STOP_WORLD_TYPES = frozenset({OrderType.STOP, OrderType.STOP_LIMIT})
 
-_SUBMIT_KIND_TO_TYPE = {
-    PhaseActionKind.SUBMIT_MARKET: OrderType.MARKET,
-    PhaseActionKind.SUBMIT_LIMIT: OrderType.LIMIT,
-    PhaseActionKind.SUBMIT_STOP: OrderType.STOP,
-}
-
-
-class LiveFieldStudy(AbstractDecisionLogic):
+class LiveFieldStudy(AbstractAcceptanceStudy):
     """
     Deterministic live acceptance-test decision logic (#332).
 
-    Configuration (decision_logic_config):
-        phase_sequence: List of phase specs (see FieldStudyPhase.from_dict)
+    Configuration (decision_logic_config), beyond what every acceptance study takes:
         lot_size: Default order size when a phase omits its own
         limit_offset_pct: Default resting-limit distance from market (fraction)
-        max_session_cost_usd: Session realized-cost ceiling (0 = disabled; enforced in #332 Chunk D)
         max_rearm_attempts: Re-arm cap for LIMIT_OPEN phases
         rearm_offset_pct: Fraction the limit offset shrinks per re-arm (toward market)
-        session_timeout_s: Hard session wall-clock cap (enforced in #332 Chunk D)
-        halt_after_phase: Stop cleanly after the named phase id (step mode)
     """
+
+    STUDY_LABEL = 'Field Study'
+    EVENT_KEY = 'field_study'
+    ORDER_COMMENT = 'FieldStudy'
 
     def __init__(
         self,
@@ -110,61 +81,10 @@ class LiveFieldStudy(AbstractDecisionLogic):
         trading_context: TradingContext = None,
     ):
         super().__init__(name, logger, config, trading_context=trading_context)
-
-        raw_sequence: List[Dict[str, Any]] = self.params.get('phase_sequence')
-        self._phases: List[FieldStudyPhase] = [
-            FieldStudyPhase.from_dict(raw) for raw in raw_sequence
-        ]
         self._default_lot = self.params.get('lot_size')
         self._limit_offset_pct = self.params.get('limit_offset_pct')
-        self._max_session_cost_usd = self.params.get('max_session_cost_usd')
         self._max_rearm_attempts = self.params.get('max_rearm_attempts')
         self._rearm_offset_pct = self.params.get('rearm_offset_pct')
-        self._session_timeout_s = self.params.get('session_timeout_s')
-        self._halt_after_phase = self.params.get('halt_after_phase')
-
-        # Built lazily on first compute — capability filtering needs the trading API.
-        self._machine: Optional[FieldStudyPhaseMachine] = None
-        self._pending_action: Optional[PhaseAction] = None
-
-        # JSONL recorder — injected + lifecycle-owned by the AutoTrader wiring. It writes the
-        # phases; the order lines come from the live core's own record (#566).
-        self._recorder: Optional[FieldStudyRecorder] = None
-
-        # Session guards (budget + wall-clock) — enforced on every machine advance.
-        # Deliberately NOT an accumulator any more (#506). Accumulating from decision events
-        # missed every FULL close: `_notify_outcome` fires only for opens, and the only event a
-        # close emits is the partial one — so a study whose exits are `market_close_all` counted
-        # entry fees and one partial. The portfolio's fee total is read instead: it books every
-        # fee through one site, both legs of a round trip included.
-        self._realized_cost = 0.0
-        self._session_started_at: Optional[datetime] = None
-        self._safe_abort_active = False
-        self._abort_reason = ''
-
-        # Resting limit order ids of the current phase (for cancel / modify).
-        self._phase_order_ids: List[str] = []
-        self._last_phase_id: Optional[str] = None
-        self._logged_results: int = 0
-
-        # Symbol + last-known mid — resolved from the trading context at init and
-        # refreshed on each real tick. Used on a ghost-pass (tick=None) where no
-        # fresh market data is available (#360).
-        self._symbol: Optional[str] = (
-            trading_context.symbol if trading_context is not None else None
-        )
-        self._last_mid: Optional[float] = None
-
-        # Diagnostic trace state (#360/#13/#15 forensics) — DEBUG emits only on
-        # change (state / active-limit count / action / phase); VERBOSE = per-advance.
-        self._last_trace_state = None
-        self._last_trace_limits: int = -1
-
-        # Event observation flags (set by the #348 hooks, reset on each new submit / phase).
-        self._filled_flag = False
-        self._rejected_flag = False
-        self._unaccounted_flag = False
-        self._cancelled_flag = False
 
         self.logger.info(
             f'LiveFieldStudy initialized: {len(self._phases)} phases, '
@@ -172,6 +92,29 @@ class LiveFieldStudy(AbstractDecisionLogic):
             f'max_rearm={self._max_rearm_attempts}, '
             f'budget=${self._max_session_cost_usd}'
         )
+
+    # ============================================
+    # What this study declares
+    # ============================================
+
+    def _parse_phases(self, raw_sequence: List[Dict[str, Any]]) -> List[FieldStudyPhase]:
+        return [FieldStudyPhase.from_dict(raw) for raw in raw_sequence]
+
+    @classmethod
+    def get_capture_name(cls) -> str:
+        return FIELD_STUDY_CAPTURE
+
+    @classmethod
+    def get_capture_next_step(cls) -> str:
+        return ('generate the acceptance certificate:\n'
+                '   python python/cli/field_study_certificate_cli.py generate '
+                '--latest --release-version <X.Y.Z>')
+
+    @classmethod
+    def takes_cold_start_adoption(cls) -> bool:
+        # It funds both sides on purpose and asserts its own flat order book (#332), so
+        # adoption would claim its funding.
+        return False
 
     # ============================================
     # Factory interface
@@ -219,19 +162,10 @@ class LiveFieldStudy(AbstractDecisionLogic):
                 types.append(OrderType.STOP)
         return types
 
-    def get_required_workers(self) -> Dict[str, WorkerRequirement]:
-        # The phase sequence is wall-clock / state driven and ignores indicator
-        # output, but the worker pipeline requires at least one worker — carry a
-        # single minimal CORE worker purely for pipeline compatibility (unused).
-        return {'pipeline_rsi': WorkerRequirement.all('CORE/rsi')}
-
     @classmethod
     def get_parameter_schema(cls) -> Dict[str, InputParamDef]:
         return {
-            'phase_sequence': InputParamDef(
-                param_type=list, default=[],
-                description='Ordered list of Field Study phase specs',
-            ),
+            **cls.get_shared_parameter_schema(),
             'lot_size': InputParamDef(
                 param_type=float, default=0.01, min_val=0.0,
                 description='Default order size (min-lot for the Field Study)',
@@ -239,10 +173,6 @@ class LiveFieldStudy(AbstractDecisionLogic):
             'limit_offset_pct': InputParamDef(
                 param_type=float, default=0.002, min_val=0.0, max_val=1.0,
                 description='Default resting-limit distance from market (fraction)',
-            ),
-            'max_session_cost_usd': InputParamDef(
-                param_type=float, default=0.0, min_val=0.0,
-                description='Session realized-cost ceiling (0 = disabled)',
             ),
             'max_rearm_attempts': InputParamDef(
                 param_type=int, default=6, min_val=0,
@@ -252,301 +182,17 @@ class LiveFieldStudy(AbstractDecisionLogic):
                 param_type=float, default=0.25, min_val=0.0, max_val=1.0,
                 description='Fraction the limit offset shrinks per re-arm',
             ),
-            'session_timeout_s': InputParamDef(
-                param_type=float, default=1800.0, min_val=0.0,
-                description='Hard session wall-clock cap (seconds)',
-            ),
-            'halt_after_phase': InputParamDef(
-                param_type=str, default='',
-                description='Stop cleanly after the named phase id (step mode)',
-            ),
-        }
-
-    @classmethod
-    def get_output_schema(cls) -> Dict[str, OutputParamDef]:
-        return {
-            'phase_id': OutputParamDef(
-                param_type=str, description='Current phase id', category='INFO',
-            ),
-            'phase_action': OutputParamDef(
-                param_type=str, description='Action issued this tick', category='INFO',
-            ),
-            'reason': OutputParamDef(
-                param_type=str, description='Human-readable phase narration', category='INFO',
-            ),
-            'price': OutputParamDef(
-                param_type=float, min_val=0.0,
-                description='Price at decision time — traded where the venue prints one, else mid',
-                category='INFO',
-            ),
         }
 
     # ============================================
-    # Decision Event Channel (#348)
+    # The field study's own actions
     # ============================================
 
-    @classmethod
-    def get_subscribed_events(cls) -> Set[DecisionEventType]:
-        return {
-            DecisionEventType.ORDER_FILLED,
-            DecisionEventType.ORDER_REJECTED,
-            DecisionEventType.ORDER_UNACCOUNTED,
-            DecisionEventType.ORDER_CANCELLED,
-        }
-
-    def wants_heartbeat(self) -> bool:
-        # The phase machine is wall-clock / state driven — it must advance between
-        # ticks (cancel-confirm, phase-advance, re-arm) on the idle heartbeat (#360),
-        # not only when a real market tick arrives.
-        return True
-
-    def on_market_data_stale(self, status: MarketDataStatus) -> None:
-        """
-        Programmed market-outage reaction (#436): surface loudly, let the
-        phase machine wait — its wall-clock timeouts already bound every
-        phase, and the OrderGuard blocks new entries while stale.
-
-        Args:
-            status: Session-level market-data health snapshot
-        """
-        self.logger.warning(
-            f'🔌 Market data stale ({status.seconds_since_last_tick:.0f}s '
-            f'since last tick) — field study waiting; phase timeouts guard progress.'
-        )
-        self.emit_event(
-            '🔌 market data stale — field study waiting for ticks',
-            AwarenessLevel.NOTICE, 'market_data_stale')
-
-    def on_order_filled(self, event: OrderFilledEvent) -> None:
-        self._filled_flag = True
-
-    def on_order_rejected(self, event: OrderRejectedEvent) -> None:
-        self._rejected_flag = True
-
-    def on_order_unaccounted(self, event: OrderUnaccountedEvent) -> None:
-        """
-        An order the framework stopped asking about — the venue may still hold it (#362).
-
-        It has a word of its own (#566): read as a rejection, it would pass a phase that WAITS for
-        a rejection, while an order may rest at the venue. The machine fails the phase on it.
-
-        Args:
-            event: The unaccounted order
-        """
-        self._unaccounted_flag = True
-
-    def on_order_cancelled(self, event: OrderCancelledEvent) -> None:
-        self._cancelled_flag = True
-
-    # ============================================
-    # Core: compute()/compute_heartbeat() drive the machine, execute() dispatches the action
-    # ============================================
-
-    def compute_tick(
-        self,
-        tick: TickData,
-        worker_results: Dict[str, WorkerResult],
-    ) -> Decision:
-        self._symbol = tick.symbol
-        # Deliberately `mid`, not `price`: this is a release GATE that exercises the
-        # execution stack at known offsets from a reference, not a strategy deciding on a
-        # market price — and `mid_price` is the declared semantic all the way through
-        # PhaseContext into the phase machine. Real money, and no test covers it.
-        self._last_mid = tick.mid
-        return self._advance_phase_machine(is_ghost=False)
-
-    def compute_heartbeat(
-        self,
-        worker_results: Dict[str, WorkerResult],
-    ) -> Optional[Decision]:
-        # Ghost-pass (#360): drive the phase machine from last-known market
-        # state. A heartbeat that lands before the first real tick has no
-        # market data — emit the idle marker instead of advancing.
-        if self._last_mid is None:
-            return Decision(
-                action=DecisionLogicAction.FLAT,
-                outputs={'phase_id': 'heartbeat', 'phase_action': 'none',
-                         'reason': 'heartbeat before first tick', 'price': 0.0},
-            )
-        return self._advance_phase_machine(is_ghost=True)
-
-    def _advance_phase_machine(self, is_ghost: bool) -> Decision:
-        """
-        Drive the phase machine one advance — shared by both pass-triggers.
-
-        Args:
-            is_ghost: True on a heartbeat ghost-pass (trace source tagging)
-
-        Returns:
-            Decision carrying the phase action
-        """
-        self._ensure_machine()
-        mid = self._last_mid
-        symbol = self._symbol
-
-        now = self.trading_api.get_current_time()
-        if self._session_started_at is None:
-            self._session_started_at = now
-
-        # Session guards — safe-abort once on a budget or wall-clock breach.
-        if not self._safe_abort_active and self._session_guard_breached(now):
-            self._trigger_safe_abort()
-        if self._safe_abort_active:
-            self._close_all()
-            return Decision(
-                action=DecisionLogicAction.FLAT,
-                outputs={'phase_id': 'aborted', 'phase_action': 'close_all',
-                         'reason': self._abort_reason, 'price': mid},
-            )
-
-        positions = self.trading_api.get_open_positions(symbol)
-        counts = self.trading_api.get_active_order_counts()
-
-        ctx = PhaseContext(
-            now=now,
-            mid_price=mid,
-            open_position_count=len(positions),
-            active_limit_count=counts.get('active_limits', 0),
-            active_stop_count=counts.get('active_stops', 0),
-            has_pending=self.trading_api.has_pipeline_orders(),
-            filled_since_submit=self._filled_flag,
-            rejected_since_submit=self._rejected_flag,
-            cancelled_since_submit=self._cancelled_flag,
-            unaccounted_since_submit=self._unaccounted_flag,
-            current_position_lots=positions[0].lots if positions else None,
-            budget_ok=self._budget_ok(),
-        )
-
-        action = self._machine.advance(ctx)
-        self._pending_action = action
-        cur_phase = self._machine.get_current_phase_id()
-
-        # Diagnostic trace (#13/#15 forensics): per-advance, tick vs ghost source.
-        self._trace_advance(is_ghost, ctx, action, cur_phase)
-
-        self._log_new_results()
-
-        if cur_phase != self._last_phase_id:
-            # New phase — drop stale resting-order ids, reset flags, mark the boundary.
-            self._phase_order_ids = []
-            self._reset_flags()
-            self._record_phase_start(cur_phase)
-            self._last_phase_id = cur_phase
-            self.logger.debug(
-                f'[FS_RESTING] event=phase_start phase={cur_phase} '
-                f'{self._resting_snapshot_str()}')
-
-        # Submits route through the standard BUY/SELL action so the safety circuit
-        # breaker can suppress them (it overrides BUY/SELL → FLAT when blocked).
-        if action.kind in _SUBMIT_KIND_TO_TYPE:
-            dl_action = (
-                DecisionLogicAction.BUY if action.side == PhaseSide.LONG
-                else DecisionLogicAction.SELL
-            )
-        else:
-            dl_action = DecisionLogicAction.FLAT
-
-        return Decision(
-            action=dl_action,
-            outputs={
-                'phase_id': action.phase_id,
-                'phase_action': action.kind.value,
-                'reason': action.reason,
-                'price': action.price if action.price is not None else mid,
-            },
-        )
-
-    def _execute_decision_impl(
-        self,
-        decision: Decision,
-        tick: Optional[TickData],
-    ) -> Optional[OrderResult]:
-        if not self.trading_api or self._pending_action is None:
-            return None
-
-        action = self._pending_action
-
-        if action.kind in _SUBMIT_KIND_TO_TYPE:
-            # Respect a safety override: BUY/SELL turned to FLAT means the circuit
-            # breaker blocked new entries — skip the submit (the machine times out).
-            if decision.action not in (DecisionLogicAction.BUY, DecisionLogicAction.SELL):
-                self.logger.warning(
-                    f'Field Study submit suppressed by safety circuit breaker '
-                    f'(phase {action.phase_id})'
-                )
-                return None
-            return self._submit(action)
-
-        if action.kind == PhaseActionKind.CLOSE_ALL:
-            self._close_all()
-            return None
-
+    def _dispatch_study_action(self, action: PhaseAction) -> None:
         if action.kind == PhaseActionKind.CLOSE_PARTIAL:
             self._close_partial(action)
-            return None
-
-        if action.kind in (PhaseActionKind.CANCEL, PhaseActionKind.CANCEL_ALL):
-            self._cancel_resting()
-            return None
-
-        if action.kind == PhaseActionKind.MODIFY_LIMIT:
+        elif action.kind == PhaseActionKind.MODIFY_LIMIT:
             self._modify_resting(action)
-            return None
-
-        if action.kind == PhaseActionKind.END_SESSION:
-            self.trading_api.request_session_end(
-                'field study complete', SessionEndSeverity.NORMAL
-            )
-            return None
-
-        return None
-
-    # ============================================
-    # Action dispatch helpers
-    # ============================================
-
-    def _submit(self, action: PhaseAction) -> Optional[OrderResult]:
-        side = OrderSide.BUY if action.side == PhaseSide.LONG else OrderSide.SELL
-        order_type = _SUBMIT_KIND_TO_TYPE[action.kind]
-        # A stop's price is its TRIGGER, and it travels in a different argument. Passing it
-        # as `price` would submit a stop with no trigger — refused by the executor's own
-        # price gate, which is the right answer but the wrong reason (#500).
-        is_stop = order_type == OrderType.STOP
-        # Fresh await window before submitting — a stale event from a prior phase
-        # must not leak into this phase's observation.
-        self._reset_flags()
-        result = self.trading_api.send_order(
-            symbol=self._symbol,
-            order_type=order_type,
-            side=side,
-            lots=action.lots,
-            price=None if is_stop else action.price,
-            stop_price=action.price if is_stop else None,
-            # #503 — a DECLARED level. The framework turns it into an order at the venue
-            # where the profile opts in; this is the only route by which a declared level
-            # ever leaves this process, and the PROTECTIVE_LEVEL phase is what proves it.
-            stop_loss=action.stop_loss,
-            comment=f'FieldStudy {action.phase_id}',
-        )
-        if result is not None and result.is_refused:
-            # Refused before anything was sent (a denial: invalid lot, the order guard) — the
-            # #348 channel only carries async outcomes, so surface it to the machine directly.
-            self._rejected_flag = True
-        elif order_type != OrderType.MARKET and result is not None and result.order_id:
-            # Every RESTING type needs its order id remembered — the phase cancels by id.
-            self._phase_order_ids.append(result.order_id)
-        # Submit trace — pins which order each phase actually placed (#13/#15 forensics).
-        oid = result.order_id if result is not None else None
-        status = result.status.value if result is not None and result.status else 'none'
-        self.logger.debug(
-            f'[FS_SUBMIT] phase={action.phase_id} type={order_type.value} side={side.value} '
-            f'lots={action.lots} price={action.price} order_id={oid} status={status}')
-        return result
-
-    def _close_all(self) -> None:
-        for pos in self.trading_api.get_open_positions(self._symbol):
-            if not self.trading_api.is_pending_close(pos.position_id):
-                self.trading_api.close_position(pos.position_id)
 
     def _close_partial(self, action: PhaseAction) -> None:
         positions = self.trading_api.get_open_positions(self._symbol)
@@ -558,136 +204,32 @@ class LiveFieldStudy(AbstractDecisionLogic):
         fraction = action.close_fraction if action.close_fraction is not None else 0.5
         self.trading_api.close_position(pos.position_id, lots=pos.lots * fraction)
 
-    def _cancel_resting(self) -> None:
-        # Cancel the orders ACTUALLY resting at the broker, not a per-phase id list. This
-        # also makes force_close a true safety-net: it clears every resting order, including
-        # any leaked from an earlier phase.
-        #
-        # ROUTED BY TYPE. A stop lives in its own resting world with its own cancel path, so
-        # sending it through cancel_limit_order returns `not_in_active_limits` and the order
-        # stays armed. Measured in the live Field Study of 2026-09-08: the stop phase issued
-        # its cancel, the limit path did not find the order, and the phase timed out after
-        # 30 s with the stop still working at Kraken.
-        resting = self.trading_api.get_active_orders()
-        self.logger.debug(
-            f'[FS_CANCEL] event=cancel_all {self._resting_snapshot_str(resting)}')
-        for order in resting:
-            scheduled = self._cancel_one(order)
-            self.logger.debug(
-                f"[FS_CANCEL] order={order.pending_order_id} ref={order.broker_ref or 'NONE'} "
-                f"type={order.order_type.value if order.order_type else 'none'} "
-                f"op={order.execution_state.in_flight_operation.name} q={int(order.execution_state.in_flight_query)} "
-                f"scheduled={int(scheduled)}")
-        self._phase_order_ids = []
-
-    def _cancel_one(self, order: PendingOrder) -> bool:
-        """
-        Cancel one resting order through the path that owns its world.
-
-        Args:
-            order: The resting order to cancel
-
-        Returns:
-            True if the cancel was scheduled or parked for the submit confirmation
-        """
-        if order.order_type in _STOP_WORLD_TYPES:
-            return self.trading_api.cancel_stop_order(order.pending_order_id)
-        return self.trading_api.cancel_limit_order(order.pending_order_id)
-
     def _modify_resting(self, action: PhaseAction) -> None:
         if not self._phase_order_ids or action.price is None:
             return
         order_id = self._phase_order_ids[-1]
-        # Same split as the cancel above: a stop's price is its TRIGGER and it is amended
+        # Same split as the shared cancel: a stop's price is its TRIGGER and it is amended
         # through its own path, which reaches Kraken's `trigger_price` rather than
         # `limit_price` (#500).
         target = next((o for o in self.trading_api.get_active_orders()
                        if o.pending_order_id == order_id), None)
-        if target is not None and target.order_type in _STOP_WORLD_TYPES:
+        if target is not None and target.order_type in STOP_WORLD_TYPES:
             self.trading_api.modify_stop_order(
                 order_id=order_id, new_stop_price=action.price)
             return
         self.trading_api.modify_limit_order(order_id=order_id, price=action.price)
 
     # ============================================
-    # Diagnostic trace (#13/#15 forensics — machine-parseable key=value)
-    # ============================================
-
-    def _resting_snapshot_str(self, orders: Optional[List[PendingOrder]] = None) -> str:
-        """
-        Compact snapshot of the currently resting orders (id | broker_ref | in-flight op
-        | in-flight query). A phase that fails with n>0 here is leaking/orphaning an order.
-
-        Args:
-            orders: Pre-fetched resting orders (re-queried when None)
-
-        Returns:
-            Machine-parseable 'n=K orders=[id|ref=…|op=…|q=…,…]' string
-        """
-        if orders is None:
-            orders = self.trading_api.get_active_orders()
-        parts = [
-            f"{o.pending_order_id}|ref={o.broker_ref or 'NONE'}"
-            f"|op={o.execution_state.in_flight_operation.name}|q={int(o.execution_state.in_flight_query)}"
-            for o in orders
-        ]
-        return f"n={len(orders)} orders=[{','.join(parts)}]"
-
-    def _trace_advance(
-        self,
-        is_ghost: bool,
-        ctx: PhaseContext,
-        action: PhaseAction,
-        cur_phase: Optional[str],
-    ) -> None:
-        """
-        Emit one machine-parseable phase-advance trace line per advance (#13/#15 forensics).
-
-        VERBOSE: every advance (tick AND ghost) — the firehose.
-        DEBUG: only when something changes (state / active-limit count / non-NONE action /
-        phase) — controlled, no per-pass spam.
-
-        Args:
-            is_ghost: True on a heartbeat ghost-pass, False on a tick pass
-            ctx: The PhaseContext the machine just consumed
-            action: The PhaseAction the machine returned
-            cur_phase: Current phase id after the advance
-        """
-        src = 'ghost' if is_ghost else 'tick'
-        state = self._machine.get_state()
-        submit_time = self._machine.get_submit_time()
-        age = f'{(ctx.now - submit_time).total_seconds():.1f}' if submit_time else '-1'
-        idx = self._machine.get_current_phase_index()
-        line = (
-            f"[FS_PHASE] src={src} phase={cur_phase or 'done'} idx={idx} "
-            f"state={state.name} action={action.kind.value} submit_age_s={age} "
-            f"active_limits={ctx.active_limit_count} open_pos={ctx.open_position_count} "
-            f"has_pending={int(ctx.has_pending)} filled={int(ctx.filled_since_submit)} "
-            f"rejected={int(ctx.rejected_since_submit)} cancelled={int(ctx.cancelled_since_submit)} "
-            f"now={ctx.now.isoformat()}"
-        )
-        self.logger.verbose(line)
-
-        changed = (
-            state != self._last_trace_state
-            or ctx.active_limit_count != self._last_trace_limits
-            or action.kind != PhaseActionKind.NONE
-            or cur_phase != self._last_phase_id
-        )
-        if changed:
-            self.logger.debug(line)
-        self._last_trace_state = state
-        self._last_trace_limits = ctx.active_limit_count
-
-    # ============================================
     # Internal helpers
     # ============================================
 
-    def _ensure_machine(self) -> None:
-        """Build the phase machine on first use, after capability filtering."""
-        if self._machine is not None:
-            return
+    def _build_machine(self) -> FieldStudyPhaseMachine:
+        """
+        Build the phase machine on first use, after capability filtering.
 
+        Returns:
+            The machine over the phases this broker can carry
+        """
         caps = self.trading_api.get_order_capabilities()
         unsupported = {
             OrderType.LIMIT: _LIMIT_FAMILY,
@@ -704,124 +246,10 @@ class LiveFieldStudy(AbstractDecisionLogic):
                         f'(broker lacks {order_type.value.upper()} support)'
                     )
 
-        self._machine = FieldStudyPhaseMachine(
+        return FieldStudyPhaseMachine(
             phases=self._phases,
             default_lot=self._default_lot,
             default_limit_offset_pct=self._limit_offset_pct,
             max_rearm_attempts=self._max_rearm_attempts,
             rearm_shrink_pct=self._rearm_offset_pct,
         )
-
-    def _reset_flags(self) -> None:
-        self._filled_flag = False
-        self._rejected_flag = False
-        self._unaccounted_flag = False
-        self._cancelled_flag = False
-
-    def _record_phase_start(self, phase_id: Optional[str]) -> None:
-        """Record a phase-start marker and switch the recorder's phase context."""
-        if self._recorder is None or phase_id is None:
-            return
-        idx = self._machine.get_current_phase_index()
-        if idx is None:
-            return
-        side = self._phases[idx].side
-        side_str = side.name if side != PhaseSide.NONE else None
-        self._recorder.record_phase_start(phase_id, idx, side_str)
-
-    def _refresh_realized_cost(self) -> None:
-        """
-        Re-derive the session's realized cost from the portfolio's cost tracking (#506).
-
-        The authoritative figure, and the reason it is READ rather than accumulated: the
-        portfolio books every fee through one categorising site, so `total_fees` carries both
-        legs of a round trip — entry and exit, full close and partial — whether or not a
-        decision event was emitted. Accumulating from this logic's own hooks could only ever
-        see an OPEN fill and a PARTIAL close, because a FULL close emits no event at all, and
-        this study's exits are full closes.
-
-        Not the order history: `get_order_history()` is declared but raises in V1. Reaching
-        for it cost a live run seven seconds in.
-        """
-        self._realized_cost = self.trading_api.get_cost_breakdown().total_fees
-
-    def _budget_ok(self) -> bool:
-        """Whether realized session cost is still under the ceiling (re-arm gate)."""
-        if self._max_session_cost_usd <= 0.0:
-            return True
-        self._refresh_realized_cost()
-        return self._realized_cost < self._max_session_cost_usd
-
-    def _session_guard_breached(self, now: datetime) -> bool:
-        """Whether the wall-clock or budget ceiling has been breached (→ safe-abort)."""
-        if self._session_timeout_s > 0.0 and self._session_started_at is not None:
-            if (now - self._session_started_at).total_seconds() > self._session_timeout_s:
-                self._abort_reason = 'session wall-clock timeout'
-                return True
-        if self._max_session_cost_usd > 0.0:
-            self._refresh_realized_cost()
-        if self._max_session_cost_usd > 0.0 and self._realized_cost >= self._max_session_cost_usd:
-            self._abort_reason = (
-                f'budget exceeded (${self._realized_cost:.4f} ≥ ${self._max_session_cost_usd:.4f})'
-            )
-            return True
-        return False
-
-    def _trigger_safe_abort(self) -> None:
-        """Cancel resting orders, close all positions, and request a graceful session end."""
-        self.logger.warning(f'⛔ Field Study safe-abort: {self._abort_reason}')
-        self.emit_event(
-            f'safe-abort: {self._abort_reason}',
-            level=AwarenessLevel.ALERT, reason_key='field_study_abort',
-        )
-        self._cancel_resting()
-        self._close_all()
-        self.trading_api.request_session_end(
-            f'field study safe-abort: {self._abort_reason}', SessionEndSeverity.NORMAL
-        )
-        self._safe_abort_active = True
-
-    def _log_new_results(self) -> None:
-        """Emit an event for each newly completed phase; honor step mode (halt_after_phase)."""
-        results = self._machine.get_results()
-        total = len(self._phases)
-        # results are 1:1 with phases in sequence order → list index == phase number
-        for idx, result in enumerate(results[self._logged_results:], start=self._logged_results):
-            if result.outcome.value == 'fail':
-                level = AwarenessLevel.ALERT
-            elif result.outcome.value == 'inconclusive':
-                level = AwarenessLevel.NOTICE
-            else:
-                level = AwarenessLevel.INFO
-            self.emit_event(
-                f'phase ({idx + 1}/{total}) {result.phase_id} → {result.outcome.value}: {result.reason}',
-                level=level,
-                reason_key='field_study_phase',
-            )
-            # Resting-order snapshot at phase end — a fail with n>0 is the orphan/leak.
-            self.logger.debug(
-                f'[FS_RESTING] event=phase_end phase={result.phase_id} '
-                f'outcome={result.outcome.value} {self._resting_snapshot_str()}')
-            if self._recorder:
-                self._recorder.record_phase_result(result)
-            if self._halt_after_phase and result.phase_id == self._halt_after_phase:
-                self.logger.info(
-                    f"halt_after_phase '{self._halt_after_phase}' reached — ending session"
-                )
-                self.trading_api.request_session_end(
-                    f'halt_after_phase {self._halt_after_phase}', SessionEndSeverity.NORMAL
-                )
-        self._logged_results = len(results)
-
-    # ============================================
-    # Public access for tests / recorder
-    # ============================================
-
-    def set_recorder(self, recorder: FieldStudyRecorder) -> None:
-        """Inject the JSONL recorder (lifecycle owned + closed by the AutoTrader wiring)."""
-        self._recorder = recorder
-
-    def get_phase_ids(self) -> List[str]:
-        """Ordered phase ids in the configured sequence (for the recorder header)."""
-        return [p.phase_id for p in self._phases]
-
