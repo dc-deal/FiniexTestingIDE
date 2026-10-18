@@ -192,7 +192,7 @@ Each test suite has its own documentation in [`tests/`](tests/).
 | [Inter-Tick Interval](tests/data/inter_tick_interval_tests.md) | Market-side interval measurement |
 | [Tick Processing Budget](tests/data/tick_processing_budget_tests.md) | Virtual clock filtering, ClippingStats |
 | [Raw Archive Re-import](tests/data/raw_archive_reimport_tests.md) | The re-import tool over a temp archive: selection by member name, extract, verify's checks, clean's SHA-256 proof (#562) |
-| [Scenario Generator](generator/tests_scenario_generator_docs.md) | Block generation tests |
+| [Scenario Generator](tests/data/scenario_generator_tests.md) | Block generation tests |
 | [Batch Validations](tests/framework/batch_validations_tests.md) | Phase 0 validation: ScenarioValidator, BrokerDataPreparator map filtering |
 | [Config Tests (Cascade + Merge Utility + Loader Field Coverage)](tests/framework/config_cascade_tests.md) | execution_config 3-level cascade, nested sub-group merge, unknown-key safety net (#137), deep_merge list_merge_keys unit tests, every AutoTrader config-block field reachable from JSON, app_config strictness, what a producing instance's identity means here, and the installation's minted host identity |
 | [Worker Tests](tests/framework/worker_tests.md) | Worker framework validation |

@@ -170,7 +170,7 @@ rate_limit_interval_s, request_timeout_s, poll_interval_ms).
 
 ### Dry-Run Mode
 
-Kraken Spot has no testnet/sandbox. Dry-run uses Kraken's native `validate=true` parameter on AddOrder — Kraken validates the order (pair, volume, balance, permissions) but **does not execute it**.
+Kraken Spot has no testnet/sandbox. Dry-run uses Kraken's native `validate=true` parameter on AddOrder — Kraken validates the order (pair, volume, permissions) but **does not execute it** — and it does not check the balance for a sell (measured 2026-10-17: a validate-only sell of three times the held ETH was accepted).
 
 Controlled by `dry_run` in `market_config.json` for the broker type (default: `true` — safe by default). Override in `user_configs/market_config.json` to place real orders. A profile may only tighten it: `dry_run: true` wins over a live broker default; `false` against a dry-run default is refused at startup (`DryRunConflictError`). Console shows `Mode: DRY RUN (validate only)` or `Mode: LIVE TRADING` at startup.
 

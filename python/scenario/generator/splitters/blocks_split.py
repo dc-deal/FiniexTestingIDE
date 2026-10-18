@@ -182,7 +182,7 @@ class BlocksSplit(AbstractSplitter):
 
         # Log final error if data ends with short block
         if windows:
-            self._check_final_block(windows, block_hours)
+            self._check_final_block(windows, block_hours, end_time)
 
         # Renumber block_index to the final 0-based position
         for i, w in enumerate(windows):
@@ -370,19 +370,31 @@ class BlocksSplit(AbstractSplitter):
     def _check_final_block(
         self,
         windows: List[GeneratedWindow],
-        block_hours: int
+        block_hours: int,
+        end_time: Optional[datetime] = None
     ) -> None:
         """
-        Check if final block is shorter than target and log error.
+        Check if final block is shorter than target and log it — an error where the data ends, a
+        note where the requested range ends.
 
         Args:
             windows: Generated windows
             block_hours: Target block hours
+            end_time: The requested upper bound (None = the data's end)
         """
         last_block = windows[-1]
         last_duration_hours = last_block.block_duration_hours
 
         if last_duration_hours < block_hours:
+            # A range cut by --end ends where it was asked to; only data running out earlier is an error
+            if end_time is not None and last_block.end_time >= end_time:
+                vLog.info(
+                    f'Block #{len(windows):02d}: the requested range ends with a short block '
+                    f'{last_duration_hours:.1f}h < {block_hours}h '
+                    f"({last_block.start_time.strftime('%Y-%m-%d %H:%M')} → "
+                    f"{last_block.end_time.strftime('%Y-%m-%d %H:%M')} UTC)"
+                )
+                return
             vLog.error(
                 f"🔴 Block #{len(windows):02d}: Data ends with short block {last_duration_hours:.1f}h < {block_hours}h\n"
                 f"   Time: {last_block.start_time.strftime('%Y-%m-%d %H:%M')} → {last_block.end_time.strftime('%Y-%m-%d %H:%M')} UTC ({last_block.start_time.strftime('%a')})\n"
