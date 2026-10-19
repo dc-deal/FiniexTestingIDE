@@ -196,11 +196,12 @@ Three `ScenarioLogger` instances per session, each with a distinct purpose:
 | Logger | File | Purpose | Console |
 |--------|------|---------|---------|
 | Global | `autotrader_global.log` | Startup phases, shutdown, cross-cutting errors | Direct `print()` during startup |
-| Session | `session_logs/autotrader_session_YYYYMMDD.log` | Per-tick processing, decisions, orders | Buffered (cleared before summary) |
+| Session | `autotrader_session.log` (the boot), then `session_logs/autotrader_session_YYYYMMDD.log` | Boot, then per-tick processing, decisions, orders | Buffered (cleared before summary) |
 | Summary | `autotrader_summary.log` | Post-session report, statistics | Flushed to console at end |
 
 - Directory: `runs/autotrader/<profile_name>/<run_id>/` (from `file_logging.run_logs.autotrader`)
-- Separate from simulation runs (`runs/simulation/`); `logs/` holds only `global.log`
+- Separate from simulation runs (`runs/simulation/`); `logs/` holds the machine-wide `global.log`
+  and the import logs (`logs/imports/`), never a session's
 - Session log **rotates daily** at this market's trading-day boundary (`trading_day_anchor`
   — the swap rollover for forex, midnight UTC for crypto), and rotated days older than
   `file_logging.session_logs.retention_days` are pruned with it (#357). The rule and its
@@ -209,6 +210,7 @@ Three `ScenarioLogger` instances per session, each with a distinct purpose:
 ```
 runs/autotrader/btcusd_mock/20260328_105127_a1b2c3d4/
   autotrader_global.log           Startup, shutdown, errors
+  autotrader_session.log          The session channel's boot: validation, data, the pipeline
   autotrader_summary.log          Post-session summary
   session_logs/
     autotrader_session_20260328.log  Day 1 tick processing

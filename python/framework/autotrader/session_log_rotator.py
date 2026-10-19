@@ -74,10 +74,10 @@ class SessionLogRotator:
             )
             self._logger.swap_file_logger(new_file_logger)
             self._current_log_date = day_label
-            # The file startup created from the WALL clock stays: it holds the pre-tick log
-            # (warmup bars, pipeline setup), and in a replay its name is a different day from
-            # the one this session trades — which is also why the retention below cannot reach
-            # it, a future-dated file being outside the window by construction.
+            # The boot file stays: startup writes the pre-tick log (warmup bars, pipeline setup)
+            # into autotrader_session.log in the run directory, whose name carries no date, so
+            # neither this rotation nor the retention below reaches it — the retention matches
+            # only the dated names under session_logs/.
             self._prune_rotated_session_logs(day_label)
             return
 
