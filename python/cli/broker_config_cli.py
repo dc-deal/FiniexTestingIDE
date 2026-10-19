@@ -32,6 +32,12 @@ class BrokerConfigCli:
             default=None,
             help='Broker type to sync (default: all dynamic brokers)',
         )
+        sync_parser.add_argument(
+            '--force',
+            action='store_true',
+            help='Fetch every symbol from the API, also those whose entry is still fresh',
+        )
+
     def run(self) -> None:
         args = self._parser.parse_args()
         if args.command == 'sync':
@@ -55,14 +61,15 @@ class BrokerConfigCli:
             return
 
         for broker_type in broker_types:
-            self._sync_broker(broker_type)
+            self._sync_broker(broker_type, args.force)
 
-    def _sync_broker(self, broker_type: str) -> None:
+    def _sync_broker(self, broker_type: str, force: bool) -> None:
         """
         Fetch all tick-index symbols for a broker and merge into the runtime cache.
 
         Args:
             broker_type: Broker type identifier
+            force: Fetch every symbol, also those whose entry is still fresh
         """
         fetcher = BrokerConfigFetcherFactory.create(broker_type=broker_type)
 
@@ -79,8 +86,10 @@ class BrokerConfigCli:
 
         last_result = None
         for symbol in symbols:
-            last_result = fetcher.fetch_broker_config_with_cache(symbol, broker_type)
-            print(f'       ✓  {symbol}')
+            last_result = fetcher.fetch_broker_config_with_cache(
+                symbol, broker_type, force_refresh=force)
+            changes = fetcher.get_last_spec_changes()
+            print(f'       ✓  {symbol}' + (f'  ⚠️  changed: {", ".join(changes)}' if changes else ''))
 
         if last_result:
             config_hash = last_result.get('_config_meta', {}).get('symbols_hash', '?')

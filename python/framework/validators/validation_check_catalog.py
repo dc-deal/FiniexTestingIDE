@@ -78,6 +78,10 @@ VALIDATION_CHECKS: Tuple[ValidationCheckInfo, ...] = (
     ValidationCheckInfo(
         'swap_mode_unsupported', 'Swap mode not modelled',
         'The symbol charges overnight swap in a way the simulation does not model.'),
+    ValidationCheckInfo(
+        'broker_spec_stale', 'Symbol specification fetched long ago',
+        "The backtest read a symbol's minimums and steps from a cache entry older than its refresh "
+        'interval; the venue may have changed them since.'),
     # --- The data a scenario reads -----------------------------------------------------------
     ValidationCheckInfo(
         'coverage_report_missing', 'No data coverage report',

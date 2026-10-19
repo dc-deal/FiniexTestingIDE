@@ -253,8 +253,9 @@ class SafetyCircuitBreaker:
         """
         Evaluate circuit breaker conditions and update safety state.
 
-        Soft stop: sets _safety_blocked flag. Existing positions continue,
-        new entries are blocked by overriding decision to FLAT.
+        Soft stop: sets _safety_blocked flag, and while it holds the tick loop forces each
+        decision's action to FLAT — no new entry, and no close the strategy expresses as an
+        action. The breaker closes nothing itself.
 
         Args:
             current_value: The account value — one definition per model (#356), never
@@ -451,7 +452,8 @@ class SafetyCircuitBreaker:
         entry during the drain would keep the book from ever reaching flat.
 
         Returns:
-            True when no new entry may be opened
+            True while every decision's action is forced FLAT — no new entry, and no close the
+            strategy expresses as an action
         """
         return self._safety_blocked or bool(self._flatten_reason)
 

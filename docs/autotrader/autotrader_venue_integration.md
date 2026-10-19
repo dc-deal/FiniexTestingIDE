@@ -25,10 +25,12 @@ create_broker_config(config, logger)   (autotrader_broker_config_setup.py)
   → entry = MarketConfigManager().get_broker_entry(broker_type)
   → KrakenConfigFetcher(entry.credentials_file, entry.broker_transport.api_base_url)
   → fetch_broker_config_with_cache(symbol, broker_type)
-       cache < 7 days old  → use silently, no API call
-       cache 7–30 days     → try GET /0/public/AssetPairs; on failure: warn + use cache
-       cache > 30 days     → try GET /0/public/AssetPairs; on failure: strong stale warning + use cache
-       no cache at all     → GET /0/public/AssetPairs; on failure: hard error (first run)
+       the age of the SYMBOL's own entry decides, by its _last_fetched — not the file's (#608):
+       entry < 7 days old    → use silently, no API call
+       entry 7–30 days old   → try GET /0/public/AssetPairs; on failure: warn + use cache
+       entry > 30 days old   → try GET /0/public/AssetPairs; on failure: strong stale warning + use cache
+       no entry, or no cache → GET /0/public/AssetPairs; on failure: hard error (the symbol's first run)
+       a refresh that moves volume_min, volume_step, tick_size or cost_min warns, naming old and new
   → fee_structure ← the git-tracked seed, replacing whatever the cache carried (#337)
   → POST /0/private/TradeVolume → the account's real fee tier
        auto_detect_fee_tier=true   → applied for this session

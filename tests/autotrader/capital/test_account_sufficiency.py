@@ -11,6 +11,9 @@ needs a price the boot does not always have, which is why an unjudgeable side ca
 the AND.
 """
 
+import copy
+from dataclasses import replace
+
 import pytest
 
 from python.framework.testing.mock_broker_adapter import MockBrokerAdapter
@@ -101,3 +104,42 @@ class TestTheUnjudgeableBuySide:
 
         assert 'BTCUSD' in message
         assert 'SELL' in message and 'BUY' in message
+
+
+class TestTheValueMinimum:
+    """
+    A venue's minimum order VALUE (`cost_min`, #608) raises the smallest acceptable order to
+    `cost_min / price` where that is larger — on both sides, and only where a price exists.
+    """
+
+    def test_a_value_minimum_above_the_volume_minimum_refuses_a_buy_the_volume_allows(
+            self, symbol_spec):
+        spec = replace(symbol_spec, cost_min=10.0)
+        # 6 USD buys the minimum volume (5.2175 USD) but not an order worth 10 USD
+        error = check_account_sufficiency({'USD': 6.0}, spec, _PRICE)
+
+        assert error is not None
+        assert 'worth less than 10.00000000 USD' in error
+        assert f'{10.0 / _PRICE:.8f}' in error
+
+    def test_the_sell_side_needs_the_larger_minimum_too(self, symbol_spec):
+        spec = replace(symbol_spec, cost_min=10.0)
+        # above volume_min, below the 10 USD the venue accepts at this price
+        assert check_account_sufficiency({'BTC': 0.00006}, spec, _PRICE) is not None
+
+    def test_without_a_price_the_value_minimum_cannot_apply(self, symbol_spec):
+        spec = replace(symbol_spec, cost_min=10.0)
+        assert check_account_sufficiency({'BTC': 0.00006}, spec, None) is None
+
+    def test_a_value_minimum_below_the_volume_cost_changes_nothing(self, symbol_spec):
+        spec = replace(symbol_spec, cost_min=0.5)
+        assert check_account_sufficiency({'USD': _MINIMUM_COST}, spec, _PRICE) is None
+
+    def test_a_mock_session_checks_the_value_minimum_its_config_declares(self):
+        # A mock session is handed the venue's seed: its boot check has to see the minimum the
+        # live session sees, where the mock used to drop the field and check against 0.0
+        config = copy.deepcopy(MockBrokerAdapter().broker_config)
+        config['symbols']['BTCUSD']['cost_min'] = 0.5
+        assert MockBrokerAdapter(broker_config=config).get_symbol_specification('BTCUSD').cost_min == 0.5
+        assert MockBrokerAdapter().get_symbol_specification('BTCUSD').cost_min == 0.0
+

@@ -194,6 +194,12 @@ runs around the clock. See [Scenario Generator](generator/generator_block_splitt
 resolves against the framework's registry, anything else is a file path. The former `USER/`
 namespace no longer exists. See [Worker Naming](user_guides/worker_naming_doc.md).
 
+**cost_min** (on a symbol's specification) — The smallest order VALUE a venue accepts, in the quote
+currency — Kraken's `costmin`; `0.0` where the venue declares none. A second minimum beside
+`volume_min`, which counts lots — base units where `contract_size` is 1, as on Kraken spot: an
+order has to meet both. Not a fee. See
+[Broker Configuration](broker_config_guide.md).
+
 **data broker** (`data_broker_type`) — The broker whose tick archive a scenario or a mock session
 reads, and the key the bar routes are addressed by. A backtest simulates its orders against the
 same broker's configuration; a mock session may trade against another one (`broker_type`); a venue

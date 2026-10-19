@@ -65,6 +65,7 @@ Mt5Adapter / KrakenAdapter  → Broker-specific implementation
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `volume_min` | float | Always | Minimum lot size |
+| `cost_min` | float | Kraken | Minimum order VALUE in the quote currency (Kraken's `costmin`); absent or `0.0` = none. An order has to meet it beside `volume_min` |
 | `volume_max` | float | Always | Maximum lot size |
 | `volume_step` | float | Always | Lot increment |
 | `contract_size` | int | Always | Units per lot (100000 Forex, 1 Crypto) |
@@ -457,20 +458,25 @@ fetcher hardcodes the rates rather than fetching them, so the two happened to ag
 
 ### Staleness Policy (dynamic mode)
 
-| Cache age | Behavior |
+| Age of the symbol's entry | Behavior |
 |-----------|----------|
 | < 7 days | Use cache silently — no API call (unless symbol is missing, see below) |
 | 7–30 days | Try API refresh; on failure warn + use stale cache |
 | > 30 days | Try API refresh; on failure strong warning (specs may be outdated) |
-| No cache | Try API refresh; on failure hard error (first run, no fallback) |
+| No entry, or no cache | Try API refresh; on failure hard error (first run, no fallback) |
 
 On first run, an internet connection is required. After the first successful fetch, the session can run offline for up to 30 days before generating a strong staleness warning.
 
-**Lazy symbol addition:** Symbols are added to the cache on demand. If a fresh cache exists but does
-not contain the requested symbol (e.g., the cache was built during an ETHUSD session and you now
-start a DOTUSD session), the missing symbol is fetched from the API and merged into the cache —
-without affecting the age or status of existing symbols. Each symbol carries a `_last_fetched` field
-indicating when it was last individually verified.
+**The age is the symbol's own.** Each symbol carries a `_last_fetched` field, and the table above
+reads the REQUESTED symbol's entry, never the file: every fetch rewrites the file, while a venue
+changes one symbol's minimum without touching the others (measured 2026-10-18: seven of nine Kraken
+symbols had moved their minimum, behind a file stamp four days old). A symbol missing from the cache
+is fetched and merged; an entry without a stamp counts as stale.
+
+**A refresh that changes `volume_min`, `volume_step`, `tick_size` or `cost_min` warns**, naming the
+old and the new value: a machine whose cache still holds the old value prepares backtests that fill
+orders the venue now refuses. A backtest reads the cache and never fetches; when the entry it read
+is older than seven days, the run says so once per symbol (`broker_spec_stale`).
 
 ### Tombstone Symbols
 
@@ -510,22 +516,28 @@ The hash appears in:
 - Batch summary: `Config:  [a3f82c11]` line under broker info
 - AutoTrader live display header: `BTCUSD (kraken_spot) [a3f82c11] — DRY RUN`
 
-Neither hash covers `_config_meta`, so a timestamp refresh does not move them.
+Neither hash covers `_config_meta`, nor a symbol's `_last_fetched`: a refresh that reads the same
+values back moves neither, and `sync --force` moves them only where a value changed (#608).
 
 ### Syncing the Static Seed
 
-When the runtime cache has been refreshed and you want to commit the new specs:
+When the runtime cache has been refreshed and you want to commit the new specs, refresh every
+symbol first, then copy the symbols' entries and the `_config_meta` block into the seed:
 
 ```bash
-cp data/runtime/brokers/kraken_spot/kraken_spot_broker_config.json \
-   configs/brokers/kraken/kraken_spot_broker_config.json
+python python/cli/broker_config_cli.py sync --force
+# copy each symbol's entry and `_config_meta` from data/runtime/brokers/kraken_spot/… into the seed
 git diff configs/brokers/kraken/kraken_spot_broker_config.json
 ```
 
-**Read the `fee_structure` half of that diff deliberately.** Symbol specs are the venue's facts
-and copying them is routine; the fee rates are the number every backtest will price its trades
-with from the next commit onwards. Committing them is the act of FREEZING a rate — give it the
-same attention as a threshold, and expect `config_hash` to move for every run afterwards.
+Copy those two, not the whole file: the seed's `fee_structure` and `_fee_structure_frozen` — the
+record of when and from what its fee rates were frozen — are not the cache's to replace.
+
+**This copy leaves the fee rates alone, on purpose.** Symbol specs are the venue's facts and
+copying them is routine; the fee rates are the number every backtest prices its trades with
+from the next commit onwards. Re-freezing them is an act of its own, described in *Where a fee
+rate comes from* above — give it the attention of a threshold, and expect `config_hash` to move
+for every run afterwards.
 
 Review the diff carefully before committing:
 
@@ -533,11 +545,11 @@ Review the diff carefully before committing:
 |------------|---------------|
 | `"_active": false` (new) | Expected delisting. Backtesting data for this symbol still works. |
 | New symbol entry | Does bar index show data for it? (`bar_index_cli.py data-coverage`) |
-| `volume_min` / `tick_size` changed | Any algos with hardcoded lot sizes? |
+| `volume_min` / `cost_min` / `tick_size` changed | Any algos with hardcoded lot sizes? |
 | `kraken_pair_name` changed | Rare — verify against Kraken API docs before committing. |
 | `base_currency` / `quote_currency` changed | Should not happen — integrity check raises on next load. |
-| `symbols_hash` changed | Actual spec change. Expected if any spec field changed above. |
-| Only `last_fetched` changed, hash same | Pure timestamp update — safe to commit without deep review. |
+| `symbols_hash` changed | A value changed — expected exactly where a field above changed. |
+| Only `_last_fetched` / `last_fetched` changed, hash same | The same values read again — safe to commit without deep review. |
 
 ### Pre-Populating the Runtime Cache
 
@@ -547,6 +559,8 @@ Before the first live-adapter session (or after deleting the cache), the runtime
 python python/cli/broker_config_cli.py sync
 # or for a specific broker:
 python python/cli/broker_config_cli.py sync --broker kraken_spot
+# every symbol, whatever the age of its entry:
+python python/cli/broker_config_cli.py sync --force
 ```
 
 The sync CLI:
@@ -554,7 +568,11 @@ The sync CLI:
 2. Fetches symbol specs from the broker API for each symbol
 3. Writes (or merges into) `data/runtime/brokers/<broker_type>/<broker_type>_broker_config.json`
 
-After syncing, AutoTrader sessions can start offline. The weekly staleness check still applies — a session started more than 7 days after the last sync triggers a fresh API fetch.
+After syncing, AutoTrader sessions can start offline. The weekly staleness check still applies — per
+symbol, a session started more than 7 days after that symbol's last fetch triggers a fresh API fetch.
+`--force` fetches every symbol whatever its age — the machine that runs a comparison backtest needs it,
+and so does a re-freeze of the seed; each symbol whose specification changed is printed with its old and
+new values.
 
 **VS Code:** Use `🔧 Broker Config: Sync (all dynamic brokers)` in launch.json for a one-click sync.
 

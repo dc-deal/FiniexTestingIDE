@@ -14,12 +14,17 @@ import time
 import urllib.parse
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 import requests
 
 from python.configuration.autotrader.abstract_broker_config_fetcher import (
     AbstractBrokerConfigFetcher,
+)
+from python.configuration.autotrader.broker_config_cache_policy import (
+    CACHE_REFRESH_DAYS,
+    CACHE_STALE_WARN_DAYS,
+    entry_age_days,
 )
 from python.configuration.credential_guard import assert_real_credential
 from python.configuration.credentials_cascade import (
@@ -84,6 +89,7 @@ class KrakenConfigFetcher(AbstractBrokerConfigFetcher):
         self._api_base_url = api_base_url or self.API_BASE
         self._request_timeout_s = request_timeout_s
         self._api_key, self._api_secret = self._load_credentials(credentials_path)
+        self._last_spec_changes: List[str] = []
 
     def fetch_broker_config(self, symbol: str, broker_type: str) -> Dict[str, Any]:
         """
@@ -114,77 +120,130 @@ class KrakenConfigFetcher(AbstractBrokerConfigFetcher):
         self._log_info(f'✅ Broker config fetched: {symbol}')
         return config
 
-    def fetch_broker_config_with_cache(self, symbol: str, broker_type: str) -> Dict[str, Any]:
+    def fetch_broker_config_with_cache(
+        self, symbol: str, broker_type: str, force_refresh: bool = False
+    ) -> Dict[str, Any]:
         """
         Fetch broker config with runtime cache and staleness guard.
 
-        Lookup chain:
-          1. Cache < 7 days old   → use cache silently, no API call
-          2. Cache 7–30 days old  → try API refresh; on failure use cache + warning
-          3. Cache > 30 days old  → try API refresh; on failure use cache + strong warning
-          4. No cache present     → fetch from API; failure = hard error with instructions
+        Lookup chain, asked of the REQUESTED symbol's own entry — a venue changes one symbol's
+        minimum without touching the others, so the file's age says nothing about a symbol:
+          1. Entry < 7 days old   → use cache silently, no API call
+          2. Entry 7–30 days old  → try API refresh; on failure use cache + warning
+          3. Entry > 30 days old  → try API refresh; on failure use cache + strong warning
+          4. No entry, or no cache → fetch from API; failure = hard error with instructions
+        A refresh that changes a minimum, a step or the tick size warns, naming both values.
 
         Cache location: data/runtime/brokers/<broker_type>/<broker_type>_broker_config.json
 
         Args:
             symbol: Trading symbol (e.g., 'BTCUSD')
             broker_type: Broker type identifier (e.g., 'kraken_spot')
+            force_refresh: Fetch from the API whatever the entry's age
 
         Returns:
             Complete broker config dict (from cache or fresh API fetch)
         """
         cache_path = _get_runtime_cache_path(broker_type)
-        cache_age_days = _get_cache_age_days(cache_path)
+        cached = _load_cache_or_none(cache_path)
+        previous_entry = cached.get('symbols', {}).get(symbol) if cached else None
+        entry_age = entry_age_days(previous_entry)
+        self._last_spec_changes = []
 
-        # Cache fresh (< 7 days): use as-is if requested symbol is present
-        if cache_age_days is not None and cache_age_days < _CACHE_REFRESH_DAYS:
-            cached = _load_json(cache_path)
-            if symbol in cached.get('symbols', {}):
-                self._log_info(
-                    f'🗄  Broker config from cache: {broker_type} '
-                    f'({cache_age_days:.0f}d old, refresh in '
-                    f'{_CACHE_REFRESH_DAYS - cache_age_days:.0f}d)'
-                )
-                return cached
-            # Symbol not in cache yet — fall through to fetch and extend
+        # Entry fresh (< 7 days): use the cache as it is
+        if (not force_refresh and entry_age is not None
+                and entry_age < CACHE_REFRESH_DAYS):
+            self._log_info(
+                f'🗄  Broker config from cache: {broker_type} {symbol} '
+                f'({entry_age:.0f}d old, refresh in '
+                f'{CACHE_REFRESH_DAYS - entry_age:.0f}d)'
+            )
+            return cached
+        if cached is not None and previous_entry is None:
             self._log_info(
                 f"🔄  Symbol '{symbol}' not in cache — fetching from API..."
             )
 
-        # Stale or no cache: try API refresh
+        # Stale, missing or forced: try API refresh
         try:
             fresh_dict = self.fetch_broker_config(symbol, broker_type)
             merged = _merge_with_cache(fresh_dict, cache_path)
             _write_cache(merged, cache_path)
+            self._report_spec_changes(symbol, previous_entry, merged['symbols'][symbol])
             config_hash = merged.get('_config_meta', {}).get('symbols_hash', '')
             hash_tag = f' [symbols {config_hash}]' if config_hash else ''
             active_count = sum(1 for s in merged.get('symbols', {}).values() if s.get('_active', True))
             self._log_info(
-                f'💱 Broker config refreshed: {broker_type}{hash_tag} — {active_count} active symbols\n'
+                f'💱 Broker config refreshed: {broker_type} {symbol}{hash_tag} — {active_count} active symbols\n'
                 f'    Cache: {cache_path}'
             )
             return merged
         except Exception as e:
-            if cache_age_days is not None:
-                _warn_stale_cache(cache_path, cache_age_days, broker_type, e, self._logger)
-                return _load_json(cache_path)
+            if previous_entry is not None:
+                _warn_stale_cache(cache_path, symbol, entry_age, broker_type, e, self._logger)
+                return cached
 
-            # No cache at all: hard error
+            # No entry for the symbol at all: hard error
             raise ConnectionError(
-                f"❌ No broker config available for '{broker_type}'.\n"
+                f"❌ No broker config available for '{broker_type}' {symbol}.\n"
                 f"\n"
-                f"   Cache:   {cache_path} — NOT FOUND\n"
+                f"   Cache:   {cache_path} — "
+                f"{'NO ENTRY FOR ' + symbol if cached is not None else 'NOT FOUND'}\n"
                 f"   Reason:  {e}\n"
                 f"\n"
-                f"   This appears to be your first run, or the cache was deleted.\n"
+                f"   This appears to be the symbol's first run, or the cache was deleted.\n"
                 f"   Fix:     Ensure internet / API access and restart.\n"
-                f"            Once fetched, the config is cached locally and only\n"
-                f"            re-fetched when it is older than {_CACHE_REFRESH_DAYS} days.\n"
+                f"            Once fetched, the symbol is cached locally and only\n"
+                f"            re-fetched when its entry is older than {CACHE_REFRESH_DAYS} days.\n"
                 f"\n"
                 f"   Offline fallback: Set \"config_mode\": \"static\" for '{broker_type}' in\n"
                 f"            configs/market_config.json to use the static seed file instead:\n"
                 f"            configs/brokers/kraken/kraken_spot_broker_config.json"
             ) from e
+
+    def get_last_spec_changes(self) -> List[str]:
+        """
+        What the last refresh changed in the symbol's specification.
+
+        Returns:
+            One line per changed field (`volume_min 0.001 → 0.002`); empty when nothing
+            changed, when the symbol was new, or when the last call read the cache
+        """
+        return list(self._last_spec_changes)
+
+    def _report_spec_changes(
+        self, symbol: str, previous: Optional[Dict[str, Any]], fresh: Dict[str, Any]
+    ) -> None:
+        """
+        Warn when a refresh changed a field that decides whether an order is accepted.
+
+        A field the previous entry did not carry is not a change: it was not read before,
+        so nothing was decided on an old value of it.
+
+        Args:
+            symbol: The refreshed symbol
+            previous: Its entry before the refresh (None when it was not cached)
+            fresh: Its entry after the refresh
+
+        Returns:
+            None
+        """
+        if previous is None:
+            return
+        changes = [
+            f'{field} {_spec_value(previous[field])} → {_spec_value(fresh.get(field))}'
+            for field in _ORDER_DECIDING_FIELDS
+            if field in previous and previous[field] != fresh.get(field)
+        ]
+        if not changes:
+            return
+        self._last_spec_changes = changes
+        self._log_warning(
+            f'⚠️ The venue changed {symbol}: {", ".join(changes)} '
+            f'(last fetched {previous.get("_last_fetched", "unknown")}).\n'
+            f'   A backtest prepared from a cache older than today used the old values — run\n'
+            f'   `python python/cli/broker_config_cli.py sync --force` on that machine before comparing.'
+        )
 
     def fetch_account_balance(self, currency: str) -> Optional[float]:
         """
@@ -468,6 +527,8 @@ class KrakenConfigFetcher(AbstractBrokerConfigFetcher):
         pair_decimals = pair_info.get('pair_decimals', 1)
         lot_decimals = pair_info.get('lot_decimals', 8)
         ordermin = float(pair_info.get('ordermin', 0.0001))
+        # The smallest order VALUE, in the quote currency — a second minimum beside ordermin
+        costmin = float(pair_info.get('costmin', 0.0))
 
         tick_size = 10 ** (-pair_decimals)
 
@@ -477,6 +538,7 @@ class KrakenConfigFetcher(AbstractBrokerConfigFetcher):
             'quote_currency': quote_currency,
             'trade_allowed': True,
             'volume_min': ordermin,
+            'cost_min': costmin,
             'volume_max': 10000.0,
             'volume_step': 10 ** (-lot_decimals),
             'volume_limit': 0.0,
@@ -627,8 +689,8 @@ class KrakenConfigFetcher(AbstractBrokerConfigFetcher):
 # Public because the store catalog (#486) registers this directory as a store and must name it
 # from its one definition rather than repeating the literal.
 RUNTIME_CACHE_BASE = Path('data/runtime/brokers')
-_CACHE_REFRESH_DAYS = 7
-_CACHE_STALE_WARN_DAYS = 30
+# The fields whose change can turn an accepted order into a refused one, or the reverse
+_ORDER_DECIDING_FIELDS = ('volume_min', 'volume_step', 'tick_size', 'cost_min')
 
 
 def _get_runtime_cache_path(broker_type: str) -> Path:
@@ -678,27 +740,35 @@ def load_runtime_cache(broker_type: str) -> Dict[str, Any]:
     return data
 
 
-def _get_cache_age_days(cache_path: Path) -> Optional[float]:
+def _spec_value(value: Any) -> str:
     """
-    Return age of cache file in days, or None if file does not exist.
+    A specification value as an operator reads it — never in scientific notation.
+
+    Args:
+        value: The value from a cache entry
+
+    Returns:
+        `0.00005` rather than `5e-05`; anything that is not a float as it is
+    """
+    if not isinstance(value, float):
+        return str(value)
+    return f'{value:.10f}'.rstrip('0').rstrip('.') or '0'
+
+
+def _load_cache_or_none(cache_path: Path) -> Optional[Dict[str, Any]]:
+    """
+    Load the runtime cache, or None when it is missing or unreadable.
 
     Args:
         cache_path: Path to runtime cache file
 
     Returns:
-        Age in days, or None if cache missing
+        The cache dict, or None
     """
     if not cache_path.exists():
         return None
     try:
-        with open(cache_path, 'r') as f:
-            data = json.load(f)
-        last_fetched_str = data.get('_config_meta', {}).get('last_fetched')
-        if not last_fetched_str:
-            return None
-        last_fetched = datetime.fromisoformat(last_fetched_str.replace('Z', '+00:00'))
-        age = (datetime.now(timezone.utc) - last_fetched).total_seconds() / 86400.0
-        return age
+        return _load_json(cache_path)
     except Exception:
         return None
 
@@ -720,23 +790,6 @@ def _write_cache(config_dict: Dict[str, Any], cache_path: Path) -> None:
     cache_path.parent.mkdir(parents=True, exist_ok=True)
     with open(cache_path, 'w') as f:
         json.dump(config_dict, f, indent=2)
-
-
-def _compute_symbols_hash(symbols: Dict[str, Any]) -> str:
-    """
-    Compute 8-char SHA256 hash of the symbols block.
-
-    Hash is stable across _config_meta changes — only symbols data affects it.
-
-    Args:
-        symbols: The 'symbols' dict from a broker config
-
-    Returns:
-        8-character hex hash string
-    """
-    return hashlib.sha256(
-        json.dumps(symbols, sort_keys=True).encode()
-    ).hexdigest()[:8]
 
 
 def _merge_with_cache(fresh_dict: Dict[str, Any], cache_path: Path) -> Dict[str, Any]:
@@ -785,7 +838,7 @@ def _merge_with_cache(fresh_dict: Dict[str, Any], cache_path: Path) -> Dict[str,
     result['symbols'] = merged_symbols
 
     # Update _config_meta
-    symbols_hash = _compute_symbols_hash(merged_symbols)
+    symbols_hash = BrokerConfigFactory.compute_symbols_hash(merged_symbols)
     result['_config_meta'] = {
         'schema_version': '2.0',
         'last_fetched': datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),
@@ -797,22 +850,24 @@ def _merge_with_cache(fresh_dict: Dict[str, Any], cache_path: Path) -> Dict[str,
 
 def _warn_stale_cache(
     cache_path: Path,
-    age_days: float,
+    symbol: str,
+    age_days: Optional[float],
     broker_type: str,
     error: Exception,
     logger: Optional[ScenarioLogger],
 ) -> None:
     """
-    Log a staleness warning with human-readable instructions.
+    Log a staleness warning for one symbol's entry, with human-readable instructions.
 
     Args:
-        cache_path: Path to the stale cache file
-        age_days: Age of the cache in days
+        cache_path: Path to the cache file
+        symbol: The symbol whose entry could not be refreshed
+        age_days: Age of the symbol's entry in days (None: it carries no readable stamp)
         broker_type: Broker type identifier
         error: Exception from the failed API refresh attempt
         logger: ScenarioLogger for status messages (may be None)
     """
-    is_very_stale = age_days > _CACHE_STALE_WARN_DAYS
+    is_very_stale = age_days is None or age_days > CACHE_STALE_WARN_DAYS
 
     try:
         cached_data = _load_json(cache_path)
@@ -825,17 +880,18 @@ def _warn_stale_cache(
         symbol_summary = 'cache unreadable'
 
     try:
-        last_fetched = cached_data.get('_config_meta', {}).get('last_fetched', 'unknown')  # type: ignore[union-attr]
+        last_fetched = cached_data['symbols'][symbol].get('_last_fetched', 'unknown')  # type: ignore[index]
     except Exception:
         last_fetched = 'unknown'
 
-    age_label = f'{age_days:.0f} days ago'
+    age_label = f'{age_days:.0f} days ago' if age_days is not None else 'age unknown'
+    age_old = f'{age_days:.0f} days old' if age_days is not None else 'of unknown age'
 
     if is_very_stale:
         msg = (
-            f'⚠️  Broker config is {age_days:.0f} days old — symbol specs may be outdated.\n'
+            f'⚠️  {symbol} broker config is {age_old} — its specification may be outdated.\n'
             f'    Cache:   {cache_path}\n'
-            f'    Cached:  {last_fetched} ({age_label}) — STALE (>{_CACHE_STALE_WARN_DAYS} days)\n'
+            f'    Cached:  {last_fetched} ({age_label}) — STALE (>{CACHE_STALE_WARN_DAYS} days)\n'
             f'    Config:  {symbol_summary}\n'
             f'    Reason:  {error}\n'
             f'\n'
@@ -849,7 +905,7 @@ def _warn_stale_cache(
         )
     else:
         msg = (
-            f'⚠️  Could not refresh broker config — using cached version.\n'
+            f'⚠️  Could not refresh the {symbol} broker config — using cached version.\n'
             f'    Cache:   {cache_path}\n'
             f'    Cached:  {last_fetched} ({age_label}) — within acceptable range\n'
             f'    Config:  {symbol_summary}\n'

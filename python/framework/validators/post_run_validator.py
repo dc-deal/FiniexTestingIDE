@@ -12,8 +12,10 @@ reads the structured result. See docs/architecture/warnings_errors_tiers.md.
 """
 
 from collections import Counter
-from typing import Dict, Optional
+from datetime import datetime, timezone
+from typing import Dict, Optional, Tuple
 
+from python.configuration.autotrader.broker_config_cache_policy import CACHE_REFRESH_DAYS
 from python.framework.reporting.builders.pending_orders_report_builder import submission_count
 from python.framework.reporting.builders.robustness_report_builder import (
     build_robustness_report_from_batch,
@@ -54,6 +56,8 @@ _HIGH_OVERHEAD_RATIO = 0.5
 _BOTTLENECK_PCT = 15.0
 # Time-divergence threshold — a currency group spanning more days than this gets an advisory.
 _TIME_DIVERGENCE_DAYS = 30
+# A symbol specification read from a runtime cache entry older than its refresh interval (#608)
+BROKER_SPEC_STALE_CHECK = 'broker_spec_stale'
 
 
 
@@ -85,6 +89,7 @@ class PostRunValidator:
         self._check_data_origin()
         self._check_data_deficiencies()
         self._check_modelled_spread()
+        self._check_broker_spec_age()
         self._check_budget()
         self._check_budget_granularity()
         self._check_budget_too_high()
@@ -305,6 +310,41 @@ class PostRunValidator:
             lines += (f'\n  → {without_quote - modelled:,} kept bid = ask: no usable estimate '
                       f'before their day')
         self._add('data_modelled_spread', ValidationDomain.DATA, lines)
+
+    def _check_broker_spec_age(self) -> None:
+        """
+        Say once per run which symbol specifications came from an old cache entry (#608).
+
+        A dynamic broker's backtest reads a symbol's minimums and steps from the runtime cache,
+        and a backtest never fetches. An entry older than the refresh interval may describe a
+        venue that has moved its minimum since — the run then fills orders the venue would refuse.
+        Counted per symbol, not repeated per scenario; nothing is refused, because only the venue
+        can say whether the old entry is still right.
+
+        Returns:
+            None
+        """
+        scenarios = self._batch.single_scenario_list
+        now = datetime.now(timezone.utc)
+        stale: Dict[Tuple[str, str], Tuple[datetime, int]] = {}
+        for scenario in scenarios:
+            fetched_at = scenario.broker_spec_fetched_at
+            if fetched_at is None:
+                continue
+            if (now - fetched_at).total_seconds() / 86400.0 < CACHE_REFRESH_DAYS:
+                continue
+            key = (scenario.data_broker_type, scenario.symbol)
+            _, count = stale.get(key, (fetched_at, 0))
+            stale[key] = (fetched_at, count + 1)
+
+        for (broker_type, symbol), (fetched_at, count) in sorted(stale.items()):
+            age_days = (now - fetched_at).total_seconds() / 86400.0
+            self._add(BROKER_SPEC_STALE_CHECK, ValidationDomain.BROKER, (
+                f'BROKER SPEC OLD — {broker_type} {symbol}: the specification this run read was '
+                f'fetched {fetched_at:%Y-%m-%d} ({age_days:.0f} days ago) — {count} of '
+                f'{len(scenarios)} scenario(s)\n'
+                f'  → the venue may have moved a minimum or a step since; run '
+                f'`python python/cli/broker_config_cli.py sync --force` before a comparison backtest'))
 
     def _check_budget(self) -> None:
         """Warn when avg tick processing exceeds the P5 interval (consider setting a budget)."""

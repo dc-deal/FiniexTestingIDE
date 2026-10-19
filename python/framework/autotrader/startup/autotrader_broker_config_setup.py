@@ -5,12 +5,12 @@ Loads the session's broker config and attaches the right adapter
 """
 
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any, Dict
 
 from python.configuration.autotrader.abstract_broker_config_fetcher import (
     AbstractBrokerConfigFetcher,
 )
+from python.configuration.autotrader.broker_config_cache_policy import get_entry_fetched_at
 from python.configuration.autotrader.broker_config_fetcher_factory import BrokerConfigFetcherFactory
 from python.configuration.autotrader.kraken_config_fetcher import get_runtime_cache_path
 from python.configuration.market_config_manager import MarketConfigManager
@@ -61,7 +61,7 @@ def create_broker_config(
             broker_type=broker_config.broker_type,
             adapter=mock_adapter
         )
-        _log_broker_config_loaded(result, broker_config_path, logger)
+        _log_broker_config_loaded(result, broker_config_path, config.symbol, logger)
         return result
 
     # Live: route by config_mode
@@ -150,11 +150,12 @@ def _create_live_broker_config_dynamic(
     """
     Fetch broker config from broker API with runtime cache and staleness guard.
 
-    Lookup chain:
-      1. Cache fresh (< 7 days)  → use cache, no API call
-      2. Cache stale (7-30 days) → try API refresh; on failure use cache + warning
-      3. Cache very stale (>30d) → try API refresh; on failure use cache + strong warning
-      4. No cache               → must fetch from API; failure = hard error
+    Lookup chain, asked of the symbol's own cache entry — the file is rewritten by any
+    symbol's refresh, so its age says nothing about this one (#608):
+      1. Entry fresh (< 7 days)       → use cache, no API call
+      2. Entry stale (7-30 days)      → try API refresh; on failure use cache + warning
+      3. Entry very stale (> 30 days) → try API refresh; on failure use cache + strong warning
+      4. No entry, or no cache        → must fetch from API; failure = hard error
 
     Args:
         config: AutoTrader configuration
@@ -248,10 +249,9 @@ def _create_live_broker_config_dynamic(
         )
         print(f'  ⚠️  Mode: LIVE TRADING — real orders will be placed (by {decided_by})')
 
-    # Pass the actual runtime cache file path so _log_broker_config_loaded can
-    # surface cache age in the startup output (helps diagnose stale-fee issues).
+    # The source line names the runtime cache file; the age beside it is the symbol's own entry.
     cache_path = str(get_runtime_cache_path(config.broker_type))
-    _log_broker_config_loaded(broker_config, cache_path, logger)
+    _log_broker_config_loaded(broker_config, cache_path, config.symbol, logger)
     return broker_config
 
 
@@ -287,20 +287,23 @@ def _create_live_broker_config_static(
     spec = broker_config.get_symbol_specification(config.symbol)
     for currency in (spec.base_currency, spec.quote_currency):
         balances.setdefault(currency, 0.0)
-    _log_broker_config_loaded(broker_config, broker_config_path, logger)
+    _log_broker_config_loaded(broker_config, broker_config_path, config.symbol, logger)
     return broker_config
 
 
-def _log_broker_config_loaded(broker_config: BrokerConfig, source: str, logger: ScenarioLogger) -> None:
+def _log_broker_config_loaded(
+    broker_config: BrokerConfig, source: str, symbol: str, logger: ScenarioLogger
+) -> None:
     """
     Log broker config load event with config hash, active symbol count, and
-    fee rates currently in effect. For runtime-cached configs the cache file
-    age is surfaced — makes stale-fee scenarios visible at first glance
-    (diagnoses cases where a stale cache silently overrides updated defaults).
+    fee rates currently in effect, and how long ago the session's symbol was
+    fetched from the venue — its own entry's `_last_fetched`. The file's age
+    said nothing about it: any symbol's refresh rewrites the file (#608).
 
     Args:
         broker_config: Loaded BrokerConfig
         source: File path or description of config source
+        symbol: The session's symbol, whose specification age is shown
         logger: ScenarioLogger for status messages
     """
     config_hash = broker_config.config_hash
@@ -325,12 +328,12 @@ def _log_broker_config_loaded(broker_config: BrokerConfig, source: str, logger: 
         else 'no fee_structure block'
     )
 
-    # Cache age — visible only if source resolves to an existing file
-    source_path = Path(source) if source else None
+    # The symbol's own specification age — shown only where its entry carries a stamp
+    fetched_at = get_entry_fetched_at(symbols.get(symbol))
     age_part = ''
-    if source_path and source_path.exists():
-        age_days = (datetime.now(timezone.utc).timestamp() - source_path.stat().st_mtime) / 86400.0
-        age_part = f'  [cache age={age_days:.1f}d]'
+    if fetched_at is not None:
+        age_days = (datetime.now(timezone.utc) - fetched_at).total_seconds() / 86400.0
+        age_part = f'  [{symbol} spec fetched {age_days:.1f}d ago]'
 
     logger.info(
         f'🗄  Broker config loaded: {broker_config.broker_type.value}{hash_tag}\n'

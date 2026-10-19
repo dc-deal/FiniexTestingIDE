@@ -385,6 +385,9 @@ class MockBrokerAdapter(AbstractAdapter):
             volume_max=raw.get('volume_max', 10000.0),
             volume_step=raw.get('volume_step', 1e-8),
             volume_limit=raw.get('volume_limit', 0.0),
+            # Read like the live adapter reads it: a mock session handed the Kraken seed checks
+            # the same minimum order value at boot as the live session would (#608)
+            cost_min=raw.get('cost_min', 0.0),
             tick_size=raw.get('tick_size', 0.1),
             digits=raw.get('digits', 1),
             contract_size=raw.get('contract_size', 1),

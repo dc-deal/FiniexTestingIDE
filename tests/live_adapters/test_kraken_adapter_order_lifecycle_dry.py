@@ -94,8 +94,9 @@ class TestKrakenAdapterOrderLifecycle:
     Note: submit_open_order does not call validate_order() internally — invalid
     symbol and below-min-lot cases reach the API and return REJECTED.
 
-    LIMIT order volume uses 0.1 ETH (@ $100 limit price → $10 cost) to satisfy
-    Kraken's minimum order cost requirement (~$5). MARKET tests use 0.001 (volume_min).
+    LIMIT order volume uses 0.1 ETH (@ $100 limit price → $10 cost) to clear Kraken's minimum
+    order value. MARKET tests send the seed's `volume_min`: validate=true checks the minimum
+    too, so a literal the venue has since raised past would be refused.
     """
 
     def test_market_buy_dryrun(self, live_adapter, processor):
@@ -103,7 +104,7 @@ class TestKrakenAdapterOrderLifecycle:
         response = processor.submit_open_order(
             symbol='ETHUSD',
             direction=OrderDirection.LONG,
-            lots=0.001,
+            lots=live_adapter.get_symbol_specification('ETHUSD').volume_min,
             order_type=OrderType.MARKET,
             adapter=live_adapter,
         )
@@ -117,7 +118,7 @@ class TestKrakenAdapterOrderLifecycle:
         response = processor.submit_open_order(
             symbol='ETHUSD',
             direction=OrderDirection.SHORT,
-            lots=0.001,
+            lots=live_adapter.get_symbol_specification('ETHUSD').volume_min,
             order_type=OrderType.MARKET,
             adapter=live_adapter,
         )
@@ -268,7 +269,7 @@ class TestKrakenAdapterOrderLifecycle:
         assert response.rejection_reason, 'Expected non-empty rejection reason'
 
     def test_below_minimum_lot_rejected(self, live_adapter, processor):
-        """Volume below ETHUSD minimum (0.001) reaches Kraken API — expects REJECTED response."""
+        """Volume far below the ETHUSD minimum reaches Kraken API — expects REJECTED response."""
         response = processor.submit_open_order(
             symbol='ETHUSD',
             direction=OrderDirection.LONG,

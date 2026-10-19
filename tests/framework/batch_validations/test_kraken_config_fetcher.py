@@ -5,22 +5,30 @@ Unit tests for the runtime cache logic in KrakenConfigFetcher:
 
 - _merge_with_cache: existing symbols are not tombstoned; fresh symbols get
   _active:true and a _last_fetched timestamp.
-- fetch_broker_config_with_cache: symbol-presence check — a fresh cache that
-  does not contain the requested symbol triggers an API fetch and extends
-  the cache rather than returning an incomplete result.
+- fetch_broker_config_with_cache: the age is asked of the REQUESTED symbol's own entry
+  (#608) — a young file can hold an old entry, and the venue changes one symbol's minimum
+  without touching the others. A symbol missing from the cache is fetched and merged; a forced
+  refresh fetches whatever the age; a refresh that changes a minimum warns and says what changed.
+- _build_symbol_config: Kraken's `costmin` is read as `cost_min`.
 
 No real HTTP calls; all external I/O is patched or replaced with tmp_path files.
 """
 
 import json
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
+import pytest
+
+from python.configuration.autotrader.abstract_broker_config_fetcher import AbstractBrokerConfigFetcher
+from python.configuration.autotrader.broker_config_cache_policy import get_entry_fetched_at
 from python.configuration.autotrader.kraken_config_fetcher import (
     KrakenConfigFetcher,
     _merge_with_cache,
 )
+
+_MODULE = 'python.configuration.autotrader.kraken_config_fetcher'
 
 # =============================================================================
 # HELPERS
@@ -66,7 +74,23 @@ def _make_fetcher() -> KrakenConfigFetcher:
     fetcher._api_base_url = KrakenConfigFetcher.API_BASE
     fetcher._api_key = 'test_key'
     fetcher._api_secret = 'test_secret'
+    fetcher._last_spec_changes = []
     return fetcher
+
+
+def _stamp(days_ago: float) -> str:
+    """A `_last_fetched` stamp the given number of days before now."""
+    return (datetime.now(timezone.utc) - timedelta(days=days_ago)).strftime('%Y-%m-%dT%H:%M:%SZ')
+
+
+def _cache_with(entries: dict, file_days_ago: float = 0.0) -> dict:
+    """A cache dict whose FILE stamp is young unless told otherwise, holding the given entries."""
+    return {
+        '_config_meta': {'schema_version': '2.0', 'last_fetched': _stamp(file_days_ago),
+                         'symbols_hash': 'abc12345'},
+        'broker_info': {'company': 'Kraken'},
+        'symbols': entries,
+    }
 
 
 # =============================================================================
@@ -134,56 +158,158 @@ class TestMergeWithCache:
 # =============================================================================
 
 class TestFetchWithCacheSymbolCheck:
-    """fetch_broker_config_with_cache: lazy symbol addition to a fresh cache."""
+    """fetch_broker_config_with_cache: the requested symbol's own age decides (#608)."""
+
+    def _call(self, fetcher, cached, symbol, fresh=None, **kwargs):
+        """Run the lookup over a given cache, with the API answering `fresh` when asked."""
+        with (
+            patch(f'{_MODULE}._load_cache_or_none', return_value=cached),
+            patch(f'{_MODULE}._load_json', return_value=cached),
+            patch(f'{_MODULE}._write_cache'),
+            patch.object(fetcher, 'fetch_broker_config', return_value=fresh) as mock_fetch,
+        ):
+            result = fetcher.fetch_broker_config_with_cache(symbol, 'kraken_spot', **kwargs)
+        return result, mock_fetch
 
     def test_fresh_cache_with_symbol_skips_api(self):
-        """Symbol present in fresh cache (< 7 days) → no API call made."""
-        cached = {
-            '_config_meta': {'symbols_hash': 'abc12345'},
-            'broker_info': {'company': 'Kraken'},
-            'symbols': {'ETHUSD': {'base_currency': 'ETH', '_active': True}},
-        }
-        fetcher = _make_fetcher()
-
-        with (
-            patch('python.configuration.autotrader.kraken_config_fetcher._get_cache_age_days',
-                  return_value=1.0),
-            patch('python.configuration.autotrader.kraken_config_fetcher._load_json',
-                  return_value=cached),
-            patch.object(fetcher, 'fetch_broker_config') as mock_fetch,
-        ):
-            result = fetcher.fetch_broker_config_with_cache('ETHUSD', 'kraken_spot')
+        """The symbol's entry is younger than the refresh interval → no API call made."""
+        cached = _cache_with({'ETHUSD': {'base_currency': 'ETH', '_active': True,
+                                         '_last_fetched': _stamp(1)}})
+        result, mock_fetch = self._call(_make_fetcher(), cached, 'ETHUSD')
 
         mock_fetch.assert_not_called()
         assert 'ETHUSD' in result['symbols']
 
     def test_fresh_cache_missing_symbol_triggers_fetch(self):
         """Symbol absent from a fresh cache → API called, symbol merged into result."""
-        cached = {
-            '_config_meta': {
-                'schema_version': '2.0',
-                'last_fetched': '2026-05-04T12:00:00Z',
-                'symbols_hash': 'abc12345',
-            },
-            'broker_info': {'company': 'Kraken'},
-            'symbols': {'ETHUSD': {'base_currency': 'ETH', 'quote_currency': 'USD', '_active': True}},
-        }
-        dot_fresh = _make_fresh_dict('DOTUSD', 'DOT', 'USD')
-        fetcher = _make_fetcher()
-
-        with (
-            patch('python.configuration.autotrader.kraken_config_fetcher._get_cache_age_days',
-                  return_value=1.0),
-            patch('python.configuration.autotrader.kraken_config_fetcher._load_json',
-                  return_value=cached),
-            patch('python.configuration.autotrader.kraken_config_fetcher._write_cache'),
-            patch.object(fetcher, 'fetch_broker_config', return_value=dot_fresh) as mock_fetch,
-        ):
-            result = fetcher.fetch_broker_config_with_cache('DOTUSD', 'kraken_spot')
+        cached = _cache_with({'ETHUSD': {'base_currency': 'ETH', 'quote_currency': 'USD',
+                                         '_active': True, '_last_fetched': _stamp(1)}})
+        result, mock_fetch = self._call(
+            _make_fetcher(), cached, 'DOTUSD', _make_fresh_dict('DOTUSD', 'DOT', 'USD'))
 
         mock_fetch.assert_called_once_with('DOTUSD', 'kraken_spot')
         assert 'DOTUSD' in result['symbols'], 'DOTUSD must be in result after fetch.'
         assert 'ETHUSD' in result['symbols'], 'ETHUSD must be preserved (no tombstoning).'
+
+    def test_a_young_file_with_an_old_entry_is_refreshed(self):
+        """The defect of #608: another symbol's fetch renewed the FILE, this entry is 11 days old."""
+        cached = _cache_with({'ETHUSD': {'base_currency': 'ETH', 'quote_currency': 'USD',
+                                         'volume_min': 0.001, '_last_fetched': _stamp(11)}},
+                             file_days_ago=0.5)
+        _, mock_fetch = self._call(
+            _make_fetcher(), cached, 'ETHUSD', _make_fresh_dict('ETHUSD', 'ETH', 'USD'))
+
+        mock_fetch.assert_called_once_with('ETHUSD', 'kraken_spot')
+
+    def test_an_entry_without_a_stamp_is_not_known_to_be_fresh(self):
+        """No `_last_fetched` on the entry reads as stale, never as fresh."""
+        cached = _cache_with({'ETHUSD': {'base_currency': 'ETH', 'quote_currency': 'USD'}})
+        _, mock_fetch = self._call(
+            _make_fetcher(), cached, 'ETHUSD', _make_fresh_dict('ETHUSD', 'ETH', 'USD'))
+
+        mock_fetch.assert_called_once()
+
+    def test_a_forced_refresh_fetches_a_fresh_entry(self):
+        """`force_refresh` asks the venue whatever the entry's age — the sync's `--force`."""
+        cached = _cache_with({'ETHUSD': {'base_currency': 'ETH', 'quote_currency': 'USD',
+                                         '_last_fetched': _stamp(1)}})
+        _, mock_fetch = self._call(
+            _make_fetcher(), cached, 'ETHUSD', _make_fresh_dict('ETHUSD', 'ETH', 'USD'),
+            force_refresh=True)
+
+        mock_fetch.assert_called_once()
+
+    def test_a_changed_minimum_warns_and_is_named(self):
+        """A refresh moving `volume_min` warns once, in plain numbers; a field read for the
+        first time (`cost_min` absent before) is not a change."""
+        fetcher = _make_fetcher()
+        fetcher._logger = MagicMock()
+        cached = _cache_with({'BTCUSD': {'base_currency': 'BTC', 'quote_currency': 'USD',
+                                         'volume_min': 5e-05, '_last_fetched': _stamp(30)}})
+        fresh = _make_fresh_dict('BTCUSD', 'BTC', 'USD')
+        fresh['symbols']['BTCUSD']['volume_min'] = 6e-05
+        fresh['symbols']['BTCUSD']['cost_min'] = 0.5
+
+        self._call(fetcher, cached, 'BTCUSD', fresh)
+
+        assert fetcher.get_last_spec_changes() == ['volume_min 0.00005 → 0.00006']
+        warning = fetcher._logger.warning.call_args.args[0]
+        assert 'BTCUSD' in warning and 'sync --force' in warning and 'e-05' not in warning
+
+    def test_an_unchanged_refresh_and_a_new_symbol_stay_quiet(self):
+        """Nothing changed, or nothing was cached before → no change, no warning."""
+        fetcher = _make_fetcher()
+        fetcher._logger = MagicMock()
+        cached = _cache_with({'ETHUSD': {'base_currency': 'ETH', 'quote_currency': 'USD',
+                                         'volume_min': 0.001, '_last_fetched': _stamp(9)}})
+        self._call(fetcher, cached, 'ETHUSD', _make_fresh_dict('ETHUSD', 'ETH', 'USD'))
+        assert fetcher.get_last_spec_changes() == []
+
+        self._call(fetcher, cached, 'DOTUSD', _make_fresh_dict('DOTUSD', 'DOT', 'USD'))
+        assert fetcher.get_last_spec_changes() == []
+        fetcher._logger.warning.assert_not_called()
+
+    def test_a_failed_refresh_falls_back_to_the_entry_and_says_so(self):
+        """The API is unreachable and the symbol is cached → the cache, with a warning naming it."""
+        fetcher = _make_fetcher()
+        fetcher._logger = MagicMock()
+        cached = _cache_with({'ETHUSD': {'base_currency': 'ETH', 'quote_currency': 'USD',
+                                         '_last_fetched': _stamp(40)}})
+        with (
+            patch(f'{_MODULE}._load_cache_or_none', return_value=cached),
+            patch(f'{_MODULE}._load_json', return_value=cached),
+            patch.object(fetcher, 'fetch_broker_config', side_effect=ConnectionError('down')),
+        ):
+            result = fetcher.fetch_broker_config_with_cache('ETHUSD', 'kraken_spot')
+
+        assert result is cached
+        warning = fetcher._logger.warning.call_args.args[0]
+        assert 'ETHUSD' in warning and 'STALE' in warning
+
+    def test_a_failed_fetch_of_an_uncached_symbol_is_a_hard_error(self):
+        """The API is unreachable and the symbol was never cached → nothing to fall back to."""
+        fetcher = _make_fetcher()
+        cached = _cache_with({'ETHUSD': {'base_currency': 'ETH', '_last_fetched': _stamp(1)}})
+        with (
+            patch(f'{_MODULE}._load_cache_or_none', return_value=cached),
+            patch.object(fetcher, 'fetch_broker_config', side_effect=ConnectionError('down')),
+            pytest.raises(ConnectionError, match='NO ENTRY FOR DOTUSD'),
+        ):
+            fetcher.fetch_broker_config_with_cache('DOTUSD', 'kraken_spot')
+
+
+class TestCostMinimum:
+    """_build_symbol_config: Kraken's `costmin` becomes `cost_min` (#608)."""
+
+    _PAIR = {'pair_decimals': 2, 'lot_decimals': 8, 'ordermin': '0.002', 'costmin': '0.5'}
+
+    def test_costmin_is_read_beside_ordermin(self):
+        entry = _make_fetcher()._build_symbol_config('ETHUSD', self._PAIR, 'ETH', 'USD', 'XETHZUSD')
+        assert entry['volume_min'] == 0.002
+        assert entry['cost_min'] == 0.5
+
+    def test_a_pair_without_costmin_has_no_value_minimum(self):
+        pair = {k: v for k, v in self._PAIR.items() if k != 'costmin'}
+        entry = _make_fetcher()._build_symbol_config('ETHUSD', pair, 'ETH', 'USD', 'XETHZUSD')
+        assert entry['cost_min'] == 0.0
+
+
+class TestTheEntryStamp:
+    """get_entry_fetched_at: whatever stands in `_last_fetched`, the answer is a UTC instant or None."""
+
+    def test_the_written_form_is_read_as_utc(self):
+        fetched_at = get_entry_fetched_at({'_last_fetched': '2026-10-18T12:54:22Z'})
+        assert fetched_at == datetime(2026, 10, 18, 12, 54, 22, tzinfo=timezone.utc)
+
+    def test_a_stamp_without_an_offset_is_read_as_utc(self):
+        # A hand-edited stamp: the age arithmetic subtracts it from an aware now
+        fetched_at = get_entry_fetched_at({'_last_fetched': '2026-10-18T12:54:22'})
+        assert fetched_at == datetime(2026, 10, 18, 12, 54, 22, tzinfo=timezone.utc)
+        assert fetched_at.tzinfo is timezone.utc
+
+    @pytest.mark.parametrize('stamp', [1760792062, None, '', 'not a date'])
+    def test_an_unreadable_stamp_is_no_stamp(self, stamp):
+        assert get_entry_fetched_at({'_last_fetched': stamp}) is None
 
 
 class TestFetchFeeTier:
@@ -266,19 +392,33 @@ class TestFetchFeeTier:
                 assert fetcher.fetch_fee_tier('ETHUSD') is None, raw
 
 
+class _CachelessFetcher(AbstractBrokerConfigFetcher):
+    """A venue fetcher with no runtime cache and no account tiers, so every default applies."""
+
+    def __init__(self):
+        self.fetches = 0
+
+    def fetch_broker_config(self, symbol, broker_type):
+        self.fetches += 1
+        return {'symbols': {symbol: {}}}
+
+    def fetch_account_balance(self, currency):
+        return None
+
+
 class TestTheCapabilityIsByOverride:
-    """A venue without account tiers answers None and its caller needs no branch."""
+    """A capability a venue does not have answers by default, and its caller needs no branch."""
 
     def test_the_abstract_default_declines(self):
-        from python.configuration.autotrader.abstract_broker_config_fetcher import (
-            AbstractBrokerConfigFetcher,
-        )
+        assert _CachelessFetcher().fetch_fee_tier('EURUSD') is None
 
-        class _SpreadBrokerFetcher(AbstractBrokerConfigFetcher):
-            def fetch_broker_config(self, symbol, broker_type):
-                return {}
+    def test_without_a_cache_every_fetch_asks_the_venue(self):
+        fetcher = _CachelessFetcher()
+        fetcher.fetch_broker_config_with_cache('EURUSD', 'mt5')
+        fetcher.fetch_broker_config_with_cache('EURUSD', 'mt5', force_refresh=True)
+        assert fetcher.fetches == 2
 
-            def fetch_account_balance(self, currency):
-                return None
-
-        assert _SpreadBrokerFetcher().fetch_fee_tier('EURUSD') is None
+    def test_without_a_cache_no_change_is_reported(self):
+        fetcher = _CachelessFetcher()
+        fetcher.fetch_broker_config_with_cache('EURUSD', 'mt5')
+        assert fetcher.get_last_spec_changes() == []

@@ -89,6 +89,7 @@ sides on purpose — so an empty quote balance alone must not refuse a boot.
 | `test_a_nonsense_price_counts_as_no_price` | `0.0` and a negative are treated as absent, not as arithmetic |
 | `test_the_sell_side_still_decides_without_a_price` | `volume_min` is in base units, so that half needs no price |
 | `test_the_absence_is_spoken_not_swallowed` | The caller says the check ran without a price — one that silently does not run reads exactly like one that passed |
+| `TestTheValueMinimum` | A venue's minimum order value (`cost_min`, #608) raises the smallest order to `cost_min / price` on both sides where that is larger; without a price it cannot apply; below the volume's cost it changes nothing; a mock session reads the value its config declares, as the live adapter does |
 
 ## Where the price comes from, and why not earlier
 

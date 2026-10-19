@@ -19,10 +19,11 @@ Restart recovery splits into three categories with three owners. This layer is *
 | **B — Algo memory** | counters, regime flags, daily flags, risk HWM | **Bot (this layer)** |
 | C — Framework op-state | safety baseline / high-water-mark | Framework (safety layer) |
 
-**Hard boundary:** persist only **position-independent** memory. Do **not** store live-position
-references and assume they exist after restart — until broker-side Cold-Start Recovery lands, the
-executor's position view starts empty on boot. Persist counters, flags and regime; not "I hold
-position #42".
+**Hard boundary:** persist only **position-independent** memory. Positions are the framework's: a
+real-money spot session restores the open position book from its own carry-over (Cold-Start
+Recovery), while a dry run and a margin session start without one. So an algo never stores "I hold
+position #42" and assumes it after a restart — it reads the positions the framework restored.
+Persist counters, flags and regime.
 
 ## The hooks
 
@@ -81,8 +82,9 @@ Monday (Forex). On 24/7 markets (crypto) trading days equal calendar days.
 Two policies (config `on_stale`):
 
 - **`warn_reset`** (default) — discard, start fresh, with a prominent warning. The bot resumes
-  with reset counters/flags. **Note:** open broker positions are not recognized yet (until
-  Cold-Start Recovery) — check your account before letting it run.
+  with reset counters/flags. **Note:** its positions are not part of this state — a real-money
+  spot session restores them from the framework's carry-over, a dry run or a margin session does
+  not; check your account before letting it run in those cases.
 - **`halt`** — refuse to boot; you decide (delete the state file to start fresh, or raise
   `max_age_trading_days`). For bots that trade real money.
 

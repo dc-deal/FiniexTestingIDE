@@ -5,7 +5,8 @@ Validates KrakenAdapter Tier 3 full order lifecycle against the real Kraken API
 using real (non-validated) orders. Tests place → query → modify → query → cancel
 using a LIMIT buy far below market — orders are never filled.
 
-Lot size 0.1 ETH @ $100 meets Kraken's ~$5 cost minimum ($10 reserved, returned on cancel).
+Lot size 0.1 ETH @ $100 clears Kraken's minimum size and order value ($10 reserved, returned
+on cancel).
 
 Run explicitly:
     pytest tests/live_adapters/ -v -m live_adapter --place-real-orders
@@ -85,8 +86,8 @@ class TestKrakenAdapterOrderLifecyclePhase2:
     Phase 2: Real order lifecycle — place → query → modify → query → cancel.
 
     Places a LIMIT buy at $100 (far below market ~$2000+) — never filled.
-    Requires a funded Kraken account. Lot size 0.1 ETH meets Kraken's $5 cost
-    minimum ($10 at $100/ETH). A try/finally block cancels the order if the
+    Requires a funded Kraken account. Lot size 0.1 ETH clears Kraken's minimum order
+    value ($10 at $100/ETH). A try/finally block cancels the order if the
     test fails mid-way to avoid leaving open orders on the account.
     """
 
@@ -172,8 +173,9 @@ class TestKrakenAdapterOrderLifecyclePhase2:
         the limit case, which rests far below. Nothing fills and no fee is paid.
 
         The SIZE is chosen the other way round from the limit test. A buy stop's cost is
-        lots x trigger, so a HIGH trigger clears Kraken's ~$5 order minimum with a tiny
-        lot: 0.001 ETH at $8000 is $8 reserved, against $10 for the limit case. A SELL stop
+        lots x trigger, so a HIGH trigger clears the venue's order-value minimum with the
+        smallest size it accepts: the seed's `volume_min` (0.002 ETH since October 2026) at $8000
+        is $16 reserved. A stop worth about $5 was refused for its cost on 2026-09-07. A SELL stop
         would be cheaper still in quote terms but needs the base asset HELD — measured
         2026-09-07, that is exactly what `EOrder:Insufficient funds` came back for.
         """
@@ -182,7 +184,7 @@ class TestKrakenAdapterOrderLifecyclePhase2:
             response = processor.submit_open_order(
                 symbol='ETHUSD',
                 direction=OrderDirection.LONG,
-                lots=0.001,
+                lots=live_adapter_real.get_symbol_specification('ETHUSD').volume_min,
                 order_type=OrderType.STOP,
                 adapter=live_adapter_real,
                 stop_price=8000.0,

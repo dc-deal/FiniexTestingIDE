@@ -194,12 +194,18 @@ loop or into a pause. A refused start refuses again.
 - **Task Scheduler alone is not enough**: its restart triggers on a FAILED run, and a hung
   process never ends. That case is the liveness ping's.
 
-**The restart and the adoption are one decision.** A restart finds the previous session's orders
-and positions; with `cold_start.adoption_mode: operator_confirm` and no terminal attached it
-refuses to adopt them and stays flat — at 03:00, unattended, that is a bot that is up and does
-nothing. The STARTUP REFUSED alert tells you, quoting the cold start; whether a restart may adopt
-on its own (`adoption_mode: auto`) is the profile's decision, made before the run, not discovered
-during it.
+**The restart and the adoption are one decision.** A session that starts restores the previous
+session's position book whatever the adoption mode (at spot, in a real-money session — a dry run
+restores none); what the adoption may refuse is the start itself, over an ORDER. When an order of
+ours still rests at the venue, `cold_start.adoption_mode: operator_confirm` asks a person, and a
+session started without `--attended` has nobody to ask: it refuses to start rather than trade
+beside an order it cannot account for. A refused start restores nothing — the book waits on disk
+for the next start, and the holding sits at the venue unmanaged, protected only by a stop the venue
+itself holds. At 03:00, unattended, that is a bot that stays down until somebody reads the alert.
+The STARTUP REFUSED alert tells you, quoting the cold start. Whether a restart may adopt such
+orders on its own (`adoption_mode: auto`, or a decision logic that accounts for each of them by
+name) is the profile's decision, made before the run, not discovered during it. A bot that rests
+nothing — market orders only — restarts the same way in both modes.
 
 ## What the venue could do, and why it does not here
 

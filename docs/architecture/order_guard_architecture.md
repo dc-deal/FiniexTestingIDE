@@ -232,8 +232,8 @@ The project has two runtime protection mechanisms that operate independently at 
 │                                                             │
 │  1. check_safety()           ← ACCOUNT-LEVEL (per-tick)     │
 │     "Is the account healthy?"                               │
-│     Blocks ALL new orders if balance/drawdown threshold hit │
-│     Overrides decision to FLAT — send_order() never called  │
+│     Forces every decision FLAT while a threshold is hit     │
+│     No order from the action, an action-driven close too    │
 │                                                             │
 │  2. DecisionLogic._execute_decision_impl()                  │
 │        │                                                    │
@@ -251,9 +251,9 @@ The project has two runtime protection mechanisms that operate independently at 
 | Aspect | OrderGuard | Safety Circuit Breaker |
 |--------|-----------|----------------------|
 | **Granularity** | Per-order, per-direction | Per-account, session-wide |
-| **Trigger** | Consecutive broker rejections (same direction) | Balance below threshold OR drawdown % exceeded |
-| **Effect** | Blocks one direction for cooldown period | Blocks ALL new entries (decision overridden to FLAT) |
-| **Recovery** | Automatic (cooldown expires or successful fill) | Automatic (balance recovers above threshold) |
+| **Trigger** | Consecutive broker rejections (same direction) | Account value below its floor (`min_equity` / `min_balance`), or a drawdown or daily-loss limit exceeded |
+| **Effect** | Blocks one direction for cooldown period | Forces every decision FLAT — no new entry, and no action-driven close |
+| **Recovery** | Automatic (cooldown expires or successful fill) | Automatic (the account value recovers above the threshold) |
 | **Pipeline** | Both (backtesting + AutoTrader) | AutoTrader only |
 | **Rationale** | Prevents retry spam after rejection | Prevents account blowup |
 | **Config** | `order_guard` in profile / scenario JSON | `safety` in profile JSON |

@@ -323,25 +323,26 @@ class SafetyConfig(StrictConfigModel):
     """
     Circuit breaker configuration for an AutoTrader session.
 
-    Soft stop: blocks new positions when triggered, existing positions run out normally.
+    Soft stop: while triggered, every decision's action is forced FLAT — no new position, and no
+    close the strategy expresses as an action; the breaker closes nothing itself.
     Both conditions are OR-combined — either alone triggers the block.
 
     Args:
         enabled: Master switch for safety checks
-        min_balance: Block new positions if the ACCOUNT VALUE drops below this floor
+        min_balance: Force decisions FLAT if the ACCOUNT VALUE drops below this floor
             (margin mode, account currency). Since #356 both floors denominate the same
             quantity — `get_account_value()` — and the account model only decides which of
             the two names a profile writes. It used to be settled cash on margin, which
             moves only on realised P&L, so an open loss could not reach the floor at all
         min_equity: The same floor, spelled for spot mode (account currency)
-        max_drawdown_pct: Block new positions if the session drawdown exceeds this % of the
+        max_drawdown_pct: Force decisions FLAT if the session drawdown exceeds this % of the
             risk baseline. Measured on the ACCOUNT VALUE in both models since #356
-        max_drawdown_abs: Block new positions if session drawdown exceeds this absolute
+        max_drawdown_abs: Force decisions FLAT if session drawdown exceeds this absolute
             amount (#314). The sibling of max_drawdown_pct, and the pair is the industry
             standard for a reason: a percentage auto-scales with the account, an absolute
             floor stops that percentage from becoming a dangerously large number on a large
             one. Independent — either can fire first
-        max_daily_loss_abs: Block new positions if the loss since the day's start exceeds
+        max_daily_loss_abs: Force decisions FLAT if the loss since the day's start exceeds
             this absolute amount (#314). A DAILY limit guards a different failure from a
             session one: a session accumulates from process start, a day resets, and a bot
             that loses steadily every day never trips a session limit at all
@@ -351,7 +352,7 @@ class SafetyConfig(StrictConfigModel):
             seen and therefore RATCHETS — profit tightens the limit, which is the prop-firm
             convention and a deliberate choice rather than a default
         emergency_flatten_enabled: Master switch for the HARD stop (#356). Distinct from
-            the soft block above, which only stops new entries: this one CLOSES what is
+            the soft block above, which forces decisions FLAT and closes nothing: this one CLOSES what is
             open. Default false — turning it on changes what happens to real money
         max_drawdown_pct_hard: Drawdown %% at which everything is closed. 0.0 disables
         max_drawdown_abs_hard: Drawdown amount at which everything is closed. 0.0 disables

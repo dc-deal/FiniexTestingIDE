@@ -596,7 +596,7 @@ Key rules:
 - `_live` fixture must explicitly set `dry_run=False` — never rely on the config file default
 - `_live` test wraps the order lifecycle in `try/finally` to guarantee cancellation on assertion failure
 - `_fill` test does MARKET buy → poll until FILLED → MARKET sell → poll until FILLED (net zero exposure)
-- Check the broker's minimum order cost (not just `volume_min`) — Kraken rejects orders below ~$5 even if `volume_min` is satisfied
+- Check the broker's minimum order value (not just `volume_min`) — Kraken's `costmin`, read as `cost_min`: 0.5 USD for ETHUSD (measured 2026-10-18), refused even when `volume_min` is satisfied. On 2026-09-07 a buy stop worth about $5 was refused with `EOrder:Cost minimum not met`; whether the venue has lowered its minimum since or judges a stop by more than `costmin` is not measured
 - The `live_adapter` mark and runner exclusion apply automatically via `tests/conftest.py`
 
 **Launch.json:** add entries in the release-gate group beside the Kraken ones

@@ -477,7 +477,10 @@ class KrakenAdapter(AbstractAdapter):
 
             # Order Restrictions
             stops_level=raw.get('stops_level', 0),
-            freeze_level=raw.get('freeze_level', 0)
+            freeze_level=raw.get('freeze_level', 0),
+
+            # Order Value Limit — absent in a cache written before it was read
+            cost_min=raw.get('cost_min', 0.0),
         )
 
     def get_broker_specification(self) -> BrokerSpecification:

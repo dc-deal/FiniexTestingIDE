@@ -68,11 +68,13 @@ require a real order reference and therefore real funds (Phase 2).
 
 **Live (_live, real orders):**
 - Same credentials file
-- ~$10 USD available on the account (reserved during test, returned on cancel)
+- ~$18 USD available on the account — the stop test holds 0.002 ETH × $8,500 after its amend, plus a
+  fee hold; everything is returned on cancel
 
 **Fill (_fill, real execution):**
 - Same credentials file
-- Sufficient balance for fees only (~$0.012 per run — no capital required beyond fees)
+- Enough USD for one buy of ETHUSD's minimum size (~$5 at ~$2,500/ETH, sold straight back) plus
+  about $0.08 in taker fees
 
 Without credentials the tests skip gracefully. The standard test suite runs
 unchanged — no Kraken access required.
@@ -103,8 +105,8 @@ VS Code, in launch.json:
 
 | Test | Order | Expected |
 |------|-------|----------|
-| `test_market_buy_dryrun` | MARKET LONG 0.001 ETHUSD | PENDING, ref `DRYRUN-*` |
-| `test_market_sell_dryrun` | MARKET SHORT 0.001 ETHUSD | PENDING, ref `DRYRUN-*` |
+| `test_market_buy_dryrun` | MARKET LONG ETHUSD, the seed's `volume_min` (0.002) | PENDING, ref `DRYRUN-*` |
+| `test_market_sell_dryrun` | MARKET SHORT ETHUSD, the seed's `volume_min` (0.002) | PENDING, ref `DRYRUN-*` |
 | `test_limit_buy_dryrun` | LIMIT LONG 0.1 @ $100 | PENDING, ref `DRYRUN-*` |
 | `test_limit_buy_with_sltp_dryrun` | LIMIT LONG + stop_loss + take_profit | PENDING, ref `DRYRUN-*` |
 | `test_invalid_symbol_rejected` | MARKET 0.001 XXXUSD | REJECTED (Kraken API error) |
@@ -147,7 +149,8 @@ builds no adapter, so on its own it writes no certificate.
 | 4 | `check_order_status(txid)` | `PENDING` |
 | 5 | `cancel_order(txid)` | `CANCELLED` |
 
-Lot size 0.1 ETH × $100 = $10 meets Kraken's ~$5 cost minimum. The order is placed
+Lot size 0.1 ETH × $100 = $10 meets Kraken's minimum order value (`costmin`, 0.5 USD for ETHUSD,
+measured 2026-10-18; on 2026-09-07 a buy stop worth about $5 was still refused for its cost). The order is placed
 far below market (~$2000+) and is never filled. A `try/finally` block in the test
 cancels the order even if an assertion fails mid-way.
 
@@ -241,13 +244,13 @@ tests/live_adapters/
 - MARKET buy (minimum lot) → poll `check_order_status` until FILLED
 - Assert `fill_price > 0` and `filled_lots > 0` — validates QueryOrders response parsing
 - MARKET sell (same lot) immediately after — net exposure back to zero
-- Cost: spread + fees only, no capital required beyond that
+- Cost: spread + fees, plus the quote balance one minimum-size buy needs while it is held
 
 **Key lessons from Kraken implementation:**
 - `modify_order` requires `symbol` — brokers need pair resolution at modification time
 - `_live` fixture must explicitly set `dry_run=False` — never rely on config file default
 - Rate limit at 0.5s in test fixtures (vs 1.0s default) — reduces suite runtime by half
-- LIMIT cost minimum: check broker's minimum order cost, not just `volume_min` (Kraken: ~$5)
+- LIMIT cost minimum: check broker's minimum order value, not just `volume_min` (Kraken: `costmin`, read as `cost_min`)
 
 The `live_adapter` mark and runner exclusion apply automatically via `tests/conftest.py` —
 no changes needed there when adding new adapter test files.

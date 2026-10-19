@@ -6,6 +6,7 @@ that prevents same-symbol-on-different-brokers from polluting the reporting map.
 """
 
 import json
+from datetime import datetime, timezone
 from unittest.mock import MagicMock
 
 import pytest
@@ -192,3 +193,25 @@ class TestTheBacktestReadsItsFeesFromTheSeed:
 
         with pytest.raises(ValueError, match='fee_structure'):
             BrokerDataPreparator._load_dynamic_broker_config('kraken_spot', ['ETHUSD'])
+
+
+class TestTheSpecFetchIsStamped:
+    """The preparation stamps when each scenario's symbol specification was fetched (#608)."""
+
+    def test_a_dynamic_scenario_carries_its_entry_s_fetch_instant(self, monkeypatch):
+        seed = BrokerConfigFactory.build_broker_config(
+            MarketConfigManager().get_broker_config_path('kraken_spot'))
+        cache = json.loads(json.dumps(seed.adapter.broker_config))
+        cache['broker_type'] = 'kraken_spot'
+        cache['symbols']['ETHUSD']['_last_fetched'] = '2026-10-07T15:30:04Z'
+        monkeypatch.setattr(
+            'python.framework.data_preparation.broker_data_preparator.load_runtime_cache',
+            lambda broker_type: cache)
+        scenario = SingleScenario(
+            name='s1', scenario_index=0, symbol='ETHUSD', data_broker_type='kraken_spot',
+            start_date=datetime(2026, 10, 1, tzinfo=timezone.utc))
+
+        BrokerDataPreparator([scenario], MagicMock())._load_and_map_broker_configs()
+
+        assert scenario.broker_spec_fetched_at == datetime(2026, 10, 7, 15, 30, 4, tzinfo=timezone.utc)
+

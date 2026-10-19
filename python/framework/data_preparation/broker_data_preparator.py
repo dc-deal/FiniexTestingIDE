@@ -12,6 +12,7 @@ Responsibilities:
 
 from typing import Any, Dict, List
 
+from python.configuration.autotrader.broker_config_cache_policy import get_entry_fetched_at
 from python.configuration.autotrader.kraken_config_fetcher import (
     get_runtime_cache_path,
     load_runtime_cache,
@@ -167,6 +168,9 @@ class BrokerDataPreparator:
             if config_mode == ConfigMode.DYNAMIC:
                 broker_config = dynamic_broker_configs[data_broker_type]
                 config_path = str(get_runtime_cache_path(data_broker_type))
+                # Stamped here, where the cache is read, and counted once per run afterwards
+                scenario.broker_spec_fetched_at = get_entry_fetched_at(
+                    broker_config.adapter.broker_config['symbols'].get(scenario.symbol))
             else:
                 # Get config_path from MarketConfigManager via data_broker_type
                 # This replaces: scenario.trade_simulator_config.get("broker_config_path")
