@@ -5,7 +5,6 @@ Compact, colorful logging output
 ENTRY POINT: Initializes logger with auto-init via bootstrap_logger
 """
 
-from pathlib import Path
 from typing import List, Optional
 
 from python.configuration.app_config_manager import AppConfigManager
@@ -130,11 +129,6 @@ def run_profile_batch(
         scenario_config_data = scenario_config_loader.load_from_profiles(
             window_sets, scenario_set_json
         )
-
-        # Attach profile source paths for log archival
-        scenario_config_data.generator_profile_paths = [
-            Path(p) for p in profile_paths
-        ]
 
         total_blocks = sum(ws.block_count for ws in window_sets)
         symbols = sorted(set(ws.symbol for ws in window_sets))

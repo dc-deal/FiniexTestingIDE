@@ -202,7 +202,6 @@ class LoadedScenarioConfig:
     scenarios: List[SingleScenario]
     config_path: Path
     generator_profiles: Optional[List[WindowSet]] = None
-    generator_profile_paths: Optional[List[Path]] = None
     # Set-wide robustness mode (#367); None → disabled (treated as RobustnessConfig()).
     robustness: Optional[RobustnessConfig] = None
     # Scenarios the set switched off (`enabled: false`). The loader drops them before anything

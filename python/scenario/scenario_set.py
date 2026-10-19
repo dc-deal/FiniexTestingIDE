@@ -16,14 +16,12 @@ own files cost 13.48 ms each across the bridged mount, against 0.67 ms for a thi
 on the container's own disk (§42).
 """
 
-import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional
 
 from python.api.api_contract import API_CONTRACT_VERSION
 from python.configuration.app_config_manager import AppConfigManager
-from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.logging.system_info_writer import write_system_version_parameters
 from python.framework.reporting.io.run_header_io import data_windows_of
@@ -106,7 +104,6 @@ class ScenarioSet:
         self.config_path = scenario_config.config_path
         self.app_config = app_config
         self._generator_profiles = scenario_config.generator_profiles
-        self._generator_profile_paths = scenario_config.generator_profile_paths
         self._robustness = scenario_config.robustness or RobustnessConfig()
         self._disabled_count = scenario_config.disabled_count
         self._run_purpose = scenario_config.run_purpose
@@ -227,20 +224,6 @@ class ScenarioSet:
     def log_root(self) -> Path:
         """The category root this run's logs land under (file_logging.run_logs)."""
         return self._log_root
-
-    def _copy_generator_profiles(self) -> None:
-        """Copy generator profile JSON files to scenario_run_configs/ in log directory."""
-        log_dir = self.logger.get_log_dir()
-        run_configs_dir = log_dir / 'scenario_run_configs'
-        run_configs_dir.mkdir(exist_ok=True)
-
-        for profile_path in self._generator_profile_paths:
-            try:
-                shutil.copy2(profile_path, run_configs_dir / profile_path.name)
-            except Exception as e:
-                vLog = get_global_logger()
-                vLog.warning(
-                    f'⚠️ Failed to copy profile {profile_path.name}: {e}')
 
     def write_scenario_system_info_log(self):
         """
