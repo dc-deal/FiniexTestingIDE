@@ -983,18 +983,23 @@ class AutotraderTickLoop:
         self._market_data_tracker.on_heartbeat(
             self._executor.get_current_time(), status, self._injected_outage_label())
         if flipped:
+            # One episode, two instants: the last tick is when the feed fell silent — the start
+            # the episode record and its recovery line count from — and the flip is when the
+            # threshold revealed the silence and entries were blocked. Both are named.
+            last_tick = self._last_tick_time or self._market_stale_since
             self._logger.warning(
                 f"⚠️ Market data stale since "
-                f"{self._market_stale_since.strftime('%H:%M:%S')}: no tick for "
-                f"{seconds_since:.0f}s (threshold "
+                f"{self._market_stale_since.strftime('%H:%M:%S')}: no tick since "
+                f"{last_tick.strftime('%H:%M:%S')} ({seconds_since:.0f}s, threshold "
                 f"{self._market_data_stale_after_s:.0f}s) — entries guard-blocked"
             )
             if self._market_data_alert.opens(self._executor.get_current_time()):
                 self._operator_alerts.send(
                     OperatorAlertKind.MARKET_DATA_STALE, OperatorAlertLevel.WARNING,
                     'Market data stale — new entries blocked',
-                    f'No tick for {seconds_since:.0f}s (threshold '
-                    f'{self._market_data_stale_after_s:.0f}s), stale since '
+                    f"No tick since {last_tick.strftime('%H:%M:%S')} UTC "
+                    f'({seconds_since:.0f}s, threshold {self._market_data_stale_after_s:.0f}s) '
+                    f"— stale, new entries blocked since "
                     f"{self._market_stale_since.strftime('%H:%M:%S')} UTC")
             self._decision_logic.on_market_data_stale(status)
 

@@ -62,9 +62,9 @@ reported as a figure of its own beside the measured spread.
   `scenario_totals` row carries `total_modelled_spread_cost`, always a number.
 - `portfolio`: every unit row carries `total_modelled_spread_cost`; `aggregated-portfolio` sums it
   per block.
-- `booking-periods`: every period carries `modelled_spread_cost` beside `spread_cost`; the
-  deployment rows carry it as `period_modelled_spread_cost`. Null on a period recorded before this
-  contract.
+- `booking-periods`: every period carries `modelled_spread_cost` beside `spread_cost`, and so does
+  every period of a deployment's booking periods; a sweep's combination rows carry it as
+  `period_modelled_spread_cost`. Null on a period recorded before this contract.
 - `scenario-details`: every row carries `modelled_spread` — `factor`, `estimator_version`,
   `ticks_without_quote`, `ticks_modelled`, `median_spread_bps` and `day_digest` — null where the
   scenario read no tick without a quote.
