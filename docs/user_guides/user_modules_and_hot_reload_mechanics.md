@@ -133,13 +133,21 @@ manipulation. Framework imports inside user files (e.g.,
 
 ## Git Tracking Your Algo
 
-`user_algos/` contents are gitignored. To track your strategy:
+`user_algos/` contents are gitignored. Track your strategies in a repository of your own,
+independent of the main project — one at `user_algos/` (the layout the quickstart uses) or one per
+algo directory, never both:
 
 ```bash
-cd user_algos/my_algo
+cd user_algos            # or user_algos/my_algo, for one repository per algo
 git init
-git add .
-git commit -m "initial algo commit"
+printf '__pycache__/\n*.pyc\n' > .gitignore
+git add -A && git commit -m "initial algo commit"
 ```
 
-Each algo subdirectory can be its own git repo, independent of the main project.
+The ignore file is not optional: Python writes bytecode beside your files on the first import, and
+without it that bytecode makes the repository count as uncommitted code — a run from it is
+recorded as running uncommitted code, and a real-money session refuses to start. Never both
+layouts: a repository inside another shows there as one untracked directory, so code from the outer
+one never counts as committed, and its patch cannot restore what lies in the inner one. Why a run
+records your commit:
+[A run is a record, and an old one stays true](../introduction_to_the_ide.md#a-run-is-a-record-and-an-old-one-stays-true).

@@ -107,10 +107,12 @@ numbered from 1; the ledger holds one row per booking period and currency. In co
 unit read is its *data broker*. See [Broker Config](broker_config_guide.md).
 
 **broker configuration** (`broker_config_id`) — The symbol specifications and fee structure a run
-trades with, assembled from the broker's files at its start: for a live Kraken session the
-runtime cache's specs, the seed's fees and the detected fee tier. `config_hash` digests it; an
-AutoTrader session also freezes the content in the run-config store and names it as
-`broker_config_id` in its broker section. See [Data Storage Layout](architecture/data_storage_layout.md).
+trades with, assembled at its start: for a dynamic broker (`kraken_spot`) the runtime cache's specs
+and the seed's fees — in a live-adapter session with `auto_detect_fee_tier` on, the venue's fee tier
+replaces the seed's rates; for a static broker, and for a mock session, the seed file. `config_hash`
+digests its symbol specifications and fee structure; every run, a session and a backtest
+alike, freezes the content in the run-config store and names it as `broker_config_id` in its broker
+section. See [Data Storage Layout](architecture/data_storage_layout.md).
 
 **broker ref** (`broker_ref`) — The venue's handle for an order — a txid at Kraken, a ticket at MT5
 — under one name above the adapter. Known once the venue has answered; an amend that replaces it
@@ -179,10 +181,24 @@ exists, in its own words, declared at the top of a scenario set or a profile; Ma
 Served on the configuration's directory row. Not the one-sentence description of a validation
 check. See [Directory](consumer/directory.md).
 
+**config hash** (`config_hash`) — Eight characters over two parts of a broker configuration: every
+symbol's specification in it, traded or not, and the fee structure — never when a value was
+fetched, and not the account terms (leverage, margin levels). Two runs with the same hash traded
+under the same specifications and fees, but the hash cannot give them back — `broker_config_id`
+names the copy that can. Where the symbols carry a fetch time, as on `kraken_spot`, its values
+shifted once when the fetch time left the digest, so an older run's hash differs from a newer
+run's over the same values. See [Broker Config](broker_config_guide.md).
+
+**config id** (`config_id`) — The content id of the configuration a run was GIVEN: the scenario set
+or profile as written, *frozen* when the run started. Not what it ran with — an AutoTrader
+session's configuration with every default filled is `rendered_config_id`, and a sweep's
+combinations all name the base set; what each changed is on its ledger row (`param_hash`,
+`strategy_config_json`).
+
 **config snapshot** — The FILE NAME of the configuration a run started from, recorded in its
 header (`config_snapshot`). The full strategy configuration a ledger row carries is a different
-field, `strategy_config_json`; the stored copy served at `/reports/runs/{run_id}/config` is the
-*stored configuration*. See [Data Storage Layout](architecture/data_storage_layout.md).
+field, `strategy_config_json`; the copy served at `/reports/runs/{run_id}/config` is the *frozen*
+configuration the run was given (`config_id`). See [Data Storage Layout](architecture/data_storage_layout.md).
 
 **continuous** — Never used alone. *Continuous mode*: a generator strategy that makes one window
 per continuous data region. *Continuous data region*: a stretch of ticks with no interrupting gap.
@@ -316,6 +332,12 @@ A *current fixture* is the run a catalog entry's newest verified production made
 was made by an older or a failed production. See *run purpose*.
 
 **fragment** — One ledger file, written per run. Nothing else is called a fragment.
+
+**frozen** — Kept by a run, at its start, as a copy in the run-config store and named by its
+content: the configuration it was given (`config_id`), the one an AutoTrader session ran with
+(`rendered_config_id`), the broker configuration (`broker_config_id`). A frozen copy is never
+rewritten, so an old run keeps saying what it used. Not the fee seed's `_fee_structure_frozen`,
+which records when a declared fee rate was set. See [Introduction](introduction_to_the_ide.md).
 
 **in flight** — A pending order that was sent and not yet acknowledged: in a backtest the latency
 simulator still holds it, in a session the venue has not yet answered. `in_flight_ms` on an order
@@ -556,6 +578,12 @@ under, stamped at its start. Compared with the contract the server answers with,
 run from a wrong one: a figure a later contract added reads `0` or `null` on an older run. See
 [Contract Log](consumer/contract-log.md).
 
+**report section** (served as a route segment and in a run's `artifacts`) — One part of a run's
+report: `trade-history`, `portfolio`, `booking-periods` and the rest. Which sections a run holds
+depends on its pipeline, so `artifacts` is read before a section is asked for. Not to be confused
+with a *passage*, the unit the documentation search returns. See
+[Reporting Pipeline](architecture/reporting_pipeline.md).
+
 **resolved · unresolved** — Two meanings, told apart by where they stand. On an order event,
 `unresolved` is a request whose answer was lost or named nothing, and `resolved` the asking that
 settled it — the request is in `lost_request`. On a broker answer, `UNRESOLVED` is a transport
@@ -576,12 +604,6 @@ ended in an emergency) or `crashed` (the process did not complete). The exit cod
 declared at the top of the configuration it started from — absent means `regular`, and a
 configuration the user owns never declares one — and stamped on its header. It never says whether money moved; `orders_to` does. See *fixture*, *certificate run*
 and [Run Kinds](consumer/run-kinds.md).
-
-**report section** (served as a route segment and in a run's `artifacts`) — One part of a run's
-report: `trade-history`, `portfolio`, `booking-periods` and the rest. Which sections a run holds
-depends on its pipeline, so `artifacts` is read before a section is asked for. Not to be confused
-with a *passage*, the unit the documentation search returns. See
-[Reporting Pipeline](architecture/reporting_pipeline.md).
 
 **run type** (`run_type`, served as `group`) — The pipeline that produced a run: `simulation` or
 `autotrader`.

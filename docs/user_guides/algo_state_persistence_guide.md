@@ -9,6 +9,13 @@ This is **opt-in** and **AutoTrader only** (a mock session skips it, see below).
 self-contained — there is no restart concept, so the subsystem never runs there. An algo
 that does not opt in is bypassed entirely (no file, no overhead).
 
+**What the run keeps of it.** The session log notes that a snapshot was loaded — when it was
+saved and how many keys it held — and whether the algo restored or rejected it. The snapshot's
+content is not kept with the run, and the session's next save overwrites the file. A backtest never
+restores one, so a difference between a restarted session and the backtest of its window can start
+here. If your decisions depend on restored memory, have `restore_state` log what it restored
+(`self.logger` writes to the session log).
+
 ## Scope — Category B only
 
 Restart recovery splits into three categories with three owners. This layer is **Category B**:

@@ -193,6 +193,14 @@ runs over identical data disagree with nothing in either run able to say why. Fe
 from the git-tracked seed; symbol specifications keep coming from the cache, because they are
 expensive to fetch and really do change at the venue.
 
+What the cache holds is not versioned: a later fetch overwrites it, so two backtests over identical
+data can still read different specifications, and their `config_hash` values say only that they
+differ. A run therefore freezes the configuration it read — specifications from the cache, fees
+from the seed — and names it as `broker_config_id` in its broker section (#547, pinned in
+[Batch Core Tests](../simulation/batch_core_tests.md)); a specification read from an entry older
+than the cache's refresh interval is also said once per symbol after the run (`broker_spec_stale`,
+`TestTheBrokerSpecAgeIsSaidOnce` below).
+
 | Test | Description |
 |------|-------------|
 | `test_a_cache_claiming_other_rates_does_not_reach_the_backtest` | Cache says 9.99/9.99 → the run uses the seed |
@@ -299,10 +307,14 @@ symbols from invalid scenarios.
 schema drift in refreshed runtime cache files — both would silently produce wrong P&L
 calculations if base/quote currencies are mismatched against the symbol key.
 
-The two hashes provide the reproducibility anchor: batch summaries and the AutoTrader live-display
-header show an 8-char id, so it is clear which specification a session ran against.
-`config_hash` covers the fee structure as well, because a rate change is a change to what the
-run produces — the narrower `symbols_hash` reported two differently-priced runs as identical.
+`config_hash` is the identity of what a run priced with: the batch summary and the AutoTrader
+live-display header show its 8 characters, so two runs can be told apart by the specification
+they ran against.
+It covers the fee structure as well as the symbols, because a rate change is a change to what the
+run produces — the narrower `symbols_hash`, which says only whether a cache still describes the
+same instruments, reported two differently-priced runs as identical. Eight characters tell two
+configurations apart; they cannot give one back. The content itself is frozen per run and named by
+`broker_config_id` in the run's broker section (#547).
 
 ## Test Approach
 

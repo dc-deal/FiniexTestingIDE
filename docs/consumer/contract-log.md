@@ -33,6 +33,22 @@ reads downwards from the version their fixtures hold until they reach the one be
 A test holds the newest heading in this log to the number the server answers with, so a version
 cannot ship without its entry.
 
+## Version 36 — 2026-10-19 (#547)
+
+A backtest keeps the broker configuration it traded with, as a session already does.
+
+- `broker_config_id` on every row of [broker](/api/v1/docs/broker) is set on a simulation row too:
+  the id under which the backtest froze the symbol specifications and fee structure it read when it
+  started. It was empty on every simulation row before, and a row recorded before this version keeps
+  it empty.
+- `config_hash` leaves out when a value was fetched. A refresh that reads the same values keeps it;
+  a changed value still moves it. Where the symbols carry a fetch time, as on a dynamic broker such
+  as `kraken_spot`, a row recorded before this version therefore differs from a later one over the
+  same values: compare those hashes within one side of this version. A static broker's hash did not
+  move.
+
+No field changed its shape.
+
 ## Version 35 — 2026-10-19 (#603)
 
 What runs on the machine is served, the machine and the broker list need a grant, and a booking
@@ -152,27 +168,13 @@ figures may be null. Its documents are [gaps](/api/v1/docs/gaps),
 [trade history](/api/v1/docs/trade-history), [portfolio](/api/v1/docs/portfolio) and
 [aggregated portfolio](/api/v1/docs/aggregated-portfolio).
 
-## Version 31 — 2026-10-14 (#595)
-
-The machine this server runs on can be asked how full it is.
-
-- `GET /api/v1/machine-resources` — new, with a token and no grant: the processors and the memory
-  of the machine the server, the backtests and the live sessions run on. `memory` names the limit
-  that binds — a container's own where one is set below the machine's — and where it was read
-  (`limit_source`: `cgroup` or `machine`), how much is in use, and the two thresholds it is graded
-  against. `cpu` counts the processors that bind and says how busy the machine was over `window_s`,
-  the seconds since the previous reading of this route by any caller. `pressure_level` (`ok`,
-  `warn`, `critical`) grades memory alone, and `pressure_reasons` says why in a sentence for a
-  person. Its document is [server](/api/v1/docs/server).
-
-A route added; no field changed its shape.
-
-## Versions 30 and earlier
+## Versions 31 and earlier
 
 One line each. Every one of these moved a shape or a meaning; what they moved is summarised here
 rather than spelled out, because a consumer this far behind needs the list of steps, not each step's
 reasoning. The full text of a compressed version is in this repository's history.
 
+- **Version 31** — 2026-10-14 (#595): The machine this server runs on can be asked how full it is — `GET /api/v1/machine-resources`, new, with the memory limit that binds and where it was read (`limit_source`), the processors and how busy they were over `window_s`, and `pressure_level` with its `pressure_reasons`; a route added, no field changed its shape.
 - **Version 30** — 2026-10-14 (#561): A venue's published history can enter the archive, and what an input file lacks is named — `spreadless_tick_data` gives way to `data_no_quote`, with new checks `data_no_arrival_time`, `data_arrival_time_reconstructed`, `data_missing_trades`, `data_origin_external` and `data_synthetic`, and `origin_classes` may hold `external`, never admissible for a parity measurement.
 - **Version 29** — 2026-10-13 (#588): A live session that refused at its first tick is told apart from one that crashed — `refused_at_first_tick` on the `warnings-errors` outcome, `true` when the warmup history could not be completed at the first tick, `false` on every other run, on a backtest and on a run recorded before.
 - **Version 28** — 2026-10-11 (#508): A run says how many of its fills were booked at the venue's own fee and how many at our estimate — `fill_fees_by_source` on every portfolio unit row, per-currency row and aggregated `headline` (entries `venue` / `estimate` with `fill_count` and `fill_fees`; empty where nothing executed), and `fee_source` on every order-history row (null where nothing executed).

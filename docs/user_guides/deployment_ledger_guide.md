@@ -57,7 +57,8 @@ rows carry, nothing more.
 
 It is **not** a claim that the sessions are comparable. A deployment survives you changing the
 strategy parameters halfway through — it records the change and shows it to you. Judging whether
-the two halves may be compared is your job, and the history gives you what you need to do it.
+the two halves may be compared is your job: the history marks the changes it compares, and
+[what it leaves out](#what-the-marks-compare-and-what-they-do-not) is yours to check.
 
 It is **not** a mechanism that does anything at runtime. The bot does not behave differently
 inside a deployment, and the deployment does not carry the account's risk history either: the peak
@@ -146,7 +147,7 @@ carries the few seconds the reports took. A row from before that stamp existed s
 rather than a made-up number.
 
 The warning block is printed **above** the table on purpose. By the time a reader reaches a
-`⚠ strategy changed` in row 3 they have usually already added up the column above it.
+`STRATEGY CHANGED HERE` line after row 3 they have usually already added up the column above it.
 
 ### The drawdown column is the one that misleads
 
@@ -162,14 +163,17 @@ deployment whose account was, at worst, 212.75 down.
 is recorded rather than recomputed, which is why it is not simply `max DD ÷ peak`: by the time
 you read it the peak has usually moved on.
 
-### The three notes, and what they are worth
+### The notes and the change lines, and what they are worth
 
-| Note | What it says | What it does not say |
+| Shown as | What it says | What it does not say |
 |---|---|---|
-| `gap N d` | The bot was not running for N days — measured from the END of the previous session to the START of this one | Whether that mattered. A weekend on a forex bot is nothing; five days on a crypto bot may be everything |
-| `gap N d between starts` | The same, but the previous session's row is old enough that it recorded no end, so the figure runs start-to-start and **includes that session's own runtime** | Anything more precise. Treat it as an upper bound |
-| `⚠ strategy changed` | The strategy parameters differ from the previous session | Which parameter, or in which direction |
-| `⚠ operation changed` | Something operational differs — a safety threshold, an order guard setting, a timeout, the capital declaration | The same |
+| `idle N d` | The bot was not running for N days (in hours below two days) — measured from the END of the previous session to the START of this one | Whether that mattered. A weekend on a forex bot is nothing; five days on a crypto bot may be everything |
+| `idle N d between starts` | The same, but the previous session's row is old enough that it recorded no end, so the figure runs start-to-start and **includes that session's own runtime** | Anything more precise. Treat it as an upper bound |
+| `STRATEGY CHANGED HERE` | The strategy parameters differ from the previous session | Which parameter, or in which direction |
+| `OPERATION CHANGED HERE` | Something operational differs — a safety threshold, an order guard setting, a timeout, the capital declaration | The same |
+| `ORDERS TO CHANGED HERE` | The orders went to a simulator on one side of the line and to the venue on the other — simulated fills and real money in one history | How the fills of the two halves compare |
+
+Changes at one restart share one line: `STRATEGY and OPERATION CHANGED HERE`.
 
 Nothing here is a verdict, deliberately. A threshold that decided *for* you what counts as too
 long a gap would be a judgement about your market and your night, made by a tool that knows
@@ -189,9 +193,28 @@ declaration. When this changes, the strategy is still the same strategy — but 
 did the circuit breaker not fire on day 19" may have moved.
 
 Were these one hash, raising a stop level would read as a different strategy and put an otherwise
-comparable run beyond comparison. The full resolved configuration of each session is stored on
-its ledger row, so a tool can tell you `rsi_buy_threshold: 45 → 40` rather than only "the hash
-differs".
+comparable run beyond comparison. The strategy configuration of each session is stored on its
+ledger row as the profile gave it, so a tool can tell you `rsi_buy_threshold: 45 → 40` rather than
+only "the hash differs".
+
+### What the marks compare, and what they do not
+
+Each line compares one thing between neighbouring sessions, read from their ledger rows:
+
+- **strategy** — the strategy parameters as the profile wrote them (`param_hash`)
+- **operation** — the profile's operational settings (`profile_hash`)
+- **orders to** — whether the orders went to a simulator or to the venue (`orders_to`)
+
+The `⚠` in the list and the warning block above the table compare the same three: "the same
+configuration" means these and nothing more. **The code and the broker configuration are not
+compared.** A session that ran on a new commit or a new component version — a parameter default
+changed in a worker's code included — or at another fee tier, with the same profile, draws no
+line. Each session's ledger row names this repository's commit and the component versions
+(`git_commit`, `decision_version`, `worker_versions`); the commit of your strategy's own repository
+is named only in the run header's `code_identity`, and the broker configuration only in the run's
+broker section — both for as long as the run directory exists. Read them before adding a column up across a restart;
+why every run keeps them is in
+[A run is a record, and an old one stays true](../introduction_to_the_ide.md#a-run-is-a-record-and-an-old-one-stays-true).
 
 ---
 
@@ -377,9 +400,21 @@ single index over all of them. It is deliberately not the same thing as the run 
 `runs/autotrader/`, which hold the logs and reports of each session and are pruned much sooner.
 
 So this is normal and not a fault: **most ledger rows no longer have a run directory.** Measured
-2026-09-17, 428 of 580 rows had none. The ledger keeps the record long after the logs are gone —
-that is what it is for. A history that names a session whose directory you cannot open is a
+2026-09-17, 428 of 580 rows had none. The ledger keeps a session's figures long after its logs are
+gone — that is what it is for. A history that names a session whose directory you cannot open is a
 history doing its job.
+
+**What a pruned row still says, and what went with the directory.** The row keeps the session's
+figures, `param_hash` and `profile_hash`, the strategy configuration as the profile gave it, this
+repository's commit and the component versions, and what kind of data it read. The rest lived in
+the run directory: the header, which names the profile the session was given and the configuration
+it ran with (`config_id`, `rendered_config_id`), the commit of every other repository a component
+came from and where the patch of any uncommitted code lies; the
+broker section, which names the frozen broker configuration (`broker_config_id`); and the warmup
+history the session started from. The frozen copies and the patch stay where they were stored, but
+after a prune nothing says which session used them. For a run you mean to compare — a thirty-day
+session against the backtest of its period — keep its sessions' directories until that backtest
+has run.
 
 ### The row says when its records went
 

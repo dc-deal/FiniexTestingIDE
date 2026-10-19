@@ -4,7 +4,7 @@
 
 | Document | Description |
 |----------|-------------|
-| [Introduction to the IDE](introduction_to_the_ide.md) | The two pipelines, the kinds of run, and where each part is explained |
+| [Introduction to the IDE](introduction_to_the_ide.md) | The two pipelines, the kinds of run, what every run records so that an old one stays true, and where each part is explained |
 | [Glossary](glossary.md) | What each term means — one meaning per word |
 | [Quickstart Guide](user_guides/quickstart_guide.md) | Create your first strategy (Worker + Decision Logic + Config) |
 | [CLI Tools Guide](cli_tools_guide.md) | All CLI commands with examples and workflow overview |

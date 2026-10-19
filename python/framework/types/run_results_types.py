@@ -63,8 +63,10 @@ class RunProvenance:
     #
     # The argument is `logic_version`'s, one drawer over: a ranking that cannot tell which DATA
     # a row was produced over is comparing runs that read different things under one column
-    # name. For the thirty-day parity proof that is not a nicety — a live run and the backtest
-    # it is compared against have to be shown to have read the same archive.
+    # name. For the thirty-day parity proof that is not a nicety — the backtest a real-money
+    # session is compared against has to be shown to have read production-class, stamped data
+    # our own collector recorded in the session's window. The session itself read a socket, as
+    # `input_plane` below says, so its own row cannot show it.
     #
     # They sit apart from `data_broker_type`, which they belong beside, only because a dataclass
     # puts every defaulted field after every undefaulted one.

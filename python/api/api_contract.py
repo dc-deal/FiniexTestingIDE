@@ -23,7 +23,7 @@ from typing import List
 
 # One monotonic integer. Not a date and not the app version: a consumer compares it for
 # equality, and equality is the only question they have.
-API_CONTRACT_VERSION = 35
+API_CONTRACT_VERSION = 36
 
 # Every response carries it, so a saved fixture carries it too.
 CONTRACT_HEADER = 'X-Api-Contract'
@@ -36,30 +36,10 @@ API_PREFIX = '/api/v1'
 # What moved INTO the current version. One line per change, written for someone who cannot
 # read this repository.
 CHANGES: List[str] = [
-    "New GET /api/v1/activities: one row per activity running on the machine this server runs on "
-    "— a backtest, a parameter sweep, an AutoTrader session, an import, a discovery cache build, a "
-    "test suite, the server itself — keyed by activity_id, never by a process id; each with the "
-    "resident memory of its processes (rss_bytes, process_count), beside the machine's memory and "
-    "its pressure verdict read at the same instant, and server_activity_id, the row of the server "
-    "answering",
-    'GET /api/v1/activities and GET /api/v1/machine-resources sit on a new grant surface, machine: '
-    'a token reaches them with machine:* and is refused with 403 without it; grants are read at '
-    'start-up, so a newly issued grant counts after the server restarts',
-    "GET /api/v1/brokers moves onto the brokers surface: listing the brokers needs a brokers grant, "
-    "as a broker's symbols already did",
-    "Every row of GET /api/v1/brokers/{broker}/symbols carries tick_size, the instrument's smallest "
-    "price step from the broker's configuration; null where the configuration names no such symbol "
-    'or cannot be read',
-    'from and to on the bars and ATR routes accept an ISO-8601 instant only: a number that is no '
-    'ISO date, which was read as Unix seconds, and any other text that is no instant, which '
-    'answered 422, are refused with 400 invalid_timestamp; an instant without an offset is read as '
-    "UTC, and an eight-digit date in ISO's basic format (20261019) is read as the date it is",
-    "Every booking period, a run's and a deployment's, carries what it carries beside what it did: "
-    "account_max_drawdown and account_max_dd_pct, the account's decline since its equity curve "
-    "began — an AutoTrader session continues its predecessor's curve wherever its profile carries "
-    "the risk history over, whatever its deployment — and unrealized_pnl and open_position_count "
-    'at the seal',
-    'New error activity_registry_unreadable (500): the list of what runs on the machine could not be '
-    'read, which is not the same as nothing running',
-    'New document activities',
+    'broker_config_id on every row of broker is set on a simulation row too: the id under which the '
+    'backtest froze the symbol specifications and fee structure it read when it started, as a '
+    'session already does. A simulation row recorded before this version keeps it empty',
+    'config_hash leaves out when a value was fetched: a refresh that reads the same values keeps it, '
+    'and where the symbols carry a fetch time, a row recorded before this version differs from a '
+    "later one over the same values; a static broker's hash did not move",
 ]

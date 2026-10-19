@@ -48,6 +48,9 @@ Core principles in the meantime:
   repository so the configuration applies (ruff's own default is double quotes)
 - **Documentation** is written to the [Documentation Style Guide](docs/documentation_style_guide.md),
   and a term means what the [Glossary](docs/glossary.md) says — look it up before introducing one
+- **Old runs stay true** — a run writes down at its start what it uses, and nothing later rewrites
+  that record from today's files; a change that gives runs a new input records it the same way —
+  see [A run is a record, and an old one stays true](docs/introduction_to_the_ide.md#a-run-is-a-record-and-an-old-one-stays-true)
 
 ---
 

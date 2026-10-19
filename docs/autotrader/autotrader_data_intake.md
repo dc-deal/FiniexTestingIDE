@@ -33,8 +33,8 @@ Live tick stream from the Kraken WebSocket v2 trade channel, with the ticker cha
 - Concurrent asyncio tasks: `_receive_loop` + `_connection_monitor` via `asyncio.wait(FIRST_COMPLETED)`
 - Two subscriptions on one connection, matched by the channel Kraken names in each acknowledgement
 
-**Data Consistency Principle:** the two sides agree because they read the **same channels**, and
-which channels those are changed with collector format 1.6.0.
+**Data Consistency Principle:** the two sides agree in shape because they read the **same
+channels**, and which channels those are changed with collector format 1.6.0.
 
 Up to 1.5.0 both read only the trade channel. An execution happens at one price, so every tick
 carried `bid == ask == last` and the zero spread was correct rather than missing. From 1.6.0 the
@@ -60,12 +60,22 @@ The quote moves `mid`, and with it the valuation plane: equity, drawdown, the ma
 slippage baseline. The cost model stays `MakerTakerFee` — the spread is now crossed as well as
 charged, not a second fee.
 
+The same channels make an archived tick and a live one the same shape, not the same content. Each
+side sees trades only while its own connection holds, so around a reconnect one of them can miss
+trades the other received; where a file carries the venue's trade ids, the tick index counts the
+trades that file missed (`trade_id_gaps`), and only a file missing enough of them to count as a
+hole is declared `missing_trades` ([Data Provenance](../architecture/data_provenance.md), *What a
+file LACKS*). A session keeps no copy of the ticks it consumed, and a backtest of its window
+reads the collector's archive instead — so a difference between the two is first an input
+difference, and only then a fill difference ([A run is a record, and an old one stays
+true](../introduction_to_the_ide.md#a-run-is-a-record-and-an-old-one-stays-true)).
+
 ```
 DataCollector            AutoTrader (live adapter)
 ┌──────────┐            ┌──────────┐
 │ Kraken   │            │ Kraken   │
 │ WS v2    │            │ WS v2    │
-│ trade ch │            │ trade ch │  ← Same channel, same data
+│ trade ch │            │ trade ch │  ← Same channel, same shape
 └────┬─────┘            └────┬─────┘
      │                       │
      ▼                       ▼
@@ -160,7 +170,7 @@ surface (status, hook, guard reason, config) carries over unchanged. Authoring g
 
 ## Warmup (#231)
 
-Workers need warmup bars before producing meaningful signals. Without warmup, a worker with `{"M5": 14}` needs 70 minutes of live ticks before its first valid RSI. The warmup system pre-loads historical bars at startup — the last N bars **complete at the session's first tick**, in both paths, so a mock session, a live session and a backtest of the same window start from the same history. The rule, the seam and the guard: [Warmup History](../architecture/warmup_history.md) (#588).
+Workers need warmup bars before producing meaningful signals. Without warmup, a worker with `{"M5": 14}` needs 70 minutes of live ticks before its first valid RSI. The warmup system pre-loads historical bars at startup — the last N bars **complete at the session's first tick**, in both paths, so a mock session, a live session and a backtest of the same window start from the same history. The rule, the seam and the guard: [Warmup History](../architecture/warmup_history.md) (#588). A session writes down the history it started from, `io/warmup_history.json` in its run directory, because a live-adapter session's comes from the venue and could not be read again later ([Warmup History](../architecture/warmup_history.md), *What a session records*).
 
 ### Two Paths
 
@@ -285,7 +295,12 @@ Live-adapter sessions are **fully decoupled from backtesting data**. The tick/ba
 
 - **Tick data:** comes from the venue's WebSocket — not from the tick index
 - **Warmup bars:** fetched from the broker REST API
-- **Symbol specs:** loaded from broker config (`configs/brokers/`), not from imported data
+- **Symbol specs:** from the broker configuration, not from imported data. For a dynamic broker
+  they come from the machine-local runtime cache (`data/runtime/brokers/`), which the session
+  refreshes from the venue once the symbol's entry is 7 days old, with the fee structure from the
+  tracked seed in `configs/brokers/`; for a static broker the session reads its tracked seed
+  whole. The session freezes what it assembled as `broker_config_id` — see [Live Broker Config
+  Acquisition](autotrader_venue_integration.md#live-broker-config-acquisition-230)
 
 This means a broker/symbol can run a live-adapter session **without any backtesting data in the
 index**. The only requirement is a broker entry in `market_config.json` and a matching OHLC bar
@@ -293,4 +308,7 @@ fetcher for warmup.
 
 A mock session is the opposite by design: it replays the index-resolved `scenario_settings` window
 through the shared `MountPreparer` — the same index and validation stack a backtest uses — and
-takes its warmup bars from that same preparation rather than reading a bar file of its own.
+takes its warmup bars from that same preparation rather than reading a bar file of its own. It
+trades with the tracked seed's symbol specifications whatever the broker's config mode, where a
+backtest of a dynamic broker trades with the runtime cache's — so on a dynamic broker the two can
+trade under different minimums.

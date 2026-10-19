@@ -2,8 +2,8 @@
 The scenario set as a RUNTIME object — it opens a run, it does not describe one.
 
 `ScenarioSet` lived in `framework/types/scenario_types/` and is not a type: it takes an
-`AppConfigManager`, mints a run id, creates the run directory, writes the run header, registers
-the run in the index and in the run-config store, and copies the config snapshot. CLAUDE.md §6
+`AppConfigManager`, mints a run id, creates the run directory, writes the run header, and registers
+the run in the index and in the run-config store. CLAUDE.md §6
 says where such a thing belongs — a bundle of runtime COLLABORATORS lives beside the code that
 BUILDS it, never in `framework/types/` — and here it sits beside its loader.
 
@@ -54,9 +54,9 @@ def _register_run_config(source: Path) -> str:
     """
     Record which configuration this run is starting from, and return its identity.
 
-    Never fatal. A config the store cannot register is a config the run can still execute — the
-    per-run snapshot beside the header is the evidence either way, and refusing to start a
-    backtest because a parquet index could not be written would be the wrong trade entirely.
+    Never fatal. A config the store cannot register is a config the run can still execute — its
+    header then names the file with an empty `config_id`, and refusing to start a backtest
+    because a parquet index could not be written would be the wrong trade entirely.
 
     Args:
         source: The scenario set file this run was commissioned with

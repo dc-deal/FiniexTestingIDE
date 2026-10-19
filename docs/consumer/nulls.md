@@ -19,7 +19,8 @@ configuration directory (`/api/v1/directory` and its detail route) answers with 
 where a value is absent — a scenario set has no bot id, a window that is open has no end, a file
 that never ran has no last run. Seven fields on a directory row behave this way. Treat `""` there
 as absence, exactly as you treat `null` elsewhere; everywhere else in this API the rule above
-holds.
+holds, apart from a few fields on records older than them — the end of *Not recorded* below names
+them.
 
 ## Not applicable: the figure has no meaning here
 
@@ -75,6 +76,17 @@ no longer be read. `report_contract` has no such source and is null on every
 run older than it. So are the four `origin_` fields of the run list on a run older than the
 header's `origin` block, and an order event's `fee_source` on an event recorded before it — or on
 a fill nothing could be booked for, whose venue reported no fee.
+
+**A few fields answer an older record with a value rather than null.** For example:
+`fill_fees_by_source` on [portfolio](/api/v1/docs/portfolio) reads `{}` on a run recorded before
+contract 28, which on a newer run means the unit executed nothing; `gross_profit` and `gross_loss`
+on the [run summary](/api/v1/docs/run-summary) read `0.0` on a record written before they existed;
+a scenario's four decision counters on [scenario details](/api/v1/docs/scenario-details) read `0`
+before contract 9, and its `execution_time_ms` holds seconds before contract 13. Before reading
+such a value as a measurement, find out when the run was recorded: from contract 24 on,
+`report_contract` on the [run list](/api/v1/docs/runs) names its contract; on an older run it is
+null, and the test is its `start_time` against the dates in
+[the contract log](/api/v1/docs/contract-log). Each section's document names its own cases.
 
 ## Null versus the empty list
 

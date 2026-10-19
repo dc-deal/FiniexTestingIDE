@@ -219,15 +219,22 @@ tested on different data, which matters exactly where a ranking is most tempting
 `max_staleness_minutes`, or a multi-window robustness pass whose windows cross a producer outage).
 
 **Provenance** (`run_provenance_builder.py`): `param_hash = generate_config_fingerprint(strategy_config)`
-(decision + all workers + type strings — the leading key); commit and branch via `get_git_info()`;
-component versions and `git_dirty` READ from the run header's code identity, captured at the run's
-start, instead of being resolved a second time — `git_dirty` covers every repository a component came
-from, and an unknown state reads as dirty (see
-[Run Origin and Code Identity](run_origin_and_code_identity.md#who-reads-it), #551). Never crashes the
-report. `param_hash` covers strategy parameters ONLY — balances / latency / data window
-are recorded as columns, not folded into the hash (so "same strategy, different balance" is not seen as
-a different parameter set). The full config snapshot is preserved, so a row is self-contained even if
-the run directory is later deleted.
+(decision + all workers + type strings — the leading key); `profile_hash` fingerprints the run's
+operational half — for a backtest the merged execution and trade-simulator blocks, for a session the
+profile's safety, order-guard, execution and tick-source settings. Commit, branch, component versions
+and `git_dirty` are READ from the run header's code identity, captured at the run's start, instead of
+being resolved a second time — only commit and branch fall back to the process's own git read, for
+a header that carries no code identity; `git_dirty` covers every repository a component came from,
+and an unknown state reads as dirty (see
+[Run Origin and Code Identity](run_origin_and_code_identity.md#who-reads-it), #551). Never crashes
+the report. `param_hash` covers strategy parameters ONLY — the account and the data window are not
+folded into it (so "same strategy, different balance" is not seen as a different parameter set); a
+backtest's balances are part of its `profile_hash`. A row holds the strategy
+configuration (`strategy_config_json`) and the two hashes, not the whole configuration: that is the
+frozen copy the run's header names by `config_id` — for a sweep combination the base set, while the
+strategy it actually ran is the row's `strategy_config_json`. The row does not carry the id, so once
+a prune has removed the run directory (`records_pruned_at`, above), nothing names the configuration
+that run was given.
 
 ---
 

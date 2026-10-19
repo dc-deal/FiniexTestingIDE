@@ -557,7 +557,6 @@ The JSON config connects everything together.
       }
     },
     "trade_simulator_config": {
-      "broker_config_path": "./configs/brokers/mt5/ic_markets_demo.json",
       "balances": { "USD": 100000 },
       "seeds": {
         "inbound_latency_seed": 42
@@ -567,6 +566,7 @@ The JSON config connects everything together.
   "scenarios": [
     {
       "scenario_name": "GBPUSD_test_01",
+      "data_broker_type": "mt5",
       "symbol": "GBPUSD",
       "start_date": "2025-10-09T20:00:00+00:00",
       "end_date": "2025-10-09T23:59:00+00:00",
@@ -585,12 +585,21 @@ The JSON config connects everything together.
 | `worker_instances` | Map instance names to worker types |
 | `workers` | Parameters for each worker instance |
 | `decision_logic_config` | Parameters for the decision logic |
-| `trade_simulator_config` | Broker, balance, seeds, latency ranges |
-| `scenarios` | Time windows to test |
+| `trade_simulator_config` | Balance, seeds, latency ranges |
+| `scenarios` | Time windows to test, each with its `data_broker_type` |
+
+Every scenario must name its `data_broker_type`, and it decides two things: which broker's tick
+archive the scenario reads and, through `market_config.json`, which broker configuration it trades
+with. A scenario set names no broker file of its own; the run keeps a copy of the broker
+configuration it read when it started — see [A run is a record, and an old one stays
+true](../introduction_to_the_ide.md#a-run-is-a-record-and-an-old-one-stays-true).
 
 > **Tip:** `app_config.json → backtesting.default_trade_simulator_config` provides application-wide defaults
 > (balance, currency, seeds, latency ranges). Scenario sets inherit these automatically — only
 > override what differs. See [Config Cascade Guide](../config_cascade_guide.md) for details.
+> A default is read as it stands when the run starts. The set's `config_id` does not move when a
+> default does, and a backtest keeps no copy of the merged settings, only a digest of them on its
+> ledger row (`profile_hash`) — so a value a result depends on belongs in the set itself.
 
 ---
 

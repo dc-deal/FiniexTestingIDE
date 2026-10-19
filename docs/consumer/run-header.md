@@ -21,6 +21,26 @@ answers `run_header_missing` (404); if the run itself is gone, a rebuild of the 
 row. A header that no longer matches its model answers `artifact_unreadable` (409), naming the
 fields that failed.
 
+## What a run records, and why an old one stays true
+
+A run writes down, when it starts, what it used, and nothing rewrites that later — so an old run
+keeps saying what it ran with even after the files it came from have changed. Where each part is
+served:
+
+| What the run used | Served as | Kept as |
+|---|---|---|
+| the code | `code_identity` on this header | the commits, plus the patch that restores an uncommitted change |
+| the configuration it was given | `config_id` on this header; the content at [config](/api/v1/docs/config) | a frozen copy; a sweep's combinations all name the base set, and what each changed is on its row of the [sweep](/api/v1/docs/sweeps) |
+| the configuration it ran with | `rendered_config_id` on this header — an AutoTrader session only | a frozen copy; no route serves its content yet |
+| the broker configuration | `broker_config_id` beside `config_hash` on [broker](/api/v1/docs/broker) | a frozen copy, for a session and a backtest alike |
+| the input data | `data_windows` on this header; for a backtest the data's kind per scenario on [scenario details](/api/v1/docs/scenario-details), and for a sweep's combination also the file counts on its [sweep](/api/v1/docs/sweeps) row | a description, never the files themselves |
+
+Two runs naming the same id share one frozen copy; an id cannot be passed back to a route as a
+parameter. What no run keeps is the content of the tick and bar files it read — a later re-import
+can change what a new run reads over the same window — and a live session keeps no copy of the
+ticks it received from the venue: only the collector's recording of that window exists, and that
+is what a backtest of it reads.
+
 ## Labels
 
 Every key below carries the label to show it under. Use it as written — translate it if you

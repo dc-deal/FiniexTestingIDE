@@ -9,9 +9,9 @@ This document is what a session SHOWS and what it WRITES: the live console, the 
 monitor that says whether the loop kept up, and the three log channels with their distinct
 purposes.
 
-**Not here:** the end-of-run report — `docs/architecture/reporting_pipeline.md`. Which log file to
-open for which question — that table lives with the diagnostic sources. The warning and error
-tiers — `docs/architecture/warnings_errors_tiers.md`.
+**Not here:** the end-of-run report and the sections a run holds —
+`docs/architecture/reporting_pipeline.md`. The warning and error tiers —
+`docs/architecture/warnings_errors_tiers.md`.
 
 ## Live Console UI (#228)
 
@@ -209,6 +209,8 @@ Three `ScenarioLogger` instances per session, each with a distinct purpose:
 
 ```
 runs/autotrader/btcusd_mock/20260328_105127_a1b2c3d4/
+  header.json                     What the session is, written first: the configuration it
+                                  was given and runs with, its code, its window
   autotrader_global.log           Startup, shutdown, errors
   autotrader_session.log          The session channel's boot: validation, data, the pipeline
   autotrader_summary.log          Post-session summary
@@ -219,7 +221,19 @@ runs/autotrader/btcusd_mock/20260328_105127_a1b2c3d4/
                                   event (ORDER_SUBMIT / CLOSE_SUBMIT / FILL /
                                   POSITION_OPEN / POSITION_CLOSE / ORDER_REJECT).
                                   See trade_execution_visibility.md for schema.
+  io/                             The report sections — the broker section among them
+                                  (broker.json) — and the session's own records: the
+                                  order-event stream (order_events.jsonl) and the
+                                  warmup history it started from (warmup_history.json)
 ```
+
+The logs say what the session did; `header.json` and the records under `io/` say what it ran
+with — the configuration it was given and ran with, its code, the frozen broker configuration
+(`broker_config_id` in `io/broker.json`) and the bars its workers started from. The report
+sections are written at the end, so a session killed before them still names its frozen broker
+configuration in `autotrader_session.log`: `🏦 Broker configuration frozen as broker_config …`.
+Why a session writes all of this down:
+[A run is a record, and an old one stays true](../introduction_to_the_ide.md#a-run-is-a-record-and-an-old-one-stays-true).
 
 ### The event-time column — and why a mock session shows two dates
 

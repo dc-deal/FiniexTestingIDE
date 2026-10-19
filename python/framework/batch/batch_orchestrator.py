@@ -129,6 +129,7 @@ from python.framework.exceptions.mount_errors import MountIdentityMismatchError
 from python.framework.exceptions.scenario_execution_errors import BatchExecutionError
 from python.framework.factory.decision_logic_factory import DecisionLogicFactory
 from python.framework.logging.abstract_logger import AbstractLogger
+from python.framework.store.broker_config_freeze import freeze_broker_config
 from python.framework.types.activity_registry_types import ActivityKind
 from python.framework.types.batch_execution_types import BatchExecutionSummary, WarmupPhaseEntry
 from python.framework.types.live_types.live_stats_config_types import (
@@ -300,11 +301,6 @@ class BatchOrchestrator:
         Returns:
             BatchExecutionSummary with aggregated results from all scenarios
         """
-        # The config snapshot belongs to a run that EXECUTES, so it is taken here rather than at
-        # one caller: the CLI path took it, the benchmark harness builds its ScenarioSet directly
-        # and did not — so the very runs that carry the release benchmark certificates were the
-        # ones without a snapshot. build_mount() deliberately does NOT pass through here; a mount
-        # build is not a run and has no run directory to snapshot into.
 
         self._logger.info(
             f'🚀 Starting batch execution '
@@ -338,6 +334,13 @@ class BatchOrchestrator:
                 mount = self.prepare_mount()
         else:
             mount = self.prepare_mount()
+
+        # The broker configuration belongs to a run that EXECUTES, so it is frozen here rather
+        # than in prepare_mount(): build_mount() does not pass through here, and a mount build is
+        # not a run. A dynamic broker's specifications come from a cache any later fetch
+        # overwrites, so the run keeps what it read, the way a session does (#547).
+        for info in mount.broker_scenario_map.values():
+            freeze_broker_config(info.broker_config, self._logger)
 
         summary = self.execute(
             mount, self._scenario_set.get_all_scenarios())

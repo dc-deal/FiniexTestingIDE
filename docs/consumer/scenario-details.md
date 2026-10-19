@@ -97,9 +97,13 @@ to ask — and `median_spread_bps` the median full spread given, in basis points
 priced their fills from the same day estimates by the same rules.
 
 The sorting is not cosmetic. The same set of files produces the same string whatever order they
-were read in, so two runs over the same data compare as strings. The run as a whole records the
-same answer; this row is the grain that says *which scenario* — and a set mixing brokers or data
-eras is exactly where the run-wide answer stops being enough.
+were read in, so two scenarios compare as strings. Equal strings say the two read the same **kind**
+of data, never the same files: two runs over different weeks of one archive carry equal strings,
+none of these fields names a file, and no run keeps the files it read — see
+[run header](/api/v1/docs/run-header). What a scenario covered is `first_tick_time` and
+`last_tick_time` below. The run as a whole records the same answer; this row is the grain that says
+*which scenario* — and a set mixing brokers or data eras is exactly where the run-wide answer stops
+being enough.
 
 ## The per-broker roll-up
 

@@ -20,11 +20,16 @@ history actually has.
 import json
 import time
 from pathlib import Path
+from unittest.mock import MagicMock
 
 import pytest
 
+from python.configuration.app_config_manager import AppConfigManager
+from python.framework.factory.broker_config_factory import BrokerConfigFactory
+from python.framework.store.broker_config_freeze import freeze_broker_config
 from python.framework.store.run_config_store import RunConfigStore
 from python.framework.types.run_config_types import RunConfigKind
+from python.framework.utils.config_fingerprint_utils import to_plain
 
 _BASE = {
     'scenario_set_name': 'demo',
@@ -295,3 +300,36 @@ class TestADocumentWithoutAFileIsFrozenByContent:
         kinds = {e.config_id: e.kind for e in store.get_index().entries()}
         assert kinds == {rendered.config_id: RunConfigKind.AUTOTRADER_RENDERED,
                          broker.config_id: RunConfigKind.BROKER_CONFIG}
+
+
+_KRAKEN_SEED = Path('configs/brokers/kraken/kraken_spot_broker_config.json')
+
+
+class TestARunFreezesTheBrokerConfigurationItTradesWith:
+    """freeze_broker_config: one path for a session and a backtest (#547)."""
+
+    def test_the_content_is_frozen_and_named_on_the_configuration(self, tmp_path, monkeypatch):
+        store_dir = tmp_path / 'run_configs'
+        monkeypatch.setattr(AppConfigManager, 'get_run_configs_path', lambda self: str(store_dir))
+        config = BrokerConfigFactory.build_broker_config(_KRAKEN_SEED)
+        logger = MagicMock()
+
+        freeze_broker_config(config, logger)
+
+        frozen_id = config.get_frozen_config_id()
+        frozen = json.loads(RunConfigStore(store_dir).frozen_path_of(frozen_id).read_text())
+        assert frozen == to_plain(config.adapter.broker_config)
+        assert f'frozen as broker_config {frozen_id[:12]}' in logger.info.call_args.args[0]
+
+    def test_a_store_that_cannot_be_written_costs_the_record_not_the_run(self, monkeypatch):
+        def _refuse(*_args, **_kwargs):
+            raise OSError('read-only file system')
+
+        monkeypatch.setattr(RunConfigStore, 'register_document', _refuse)
+        config = BrokerConfigFactory.build_broker_config(_KRAKEN_SEED)
+        logger = MagicMock()
+
+        freeze_broker_config(config, logger)
+
+        assert config.get_frozen_config_id() == ''
+        assert 'could not be frozen' in logger.warning.call_args.args[0]

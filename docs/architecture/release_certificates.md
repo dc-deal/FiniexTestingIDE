@@ -131,8 +131,11 @@ failure mode is a well-meant extension that adds "just the keys" to be more info
 
 ## Taking them
 
-Order matters. Commit first — the dirty-tree guard will otherwise fail every declared
-certificate — then bump the version, then take them:
+Order matters. Bump the version first and commit it — a declared certificate is refused from a
+tree that says another version (`VERSION MISMATCH`) and from one with uncommitted changes
+(`DIRTY TREE`). Then take them one suite at a time, and commit each suite's generated artifact
+before the next: to every other suite, an uncommitted artifact is an uncommitted change like any
+other.
 
 ```bash
 # 1. benchmark (idle machine, nothing else running, one run per sitting)
@@ -157,7 +160,8 @@ python python/cli/security_cert_cli.py run --release-version X.Y.Z
 pytest tests/security_cert/test_security_cert_certificate.py -v
 ```
 
-Commit the generated artifacts from each suite's `reports/` directory.
+Each suite writes its artifact into its own `reports/` directory, which is where it is committed
+from.
 
 **Changing the identity invalidates every certificate**, because every artifact carries it. That
 is the cost of the shared shape, and it is the right cost: certificates that disagree about what

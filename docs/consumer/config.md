@@ -3,8 +3,8 @@
 A run's record can say that a configuration **moved** — a deployment's history marks the session
 where the strategy's parameters changed, or where the rest of the profile did. What it could not
 say was *what* moved, because the record carries two pointers, a file name and a content id, and
-nothing served what they point at. This route is the configuration itself, parsed, exactly as the
-run was given it.
+nothing served what they point at. This route is what they point at: the configuration file,
+parsed, as it stood when the run started.
 
 **Routes**
 
@@ -46,15 +46,26 @@ have to be compared by hand.
 No local path reaches you. The configuration store's own index row carries the workspace path the
 file was read from, and that row is never served — the content is.
 
+## A sweep's combinations are served their base set
+
+Every combination of a parameter sweep names the sweep's base scenario set, so `config` is that set
+before the combination's parameters were applied — the same body for every combination of one
+sweep. What sets a combination apart is on its row in [sweeps](/api/v1/docs/sweeps):
+`sweep_params`, the parameters that make it the combination it is, and `strategy_config_json`, the
+strategy configuration it ran.
+
 ## `config_id` is an identity, not a handle
 
-It is a SHA256 over the configuration's normalised content. Two runs naming the same id ran the
-same configuration, and a changed file mints a new one.
+It is a SHA256 over the file's normalised content. Two runs naming the same id were given the same
+file, and a changed file mints a new one.
 
 It names the **input**: what the run was given, before any layer was merged into it. An AutoTrader
 session resolves a rendered profile from that input — the layers merged, every default filled, the
-broker's entry beside it — and records that separately. This route does not serve the rendered
-form.
+broker's entry beside it — and records that separately, as `rendered_config_id` on its
+[run header](/api/v1/docs/run-header). This route does not serve the rendered form. A backtest
+records no rendered form: of the simulator settings merged in under its file it keeps only a
+fingerprint, which [sweeps](/api/v1/docs/sweeps) serves for a sweep's combinations as
+`profile_hash`.
 
 It is served here as well as in the run list, so you can assert that the body you received is the
 one the index attributes to this run rather than trusting the join. Nothing on this API takes a
@@ -67,8 +78,13 @@ configuration could not be registered. Those are also the runs this route refuse
 
 A deployment's session history marks where something moved: `strategy_changed` when a session's
 strategy parameters differ from the previous session's, `operation_changed` when the rest of the
-profile does. Those marks say **where**. This route says **what** — fetch the configuration of the
-session before the mark and of the session carrying it, and compare the two bodies. See
+profile does. Those marks say **where**. This route says what the profile *file* held: fetch the
+configuration of the session before the mark and of the session carrying it, and compare the two
+bodies. For `strategy_changed` that is the answer. `operation_changed` is computed from the profile
+as the session loaded it, so it also moves with what lies outside the file — the application's own
+defaults merged in under it, or an option the session was started with — and no body served here
+contains either: two identical bodies beside an `operation_changed` mark mean the change lies
+there. The session's rendered form holds it, and this API does not serve that form. See
 [deployments](/api/v1/docs/deployments).
 
 ## Two refusals, and the second one is ordinary
@@ -92,5 +108,5 @@ refusal vocabulary is in [errors](/api/v1/docs/errors).
 
 [The directory](/api/v1/docs/directory) lists every configuration file that can start a run and
 says what each one declares **now**. This route says what one run was handed **then**. The two
-disagree the moment the file is edited, and that is the point: a run's configuration is frozen
-with the run, and the file goes on changing.
+disagree the moment the file is edited, and that is the point: the file a run was given is frozen
+with the run, and the file on disk goes on changing.

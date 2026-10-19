@@ -30,10 +30,14 @@ The base `docker-compose.yml` contains only the standard volumes. To add externa
 services:
   finiex-dev:
     volumes:
-      - ../FiniexExternalAlgos:/ext_algos:ro
+      - ../FiniexExternalAlgos:/ext_algos
 ```
 
-Docker Compose automatically merges `docker-compose.override.yml` into `docker-compose.yml` — no flags needed. The `:ro` (read-only) is optional but recommended since the framework only reads from external dirs.
+Docker Compose automatically merges `docker-compose.override.yml` into `docker-compose.yml` — no flags needed.
+
+**Make the external directory a git repository of its own**, with a `.gitignore` for `__pycache__/` and `*.pyc`. A run records the commit its code came from: a backtest from code under no version control warns that it cannot be reproduced, and a real-money session refuses to start from code no commit describes ([why a run records its code](../introduction_to_the_ide.md#a-run-is-a-record-and-an-old-one-stays-true)).
+
+**Mount it read-write, as above, if you run from uncommitted work.** A run from uncommitted changes keeps the patch that restores them inside the external repository, in a self-ignoring `.finiex_run_patches/` folder. On a read-only (`:ro`) mount that write fails: the run records only a hash of the changes, and they cannot be restored from it. A `:ro` mount is fine while you run committed code only.
 
 **No override file?** No problem. The container starts normally without external volumes.
 

@@ -227,25 +227,32 @@ run_configs/
 That is not tidiness. A source may live in `user_algos/`, a separate repository, and an index
 whose entries lived outside its own root could not die with its store. The per-run copy of the
 config that each run directory once held was retired with #546: the frozen copy here is the
-evidence, and a run names it by `config_id`.
+evidence, and a run names it by `config_id`. The configuration is one of several things a run
+records about itself;
+[A run is a record, and an old one stays true](../introduction_to_the_ide.md#a-run-is-a-record-and-an-old-one-stays-true)
+maps the others.
 
 **A source is what a run was GIVEN; the two rendered kinds are what it RAN with (#547).** A
 profile file is the input to a cascade — the `app_config.autotrader` defaults lie under it, and
 every parameter it leaves unset gets its schema default only when the factory builds the
 component — and a month in which `app_config.json` or a default changes could prove the
-configuration moved and never say what it was. So an AutoTrader session freezes two more
-documents at its start:
+configuration moved and never say what it was. So an AutoTrader session freezes the rendered
+profile at its start, and every run — a session or a backtest — freezes the broker configuration
+it trades with:
 
 | kind | what it holds | named by |
 |---|---|---|
 | `autotrader_rendered` | the merged profile blocks, the strategy with every schema default filled (through the factories' own `resolve_parameters`), and the broker's `market_config.json` entry with its local override | the run header's `rendered_config_id`, written before the session can fail |
-| `broker_config` | the broker configuration the session trades with: symbol specs from the runtime cache, the seed's fee structure, the detected fee tier | the run's broker section (`broker_config_id`, beside `config_hash`) and a session-log line at startup |
+| `broker_config` | the broker configuration the run trades with, as it stands when the run starts: the symbol specifications — from the runtime cache for a dynamic broker's backtest or live-adapter session, from the seed file for a mock session or a static broker — and the seed's fee structure, its rates replaced by the venue's fee tier where a live-adapter session applies it | the run's broker section (`broker_config_id`, beside `config_hash`) and a log line at startup |
 
 The broker configuration needs the log line because the run's broker section is written at the
-END: a session killed before its report still says, in `autotrader_session.log`, where its
-configuration was frozen.
+END: a run killed before its report still says, in its own log (`autotrader_session.log` for a
+session, `scenario_global_log.log` for a backtest), where its configuration was frozen. A backtest
+has no rendered profile: what its scenario set and the application's `backtesting` defaults add up
+to for the execution and simulator blocks is covered only by a hash on its ledger row
+(`profile_hash`), not by a document.
 
-Both are frozen from CONTENT, so a session that restarts on an unchanged configuration names the
+Both are frozen from CONTENT, so a run that starts on an unchanged configuration names the
 same id and writes nothing new. Their source columns stay empty on purpose — those mean "the file
 a caller asks for", and a rendered document must never come back from `resolve()` or `history()`
 as the newest version of the profile it was rendered from. And both are RECORDS, never schemas: a
@@ -254,6 +261,15 @@ true as it was — nothing reads it back into a factory. A private profile's doc
 here too, like its source: the store is gitignored, nothing leaves the machine, and a
 configuration has to stay readable without the foreign repository checked out at the right
 commit — which a patch needs anyway, and a configuration must not.
+
+**For the broker configuration, "unchanged" means byte for byte.** Its document carries each
+symbol's fetch time and the file's own metadata, which `config_hash` leaves out, so a refresh that
+reads the same values back keeps `config_hash` and still gives the next run a new
+`broker_config_id`. `config_hash` covers only the symbols and the fee structure, not the account
+terms in `broker_info` (leverage, margin-call and stop-out levels) a margin broker trades with.
+Compare it to ask whether two runs traded under the same symbol specifications and fees — on a
+margin broker, the broker section's `leverage` and levels beside it — and open `broker_config_id`
+to read what one of them had ([Broker Configuration](../broker_config_guide.md#config-hash--seed-id)).
 
 **Several rows per source file are NORMAL here, unlike every other store.** Each row is one
 version, and the accumulation IS the history — which is why validity is not a row count against a
@@ -418,6 +434,13 @@ rather than serving it.
 | **ARCHIVE** | source / symbol / time | append-only | index |
 | **DERIVED** | mirrors its source | **deletable** | none — *if deleting it loses something, it is misfiled* |
 | **SPECIAL** | — | — | catalogued with a stated reason, nothing else |
+
+**Deletable and append-only describe the store, not what a run read from it.** A fetch overwrites
+a symbol's entry in the runtime broker cache in place, a re-import with `--override` replaces tick
+files, and every render replaces bar files. So a run never relies on what it read staying as it
+was: it keeps a copy where it can — its broker configuration in `run_configs/`, the patch of
+uncommitted code in `run_patches/` — and describes the rest
+([A run is a record, and an old one stays true](../introduction_to_the_ide.md#a-run-is-a-record-and-an-old-one-stays-true)).
 
 ### A new thing joins an existing store before it becomes a new one
 

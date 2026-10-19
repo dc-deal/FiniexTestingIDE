@@ -190,7 +190,7 @@ re-frozen to the measured rates on that date.
 
 | Reader | Source | Why |
 |---|---|---|
-| **Backtest** | the git-tracked **seed**, always. Never asks | A run must be reproducible from a COMMIT. The rate is a written-down decision with a date, not a by-product of whenever someone last synced |
+| **Backtest** | the git-tracked **seed**, always. Never asks | The rate a run prices with must be reproducible from a COMMIT. It is a written-down decision with a date, not a by-product of whenever someone last synced |
 | **Live-adapter session** | the seed as its baseline, **overridden by the venue's answer** when `auto_detect_fee_tier` is on | Correct by construction, and it starts from the same declared number the backtest uses so the two agree about what was expected |
 | **Both** | a **WARNING** whenever the venue disagrees with the seed | The signal to re-freeze. It fires even with the switch OFF, because only a human can update the seed and the backtest keeps the old rate until they do |
 
@@ -228,8 +228,7 @@ file, and the seed records WHEN and from WHAT:
 ```
 
 The provenance block sits OUTSIDE `fee_structure` deliberately: `config_hash` is computed over
-that block, so a note written inside it would move the reproducibility anchor without changing
-a single price.
+that block, so a note written inside it would move the hash without changing a single price.
 
 It stays a human act, and the reason is not caution — it is that **no fetch can answer the
 question a backtest asks.** The tier depends on 30-day rolling volume, which the bot's own
@@ -365,7 +364,7 @@ Every broker entry in `market_config.json` has an optional `config_mode` field:
 | Value | Meaning | Default |
 |-------|---------|---------|
 | `static` | Use the git-tracked JSON file (`broker_config_path`) directly | Yes |
-| `dynamic` | Use a runtime cache; refresh from broker API weekly | No |
+| `dynamic` | Use a runtime cache; a symbol is refreshed from the broker API once its entry is 7 days old | No |
 
 Currently only `kraken_spot` uses `dynamic`. MT5 and all future static brokers default to `static`.
 
@@ -435,15 +434,17 @@ configs/brokers/kraken/kraken_spot_broker_config.json  ← git-tracked "seed"
   → Never auto-overwritten
 
 data/runtime/brokers/kraken_spot/kraken_spot_broker_config.json  ← gitignored hot cache
-  → SYMBOL SPECS for dynamic-mode brokers, AutoTrader session and backtest alike
-  → Auto-refreshed from Kraken API (weekly)
+  → SYMBOL SPECS for dynamic-mode brokers, a live-adapter session and a backtest alike
+    (a mock session trades with the seed's)
+  → Refreshed per symbol from the Kraken API once that symbol's entry is 7 days old,
+    by a live-adapter session start or `broker_config_cli.py sync` — never by a backtest
 ```
 
 The static seed is committed with the codebase. The runtime cache is gitignored and machine-local.
 
 **The split is by CONCERN, not by pipeline (#337).** Symbol specifications come from whichever
-source the broker's `config_mode` selects — they are expensive to fetch and they genuinely change
-at the venue. The **fee structure always comes from the seed**, in both pipelines, and
+source the broker's `config_mode` selects — a mock session reads the seed whatever the mode — and
+they are expensive to fetch and genuinely change at the venue. The **fee structure always comes from the seed**, in both pipelines, and
 `BrokerDataPreparator._load_dynamic_broker_config` overwrites the cache's block with it.
 
 The reason is reproducibility and it is not a preference: a fee rate moves realised P&L on every
@@ -455,6 +456,15 @@ down in a commit.
 *(Until 2026-09-08 this block described the intent and the code did something else: the dynamic
 branch took the WHOLE config from the cache, fees included. It was harmless only because the
 fetcher hardcodes the rates rather than fetching them, so the two happened to agree.)*
+
+The symbol specifications are the other half of what a run trades under, and a commit cannot pin
+them: they change at the venue, and the cache that holds them is machine-local and versioned by
+nothing. So every run, a session and a backtest alike, keeps a copy of the broker configuration it
+trades with, as it stood when the run started — specifications and fee structure together — in
+the run-config store, and names it `broker_config_id` in its broker section. That copy is what
+*frozen* means in a run's record; re-freezing the seed's fee rate is a different act. Why a run
+keeps it: [A run is a record, and an old one stays
+true](introduction_to_the_ide.md#a-run-is-a-record-and-an-old-one-stays-true).
 
 ### Staleness Policy (dynamic mode)
 
@@ -491,10 +501,18 @@ Each symbol in the runtime cache has an `_active` field. Symbols fetched from th
 Each loaded broker config is stamped with **two** 8-char SHA256 hashes, because they answer
 different questions (#337):
 
-- **`config_hash`** — the REPRODUCIBILITY anchor, over `symbols` **and** `fee_structure`. What
-  `BrokerConfig.config_hash` returns, and what the run report's broker section carries — so it
-  reaches the console, the report file and the API alike. A fee rate change moves it, because it
-  changes what the run produces.
+- **`config_hash`** — the identity of the configuration's VALUES, over `symbols` **and**
+  `fee_structure`. `symbols` is every symbol the configuration holds — for a dynamic broker's
+  backtest or live-adapter session every symbol this machine's cache has fetched, not only the
+  traded one — so a new or changed entry for any symbol moves it. It says whether two runs traded
+  under the same symbol specifications and fee structure, and cannot say what they were: those are
+  in the copy the run names as `broker_config_id` beside it. It leaves out when a value was
+  fetched, the `broker_info` block — leverage and the margin-call and stop-out levels a margin run
+  trades with — and `trading_permissions`; the broker section reports leverage and the margin
+  levels as fields of their own.
+  What `BrokerConfig.config_hash` returns, and what the run report's broker section carries — so
+  it reaches the console, the report file and the API alike. A fee rate change moves it, because
+  it changes what the run produces.
   **It does NOT reach the run ledger or any certificate yet** (#510): those are the artifacts
   that compare runs to each other, so until they carry it, two runs priced differently are still
   indistinguishable in the cross-run record.
@@ -518,6 +536,13 @@ The hash appears in:
 
 Neither hash covers `_config_meta`, nor a symbol's `_last_fetched`: a refresh that reads the same
 values back moves neither, and `sync --force` moves them only where a value changed (#608).
+
+That is a change of definition — announced to API consumers as contract 36 — and a recorded hash
+is never recomputed. A hash recorded before it covered the fetch stamps too, wherever the symbols
+carry them — a dynamic broker's cache and the Kraken seed; the MT5 file has none, so its hashes did
+not move — and one recorded before `config_hash` took in the fee structure (#337) covered the
+symbols alone. Across such a change two runs over identical values carry different hashes, so compare hashes recorded under one
+definition, and read the frozen copies where they exist.
 
 ### Syncing the Static Seed
 

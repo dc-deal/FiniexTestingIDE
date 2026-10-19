@@ -120,6 +120,22 @@ that before trusting the order:
   a JSON **string** rather than as an object.
 - `sweep_params` — this combination's concrete grid point: the parameters that make it the row it
   is.
+- `param_hash` — a fingerprint of the strategy parameters the run decided with, over all its
+  scenarios. Equal hashes mean the same parameters; it does not say which ones differ.
+- `profile_hash` — a fingerprint of the simulator settings the run executed with — the latency and
+  slippage models, the random seeds and the tick budget, for example — after the application's own
+  defaults were merged in under the scenario set. Equal hashes mean the same settings. No
+  configuration id covers that layer, so this fingerprint is all a backtest keeps of it. Empty on
+  a row written before it existed.
+- `input_plane` · `data_format_versions` · `origin_classes` · `origin_evidence_grades` ·
+  `price_bases` — what kind of data the run read, over all its scenarios, as
+  [scenario details](/api/v1/docs/scenario-details) says it per scenario; `input_files` counts the
+  files it read and `unstamped_input_files` those that were not production data stamped by their
+  producer, which a measurement may not rest on. They say what kind of data and how much, never
+  which files. Empty, and the counts null, on a row written before they existed.
+
+None of these says which broker configuration a combination traded under: that is `config_hash`
+and `broker_config_id` on the run's [broker](/api/v1/docs/broker) section.
 
 `run_kind` is derived from the row rather than stored; inside a sweep it reads `sweep` on every
 row.

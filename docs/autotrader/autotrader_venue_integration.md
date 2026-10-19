@@ -42,11 +42,24 @@ create_broker_config(config, logger)   (autotrader_broker_config_setup.py)
   → return BrokerConfig with live-enabled KrakenAdapter
 ```
 
-**Cache location:** `data/runtime/brokers/<broker_type>/` (gitignored, auto-refreshed weekly).  
+**The session then freezes what it was handed** (`freeze_broker_config`,
+`python/framework/store/broker_config_freeze.py`). The assembled configuration — the cache's
+specifications, the seed's fee structure, the venue's tier where it was applied — is copied into
+the run-config store and named `broker_config_id` in the run's broker section, beside `config_hash`.
+The session log names it at startup (`🏦 Broker configuration frozen as broker_config <id>`),
+because the broker section is written only at the end, and a session killed before then still has
+the id in its log. A mock session freezes the seed it read, and a backtest freezes what it read the
+same way. If the store cannot be written the session warns and runs on, with the id left empty.
+The copy is a record only: no run reads it back. Why every run keeps one: [A run is a record, and
+an old one stays true](../introduction_to_the_ide.md#a-run-is-a-record-and-an-old-one-stays-true).
+
+**Cache location:** `data/runtime/brokers/<broker_type>/` (gitignored and machine-local; a symbol's
+entry is refreshed by whichever live-adapter session start or `broker_config_cli.py sync` finds it 7
+days old, and every backtest on the machine reads the file as it then stands).  
 **Static seed:** `configs/brokers/kraken/kraken_spot_broker_config.json` — git-tracked, never
 auto-overwritten. Used by `config_mode=static` brokers, and its `fee_structure` is the declared rate
-for EVERY reader: a backtest takes it whole, and a dynamic live-adapter session starts from it before
-the venue is asked (#337).
+for EVERY reader: a backtest prices with it as written, and a dynamic live-adapter session starts
+from it before the venue is asked (#337).
 **Balance fetch failure** is **fatal** — a 0.0 balance in a live-adapter session is dangerous.
 
 **Mock session**: Completely unchanged. No API calls, no credentials needed, `enable_live()` never called.
@@ -126,8 +139,11 @@ Private Kraken endpoints use HMAC-SHA512 signing: `API-Sign = base64(HMAC-SHA512
 ### Fee Handling
 
 The declared rate lives in ONE place — the broker's git-tracked seed — and every other reader points
-at it (#337). A backtest reads it and nothing else, so a run stays reproducible from a commit; a
-live-adapter session starts from the same number, then asks the venue.
+at it (#337). A backtest takes the rate from it and never asks the venue, so the rate is a decision
+a commit pins; a live-adapter session starts from the same number, then asks the venue. A commit
+pins the rate, not the run: a dynamic broker's symbol specifications come from the machine-local
+runtime cache, and what a run traded with is the broker configuration it froze when it started
+([Live Broker Config Acquisition](#live-broker-config-acquisition-230)).
 
 Asking is `POST /0/private/TradeVolume`, and what happens with the answer is split in two on purpose:
 

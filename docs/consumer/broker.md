@@ -82,21 +82,31 @@ a spot account. What a held position actually paid is `swap_cost`, on
 
 ## Two identities, and what each is for
 
-`config_hash` is eight characters over the broker configuration's content — its symbols **and**
-its fee structure. The fee structure is in it deliberately: a fee rate moves realised P&L on every
-trade, so two runs priced differently are different runs and the record has to be able to say so.
-It once covered the instruments alone, under which reading those two runs hashed identically. It
-is empty where the broker configuration carries no identity of its own.
+`config_hash` is eight characters over the broker configuration's values — the specification of
+every symbol the configuration holds **and** its fee structure, never when a value was fetched. The
+fee structure is in it deliberately: a fee rate moves realised P&L on every trade, so two runs
+priced differently are different runs and the record has to be able to say so. A refresh that reads
+the same values keeps it; a changed value in any symbol's specification or in the fee structure
+moves it, also on a symbol the run did not trade. The account fields above — `leverage`,
+`margin_mode`, `margin_call_level`, `stopout_level`, `hedging_allowed` — are not in it: two rows
+with one `config_hash` can differ there, so compare those fields directly. Its values shifted once
+with contract 36 where the symbols carry a fetch time, as on a dynamic broker such as
+`kraken_spot`: such a row recorded before differs from a later one over the same values. A static
+broker's hash did not move. It is empty where the broker configuration carries no identity of its
+own.
 
-`broker_config_id` is where an AutoTrader session **froze** the configuration it traded with: the
-symbol specifications as the venue's cache held them, the seed's fee structure, and the fee tier
-the venue reported. That is the content the hash only digests in eight characters, so a later
-backtest of the same window can read the frozen copy instead of whatever the cache holds by then.
-It is empty on a simulation row, which reads the archive's broker files as it runs, and on a
-session recorded before contract 19 — see [the contract log](/api/v1/docs/contract-log).
+`broker_config_id` is where the run **froze** the configuration it traded with, as it stood when the
+run started, all of it: the account terms, the symbol specifications — for a live venue as its
+cache held them, which a later fetch overwrites — and the fee structure, with the venue's fee tier
+in place of the declared rates where a live session applies it. The hash digests two parts of that
+content in eight characters; the copy holds the whole of it. A session and a backtest freeze it alike;
+it is empty on a session recorded before contract 19, on a simulation row recorded before contract
+36, and where the copy could not be written — see [the contract log](/api/v1/docs/contract-log).
 
 **Neither is a handle.** No route on this API takes a configuration id as a parameter. They are
-for comparing: two rows carrying the same value executed under the same configuration.
+for comparing: two rows with the same `config_hash` traded under the same symbol specifications and
+fees, and two with the same `broker_config_id` under the same frozen copy — which also records when
+each value was fetched, so a refresh of the same values gives a new id and keeps the hash.
 
 ## When this section is absent
 

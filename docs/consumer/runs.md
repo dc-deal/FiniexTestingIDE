@@ -62,10 +62,16 @@ the first.
 
 `config_snapshot` is the configuration's **file name** — the same name
 [the directory](/api/v1/docs/directory) addresses a file by. `config_id` is the registered identity
-of that configuration's **content**: two runs naming the same id ran the same configuration, and a
-changed file mints a new one. It is empty on a run that started before that registry existed, and
-on one whose configuration could not be registered. The configuration itself is served by
-[config](/api/v1/docs/config).
+of that file's **content** as it stood when the run started: two runs naming the same id were given
+the same file, and a changed file mints a new one. It is empty on a run that started before that
+registry existed, and on one whose configuration could not be registered. The file itself is served
+by [config](/api/v1/docs/config).
+
+The same id does not mean the same settings. A parameter sweep's combinations all name the sweep's
+base file, because each combination's parameters are applied after the file is read — they are
+`sweep_params` on its row in [sweeps](/api/v1/docs/sweeps). And the application's own defaults,
+merged in under the file, are in no `config_id`. What a run keeps of each thing it used, and where,
+is on [run header](/api/v1/docs/run-header).
 
 `report_contract` is the [contract](/api/v1/docs/contract-log) number of the code that started the
 run. A later contract can add a figure that an older run serves as `0` or `null`; when this number

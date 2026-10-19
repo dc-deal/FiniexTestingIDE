@@ -228,7 +228,9 @@ session was stopped while a line was being written, that last line is left out a
 A run from before the stream existed has none, and a backtest whose scenarios never placed an
 order writes none. The answer is a 404 that names the cause, as for every section — see
 [errors](/api/v1/docs/errors). A stream written in an earlier form of the stream — before the
-venue's lines — is answered as unreadable (409) until its run is run again.
+venue's lines — is answered as unreadable (409), and stays so: the stored stream is not rewritten,
+and running the configuration again makes a new run rather than repairing this one. A run that read
+the venue as it happened cannot be repeated at all.
 
 Which of these prices are the venue's decimals and which are computed, and how to round them
 for display: [prices](/api/v1/docs/prices).

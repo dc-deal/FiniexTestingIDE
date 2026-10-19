@@ -207,6 +207,17 @@ orders on its own (`adoption_mode: auto`, or a decision logic that accounts for 
 name) is the profile's decision, made before the run, not discovered during it. A bot that rests
 nothing — market orders only — restarts the same way in both modes.
 
+**A restart runs what is on disk.** The supervisor starts the same command again, so the restarted
+session runs the code and the profile it finds at that moment, and records both in its own header.
+A real-money start refuses uncommitted code, but a clean new commit — a `git pull` between two
+restarts — passes, and the deployment history draws no line for it: it compares the strategy
+parameters, the operational settings and where the orders went, never the code. A backtest of the
+whole period runs at one commit. For a run you mean to compare, leave the checkout, your strategy's
+repository and the profile alone until it ends, or read each session's `code_identity` from its run
+header before you compare: it names the commit of every repository a component came from, while the
+ledger row names only this repository's commit and the component versions — see
+[A run is a record, and an old one stays true](../introduction_to_the_ide.md#a-run-is-a-record-and-an-old-one-stays-true).
+
 ## What the venue could do, and why it does not here
 
 Kraken offers the mirror of the ping: a dead man's timer that cancels the account's orders when

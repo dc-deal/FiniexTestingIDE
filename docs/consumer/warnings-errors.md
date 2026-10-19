@@ -158,5 +158,10 @@ from a warning row, which writes run-wide as `run`.
 
 `logged_errors` once held bare strings. A stored artifact from before the record shape no longer
 matches this model and is refused with `409 artifact_unreadable` rather than served or answered
-with a `500`. Run output is regenerated rather than migrated, so the condition is named instead of
-repaired. The full refusal vocabulary is in [errors](/api/v1/docs/errors).
+with a `500`. No migration carried the bare strings into the record shape, so the condition is
+named instead of repaired, and such a run keeps answering `409` for it. A run that replayed the
+archive can be run again, as a new run whose artifact reads; one that read the venue as it happened
+cannot be repeated. Every run old enough to hold bare strings predates `ticks_from`, so `group` on
+the [run list](/api/v1/docs/runs) tells them apart: a `simulation` run replayed the archive, an
+`autotrader` run of that age may have done either. The full refusal vocabulary is in
+[errors](/api/v1/docs/errors).

@@ -44,6 +44,7 @@ from python.framework.trading_env.abstract_trade_executor import AbstractTradeEx
 from python.framework.trading_env.broker_config import BrokerConfig
 from python.framework.trading_env.decision_trading_api import DecisionTradingApi
 from python.framework.trading_env.live.live_trade_executor import LiveTradeExecutor
+from python.framework.store.broker_config_freeze import freeze_broker_config
 from python.framework.store.run_config_store import RunConfigStore
 from python.framework.types.api.report_types import (
     DataWindow,
@@ -69,7 +70,6 @@ from python.framework.types.signal_data_types import (
 from python.framework.types.trading_env_types.broker_types import BrokerType
 from python.framework.types.trading_env_types.order_types import OrderType
 from python.framework.types.trading_env_types.stress_test_types import StressTestConfig
-from python.framework.utils.config_fingerprint_utils import to_plain
 from python.framework.utils.git_info_utils import get_git_commit
 from python.framework.validators.adapter_wiring_validator import REPLAY_TICK_SOURCE
 from python.framework.utils.run_id_utils import mint_run_id, session_key_from_run_id
@@ -518,44 +518,8 @@ def _resolve_broker_and_balances(
         balances = {}
         explicit_account_currency = None
     broker_config = create_broker_config(config, logger, balances)
-    _freeze_broker_config(broker_config, logger)
+    freeze_broker_config(broker_config, logger)
     return balances, explicit_account_currency, broker_config
-
-
-def _freeze_broker_config(broker_config: BrokerConfig, logger: ScenarioLogger) -> None:
-    """
-    Freeze the broker configuration this session trades with, as it stands at the start (#547).
-
-    What a live session trades with is assembled at boot — symbol specs from the runtime cache,
-    which a later start overwrites and nothing versions, the seed's fee structure, and the fee
-    tier the venue reports when its detection is on. Only an 8-character hash of it ever reached
-    the run; a backtest of the same window a month later would read whatever the cache holds by
-    then. The frozen copy is what makes the two comparable.
-
-    The header is already written at this point, so the id travels on the configuration object
-    into the run's broker section, and into the session log right now — the one record that
-    survives a session killed before its report.
-
-    Never fatal: a store that cannot be written costs the record, not the session.
-
-    Args:
-        broker_config: The configuration `create_broker_config` returned
-        logger: The session logger
-    """
-    try:
-        store = RunConfigStore(Path(AppConfigManager().get_run_configs_path()))
-        entry = store.register_document(
-            to_plain(broker_config.adapter.broker_config), RunConfigKind.BROKER_CONFIG)
-        store.note_run(entry.config_id)
-    except (OSError, ValueError, KeyError) as error:
-        logger.warning(
-            f'⚠️  The broker configuration could not be frozen ({type(error).__name__}: {error})'
-            f' — a backtest of this window cannot be given the configuration this session had.')
-        return
-    broker_config.set_frozen_config_id(entry.config_id)
-    logger.info(
-        f'🏦 Broker configuration frozen as broker_config {entry.config_id[:12]} '
-        f'(config_hash {broker_config.config_hash or "—"})')
 
 
 def _resolve_order_requirements(

@@ -73,6 +73,22 @@ session-end policy ([session_end_policy.md](../architecture/session_end_policy.m
 external-connection policy
 ([external_connection_policy.md](../architecture/external_connection_policy.md)).
 
+## What a session records
+
+A backtest of a session's window can only be compared with the session through what the session
+recorded of its inputs, taken when it started:
+
+- `header.json` — the profile it was given (`config_id`); what it runs with, the application
+  defaults merged in and every parameter default filled in (`rendered_config_id`); its code
+  (`code_identity`)
+- the broker configuration it trades with, frozen in the run-config store and named
+  `broker_config_id` in `io/broker.json`, beside `config_hash`
+- `io/warmup_history.json` — the bars its workers started from
+
+Why a run keeps these, and what no run records:
+[A run is a record, and an old one stays true](../introduction_to_the_ide.md#a-run-is-a-record-and-an-old-one-stays-true).
+The other files a session leaves: [autotrader_observability.md](autotrader_observability.md).
+
 ## Acceptance Testing — Live Field Study (#332)
 
 The Live Field Study is the real-money acceptance gate: an operator-driven, deterministic phase

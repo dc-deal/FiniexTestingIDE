@@ -94,7 +94,9 @@ to infer one from another:
 | Which kind of run is it? | `ticks_from` · `orders_to` — the table above |
 | Does it stand alone? | `parent_kind` · `parent_id` — the sweep or the deployment it belongs to |
 | Who started it, and where? | `origin` — channel, client, principal, host |
-| Which configuration did it run? | `config_snapshot` · `config_id` |
+| Which configuration was it given? | `config_snapshot` · `config_id` |
+| Which configuration did it run with? | `rendered_config_id` — an AutoTrader session |
+| Which code ran it? | `code_identity` |
 | What is it FOR? | `run_purpose` — `regular`; `fixture`, a run constructed to show something (every run a test starts, every run a consumer pins); `certificate`, a release-gate run |
 | Why does its configuration exist? | the configuration's own `description` |
 
@@ -105,6 +107,38 @@ and the test session refuses a run whose configuration does not. Your own config
 
 Where each of these lives, and which stores can be rebuilt, is the
 [Data Storage Layout](architecture/data_storage_layout.md).
+
+## A run is a record, and an old one stays true
+
+A result is worth keeping only while you can still say what produced it and compare it with the
+run that should match it — a real-money session and the backtest of its window are the case this
+IDE is built for. Everything a run used changes later: a commit lands, a profile is edited, a
+default moves, an import replaces archive files, a venue moves its minimum order size. So a run
+does not point at those things. It writes down, when it starts, what it used, and nothing later
+rewrites that record from the files on disk today. An old run therefore stays a true account of
+what happened, even where running it again today gives another answer — and its record says
+why.
+
+| What the run used | Where it is recorded | Kept as |
+|---|---|---|
+| the code | the header's `code_identity`: the commit of this repository and of every repository a component came from, a hash of any uncommitted change, each component's version | the commits, plus the patch that restores an uncommitted change |
+| the configuration it was given | the header's `config_id`: the scenario set or profile as written | a frozen copy; a sweep's combinations all name the base set, and what each changed is on its ledger row (`param_hash`, the strategy configuration it ran) |
+| the configuration it ran with | an AutoTrader session's `rendered_config_id`: the profile with the application defaults merged in and every parameter default filled | a frozen copy for a session; for a backtest only the ledger row's `profile_hash` over the merged simulator settings |
+| the broker configuration | the run's broker section: `broker_config_id` beside `config_hash` — the symbol specifications and fee structure it traded with, as they stood when it started | a frozen copy, for a session and a backtest alike; `config_hash` digests every symbol's specification in the configuration, traded or not, and the fee structure, so it moves when any of them changes |
+| the input data | the header's `data_windows`; on the ledger row the data's format versions, origin classes and file counts; for a session also the warmup history it started from | a description — the tick and bar files are too large to copy |
+
+What no run records is the content of the tick and bar files it read, only their kind and count:
+an import that replaces a file changes what a run made later reads. And a live session keeps no
+copy of the ticks it consumed — they exist in the collector's archive of that window, which is
+what the comparison backtest reads, counting its gaps rather than assuming it saw what the session
+saw.
+
+The mechanics stay with each part: the store in
+[Data Storage Layout](architecture/data_storage_layout.md), the code in
+[Run Origin & Code Identity](architecture/run_origin_and_code_identity.md), the data in
+[Data Provenance](architecture/data_provenance.md) and the
+[Warmup History](architecture/warmup_history.md), the broker's two identities in
+[Broker Configuration](broker_config_guide.md).
 
 ## The words
 
