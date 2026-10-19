@@ -18,6 +18,9 @@ from pathlib import Path
 from typing import List
 
 from python.configuration.test_config_loader import TestConfigLoader
+from python.framework.activities.activity_registry import ActivityRegistry
+from python.framework.types.activity_registry_types import ActivityKind
+from python.framework.types.run_origin_types import RunChannel
 
 
 @dataclass
@@ -47,6 +50,15 @@ class TestRunnerCli:
     def cmd_run(self) -> None:
         """
         Run all core test suites and print compact summary.
+        """
+        # Listed as running for as long as it runs (#603). Its pytest processes count toward it;
+        # what the tests start inside them is listed in an isolated directory, not here.
+        with ActivityRegistry().running(ActivityKind.TEST_SUITE, 'full', channel=RunChannel.CLI):
+            self._run_suites()
+
+    def _run_suites(self) -> None:
+        """
+        Discover and run every core suite, while the suite run is listed.
         """
         config = TestConfigLoader()
         excluded = config.get_excluded()

@@ -33,6 +33,37 @@ reads downwards from the version their fixtures hold until they reach the one be
 A test holds the newest heading in this log to the number the server answers with, so a version
 cannot ship without its entry.
 
+## Version 35 — 2026-10-19 (#603)
+
+What runs on the machine is served, the machine and the broker list need a grant, and a booking
+period says what it carries.
+
+- New `GET /api/v1/activities`: one row per activity running on the machine this server runs on —
+  a backtest, a parameter sweep, an AutoTrader session, an import, a discovery cache build, a test
+  suite, the server itself. A row is keyed by `activity_id`, never by a process id, and carries the
+  resident memory of its processes (`rss_bytes`, `process_count`). Beside the rows stand the
+  machine's memory and its pressure verdict, read at the same instant, and `server_activity_id`,
+  the row of the server answering.
+- `GET /api/v1/activities` and `GET /api/v1/machine-resources` sit on a new grant surface,
+  `machine`: a token reaches them with `machine:*` and is refused with 403 without it. Grants are
+  read at start-up, so a newly issued grant counts after the server restarts.
+- `GET /api/v1/brokers` moves onto the `brokers` surface: listing the brokers needs a `brokers`
+  grant, as a broker's symbols already did.
+- Every row of `GET /api/v1/brokers/{broker}/symbols` carries `tick_size`, the instrument's
+  smallest price step from the broker's configuration; null where the configuration names no such
+  symbol.
+- `from` and `to` on the bars and ATR routes accept an ISO-8601 instant only. A bare number, which
+  was read as Unix seconds — `from=2026` became `1970-01-01T00:33:46Z` — is refused with
+  `400 invalid_timestamp`; an instant without an offset is read as UTC.
+- Every booking period, a run's and a deployment's, carries what it carries beside what it did:
+  `account_max_drawdown` and `account_max_dd_pct`, the account's decline since the unit or the
+  deployment began, and `unrealized_pnl` and `open_position_count` at the seal.
+- New error `activity_registry_unreadable` (500): the list of what runs could not be read, which
+  is not the same as nothing running.
+
+A route added, two routes and the broker list behind a grant, fields added, and two parameters
+read strictly. The new route's document is [activities](/api/v1/docs/activities).
+
 ## Version 34 — 2026-10-18 (#606)
 
 A price the venue quoted or traded is now served as the decimal the venue wrote.
@@ -132,29 +163,13 @@ The machine this server runs on can be asked how full it is.
 
 A route added; no field changed its shape.
 
-## Version 30 — 2026-10-14 (#561)
-
-A venue's published history can enter the archive, and what an input file lacks is named.
-
-- `GET /api/v1/validation-checks` and the findings of a run: `spreadless_tick_data` is gone.
-  `data_no_quote` counts every input file without a quote, whatever the reason — an older
-  collector format or a venue's history that keeps no quote. New beside it: `data_no_arrival_time`,
-  `data_arrival_time_reconstructed`, `data_missing_trades` and `data_origin_external`, and
-  `data_synthetic`, which takes over the synthetic-signal warning that `signal_availability`
-  carried. A run recorded before this contract may still name `spreadless_tick_data`; the catalog
-  no longer lists it, so show the id itself.
-- `origin_classes` on a ledger row and in the scenario details may hold `external`: data no
-  collector of ours recorded, such as a venue's published history. It is never admissible for a
-  parity measurement.
-
-An id removed and a value added; no field changed its shape.
-
-## Versions 29 and earlier
+## Versions 30 and earlier
 
 One line each. Every one of these moved a shape or a meaning; what they moved is summarised here
 rather than spelled out, because a consumer this far behind needs the list of steps, not each step's
 reasoning. The full text of a compressed version is in this repository's history.
 
+- **Version 30** — 2026-10-14 (#561): A venue's published history can enter the archive, and what an input file lacks is named — `spreadless_tick_data` gives way to `data_no_quote`, with new checks `data_no_arrival_time`, `data_arrival_time_reconstructed`, `data_missing_trades`, `data_origin_external` and `data_synthetic`, and `origin_classes` may hold `external`, never admissible for a parity measurement.
 - **Version 29** — 2026-10-13 (#588): A live session that refused at its first tick is told apart from one that crashed — `refused_at_first_tick` on the `warnings-errors` outcome, `true` when the warmup history could not be completed at the first tick, `false` on every other run, on a backtest and on a run recorded before.
 - **Version 28** — 2026-10-11 (#508): A run says how many of its fills were booked at the venue's own fee and how many at our estimate — `fill_fees_by_source` on every portfolio unit row, per-currency row and aggregated `headline` (entries `venue` / `estimate` with `fill_count` and `fill_fees`; empty where nothing executed), and `fee_source` on every order-history row (null where nothing executed).
 - **Version 27** — 2026-10-11 (#508): A live fill's fee is the venue's own charge wherever the venue reports it, and every executed order event says where its fee came from — `fee_source` (`venue` or `estimate`; null on an event that executed nothing, on a fill nothing could be booked for whose venue reported no fee, and on every event recorded before it); the same fee fields from another source, so a live run before and one after can differ in fees for the same orders.

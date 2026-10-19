@@ -119,6 +119,7 @@
 
 | Document | Description |
 |----------|-------------|
+| [What Runs on This Machine](architecture/activity_registry.md) | The activity list: one entry per running activity, held by a kernel lock, with the memory its processes hold |
 | [Process Execution](process_execution_guide.md) | Subprocess architecture, ProcessPoolExecutor |
 | [Tick Processing Budget](tick_processing_budget_guide.md) | Deterministic clipping simulation, virtual clock filtering |
 | [Discovery System](discovery_system.md) | Volatility profiling, extreme moves, data coverage caching |
@@ -222,6 +223,7 @@ Each test suite has its own documentation in [`tests/`](tests/).
 | [Diagnostics CSV Sink Tests](tests/framework/diagnostics_csv_sink_tests.md) | Strategy-owned diagnostics CSV channel + flush helper |
 | [Bar Rendering Consistency](tests/framework/bar_rendering_tests.md) | BarRenderer vs VectorizedBarRenderer equivalence |
 | [Tick Parquet Reader](tests/framework/tick_parquet_reader_tests.md) | Column normalization, volume chain integration |
+| [Activity List Tests](tests/framework/activity_registry_tests.md) | The kernel lock, entering and leaving the list, a killed holder cleared, memory counted once, the seven entry points |
 | [API Endpoint Tests](tests/framework/api_endpoint_tests.md) | Health, brokers, symbols, coverage, bars, caller, token accounts — mocked, no parquet required |
 | [Path-Based Loading](tests/framework/path_based_loading_tests.md) | Worker/logic path loading, introspection, CORE integrity |
 | [Market Compatibility](tests/framework/market_compatibility_tests.md) | Worker activity metric declaration, pre-flight scenario rejection |

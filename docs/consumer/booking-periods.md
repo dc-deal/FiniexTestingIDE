@@ -52,12 +52,23 @@ read the deployment-wide route or the ledger rows behind it.
 | `opening_equity` | what the account stood at when the period opened |
 | `final_equity` | what it stood at when the period closed |
 | `min_equity` · `max_equity` · `max_drawdown` | the period's **own** band and decline |
+| `account_max_drawdown` · `account_max_dd_pct` | what the period **carries**: the account's decline so far, from the unit's start — for a session in a deployment, from the deployment's |
+| `unrealized_pnl` · `open_position_count` | what was still open when the period was sealed |
 
 `opening_equity` is the previous period's close, or a unit's first observed value. It is not
 `final_equity − net_pnl`: that subtraction drops whatever was still open.
 
-The band and the decline are the period's own, not running totals. On this table the question is
-what each period did; a cumulative figure would repeat the same number down the column.
+**A period has two kinds of figure: what it did and what it carries.** The band and the decline in
+`min_equity`, `max_equity` and `max_drawdown` are the period's own. `account_max_drawdown` is the
+account's decline up to the period's seal, so it repeats down the column until a deeper fall moves
+it — on a day that lost 1.2 % at most, the account can stand 6.8 % below its peak:
+
+```
+period 3 · net_pnl +4.10 · max_drawdown 1.2 %     — what the day did
+           account_max_dd_pct 6.8 % · 1 open, unrealized_pnl −2.30   — what it carried
+```
+
+The four carried fields are null on a period whose record does not hold them.
 
 `commission_cost`, `swap_cost`, `spread_cost` and `opening_equity` are null on a period recorded
 before contract 17, and `modelled_spread_cost` on one recorded before contract 33 — see

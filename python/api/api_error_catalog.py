@@ -98,6 +98,13 @@ QUERY_TOO_LONG = ApiErrorKind(
     "'q' must be at most {maximum} characters, got {length} — a search is a few words, and a "
     'longer one is scored against every section for nothing')
 
+# --- The machine: what runs on it --------------------------------------------------------------
+
+ACTIVITY_REGISTRY_UNREADABLE = ApiErrorKind(
+    500, 'activity_registry_unreadable',
+    'The list of what runs on this machine could not be read ({reason}) — the server cannot say '
+    'what runs, which is not the same as nothing running')
+
 # --- Identity ---------------------------------------------------------------------------------
 
 IDENTITY_UNBOUND = ApiErrorKind(
@@ -114,6 +121,7 @@ API_ERRORS: Tuple[ApiErrorKind, ...] = (
     DEPLOYMENT_NOT_FOUND, SWEEP_NOT_FOUND,
     CONFIG_FILE_NOT_FOUND,
     DOCUMENT_NOT_FOUND, EMPTY_QUERY, QUERY_TOO_LONG,
+    ACTIVITY_REGISTRY_UNREADABLE,
     IDENTITY_UNBOUND,
 )
 

@@ -39,7 +39,7 @@ from python.framework.types.api.report_types import (
 from python.framework.types.config_types.robustness_config_types import RobustnessConfig
 from python.framework.types.log_layout_types import MOUNT_BUILD_LOG, RUN_TYPE_SIMULATION
 from python.framework.types.run_config_types import RunConfigKind
-from python.framework.types.run_origin_types import CodeIdentity, RunChannel
+from python.framework.types.run_origin_types import CodeIdentity, RunChannel, RunOrigin
 from python.framework.types.scenario_types.scenario_set_types import (
     LoadedScenarioConfig,
     SingleScenario,
@@ -127,6 +127,7 @@ class ScenarioSet:
         # the run directory, so a broken host identity refuses the start without leaving behind a
         # directory shaped like a run that has no header. A mount build is not a run.
         origin = None if mount_only else build_run_origin(channel)
+        self._run_origin: Optional[RunOrigin] = origin
         self._code_identity: Optional[CodeIdentity] = None
 
         self.logger = ScenarioLogger(
@@ -211,6 +212,11 @@ class ScenarioSet:
     def run_id(self) -> str:
         """The identity this run is known by — directory name, artifact key, ledger column."""
         return self._run_id
+
+    @property
+    def run_origin(self) -> Optional[RunOrigin]:
+        """Who started this run, for whom, on which installation (#551) — None for a mount build."""
+        return self._run_origin
 
     @property
     def run_timestamp(self) -> datetime:

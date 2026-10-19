@@ -14,9 +14,8 @@ component's `name` (a decision is recorded under its type, which may be a path),
 to their repository by construction.
 """
 
-import re
-from pathlib import Path, PurePosixPath, PureWindowsPath
-from typing import List, Optional, Tuple
+from pathlib import PurePosixPath
+from typing import List, Optional
 
 from python.framework.types.api.report_types import RunHeader
 from python.framework.types.run_origin_types import (
@@ -24,10 +23,7 @@ from python.framework.types.run_origin_types import (
     ComponentIdentity,
     RepositoryState,
 )
-
-# A path written on Windows: a drive letter or a UNC share. Recognised by its shape, because the
-# header may have been written by another machine than the one serving it.
-_WINDOWS_ABSOLUTE = re.compile(r'^(?:[A-Za-z]:[\\/]|\\\\)')
+from python.framework.utils.served_path_utils import normal_path, relative_served_path
 
 
 def served_run_header(header: RunHeader) -> RunHeader:
@@ -56,22 +52,6 @@ def served_run_header(header: RunHeader) -> RunHeader:
     return header.model_copy(update={'code_identity': served})
 
 
-def _normal(path: str) -> Tuple[PurePosixPath, bool]:
-    """
-    A recorded path in one comparable form, whichever system wrote it.
-
-    Args:
-        path: The path as recorded
-
-    Returns:
-        The path with forward slashes, and whether it is absolute
-    """
-    if _WINDOWS_ABSOLUTE.match(path):
-        return PurePosixPath(PureWindowsPath(path).as_posix()), True
-    posix = PurePosixPath(Path(path).as_posix())
-    return posix, posix.is_absolute()
-
-
 def _root_of(repository: Optional[RepositoryState]) -> Optional[PurePosixPath]:
     """
     A repository's root as a path, when it states one.
@@ -84,7 +64,7 @@ def _root_of(repository: Optional[RepositoryState]) -> Optional[PurePosixPath]:
     """
     if repository is None or not repository.root:
         return None
-    return _normal(repository.root)[0]
+    return normal_path(repository.root)[0]
 
 
 def _served_repository(repository: Optional[RepositoryState],
@@ -106,8 +86,8 @@ def _served_repository(repository: Optional[RepositoryState],
     own = _root_of(repository)
     base = [framework_root] if framework_root else []
     return repository.model_copy(update={
-        'root': _relative(repository.root, base),
-        'patch_ref': _relative(repository.patch_ref, ([own] if own else []) + base),
+        'root': relative_served_path(repository.root, base),
+        'patch_ref': relative_served_path(repository.patch_ref, ([own] if own else []) + base),
     })
 
 
@@ -126,37 +106,11 @@ def _served_component(component: ComponentIdentity, roots: List[PurePosixPath],
     Returns:
         The served copy
     """
-    own = [_normal(component.repository)[0]] if component.repository else []
+    own = [normal_path(component.repository)[0]] if component.repository else []
     return component.model_copy(update={
-        'name': _relative(component.name, roots),
-        'type': _relative(component.type, roots),
-        'source_path': _relative(component.source_path, own + roots),
-        'repository': _relative(component.repository,
-                                [framework_root] if framework_root else []),
+        'name': relative_served_path(component.name, roots),
+        'type': relative_served_path(component.type, roots),
+        'source_path': relative_served_path(component.source_path, own + roots),
+        'repository': relative_served_path(component.repository,
+                                           [framework_root] if framework_root else []),
     })
-
-
-def _relative(path: Optional[str], roots: List[PurePosixPath]) -> Optional[str]:
-    """
-    A recorded path as it may leave the machine.
-
-    Args:
-        path: The path as recorded; a relative one, a bare name or a type string such as
-            `CORE/rsi` is kept as it is
-        roots: The roots to name it relative to, in order — the first that holds it wins
-
-    Returns:
-        The path relative to the first root that holds it, `.` for a root itself, or the bare
-        name when no root holds it
-    """
-    if not path:
-        return path
-    candidate, absolute = _normal(path)
-    if not absolute:
-        return path
-    for root in roots:
-        if candidate == root:
-            return '.'
-        if candidate.is_relative_to(root):
-            return candidate.relative_to(root).as_posix()
-    return candidate.name

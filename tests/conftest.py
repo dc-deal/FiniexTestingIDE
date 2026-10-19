@@ -183,6 +183,22 @@ def _isolate_config_directory(tmp_path_factory):
 
 
 @pytest.fixture(scope='session', autouse=True)
+def _isolate_activity_registry(tmp_path_factory):
+    """
+    Redirect the list of what runs on the machine (#603) to a throwaway dir for the whole session.
+
+    Every backtest and session a test starts registers itself; without this, each would appear
+    in the operator's list for as long as it runs — beside the suite that started it, which is
+    listed there already.
+    """
+    registry_dir = tmp_path_factory.mktemp('activities')
+    mp = pytest.MonkeyPatch()
+    mp.setattr(AppConfigManager, 'get_activity_registry_path', lambda self: registry_dir)
+    yield
+    mp.undo()
+
+
+@pytest.fixture(scope='session', autouse=True)
 def _isolate_run_patch_store(tmp_path_factory, request):
     """
     Redirect the run-patch store to a throwaway dir for the whole test session.

@@ -37,6 +37,17 @@ class SharedPaths(StrictConfigModel):
     config_directory: str = 'data/runtime/config_directory'
 
 
+class ActivitiesConfig(StrictConfigModel):
+    """What runs on this machine (#603)."""
+    # ONE directory per machine, outside every code tree: several checkouts or worktrees on one
+    # machine, and on a server one code tree per release tag, all list their work in it. An
+    # absolute path stands for itself; `~` is the home of the user the process runs as.
+    directory: str = '~/.finiex/activities'
+    # The environment variable whose value names the console session an activity was started
+    # from, so two people or two parallel workers on one machine are told apart. Empty: none.
+    session_env_var: str = ''
+
+
 class HistoryConfig(StrictConfigModel):
     """In-memory history retention limits (shared across both pipelines)."""
     bar_max_history: int = 1000
@@ -68,6 +79,7 @@ class AppConfig(StrictConfigModel):
     file_logging: FileLoggingConfig
     paths: SharedPaths
     history: HistoryConfig = HistoryConfig()
+    activities: ActivitiesConfig = ActivitiesConfig()
     api: ApiConfig = ApiConfig()
     docs_search: DocsSearchConfig = DocsSearchConfig()
     autotrader: AutotraderDefaultsConfig = AutotraderDefaultsConfig()

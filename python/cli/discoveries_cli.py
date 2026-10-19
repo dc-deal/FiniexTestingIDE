@@ -44,6 +44,7 @@ from python.framework.types.coverage_report_types import GapCategory
 from python.framework.types.market_types.market_volatility_profile_types import (
     SymbolVolatilityProfile,
 )
+from python.framework.types.run_origin_types import RunChannel
 
 vLog = get_global_logger()
 
@@ -332,7 +333,7 @@ class DiscoveriesCli:
         bar_index.build_index()
 
         manager = DiscoveryCacheManager()
-        results = manager.rebuild_all(force=force)
+        results = manager.rebuild_all(force=force, channel=RunChannel.CLI)
 
         print('\n' + '='*60)
         print('📊 Cache Rebuild Summary')

@@ -10,10 +10,12 @@ from typing import Optional
 
 from pydantic import BaseModel
 
+from python.framework.types.activity_registry_types import ActivityKind, ActivityState
 from python.framework.types.config_types.api_auth_config_types import AccountKind
 from python.framework.types.config_types.data_origin_config_types import OriginClass
 from python.framework.types.coverage_report_types import GapCategory
 from python.framework.types.machine_resources_types import LimitSource, PressureLevel
+from python.framework.types.run_origin_types import RunChannel
 
 
 class ApiContractResponse(BaseModel):
@@ -139,6 +141,86 @@ class MachineResourcesResponse(BaseModel):
     pressure_reasons: list[str] = []
 
 
+# What makes one activity row unique (§49): the activity's own id, never its process id, which
+# the operating system reuses and which two activities in one process share.
+ACTIVITY_ROW_KEY = ['activity_id']
+
+
+class ActivityRow(BaseModel):
+    """
+    One activity running on the machine this server runs on (#603).
+
+    Args:
+        activity_id: The activity's own id — the row's key
+        activity_kind: What kind of work it is
+        activity_state: Where it stands; `running` on every row today
+        activity_label: What it is about, for a person — a scenario set, a profile, a sweep
+        run_id: The run it writes; null where it writes none
+        sweep_id: The sweep it is; null where it is none
+        parent_activity_id: The activity it runs inside; null for a top-level one
+        pid: Its process id — information only, meaningful on this machine while it runs
+        command_line: The command that started it, every path relative to its code tree
+        started_at: When it started, ISO-8601 UTC
+        uptime_s: Seconds since then, measured on the machine's monotonic clock
+        working_tree: `.` for the code tree this server runs from, otherwise that tree's name
+        git_commit: The commit its code runs from; null where none could be read
+        origin_channel: How it was started, as on the run list
+        origin_client: The client that started it
+        origin_principal: Whom it was started for
+        origin_host: The installation it runs on
+        console_session: The console session it was started from; null where none is named
+        rss_bytes: Resident memory of its processes, each process counted once; null where it
+            could not be read, never 0 in its place
+        process_count: How many processes `rss_bytes` covers
+    """
+    activity_id: str
+    activity_kind: ActivityKind
+    activity_state: ActivityState
+    activity_label: str
+    run_id: Optional[str] = None
+    sweep_id: Optional[str] = None
+    parent_activity_id: Optional[str] = None
+    pid: int
+    command_line: str
+    started_at: str
+    uptime_s: float
+    working_tree: str
+    git_commit: Optional[str] = None
+    origin_channel: Optional[RunChannel] = None
+    origin_client: Optional[str] = None
+    origin_principal: Optional[str] = None
+    origin_host: Optional[str] = None
+    console_session: Optional[str] = None
+    rss_bytes: Optional[int] = None
+    process_count: int
+
+
+class ActivityListResponse(BaseModel):
+    """
+    What runs on the machine this server runs on, read at one instant (#603).
+
+    Args:
+        key: What makes one row unique
+        measured_at: When it was read, ISO-8601 UTC — the list, every row's memory and the
+            machine's memory are read right after it
+        machine_memory: The machine's memory, the same block `/machine-resources` serves
+        pressure_level: The verdict on that memory
+        pressure_reasons: One sentence for a person per reason; empty when the level is `ok`
+        server_activity_id: The row of the server answering; null when it is not in the list,
+            which then cannot be trusted complete
+        unreadable_activity_ids: Activities that run but whose entry this server cannot read
+        activities: The running activities, newest first
+    """
+    key: list[str] = ACTIVITY_ROW_KEY
+    measured_at: str
+    machine_memory: MachineMemoryResponse
+    pressure_level: PressureLevel
+    pressure_reasons: list[str] = []
+    server_activity_id: Optional[str] = None
+    unreadable_activity_ids: list[str] = []
+    activities: list[ActivityRow]
+
+
 class BrokerListResponse(BaseModel):
     brokers: list[str]
 
@@ -146,6 +228,10 @@ class BrokerListResponse(BaseModel):
 class SymbolInfo(BaseModel):
     symbol: str
     market_type: str
+    # The instrument's smallest price step, from the broker's configuration — what a computed
+    # price is rounded to for display (contract 35). Null where the configuration names no
+    # such symbol.
+    tick_size: Optional[float] = None
 
 
 class SymbolListResponse(BaseModel):

@@ -227,6 +227,10 @@ def _row(period) -> BookingPeriodRow:
         min_equity=period.period_min_equity,
         max_equity=period.period_max_equity,
         max_drawdown=period.period_max_drawdown,
+        account_max_drawdown=f.account_max_drawdown,
+        account_max_dd_pct=f.account_max_dd_pct,
+        unrealized_pnl=f.unrealized_pnl,
+        open_position_count=f.open_position_count,
     )
 
 
@@ -282,6 +286,11 @@ def booking_periods_from_ledger_rows(
             min_equity=row.period_min_equity or 0.0,
             max_equity=row.period_max_equity or 0.0,
             max_drawdown=row.period_max_drawdown or 0.0,
+            # What it carries: the running decline and what was open at the seal
+            account_max_drawdown=row.account_max_drawdown,
+            account_max_dd_pct=row.account_max_drawdown_pct,
+            unrealized_pnl=row.unrealized_pnl,
+            open_position_count=row.open_position_count,
         )
         for row in rows if row.period_opened_at
     ]

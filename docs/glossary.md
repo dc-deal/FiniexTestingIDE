@@ -49,6 +49,15 @@ orders still resting when a run unit's data ended. In a backtest the same orders
 open. A LIMIT sits in the limit list, a STOP or STOP_LIMIT whose trigger was not reached in the stop
 list. See *resting*.
 
+**activity** — Two meanings, always qualified by where it stands. *Something running on the
+machine*: a backtest, a sweep, an AutoTrader session, an import, a discovery cache build, the test
+suite or the API server, entered in the machine's activity list while it runs and keyed by its own
+`activity_id` (`activity_kind`, `activity_state`, `activity_label` on `/api/v1/activities`). An
+activity can be a run, but it is not one: an import or the test suite writes no run, and an
+`activity_state` is not a run outcome. And *how busy a market was* — the activity measure of a bar
+or a profile (`primary_activity_metric`, a bar's tick count). See
+[What runs on this machine](architecture/activity_registry.md).
+
 **adapter** (broker adapter) — The code that speaks one venue's API behind one interface the rest
 of the framework uses. Chosen by `adapter_type`: `mock` for the broker-neutral `MockBrokerAdapter`,
 `live` for a real venue's adapter. See [Adapter Development](user_guides/adapter/adapter_development_guide.md).
@@ -333,6 +342,11 @@ currency — the results table across runs, one fragment per run); the *closing*
 many periods, such as a deployment's total or a month's drawdown. Sealing one booking period is
 *closing a period*. See [Accounting Periods](architecture/accounting_periods.md).
 
+**layer** — Never used alone. A configuration value is *layered* by its cascade (see *cascade*);
+the *execution layer* is the code that turns an order into a fill — the executors, the portfolio and
+the pending orders; and a *drawing layer* is one switchable set of drawings on a run's chart — the
+framework's, the algo's or one worker instance's (#379) — the sense of the viewer's Layers panel.
+
 **live** — Never used alone for a kind of run. In code identifiers — `LiveTradeExecutor`,
 `ExecutorMode.LIVE`, `live_types/` — it names the live execution stack that every AutoTrader
 session runs, mock sessions included. For the kinds of run say *AutoTrader session*, *live-adapter
@@ -442,9 +456,10 @@ the only value that means real money. Recorded on every run header and every led
 deployment lists the values of its sessions, and both together mean it mixed a rehearsal with real
 money. See [Introduction](introduction_to_the_ide.md#the-kinds-of-run).
 
-**origin** (`origin`) — Who started a run: how (`cli`, `sweep`, `direct`, `api`), which client, for
-which account and on which installation — the block every run header records at its start, served
-on the run list as `origin_channel`, `origin_client`, `origin_principal` and `origin_host`. The word
+**origin** (`origin`) — Who started a run or an activity: how (`cli`, `sweep`, `direct`, `api`),
+which client, for which account and on which installation — the block every run header records at
+its start, served on the run list and the activity list as `origin_channel`, `origin_client`,
+`origin_principal` and `origin_host`. The word
 keeps this one meaning: the configuration directory row's `origin` (where a file lives), a
 feed-health episode's `origin` (real or stress-injected) and the `origin_classes` /
 `origin_evidence_grades` of a run's data (see *data origin*) are being renamed (#581, #582). See
@@ -601,7 +616,9 @@ per tick by that rule, never by one fixed offset. Not the *canonical clock* and 
 machine's own clock. See [Data Import Pipeline](data_pipeline/data_import_pipeline.md).
 
 **session** — Never used for a backtest. An *AutoTrader session* is one start of a profile; a
-*market session* is Sydney, Tokyo, London or New York.
+*market session* is Sydney, Tokyo, London or New York; a *console session* (`console_session` on
+the activity list) is the terminal session an activity was started from, where an installation
+names an environment variable that carries one.
 
 **shared fill** (`shared_by`) — An execution that several trade rows of one unit carry: a partial
 close copies the position's entry fills onto every record it produces. `shared_by` counts them

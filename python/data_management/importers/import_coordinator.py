@@ -33,8 +33,10 @@ from python.data_management.importers.tick_data_importer import TickDataImporter
 from python.data_management.index.bars_index_manager import BarsIndexManager
 from python.data_management.index.signal_index_manager import SignalIndexManager
 from python.data_management.index.tick_index_manager import TickIndexManager
+from python.framework.activities.activity_registry import ActivityRegistry
 from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.store.import_timings_store import ImportTimingsStore
+from python.framework.types.activity_registry_types import ActivityKind
 from python.framework.types.import_types.import_progress_types import (
     ImportOutcome,
     ImportPaths,
@@ -47,6 +49,7 @@ from python.framework.types.import_types.import_progress_types import (
 )
 from python.framework.types.log_layout_types import IMPORT_LOG_SUBDIR
 from python.framework.types.log_level import LogLevel
+from python.framework.types.run_origin_types import RunChannel
 from python.framework.utils.interrupt_utils import sigterm_as_interrupt
 from python.framework.utils.run_id_utils import mint_run_id
 from python.framework.utils.time_utils import format_duration
@@ -111,9 +114,13 @@ class ImportCoordinator:
         override: bool = False,
         only: Optional[ImportSection] = None,
         include_finished: bool = False,
-        show_display: bool = True
+        show_display: bool = True,
+        channel: RunChannel = RunChannel.DIRECT
     ):
         self._paths = paths
+        # How the import was started, as its entry point declares it — for its entry in the list
+        # of what runs on the machine (#603)
+        self._channel = channel
         self._override = override
         self._only = only
         self._include_finished = include_finished
@@ -163,6 +170,18 @@ class ImportCoordinator:
         A stop (Ctrl+C, SIGTERM) ends it as INTERRUPTED: the step that was running says so,
         the rest are skipped, and an interrupted render still rebuilds the bar index from the
         files that are there. A code crash ends it as FAILED and is raised after the summary.
+
+        Returns:
+            How it ended
+        """
+        # Listed as running for as long as it runs (#603), named by the id its log is named by
+        with ActivityRegistry().running(ActivityKind.IMPORT, self._import_id,
+                                        channel=self._channel):
+            return self._run()
+
+    def _run(self) -> ImportOutcome:
+        """
+        The import itself, while its activity is listed.
 
         Returns:
             How it ended

@@ -11,6 +11,7 @@ import signal
 import sys
 import time
 import traceback
+from contextlib import ExitStack
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -18,6 +19,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from python.configuration.app_config_manager import AppConfigManager
 from python.configuration.market_config_manager import MarketConfigManager
 from python.framework.acceptance_studies.abstract_acceptance_study import AbstractAcceptanceStudy
+from python.framework.activities.activity_registry import ActivityRegistry
 from python.framework.acceptance_studies.acceptance_study_setup import (
     close_acceptance_study,
     open_acceptance_study,
@@ -85,6 +87,7 @@ from python.framework.trading_env.decision_event_dispatcher import DecisionEvent
 from python.framework.trading_env.live.drift_auditor import DriftAuditor
 from python.framework.trading_env.live.live_trade_executor import LiveTradeExecutor
 from python.framework.trading_env.live.reconciler import Reconciler
+from python.framework.types.activity_registry_types import ActivityKind
 from python.framework.types.api.report_types import RunSummary
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
 from python.framework.types.autotrader_types.autotrader_result_types import AutoTraderResult
@@ -304,6 +307,9 @@ class AutotraderMain:
         # Why a signal asked the session to end, '' while none has (#348). Kept here because a
         # signal can arrive before the executor that records the request exists.
         self._signal_end_reason: str = ''
+        # The session's entry in the list of what runs on this machine (#603): opened once the
+        # run id exists, closed when run() returns or raises.
+        self._activity = ExitStack()
 
     def run(self) -> AutoTraderResult:
         """
@@ -367,6 +373,9 @@ class AutotraderMain:
         self._summary_logger = loggers.summary_logger
         self._run_dir = loggers.run_dir
         self._run_id = loggers.run_id
+        self._activity.enter_context(ActivityRegistry().running(
+            ActivityKind.AUTOTRADER_SESSION, self._config.profile_name or self._config.symbol,
+            run_id=self._run_id, origin=origin, logger=self._session_logger))
 
         self._print_startup_banner()
         self._global_logger.info(
@@ -640,6 +649,8 @@ class AutotraderMain:
             # noticed anything
             self._alert_shutdown_crash(error)
             raise
+        finally:
+            self._activity.close()
 
     def _report_abort(self, error: Exception) -> None:
         """

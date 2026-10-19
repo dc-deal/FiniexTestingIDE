@@ -49,6 +49,10 @@
     "run_patches": "run_patches",
     "config_directory": "data/runtime/config_directory"
   },
+  "activities": {
+    "directory": "~/.finiex/activities",
+    "session_env_var": ""
+  },
   "history": {
     "bar_max_history": 1000,
     "order_history_max": 10000,

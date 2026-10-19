@@ -3,6 +3,7 @@ FiniexTestingIDE - Application Configuration Loader
 Centralized app config management
 """
 
+from pathlib import Path
 from typing import Any, Dict, List
 
 from python.configuration.config_file_loader import ConfigFileLoader
@@ -360,6 +361,24 @@ class AppConfigManager:
             Path string for the run-patch store
         """
         return self._app_config.paths.run_patches
+
+    def get_activity_registry_path(self) -> Path:
+        """
+        Get the directory of what runs on this machine (#603).
+
+        Returns:
+            The registry directory, with `~` expanded
+        """
+        return Path(self._app_config.activities.directory).expanduser()
+
+    def get_activity_session_env_var(self) -> str:
+        """
+        Get the environment variable that names an activity's console session (#603).
+
+        Returns:
+            The variable's name, or '' when the installation names none
+        """
+        return self._app_config.activities.session_env_var
 
     def get_config_directory_path(self) -> str:
         """

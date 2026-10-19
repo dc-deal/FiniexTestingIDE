@@ -51,6 +51,7 @@ worse. What they *can* share is how they describe themselves.
 | 12 | `data/raw/` → `data/finished/` | **SPECIAL** | file name | none — conveyor | — |
 | 13 | `logs/global.log` | **SPECIAL** | none | none — append stream | — |
 | 14 | `user_configs/host_identity.json` | **SPECIAL** | none | none — one file, read at boot by its manager | — |
+| 15 | `~/.finiex/activities/` — one per machine, configured | **SPECIAL** | `activity_id` | none — read by its own reader | — |
 
 **Row 1d is one file, not a folder.** It is the fixture catalog's production record — which runs
 each production of a catalog entry made, and whether they carried every property — and it sits
@@ -465,6 +466,13 @@ bot's, rather than ignoring it and overwriting the successor's book.
   an input — and deleting it is not harmless: the next start mints a different identity, and every
   run header after it names another host. It lives in the workspace and is never tracked, because
   a tracked id would give every clone the same one.
+- **The activity list** (`activities.directory`, `~/.finiex/activities/` by default, #603) holds
+  one entry per activity running on the machine, each held by a kernel lock for its activity's
+  life and removed at its end; its own reader clears what a killed process left behind. Nothing in
+  it outlives its activity, so it is no record, no carry-over and no input, and it is built from no
+  store. It is one per MACHINE and lies outside every code tree, because a machine holds several
+  copies of the code and the list has to show the work of all of them. See
+  [What runs on this machine](activity_registry.md).
 
 **Not a store at all: a file the operator addresses for a reader outside the app.** The liveness
 stamp file (`operator_alerts.liveness.liveness_stamp_file`, #235) holds one UTC instant, rewritten

@@ -33,35 +33,27 @@ from python.api.endpoints import (
     deployments_router,
     directory_router,
     docs_router,
+    machine_router,
     reports_router,
     sweeps_router,
 )
 from python.configuration.app_config_manager import AppConfigManager
-from python.data_management.index.bars_index_manager import BarsIndexManager
+from python.framework.activities.activity_registry_reader import ActivityRegistryReader
 from python.framework.docs_search.docs_corpus import DOCS_ROOT
 from python.framework.docs_search.docs_search_index import docs_search_index
 from python.framework.exceptions.api_errors import ApiException
 from python.framework.types.api.api_identity_types import ApiConsumerIdentity
 from python.framework.types.api.api_types import (
     ApiContractResponse,
-    BrokerListResponse,
     CallerResponse,
     HealthResponse,
-    MachineCpuResponse,
-    MachineMemoryResponse,
-    MachineResourcesResponse,
     TimeframeInfo,
     TimeframeListResponse,
     ValidationCheckListResponse,
     ValidationCheckRow,
 )
-from python.framework.types.config_types.machine_resources_config_types import (
-    MachineResourcesConfig,
-)
-from python.framework.types.machine_resources_types import MachineResourcesReading
 from python.framework.utils.machine_resources_reader import MachineResourcesReader
 from python.framework.utils.timeframe_config_utils import TimeframeConfig
-from python.framework.validators.machine_pressure_validator import judge_memory_pressure
 from python.framework.validators.validation_check_catalog import VALIDATION_CHECKS
 
 # Every gated router and the surface its grants name. The surface is the ROUTER's name, and a
@@ -79,6 +71,7 @@ ROUTER_SURFACES = (
     (deployments_router.router, 'deployments'),
     (directory_router.router, 'directory'),
     (docs_router.router, 'docs'),
+    (machine_router.router, 'machine'),
     (reports_router.router, 'reports'),
     (sweeps_router.router, 'sweeps'),
 )
@@ -88,6 +81,7 @@ ROUTER_SURFACES = (
 # requests that carry meaning; a failed answer is still logged. A route joins when its document
 # recommends asking it in a steady rhythm (#595).
 POLLED_PATHS = frozenset({
+    '/api/v1/activities',
     '/api/v1/machine-resources',
 })
 
@@ -137,40 +131,6 @@ def _describe_caller(request: Request, enforced: bool,
         display_name=identity.account.display_name,
         grants=list(identity.grants),
         note=identity.note,
-    )
-
-
-def _describe_machine(reading: MachineResourcesReading,
-                      thresholds: MachineResourcesConfig) -> MachineResourcesResponse:
-    """
-    Serve one reading of the machine, with the pressure verdict on its memory.
-
-    Args:
-        reading: The processors and the memory, read now
-        thresholds: Where `warn` and `critical` begin
-
-    Returns:
-        The reading as served, its thresholds beside the memory they grade
-    """
-    level, reasons = judge_memory_pressure(reading.memory, thresholds)
-    return MachineResourcesResponse(
-        measured_at=reading.measured_at.isoformat(),
-        cpu=MachineCpuResponse(
-            count=reading.cpu.count,
-            count_source=reading.cpu.count_source,
-            used_pct=reading.cpu.used_pct,
-            window_s=reading.cpu.window_s,
-        ),
-        memory=MachineMemoryResponse(
-            limit_bytes=reading.memory.limit_bytes,
-            used_bytes=reading.memory.used_bytes,
-            used_pct=reading.memory.used_pct,
-            limit_source=reading.memory.limit_source,
-            warn_at_pct=thresholds.memory_warn_pct,
-            critical_at_pct=thresholds.memory_critical_pct,
-        ),
-        pressure_level=level,
-        pressure_reasons=reasons,
     )
 
 
@@ -253,6 +213,10 @@ def create_app() -> FastAPI:
         docs_url='/docs' if interactive else None,
         redoc_url='/redoc' if interactive else None,
     )
+    # What the machine routes read, built once per application (#595, #603)
+    app.state.machine_reader = machine_reader
+    app.state.machine_thresholds = machine_thresholds
+    app.state.activity_reader = ActivityRegistryReader()
 
     app.add_middleware(
         CORSMiddleware,
@@ -339,29 +303,14 @@ def create_app() -> FastAPI:
             for info in VALIDATION_CHECKS
         ])
 
-    @app.get('/api/v1/brokers', response_model=BrokerListResponse,
-             dependencies=guarded, openapi_extra=describes('market-data'))
-    def list_brokers() -> BrokerListResponse:
-        index = BarsIndexManager()
-        index.load_index()
-        return BrokerListResponse(brokers=index.list_broker_types())
-
-    # Token-only like /brokers, and for the same reason it takes no grant: it is about the
-    # CALLER, and there is no path parameter for a grant to name. Deliberately not in
-    # ROUTER_SURFACES — a surface here would be a grant a token needs in order to ask what it
+    # Token-only, and it takes no grant: it is about the CALLER — what the application says
+    # about whoever asks — and there is no path parameter for a grant to name. Deliberately not
+    # in ROUTER_SURFACES — a surface here would be a grant a token needs in order to ask what it
     # holds.
     @app.get('/api/v1/caller', response_model=CallerResponse, dependencies=guarded,
              openapi_extra=describes('server'))
     def caller(request: Request) -> CallerResponse:
         return _describe_caller(request, auth.bearer is not None, auth.identities)
-
-    # Token-only like /brokers and /caller, and for the same reason it takes no grant: it is about
-    # the machine this server runs on, and there is no path parameter for a grant to name (#595).
-    # Not open like /health: a machine's load is nothing a stranger needs to read.
-    @app.get('/api/v1/machine-resources', response_model=MachineResourcesResponse,
-             dependencies=guarded, openapi_extra=describes('server'))
-    def machine_resources() -> MachineResourcesResponse:
-        return _describe_machine(machine_reader.read(), machine_thresholds)
 
     PolledRouteAccessFilter.install(POLLED_PATHS)
 

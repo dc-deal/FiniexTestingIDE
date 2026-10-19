@@ -472,4 +472,20 @@ def build_registrations() -> Dict[StoreId, StoreDescriptor]:
                   'harmless — the next start mints a DIFFERENT identity, and every run header '
                   'after it names another host. Workspace, never tracked.'),
         ),
+        StoreId.ACTIVITIES: StoreDescriptor(
+            store_id=StoreId.ACTIVITIES,
+            kind=StoreKind.SPECIAL,
+            purpose='what runs on this machine, while it runs',
+            doc='docs/architecture/activity_registry.md#how-an-entry-lives-and-dies',
+            root=app_config.get_activity_registry_path(),
+            key='activity_id',
+            form=RetrievalForm.NONE,
+            backend=StoreBackend.DISK,
+            entry_glob='act_*.json',
+            note=("One entry per running activity (#603), held by a kernel lock for its "
+                  "activity's life and removed at its end, and read by its own reader only, which "
+                  'clears what a killed process left behind. SPECIAL, because it is none of the five kinds: nothing in it '
+                  'outlives its activity, so it is no record, no carry-over and no input, and it '
+                  'is built from no store. One directory per machine, outside every code tree.'),
+        ),
     }

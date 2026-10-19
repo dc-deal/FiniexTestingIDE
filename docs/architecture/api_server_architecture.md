@@ -110,9 +110,19 @@ unlisted until contract 22, which made them unreadable by the one consumer that 
 ## Authentication
 
 Every route but the deliberately open ones — `/api/v1/health`, `/api/v1/contract`,
-`/api/v1/timeframes` and `/api/v1/validation-checks`, each a decision the endpoint table
-explains — requires a bearer token, and
-holding a token is not the same as being entitled to what it asks for. The model is not this
+`/api/v1/timeframes` and `/api/v1/validation-checks`, each a decision the server's own document
+(`docs/consumer/server.md`) explains — requires a bearer token, and
+holding a token is not the same as being entitled to what it asks for.
+
+**Without a grant, the application only describes itself.** Open, or behind a token alone, are only
+the routes that say what the application IS — its health, its version and contract, its static
+vocabularies such as the timeframes and the check ids — and who the caller is. Everything about
+what this installation HOLDS or DOES — market data, runs, configurations, the venues it has data
+for, the machine and what runs on it — sits on a grant surface, and a list route with no path
+parameter takes its surface's floor, at least one grant on it. A route that serves data without a
+surface is a defect, never a design option, which is why the app-level routes are pinned one by one
+in `tests/framework/api/test_api_auth.py`. The rule holds for every service of this family, not
+only this one. The model is not this
 project's own: it is the shared `finiex_auth` package, installed from a pinned public tag, so the
 security vocabulary exists once rather than once per service.
 
@@ -135,6 +145,7 @@ realistic grant there — the model degrades to surface level by design.
 | `deployments` | `deployments_router` | `deployments:*`, `deployments:deploy_20260918_091413_a1b2c3d4` |
 | `directory` | `directory_router` | `directory:*` — it names the operator's own configuration files |
 | `docs` | `docs_router` | `docs:*` — the documents are one set, and a grant per document would name files rather than data |
+| `machine` | `machine_router` | `machine:*` — the machine's load and what runs on it; neither route has a path parameter |
 | `reports` | `reports_router` | `reports:*` |
 | `sweeps` | `sweeps_router` | `sweeps:*` |
 
@@ -170,12 +181,12 @@ needs its own test or nothing looks at it.
 `include_router` never reaches them. Each state is chosen rather than inherited:
 `/api/v1/timeframes` is **open** beside `/health` — the app's own static configuration, none of the
 surfaces a grant can name, and gating it would make a market-data grant the precondition for a list
-that reveals nothing about market data. `/api/v1/brokers` **requires a token** but takes no grant:
-which venues this installation carries is a fact about the installation. `/api/v1/caller` is
-token-only too: it is about the caller, and a grant needed to ask what one holds would be circular.
-`/api/v1/machine-resources` is token-only for the same two reasons as the broker list: it is about
-the machine the server runs on, which no stranger needs to read, and it has no path parameter for a
-grant to be about (#595).
+that reveals nothing about market data. `/api/v1/caller` is token-only: it is about the caller, and
+a grant needed to ask what one holds would be circular. Since contract 35 nothing else stands on
+the app: `/api/v1/brokers` moved onto the `brokers` surface — which venues this installation holds
+data for is something it holds — and `/api/v1/machine-resources` onto the `machine` surface with
+`/api/v1/activities`, because a machine's load and the work on it say what the installation does.
+Both are collection routes, so both take the floor.
 
 **For a browser client**, `CORSMiddleware` answers the `OPTIONS` preflight before routing, so the
 preflight — which carries no `Authorization`, by specification — is never gated. `expose_headers`

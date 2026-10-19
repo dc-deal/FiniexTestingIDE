@@ -119,6 +119,7 @@ from multiprocessing import Manager
 from typing import Any, Dict, List, Optional, Tuple
 
 from python.configuration.app_config_manager import AppConfigManager
+from python.framework.activities.activity_registry import ActivityRegistry
 from python.framework.batch.execution_coordinator import ExecutionCoordinator
 from python.framework.batch.live_stats_coordinator import LiveStatsCoordinator
 from python.framework.batch.mount_preparer import MountPreparer
@@ -128,6 +129,7 @@ from python.framework.exceptions.mount_errors import MountIdentityMismatchError
 from python.framework.exceptions.scenario_execution_errors import BatchExecutionError
 from python.framework.factory.decision_logic_factory import DecisionLogicFactory
 from python.framework.logging.abstract_logger import AbstractLogger
+from python.framework.types.activity_registry_types import ActivityKind
 from python.framework.types.batch_execution_types import BatchExecutionSummary, WarmupPhaseEntry
 from python.framework.types.live_types.live_stats_config_types import (
     LiveStatsExportConfig,
@@ -275,6 +277,22 @@ class BatchOrchestrator:
         the scenarios are prepped and executed against it WITHOUT reloading, as long as the data
         identity matches; a warmup-affecting swept parameter (identity mismatch) falls back to a
         cold reload for this combination.
+
+        Args:
+            mount: Optional shared data mount to reuse (#419); None → build a fresh one (cold)
+
+        Returns:
+            BatchExecutionSummary with aggregated results from all scenarios
+        """
+        # Listed as running for as long as it runs (#603); inside a sweep, under the sweep.
+        with ActivityRegistry().running(ActivityKind.BACKTEST, self.scenario_set_name,
+                                        run_id=self._scenario_set.run_id,
+                                        origin=self._scenario_set.run_origin, logger=self._logger):
+            return self._run(mount)
+
+    def _run(self, mount: Optional[MountPackage]) -> BatchExecutionSummary:
+        """
+        The batch itself, while its activity is listed.
 
         Args:
             mount: Optional shared data mount to reuse (#419); None → build a fresh one (cold)

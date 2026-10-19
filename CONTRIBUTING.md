@@ -15,6 +15,22 @@ Requirements: Docker Desktop, VS Code with the
 [Dev Containers](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers)
 extension.
 
+### Several working trees on one machine
+
+A second checkout or a `git worktree` lets two pieces of work run side by side. Three things keep
+them apart:
+
+- Place the worktree outside the repository's folder — the editor otherwise lists every file twice.
+- Run Python in it with `PYTHONPATH` set to the worktree. The dev container points `PYTHONPATH` at
+  the main checkout, and without the override a command started in the worktree imports the main
+  checkout's code, silently.
+- The data folders are tracked placeholders (`data/processed/`, `user_configs/`): keep them, and
+  link the real content inside them, or the branch records them as deleted.
+
+What runs is listed once per machine, not once per tree: `python python/cli/activity_cli.py list`
+shows the work of every checkout, each with the tree it runs from (`~/.finiex/activities` holds the
+list).
+
 ---
 
 ## Code Guidelines

@@ -1340,6 +1340,15 @@ class BookingPeriodRow(BaseModel):
     min_equity: float
     max_equity: float
     max_drawdown: float
+    # What the period CARRIES rather than what it did (contract 35): the account's decline since
+    # the unit began — for a session in a deployment, since the deployment began (#497) — and
+    # what was still open when the period was sealed. The running decline repeats down the
+    # column on purpose; the period's own band and decline stand above it. None on a period whose
+    # record does not hold them.
+    account_max_drawdown: float | None = None
+    account_max_dd_pct: float | None = None
+    unrealized_pnl: float | None = None
+    open_position_count: int | None = None
 
 
 class BookingUnitTotalRow(BaseModel):

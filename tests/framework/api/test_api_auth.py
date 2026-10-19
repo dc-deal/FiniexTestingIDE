@@ -339,10 +339,12 @@ class TestACollectionRouteIsGatedToo:
 
 class TestTheAppLevelRoutesAreADecision:
     """
-    `/timeframes` and `/brokers` are declared on the app, not on a router.
+    Without a grant, the application only describes itself — and every route says which side of
+    that line it is on.
 
-    A dependency given at `include_router` never reaches them, so they would have stayed open
-    by ACCIDENT. Both states are now chosen, and pinned here so neither drifts back:
+    A dependency given at `include_router` never reaches a route declared on the app, so an
+    app-level route would stay open by ACCIDENT. Each state is chosen, and pinned here so none
+    drifts back:
 
     - `/timeframes` is OPEN beside `/health`. It is the app's own static configuration, not
       data about a venue or a run, and it is none of the surfaces a grant can name.
@@ -350,11 +352,11 @@ class TestTheAppLevelRoutesAreADecision:
       nothing about market data.
     - `/validation-checks` is OPEN for the same reason: what a check id means is the app's own
       declaration, not data.
-    - `/brokers` requires a token. It names which venues this installation carries, which is
-      a fact about the installation. It takes no grant, because it has no path parameter for
-      one to be about.
-    - `/machine-resources` requires a token and takes no grant, for the same two reasons: the
-      machine's load is nothing a stranger needs, and there is no path parameter (#595).
+    - `/brokers` needs a `brokers` grant (contract 35). Which venues this installation holds
+      data for is something it holds; the list has no path parameter, so any grant on the
+      surface reaches it.
+    - `/machine-resources` and `/activities` need a `machine` grant (contract 35): how loaded
+      the machine is and what runs on it say what this installation does (#595, #603).
     """
 
     def test_timeframes_is_open(self):
@@ -370,30 +372,28 @@ class TestTheAppLevelRoutesAreADecision:
         client = _client(_token(token='t-any', grants=['bars:*'], note='c'))
         assert client.get('/api/v1/brokers').status_code == 401
 
-    def test_any_grant_reaches_the_broker_list(self):
+    def test_the_broker_list_is_refused_without_a_brokers_grant(self):
         client = _client(_token(token='t-any', grants=['bars:*'], note='c'))
-        assert client.get('/api/v1/brokers', headers=_headers('t-any')).status_code == 200
+        assert client.get('/api/v1/brokers', headers=_headers('t-any')).status_code == 403
 
-    def test_a_token_holding_NOTHING_still_reaches_the_broker_list(self):
-        # The test that says "deliberate". A route behind the bearer check with no declared
-        # surface looks exactly like a router whose Security(..., scopes=[...]) was forgotten
-        # — which is the failure the walk exists to catch — so without this assertion nobody
-        # can tell the choice from the omission. Named on the package author's suggestion,
-        # and on record with them: if the walk ever grows to cover collection routes, it
-        # takes an explicit list of routes that are token-only by design, and this is ours.
-        client = _client(_token(token='t-none', grants=[], note='c'))
-        assert client.get('/api/v1/brokers', headers=_headers('t-none')).status_code == 200
+    def test_any_brokers_grant_reaches_the_broker_list(self):
+        client = _client(_token(token='t-one', grants=['brokers:kraken_spot'], note='c'))
+        assert client.get('/api/v1/brokers', headers=_headers('t-one')).status_code == 200
 
-
-    def test_the_machine_resources_require_a_token(self):
+    @pytest.mark.parametrize('path', ['/api/v1/machine-resources', '/api/v1/activities'])
+    def test_the_machine_routes_require_a_token(self, path):
         client = _client(_token(token='t-any', grants=['bars:*'], note='c'))
-        assert client.get('/api/v1/machine-resources').status_code == 401
+        assert client.get(path).status_code == 401
 
-    def test_a_token_holding_NOTHING_still_reaches_the_machine_resources(self):
-        """Token-only by design, like the broker list — not a surface whose scope was forgotten."""
-        client = _client(_token(token='t-none', grants=[], note='c'))
-        assert client.get('/api/v1/machine-resources',
-                          headers=_headers('t-none')).status_code == 200
+    @pytest.mark.parametrize('path', ['/api/v1/machine-resources', '/api/v1/activities'])
+    def test_the_machine_routes_are_refused_without_a_machine_grant(self, path):
+        client = _client(_token(token='t-any', grants=['bars:*'], note='c'))
+        assert client.get(path, headers=_headers('t-any')).status_code == 403
+
+    @pytest.mark.parametrize('path', ['/api/v1/machine-resources', '/api/v1/activities'])
+    def test_a_machine_grant_reaches_the_machine_routes(self, path):
+        client = _client(_token(token='t-mach', grants=['machine:*'], note='c'))
+        assert client.get(path, headers=_headers('t-mach')).status_code == 200
 
 
 class TestTheCallerRouteSaysWhoIsCalling:

@@ -85,6 +85,7 @@ class StoreId(StrEnum):
     IMPORT_LOGS = 'import_logs'
     IMPORT_TIMINGS = 'import_timings'
     HOST_IDENTITY = 'host_identity'
+    ACTIVITIES = 'activities'
 
 
 @dataclass

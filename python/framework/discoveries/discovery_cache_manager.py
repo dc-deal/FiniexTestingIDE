@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Callable, Dict, Optional
 
 from python.configuration.app_config_manager import AppConfigManager
+from python.framework.activities.activity_registry import ActivityRegistry
 
 from python.framework.discoveries.data_coverage.data_coverage_report_cache import (
     DataCoverageReportCache,
@@ -30,6 +31,8 @@ from python.framework.discoveries.volatility_profile_analyzer.volatility_profile
 )
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.logging.bootstrap_logger import get_global_logger
+from python.framework.types.activity_registry_types import ActivityKind
+from python.framework.types.run_origin_types import RunChannel
 
 
 class DiscoveryCacheManager:
@@ -56,10 +59,33 @@ class DiscoveryCacheManager:
     def rebuild_all(
         self,
         force: bool = False,
-        on_cache_done: Optional[Callable[[int, int], None]] = None
+        on_cache_done: Optional[Callable[[int, int], None]] = None,
+        channel: RunChannel = RunChannel.DIRECT
     ) -> Dict[str, Dict[str, int]]:
         """
         Rebuild all discovery caches.
+
+        Args:
+            force: Force rebuild even if cache is valid
+            on_cache_done: Called with (caches done, cache count) after each cache family
+            channel: How the rebuild was started, as its entry point declares it (#603)
+
+        Returns:
+            Dict mapping cache name to {generated, skipped, failed} stats
+        """
+        # Listed as running for as long as it runs (#603); inside an import, under the import
+        with ActivityRegistry().running(ActivityKind.DISCOVERY_CACHE_BUILD,
+                                        'all caches, forced' if force else 'all caches',
+                                        channel=channel, logger=self._logger):
+            return self._rebuild_all(force, on_cache_done)
+
+    def _rebuild_all(
+        self,
+        force: bool,
+        on_cache_done: Optional[Callable[[int, int], None]]
+    ) -> Dict[str, Dict[str, int]]:
+        """
+        Rebuild every cache family, while the rebuild is listed.
 
         Args:
             force: Force rebuild even if cache is valid
