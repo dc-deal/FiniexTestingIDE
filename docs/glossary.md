@@ -75,7 +75,8 @@ not one per crossing. Not the *disturbance episode* a run report counts
 several of them. See [Unattended Operation](autotrader/unattended_operation.md) and, for the
 disturbance episode, [Outage Handling](user_guides/outage_handling_guide.md).
 
-**algo** — The user-authored code of a strategy, kept in `user_algos/`. See
+**algo** — The code of a strategy: its decision logic and its workers, whether shipped with the
+framework (CORE) or written by a user. A user's algos are kept in `user_algos/`. See
 [User Algo Workspace](user_guides/user_modules_and_hot_reload_mechanics.md).
 
 **archive** (tick archive) — The imported tick data a backtest and a mock session replay. The one
@@ -373,7 +374,8 @@ many periods, such as a deployment's total or a month's drawdown. Sealing one bo
 **layer** — Never used alone. A configuration value is *layered* by its cascade (see *cascade*);
 the *execution layer* is the code that turns an order into a fill — the executors, the portfolio and
 the pending orders; and a *drawing layer* is one switchable set of drawings on a run's chart — the
-framework's, the algo's or one worker instance's (#379) — the sense of the viewer's Layers panel.
+framework's, the algo's (its decision logic's own drawings) or one worker instance's (#379) — the
+sense of the viewer's Layers panel.
 
 **live** — Never used alone for a kind of run. In code identifiers — `LiveTradeExecutor`,
 `ExecutorMode.LIVE`, `live_types/` — it names the live execution stack that every AutoTrader
