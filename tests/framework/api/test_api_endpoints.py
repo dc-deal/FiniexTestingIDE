@@ -224,6 +224,19 @@ class TestSymbols:
         assert {s['symbol']: s['tick_size'] for s in data['symbols']} == {
             'BTCUSD': 0.1, 'ETHUSD': None}
 
+    def test_list_symbols_when_the_broker_configuration_cannot_be_read(self, client):
+        # The list comes from the bar index; only the price steps need the configuration
+        with (
+            patch('python.api.endpoints.broker_router.BarsIndexManager', return_value=_mock_index()),
+            patch('python.api.endpoints.broker_router.MarketConfigManager', return_value=_mock_market_config()),
+            patch('python.api.endpoints.broker_router.BrokerConfigFactory.build_broker_config',
+                  side_effect=FileNotFoundError('no such file')),
+        ):
+            r = client.get('/api/v1/brokers/kraken_spot/symbols')
+        assert r.status_code == 200
+        assert {s['symbol']: s['tick_size'] for s in r.json()['symbols']} == {
+            'BTCUSD': None, 'ETHUSD': None}
+
     def test_unknown_broker_returns_404(self, client):
         with patch('python.api.endpoints.broker_router.BarsIndexManager', return_value=_mock_index()):
             r = client.get('/api/v1/brokers/nonexistent/symbols')

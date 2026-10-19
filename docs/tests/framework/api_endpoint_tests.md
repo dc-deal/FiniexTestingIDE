@@ -15,12 +15,14 @@ Tests for all FiniexTestingIDE HTTP API endpoints. Uses `FastAPI TestClient` wit
 | `TestTimeframes` | `test_the_validation_checks_are_the_catalog` | `/validation-checks` serves exactly the check catalog, keyed on `check` |
 | `TestHealth` | `test_health_ok` | Status + version in response |
 | `TestBrokers` | `test_list_brokers` | Broker list from mocked index |
-| `TestSymbols` | `test_list_symbols` | Symbols with correct `market_type` |
+| `TestSymbols` | `test_list_symbols` | Symbols with correct `market_type`, and `tick_size` from the broker configuration — null for a symbol it does not name |
+| `TestSymbols` | `test_list_symbols_when_the_broker_configuration_cannot_be_read` | 200, every `tick_size` null — the list does not depend on the configuration |
 | `TestSymbols` | `test_unknown_broker_returns_404` | 404 + `error: broker_not_found` |
 | `TestCoverage` | `test_coverage_ok` | start/end/timeframes fields present |
 | `TestCoverage` | `test_unknown_symbol_returns_404` | 404 + `error: symbol_not_found` |
 | `TestBars` | `test_bars_ok` | OHLCV shape, correct field names |
-| `TestBars` | `test_bars_carry_the_tick_count` | `tc` per bar — the activity measure on feeds whose volume is 0.0 |
+| `TestBars` | `test_bars_carry_the_tick_count` | `tc` per bar — how busy the market was, on feeds whose volume is 0.0 |
+| `TestBars` | `test_a_bare_number_is_refused_rather_than_read_as_unix_seconds` | `from=2026` and Unix seconds: 400 + `error: invalid_timestamp` |
 | `TestBars` | `test_a_cut_response_says_that_it_was_cut` | `X-Bar-Truncated` / `Count` / `Total` / `Limit` on a capped range |
 | `TestBars` | `test_a_complete_response_says_it_was_not_cut` | the same headers on an uncut range |
 | `TestBars` | `test_every_response_states_its_own_semantics` | `X-Bar-Time-Basis` `open` · `X-Bar-Timezone` `UTC` · `X-Bar-Price-Basis` `order_driven` (the file's stamp) |
@@ -162,8 +164,8 @@ of its own before the app builds its reader.
 
 | Class | What it validates |
 |---|---|
-| `TestTheListIsWhatRunsNow` | a running activity is served with every field of the row and the answer; an ended one is not; a missing registry is 200 with an empty list; a registry that cannot be read is `500 activity_registry_unreadable`, its detail naming the fault and no path — injected, because the suite runs as root; a held entry this server cannot read is named in `unreadable_activity_ids` |
-| `TestNoPathOfTheMachineIsServed` | the command line's paths are relative to the code tree and the server's own tree is `.`; another code tree is named by its directory |
+| `TestTheListIsWhatRunsNow` | a running activity is served with every field of the row and the answer; an ended one is not; a missing registry is 200 with an empty list; a registry that cannot be read is `500 activity_registry_unreadable`, its detail naming the fault and no path — injected, because the suite runs as root — and so is a directory that cannot be resolved; one entry that is no object does not fail the list; a held entry this server cannot read is named in `unreadable_activity_ids` |
+| `TestNoPathOfTheMachineIsServed` | the command line's paths are relative to the code tree and the server's own tree is `.`; a value written with its name (`--config=/…`) is relative too; a console session named by a path leaves by its last part; another code tree is named by its directory |
 | `TestTheServerFindsItself` | `server_activity_id` is null when the server is not listed and names the server's own row when it is |
 | `TestOneInstant` | the machine's memory is served beside the rows without a full machine reading, so the processor window `/machine-resources` measures over is left as it was |
 
@@ -195,7 +197,8 @@ optional list included — so a route added tomorrow is covered the day it exist
   closing tick (a partial close books several records of one position, and two scenarios of one
   symbol both count from `pos_<symbol>_1`). Plus the pending-orders unit, keyed by its name
   (contract 19): the run-scoped walk exempts every report route, so that case is what holds the
-  declaration.
+  declaration. And an activity, keyed by its own id: two activities of one process differ in
+  nothing else.
 
 ## Mocking Strategy
 

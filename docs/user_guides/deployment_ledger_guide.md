@@ -60,9 +60,11 @@ strategy parameters halfway through — it records the change and shows it to yo
 the two halves may be compared is your job, and the history gives you what you need to do it.
 
 It is **not** a mechanism that does anything at runtime. The bot does not behave differently
-inside a deployment. What changes is that the account's risk history — the peak equity and the
-deepest decline — is carried from one session to the next, so a drawdown reported after four
-weeks describes four weeks rather than the afternoon since the last restart.
+inside a deployment, and the deployment does not carry the account's risk history either: the peak
+equity and the deepest decline travel from one session to the next whenever the profile carries
+them over, deployment or not (*And neither flag touches the account's drawdown CURVE*, below). That
+is what makes a drawdown reported after four weeks describe four weeks rather than the afternoon
+since the last restart.
 
 ---
 
@@ -150,8 +152,9 @@ The warning block is printed **above** the table on purpose. By the time a reade
 
 `net P&L` is per session: session 2 lost 12.75, and adding the column up gives the deployment's
 realised result. **The drawdown column does not work that way.** Each row carries the *running*
-worst decline against the peak the deployment has reached so far — so session 3's `-134.10` is
-the same trough session 2 already reported, not a second one. The deployment's worst decline is
+worst decline against the peak the account's curve has reached so far — across the deployment's
+sessions, and before them where the curve was carried over — so session 3's `-134.10` is the same
+trough session 2 already reported, not a second one. The deployment's worst decline is
 the **largest** figure in the column, never the sum. Adding them here would report -539.35 for a
 deployment whose account was, at worst, 212.75 down.
 
@@ -279,8 +282,9 @@ one place where the deployment and the account deliberately part company: the de
 about how records are GROUPED, the drawdown curve is about what the ACCOUNT actually did, and
 the account does not know what stood on the command line. So a probe started with `--one-off`
 still inherits the peak and the deepest decline before it, and still hands them on. Whether the
-curve survives a restart at all is a separate switch — `safety.persist_baseline` — and it is
-the only one that decides it.
+curve survives a restart at all is decided by two switches of their own: `cold_start.enabled`
+lets the session read what its predecessor left, and `safety.persist_baseline` lets it continue
+the curve from there. Both are on by default.
 
 The alternative would lose real history. Worked through with three sessions: a bot peaks at
 11.000 and falls to 9.500 (−1.500), a probe day takes it to 9.200 (−1.800), and the next

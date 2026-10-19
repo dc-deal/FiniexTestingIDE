@@ -46,7 +46,9 @@ see [errors](/api/v1/docs/errors).
 
 `tick_size` is the instrument's smallest price step, from the broker's configuration — what a price
 you computed is rounded to for display (see [prices](/api/v1/docs/prices)). It is `null` where the
-configuration names no such symbol: bars can remain for an instrument the venue has stopped listing.
+configuration names no such symbol — bars can remain for an instrument the venue has stopped
+listing — and where the broker's configuration cannot be read; the list itself does not depend on
+it.
 
 Every route here needs a grant: which venues an installation holds data for is something the
 installation holds. `/brokers` takes any grant on the `brokers` surface, because a list has no
@@ -70,10 +72,11 @@ Bars are rendered from ticks, and a period with no ticks produces **no bar**. Ga
 never zero-filled, so a chart drawn straight from the rows joins across an interruption unless you
 read the stamps.
 
-`from` and `to` are ISO-8601 instants (`2026-01-01T00:00:00Z`); one without an offset is read as
-UTC. Nothing else is accepted: a bare number is refused with `400 invalid_timestamp` rather than
-read as Unix seconds, where `from=2026` would have meant the first half hour of 1970. Rows come
-back oldest first.
+`from` and `to` are ISO-8601 instants (`2026-01-01T00:00:00Z`) or dates (`2026-01-01`, or
+`20260101` in ISO's basic format); one without an offset is read as UTC. Nothing else is accepted:
+a number that is no ISO date is refused with `400 invalid_timestamp` rather than read as Unix
+seconds — `from=2026` would have meant 00:33:46 on 1 January 1970 — and so is any other text that
+is no instant. Rows come back oldest first.
 
 ## Three things the rows cannot tell you
 

@@ -1,7 +1,7 @@
 # What runs on this machine
 
-Several things run on one machine at once — backtests, a parameter sweep, a live session, an
-import, the test suite, this server — started from different places, sometimes from different
+Several things run on one machine at once — backtests, a parameter sweep, an AutoTrader session,
+an import, the test suite, this server — started from different places, sometimes from different
 copies of the code. When memory runs out, the operating system ends one of them, and afterwards
 nobody can say which runs held what. This route says which activities run right now, who started
 them, from which code, and how much memory each one's processes hold.
@@ -73,8 +73,8 @@ lines, so nobody without a grant is shown it. `/machine-resources` takes the sam
 | `working_tree` | the code it runs from: `.` for the code this server runs from, otherwise that code tree's name | never |
 | `git_commit` | the commit its code runs from | none could be read |
 | `origin_channel` · `origin_client` · `origin_principal` · `origin_host` | who started it, the way the run list states it: through what, which client, for whom, on which installation | not recorded |
-| `console_session` | the console session it was started from, where this installation names one | none is named |
-| `rss_bytes` | the resident memory of its processes | a process could not be read — never `0` in its place |
+| `console_session` | the console session it was started from, where this installation names one; a session named by a path leaves by its last part | none is named |
+| `rss_bytes` | the resident memory of its processes | a process could not be read, or the activity's own process is gone — never `0` in its place |
 | `process_count` | how many processes `rss_bytes` covers | never |
 
 ## A row is the activity, never its process
@@ -99,13 +99,16 @@ shares pages with it, and both count them. Where any process of an activity coul
 ## Only what runs is listed
 
 An activity enters the list when it starts and leaves when it ends. One that was killed without
-leaving drops out at the next reading. So the list is never a history: what ran is
-[runs](/api/v1/docs/runs). A missing list is an empty one — nothing has started yet. A list that
-exists and cannot be read answers `500 activity_registry_unreadable`, because "could not read" is
-not "nothing runs" ([errors](/api/v1/docs/errors)).
+leaving drops out at the next reading — unless a process it forked lives on: a backtest's scenario
+workers keep its entry when the backtest is killed, and its row stays, with `rss_bytes` null,
+until they end. So the list is never a history: what ran is [runs](/api/v1/docs/runs). A missing
+list is an empty one — nothing has started yet. A list that exists and cannot be read answers
+`500 activity_registry_unreadable`, because "could not read" is not "nothing runs"
+([errors](/api/v1/docs/errors)).
 
-`unreadable_activity_ids` names activities that run but whose entry this server cannot read —
-written by a different version of the code on the same machine. They hold memory all the same.
+`unreadable_activity_ids` names entries this server cannot read or judge — written by a different
+version of the code on the same machine, or kept where this server may not look. They are left as
+they are, and they may hold memory all the same.
 
 ## One instant
 
@@ -119,12 +122,14 @@ complete.
 
 ## No path of this machine is served
 
-A command line names its paths relative to the code tree the activity runs from, and a code tree is
-`.` or a name, never a path. The layout of the machine stays on the machine.
+A command line names its paths relative to the code tree the activity runs from — the value of an
+option written as `--name=value` too — a code tree is `.` or a name, never a path, and a console
+session named by a path leaves by its last part. The layout of the machine stays on the machine.
 
 ## How often to ask
 
 Every few seconds is what this route is made for. One reading costs about a tenth of a second on
-the server, almost all of it reading the machine's process table; it touches no file of the
+the server — measured on 2026-10-19 with some 1,300 processes — almost all of it reading the
+machine's process table; it touches no file of the
 project's data. Hold the last answer and show its `measured_at`, so a reading that has stopped
 arriving is visibly old rather than silently current.

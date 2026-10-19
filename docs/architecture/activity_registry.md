@@ -21,7 +21,12 @@ holds more than one copy of the code — a second checkout, a git worktree for p
 server one code tree per release tag — and a list kept inside a tree would split silently into one
 list per tree: each would show only its own runs, and the memory the others hold would be invisible
 to it. An absolute path stands for itself, so the list stays one per machine even where the rest of
-an installation's data moves.
+an installation's data moves. The configuration refuses a relative path or an empty one: each
+process would resolve it against its own working directory, and the one list would split.
+
+`activities.session_env_var` names an environment variable whose value says which console session
+an activity was started from, so two people or two parallel workers on one machine are told
+apart. Empty, the default, records none.
 
 ## How an entry lives and dies
 
@@ -44,14 +49,26 @@ act_20261018_140211_3f9c1a7e.json   written after the lock is held, in one atomi
   activity that ended without leaving. The reader removes it only when the lock is free AND the
   process the entry names — its id and its start time — is gone, so a mount or a container on which
   the lock cannot be seen does not empty the list. A lock file with no entry beside it is an activity
-  in the moment between taking its lock and writing its entry; it is removed only once it is older
-  than a minute and free.
-- **A forked child keeps the lock.** A process the activity forks — a backtest's scenario workers —
-  shares the open lock file, so the entry stays listed while those children still run and still
-  hold memory. A program the activity starts as a new executable does not inherit it.
+  in the moment between taking its lock and writing its entry, and the temporary file of an entry is
+  one in the moment before its rename; both are removed only once they are older than a minute and
+  free.
+- **A reader touches only files that carry an activity id's prefix.** Every file of an entry begins
+  with `act_`, and the reader takes nothing else — a directory that holds other files keeps them.
+  The prefix is the whole rule: a file someone else names `act_….json` is read as an entry. An entry it cannot judge, because its lock cannot be asked about, is named as
+  unreadable and left alone; a removal that fails is left for the next reading. Only a directory
+  that cannot be listed fails a reading as a whole.
+- **A forked child shares the lock.** A process the activity forks — a backtest's scenario
+  workers — shares the open lock file, so there is one lock for all of them. When the activity
+  ends, it releases the lock for every child at once. When it is killed, the lock stays held until
+  its last child ends, and today a backtest's scenario workers do not end with a killed parent: the
+  row stays listed, with no memory counted, until they are stopped. Making them end with their
+  parent is scheduled for the next slice of #603. A program the activity starts as a new
+  executable shares nothing.
 - **Registering never ends an activity.** An entry that cannot be written costs a warning in the
-  activity's own log, and the activity runs on unlisted. An observability fault must not stop a
-  backtest, and must never end an unattended session with an exit code no supervisor restarts.
+  log the activity hands over — the global log where it hands none — and the activity runs on
+  unlisted. That holds for a home directory that cannot be resolved too: the directory is resolved
+  inside the guarded step. An observability fault must not stop a backtest, and must never end an
+  unattended session with an exit code no supervisor restarts.
 
 ## Who enters itself
 
@@ -84,29 +101,36 @@ own, and its memory is its parent's. So the rows add up without counting a proce
 
 The figure is resident memory, and it is an upper bound: a forked child still shares pages with its
 parent, and both count them. Measuring only what each process holds privately would sum correctly
-but costs several hundred times more per process. One pass over the process table yields every
-process's parent and memory — about 0.1 s with some 1,300 processes, measured on 2026-10-19 — and a
-reading never asks a process twice.
+but costs about fifteen times more per process — 0.49 s against 0.03 s over some 1,850 processes,
+measured on 2026-10-19. One pass over the process table yields every process's parent and memory —
+about 0.1 s with some 1,300 processes, measured the same day — and a reading never asks a process
+twice. A process whose activity was killed and whose parent is gone is reparented, so it counts
+toward no activity: the row of such an activity reads its memory as unknown.
 
 ## Reading the list
 
 ```
 python python/cli/activity_cli.py list
 
-  KIND                   WHAT                               SINCE      TREE             STARTED BY      MEMORY
-  sweep                  my_sweep                           14:02 UTC  release-v1.5.1   cli             7.1 GB
-  └ backtest             my_set__sweep_20261018_140200_ab12 14:31 UTC                   sweep      (in sweep)
-  test suite             full                               14:35 UTC  .                cli             3.2 GB
+  KIND                   WHAT                               SINCE (UTC) TREE             STARTED BY      MEMORY
+  test suite             full                               14:35       .                cli             3.2 GB
+  sweep                  my_sweep                           14:02       release-v1.5.1   cli             7.1 GB
+  └ backtest             my_set__sweep_20…200_ab12cd34_c003 14:31                        sweep      (in sweep)
 
   machine: 30.3 GB · 11.5 GB free (machine limit)
 ```
 
-`TREE` is `.` for the code tree the command runs from and a directory name for any other.
+The newest activity stands first, each one nested under the activity it runs inside. `SINCE` is
+the start in UTC, with its date when it lies on an earlier day; a label too long for its column
+keeps its start and its end, where a sweep's combination names itself. `TREE` is `.` for the code
+tree the command runs from and a directory name for any other.
 
-`python python/cli/activity_cli.py check --min-free-gb 8` exits 0 when at least 8 GB are free and 1
-when not, and then prints who holds the memory. It is the question a wrapper script asks before it
-starts a run. Free is the binding limit minus what is in use, the same reading the machine route
-serves.
+`python python/cli/activity_cli.py check --min-free-gb 8` exits 0 when at least 8 GB are free, and
+1 when not — and then prints who holds the memory, or why that could not be read. It exits 2 when
+it gives no answer: a usage error, or a fault before the memory could be judged. It is the question
+a wrapper script asks before it starts a run, so a list that cannot be read never changes the
+answer. Free is the binding limit minus what is in use, the same reading the machine route serves;
+a GB is 1024³ bytes, as everywhere here.
 
 Over the API the same list is `GET /api/v1/activities`, behind the `machine` grant like
 `/api/v1/machine-resources`: a row names scenario sets, profiles, run ids and command lines, which
@@ -116,9 +140,14 @@ tree are named relative to the code tree.
 ## Code
 
 - `python/framework/utils/file_lock.py` — the kernel lock
+- `python/framework/types/activity_registry_types.py` — the entry, its name rule and a reading
 - `python/framework/activities/activity_registry.py` — entering and leaving
 - `python/framework/activities/activity_registry_reader.py` — reading and clearing
 - `python/framework/activities/activity_memory_attribution.py` — which process counts toward which
   activity
+- `python/framework/activities/activity_snapshot.py` — one reading of the list and the machine, and
+  the memory check
 - `python/framework/utils/process_memory_reader.py` — one pass over the process table
+- `python/framework/validators/free_memory_validator.py` — whether enough is free
+- `python/framework/reporting/console/activity_list_summary.py` — the console list
 - `python/cli/activity_cli.py` — `list` and `check`

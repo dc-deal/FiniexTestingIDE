@@ -237,6 +237,10 @@ reductions — a rate rebuilt from its components (1 winner in 4 trades is 25 %,
 never a later period's — and a report total that SUMS the units' closing equities rather than
 taking the last row's.
 
+`TestWhatTheTableShows::test_a_period_carries_the_running_decline_and_what_was_open` pins the four
+fields a period CARRIES beside what it did (contract 35): the account's running decline and its
+share, and what was still open at the seal.
+
 ## `test_signal_report.py` — two planes, and what each may claim
 
 The largest single file after the store, because the signal section is the one that renders

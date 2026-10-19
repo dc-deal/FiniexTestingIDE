@@ -2,7 +2,10 @@
 FiniexTestingIDE - Application Configuration Types
 Top-level Pydantic model for app_config.json.
 """
+from pathlib import Path
 from typing import List
+
+from pydantic import field_validator
 
 from python.framework.types.config_types.strict_config_model import StrictConfigModel
 
@@ -46,6 +49,26 @@ class ActivitiesConfig(StrictConfigModel):
     # The environment variable whose value names the console session an activity was started
     # from, so two people or two parallel workers on one machine are told apart. Empty: none.
     session_env_var: str = ''
+
+    @field_validator('directory')
+    @classmethod
+    def _directory_stands_for_itself(cls, value: str) -> str:
+        """
+        Refuse a directory that would split the list by working directory.
+
+        Args:
+            value: The configured directory
+
+        Returns:
+            The directory, when it is absolute or starts at the home directory
+        """
+        if not value.strip():
+            raise ValueError('activities.directory is empty — name one directory per machine')
+        if not (value.startswith('~') or Path(value).is_absolute()):
+            raise ValueError(
+                f'activities.directory {value!r} is relative — each process would resolve it '
+                'against its own working directory, and the one list would split in several')
+        return value
 
 
 class HistoryConfig(StrictConfigModel):

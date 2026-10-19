@@ -179,7 +179,8 @@ class FixtureProducer:
         if entry.producer == FixtureProducerKind.SCENARIO_SET:
             run_name = self._run_scenario_set(entry.source)
         elif entry.producer == FixtureProducerKind.SWEEP:
-            sweep_ids.append(OptimizationRunner().run(str(_PROJECT_ROOT / entry.source)))
+            sweep_ids.append(OptimizationRunner().run(str(_PROJECT_ROOT / entry.source),
+                                                      channel=RunChannel.CLI))
         elif entry.producer == FixtureProducerKind.PROFILE:
             run_name = load_autotrader_config(str(_PROJECT_ROOT / entry.source)).profile_name
             self._run_profile(entry, run_name)

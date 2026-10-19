@@ -30,8 +30,9 @@ list on top of that.
 
 The kernel lock: held while its holder lives, refused to a second taker, free after a release and a
 second release harmless. Asking whether it is held never creates the file, and two readers asking
-at once do not see each other as a holder. A holder in another process is seen, and `kill -9` frees
-the lock at once.
+at once do not see each other as a holder. A lock the mount refuses (no locks on it) raises and
+leaves no descriptor open. A holder in another process is seen, and `kill -9` frees the lock at
+once.
 
 ## `test_activity_registry.py`
 
@@ -43,8 +44,18 @@ the lock at once.
   lock cannot be seen must not empty the list; one whose process is gone is removed; a lock file
   without its entry stays while it is fresh and is removed once old and free, never while held; a
   held entry this code cannot read is named unreadable; a missing directory is an empty list.
+- **A reading touches only its own files:** files the registry did not name survive a reading; an
+  old temporary entry file is removed and a fresh one stays; a path that is no directory cannot be
+  read.
+- **One entry never fails the reading:** a held entry that is no object, or one without an offset,
+  is named unreadable while the rest is listed; an entry whose lock cannot be asked about is named
+  and kept; a removal that fails is left for the next reading.
 - **Registering never ends the activity:** an unwritable registry costs one warning, and the work
-  runs.
+  runs; so does a directory that cannot be resolved, which the reader refuses as unreadable; a stop
+  between the lock and the entry leaves nothing behind; a lock that cannot be released costs a
+  warning.
+- **The configured directory stands for itself:** an empty or relative one is refused, an absolute
+  one or one at the home directory is taken.
 - **The snapshot:** the process holding a sweep counts toward the sweep, the backtest nested in it
   holds nothing of its own, and the machine's memory is read beside it.
 
@@ -57,13 +68,17 @@ never zero.
 
 ## `test_free_memory_check.py`
 
-The verdict — free is the limit minus what is used, exactly enough is enough — and the command's
-exit codes: 0 when enough is free, 1 when not, with the list of who holds the memory.
+The verdict — free is the limit minus what is used, never below zero, and exactly enough is enough
+— and the command's exit codes: 0 when enough is free, answered without reading the list; 1 when
+not, with the list of who holds the memory or why it could not be read, which never changes the
+answer; 2 when there is no answer. A size that is no size is refused. The console list shows a
+start on an earlier day with its date, and a long label keeps its end.
 
 ## `test_activity_entry_points.py`
 
-A witness wraps the registry and reads the list at the moment an entry point registers. A real
-two-combination sweep lists the sweep and its backtests one under the other, each with its origin; a
-real AutoTrader session refused at its start is listed under its run id and leaves the list. The
+A witness wraps the registry and reads the list at the moment an entry point registers. A real sweep
+over the two-by-two mini grid lists the sweep and its backtests one under the other, each with its
+origin; a real AutoTrader session refused at its start is listed under its run id, by the name every
+report gives it, and leaves the list. The
 import, the cache rebuild, the test suite and the API server are checked with their work replaced by
 a stand-in, because the work itself is not under test here. After each, the list is empty again.

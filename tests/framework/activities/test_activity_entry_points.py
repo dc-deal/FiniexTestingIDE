@@ -82,10 +82,12 @@ class TestTheRunsEnterThemselves:
             raise OSError(28, 'No space left on device')
 
         monkeypatch.setattr(autotrader_main_module, 'capture_code_identity', no_identity)
-        AutotraderMain(load_autotrader_config(PROFILE)).run()
+        config = load_autotrader_config(PROFILE)
+        AutotraderMain(config).run()
         [(kind, label, entry)] = witness
         assert kind is ActivityKind.AUTOTRADER_SESSION and entry is not None
-        assert entry.run_id and label
+        # The name every report row and the carry-over key give the session
+        assert entry.run_id and label == config.get_unit_name()
         _assert_left_no_trace(registry_dir)
 
 

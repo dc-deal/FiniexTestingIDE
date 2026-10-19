@@ -16,9 +16,9 @@ from python.api.api_error_catalog import ACTIVITY_REGISTRY_UNREADABLE, api_error
 from python.api.api_route_documents import describes
 from python.api.served_activity_list import served_activity_list
 from python.api.served_machine_resources import describe_machine
+from python.framework.activities.activity_registry import code_tree_of_this_process
 from python.framework.activities.activity_snapshot import take_activity_snapshot
 from python.framework.types.api.api_types import ActivityListResponse, MachineResourcesResponse
-from python.framework.utils.git_info_utils import get_framework_root
 
 router = APIRouter()
 
@@ -40,4 +40,4 @@ def activities(request: Request) -> ActivityListResponse:
         # The reason without the file name: no path of the machine leaves through the API
         raise api_error(ACTIVITY_REGISTRY_UNREADABLE,
                         reason=error.strerror or type(error).__name__)
-    return served_activity_list(snapshot, state.machine_thresholds, get_framework_root())
+    return served_activity_list(snapshot, state.machine_thresholds, code_tree_of_this_process())

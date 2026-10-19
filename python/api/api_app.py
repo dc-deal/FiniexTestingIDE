@@ -5,9 +5,10 @@ Read-only FastAPI application over the data and the records this project already
 data by venue, a run's persisted report sections, a sweep's ranked combinations, a live bot's
 history across its restarts. Entry point: python/cli/api_server_cli.py
 
-The routes are NOT listed here. They are one table in docs/architecture/api_server_architecture.md,
-which says for each what it serves and what it deliberately does not — a second list beside it
-would be the copy nobody updates. `ROUTER_SURFACES` below is the authoritative mount table.
+The routes are NOT listed here. What each one serves stands in the document it declares
+(`describes(...)`, served from docs/consumer/); the architecture document keeps no route table
+either, on purpose — a second list would be the copy nobody updates. `ROUTER_SURFACES` below is
+the authoritative mount table.
 """
 
 import textwrap

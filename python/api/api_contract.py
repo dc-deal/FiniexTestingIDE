@@ -48,13 +48,17 @@ CHANGES: List[str] = [
     "GET /api/v1/brokers moves onto the brokers surface: listing the brokers needs a brokers grant, "
     "as a broker's symbols already did",
     "Every row of GET /api/v1/brokers/{broker}/symbols carries tick_size, the instrument's smallest "
-    "price step from the broker's configuration; null where the configuration names no such symbol",
-    'from and to on the bars and ATR routes accept an ISO-8601 instant only: a bare number, which '
-    'was read as Unix seconds, is refused with 400 invalid_timestamp; an instant without an offset '
-    'is read as UTC',
+    "price step from the broker's configuration; null where the configuration names no such symbol "
+    'or cannot be read',
+    'from and to on the bars and ATR routes accept an ISO-8601 instant only: a number that is no '
+    'ISO date, which was read as Unix seconds, and any other text that is no instant, which '
+    'answered 422, are refused with 400 invalid_timestamp; an instant without an offset is read as '
+    "UTC, and an eight-digit date in ISO's basic format (20261019) is read as the date it is",
     "Every booking period, a run's and a deployment's, carries what it carries beside what it did: "
-    "account_max_drawdown and account_max_dd_pct, the account's decline since the unit or the "
-    "deployment began, and unrealized_pnl and open_position_count at the seal",
+    "account_max_drawdown and account_max_dd_pct, the account's decline since its equity curve "
+    "began — an AutoTrader session continues its predecessor's curve wherever its profile carries "
+    "the risk history over, whatever its deployment — and unrealized_pnl and open_position_count "
+    'at the seal',
     'New error activity_registry_unreadable (500): the list of what runs on the machine could not be '
     'read, which is not the same as nothing running',
     'New document activities',

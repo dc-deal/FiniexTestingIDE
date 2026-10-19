@@ -59,6 +59,15 @@ class MemoryReading:
     used_pct: float
     limit_source: LimitSource
 
+    def free_bytes(self) -> int:
+        """
+        What the binding limit leaves free, never below zero.
+
+        Returns:
+            The limit minus what is in use
+        """
+        return max(self.limit_bytes - self.used_bytes, 0)
+
 
 @dataclass
 class MachineResourcesReading:

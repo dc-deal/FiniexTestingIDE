@@ -124,7 +124,7 @@ tests/
 │   ├── tick_parquet_reader/  unit — parquet reader normalization
 │   ├── path_based_loading/ unit — workers and decision logics loaded by CORE name or file path
 │   ├── activities/        unit + process — the activity list (#603): the kernel lock, entering and leaving, a holder
-│   │                      killed with `kill -9` cleared, memory counted once per process, the memory check, the seven entry points
+│   │                      killed with `kill -9` cleared, memory counted once per process, the memory check, every long-running entry point
 │   ├── api/               unit — REST API endpoints
 │   ├── live_telemetry/    unit — live-telemetry frame serializer (frame_to_json, #400); every dashboard panel rendered, the progress screen and its senders, render-failure reporting (#586)
 │   ├── field_study_recorder/ unit — Field Study JSONL recorder + stream projection + certificate analyzer (#332, #566)

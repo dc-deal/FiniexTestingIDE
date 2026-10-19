@@ -8,21 +8,18 @@ minus what is in use, the same reading the machine route serves.
 
 from python.framework.types.machine_resources_types import FreeMemoryVerdict, MemoryReading
 
-_GIB = 1024 ** 3
 
-
-def judge_free_memory(memory: MemoryReading, min_free_gb: float) -> FreeMemoryVerdict:
+def judge_free_memory(memory: MemoryReading, required_bytes: int) -> FreeMemoryVerdict:
     """
-    Judge whether at least `min_free_gb` of memory is free.
+    Judge whether at least `required_bytes` of memory are free.
 
     Args:
         memory: The machine's memory reading
-        min_free_gb: What the caller needs free, in GiB
+        required_bytes: What the caller needs free
 
     Returns:
         The verdict with both figures
     """
-    free_bytes = max(memory.limit_bytes - memory.used_bytes, 0)
-    required_bytes = int(min_free_gb * _GIB)
+    free_bytes = memory.free_bytes()
     return FreeMemoryVerdict(free_bytes=free_bytes, required_bytes=required_bytes,
                              enough=free_bytes >= required_bytes)

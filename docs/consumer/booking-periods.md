@@ -51,8 +51,8 @@ read the deployment-wide route or the ledger rows behind it.
 | `modelled_spread_cost` | crossed against quotes a backtest modelled for data without one — beside `spread_cost`, the two adding up |
 | `opening_equity` | what the account stood at when the period opened |
 | `final_equity` | what it stood at when the period closed |
-| `min_equity` · `max_equity` · `max_drawdown` | the period's **own** band and decline |
-| `account_max_drawdown` · `account_max_dd_pct` | what the period **carries**: the account's decline so far, from the unit's start — for a session in a deployment, from the deployment's |
+| `min_equity` · `max_equity` · `max_drawdown` | the period's **own** band and decline, in the account's currency — the decline is an amount, and no share of it is served per period |
+| `account_max_drawdown` · `account_max_dd_pct` | what the period **carries**: the account's decline so far, as an amount and as its share, since the account's equity curve began — a backtest's start, or for an AutoTrader session the curve it continues from the session before wherever its profile carries the risk history over, whatever its deployment |
 | `unrealized_pnl` · `open_position_count` | what was still open when the period was sealed |
 
 `opening_equity` is the previous period's close, or a unit's first observed value. It is not
@@ -61,14 +61,16 @@ read the deployment-wide route or the ledger rows behind it.
 **A period has two kinds of figure: what it did and what it carries.** The band and the decline in
 `min_equity`, `max_equity` and `max_drawdown` are the period's own. `account_max_drawdown` is the
 account's decline up to the period's seal, so it repeats down the column until a deeper fall moves
-it — on a day that lost 1.2 % at most, the account can stand 6.8 % below its peak:
+it — on a day that fell 40.00 at most, the account can stand 6.8 % below its peak:
 
 ```
-period 3 · net_pnl +4.10 · max_drawdown 1.2 %     — what the day did
+period 3 · net_pnl +4.10 · max_drawdown 40.00     — what the day did
            account_max_dd_pct 6.8 % · 1 open, unrealized_pnl −2.30   — what it carried
 ```
 
-The four carried fields are null on a period whose record does not hold them.
+The four carried fields are null on a period whose record does not hold them. A run recorded
+before contract 35 stored its report without them, so its own route serves them null, while its
+deployment's route, which reads the ledger, serves what the ledger recorded for the same period.
 
 `commission_cost`, `swap_cost`, `spread_cost` and `opening_equity` are null on a period recorded
 before contract 17, and `modelled_spread_cost` on one recorded before contract 33 — see
@@ -82,8 +84,9 @@ one across the unit's periods.
 The decline needs care, because two different figures sit side by side:
 
 - `deepest_period_drawdown` — the deepest decline **within a single period**
-- `account_max_drawdown` — the account's own curve decline, cumulative from the unit's start, and
-  for a session belonging to a deployment, from the **deployment's** start
+- `account_max_drawdown` — the account's own curve decline, cumulative since its equity curve
+  began: a backtest's start, or for an AutoTrader session the curve it continues from the session
+  before wherever its profile carries the risk history over — the deployment does not decide it
 
 A fall that runs across a period boundary is deeper than any one period's own. That is why both
 exist: the first is what the table's column shows, the second is what actually happened to the

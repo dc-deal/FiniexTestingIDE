@@ -19,11 +19,11 @@ from typing import Any, Dict, List, Optional, Tuple
 from python.configuration.app_config_manager import AppConfigManager
 from python.configuration.market_config_manager import MarketConfigManager
 from python.framework.acceptance_studies.abstract_acceptance_study import AbstractAcceptanceStudy
-from python.framework.activities.activity_registry import ActivityRegistry
 from python.framework.acceptance_studies.acceptance_study_setup import (
     close_acceptance_study,
     open_acceptance_study,
 )
+from python.framework.activities.activity_registry import ActivityRegistry
 from python.framework.autotrader.startup.autotrader_data_preparer import prepare_mock_session_data
 from python.framework.autotrader.startup.autotrader_startup import (
     create_autotrader_loggers,
@@ -373,9 +373,6 @@ class AutotraderMain:
         self._summary_logger = loggers.summary_logger
         self._run_dir = loggers.run_dir
         self._run_id = loggers.run_id
-        self._activity.enter_context(ActivityRegistry().running(
-            ActivityKind.AUTOTRADER_SESSION, self._config.profile_name or self._config.symbol,
-            run_id=self._run_id, origin=origin, logger=self._session_logger))
 
         self._print_startup_banner()
         self._global_logger.info(
@@ -405,6 +402,13 @@ class AutotraderMain:
                 f'its profile but not what it ran with (#547).')
 
         try:
+            # Listed as running for as long as it runs (#603). Every end the session handles itself
+            # reaches the shutdown below, which ends the entry; a stop that ends the process
+            # before the signal handlers stand takes the lock with it
+            self._activity.enter_context(ActivityRegistry().running(
+                ActivityKind.AUTOTRADER_SESSION, self._config.get_unit_name(),
+                run_id=self._run_id, origin=origin, logger=self._session_logger))
+
             # === OPERATOR ALERTS (#235) ===
             # First, so every later refusal reaches the operator out of band. An enabled channel
             # that cannot work — a missing credential, a refused token — refuses the start here.
@@ -1427,6 +1431,10 @@ class AutotraderMain:
         ).generate_and_log()
 
         self._send_closing_alert(result, run_summary)
+
+        # The list entry ends while the session log can still take a warning from ending it; the
+        # `finally` in run() closes it again, which does nothing the second time
+        self._activity.close()
 
         # Close all loggers
         self._global_logger.info('🏁 Session complete — loggers closing')

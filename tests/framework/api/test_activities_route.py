@@ -7,6 +7,7 @@ that cannot be read refused rather than served empty.
 import json
 import os
 import sys
+from pathlib import Path
 
 import psutil
 import pytest
@@ -22,7 +23,7 @@ from python.framework.types.api.api_types import (
     ActivityRow,
     MachineMemoryResponse,
 )
-from python.framework.utils.file_lock import HeldFileLock
+from python.framework.utils.file_lock import FileLock
 from python.framework.utils.machine_resources_reader import MachineResourcesReader
 
 
@@ -50,7 +51,7 @@ def _hand_written_entry(directory, activity_id, working_tree='/somewhere', schem
         'working_tree': working_tree, 'console_session': '', 'git_commit': None,
         'origin': None, 'run_id': None, 'sweep_id': None, 'parent_activity_id': None,
     }))
-    return HeldFileLock(directory / f'{activity_id}.lock')
+    return FileLock(directory / f'{activity_id}.lock')
 
 
 class TestTheListIsWhatRunsNow:
@@ -89,6 +90,22 @@ class TestTheListIsWhatRunsNow:
         assert 'Permission denied' in response.json()['detail']
         assert '/srv' not in response.json()['detail']
 
+    def test_one_entry_that_is_no_object_does_not_fail_the_list(self, registry_dir):
+        registry_dir.mkdir()
+        (registry_dir / 'act_array.json').write_text('[]')
+        with FileLock(registry_dir / 'act_array.lock'):
+            response = _get()
+        assert response.status_code == 200
+        assert response.json()['unreadable_activity_ids'] == ['act_array']
+
+    def test_a_directory_that_cannot_be_resolved_is_refused_as_unreadable(self, monkeypatch):
+        # What the configuration answers where there is no home directory to expand `~` in
+        monkeypatch.setattr(AppConfigManager, 'get_activity_registry_path',
+                            lambda self: Path('~/.finiex/activities'))
+        response = _get()
+        assert response.status_code == 500
+        assert response.json()['error'] == 'activity_registry_unreadable'
+
     def test_a_held_entry_this_server_cannot_read_is_named(self, registry_dir):
         lock = _hand_written_entry(registry_dir, 'act_foreign', schema=99)
         try:
@@ -111,6 +128,25 @@ class TestNoPathOfTheMachineIsServed:
         assert row['working_tree'] == '.'
         assert row['command_line'] == ('python/cli/strategy_runner_cli.py run --set '
                                        'configs/my_set.json')
+
+    def test_a_value_written_with_its_name_is_relative_too(self, registry_dir, monkeypatch):
+        root = os.getcwd()
+        monkeypatch.setattr(sys, 'argv', [f'{root}/python/cli/autotrader_cli.py', 'run',
+                                          f'--config={root}/configs/my_bot.json',
+                                          '--secrets=/home/someone/private/keys.json'])
+        with ActivityRegistry().running(ActivityKind.AUTOTRADER_SESSION, 'my_bot'):
+            [row] = _get().json()['activities']
+        assert row['command_line'] == ('python/cli/autotrader_cli.py run '
+                                       '--config=configs/my_bot.json --secrets=keys.json')
+
+    def test_a_console_session_named_by_a_path_leaves_by_its_last_part(self, registry_dir,
+                                                                       monkeypatch):
+        monkeypatch.setattr(AppConfigManager, 'get_activity_session_env_var',
+                            lambda self: 'TMUX')
+        monkeypatch.setenv('TMUX', '/tmp/tmux-0/default,1234,0')
+        with ActivityRegistry().running(ActivityKind.IMPORT, 'x'):
+            [row] = _get().json()['activities']
+        assert row['console_session'] == 'default,1234,0'
 
     def test_another_code_tree_is_named_by_its_directory(self, registry_dir):
         lock = _hand_written_entry(registry_dir, 'act_release',

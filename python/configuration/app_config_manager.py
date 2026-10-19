@@ -367,9 +367,14 @@ class AppConfigManager:
         Get the directory of what runs on this machine (#603).
 
         Returns:
-            The registry directory, with `~` expanded
+            The registry directory with `~` expanded; where no home directory can be resolved, as
+            configured — a relative path, which the registry's writer and reader refuse to use
         """
-        return Path(self._app_config.activities.directory).expanduser()
+        directory = Path(self._app_config.activities.directory)
+        try:
+            return directory.expanduser()
+        except RuntimeError:
+            return directory
 
     def get_activity_session_env_var(self) -> str:
         """

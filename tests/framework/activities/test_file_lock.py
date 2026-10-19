@@ -3,6 +3,7 @@ The kernel lock the activity list rests on (#603): held while its holder lives, 
 dies — however it dies.
 """
 
+import errno
 import os
 import signal
 import subprocess
@@ -12,7 +13,8 @@ import textwrap
 import pytest
 
 from python.framework.exceptions.file_lock_errors import FileLockHeldError
-from python.framework.utils.file_lock import HeldFileLock, is_lock_held
+from python.framework.utils import file_lock as file_lock_module
+from python.framework.utils.file_lock import FileLock, is_lock_held
 
 
 def _hold_in_child(path):
@@ -21,8 +23,8 @@ def _hold_in_child(path):
         import sys, time
         sys.path.insert(0, {os.getcwd()!r})
         from pathlib import Path
-        from python.framework.utils.file_lock import HeldFileLock
-        lock = HeldFileLock(Path({str(path)!r}))
+        from python.framework.utils.file_lock import FileLock
+        lock = FileLock(Path({str(path)!r}))
         print('held', flush=True)
         time.sleep(60)
     ''')
@@ -35,19 +37,19 @@ class TestAHolderHoldsTheLock:
 
     def test_a_taken_lock_is_held_and_a_released_one_is_not(self, tmp_path):
         path = tmp_path / 'a.lock'
-        lock = HeldFileLock(path)
+        lock = FileLock(path)
         assert is_lock_held(path)
         lock.release()
         assert not is_lock_held(path)
 
     def test_a_second_taker_is_refused_while_the_first_holds(self, tmp_path):
         path = tmp_path / 'a.lock'
-        with HeldFileLock(path):
+        with FileLock(path):
             with pytest.raises(FileLockHeldError):
-                HeldFileLock(path)
+                FileLock(path)
 
     def test_a_second_release_does_nothing(self, tmp_path):
-        lock = HeldFileLock(tmp_path / 'a.lock')
+        lock = FileLock(tmp_path / 'a.lock')
         lock.release()
         lock.release()
 
@@ -61,6 +63,21 @@ class TestAHolderHoldsTheLock:
         path.touch()
         assert not is_lock_held(path)
         assert not is_lock_held(path)
+
+
+class TestALockThatCannotBeTaken:
+
+    def test_a_mount_without_locks_leaves_no_descriptor_open(self, tmp_path, monkeypatch):
+        """ENOLCK and its kin raise as they are — and the file opened for them is closed."""
+        def no_locks_here(descriptor, operation):
+            raise OSError(errno.ENOLCK, 'No locks available')
+
+        monkeypatch.setattr(file_lock_module.fcntl, 'flock', no_locks_here)
+        open_before = len(os.listdir('/proc/self/fd'))
+        with pytest.raises(OSError) as refused:
+            FileLock(tmp_path / 'x.lock')
+        assert refused.value.errno == errno.ENOLCK
+        assert len(os.listdir('/proc/self/fd')) == open_before
 
 
 class TestTheLockDiesWithItsHolder:
@@ -80,4 +97,4 @@ class TestTheLockDiesWithItsHolder:
         child.send_signal(signal.SIGKILL)
         child.wait()
         assert not is_lock_held(path)
-        HeldFileLock(path).release()
+        FileLock(path).release()

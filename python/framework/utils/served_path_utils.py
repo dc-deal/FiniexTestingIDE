@@ -17,6 +17,10 @@ from typing import List, Optional, Tuple
 # record may have been written by another machine than the one serving it.
 _WINDOWS_ABSOLUTE = re.compile(r'^(?:[A-Za-z]:[\\/]|\\\\)')
 
+# A name written together with its value in one argument: `--config=/app/configs/x.json`, or
+# `CONFIG=/app/configs/x.json`. The name holds no slash, so a path with `=` in it stays whole.
+_OPTION_WITH_VALUE = re.compile(r'^((?:--?)?[A-Za-z][\w-]*)=(.+)$')
+
 
 def normal_path(path: str) -> Tuple[PurePosixPath, bool]:
     """
@@ -58,3 +62,25 @@ def relative_served_path(path: Optional[str], roots: List[PurePosixPath]) -> Opt
         if candidate.is_relative_to(root):
             return candidate.relative_to(root).as_posix()
     return candidate.name
+
+
+def served_command_argument(argument: str, roots: List[PurePosixPath]) -> str:
+    """
+    One command-line argument as it may leave the machine.
+
+    A path is named the way `relative_served_path` names it, and so is the value written in one
+    argument with its name: `--config=/app/configs/x.json` leaves as `--config=configs/x.json`.
+    Any other argument is kept as written.
+
+    Args:
+        argument: The argument as the process received it
+        roots: The roots to name a path relative to, in order
+
+    Returns:
+        The argument as served
+    """
+    option = _OPTION_WITH_VALUE.match(argument)
+    if option is not None:
+        return f'{option.group(1)}={served_command_argument(option.group(2), roots)}'
+    # Only a bare root has no name to be reduced to, and it names nothing of the machine
+    return relative_served_path(argument, roots) or argument

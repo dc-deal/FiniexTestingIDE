@@ -8,20 +8,21 @@ with the last open descriptor of its holder: a normal exit, an exception, `kill 
 2026-10-14 (#598): it holds on this container's bridged disk as on its own, it takes 2.6 ms there
 against 0.02 ms, and it is free again at once after `kill -9`.
 
-A child the holder FORKS shares the open descriptor and with it the lock, so the lock is free only
-once the holder and every such child are gone. A program the holder EXECS does not: the file is
-opened close-on-exec.
+A child the holder FORKS shares the open descriptor and with it the one lock. If the holder dies,
+the lock stays held until every such child is gone; if the holder releases it, it is free for all
+of them at once. A program the holder EXECS shares nothing: the file is opened close-on-exec.
 """
 
 import fcntl
 import os
 from pathlib import Path
-from typing import Optional, Self
+from types import TracebackType
+from typing import Optional, Self, Type
 
 from python.framework.exceptions.file_lock_errors import FileLockHeldError
 
 
-class HeldFileLock:
+class FileLock:
     """
     An exclusive lock on a file, held until it is released or its holder ends.
     """
@@ -42,6 +43,10 @@ class HeldFileLock:
         except BlockingIOError:
             os.close(descriptor)
             raise FileLockHeldError(path)
+        except OSError:
+            # A mount without locks (ENOLCK, EOPNOTSUPP): the descriptor must not outlive the try
+            os.close(descriptor)
+            raise
         self._descriptor = descriptor
 
     def get_path(self) -> Path:
@@ -71,7 +76,8 @@ class HeldFileLock:
     def __enter__(self) -> Self:
         return self
 
-    def __exit__(self, exc_type, exc, traceback) -> None:
+    def __exit__(self, exc_type: Optional[Type[BaseException]], exc: Optional[BaseException],
+                 traceback: Optional[TracebackType]) -> None:
         self.release()
 
 

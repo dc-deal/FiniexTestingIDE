@@ -51,13 +51,17 @@ period says what it carries.
   grant, as a broker's symbols already did.
 - Every row of `GET /api/v1/brokers/{broker}/symbols` carries `tick_size`, the instrument's
   smallest price step from the broker's configuration; null where the configuration names no such
-  symbol.
-- `from` and `to` on the bars and ATR routes accept an ISO-8601 instant only. A bare number, which
-  was read as Unix seconds — `from=2026` became `1970-01-01T00:33:46Z` — is refused with
-  `400 invalid_timestamp`; an instant without an offset is read as UTC.
+  symbol or cannot be read.
+- `from` and `to` on the bars and ATR routes accept an ISO-8601 instant only. A number that is no
+  ISO date, which was read as Unix seconds — `from=2026` became `1970-01-01T00:33:46Z` — and any
+  other text that is no instant, which answered `422`, are refused with `400 invalid_timestamp`. An
+  instant without an offset is read as UTC, and an eight-digit date in ISO's basic format
+  (`20261019`) is an ISO date and read as one.
 - Every booking period, a run's and a deployment's, carries what it carries beside what it did:
-  `account_max_drawdown` and `account_max_dd_pct`, the account's decline since the unit or the
-  deployment began, and `unrealized_pnl` and `open_position_count` at the seal.
+  `account_max_drawdown` and `account_max_dd_pct`, the account's decline since its equity curve
+  began — an AutoTrader session continues its predecessor's curve wherever its profile carries the
+  risk history over, whatever its deployment — and `unrealized_pnl` and `open_position_count` at
+  the seal.
 - New error `activity_registry_unreadable` (500): the list of what runs could not be read, which
   is not the same as nothing running.
 

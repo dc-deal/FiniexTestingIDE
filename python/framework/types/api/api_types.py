@@ -141,8 +141,9 @@ class MachineResourcesResponse(BaseModel):
     pressure_reasons: list[str] = []
 
 
-# What makes one activity row unique (§49): the activity's own id, never its process id, which
-# the operating system reuses and which two activities in one process share.
+# What makes one activity row unique, declared beside the list so a consumer cannot key on the wrong
+# field: the activity's own id, never its process id, which the operating system reuses and which
+# two activities in one process share.
 ACTIVITY_ROW_KEY = ['activity_id']
 
 

@@ -10,9 +10,14 @@ import subprocess
 import sys
 import textwrap
 import time
+from pathlib import Path
 
 import psutil
+import pytest
 
+from python.configuration.app_config_manager import AppConfigManager
+from python.framework.activities import activity_registry as activity_registry_module
+from python.framework.activities import activity_registry_reader as reader_module
 from python.framework.activities.activity_registry import ActivityRegistry
 from python.framework.activities.activity_registry_reader import ActivityRegistryReader
 from python.framework.activities.activity_snapshot import take_activity_snapshot
@@ -21,7 +26,8 @@ from python.framework.types.activity_registry_types import (
     ActivityKind,
     ActivityState,
 )
-from python.framework.utils.file_lock import HeldFileLock
+from python.framework.types.config_types.app_config_types import ActivitiesConfig
+from python.framework.utils.file_lock import FileLock
 from python.framework.utils.machine_resources_reader import MachineResourcesReader
 
 
@@ -56,17 +62,18 @@ def _register_in_child(directory, label):
     raise AssertionError('the child never registered')
 
 
-def _write_entry(directory, activity_id, pid, process_started_at, schema=ACTIVITY_ENTRY_SCHEMA):
+def _write_entry(directory, activity_id, pid, process_started_at, schema=ACTIVITY_ENTRY_SCHEMA,
+                 started_at='2026-10-19T08:00:00+00:00', overrides=None):
     """Write an entry file by hand, the way a writer that died would have left it."""
     directory.mkdir(parents=True, exist_ok=True)
     (directory / f'{activity_id}.json').write_text(json.dumps({
         'schema_version': schema, 'activity_id': activity_id, 'activity_kind': 'backtest',
         'activity_state': 'running', 'activity_label': 'by hand', 'pid': pid,
         'process_started_at': process_started_at, 'command_line': ['x'],
-        'started_at': '2026-10-19T08:00:00+00:00', 'started_monotonic': 1.0,
+        'started_at': started_at, 'started_monotonic': 1.0,
         'working_tree': '/somewhere', 'console_session': '', 'git_commit': None,
         'origin': None, 'run_id': None, 'sweep_id': None, 'parent_activity_id': None,
-    }))
+    } | (overrides or {})))
 
 
 class TestAnEntryIsListedWhileItRuns:
@@ -157,7 +164,7 @@ class TestAKilledActivityIsClearedAndOnlyThen:
         old = time.time() - 120
         free, held = registry_dir / 'act_free.lock', registry_dir / 'act_held.lock'
         free.touch()
-        with HeldFileLock(held):
+        with FileLock(held):
             os.utime(free, (old, old))
             os.utime(held, (old, old))
             ActivityRegistryReader().read()
@@ -166,7 +173,7 @@ class TestAKilledActivityIsClearedAndOnlyThen:
 
     def test_a_held_entry_this_code_cannot_read_is_named_unreadable(self, registry_dir):
         _write_entry(registry_dir, 'act_foreign', os.getpid(), 0.0, schema=99)
-        with HeldFileLock(registry_dir / 'act_foreign.lock'):
+        with FileLock(registry_dir / 'act_foreign.lock'):
             listing = ActivityRegistryReader().read()
         assert listing.entries == []
         assert listing.unreadable_activity_ids == ['act_foreign']
@@ -175,7 +182,165 @@ class TestAKilledActivityIsClearedAndOnlyThen:
         assert ActivityRegistryReader().read().entries == []
 
 
+class TestAReadingTouchesOnlyItsOwnFiles:
+
+    def test_files_the_registry_did_not_name_survive_a_reading(self, registry_dir):
+        registry_dir.mkdir()
+        foreign = ['notes.txt', 'package.json', 'poetry.lock', 'settings.json']
+        (registry_dir / 'package.json').write_text('{}')
+        (registry_dir / 'settings.json').write_text('[]')
+        (registry_dir / 'poetry.lock').write_text('')
+        (registry_dir / 'notes.txt').write_text('')
+        an_hour_ago = time.time() - 3600
+        os.utime(registry_dir / 'poetry.lock', (an_hour_ago, an_hour_ago))
+        with ActivityRegistry().running(ActivityKind.IMPORT, 'beside them') as activity_id:
+            listing = ActivityRegistryReader().read()
+        assert [entry.activity_id for entry in listing.entries] == [activity_id]
+        assert sorted(path.name for path in registry_dir.iterdir()) == foreign
+
+    def test_an_old_temporary_entry_file_is_removed_and_a_fresh_one_stays(self, registry_dir):
+        registry_dir.mkdir()
+        old = registry_dir / '.act_old.json.a1b2c3.tmp'
+        fresh = registry_dir / '.act_fresh.json.d4e5f6.tmp'
+        old.write_text('{')
+        fresh.write_text('{')
+        two_minutes_ago = time.time() - 120
+        os.utime(old, (two_minutes_ago, two_minutes_ago))
+        ActivityRegistryReader().read()
+        assert not old.exists()
+        assert fresh.exists()
+
+    def test_a_path_that_is_no_directory_cannot_be_read(self, registry_dir):
+        registry_dir.write_text('a file where the directory should be')
+        with pytest.raises(OSError):
+            ActivityRegistryReader().read()
+
+
+class TestOneEntryNeverFailsTheReading:
+
+    def test_a_held_entry_that_is_no_object_is_named_and_the_rest_is_listed(self, registry_dir):
+        registry_dir.mkdir()
+        (registry_dir / 'act_array.json').write_text('[]')
+        with FileLock(registry_dir / 'act_array.lock'):
+            with ActivityRegistry().running(ActivityKind.IMPORT, 'readable') as activity_id:
+                listing = ActivityRegistryReader().read()
+        assert [entry.activity_id for entry in listing.entries] == [activity_id]
+        assert listing.unreadable_activity_ids == ['act_array']
+
+    def test_a_held_entry_without_an_offset_is_named_rather_than_sorted(self, registry_dir):
+        _write_entry(registry_dir, 'act_naive', os.getpid(), psutil.Process().create_time(),
+                     started_at='2026-10-19T08:00:00')
+        with FileLock(registry_dir / 'act_naive.lock'):
+            with ActivityRegistry().running(ActivityKind.IMPORT, 'aware') as activity_id:
+                listing = ActivityRegistryReader().read()
+        assert [entry.activity_id for entry in listing.entries] == [activity_id]
+        assert listing.unreadable_activity_ids == ['act_naive']
+
+    @pytest.mark.parametrize('field', [
+        {'pid': -1}, {'pid': 'x'}, {'pid': float('inf')}, {'pid': 2 ** 40},
+        {'command_line': [None]}, {'activity_label': 5}, {'process_started_at': 'x'},
+        {'started_monotonic': float('nan')}, {'run_id': 7}, {'origin': ['not', 'an', 'object']},
+    ])
+    def test_a_held_entry_with_a_field_of_another_type_is_named(self, registry_dir, field):
+        """A foreign file names its own fields; one of them must not fail the list."""
+        _write_entry(registry_dir, 'act_malformed', os.getpid(), psutil.Process().create_time(),
+                     overrides=field)
+        with FileLock(registry_dir / 'act_malformed.lock'):
+            with ActivityRegistry().running(ActivityKind.IMPORT, 'well formed') as activity_id:
+                listing = ActivityRegistryReader().read()
+        assert [entry.activity_id for entry in listing.entries] == [activity_id]
+        assert listing.unreadable_activity_ids == ['act_malformed']
+
+    def test_an_entry_whose_lock_cannot_be_asked_about_is_named_and_kept(self, registry_dir,
+                                                                         monkeypatch):
+        _write_entry(registry_dir, 'act_theirs', os.getpid(), psutil.Process().create_time() - 5.0)
+        asks = reader_module.is_lock_held
+
+        def refused(path):
+            if path.name == 'act_theirs.lock':
+                raise PermissionError(13, 'Permission denied')
+            return asks(path)
+
+        monkeypatch.setattr(reader_module, 'is_lock_held', refused)
+        listing = ActivityRegistryReader().read()
+        assert listing.entries == []
+        assert listing.unreadable_activity_ids == ['act_theirs']
+        assert (registry_dir / 'act_theirs.json').exists()
+
+    def test_a_removal_that_fails_is_left_for_a_later_reading(self, registry_dir, monkeypatch):
+        _write_entry(registry_dir, 'act_dead', os.getpid(), psutil.Process().create_time() - 5.0)
+        unlink = Path.unlink
+        refusing = [True]
+
+        def refused(path, missing_ok=False):
+            if refusing[0] and path.name == 'act_dead.json':
+                raise PermissionError(13, 'Permission denied')
+            return unlink(path, missing_ok=missing_ok)
+
+        monkeypatch.setattr(Path, 'unlink', refused)
+        listing = ActivityRegistryReader().read()
+        assert (listing.entries, listing.unreadable_activity_ids) == ([], [])
+        assert (registry_dir / 'act_dead.json').exists()
+        refusing[0] = False
+        ActivityRegistryReader().read()
+        assert not (registry_dir / 'act_dead.json').exists()
+
+
 class TestRegisteringNeverEndsTheActivity:
+
+    def test_a_directory_that_cannot_be_resolved_costs_a_warning(self, monkeypatch):
+        # What the configuration answers where there is no home directory to expand `~` in
+        monkeypatch.setattr(AppConfigManager, 'get_activity_registry_path',
+                            lambda self: Path('~/.finiex/activities'))
+        warnings = _Warnings()
+        with ActivityRegistry().running(ActivityKind.AUTOTRADER_SESSION, 'bot',
+                                        logger=warnings) as activity_id:
+            assert activity_id is None
+        assert 'cannot be resolved' in warnings.messages[0]
+        with pytest.raises(OSError):
+            ActivityRegistryReader().read()
+        assert not Path('~').exists()
+
+    def test_a_stop_between_the_lock_and_the_entry_leaves_nothing_behind(self, registry_dir,
+                                                                        monkeypatch):
+        def stopped(path, text):
+            raise KeyboardInterrupt
+
+        monkeypatch.setattr(activity_registry_module, 'write_text_atomic', stopped)
+        with pytest.raises(KeyboardInterrupt):
+            with ActivityRegistry().running(ActivityKind.IMPORT, 'stopped'):
+                pass
+        assert list(registry_dir.iterdir()) == []
+
+    def test_a_failed_write_whose_lock_cannot_be_released_never_ends_the_activity(
+            self, registry_dir, monkeypatch):
+        def unwritable(path, text):
+            raise OSError(28, 'No space left on device')
+
+        def unreleasable(lock):
+            raise OSError('stuck')
+
+        monkeypatch.setattr(activity_registry_module, 'write_text_atomic', unwritable)
+        monkeypatch.setattr(FileLock, 'release', unreleasable)
+        warnings = _Warnings()
+        ran = []
+        with ActivityRegistry().running(ActivityKind.IMPORT, 'x', logger=warnings) as activity_id:
+            ran.append(activity_id)
+        assert ran == [None]
+        assert 'Activity not listed' in warnings.messages[0]
+
+    def test_a_lock_that_cannot_be_released_costs_a_warning(self, registry_dir, monkeypatch):
+        release = FileLock.release
+
+        def release_then_fail(lock):
+            release(lock)
+            raise OSError('stuck')
+
+        monkeypatch.setattr(FileLock, 'release', release_then_fail)
+        warnings = _Warnings()
+        with ActivityRegistry().running(ActivityKind.IMPORT, 'x', logger=warnings):
+            pass
+        assert any('not released' in message for message in warnings.messages)
 
     def test_an_unwritable_registry_costs_a_warning_and_the_work_runs(self, tmp_path):
         blocked = tmp_path / 'not_a_directory'
@@ -188,6 +353,18 @@ class TestRegisteringNeverEndsTheActivity:
         assert ran == [None]
         assert len(warnings.messages) == 1
         assert 'Activity not listed' in warnings.messages[0]
+
+
+class TestTheConfiguredDirectoryStandsForItself:
+
+    @pytest.mark.parametrize('directory', ['', '   ', 'data/runtime/activities', 'activities'])
+    def test_an_empty_or_relative_directory_is_refused(self, directory):
+        with pytest.raises(ValueError):
+            ActivitiesConfig(directory=directory)
+
+    @pytest.mark.parametrize('directory', ['~/.finiex/activities', '/srv/finiex/activities'])
+    def test_an_absolute_or_home_directory_is_taken(self, directory):
+        assert ActivitiesConfig(directory=directory).directory == directory
 
 
 class TestTheSnapshotCountsMemoryOnce:
