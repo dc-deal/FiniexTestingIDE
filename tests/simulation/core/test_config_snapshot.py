@@ -18,7 +18,7 @@ no matter who started it.
 
 import json
 from pathlib import Path
-from typing import Tuple
+from typing import Iterator, Tuple
 
 import pytest
 
@@ -37,7 +37,7 @@ SCENARIO_SET = 'backtesting/multi_position_test.json'
 
 
 @pytest.fixture(scope='module')
-def harness() -> Tuple[ScenarioSet, BatchExecutionSummary]:
+def harness() -> Iterator[Tuple[ScenarioSet, BatchExecutionSummary]]:
     """
     A run started the way the benchmark harness starts one: ScenarioSet + orchestrator, directly.
 
@@ -49,7 +49,8 @@ def harness() -> Tuple[ScenarioSet, BatchExecutionSummary]:
     scenario_set = ScenarioSet(ScenarioConfigLoader().load_config(SCENARIO_SET), app_config,
                                reporting=RunReporting.NONE)
     summary = BatchOrchestrator(scenario_set, app_config).run()
-    return scenario_set, summary
+    yield scenario_set, summary
+    scenario_set.close_loggers()
 
 
 @pytest.fixture(scope='module')

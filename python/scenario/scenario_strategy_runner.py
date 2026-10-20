@@ -178,6 +178,7 @@ def initialize_batch_and_run(
     Returns:
         The BatchExecutionSummary, or None if the run failed at startup
     """
+    scenario_set: Optional[ScenarioSet] = None
     try:
         # ScenarioSet creates its own loggers internally
         scenario_set = ScenarioSet(
@@ -228,5 +229,10 @@ def initialize_batch_and_run(
             'Unexpected error during strategy test',
             exception=e
         )
+
+    finally:
+        # Nothing writes to the set's own log files after its report, or after a failed run.
+        if scenario_set is not None:
+            scenario_set.close_loggers()
 
     return None

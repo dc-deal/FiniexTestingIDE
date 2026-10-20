@@ -273,7 +273,9 @@ class TestTheScenarioSetStatesBoth:
     def _build(**kwargs) -> RunHeader:
         config = ScenarioConfigLoader().load_config(_SCENARIO_SET)
         scenario_set = ScenarioSet(config, AppConfigManager(), **kwargs)
-        return read_run_header(scenario_set.logger.get_log_dir() / RUN_HEADER_ARTIFACT)
+        header = read_run_header(scenario_set.logger.get_log_dir() / RUN_HEADER_ARTIFACT)
+        scenario_set.close_loggers()
+        return header
 
     def test_code_that_does_not_declare_a_channel_is_direct(self, captured):
         header = self._build()

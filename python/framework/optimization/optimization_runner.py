@@ -103,7 +103,11 @@ class OptimizationRunner:
             # goes flat into the sweep directory instead of leaving a run-shaped one.
             base_set = ScenarioSet(base, self._app_config, sweep_id=sweep_id,
                                    mount_only=True, channel=RunChannel.SWEEP)
-            mount = BatchOrchestrator(base_set, self._app_config).build_mount()
+            try:
+                mount = BatchOrchestrator(base_set, self._app_config).build_mount()
+            finally:
+                # The build is the base set's only work: nothing writes to its log after it.
+                base_set.close_loggers()
             if not mount.scenario_packages:
                 # Data-level failure (invalid window / missing data) — invariant across every
                 # combination → abort the whole sweep, nothing ran (§35).

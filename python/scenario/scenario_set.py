@@ -258,6 +258,16 @@ class ScenarioSet:
             write_system_version_parameters(system_info_logger)
             system_info_logger.close(flush_buffer=True)
 
+    def close_loggers(self) -> None:
+        """
+        Close the set's own log files — its run log and its summary — once nothing writes to them.
+        A sweep builds one set per combination in one process, so a set that leaves its files open
+        leaves two open files per combination.
+        """
+        self.logger.close()
+        if self.printed_summary_logger is not None:
+            self.printed_summary_logger.close()
+
     def get_valid_scenarios(self) -> List[SingleScenario]:
         """Get all scenarios that passed validation."""
         return [scenario for scenario in self._scenarios if scenario.is_valid()]
