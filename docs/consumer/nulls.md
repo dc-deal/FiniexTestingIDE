@@ -14,13 +14,18 @@ The rule underneath all three: **a value that does not exist is null, never `0` 
 empty string.** A zero read as a value and an empty string read as a name are the two mistakes
 that cannot be undone further down, because by then they look like data.
 
-**One route does not hold to it yet, and it is worth knowing before you write a renderer.** The
-configuration directory (`/api/v1/directory` and its detail route) answers with the empty string
-where a value is absent — a scenario set has no bot id, a window that is open has no end, a file
-that never ran has no last run. Seven fields on a directory row behave this way. Treat `""` there
-as absence, exactly as you treat `null` elsewhere; everywhere else in this API the rule above
-holds, apart from a few fields on records older than them — the end of *Not recorded* below names
-them.
+**A few fields do not hold to it yet, and they are worth knowing before you write a renderer.**
+The configuration directory (`/api/v1/directory` and its detail route) answers with the empty
+string where a value is absent — a scenario set has no bot id, a window that is open has no end, a
+file that never ran has no last run. Seven fields on a directory row behave this way. Other
+sections have such fields too, and each document names its own — such as a fill's `timestamp` on
+[trade history](/api/v1/docs/trade-history), `window_end` and the provenance fields on
+[signal](/api/v1/docs/signal), `first_tick_time` · `last_tick_time` and the two error fields on
+[scenario details](/api/v1/docs/scenario-details), `drawdown_carried_from` on
+[portfolio](/api/v1/docs/portfolio), and `stale_to` on [feed stability](/api/v1/docs/feed-stability),
+empty while the source never recovered. Wherever a document says a field is empty, treat `""` as
+absence, exactly as you treat `null` elsewhere. A few fields on records older than them answer
+with a value instead — the end of *Not recorded* below names them.
 
 ## Not applicable: the figure has no meaning here
 

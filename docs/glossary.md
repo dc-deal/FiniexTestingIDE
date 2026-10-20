@@ -413,6 +413,13 @@ ignorable by design. Not the *warning count*. See [Warnings & Errors](architectu
 order that waited too long for its fill is asked about. See [Order
 events](consumer/order-events.md).
 
+**mark** — Never used alone. A *valuation mark* is what an open position is worth at the price
+it is marked at — an `unrealized_pnl` is a valuation mark, not a result (see *plane*: the
+valuation plane). A deployment's *change marks* say what changed from one session to the next: the
+strategy, the operation, or where the orders went. A *chart mark* is something drawn on a run's
+chart: the framework's trades and levels, read from the record routes, or an algo's or a worker's
+drawing (#379).
+
 **market clock** — Not a term here: see *canonical clock* for the clock a decision reads, and
 *tick timespan* for the market time a unit processed.
 
@@ -632,6 +639,12 @@ money — the order guard's refusals and cooldown, the circuit breaker's soft bl
 the risk baseline across a restart — in a sequence of sessions called *stages*, and certifies each
 rule live, offline or as waiting for a margin account. See
 [Security Study](tests/security_cert/security_cert_guide.md).
+
+**segment** — In the drawing channel (#379), a price held from one time to another: `from`, `to`,
+`price`. A span of time with no price is not a segment. Until contract 12 the API served a booking
+period's fields as `segment_*`; they are `period_*` since, and parts of the code still call a period
+a segment. Not a *route segment*, one part of a URL path, such as `trade-history` in
+`/api/v1/docs/trade-history`.
 
 **seq** · **submitted_seq** (on an order event) — `seq` numbers a run unit's order events and IS the
 order of the stream; never sort by time instead, because several steps often carry the same instant.

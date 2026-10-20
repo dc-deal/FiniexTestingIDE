@@ -103,7 +103,9 @@ and a run that was never meant to write one look identical. [Run kinds](/api/v1/
 has the three cases side by side.
 
 A run with no artifacts at all exists as logs only, which is a legitimate state and not an
-omission.
+omission. A backtest stopped while it wrote its report is the exception: the sections written
+before the stop are on disk and served, though `artifacts` names none of them and its `results`
+stay null.
 
 ## `stream_files` — the run's streams
 

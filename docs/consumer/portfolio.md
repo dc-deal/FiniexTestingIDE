@@ -131,7 +131,7 @@ month of restarts — and nothing in the amount itself says so. Three fields say
 |---|---|
 | `drawdown_carried_from` | where the inherited curve came from; **empty** means this unit began its own |
 | `drawdown_restarts` | how many restarts the curve has been carried across |
-| `drawdown_started_at` | when the curve began — not when it was last handed over |
+| `drawdown_started_at` | when the curve began — not when it was last handed over. It is wall-clock time, taken when the unit began measuring: in a backtest when its scenario valued its first tick — after the run started, and different for each scenario — never an instant of the replayed data |
 
 An empty `drawdown_carried_from` is always the case in a backtest: a scenario starts its own
 curve.
@@ -155,7 +155,7 @@ tick could price, so the figure is the balance alone with the holding counted at
 understatement this section exists to remove. Do not present it as a valuation.
 
 Each open position carries `position_id`, `direction`, `lots`, `entry_price`, `entry_time`,
-`last_price`, `unrealized_pnl` and `valued`. `unrealized_pnl` here is a **mark, not a result**: it
+`last_price`, `unrealized_pnl` and `valued`. `unrealized_pnl` here is a **valuation mark, not a result**: it
 is what the position was worth at the last tick. `valued` says whether there was a tick to value
 it at all — a start that aborted before the first one carries the entry price and no valuation
 rather than an invented number.
@@ -211,8 +211,10 @@ the row.
 That is why the row names its figures the way it does:
 
 - **`final_equity` is null over several accounts.** The one-account figure has nothing to
-  describe there. The sum stands beside it as `total_final_equity`, next to the capital it started
-  from, `total_initial_balance`.
+  describe there. The sum stands beside it as `total_final_equity`, next to
+  `total_initial_balance`, the cash in the account currency the accounts started with. At spot a
+  starting holding of the base asset is not in it, so the two do not subtract to a result —
+  `net_profit` is the realised result, and `unrealized_pnl` beside it what was still open.
 - **The drawdown trio is the deepest account's**, never a sum, and `account_max_drawdown_unit`
   names which account that was. The amount, the peak it fell from (`max_equity`) and the share
   (`account_max_dd_pct`) all come from that same account — one account's decline shown over

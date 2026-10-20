@@ -46,7 +46,7 @@ the session in a live run — and it is the join into every other section.
 | `entry_type` | how the position was opened — `market`, `limit`, `stop`, `stop_limit` |
 | `entry_side` · `exit_side` | `buy` or `sell` — what each end actually did |
 | `entry_tick_index` · `exit_tick_index` | the chronological sort key within the unit |
-| `stop_loss` · `take_profit` | the levels that were set, null where none was |
+| `stop_loss` · `take_profit` | the levels in force when this row's close was booked — after any move, not the levels at entry; null where none was |
 | `currency` | the account currency every money figure on the row is in |
 | `close_type` | `full` or `partial` — whether this row closed all of the position or part of it |
 | `entry_lots` | the position's size when it opened |
@@ -93,6 +93,10 @@ forex, `tick` on crypto.
 `r_multiple` is the result in units of what the trade risked: `net_pnl` over the loss the stop
 would have taken. It is **null when the trade had no stop loss** — there is nothing to divide by,
 so R is undefined rather than zero. See [nulls](/api/v1/docs/nulls).
+
+The stop it divides by is the one standing when the row was closed. Where a strategy moved its
+stop while the position was open, `r_multiple` is therefore not the R the trade was entered with,
+and a stop moved to the entry price leaves it null.
 
 ## Slippage, and when it was not measurable
 

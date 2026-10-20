@@ -37,8 +37,8 @@ period was sealed, so a session restarted a number instead of continuing it.
 run booked, the shown one included.
 
 They differ on a multi-currency run, and deliberately: a sum across currencies is not a number.
-The rows keep everything, the totals name their one currency. To see another currency's periods,
-read the deployment-wide route or the ledger rows behind it.
+A run's table holds the rows of the shown currency only. A deployment's route holds the rows of
+every currency it booked; a backtest's other currencies are not served yet.
 
 ## What one period says
 
