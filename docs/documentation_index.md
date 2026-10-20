@@ -10,6 +10,7 @@
 | [CLI Tools Guide](cli_tools_guide.md) | All CLI commands with examples and workflow overview |
 | [Worker Naming](user_guides/worker_naming_doc.md) | Worker reference system, path-based loading, requirements contract |
 | [Algo State Persistence](user_guides/algo_state_persistence_guide.md) | Restart-safe algo memory — snapshot/restore hooks, staleness, JSON contract |
+| [Reading the Results Ledger](user_guides/results_ledger_guide.md) | What one ledger row is, which of its numbers add up, and what changes between one account and several |
 | [Robustness Validation](user_guides/robustness_validation_guide.md) | Multi-window + In-Sample/Out-of-Sample overfit guard — roles, WFE, distribution, trust gate (#367) |
 | [Trend Channel Reference](user_guides/trend_channel_reference_guide.md) | Didactic full-order-surface reference strategy — LIMIT/STOP entries, SL/TP, trailing, partial close, multi-position (#118) |
 

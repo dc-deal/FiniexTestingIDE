@@ -10,7 +10,9 @@ This page is the overview. It says what each period is anchored to, what it rese
 pipeline has it. It does NOT explain the swap arithmetic (that is
 [swap_cost_model.md](../trading_realism/swap_cost_model.md), including DST and triple swap) and it
 does not describe the stores themselves (that is
-[data_storage_layout.md](data_storage_layout.md)).
+[data_storage_layout.md](data_storage_layout.md)). How the rows read once they are written — which
+numbers add up, over one account and over several — is
+[Reading the Results Ledger](../user_guides/results_ledger_guide.md).
 
 ## The periods
 

@@ -100,7 +100,7 @@ exposure. See [Capital and Safety](autotrader/autotrader_capital_and_safety.md).
 basis*, *signal basis*, *time basis*, *trade window basis* — each below.
 
 **booking period** — One sealed period of one run unit, bounded by the market's trading day and
-numbered from 1; the ledger holds one row per booking period and currency. In code
+numbered from 1; the ledger holds one row per booking period, in its account's currency. In code
 `BookingPeriod` and `period_no`. See [Accounting Periods](architecture/accounting_periods.md).
 
 **broker** (`broker_type`) — Our configuration entry for one venue and product in
@@ -186,6 +186,13 @@ opening time plus its timeframe's duration lies at or before that instant. A bar
 the instant its period opens but known only when it ends, so a bar that *opened* before a start is
 not therefore complete at it — the bar holding the start opened before it and closes after. See
 [Warmup History](architecture/warmup_history.md).
+
+**composite** — Several separate accounts read as one result. What happened in them adds up and
+the ratios are recomputed from the added parts; a reading of one account (`final_equity`,
+`unrealized_pnl`) has no answer across them. The term is the one the Global Investment Performance
+Standards (GIPS) use, where a composite holds the accounts managed to one strategy. The scenarios
+of one backtest run are folded this way. See
+[Reading the Results Ledger](user_guides/results_ledger_guide.md).
 
 **compute basis** — When a worker recomputes: `live` on every tick (the forming bar included) or
 `bar_close` only when a bar closes. Not a kind of run. See [Worker Naming](user_guides/worker_naming_doc.md).
@@ -408,10 +415,11 @@ from the store's own entries. See [Data Storage Layout](architecture/data_storag
 `venue` — and, on a cancel request in the order-event stream, who asked for it. See *end reason*.
 
 **journal · ledger · closing** — The three bookkeeping levels. The *journal* is every booking in
-order (the trade records); the *ledger* holds the period summaries (one row per booking period and
-currency — the results table across runs, one fragment per run); the *closing* is the figures over
-many periods, such as a deployment's total or a month's drawdown. Sealing one booking period is
-*closing a period*. See [Accounting Periods](architecture/accounting_periods.md).
+order (the trade records); the *ledger* holds the period summaries (one row per booking period, in
+its account's currency — the results table across runs, one fragment per run); the *closing* is
+the figures over many periods, such as a deployment's total or a month's drawdown. Sealing one
+booking period is *closing a period*. See [Accounting Periods](architecture/accounting_periods.md)
+and [Reading the Results Ledger](user_guides/results_ledger_guide.md).
 
 **layer** — Never used alone. A configuration value is *layered* by its cascade (see *cascade*);
 the *execution layer* is the code that turns an order into a fill — the executors, the portfolio and

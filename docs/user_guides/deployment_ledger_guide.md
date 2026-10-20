@@ -355,7 +355,8 @@ happened, never the state itself.
 A row used to be one session. It is now one **booking period** of one unit — for an AutoTrader
 session, one trading day of that session. A thirty-day run therefore leaves thirty rows instead of one,
 and the deployment view reads them as what they are: a column you can walk down until the day
-something happened.
+something happened. Which of a row's numbers add up across those days, and which do not, is in
+[Reading the Results Ledger](results_ledger_guide.md).
 
 That is not a reporting preference. It is the reason the run exists: the thirty-day deployment on a
 real account is a **parity proof**, and afterwards the same period is backtested and the divergence measured.
