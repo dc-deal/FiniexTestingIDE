@@ -212,16 +212,11 @@ def _create_live_broker_config_dynamic(
 
     # === Fetch account balances (no fallback — must succeed for live) ===
     # Currencies come from the symbol's authoritative base/quote (#265) — the profile declares no
-    # balances; the broker provides the real amounts.
+    # balances; the broker provides the real amounts. The read runs under the broker's ladder and
+    # raises ConnectionGaveUpError when the venue does not answer within its budget (#598).
     spec = broker_config.get_symbol_specification(config.symbol)
     for currency in (spec.base_currency, spec.quote_currency):
         balance = fetcher.fetch_account_balance(currency)
-        if balance is None:
-            raise ConnectionError(
-                f"Could not fetch account balance for '{currency}' from Kraken API. "
-                f"A live-adapter session requires a confirmed balance. "
-                f"Check API credentials and account permissions."
-            )
         logger.info(f'💰 Live balance: {balance} {currency}')
         print(f'  ▸ Live balance: {balance} {currency}')
         balances[currency] = balance

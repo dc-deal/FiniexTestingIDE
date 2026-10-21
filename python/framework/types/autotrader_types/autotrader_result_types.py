@@ -26,7 +26,7 @@ from python.framework.types.performance_types.performance_stats_types import (
 from python.framework.types.portfolio_types.portfolio_aggregation_types import PortfolioStats
 from python.framework.types.portfolio_types.portfolio_trade_record_types import TradeRecord
 from python.framework.types.portfolio_types.portfolio_types import Position
-from python.framework.types.run_outcome_types import RunOutcome
+from python.framework.types.run_outcome_types import TRANSIENT_START_EXIT_CODE, RunOutcome
 from python.framework.types.signal_data_types import SignalResolutionStats
 from python.framework.types.trading_env_types.active_orders_snapshot_types import (
     ActiveOrdersSnapshot,
@@ -83,9 +83,13 @@ class AutoTraderResult:
             exception did — the cause as a code, beside the sentence
         refused_at_first_tick: The session stopped at its first tick, before that tick's workers
             and decision ran, because the venue's warmup history could not be completed there
-            (#588). A refusal rather than a crash, and shown as one; still graded FAILED, so
-            whoever relaunches sessions relaunches it. The executor's stop and take-profit check
-            of that tick runs before the refusal, so a close may have been sent
+            (#588). A refusal rather than a crash, and shown as one; still graded FAILED, and its
+            cause is passing, so the process exits 75 and a supervisor relaunches it (#598). The
+            executor's stop and take-profit check of that tick runs before the refusal, so a
+            close may have been sent
+        start_failure_transient: The start failed for a passing cause — an external system that
+            did not answer within its budget, or the refusal at the first tick — so the process
+            exits 75, which a supervisor restarts after its pause, instead of 2 (#598)
         cold_start_situation: What the boot step found at the venue (#355 / #493). None for
             a simulation, a dry run and a Field Study — the three cases with nothing to find.
             Captured raw; the report model is derived from it
@@ -127,6 +131,7 @@ class AutoTraderResult:
     emergency_reason: Optional[str] = None
     emergency_error_type: Optional[str] = None
     refused_at_first_tick: bool = False
+    start_failure_transient: bool = False
     session_logger_buffer: List[LogRecord] = field(default_factory=list)
     cold_start_situation: Optional[ColdStartSituation] = None
     cold_start_verdict: Optional[ColdStartVerdict] = None
@@ -186,7 +191,13 @@ class AutoTraderResult:
         """
         Process exit code for this session outcome.
 
+        A failed start for a passing cause is still graded FAILED — the run did not happen — but
+        exits 75 rather than 2, so a supervisor starts it again instead of leaving it down.
+
         Returns:
             The outcome's exit code, so a supervisor reads the run result
         """
-        return self.get_outcome().get_exit_code()
+        outcome = self.get_outcome()
+        if outcome is RunOutcome.FAILED and self.start_failure_transient:
+            return TRANSIENT_START_EXIT_CODE
+        return outcome.get_exit_code()

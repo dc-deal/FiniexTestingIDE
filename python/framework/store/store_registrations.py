@@ -15,6 +15,7 @@ from typing import Dict
 
 from python.configuration.app_config_manager import AppConfigManager
 from python.configuration.autotrader.kraken_config_fetcher import RUNTIME_CACHE_BASE
+from python.configuration.data_home import resolve_in_data_home, workspace_path
 from python.configuration.import_config_manager import ImportConfigManager
 from python.data_management.index.bars_index_manager import BarsIndexManager
 from python.data_management.index.signal_index_manager import SignalIndexManager
@@ -47,7 +48,7 @@ from python.framework.store.run_config_index import RUN_CONFIG_INDEX_FILE, RunCo
 from python.framework.store.run_patch_store import PATCH_SUFFIX
 from python.framework.store.store_descriptor import StoreDescriptor
 from python.framework.types.activity_registry_types import ACTIVITY_ID_PREFIX
-from python.framework.types.config_types.host_identity_config_types import HOST_IDENTITY_FILE
+from python.framework.types.config_types.host_identity_config_types import HOST_IDENTITY_FILE_NAME
 from python.framework.types.log_layout_types import GLOBAL_LOG_FILE, IMPORT_LOG_SUBDIR
 from python.framework.types.store_types import (
     DISCOVERY_CACHE_DIRNAME,
@@ -77,12 +78,12 @@ def build_registrations() -> Dict[StoreId, StoreDescriptor]:
     file_logging = app_config.get_file_logging_config_object()
     processed = Path(app_config.get_data_processed_path())
     autotrader_defaults = app_config.get_autotrader_defaults()
-    state_path = Path(
+    state_path = resolve_in_data_home(Path(
         autotrader_defaults.get('state_persistence', {}).get(
-            'path', 'data/runtime/session_state'))
-    cold_start_path = Path(
+            'path', 'data/runtime/session_state')))
+    cold_start_path = resolve_in_data_home(Path(
         autotrader_defaults.get('cold_start', {}).get(
-            'path', 'data/runtime/cold_start_state'))
+            'path', 'data/runtime/cold_start_state')))
 
     # The run tree's root is the index's parent by construction (#478 put the index at the top of
     # the tree it describes), so it is derived rather than declared a fourth time.
@@ -310,7 +311,7 @@ def build_registrations() -> Dict[StoreId, StoreDescriptor]:
             kind=StoreKind.DERIVED,
             purpose='broker specifications fetched from the venue',
             doc='docs/broker_config_guide.md#static-seed--hot-cache-model',
-            root=RUNTIME_CACHE_BASE,
+            root=resolve_in_data_home(RUNTIME_CACHE_BASE),
             key='broker_type',
             form=RetrievalForm.DOCUMENT,
             backend=StoreBackend.DISK,
@@ -462,7 +463,7 @@ def build_registrations() -> Dict[StoreId, StoreDescriptor]:
             kind=StoreKind.SPECIAL,
             purpose="this installation's id, named in every run header",
             doc='docs/architecture/run_origin_and_code_identity.md#the-origin--who-started-the-run-for-whom-and-where',
-            root=Path(HOST_IDENTITY_FILE),
+            root=workspace_path(HOST_IDENTITY_FILE_NAME),
             key='—',
             form=RetrievalForm.NONE,
             backend=StoreBackend.DISK,

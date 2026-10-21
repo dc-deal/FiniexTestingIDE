@@ -38,6 +38,7 @@ import json
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence
 
+from python.configuration.data_home import WORKSPACE_DIR
 from python.framework.config_directory.config_directory_discovery import json_files_under
 from python.framework.exceptions.persistence_errors import (
     BotIdMalformedError,
@@ -64,7 +65,7 @@ PROFILES_ROOT_NAME = 'autotrader_profiles'
 
 # The project's config cascade, most specific first — the same pair §29 names for credentials.
 # A profile tree exists under each, and a copy travels between them.
-_WORKSPACE_CONFIG_DIR = 'user_configs'
+_WORKSPACE_CONFIG_DIR = WORKSPACE_DIR
 _TRACKED_CONFIG_DIR = 'configs'
 
 # What a declared identity may look like — the shape a bot id shares with an API account id,

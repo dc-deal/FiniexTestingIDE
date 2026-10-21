@@ -23,7 +23,7 @@ from typing import List
 
 # One monotonic integer. Not a date and not the app version: a consumer compares it for
 # equality, and equality is the only question they have.
-API_CONTRACT_VERSION = 36
+API_CONTRACT_VERSION = 37
 
 # Every response carries it, so a saved fixture carries it too.
 CONTRACT_HEADER = 'X-Api-Contract'
@@ -36,10 +36,7 @@ API_PREFIX = '/api/v1'
 # What moved INTO the current version. One line per change, written for someone who cannot
 # read this repository.
 CHANGES: List[str] = [
-    'broker_config_id on every row of broker is set on a simulation row too: the id under which the '
-    'backtest froze the symbol specifications and fee structure it read when it started, as a '
-    'session already does. A simulation row recorded before this version keeps it empty',
-    'config_hash leaves out when a value was fetched: a refresh that reads the same values keeps it, '
-    'and where the symbols carry a fetch time, a row recorded before this version differs from a '
-    "later one over the same values; a static broker's hash did not move",
+    'origin.first_start on a run header: true when the start of a session trading real money was '
+    "declared the bot's first — the one way such a session starts without a carry-over to "
+    'continue. False on every other run, on a backtest, and on a run recorded before this version',
 ]

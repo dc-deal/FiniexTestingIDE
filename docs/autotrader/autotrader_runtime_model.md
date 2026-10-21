@@ -234,7 +234,8 @@ A **refusal at the first tick** (#588) is an `emergency` that is neither a crash
 abort, like a safety escalation: a live session could not complete its warmup history when its
 first trade arrived — the venue had not yet committed the period that ended since the boot read, or
 could not be read again — and stopped before that tick's workers and decision ran. It is graded
-`FAILED` like the others, so whoever relaunches sessions relaunches it, and it is SHOWN as what it
+`FAILED` like the others, but its cause is passing, so the process exits 75 and a supervisor
+relaunches it (#598); and it is SHOWN as what it
 is: the console prints a `⛔ REFUSED AT THE FIRST TICK — its workers and decision did not run` block
 instead of `RUNTIME ERROR — SESSION ABORTED`, the session log carries the reason as an error, the
 summary reads `Shutdown: emergency (refused at the first tick)`, and the served warnings-errors

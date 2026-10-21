@@ -33,6 +33,19 @@ reads downwards from the version their fixtures hold until they reach the one be
 A test holds the newest heading in this log to the number the server answers with, so a version
 cannot ship without its entry.
 
+## Version 37 — 2026-10-20 (#598)
+
+A session trading real money starts without a carry-over only when its start is declared the bot's
+first, and its header says so.
+
+- `GET /api/v1/reports/runs/{run_id}/header`: `origin.first_start` — `true` when the start of a
+  session trading real money was declared the bot's first: the one way such a session starts
+  without a carry-over to continue. A session that finds no carry-over it can use and is not
+  declared refuses to start, so it leaves a failed start rather than a run that began from
+  nothing. `false` on every other run, on a backtest, and on a run recorded before this version.
+
+One field added. Its document is [run header](/api/v1/docs/run-header).
+
 ## Version 36 — 2026-10-19 (#547)
 
 A backtest keeps the broker configuration it traded with, as a session already does.
@@ -130,50 +143,13 @@ Its documents are [trade history](/api/v1/docs/trade-history),
 [booking periods](/api/v1/docs/booking-periods) and
 [scenario details](/api/v1/docs/scenario-details).
 
-## Version 32 — 2026-10-15 (#599)
-
-A gap says whose silence it is, and a symbol with years of a venue's history no longer has to be
-read in one piece. And a unit's trade totals carry the spread it paid.
-
-- `GET /api/v1/brokers/{broker}/symbols/{symbol}/gaps`: every gap carries `origin_class` — the
-  origin class of the tick file it lies in or follows (`production`, `development`, `unknown`,
-  `external`), null where no tick file could be found — and `origin_class_after`, which differs
-  from it only at a seam, where one origin's data ends and another's begins. A gap in `external`
-  data lies in a venue's published history: nobody traded there, and there is nothing to
-  re-collect.
-- New beside the gaps: `gaps_by_year` — per year and origin class the short, moderate and large
-  gaps and the hours without data, always over the whole archive.
-- **`key` is replaced by `keys`**, one entry per list, because the answer now carries two:
-  `{"gaps": ["start"], "gaps_by_year": ["year", "origin_class"]}`. Read the gaps' key from
-  `keys.gaps`.
-- Two query parameters narrow `gaps`, never `gap_counts` or `gaps_by_year`: `origin_class` (only
-  the gaps in data of that class) and `since` (only the gaps that start at or after it, ISO-8601;
-  anything else is refused with `400 invalid_timestamp`). Without them every gap is served, as
-  before.
-- `reason` no longer guesses at a cause: "check data collection" and "restart/connection?" are
-  gone, because the reason cannot know whose data surrounds a gap. A coverage cache built before
-  this contract still serves the old words until it is rebuilt.
-- `category` declares its closed set in the schema; its values are unchanged.
-- `GET /api/v1/reports/runs/{run_id}/trade-history`: every `scenario_totals` row carries
-  `total_spread_cost` — the unit's measured `spread_cost` summed, beside `total_fees` and never
-  inside it. On a quote-driven market it is usually the main cost while `total_fees` reads zero.
-  It is null where the unit read data without a quote, for the whole unit even where only part of
-  its window lacked one, and on a run recorded before this contract.
-- The portfolio's `total_spread_cost` follows the same rule, and is therefore now nullable: null
-  for a unit that read data without a quote, where it read `0.0`, and on the aggregated portfolio
-  — with `avg_spread` — null as soon as one unit's is.
-
-Fields and parameters added, `key` replaced by `keys`, one wording changed, and three spread
-figures may be null. Its documents are [gaps](/api/v1/docs/gaps),
-[trade history](/api/v1/docs/trade-history), [portfolio](/api/v1/docs/portfolio) and
-[aggregated portfolio](/api/v1/docs/aggregated-portfolio).
-
-## Versions 31 and earlier
+## Versions 32 and earlier
 
 One line each. Every one of these moved a shape or a meaning; what they moved is summarised here
 rather than spelled out, because a consumer this far behind needs the list of steps, not each step's
 reasoning. The full text of a compressed version is in this repository's history.
 
+- **Version 32** — 2026-10-15 (#599): A gap says whose silence it is, and a unit's trade totals carry the spread it paid — `origin_class` and `origin_class_after` on every gap, `gaps_by_year` beside them, `key` replaced by `keys`, the `origin_class` and `since` parameters, `reason` without its guessed causes, and `total_spread_cost` on every trade-history `scenario_totals` row and the portfolio, null where a unit read data without a quote.
 - **Version 31** — 2026-10-14 (#595): The machine this server runs on can be asked how full it is — `GET /api/v1/machine-resources`, new, with the memory limit that binds and where it was read (`limit_source`), the processors and how busy they were over `window_s`, and `pressure_level` with its `pressure_reasons`; a route added, no field changed its shape.
 - **Version 30** — 2026-10-14 (#561): A venue's published history can enter the archive, and what an input file lacks is named — `spreadless_tick_data` gives way to `data_no_quote`, with new checks `data_no_arrival_time`, `data_arrival_time_reconstructed`, `data_missing_trades`, `data_origin_external` and `data_synthetic`, and `origin_classes` may hold `external`, never admissible for a parity measurement.
 - **Version 29** — 2026-10-13 (#588): A live session that refused at its first tick is told apart from one that crashed — `refused_at_first_tick` on the `warnings-errors` outcome, `true` when the warmup history could not be completed at the first tick, `false` on every other run, on a backtest and on a run recorded before.

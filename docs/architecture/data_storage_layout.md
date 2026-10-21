@@ -65,6 +65,24 @@ different producer, different index. Registering bars as
 ARCHIVE was the first defect this model found in itself — and the project's own store rules had
 already written down the sentence the registration then contradicted.
 
+### The data home — where every root lives
+
+A deploy on a server is a restart into another code tree (#598), and the stores above are what
+the new tree has to find again. So they do not live in the code tree: every root resolves under
+one data home, the directory the environment variable `FINIEX_DATA_HOME` names, together with
+the workspace (`user_configs/`) and the strategy directories. Unset, the working directory is
+the home, and a development checkout keeps every path exactly as configured.
+
+Three roots stay where they are, each on purpose: the certificates (row 3) and the generator
+profiles (row 9) are committed and belong to the code tree of the release that made them, and
+the activity list (row 15) is the machine's, at an absolute path every tree shares. An absolute
+path in the configuration stands for itself. A home that does not exist refuses the start
+instead of being created: an empty one holds no carry-over, and a session started on it would
+begin as the bot's first run. Which home a process uses is named at its start — in the session
+channel, beside the carry-over it read, and in the API server's boot lines. A store added later
+needs no list: its root resolves under the home by construction, and a test walks the catalog to
+prove it.
+
 ### The external history store
 
 A venue's published history — data no instance of ours recorded — is kept here exactly as it was
@@ -379,7 +397,7 @@ and the patch path is absolute because `git -C` resolves a relative one against 
 not against the project root:
 
 ```bash
-patch="$PWD/run_patches/<patch_hash>.patch"                   # run from the project root
+patch="${FINIEX_DATA_HOME:-$PWD}/run_patches/<patch_hash>.patch"  # run from the project root
 # a strategy repository's: patch="<repository>/.finiex_run_patches/<patch_hash>.patch"
 git -C <repository> worktree add /tmp/restored <commit>
 echo "<patch_hash>  $patch" | sha256sum --check && git -C /tmp/restored apply "$patch"
@@ -503,6 +521,12 @@ with each liveness ping, at a path the operator chooses — and nothing in this 
 no root the catalog could register, and deleting it loses nothing the app needs: the watcher it is
 written for reads its absence as silence. See
 [Unattended Operation](../autotrader/unattended_operation.md).
+
+**Nor is a bot's lock file** beside its carry-over (`<bot_id>_<symbol>.lock`, #598). The lock is
+the kernel's and the file only its handle: a session holds it while it runs, so a second start of
+the same bot is refused, and its note names the holder for that refusal and is never read back
+as data. Deleting it loses nothing; the kernel releases the lock with its process however that
+ends.
 
 ---
 
@@ -768,20 +792,22 @@ than handled automatically. If you ever meet it, this narrows it down:
 | Cause | How likely | How to tell |
 |---|---|---|
 | Someone deleted, moved or restored `data/runtime/` (a "clean start", a machine move, a backup) | the usual one | the carry-over file is missing or its `saved_at_utc` predates the order |
-| Two instances of the same bot ran at once and their key writes crossed | rare — the write is read-modify-write, so it needs overlapping saves; for the two stages of a declared continuation the boot refuses a partner's document whose run has not completed | two run ids in `runs_index.parquet` overlapping in time for one profile |
+| The session started in another data home — a deploy whose unit names no `FINIEX_DATA_HOME`, or the wrong one | right after a deploy | the boot named a home and a carry-over other than the last session's; a session trading real money refuses it rather than starting (#598) |
 | The document was hand-edited or corrupted | rare | the boot log carries the "unreadable" or "payload rejected" warning |
 | A schema version bump discarded it | only right after a deploy | the boot log names the version mismatch |
 | Genuinely another client using the same key format | improbable | the key's session half matches no run id of ours |
 
-Two paths are closed by construction and can be ruled out immediately: a **container rebuild**
-cannot lose it (`./data` is a bind mount from the host), and **eviction** cannot drop a key
-whose order is still resting (eviction is by relevance before recency).
+Three paths are closed by construction and can be ruled out immediately: a **container rebuild**
+cannot lose it (`./data` is a bind mount from the host), **eviction** cannot drop a key whose
+order is still resting (eviction is by relevance before recency), and **two instances of the
+same bot** cannot cross their writes — the second start is refused while the first holds the
+bot's lock (#598).
 
 ⚠️ **A schema-version bump on a carry-over does not lose state quietly — it makes the session
 trade beside its own forgotten orders.** The chain: envelope discarded → empty payload → the
 predecessor's session keys are gone → its resting orders read as `unknown_session` → they are
-NOT adopted. And there is no start ban: the boot reports this as an ERROR in the session pot and
-the session **starts anyway**, deliberately, because refusing forever would leave the operator no
-way out and would abandon whatever this bot already holds at the venue. So the consequence is not
-a bot that will not run; it is a bot that runs while its own resting orders are invisible to it.
-That has to be known before the deploy rather than discovered at 03:00.
+NOT adopted. A session trading real money is therefore refused when it finds its carry-over in
+another format, as when it finds none (#598): the way out is a declared first start
+(`--first-start`), which starts over deliberately. A dry run and a mock session still start
+fresh and report the discarded document as an ERROR in the session pot — they claim nothing about
+the venue. That has to be known before the deploy rather than discovered at 03:00.

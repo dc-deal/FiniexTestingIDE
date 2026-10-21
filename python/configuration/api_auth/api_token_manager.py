@@ -20,7 +20,7 @@ from pydantic import TypeAdapter, ValidationError
 from python.configuration.api_auth.api_account_manager import ApiAccountManager
 from python.configuration.credential_guard import is_tracked_credential
 from python.configuration.api_auth.inbound_credentials_cascade import read_inbound_section
-from python.configuration.credentials_cascade import WORKSPACE_CREDENTIALS_DIR
+from python.configuration.credentials_cascade import workspace_credentials_dir
 from python.framework.exceptions.api_errors import ApiConfigurationError
 from python.framework.types.api.api_identity_types import ApiConsumerIdentity
 from python.framework.types.config_types.api_auth_config_types import ApiAccount, ConsumerToken
@@ -110,7 +110,7 @@ class ApiTokenManager:
                 raise ApiConfigurationError(
                     f'A live API token answered from the TRACKED file {source} '
                     f'({", ".join(live)}). That file is committed — move the real tokens to '
-                    f'{WORKSPACE_CREDENTIALS_DIR}/{self._credentials_file}, which takes '
+                    f'{workspace_credentials_dir() / self._credentials_file}, which takes '
                     f'precedence and is not tracked.'
                 )
 
@@ -200,7 +200,7 @@ class ApiTokenManager:
         block = json.dumps(
             {consumer: entry.model_dump()}, indent=2,
             ensure_ascii=False)[1:-1].strip().rstrip(',')
-        target = Path(WORKSPACE_CREDENTIALS_DIR) / self._credentials_file
+        target = workspace_credentials_dir() / self._credentials_file
         return (
             f'Consumer: {consumer}\n'
             f'Account:  {account_line}\n'

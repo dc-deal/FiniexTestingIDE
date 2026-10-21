@@ -7,7 +7,7 @@ before the session writes anything, and before its first order.
 The identity check (`carry_over_identity_validator`) answers whether two profiles may share one
 document. This answers what THIS session may do with the document it just read, and the reason
 both exist is a store that reads, modifies and writes back: whatever the boot ignores on read,
-its first write replaces. Four rules, each closing one route by which a session would trade
+its first write replaces. Five rules, each closing one route by which a session would trade
 against a state that is not its own or erase one that is:
 
   - a profile that declares `carry_over_from` must actually READ a carry-over: its cold start is
@@ -22,13 +22,20 @@ against a state that is not its own or erase one that is:
   - a document another profile wrote that still holds an open position or a session key is
     never replaced. The usual cause is a profile renamed while its `bot_id` stayed, and the
     write would leave the venue holding something no bot knows about
+  - a session trading real money starts without a carry-over it can use only when declared the
+    bot's first start (--first-start), and a declared first start that finds one is refused
+    (#598). Otherwise a start in the wrong data home — or a deploy into a code tree that found
+    none — would begin a second deployment beside a holding the venue still has
 """
 
 from typing import Optional
 
+from python.configuration.data_home import describe_data_home
 from python.framework.exceptions.persistence_errors import (
     CarryOverContinuationError,
     CarryOverForeignClaimsError,
+    CarryOverRequiredError,
+    FirstStartContradictedError,
 )
 from python.framework.reporting.store.run_completion_audit import run_completed
 from python.framework.reporting.store.run_results_ledger import RunResultsLedger
@@ -50,6 +57,8 @@ def validate_carry_over_continuity(
     adoption_skipped_by: Optional[str],
     load: Optional[CarryOverLoad],
     ledger: RunResultsLedger,
+    real_money: bool = False,
+    first_start: bool = False,
 ) -> None:
     """
     Refuse to start when the carry-over this session read cannot be used as its profile declares.
@@ -63,10 +72,14 @@ def validate_carry_over_continuity(
         load: What the boot's read of the document found; None when nothing was read
         ledger: The run ledger — asked only whether the run that wrote a partner's document
             completed
+        real_money: Whether this session places real orders
+        first_start: Whether the start was declared the bot's first (--first-start)
 
     Returns:
         None — raises CarryOverContinuationError when a declared continuation cannot be honoured,
-        and CarryOverForeignClaimsError when another profile's document still speaks for the venue
+        CarryOverForeignClaimsError when another profile's document still speaks for the venue,
+        and CarryOverRequiredError or FirstStartContradictedError when a real-money start and its
+        declaration disagree with what was found
     """
     if carry_over_from:
         _refuse_a_continuation_nothing_reads(
@@ -79,6 +92,10 @@ def validate_carry_over_continuity(
         _refuse_missing_predecessor(profile_name, carry_over_from, load)
     if load.outcome == CarryOverLoadOutcome.ACCEPTED and load.writer_profile != profile_name:
         _refuse_an_unfinished_partner(profile_name, load, ledger)
+    # A declared continuation answers the question by its own rule above; a study that skips
+    # the adoption step checks its own flat book
+    if real_money and not carry_over_from and adoption_skipped_by is None:
+        _hold_the_first_start_to_what_was_found(profile_name, load, first_start)
 
 
 def _refuse_a_continuation_nothing_reads(
@@ -199,3 +216,41 @@ def _refuse_an_unfinished_partner(
         f"    Two sessions must not manage one book: let it end, or run '{load.writer_profile}' "
         f'again so it\n'
         f"    completes, before starting '{profile_name}'. File: {load.path}")
+
+
+def _hold_the_first_start_to_what_was_found(
+    profile_name: str,
+    load: CarryOverLoad,
+    first_start: bool,
+) -> None:
+    """
+    Refuse a real-money start whose declaration disagrees with the carry-over it found (#598).
+
+    Args:
+        profile_name: This profile's run unit name
+        load: What the boot's read found
+        first_start: Whether the start was declared the bot's first
+
+    Returns:
+        None — raises CarryOverRequiredError when nothing usable was found and the start was not
+        declared a first, FirstStartContradictedError when a declared first start found one
+    """
+    usable = load.outcome == CarryOverLoadOutcome.ACCEPTED
+    if usable and first_start:
+        written = (f'by run {load.writer_run_id} at {load.saved_at_utc}' if load.writer_run_id
+                   else f'at {load.saved_at_utc}')
+        raise FirstStartContradictedError(
+            f"The start of '{profile_name}' was declared the bot's first (--first-start), but its "
+            f'carry-over exists\n'
+            f'    and can be used — written {written}. File: {load.path}\n'
+            f'    Remove --first-start: this session continues that one.')
+    if usable or first_start:
+        return
+    found = _NOT_FOUND.get(load.outcome, load.outcome.value)
+    raise CarryOverRequiredError(
+        f"A session trading real money found no carry-over it can use: {found}.\n"
+        f'    File: {load.path} ({describe_data_home()})\n'
+        f"    It would trade without knowing what the bot '{profile_name}' holds at the venue.\n"
+        f'    - If this bot has run before, point FINIEX_DATA_HOME at the home its last session '
+        f'wrote.\n'
+        f"    - If this is the bot's first start, declare it: --first-start.")

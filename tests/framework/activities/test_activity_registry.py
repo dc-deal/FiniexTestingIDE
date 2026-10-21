@@ -87,6 +87,13 @@ class TestAnEntryIsListedWhileItRuns:
             assert (entry.activity_label, entry.run_id, entry.pid) == ('my_set', 'r1', os.getpid())
             assert entry.started_at.tzinfo is not None
 
+    def test_the_list_is_readable_by_its_owner_alone(self, registry_dir):
+        """An entry names a command line; another user of the machine reads none of it (#598)."""
+        with ActivityRegistry().running(ActivityKind.BACKTEST, 'my_set') as activity_id:
+            assert registry_dir.stat().st_mode & 0o777 == 0o700
+            for suffix in ('.json', '.lock'):
+                assert (registry_dir / f'{activity_id}{suffix}').stat().st_mode & 0o777 == 0o600
+
     def test_the_end_of_the_block_removes_both_files(self, registry_dir):
         with ActivityRegistry().running(ActivityKind.IMPORT, 'x'):
             pass
@@ -303,7 +310,7 @@ class TestRegisteringNeverEndsTheActivity:
 
     def test_a_stop_between_the_lock_and_the_entry_leaves_nothing_behind(self, registry_dir,
                                                                         monkeypatch):
-        def stopped(path, text):
+        def stopped(path, text, mode=None):
             raise KeyboardInterrupt
 
         monkeypatch.setattr(activity_registry_module, 'write_text_atomic', stopped)
@@ -314,7 +321,7 @@ class TestRegisteringNeverEndsTheActivity:
 
     def test_a_failed_write_whose_lock_cannot_be_released_never_ends_the_activity(
             self, registry_dir, monkeypatch):
-        def unwritable(path, text):
+        def unwritable(path, text, mode=None):
             raise OSError(28, 'No space left on device')
 
         def unreleasable(lock):

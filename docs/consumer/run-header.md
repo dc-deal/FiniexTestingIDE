@@ -86,6 +86,7 @@ sweep combinations (the class of instance that produced a run's data).
 | `origin.principal` | Started for | on whose behalf the run was started — the console's own principal, or the account a token acts for, which may be a person or a service | `operator` at the console, otherwise an account id | `origin_principal` |
 | `origin.host` | Host | the installation the run ran on: its minted identity, `h_` and six characters | | `origin_host` |
 | `origin.allow_dirty` | Uncommitted code allowed | whether real orders were explicitly allowed from code that was not committed | `true` · `false` | — |
+| `origin.first_start` | Declared first start | whether a session trading real money was declared the bot's first start — the one way it starts without a carry-over to continue; `false` on a run recorded before contract 37 | `true` · `false` | — |
 
 ## Code — which code ran
 

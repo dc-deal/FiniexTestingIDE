@@ -478,6 +478,15 @@ A **venue-level** error is not a transport fault — Kraken's `{'error': ['EOrde
 funds']}` is the venue speaking, so it stays an ordinary exception and classifies TERMINAL.
 Retrying "insufficient funds" forever would report their outage for our order.
 
+**Except what the venue documents as not answering at all.** Kraken reports maintenance as
+`EService:Unavailable` inside an HTTP 200 answer, and documents `EService:Deadline elapsed` —
+after which an order may have been placed all the same — and `EGeneral:Internal error` beside it.
+Those codes are listed with their source in `kraken_error_codes.py` and raised as a transient
+`ConnectionAttemptFailedError`: a read retries them, a write comes back UNRESOLVED and is resolved
+by asking. The list is the venue's own fact, so it lives beside its adapter. A new adapter declares
+its venue's equivalents from the venue's documentation or a measurement, matched on the documented
+code and never on the wording around it.
+
 **2. Its numbers**, in `market_config.json::broker_transport.connection` — the same
 `ConnectionPolicy` schema every other connection uses.
 

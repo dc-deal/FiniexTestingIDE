@@ -286,6 +286,33 @@ by the symbol raises `KeyError`. Measured against the real account 2026-09-08.
 | `test_a_transport_failure_is_never_fatal` | A raising transport → `None` + a warning, the declared rates stand |
 | `test_an_unusable_answer_is_declined_rather_than_guessed` | A malformed block → `None`, never a half-read rate |
 
+#### `TestTheBalanceRead`
+
+`fetch_account_balance()` as the boot reads it (#598). Kraken lists every asset the account holds
+or once held, at zero where it is empty, and leaves out one it never held — measured 2026-10-20.
+So an absent key is a zero balance, and the read itself runs under the broker's ladder.
+
+| Test | Description |
+|------|-------------|
+| `test_a_currency_the_account_never_held_reads_zero` | An answer without `XETH` reads 0.0 for ETH — before, the session refused to start on a fresh account |
+| `test_a_kraken_key_wins_over_the_code` | XRP is read under Kraken's own key `XXRP` |
+| `test_the_key_map_does_not_grow_with_each_read` | The class-level key list stays as declared after repeated reads |
+| `test_a_passing_fault_is_retried_within_the_budget` | Two timeouts, then an answer: read on the third attempt |
+| `test_an_exhausted_budget_raises_instead_of_reading_as_no_balance` | Three timeouts → `ConnectionGaveUpError`, never "no balance" |
+| `test_the_venue_refusing_the_key_ends_the_read_at_once` | A Kraken error in the answer ends the read after one attempt |
+
+#### `TestTheVenueSayingNotNow`
+
+The same read through the real request path (#598). Kraken reports maintenance inside an HTTP 200
+answer, as `EService:Unavailable`, so the venue's own "not now" has to reach the ladder as a passing
+fault rather than as its answer.
+
+| Test | Description |
+|------|-------------|
+| `test_maintenance_is_waited_out_within_the_budget` | One `EService:Unavailable`, then an answer: read on the second request |
+| `test_maintenance_beyond_the_budget_is_a_passing_start_failure` | Three of them → `ConnectionGaveUpError`, which the start reads as passing (exit 75) |
+| `test_a_refused_key_is_not_waited_out` | `EAPI:Invalid key` ends the read after one request and stays a refusal (exit 2) |
+
 #### `TestTheCapabilityIsByOverride`
 
 | Test | Description |

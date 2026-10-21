@@ -452,6 +452,7 @@ class TestTheGuardIsPartOfStartup:
         session._decision_logic = SimpleNamespace()
         session._worker_orchestrator = SimpleNamespace(workers={})
         session._carried_load = None
+        session._first_start = False
 
         def refuse_swap_check(symbol):
             calls.append('swap')
@@ -467,7 +468,7 @@ class TestTheGuardIsPartOfStartup:
                             lambda path, name, symbol, bot_id, profile_homes, carry_over_from:
                             calls.append('unique'))
         monkeypatch.setattr(autotrader_main_module, 'validate_carry_over_continuity',
-                            lambda *args: calls.append('continuity'))
+                            lambda *args, **kwargs: calls.append('continuity'))
         return session
 
     def test_a_dirty_real_money_start_is_refused_there(self, monkeypatch):

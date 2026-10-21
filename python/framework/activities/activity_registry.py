@@ -150,6 +150,9 @@ class ActivityRegistry:
                          else self._config.get_activity_registry_path())
             if not directory.is_absolute():
                 raise OSError(errno.ENOENT, f'the activity directory {directory} cannot be resolved')
+            # The owner alone reads the list: an entry names a command line, and another user of
+            # the machine has no business reading it (#598). An existing directory keeps its mode.
+            directory.mkdir(mode=0o700, parents=True, exist_ok=True)
             started_at = datetime.now(timezone.utc)
             activity_id = (f"{ACTIVITY_ID_PREFIX}{started_at.strftime('%Y%m%d_%H%M%S')}_"
                            f'{secrets.token_hex(4)}')
@@ -174,7 +177,7 @@ class ActivityRegistry:
                 parent_activity_id=_active_activity_ids[-1] if _active_activity_ids else None,
             )
             json_path = directory / f'{activity_id}.json'
-            write_text_atomic(json_path, json.dumps(entry.to_dict(), indent=2))
+            write_text_atomic(json_path, json.dumps(entry.to_dict(), indent=2), mode=0o600)
             return _Registration(activity_id=activity_id, lock=lock, json_path=json_path)
         except BaseException as error:
             # A stop (Ctrl+C) between the lock and the entry leaves neither behind: the stop goes

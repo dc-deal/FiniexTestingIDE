@@ -16,7 +16,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from python.configuration.credentials_cascade import (
     TRACKED_CREDENTIALS_DIR,
-    WORKSPACE_CREDENTIALS_DIR,
+    workspace_credentials_dir,
 )
 from python.framework.exceptions.api_errors import ApiConfigurationError
 from python.framework.utils.config_merge_utils import (
@@ -25,7 +25,7 @@ from python.framework.utils.config_merge_utils import (
 )
 
 
-def inbound_credential_dirs() -> Tuple[str, ...]:
+def inbound_credential_dirs() -> Tuple[Path, ...]:
     """
     The directories an inbound credentials file is looked up in, most specific first.
 
@@ -33,8 +33,8 @@ def inbound_credential_dirs() -> Tuple[str, ...]:
         Only the tracked directory under config isolation, else workspace then tracked
     """
     if is_config_isolation_active():
-        return (TRACKED_CREDENTIALS_DIR,)
-    return (WORKSPACE_CREDENTIALS_DIR, TRACKED_CREDENTIALS_DIR)
+        return (Path(TRACKED_CREDENTIALS_DIR),)
+    return (workspace_credentials_dir(), Path(TRACKED_CREDENTIALS_DIR))
 
 
 def read_inbound_section(relative_file: str,
@@ -55,7 +55,7 @@ def read_inbound_section(relative_file: str,
         The section's entries and the path that answered, or ({}, None) when no file exists
     """
     for directory in inbound_credential_dirs():
-        path = Path(directory) / relative_file
+        path = directory / relative_file
         if not path.exists():
             continue
         try:

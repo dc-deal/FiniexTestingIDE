@@ -84,13 +84,14 @@ class AbstractBrokerConfigFetcher(ABC):
         return None
 
     @abstractmethod
-    def fetch_account_balance(self, currency: str) -> Optional[float]:
+    def fetch_account_balance(self, currency: str) -> float:
         """
-        Fetch current account balance for a currency.
+        Fetch current account balance for a currency. A read the venue does not answer raises
+        ConnectionGaveUpError; it is never reported as a missing balance.
 
         Args:
             currency: Account currency code (e.g., 'USD')
 
         Returns:
-            Account balance, or None if unavailable
+            Account balance; 0.0 for a currency the venue reports the account never held
         """

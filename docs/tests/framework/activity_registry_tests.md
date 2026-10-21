@@ -32,13 +32,15 @@ The kernel lock: held while its holder lives, refused to a second taker, free af
 second release harmless. Asking whether it is held never creates the file, and two readers asking
 at once do not see each other as a holder. A lock the mount refuses (no locks on it) raises and
 leaves no descriptor open. A holder in another process is seen, and `kill -9` frees the lock at
-once.
+once. The note a holder leaves replaces the one before, a missing file has none and is not
+created, a released lock writes nothing, and the file is readable by its owner alone (#598).
 
 ## `test_activity_registry.py`
 
 - **Listed while it runs:** an entry is listed with its lock held and every field it was given; the
   end of the block removes both files, after an exception too; two processes' activities are both
-  listed; an activity started inside another names it as its parent.
+  listed; an activity started inside another names it as its parent; the directory and both files
+  are readable by their owner alone (#598).
 - **Cleared when killed, and only then:** a holder killed with `kill -9` is gone at the next reading
   with its files; an entry whose lock is free but whose process lives is kept — a mount on which the
   lock cannot be seen must not empty the list; one whose process is gone is removed; a lock file
@@ -81,4 +83,5 @@ over the two-by-two mini grid lists the sweep and its backtests one under the ot
 origin; a real AutoTrader session refused at its start is listed under its run id, by the name every
 report gives it, and leaves the list. The
 import, the cache rebuild, the test suite and the API server are checked with their work replaced by
-a stand-in, because the work itself is not under test here. After each, the list is empty again.
+a stand-in, because the work itself is not under test here; the test runner also lists each suite
+it runs under the full run, named with its place (`3/67`). After each, the list is empty again.

@@ -32,10 +32,17 @@ from python.configuration.credentials_cascade import (
     tracked_credentials_path,
     workspace_credentials_path,
 )
+from python.configuration.data_home import resolve_in_data_home
 from python.configuration.market_config_manager import MarketConfigManager
 from python.framework.factory.broker_config_factory import BrokerConfigFactory
+from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.logging.scenario_logger import ScenarioLogger
+from python.framework.trading_env.adapters.kraken_error_codes import raise_for_kraken_errors
+from python.framework.types.config_types.connection_policy_config_types import ConnectionPolicy
+from python.framework.types.connection_types import GiveUpAction
 from python.framework.types.trading_env_types.broker_types import FeeTierInfo
+from python.framework.utils.connection_ladder import ConnectionLadder, run_with_ladder
+from python.framework.utils.http_attempt import send_classified
 
 # Mirrors BrokerTransportConfig.request_timeout_s, which is where an operator tunes it.
 # A constant here only for the direct-construction paths (the broker-config CLI) that
@@ -66,16 +73,42 @@ class KrakenConfigFetcher(AbstractBrokerConfigFetcher):
         'XETH': 'ETH',
     }
 
-    # Kraken prefixes: X for crypto, Z for fiat
+    # Kraken's balance keys where they differ from the code a pair's wsname uses: X for the older
+    # crypto assets, Z for fiat. Every other asset's key IS its code. Measured 2026-10-20 against
+    # /0/public/Assets: 857 assets, 31 with a key that differs from their code — all of them below
+    # but the fee credit KFEE. The map has to be complete, because an absent key reads as a zero
+    # balance (fetch_account_balance).
     STANDARD_TO_KRAKEN_BALANCE = {
         'BTC': ['XXBT', 'XBT'],
         'ETH': ['XETH'],
+        'ETC': ['XETC'],
+        'LTC': ['XLTC'],
+        'MLN': ['XMLN'],
+        'REP': ['XREP'],
+        'XDG': ['XXDG'],
+        'XLM': ['XXLM'],
+        'XMR': ['XXMR'],
+        'XRP': ['XXRP'],
+        'ZEC': ['XZEC'],
         'USD': ['ZUSD'],
         'EUR': ['ZEUR'],
         'GBP': ['ZGBP'],
         'CAD': ['ZCAD'],
         'JPY': ['ZJPY'],
         'AUD': ['ZAUD'],
+        'ARS': ['ZARS'],
+        'CLP': ['ZCLP'],
+        'COP': ['ZCOP'],
+        'DKK': ['ZDKK'],
+        'GEL': ['ZGEL'],
+        'GHS': ['ZGHS'],
+        'LKR': ['ZLKR'],
+        'MXN': ['ZMXN'],
+        'PLN': ['ZPLN'],
+        'SEK': ['ZSEK'],
+        'UGX': ['ZUGX'],
+        'VND': ['ZVND'],
+        'XOF': ['ZXOF'],
     }
 
     def __init__(
@@ -84,10 +117,17 @@ class KrakenConfigFetcher(AbstractBrokerConfigFetcher):
         logger: Optional[ScenarioLogger] = None,
         api_base_url: Optional[str] = None,
         request_timeout_s: float = _DEFAULT_REQUEST_TIMEOUT_S,
+        connection: Optional[ConnectionPolicy] = None,
     ):
         self._logger = logger
         self._api_base_url = api_base_url or self.API_BASE
         self._request_timeout_s = request_timeout_s
+        # The broker's ladder, always ending in ABORT: what the boot reads here — the pairs, the
+        # balance — has no degraded form to continue with (#598). Without a policy, one attempt.
+        policy = connection or ConnectionPolicy(attempt_budget=1)
+        self._ladder = ConnectionLadder(
+            'broker_boot_read', policy.model_copy(update={'on_give_up': GiveUpAction.ABORT}),
+            logger or get_global_logger())
         self._api_key, self._api_secret = self._load_credentials(credentials_path)
         self._last_spec_changes: List[str] = []
 
@@ -164,9 +204,15 @@ class KrakenConfigFetcher(AbstractBrokerConfigFetcher):
                 f"🔄  Symbol '{symbol}' not in cache — fetching from API..."
             )
 
-        # Stale, missing or forced: try API refresh
+        # Stale, missing or forced: try API refresh — under the ladder only when nothing usable is
+        # cached: a stale entry is a working fallback, and a ladder's give-up is logged as an error
+        # that would grade the whole session (#598)
         try:
-            fresh_dict = self.fetch_broker_config(symbol, broker_type)
+            if previous_entry is None:
+                fresh_dict = run_with_ladder(
+                    lambda: self.fetch_broker_config(symbol, broker_type), self._ladder)
+            else:
+                fresh_dict = self.fetch_broker_config(symbol, broker_type)
             merged = _merge_with_cache(fresh_dict, cache_path)
             _write_cache(merged, cache_path)
             self._report_spec_changes(symbol, previous_entry, merged['symbols'][symbol])
@@ -245,39 +291,35 @@ class KrakenConfigFetcher(AbstractBrokerConfigFetcher):
             f'   `python python/cli/broker_config_cli.py sync --force` on that machine before comparing.'
         )
 
-    def fetch_account_balance(self, currency: str) -> Optional[float]:
+    def fetch_account_balance(self, currency: str) -> float:
         """
-        Fetch account balance from Kraken Balance endpoint.
+        The account's balance of one currency, read under the broker's connection ladder.
+
+        Kraken lists every asset the account holds or once held, at zero where it is empty, and
+        leaves out an asset the account never held — measured 2026-10-20: 19 of 23 listed assets
+        at exactly zero, DOGE and XRP absent (#598). So a currency absent from the answer holds
+        nothing, as long as the key looked up is Kraken's own (STANDARD_TO_KRAKEN_BALANCE).
+        A read that cannot be completed raises ConnectionGaveUpError.
 
         Args:
             currency: Standard currency code (e.g., 'USD', 'BTC')
 
         Returns:
-            Balance amount, or None if currency not found in account
+            The balance; 0.0 for a currency the account never held
         """
         self._log_info(f'Fetching account balance ({currency}) from Kraken API...')
+        balance_data = run_with_ladder(
+            lambda: self._fetch_private('/0/private/Balance'), self._ladder)
 
-        try:
-            balance_data = self._fetch_private('/0/private/Balance')
-        except Exception as e:
-            self._log_warning(f'Balance fetch failed: {e}')
-            return None
-
-        # Try Kraken-specific key variants (e.g., USD → ZUSD)
-        keys_to_try = self.STANDARD_TO_KRAKEN_BALANCE.get(currency, [])
-        keys_to_try.append(currency)
-
-        for key in keys_to_try:
+        # Kraken's key first (e.g., USD → ZUSD), then the code itself
+        for key in [*self.STANDARD_TO_KRAKEN_BALANCE.get(currency, []), currency]:
             if key in balance_data:
                 balance = float(balance_data[key])
                 self._log_info(f'✅ Balance: {balance} {currency} (key={key})')
                 return balance
 
-        self._log_warning(
-            f"Currency '{currency}' not found in balance response. "
-            f"Available: {list(balance_data.keys())}"
-        )
-        return None
+        self._log_info(f'✅ Balance: 0.0 {currency} — not listed, so the account never held it')
+        return 0.0
 
     def fetch_fee_tier(self, symbol: str) -> Optional[FeeTierInfo]:
         """
@@ -395,13 +437,13 @@ class KrakenConfigFetcher(AbstractBrokerConfigFetcher):
             API result dict
         """
         url = f'{self._api_base_url}{endpoint}'
-        response = requests.get(url, params=params, timeout=self._request_timeout_s)
-        response.raise_for_status()
+        response = send_classified(
+            lambda: requests.get(url, params=params, timeout=self._request_timeout_s), endpoint)
 
         data = response.json()
-        errors = data.get('error', [])
-        if errors:
-            raise ConnectionError(f'Kraken API error: {errors}')
+        # The venue's own "not now" goes to the ladder as transient (#598); any other error is
+        # its answer
+        raise_for_kraken_errors(data.get('error', []))
 
         return data.get('result', {})
 
@@ -422,18 +464,14 @@ class KrakenConfigFetcher(AbstractBrokerConfigFetcher):
         headers = self._sign_request(endpoint, data)
         url = f'{self._api_base_url}{endpoint}'
 
-        response = requests.post(
-            url,
-            headers=headers,
-            data=data,
-            timeout=self._request_timeout_s,
-        )
-        response.raise_for_status()
+        response = send_classified(
+            lambda: requests.post(url, headers=headers, data=data, timeout=self._request_timeout_s),
+            endpoint)
 
         result = response.json()
-        errors = result.get('error', [])
-        if errors:
-            raise ConnectionError(f'Kraken API error: {errors}')
+        # The venue's own "not now" goes to the ladder as transient (#598); any other error is
+        # its answer
+        raise_for_kraken_errors(result.get('error', []))
 
         return result.get('result', {})
 
@@ -687,7 +725,7 @@ class KrakenConfigFetcher(AbstractBrokerConfigFetcher):
 # =============================================================================
 
 # Public because the store catalog (#486) registers this directory as a store and must name it
-# from its one definition rather than repeating the literal.
+# from its one definition rather than repeating the literal. Relative to the data home (#598).
 RUNTIME_CACHE_BASE = Path('data/runtime/brokers')
 # The fields whose change can turn an accepted order into a refused one, or the reverse
 _ORDER_DECIDING_FIELDS = ('volume_min', 'volume_step', 'tick_size', 'cost_min')
@@ -695,7 +733,7 @@ _ORDER_DECIDING_FIELDS = ('volume_min', 'volume_step', 'tick_size', 'cost_min')
 
 def _get_runtime_cache_path(broker_type: str) -> Path:
     """Return the runtime cache file path for a broker type."""
-    return RUNTIME_CACHE_BASE / broker_type / f'{broker_type}_broker_config.json'
+    return resolve_in_data_home(RUNTIME_CACHE_BASE) / broker_type / f'{broker_type}_broker_config.json'
 
 
 def get_runtime_cache_path(broker_type: str) -> Path:

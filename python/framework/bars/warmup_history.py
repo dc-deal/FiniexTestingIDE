@@ -30,6 +30,7 @@ from typing import Callable, Dict, List, Optional
 from python.framework.bars.bar_rendering_controller import BarRenderingController
 from python.framework.exceptions.warmup_history_errors import WarmupHistoryRefusedError
 from python.framework.logging.scenario_logger import ScenarioLogger
+from python.framework.types.connection_types import ConnectionOutcome
 from python.framework.types.market_types.market_data_types import Bar
 from python.framework.types.market_types.warmup_history_types import (
     WarmupHistoryRecord,
@@ -64,6 +65,8 @@ class WarmupHistory:
             selected for the first tick already
         required_by_timeframe: Bars the workers require, by timeframe — what a re-read asks for
         unreadable_timeframes: Timeframes the venue could not be read for at boot
+        unreadable_for_now: Those of them whose every attempt failed on a passing fault — a
+            timeout, a 5xx, a 429 — so a later start may read them (#598)
     """
 
     def __init__(
@@ -76,6 +79,7 @@ class WarmupHistory:
         fetch: Optional[VenueBarFetch] = None,
         required_by_timeframe: Optional[Dict[str, int]] = None,
         unreadable_timeframes: Optional[List[str]] = None,
+        unreadable_for_now: Optional[List[str]] = None,
     ):
         self._symbol = symbol
         self._bars_by_timeframe = bars_by_timeframe
@@ -85,6 +89,7 @@ class WarmupHistory:
         self._fetch = fetch
         self._required_by_timeframe = required_by_timeframe or {}
         self._unreadable_timeframes = unreadable_timeframes or []
+        self._unreadable_for_now = unreadable_for_now or []
         self._read_at = reference_time
         self._first_tick_time: Optional[datetime] = None
         self._reread_at_first_tick: List[str] = []
@@ -149,18 +154,31 @@ class WarmupHistory:
         """
         bars: Dict[str, List[Bar]] = {}
         unreadable: List[str] = []
+        unreadable_for_now: List[str] = []
         for timeframe, count in required_by_timeframe.items():
-            fetched = run_with_ladder(
-                lambda tf=timeframe, n=count: fetch(tf, n, reference_time), ladder)
+            failures: List[BaseException] = []
+
+            def attempt(tf: str = timeframe, n: int = count,
+                        seen: List[BaseException] = failures) -> List[Bar]:
+                try:
+                    return fetch(tf, n, reference_time)
+                except Exception as error:
+                    seen.append(error)
+                    raise
+
+            fetched = run_with_ladder(attempt, ladder)
             if fetched is None:
                 unreadable.append(timeframe)
+                # #598: given up on a passing fault, a later start may read it
+                if failures and ladder.classify(failures[-1]) is ConnectionOutcome.TRANSIENT:
+                    unreadable_for_now.append(timeframe)
             bars[timeframe] = fetched or []
             logger.debug(
                 f'  📊 {timeframe}: {len(bars[timeframe])}/{count} bars read from the venue')
         return cls(
             symbol, bars, reference_time, WarmupSource.VENUE, logger,
             fetch=fetch, required_by_timeframe=required_by_timeframe,
-            unreadable_timeframes=unreadable)
+            unreadable_timeframes=unreadable, unreadable_for_now=unreadable_for_now)
 
     def get_bars_by_timeframe(self) -> Dict[str, List[Bar]]:
         """
@@ -206,6 +224,16 @@ class WarmupHistory:
             Timeframe names; empty for the archive
         """
         return self._unreadable_timeframes
+
+    def is_unreadable_only_for_now(self) -> bool:
+        """
+        Whether every timeframe the venue could not be read for failed on a passing fault.
+
+        Returns:
+            True when something is unreadable and all of it only for now; False otherwise
+        """
+        return (bool(self._unreadable_timeframes)
+                and set(self._unreadable_timeframes) <= set(self._unreadable_for_now))
 
     def inject_into(
         self,

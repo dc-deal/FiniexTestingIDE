@@ -14,19 +14,32 @@ Unit tests for the runtime cache logic in KrakenConfigFetcher:
 No real HTTP calls; all external I/O is patched or replaced with tmp_path files.
 """
 
+import base64
 import json
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
+import requests
 
-from python.configuration.autotrader.abstract_broker_config_fetcher import AbstractBrokerConfigFetcher
+from python.configuration.autotrader.abstract_broker_config_fetcher import (
+    AbstractBrokerConfigFetcher,
+)
 from python.configuration.autotrader.broker_config_cache_policy import get_entry_fetched_at
 from python.configuration.autotrader.kraken_config_fetcher import (
     KrakenConfigFetcher,
     _merge_with_cache,
 )
+from python.framework.autotrader.startup.start_failure_classifier import is_passing_start_failure
+from python.framework.exceptions.connection_errors import (
+    ConnectionAttemptFailedError,
+    ConnectionGaveUpError,
+)
+from python.framework.types.config_types.connection_policy_config_types import ConnectionPolicy
+from python.framework.types.connection_types import GiveUpAction
+from python.framework.utils.connection_ladder import ConnectionLadder
+from tests.shared.recording_logger import RecordingLogger
 
 _MODULE = 'python.configuration.autotrader.kraken_config_fetcher'
 
@@ -75,6 +88,9 @@ def _make_fetcher() -> KrakenConfigFetcher:
     fetcher._api_key = 'test_key'
     fetcher._api_secret = 'test_secret'
     fetcher._last_spec_changes = []
+    fetcher._ladder = ConnectionLadder(
+        'broker_boot_read', ConnectionPolicy(attempt_budget=1, on_give_up=GiveUpAction.ABORT),
+        RecordingLogger())
     return fetcher
 
 
@@ -392,6 +408,122 @@ class TestFetchFeeTier:
                 assert fetcher.fetch_fee_tier('ETHUSD') is None, raw
 
 
+class TestTheBalanceRead:
+    """
+    The boot's balance read (#598): a currency the account never held reads as zero, a passing fault
+    is tried as often as the broker's budget allows, and the venue's own refusal ends the read at once.
+    """
+
+    @staticmethod
+    def _answering(*answers):
+        """A fetcher whose private reads return or raise the given answers, in order."""
+        fetcher = _make_fetcher()
+        fetcher._ladder = ConnectionLadder(
+            'broker_boot_read',
+            ConnectionPolicy(attempt_budget=3, initial_delay_s=0.0, max_delay_s=0.0,
+                             on_give_up=GiveUpAction.ABORT),
+            RecordingLogger())
+        calls = []
+
+        def fetch_private(endpoint, data=None):
+            answer = answers[min(len(calls), len(answers) - 1)]
+            calls.append(endpoint)
+            if isinstance(answer, Exception):
+                raise answer
+            return answer
+
+        fetcher._fetch_private = fetch_private
+        return fetcher, calls
+
+    def test_a_currency_the_account_never_held_reads_zero(self):
+        fetcher, _ = self._answering({'ZUSD': '750.0000', 'XXBT': '0.0000000000'})
+        assert fetcher.fetch_account_balance('USD') == 750.0
+        assert fetcher.fetch_account_balance('ETH') == 0.0
+        assert fetcher.fetch_account_balance('BTC') == 0.0
+
+    def test_a_kraken_key_wins_over_the_code(self):
+        fetcher, _ = self._answering({'XXRP': '12.5'})
+        assert fetcher.fetch_account_balance('XRP') == 12.5
+
+    def test_the_key_map_does_not_grow_with_each_read(self):
+        fetcher, _ = self._answering({'XETH': '0.5'})
+        fetcher.fetch_account_balance('ETH')
+        fetcher.fetch_account_balance('ETH')
+        assert KrakenConfigFetcher.STANDARD_TO_KRAKEN_BALANCE['ETH'] == ['XETH']
+
+    def test_a_passing_fault_is_retried_within_the_budget(self):
+        timeout = ConnectionAttemptFailedError('ReadTimeout on /0/private/Balance', terminal=False)
+        fetcher, calls = self._answering(timeout, timeout, {'ZUSD': '750.0'})
+        assert fetcher.fetch_account_balance('USD') == 750.0
+        assert len(calls) == 3
+
+    def test_an_exhausted_budget_raises_instead_of_reading_as_no_balance(self):
+        timeout = ConnectionAttemptFailedError('ReadTimeout on /0/private/Balance', terminal=False)
+        fetcher, calls = self._answering(timeout)
+        with pytest.raises(ConnectionGaveUpError):
+            fetcher.fetch_account_balance('USD')
+        assert len(calls) == 3
+
+    def test_the_venue_refusing_the_key_ends_the_read_at_once(self):
+        fetcher, calls = self._answering(ConnectionError("Kraken API error: ['EAPI:Invalid key']"))
+        with pytest.raises(ConnectionGaveUpError):
+            fetcher.fetch_account_balance('USD')
+        assert len(calls) == 1
+
+
+class TestTheVenueSayingNotNow:
+    """
+    Kraken reports maintenance inside an answer, not as a status (#598): the balance read retries the
+    venue's documented "not now" within its budget, and a give-up on it ends the start with exit 75.
+    """
+
+    @staticmethod
+    def _posting(*bodies):
+        """A fetcher whose private requests are answered with the given bodies, in order."""
+        fetcher = _make_fetcher()
+        fetcher._api_secret = base64.b64encode(b'test_secret').decode()
+        fetcher._request_timeout_s = 1.0
+        fetcher._ladder = ConnectionLadder(
+            'broker_boot_read',
+            ConnectionPolicy(attempt_budget=3, initial_delay_s=0.0, max_delay_s=0.0,
+                             on_give_up=GiveUpAction.ABORT),
+            RecordingLogger())
+        posted = []
+
+        def post(url, headers=None, data=None, timeout=None):
+            body = bodies[min(len(posted), len(bodies) - 1)]
+            posted.append(url)
+            response = requests.Response()
+            response.status_code = 200
+            response._content = json.dumps(body).encode()
+            return response
+
+        return fetcher, posted, post
+
+    def test_maintenance_is_waited_out_within_the_budget(self):
+        fetcher, posted, post = self._posting({'error': ['EService:Unavailable'], 'result': {}},
+                                              {'error': [], 'result': {'ZUSD': '10.0'}})
+        with patch('python.configuration.autotrader.kraken_config_fetcher.requests.post', post):
+            assert fetcher.fetch_account_balance('USD') == 10.0
+        assert len(posted) == 2
+
+    def test_maintenance_beyond_the_budget_is_a_passing_start_failure(self):
+        fetcher, posted, post = self._posting({'error': ['EService:Unavailable'], 'result': {}})
+        with patch('python.configuration.autotrader.kraken_config_fetcher.requests.post', post):
+            with pytest.raises(ConnectionGaveUpError) as raised:
+                fetcher.fetch_account_balance('USD')
+        assert len(posted) == 3
+        assert is_passing_start_failure(raised.value)
+
+    def test_a_refused_key_is_not_waited_out(self):
+        fetcher, posted, post = self._posting({'error': ['EAPI:Invalid key'], 'result': {}})
+        with patch('python.configuration.autotrader.kraken_config_fetcher.requests.post', post):
+            with pytest.raises(ConnectionGaveUpError) as raised:
+                fetcher.fetch_account_balance('USD')
+        assert len(posted) == 1
+        assert not is_passing_start_failure(raised.value)
+
+
 class _CachelessFetcher(AbstractBrokerConfigFetcher):
     """A venue fetcher with no runtime cache and no account tiers, so every default applies."""
 
@@ -403,7 +535,7 @@ class _CachelessFetcher(AbstractBrokerConfigFetcher):
         return {'symbols': {symbol: {}}}
 
     def fetch_account_balance(self, currency):
-        return None
+        return 0.0
 
 
 class TestTheCapabilityIsByOverride:

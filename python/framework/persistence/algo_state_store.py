@@ -30,6 +30,7 @@ from typing import Any, Dict, Optional, Tuple
 
 from pydantic import ValidationError
 
+from python.configuration.data_home import resolve_in_data_home
 from python.framework.exceptions.persistence_errors import StatePersistenceError
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.persistence.carry_over_identity import accepts_carry_over, carry_over_key
@@ -92,7 +93,8 @@ class AlgoStateStore:
         self._bot_id = bot_id
         self._carry_over_from = carry_over_from
 
-        self._path = Path(config.path) / f'{carry_over_key(profile, symbol, bot_id)}.json'
+        self._path = (resolve_in_data_home(Path(config.path))
+                      / f'{carry_over_key(profile, symbol, bot_id)}.json')
 
         self._last_save_tick: int = 0
         self._last_save_time: float = time.monotonic()

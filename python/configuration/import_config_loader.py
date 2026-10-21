@@ -9,6 +9,7 @@ from pathlib import Path
 from threading import Lock
 from typing import Any, Dict, Optional, Tuple
 
+from python.configuration.data_home import workspace_path
 from python.framework.utils.config_merge_utils import deep_merge, is_config_isolation_active
 
 
@@ -22,7 +23,7 @@ class ImportConfigFileLoader:
 
     _config: Optional[Dict[str, Any]] = None
     _config_path: str = 'configs/import_config.json'
-    _user_config_path: str = 'user_configs/import_config.json'
+    _user_config_name: str = 'import_config.json'
     _lock = Lock()
 
     @staticmethod
@@ -92,7 +93,7 @@ class ImportConfigFileLoader:
         # Try to load user override configuration.
         # Tests run with FINIEX_CONFIG_ISOLATION=1 (see tests/conftest.py) — the
         # user workspace must never bleed into the test suite (non-determinism).
-        user_config_path = Path(ImportConfigFileLoader._user_config_path)
+        user_config_path = workspace_path(ImportConfigFileLoader._user_config_name)
         if user_config_path.exists() and not is_config_isolation_active():
             try:
                 with open(user_config_path, 'r', encoding='utf-8') as f:
@@ -101,7 +102,7 @@ class ImportConfigFileLoader:
                 # Merge user overrides into base config
                 merged_config = ImportConfigFileLoader._deep_merge(
                     base_config, user_override)
-                print('✅ Merged user_configs/import_config.json')
+                print(f'✅ Merged {user_config_path}')
                 return merged_config
 
             except json.JSONDecodeError as e:

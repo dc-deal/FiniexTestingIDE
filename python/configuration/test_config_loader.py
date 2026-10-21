@@ -5,8 +5,9 @@ Simple loader for test_config.json
 
 import json
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
+from python.configuration.data_home import workspace_path
 from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.utils.config_merge_utils import deep_merge
 
@@ -23,16 +24,18 @@ class TestConfigLoader:
 
     def __init__(self,
                  config_path: str = 'configs/test_config.json',
-                 user_config_path: str = 'user_configs/test_config.json'):
+                 user_config_path: Optional[str] = None):
         """
         Initialize test config loader.
 
         Args:
             config_path: Path to base test config
-            user_config_path: Path to user override config
+            user_config_path: Path to user override config; the workspace copy under the data
+                home when omitted
         """
         self.config_path = Path(config_path)
-        self.user_config_path = Path(user_config_path)
+        self.user_config_path = (Path(user_config_path) if user_config_path is not None
+                                 else workspace_path('test_config.json'))
         self.config = self._load()
 
     def get_excluded(self) -> List[str]:

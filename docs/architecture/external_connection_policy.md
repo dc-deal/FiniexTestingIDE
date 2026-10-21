@@ -71,7 +71,7 @@ submit → transport fault
 **A failed READ is no answer about the order either.** The three outcomes decide what a failure
 means for the connection; for a status query that is all they decide. A query that fails is
 UNRESOLVED whatever the ladder calls it, and the ladder only sets the level — a transient fault
-is a warning, anything else an error, said once per order. Kraken raises every API-level error
+is a warning, anything else an error, said once per order. Kraken raises an API-level error
 as a plain `ConnectionError`, which the ladder classifies terminal: right for a write, where
 "Insufficient funds" is the venue refusing it, and wrong for a read. `EAPI:Invalid nonce`
 refused the QUESTION; booked as the order's rejection, it dropped a market order the venue had
@@ -300,6 +300,14 @@ The reads at boot deserve different answers, and only one of them is an operator
 | Warmup bars | **INADMISSIBLE** | there is no contract for an empty indicator history. The worker still emits a number, that number is wrong, and nothing declares it wrong |
 | Account balance | **INADMISSIBLE** | position sizing has no defined answer without it |
 | Operator alerts — the Telegram check (#235) | a refusal **refuses the start**; unreachable **goes on** | a token or chat the bot may not use would silence every later alert; an outage must not keep a supervised restart down — it is logged, and each message is tried again when it is due |
+
+**A start refused on a passing fault is tried again (#598).** When every attempt of a boot read
+failed on a transient fault — a timeout, a 5xx, a 429, or the venue's own "not now" inside an
+answer, which is how Kraken reports maintenance — the session ends with exit 75, which a
+supervisor restarts after its pause; a refused credential or another terminal answer keeps
+exit 2. The boot reads make their requests through `send_classified`, which classifies a
+`requests` failure for the ladder: unclassified, such a failure is an unregistered type and
+therefore TERMINAL, and the warmup gave up at its first timeout.
 
 Degraded start, as the operator reads it:
 

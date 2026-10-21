@@ -223,6 +223,12 @@ same broker's configuration; a mock session may trade against another one (`brok
 session reads its own broker's feed. In a report it is each unit's `data_broker_type`; in the
 configuration directory, a row's `data_broker_types`.
 
+**data home** (`FINIEX_DATA_HOME`) — The directory the operator's state lives in, apart from the
+code: the workspace (`user_configs/`), the strategy directories and every store root resolve under
+it, so a deploy into a new code tree finds them again. Unset, it is the working directory. Not
+the operating system's home directory (`~`), where the list of what runs on the machine lives. See
+[Data Storage Layout](architecture/data_storage_layout.md).
+
 **data origin** — Which kind of source produced an archived file: `origin_class` (`production`,
 `development`, `unknown`, `external`) with its evidence grade, stamped at import and carried into
 every run's consumption record. Not the *broker*. See [Data Provenance](architecture/data_provenance.md).
@@ -323,6 +329,11 @@ swap on every position, open ones included. They differ by the fees of what is s
 
 **field study** — The real-money acceptance test of the live execution stack, whose record becomes
 a release certificate. See [Field Study](tests/live_field_study/field_study_guide.md).
+
+**first start** (`--first-start`, served as `origin.first_start`) — A start declared the bot's
+first: the one way a session trading real money starts without a carry-over to continue. A
+declared first start that finds a usable carry-over is refused. See
+[Unattended Operation](autotrader/unattended_operation.md).
 
 **fixture** — Never used alone. *Fixture run* (`run_purpose: fixture`): a run constructed to show
 something — every run a test starts, and every run a consumer pins; its numbers are built, not

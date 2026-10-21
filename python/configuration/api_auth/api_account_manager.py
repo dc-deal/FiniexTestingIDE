@@ -14,7 +14,7 @@ from typing import Dict, Optional
 from pydantic import ValidationError
 
 from python.configuration.api_auth.inbound_credentials_cascade import read_inbound_section
-from python.configuration.credentials_cascade import WORKSPACE_CREDENTIALS_DIR
+from python.configuration.credentials_cascade import workspace_credentials_dir
 from python.framework.exceptions.api_errors import ApiConfigurationError
 from python.framework.types.config_types.api_auth_config_types import ApiAccount
 
@@ -85,7 +85,7 @@ class ApiAccountManager:
         Returns:
             The workspace path — the one that takes precedence and is not tracked
         """
-        return Path(WORKSPACE_CREDENTIALS_DIR) / self._accounts_file
+        return workspace_credentials_dir() / self._accounts_file
 
     def render_account(self, account_id: str, kind: str, display_name: str,
                        note: str) -> str:

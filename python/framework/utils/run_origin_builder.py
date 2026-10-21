@@ -30,7 +30,8 @@ from python.framework.utils.code_identity_builder import PatchSink, build_code_i
 from python.framework.utils.git_info_utils import get_framework_root
 
 
-def build_run_origin(channel: RunChannel, allow_dirty: bool = False) -> RunOrigin:
+def build_run_origin(channel: RunChannel, allow_dirty: bool = False,
+                     first_start: bool = False) -> RunOrigin:
     """
     State who or what started a run, for whom, and on which installation.
 
@@ -48,6 +49,8 @@ def build_run_origin(channel: RunChannel, allow_dirty: bool = False) -> RunOrigi
         channel: How the run was started, as the entry point DECLARES it
         allow_dirty: Whether the operator allowed real orders from uncommitted code
             (`--allow-dirty`); only an AutoTrader session can carry it
+        first_start: Whether the operator declared the bot's first start (`--first-start`);
+            only an AutoTrader session can carry it
 
     Returns:
         The run's origin
@@ -58,6 +61,7 @@ def build_run_origin(channel: RunChannel, allow_dirty: bool = False) -> RunOrigi
         principal=OPERATOR_PRINCIPAL,
         host=HostIdentityManager().get_host_id(),
         allow_dirty=allow_dirty,
+        first_start=first_start,
     )
 
 

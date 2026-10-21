@@ -11,6 +11,9 @@ against 0.02 ms, and it is free again at once after `kill -9`.
 A child the holder FORKS shares the open descriptor and with it the one lock. If the holder dies,
 the lock stays held until every such child is gone; if the holder releases it, it is free for all
 of them at once. A program the holder EXECS shares nothing: the file is opened close-on-exec.
+
+The file is readable by its owner alone, and so is its note — who holds it — which a refused
+process reads for its message and never decides on.
 """
 
 import fcntl
@@ -37,7 +40,7 @@ class FileLock:
         self._path = path
         self._descriptor: Optional[int] = None
         path.parent.mkdir(parents=True, exist_ok=True)
-        descriptor = os.open(path, os.O_RDWR | os.O_CREAT | os.O_CLOEXEC, 0o644)
+        descriptor = os.open(path, os.O_RDWR | os.O_CREAT | os.O_CLOEXEC, 0o600)
         try:
             fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
@@ -57,6 +60,21 @@ class FileLock:
             The path the lock was taken on
         """
         return self._path
+
+    def write_note(self, text: str) -> None:
+        """
+        Replace what the lock file says about its holder. Does nothing once released.
+
+        Args:
+            text: The note, written as UTF-8
+
+        Returns:
+            None
+        """
+        if self._descriptor is None:
+            return
+        os.ftruncate(self._descriptor, 0)
+        os.pwrite(self._descriptor, text.encode('utf-8'), 0)
 
     def release(self) -> None:
         """
@@ -79,6 +97,22 @@ class FileLock:
     def __exit__(self, exc_type: Optional[Type[BaseException]], exc: Optional[BaseException],
                  traceback: Optional[TracebackType]) -> None:
         self.release()
+
+
+def read_lock_note(path: Path) -> str:
+    """
+    What a lock file says about its holder, read without taking the lock.
+
+    Args:
+        path: The lock file
+
+    Returns:
+        The note, or '' when there is none or it cannot be read
+    """
+    try:
+        return path.read_text(encoding='utf-8').strip()
+    except (OSError, UnicodeDecodeError):
+        return ''
 
 
 def is_lock_held(path: Path) -> bool:

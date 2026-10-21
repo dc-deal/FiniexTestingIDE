@@ -867,6 +867,7 @@ order is resting at the broker and we have forgotten it — we manufactured the 
 |---|---|
 | `test_transport_fault_is_unresolved` | A transport exception classifies as `UNRESOLVED`, not `REJECTED` |
 | `test_venue_answer_stays_a_rejection` | A real venue refusal is still a rejection |
+| `test_the_venue_not_answering_is_unresolved` | Kraken's `EService:Deadline elapsed` on a submit — the order may have been placed all the same — is `UNRESOLVED`, never a refusal (#598) |
 | `test_refused_credential_is_a_rejection_not_a_blip` | An auth refusal is terminal, never a transient blip |
 | `test_unresolved_is_not_terminal` | `UNRESOLVED` does not end the order's life |
 | `test_unresolved_keeps_the_pending_order` | The PendingOrder survives, so the order stays ours to ask about |

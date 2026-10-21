@@ -29,6 +29,10 @@ from copy import deepcopy
 from pathlib import Path
 
 os.environ.setdefault('FINIEX_CONFIG_ISOLATION', '1')
+# A data home named in the developer's shell would send every store the suite writes there
+# (#598); the suite's paths are relative to the checkout, and a test that wants a home sets
+# one of its own.
+os.environ.pop('FINIEX_DATA_HOME', None)
 
 import pytest
 

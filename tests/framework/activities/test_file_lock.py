@@ -14,7 +14,7 @@ import pytest
 
 from python.framework.exceptions.file_lock_errors import FileLockHeldError
 from python.framework.utils import file_lock as file_lock_module
-from python.framework.utils.file_lock import FileLock, is_lock_held
+from python.framework.utils.file_lock import FileLock, is_lock_held, read_lock_note
 
 
 def _hold_in_child(path):
@@ -63,6 +63,34 @@ class TestAHolderHoldsTheLock:
         path.touch()
         assert not is_lock_held(path)
         assert not is_lock_held(path)
+
+
+class TestTheNoteNamesTheHolder:
+
+    def test_a_note_replaces_the_one_before(self, tmp_path):
+        path = tmp_path / 'my_bot.lock'
+        with FileLock(path) as lock:
+            lock.write_note('a longer first note')
+            lock.write_note('second')
+            assert read_lock_note(path) == 'second'
+
+    def test_a_missing_file_has_no_note_and_is_not_created(self, tmp_path):
+        path = tmp_path / 'absent.lock'
+        assert read_lock_note(path) == ''
+        assert not path.exists()
+
+    def test_the_file_is_readable_by_its_owner_alone(self, tmp_path):
+        path = tmp_path / 'my_bot.lock'
+        with FileLock(path):
+            assert path.stat().st_mode & 0o777 == 0o600
+
+    def test_a_released_lock_writes_nothing(self, tmp_path):
+        path = tmp_path / 'my_bot.lock'
+        lock = FileLock(path)
+        lock.write_note('held')
+        lock.release()
+        lock.write_note('after the release')
+        assert read_lock_note(path) == 'held'
 
 
 class TestALockThatCannotBeTaken:

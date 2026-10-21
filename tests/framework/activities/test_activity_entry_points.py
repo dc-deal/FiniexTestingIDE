@@ -121,6 +121,28 @@ class TestTheOtherWorkEntersItself:
         assert (kind, label) == (ActivityKind.TEST_SUITE, 'full') and entry is not None
         _assert_left_no_trace(registry_dir)
 
+    def test_each_suite_is_listed_under_the_full_run_with_its_place(self, witness, registry_dir,
+                                                                     monkeypatch):
+        runner_cli = test_runner_cli_module.TestRunnerCli
+        ran = []
+
+        def run_suite(self, suite_name, pytest_paths):
+            ran.append(suite_name)
+            return test_runner_cli_module.SuiteResult(name=suite_name, passed=1, failed=0,
+                                                      errors=0, skipped=0, exit_code=0,
+                                                      duration=0.0, failed_tests=[])
+
+        monkeypatch.setattr(runner_cli, '_run_suite', run_suite)
+        with pytest.raises(SystemExit):
+            runner_cli().cmd_run()
+        (_, _, full), *suites = witness
+        assert ran and len(suites) == len(ran)
+        for position, ((kind, label, entry), name) in enumerate(zip(suites, ran), start=1):
+            assert kind is ActivityKind.TEST_SUITE
+            assert label == f'{name} ({position}/{len(ran)})'
+            assert entry.parent_activity_id == full.activity_id
+        _assert_left_no_trace(registry_dir)
+
     def test_the_api_server_is_listed_by_its_command(self, witness, registry_dir, monkeypatch):
         monkeypatch.setattr(api_server_cli_module.uvicorn, 'run', lambda *args, **kwargs: None)
         ApiServerCli(host='127.0.0.1', port=8123, reload=False).run()

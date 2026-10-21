@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional, Set
 
+from python.configuration.data_home import resolve_in_data_home
 from python.framework.autotrader.cold_start.cold_start_adopter import ColdStartAdopter
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.logging.abstract_logger import AbstractLogger
@@ -27,7 +28,12 @@ from python.framework.types.autotrader_types.cold_start_types import (
     ColdStartSituation,
     ColdStartVerdict,
 )
-from python.framework.types.persistence_types import CarryOverRead, ColdStartPayload
+from python.framework.types.persistence_types import (
+    CarryOverLoad,
+    CarryOverLoadOutcome,
+    CarryOverRead,
+    ColdStartPayload,
+)
 
 
 @dataclass
@@ -171,6 +177,30 @@ def setup_cold_start(
     )
 
 
+def describe_carry_over_read(load: Optional[CarryOverLoad], first_start: bool) -> str:
+    """
+    One line naming the carry-over a session continued, or why it continued none (#598).
+
+    Args:
+        load: What the boot's read found; None when the cold start is switched off
+        first_start: Whether the start was declared the bot's first
+
+    Returns:
+        The line, for the session channel before the first order
+    """
+    if load is None:
+        return 'Carry-over: not read — the cold start is switched off'
+    if load.outcome is CarryOverLoadOutcome.ACCEPTED:
+        writer = f'run {load.writer_run_id}' if load.writer_run_id else 'a run that recorded no id'
+        return (f'Carry-over: continued from {writer} of {load.writer_profile}, written '
+                f'{load.saved_at_utc} — {load.path}')
+    declared = ' — the start is declared the bot\'s first (--first-start)' if first_start else ''
+    if load.outcome is CarryOverLoadOutcome.ABSENT:
+        return f'Carry-over: none at {load.path}{declared}'
+    return (f'Carry-over: found but not continued ({load.outcome.value}) at '
+            f'{load.path}{declared}')
+
+
 def read_carry_over(config: AutoTraderConfig) -> CarryOverRead:
     """
     Open this bot's carry-over document before anything else needs it.
@@ -215,7 +245,7 @@ def _carry_over_store(
         The store; constructing it does no IO
     """
     return ColdStartStateStore(
-        root=Path(config.cold_start.path),
+        root=resolve_in_data_home(Path(config.cold_start.path)),
         profile=config.get_unit_name(),
         symbol=config.symbol,
         logger=logger,

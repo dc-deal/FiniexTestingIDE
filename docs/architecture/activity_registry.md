@@ -81,7 +81,7 @@ Each enters itself at the one place where its work begins and ends:
 | AutoTrader session | `AutotraderMain.run()`, once its run id exists | its run id |
 | import | `ImportCoordinator.run()` | — (its label is the import id its log is named by) |
 | discovery cache build | `DiscoveryCacheManager.rebuild_all()` | — |
-| test suite | the test runner's `run` command | — |
+| test suite | the test runner's `run` command, and under it each suite it runs, named with its place in the run (`autotrader/integration (12/67)`) | — |
 | API server | the API server's command, around the server | — |
 
 An activity started inside another one in the same process — a sweep's combination, a cache build
@@ -114,6 +114,7 @@ python python/cli/activity_cli.py list
 
   KIND                   WHAT                               SINCE (UTC) TREE             STARTED BY      MEMORY
   test suite             full                               14:35       .                cli             3.2 GB
+  └ test suite           autotrader/integration (12/67)     14:52                        cli   (in test suite)
   sweep                  my_sweep                           14:02       release-v1.5.1   cli             7.1 GB
   └ backtest             my_set__sweep_20…200_ab12cd34_c003 14:31                        sweep      (in sweep)
 

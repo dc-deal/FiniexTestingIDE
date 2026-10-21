@@ -5,8 +5,9 @@ Loader for generator_config.json (strategy configurations for scenario generatio
 
 import json
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
+from python.configuration.data_home import workspace_path
 from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.types.scenario_types.scenario_generator_types import GeneratorConfig
 from python.framework.utils.config_merge_utils import deep_merge, is_config_isolation_active
@@ -24,17 +25,19 @@ class GeneratorConfigLoader:
     def __init__(
         self,
         config_path: str = 'configs/generator/generator_config.json',
-        user_config_path: str = 'user_configs/generator_config.json'
+        user_config_path: Optional[str] = None
     ):
         """
         Initialize generator config loader.
 
         Args:
             config_path: Path to base generator config
-            user_config_path: Path to user override config
+            user_config_path: Path to user override config; the workspace copy under the data
+                home when omitted
         """
         self._config_path = Path(config_path)
-        self._user_config_path = Path(user_config_path)
+        self._user_config_path = (Path(user_config_path) if user_config_path is not None
+                                  else workspace_path('generator_config.json'))
 
     def get_generator_config(self) -> GeneratorConfig:
         """

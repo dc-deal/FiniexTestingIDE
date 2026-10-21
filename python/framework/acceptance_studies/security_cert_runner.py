@@ -23,6 +23,10 @@ from python.framework.acceptance_studies.security_cert_stages import (
     SECURITY_STAGES,
     stage_profile_path,
 )
+from python.framework.autotrader.cold_start.cold_start_setup import read_carry_over
+from python.framework.autotrader.dry_run_resolver import resolve_dry_run
+from python.framework.exceptions.connection_errors import ConnectionGaveUpError
+from python.framework.exceptions.live_execution_errors import DryRunConflictError
 from python.framework.factory.broker_config_factory import BrokerConfigFactory
 from python.framework.logging.global_logger import GlobalLogger
 from python.framework.reporting.certificates.security_cert_certificate import (
@@ -30,6 +34,7 @@ from python.framework.reporting.certificates.security_cert_certificate import (
     SecurityCertCertificate,
 )
 from python.framework.types.acceptance_study_types.security_cert_types import SecurityStageId
+from python.framework.types.persistence_types import CarryOverLoadOutcome
 from python.framework.types.trading_env_types.broker_types import BrokerType
 
 # The AutoTrader entry point each stage runs through — the same one an operator starts by hand
@@ -82,6 +87,8 @@ def run_security_study(
         command = [sys.executable, _AUTOTRADER_CLI, 'run', '--config', str(profile)]
         if allow_dirty:
             command.append('--allow-dirty')
+        if starts_without_a_carry_over(profile):
+            command.append('--first-start')
         # The exit code is not the verdict: the hard-stop stages end their sessions on purpose,
         # and an emergency end is graded as one. The stage's own capture says what happened.
         subprocess.run(command, check=False)
@@ -133,14 +140,39 @@ def _capture_since(
     return capture
 
 
+def starts_without_a_carry_over(profile: Path) -> bool:
+    """
+    Whether a stage that trades real money finds no carry-over of its own to continue, so its
+    start is declared the bot's first (#598) — the study's first run on an installation. A stage
+    that declares a continuation, a dry or mock stage and one without a cold start declare
+    nothing.
+
+    Args:
+        profile: The stage's profile
+
+    Returns:
+        True when the stage is started with `--first-start`
+    """
+    config = load_autotrader_config(str(profile))
+    try:
+        dry = resolve_dry_run(config)
+    except DryRunConflictError:
+        # The stage's own start refuses the conflict and names it; there is nothing to declare
+        return False
+    if dry or config.carry_over_from or not config.cold_start.enabled:
+        return False
+    load = read_carry_over(config).load
+    return load is not None and load.outcome is not CarryOverLoadOutcome.ACCEPTED
+
+
 def _account_refusals(profile: Path) -> List[str]:
     """
     What about the account would make the study measure nothing — read from the venue, free.
 
     A held base moves the account value the breaker judges with every tick, and against limits
-    this small it would trip them at a moment nobody chose. A base the venue does not report at
-    all would refuse the session at its start. Only a live profile is checked; a mock rehearsal
-    has no venue to ask.
+    this small it would trip them at a moment nobody chose. A base the account never held reads
+    as zero, which is what the study needs (#598). Only a live profile is checked; a mock
+    rehearsal has no venue to ask.
 
     Args:
         profile: The profile of the first stage that will run
@@ -160,22 +192,21 @@ def _account_refusals(profile: Path) -> List[str]:
                                                broker_type=config.broker_type),
     ).get_symbol_specification(config.symbol)
     base_ccy, quote_ccy = spec.base_currency, spec.quote_currency
-    base = fetcher.fetch_account_balance(base_ccy)
-    quote = fetcher.fetch_account_balance(quote_ccy)
+    try:
+        base = fetcher.fetch_account_balance(base_ccy)
+        quote = fetcher.fetch_account_balance(quote_ccy)
+    except ConnectionGaveUpError as error:
+        return [f'The account balances could not be read from the venue ({error}). → Check the '
+                f'connection and the API key, then run the study again.']
 
     refusals: List[str] = []
-    if base is None:
-        refusals.append(
-            f'The venue reports no {base_ccy} balance for this account, so a session on '
-            f'{config.symbol} would refuse to start. → Run the study on a pair whose base the '
-            f'venue lists for the account.')
-    elif base >= spec.volume_min:
+    if base >= spec.volume_min:
         refusals.append(
             f'The account holds {base:.8f} {base_ccy}. The study judges the account value of '
             f'{config.symbol}, and a held {base_ccy} moves it with every tick — limits this small '
             f'would trip at a moment nobody chose. → Sell the {base_ccy} first, or run the study '
             f'on a pair whose base the account does not hold.')
-    if quote is None or quote <= 0.0:
+    if quote <= 0.0:
         refusals.append(
             f'The account holds no {quote_ccy}. The study buys the smallest {config.symbol} order '
             f'({spec.volume_min:g} {base_ccy}) and pays in {quote_ccy}. → Fund the account in '

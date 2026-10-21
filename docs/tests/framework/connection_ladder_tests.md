@@ -28,6 +28,21 @@ exception were TRANSIENT, a defect in our own parsing would be retried forever a
 healthy venue — reporting their outage for our mistake, quietly, for as long as the session
 runs.
 
+## One HTTP attempt, classified — `test_http_attempt.py`
+
+The other side of that rule. A raw `requests` exception is a type nobody registered, so it is
+TERMINAL — which made the warmup read give up at its first timeout with two attempts of its
+budget unused. A `requests` call that a ladder retries therefore goes through `send_classified`
+(#598), which turns each failure into a `ConnectionAttemptFailedError` carrying its verdict.
+
+| Group | Checks |
+|---|---|
+| `TestTheClassification` | a timeout and a refused connection are TRANSIENT and name the fault · 429 and 5xx are TRANSIENT, another 4xx TERMINAL, by the shared status rule · a good answer is handed back unchanged |
+| `TestTheLadderRetriesWhatWasClassified` | a timeout is tried as often as the budget allows · a 401 ends at the first attempt |
+
+What the venue says inside a successful answer (Kraken's `error` list) is not classified here;
+the caller judges it.
+
 ## Sibling suites
 
 The ladder's *adoption* is tested where each connection lives:

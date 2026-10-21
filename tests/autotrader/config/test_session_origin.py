@@ -29,6 +29,7 @@ from python.framework.autotrader import autotrader_main as autotrader_main_modul
 from python.framework.autotrader.autotrader_main import AutotraderMain
 from python.framework.autotrader.startup.autotrader_startup import create_autotrader_loggers
 from python.framework.exceptions.host_identity_errors import HostIdentityError
+from python.framework.exceptions.persistence_errors import BotAlreadyRunningError
 from python.framework.reporting.io.run_header_io import RUN_HEADER_ARTIFACT, read_run_header
 from python.framework.types.config_types.host_identity_config_types import TEST_HOST_ID
 from python.framework.types.run_origin_types import (
@@ -97,6 +98,17 @@ class TestTheSessionStatesItsOrigin:
 
         assert received['origin'].channel is RunChannel.CLI
         assert received['origin'].allow_dirty is True
+        assert received['origin'].first_start is False
+
+    def test_a_declared_first_start_reaches_the_header(self, stopped_session):
+        """#598: the one way a real-money session starts without a carry-over is recorded."""
+        _, received = stopped_session
+        trader = AutotraderMain(load_autotrader_config(PROFILE), first_start=True)
+
+        with pytest.raises(_StopAtLoggers):
+            trader.run()
+
+        assert received['origin'].first_start is True
 
     def test_the_identity_is_captured_over_the_profile_before_the_header(
             self, stopped_session):
@@ -175,6 +187,20 @@ class TestTheCommandLineDeclaresItself:
         assert _run_cli(monkeypatch) == 0
         assert _RecordingTrader.constructed['channel'] is RunChannel.CLI
         assert _RecordingTrader.constructed['allow_dirty'] is False
+        assert _RecordingTrader.constructed['first_start'] is False
+
+    def test_first_start_is_carried_through(self, monkeypatch):
+        assert _run_cli(monkeypatch, '--first-start') == 0
+        assert _RecordingTrader.constructed['first_start'] is True
+
+    def test_a_second_start_of_a_running_bot_is_a_refusal_not_a_crash(self, monkeypatch, capsys):
+        """#598: exit 2, which a supervisor does not restart — the running session goes on."""
+        _RecordingTrader.failure = BotAlreadyRunningError(
+            "STARTUP REFUSED — bot 'mybot01' on ETHUSD is already running")
+
+        assert _run_cli(monkeypatch) == 2
+        output = capsys.readouterr().out
+        assert 'is already running' in output and 'Traceback' not in output
 
     def test_allow_dirty_is_carried_through(self, monkeypatch):
         assert _run_cli(monkeypatch, '--allow-dirty') == 0

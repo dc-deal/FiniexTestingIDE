@@ -12,8 +12,10 @@ import requests
 
 from python.framework.exceptions.timeframe_errors import UnsupportedTimeframeError
 from python.framework.logging.scenario_logger import ScenarioLogger
+from python.framework.trading_env.adapters.kraken_error_codes import raise_for_kraken_errors
 from python.framework.types.market_types.market_data_types import Bar
 from python.framework.utils.bar_period import is_complete_at
+from python.framework.utils.http_attempt import send_classified
 from python.framework.utils.timeframe_config_utils import TimeframeConfig
 
 # Mirrors BrokerTransportConfig.request_timeout_s, which is where an operator tunes it.
@@ -191,13 +193,15 @@ class KrakenOhlcBarFetcher:
             'since': since,
         }
 
-        response = requests.get(url, params=params, timeout=self._request_timeout_s)
-        response.raise_for_status()
+        # Classified, so the warmup's ladder retries a timeout instead of giving up at the first (#598)
+        response = send_classified(
+            lambda: requests.get(url, params=params, timeout=self._request_timeout_s),
+            '/0/public/OHLC')
 
         data = response.json()
-        errors = data.get('error', [])
-        if errors:
-            raise ConnectionError(f'Kraken OHLC API error: {errors}')
+        # The venue's own "not now" goes to the ladder as transient, so the warmup retries it
+        # (#598); any other error is its answer
+        raise_for_kraken_errors(data.get('error', []), 'Kraken OHLC API error')
 
         return data.get('result', {})
 

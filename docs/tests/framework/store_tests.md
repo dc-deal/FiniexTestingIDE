@@ -198,7 +198,7 @@ remedy for a deliberate later stage.
 
 ## `test_carry_over_continuity.py`
 
-What a boot may do with the carry-over it just read (#358). The store writes by reading first, so
+What a boot may do with the carry-over it just read (#358, #598). The store writes by reading first, so
 whatever a boot ignores on read, its first write replaces; the tests hold the rules that stand
 between that and a session trading against a state that is not its own:
 
@@ -208,6 +208,7 @@ between that and a session trading against a state that is not its own:
 | `TestADeclaredContinuationFindsWhatItContinues` | no document, an unreadable one, one in another format, or one another profile wrote is refused, naming the stage to run first; its own document from an earlier run passes without asking the ledger |
 | `TestAPartnersDocumentComesFromACompletedRun` | a partner's document is taken only from a run with a ledger row — in both directions — and the refusal says "not completed", never "aborted" |
 | `TestAnotherProfilesClaimsStopTheBoot` | another profile's document holding an open position or a session key refuses the boot, naming the writer, its run and the name to restore; one that claims nothing may be started over |
+| `TestARealMoneyStartNeedsACarryOverOrItsDeclaration` | a session trading real money that finds no usable carry-over — none, unreadable, another format, another profile's — is refused unless its start was declared the bot's first (`--first-start`), and the refusal names the data home and both ways forward; a declared first start that finds a usable carry-over is refused, naming the run that wrote it; a usable one continues without a declaration; a dry or mock session, a study that skips adoption and a session without a cold start are not covered |
 
 ---
 

@@ -5,8 +5,9 @@ Simple loader for discoveries_config.json with typed accessors.
 
 import json
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
+from python.configuration.data_home import workspace_path
 from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.types.market_types.market_volatility_profile_types import (
     CrossInstrumentRankingConfig,
@@ -27,16 +28,18 @@ class DiscoveriesConfigLoader:
 
     def __init__(self,
                  config_path: str = 'configs/discoveries/discoveries_config.json',
-                 user_config_path: str = 'user_configs/discoveries_config.json'):
+                 user_config_path: Optional[str] = None):
         """
         Initialize discoveries config loader.
 
         Args:
             config_path: Path to base discoveries config
-            user_config_path: Path to user override config
+            user_config_path: Path to user override config; the workspace copy under the data
+                home when omitted
         """
         self.config_path = Path(config_path)
-        self.user_config_path = Path(user_config_path)
+        self.user_config_path = (Path(user_config_path) if user_config_path is not None
+                                 else workspace_path('discoveries_config.json'))
         self.config = self._load()
 
     def get_config_raw(self) -> Dict[str, Any]:

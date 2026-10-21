@@ -39,6 +39,7 @@ from python.api.endpoints import (
     sweeps_router,
 )
 from python.configuration.app_config_manager import AppConfigManager
+from python.configuration.data_home import describe_data_home
 from python.framework.activities.activity_registry_reader import ActivityRegistryReader
 from python.framework.docs_search.docs_corpus import DOCS_ROOT
 from python.framework.docs_search.docs_search_index import docs_search_index
@@ -189,6 +190,8 @@ def create_app() -> FastAPI:
     machine_thresholds = AppConfigManager().get_machine_resources_config()
     auth = setup_api_auth()
     print(auth.boot_line)
+    # Which data home this server reads its stores from — the one its sessions write (#598)
+    print(describe_data_home())
 
     # Every protected router carries the bearer check, and it is mounted on the ROUTER rather
     # than on its routes: a route added later inherits it by construction, so the failure this
