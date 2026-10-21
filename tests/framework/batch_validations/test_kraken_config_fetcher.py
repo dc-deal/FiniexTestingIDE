@@ -3,6 +3,8 @@ Kraken Config Fetcher — Cache Behavior Tests.
 
 Unit tests for the runtime cache logic in KrakenConfigFetcher:
 
+- An unreadable cache is set aside, never merged as empty; a write that fails leaves the previous
+  cache whole.
 - _merge_with_cache: existing symbols are not tombstoned; fresh symbols get
   _active:true and a _last_fetched timestamp.
 - fetch_broker_config_with_cache: the age is asked of the REQUESTED symbol's own entry
@@ -30,6 +32,7 @@ from python.configuration.autotrader.broker_config_cache_policy import get_entry
 from python.configuration.autotrader.kraken_config_fetcher import (
     KrakenConfigFetcher,
     _merge_with_cache,
+    _write_cache,
 )
 from python.framework.autotrader.startup.start_failure_classifier import is_passing_start_failure
 from python.framework.exceptions.connection_errors import (
@@ -167,6 +170,48 @@ class TestMergeWithCache:
 
         assert list(result['symbols'].keys()) == ['SOLUSD']
         assert result['symbols']['SOLUSD']['_active'] is True
+
+
+# =============================================================================
+# TestAnUnreadableCacheIsSetAside
+# =============================================================================
+
+class TestAnUnreadableCacheIsSetAside:
+    """A cache that cannot be read keeps its symbols in a file of its own."""
+
+    def test_an_unreadable_cache_is_set_aside_with_its_content(self, tmp_path):
+        """A torn cache is moved aside and named in a warning; the new cache holds the fetch."""
+        cache_path = tmp_path / 'kraken_spot_broker_config.json'
+        torn = '{"symbols": {"ETHUSD": {"base_currency": "ETH", "volume_m'
+        cache_path.write_text(torn)
+        logger = RecordingLogger()
+        fetcher = _make_fetcher()
+        fetcher._logger = logger
+
+        with (
+            patch(f'{_MODULE}._get_runtime_cache_path', return_value=cache_path),
+            patch.object(fetcher, 'fetch_broker_config',
+                         return_value=_make_fresh_dict('DOTUSD', 'DOT', 'USD')),
+        ):
+            result = fetcher.fetch_broker_config_with_cache('DOTUSD', 'kraken_spot')
+
+        aside = list(tmp_path.glob('kraken_spot_broker_config.json.unreadable-*'))
+        assert len(aside) == 1, 'the torn cache is kept beside the new one'
+        assert aside[0].read_text() == torn
+        assert list(json.loads(cache_path.read_text())['symbols']) == ['DOTUSD']
+        assert list(result['symbols']) == ['DOTUSD']
+        assert aside[0].name in logger.text_at('warning'), 'the warning names where it went'
+
+    def test_a_failed_write_leaves_the_previous_cache_whole(self, tmp_path):
+        """A write that fails part-way never truncates the cache and leaves no temporary file."""
+        cache_path = _make_cache_file(tmp_path, {'ETHUSD': {'base_currency': 'ETH'}})
+        before = cache_path.read_text()
+
+        with pytest.raises(TypeError):
+            _write_cache({'symbols': {'DOTUSD': object()}}, cache_path)
+
+        assert cache_path.read_text() == before, 'a failed write never truncates the cache'
+        assert [p.name for p in tmp_path.iterdir()] == [cache_path.name], 'no temporary file left'
 
 
 # =============================================================================

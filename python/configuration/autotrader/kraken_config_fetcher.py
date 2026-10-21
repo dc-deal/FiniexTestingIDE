@@ -41,6 +41,7 @@ from python.framework.trading_env.adapters.kraken_error_codes import raise_for_k
 from python.framework.types.config_types.connection_policy_config_types import ConnectionPolicy
 from python.framework.types.connection_types import GiveUpAction
 from python.framework.types.trading_env_types.broker_types import FeeTierInfo
+from python.framework.utils.atomic_file_utils import write_text_atomic
 from python.framework.utils.connection_ladder import ConnectionLadder, run_with_ladder
 from python.framework.utils.http_attempt import send_classified
 
@@ -185,7 +186,7 @@ class KrakenConfigFetcher(AbstractBrokerConfigFetcher):
             Complete broker config dict (from cache or fresh API fetch)
         """
         cache_path = _get_runtime_cache_path(broker_type)
-        cached = _load_cache_or_none(cache_path)
+        cached = _load_cache_or_none(cache_path, self._logger)
         previous_entry = cached.get('symbols', {}).get(symbol) if cached else None
         entry_age = entry_age_days(previous_entry)
         self._last_spec_changes = []
@@ -213,7 +214,7 @@ class KrakenConfigFetcher(AbstractBrokerConfigFetcher):
                     lambda: self.fetch_broker_config(symbol, broker_type), self._ladder)
             else:
                 fresh_dict = self.fetch_broker_config(symbol, broker_type)
-            merged = _merge_with_cache(fresh_dict, cache_path)
+            merged = _merge_with_cache(fresh_dict, cache_path, self._logger)
             _write_cache(merged, cache_path)
             self._report_spec_changes(symbol, previous_entry, merged['symbols'][symbol])
             config_hash = merged.get('_config_meta', {}).get('symbols_hash', '')
@@ -793,12 +794,17 @@ def _spec_value(value: Any) -> str:
     return f'{value:.10f}'.rstrip('0').rstrip('.') or '0'
 
 
-def _load_cache_or_none(cache_path: Path) -> Optional[Dict[str, Any]]:
+def _load_cache_or_none(
+    cache_path: Path, logger: Optional[ScenarioLogger] = None
+) -> Optional[Dict[str, Any]]:
     """
-    Load the runtime cache, or None when it is missing or unreadable.
+    Load the runtime cache, or None when it is missing or cannot be read. A cache that cannot be
+    read is set aside first, so the refresh that follows cannot replace the symbols it still holds
+    with the one it fetched.
 
     Args:
         cache_path: Path to runtime cache file
+        logger: ScenarioLogger for the warning when the cache is set aside (may be None)
 
     Returns:
         The cache dict, or None
@@ -806,8 +812,12 @@ def _load_cache_or_none(cache_path: Path) -> Optional[Dict[str, Any]]:
     if not cache_path.exists():
         return None
     try:
-        return _load_json(cache_path)
-    except Exception:
+        cached = _load_json(cache_path)
+        if not isinstance(cached, dict):
+            raise ValueError(f'a JSON {type(cached).__name__}, not an object')
+        return cached
+    except (OSError, ValueError) as error:
+        _set_aside_unreadable_cache(cache_path, error, logger)
         return None
 
 
@@ -819,18 +829,47 @@ def _load_json(path: Path) -> Dict[str, Any]:
 
 def _write_cache(config_dict: Dict[str, Any], cache_path: Path) -> None:
     """
-    Write broker config dict to runtime cache file.
+    Write broker config dict to runtime cache file — atomically, so a session killed while writing
+    leaves the previous file whole instead of a torn one.
 
     Args:
         config_dict: Broker config dict to write
         cache_path: Destination path
     """
-    cache_path.parent.mkdir(parents=True, exist_ok=True)
-    with open(cache_path, 'w') as f:
-        json.dump(config_dict, f, indent=2)
+    write_text_atomic(cache_path, json.dumps(config_dict, indent=2))
 
 
-def _merge_with_cache(fresh_dict: Dict[str, Any], cache_path: Path) -> Dict[str, Any]:
+def _set_aside_unreadable_cache(
+    cache_path: Path, error: Exception, logger: Optional[ScenarioLogger]
+) -> None:
+    """
+    Move a runtime cache that cannot be read out of the way, and say where it went.
+
+    A torn write or a hand edit leaves such a file. Merged as empty, it would lose every symbol it
+    still holds; set aside, it stays for a look, and each of its symbols is fetched again when a
+    session first asks for it.
+
+    Args:
+        cache_path: The unreadable cache file
+        error: What reading it raised
+        logger: ScenarioLogger for the warning; the global log when None
+    """
+    stamp = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')
+    aside = cache_path.with_name(f'{cache_path.name}.unreadable-{stamp}')
+    try:
+        cache_path.replace(aside)
+        outcome = (f'set aside as {aside.name}. Its symbols are fetched again when a session first '
+                   f'asks for one; look at the set-aside file, then delete it.')
+    except OSError as move_error:
+        outcome = (f'and could not be set aside ({move_error}); the next refresh replaces it with '
+                   f'the symbol it fetched.')
+    (logger or get_global_logger()).warning(
+        f'⚠️  The broker cache {cache_path} could not be read ({error}) — {outcome}')
+
+
+def _merge_with_cache(
+    fresh_dict: Dict[str, Any], cache_path: Path, logger: Optional[ScenarioLogger] = None
+) -> Dict[str, Any]:
     """
     Extend existing cache with freshly fetched symbol(s).
 
@@ -847,22 +886,27 @@ def _merge_with_cache(fresh_dict: Dict[str, Any], cache_path: Path) -> Dict[str,
     Args:
         fresh_dict: Config dict from broker API (typically one symbol)
         cache_path: Path to existing cache (may not exist)
+        logger: ScenarioLogger for the warning when the cache is set aside (may be None)
 
     Returns:
         Merged config dict with updated _config_meta
     """
     merged_symbols: Dict[str, Any] = {}
 
-    # Load existing cache symbols if present — keep their current state.
-    # The try/except handles both missing files and corrupted JSON in one
-    # branch; an explicit exists() check is redundant and made the function
-    # depend on filesystem state when callers mock _load_json directly.
+    # Load existing cache symbols if present — keep their current state. No exists() check:
+    # callers mock _load_json directly, and a check would make the function depend on the
+    # filesystem anyway. A cache that cannot be read is set aside rather than merged as empty —
+    # merged as empty, the write that follows would drop every symbol it still holds.
+    existing: Any = None
     try:
         existing = _load_json(cache_path)
+    except FileNotFoundError:
+        pass  # no cache yet: start fresh
+    except (OSError, ValueError) as error:
+        _set_aside_unreadable_cache(cache_path, error, logger)
+    if isinstance(existing, dict):
         for sym, spec in existing.get('symbols', {}).items():
             merged_symbols[sym] = dict(spec)
-    except Exception:
-        pass  # no existing cache (or corrupted): start fresh
 
     # Add / update fresh API symbols (always active)
     now_str = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')

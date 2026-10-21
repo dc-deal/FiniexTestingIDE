@@ -442,6 +442,11 @@ data/runtime/brokers/kraken_spot/kraken_spot_broker_config.json  ← gitignored 
 
 The static seed is committed with the codebase. The runtime cache is gitignored and machine-local.
 
+**The cache is replaced atomically**, so a session killed while writing it leaves the previous
+file whole. A cache that cannot be read — a torn write from before, or a hand edit — is set aside
+beside it as `<name>.unreadable-<UTC stamp>`, with a warning, before the refresh writes a new one;
+each symbol it held is fetched again when a session first asks for it.
+
 **The split is by CONCERN, not by pipeline (#337).** Symbol specifications come from whichever
 source the broker's `config_mode` selects — a mock session reads the seed whatever the mode — and
 they are expensive to fetch and genuinely change at the venue. The **fee structure always comes from the seed**, in both pipelines, and

@@ -234,6 +234,16 @@ cache is read; the post-run check counts it.
 | `test_existing_symbol_last_fetched_preserved` | Existing symbol's `_last_fetched` unchanged when a different symbol is fetched |
 | `test_no_cache_returns_fresh_symbols_only` | No existing cache → result contains only the fresh symbol |
 
+#### `TestAnUnreadableCacheIsSetAside`
+
+A cache that cannot be read is never merged as empty — the write that follows would drop every
+symbol it still holds.
+
+| Test | Description |
+|------|-------------|
+| `test_an_unreadable_cache_is_set_aside_with_its_content` | A torn cache is kept as `<name>.unreadable-<stamp>`, the warning names it, the new cache holds the fetched symbol |
+| `test_a_failed_write_leaves_the_previous_cache_whole` | A write that fails part-way never truncates the cache and leaves no temporary file |
+
 #### `TestFetchWithCacheSymbolCheck`
 
 `fetch_broker_config_with_cache()` asks the REQUESTED symbol's own `_last_fetched` (#608): every
