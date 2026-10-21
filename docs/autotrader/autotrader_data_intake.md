@@ -26,9 +26,22 @@ tick — `docs/architecture/architecture_execution_layer.md`. Which venue answer
 Live tick stream from the Kraken WebSocket v2 trade channel, with the ticker channel beside it supplying the quote each trade executed against. Runs `asyncio.run()` in a daemon thread (Threading model 8.a), pushes `TickData` to `queue.Queue`.
 
 **Key features:**
-- Endless reconnect with exponential backoff (1s → 60s cap)
-- Connection-liveness monitoring: checks message silence every 30s, forces reconnect after 90s silence
-- SSL via certifi (cross-platform: Linux Docker + Windows server)
+- Endless reconnect with exponential backoff (1s → 60s cap, spread by jitter). The backoff starts
+  over only after a connection has DELIVERED for `backoff_reset_after_s` (default 10 s), measured
+  from its subscription to its last message — a far side that accepts connections and drops them
+  again is dialled less and less often, instead of about once a second (#609). The venue's front
+  refuses an address after about 150 connection attempts in ten minutes.
+- Connection-liveness monitoring on the monotonic clock: checks the silence every second and
+  aborts the connection after 10 s without a message. Every message counts, heartbeats included,
+  and Kraken sends a heartbeat about once a second on every connection — measured on 2026-10-20
+  by `python/experiments/venue_probes/probe_kraken_ws_silence.py`, the longest pause on a healthy
+  connection 1.15 s — so 10 s of silence is a dead connection, never a quiet market.
+- A socket whose trade subscription is refused or times out, a silent one and a stopped one are all
+  aborted at once, without a close handshake, so none stays open at the venue's front; a refused
+  quote subscription only degrades the quote. Stopping the session wakes the loop wherever it
+  waits, a backoff pause included.
+- SSL via certifi (cross-platform: Linux Docker + Windows server). The address must be `wss://`;
+  `ws://` is accepted only to the local machine.
 - Single symbol per session (matches bot architecture)
 - Concurrent asyncio tasks: `_receive_loop` + `_connection_monitor` via `asyncio.wait(FIRST_COMPLETED)`
 - Two subscriptions on one connection, matched by the channel Kraken names in each acknowledgement
@@ -70,6 +83,38 @@ reads the collector's archive instead — so a difference between the two is fir
 difference, and only then a fill difference ([A run is a record, and an old one stays
 true](../introduction_to_the_ide.md#a-run-is-a-record-and-an-old-one-stays-true)).
 
+**The session records what its own connection missed (#609).** Every outage of the tick stream —
+from the loss of a connection to the first trade after it — is one line of
+`io/tick_stream_events.jsonl`: when it was noticed, how it was detected (`silence`,
+`closed_by_venue`, `connection_error`, `ping_timeout`, `error`), how long the lost connection had
+delivered, the connection attempts until the stream came back, and the venue's public trade ids
+around the gap. The ids between the two, exclusive, bound the trades the session never saw — an
+upper bound, because the venue allocates some ids that never become public trades; which of them
+were trades is to be read from the venue's own record after the run, by the comparison #512
+plans. A burst of connections that close before anything arrives is one outage with several
+attempts, and a trade that arrives ahead of its subscription's confirmation is used once the
+subscription stands and dropped with it if it fails. An outage the session ends in is written at
+the end with what is known — the last id before it, no first trade after it.
+
+```json
+{"record_kind":"outage","outage_no":3,"symbol":"ETHUSD","lost_at":"2026-11-02T03:14:07.512000+00:00","detected_by":"silence","delivered_for_s":5821.4,"attempts":2,"restored_at":"2026-11-02T03:14:10.204000+00:00","outage_s":2.692,"last_public_trade_id":107927359,"last_public_trade_time":"2026-11-02T03:13:56.881000+00:00","first_public_trade_id":107927373,"first_public_trade_time":"2026-11-02T03:14:11.020000+00:00","data_gap_s":14.139}
+```
+
+The ids stay on this record: the tick a worker sees carries none, so nothing here reaches the
+decision plane or needs an archive counterpart. A live session never fetches the missed range —
+a trade read back over the venue's REST route has no quote and no receipt time — and the
+comparison of a run, planned in #512 and not built yet, is to read the range from the venue after
+the run. The same file lists the trades the parser refused (`refused_public_trade`, below).
+
+**A trade without a trustworthy venue time is refused, never repaired.** A missing or unreadable
+venue time, a time without a UTC offset, a price or a quantity that is not a finite positive
+number, or an entry that is not in the shape the venue documents: the trade becomes no tick, a
+line in the record says why, and the session log says so once per kind and sums them up at the
+end. The record lists the first 100 refusals of each reason and counts the rest, and its last
+line carries the totals (`refused_public_trade_totals`) — a venue that changed its format would
+otherwise add one line per trade for as long as the session runs. The local clock never stands
+in for the event time — it is the receipt time, `collected_msc`.
+
 ```
 DataCollector            AutoTrader (live adapter)
 ┌──────────┐            ┌──────────┐
@@ -92,8 +137,9 @@ JSON → Parquet           Queue → Algo
     "ws_url": "wss://ws.kraken.com/v2",
     "reconnect_initial_delay_s": 1.0,
     "reconnect_max_delay_s": 60.0,
-    "connection_check_interval_s": 30.0,
-    "connection_dead_s": 90.0
+    "backoff_reset_after_s": 10.0,
+    "connection_check_interval_s": 1.0,
+    "connection_dead_s": 10.0
   }
 }
 ```
@@ -154,7 +200,8 @@ stamped from the canonical clock.
 **Recovery** = the next real tick: fresh status, edge reset, and a from–to episode span into
 the pot (`✅ Market data recovered: stale 12:03:10 → 12:05:23 (2m 13s)`) — the v0 stale
 protocol; the aggregated stability table is #433 scope. Transport reconnects
-(`get_reconnect_count()` delta) are surfaced as pot warnings too. The CONNECTION panel's
+(`get_reconnect_count()` delta) are surfaced as pot warnings too — one per outage the stream came
+back from, never one per connection attempt (#609). The CONNECTION panel's
 "Last Tick" line carries a contract-driven `[STALE]` tag.
 
 **Boundaries:** sim never evaluates this (replay gaps are DATA — weekend/holiday); the planned

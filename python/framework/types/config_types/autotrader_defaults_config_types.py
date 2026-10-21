@@ -7,6 +7,9 @@ AutoTraderConfig profile type defined in autotrader_config_types.py.
 """
 from enum import StrEnum
 from typing import Literal
+from urllib.parse import urlparse
+
+from pydantic import field_validator
 
 from python.framework.types.config_types.operator_alerts_config_types import OperatorAlertsConfig
 from python.framework.types.config_types.strict_config_model import StrictConfigModel
@@ -295,8 +298,13 @@ class TickSourceConfig(StrictConfigModel):
             changes is `mid`, and with it the valuation plane
         reconnect_initial_delay_s: Initial reconnect backoff delay in seconds (kraken mode)
         reconnect_max_delay_s: Maximum reconnect backoff delay cap in seconds (kraken mode)
+        backoff_reset_after_s: How long a connection must deliver before its loss starts the
+            backoff over (kraken mode, #609). Shorter-lived connections keep the backoff climbing,
+            so a far side that accepts and drops connections is not dialled every second
         connection_check_interval_s: WS connection-liveness check interval in seconds (kraken mode)
-        connection_dead_s: Silence threshold to force reconnect in seconds (kraken mode)
+        connection_dead_s: Silence threshold to force reconnect in seconds (kraken mode). Kraken
+            sends a heartbeat about once a second on every connection (measured 2026-10-20, the
+            longest healthy pause 1.15 s), so 10 s is a dead connection, never a quiet market
         freeze_after_ticks: Outage drill (#436, mock mode): pause emission once after N ticks. 0 = off
         freeze_duration_s: Outage drill (#436, mock mode): pause duration in wall seconds
     """
@@ -307,11 +315,41 @@ class TickSourceConfig(StrictConfigModel):
     quote_channel_enabled: bool = True
     reconnect_initial_delay_s: float = 1.0
     reconnect_max_delay_s: float = 60.0
-    connection_check_interval_s: float = 30.0
-    connection_dead_s: float = 90.0
+    backoff_reset_after_s: float = 10.0
+    connection_check_interval_s: float = 1.0
+    connection_dead_s: float = 10.0
     # Outage drill (#436) — deliberate mid-replay feed silence (mock mode)
     freeze_after_ticks: int = 0
     freeze_duration_s: float = 0.0
+
+    @field_validator('ws_url')
+    @classmethod
+    def _ws_url_is_encrypted(cls, value: str) -> str:
+        """
+        Refuse an unencrypted address to another machine.
+
+        A session reads the prices it trades on through this socket, and `ws://` would carry them
+        in clear text — so it is refused at boot rather than taken silently. The local machine is
+        the one exception: a test server on a loopback address, where nothing leaves the host.
+
+        Args:
+            value: The configured address
+
+        Returns:
+            The address, when it is `wss://`, or `ws://` to a loopback host
+        """
+        parsed = urlparse(value)
+        if parsed.scheme == 'wss':
+            return value
+        if parsed.scheme == 'ws' and parsed.hostname in _LOOPBACK_HOSTS:
+            return value
+        raise ValueError(
+            f"tick_source.ws_url '{value}' must use wss:// — an unencrypted ws:// address is "
+            f"accepted only to the local machine ({', '.join(sorted(_LOOPBACK_HOSTS))})")
+
+
+# The hosts a ws:// tick source address may name: the machine itself, nothing beyond it.
+_LOOPBACK_HOSTS = frozenset({'localhost', '127.0.0.1', '::1'})
 
 class BaselineMode(StrEnum):
     """Which denominator the safety layer measures a drawdown against (#356)."""

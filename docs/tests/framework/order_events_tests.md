@@ -84,6 +84,7 @@ What the stream records where answers cross, time out or come back late.
 | `TestBrokerTruthLines` | the venue's lines and the order events read back as two lists on one counter; a venue order is projected, its raw payload left with the adapter; the three states of a part survive the file; a divergent reconcile line names its members |
 | `TestTheSharedWriter` | one compact line per record, nothing after close, and the field study's lines unchanged by the move onto the shared writer |
 | `TestTheRunIndexListsItAsAStream` | the stream is named while the run is going and never counted among the artifacts |
+| `TestTheRunIndexKeepsRunRecordsOut` | what a session writes as it runs — its warmup history, its tick stream record (#609) — is neither an artifact nor a served stream, so a session that died before its report has not reported |
 
 ### `test_broker_truth_records.py`
 

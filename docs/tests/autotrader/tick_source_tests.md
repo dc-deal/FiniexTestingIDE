@@ -4,19 +4,23 @@ The venue tick source decides what a tick *is* before anything else sees it — 
 it had no offline coverage at all: `KrakenTickSource` and its parser appeared nowhere under
 `tests/`, while sitting in the path that feeds a real-money session.
 
-These tests use **recorded frames**, not hand-written ones. Every message comes from
-`tests/fixtures/tick_sources/kraken_ws_frames.json`, captured verbatim from
+The parser and subscription tests use **recorded frames**, not hand-written ones: those messages
+come from `tests/fixtures/tick_sources/kraken_ws_frames.json`, captured verbatim from
 `wss://ws.kraken.com/v2` on 2026-09-16 by
-`python/experiments/venue_probes/probe_kraken_quote_channel.py`. What is pinned is therefore what
-Kraken actually sends, not what we believe it sends.
+`python/experiments/venue_probes/probe_kraken_quote_channel.py`, so what they pin is what Kraken
+actually sends, not what we believe it sends. The reconnect-loop tests script their own frames, in
+the same shapes, against a local server — what they pin is the connection behaviour.
 
-**Not in here:** the socket itself, reconnect behaviour and the retry ladder. Those belong to
-`ConnectionLadder` and its own suite; the fake socket in this directory hands out scripted frames
-and never opens a connection.
+The reconnect loop is tested against a **WebSocket server on the local machine** (#609): the real
+`websockets` library on both ends, each connection scripted — accept and close at once, deliver and
+close, go silent, refuse the subscription, drop the TCP connection — with the thresholds shrunk to
+fractions of a second. No test opens a connection to the venue. **Not in here:** the arithmetic of
+the retry ladder itself, which `ConnectionLadder`'s own suite pins.
 
 | File | Covers |
 |---|---|
 | `test_kraken_quote_stamping.py` | the parser: which channel produces a tick, the quote stamped on it, and what happens without one |
+| `test_kraken_tick_stream_record.py` | the tick stream's own record (#609): one line per outage with the public trade ids around it, the folding of connections that drop before a trade, a restoration lost again leaving none behind, refused trades and their reasons, the first 100 of a reason listed and the totals closing the record, a record that cannot be written or closed, why a connection ended, TLS read off the parsed scheme; and the loop against a local server — the backoff that climbs until a connection delivered, silence aborting a connection to a far side that answers nothing, a trade ahead of its acknowledgement held until the subscription stands and dropped with a refused one, a refused subscription closing its socket, stop() waking a long backoff |
 | `test_kraken_quote_subscription.py` | the source: which channels are requested, what a refusal does, and what the CONNECTION panel is told |
 
 ## Why a quote at all

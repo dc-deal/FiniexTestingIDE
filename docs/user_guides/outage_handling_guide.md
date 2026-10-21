@@ -20,6 +20,13 @@ answered — it never answers it for you.**
 | In backtests | Real — driven by the data (archive gaps/ends) or a planned `stale_data_stress` window | Never — replay gaps are data. Only a planned `stale_data_stress` window dispatches it |
 | Framework floor | Your fusion logic degrades (e.g. indicator-only mode) | OrderGuard rejects NEW entries while stale (`STALE_MARKET_DATA`); closes/cancels stay allowed |
 
+`reconnect_count` counts the outages the tick stream came back from — a trade arrived after
+each — never its connection attempts: a venue that accepts connections and drops them again is one
+outage, however often the source tried (#609). While the data is stale the status is rebuilt on
+every idle heartbeat with the count the source has reached, and once more when it recovers; while
+the data is fresh it is not rebuilt, so an outage too short to turn the data stale shows in
+`reconnect_count` only once the data next turns stale.
+
 Indicators cannot be stale relative to their bars — but their bars can be stale
 relative to the market. That is why the market-data contract is session-level
 and mandatory for everyone.
@@ -190,7 +197,8 @@ There is no correct default — every answer is wrong for SOME strategy:
 | `execution.market_data_stale_after_s` | `app_config.json` → profile `execution` block | `300.0` | No real tick for this many wall seconds → session stale. `0` disables. Tune per pair (a quiet altcoin pauses longer than BTCUSD) |
 | `order_guard.block_stale_market_data` | `app_config.json` → profile `order_guard` block | `true` | The entry-block floor |
 | `max_staleness_minutes` | per SIGNAL worker (`strategy_config.workers`) | `30` | Snapshot age above which the worker's envelope flags stale |
-| `tick_source.connection_check_interval_s` / `connection_dead_s` | profile `tick_source` block | `30` / `90` | TRANSPORT repair knobs (forced WS reconnect) — distinct from the data-quality contract above |
+| `tick_source.connection_check_interval_s` / `connection_dead_s` | profile `tick_source` block | `1` / `10` | TRANSPORT repair knobs (forced WS reconnect after this much silence; Kraken sends a heartbeat about once a second) — distinct from the data-quality contract above |
+| `tick_source.backoff_reset_after_s` | profile `tick_source` block | `10` | How long a connection must deliver before its loss starts the reconnect backoff over |
 
 ## Drilling Your Reaction (before it happens at a venue)
 

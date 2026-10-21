@@ -372,3 +372,18 @@ def test_the_connection_snapshot_defaults_render(dashboard, dashboard_frame, fra
 
     assert '● waiting' in text
     assert '(no quote channel)' in text
+
+
+@pytest.mark.parametrize('message_age_s, expected', [
+    (1.0, '● connected'),
+    (6.0, '● stale'),
+    (11.0, '● dead'),
+])
+def test_the_stream_is_judged_by_the_sources_own_threshold(dashboard, dashboard_frame, frame_time,
+                                                           message_age_s, expected):
+    """Stale from half the threshold the source reconnects at, dead from all of it (#609)."""
+    connection = TickSourceSnapshot(message_age_s=message_age_s, connection_dead_s=10.0)
+
+    text = _export(dashboard.render(dashboard_frame, connection, frame_time, _TWO), _TWO)
+
+    assert expected in text

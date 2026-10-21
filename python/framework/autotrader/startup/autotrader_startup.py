@@ -57,7 +57,11 @@ from python.framework.types.autotrader_types.autotrader_config_types import Auto
 from python.framework.types.autotrader_types.display_label_cache import DisplayLabelCache
 from python.framework.types.config_types.connection_policy_config_types import ConnectionPolicy
 from python.framework.types.live_types.live_execution_types import TimeoutConfig
-from python.framework.types.log_layout_types import RUN_TYPE_AUTOTRADER
+from python.framework.types.log_layout_types import (
+    IO_SUBDIR,
+    RUN_TYPE_AUTOTRADER,
+    WARMUP_HISTORY_FILE,
+)
 from python.framework.types.market_types.market_data_types import Bar
 from python.framework.types.market_types.market_types import TradingContext
 from python.framework.types.process_data_types import ProcessDataPackage
@@ -427,7 +431,7 @@ def setup_pipeline(
     display_label_cache = _run_warmup(
         config, logger, workers, bar_controller, connection_policy,
         decision_logic, balances, account, package,
-        record_path=run_dir / 'io' / 'warmup_history.json' if run_dir else None)
+        record_path=run_dir / IO_SUBDIR / WARMUP_HISTORY_FILE if run_dir else None)
 
     # === Phase 10: LiveClippingMonitor ===
     clipping_monitor = LiveClippingMonitor(

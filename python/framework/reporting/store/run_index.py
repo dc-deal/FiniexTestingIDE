@@ -11,7 +11,7 @@ from typing import Any, Callable, Dict, Iterable, List, Optional
 import pandas as pd
 
 from python.framework.exceptions.store_errors import StoreIndexSourceMissingError
-from python.framework.reporting.io.artifact_specs import STREAM_FILENAMES
+from python.framework.reporting.io.artifact_specs import RUN_RECORD_FILENAMES, STREAM_FILENAMES
 from python.framework.reporting.io.run_header_io import (
     RUN_HEADER_ARTIFACT,
     read_run_header,
@@ -86,17 +86,18 @@ def _artifact_names(run_dir: Path) -> List[str]:
     """
     The report artifacts a run has persisted, by file name.
 
-    A stream is not one (#362): a live session writes its stream from its first order, and a
-    session that died before its report would otherwise read as reported — "not completed"
-    hangs on this list being empty.
+    A stream is not one (#362), and neither is a record the session writes as it runs — its
+    warmup history (#588), its tick stream's outages (#609): a session that died before its
+    report would otherwise read as reported — "not completed" hangs on this list being empty.
 
     Args:
         run_dir: The run's own directory
 
     Returns:
-        Sorted file names in the run's io/ subfolder, streams left out
+        Sorted file names in the run's io/ subfolder, streams and run records left out
     """
-    return [name for name in _io_file_names(run_dir) if name not in STREAM_FILENAMES]
+    return [name for name in _io_file_names(run_dir)
+            if name not in STREAM_FILENAMES and name not in RUN_RECORD_FILENAMES]
 
 
 def _stream_names(run_dir: Path) -> List[str]:
@@ -329,7 +330,10 @@ class RunIndex(AbstractStoreIndex):
     # declaration where one is found (_purpose_columns), and the contract stays unknown.
     # 8 → 9 (#582): `origin_client` appended, so the run list can serve the whole origin, and
     # `origin_person` renamed `origin_principal` — `person` is an account KIND (#551).
-    LOGIC_VERSION: int = 9
+    # 9 → 10 (#609): `artifacts` no longer lists a run record — the warmup history and the tick
+    # stream's outage record — so a session that died before its report stops reading as
+    # reported. A rebuild corrects the rows written before it.
+    LOGIC_VERSION: int = 10
 
     def __init__(self, path: Path, roots: Optional[RunLogPaths] = None,
                  declared_purposes: Optional[Callable[[], Dict[str, RunPurpose]]] = None):

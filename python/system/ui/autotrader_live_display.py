@@ -239,6 +239,8 @@ class AutoTraderLiveDisplay:
             last_message_time=self._tick_source.get_last_message_time(),
             last_tick_time=self._tick_source.get_last_tick_time(),
             quote=self._tick_source.get_quote_stats(),
+            message_age_s=self._tick_source.get_message_age_s(),
+            connection_dead_s=self._tick_source.get_connection_dead_s(),
         )
 
     def _failure_frame(self, error: Exception) -> Panel:
@@ -1072,20 +1074,21 @@ class AutoTraderLiveDisplay:
         """
         reconnects = connection.reconnect_count
         emitted = connection.ticks_emitted
-        last_msg_time = connection.last_message_time
         last_tick_time = connection.last_tick_time
 
-        # Stream health — based on last WS message (includes heartbeats)
-        if last_msg_time:
-            msg_age_s = (now - last_msg_time).total_seconds()
-            if msg_age_s > 90:
-                stream_str = '[red]● dead[/red]'
-            elif msg_age_s > 30:
-                stream_str = '[yellow]● stale[/yellow]'
-            else:
-                stream_str = '[green]● connected[/green]'
-        else:
+        # Stream health — the age of the last message, heartbeats included, on the monotonic
+        # clock, judged by the threshold the source itself acts on (#609): stale from half of
+        # it, dead from all of it, where the source reconnects.
+        msg_age_s = connection.message_age_s
+        dead_s = connection.connection_dead_s
+        if msg_age_s is None:
             stream_str = '[dim]● waiting[/dim]'
+        elif dead_s is not None and msg_age_s > dead_s:
+            stream_str = '[red]● dead[/red]'
+        elif dead_s is not None and msg_age_s > dead_s / 2:
+            stream_str = '[yellow]● stale[/yellow]'
+        else:
+            stream_str = '[green]● connected[/green]'
 
         # Last actual trade tick time
         if last_tick_time:

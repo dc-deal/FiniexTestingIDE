@@ -84,9 +84,32 @@ class AbstractTickSource(ABC):
         """
         return None
 
+    def get_message_age_s(self) -> Optional[float]:
+        """
+        Seconds since the source last heard from its far side, on the monotonic clock.
+
+        Override in sources with a connection. GIL-safe: display thread reads this directly.
+
+        Returns:
+            The age, or None for a source without a connection or before the first message
+        """
+        return None
+
+    def get_connection_dead_s(self) -> Optional[float]:
+        """
+        The silence after which the source declares its connection dead and reconnects.
+
+        Override in sources with a connection, so the display judges the stream by the same
+        threshold the source acts on.
+
+        Returns:
+            The threshold in seconds, or None for a source without a connection
+        """
+        return None
+
     def get_reconnect_count(self) -> int:
         """
-        Number of reconnection attempts since session start.
+        Outages the source came back from since session start — never its attempts (#609).
 
         Override in subclasses with connection recovery logic.
 

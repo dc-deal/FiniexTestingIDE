@@ -81,6 +81,7 @@ from its default, so a field added to the frame joins the renders.
 | the Reason column | every `CloseReason` × `CloseType` × size at entry (larger, equal, unknown) gives its marker — `partial`, `remain` or the reason itself — and a trade filled in parts on each side gets its lines |
 | words are text | a venue's reason, the strategy's awareness, events and outputs, the producer's journal name and budget reason reach the screen as written, brackets included — a closing tag with no opener builds fine and fails only when **printed** |
 | a panel that fails | it shows as failed in its place, the other panels render, and the failure is reported once with its traceback |
+| the stream's health | the CONNECTION panel calls the stream connected, stale and dead by the threshold the tick source acts on — stale from half of it, dead from all of it — never by fixed numbers (#609) |
 | the loop | a frame that cannot be printed is replaced by a failure frame and the loop goes on — the frame is proven printable before the live display holds it, never in a refresh thread of rich's own; the failure frame still names the deployment |
 | the exporter | `AutotraderDisplayExporter.trade_history_entry` carries the size at entry, and every field of the row comes from the record — the record differs from the row's default in each of them, so a forgotten copy cannot pass |
 

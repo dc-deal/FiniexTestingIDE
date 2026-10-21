@@ -361,6 +361,7 @@ class TestProfileLoader:
             'ws_url': 'wss://example/v2',
             'reconnect_initial_delay_s': 2.5,
             'reconnect_max_delay_s': 90.0,
+            'backoff_reset_after_s': 12.5,
             'connection_check_interval_s': 15.0,
             'connection_dead_s': 45.0,
             'freeze_after_ticks': 500,

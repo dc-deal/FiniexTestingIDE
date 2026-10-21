@@ -131,7 +131,8 @@ What no run records is the content of the tick and bar files it read, only their
 an import that replaces a file changes what a run made later reads. And a live session keeps no
 copy of the ticks it consumed — they exist in the collector's archive of that window, which is
 what the comparison backtest reads, counting its gaps rather than assuming it saw what the session
-saw.
+saw. What the session missed is recorded instead: every outage of its tick stream, with the venue's
+public trade ids around it.
 
 The mechanics stay with each part: the store in
 [Data Storage Layout](architecture/data_storage_layout.md), the code in

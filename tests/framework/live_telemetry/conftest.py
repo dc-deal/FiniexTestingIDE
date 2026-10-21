@@ -273,6 +273,7 @@ def connection(frame_time: datetime) -> TickSourceSnapshot:
         reconnect_count=1, ticks_emitted=48213,
         last_message_time=frame_time - timedelta(seconds=1),
         last_tick_time=frame_time - timedelta(seconds=2),
+        message_age_s=1.0, connection_dead_s=10.0,
         quote=QuoteFeedStats(state=QuoteFeedState.LIVE, bid=50430.0, ask=50436.0, quote_age_ms=420,
                              quotes_received=900))
 

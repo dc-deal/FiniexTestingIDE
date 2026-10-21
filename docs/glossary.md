@@ -570,6 +570,14 @@ configuration file. *Generator profile*: a set of generated scenario windows, ru
 run*. *Volatility profile*: a discovery cache of volatility statistics. *Profiling*: measuring
 where tick-processing time goes.
 
+**public trade** (`public_trade_id`) — One print of the venue's market, as its public trade channel
+reports it, numbered by the venue with ids rising per pair — not every id becomes a public trade
+(Kraken's `trade_id`; the tick archive's
+`trade_id` column, from collector format 1.7.0; the tick index's `trade_id_gaps`). Not a *trade*
+(one close of our own position) and not the `trade_id` of one of OUR executions on an order event
+or an execution row. A live session records the public trade ids around each outage of its tick
+stream, never on a tick. See [AutoTrader Data Intake](autotrader/autotrader_data_intake.md).
+
 **real-money session** — A live-adapter session with `dry_run` false: its orders are placed at the
 venue and move the account.
 
@@ -698,9 +706,12 @@ it.
 **strategy** — A decision logic with its workers and all their parameters: exactly what
 `strategy_config` holds. A *bot* is a strategy bound to one AutoTrader profile.
 
-**stream files** (`stream_files` on the run list) — The files a run writes as it runs rather than
-at its end — today the order-event stream. Kept apart from `artifacts`, whose emptiness marks a run
-that never reached its report. Not the producer's stream (see *stream state*).
+**stream files** (`stream_files` on the run list) — The files a run keeps beside its report
+artifacts and that the API serves — today the order-event stream, which a live session writes as it
+runs and a backtest with its report. Kept apart from `artifacts`, whose emptiness marks a run that
+never reached its report. A session's other records — its warmup
+history, its tick stream record — are neither: listed nowhere on the run list. Not the producer's
+stream (see *stream state*).
 
 **stream state** — The producer's stream: `replay` while missed envelopes catch up, `live` once
 they arrive as they happen.

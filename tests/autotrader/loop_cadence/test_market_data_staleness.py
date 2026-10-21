@@ -307,6 +307,25 @@ class TestLoopEvaluation:
         loop._evaluate_market_data_staleness()
         assert loop._logger.warning.call_count == 1
 
+    def test_the_recovered_status_counts_the_outage_that_just_ended(self, monkeypatch):
+        """The source counts an outage when the first trade after it arrives — the very tick that
+        ends the stale episode — so the recovery reads the count itself (#609)."""
+        source = _StubTickSource(reconnects=0)
+        loop = _make_loop(300.0, last_tick_wall=1000.0, now=_utc(2026, 1, 15, 7, 55),
+                          tick_source=source)
+        monkeypatch.setattr(time_module, 'time', lambda: 1000.0)
+        _observe_tick(loop, _utc(2026, 1, 15, 7, 55))
+        monkeypatch.setattr(time_module, 'time', lambda: 1301.0)
+        loop._evaluate_market_data_staleness()
+
+        source.reconnects = 1
+        monkeypatch.setattr(time_module, 'time', lambda: 1400.0)
+        _observe_tick(loop, _utc(2026, 1, 15, 8, 5))
+
+        assert loop._executor.get_market_data_status().reconnect_count == 1
+        assert any('reconnected' in call.args[0]
+                   for call in loop._logger.warning.call_args_list)
+
 
 class TestOrderGuardStaleBlock:
     """The framework floor: no new entries on blind data (#436)."""

@@ -38,6 +38,11 @@ T = TypeVar('T')
 # Lower bound of the jitter window. Half the delay is enough to break lockstep between
 # clients without letting a retry arrive so early it is indistinguishable from no backoff.
 _JITTER_FLOOR = 0.5
+# The highest doubling step the delay is computed for. Every step past the cap gives the same
+# delay, and a connection that never gives up reaches step 1024 after about thirteen hours at a
+# 60 s cap — where 2.0 ** step overflows a float, raises, and would end the very connection whose
+# budget promises never to (#609).
+_MAX_STEP = 60
 
 
 class ConnectionLadder:
@@ -123,11 +128,37 @@ class ConnectionLadder:
             Seconds to wait: the initial delay doubled once per previous attempt, capped,
             and spread over [0.5, 1.0) of that value when the policy asks for jitter
         """
-        step = max(attempt - 1, 0)
+        step = min(max(attempt - 1, 0), _MAX_STEP)
         delay = min(self._policy.initial_delay_s * (2.0 ** step), self._policy.max_delay_s)
         if not self._policy.jitter:
             return delay
         return delay * random.uniform(_JITTER_FLOOR, 1.0)
+
+    def attempt_after_loss(self, attempt: int, delivered_for_s: float,
+                           stable_after_s: float) -> int:
+        """
+        Where the ladder stands once a long-lived connection that was up has been lost.
+
+        A connection counts as restored only once it has DELIVERED for a while, not as soon as
+        its handshake succeeds. A far side that accepts and closes at once would otherwise put
+        the ladder back to its first step on every attempt and be dialled again about once a
+        second — the pattern a venue's front refuses an address for (#609). The time is measured
+        to the connection's last message, not to its end, so a far side that accepts and then
+        stays silent does not count as stable either.
+
+        Args:
+            attempt: Attempts made since the connection was last stable
+            delivered_for_s: How long the lost connection delivered, from its subscription to
+                its last message, on the monotonic clock
+            stable_after_s: How long a connection must deliver before it counts as restored
+
+        Returns:
+            0 when the lost connection had been stable, so the next wait starts at the bottom
+            of the ladder; otherwise `attempt` unchanged, so the wait keeps growing
+        """
+        if delivered_for_s >= stable_after_s:
+            return 0
+        return attempt
 
     def is_exhausted(self, attempt: int) -> bool:
         """

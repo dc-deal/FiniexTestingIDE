@@ -36,6 +36,7 @@ from python.framework.types.api.report_types import (
     WarningsErrorsReport,
     WorkerDecisionReport,
 )
+from python.framework.types.log_layout_types import TICK_STREAM_EVENTS_FILE, WARMUP_HISTORY_FILE
 
 AGGREGATED_PORTFOLIO_ARTIFACT: ArtifactSpec[AggregatedPortfolioReport] = ArtifactSpec(
     'aggregated_portfolio.json', AggregatedPortfolioReport)
@@ -94,6 +95,12 @@ WORKER_DECISION_ARTIFACT: ArtifactSpec[WorkerDecisionReport] = ArtifactSpec(
 # session that died before its report has one — counted as an artifact, it would read as reported.
 ORDER_EVENTS_STREAM = 'order_events.jsonl'
 STREAM_FILENAMES: FrozenSet[str] = frozenset({ORDER_EVENTS_STREAM})
+
+# Records a live session writes into io/ itself, as it runs — the warmup history it started from
+# (#588) and its tick stream's outages (#609). Neither a report artifact nor a served stream:
+# counted as an artifact, a session that died before its report would read as reported, and listed
+# among the streams it would promise a route that does not exist.
+RUN_RECORD_FILENAMES: FrozenSet[str] = frozenset({WARMUP_HISTORY_FILE, TICK_STREAM_EVENTS_FILE})
 
 # The acceptance studies' captures (#332, #358) — streams too, but at the run directory's root
 # rather than in io/, and read by their certificates rather than served, so they are not among the

@@ -49,7 +49,7 @@ the **operation**:
 | Operation | Retry-safe | Why |
 |---|---|---|
 | Reads — open orders, balance, asset pairs, OHLC, the registry | yes | no side effect at the venue |
-| Connects — SSE, WebSocket | yes | a cursor makes the reconnect idempotent |
+| Connects — SSE, WebSocket | yes | nothing is placed at the venue. The signal stream's cursor makes its reconnect idempotent; the broker tick socket has none — what it missed stays missed and is recorded instead (#609) |
 | **Writes — submit, cancel, amend** | **never** | a retry after a lost answer is how one intent becomes two positions |
 
 **A write is never retried. It is RESOLVED by asking.** This is not our invention: FIX has
@@ -269,7 +269,7 @@ need a plugin point to serve them all.
 | Own thread with a stop event | signal stream, health probe | `stop.wait(ladder.next_delay(n))` — cancels cleanly on shutdown |
 | Own thread with a queue | operator alerts (Telegram) | `run_with_ladder` on the dispatcher's thread — the delay, or Telegram's `retry_after` when it asked for longer |
 | Own thread on an interval | liveness ping | not at all — a failed ping is not repeated, the next one is due within the interval |
-| asyncio | broker tick socket | `await asyncio.sleep(...)` |
+| asyncio | broker tick socket | `asyncio.wait_for` on the source's stop event with the delay as its timeout — stop() wakes it at once |
 | Broker worker thread | order submit / cancel / query jobs | blocking; **does not block the tick loop** |
 | **Inside the tick loop** | reconcile pull, order re-poll | **it does not wait at all** |
 
@@ -336,7 +336,7 @@ Refusal, as the operator reads it:
 | 1 | Signal SSE stream | 5 s → 60 s, jitter, budget 0 | credential refused, request refused, terminal control frame |
 | 2 | Signal producer registry (boot) | 2 s → 30 s, jitter, budget 3 | budget → **degrade** |
 | 3 | Producer health probe | its 1800 s cadence is the ladder | a 401/403 stops it — an address we got wrong will not correct itself |
-| 4 | Broker tick WebSocket | 1 s → 60 s, jitter, budget 0 | never — a dead tick socket is a reason to keep asking |
+| 4 | Broker tick WebSocket | 1 s → 60 s, jitter, budget 0; starts over only after a connection delivered for `backoff_reset_after_s` (10 s) — `attempt_after_loss`, so a far side that accepts and drops connections is not dialled every second (#609); silence after 10 s aborts the connection | never — a dead tick socket is a reason to keep asking. Each outage is recorded in the session's `io/tick_stream_events.jsonl` |
 | 5 | Broker REST (orders, truth pull) | classification only; the caller's cadence waits | see "who owns the wait" |
 | 6 | Broker warmup bars (boot) | broker policy, budget 3 | short read → **refuse to start** |
 | 7 | Broker config + balance (boot) | broker policy, budget 3 | falls back to a cached copy, warning louder as it ages; no cache → refuse |
@@ -354,7 +354,10 @@ again.
 
 **One schema, several homes.** `ConnectionPolicy`
 (`framework/types/config_types/connection_policy_config_types.py`) is embedded — same field
-names, same defaults — into the config block that owns each domain:
+names, same defaults — into the config block that owns each domain. The tick socket is the
+exception: its block carries two flat fields, `reconnect_initial_delay_s` and
+`reconnect_max_delay_s`, beside `backoff_reset_after_s`; its budget is fixed at 0 in the source,
+and jitter and the give-up action keep the policy's defaults.
 
 | Home | Connections |
 |---|---|

@@ -938,15 +938,7 @@ class AutotraderTickLoop:
         stale, the readable status stays current (escalation input for
         heartbeat-driven logics).
         """
-        # Reconnect visibility (error channel v0): surface transport
-        # reconnects to the session pot; typed connection events are #375/#331.
-        if self._tick_source is not None:
-            reconnects = self._tick_source.get_reconnect_count()
-            if reconnects > self._last_reconnect_count:
-                self._logger.warning(
-                    f'🔌 Tick stream reconnected '
-                    f'(+{reconnects - self._last_reconnect_count}, total {reconnects})')
-                self._last_reconnect_count = reconnects
+        self._note_reconnects()
 
         if self._market_data_stale_after_s <= 0:
             return
@@ -1028,6 +1020,24 @@ class AutotraderTickLoop:
                 f'No tick for {waited:.0f}s since the tick loop started (threshold '
                 f'{self._market_data_stale_after_s:.0f}s). The feed may not be connected.')
 
+    def _note_reconnects(self) -> None:
+        """
+        Surface the outages the tick stream came back from to the session pot, and keep the count
+        the market-data status carries current (typed connection events are #375/#331).
+
+        The source counts an outage when the first trade after it arrives (#609) — the very tick
+        that ends a stale episode — so the recovery reads the count here too, not only the idle
+        heartbeat; otherwise the status after a recovery would miss the outage that just ended.
+        """
+        if self._tick_source is None:
+            return
+        reconnects = self._tick_source.get_reconnect_count()
+        if reconnects > self._last_reconnect_count:
+            self._logger.warning(
+                f'🔌 Tick stream reconnected '
+                f'(+{reconnects - self._last_reconnect_count}, total {reconnects})')
+            self._last_reconnect_count = reconnects
+
     def _end_market_stale_episode(self) -> None:
         """
         Close a stale episode on tick resumption (#436): fresh status + edge reset.
@@ -1036,6 +1046,7 @@ class AutotraderTickLoop:
         (#451), which derives both from the observed status change — so a real and an
         injected outage travel the exact same path into the report.
         """
+        self._note_reconnects()
         self._market_stale = False
         self._market_stale_since = None
         self._executor.set_market_data_status(MarketDataStatus(

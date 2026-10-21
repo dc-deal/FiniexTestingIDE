@@ -19,7 +19,10 @@ import pytest
 from python.framework.exceptions.report_artifact_errors import ReportArtifactUnreadableError
 from python.framework.logging.global_logger import GlobalLogger
 from python.framework.reporting.acceptance_study_recorder import AcceptanceStudyRecorder
-from python.framework.reporting.io.artifact_specs import ORDER_EVENTS_STREAM
+from python.framework.reporting.io.artifact_specs import (
+    ORDER_EVENTS_STREAM,
+    RUN_RECORD_FILENAMES,
+)
 from python.framework.reporting.io.jsonl_stream_writer import JsonlStreamWriter
 from python.framework.reporting.io.order_event_stream_io import (
     ORDER_EVENTS_SCHEMA_VERSION,
@@ -358,3 +361,23 @@ class TestTheRunIndexListsItAsAStream:
         run = index.list_runs()[0]
         assert run.artifacts == ['portfolio.json']
         assert run.stream_files == [ORDER_EVENTS_STREAM]
+
+
+class TestTheRunIndexKeepsRunRecordsOut:
+    """What a session writes as it runs — its warmup history, its tick stream record (#609) — is
+    neither a report artifact nor a served stream."""
+
+    def test_a_session_with_only_its_records_has_not_reported(self, tmp_path):
+        index = RunIndex(tmp_path / 'runs_index.parquet')
+        run_dir = tmp_path / 'runs' / 'autotrader' / 'my_bot' / _RUN_ID
+        (run_dir / IO_SUBDIR).mkdir(parents=True)
+        index.register_run(RunHeader(run_id=_RUN_ID, start_time=_TIME,
+                                     run_type=RUN_TYPE_SIMULATION, run_name='my_bot'), run_dir)
+        for name in RUN_RECORD_FILENAMES:
+            (run_dir / IO_SUBDIR / name).write_text('{}', encoding='utf-8')
+
+        index.record_artifacts(_RUN_ID, run_dir)
+
+        run = index.list_runs()[0]
+        assert run.artifacts == [], 'a session that died before its report has not reported'
+        assert run.stream_files == [], 'no route serves them, so they are not listed as streams'

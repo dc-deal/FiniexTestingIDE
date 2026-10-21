@@ -56,7 +56,7 @@ Section names the place in the three-column layout.
 
 `Stream` and `Last Tick` measure different things intentionally:
 
-- **Stream** (`● connected / stale / dead`): based on `_last_message_time` — any WS message including Kraken heartbeats. Reflects connection health. Goes stale after 30s silence, dead after 90s.
+- **Stream** (`● connected / stale / dead`): the age of the last WS message, Kraken heartbeats included, on the monotonic clock. Reflects connection health, judged by the threshold the source itself acts on (`tick_source.connection_dead_s`, 10 s by default): stale from half of it, dead from all of it — where the source aborts the connection and reconnects.
 - **Last Tick**: based on `_last_tick_time` — only actual trade messages that produced `TickData`. Can be minutes old in quiet markets while `Stream` stays green.
 
 Both are read from `AbstractTickSource` once per frame (GIL-safe primitive reads) into a
@@ -223,8 +223,10 @@ runs/autotrader/btcusd_mock/20260328_105127_a1b2c3d4/
                                   See trade_execution_visibility.md for schema.
   io/                             The report sections — the broker section among them
                                   (broker.json) — and the session's own records: the
-                                  order-event stream (order_events.jsonl) and the
+                                  order-event stream (order_events.jsonl), the
                                   warmup history it started from (warmup_history.json)
+                                  and, for a live tick source, the record of its
+                                  outages and refused trades (tick_stream_events.jsonl)
 ```
 
 The logs say what the session did; `header.json` and the records under `io/` say what it ran

@@ -639,6 +639,11 @@ class AutotraderMain:
                 _symbol_spec.quote_currency,
                 self._global_logger,
                 self._data_package,
+                # The live source writes what the operator must read into the session log, and
+                # its outages into the run's io/ folder (#609).
+                session_logger=self._session_logger,
+                run_dir=self._run_dir,
+                run_id=self._run_id,
             )
             self._print_startup_phase('Tick source running')
 
