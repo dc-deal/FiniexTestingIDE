@@ -9,8 +9,9 @@ on the session's channel and ends the writing, because a line written after a br
 a readable cut-off tail into a damaged file. A file that cannot even be opened is the same failure,
 said at the open, and the run goes on without the stream.
 
-The state frames (#579) are written through it. The order-event stream, the tick stream record and
-the acceptance studies' captures keep their own copies of these rules until they move here with #476.
+The state frames (#579) and the tick stream record (#609) are written through it. The order-event
+stream and the acceptance studies' captures keep their own copies of these rules until they move
+here with #476.
 """
 
 from pathlib import Path

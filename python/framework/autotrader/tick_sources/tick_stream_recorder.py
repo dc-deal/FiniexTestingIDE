@@ -2,7 +2,8 @@
 FiniexTestingIDE - Tick Stream Recorder
 The live tick source's account of its own connection (#609): every outage with the public trade
 ids around it, and the trades it refused — the first of each reason listed, every one counted —
-one line each in the session's `io/tick_stream_events.jsonl`.
+one line each in the session's `io/tick_stream_events.jsonl`, written through the run stream
+appender like every stream a run writes as it goes.
 
 Transport health, and kept on the transport plane: the ids never ride on a tick, so no worker can
 reach them and the backtest needs nothing of it. The comparison of a run (#512) reads this record
@@ -19,7 +20,7 @@ from pathlib import Path
 from typing import Callable, Dict, Optional, Tuple
 
 from python.framework.logging.abstract_logger import AbstractLogger
-from python.framework.reporting.io.jsonl_stream_writer import JsonlStreamWriter
+from python.framework.reporting.io.run_stream_appender import RunStreamAppender
 from python.framework.types.autotrader_types.tick_stream_event_types import (
     RefusedPublicTrade,
     RefusedPublicTradeReason,
@@ -91,10 +92,20 @@ class TickStreamRecorder:
         self._outages_ended: int = 0
         self._refusals: Dict[RefusedPublicTradeReason, int] = {}
 
-        self._writer: Optional[JsonlStreamWriter] = None
-        self._failed = False
+        # A header line, one flushed line per record, and the first failed write said once on the
+        # session's channel — it never reaches the socket loop, where it would read as a broken
+        # connection.
+        self._stream: Optional[RunStreamAppender] = None
         if record_dir is not None:
-            self._open(Path(record_dir) / TICK_STREAM_EVENTS_FILE, run_id)
+            self._stream = RunStreamAppender(
+                path=Path(record_dir) / TICK_STREAM_EVENTS_FILE,
+                stream='tick_stream_events',
+                schema_version=TICK_STREAM_EVENTS_SCHEMA_VERSION,
+                run_id=run_id,
+                logger=session_logger,
+                stops='Outages and refused trades are no longer recorded this session',
+                header_fields={'symbol': symbol},
+            )
 
     # === What the tick source reports ===
 
@@ -238,14 +249,8 @@ class TickStreamRecorder:
                 f'📡 {self._symbol}: {total} trade(s) from the venue refused this session '
                 f'({breakdown}) — {TICK_STREAM_EVENTS_FILE} lists the first '
                 f'{REFUSALS_LISTED_PER_REASON} of each kind, and its last line the totals.')
-        if self._writer is not None:
-            try:
-                self._writer.close()
-            except OSError as e:
-                # The close flushes what a failed write left in the buffer and fails again; it
-                # was reported then, and the session's end must not fail over it.
-                if not self._failed:
-                    self._report_failure(self._writer.get_path(), e)
+        if self._stream is not None:
+            self._stream.close()
 
     # === Internals ===
 
@@ -263,52 +268,12 @@ class TickStreamRecorder:
         self._open_outage = None
         self._pending_restore = None
 
-    def _open(self, path: Path, run_id: str) -> None:
-        """
-        Start the record with its header line; a failure leaves the session without one.
-
-        Args:
-            path: The stream file
-            run_id: Written into the header
-        """
-        try:
-            self._writer = JsonlStreamWriter(path)
-        except OSError as e:
-            self._report_failure(path, e)
-            return
-        self._write({
-            'record_kind': 'header',
-            'stream': 'tick_stream_events',
-            'schema_version': TICK_STREAM_EVENTS_SCHEMA_VERSION,
-            'run_id': run_id,
-            'symbol': self._symbol,
-        })
-
     def _write(self, record: Dict[str, object]) -> None:
         """
-        Append one line. The first failure is reported and ends the writing — it never reaches
-        the socket loop, where it would read as a broken connection.
+        Append one line to the record, when the session keeps one.
 
         Args:
             record: The line's values
         """
-        if self._writer is None or self._failed:
-            return
-        try:
-            self._writer.write(record)
-        except OSError as e:
-            self._report_failure(self._writer.get_path(), e)
-
-    def _report_failure(self, path: Path, error: OSError) -> None:
-        """
-        Say once that the record cannot be written, and stop writing it.
-
-        Args:
-            path: The stream file
-            error: What the file system answered
-        """
-        self._failed = True
-        if self._session_logger is not None:
-            self._session_logger.error(
-                f'❌ The tick stream record {path} could not be written: {error}. Outages and '
-                f'refused trades are no longer recorded this session; the session continues.')
+        if self._stream is not None:
+            self._stream.write(record)
