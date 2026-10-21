@@ -156,6 +156,7 @@ Each test suite has its own documentation in [`tests/`](tests/).
 | [Live Executor](tests/autotrader/live_executor_tests.md) | LiveTradeExecutor pipeline |
 | [Loop Cadence](tests/autotrader/loop_cadence_tests.md) | Clock injection, heartbeat re-poll, decision ghost-pass (#360) |
 | [Algo State Persistence](tests/autotrader/state_persistence_tests.md) | Snapshot store, corrupt/stale policy, weekend-aware staleness, pre-flight (#354) |
+| [State Frames](tests/autotrader/state_frames_tests.md) | What a session records of its own state, moment by moment (#579): the cadence, the frames at a closed bar and an order, the last frame against the report |
 | [Order Guard](tests/autotrader/order_guard_tests.md) | Rejection cooldown, async callback |
 | [Cold Start](tests/autotrader/cold_start_tests.md) | Boot-time adoption of our own resting orders + the framework carry-over (#355) |
 | [Capital](tests/autotrader/capital_tests.md) | What the bot may actually spend (#489): committed funds on both check sites, the minimum-order boot refusal |
@@ -165,7 +166,7 @@ Each test suite has its own documentation in [`tests/`](tests/).
 | [Session Validation](tests/autotrader/session_validation_tests.md) | The AutoTrader Tier-1 channel: SessionPostRunValidator + the checks shared with the sim batch |
 | [API Monitor](tests/autotrader/api_monitor_tests.md) | Per-endpoint broker REST latency/error telemetry (#351) |
 | [Operator Alerts](tests/autotrader/operator_alerts_tests.md) | The alert channel, its dispatcher and the liveness ping (#235): the loop never waits, an outage costs one message, a refusal closes the channel, the ping follows the loop, no secret in a log line |
-| [Kraken Adapter](tests/autotrader/kraken_adapter_tests.md) | The adapter's pure layers, offline: nonce monotonicity (#332), the client order id on the wire (#473), and the stop / stop-limit price semantics in both directions (#500) |
+| [Kraken Adapter](tests/autotrader/kraken_adapter_tests.md) | The adapter's pure layers, offline: nonce monotonicity (#332), the client order id on the wire (#473), the stop / stop-limit price semantics in both directions (#500), and the venue's documented "not now" read as a passing fault (#598) |
 | [Test Taxonomy](tests/test_taxonomy.md) | The human-readable test map — which suite covers which pipeline domain |
 | [Baseline Tests](tests/simulation/baseline_tests.md) | Core functionality validation |
 | [Batch Core Tests](tests/simulation/batch_core_tests.md) | Prepare/execute seam (#417): split equivalence, mount reuse/determinism, data identity |

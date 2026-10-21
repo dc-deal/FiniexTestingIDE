@@ -5,7 +5,7 @@ registered workers require, holds their history, and takes the warmup history at
 The symbol comes from the configuration, never from a bar dict.
 """
 from datetime import datetime
-from typing import Callable, Dict, List, Optional, Sequence, Set
+from typing import Callable, Dict, FrozenSet, List, Optional, Sequence, Set
 
 from python.framework.bars.bar_renderer import BarRenderer
 from python.framework.exceptions.warmup_history_errors import WarmupHistoryDefectError
@@ -103,6 +103,18 @@ class BarRenderingController:
                 self._pending_closed_timeframes.add(timeframe)
 
         return current_bars
+
+    def get_pending_closed_timeframes(self) -> FrozenSet[str]:
+        """
+        The timeframes whose bar closed since the last consume — read without consuming them.
+
+        The session's state frames (#579) ask it between rendering a tick's bars and the algo
+        pass that consumes the set, so a frame can name the bar the decision just saw close.
+
+        Returns:
+            A frozen copy of the set
+        """
+        return frozenset(self._pending_closed_timeframes)
 
     def consume_bar_render_state(self) -> BarRenderState:
         """

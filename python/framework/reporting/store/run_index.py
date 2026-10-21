@@ -333,7 +333,9 @@ class RunIndex(AbstractStoreIndex):
     # 9 → 10 (#609): `artifacts` no longer lists a run record — the warmup history and the tick
     # stream's outage record — so a session that died before its report stops reading as
     # reported. A rebuild corrects the rows written before it.
-    LOGIC_VERSION: int = 10
+    # 10 → 11 (#579 part A): the state frames join the run records, so `artifacts` does not list
+    # them either. No run wrote them before, so a rebuild changes no existing row.
+    LOGIC_VERSION: int = 11
 
     def __init__(self, path: Path, roots: Optional[RunLogPaths] = None,
                  declared_purposes: Optional[Callable[[], Dict[str, RunPurpose]]] = None):

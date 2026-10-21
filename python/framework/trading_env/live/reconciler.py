@@ -130,6 +130,9 @@ class Reconciler:
         self._last_truth_record_time: Optional[float] = None
         self._last_clean: bool = True
         self._state_since: float = time.monotonic()  # when the current clean/divergent state began
+        # The latest cycle's verdict for a record (#579): None before the first cycle and after one
+        # that could not reach the venue — `_last_clean` starts out clean for the panel's sake
+        self._last_verdict: Optional[bool] = None
 
         self._logger.info(
             f'🔍 Reconciler active (ALERT_ONLY) — cadence: every {config.interval_ticks} ticks '
@@ -231,6 +234,7 @@ class Reconciler:
         self._reconcile_count += 1
         self._skipped_count += 1
         self._last_skipped_reason = str(error)
+        self._last_verdict = None
         self._last_reconcile_tick = current_tick
         self._last_reconcile_time = time.monotonic()
 
@@ -509,6 +513,7 @@ class Reconciler:
         if result.is_clean != self._last_clean:
             self._state_since = time.monotonic()
         self._last_clean = result.is_clean
+        self._last_verdict = result.is_clean
 
         # An attribution is reported whether or not the cycle is otherwise clean — it is
         # the one outcome here that CHANGED something, so it must not hide behind is_clean.
@@ -792,6 +797,16 @@ class Reconciler:
             Number of skipped cycles this session
         """
         return self._skipped_count
+
+    def get_last_verdict(self) -> Optional[bool]:
+        """
+        Whether the latest cycle found the venue in agreement with the local book (#579).
+
+        Returns:
+            The verdict, or None before the first cycle and after one that could not reach the
+            venue — that cycle compared nothing
+        """
+        return self._last_verdict
 
     def shutdown(self) -> None:
         """Emit a final one-line reconciliation summary to the session log."""

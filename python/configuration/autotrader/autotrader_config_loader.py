@@ -26,6 +26,7 @@ from python.framework.types.config_types.autotrader_defaults_config_types import
     ReconciliationDefaults,
     SafetyConfig,
     SessionEndDefaults,
+    StateFramesDefaults,
     StatePersistenceDefaults,
     TickSourceConfig,
 )
@@ -72,6 +73,7 @@ _KNOWN_DRIFT_AUDIT_KEYS: frozenset          = allowlist_from(DriftAuditConfig)
 _KNOWN_RECONCILIATION_KEYS: frozenset       = allowlist_from(ReconciliationDefaults)
 _KNOWN_API_MONITOR_KEYS: frozenset          = allowlist_from(ApiMonitorConfig)
 _KNOWN_STATE_PERSISTENCE_KEYS: frozenset    = allowlist_from(StatePersistenceDefaults)
+_KNOWN_STATE_FRAMES_KEYS: frozenset         = allowlist_from(StateFramesDefaults)
 _KNOWN_COLD_START_KEYS: frozenset           = allowlist_from(ColdStartDefaults)
 _KNOWN_SESSION_END_KEYS: frozenset          = allowlist_from(SessionEndDefaults)
 _KNOWN_OPERATOR_ALERTS_KEYS: frozenset      = allowlist_from(OperatorAlertsConfig)
@@ -159,6 +161,7 @@ def load_autotrader_config(config_path: str) -> AutoTraderConfig:
     reconciliation_raw = raw.get('reconciliation', {})
     api_monitor_raw = raw.get('api_monitor', {})
     state_persistence_raw = raw.get('state_persistence', {})
+    state_frames_raw = raw.get('state_frames', {})
     cold_start_raw = raw.get('cold_start', {})
     session_end_raw = raw.get('session_end', {})
     operator_alerts_raw = raw.get('operator_alerts', {})
@@ -201,6 +204,7 @@ def load_autotrader_config(config_path: str) -> AutoTraderConfig:
     check_unknown_keys('reconciliation',      reconciliation_raw, _KNOWN_RECONCILIATION_KEYS)
     check_unknown_keys('api_monitor',         api_monitor_raw,  _KNOWN_API_MONITOR_KEYS)
     check_unknown_keys('state_persistence',   state_persistence_raw, _KNOWN_STATE_PERSISTENCE_KEYS)
+    check_unknown_keys('state_frames',        state_frames_raw, _KNOWN_STATE_FRAMES_KEYS)
     check_unknown_keys('cold_start',          cold_start_raw,   _KNOWN_COLD_START_KEYS)
     check_unknown_keys('session_end',         session_end_raw,  _KNOWN_SESSION_END_KEYS)
     check_unknown_keys('operator_alerts',     operator_alerts_raw, _KNOWN_OPERATOR_ALERTS_KEYS)
@@ -316,6 +320,7 @@ def load_autotrader_config(config_path: str) -> AutoTraderConfig:
             liveness={**liveness_raw, 'enabled': liveness_enabled_resolved})),
         deployment=DeploymentConfig(**_block(deployment_raw)),
         state_persistence=StatePersistenceDefaults(**_block(state_persistence_raw, enabled=state_persistence_enabled_resolved)),
+        state_frames=StateFramesDefaults(**_block(state_frames_raw)),
         config_path=path,
     )
     # On the RESOLVED config: the tick source's type comes from the app_config cascade when a

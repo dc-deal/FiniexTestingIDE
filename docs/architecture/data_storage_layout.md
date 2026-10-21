@@ -574,10 +574,11 @@ store of its own, and not an artifact: the run index lists it under `stream_file
 artifact list is how a run that never reached its report is recognised. See [Order-Event
 Stream](order_event_stream.md).
 
-A live session writes two more records into `io/` as it runs: the warmup history it started from
-(`warmup_history.json`, #588) and its tick stream's outages and refused trades
-(`tick_stream_events.jsonl`, #609). Neither is a report artifact nor a served stream, so the run
-index lists neither (`RUN_RECORD_FILENAMES`): an artifact would make a session that died before
+A live session writes more records into `io/` as it runs: the warmup history it started from
+(`warmup_history.json`, #588), its tick stream's outages and refused trades
+(`tick_stream_events.jsonl`, #609) and its state frames — what it held and decided, moment by
+moment (`state_frames.jsonl`, #579). None of them is a report artifact or a served stream, so the
+run index lists none of them (`RUN_RECORD_FILENAMES`): an artifact would make a session that died before
 its report read as reported, and a stream entry would promise a route that does not exist.
 
 An AutoTrader session's directory also holds the **warmup history** it started from

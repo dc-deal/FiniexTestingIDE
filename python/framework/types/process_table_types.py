@@ -17,3 +17,16 @@ class ProcessReading:
     pid: int
     ppid: int
     rss_bytes: Optional[int]
+
+
+@dataclass
+class OwnProcessMemory:
+    """
+    What the calling process holds, read for itself (#611).
+
+    `rss_bytes` counts every resident page, the ones it shares with other processes included;
+    `private_bytes` only the pages this process alone holds — what it would give back on exit, and
+    what a leak grows. Either is None where the system did not answer.
+    """
+    rss_bytes: Optional[int]
+    private_bytes: Optional[int]

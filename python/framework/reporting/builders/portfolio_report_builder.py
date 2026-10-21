@@ -60,13 +60,14 @@ def _spot_estimate(stats) -> tuple:
     return current, initial, pnl, (pnl / initial * 100) if initial > 0 else 0.0
 
 
-def _open_position_rows(
+def open_position_rows(
     positions: List[Position], last_price: float,
     enforcement: str = '') -> List[OpenPositionRow]:
-    """Project the positions a unit still held onto their report rows (#492).
+    """Project the positions a unit still held onto their report rows (#492) — the state frames
+    use the same rows (#579), so a frame and the report describe a position alike.
 
     Args:
-        positions: The unit's open positions at run end
+        positions: The unit's open positions at run end, or at a state frame's moment
         last_price: The unit's last mid price — 0.0 when no tick ever arrived
         enforcement: Who enforces a protective level by DEFAULT in the executor that
             produced these positions, stamped at capture — carried only onto rows that
@@ -241,7 +242,7 @@ def _to_unit_row(unit: RunUnit) -> PortfolioUnitRow:
     """Map a unit's portfolio stats to the full per-unit projection row."""
     stats = unit.portfolio_stats
     est_current, est_initial, est_pnl, est_pnl_pct = _spot_estimate(stats)
-    open_rows = _open_position_rows(
+    open_rows = open_position_rows(
         unit.open_positions, stats.last_price, stats.protective_level_enforcement)
     return PortfolioUnitRow(
         name=unit.name,

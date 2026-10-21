@@ -138,13 +138,21 @@ def pending_orders_row(
             for submitted_seq, event in endings.items()
             if IN_FLIGHT_ENDING_BY_EVENT[event.event_type] is InFlightEnding.NEVER_CONFIRMED
         ],
-        active_limit_orders=_active_rows(limits),
-        active_stop_orders=_active_rows(stops),
+        active_limit_orders=active_order_rows(limits),
+        active_stop_orders=active_order_rows(stops),
     )
 
 
-def _active_rows(snapshots: List[ActiveOrderSnapshot]) -> List[ActiveOrderRow]:
-    """Map active-order snapshots to renderable rows."""
+def active_order_rows(snapshots: List[ActiveOrderSnapshot]) -> List[ActiveOrderRow]:
+    """
+    Map active-order snapshots to renderable rows — the state frames use the same rows (#579).
+
+    Args:
+        snapshots: The orders resting at one moment
+
+    Returns:
+        One row per order
+    """
     return [
         ActiveOrderRow(
             order_id=s.order_id,

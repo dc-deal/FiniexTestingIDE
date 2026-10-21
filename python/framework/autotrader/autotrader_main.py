@@ -25,13 +25,6 @@ from python.framework.acceptance_studies.acceptance_study_setup import (
     open_acceptance_study,
 )
 from python.framework.activities.activity_registry import ActivityRegistry
-from python.framework.autotrader.startup.autotrader_data_preparer import prepare_mock_session_data
-from python.framework.autotrader.startup.autotrader_startup import (
-    create_autotrader_loggers,
-    setup_pipeline,
-)
-from python.framework.autotrader.startup.bot_instance_lock import record_holder_run, take_bot_lock
-from python.framework.autotrader.startup.start_failure_classifier import is_passing_start_failure
 from python.framework.autotrader.autotrader_tick_loop import AutotraderTickLoop
 from python.framework.autotrader.cold_start.cold_start_setup import (
     ColdStartSetup,
@@ -51,6 +44,9 @@ from python.framework.autotrader.operator_alerts.operator_alerts_setup import (
     build_operator_alerts,
     disabled_operator_alerts,
 )
+from python.framework.autotrader.run_record.autotrader_report_coordinator import (
+    AutotraderReportCoordinator,
+)
 from python.framework.autotrader.run_record.order_event_stream_setup import (
     open_order_event_stream,
     read_back_order_event_stream,
@@ -59,15 +55,22 @@ from python.framework.autotrader.run_record.rendered_profile_builder import (
     assert_rendered_parameters_match,
     render_autotrader_profile,
 )
-from python.framework.autotrader.run_record.autotrader_report_coordinator import (
-    AutotraderReportCoordinator,
+from python.framework.autotrader.run_record.state_frame_recorder import (
+    StateFrameRecorder,
+    open_state_frame_stream,
 )
 from python.framework.autotrader.safety.risk_baseline_tracker import RiskBaselineTracker
+from python.framework.autotrader.startup.autotrader_data_preparer import prepare_mock_session_data
+from python.framework.autotrader.startup.autotrader_startup import (
+    create_autotrader_loggers,
+    setup_pipeline,
+)
+from python.framework.autotrader.startup.bot_instance_lock import record_holder_run, take_bot_lock
+from python.framework.autotrader.startup.start_failure_classifier import is_passing_start_failure
 from python.framework.autotrader.tick_sources.abstract_tick_source import AbstractTickSource
 from python.framework.autotrader.tick_sources.tick_source_setup import setup_tick_source
-from python.framework.config_directory.config_directory_discovery import profile_homes
-from python.framework.stress_test.stale_data_stress_driver import StaleDataStressDriver
 from python.framework.bars.bar_rendering_controller import BarRenderingController
+from python.framework.config_directory.config_directory_discovery import profile_homes
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.discoveries.signal_coverage.signal_scenario_info import SignalScenarioInfo
 from python.framework.exceptions.code_identity_errors import CodeIdentityCaptureError
@@ -76,8 +79,8 @@ from python.framework.exceptions.swap_errors import SwapModeNotImplementedError
 from python.framework.exceptions.warmup_history_errors import WarmupHistoryRefusedError
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.persistence.algo_state_store import AlgoStateStore
-from python.framework.reporting.api_perf_monitor import ApiPerfMonitor
 from python.framework.reporting.acceptance_study_recorder import AcceptanceStudyRecorder
+from python.framework.reporting.api_perf_monitor import ApiPerfMonitor
 from python.framework.reporting.io.order_event_stream_writer import OrderEventStreamWriter
 from python.framework.reporting.store.run_results_ledger import RunResultsLedger
 from python.framework.signal_data.signal_observed_accumulator import SignalObservedAccumulator
@@ -86,6 +89,7 @@ from python.framework.signal_data.transport.abstract_signal_transport import (
 )
 from python.framework.signal_data.transport.signal_inbox import SignalInbox
 from python.framework.signal_data.transport.signal_transport_setup import setup_signal_transport
+from python.framework.stress_test.stale_data_stress_driver import StaleDataStressDriver
 from python.framework.trading_env.abstract_trade_executor import AbstractTradeExecutor
 from python.framework.trading_env.decision_event_dispatcher import DecisionEventDispatcher
 from python.framework.trading_env.live.drift_auditor import DriftAuditor
@@ -131,8 +135,8 @@ from python.framework.validators.carry_over_continuity_validator import (
     validate_carry_over_continuity,
 )
 from python.framework.validators.carry_over_identity_validator import (
-    validate_carry_over_identity_unique,
     validate_bot_id,
+    validate_carry_over_identity_unique,
 )
 from python.framework.validators.component_metadata_advisory import check_market_fit
 from python.framework.validators.session_end_validator import resolve_session_end_policy
@@ -304,6 +308,8 @@ class AutotraderMain:
         # #362 — the session's order-event stream, written as the steps happen. None until
         # the pipeline exists, so an abort before that point has nothing to close.
         self._order_event_stream: Optional[OrderEventStreamWriter] = None
+        # #579 part A — what the session holds and decides, moment by moment
+        self._state_frames: Optional[StateFrameRecorder] = None
 
         # Loggers (created during run())
         self._global_logger: Optional[ScenarioLogger] = None
@@ -659,6 +665,12 @@ class AutotraderMain:
             # A Ctrl+C or SIGTERM during the start is a stop the loop honours before its first
             # pass — the executor that records it may not have existed when the signal came
             self._request_signal_end()
+            # === STATE FRAMES (#579 part A) ===
+            # Opened with the loop that writes them, display or not
+            self._state_frames = open_state_frame_stream(
+                self._config, self._run_dir, self._run_id, self._executor,
+                self._worker_orchestrator, self._bar_controller, self._trading_model,
+                self._reconciler, self._session_logger)
             self._tick_loop = self._build_tick_loop(run_timestamp, dry_run)
             self._tick_loop_started = True
             self._operator_alerts.start_liveness()
@@ -1114,6 +1126,7 @@ class AutotraderMain:
             persist_carry_over=(
                 (lambda: self._persist_cold_start_carry_over(refresh_index=False))
                 if self._cold_start.persist else None),
+            state_frames=self._state_frames,
         )
 
     # =========================================================================
@@ -1266,6 +1279,18 @@ class AutotraderMain:
                 self._order_event_stream.close()
             except Exception as e:
                 self._session_logger.error(f'Error closing the order-event stream: {e}')
+
+        # #579 part A — the session's last state frame, at the state its report describes: the
+        # orders are finished and the venue was asked once more, and the results are collected
+        # next, at the same price. Its own try, like the order-event stream's.
+        if self._state_frames:
+            try:
+                if self._tick_loop is not None:
+                    self._tick_loop.write_final_state_frame(ticks_processed)
+                else:
+                    self._state_frames.close()
+            except Exception as e:
+                self._session_logger.error(f'Error writing the last state frame: {e}')
 
         # #327 — Drift auditor cleanup (surfaces unfinished audits + final summary)
         if self._drift_auditor:

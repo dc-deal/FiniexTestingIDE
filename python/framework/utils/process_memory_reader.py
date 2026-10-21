@@ -10,6 +10,9 @@ single process for its children took 15-22 ms per call.
 Resident memory counts every page a process maps, the ones it shares included — its libraries, and
 what a forked child still shares with its parent — so a sum over processes is an upper bound.
 
+The calling process can also ask for itself, private pages included (`read_own_memory`) — what the
+state frames record (#579, #611).
+
 Not this module: the machine's own memory and load, which `machine_resources_reader` reads.
 """
 
@@ -17,7 +20,7 @@ from typing import Dict, Optional
 
 import psutil
 
-from python.framework.types.process_table_types import ProcessReading
+from python.framework.types.process_table_types import OwnProcessMemory, ProcessReading
 
 
 def read_process_table() -> Dict[int, ProcessReading]:
@@ -61,3 +64,28 @@ def read_process_start(pid: int) -> Optional[float]:
         return process.create_time()
     except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
         return None
+
+
+def read_own_memory() -> OwnProcessMemory:
+    """
+    What the calling process holds — one process, read for itself, never a pass over the table.
+
+    The resident size is cheap; the private pages need the process's full memory map. Measured on
+    2026-10-18 (#611): 13.5 µs and 146 µs — affordable once a minute, not on every tick.
+
+    Returns:
+        The reading; a figure the system would not give is None
+    """
+    process = psutil.Process()
+    rss_bytes: Optional[int] = None
+    private_bytes: Optional[int] = None
+    try:
+        rss_bytes = process.memory_info().rss
+    except psutil.Error:
+        pass
+    try:
+        private_bytes = process.memory_full_info().uss
+    except (psutil.Error, AttributeError):
+        # AttributeError: a platform whose full memory info carries no unique set size
+        pass
+    return OwnProcessMemory(rss_bytes=rss_bytes, private_bytes=private_bytes)

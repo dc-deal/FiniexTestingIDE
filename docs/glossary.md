@@ -693,6 +693,14 @@ external, pre-collected data such as sentiment. See [Signal Data Source](data_pi
 
 **signal basis** — A signal row's quality grade from the producer (`llm`, `no_data`, `degraded`).
 
+**state frame** (`io/state_frames.jsonl`, `state_frames` in a profile) — What an AutoTrader
+session held and decided at one moment: its account, its open positions and resting orders, every
+worker output and its decision. Written on a cadence of the canonical clock, when a bar closes,
+when the decision sends an order, and once at the end (#579) — the live side of a comparison with
+a backtest, which unlike the backtest cannot be run again. Not the dashboard's *frame*, which is
+built only while a display runs and keeps only the latest. See
+[Live Telemetry](architecture/live_telemetry_architecture.md#the-recorded-state-frame--not-this-stream).
+
 **stop trigger** (`trigger_price` on an order event, `stop_price` on a venue order) — The price at
 which a stop order activates. A triggered stop fills at the market, not at its trigger — the
 distance the price moved through it is real cost; a stop-limit becomes a limit at its limit price.

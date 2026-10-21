@@ -9,7 +9,7 @@ from enum import StrEnum
 from typing import Literal
 from urllib.parse import urlparse
 
-from pydantic import field_validator
+from pydantic import Field, field_validator
 
 from python.framework.types.config_types.operator_alerts_config_types import OperatorAlertsConfig
 from python.framework.types.config_types.strict_config_model import StrictConfigModel
@@ -178,6 +178,18 @@ class StatePersistenceDefaults(StrictConfigModel):
     max_age_trading_days: int = 5            # discard restored state older than this (0 = no guard)
     on_corrupt: Literal['warn_reset', 'fail'] = 'warn_reset'   # corrupt file: reset fresh or refuse to start
     on_stale: Literal['warn_reset', 'halt'] = 'warn_reset'     # too-old state: reset fresh or halt boot
+
+
+class StateFramesDefaults(StrictConfigModel):
+    """
+    The state frames a session records (#579 part A) — what it held and decided, moment by moment.
+
+    A frame is written on a cadence of the canonical clock, when a bar closes, when the decision
+    sends an order, and once at the end, into `io/state_frames.jsonl`; whether a display runs
+    does not matter. At the default of one minute a thirty-day session records about 65–130 MB.
+    """
+    enabled: bool = True
+    interval_seconds: float = Field(default=60.0, gt=0)   # the cadence, in canonical-clock seconds
 
 
 class ColdStartDefaults(StrictConfigModel):
@@ -435,6 +447,7 @@ class AutotraderDefaultsConfig(StrictConfigModel):
     reconciliation: ReconciliationDefaults = ReconciliationDefaults()
     api_monitor: ApiMonitorConfig = ApiMonitorConfig()
     state_persistence: StatePersistenceDefaults = StatePersistenceDefaults()
+    state_frames: StateFramesDefaults = StateFramesDefaults()
     cold_start: ColdStartDefaults = ColdStartDefaults()
     session_end: SessionEndDefaults = SessionEndDefaults()
     tick_source: TickSourceConfig = TickSourceConfig()

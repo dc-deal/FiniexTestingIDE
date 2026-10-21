@@ -224,9 +224,10 @@ runs/autotrader/btcusd_mock/20260328_105127_a1b2c3d4/
   io/                             The report sections — the broker section among them
                                   (broker.json) — and the session's own records: the
                                   order-event stream (order_events.jsonl), the
-                                  warmup history it started from (warmup_history.json)
-                                  and, for a live tick source, the record of its
-                                  outages and refused trades (tick_stream_events.jsonl)
+                                  warmup history it started from (warmup_history.json),
+                                  its state moment by moment (state_frames.jsonl) and,
+                                  for a live tick source, the record of its outages and
+                                  refused trades (tick_stream_events.jsonl)
 ```
 
 The logs say what the session did; `header.json` and the records under `io/` say what it ran

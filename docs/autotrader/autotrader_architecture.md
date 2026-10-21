@@ -76,8 +76,8 @@ external-connection policy
 ## What a session records
 
 A backtest of a session's window can only be compared with the session through what the session
-recorded of its inputs — most of it taken when it started, the tick stream's record written as the
-session runs:
+recorded of its inputs and its state — most of it taken when it started, the tick stream's record
+and the state frames written as the session runs:
 
 - `header.json` — the profile it was given (`config_id`); what it runs with, the application
   defaults merged in and every parameter default filled in (`rendered_config_id`); its code
@@ -88,6 +88,10 @@ session runs:
 - `io/tick_stream_events.jsonl` — for a live tick source, every outage with the venue's public
   trade ids around it, so the comparison can bound what the session never saw, and every trade it
   refused ([AutoTrader Data Intake](autotrader_data_intake.md), *KrakenTickSource*)
+- `io/state_frames.jsonl` — what the session held and decided, moment by moment: the account, the
+  open positions and resting orders, every worker output and the decision — on a cadence of the
+  canonical clock, at a closed bar, at an order and at its end (#579). The live side of the
+  comparison, which unlike the backtest cannot be run again
 
 Why a run keeps these, and what no run records:
 [A run is a record, and an old one stays true](../introduction_to_the_ide.md#a-run-is-a-record-and-an-old-one-stays-true).

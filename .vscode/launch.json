@@ -3312,6 +3312,23 @@
             }
         },
         {
+            "name": "🧩 Pytest: State Frames (#579)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/autotrader/state_frames",
+                "-v",
+                "--tb=short"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "13_pytest_validation",
+                "order": 74
+            }
+        },
+        {
             "name": "🧩 Pytest: Static Analysis (All)",
             "type": "debugpy",
             "request": "launch",
@@ -3325,7 +3342,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 74
+                "order": 75
             }
         },
         {
@@ -3342,7 +3359,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 75
+                "order": 76
             }
         },
         {
@@ -3359,7 +3376,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 76
+                "order": 77
             }
         },
         {
@@ -3376,7 +3393,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 77
+                "order": 78
             }
         },
         {
@@ -3393,7 +3410,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 78
+                "order": 79
             }
         },
         {
@@ -3410,7 +3427,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 79
+                "order": 80
             }
         },
         {
@@ -3427,7 +3444,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 80
+                "order": 81
             }
         },
         {
@@ -3444,7 +3461,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 81
+                "order": 82
             }
         },
         {
@@ -3461,7 +3478,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 82
+                "order": 83
             }
         },
         {
@@ -3478,7 +3495,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 83
+                "order": 84
             }
         },
         // ====================================================
@@ -3765,6 +3782,26 @@
             }
         },
         {
+            "name": "🧪 AutoTrader: State Frames",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/autotrader_cli.py",
+            "args": [
+                "run",
+                "--config",
+                "configs/autotrader_profiles/mock/state_frames_test.json",
+                "--display",
+                "--delay",
+                "1"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "13b_manual_inspection",
+                "order": 15
+            }
+        },
+        {
             "name": "🧪 AutoTrader: TP Triggered",
             "type": "debugpy",
             "request": "launch",
@@ -3781,7 +3818,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13b_manual_inspection",
-                "order": 15
+                "order": 16
             }
         },
         {
@@ -3801,7 +3838,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13b_manual_inspection",
-                "order": 16
+                "order": 17
             }
         },
         {
@@ -3817,7 +3854,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13b_manual_inspection",
-                "order": 17
+                "order": 18
             }
         },
         {
@@ -3833,7 +3870,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13b_manual_inspection",
-                "order": 18
+                "order": 19
             }
         },
         {
@@ -3849,7 +3886,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13b_manual_inspection",
-                "order": 19
+                "order": 20
             }
         },
         {
@@ -3865,7 +3902,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13b_manual_inspection",
-                "order": 20
+                "order": 21
             }
         },
         {
@@ -3881,7 +3918,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13b_manual_inspection",
-                "order": 21
+                "order": 22
             }
         },
         {
@@ -3897,7 +3934,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13b_manual_inspection",
-                "order": 22
+                "order": 23
             }
         },
         {
@@ -3913,7 +3950,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13b_manual_inspection",
-                "order": 23
+                "order": 24
             }
         },
         {
@@ -3929,7 +3966,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13b_manual_inspection",
-                "order": 24
+                "order": 25
             }
         },
         {
@@ -3945,7 +3982,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13b_manual_inspection",
-                "order": 25
+                "order": 26
             }
         },
         {
@@ -3961,7 +3998,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13b_manual_inspection",
-                "order": 26
+                "order": 27
             }
         },
         {
@@ -3977,7 +4014,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13b_manual_inspection",
-                "order": 27
+                "order": 28
             }
         },
         {
@@ -3993,7 +4030,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13b_manual_inspection",
-                "order": 28
+                "order": 29
             }
         },
         {
@@ -4009,7 +4046,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13b_manual_inspection",
-                "order": 29
+                "order": 30
             }
         },
         {
@@ -4025,7 +4062,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13b_manual_inspection",
-                "order": 30
+                "order": 31
             }
         },
         {
@@ -4041,7 +4078,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13b_manual_inspection",
-                "order": 31
+                "order": 32
             }
         },
         {
@@ -4057,7 +4094,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13b_manual_inspection",
-                "order": 32
+                "order": 33
             }
         },
         {
@@ -4073,7 +4110,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13b_manual_inspection",
-                "order": 33
+                "order": 34
             }
         },
         {
@@ -4089,7 +4126,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13b_manual_inspection",
-                "order": 34
+                "order": 35
             }
         },
         {
@@ -4105,7 +4142,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13b_manual_inspection",
-                "order": 35
+                "order": 36
             }
         },
         // ====================================================

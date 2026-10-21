@@ -87,6 +87,8 @@ tests/
 │   ├── session_end/       unit — what a session leaves standing and how it is reported (#492):
 │   │                      the policy, the cleanup, realised-vs-valued, the phantom-drawdown guard
 │   ├── session_validation/ unit — SessionPostRunValidator: the AutoTrader Tier-1 channel, shared stress/slow-component checks
+│   ├── state_frames/      unit + integration — what a session records of its own state, moment by moment (#579):
+│   │                      the cadence, a closed bar, an order, the last frame against the report
 │   ├── api_monitor/       unit — broker REST latency/error telemetry (#351)
 │   ├── field_study_machine/  unit — Field Study phase state machine (#332)
 │   ├── security_study/    unit — security study phase machine, phase declarations, lot rules, the
