@@ -6,9 +6,10 @@ report (the same canonical model the console + CSV render), with parameter
 filtering pre-applied so the frontend renders, not derives.
 """
 
+from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, Request
 
 from python.api.api_error_catalog import (
     ARTIFACT_NOT_PRODUCED,
@@ -18,10 +19,13 @@ from python.api.api_error_catalog import (
     RUN_HEADER_MISSING,
     RUN_NOT_COMPLETED,
     RUN_NOT_FOUND,
+    STATE_FRAME_NOT_WRITTEN_YET,
+    STATE_FRAMES_NOT_RECORDED,
     api_error,
 )
 from python.api.api_query_params import parse_iso_query
 from python.api.api_route_documents import describes
+from python.api.served_state_frames import describe_latest_state_frames
 from python.framework.exceptions.api_errors import ApiException
 from python.framework.exceptions.report_artifact_errors import ReportArtifactUnreadableError
 from python.framework.reporting.io.artifact_specs import (
@@ -65,6 +69,7 @@ from python.framework.types.api.report_types import (
     WarningsErrorsReport,
     WorkerDecisionReport,
 )
+from python.framework.types.api.state_frame_types import LatestStateFramesResponse, StateFrameCause
 
 router = APIRouter()
 
@@ -201,6 +206,42 @@ def get_order_events(
     if report is None:
         raise _missing_artifact(run_id, 'order-events')
     return report
+
+
+@router.get('/reports/runs/{run_id}/state-frames/latest', response_model=LatestStateFramesResponse,
+            openapi_extra=describes('state-frames'))
+def get_latest_state_frames(run_id: str, request: Request) -> LatestStateFramesResponse:
+    """
+    The latest state frame of each unit of a run, its age, and whether the session still records
+    (#611) — the check-in on a running session, read from the stream's two ends while it is written.
+
+    Args:
+        run_id: The run's id (<timestamp>_<hash>), resolved through the run index
+        request: The request, for the thresholds the application read at its start
+
+    Returns:
+        The LatestStateFramesResponse (404 naming why there is no frame, 409 if the stream or the
+        end classification cannot be read)
+    """
+    store = ReportStore()
+    run = next((info for info in store.list_runs() if info.run_id == run_id), None)
+    if run is None:
+        raise api_error(RUN_NOT_FOUND, run_id=run_id)
+    try:
+        ends = store.get_state_frame_ends(run_id)
+        if ends is None:
+            raise api_error(STATE_FRAMES_NOT_RECORDED, run_id=run_id)
+        if ends.last is None:
+            raise api_error(STATE_FRAME_NOT_WRITTEN_YET, run_id=run_id)
+        outcome = None
+        if ends.last.written_for == StateFrameCause.SHUTDOWN:
+            # The end classification is written by the report phase, seconds after the last frame
+            report = store.get(run_id, WARNINGS_ERRORS_ARTIFACT)
+            outcome = report.outcome if report is not None else None
+    except ReportArtifactUnreadableError as e:
+        raise api_error(ARTIFACT_UNREADABLE, reason=str(e)) from e
+    return describe_latest_state_frames(
+        ends, run, outcome, request.app.state.state_frames_thresholds, datetime.now(timezone.utc))
 
 
 @router.get('/reports/runs/{run_id}/portfolio', response_model=PortfolioReport,

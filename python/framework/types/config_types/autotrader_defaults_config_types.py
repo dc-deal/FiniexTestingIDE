@@ -9,7 +9,7 @@ from enum import StrEnum
 from typing import Literal
 from urllib.parse import urlparse
 
-from pydantic import Field, field_validator
+from pydantic import field_validator
 
 from python.framework.types.config_types.operator_alerts_config_types import OperatorAlertsConfig
 from python.framework.types.config_types.strict_config_model import StrictConfigModel
@@ -17,6 +17,7 @@ from python.framework.types.config_types.strict_config_model import StrictConfig
 from python.framework.types.config_types.performance_tracking_config_types import (
     AutoTraderPerformanceTrackingConfig,
 )
+from python.framework.utils.timeframe_config_utils import TimeframeConfig
 
 
 class UnresolvedResolutionDefaults(StrictConfigModel):
@@ -186,10 +187,32 @@ class StateFramesDefaults(StrictConfigModel):
 
     A frame is written on a cadence of the canonical clock, when a bar closes, when the decision
     sends an order, and once at the end, into `io/state_frames.jsonl`; whether a display runs
-    does not matter. At the default of one minute a thirty-day session records about 65–130 MB.
+    does not matter. The cadence is a timeframe: one frame per period, on the grid the bars open
+    their periods on, so a live session and a backtest of the same period fill the same slots, and
+    every slot of a coarser cadence is a slot of a finer one. At the default of one minute a
+    thirty-day session records about 65–130 MB.
     """
     enabled: bool = True
-    interval_seconds: float = Field(default=60.0, gt=0)   # the cadence, in canonical-clock seconds
+    cadence_timeframe: str = 'M1'   # one frame per period of this timeframe, on the canonical clock
+
+    @field_validator('cadence_timeframe')
+    @classmethod
+    def _cadence_is_a_timeframe(cls, value: str) -> str:
+        """
+        Refuse a cadence that names no timeframe.
+
+        Args:
+            value: The configured timeframe
+
+        Returns:
+            The timeframe, unchanged
+        """
+        if not TimeframeConfig.exists(value):
+            known = ', '.join(TimeframeConfig.sorted())
+            raise ValueError(
+                f'state_frames.cadence_timeframe {value!r} is not a timeframe; the recording '
+                f'needs one of {known}')
+        return value
 
 
 class ColdStartDefaults(StrictConfigModel):

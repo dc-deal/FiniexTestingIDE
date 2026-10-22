@@ -81,10 +81,12 @@ ROUTER_SURFACES = (
 # The routes made to be polled. A client asks them every few seconds, so a successful answer stays
 # out of the server's access log, which would otherwise write a line per reading and bury the
 # requests that carry meaning; a failed answer is still logged. A route joins when its document
-# recommends asking it in a steady rhythm (#595).
+# recommends asking it in a steady rhythm (#595); a path is written as mounted, so a segment in
+# braces stands for any run id (#611).
 POLLED_PATHS = frozenset({
     '/api/v1/activities',
     '/api/v1/machine-resources',
+    '/api/v1/reports/runs/{run_id}/state-frames/latest',
 })
 
 # The bar routes answer with a bare array, so everything a consumer needs ABOUT the rows travels
@@ -188,6 +190,7 @@ def create_app() -> FastAPI:
     # already has a window to measure over (#595)
     machine_reader = MachineResourcesReader()
     machine_thresholds = AppConfigManager().get_machine_resources_config()
+    state_frames_thresholds = AppConfigManager().get_state_frames_api_config()
     auth = setup_api_auth()
     print(auth.boot_line)
     # Which data home this server reads its stores from — the one its sessions write (#598)
@@ -220,6 +223,8 @@ def create_app() -> FastAPI:
     # What the machine routes read, built once per application (#595, #603)
     app.state.machine_reader = machine_reader
     app.state.machine_thresholds = machine_thresholds
+    # When the latest-frame route reads a session's recording as stopped (#611)
+    app.state.state_frames_thresholds = state_frames_thresholds
     app.state.activity_reader = ActivityRegistryReader()
 
     app.add_middleware(

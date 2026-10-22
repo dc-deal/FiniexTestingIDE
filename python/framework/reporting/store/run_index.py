@@ -335,7 +335,9 @@ class RunIndex(AbstractStoreIndex):
     # reported. A rebuild corrects the rows written before it.
     # 10 → 11 (#579 part A): the state frames join the run records, so `artifacts` does not list
     # them either. No run wrote them before, so a rebuild changes no existing row.
-    LOGIC_VERSION: int = 11
+    # 11 → 12 (#611): the state frames are a served stream, so `stream_files` names them; a rebuild
+    # adds them to the rows of the sessions that wrote them.
+    LOGIC_VERSION: int = 12
 
     def __init__(self, path: Path, roots: Optional[RunLogPaths] = None,
                  declared_purposes: Optional[Callable[[], Dict[str, RunPurpose]]] = None):

@@ -18,7 +18,7 @@ from python.configuration.autotrader.autotrader_config_loader import load_autotr
 from python.framework.autotrader.autotrader_main import AutotraderMain
 from python.framework.reporting.io.artifact_specs import PORTFOLIO_ARTIFACT
 from python.framework.reporting.io.report_artifact_io import read_artifact
-from python.framework.reporting.store.report_store import IO_SUBDIR
+from python.framework.reporting.store.report_store import IO_SUBDIR, ReportStore
 from python.framework.types.config_types.autotrader_defaults_config_types import StateFramesDefaults
 from python.framework.types.log_layout_types import STATE_FRAMES_FILE
 from tests.shared.fixture_helpers import remove_run_dir
@@ -52,7 +52,7 @@ class TestTheRecord:
         _, run_dir, header, _ = session
         assert header == {'record_kind': 'header', 'stream': 'state_frames', 'schema_version': 1,
                           'run_id': run_dir.name, 'unit_name': 'state_frames_test',
-                          'cadence_s': 60.0}
+                          'cadence_timeframe': 'M1', 'cadence_s': 60.0}
 
     def test_the_cadence_follows_the_replayed_tick_time(self, session):
         _, _, _, frames = session
@@ -84,6 +84,13 @@ class TestTheRecord:
         assert orders, 'the window holds an order'
         sent = {order.order_id for order in result.order_history}
         assert all(f['order_id'] in sent for f in orders)
+
+    def test_the_run_list_names_the_stream(self, session):
+        """Recorded when the stream opens, so the check-in finds it while the session runs (#611)."""
+        _, run_dir, _, _ = session
+        run = next(info for info in ReportStore().list_runs() if info.run_id == run_dir.name)
+        assert STATE_FRAMES_FILE in run.stream_files
+        assert STATE_FRAMES_FILE not in run.artifacts
 
     def test_a_health_nobody_checked_is_null(self, session):
         _, _, _, frames = session

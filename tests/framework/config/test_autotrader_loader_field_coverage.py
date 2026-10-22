@@ -52,6 +52,11 @@ _REFUSED_PROBES = {GiveUpAction.ABORT}
 # The key a dict of blocks is probed with — one the defaults do not hold
 _PROBE_ENTRY = 'probe_entry'
 
+# Values a block takes only from a vocabulary — state_frames.cadence_timeframe names a timeframe,
+# which the string probe below never does. A probe needs any value but the default, so it takes
+# another one the vocabulary holds.
+_VOCABULARY_PROBES = {'state_frames.cadence_timeframe': 'M5'}
+
 
 def _is_config_block(annotation) -> bool:
     """
@@ -144,7 +149,9 @@ def _probes(model: type, current, path: str, unprobed: list) -> dict:
             entry = typing.get_args(annotation)[1]
             probes[name] = {_PROBE_ENTRY: _probes(entry, entry(), f'{path}.{name}', unprobed)}
             continue
-        probe = _probe_value(annotation, value)
+        probe = _VOCABULARY_PROBES.get(f'{path}.{name}')
+        if probe is None:
+            probe = _probe_value(annotation, value)
         if probe is None:
             unprobed.append(f'{path}.{name}')
             continue

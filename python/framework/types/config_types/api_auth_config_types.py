@@ -15,6 +15,7 @@ from pydantic import field_validator
 from python.framework.types.config_types.machine_resources_config_types import (
     MachineResourcesConfig,
 )
+from python.framework.types.config_types.state_frames_api_config_types import StateFramesApiConfig
 from python.framework.types.config_types.strict_config_model import StrictConfigModel
 from python.framework.types.run_origin_types import OPERATOR_PRINCIPAL
 from python.framework.utils.declared_id_utils import (
@@ -39,11 +40,13 @@ class ApiConfig(StrictConfigModel):
     has not been told yet. It is a state to pass THROUGH, not to stay in: once every consumer
     confirms, this goes to true and the boot line stops saying routes are ungated.
 
-    The `api` block also carries the thresholds of the machine-resources route (#595).
+    The `api` block also carries the thresholds of the machine-resources route (#595) and when the
+    latest-frame route reads a session's recording as stopped (#611).
     """
 
     require_auth: bool = False
     machine_resources: MachineResourcesConfig = MachineResourcesConfig()
+    state_frames: StateFramesApiConfig = StateFramesApiConfig()
 
 
 def _checked_account_id(value: str, field: str) -> str:

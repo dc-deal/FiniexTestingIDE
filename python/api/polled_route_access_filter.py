@@ -8,7 +8,7 @@ something went wrong, and that is the one line worth keeping.
 """
 
 import logging
-from typing import FrozenSet
+from typing import FrozenSet, List, Tuple
 
 # The logger uvicorn writes one line per answered request to
 ACCESS_LOGGER_NAME = 'uvicorn.access'
@@ -23,12 +23,16 @@ class PolledRouteAccessFilter(logging.Filter):
     Drops an access-log line when its path is a polled route and its answer is not an error.
 
     Args:
-        polled_paths: The full paths of the routes made to be polled, without a query
+        polled_paths: The full paths of the routes made to be polled, without a query, as the
+            application mounts them — a segment in braces, such as `{run_id}`, stands for any one
+            segment of a requested path
     """
 
     def __init__(self, polled_paths: FrozenSet[str]):
         super().__init__()
-        self._polled_paths = polled_paths
+        self._exact_paths = frozenset(path for path in polled_paths if '{' not in path)
+        self._templates: Tuple[List[str], ...] = tuple(
+            path.split('/') for path in polled_paths if '{' in path)
 
     def filter(self, record: logging.LogRecord) -> bool:
         """
@@ -46,7 +50,26 @@ class PolledRouteAccessFilter(logging.Filter):
             return True
         path = str(args[2]).partition('?')[0]
         status = args[4]
-        return not (path in self._polled_paths and isinstance(status, int) and status < 400)
+        return not (self._is_polled(path) and isinstance(status, int) and status < 400)
+
+    def _is_polled(self, path: str) -> bool:
+        """
+        Whether a requested path is one of the polled routes.
+
+        Args:
+            path: The requested path, without its query
+
+        Returns:
+            True when it equals a polled path, or fills a template's braced segments
+        """
+        if path in self._exact_paths:
+            return True
+        segments = path.split('/')
+        return any(
+            len(template) == len(segments)
+            and all(part.startswith('{') or part == segment
+                    for part, segment in zip(template, segments))
+            for template in self._templates)
 
     @staticmethod
     def install(polled_paths: FrozenSet[str]) -> None:

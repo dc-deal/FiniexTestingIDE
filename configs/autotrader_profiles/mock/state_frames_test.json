@@ -56,7 +56,7 @@
   "state_frames": {
     "_comment": "The state frames suite (#579 part A): a frame every minute of the replayed tick time, at every closed M5 and M30 bar, and at the order this window holds (the strategy buys around 06:12).",
     "enabled": true,
-    "interval_seconds": 60.0
+    "cadence_timeframe": "M1"
   },
   "scenario_settings": {
     "start_date": "2026-01-25T02:19:46+00:00",

@@ -109,12 +109,12 @@ stay null.
 
 ## `stream_files` — the run's streams
 
-`stream_files` names the run's streams: today the [order events](/api/v1/docs/order-events). A
-live session writes them as it runs, a backtest with its report. They are kept out of `artifacts`
-on purpose. A live
-session writes its stream from its first order, so a session that ended without its report still
-has one — counted as an artifact, it would read as reported. Ask for a stream whenever it is
-listed, whatever `artifacts` says.
+`stream_files` names the run's streams: today the [order events](/api/v1/docs/order-events) and,
+for an AutoTrader session, its [state frames](/api/v1/docs/state-frames). A live session writes them
+as it runs, a backtest its order events with its report. They are kept out of `artifacts` on
+purpose. A live session writes its order events from its first order and its state frames from its
+first pass, so a session that ended without its report still has them — counted as artifacts, it
+would read as reported. Ask for a stream whenever it is listed, whatever `artifacts` says.
 
 ## What the run did
 

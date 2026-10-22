@@ -168,6 +168,14 @@ memory rides on every frame of a live session. A replay compresses hours into se
 the memory costs about a millisecond in a session-sized process, so a replay reads it at most once
 per cadence interval of the monotonic clock and at its last frame.
 
+**Served while it is written (#611).** `GET /api/v1/reports/runs/{run_id}/state-frames/latest`
+reads the stream's two ends — its header, its first frame and its last complete line — never the
+lines between (`framework/reporting/io/run_stream_reader.py`), and serves each unit's latest frame
+with its age and `recording`: `current`, `stopped` (no frame for three cadences and no end
+recorded) or `ended`. Nothing reaches into the running session; the record is the only thing
+between the session and the API server. The consumer's side is the served document
+[state frames](../consumer/state-frames.md).
+
 ## Files
 
 - Producers: `framework/process/process_live_export.py` (sim), `framework/process/process_live_queue_helper.py` + `framework/batch/live_stats_coordinator.py` (sim status), `framework/autotrader/autotrader_display_exporter.py` (AutoTrader)

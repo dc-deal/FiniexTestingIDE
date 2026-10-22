@@ -11,10 +11,13 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import numpy as np
+import pytest
+from pydantic import ValidationError
 
 from python.framework.autotrader.run_record.state_frame_recorder import StateFrameRecorder
 from python.framework.reporting.io.run_stream_appender import RunStreamAppender
 from python.framework.types.autotrader_types.autotrader_display_types import SafetyState
+from python.framework.types.config_types.autotrader_defaults_config_types import StateFramesDefaults
 from python.framework.types.config_types.market_config_types import TradingModel
 from python.framework.types.decision_logic_types import Decision, DecisionLogicAction
 from python.framework.types.process_table_types import OwnProcessMemory
@@ -65,11 +68,11 @@ class _Session:
         self.memory_reads += 1
         return OwnProcessMemory(rss_bytes=431225856, private_bytes=388235264)
 
-    def recorder(self, path: Path, logger=None, replayed=False, reconciler=None):
+    def recorder(self, path: Path, logger=None, replayed=False, reconciler=None, cadence='M1'):
         appender = RunStreamAppender(path, 'state_frames', 1, 'my_run', logger,
                                      stops='The state is no longer recorded')
         return StateFrameRecorder(
-            appender, 60.0, SimpleNamespace(symbol='ETHUSD'), self.executor, self.orchestrator,
+            appender, cadence, SimpleNamespace(symbol='ETHUSD'), self.executor, self.orchestrator,
             self.bars, TradingModel.SPOT, reconciler, replayed, logger or RecordingLogger(),
             wall_clock=lambda: datetime(2026, 11, 3, 10, 1, tzinfo=timezone.utc),
             memory_reader=self.read_memory, monotonic_clock=lambda: self.monotonic)
@@ -103,6 +106,15 @@ class TestTheCadence:
         assert [f['cadence_slot'] for f in frames] == ['2026-11-03T10:00:00Z', '2026-11-03T10:01:00Z']
         assert frames[0]['frame_time'] == '2026-11-03T10:00:30Z'
 
+    def test_a_coarser_cadence_fills_the_periods_the_bars_open_on(self, tmp_path):
+        session, path = _Session(), tmp_path / 'frames.jsonl'
+        recorder = session.recorder(path, cadence='M5')
+        for minutes in (0, 3, 5, 9, 11):                  # 10:00:30, 10:03:30, 10:05:30, ...
+            session.now = _T0 + timedelta(minutes=minutes)
+            _pass(recorder)
+        assert [f['cadence_slot'] for f in _frames(path)] == [
+            '2026-11-03T10:00:00Z', '2026-11-03T10:05:00Z', '2026-11-03T10:10:00Z']
+
     def test_a_clock_that_steps_back_begins_the_grid_again_without_a_frame(self, tmp_path):
         session, path = _Session(), tmp_path / 'frames.jsonl'
         recorder = session.recorder(path)
@@ -126,6 +138,18 @@ class TestTheCadence:
         recorder = session.recorder(path, replayed=False)
         _pass(recorder, on_tick=False)
         assert [f['written_for'] for f in _frames(path)] == ['cadence']
+
+
+class TestTheCadenceSetting:
+
+    def test_is_a_timeframe_one_minute_by_default(self):
+        assert StateFramesDefaults().cadence_timeframe == 'M1'
+        assert StateFramesDefaults(cadence_timeframe='H1').cadence_timeframe == 'H1'
+
+    def test_refuses_a_name_that_is_no_timeframe_and_names_the_ones_there_are(self):
+        with pytest.raises(ValidationError, match="'90s' is not a timeframe") as refused:
+            StateFramesDefaults(cadence_timeframe='90s')
+        assert 'M1' in str(refused.value) and 'H1' in str(refused.value)
 
 
 class TestTheEvents:

@@ -7,10 +7,11 @@ workers read closes, when the decision sends an order, and once at the session's
 frame per pass of the loop. A backtest over the same period can be run again at any time; the live
 session cannot, so its side of the comparison (#512) has to be recorded while it happens.
 
-The cadence counts slots on a grid of the canonical clock — every full interval — so a live session
-and a backtest of the same period fill the same slots. A frame written for an event fills a slot
-that is due in the same pass. A clock that steps back (a replayed session's heartbeat reads the wall
-clock) re-anchors the grid instead of writing.
+The cadence is a timeframe, and its slots are that timeframe's periods on the canonical clock — the
+grid the bars open their periods on — so a live session and a backtest of the same period fill the
+same slots. A frame written for an event fills a slot that is due in the same pass. A clock that
+steps back (a replayed session's heartbeat reads the wall clock) re-anchors the grid instead of
+writing.
 
 The process's memory (#611) is on every frame of a live session, whose frames come once per cadence
 interval of the wall clock and at its events. A replay compresses hours into seconds, and reading
@@ -32,16 +33,19 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Callable, Dict, FrozenSet, Mapping, Optional
 
+from python.configuration.app_config_manager import AppConfigManager
 from python.framework.bars.bar_rendering_controller import BarRenderingController
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.reporting.builders.pending_orders_report_builder import active_order_rows
 from python.framework.reporting.builders.portfolio_report_builder import open_position_rows
 from python.framework.reporting.io.run_stream_appender import RunStreamAppender
 from python.framework.reporting.store.report_store import IO_SUBDIR
+from python.framework.reporting.store.run_index import RunIndex
 from python.framework.trading_env.abstract_trade_executor import AbstractTradeExecutor
 from python.framework.trading_env.live.reconciler import Reconciler
 from python.framework.types.api.state_frame_types import (
     STATE_FRAMES_SCHEMA_VERSION,
+    STATE_FRAMES_STREAM,
     ProcessMemoryRow,
     StateFrame,
     StateFrameCause,
@@ -53,8 +57,9 @@ from python.framework.types.decision_logic_types import Decision
 from python.framework.types.log_layout_types import STATE_FRAMES_FILE
 from python.framework.types.process_table_types import OwnProcessMemory
 from python.framework.types.trading_env_types.order_types import OrderResult
-from python.framework.utils.bar_period import open_time_of
+from python.framework.utils.bar_period import open_time_of, period_start
 from python.framework.utils.process_memory_reader import read_own_memory
+from python.framework.utils.timeframe_config_utils import TimeframeConfig
 from python.framework.utils.trading_math.price_trigger import mid_price
 from python.framework.workers.worker_orchestrator import WorkerOrchestrator
 
@@ -106,7 +111,7 @@ class StateFrameRecorder:
 
     Args:
         appender: The stream the frames go to
-        interval_s: The cadence, in seconds of the canonical clock
+        cadence_timeframe: The cadence — one frame per period of this timeframe
         config: The resolved profile — its symbol
         executor: The session's executor — the clock, the account, the positions, the orders
         worker_orchestrator: The workers' latest results and the signal workers
@@ -124,7 +129,7 @@ class StateFrameRecorder:
     def __init__(
         self,
         appender: RunStreamAppender,
-        interval_s: float,
+        cadence_timeframe: str,
         config: AutoTraderConfig,
         executor: AbstractTradeExecutor,
         worker_orchestrator: WorkerOrchestrator,
@@ -138,7 +143,9 @@ class StateFrameRecorder:
         monotonic_clock: Callable[[], float] = time.monotonic,
     ):
         self._appender = appender
-        self._interval_s = interval_s
+        self._cadence_timeframe = cadence_timeframe
+        # One period of the cadence, in seconds — what paces a replay's memory reading
+        self._cadence_s = TimeframeConfig.get_minutes(cadence_timeframe) * 60.0
         self._symbol = config.symbol
         self._executor = executor
         self._worker_orchestrator = worker_orchestrator
@@ -154,7 +161,7 @@ class StateFrameRecorder:
         self._memory_read_at: Optional[float] = None
         # The last slot a frame filled, and the canonical time of the last frame — the anchor a
         # clock that steps back is measured against
-        self._last_slot: Optional[float] = None
+        self._last_slot: Optional[datetime] = None
         self._last_frame_time: Optional[datetime] = None
         self._frames_written = 0
         self._build_failures = 0
@@ -234,7 +241,8 @@ class StateFrameRecorder:
         if self._build_failures:
             self._logger.warning(
                 f'📼 {self._build_failures} state frame(s) could not be built this session and are '
-                f'missing from {STATE_FRAMES_FILE}; the first failure was reported when it happened.')
+                f'missing from {STATE_FRAMES_FILE}; the first failure was reported when it '
+                f'happened.')
         self._appender.close()
 
     def close(self) -> None:
@@ -252,24 +260,23 @@ class StateFrameRecorder:
 
     # === Internals ===
 
-    def _slot_of(self, frame_time: datetime) -> float:
+    def _slot_of(self, frame_time: datetime) -> datetime:
         """
-        The cadence slot an instant falls in — the start of its interval on the grid.
+        The cadence slot an instant falls in — the opening of its period, on the bars' grid.
 
         Args:
             frame_time: A canonical-clock instant
 
         Returns:
-            The slot's start, as seconds since the epoch
+            The slot's opening instant
         """
-        epoch_s = frame_time.timestamp()
-        return math.floor(epoch_s / self._interval_s) * self._interval_s
+        return period_start(frame_time, self._cadence_timeframe)
 
     def _write(
         self,
         cause: StateFrameCause,
         frame_time: datetime,
-        slot: Optional[float],
+        slot: Optional[datetime],
         ticks_processed: int,
         decision: Optional[Decision],
         safety: SafetyState,
@@ -312,7 +319,7 @@ class StateFrameRecorder:
         self,
         cause: StateFrameCause,
         frame_time: datetime,
-        slot: Optional[float],
+        slot: Optional[datetime],
         ticks_processed: int,
         decision: Optional[Decision],
         safety: SafetyState,
@@ -350,8 +357,7 @@ class StateFrameRecorder:
             frame_time=frame_time,
             written_at=self._wall_clock(),
             written_for=cause,
-            cadence_slot=(datetime.fromtimestamp(slot, tz=timezone.utc)
-                          if slot is not None else None),
+            cadence_slot=slot,
             ticks_processed=ticks_processed,
             symbol=self._symbol,
             account_currency=self._executor.account_currency,
@@ -381,15 +387,16 @@ class StateFrameRecorder:
 
     def _process_memory(self) -> Optional[ProcessMemoryRow]:
         """
-        The process's memory — on every frame of a live session; in a replay when a cadence interval
-        of the monotonic clock has passed since the last reading, and at the first frame and the last.
+        The process's memory — on every frame of a live session; in a replay when a cadence
+        interval of the monotonic clock has passed since the last reading, and at the first frame
+        and the last.
 
         Returns:
             The reading, or None when this frame takes none
         """
         now = self._monotonic_clock()
         if (self._replayed and self._memory_read_at is not None
-                and now - self._memory_read_at < self._interval_s):
+                and now - self._memory_read_at < self._cadence_s):
             return None
         self._memory_read_at = now
         memory = self._memory_reader()
@@ -464,6 +471,9 @@ def open_state_frame_stream(
     """
     Open the session's state-frame stream, when the profile records one.
 
+    The run index learns of the stream in the same step, so the run list names it while the session
+    runs — the check-in reads it from there (#611), long before any report exists.
+
     Args:
         config: The resolved profile — its `state_frames` block, its unit and its tick source
         run_dir: The run's own directory
@@ -484,14 +494,17 @@ def open_state_frame_stream(
         return None
     path = run_dir / IO_SUBDIR / STATE_FRAMES_FILE
     appender = RunStreamAppender(
-        path, 'state_frames', STATE_FRAMES_SCHEMA_VERSION, run_id, logger,
+        path, STATE_FRAMES_STREAM, STATE_FRAMES_SCHEMA_VERSION, run_id, logger,
         stops='The session\'s state is no longer recorded',
         header_fields={'unit_name': config.get_unit_name(),
-                       'cadence_s': settings.interval_seconds})
+                       'cadence_timeframe': settings.cadence_timeframe,
+                       'cadence_s': TimeframeConfig.get_minutes(settings.cadence_timeframe) * 60.0})
     logger.info(
-        f'📼 State frames: every {settings.interval_seconds:g} s of the canonical clock, at a '
-        f'closed bar and at an order → {path}')
+        f'📼 State frames: one per {settings.cadence_timeframe} period of the canonical clock, at '
+        f'a closed bar and at an order → {path}')
+    RunIndex(AppConfigManager().get_file_logging_config_object().run_index) \
+        .record_streams(run_id, run_dir)
     return StateFrameRecorder(
-        appender, settings.interval_seconds, config, executor, worker_orchestrator,
+        appender, settings.cadence_timeframe, config, executor, worker_orchestrator,
         bar_controller, trading_model, reconciler,
         replayed=config.tick_source.type == 'mock', logger=logger)

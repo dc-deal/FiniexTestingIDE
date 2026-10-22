@@ -8,7 +8,8 @@ about itself, a **liveness ping** whose absence an outside monitor turns into an
 **supervisor** that brings a dead process back.
 
 It also covers the two things a restart must survive: a second start of a bot that is still
-running, and a deploy into a new code tree.
+running, and a deploy into a new code tree — and the daily check-in, which reads the session from
+outside without touching it.
 
 Not here: what the session does when it runs — that is
 [AutoTrader Runtime Model](autotrader_runtime_model.md); how a restart picks up the open book —
@@ -47,6 +48,31 @@ A test run reads only the tracked copy, so it never reaches your bot or your mon
 A **mock** session switches both off unless its profile switches them on itself — switched on in
 `user_configs/app_config.json`, they would otherwise reach every test replay and feed the live
 bot's monitor check.
+
+## The daily check-in — how the session stands, read from outside
+
+Once a day, from your own machine, five reads answer whether everything runs to plan. None of them
+reaches into the session; each reads what the session recorded, through the API of the machine it
+runs on:
+
+```
+1  GET /api/v1/activities                                   is the session's process alive?
+2  GET /api/v1/reports/runs/{run_id}/state-frames/latest    how does it stand, how old is that,
+                                                            what does its process hold?
+3  GET /api/v1/machine-resources                            how full is the machine?
+4  GET /api/v1/reports/runs/{run_id}/order-events           what happened to its orders?
+5  GET /api/v1/deployments/{deployment_id}/booking-periods  what did each trading day book?
+```
+
+The second is the session's own latest state frame: its account, positions and resting orders,
+worker outputs and decision, with `age_s` and `recording` — `current` while it writes on its
+cadence, `stopped` when its frames stop without an end (the first read tells whether the process
+died or hangs), `ended` once it wrote its last frame, with how it ended beside it. `first_frame`
+beside the latest frame's `process_memory` is the memory's growth since the start — a leak shows
+there, long before it fills the machine. The fifth answers for completed sessions only: a session
+books its periods at its end, and yesterday's period of a session still running reaches you as the
+daily close over Telegram (below). What each field means is the served document
+[state frames](../consumer/state-frames.md).
 
 ## What the operator hears
 

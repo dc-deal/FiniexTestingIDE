@@ -169,6 +169,20 @@ of its own before the app builds its reader.
 | `TestTheServerFindsItself` | `server_activity_id` is null when the server is not listed and names the server's own row when it is |
 | `TestOneInstant` | the machine's memory is served beside the rows without a full machine reading, so the processor window `/machine-resources` measures over is left as it was |
 
+## How a running session stands (`test_state_frames_route.py`)
+
+`/reports/runs/{run_id}/state-frames/latest` (#611) serves the latest state frame of each unit, read
+from the two ends of its stream, with its age and whether the session still records. The streams are
+written through the same appender a session uses, beside a run registered in a tmp run index.
+
+| Class | Validates |
+|---|---|
+| `TestARunningSession` | a session reading the venue that wrote on its cadence is `current`, with its age, its unit and cadence from the stream's header and its first frame's memory; silent for three cadences without an end it is `stopped`; a frame from the future of this server's clock has no age and no verdict; a last line cut off mid-write is left out and the frame before it served |
+| `TestAnEndedSession` | a last frame written at the end is `ended`, and the run's end classification comes beside it as the warnings-errors section serves it — null until that section was written |
+| `TestAReplay` | a session replaying recorded data gets no verdict while it runs, though its age is served, and `ended` once its last frame is written |
+| `TestNoFrameNamesItsCause` | an unknown run is `run_not_found`; a run with no stream `state_frames_not_recorded`; a stream holding only its header `state_frame_not_written_yet`; a header naming another schema `artifact_unreadable` |
+| `TestTheRunListNamesTheStream` | once the session recorded the stream in the run index, the run list names it under `stream_files`, and never among the report artifacts |
+
 ## Polled routes in the access log (`test_polled_route_access_filter.py`)
 
 A route made to be polled stays out of the server's access log while it answers successfully
@@ -178,6 +192,7 @@ requests that carry meaning.
 | Class / test | What it validates |
 |---|---|
 | `TestOnlyASuccessfulReadingIsDropped` | a successful answer (200, 304) on a polled route is dropped; a failed one (401, 403, 500) stays; another route stays; a query string does not hide the path; a record not shaped like an access line is left alone |
+| `TestARouteWithARunIdInItsPath` | a polled path written as mounted, with `{run_id}` in braces, matches any run's id in that segment (#611); a sibling route, a longer path and a missing segment stay in the log; an exact path still matches |
 | `TestTheDeclarationHoldsToTheApp` | every path in `POLLED_PATHS` is a mounted route, so a renamed route cannot leave a declaration that filters nothing; the factory installs one filter however often it runs |
 
 ## Row keys (`test_row_keys.py`)

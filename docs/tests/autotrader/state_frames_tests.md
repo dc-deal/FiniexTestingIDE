@@ -17,13 +17,14 @@ part B).
 
 | File | Group | Checks |
 |---|---|---|
-| `test_state_frame_recorder.py` | `TestTheCadence` | slots on a grid of the canonical clock, each filled once · a clock that steps back begins the grid again without a frame · a replay's heartbeat (which reads the wall clock) does not drive the cadence, a live heartbeat does on a quiet feed |
+| `test_state_frame_recorder.py` | `TestTheCadence` | slots on a grid of the canonical clock, each filled once · a coarser cadence (M5) fills the periods the bars open on · a clock that steps back begins the grid again without a frame · a replay's heartbeat (which reads the wall clock) does not drive the cadence, a live heartbeat does on a quiet feed |
+| | `TestTheCadenceSetting` | the cadence is a timeframe, one minute by default · a name that is no timeframe is refused, naming the ones there are |
 | | `TestTheEvents` | an order is a frame of its own, naming the order, even inside a filled slot · a closed bar names the bar by its opening · an event fills a due slot, so one pass writes at most one frame |
 | | `TestWhatAFrameHolds` | every output as a plain value, a value not defined yet (NaN) as null · the account valued at the mid · before a tick the account is unvalued, never guessed · a health nobody checked is null, one that was checked is said · a reconciler with no verdict yet — before its first cycle, after one that could not reach the venue — checked nothing |
 | | `TestTheMemory` | a live session reads the process's memory on every frame, also when two frames lie a little under one interval apart · a replay reads it at most once per cadence interval of the monotonic clock, and always in the last frame |
 | | `TestAFrameThatCannotBeBuilt` | said once, skipped, the recording goes on, and the count is said at the end |
 | | `TestTheEnd` | the last frame is written and the stream closed; nothing after it |
-| `test_state_frames_session.py` | `TestTheRecord` | a real mock session: the header · the cadence on the replayed tick time · one frame per pass · every closed bar named by its opening on its own grid · the order recorded at its moment, by an id the session's order history knows · null where a mock session checks nothing |
+| `test_state_frames_session.py` | `TestTheRecord` | a real mock session: the header · the cadence on the replayed tick time · one frame per pass · every closed bar named by its opening on its own grid · the order recorded at its moment, by an id the session's order history knows · the run list names the stream, never among the artifacts (#611) · null where a mock session checks nothing |
 | | `TestTheLastFrameAgreesWithTheReport` | balance, equity, price and the open position rows of the last frame equal the session's `portfolio.json` — the same moment, the same price, the same rows |
 | | `TestSwitchedOff` | `state_frames.enabled: false` writes no stream |
 

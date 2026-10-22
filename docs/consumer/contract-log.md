@@ -33,6 +33,27 @@ reads downwards from the version their fixtures hold until they reach the one be
 A test holds the newest heading in this log to the number the server answers with, so a version
 cannot ship without its entry.
 
+## Version 38 — 2026-10-21 (#611)
+
+A running session can be asked how it stands: its latest state frame, how old it is, and whether it
+is still recording.
+
+- `GET /api/v1/reports/runs/{run_id}/state-frames/latest`, new: one row per unit
+  (`key: ["unit_name"]`) with the latest `frame`, its `written_at` and `age_s`, and the unit's
+  cadence as `cadence_timeframe` (a timeframe, `M1` by default) and `cadence_s`;
+  `recording` — `current`, `stopped` or `ended`, null for a session replaying recorded data before
+  its end; `truncated_tail`; `first_frame`, the `written_at` and `process_memory` of the unit's first
+  frame; and `outcome`, the run's end classification exactly as `warnings-errors` serves it, once
+  the session ended and its report was written. Ask it once a cadence. On the `reports` surface.
+- Two new 404 codes: `state_frames_not_recorded` — the run records no state frames; and
+  `state_frame_not_written_yet` — its stream holds no frame yet.
+- `GET /api/v1/reports/runs`: `stream_files` names `state_frames.jsonl` for a session that records
+  state frames, from the moment the session opens the stream. A session recorded before this
+  version is named there once the server's run list is rebuilt.
+
+A route and two codes added, a stream named; nothing removed or renamed. Its document is
+[state frames](/api/v1/docs/state-frames).
+
 ## Version 37 — 2026-10-20 (#598)
 
 A session trading real money starts without a carry-over only when its start is declared the bot's
@@ -112,43 +133,13 @@ A price the venue quoted or traded is now served as the decimal the venue wrote.
 
 No field was added or removed. A run recorded before this contract keeps the values it read.
 
-## Version 33 — 2026-10-16 (#602)
-
-A backtest over data recorded without a quote now pays a spread. Each such tick is given the quote
-the spread estimated for the previous day implies, and what the fills crossed against it is
-reported as a figure of its own beside the measured spread.
-
-- `GET /api/v1/reports/runs/{run_id}/trade-history`: every trade row carries
-  `modelled_spread_cost` — the spread its fills crossed against a modelled quote. It is inside
-  `gross_pnl` like `spread_cost`, beside `total_fees` and never inside it, and the two add up to
-  the trade's effective spread: a fill against a recorded quote counts in `spread_cost`, one
-  against a modelled quote in `modelled_spread_cost`. 0 where every quote was recorded. Every
-  `scenario_totals` row carries `total_modelled_spread_cost`, always a number.
-- `portfolio`: every unit row carries `total_modelled_spread_cost`; `aggregated-portfolio` sums it
-  per block.
-- `booking-periods`: every period carries `modelled_spread_cost` beside `spread_cost`, and so does
-  every period of a deployment's booking periods; a sweep's combination rows carry it as
-  `period_modelled_spread_cost`. Null on a period recorded before this contract.
-- `scenario-details`: every row carries `modelled_spread` — `factor`, `estimator_version`,
-  `ticks_without_quote`, `ticks_modelled`, `median_spread_bps` and `day_digest` — null where the
-  scenario read no tick without a quote.
-- **A change of meaning on data without a quote:** a backtest's fills, the marks of its open
-  positions and its stops now see a spread there, so its `gross_pnl` and `net_pnl` are lower than
-  those of the same set run before this contract. `spread_cost` there stays what contract 32 made
-  it — nothing was measured.
-
-Fields added, none removed or renamed; the P&L of a backtest over data without a quote changes.
-Its documents are [trade history](/api/v1/docs/trade-history),
-[portfolio](/api/v1/docs/portfolio), [aggregated portfolio](/api/v1/docs/aggregated-portfolio),
-[booking periods](/api/v1/docs/booking-periods) and
-[scenario details](/api/v1/docs/scenario-details).
-
-## Versions 32 and earlier
+## Versions 33 and earlier
 
 One line each. Every one of these moved a shape or a meaning; what they moved is summarised here
 rather than spelled out, because a consumer this far behind needs the list of steps, not each step's
 reasoning. The full text of a compressed version is in this repository's history.
 
+- **Version 33** — 2026-10-16 (#602): A backtest over data recorded without a quote pays a spread, reported beside the measured one — `modelled_spread_cost` on every trade row and booking period, `total_modelled_spread_cost` on the portfolio and on the scenario totals, `modelled_spread` on the scenario details; the P&L of such a backtest is lower than before.
 - **Version 32** — 2026-10-15 (#599): A gap says whose silence it is, and a unit's trade totals carry the spread it paid — `origin_class` and `origin_class_after` on every gap, `gaps_by_year` beside them, `key` replaced by `keys`, the `origin_class` and `since` parameters, `reason` without its guessed causes, and `total_spread_cost` on every trade-history `scenario_totals` row and the portfolio, null where a unit read data without a quote.
 - **Version 31** — 2026-10-14 (#595): The machine this server runs on can be asked how full it is — `GET /api/v1/machine-resources`, new, with the memory limit that binds and where it was read (`limit_source`), the processors and how busy they were over `window_s`, and `pressure_level` with its `pressure_reasons`; a route added, no field changed its shape.
 - **Version 30** — 2026-10-14 (#561): A venue's published history can enter the archive, and what an input file lacks is named — `spreadless_tick_data` gives way to `data_no_quote`, with new checks `data_no_arrival_time`, `data_arrival_time_reconstructed`, `data_missing_trades`, `data_origin_external` and `data_synthetic`, and `origin_classes` may hold `external`, never admissible for a parity measurement.

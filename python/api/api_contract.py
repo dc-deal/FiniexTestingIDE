@@ -23,7 +23,7 @@ from typing import List
 
 # One monotonic integer. Not a date and not the app version: a consumer compares it for
 # equality, and equality is the only question they have.
-API_CONTRACT_VERSION = 37
+API_CONTRACT_VERSION = 38
 
 # Every response carries it, so a saved fixture carries it too.
 CONTRACT_HEADER = 'X-Api-Contract'
@@ -36,7 +36,14 @@ API_PREFIX = '/api/v1'
 # What moved INTO the current version. One line per change, written for someone who cannot
 # read this repository.
 CHANGES: List[str] = [
-    'origin.first_start on a run header: true when the start of a session trading real money was '
-    "declared the bot's first — the one way such a session starts without a carry-over to "
-    'continue. False on every other run, on a backtest, and on a run recorded before this version',
+    'GET /api/v1/reports/runs/{run_id}/state-frames/latest (new): the latest state frame of each '
+    'unit of a run with written_at and age_s, and its cadence as cadence_timeframe (a timeframe) '
+    'and cadence_s; recording — current, stopped or ended, '
+    'null for a session replaying recorded data before its end; truncated_tail; first_frame (its '
+    'written_at and process_memory); and once the session ended, outcome as warnings-errors serves '
+    'it. Ask it once a cadence; on the reports surface',
+    'Two 404 codes: state_frames_not_recorded (the run records no state frames) and '
+    'state_frame_not_written_yet (its stream holds no frame yet)',
+    'stream_files on the run list names state_frames.jsonl for a session that records state '
+    'frames, from the moment the session opens the stream',
 ]

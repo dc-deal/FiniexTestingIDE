@@ -9,20 +9,27 @@ lists are too (trades, order events); a cursor selects from those without the fr
 
 A frame is taken on a cadence of the canonical clock, when a bar closes, when the decision sends an
 order, and once at the session's end. The same rows the routes serve are used for its positions and
-orders, so the frame written at shutdown agrees with the report by construction. #611 is to serve
-the latest frame as it stands, and #579 part B to record the same frame in the simulation.
+orders, so the frame written at shutdown agrees with the report by construction. #611 serves the
+latest frame of each unit of a run with its age, and #579 part B is to record the same frame in the
+simulation.
 """
 
+from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
 from typing import Dict, List, Literal, Optional
 
 from pydantic import BaseModel, JsonValue
 
-from python.framework.types.api.report_types import ActiveOrderRow, OpenPositionRow
+from python.framework.types.api.report_types import (
+    ActiveOrderRow,
+    OpenPositionRow,
+    WarningsErrorsOutcome,
+)
 from python.framework.types.decision_logic_types import DecisionLogicAction
 
-# The version of the stream's line shapes, written into its header
+# The stream's name and the version of its line shapes, both written into its header
+STATE_FRAMES_STREAM = 'state_frames'
 STATE_FRAMES_SCHEMA_VERSION = 1
 
 
@@ -82,3 +89,86 @@ class StateFrame(BaseModel):
     closed_bars: Dict[str, datetime] = {}       # timeframe → the opening of the bar that closed
     order_id: Optional[str] = None              # the order the decision sent, for an order frame
     process_memory: Optional[ProcessMemoryRow] = None
+
+
+class RecordingState(StrEnum):
+    """
+    Whether a session is still recording its state, as the latest-frame route judges it (#611).
+
+    Judged when the route answers and never written into a frame, so the frames of a mock session
+    and of a live one stay alike.
+    """
+    CURRENT = 'current'    # the latest frame is younger than the configured number of cadences
+    STOPPED = 'stopped'    # older than that and not the last one: stopped without an end
+    ENDED = 'ended'        # the latest frame is the one written at the session's end
+
+
+@dataclass(frozen=True)
+class StateFrameStreamEnds:
+    """
+    A unit's state-frame stream at its two ends, as the latest-frame route reads it (#611).
+
+    Args:
+        unit_name: The unit the stream belongs to, from its header; None before the header was
+            written
+        cadence_timeframe: The stream's cadence as a timeframe — one frame per period — from its
+            header; None as above
+        cadence_s: The stream's cadence in seconds of the canonical clock, from its header; None
+            as above
+        first: The unit's first frame, or None when it has written none yet
+        last: Its latest frame, or None when it has written none yet
+        truncated_tail: Whether a last line cut off mid-write was left out
+    """
+    unit_name: Optional[str]
+    cadence_timeframe: Optional[str]
+    cadence_s: Optional[float]
+    first: Optional[StateFrame]
+    last: Optional[StateFrame]
+    truncated_tail: bool
+
+
+class FirstFrameRow(BaseModel):
+    """
+    A unit's first frame, as far as the check-in needs it: when it was written and what the
+    session's process held then — the growth since is one subtraction (#611). Two points are not a
+    series: a climb that fell back reads as flat.
+    """
+    written_at: datetime
+    process_memory: Optional[ProcessMemoryRow] = None
+
+
+class LatestStateFrameUnit(BaseModel):
+    """
+    One unit's latest state frame, with its age and whether the session still records (#611).
+
+    `age_s` runs from `written_at` to the answer. The session writes and the API server reads — two
+    processes — and the wall clock is the one clock both read that also survives a restart of the
+    machine; a negative age, a clock stepped back, is None. `recording` is None where it is not
+    judged: a session replaying the archive before its end, whose frames come at replay speed.
+    `outcome` is the run's end classification exactly as the warnings-errors section serves it,
+    once the session has ended and its report phase wrote it.
+    """
+    unit_name: str
+    cadence_timeframe: str
+    cadence_s: float
+    written_at: datetime
+    age_s: Optional[float] = None
+    recording: Optional[RecordingState] = None
+    truncated_tail: bool = False
+    first_frame: Optional[FirstFrameRow] = None
+    outcome: Optional[WarningsErrorsOutcome] = None
+    frame: StateFrame
+
+
+class LatestStateFramesResponse(BaseModel):
+    """
+    The latest state frame of every unit of a run — the check-in on a running session (#611).
+
+    Args:
+        key: What makes one unit's row unique
+        served_at: When the answer was made, on the API server's wall clock
+        units: One row per unit that has written a frame
+    """
+    key: List[str] = ['unit_name']
+    served_at: datetime
+    units: List[LatestStateFrameUnit]

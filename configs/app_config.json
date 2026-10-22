@@ -65,6 +65,10 @@
       "_comment": "The thresholds GET /api/v1/machine-resources grades memory against: the share of the binding memory limit in use from which the pressure level is warn, and from which it is critical. Memory alone - a busy processor is the machine doing its work, memory that runs out is the moment the kernel ends a process.",
       "memory_warn_pct": 80.0,
       "memory_critical_pct": 90.0
+    },
+    "state_frames": {
+      "_comment": "When GET /api/v1/reports/runs/{run_id}/state-frames/latest reads a session's recording as stopped: its latest state frame is older than this many of its cadences. Judged only for a session reading the venue - a replay's frames come at replay speed. Three at the default cadence of a minute lies above the liveness ping's stall of two minutes, so a stall the session can report itself, it reports first.",
+      "stopped_after_cadences": 3
     }
   },
   "docs_search": {
@@ -165,9 +169,9 @@
       "on_stale": "warn_reset"
     },
     "state_frames": {
-      "_comment": "What a session held and decided, moment by moment (#579 part A), in io/state_frames.jsonl: every interval_seconds of the canonical clock, at a closed bar, at an order, and once at the end. About 65-130 MB over thirty days at one minute.",
+      "_comment": "What a session held and decided, moment by moment (#579 part A), in io/state_frames.jsonl: one frame per period of cadence_timeframe on the canonical clock (a timeframe such as M1 or M5, on the grid the bars open their periods on), at a closed bar, at an order, and once at the end. About 65-130 MB over thirty days at M1.",
       "enabled": true,
-      "interval_seconds": 60.0
+      "cadence_timeframe": "M1"
     },
     "cold_start": {
       "enabled": true,

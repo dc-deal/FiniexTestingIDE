@@ -37,6 +37,7 @@ from python.framework.reporting.io.report_filters import (
     filter_trade_history_report,
 )
 from python.framework.reporting.io.run_header_io import RUN_HEADER_ARTIFACT, read_run_header
+from python.framework.reporting.io.run_stream_reader import read_stream_ends
 from python.framework.reporting.store.run_index import RunIndex
 from python.framework.reporting.store.run_list_figures import get_run_list_figures
 from python.framework.reporting.store.served_run_header import served_run_header
@@ -50,7 +51,13 @@ from python.framework.types.api.report_types import (
     RunListFigures,
     TradeHistoryReport,
 )
-from python.framework.types.log_layout_types import IO_SUBDIR
+from python.framework.types.api.state_frame_types import (
+    STATE_FRAMES_SCHEMA_VERSION,
+    STATE_FRAMES_STREAM,
+    StateFrame,
+    StateFrameStreamEnds,
+)
+from python.framework.types.log_layout_types import IO_SUBDIR, STATE_FRAMES_FILE
 
 T = TypeVar('T', bound=BaseModel)
 
@@ -215,6 +222,51 @@ class ReportStore:
         return OrderEventsReport(
             run_id=run_id, events=rows, count=len(rows), broker_truth=truths,
             truncated_tail=truncated)
+
+    def get_state_frame_ends(self, run_id: str) -> Optional[StateFrameStreamEnds]:
+        """
+        A run's state-frame stream at its two ends — its first frame and its latest (#611).
+
+        Read without the lines between, whatever the stream's length, and while the session still
+        writes it. A header naming another stream or a schema this reader does not know, records
+        without a header, and a frame that does not fit the model make the stream unreadable
+        rather than half-read.
+
+        Args:
+            run_id: The run's identity
+
+        Returns:
+            The two ends, or None when the run records no state frames
+        """
+        path = self._resolve(run_id, STATE_FRAMES_FILE)
+        if path is None:
+            return None
+        ends = read_stream_ends(path)
+        if ends.header is None:
+            if ends.last is not None:
+                raise ReportArtifactUnreadableError(
+                    STATE_FRAMES_FILE, str(path), 'records without a header line')
+            # Opened, and its header not yet on the disk: no frame yet
+            return StateFrameStreamEnds(unit_name=None, cadence_timeframe=None, cadence_s=None,
+                                        first=None, last=None, truncated_tail=ends.truncated_tail)
+        stream = ends.header.get('stream')
+        version = ends.header.get('schema_version')
+        if stream != STATE_FRAMES_STREAM or version != STATE_FRAMES_SCHEMA_VERSION:
+            raise ReportArtifactUnreadableError(
+                STATE_FRAMES_FILE, str(path),
+                f'its header names stream {stream!r} at schema_version {version!r}; this reader '
+                f'knows {STATE_FRAMES_STREAM!r} at {STATE_FRAMES_SCHEMA_VERSION}')
+        try:
+            unit_name = str(ends.header['unit_name'])
+            cadence_timeframe = str(ends.header['cadence_timeframe'])
+            cadence_s = float(ends.header['cadence_s'])
+            first = StateFrame.model_validate(ends.first) if ends.first is not None else None
+            last = StateFrame.model_validate(ends.last) if ends.last is not None else None
+        except (KeyError, TypeError, ValueError) as e:
+            raise ReportArtifactUnreadableError(STATE_FRAMES_FILE, str(path), str(e)) from e
+        return StateFrameStreamEnds(unit_name=unit_name, cadence_timeframe=cadence_timeframe,
+                                    cadence_s=cadence_s, first=first, last=last,
+                                    truncated_tail=ends.truncated_tail)
 
     def get_config_snapshot(self, run_id: str) -> Optional[RunConfigSnapshot]:
         """

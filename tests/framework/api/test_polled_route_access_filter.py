@@ -50,6 +50,32 @@ class TestOnlyASuccessfulReadingIsDropped:
         assert access_filter.filter(record) is True
 
 
+class TestARouteWithARunIdInItsPath:
+    """The check-in on a running session is polled under the run's own id (#611)."""
+
+    _TEMPLATE = '/api/v1/reports/runs/{run_id}/state-frames/latest'
+
+    @pytest.fixture
+    def access_filter(self) -> PolledRouteAccessFilter:
+        return PolledRouteAccessFilter(frozenset({_POLLED, self._TEMPLATE}))
+
+    def test_any_run_id_fills_the_template(self, access_filter):
+        path = '/api/v1/reports/runs/20261101_000012_4c7e19a2/state-frames/latest'
+        assert access_filter.filter(_access_record(path, 200)) is False
+        assert access_filter.filter(_access_record(path, 404)) is True
+
+    @pytest.mark.parametrize('path', [
+        '/api/v1/reports/runs/20261101_000012_4c7e19a2/portfolio',
+        '/api/v1/reports/runs/20261101_000012_4c7e19a2/state-frames/latest/extra',
+        '/api/v1/reports/runs/state-frames/latest',
+    ])
+    def test_another_path_stays(self, access_filter, path):
+        assert access_filter.filter(_access_record(path, 200)) is True
+
+    def test_an_exact_path_still_matches(self, access_filter):
+        assert access_filter.filter(_access_record(_POLLED, 200)) is False
+
+
 class TestTheDeclarationHoldsToTheApp:
 
     def test_every_polled_path_is_a_mounted_route(self):

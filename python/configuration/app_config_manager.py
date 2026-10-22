@@ -15,6 +15,7 @@ from python.framework.types.config_types.file_logging_config_types import FileLo
 from python.framework.types.config_types.machine_resources_config_types import (
     MachineResourcesConfig,
 )
+from python.framework.types.config_types.state_frames_api_config_types import StateFramesApiConfig
 
 
 class AppConfigManager:
@@ -261,6 +262,15 @@ class AppConfigManager:
             The `api.machine_resources` block
         """
         return self._app_config.api.machine_resources
+
+    def get_state_frames_api_config(self) -> StateFramesApiConfig:
+        """
+        When the latest-frame route reads a session's recording as stopped (#611).
+
+        Returns:
+            The `api.state_frames` block
+        """
+        return self._app_config.api.state_frames
 
     # ============================================
     # Documentation Search Config

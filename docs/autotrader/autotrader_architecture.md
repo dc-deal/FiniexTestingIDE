@@ -91,7 +91,8 @@ and the state frames written as the session runs:
 - `io/state_frames.jsonl` — what the session held and decided, moment by moment: the account, the
   open positions and resting orders, every worker output and the decision — on a cadence of the
   canonical clock, at a closed bar, at an order and at its end (#579). The live side of the
-  comparison, which unlike the backtest cannot be run again
+  comparison, which unlike the backtest cannot be run again; its latest frame is served while the
+  session runs, with its age (`GET /api/v1/reports/runs/{run_id}/state-frames/latest`, #611)
 
 Why a run keeps these, and what no run records:
 [A run is a record, and an old one stays true](../introduction_to_the_ide.md#a-run-is-a-record-and-an-old-one-stays-true).

@@ -80,6 +80,9 @@ INFO:  127.0.0.1:38762 - "POST /api/v1/machine-resources HTTP/1.1" 405 Method No
 ```
 
 The three successful readings of `/machine-resources` between those two lines were not written.
+A polled route may carry a run id in its path — the check-in on a running session,
+`/reports/runs/{run_id}/state-frames/latest` (#611). `POLLED_PATHS` holds it as mounted, and a
+segment in braces stands for any one segment of the requested path.
 This is how the established servers treat their health and readiness probes (nginx
 `access_log off` with a status condition, Envoy's health-check filter); sampling and per-route
 counters, the answer at large scale, would add nothing at this one's.

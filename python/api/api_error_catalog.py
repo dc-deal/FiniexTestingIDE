@@ -15,8 +15,8 @@ authentication answers are the one exception, and a deliberate one: their codes 
 shared `finiex_auth` package and reach the API through the error factory in `api_auth_setup.py`.
 
 Held by `tests/framework/api/test_api_error_catalog.py`: every code is unique, every entry is
-raised somewhere, no route raises a literal, and the error table in
-`docs/architecture/api_server_architecture.md` lists exactly these codes.
+raised somewhere, no route raises a literal, and the error table in `docs/consumer/errors.md`
+lists exactly these codes.
 """
 
 from typing import Tuple
@@ -49,6 +49,13 @@ RUN_HEADER_MISSING = ApiErrorKind(
     "gone, a rebuild of the run index drops its row")
 INVALID_TIMESTAMP = ApiErrorKind(
     400, 'invalid_timestamp', "'{field}' must be ISO-8601, got '{value}'")
+STATE_FRAMES_NOT_RECORDED = ApiErrorKind(
+    404, 'state_frames_not_recorded',
+    "Run '{run_id}' records no state frames — a session from before they were recorded, one with "
+    "the recording switched off (state_frames.enabled in its profile), or a backtest")
+STATE_FRAME_NOT_WRITTEN_YET = ApiErrorKind(
+    404, 'state_frame_not_written_yet',
+    "Run '{run_id}' has not written its first state frame yet — ask again after one cadence")
 
 # --- Market data: brokers, symbols, bars, coverage -------------------------------------------
 
@@ -115,6 +122,7 @@ IDENTITY_UNBOUND = ApiErrorKind(
 API_ERRORS: Tuple[ApiErrorKind, ...] = (
     RUN_NOT_FOUND, REPORTS_NOT_COMMISSIONED, RUN_NOT_COMPLETED, ARTIFACT_NOT_PRODUCED,
     ARTIFACT_UNREADABLE, CONFIG_SNAPSHOT_MISSING, RUN_HEADER_MISSING, INVALID_TIMESTAMP,
+    STATE_FRAMES_NOT_RECORDED, STATE_FRAME_NOT_WRITTEN_YET,
     BROKER_NOT_FOUND, SYMBOL_NOT_FOUND, NO_BARS_INDEXED, TIMEFRAME_NOT_RENDERED,
     COVERAGE_REPORT_UNAVAILABLE, NO_BARS_IN_RANGE, INVALID_TIMEFRAME, INVALID_LIMIT,
     INVALID_PERIOD, INVALID_RANGE, MARKET_TYPE_NOT_CONFIGURED,

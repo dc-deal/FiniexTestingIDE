@@ -132,11 +132,20 @@ its own book, and never in a dry run against a real venue, whose account reads n
 **cache** — A derived store of computed results. Deleting it loses nothing; a "cache" whose
 deletion loses data is misfiled. See [Data Storage Layout](architecture/data_storage_layout.md).
 
+**cadence** — How often something recurs; always said with WHAT recurs, because the word means
+different things in different places. The *state frame*'s cadence is a setting:
+`state_frames.cadence_timeframe` in a profile (`M1` by default), one frame per period of that
+timeframe on the *canonical clock*, served as `cadence_timeframe` and `cadence_s`. A signal
+source's `cadence_seconds` is a measurement: the median distance between its snapshots in the
+archive. How often a worker computes — on every tick or once per closed bar — is served as its
+`compute_basis` (`live` · `bar_close`). See [State frames](consumer/state-frames.md).
+
 **canonical clock** — The one clock a decision logic, a worker and the execution layer read:
 `get_current_time()`. In a backtest it is the time of the replayed tick. In an AutoTrader session a
 tick sets it to the tick's own time and an idle heartbeat to the machine's UTC clock, so timeouts
 keep tracking real elapsed time: in a live-adapter session the two are one clock, in a mock session
-it moves between replay time and the present. See *wall clock*.
+it moves between replay time and the present. See *wall clock*, and
+[Live Execution](architecture/live_execution_architecture.md#canonical-clock--idle-cadence-360).
 
 **carry-over** — What one session hands the next session of the same bot: the algo's memory, and
 the framework's record of keys, positions and the risk baseline. Keyed by the bot, overwritten, and
@@ -581,6 +590,14 @@ stream, never on a tick. See [AutoTrader Data Intake](autotrader/autotrader_data
 **real-money session** — A live-adapter session with `dry_run` false: its orders are placed at the
 venue and move the account.
 
+**recording** (`recording` on the latest-frame route) — Whether a session is still recording its
+*state frames*, as the route judges it when it answers — never a yes or no: `current` when the
+latest frame is younger than three of its cadences, `stopped` when it is older and not the last one
+(the session hangs or its process died; the activity list tells which), `ended` when the latest
+frame is the one written at the session's end. Null for a session replaying recorded data before
+its end, whose frames come at replay speed. Not the staleness contract's `stale`, which judges the
+session's INPUTS and travels inside the frame. See [state frames](consumer/state-frames.md).
+
 **refused at the first tick** (`refused_at_first_tick`) — A live-adapter session that stopped at its
 first tick because its *warmup history* could not be completed there: the venue had not yet
 committed the period that ended since the boot read, or could not be read again. A refusal of the
@@ -697,8 +714,9 @@ external, pre-collected data such as sentiment. See [Signal Data Source](data_pi
 session held and decided at one moment: its account, its open positions and resting orders, every
 worker output and its decision. Written on a cadence of the canonical clock, when a bar closes,
 when the decision sends an order, and once at the end (#579) — the live side of a comparison with
-a backtest, which unlike the backtest cannot be run again. Not the dashboard's *frame*, which is
-built only while a display runs and keeps only the latest. See
+a backtest, which unlike the backtest cannot be run again. Its latest frame is served with its
+age while the session runs (#611, see *recording*). Not the dashboard's *frame*, which is built only
+while a display runs and keeps only the latest. See
 [Live Telemetry](architecture/live_telemetry_architecture.md#the-recorded-state-frame--not-this-stream).
 
 **stop trigger** (`trigger_price` on an order event, `stop_price` on a venue order) — The price at
@@ -774,7 +792,9 @@ the reconciliation lines between, derived from the *broker truth* and served as 
 
 **wall clock** — The machine's clock. It stamps when WE did or saw something (`ts_init`, a run's
 `start_time`) and measures durations — on its monotonic form, because the wall clock itself can
-step backwards. Never the time a decision reads — that is the *canonical clock*.
+step backwards. Never the time a decision reads — that is the *canonical clock*. Where the one
+enters the other is in
+[Live Execution](architecture/live_execution_architecture.md#canonical-clock--idle-cadence-360).
 
 **warmup history** — The bars of each timeframe a run hands its workers before their first tick:
 the last N bars *complete at* that tick, N being what the most demanding worker reading the

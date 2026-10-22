@@ -202,6 +202,9 @@ The conversion itself is tested in [Server Clock Tests](server_clock_tests.md).
   names it; extend `_probe_value` or the dict branch of `_probes`
 - **A value some block refuses by design** (`abort` for the Telegram ladder) — add it to
   `_REFUSED_PROBES`, so the probe takes another
+- **A string a block takes only from a vocabulary** (`state_frames.cadence_timeframe` names a
+  timeframe, which `<default>_probe` never does) — add its dotted path and another value of the
+  vocabulary to `_VOCABULARY_PROBES`
 - **A new mock-auto-disable resolution** — add it to the third test when its default is on;
   when it is off, pin it where the default can be switched on first, as the operator alerts do
 

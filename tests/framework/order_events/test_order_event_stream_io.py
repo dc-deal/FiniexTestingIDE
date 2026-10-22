@@ -364,8 +364,9 @@ class TestTheRunIndexListsItAsAStream:
 
 
 class TestTheRunIndexKeepsRunRecordsOut:
-    """What a session writes as it runs — such as its warmup history, its tick stream record (#609)
-    and its state frames (#579) — is neither a report artifact nor a served stream."""
+    """What a session writes as it runs — such as its warmup history and its tick stream record
+    (#609) — is neither a report artifact nor a served stream. Its state frames are a served stream
+    since #611."""
 
     def test_a_session_with_only_its_records_has_not_reported(self, tmp_path):
         index = RunIndex(tmp_path / 'runs_index.parquet')
