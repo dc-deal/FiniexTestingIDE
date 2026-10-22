@@ -17,6 +17,7 @@ from fastapi.testclient import TestClient
 from python.api.api_app import create_app
 from python.framework.reporting.io.artifact_specs import WARNINGS_ERRORS_ARTIFACT
 from python.framework.reporting.io.report_artifact_io import write_artifact
+from python.framework.reporting.io.run_stream_reader import read_stream_ends
 from python.framework.reporting.io.run_stream_appender import RunStreamAppender
 from python.framework.reporting.store.report_store import IO_SUBDIR, ReportStore
 from python.framework.reporting.store.run_index import RunIndex
@@ -195,6 +196,51 @@ class TestNoFrameNamesItsCause:
                       schema_version=STATE_FRAMES_SCHEMA_VERSION + 1)
         response = client.get(_URL)
         assert (response.status_code, response.json()['error']) == (409, 'artifact_unreadable')
+
+
+class TestTheRunListCarriesTheVerdict:
+    """Each run-list row that records state frames is judged the way the route judges it."""
+
+    def _record(self, root: Path, frames: list, ticks_from: TicksFrom = TicksFrom.VENUE,
+                schema_version: int = STATE_FRAMES_SCHEMA_VERSION) -> None:
+        io_dir = _plant_session(root, ticks_from)
+        _write_stream(io_dir, frames, schema_version=schema_version)
+        RunIndex(_index(root)).record_streams(_RUN, io_dir.parent)
+
+    def _recording(self, client):
+        return client.get('/api/v1/reports/runs').json()['runs'][0]['recording']
+
+    def test_a_session_writing_on_its_cadence_is_current(self, client, tmp_path):
+        self._record(tmp_path, [_frame(StateFrameCause.CADENCE, _ago(30))])
+        assert self._recording(client) == 'current'
+
+    def test_a_session_whose_frames_stopped_is_stopped(self, client, tmp_path):
+        self._record(tmp_path, [_frame(StateFrameCause.CADENCE, _ago(600))])
+        assert self._recording(client) == 'stopped'
+
+    def test_an_ended_session_is_read_once(self, client, tmp_path, monkeypatch):
+        self._record(tmp_path, [_frame(StateFrameCause.SHUTDOWN, _ago(60))])
+        reads = []
+        monkeypatch.setattr('python.framework.reporting.store.report_store.read_stream_ends',
+                            lambda path: reads.append(path) or read_stream_ends(path))
+        assert [self._recording(client) for _ in range(3)] == ['ended'] * 3
+        assert len(reads) == 1, 'an ended recording cannot change, so its stream is read once'
+
+    def test_a_replay_before_its_end_is_not_judged(self, client, tmp_path):
+        self._record(tmp_path, [_frame(StateFrameCause.CADENCE, _ago(600))], TicksFrom.ARCHIVE)
+        assert self._recording(client) is None
+
+    def test_a_run_without_frames_carries_none(self, client, tmp_path):
+        _plant_session(tmp_path)
+        assert self._recording(client) is None
+
+    def test_a_stream_that_cannot_be_read_costs_its_row_the_verdict_never_the_list(
+            self, client, tmp_path):
+        self._record(tmp_path, [_frame(StateFrameCause.CADENCE, _ago(30))],
+                     schema_version=STATE_FRAMES_SCHEMA_VERSION + 1)
+        response = client.get('/api/v1/reports/runs')
+        assert response.status_code == 200
+        assert response.json()['runs'][0]['recording'] is None
 
 
 class TestTheRunListNamesTheStream:

@@ -181,6 +181,7 @@ written through the same appender a session uses, beside a run registered in a t
 | `TestAnEndedSession` | a last frame written at the end is `ended`, and the run's end classification comes beside it as the warnings-errors section serves it — null until that section was written |
 | `TestAReplay` | a session replaying recorded data gets no verdict while it runs, though its age is served, and `ended` once its last frame is written |
 | `TestNoFrameNamesItsCause` | an unknown run is `run_not_found`; a run with no stream `state_frames_not_recorded`; a stream holding only its header `state_frame_not_written_yet`; a header naming another schema `artifact_unreadable` |
+| `TestTheRunListCarriesTheVerdict` | each run-list row that records state frames carries the route's verdict: `current` on its cadence, `stopped` when its frames stopped; an ended recording is read once and remembered; a replay before its end and a run without frames carry none; a stream that cannot be read costs its row the verdict, never the list |
 | `TestTheRunListNamesTheStream` | once the session recorded the stream in the run index, the run list names it under `stream_files`, and never among the report artifacts |
 
 ## Polled routes in the access log (`test_polled_route_access_filter.py`)

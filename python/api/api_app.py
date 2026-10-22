@@ -225,6 +225,9 @@ def create_app() -> FastAPI:
     app.state.machine_thresholds = machine_thresholds
     # When the latest-frame route reads a session's recording as stopped (#611)
     app.state.state_frames_thresholds = state_frames_thresholds
+    # The runs the run list has read as ended: an ended recording cannot change, so their streams
+    # are not read again while the application runs (#611)
+    app.state.ended_recordings = set()
     app.state.activity_reader = ActivityRegistryReader()
 
     app.add_middleware(

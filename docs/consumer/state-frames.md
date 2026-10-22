@@ -22,7 +22,9 @@ Reached with a grant on the `reports` surface — `reports:<run_id>`, or `report
 **Ask it once a cadence, never faster.** A frame is written once per period of
 `cadence_timeframe` — `cadence_s` seconds — and at a few moments between; asking more often returns
 the same frame. The run list names the stream under `stream_files` (`state_frames.jsonl`) from the
-moment the session opens it, so a client can tell which runs to ask.
+moment the session opens it, so a client can tell which runs to ask, and it carries this route's
+verdict on each of those rows as `recording` — enough to mark the sessions that still record and to
+filter by it. The frame, its age and the outcome are this route's.
 
 ## An answer
 

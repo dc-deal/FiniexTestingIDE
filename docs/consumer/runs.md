@@ -116,6 +116,17 @@ purpose. A live session writes its order events from its first order and its sta
 first pass, so a session that ended without its report still has them — counted as artifacts, it
 would read as reported. Ask for a stream whenever it is listed, whatever `artifacts` says.
 
+## `recording` — whether a session still records
+
+A session that is running and one that died before its report look alike everywhere else on a row:
+both have a start and neither reached the ledger. A row whose `stream_files` names
+`state_frames.jsonl` therefore carries `recording`, the verdict the
+[state frames](/api/v1/docs/state-frames) route gives for the same stream at the same moment —
+`current` while it writes on its cadence, `stopped` when its frames stopped without an end, `ended`
+once its last frame is the one written at its end. It is null on every other row, before a
+session's first frame, for a session replaying recorded data before its end, and where the stream
+cannot be read. The frame itself, its age and how the session ended are that route's.
+
 ## What the run did
 
 The figures come from the run-results ledger, joined into this same request — so listing runs

@@ -21,6 +21,7 @@ from typing import Dict, List, Literal, Optional
 
 from pydantic import BaseModel, JsonValue
 
+from python.framework.types.api.recording_state_types import RecordingState
 from python.framework.types.api.report_types import (
     ActiveOrderRow,
     OpenPositionRow,
@@ -89,18 +90,6 @@ class StateFrame(BaseModel):
     closed_bars: Dict[str, datetime] = {}       # timeframe → the opening of the bar that closed
     order_id: Optional[str] = None              # the order the decision sent, for an order frame
     process_memory: Optional[ProcessMemoryRow] = None
-
-
-class RecordingState(StrEnum):
-    """
-    Whether a session is still recording its state, as the latest-frame route judges it (#611).
-
-    Judged when the route answers and never written into a frame, so the frames of a mock session
-    and of a live one stay alike.
-    """
-    CURRENT = 'current'    # the latest frame is younger than the configured number of cadences
-    STOPPED = 'stopped'    # older than that and not the last one: stopped without an end
-    ENDED = 'ended'        # the latest frame is the one written at the session's end
 
 
 @dataclass(frozen=True)

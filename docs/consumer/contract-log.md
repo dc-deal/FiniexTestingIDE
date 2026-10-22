@@ -50,8 +50,12 @@ is still recording.
 - `GET /api/v1/reports/runs`: `stream_files` names `state_frames.jsonl` for a session that records
   state frames, from the moment the session opens the stream. A session recorded before this
   version is named there once the server's run list is rebuilt.
+- `GET /api/v1/reports/runs`: `recording` on every row whose `stream_files` names
+  `state_frames.jsonl` — the verdict the latest-state-frame route gives (`current`, `stopped`,
+  `ended`), so a list can mark the sessions that still record and filter by it. Null elsewhere,
+  before a session's first frame, for a replay before its end, and where the stream cannot be read.
 
-A route and two codes added, a stream named; nothing removed or renamed. Its document is
+A route, two codes and a run-list field added, a stream named; nothing removed or renamed. Its document is
 [state frames](/api/v1/docs/state-frames).
 
 ## Version 37 — 2026-10-20 (#598)

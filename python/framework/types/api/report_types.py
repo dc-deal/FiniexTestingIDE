@@ -13,6 +13,7 @@ from typing import Any, Dict, Optional
 
 from pydantic import BaseModel, Field, computed_field
 
+from python.framework.types.api.recording_state_types import RecordingState
 from python.framework.types.autotrader_types.safety_session_types import FlattenOutcome
 from python.framework.types.live_types.broker_truth_types import (
     BrokerTruthPart,
@@ -1137,6 +1138,11 @@ class RunInfo(BaseModel):
     # so a session that died before its report HAS one, and counting it as an artifact would make
     # that session read as reported. A stream is served while the run is still going.
     stream_files: list[str] = Field(default_factory=list)
+    # Whether the session still records its state (#611): the verdict the latest-state-frame route
+    # gives, judged from the stream each time the list is served and never stored. None where the
+    # run records no state frames, has written none yet, replays recorded data before its end, or
+    # its stream cannot be read.
+    recording: Optional[RecordingState] = None
     # Straight from the run's header (#475) — the list answers "what was this run" on its own,
     # instead of making a consumer open each run to find out.
     start_time: str = ''

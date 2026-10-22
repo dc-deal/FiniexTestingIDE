@@ -46,4 +46,7 @@ CHANGES: List[str] = [
     'state_frame_not_written_yet (its stream holds no frame yet)',
     'stream_files on the run list names state_frames.jsonl for a session that records state '
     'frames, from the moment the session opens the stream',
+    'recording on the run list: on every row whose stream_files names state_frames.jsonl, the '
+    'verdict the latest-state-frame route gives — current, stopped or ended; null elsewhere, '
+    'before the first frame and where the stream cannot be read',
 ]

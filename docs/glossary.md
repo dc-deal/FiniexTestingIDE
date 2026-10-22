@@ -590,13 +590,14 @@ stream, never on a tick. See [AutoTrader Data Intake](autotrader/autotrader_data
 **real-money session** — A live-adapter session with `dry_run` false: its orders are placed at the
 venue and move the account.
 
-**recording** (`recording` on the latest-frame route) — Whether a session is still recording its
-*state frames*, as the route judges it when it answers — never a yes or no: `current` when the
-latest frame is younger than three of its cadences, `stopped` when it is older and not the last one
-(the session hangs or its process died; the activity list tells which), `ended` when the latest
-frame is the one written at the session's end. Null for a session replaying recorded data before
-its end, whose frames come at replay speed. Not the staleness contract's `stale`, which judges the
-session's INPUTS and travels inside the frame. See [state frames](consumer/state-frames.md).
+**recording** (`recording` on the latest-frame route and on the run list) — Whether a session is
+still recording its *state frames*, as the route judges it when it answers — never a yes or no:
+`current` when the latest frame is younger than three of its cadences, `stopped` when it is older
+and not the last one (the session hangs or its process died; the activity list tells which),
+`ended` when the latest frame is the one written at the session's end. Null for a session replaying
+recorded data before its end, whose frames come at replay speed. The run list carries the same
+verdict on every row that records state frames. Not the staleness contract's `stale`, which judges
+the session's INPUTS and travels inside the frame. See [state frames](consumer/state-frames.md).
 
 **refused at the first tick** (`refused_at_first_tick`) — A live-adapter session that stopped at its
 first tick because its *warmup history* could not be completed there: the venue had not yet
