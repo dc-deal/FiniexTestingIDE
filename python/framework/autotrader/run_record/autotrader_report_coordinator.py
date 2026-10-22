@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Dict, Optional, Tuple
 
 from python.configuration.app_config_manager import AppConfigManager
+from python.framework.constants.run_layout_constants import IO_SUBDIR, SESSION_EVENTS_FILE
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.discoveries.signal_coverage.signal_scenario_info import SignalScenarioInfo
 from python.framework.logging.scenario_logger import ScenarioLogger
@@ -70,7 +71,6 @@ from python.framework.trading_env.broker_config import BrokerConfig
 from python.framework.types.api.report_types import RunSummary
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
 from python.framework.types.autotrader_types.autotrader_result_types import AutoTraderResult
-from python.framework.types.log_layout_types import IO_SUBDIR, SESSION_EVENTS_FILE
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
 from python.framework.types.log_level import LogLevel
 from python.framework.types.signal_data_types import SignalObservedSeries

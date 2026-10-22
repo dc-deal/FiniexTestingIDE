@@ -29,7 +29,7 @@ Where one entry is a directory of files — a run, a sweep — the store also de
 it, file by file: the file's path, its shape (a snapshot replaced whole, a stream appended line by
 line, a report output written at the run's end, a log), which pipeline writes it and when, and
 which column of the run index lists it. The writers build their paths from the same names
-([`log_layout_types.py`](../../python/framework/types/log_layout_types.py)), so a declared name
+([`run_layout_constants.py`](../../python/framework/constants/run_layout_constants.py)), so a declared name
 and a written one cannot drift apart (#621).
 
 ---

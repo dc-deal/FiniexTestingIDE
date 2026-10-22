@@ -4,12 +4,12 @@ from pathlib import Path
 
 import pandas as pd
 
+from python.framework.constants.run_layout_constants import RUN_TYPE_AUTOTRADER, RUN_TYPE_SIMULATION
 from python.framework.reporting.store.run_results_ledger import (
     COLUMN_REDUCTION,
     LEDGER_COLUMNS,
 )
 from python.framework.types.api.report_types import OrdersTo, RunResultRow
-from python.framework.types.log_layout_types import RUN_TYPE_AUTOTRADER, RUN_TYPE_SIMULATION
 from python.framework.types.run_results_types import Reduction
 
 # Every report artifact names its run (#475); the value is opaque to these tests.

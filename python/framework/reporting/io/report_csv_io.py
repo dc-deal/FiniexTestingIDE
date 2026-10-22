@@ -12,6 +12,11 @@ its run is a row nobody can trace back (#475).
 import csv
 from pathlib import Path
 
+from python.framework.constants.run_layout_constants import (
+    EXECUTION_STATS_CSV,
+    ORDER_HISTORY_CSV,
+    TRADE_HISTORY_CSV,
+)
 from python.framework.types.api.report_types import (
     ExecutionStatsReport,
     ExecutionStatsRow,
@@ -19,11 +24,6 @@ from python.framework.types.api.report_types import (
     OrderHistoryRow,
     TradeHistoryReport,
     TradeHistoryRow,
-)
-from python.framework.types.log_layout_types import (
-    EXECUTION_STATS_CSV,
-    ORDER_HISTORY_CSV,
-    TRADE_HISTORY_CSV,
 )
 
 

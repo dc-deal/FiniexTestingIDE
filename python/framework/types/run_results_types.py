@@ -108,7 +108,7 @@ class RunProvenance:
     # changed stop level must not read as a different strategy.
     profile_hash: str = ''
     # WHICH PIPELINE produced this run — 'simulation' | 'autotrader', taken from the same constants
-    # the run tree is laid out with (`log_layout_types.RUN_TYPE_*`) rather than a literal, so
+    # the run tree is laid out with (`run_layout_constants.RUN_TYPE_*`) rather than a literal, so
     # the ledger, the run index and the directory on disk cannot drift into three vocabularies.
     run_type: str = ''
     # WHERE this run's orders went — a simulator or the venue, i.e. whether real money moved

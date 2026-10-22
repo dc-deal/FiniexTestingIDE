@@ -5,9 +5,9 @@ Pydantic models for the file_logging section of app_config.json.
 from pathlib import Path
 from typing import Optional
 
+from python.framework.constants.run_layout_constants import SWEEPS_SUBDIR
 from python.framework.types.config_types.strict_config_model import StrictConfigModel
 
-from python.framework.types.log_layout_types import SWEEPS_SUBDIR
 from python.framework.types.log_level import LogLevel
 
 

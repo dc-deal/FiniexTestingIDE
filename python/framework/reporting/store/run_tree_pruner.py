@@ -17,6 +17,11 @@ from typing import Callable, Dict, List, Optional
 
 from python.configuration.app_config_manager import AppConfigManager
 from python.framework.config_directory.config_directory import declared_run_purposes
+from python.framework.constants.run_layout_constants import (
+    FIELD_STUDY_CAPTURE,
+    IO_SUBDIR,
+    RUN_HEADER_ARTIFACT,
+)
 from python.framework.fixture_catalog.fixture_catalog import entry_ids
 from python.framework.fixture_catalog.fixture_production_store import (
     PRODUCTION_RECORD_FILE,
@@ -31,11 +36,6 @@ from python.framework.reporting.store.run_ledger_index import LEDGER_INDEX_FILE
 from python.framework.reporting.store.run_results_ledger import RunResultsLedger
 from python.framework.types.api.report_types import RunInfo, RunReporting
 from python.framework.types.config_types.file_logging_config_types import RunLogPaths
-from python.framework.types.log_layout_types import (
-    FIELD_STUDY_CAPTURE,
-    IO_SUBDIR,
-    RUN_HEADER_ARTIFACT,
-)
 from python.framework.types.run_prune_types import (
     PruneCandidate,
     PruneReport,

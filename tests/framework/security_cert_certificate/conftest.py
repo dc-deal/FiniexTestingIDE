@@ -18,6 +18,11 @@ from python.framework.acceptance_studies.security_cert_stages import (
     SECURITY_STAGES,
     stage_profile_path,
 )
+from python.framework.constants.run_layout_constants import (
+    IO_SUBDIR,
+    RUN_HEADER_ARTIFACT,
+    SECURITY_CERT_CAPTURE,
+)
 from python.framework.reporting.io.artifact_specs import SAFETY_ARTIFACT
 from python.framework.types.acceptance_study_types.security_cert_types import (
     ExpectedOutcome,
@@ -26,11 +31,6 @@ from python.framework.types.acceptance_study_types.security_cert_types import (
 )
 from python.framework.types.api.report_types import OrdersTo, RunHeader, SafetyReport
 from python.framework.types.autotrader_types.safety_session_types import FlattenOutcome
-from python.framework.types.log_layout_types import (
-    IO_SUBDIR,
-    RUN_HEADER_ARTIFACT,
-    SECURITY_CERT_CAPTURE,
-)
 from python.framework.types.persistence_types import BaselineKind, BaselineOrigin, RiskBaseline
 from python.framework.types.run_origin_types import CodeIdentity, RepositoryState
 

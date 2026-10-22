@@ -29,6 +29,7 @@ from typing import Any, Callable, Dict, Iterator, List, Optional, Set
 from python.api.api_contract import API_CONTRACT_VERSION
 from python.configuration.app_config_manager import AppConfigManager
 from python.configuration.autotrader.autotrader_config_loader import load_autotrader_config
+from python.framework.constants.run_layout_constants import IO_SUBDIR, ORDER_EVENTS_FILE
 from python.framework.fixture_catalog.fixture_catalog import (
     DECLARED_RUN_COUNT,
     declared_run_count,
@@ -45,7 +46,6 @@ from python.framework.types.fixture_catalog_types import (
     FixtureProduction,
     FixtureSession,
 )
-from python.framework.types.log_layout_types import IO_SUBDIR, ORDER_EVENTS_FILE
 from python.framework.types.run_origin_types import RunChannel
 from python.scenario.scenario_config_loader import ScenarioConfigLoader
 from python.scenario.scenario_strategy_runner import initialize_batch_and_run

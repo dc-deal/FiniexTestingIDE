@@ -20,6 +20,7 @@ from python.framework.acceptance_studies.abstract_acceptance_study import (
     STOP_WORLD_TYPES,
     AbstractAcceptanceStudy,
 )
+from python.framework.constants.run_layout_constants import FIELD_STUDY_CAPTURE
 from python.framework.decision_logic.core.live_field_study.field_study_phase_machine import (
     FieldStudyPhaseMachine,
 )
@@ -36,7 +37,6 @@ from python.framework.types.autotrader_types.cold_start_types import (
     ColdStartSituation,
     ColdStartVerdict,
 )
-from python.framework.types.log_layout_types import FIELD_STUDY_CAPTURE
 from python.framework.types.market_types.market_types import TradingContext
 from python.framework.types.parameter_types import InputParamDef
 from python.framework.types.trading_env_types.order_types import OrderType

@@ -10,6 +10,7 @@ from pathlib import Path
 
 from pydantic import BaseModel
 
+from python.framework.constants.run_layout_constants import ORDER_EVENTS_FILE
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.reporting.io.jsonl_stream_writer import JsonlStreamWriter
 from python.framework.reporting.io.order_event_stream_io import (
@@ -18,7 +19,6 @@ from python.framework.reporting.io.order_event_stream_io import (
     order_event_row,
 )
 from python.framework.types.live_types.broker_truth_types import BrokerTruthRecord
-from python.framework.types.log_layout_types import ORDER_EVENTS_FILE
 from python.framework.types.trading_env_types.order_event_types import OrderEvent
 
 

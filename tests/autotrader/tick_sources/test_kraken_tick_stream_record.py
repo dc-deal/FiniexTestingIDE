@@ -36,13 +36,13 @@ from python.framework.autotrader.tick_sources.tick_stream_recorder import (
     REFUSALS_LISTED_PER_REASON,
     TickStreamRecorder,
 )
+from python.framework.constants.run_layout_constants import TICK_STREAM_EVENTS_FILE
 from python.framework.reporting.io.jsonl_stream_writer import JsonlStreamWriter
 from python.framework.types.autotrader_types.tick_stream_event_types import (
     RefusedPublicTradeReason,
     TickStreamLossCause,
 )
 from python.framework.types.config_types.autotrader_defaults_config_types import TickSourceConfig
-from python.framework.types.log_layout_types import TICK_STREAM_EVENTS_FILE
 from tests.shared.recording_logger import RecordingLogger
 
 _FRAMES = (Path(__file__).resolve().parents[2] / 'fixtures' / 'tick_sources'

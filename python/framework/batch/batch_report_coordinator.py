@@ -10,6 +10,11 @@ import re
 import sys
 
 from python.configuration.app_config_manager import AppConfigManager
+from python.framework.constants.run_layout_constants import (
+    EVENTS_SUBDIR,
+    IO_SUBDIR,
+    SCENARIO_EVENTS_FILE_PATTERN,
+)
 from python.framework.reporting.builders.aggregated_portfolio_report_builder import (
     build_aggregated_portfolio_report,
 )
@@ -75,11 +80,6 @@ from python.framework.reporting.builders.booking_periods_report_builder import (
 from python.framework.reporting.console.booking_periods_summary import BookingPeriodsSummary
 from python.framework.reporting.store.run_results_ledger import append_run_to_ledger
 from python.framework.types.batch_execution_types import BatchExecutionSummary
-from python.framework.types.log_layout_types import (
-    EVENTS_SUBDIR,
-    IO_SUBDIR,
-    SCENARIO_EVENTS_FILE_PATTERN,
-)
 from python.framework.types.run_results_types import SweepContext
 from python.scenario.scenario_set import ScenarioSet
 from python.framework.utils.console_renderer import ConsoleRenderer

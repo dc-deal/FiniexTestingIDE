@@ -16,6 +16,12 @@ from pathlib import Path
 
 import pytest
 
+from python.framework.constants.run_layout_constants import (
+    IO_SUBDIR,
+    ORDER_EVENTS_FILE,
+    ORDER_EVENTS_SCHEMA_VERSION,
+    RUN_TYPE_SIMULATION,
+)
 from python.framework.exceptions.report_artifact_errors import ReportArtifactUnreadableError
 from python.framework.logging.global_logger import GlobalLogger
 from python.framework.reporting.acceptance_study_recorder import AcceptanceStudyRecorder
@@ -39,12 +45,6 @@ from python.framework.types.live_types.reconciliation_types import (
     BrokerOrder,
     ReconcileDivergence,
     ReconcileState,
-)
-from python.framework.types.log_layout_types import (
-    IO_SUBDIR,
-    ORDER_EVENTS_FILE,
-    ORDER_EVENTS_SCHEMA_VERSION,
-    RUN_TYPE_SIMULATION,
 )
 from python.framework.types.trading_env_types.order_event_types import (
     OrderEvent,

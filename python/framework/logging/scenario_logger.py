@@ -20,9 +20,12 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
+from python.framework.constants.run_layout_constants import (
+    RUN_LOG_FILE_PATTERN,
+    SCENARIO_LOGS_SUBDIR,
+)
 from python.framework.logging.abstract_logger import AbstractLogger, ColorCodes
 from python.framework.logging.file_logger import FileLogger
-from python.framework.types.log_layout_types import RUN_LOG_FILE_PATTERN, SCENARIO_LOGS_SUBDIR
 from python.framework.types.log_level import LogLevel
 from python.framework.types.log_record_types import LogRecord
 from python.framework.utils.time_utils import format_log_elapsed

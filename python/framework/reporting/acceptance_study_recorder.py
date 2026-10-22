@@ -22,6 +22,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+from python.framework.constants.run_layout_constants import ACCEPTANCE_CAPTURE_SCHEMA_VERSION
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.reporting.io.jsonl_stream_writer import JsonlStreamWriter
 from python.framework.types.acceptance_study_types.study_capture_types import (
@@ -33,7 +34,6 @@ from python.framework.types.acceptance_study_types.study_capture_types import (
     status_fits_line,
 )
 from python.framework.types.acceptance_study_types.study_phase_types import PhaseResult
-from python.framework.types.log_layout_types import ACCEPTANCE_CAPTURE_SCHEMA_VERSION
 from python.framework.types.trading_env_types.order_event_types import OrderEventPlane
 from python.framework.types.trading_env_types.order_types import FeeReport
 

@@ -43,11 +43,11 @@ import pandas as pd
 from pydantic import ValidationError
 
 from python.configuration.app_config_manager import AppConfigManager
+from python.framework.constants.run_layout_constants import IO_SUBDIR
 from python.framework.reporting.io.artifact_specs import ORDER_HISTORY_ARTIFACT
 from python.framework.reporting.io.report_artifact_io import write_artifact
 from python.framework.reporting.io.report_csv_io import write_order_history_csv
 from python.framework.types.api.report_types import OrderHistoryReport
-from python.framework.types.log_layout_types import IO_SUBDIR
 
 # The served field's old name and its new one.
 _RENAMED = ('execution_time', 'event_time')

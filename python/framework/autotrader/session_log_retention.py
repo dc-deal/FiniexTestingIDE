@@ -17,11 +17,11 @@ from datetime import datetime
 from pathlib import Path
 from typing import List
 
-from python.framework.logging.scenario_logger import ScenarioLogger
-from python.framework.types.log_layout_types import (
+from python.framework.constants.run_layout_constants import (
     SESSION_DAY_LOG_FILE_PATTERN,
     SESSION_LOGS_SUBDIR,
 )
+from python.framework.logging.scenario_logger import ScenarioLogger
 
 # The rotated files, and ONLY those. Anything else in the directory is left alone: the
 # retention rule was written for a known name pattern, and a pattern that also matched

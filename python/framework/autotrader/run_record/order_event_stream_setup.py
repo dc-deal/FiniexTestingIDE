@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import List, Tuple
 
 from python.configuration.app_config_manager import AppConfigManager
+from python.framework.constants.run_layout_constants import IO_SUBDIR, ORDER_EVENTS_FILE
 from python.framework.exceptions.report_artifact_errors import ReportArtifactUnreadableError
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.reporting.io.order_event_stream_io import (
@@ -21,7 +22,6 @@ from python.framework.reporting.io.order_event_stream_writer import OrderEventSt
 from python.framework.reporting.store.run_index import RunIndex
 from python.framework.trading_env.abstract_trade_executor import AbstractTradeExecutor
 from python.framework.types.live_types.broker_truth_types import BrokerTruthRecord
-from python.framework.types.log_layout_types import IO_SUBDIR, ORDER_EVENTS_FILE
 from python.framework.types.trading_env_types.order_event_types import OrderEvent
 
 

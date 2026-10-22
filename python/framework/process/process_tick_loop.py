@@ -25,6 +25,7 @@ from typing import List, Optional, Tuple
 
 from python.configuration.market_config_manager import MarketConfigManager
 from python.framework.bars.bar_rendering_controller import BarRenderingController
+from python.framework.constants.currency_constants import format_currency_signed
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.process.market_data_episode_tracker import MarketDataEpisodeTracker
@@ -51,7 +52,6 @@ from python.framework.types.process_data_types import (
     ProcessScenarioConfig,
     ProcessTickLoopResult,
 )
-from python.framework.types.trading_env_types.currency_codes import format_currency_signed
 from python.framework.types.trading_env_types.order_event_types import OrderEvent
 from python.framework.utils.process_debug_info_utils import (
     get_tick_range_stats,

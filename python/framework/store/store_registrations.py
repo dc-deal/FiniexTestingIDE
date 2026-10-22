@@ -25,6 +25,12 @@ from python.framework.config_directory.config_directory_index import (
     CONFIG_DIRECTORY_INDEX_FILE,
     ConfigDirectoryIndex,
 )
+from python.framework.constants.run_layout_constants import (
+    GLOBAL_LOG_FILE,
+    IMPORT_LOG_SUBDIR,
+    MOUNT_BUILD_LOG,
+    RUN_HEADER_ARTIFACT,
+)
 from python.framework.discoveries.discovery_cache_index import (
     DISCOVERY_INDEX_FILE,
     DiscoveryCacheIndex,
@@ -51,12 +57,6 @@ from python.framework.store.run_patch_store import PATCH_SUFFIX
 from python.framework.store.store_descriptor import StoreDescriptor
 from python.framework.types.activity_registry_types import ACTIVITY_ID_PREFIX
 from python.framework.types.config_types.host_identity_config_types import HOST_IDENTITY_FILE_NAME
-from python.framework.types.log_layout_types import (
-    GLOBAL_LOG_FILE,
-    IMPORT_LOG_SUBDIR,
-    MOUNT_BUILD_LOG,
-    RUN_HEADER_ARTIFACT,
-)
 from python.framework.types.store_types import (
     DISCOVERY_CACHE_DIRNAME,
     RetrievalForm,

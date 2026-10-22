@@ -16,11 +16,11 @@ import pytest
 
 from python.configuration.autotrader.autotrader_config_loader import load_autotrader_config
 from python.framework.autotrader.autotrader_main import AutotraderMain
+from python.framework.constants.run_layout_constants import IO_SUBDIR
 from python.framework.reporting.io.artifact_specs import (
     PORTFOLIO_ARTIFACT,
 )
 from python.framework.reporting.io.report_artifact_io import read_artifact
-from python.framework.types.log_layout_types import IO_SUBDIR
 from python.framework.types.log_level import LogLevel
 from tests.shared.fixture_helpers import logged_messages, remove_run_dir
 

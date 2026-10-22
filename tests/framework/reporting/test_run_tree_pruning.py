@@ -17,6 +17,12 @@ import shutil
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+from python.framework.constants.run_layout_constants import (
+    FIELD_STUDY_CAPTURE,
+    IO_SUBDIR,
+    RUN_TYPE_AUTOTRADER,
+    RUN_TYPE_SIMULATION,
+)
 from python.framework.reporting.store.run_index import RunIndex
 from python.framework.fixture_catalog.fixture_production_store import (
     PRODUCTION_RECORD_FILE,
@@ -35,12 +41,6 @@ from python.framework.types.api.report_types import (
 from python.framework.types.run_results_types import RunProvenance
 from python.framework.types.config_types.file_logging_config_types import RunLogPaths
 from python.framework.types.fixture_catalog_types import FixtureProduction
-from python.framework.types.log_layout_types import (
-    FIELD_STUDY_CAPTURE,
-    IO_SUBDIR,
-    RUN_TYPE_AUTOTRADER,
-    RUN_TYPE_SIMULATION,
-)
 from python.framework.types.run_prune_types import PruneSelectors
 from python.framework.types.run_purpose_types import RunPurpose
 

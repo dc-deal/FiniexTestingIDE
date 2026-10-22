@@ -15,6 +15,13 @@ import pytest
 from fastapi.testclient import TestClient
 
 from python.api.api_app import create_app
+from python.framework.constants.run_layout_constants import (
+    IO_SUBDIR,
+    RUN_TYPE_AUTOTRADER,
+    STATE_FRAMES_FILE,
+    STATE_FRAMES_SCHEMA_VERSION,
+    STATE_FRAMES_STREAM,
+)
 from python.framework.reporting.io.artifact_specs import WARNINGS_ERRORS_ARTIFACT
 from python.framework.reporting.io.report_artifact_io import write_artifact
 from python.framework.reporting.io.run_stream_reader import read_stream_ends
@@ -31,13 +38,6 @@ from python.framework.types.api.state_frame_types import (
     ProcessMemoryRow,
     StateFrame,
     StateFrameCause,
-)
-from python.framework.types.log_layout_types import (
-    IO_SUBDIR,
-    RUN_TYPE_AUTOTRADER,
-    STATE_FRAMES_FILE,
-    STATE_FRAMES_SCHEMA_VERSION,
-    STATE_FRAMES_STREAM,
 )
 from python.framework.types.run_outcome_types import RunOutcome
 

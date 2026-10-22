@@ -12,6 +12,11 @@ from pathlib import Path
 
 import pytest
 
+from python.framework.constants.run_layout_constants import (
+    IO_SUBDIR,
+    RUN_TYPE_AUTOTRADER,
+    RUN_TYPE_SIMULATION,
+)
 from python.framework.reporting.io import artifact_specs
 from python.framework.reporting.io.report_artifact_io import ArtifactSpec
 from python.framework.store.entry_members.run_entry_members import (
@@ -23,11 +28,6 @@ from python.framework.store.entry_members.sweep_entry_members import (
     SWEEP_ENTRY_MEMBERS_BY_ID,
 )
 from python.framework.store.store_catalog import StoreCatalog
-from python.framework.types.log_layout_types import (
-    IO_SUBDIR,
-    RUN_TYPE_AUTOTRADER,
-    RUN_TYPE_SIMULATION,
-)
 from python.framework.types.store_member_types import (
     EntryMemberMoment,
     EntryMemberShape,

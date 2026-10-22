@@ -1,7 +1,7 @@
 """
 FiniexTestingIDE - Run Entry Members (#621)
 What a run directory may hold: every file, declared once, with the shape that decides how it is
-written and read. The writers build their paths from the same names in the log layout, and the
+written and read. The writers build their paths from the same names in the run layout constants, and the
 census holds the two together.
 
 Constants only at import — no configuration is read and no pattern is compiled until something
@@ -10,7 +10,7 @@ asks, because every process that imports the run index imports this.
 
 from typing import Dict, Tuple
 
-from python.framework.types.log_layout_types import (
+from python.framework.constants.run_layout_constants import (
     ACCEPTANCE_CAPTURE_SCHEMA_VERSION,
     AGGREGATED_PORTFOLIO_ARTIFACT_FILE,
     BACKTEST_GLOBAL_LOG_NAME,

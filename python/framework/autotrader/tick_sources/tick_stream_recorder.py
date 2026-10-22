@@ -19,6 +19,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, Dict, Optional, Tuple
 
+from python.framework.constants.run_layout_constants import (
+    TICK_STREAM_EVENTS_FILE,
+    TICK_STREAM_EVENTS_SCHEMA_VERSION,
+    TICK_STREAM_EVENTS_STREAM,
+)
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.reporting.io.run_stream_appender import RunStreamAppender
 from python.framework.types.autotrader_types.tick_stream_event_types import (
@@ -27,11 +32,6 @@ from python.framework.types.autotrader_types.tick_stream_event_types import (
     RefusedPublicTradeTotals,
     TickStreamLossCause,
     TickStreamOutage,
-)
-from python.framework.types.log_layout_types import (
-    TICK_STREAM_EVENTS_FILE,
-    TICK_STREAM_EVENTS_SCHEMA_VERSION,
-    TICK_STREAM_EVENTS_STREAM,
 )
 
 # How much of a refused value is kept: enough to recognise the frame, never the whole frame.

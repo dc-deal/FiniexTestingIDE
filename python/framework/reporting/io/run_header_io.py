@@ -7,8 +7,8 @@ pipelines stamp the same way.
 from pathlib import Path
 from typing import List
 
+from python.framework.constants.run_layout_constants import RUN_HEADER_ARTIFACT
 from python.framework.types.api.report_types import DataWindow, RunHeader
-from python.framework.types.log_layout_types import RUN_HEADER_ARTIFACT
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
 
 

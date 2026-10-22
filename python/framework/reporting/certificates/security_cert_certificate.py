@@ -38,6 +38,11 @@ from python.framework.acceptance_studies.security_cert_stages import (
     SECURITY_STAGES,
     stage_unit_name,
 )
+from python.framework.constants.run_layout_constants import (
+    IO_SUBDIR,
+    RUN_HEADER_ARTIFACT,
+    SECURITY_CERT_CAPTURE,
+)
 from python.framework.reporting.certificates.security_cert_rule_catalog import (
     SECURITY_RULE_CATALOG,
 )
@@ -64,11 +69,6 @@ from python.framework.types.acceptance_study_types.study_capture_types import (
 from python.framework.types.acceptance_study_types.study_phase_types import PhaseOutcome
 from python.framework.types.api.report_types import OrdersTo, RunHeader, SafetyReport
 from python.framework.types.autotrader_types.safety_session_types import FlattenOutcome
-from python.framework.types.log_layout_types import (
-    IO_SUBDIR,
-    RUN_HEADER_ARTIFACT,
-    SECURITY_CERT_CAPTURE,
-)
 from python.framework.types.trading_env_types.order_event_types import OrderEventType
 
 # Default home for committed certificates — sibling of tests/live_field_study/reports

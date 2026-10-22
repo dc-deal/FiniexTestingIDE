@@ -7,7 +7,7 @@ run store.
 
 from typing import Dict, Tuple
 
-from python.framework.types.log_layout_types import (
+from python.framework.constants.run_layout_constants import (
     MOUNT_BUILD_LOG,
     RUN_TYPE_SIMULATION,
     SWEEP_RANKING_FILE,

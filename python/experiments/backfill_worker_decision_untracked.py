@@ -36,10 +36,10 @@ import pandas as pd
 from pydantic import ValidationError
 
 from python.configuration.app_config_manager import AppConfigManager
+from python.framework.constants.run_layout_constants import IO_SUBDIR
 from python.framework.reporting.io.artifact_specs import WORKER_DECISION_ARTIFACT
 from python.framework.reporting.io.report_artifact_io import write_artifact
 from python.framework.types.api.report_types import WorkerDecisionReport
-from python.framework.types.log_layout_types import IO_SUBDIR
 
 # Counted only by a tracker; null on an untracked unit.
 _COUNTED = ('decision_count', 'buy_signals', 'sell_signals', 'flat_signals', 'trades_requested',

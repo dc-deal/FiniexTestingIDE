@@ -4,7 +4,7 @@ Report artifact specs (#486) — every artifact a run writes, declared once.
 Data, not machinery: a file name bound to the model it decodes to. This is the whole of what
 the eighteen former `*_io.py` units carried between them, minus the three that also own a CSV
 surface (`report_csv_io.py`) or a row filter (`report_filters.py`). The file names themselves are
-declared with every other name a run directory holds, in the log layout (#621), so the store's
+declared with every other name a run directory holds, in the run layout constants (#621), so the store's
 declaration of a run reads them without importing a model.
 
 The run header is deliberately NOT here. It is the run's identity rather than a report artifact:
@@ -14,31 +14,7 @@ index reads it without going through the report store.
 
 from typing import FrozenSet
 
-from python.framework.reporting.io.report_artifact_io import ArtifactSpec
-from python.framework.types.api.report_types import (
-    AggregatedPortfolioReport,
-    BlockSplittingReport,
-    BookingPeriodsReport,
-    BrokerReport,
-    ColdStartReport,
-    ExecutionStatsReport,
-    FeedStabilityReport,
-    OrderHistoryReport,
-    PendingOrdersReport,
-    PortfolioReport,
-    ProfilingReport,
-    RobustnessReport,
-    RunMetaReport,
-    RunSummary,
-    SafetyReport,
-    ScenarioDetailsReport,
-    SignalReport,
-    TradeHistoryReport,
-    VenueAccountReport,
-    WarningsErrorsReport,
-    WorkerDecisionReport,
-)
-from python.framework.types.log_layout_types import (
+from python.framework.constants.run_layout_constants import (
     AGGREGATED_PORTFOLIO_ARTIFACT_FILE,
     BLOCK_SPLITTING_ARTIFACT_FILE,
     BOOKING_PERIODS_ARTIFACT_FILE,
@@ -64,6 +40,30 @@ from python.framework.types.log_layout_types import (
     WARMUP_HISTORY_FILE,
     WARNINGS_ERRORS_ARTIFACT_FILE,
     WORKER_DECISION_ARTIFACT_FILE,
+)
+from python.framework.reporting.io.report_artifact_io import ArtifactSpec
+from python.framework.types.api.report_types import (
+    AggregatedPortfolioReport,
+    BlockSplittingReport,
+    BookingPeriodsReport,
+    BrokerReport,
+    ColdStartReport,
+    ExecutionStatsReport,
+    FeedStabilityReport,
+    OrderHistoryReport,
+    PendingOrdersReport,
+    PortfolioReport,
+    ProfilingReport,
+    RobustnessReport,
+    RunMetaReport,
+    RunSummary,
+    SafetyReport,
+    ScenarioDetailsReport,
+    SignalReport,
+    TradeHistoryReport,
+    VenueAccountReport,
+    WarningsErrorsReport,
+    WorkerDecisionReport,
 )
 
 AGGREGATED_PORTFOLIO_ARTIFACT: ArtifactSpec[AggregatedPortfolioReport] = ArtifactSpec(

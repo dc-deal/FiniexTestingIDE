@@ -14,7 +14,7 @@ from enum import StrEnum
 from functools import lru_cache
 from typing import Optional, Tuple, Union
 
-from python.framework.types.log_layout_types import (
+from python.framework.constants.run_layout_constants import (
     ORDER_EVENTS_STREAM,
     STATE_FRAMES_STREAM,
     TICK_STREAM_EVENTS_STREAM,
@@ -131,7 +131,7 @@ class EntryMemberWrite:
     Which pipeline writes a member, when, and under which condition.
 
     Args:
-        run_type: The run type that writes it — one of the log layout's run types
+        run_type: The run type that writes it — one of the run types in the run layout constants
         moment: When in the run's life its file first appears
         condition: When it is written only sometimes, in a few words; empty when always
     """
@@ -194,7 +194,7 @@ class EntryMember:
         Whether a pipeline writes this member at all.
 
         Args:
-            run_type: One of the log layout's run types
+            run_type: One of the run types in the run layout constants
 
         Returns:
             True when the member is declared for that run type

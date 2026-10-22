@@ -18,9 +18,9 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Iterator, Optional
 
+from python.framework.constants.run_layout_constants import GLOBAL_LOG_FILE
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.logging.file_logger import FileLogger
-from python.framework.types.log_layout_types import GLOBAL_LOG_FILE
 from python.framework.types.log_level import LogLevel
 from python.framework.types.log_record_types import LogRecord
 

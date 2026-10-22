@@ -11,9 +11,9 @@ from typing import Optional
 
 from python.framework.autotrader.tick_sources.kraken_tick_source import KrakenTickSource
 from python.framework.autotrader.tick_sources.mock_tick_source import MockTickSource
+from python.framework.constants.run_layout_constants import IO_SUBDIR
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
-from python.framework.types.log_layout_types import IO_SUBDIR
 from python.framework.types.process_data_types import ProcessDataPackage
 from python.framework.utils.process_serialization_utils import process_deserialize_ticks_batch
 

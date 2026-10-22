@@ -16,7 +16,7 @@ import csv
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from python.framework.types.log_layout_types import (
+from python.framework.constants.run_layout_constants import (
     DIAGNOSTICS_FILE_PATTERN,
     DIAGNOSTICS_SUBDIR,
     SCENARIO_DIAGNOSTICS_FILE_PATTERN,

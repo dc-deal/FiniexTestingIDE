@@ -1,6 +1,6 @@
 import re
 
-from python.framework.types.log_layout_types import SCENARIO_LOG_NAME_PATTERN
+from python.framework.constants.run_layout_constants import SCENARIO_LOG_NAME_PATTERN
 
 
 def sanitize_filename(name: str) -> str:

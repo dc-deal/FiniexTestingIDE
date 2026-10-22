@@ -21,6 +21,11 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from pydantic import ValidationError
 
+from python.framework.constants.run_layout_constants import (
+    ORDER_EVENTS_FILE,
+    ORDER_EVENTS_SCHEMA_VERSION,
+    ORDER_EVENTS_STREAM,
+)
 from python.framework.exceptions.report_artifact_errors import ReportArtifactUnreadableError
 from python.framework.reporting.io.jsonl_stream_writer import JsonlStreamWriter
 from python.framework.types.api.report_types import (
@@ -38,11 +43,6 @@ from python.framework.types.live_types.reconciliation_types import (
     BrokerOrder,
     BrokerPosition,
     ReconcileDivergence,
-)
-from python.framework.types.log_layout_types import (
-    ORDER_EVENTS_FILE,
-    ORDER_EVENTS_SCHEMA_VERSION,
-    ORDER_EVENTS_STREAM,
 )
 from python.framework.types.trading_env_types.order_event_types import (
     OrderEvent,

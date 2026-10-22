@@ -16,6 +16,12 @@ import pytest
 from fastapi.testclient import TestClient
 
 from python.api.api_app import create_app
+from python.framework.constants.run_layout_constants import (
+    IO_SUBDIR,
+    ORDER_EVENTS_FILE,
+    RUN_TYPE_AUTOTRADER,
+    RUN_TYPE_SIMULATION,
+)
 from python.framework.logging.global_logger import GlobalLogger
 from python.framework.reporting.io.artifact_specs import (
     AGGREGATED_PORTFOLIO_ARTIFACT,
@@ -94,12 +100,6 @@ from python.framework.types.live_types.broker_truth_types import (
     BrokerTruthSnapshot,
 )
 from python.framework.types.live_types.reconciliation_types import ReconcileState
-from python.framework.types.log_layout_types import (
-    IO_SUBDIR,
-    ORDER_EVENTS_FILE,
-    RUN_TYPE_AUTOTRADER,
-    RUN_TYPE_SIMULATION,
-)
 from python.framework.types.trading_env_types.broker_types import FeeSource
 from python.framework.types.trading_env_types.order_event_types import (
     OrderEvent,

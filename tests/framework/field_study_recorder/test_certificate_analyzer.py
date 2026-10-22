@@ -15,6 +15,7 @@ from typing import Optional
 
 import pytest
 
+from python.framework.constants.run_layout_constants import IO_SUBDIR
 from python.framework.reporting.acceptance_study_recorder import AcceptanceStudyRecorder
 from python.framework.reporting.acceptance_study_stream_projection import (
     AcceptanceStudyStreamProjection,
@@ -31,7 +32,6 @@ from python.framework.types.live_types.broker_truth_types import (
     BrokerTruthRecord,
     BrokerTruthSnapshot,
 )
-from python.framework.types.log_layout_types import IO_SUBDIR
 from python.framework.types.trading_env_types.broker_types import FeeSource
 from python.framework.types.trading_env_types.order_event_types import OrderEventPlane
 from python.framework.types.trading_env_types.order_types import FeeReport

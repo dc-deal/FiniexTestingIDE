@@ -121,7 +121,7 @@ root cannot make runs invisible to the API. Before that, the sim root was config
 was a hard-coded `Path('logs/autotrader')` and the reader assumed a third thing: changing the
 config would silently have emptied the run index.
 
-The type NAMES live in `framework/types/log_layout_types.py`, because they are a contract: the
+The type NAMES live in `framework/constants/run_layout_constants.py`, because they are a contract: the
 API publishes them as `RunInfo.group`. The index lists both types — a consumer that wants only
 standalone runs filters on `parent_id`, and an index that silently omitted a type would be its
 own surprise. `/sweeps` adds the sweep-shaped view on the same data: one sweep, its combinations

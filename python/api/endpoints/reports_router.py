@@ -26,6 +26,7 @@ from python.api.api_error_catalog import (
 from python.api.api_query_params import parse_iso_query
 from python.api.api_route_documents import describes
 from python.api.served_state_frames import describe_latest_state_frames, recording_of
+from python.framework.constants.run_layout_constants import STATE_FRAMES_FILE
 from python.framework.exceptions.api_errors import ApiException
 from python.framework.exceptions.report_artifact_errors import ReportArtifactUnreadableError
 from python.framework.reporting.io.artifact_specs import (
@@ -71,7 +72,6 @@ from python.framework.types.api.report_types import (
     WorkerDecisionReport,
 )
 from python.framework.types.api.state_frame_types import LatestStateFramesResponse, StateFrameCause
-from python.framework.types.log_layout_types import STATE_FRAMES_FILE
 
 router = APIRouter()
 

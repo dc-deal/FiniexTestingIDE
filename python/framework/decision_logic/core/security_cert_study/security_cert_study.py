@@ -20,6 +20,7 @@ import math
 from typing import Any, Dict, List, Optional
 
 from python.framework.acceptance_studies.abstract_acceptance_study import AbstractAcceptanceStudy
+from python.framework.constants.run_layout_constants import SECURITY_CERT_CAPTURE
 from python.framework.decision_logic.core.security_cert_study.security_cert_phase_machine import (
     SecurityCertPhaseMachine,
 )
@@ -33,7 +34,6 @@ from python.framework.types.acceptance_study_types.study_phase_types import (
     PhaseAction,
     PhaseResult,
 )
-from python.framework.types.log_layout_types import SECURITY_CERT_CAPTURE
 from python.framework.types.market_types.market_types import TradingContext
 from python.framework.types.parameter_types import InputParamDef
 from python.framework.types.trading_env_types.broker_types import SymbolSpecification

@@ -22,6 +22,13 @@ from typing import List, Optional
 
 from python.api.api_contract import API_CONTRACT_VERSION
 from python.configuration.app_config_manager import AppConfigManager
+from python.framework.constants.run_layout_constants import (
+    BACKTEST_GLOBAL_LOG_NAME,
+    BACKTEST_SYSTEM_INFO_LOG_NAME,
+    MOUNT_BUILD_LOG,
+    RUN_SUMMARY_LOG_NAME,
+    RUN_TYPE_SIMULATION,
+)
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.logging.system_info_writer import write_system_version_parameters
 from python.framework.reporting.io.run_header_io import data_windows_of
@@ -35,13 +42,6 @@ from python.framework.types.api.report_types import (
     TicksFrom,
 )
 from python.framework.types.config_types.robustness_config_types import RobustnessConfig
-from python.framework.types.log_layout_types import (
-    BACKTEST_GLOBAL_LOG_NAME,
-    BACKTEST_SYSTEM_INFO_LOG_NAME,
-    MOUNT_BUILD_LOG,
-    RUN_SUMMARY_LOG_NAME,
-    RUN_TYPE_SIMULATION,
-)
 from python.framework.types.run_config_types import RunConfigKind
 from python.framework.types.run_origin_types import CodeIdentity, RunChannel, RunOrigin
 from python.framework.types.scenario_types.scenario_set_types import (

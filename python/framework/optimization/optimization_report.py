@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from python.configuration.app_config_manager import AppConfigManager
+from python.framework.constants.run_layout_constants import SWEEP_RANKING_FILE
 from python.framework.optimization.optimization_analysis import (
     DegenerateRankingAdvisory,
     MixedLogicVersionAdvisory,
@@ -25,7 +26,6 @@ from python.framework.optimization.optimization_analysis import (
 )
 from python.framework.reporting.store.run_results_ledger import RunResultsLedger
 from python.framework.types.api.report_types import RunResultRow
-from python.framework.types.log_layout_types import SWEEP_RANKING_FILE
 
 
 

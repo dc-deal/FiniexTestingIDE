@@ -29,8 +29,8 @@ from typing import List, Optional
 from python.configuration.app_config_manager import AppConfigManager
 from python.framework.config_directory.config_directory import declared_run_purposes
 from python.framework.config_directory.config_directory_discovery import json_files_under
+from python.framework.constants.run_layout_constants import RUN_HEADER_ARTIFACT
 from python.framework.reporting.store.run_index import RunIndex
-from python.framework.types.log_layout_types import RUN_HEADER_ARTIFACT
 
 _OLD_KEY = '"person": '
 _NEW_KEY = '"principal": '

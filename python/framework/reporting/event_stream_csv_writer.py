@@ -22,8 +22,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional
 
+from python.framework.constants.run_layout_constants import SESSION_EVENTS_FILE
 from python.framework.types.event_stream_types import TradeEvent, TradeEventType
-from python.framework.types.log_layout_types import SESSION_EVENTS_FILE
 from python.framework.types.portfolio_types.portfolio_trade_record_types import TradeRecord
 from python.framework.types.trading_env_types.broker_trade_types import BrokerTrade
 from python.framework.types.trading_env_types.order_types import (

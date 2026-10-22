@@ -1,5 +1,5 @@
 """
-FiniexTestingIDE - Log Layout
+FiniexTestingIDE - Run Layout Constants
 The run types — the API's `group` values, and the keys of file_logging.run_logs — and the name of
 every file a run or a sweep directory holds, with the version of each stream's line shapes.
 """

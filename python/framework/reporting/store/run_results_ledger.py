@@ -93,7 +93,7 @@ LEDGER_COLUMNS: List[str] = [
     # the rows of one deployment, and the hash that says where the parameters moved.
     'deployment_id', 'bot_id', 'profile_hash',
     # WHICH PIPELINE produced this row — 'simulation' or 'autotrader', from the same two constants
-    # the run tree and the run index are named after (`log_layout_types`). Declared rather
+    # the run tree and the run index are named after (`run_layout_constants`). Declared rather
     # than inferred: before it, telling a backtest from an AutoTrader session meant reading
     # `input_plane`, which exists to answer a different question and is empty on everything
     # written before #518 — measured 2026-09-18, 520 of 616 rows could not say what they were.

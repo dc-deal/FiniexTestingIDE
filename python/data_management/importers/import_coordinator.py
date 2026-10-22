@@ -34,6 +34,7 @@ from python.data_management.index.bars_index_manager import BarsIndexManager
 from python.data_management.index.signal_index_manager import SignalIndexManager
 from python.data_management.index.tick_index_manager import TickIndexManager
 from python.framework.activities.activity_registry import ActivityRegistry
+from python.framework.constants.run_layout_constants import IMPORT_LOG_SUBDIR
 from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.store.import_timings_store import ImportTimingsStore
 from python.framework.types.activity_registry_types import ActivityKind
@@ -47,7 +48,6 @@ from python.framework.types.import_types.import_progress_types import (
     InboxFile,
     InboxScan,
 )
-from python.framework.types.log_layout_types import IMPORT_LOG_SUBDIR
 from python.framework.types.log_level import LogLevel
 from python.framework.types.run_origin_types import RunChannel
 from python.framework.utils.interrupt_utils import sigterm_as_interrupt

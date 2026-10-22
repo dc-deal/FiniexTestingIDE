@@ -22,8 +22,8 @@ import pytest
 
 from python.configuration.autotrader.autotrader_config_loader import load_autotrader_config
 from python.framework.autotrader.autotrader_main import AutotraderMain
+from python.framework.constants.run_layout_constants import IO_SUBDIR, ORDER_EVENTS_FILE
 from python.framework.reporting.certificates.field_study_certificate import FieldStudyCertificate
-from python.framework.types.log_layout_types import IO_SUBDIR, ORDER_EVENTS_FILE
 from python.framework.types.log_level import LogLevel
 from python.framework.types.trading_env_types.broker_types import FeeSource
 from python.framework.types.trading_env_types.order_types import FeeReport

@@ -12,6 +12,7 @@ raise outright, because UTF-8's third emoji byte (0x8F) is undefined in cp1252.
 """
 
 from pathlib import Path
+from python.framework.constants.run_layout_constants import TRADE_HISTORY_CSV
 from python.framework.reporting.io.artifact_specs import (
     TRADE_HISTORY_ARTIFACT,
     WARNINGS_ERRORS_ARTIFACT,
@@ -24,7 +25,6 @@ from python.framework.types.api.report_types import (
     WarningRow,
     WarningsErrorsReport,
 )
-from python.framework.types.log_layout_types import TRADE_HISTORY_CSV
 
 # Every report artifact names its run (#475); the value is opaque to these tests.
 _RUN_ID = '20260830_120000_a1b2c3d4'

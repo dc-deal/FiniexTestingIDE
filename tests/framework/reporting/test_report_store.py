@@ -10,6 +10,11 @@ import csv
 from datetime import datetime, timezone
 from pathlib import Path
 
+from python.framework.constants.run_layout_constants import (
+    IO_SUBDIR,
+    RUN_TYPE_AUTOTRADER,
+    RUN_TYPE_SIMULATION,
+)
 from python.framework.reporting.io.artifact_specs import (
     AGGREGATED_PORTFOLIO_ARTIFACT,
     BROKER_ARTIFACT,
@@ -62,11 +67,6 @@ from python.framework.types.api.report_types import (
 )
 from python.framework.types.config_types.file_logging_config_types import RunLogPaths
 from python.framework.types.trading_env_types.order_types import CloseType
-from python.framework.types.log_layout_types import (
-    IO_SUBDIR,
-    RUN_TYPE_AUTOTRADER,
-    RUN_TYPE_SIMULATION,
-)
 
 # Every report artifact names its run (#475); the value is opaque to these tests.
 _RUN_ID = '20260830_120000_a1b2c3d4'
