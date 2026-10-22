@@ -9,6 +9,13 @@ This is **opt-in** and **AutoTrader only** (a mock session skips it, see below).
 self-contained — there is no restart concept, so the subsystem never runs there. An algo
 that does not opt in is bypassed entirely (no file, no overhead).
 
+**What the run keeps of it.** The session log notes that a snapshot was loaded — when it was
+saved and how many keys it held — and whether the algo restored or rejected it. The snapshot's
+content is not kept with the run, and the session's next save overwrites the file. A backtest never
+restores one, so a difference between a restarted session and the backtest of its window can start
+here. If your decisions depend on restored memory, have `restore_state` log what it restored
+(`self.logger` writes to the session log).
+
 ## Scope — Category B only
 
 Restart recovery splits into three categories with three owners. This layer is **Category B**:
@@ -19,10 +26,11 @@ Restart recovery splits into three categories with three owners. This layer is *
 | **B — Algo memory** | counters, regime flags, daily flags, risk HWM | **Bot (this layer)** |
 | C — Framework op-state | safety baseline / high-water-mark | Framework (safety layer) |
 
-**Hard boundary:** persist only **position-independent** memory. Do **not** store live-position
-references and assume they exist after restart — until broker-side Cold-Start Recovery lands, the
-executor's position view starts empty on boot. Persist counters, flags and regime; not "I hold
-position #42".
+**Hard boundary:** persist only **position-independent** memory. Positions are the framework's: a
+real-money spot session restores the open position book from its own carry-over (Cold-Start
+Recovery), while a dry run and a margin session start without one. So an algo never stores "I hold
+position #42" and assumes it after a restart — it reads the positions the framework restored.
+Persist counters, flags and regime.
 
 ## The hooks
 
@@ -81,8 +89,9 @@ Monday (Forex). On 24/7 markets (crypto) trading days equal calendar days.
 Two policies (config `on_stale`):
 
 - **`warn_reset`** (default) — discard, start fresh, with a prominent warning. The bot resumes
-  with reset counters/flags. **Note:** open broker positions are not recognized yet (until
-  Cold-Start Recovery) — check your account before letting it run.
+  with reset counters/flags. **Note:** its positions are not part of this state — a real-money
+  spot session restores them from the framework's carry-over, a dry run or a margin session does
+  not; check your account before letting it run in those cases.
 - **`halt`** — refuse to boot; you decide (delete the state file to start fresh, or raise
   `max_age_trading_days`). For bots that trade real money.
 

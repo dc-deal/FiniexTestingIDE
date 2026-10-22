@@ -76,7 +76,7 @@ class MachineResourcesReader:
             # Wall clock, and legitimately: it stamps when WE looked, an observation of our own
             measured_at=datetime.now(timezone.utc),
             cpu=self._read_cpu(),
-            memory=self._read_memory(),
+            memory=self.read_memory(),
         )
 
     def _read_cpu(self) -> CpuReading:
@@ -109,9 +109,12 @@ class MachineResourcesReader:
             window_s=round(now - last_at, 2),
         )
 
-    def _read_memory(self) -> MemoryReading:
+    def read_memory(self) -> MemoryReading:
         """
-        The memory limit that binds, and how much of it is in use.
+        The memory limit that binds, and how much of it is in use — read alone.
+
+        A caller that needs no busy share reads this, so the processor window the next full
+        reading measures over still starts where the previous full reading ended (#603).
 
         Returns:
             The memory reading — the cgroup's where it is set below the machine's

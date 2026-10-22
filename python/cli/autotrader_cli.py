@@ -16,6 +16,7 @@ from python.framework.exceptions.host_identity_errors import HostIdentityError
 from python.framework.exceptions.live_execution_errors import (
     OneOffInsideDeploymentError,
 )
+from python.framework.exceptions.persistence_errors import BotAlreadyRunningError
 from python.framework.types.run_origin_types import RunChannel
 
 
@@ -76,6 +77,16 @@ def main():
              'names each such case), and the '
              'post-run validation reports it as a warning. It never permits code that changes '
              'while the session starts. A mock or dry-run session is never affected.')
+    run_parser.add_argument(
+        '--first-start', action='store_true',
+        help='Declare this the bot\'s FIRST start (#598). A session trading real money that '
+             'finds no carry-over it can use — none, an unreadable one, one in another format '
+             'or another profile\'s — refuses to start without it: after a deploy, that is a '
+             'start in the wrong data home (FINIEX_DATA_HOME), caught before it trades beside a '
+             'holding the venue still has. A declared first start that finds a usable '
+             'carry-over refuses too, so the flag left in a service unit switches nothing off. '
+             'Recorded in the run header (origin.first_start). A mock or dry-run session is '
+             'never affected.')
 
     # ─────────────────────────────────────────────────────────────────────────
     # Parse and execute
@@ -102,7 +113,8 @@ def main():
             trader = AutotraderMain(
                 config, attended=args.attended,
                 one_off=args.one_off, new_deployment=args.new_deployment,
-                channel=RunChannel.CLI, allow_dirty=args.allow_dirty)
+                channel=RunChannel.CLI, allow_dirty=args.allow_dirty,
+                first_start=args.first_start)
             result = trader.run()
 
             # The result carries the graded outcome; the CLI only maps it (#372)
@@ -116,6 +128,11 @@ def main():
         # trace under it would suggest something broke. Same exit code as a framework
         # emergency (#372) — the session did not start.
         print(f'\n🔗 {refusal}\n')
+        sys.exit(2)
+    except BotAlreadyRunningError as refusal:
+        # One bot runs once (#598): the session of this bot that holds the lock goes on, and
+        # this start ends as a refusal a supervisor does not restart
+        print(f'\n🔒 {refusal}\n')
         sys.exit(2)
     except HostIdentityError as refusal:
         # The same kind of refusal (#551): the installation's identity file exists but cannot be

@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import List, Optional, Tuple
 
 from python.configuration.app_config_manager import AppConfigManager
+from python.configuration.data_home import workspace_path
 from python.framework.types.certificate_types import CertificateIdentity, WorkspaceOverrides
 from python.framework.utils.config_merge_utils import is_config_isolation_active
 from python.framework.utils.run_origin_builder import capture_code_identity
@@ -101,7 +102,7 @@ def workspace_override_files() -> Tuple[List[str], int]:
     Returns:
         Tuple of (override names mirroring a committed config, count of further files)
     """
-    user_dir = Path('user_configs')
+    user_dir = workspace_path()
     if not user_dir.is_dir():
         return [], 0
 

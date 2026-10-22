@@ -5,7 +5,6 @@ Compact, colorful logging output
 ENTRY POINT: Initializes logger with auto-init via bootstrap_logger
 """
 
-from pathlib import Path
 from typing import List, Optional
 
 from python.configuration.app_config_manager import AppConfigManager
@@ -131,11 +130,6 @@ def run_profile_batch(
             window_sets, scenario_set_json
         )
 
-        # Attach profile source paths for log archival
-        scenario_config_data.generator_profile_paths = [
-            Path(p) for p in profile_paths
-        ]
-
         total_blocks = sum(ws.block_count for ws in window_sets)
         symbols = sorted(set(ws.symbol for ws in window_sets))
         vLog.info(
@@ -178,6 +172,7 @@ def initialize_batch_and_run(
     Returns:
         The BatchExecutionSummary, or None if the run failed at startup
     """
+    scenario_set: Optional[ScenarioSet] = None
     try:
         # ScenarioSet creates its own loggers internally
         scenario_set = ScenarioSet(
@@ -228,5 +223,10 @@ def initialize_batch_and_run(
             'Unexpected error during strategy test',
             exception=e
         )
+
+    finally:
+        # Nothing writes to the set's own log files after its report, or after a failed run.
+        if scenario_set is not None:
+            scenario_set.close_loggers()
 
     return None

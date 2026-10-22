@@ -4,7 +4,7 @@
 
 | Document | Description |
 |----------|-------------|
-| [Introduction to the IDE](introduction_to_the_ide.md) | The two pipelines, the kinds of run, and where each part is explained |
+| [Introduction to the IDE](introduction_to_the_ide.md) | The two pipelines, the kinds of run, what every run records so that an old one stays true, and where each part is explained |
 | [Glossary](glossary.md) | What each term means — one meaning per word |
 | [Quickstart Guide](user_guides/quickstart_guide.md) | Create your first strategy (Worker + Decision Logic + Config) |
 | [CLI Tools Guide](cli_tools_guide.md) | All CLI commands with examples and workflow overview |
@@ -119,6 +119,7 @@
 
 | Document | Description |
 |----------|-------------|
+| [What Runs on This Machine](architecture/activity_registry.md) | The activity list: one entry per running activity, held by a kernel lock, with the memory its processes hold |
 | [Process Execution](process_execution_guide.md) | Subprocess architecture, ProcessPoolExecutor |
 | [Tick Processing Budget](tick_processing_budget_guide.md) | Deterministic clipping simulation, virtual clock filtering |
 | [Discovery System](discovery_system.md) | Volatility profiling, extreme moves, data coverage caching |
@@ -155,6 +156,7 @@ Each test suite has its own documentation in [`tests/`](tests/).
 | [Live Executor](tests/autotrader/live_executor_tests.md) | LiveTradeExecutor pipeline |
 | [Loop Cadence](tests/autotrader/loop_cadence_tests.md) | Clock injection, heartbeat re-poll, decision ghost-pass (#360) |
 | [Algo State Persistence](tests/autotrader/state_persistence_tests.md) | Snapshot store, corrupt/stale policy, weekend-aware staleness, pre-flight (#354) |
+| [State Frames](tests/autotrader/state_frames_tests.md) | What a session records of its own state, moment by moment (#579): the cadence, the frames at a closed bar and an order, the last frame against the report |
 | [Order Guard](tests/autotrader/order_guard_tests.md) | Rejection cooldown, async callback |
 | [Cold Start](tests/autotrader/cold_start_tests.md) | Boot-time adoption of our own resting orders + the framework carry-over (#355) |
 | [Capital](tests/autotrader/capital_tests.md) | What the bot may actually spend (#489): committed funds on both check sites, the minimum-order boot refusal |
@@ -164,7 +166,7 @@ Each test suite has its own documentation in [`tests/`](tests/).
 | [Session Validation](tests/autotrader/session_validation_tests.md) | The AutoTrader Tier-1 channel: SessionPostRunValidator + the checks shared with the sim batch |
 | [API Monitor](tests/autotrader/api_monitor_tests.md) | Per-endpoint broker REST latency/error telemetry (#351) |
 | [Operator Alerts](tests/autotrader/operator_alerts_tests.md) | The alert channel, its dispatcher and the liveness ping (#235): the loop never waits, an outage costs one message, a refusal closes the channel, the ping follows the loop, no secret in a log line |
-| [Kraken Adapter](tests/autotrader/kraken_adapter_tests.md) | The adapter's pure layers, offline: nonce monotonicity (#332), the client order id on the wire (#473), and the stop / stop-limit price semantics in both directions (#500) |
+| [Kraken Adapter](tests/autotrader/kraken_adapter_tests.md) | The adapter's pure layers, offline: nonce monotonicity (#332), the client order id on the wire (#473), the stop / stop-limit price semantics in both directions (#500), and the venue's documented "not now" read as a passing fault (#598) |
 | [Test Taxonomy](tests/test_taxonomy.md) | The human-readable test map — which suite covers which pipeline domain |
 | [Baseline Tests](tests/simulation/baseline_tests.md) | Core functionality validation |
 | [Batch Core Tests](tests/simulation/batch_core_tests.md) | Prepare/execute seam (#417): split equivalence, mount reuse/determinism, data identity |
@@ -222,6 +224,7 @@ Each test suite has its own documentation in [`tests/`](tests/).
 | [Diagnostics CSV Sink Tests](tests/framework/diagnostics_csv_sink_tests.md) | Strategy-owned diagnostics CSV channel + flush helper |
 | [Bar Rendering Consistency](tests/framework/bar_rendering_tests.md) | BarRenderer vs VectorizedBarRenderer equivalence |
 | [Tick Parquet Reader](tests/framework/tick_parquet_reader_tests.md) | Column normalization, volume chain integration |
+| [Activity List Tests](tests/framework/activity_registry_tests.md) | The kernel lock, entering and leaving the list, a killed holder cleared, memory counted once, every long-running entry point |
 | [API Endpoint Tests](tests/framework/api_endpoint_tests.md) | Health, brokers, symbols, coverage, bars, caller, token accounts — mocked, no parquet required |
 | [Path-Based Loading](tests/framework/path_based_loading_tests.md) | Worker/logic path loading, introspection, CORE integrity |
 | [Market Compatibility](tests/framework/market_compatibility_tests.md) | Worker activity metric declaration, pre-flight scenario rejection |

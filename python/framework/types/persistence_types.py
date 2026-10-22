@@ -420,6 +420,8 @@ class CarryOverLoad:
             document too, because that is the one a boot must not overwrite
         session_keys: How many session keys it holds — the keys a successor recognises its
             resting orders by; counted for a FOREIGN document for the same reason
+        saved_at_utc: When the document was written, ISO-8601 UTC as it states; None when its
+            envelope could not be read — what the boot names as the carry-over it continued
     """
     path: str
     outcome: CarryOverLoadOutcome
@@ -427,6 +429,7 @@ class CarryOverLoad:
     writer_run_id: Optional[str] = None
     open_positions: int = 0
     session_keys: int = 0
+    saved_at_utc: Optional[str] = None
 
     def holds_venue_claims(self) -> bool:
         """

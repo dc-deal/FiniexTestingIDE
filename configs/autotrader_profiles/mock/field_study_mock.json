@@ -70,9 +70,11 @@
           "fill_timeout_s": 15
         },
         {
+          "_comment": "The size the live profile uses, for the same reason: both halves of a partial close have to clear ETHUSD's minimum size (0.002 since October 2026).",
           "phase_id": "partial_close_test",
           "phase_type": "partial_close",
           "side": "long",
+          "lots": 0.005,
           "fill_timeout_s": 15
         },
         {

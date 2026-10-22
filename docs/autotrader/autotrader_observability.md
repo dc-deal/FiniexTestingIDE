@@ -9,9 +9,9 @@ This document is what a session SHOWS and what it WRITES: the live console, the 
 monitor that says whether the loop kept up, and the three log channels with their distinct
 purposes.
 
-**Not here:** the end-of-run report — `docs/architecture/reporting_pipeline.md`. Which log file to
-open for which question — that table lives with the diagnostic sources. The warning and error
-tiers — `docs/architecture/warnings_errors_tiers.md`.
+**Not here:** the end-of-run report and the sections a run holds —
+`docs/architecture/reporting_pipeline.md`. The warning and error tiers —
+`docs/architecture/warnings_errors_tiers.md`.
 
 ## Live Console UI (#228)
 
@@ -56,7 +56,7 @@ Section names the place in the three-column layout.
 
 `Stream` and `Last Tick` measure different things intentionally:
 
-- **Stream** (`● connected / stale / dead`): based on `_last_message_time` — any WS message including Kraken heartbeats. Reflects connection health. Goes stale after 30s silence, dead after 90s.
+- **Stream** (`● connected / stale / dead`): the age of the last WS message, Kraken heartbeats included, on the monotonic clock. Reflects connection health, judged by the threshold the source itself acts on (`tick_source.connection_dead_s`, 10 s by default): stale from half of it, dead from all of it — where the source aborts the connection and reconnects.
 - **Last Tick**: based on `_last_tick_time` — only actual trade messages that produced `TickData`. Can be minutes old in quiet markets while `Stream` stays green.
 
 Both are read from `AbstractTickSource` once per frame (GIL-safe primitive reads) into a
@@ -196,11 +196,12 @@ Three `ScenarioLogger` instances per session, each with a distinct purpose:
 | Logger | File | Purpose | Console |
 |--------|------|---------|---------|
 | Global | `autotrader_global.log` | Startup phases, shutdown, cross-cutting errors | Direct `print()` during startup |
-| Session | `session_logs/autotrader_session_YYYYMMDD.log` | Per-tick processing, decisions, orders | Buffered (cleared before summary) |
+| Session | `autotrader_session.log` (the boot), then `session_logs/autotrader_session_YYYYMMDD.log` | Boot, then per-tick processing, decisions, orders | Buffered (cleared before summary) |
 | Summary | `autotrader_summary.log` | Post-session report, statistics | Flushed to console at end |
 
 - Directory: `runs/autotrader/<profile_name>/<run_id>/` (from `file_logging.run_logs.autotrader`)
-- Separate from simulation runs (`runs/simulation/`); `logs/` holds only `global.log`
+- Separate from simulation runs (`runs/simulation/`); `logs/` holds the machine-wide `global.log`
+  and the import logs (`logs/imports/`), never a session's
 - Session log **rotates daily** at this market's trading-day boundary (`trading_day_anchor`
   — the swap rollover for forex, midnight UTC for crypto), and rotated days older than
   `file_logging.session_logs.retention_days` are pruned with it (#357). The rule and its
@@ -208,7 +209,10 @@ Three `ScenarioLogger` instances per session, each with a distinct purpose:
 
 ```
 runs/autotrader/btcusd_mock/20260328_105127_a1b2c3d4/
+  header.json                     What the session is, written first: the configuration it
+                                  was given and runs with, its code, its window
   autotrader_global.log           Startup, shutdown, errors
+  autotrader_session.log          The session channel's boot: validation, data, the pipeline
   autotrader_summary.log          Post-session summary
   session_logs/
     autotrader_session_20260328.log  Day 1 tick processing
@@ -217,7 +221,22 @@ runs/autotrader/btcusd_mock/20260328_105127_a1b2c3d4/
                                   event (ORDER_SUBMIT / CLOSE_SUBMIT / FILL /
                                   POSITION_OPEN / POSITION_CLOSE / ORDER_REJECT).
                                   See trade_execution_visibility.md for schema.
+  io/                             The report sections — the broker section among them
+                                  (broker.json) — and the session's own records: the
+                                  order-event stream (order_events.jsonl), the
+                                  warmup history it started from (warmup_history.json),
+                                  its state moment by moment (state_frames.jsonl) and,
+                                  for a live tick source, the record of its outages and
+                                  refused trades (tick_stream_events.jsonl)
 ```
+
+The logs say what the session did; `header.json` and the records under `io/` say what it ran
+with — the configuration it was given and ran with, its code, the frozen broker configuration
+(`broker_config_id` in `io/broker.json`) and the bars its workers started from. The report
+sections are written at the end, so a session killed before them still names its frozen broker
+configuration in `autotrader_session.log`: `🏦 Broker configuration frozen as broker_config …`.
+Why a session writes all of this down:
+[A run is a record, and an old one stays true](../introduction_to_the_ide.md#a-run-is-a-record-and-an-old-one-stays-true).
 
 ### The event-time column — and why a mock session shows two dates
 

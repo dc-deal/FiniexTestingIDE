@@ -12,6 +12,7 @@ Happy path + one error case per endpoint as specified in #298.
 import re
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pandas as pd
@@ -189,7 +190,7 @@ class TestHealth:
 class TestBrokers:
 
     def test_list_brokers(self, client):
-        with patch('python.api.api_app.BarsIndexManager', return_value=_mock_index()):
+        with patch('python.api.endpoints.broker_router.BarsIndexManager', return_value=_mock_index()):
             r = client.get('/api/v1/brokers')
         assert r.status_code == 200
         assert set(r.json()['brokers']) == {'kraken_spot', 'mt5'}
@@ -202,15 +203,39 @@ class TestBrokers:
 class TestSymbols:
 
     def test_list_symbols(self, client):
+        # The broker configuration knows one of the two symbols the bar index holds (contract 35)
+        def specification(symbol):
+            if symbol == 'BTCUSD':
+                return SimpleNamespace(tick_size=0.1)
+            raise ValueError(f'Symbol {symbol} not found in broker configuration')
+
+        broker_config = MagicMock()
+        broker_config.get_symbol_specification.side_effect = specification
         with (
             patch('python.api.endpoints.broker_router.BarsIndexManager', return_value=_mock_index()),
             patch('python.api.endpoints.broker_router.MarketConfigManager', return_value=_mock_market_config()),
+            patch('python.api.endpoints.broker_router.BrokerConfigFactory.build_broker_config',
+                  return_value=broker_config),
         ):
             r = client.get('/api/v1/brokers/kraken_spot/symbols')
         assert r.status_code == 200
         data = r.json()
         assert all(s['market_type'] == 'crypto' for s in data['symbols'])
-        assert {s['symbol'] for s in data['symbols']} == {'BTCUSD', 'ETHUSD'}
+        assert {s['symbol']: s['tick_size'] for s in data['symbols']} == {
+            'BTCUSD': 0.1, 'ETHUSD': None}
+
+    def test_list_symbols_when_the_broker_configuration_cannot_be_read(self, client):
+        # The list comes from the bar index; only the price steps need the configuration
+        with (
+            patch('python.api.endpoints.broker_router.BarsIndexManager', return_value=_mock_index()),
+            patch('python.api.endpoints.broker_router.MarketConfigManager', return_value=_mock_market_config()),
+            patch('python.api.endpoints.broker_router.BrokerConfigFactory.build_broker_config',
+                  side_effect=FileNotFoundError('no such file')),
+        ):
+            r = client.get('/api/v1/brokers/kraken_spot/symbols')
+        assert r.status_code == 200
+        assert {s['symbol']: s['tick_size'] for s in r.json()['symbols']} == {
+            'BTCUSD': None, 'ETHUSD': None}
 
     def test_unknown_broker_returns_404(self, client):
         with patch('python.api.endpoints.broker_router.BarsIndexManager', return_value=_mock_index()):
@@ -248,6 +273,14 @@ class TestCoverage:
 # ---------------------------------------------------------------------------
 
 class TestBars:
+
+    @pytest.mark.parametrize('stamp', ['2026', '1760000000'])
+    def test_a_bare_number_is_refused_rather_than_read_as_unix_seconds(self, client, stamp):
+        # Contract 35: a `datetime` parameter read `2026` as 1970-01-01T00:33:46Z
+        r = client.get('/api/v1/brokers/kraken_spot/symbols/BTCUSD/bars',
+                       params={'timeframe': 'M30', 'from': stamp, 'to': '2026-02-01T00:00:00Z'})
+        assert r.status_code == 400
+        assert r.json()['error'] == 'invalid_timestamp'
 
     def test_bars_ok(self, client):
         with (

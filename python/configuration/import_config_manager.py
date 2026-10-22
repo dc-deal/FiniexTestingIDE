@@ -7,6 +7,7 @@ Provides typed accessors for offset registry, paths, and processing settings.
 
 from typing import Any, Dict, List
 
+from python.configuration.data_home import resolve_in_data_home
 from python.configuration.import_config_loader import ImportConfigFileLoader
 from python.framework.exceptions.timeframe_errors import UnsupportedTimeframeError
 from python.framework.types.config_types.import_config_types import ImportDisplayConfig
@@ -60,7 +61,7 @@ class ImportConfigManager:
                 "Missing required path 'data_raw' in import_config.json. "
                 "Add to 'paths' section: \"data_raw\": \"data/raw\""
             )
-        return path
+        return resolve_in_data_home(path)
 
     def get_import_output_path(self) -> str:
         """
@@ -76,7 +77,7 @@ class ImportConfigManager:
                 "Missing required path 'import_output' in import_config.json. "
                 "Add to 'paths' section: \"import_output\": \"data/processed\""
             )
-        return path
+        return resolve_in_data_home(path)
 
     def get_data_finished_path(self) -> str:
         """
@@ -92,7 +93,7 @@ class ImportConfigManager:
                 "Missing required path 'data_finished' in import_config.json. "
                 "Add to 'paths' section: \"data_finished\": \"data/finished\""
             )
-        return path
+        return resolve_in_data_home(path)
 
     def get_data_external_path(self) -> str:
         """
@@ -108,7 +109,7 @@ class ImportConfigManager:
                 "Missing required path 'data_external' in import_config.json. "
                 "Add to 'paths' section: \"data_external\": \"data/external\""
             )
-        return path
+        return resolve_in_data_home(path)
 
     def get_import_timings_path(self) -> str:
         """
@@ -118,7 +119,7 @@ class ImportConfigManager:
             Path of the timings file (default: data/runtime/import_timings.json)
         """
         paths = self._config.get('paths', {})
-        return paths.get('import_timings', DEFAULT_IMPORT_TIMINGS_PATH)
+        return resolve_in_data_home(paths.get('import_timings', DEFAULT_IMPORT_TIMINGS_PATH))
 
     # ============================================
     # Paths — Signal Data Source (#429)
@@ -137,7 +138,7 @@ class ImportConfigManager:
                 "Missing required path 'data_raw' in import_config.json. "
                 "Add to 'signal_paths' section: \"data_raw\": \"data/raw/signals\""
             )
-        return path
+        return resolve_in_data_home(path)
 
     def get_signal_import_output_path(self) -> str:
         """
@@ -153,7 +154,7 @@ class ImportConfigManager:
                 "Missing required path 'import_output' in import_config.json. "
                 "Add to 'signal_paths' section: \"import_output\": \"data/processed/signals\""
             )
-        return path
+        return resolve_in_data_home(path)
 
     def get_signal_data_finished_path(self) -> str:
         """
@@ -169,7 +170,7 @@ class ImportConfigManager:
                 "Missing required path 'data_finished' in import_config.json. "
                 "Add to 'signal_paths' section: \"data_finished\": \"data/finished/signals\""
             )
-        return path
+        return resolve_in_data_home(path)
 
     # ============================================
     # Paths — Test Environment

@@ -115,6 +115,10 @@ class SingleScenario:
     # What the ticks without a quote were given in place of one (#602); None when the scenario
     # read no file without a quote
     modelled_spread: Optional[ModelledSpreadSummary] = None
+    # When the venue's specification of this scenario's symbol — its minimums and steps — was last
+    # fetched into the runtime cache a dynamic broker's backtest reads it from (#608). None for a
+    # static broker, whose seed is a git-tracked file, and for an entry with no fetch stamp.
+    broker_spec_fetched_at: Optional[datetime] = None
 
     # === PROFILE RUN METADATA (populated from a WindowSet) ===
     is_profile_run: bool = False
@@ -198,7 +202,6 @@ class LoadedScenarioConfig:
     scenarios: List[SingleScenario]
     config_path: Path
     generator_profiles: Optional[List[WindowSet]] = None
-    generator_profile_paths: Optional[List[Path]] = None
     # Set-wide robustness mode (#367); None → disabled (treated as RobustnessConfig()).
     robustness: Optional[RobustnessConfig] = None
     # Scenarios the set switched off (`enabled: false`). The loader drops them before anything

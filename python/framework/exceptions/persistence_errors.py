@@ -59,6 +59,43 @@ class BotIdMalformedError(FiniexError):
     pass
 
 
+class BotAlreadyRunningError(FiniexError):
+    """
+    A session of this bot is already running on this machine (#598).
+
+    Raised at the very start of a session, before any carry-over is read or anything is sent,
+    when the kernel lock beside the bot's carry-over is held by another process. Two sessions of
+    one bot would adopt the same orders and overwrite each other's carry-over. The message names
+    the holder's run and process and the lock file; the start ends with exit 2, which a
+    supervisor does not restart.
+    """
+    pass
+
+
+class CarryOverRequiredError(FiniexError):
+    """
+    A session trading real money found no carry-over it can use, and its start was not declared
+    the bot's first (#598).
+
+    Absent, unreadable, in another format or written by another profile: in each case the
+    session would trade without knowing what the bot holds at the venue — the usual cause is a
+    start in the wrong data home, or a deploy into a code tree that found none. The message
+    names what was found, where, and the two ways forward: point FINIEX_DATA_HOME at the home
+    the last session wrote, or declare a genuine first start with --first-start.
+    """
+    pass
+
+
+class FirstStartContradictedError(FiniexError):
+    """
+    A start declared the bot's first (--first-start) found a carry-over it can use (#598).
+
+    The declaration would let the session start over a history it should continue; refusing
+    it means a flag left behind in a service unit cannot switch the rule off.
+    """
+    pass
+
+
 class CarryOverIdentityCollisionError(FiniexError):
     """
     Two AutoTrader profiles resolve to one carry-over identity.

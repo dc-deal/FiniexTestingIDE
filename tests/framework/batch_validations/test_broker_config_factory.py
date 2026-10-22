@@ -99,6 +99,24 @@ class TestConfigHashComputation:
         BrokerConfigFactory._inject_config_hashes(config_b)
         assert config_a['_config_meta']['symbols_hash'] == config_b['_config_meta']['symbols_hash']
 
+    def test_a_refresh_that_only_restamps_moves_neither_hash(self):
+        # Every fetch stamps each entry with when it was read; reading the same values again is
+        # the same configuration (#608)
+        older = {**_make_symbol('BTCUSD', 'BTC', 'USD'), '_last_fetched': '2026-10-01T00:00:00Z'}
+        newer = {**_make_symbol('BTCUSD', 'BTC', 'USD'), '_last_fetched': '2026-10-18T12:54:22Z'}
+        config_a = {'symbols': {'BTCUSD': older}, 'fee_structure': {'maker_fee': 0.25}}
+        config_b = {'symbols': {'BTCUSD': newer}, 'fee_structure': {'maker_fee': 0.25}}
+        BrokerConfigFactory._inject_config_hashes(config_a)
+        BrokerConfigFactory._inject_config_hashes(config_b)
+        assert config_a['_config_meta']['symbols_hash'] == config_b['_config_meta']['symbols_hash']
+        assert config_a['_config_meta']['config_hash'] == config_b['_config_meta']['config_hash']
+
+    def test_the_fetcher_and_the_factory_compute_one_hash(self):
+        symbols = {'BTCUSD': {**_make_symbol('BTCUSD', 'BTC', 'USD'), '_last_fetched': '2026-10-18T12:54:22Z'}}
+        config = {'symbols': symbols}
+        BrokerConfigFactory._inject_config_hashes(config)
+        assert BrokerConfigFactory.compute_symbols_hash(symbols) == config['_config_meta']['symbols_hash']
+
 
 class TestTheReproducibilityHashCoversTheFees:
     """

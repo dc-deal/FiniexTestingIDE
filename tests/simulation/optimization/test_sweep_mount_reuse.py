@@ -18,6 +18,7 @@ from python.framework.optimization.optimization_runner import OptimizationRunner
 from python.framework.reporting.store.run_results_ledger import RunResultsLedger
 from python.framework.types.mount_package_types import MountPackage
 from python.framework.types.process_data_types import ProcessResult
+from python.scenario.scenario_set import ScenarioSet
 
 MINI_GRID = 'tests/fixtures/optimization/btcusd_mini_grid.json'
 WARMUP_GRID = 'tests/fixtures/optimization/btcusd_mini_grid_warmup.json'
@@ -83,6 +84,28 @@ def test_data_level_abort_records_nothing(monkeypatch):
     sweep_id = OptimizationRunner().run(MINI_GRID)
 
     assert ledger.read_rows(sweep_id=sweep_id) == [], 'aborted sweep must record no runs'
+
+
+def test_the_mount_build_closes_its_log(monkeypatch):
+    """The base set exists only to build the mount, so its log is closed once the build is done —
+    on the abort path too, which leaves the sweep right after the build."""
+    empty_mount = MountPackage(
+        scenario_packages={}, clipping_stats_map={}, broker_configs={},
+        broker_scenario_map={}, signal_scenario_map={}, requirements_map=None,
+        warmup_phases=[], batch_warmup_time=0.0, data_identity={})
+    monkeypatch.setattr(BatchOrchestrator, 'build_mount', lambda self: empty_mount)
+    closed = []
+    real_close = ScenarioSet.close_loggers
+
+    def recording_close(self):
+        closed.append(self.printed_summary_logger is None)
+        real_close(self)
+
+    monkeypatch.setattr(ScenarioSet, 'close_loggers', recording_close)
+
+    OptimizationRunner().run(MINI_GRID)
+
+    assert closed == [True], 'the mount build set, which has no summary, closed its log once'
 
 
 def test_oom_villain_aborts_sweep(monkeypatch):

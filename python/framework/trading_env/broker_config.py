@@ -57,13 +57,14 @@ class BrokerConfig:
         self._broker_name = adapter.get_broker_name()
         self._capabilities = adapter.get_order_capabilities()
         self._symbol_specification: Dict[str, SymbolSpecification] = {}
-        # The run-config store's id of this configuration's frozen copy (#547) — set once by an
-        # AutoTrader session that froze it at start, empty everywhere else.
+        # The run-config store's id of this configuration's frozen copy (#547) — set once by the
+        # run that froze it at start, a session and a backtest alike; empty where nothing froze it
+        # or the freeze failed.
         self._frozen_config_id: str = ''
 
     def get_frozen_config_id(self) -> str:
         """
-        Where this configuration's content was frozen, if a session froze it.
+        Where this configuration's content was frozen, if a run froze it.
 
         Returns:
             The run-config store id, or an empty string when nothing froze it

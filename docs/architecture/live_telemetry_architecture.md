@@ -144,6 +144,38 @@ stream is the fast, lossy live feed. The two never share code:
 | Transport | persisted JSON/CSV → REST | mp.Queue / thread queue → console (push later) |
 | Model | `report_types.py` (Pydantic) | `LiveCoreSnapshot` + frames (`@dataclass`) |
 
+## The recorded state frame — not this stream
+
+The dashboard's frame is built only while a display runs, carries the latest state and drops the
+rest. The **state frame** (#579 part A) is a record: an AutoTrader session writes it into
+`io/state_frames.jsonl` whether or not a display runs — on a cadence of the canonical clock, when a
+bar of a timeframe its workers read closes, when the decision sends an order, and once at its end,
+at most one per pass of the loop. It is what a backtest of the same period is compared against
+(#512), and what the check-in on a running session reads (#611).
+
+| | Dashboard frame (this stream) | State frame (#579) |
+|---|---|---|
+| Written | while a display runs, every refresh | always, on its cadence and at its events |
+| Kept | latest wins | every frame, one flushed line each |
+| Outputs | those marked `display=True` | every output of every worker and of the decision |
+| A health nobody checked | a default (`reconcile_clean` true without a reconciler) | null |
+| Positions and orders | the dashboard's own rows | the rows the report serves, so the last frame agrees with it |
+
+It is built on its own from the session's objects — `framework/autotrader/run_record/state_frame_recorder.py`,
+the line `framework/types/api/state_frame_types.py` — and written through the run-stream appender
+(`framework/reporting/io/run_stream_appender.py`), the hot half of #476's day records. The process's
+memory rides on every frame of a live session. A replay compresses hours into seconds, and reading
+the memory costs about a millisecond in a session-sized process, so a replay reads it at most once
+per cadence interval of the monotonic clock and at its last frame.
+
+**Served while it is written (#611).** `GET /api/v1/reports/runs/{run_id}/state-frames/latest`
+reads the stream's two ends — its header, its first frame and its last complete line — never the
+lines between (`framework/reporting/io/run_stream_reader.py`), and serves each unit's latest frame
+with its age and `recording`: `current`, `stopped` (no frame for three cadences and no end
+recorded) or `ended`. Nothing reaches into the running session; the record is the only thing
+between the session and the API server. The consumer's side is the served document
+[state frames](../consumer/state-frames.md).
+
 ## Files
 
 - Producers: `framework/process/process_live_export.py` (sim), `framework/process/process_live_queue_helper.py` + `framework/batch/live_stats_coordinator.py` (sim status), `framework/autotrader/autotrader_display_exporter.py` (AutoTrader)

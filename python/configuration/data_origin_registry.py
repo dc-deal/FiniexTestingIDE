@@ -14,6 +14,7 @@ from typing import Any, Dict, Optional
 
 from pydantic import ValidationError
 
+from python.configuration.data_home import workspace_path
 from python.framework.types.config_types.data_origin_config_types import (
     DataOriginConfig,
     OriginClass,
@@ -27,7 +28,9 @@ from python.framework.utils.config_merge_utils import (
 from python.framework.utils.version_utils import parse_version
 
 _CONFIG_PATH = 'configs/data_origins.json'
-_USER_CONFIG_PATH = 'user_configs/data_origins.json'
+# The workspace override is the copy under the data home; a test may point this at a file of its own.
+_USER_CONFIG_PATH: Optional[str] = None
+_USER_CONFIG_NAME = 'data_origins.json'
 
 # The key of the origin block inside a source file's metadata, and the fields this side reads
 # from it. Everything else in the block is forensic and deliberately never decided on.
@@ -73,7 +76,8 @@ class DataOriginRegistry:
                 attestation list
         """
         self._config_path = config_path or _CONFIG_PATH
-        self._user_config_path = user_config_path or _USER_CONFIG_PATH
+        self._user_config_path = (user_config_path or _USER_CONFIG_PATH
+                                  or str(workspace_path(_USER_CONFIG_NAME)))
 
     def resolve(self, instance_id: Optional[str], format_version: str, *,
                 broker_type: str = '', pipeline_id: str = '') -> OriginResolution:

@@ -6,9 +6,10 @@ report (the same canonical model the console + CSV render), with parameter
 filtering pre-applied so the frontend renders, not derives.
 """
 
+from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, Request
 
 from python.api.api_error_catalog import (
     ARTIFACT_NOT_PRODUCED,
@@ -18,10 +19,13 @@ from python.api.api_error_catalog import (
     RUN_HEADER_MISSING,
     RUN_NOT_COMPLETED,
     RUN_NOT_FOUND,
+    STATE_FRAME_NOT_WRITTEN_YET,
+    STATE_FRAMES_NOT_RECORDED,
     api_error,
 )
 from python.api.api_query_params import parse_iso_query
 from python.api.api_route_documents import describes
+from python.api.served_state_frames import describe_latest_state_frames, recording_of
 from python.framework.exceptions.api_errors import ApiException
 from python.framework.exceptions.report_artifact_errors import ReportArtifactUnreadableError
 from python.framework.reporting.io.artifact_specs import (
@@ -41,6 +45,7 @@ from python.framework.reporting.io.artifact_specs import (
     WORKER_DECISION_ARTIFACT,
 )
 from python.framework.reporting.store.report_store import ReportStore
+from python.framework.types.api.recording_state_types import RecordingState
 from python.framework.types.api.report_types import (
     AggregatedPortfolioReport,
     BookingPeriodsReport,
@@ -65,6 +70,8 @@ from python.framework.types.api.report_types import (
     WarningsErrorsReport,
     WorkerDecisionReport,
 )
+from python.framework.types.api.state_frame_types import LatestStateFramesResponse, StateFrameCause
+from python.framework.types.log_layout_types import STATE_FRAMES_FILE
 
 router = APIRouter()
 
@@ -100,19 +107,62 @@ def _missing_artifact(run_id: str, section: str) -> ApiException:
 
 @router.get('/reports/runs', response_model=RunListResponse,
             openapi_extra=describes('runs'))
-def list_runs() -> RunListResponse:
+def list_runs(request: Request) -> RunListResponse:
     """
     Every indexed run, newest first, each with what the run-results ledger recorded it did.
 
     Every run is here, whether or not it produced a report: a run with no artifacts exists as
     logs only, and `artifacts` being empty beside `reporting` is what separates a run that died
-    before its report phase from one that was never commissioned to write any.
+    before its report phase from one that was never commissioned to write any. A run that records
+    state frames also says whether it still records (#611) — the only thing that tells a running
+    session from one that died, since neither has reached the ledger.
+
+    Args:
+        request: The request, for the thresholds and the runs already read as ended
 
     Returns:
         The RunListResponse (empty list when nothing has been indexed yet)
     """
-    runs: list[RunInfo] = ReportStore().list_runs_with_results()
+    store = ReportStore()
+    runs: list[RunInfo] = store.list_runs_with_results()
+    served_at = datetime.now(timezone.utc)
+    runs = [run.model_copy(update={'recording': _recording_of_row(store, run, request, served_at)})
+            if STATE_FRAMES_FILE in run.stream_files else run
+            for run in runs]
     return RunListResponse(runs=runs, count=len(runs))
+
+
+def _recording_of_row(store: ReportStore, run: RunInfo, request: Request,
+                      served_at: datetime) -> Optional[RecordingState]:
+    """
+    Whether a run that records state frames still records, for its row in the run list.
+
+    The verdict comes from the stream alone, never from the ledger: once each closed day books its
+    own row there (#476), a ledger row no longer means the session ended. An ended recording cannot
+    change — the stream's last line stays its end frame — so a run read as ended is remembered and
+    not read again; a running, a dead and a hanging session are read on every call.
+
+    Args:
+        store: The report store
+        run: The run's row
+        request: The request, for the thresholds and the runs already read as ended
+        served_at: The moment of the answer, on the wall clock
+
+    Returns:
+        The verdict, or None when the stream holds no frame yet or cannot be read
+    """
+    ended_runs = request.app.state.ended_recordings
+    if run.run_id in ended_runs:
+        return RecordingState.ENDED
+    try:
+        ends = store.get_state_frame_ends(run.run_id)
+    except ReportArtifactUnreadableError:
+        # A damaged stream costs its row the verdict, never the list; the route names the cause
+        return None
+    recording = recording_of(ends, run, request.app.state.state_frames_thresholds, served_at)
+    if recording == RecordingState.ENDED:
+        ended_runs.add(run.run_id)
+    return recording
 
 
 @router.get('/reports/runs/{run_id}/trade-history', response_model=TradeHistoryReport,
@@ -201,6 +251,42 @@ def get_order_events(
     if report is None:
         raise _missing_artifact(run_id, 'order-events')
     return report
+
+
+@router.get('/reports/runs/{run_id}/state-frames/latest', response_model=LatestStateFramesResponse,
+            openapi_extra=describes('state-frames'))
+def get_latest_state_frames(run_id: str, request: Request) -> LatestStateFramesResponse:
+    """
+    The latest state frame of each unit of a run, its age, and whether the session still records
+    (#611) — the check-in on a running session, read from the stream's two ends while it is written.
+
+    Args:
+        run_id: The run's id (<timestamp>_<hash>), resolved through the run index
+        request: The request, for the thresholds the application read at its start
+
+    Returns:
+        The LatestStateFramesResponse (404 naming why there is no frame, 409 if the stream or the
+        end classification cannot be read)
+    """
+    store = ReportStore()
+    run = next((info for info in store.list_runs() if info.run_id == run_id), None)
+    if run is None:
+        raise api_error(RUN_NOT_FOUND, run_id=run_id)
+    try:
+        ends = store.get_state_frame_ends(run_id)
+        if ends is None:
+            raise api_error(STATE_FRAMES_NOT_RECORDED, run_id=run_id)
+        if ends.last is None:
+            raise api_error(STATE_FRAME_NOT_WRITTEN_YET, run_id=run_id)
+        outcome = None
+        if ends.last.written_for == StateFrameCause.SHUTDOWN:
+            # The end classification is written by the report phase, seconds after the last frame
+            report = store.get(run_id, WARNINGS_ERRORS_ARTIFACT)
+            outcome = report.outcome if report is not None else None
+    except ReportArtifactUnreadableError as e:
+        raise api_error(ARTIFACT_UNREADABLE, reason=str(e)) from e
+    return describe_latest_state_frames(
+        ends, run, outcome, request.app.state.state_frames_thresholds, datetime.now(timezone.utc))
 
 
 @router.get('/reports/runs/{run_id}/portfolio', response_model=PortfolioReport,

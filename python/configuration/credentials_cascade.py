@@ -1,8 +1,8 @@
 """
 FiniexTestingIDE - Credentials Cascade
 
-Where a configured credentials file is read from: the operator's workspace copy first, the
-tracked default second. Every credential in this project is named by a path below the
+Where a configured credentials file is read from: the operator's workspace copy first — under
+the data home (`data_home.py`) — and the tracked default second. Every credential in this project is named by a path below the
 credentials directory (`venues/kraken_credentials.json`, `peers/rag_credentials.json`), and this
 is the one place that turns such a name into a file. A venue adapter, a peer client and the
 operator alert channel ask here rather than carrying a copy of the rule — so an adapter moved
@@ -15,8 +15,11 @@ rule lives with them (`api_auth/inbound_credentials_cascade.py`).
 from pathlib import Path
 from typing import Optional
 
-# The cascade every credential in this project uses, most specific first.
-WORKSPACE_CREDENTIALS_DIR = 'user_configs/credentials'
+from python.configuration.data_home import workspace_path
+
+# The cascade every credential in this project uses, most specific first: the directory below
+# the operator's workspace, then the tracked one.
+WORKSPACE_CREDENTIALS_SUBDIR = 'credentials'
 TRACKED_CREDENTIALS_DIR = 'configs/credentials'
 
 
@@ -51,7 +54,17 @@ def workspace_credentials_path(credentials_file: str) -> Path:
     Returns:
         The workspace path, whether or not it exists
     """
-    return Path(WORKSPACE_CREDENTIALS_DIR) / credentials_file
+    return workspace_credentials_dir() / credentials_file
+
+
+def workspace_credentials_dir() -> Path:
+    """
+    The operator's credentials directory, in the workspace under the data home.
+
+    Returns:
+        The directory, whether or not it exists
+    """
+    return workspace_path(WORKSPACE_CREDENTIALS_SUBDIR)
 
 
 def tracked_credentials_path(credentials_file: str) -> Path:

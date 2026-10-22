@@ -50,12 +50,15 @@ class RunOrigin(BaseModel):
         host: The installation's minted identity (`user_configs/host_identity.json`)
         allow_dirty: Whether the operator explicitly allowed real orders from uncommitted code
             (`--allow-dirty`); recorded because an override nobody can see afterwards is not one
+        first_start: Whether the operator declared this the bot's first start (`--first-start`) —
+            the one way a session trading real money starts without a carry-over (#598)
     """
     channel: RunChannel
     client: str
     principal: str
     host: str
     allow_dirty: bool = False
+    first_start: bool = False
 
 
 class RepositoryState(BaseModel):

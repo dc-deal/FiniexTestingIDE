@@ -10,15 +10,17 @@ writer, so two writers of one target cannot rename each other's half-written fil
 import os
 import tempfile
 from pathlib import Path
+from typing import Optional
 
 
-def write_text_atomic(path: Path, text: str) -> None:
+def write_text_atomic(path: Path, text: str, mode: Optional[int] = None) -> None:
     """
     Write a text file atomically.
 
     Args:
         path: The file to write; its directory is created when missing
         text: The full content, written as UTF-8
+        mode: The file's permissions; the process's usual mode when omitted
 
     Returns:
         None
@@ -30,8 +32,8 @@ def write_text_atomic(path: Path, text: str) -> None:
         with os.fdopen(handle, 'w', encoding='utf-8') as stream:
             stream.write(text)
         # mkstemp makes the file readable by its owner only; the file it replaces got the
-        # process's usual mode, and so does this one
-        os.chmod(temporary, 0o666 & ~_current_umask())
+        # process's usual mode, and so does this one unless the caller names another
+        os.chmod(temporary, mode if mode is not None else 0o666 & ~_current_umask())
         os.replace(temporary, path)
     except BaseException:
         Path(temporary).unlink(missing_ok=True)

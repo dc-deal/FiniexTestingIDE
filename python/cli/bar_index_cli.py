@@ -23,6 +23,7 @@ from python.data_management.importers.bar_importer import BarImporter
 from python.data_management.index.bars_index_manager import BarsIndexManager
 from python.framework.discoveries.discovery_cache_manager import DiscoveryCacheManager
 from python.framework.logging.bootstrap_logger import get_global_logger
+from python.framework.types.run_origin_types import RunChannel
 from python.framework.utils.activity_volume_provider import get_activity_provider
 from python.framework.utils.interrupt_utils import sigterm_as_interrupt
 
@@ -58,7 +59,7 @@ class BarIndexCli:
             print('\n⏭️  Discovery caches left untouched (--no-caches)')
         else:
             print('\n🔄 Rebuilding discovery caches...')
-            DiscoveryCacheManager().rebuild_all(force=True)
+            DiscoveryCacheManager().rebuild_all(force=True, channel=RunChannel.CLI)
 
         print('\n✅ Bar index rebuild complete\n')
 

@@ -99,6 +99,8 @@ def _make_loop(stale_after_s: float, last_tick_wall: float,
     loop._market_stale_since = None
     loop._last_reconnect_count = 0
     loop._last_real_tick_wall_time = last_tick_wall
+    # The canonical time of the last tick; unset here, so the alert names the flip for both
+    loop._last_tick_time = None
     loop._tick_source = tick_source or _StubTickSource()
     loop._executor = _StubExecutor(now)
     loop._decision_logic = _HookRecorder()
@@ -143,6 +145,16 @@ class TestLoopEvaluation:
         loop._evaluate_market_data_staleness()
         assert len(loop._decision_logic.calls) == 1
         assert loop._executor.get_market_data_status().seconds_since_last_tick == 400.0
+
+    def test_the_warning_names_the_last_tick_and_the_flip(self, monkeypatch):
+        """One episode, two instants: when the feed fell silent, and when entries were blocked."""
+        loop = _make_loop(300.0, last_tick_wall=1000.0, now=_utc(2026, 1, 15, 8, 0))
+        loop._last_tick_time = _utc(2026, 1, 15, 7, 55)
+        monkeypatch.setattr(time_module, 'time', lambda: 1301.0)
+        loop._evaluate_market_data_staleness()
+        warning = loop._logger.warning.call_args[0][0]
+        assert 'Market data stale since 08:00:00' in warning
+        assert 'no tick since 07:55:00' in warning
 
     def test_below_threshold_stays_fresh(self, monkeypatch):
         loop = _make_loop(300.0, last_tick_wall=1000.0, now=_utc(2026, 1, 15, 8, 0))
@@ -294,6 +306,25 @@ class TestLoopEvaluation:
         # No re-warn without a new delta
         loop._evaluate_market_data_staleness()
         assert loop._logger.warning.call_count == 1
+
+    def test_the_recovered_status_counts_the_outage_that_just_ended(self, monkeypatch):
+        """The source counts an outage when the first trade after it arrives — the very tick that
+        ends the stale episode — so the recovery reads the count itself (#609)."""
+        source = _StubTickSource(reconnects=0)
+        loop = _make_loop(300.0, last_tick_wall=1000.0, now=_utc(2026, 1, 15, 7, 55),
+                          tick_source=source)
+        monkeypatch.setattr(time_module, 'time', lambda: 1000.0)
+        _observe_tick(loop, _utc(2026, 1, 15, 7, 55))
+        monkeypatch.setattr(time_module, 'time', lambda: 1301.0)
+        loop._evaluate_market_data_staleness()
+
+        source.reconnects = 1
+        monkeypatch.setattr(time_module, 'time', lambda: 1400.0)
+        _observe_tick(loop, _utc(2026, 1, 15, 8, 5))
+
+        assert loop._executor.get_market_data_status().reconnect_count == 1
+        assert any('reconnected' in call.args[0]
+                   for call in loop._logger.warning.call_args_list)
 
 
 class TestOrderGuardStaleBlock:

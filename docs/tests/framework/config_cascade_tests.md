@@ -18,6 +18,8 @@ The `tests/framework/config/` suite holds complementary test files:
   fingerprints; and the folder rule — every configuration in the test folders declares
   `fixture`, the field-study profiles `certificate`, no production or observation profile
   anything else.
+- **`test_data_home.py`** — where the operator's state lives (#598). See
+  [The data home](#test_data_homepy--where-the-operators-state-lives) below.
 - **`test_committed_data_origin.py`** — nothing kept in `configs/` or `tests/fixtures/` rests
   on external data (#561): no generator profile records `external` among its origin classes,
   and one without the field predates external data; no scenario set's window or warmup reaches
@@ -200,6 +202,9 @@ The conversion itself is tested in [Server Clock Tests](server_clock_tests.md).
   names it; extend `_probe_value` or the dict branch of `_probes`
 - **A value some block refuses by design** (`abort` for the Telegram ladder) — add it to
   `_REFUSED_PROBES`, so the probe takes another
+- **A string a block takes only from a vocabulary** (`state_frames.cadence_timeframe` names a
+  timeframe, which `<default>_probe` never does) — add its dotted path and another value of the
+  vocabulary to `_VOCABULARY_PROBES`
 - **A new mock-auto-disable resolution** — add it to the third test when its default is on;
   when it is off, pin it where the default can be switched on first, as the operator alerts do
 
@@ -279,3 +284,25 @@ test itself. The operator's own `user_configs/host_identity.json` is never read.
 moment it is read. Two processes minting on the same first start would, with a rename, leave the
 earlier one's runs naming an identity the file no longer holds. The mint therefore writes a
 temporary file and hard-links it to its final name, which fails when the file already exists.
+
+## `test_data_home.py` — where the operator's state lives
+
+A deploy on a server is a restart into another code tree, and the new tree has to find what the
+old one wrote: the carry-over, the records, the workspace. One environment variable,
+`FINIEX_DATA_HOME`, names the directory all of it lives under; unset, the working directory is
+the home and every path stays exactly as configured (#598). The danger is a path nobody routed
+through the home: it stays in the code tree, and the first deploy starts it empty without a word.
+Two of the tests here are guards against exactly that, and they need no list of what to check —
+a store or a workspace file added later is covered the moment it exists.
+
+| Group | What it pins |
+|------|-------------|
+| `TestWithoutAHome` | with the variable unset a path is returned as configured — the same string or `Path`, relative — and the workspace is `user_configs/`; the boot line says the variable is not set |
+| `TestWithAHome` | a relative path moves under the home and keeps its type, an absolute one stands for itself, the workspace lies under the home, and a relative strategy file is looked up in the home first and in the tree second |
+| `TestARefusedHome` | a home that is not an existing directory is refused and NOT created, and a relative value is refused — a relative home would move with the working directory |
+| `TestTheStoresLieInTheHome` | in a fresh process with the variable set, every store root and index of the catalog lies under the home except the committed stores and the machine-wide activity list, which must not; and the app config override is read from the home's workspace |
+| `TestNoSecondWorkspacePath` | no module but `data_home.py` spells a path into `user_configs/`; docstrings and enum labels are passed over |
+
+The two store tests run in a subprocess on purpose: the session's own isolation fixtures patch the
+getters this file has to see unpatched. The suite itself clears `FINIEX_DATA_HOME` at start
+(`tests/conftest.py`), so a home named in a developer's shell never receives a test's records.

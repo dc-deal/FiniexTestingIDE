@@ -5,9 +5,10 @@ Read-only FastAPI application over the data and the records this project already
 data by venue, a run's persisted report sections, a sweep's ranked combinations, a live bot's
 history across its restarts. Entry point: python/cli/api_server_cli.py
 
-The routes are NOT listed here. They are one table in docs/architecture/api_server_architecture.md,
-which says for each what it serves and what it deliberately does not — a second list beside it
-would be the copy nobody updates. `ROUTER_SURFACES` below is the authoritative mount table.
+The routes are NOT listed here. What each one serves stands in the document it declares
+(`describes(...)`, served from docs/consumer/); the architecture document keeps no route table
+either, on purpose — a second list would be the copy nobody updates. `ROUTER_SURFACES` below is
+the authoritative mount table.
 """
 
 import textwrap
@@ -33,35 +34,28 @@ from python.api.endpoints import (
     deployments_router,
     directory_router,
     docs_router,
+    machine_router,
     reports_router,
     sweeps_router,
 )
 from python.configuration.app_config_manager import AppConfigManager
-from python.data_management.index.bars_index_manager import BarsIndexManager
+from python.configuration.data_home import describe_data_home
+from python.framework.activities.activity_registry_reader import ActivityRegistryReader
 from python.framework.docs_search.docs_corpus import DOCS_ROOT
 from python.framework.docs_search.docs_search_index import docs_search_index
 from python.framework.exceptions.api_errors import ApiException
 from python.framework.types.api.api_identity_types import ApiConsumerIdentity
 from python.framework.types.api.api_types import (
     ApiContractResponse,
-    BrokerListResponse,
     CallerResponse,
     HealthResponse,
-    MachineCpuResponse,
-    MachineMemoryResponse,
-    MachineResourcesResponse,
     TimeframeInfo,
     TimeframeListResponse,
     ValidationCheckListResponse,
     ValidationCheckRow,
 )
-from python.framework.types.config_types.machine_resources_config_types import (
-    MachineResourcesConfig,
-)
-from python.framework.types.machine_resources_types import MachineResourcesReading
 from python.framework.utils.machine_resources_reader import MachineResourcesReader
 from python.framework.utils.timeframe_config_utils import TimeframeConfig
-from python.framework.validators.machine_pressure_validator import judge_memory_pressure
 from python.framework.validators.validation_check_catalog import VALIDATION_CHECKS
 
 # Every gated router and the surface its grants name. The surface is the ROUTER's name, and a
@@ -79,6 +73,7 @@ ROUTER_SURFACES = (
     (deployments_router.router, 'deployments'),
     (directory_router.router, 'directory'),
     (docs_router.router, 'docs'),
+    (machine_router.router, 'machine'),
     (reports_router.router, 'reports'),
     (sweeps_router.router, 'sweeps'),
 )
@@ -86,9 +81,12 @@ ROUTER_SURFACES = (
 # The routes made to be polled. A client asks them every few seconds, so a successful answer stays
 # out of the server's access log, which would otherwise write a line per reading and bury the
 # requests that carry meaning; a failed answer is still logged. A route joins when its document
-# recommends asking it in a steady rhythm (#595).
+# recommends asking it in a steady rhythm (#595); a path is written as mounted, so a segment in
+# braces stands for any run id (#611).
 POLLED_PATHS = frozenset({
+    '/api/v1/activities',
     '/api/v1/machine-resources',
+    '/api/v1/reports/runs/{run_id}/state-frames/latest',
 })
 
 # The bar routes answer with a bare array, so everything a consumer needs ABOUT the rows travels
@@ -137,40 +135,6 @@ def _describe_caller(request: Request, enforced: bool,
         display_name=identity.account.display_name,
         grants=list(identity.grants),
         note=identity.note,
-    )
-
-
-def _describe_machine(reading: MachineResourcesReading,
-                      thresholds: MachineResourcesConfig) -> MachineResourcesResponse:
-    """
-    Serve one reading of the machine, with the pressure verdict on its memory.
-
-    Args:
-        reading: The processors and the memory, read now
-        thresholds: Where `warn` and `critical` begin
-
-    Returns:
-        The reading as served, its thresholds beside the memory they grade
-    """
-    level, reasons = judge_memory_pressure(reading.memory, thresholds)
-    return MachineResourcesResponse(
-        measured_at=reading.measured_at.isoformat(),
-        cpu=MachineCpuResponse(
-            count=reading.cpu.count,
-            count_source=reading.cpu.count_source,
-            used_pct=reading.cpu.used_pct,
-            window_s=reading.cpu.window_s,
-        ),
-        memory=MachineMemoryResponse(
-            limit_bytes=reading.memory.limit_bytes,
-            used_bytes=reading.memory.used_bytes,
-            used_pct=reading.memory.used_pct,
-            limit_source=reading.memory.limit_source,
-            warn_at_pct=thresholds.memory_warn_pct,
-            critical_at_pct=thresholds.memory_critical_pct,
-        ),
-        pressure_level=level,
-        pressure_reasons=reasons,
     )
 
 
@@ -226,8 +190,11 @@ def create_app() -> FastAPI:
     # already has a window to measure over (#595)
     machine_reader = MachineResourcesReader()
     machine_thresholds = AppConfigManager().get_machine_resources_config()
+    state_frames_thresholds = AppConfigManager().get_state_frames_api_config()
     auth = setup_api_auth()
     print(auth.boot_line)
+    # Which data home this server reads its stores from — the one its sessions write (#598)
+    print(describe_data_home())
 
     # Every protected router carries the bearer check, and it is mounted on the ROUTER rather
     # than on its routes: a route added later inherits it by construction, so the failure this
@@ -253,6 +220,15 @@ def create_app() -> FastAPI:
         docs_url='/docs' if interactive else None,
         redoc_url='/redoc' if interactive else None,
     )
+    # What the machine routes read, built once per application (#595, #603)
+    app.state.machine_reader = machine_reader
+    app.state.machine_thresholds = machine_thresholds
+    # When the latest-frame route reads a session's recording as stopped (#611)
+    app.state.state_frames_thresholds = state_frames_thresholds
+    # The runs the run list has read as ended: an ended recording cannot change, so their streams
+    # are not read again while the application runs (#611)
+    app.state.ended_recordings = set()
+    app.state.activity_reader = ActivityRegistryReader()
 
     app.add_middleware(
         CORSMiddleware,
@@ -339,29 +315,14 @@ def create_app() -> FastAPI:
             for info in VALIDATION_CHECKS
         ])
 
-    @app.get('/api/v1/brokers', response_model=BrokerListResponse,
-             dependencies=guarded, openapi_extra=describes('market-data'))
-    def list_brokers() -> BrokerListResponse:
-        index = BarsIndexManager()
-        index.load_index()
-        return BrokerListResponse(brokers=index.list_broker_types())
-
-    # Token-only like /brokers, and for the same reason it takes no grant: it is about the
-    # CALLER, and there is no path parameter for a grant to name. Deliberately not in
-    # ROUTER_SURFACES — a surface here would be a grant a token needs in order to ask what it
+    # Token-only, and it takes no grant: it is about the CALLER — what the application says
+    # about whoever asks — and there is no path parameter for a grant to name. Deliberately not
+    # in ROUTER_SURFACES — a surface here would be a grant a token needs in order to ask what it
     # holds.
     @app.get('/api/v1/caller', response_model=CallerResponse, dependencies=guarded,
              openapi_extra=describes('server'))
     def caller(request: Request) -> CallerResponse:
         return _describe_caller(request, auth.bearer is not None, auth.identities)
-
-    # Token-only like /brokers and /caller, and for the same reason it takes no grant: it is about
-    # the machine this server runs on, and there is no path parameter for a grant to name (#595).
-    # Not open like /health: a machine's load is nothing a stranger needs to read.
-    @app.get('/api/v1/machine-resources', response_model=MachineResourcesResponse,
-             dependencies=guarded, openapi_extra=describes('server'))
-    def machine_resources() -> MachineResourcesResponse:
-        return _describe_machine(machine_reader.read(), machine_thresholds)
 
     PolledRouteAccessFilter.install(POLLED_PATHS)
 

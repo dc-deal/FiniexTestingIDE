@@ -42,6 +42,10 @@ class Unreachable:
     def get_broker_balances(self):
         return {}
 
+    def fail_next(self, times: int = 1) -> None:
+        """Fail the next pulls, the way a venue that goes down mid-session does."""
+        self._remaining = times
+
 
 def test_transient_failure_does_not_raise(make_reconciler):
     adapter = Unreachable(ConnectionAttemptFailedError('HTTP 502 from /0/private/OpenOrders'))
@@ -106,6 +110,35 @@ def test_recovers_on_the_next_cycle(mock_adapter, make_reconciler):
     assert first.skipped_reason is not None
     assert second.skipped_reason is None
     assert second.is_clean is True
+
+
+def test_a_cycle_that_compared_nothing_leaves_no_verdict(make_reconciler):
+    # #579: the state frame records the latest verdict. Before the first cycle and after one that
+    # could not reach the venue nothing was compared, so there is none — never the "clean" the
+    # panel starts out with.
+    adapter = Unreachable(ConnectionAttemptFailedError('HTTP 502'), fail_times=0)
+    rec = make_reconciler(adapter)
+    assert rec.get_last_verdict() is None
+
+    rec.reconcile(current_tick=1)
+    assert rec.get_last_verdict() is True
+
+    adapter.fail_next()
+    rec.reconcile(current_tick=2)
+    assert rec.get_last_verdict() is None
+
+    rec.reconcile(current_tick=3)
+    assert rec.get_last_verdict() is True
+
+
+def test_a_divergent_cycle_leaves_its_verdict(make_reconciler):
+    # Our resting order is not at the venue: the cycle compared, and disagrees
+    adapter = Unreachable(ConnectionAttemptFailedError('HTTP 502'), fail_times=0)
+    rec = make_reconciler(adapter, active_orders=[make_pending('o1', 'O1')])
+
+    rec.reconcile(current_tick=1)
+
+    assert rec.get_last_verdict() is False
 
 
 def test_terminal_failure_still_propagates(make_reconciler):

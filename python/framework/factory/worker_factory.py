@@ -11,7 +11,7 @@ The Factory is responsible for:
 Reference System:
 - CORE/worker_name → Framework workers (python/framework/workers/core/)
 - File path         → Any .py file containing exactly one AbstractWorker subclass
-                      (absolute, or relative to project root)
+                      (absolute, or relative to the data home or the project root)
 """
 
 import importlib
@@ -20,6 +20,7 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple, Type
 
+from python.configuration.data_home import resolve_strategy_file
 from python.framework.exceptions.warmup_history_errors import WarmupRequirementMismatchError
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.types.market_types.market_types import TradingContext
@@ -368,7 +369,8 @@ class WorkerFactory:
         in registry under the normalized absolute path string.
 
         Args:
-            path_str: File path (absolute or relative to base_path / project root)
+            path_str: File path — absolute, or relative to base_path, else to the data home
+                and then the project root
             base_path: Base directory for relative paths
 
         Returns:
@@ -382,7 +384,8 @@ class WorkerFactory:
             if base_path:
                 p = (base_path / p).resolve()
             else:
-                p = (Path.cwd() / p).resolve()
+                # The data home first, then the code tree (#598)
+                p = resolve_strategy_file(path_str)
 
         cache_key = str(p)
         if cache_key in self._registry:

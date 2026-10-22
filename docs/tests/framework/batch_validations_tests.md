@@ -156,7 +156,8 @@ Uses `unittest.mock.patch` on `MarketConfigFileLoader.get_config` — no file I/
 
 #### `TestConfigHashComputation`
 
-`_inject_config_hashes()` computes a stable 8-char SHA256 of the symbols block.
+`_inject_config_hashes()` computes a stable 8-char SHA256 of the symbols block — without each
+entry's `_last_fetched`, so a refresh that reads the same values back moves nothing (#608).
 
 | Test | Description |
 |------|-------------|
@@ -164,6 +165,8 @@ Uses `unittest.mock.patch` on `MarketConfigFileLoader.get_config` — no file I/
 | `test_hash_stable_for_same_symbols` | Same symbols dict → same hash across calls |
 | `test_hash_changes_when_symbol_spec_changes` | `volume_min` change → different hash |
 | `test_hash_stable_when_only_meta_changes` | Different `last_fetched` timestamps → same hash |
+| `test_a_refresh_that_only_restamps_moves_neither_hash` | Two entries differing only in `_last_fetched` → same `symbols_hash` and `config_hash` |
+| `test_the_fetcher_and_the_factory_compute_one_hash` | `compute_symbols_hash()` — the fetcher's call — equals the injected value |
 
 #### `TestTheReproducibilityHashCoversTheFees`
 
@@ -190,11 +193,28 @@ runs over identical data disagree with nothing in either run able to say why. Fe
 from the git-tracked seed; symbol specifications keep coming from the cache, because they are
 expensive to fetch and really do change at the venue.
 
+What the cache holds is not versioned: a later fetch overwrites it, so two backtests over identical
+data can still read different specifications, and their `config_hash` values say only that they
+differ. A run therefore freezes the configuration it read — specifications from the cache, fees
+from the seed — and names it as `broker_config_id` in its broker section (#547, pinned in
+[Batch Core Tests](../simulation/batch_core_tests.md)); a specification read from an entry older
+than the cache's refresh interval is also said once per symbol after the run (`broker_spec_stale`,
+`TestTheBrokerSpecAgeIsSaidOnce` below).
+
 | Test | Description |
 |------|-------------|
 | `test_a_cache_claiming_other_rates_does_not_reach_the_backtest` | Cache says 9.99/9.99 → the run uses the seed |
 | `test_the_symbols_still_come_from_the_cache` | A `volume_min` only the cache declares survives into the built config |
 | `test_a_seed_without_a_fee_structure_refuses_rather_than_falling_back` | No seed fee block → the run stops instead of pricing itself from the cache |
+
+#### `TestTheSpecFetchIsStamped`
+
+The preparation stamps when each scenario's symbol specification was fetched (#608), where the
+cache is read; the post-run check counts it.
+
+| Test | Description |
+|------|-------------|
+| `test_a_dynamic_scenario_carries_its_entry_s_fetch_instant` | The entry's `_last_fetched` reaches `broker_spec_fetched_at` as a UTC instant |
 
 ### `test_market_config_manager.py` — `TestATypoInMarketConfigIsRefused`
 
@@ -214,14 +234,54 @@ expensive to fetch and really do change at the venue.
 | `test_existing_symbol_last_fetched_preserved` | Existing symbol's `_last_fetched` unchanged when a different symbol is fetched |
 | `test_no_cache_returns_fresh_symbols_only` | No existing cache → result contains only the fresh symbol |
 
-#### `TestFetchWithCacheSymbolCheck`
+#### `TestAnUnreadableCacheIsSetAside`
 
-Symbol-presence check added to `fetch_broker_config_with_cache()`.
+A cache that cannot be read is never merged as empty — the write that follows would drop every
+symbol it still holds.
 
 | Test | Description |
 |------|-------------|
-| `test_fresh_cache_with_symbol_skips_api` | Cache fresh + symbol present → no API call |
-| `test_fresh_cache_missing_symbol_triggers_fetch` | Cache fresh + symbol absent → API called, symbol merged, existing symbols preserved |
+| `test_an_unreadable_cache_is_set_aside_with_its_content` | A torn cache is kept as `<name>.unreadable-<stamp>`, the warning names it, the new cache holds the fetched symbol |
+| `test_a_failed_write_leaves_the_previous_cache_whole` | A write that fails part-way never truncates the cache and leaves no temporary file |
+
+#### `TestFetchWithCacheSymbolCheck`
+
+`fetch_broker_config_with_cache()` asks the REQUESTED symbol's own `_last_fetched` (#608): every
+fetch rewrites the file, so the file's age said nothing about a symbol, and Kraken's ETHUSD minimum
+moved behind a file stamp four days old.
+
+| Test | Description |
+|------|-------------|
+| `test_fresh_cache_with_symbol_skips_api` | Entry younger than 7 days → no API call |
+| `test_fresh_cache_missing_symbol_triggers_fetch` | Symbol absent → API called, symbol merged, existing symbols preserved |
+| `test_a_young_file_with_an_old_entry_is_refreshed` | The defect: a young file stamp, an 11-day-old entry → refreshed |
+| `test_an_entry_without_a_stamp_is_not_known_to_be_fresh` | No `_last_fetched` reads as stale, never as fresh |
+| `test_a_forced_refresh_fetches_a_fresh_entry` | `force_refresh` (the sync's `--force`) asks the venue whatever the age |
+| `test_a_changed_minimum_warns_and_is_named` | A moved `volume_min` warns once, in plain numbers; a field read for the first time is not a change |
+| `test_an_unchanged_refresh_and_a_new_symbol_stay_quiet` | No change, or nothing cached before → no warning |
+| `test_a_failed_refresh_falls_back_to_the_entry_and_says_so` | API down, symbol cached → the cache, with a warning naming the symbol |
+| `test_a_failed_fetch_of_an_uncached_symbol_is_a_hard_error` | API down, symbol never cached → `ConnectionError` naming it |
+
+#### `TestCostMinimum`
+
+Kraken's `costmin` — the minimum order VALUE — is read as `cost_min` (#608).
+
+| Test | Description |
+|------|-------------|
+| `test_costmin_is_read_beside_ordermin` | `ordermin` → `volume_min`, `costmin` → `cost_min` |
+| `test_a_pair_without_costmin_has_no_value_minimum` | Absent → `0.0` |
+
+#### `TestTheEntryStamp`
+
+Whatever stands in a symbol's `_last_fetched`, the age arithmetic receives a UTC instant or
+nothing — a hand-edited stamp would otherwise reach the subtraction from an aware clock and stop
+the boot (#608).
+
+| Test | Description |
+|------|-------------|
+| `test_the_written_form_is_read_as_utc` | `2026-10-18T12:54:22Z` → that instant, UTC |
+| `test_a_stamp_without_an_offset_is_read_as_utc` | No offset → read as UTC, never naive |
+| `test_an_unreadable_stamp_is_no_stamp` | A number, `None`, empty, not a date → `None`: the entry counts as not known to be fresh |
 
 #### `TestFetchFeeTier`
 
@@ -236,11 +296,40 @@ by the symbol raises `KeyError`. Measured against the real account 2026-09-08.
 | `test_a_transport_failure_is_never_fatal` | A raising transport → `None` + a warning, the declared rates stand |
 | `test_an_unusable_answer_is_declined_rather_than_guessed` | A malformed block → `None`, never a half-read rate |
 
+#### `TestTheBalanceRead`
+
+`fetch_account_balance()` as the boot reads it (#598). Kraken lists every asset the account holds
+or once held, at zero where it is empty, and leaves out one it never held — measured 2026-10-20.
+So an absent key is a zero balance, and the read itself runs under the broker's ladder.
+
+| Test | Description |
+|------|-------------|
+| `test_a_currency_the_account_never_held_reads_zero` | An answer without `XETH` reads 0.0 for ETH — before, the session refused to start on a fresh account |
+| `test_a_kraken_key_wins_over_the_code` | XRP is read under Kraken's own key `XXRP` |
+| `test_the_key_map_does_not_grow_with_each_read` | The class-level key list stays as declared after repeated reads |
+| `test_a_passing_fault_is_retried_within_the_budget` | Two timeouts, then an answer: read on the third attempt |
+| `test_an_exhausted_budget_raises_instead_of_reading_as_no_balance` | Three timeouts → `ConnectionGaveUpError`, never "no balance" |
+| `test_the_venue_refusing_the_key_ends_the_read_at_once` | A Kraken error in the answer ends the read after one attempt |
+
+#### `TestTheVenueSayingNotNow`
+
+The same read through the real request path (#598). Kraken reports maintenance inside an HTTP 200
+answer, as `EService:Unavailable`, so the venue's own "not now" has to reach the ladder as a passing
+fault rather than as its answer.
+
+| Test | Description |
+|------|-------------|
+| `test_maintenance_is_waited_out_within_the_budget` | One `EService:Unavailable`, then an answer: read on the second request |
+| `test_maintenance_beyond_the_budget_is_a_passing_start_failure` | Three of them → `ConnectionGaveUpError`, which the start reads as passing (exit 75) |
+| `test_a_refused_key_is_not_waited_out` | `EAPI:Invalid key` ends the read after one request and stays a refusal (exit 2) |
+
 #### `TestTheCapabilityIsByOverride`
 
 | Test | Description |
 |------|-------------|
 | `test_the_abstract_default_declines` | A fetcher for a venue without tiers (MT5, #209) inherits `None` — no flag, no `isinstance` |
+| `test_without_a_cache_every_fetch_asks_the_venue` | No cache kept → `fetch_broker_config_with_cache` asks the venue each time, forced or not |
+| `test_without_a_cache_no_change_is_reported` | No cache kept → `get_last_spec_changes()` is empty |
 
 ---
 
@@ -255,10 +344,14 @@ symbols from invalid scenarios.
 schema drift in refreshed runtime cache files — both would silently produce wrong P&L
 calculations if base/quote currencies are mismatched against the symbol key.
 
-The two hashes provide the reproducibility anchor: batch summaries and the AutoTrader live-display
-header show an 8-char id, so it is clear which specification a session ran against.
-`config_hash` covers the fee structure as well, because a rate change is a change to what the
-run produces — the narrower `symbols_hash` reported two differently-priced runs as identical.
+`config_hash` is the identity of what a run priced with: the batch summary and the AutoTrader
+live-display header show its 8 characters, so two runs can be told apart by the specification
+they ran against.
+It covers the fee structure as well as the symbols, because a rate change is a change to what the
+run produces — the narrower `symbols_hash`, which says only whether a cache still describes the
+same instruments, reported two differently-priced runs as identical. Eight characters tell two
+configurations apart; they cannot give one back. The content itself is frozen per run and named by
+`broker_config_id` in the run's broker section (#547).
 
 ## Test Approach
 
@@ -301,6 +394,7 @@ the structured finding rather than on printed text.
 | `test_stress_test` | An active stress config is surfaced, so a stressed run cannot read as clean (shared with the AutoTrader session validator) |
 | `test_budget_granularity` | A budget below data granularity has no effect and says so |
 | `TestTheDeficiencyCount` | What the data LACKS is said once per run and counted, grouped by where the files came from (#561): a file without a quote is counted; complete data says nothing whatever its format; external and collected files are counted apart; `synthetic` is left to the pre-run signal check; external data gets `data_origin_external` and is not counted as unstamped; a warmup from external history is said in the same finding although the ticks are our own, and shares it with external ticks |
+| `TestTheBrokerSpecAgeIsSaidOnce` | A symbol specification read from a cache entry older than seven days is said once per symbol, with how many scenarios read it (`broker_spec_stale`, #608); a fresh entry and a static broker say nothing |
 | `test_clean_batch_no_warnings` | The zero state — nothing invented |
 | `test_coordination_overhead` / `test_no_overhead_when_low` | Coordination cost above half the computation is flagged; below it is not |
 | `test_infra_bottleneck` / `test_expected_bottleneck_no_warning` | A non-hot-path operation dominating is flagged; `worker_decision` dominating is normal |

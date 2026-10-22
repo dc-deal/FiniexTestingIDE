@@ -23,7 +23,7 @@ from typing import List
 
 # One monotonic integer. Not a date and not the app version: a consumer compares it for
 # equality, and equality is the only question they have.
-API_CONTRACT_VERSION = 34
+API_CONTRACT_VERSION = 38
 
 # Every response carries it, so a saved fixture carries it too.
 CONTRACT_HEADER = 'X-Api-Contract'
@@ -36,11 +36,17 @@ API_PREFIX = '/api/v1'
 # What moved INTO the current version. One line per change, written for someone who cannot
 # read this repository.
 CHANGES: List[str] = [
-    "Every price a run read from the tick archive (a tick's bid, ask and last, an order-driven "
-    "bar's open, high, low and close, a fill at a recorded quote) is the decimal the venue wrote: "
-    "0.87957 where a run before this contract read 0.8795700073242188; the archive was "
-    "re-imported on 2026-10-17",
-    "real_volume keeps every decimal the venue reported",
-    "New document prices: which prices are the venue's decimals and which are computed, and "
-    "rounding a computed one by the instrument's tick_size for display",
+    'GET /api/v1/reports/runs/{run_id}/state-frames/latest (new): the latest state frame of each '
+    'unit of a run with written_at and age_s, and its cadence as cadence_timeframe (a timeframe) '
+    'and cadence_s; recording — current, stopped or ended, '
+    'null for a session replaying recorded data before its end; truncated_tail; first_frame (its '
+    'written_at and process_memory); and once the session ended, outcome as warnings-errors serves '
+    'it. Ask it once a cadence; on the reports surface',
+    'Two 404 codes: state_frames_not_recorded (the run records no state frames) and '
+    'state_frame_not_written_yet (its stream holds no frame yet)',
+    'stream_files on the run list names state_frames.jsonl for a session that records state '
+    'frames, from the moment the session opens the stream',
+    'recording on the run list: on every row whose stream_files names state_frames.jsonl, the '
+    'verdict the latest-state-frame route gives — current, stopped or ended; null elsewhere, '
+    'before the first frame and where the stream cannot be read',
 ]

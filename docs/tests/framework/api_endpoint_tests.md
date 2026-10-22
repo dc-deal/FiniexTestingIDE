@@ -15,12 +15,14 @@ Tests for all FiniexTestingIDE HTTP API endpoints. Uses `FastAPI TestClient` wit
 | `TestTimeframes` | `test_the_validation_checks_are_the_catalog` | `/validation-checks` serves exactly the check catalog, keyed on `check` |
 | `TestHealth` | `test_health_ok` | Status + version in response |
 | `TestBrokers` | `test_list_brokers` | Broker list from mocked index |
-| `TestSymbols` | `test_list_symbols` | Symbols with correct `market_type` |
+| `TestSymbols` | `test_list_symbols` | Symbols with correct `market_type`, and `tick_size` from the broker configuration — null for a symbol it does not name |
+| `TestSymbols` | `test_list_symbols_when_the_broker_configuration_cannot_be_read` | 200, every `tick_size` null — the list does not depend on the configuration |
 | `TestSymbols` | `test_unknown_broker_returns_404` | 404 + `error: broker_not_found` |
 | `TestCoverage` | `test_coverage_ok` | start/end/timeframes fields present |
 | `TestCoverage` | `test_unknown_symbol_returns_404` | 404 + `error: symbol_not_found` |
 | `TestBars` | `test_bars_ok` | OHLCV shape, correct field names |
-| `TestBars` | `test_bars_carry_the_tick_count` | `tc` per bar — the activity measure on feeds whose volume is 0.0 |
+| `TestBars` | `test_bars_carry_the_tick_count` | `tc` per bar — how busy the market was, on feeds whose volume is 0.0 |
+| `TestBars` | `test_a_bare_number_is_refused_rather_than_read_as_unix_seconds` | `from=2026` and Unix seconds: 400 + `error: invalid_timestamp` |
 | `TestBars` | `test_a_cut_response_says_that_it_was_cut` | `X-Bar-Truncated` / `Count` / `Total` / `Limit` on a capped range |
 | `TestBars` | `test_a_complete_response_says_it_was_not_cut` | the same headers on an uncut range |
 | `TestBars` | `test_every_response_states_its_own_semantics` | `X-Bar-Time-Basis` `open` · `X-Bar-Timezone` `UTC` · `X-Bar-Price-Basis` `order_driven` (the file's stamp) |
@@ -46,8 +48,8 @@ is the one that gets forgotten.
 | `TestTheTokenFileIsRefusedWhenItIsTheTrackedOne` | Against real files at their real paths in a throwaway tree: a live token answering from the committed `inbound/` file refuses the boot, and that refusal comes BEFORE the missing-account one, the parse and the account binding — each of those would tell the operator to edit a file whose only right edit is moving the key out; the consumer is named and its token never is. An entry not declared off counts as live, a value the token model cannot read included; one declared off in any spelling the model reads passes. The workspace file is not mistaken for the tracked one, an inactive entry there is fine, which is what lets the placeholder carry examples, and the path the loader REALLY answers from under isolation is recognised. The earlier version passed a path string of the flat layout, so it stayed green while the check never fired on the real path |
 | `TestTheSurfaceVocabularyIsClosed` | An unknown surface fails when the token is parsed, not at request time; and the vocabulary is held to the same set as `api_app.ROUTER_SURFACES`, so a router mounted under a surface no token can name — or a surface no router serves — fails here rather than becoming a denial nobody can explain |
 | `TestACollectionRouteIsGatedToo` | The hole the walk cannot see: a route with no path parameter had nothing for a grant to be about, so `/reports/runs`, `/sweeps` and `/deployments` would answer any authenticated token. Refusal and admission are both named by hand — a new collection route needs its own pair or nothing looks at it |
-| `TestTheAppLevelRoutesAreADecision` | `/timeframes` and `/validation-checks` open beside `/health`, `/brokers` and `/machine-resources` requiring a token and taking no grant — pinned so none drifts back to being accidental |
-| `TestTheCallerRouteSaysWhoIsCalling` | `/caller` (#551): a valid token is answered with its client, account, account kind, display name, grants as a list and note; a wrong token is a 401 with `WWW-Authenticate: Bearer`, and so is no header; a token holding NOTHING still reaches it, because it is token-only like `/brokers`; with gating off it names nobody even for a valid token (`enforced: false`), and the real scaffold boot answers the same; the real boot from files on disk reaches the route; a verified consumer with no account is a 500 `identity_unbound`, not an anonymous caller; the route is on no grant surface; and it answers under contract 4 or later, which catches a forgotten bump |
+| `TestTheAppLevelRoutesAreADecision` | Without a grant the application only describes itself: `/timeframes` and `/validation-checks` open beside `/health`; `/brokers` refused without a `brokers` grant and reached with any; `/machine-resources` and `/activities` needing a token, refused without a `machine` grant and reached with one — pinned so none drifts back to being accidental |
+| `TestTheCallerRouteSaysWhoIsCalling` | `/caller` (#551): a valid token is answered with its client, account, account kind, display name, grants as a list and note; a wrong token is a 401 with `WWW-Authenticate: Bearer`, and so is no header; a token holding NOTHING still reaches it, because it is about the caller and token-only; with gating off it names nobody even for a valid token (`enforced: false`), and the real scaffold boot answers the same; the real boot from files on disk reaches the route; a verified consumer with no account is a 500 `identity_unbound`, not an anonymous caller; the route is on no grant surface; and it answers under contract 4 or later, which catches a forgotten bump |
 | `TestTheSchemaSurfaceIsOffWhereItCannotBeGuarded` | `/openapi.json`, `/docs` and `/redoc` are FastAPI's own routes at the APP ROOT — outside `/api/v1`, uncoverable by a router dependency, and outside the walk by construction (it filters on a path parameter). They are tied to the auth posture instead: present while nobody is configured, gone once somebody is, and a token does not bring them back |
 | `TestTheCorsPreflightIsNeverGated` | An `OPTIONS` without `Authorization` is not refused, and `WWW-Authenticate` / `Retry-After` are exposed — invisible from every seat but a browser's |
 | `TestTheRegistryNeverHoldsAToken` | The in-memory registry stores only digests — the credentials FILE holds the plaintext — and the boot line names consumers and never tokens |
@@ -155,6 +157,33 @@ anything else, so its numbers have to be the ones that bind.
 | `TestThePressureVerdict` | below the warning it is `ok` and says nothing; from the warning it warns and names the critical mark; from the critical mark it says what is at stake — that the kernel ends a process — and whose limit it is; thresholds that cannot grade are refused at load |
 | `test_the_route_serves_the_reading_with_its_verdict_and_thresholds` | the served answer carries the reading, the verdict and both thresholds, from the real machine |
 
+## The activity list (`test_activities_route.py`)
+
+What runs on the machine the server runs on (#603), as served. Each test gives the app a registry
+of its own before the app builds its reader.
+
+| Class | What it validates |
+|---|---|
+| `TestTheListIsWhatRunsNow` | a running activity is served with every field of the row and the answer; an ended one is not; a missing registry is 200 with an empty list; a registry that cannot be read is `500 activity_registry_unreadable`, its detail naming the fault and no path — injected, because the suite runs as root — and so is a directory that cannot be resolved; one entry that is no object does not fail the list; a held entry this server cannot read is named in `unreadable_activity_ids` |
+| `TestNoPathOfTheMachineIsServed` | the command line's paths are relative to the code tree and the server's own tree is `.`; a value written with its name (`--config=/…`) is relative too; a console session named by a path leaves by its last part; another code tree is named by its directory |
+| `TestTheServerFindsItself` | `server_activity_id` is null when the server is not listed and names the server's own row when it is |
+| `TestOneInstant` | the machine's memory is served beside the rows without a full machine reading, so the processor window `/machine-resources` measures over is left as it was |
+
+## How a running session stands (`test_state_frames_route.py`)
+
+`/reports/runs/{run_id}/state-frames/latest` (#611) serves the latest state frame of each unit, read
+from the two ends of its stream, with its age and whether the session still records. The streams are
+written through the same appender a session uses, beside a run registered in a tmp run index.
+
+| Class | Validates |
+|---|---|
+| `TestARunningSession` | a session reading the venue that wrote on its cadence is `current`, with its age, its unit and cadence from the stream's header and its first frame's memory; silent for three cadences without an end it is `stopped`; a frame from the future of this server's clock has no age and no verdict; a last line cut off mid-write is left out and the frame before it served |
+| `TestAnEndedSession` | a last frame written at the end is `ended`, and the run's end classification comes beside it as the warnings-errors section serves it — null until that section was written |
+| `TestAReplay` | a session replaying recorded data gets no verdict while it runs, though its age is served, and `ended` once its last frame is written |
+| `TestNoFrameNamesItsCause` | an unknown run is `run_not_found`; a run with no stream `state_frames_not_recorded`; a stream holding only its header `state_frame_not_written_yet`; a header naming another schema `artifact_unreadable` |
+| `TestTheRunListCarriesTheVerdict` | each run-list row that records state frames carries the route's verdict: `current` on its cadence, `stopped` when its frames stopped; an ended recording is read once and remembered; a replay before its end and a run without frames carry none; a stream that cannot be read costs its row the verdict, never the list |
+| `TestTheRunListNamesTheStream` | once the session recorded the stream in the run index, the run list names it under `stream_files`, and never among the report artifacts |
+
 ## Polled routes in the access log (`test_polled_route_access_filter.py`)
 
 A route made to be polled stays out of the server's access log while it answers successfully
@@ -164,6 +193,7 @@ requests that carry meaning.
 | Class / test | What it validates |
 |---|---|
 | `TestOnlyASuccessfulReadingIsDropped` | a successful answer (200, 304) on a polled route is dropped; a failed one (401, 403, 500) stays; another route stays; a query string does not hide the path; a record not shaped like an access line is left alone |
+| `TestARouteWithARunIdInItsPath` | a polled path written as mounted, with `{run_id}` in braces, matches any run's id in that segment (#611); a sibling route, a longer path and a missing segment stay in the log; an exact path still matches |
 | `TestTheDeclarationHoldsToTheApp` | every path in `POLLED_PATHS` is a mounted route, so a renamed route cannot leave a declaration that filters nothing; the factory installs one filter however often it runs |
 
 ## Row keys (`test_row_keys.py`)
@@ -183,7 +213,8 @@ optional list included — so a route added tomorrow is covered the day it exist
   closing tick (a partial close books several records of one position, and two scenarios of one
   symbol both count from `pos_<symbol>_1`). Plus the pending-orders unit, keyed by its name
   (contract 19): the run-scoped walk exempts every report route, so that case is what holds the
-  declaration.
+  declaration. And an activity, keyed by its own id: two activities of one process differ in
+  nothing else.
 
 ## Mocking Strategy
 
@@ -218,7 +249,7 @@ read the ledger and only the ledger.
 | `test_a_deployments_pnl_sums_and_its_drawdown_does_not` | The one arithmetic this view must not get wrong: each AutoTrader row carries the RUNNING decline against the inherited peak, so the reduction is `max()` and a sum counts one decline once per session that was still inside it |
 | `test_no_deployment_is_not_an_error` | Nothing declared yet is a state, not a failure |
 | `test_sessions_read_forwards` | Oldest first — the opposite order to the console, deliberately |
-| `test_a_configuration_change_is_reported_before_the_table` | The advisory rides on the response rather than inside a row, so a client cannot render the table and drop the sentence that says whether the rows may be added up |
+| `test_a_configuration_change_is_reported_before_the_table` | The advisory rides on the response rather than inside a row, so a client cannot render the table and drop the sentence that says whether the strategy parameters, the operational configuration or the orders' destination changed across the rows |
 | `test_a_session_that_never_reached_its_close_is_counted` | The ledger row is written last, so a killed session is absent from the list by construction |
 | `test_unknown_deployment_is_a_404_and_not_an_empty_history` | An empty list would read as a deployment that ran and did nothing |
 | `test_the_detail_route_filters_in_the_store` | `read_rows(deployment_id=...)`, not a full read followed by a filter |

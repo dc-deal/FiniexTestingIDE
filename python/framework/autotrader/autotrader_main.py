@@ -11,25 +11,24 @@ import signal
 import sys
 import time
 import traceback
+from contextlib import ExitStack
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from python.configuration.app_config_manager import AppConfigManager
+from python.configuration.data_home import describe_data_home
 from python.configuration.market_config_manager import MarketConfigManager
 from python.framework.acceptance_studies.abstract_acceptance_study import AbstractAcceptanceStudy
 from python.framework.acceptance_studies.acceptance_study_setup import (
     close_acceptance_study,
     open_acceptance_study,
 )
-from python.framework.autotrader.startup.autotrader_data_preparer import prepare_mock_session_data
-from python.framework.autotrader.startup.autotrader_startup import (
-    create_autotrader_loggers,
-    setup_pipeline,
-)
+from python.framework.activities.activity_registry import ActivityRegistry
 from python.framework.autotrader.autotrader_tick_loop import AutotraderTickLoop
 from python.framework.autotrader.cold_start.cold_start_setup import (
     ColdStartSetup,
+    describe_carry_over_read,
     read_carry_over,
     setup_cold_start,
 )
@@ -45,6 +44,9 @@ from python.framework.autotrader.operator_alerts.operator_alerts_setup import (
     build_operator_alerts,
     disabled_operator_alerts,
 )
+from python.framework.autotrader.run_record.autotrader_report_coordinator import (
+    AutotraderReportCoordinator,
+)
 from python.framework.autotrader.run_record.order_event_stream_setup import (
     open_order_event_stream,
     read_back_order_event_stream,
@@ -53,15 +55,22 @@ from python.framework.autotrader.run_record.rendered_profile_builder import (
     assert_rendered_parameters_match,
     render_autotrader_profile,
 )
-from python.framework.autotrader.run_record.autotrader_report_coordinator import (
-    AutotraderReportCoordinator,
+from python.framework.autotrader.run_record.state_frame_recorder import (
+    StateFrameRecorder,
+    open_state_frame_stream,
 )
 from python.framework.autotrader.safety.risk_baseline_tracker import RiskBaselineTracker
+from python.framework.autotrader.startup.autotrader_data_preparer import prepare_mock_session_data
+from python.framework.autotrader.startup.autotrader_startup import (
+    create_autotrader_loggers,
+    setup_pipeline,
+)
+from python.framework.autotrader.startup.bot_instance_lock import record_holder_run, take_bot_lock
+from python.framework.autotrader.startup.start_failure_classifier import is_passing_start_failure
 from python.framework.autotrader.tick_sources.abstract_tick_source import AbstractTickSource
 from python.framework.autotrader.tick_sources.tick_source_setup import setup_tick_source
-from python.framework.config_directory.config_directory_discovery import profile_homes
-from python.framework.stress_test.stale_data_stress_driver import StaleDataStressDriver
 from python.framework.bars.bar_rendering_controller import BarRenderingController
+from python.framework.config_directory.config_directory_discovery import profile_homes
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.discoveries.signal_coverage.signal_scenario_info import SignalScenarioInfo
 from python.framework.exceptions.code_identity_errors import CodeIdentityCaptureError
@@ -70,8 +79,8 @@ from python.framework.exceptions.swap_errors import SwapModeNotImplementedError
 from python.framework.exceptions.warmup_history_errors import WarmupHistoryRefusedError
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.persistence.algo_state_store import AlgoStateStore
-from python.framework.reporting.api_perf_monitor import ApiPerfMonitor
 from python.framework.reporting.acceptance_study_recorder import AcceptanceStudyRecorder
+from python.framework.reporting.api_perf_monitor import ApiPerfMonitor
 from python.framework.reporting.io.order_event_stream_writer import OrderEventStreamWriter
 from python.framework.reporting.store.run_results_ledger import RunResultsLedger
 from python.framework.signal_data.signal_observed_accumulator import SignalObservedAccumulator
@@ -80,11 +89,13 @@ from python.framework.signal_data.transport.abstract_signal_transport import (
 )
 from python.framework.signal_data.transport.signal_inbox import SignalInbox
 from python.framework.signal_data.transport.signal_transport_setup import setup_signal_transport
+from python.framework.stress_test.stale_data_stress_driver import StaleDataStressDriver
 from python.framework.trading_env.abstract_trade_executor import AbstractTradeExecutor
 from python.framework.trading_env.decision_event_dispatcher import DecisionEventDispatcher
 from python.framework.trading_env.live.drift_auditor import DriftAuditor
 from python.framework.trading_env.live.live_trade_executor import LiveTradeExecutor
 from python.framework.trading_env.live.reconciler import Reconciler
+from python.framework.types.activity_registry_types import ActivityKind
 from python.framework.types.api.report_types import RunSummary
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
 from python.framework.types.autotrader_types.autotrader_result_types import AutoTraderResult
@@ -115,6 +126,7 @@ from python.framework.types.signal_data_types import (
 )
 from python.framework.types.validation_types import ValidationFinding, ValidationResult
 from python.framework.utils.code_identity_builder import verify_component_digests
+from python.framework.utils.file_lock import FileLock
 from python.framework.utils.run_origin_builder import build_run_origin, capture_code_identity
 from python.framework.utils.trading_math.price_trigger import mid_price
 from python.framework.validators.algo_clock_validator import validate_algo_clock
@@ -123,8 +135,8 @@ from python.framework.validators.carry_over_continuity_validator import (
     validate_carry_over_continuity,
 )
 from python.framework.validators.carry_over_identity_validator import (
-    validate_carry_over_identity_unique,
     validate_bot_id,
+    validate_carry_over_identity_unique,
 )
 from python.framework.validators.component_metadata_advisory import check_market_fit
 from python.framework.validators.session_end_validator import resolve_session_end_policy
@@ -170,6 +182,7 @@ class AutotraderMain:
         new_deployment: bool = False,
         channel: RunChannel = RunChannel.DIRECT,
         allow_dirty: bool = False,
+        first_start: bool = False,
     ):
         self._config = config
         # #355: a human DECLARED that they are watching this start (CLI --attended). Cold-start
@@ -188,6 +201,13 @@ class AutotraderMain:
         # origin, so an override is visible afterwards.
         self._channel = channel
         self._allow_dirty = allow_dirty
+        # #598: the operator declared this the bot's first start (`--first-start`) — the one way
+        # a session trading real money starts without a carry-over. Lands in the header's origin.
+        self._first_start = first_start
+        # #598: this bot's lock, held from before the first carry-over read until after the
+        # last write; and whether a failed start had a passing cause (exit 75)
+        self._bot_lock: Optional[FileLock] = None
+        self._start_failure_transient = False
         # Which code this session runs — captured at the start of run(), before the header, and
         # kept because the startup guard reads it (#551).
         self._code_identity: Optional[CodeIdentity] = None
@@ -288,6 +308,8 @@ class AutotraderMain:
         # #362 — the session's order-event stream, written as the steps happen. None until
         # the pipeline exists, so an abort before that point has nothing to close.
         self._order_event_stream: Optional[OrderEventStreamWriter] = None
+        # #579 part A — what the session holds and decides, moment by moment
+        self._state_frames: Optional[StateFrameRecorder] = None
 
         # Loggers (created during run())
         self._global_logger: Optional[ScenarioLogger] = None
@@ -304,10 +326,29 @@ class AutotraderMain:
         # Why a signal asked the session to end, '' while none has (#348). Kept here because a
         # signal can arrive before the executor that records the request exists.
         self._signal_end_reason: str = ''
+        # The session's entry in the list of what runs on this machine (#603): opened once the
+        # run id exists, closed when run() returns or raises.
+        self._activity = ExitStack()
 
     def run(self) -> AutoTraderResult:
         """
-        Execute the complete AutoTrader session.
+        Execute the complete AutoTrader session, holding this bot's lock from before the first
+        carry-over read until after the last write (#598).
+
+        Returns:
+            AutoTraderResult with session statistics
+        """
+        # One bot runs once: a second start is refused here, before anything is read or sent —
+        # BotAlreadyRunningError, which the CLI ends with exit 2
+        self._bot_lock = take_bot_lock(self._config)
+        try:
+            return self._run()
+        finally:
+            self._bot_lock.release()
+
+    def _run(self) -> AutoTraderResult:
+        """
+        The session itself, run while this bot's lock is held.
 
         Flow:
         1. Setup: create loggers, print startup banner, create pipeline objects
@@ -340,7 +381,8 @@ class AutotraderMain:
         # The origin FIRST: a host identity file nobody can trust refuses here — before any git
         # work, before a patch is stored, and before the header, which must not state that
         # identity. The HostIdentityError travels to the CLI, which reports it as a refusal.
-        origin = build_run_origin(self._channel, allow_dirty=self._allow_dirty)
+        origin = build_run_origin(self._channel, allow_dirty=self._allow_dirty,
+                                  first_start=self._first_start)
         # Then the code identity: before the loggers, because the header written in there records
         # it, and held here, because the startup guard asks it — which must not depend on a header
         # having been written. A capture that FAILS is held too, and refused inside the startup
@@ -367,6 +409,8 @@ class AutotraderMain:
         self._summary_logger = loggers.summary_logger
         self._run_dir = loggers.run_dir
         self._run_id = loggers.run_id
+        if self._bot_lock is not None:
+            record_holder_run(self._bot_lock, self._run_id)
 
         self._print_startup_banner()
         self._global_logger.info(
@@ -389,6 +433,12 @@ class AutotraderMain:
                 '🔗 One-off session — its ledger row names no deployment. '
                 'Declare `deployment.continuous` in the profile to group a bot\'s restarts.')
 
+        # #598: which data home this session uses, and which carry-over it continued — before
+        # the first order, in the channel a person reads after a deploy
+        self._session_logger.info(f'🏠 {describe_data_home()}')
+        self._session_logger.info(
+            f'📦 {describe_carry_over_read(self._carried_load, self._first_start)}')
+
         if render_failure is not None:
             self._session_logger.warning(
                 f'⚠️  The configuration this session runs with could not be rendered '
@@ -396,6 +446,13 @@ class AutotraderMain:
                 f'its profile but not what it ran with (#547).')
 
         try:
+            # Listed as running for as long as it runs (#603). Every end the session handles itself
+            # reaches the shutdown below, which ends the entry; a stop that ends the process
+            # before the signal handlers stand takes the lock with it
+            self._activity.enter_context(ActivityRegistry().running(
+                ActivityKind.AUTOTRADER_SESSION, self._config.get_unit_name(),
+                run_id=self._run_id, origin=origin, logger=self._session_logger))
+
             # === OPERATOR ALERTS (#235) ===
             # First, so every later refusal reaches the operator out of band. An enabled channel
             # that cannot work — a missing credential, a refused token — refuses the start here.
@@ -588,6 +645,11 @@ class AutotraderMain:
                 _symbol_spec.quote_currency,
                 self._global_logger,
                 self._data_package,
+                # The live source writes what the operator must read into the session log, and
+                # its outages into the run's io/ folder (#609).
+                session_logger=self._session_logger,
+                run_dir=self._run_dir,
+                run_id=self._run_id,
             )
             self._print_startup_phase('Tick source running')
 
@@ -603,6 +665,12 @@ class AutotraderMain:
             # A Ctrl+C or SIGTERM during the start is a stop the loop honours before its first
             # pass — the executor that records it may not have existed when the signal came
             self._request_signal_end()
+            # === STATE FRAMES (#579 part A) ===
+            # Opened with the loop that writes them, display or not
+            self._state_frames = open_state_frame_stream(
+                self._config, self._run_dir, self._run_id, self._executor,
+                self._worker_orchestrator, self._bar_controller, self._trading_model,
+                self._reconciler, self._session_logger)
             self._tick_loop = self._build_tick_loop(run_timestamp, dry_run)
             self._tick_loop_started = True
             self._operator_alerts.start_liveness()
@@ -640,6 +708,8 @@ class AutotraderMain:
             # noticed anything
             self._alert_shutdown_crash(error)
             raise
+        finally:
+            self._activity.close()
 
     def _report_abort(self, error: Exception) -> None:
         """
@@ -662,6 +732,8 @@ class AutotraderMain:
             # heartbeat pass before it, which can run the decision. So the block says what did
             # not run on the tick and names what the session had sent by then.
             self._refused_at_first_tick = True
+            # #598: a restart a few seconds later closes it, so the supervisor may try again
+            self._start_failure_transient = True
             stats = self._executor.get_execution_stats()
             sent = self._describe_orders_before_refusal(
                 stats.orders_submitted, stats.sl_tp_triggered)
@@ -680,9 +752,16 @@ class AutotraderMain:
             self._alert_abort(OperatorAlertKind.RUNTIME_ERROR,
                               'RUNTIME ERROR — session aborted', str(error))
         else:
+            # #598: a passing cause — the venue did not answer within its budget — leaves with
+            # exit 75, which a supervisor restarts after its pause; anything else stays down
+            self._start_failure_transient = is_passing_start_failure(error)
+            detail = str(error)
+            if self._start_failure_transient:
+                detail += ('\nA passing cause: the supervisor starts the session again '
+                           '(exit 75).')
             self._global_logger.error(f'❌ AutoTrader startup error: {error}')
-            self._print_startup_error(str(error))
-            self._alert_abort(OperatorAlertKind.STARTUP_FAILED, 'STARTUP FAILED', str(error))
+            self._print_startup_error(detail)
+            self._alert_abort(OperatorAlertKind.STARTUP_FAILED, 'STARTUP FAILED', detail)
         self._shutdown_mode = 'emergency'
 
     def _report_refusal(self, refusal: StartupRefusedError) -> None:
@@ -772,7 +851,9 @@ class AutotraderMain:
             self._config.cold_start.enabled,
             self._study_skipping_adoption(),
             self._carried_load,
-            RunResultsLedger(Path(AppConfigManager().get_run_ledger_path())))
+            RunResultsLedger(Path(AppConfigManager().get_run_ledger_path())),
+            real_money=not self._is_dry_run(),
+            first_start=self._first_start)
 
         # === UNCOMMITTED CODE (#551) ===
         # Real orders must run code a commit describes: the parity backtest afterwards compares
@@ -1045,6 +1126,7 @@ class AutotraderMain:
             persist_carry_over=(
                 (lambda: self._persist_cold_start_carry_over(refresh_index=False))
                 if self._cold_start.persist else None),
+            state_frames=self._state_frames,
         )
 
     # =========================================================================
@@ -1198,6 +1280,18 @@ class AutotraderMain:
             except Exception as e:
                 self._session_logger.error(f'Error closing the order-event stream: {e}')
 
+        # #579 part A — the session's last state frame, at the state its report describes: the
+        # orders are finished and the venue was asked once more, and the results are collected
+        # next, at the same price. Its own try, like the order-event stream's.
+        if self._state_frames:
+            try:
+                if self._tick_loop is not None:
+                    self._tick_loop.write_final_state_frame(ticks_processed)
+                else:
+                    self._state_frames.close()
+            except Exception as e:
+                self._session_logger.error(f'Error writing the last state frame: {e}')
+
         # #327 — Drift auditor cleanup (surfaces unfinished audits + final summary)
         if self._drift_auditor:
             try:
@@ -1273,6 +1367,7 @@ class AutotraderMain:
             emergency_reason=self._emergency_reason,
             emergency_error_type=self._emergency_error_type,
             refused_at_first_tick=self._refused_at_first_tick,
+            start_failure_transient=self._start_failure_transient,
             session_end_policy=(
                 f'{self._session_end.orders}/{self._session_end.positions}'
                 if self._session_end is not None else ''),
@@ -1416,6 +1511,10 @@ class AutotraderMain:
         ).generate_and_log()
 
         self._send_closing_alert(result, run_summary)
+
+        # The list entry ends while the session log can still take a warning from ending it; the
+        # `finally` in run() closes it again, which does nothing the second time
+        self._activity.close()
 
         # Close all loggers
         self._global_logger.info('🏁 Session complete — loggers closing')

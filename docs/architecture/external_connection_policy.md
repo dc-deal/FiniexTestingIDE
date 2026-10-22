@@ -49,7 +49,7 @@ the **operation**:
 | Operation | Retry-safe | Why |
 |---|---|---|
 | Reads — open orders, balance, asset pairs, OHLC, the registry | yes | no side effect at the venue |
-| Connects — SSE, WebSocket | yes | a cursor makes the reconnect idempotent |
+| Connects — SSE, WebSocket | yes | nothing is placed at the venue. The signal stream's cursor makes its reconnect idempotent; the broker tick socket has none — what it missed stays missed and is recorded instead (#609) |
 | **Writes — submit, cancel, amend** | **never** | a retry after a lost answer is how one intent becomes two positions |
 
 **A write is never retried. It is RESOLVED by asking.** This is not our invention: FIX has
@@ -71,7 +71,7 @@ submit → transport fault
 **A failed READ is no answer about the order either.** The three outcomes decide what a failure
 means for the connection; for a status query that is all they decide. A query that fails is
 UNRESOLVED whatever the ladder calls it, and the ladder only sets the level — a transient fault
-is a warning, anything else an error, said once per order. Kraken raises every API-level error
+is a warning, anything else an error, said once per order. Kraken raises an API-level error
 as a plain `ConnectionError`, which the ladder classifies terminal: right for a write, where
 "Insufficient funds" is the venue refusing it, and wrong for a read. `EAPI:Invalid nonce`
 refused the QUESTION; booked as the order's rejection, it dropped a market order the venue had
@@ -269,7 +269,7 @@ need a plugin point to serve them all.
 | Own thread with a stop event | signal stream, health probe | `stop.wait(ladder.next_delay(n))` — cancels cleanly on shutdown |
 | Own thread with a queue | operator alerts (Telegram) | `run_with_ladder` on the dispatcher's thread — the delay, or Telegram's `retry_after` when it asked for longer |
 | Own thread on an interval | liveness ping | not at all — a failed ping is not repeated, the next one is due within the interval |
-| asyncio | broker tick socket | `await asyncio.sleep(...)` |
+| asyncio | broker tick socket | `asyncio.wait_for` on the source's stop event with the delay as its timeout — stop() wakes it at once |
 | Broker worker thread | order submit / cancel / query jobs | blocking; **does not block the tick loop** |
 | **Inside the tick loop** | reconcile pull, order re-poll | **it does not wait at all** |
 
@@ -301,6 +301,14 @@ The reads at boot deserve different answers, and only one of them is an operator
 | Account balance | **INADMISSIBLE** | position sizing has no defined answer without it |
 | Operator alerts — the Telegram check (#235) | a refusal **refuses the start**; unreachable **goes on** | a token or chat the bot may not use would silence every later alert; an outage must not keep a supervised restart down — it is logged, and each message is tried again when it is due |
 
+**A start refused on a passing fault is tried again (#598).** When every attempt of a boot read
+failed on a transient fault — a timeout, a 5xx, a 429, or the venue's own "not now" inside an
+answer, which is how Kraken reports maintenance — the session ends with exit 75, which a
+supervisor restarts after its pause; a refused credential or another terminal answer keeps
+exit 2. The boot reads make their requests through `send_classified`, which classifies a
+`requests` failure for the ladder: unclassified, such a failure is an unregistered type and
+therefore TERMINAL, and the warmup gave up at its first timeout.
+
 Degraded start, as the operator reads it:
 
 ```
@@ -328,7 +336,7 @@ Refusal, as the operator reads it:
 | 1 | Signal SSE stream | 5 s → 60 s, jitter, budget 0 | credential refused, request refused, terminal control frame |
 | 2 | Signal producer registry (boot) | 2 s → 30 s, jitter, budget 3 | budget → **degrade** |
 | 3 | Producer health probe | its 1800 s cadence is the ladder | a 401/403 stops it — an address we got wrong will not correct itself |
-| 4 | Broker tick WebSocket | 1 s → 60 s, jitter, budget 0 | never — a dead tick socket is a reason to keep asking |
+| 4 | Broker tick WebSocket | 1 s → 60 s, jitter, budget 0; starts over only after a connection delivered for `backoff_reset_after_s` (10 s) — `attempt_after_loss`, so a far side that accepts and drops connections is not dialled every second (#609); silence after 10 s aborts the connection | never — a dead tick socket is a reason to keep asking. Each outage is recorded in the session's `io/tick_stream_events.jsonl` |
 | 5 | Broker REST (orders, truth pull) | classification only; the caller's cadence waits | see "who owns the wait" |
 | 6 | Broker warmup bars (boot) | broker policy, budget 3 | short read → **refuse to start** |
 | 7 | Broker config + balance (boot) | broker policy, budget 3 | falls back to a cached copy, warning louder as it ages; no cache → refuse |
@@ -346,7 +354,10 @@ again.
 
 **One schema, several homes.** `ConnectionPolicy`
 (`framework/types/config_types/connection_policy_config_types.py`) is embedded — same field
-names, same defaults — into the config block that owns each domain:
+names, same defaults — into the config block that owns each domain. The tick socket is the
+exception: its block carries two flat fields, `reconnect_initial_delay_s` and
+`reconnect_max_delay_s`, beside `backoff_reset_after_s`; its budget is fixed at 0 in the source,
+and jitter and the give-up action keep the policy's defaults.
 
 | Home | Connections |
 |---|---|

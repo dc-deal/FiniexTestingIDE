@@ -123,6 +123,7 @@ opened at 17:40:06 UTC.
 | `session` | string | Trading session label |
 | `time_msc` | int64 | Broker matching engine timestamp (Unix epoch ms) — the event time. UTC-converted by importer. Non-decreasing; ties are normal on burst-heavy feeds |
 | `collected_msc` | int64 | Local clock at tick receipt (Unix epoch ms) — the arrival time. Already UTC from data format 1.5.0, so the importer does not convert it. Non-decreasing. Absent when the file records no arrival time — no zero is written; the tick index measures `no_arrival_time` |
+| `trade_id` | int64 | The venue's public id of the trade — Kraken, from data format 1.7.0; absent for a quote-driven venue. The tick index counts a file's missing ids (`trade_id_gaps`) |
 
 > **Note — `timestamp` redundancy**: The mandatory `timestamp` field (human-readable, seconds
 > precision) is derivable from `time_msc` with the broker UTC offset. It remains mandatory for

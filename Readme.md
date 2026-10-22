@@ -46,7 +46,7 @@ FiniexTestingIDE is a high-performance backtesting and live trading framework fo
 - ✅ Tick-by-tick backtesting with real market data
 - ✅ Realistic trade simulation (spreads, latency, margin)
 - ✅ Multi-scenario parallel execution
-- ✅ Deterministic, reproducible results (seeded randomness)
+- ✅ Deterministic results (seeded randomness); every run records the code, configuration and broker configuration it used and what kind of data it read, so an old result stays a true record ([why](docs/introduction_to_the_ide.md#a-run-is-a-record-and-an-old-one-stays-true))
 - ✅ Multi-market support (Forex via MT5, Crypto via Kraken)
 - ✅ Live trading via FiniexAutoTrader (Kraken Spot, production-validated)
 - ✅ Validated accuracy — comprehensive integration, black-box, and white-box test suites

@@ -100,7 +100,11 @@ row says how many are folded into it, and the figures follow from that:
 
 - `final_equity` is the closing equity of the **one** account — and null where the currency spans
   several, because no account ever held their sum
-- `total_final_equity` is that sum, beside the capital it started from, `total_initial_balance`
+- `total_final_equity` is that sum, beside `total_initial_balance`, the cash in the account
+  currency the accounts started with. At spot an account can also start holding the base asset,
+  and that holding is not in `total_initial_balance` while `total_final_equity` values it, so the
+  two do not subtract to a result. The realised result is `net_pnl`, and `unrealized_pnl` is what
+  was still open
 
 See [nulls](/api/v1/docs/nulls) for how to render the absence, and
 [run kinds](/api/v1/docs/run-kinds) for why a unit is an account.

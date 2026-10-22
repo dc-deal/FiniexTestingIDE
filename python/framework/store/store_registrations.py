@@ -15,6 +15,7 @@ from typing import Dict
 
 from python.configuration.app_config_manager import AppConfigManager
 from python.configuration.autotrader.kraken_config_fetcher import RUNTIME_CACHE_BASE
+from python.configuration.data_home import resolve_in_data_home, workspace_path
 from python.configuration.import_config_manager import ImportConfigManager
 from python.data_management.index.bars_index_manager import BarsIndexManager
 from python.data_management.index.signal_index_manager import SignalIndexManager
@@ -46,7 +47,8 @@ from python.framework.reporting.store.run_results_ledger import LEDGER_COLUMNS
 from python.framework.store.run_config_index import RUN_CONFIG_INDEX_FILE, RunConfigIndex
 from python.framework.store.run_patch_store import PATCH_SUFFIX
 from python.framework.store.store_descriptor import StoreDescriptor
-from python.framework.types.config_types.host_identity_config_types import HOST_IDENTITY_FILE
+from python.framework.types.activity_registry_types import ACTIVITY_ID_PREFIX
+from python.framework.types.config_types.host_identity_config_types import HOST_IDENTITY_FILE_NAME
 from python.framework.types.log_layout_types import GLOBAL_LOG_FILE, IMPORT_LOG_SUBDIR
 from python.framework.types.store_types import (
     DISCOVERY_CACHE_DIRNAME,
@@ -76,12 +78,12 @@ def build_registrations() -> Dict[StoreId, StoreDescriptor]:
     file_logging = app_config.get_file_logging_config_object()
     processed = Path(app_config.get_data_processed_path())
     autotrader_defaults = app_config.get_autotrader_defaults()
-    state_path = Path(
+    state_path = resolve_in_data_home(Path(
         autotrader_defaults.get('state_persistence', {}).get(
-            'path', 'data/runtime/session_state'))
-    cold_start_path = Path(
+            'path', 'data/runtime/session_state')))
+    cold_start_path = resolve_in_data_home(Path(
         autotrader_defaults.get('cold_start', {}).get(
-            'path', 'data/runtime/cold_start_state'))
+            'path', 'data/runtime/cold_start_state')))
 
     # The run tree's root is the index's parent by construction (#478 put the index at the top of
     # the tree it describes), so it is derived rather than declared a fourth time.
@@ -309,7 +311,7 @@ def build_registrations() -> Dict[StoreId, StoreDescriptor]:
             kind=StoreKind.DERIVED,
             purpose='broker specifications fetched from the venue',
             doc='docs/broker_config_guide.md#static-seed--hot-cache-model',
-            root=RUNTIME_CACHE_BASE,
+            root=resolve_in_data_home(RUNTIME_CACHE_BASE),
             key='broker_type',
             form=RetrievalForm.DOCUMENT,
             backend=StoreBackend.DISK,
@@ -461,15 +463,33 @@ def build_registrations() -> Dict[StoreId, StoreDescriptor]:
             kind=StoreKind.SPECIAL,
             purpose="this installation's id, named in every run header",
             doc='docs/architecture/run_origin_and_code_identity.md#the-origin--who-started-the-run-for-whom-and-where',
-            root=Path(HOST_IDENTITY_FILE),
+            root=workspace_path(HOST_IDENTITY_FILE_NAME),
             key='—',
             form=RetrievalForm.NONE,
             backend=StoreBackend.DISK,
             note=('The installation\'s minted identity (#551): one file, written once on the first '
                   'start and never rewritten — a broken file refuses the start instead of being '
-                  'minted again, and read by its own manager only. SPECIAL, because it is none of the five kinds: not a record of '
+                  'minted again, and read by its own manager only. SPECIAL, because it is none of '
+                  'the other kinds: not a record of '
                   'an event, not carried over by a bot, not an input, and deleting it is not '
                   'harmless — the next start mints a DIFFERENT identity, and every run header '
                   'after it names another host. Workspace, never tracked.'),
+        ),
+        StoreId.ACTIVITIES: StoreDescriptor(
+            store_id=StoreId.ACTIVITIES,
+            kind=StoreKind.SPECIAL,
+            purpose='what runs on this machine, while it runs',
+            doc='docs/architecture/activity_registry.md#how-an-entry-lives-and-dies',
+            root=app_config.get_activity_registry_path(),
+            key='activity_id',
+            form=RetrievalForm.NONE,
+            backend=StoreBackend.DISK,
+            entry_glob=f'{ACTIVITY_ID_PREFIX}*.json',
+            note=("One entry per running activity (#603), held by a kernel lock for its "
+                  "activity's life and removed at its end, and read by its own reader only, which "
+                  'clears what a killed process left behind. SPECIAL, because it is none of the '
+                  'other kinds: nothing in it outlives its activity, so it is no record, no '
+                  'carry-over and no input, and it is built from no store. One directory per '
+                  'machine, outside every code tree.'),
         ),
     }

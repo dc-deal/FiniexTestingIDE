@@ -12,6 +12,8 @@ rarely to be the only guard on how our payloads reach the venue.
 | `test_client_order_id.py` | the key WE choose, on the wire and read back (#473) |
 | `test_conditional_order_payloads.py` | stop / stop-limit price semantics, both directions (#500) |
 | `test_venue_fee_report.py` | the fee in the status answer, the fee currency on every order, the declared capability (#508) |
+| `test_cancel_response_parsing.py` · `test_closed_orders_read.py` | what a cancel answer and a closed-orders read actually say (#487) |
+| `test_kraken_error_codes.py` | the venue's documented "not now" inside an answer is transient, every other code its answer (#598) |
 
 ## Nonce — `test_nonce.py`
 
@@ -150,6 +152,19 @@ and the executor knows a dry run's answers come from our own simulator, which re
 | `TestEveryOrderAsksForTheFeeInTheQuote` | `oflags=fciq` on market, limit, stop and stop-limit, buy and sell |
 | `TestTheCapabilityIsDeclared` | `status_answer` with dry run off, and in a dry run too — the capability describes the venue |
 
+## The venue's "not now" — `test_kraken_error_codes.py`
+
+Kraken answers most failures with HTTP 200 and an `error` list, so the transport never sees them.
+Three codes are documented as the venue not answering the request at all —
+`EService:Unavailable` (maintenance), `EService:Deadline elapsed` and `EGeneral:Internal error` —
+and go to the ladder as transient; every other code stays the venue's answer (#598). The source
+and the date it was read are in `kraken_error_codes.py`.
+
+| Test class | Asserts |
+|---|---|
+| `TestWhatTheCodesMean` | each not-now code, with or without a numeric suffix, is TRANSIENT · an order refusal, a refused key, a lockout and a cancel-only market stay TERMINAL · an answer beside a not-now keeps the whole answer terminal · an empty list passes · the reader's label stays in the message |
+| `TestTheAdapterAppliesThem` | the adapter's one private-call method raises a deadline on an order as transient — asked about, never refused — and insufficient funds as the venue's answer |
+
 ## Run
 
 ```bash
@@ -161,4 +176,5 @@ Or launch.json: `🧩 Pytest: Kraken Adapter (Offline)`.
 Source: `python/framework/trading_env/adapters/kraken_adapter.py` — `_do_fetch_private`,
 `_sign_request`, `build_submit_payload`, `_put_price`, `build_modify_payload`,
 `_parse_openorders_response`, `_prices_from_descr`, `parse_cancel_response`,
-`_build_closedorders_payload`, `_parse_closedorders_response`.
+`_build_closedorders_payload`, `_parse_closedorders_response`; `kraken_error_codes.py` —
+`raise_for_kraken_errors`.

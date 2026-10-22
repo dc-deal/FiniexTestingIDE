@@ -34,6 +34,10 @@ identity guard (`MountIdentityMismatchError`) that rejects a mount fed scenarios
 identity. The single-call `run()` composes the three pieces for the unchanged cold path. Types:
 `python/framework/types/mount_package_types.py`.
 
+A mount also carries the broker configuration read when it was prepared, so every run on it trades
+with that configuration, whatever the runtime cache holds by then — see
+[What a backtest trades with, and what it records](#what-a-backtest-trades-with-and-what-it-records).
+
 ---
 
 ## Phase 2: Execution Coordination
@@ -147,7 +151,7 @@ the wired objects as one named object rather than a positional tuple
    └─> Configures parallel execution (if enabled)
 
 5. Create TradeSimulator
-   └─> Loads broker config from shared_data
+   └─> Loads broker config from shared_data (read once in the main process, see below)
    └─> Initializes PortfolioManager
    └─> Injects DecisionTradingApi into decision logic
 
@@ -183,6 +187,24 @@ uses. The rule, the seam at the first tick and the outcome table:
 ```
 ✅ Warmup injected: 34 bars (M5:14, M30:20) from the archive, complete at 2025-09-25T14:00:03+00:00
 ```
+
+### What a backtest trades with, and what it records
+
+The broker configuration is read once in the main process, with the data (`BrokerDataPreparator`),
+and handed to the subprocesses with only the symbols the run's scenarios trade. For a static broker
+(MT5) the run reads its tracked file whole. For a dynamic broker (`kraken_spot`) it reads the
+symbol specifications from the runtime cache — machine-local, and refreshed by a live-adapter
+session start or `broker_config_cli.py sync`, never by a backtest — and the fee structure from the
+tracked seed ([Broker Configuration](broker_config_guide.md)). When an entry it read was older than
+seven days, the run says so once per symbol afterwards (`broker_spec_stale`).
+
+Before the scenarios execute, the run freezes the configuration the mount carries: a copy goes
+into the run-config store, and the run's broker section names it `broker_config_id`, beside
+`config_hash`. The scenario set is frozen as written, under the header's `config_id`. What the set
+leaves out is filled from `app_config.json` when the run starts, and of that merged result only a
+digest is kept, the ledger row's `profile_hash` over the execution and simulator settings. Why a
+run keeps these: [A run is a record, and an old one stays
+true](introduction_to_the_ide.md#a-run-is-a-record-and-an-old-one-stays-true).
 
 ---
 
@@ -800,14 +822,20 @@ Total:                   ~63ms
 **Log Directory Structure (Backtesting):**
 ```
 runs/simulation/<set_name>/<run_id>/
+  header.json                   What the run is: configuration id, code identity, market windows
   scenario_summary.log          Batch summary report (all scenarios)
+  scenario_global_log.log       Run-level log
   scenario_system_info.log      System & version info (if enabled)
-  <set_name>.json               Config snapshot
   scenario_logs/
     scenario_01_<name>.log      Per-scenario tick logs (DEBUG level)
     scenario_02_<name>.log
     ...
+  io/                           The run's report sections
 ```
+
+The configuration the run was given is not copied here: it is frozen in the run-config store under
+the `config_id` its header names, and the broker configuration under the `broker_config_id` of its
+broker section (`io/broker.json`).
 
 Compare with AutoTrader (`session_logs/` instead of `scenario_logs/`):
 ```

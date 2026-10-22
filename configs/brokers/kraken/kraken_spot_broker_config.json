@@ -37,6 +37,7 @@
       "quote_currency": "USD",
       "trade_allowed": true,
       "volume_min": 3.9,
+      "cost_min": 0.5,
       "volume_max": 10000.0,
       "volume_step": 1e-08,
       "volume_limit": 0.0,
@@ -49,14 +50,15 @@
       "freeze_level": 0,
       "kraken_pair_name": "DOTUSD",
       "_active": true,
-      "_last_fetched": "2026-05-04T12:22:11Z"
+      "_last_fetched": "2026-10-18T12:54:22Z"
     },
     "ETHUSD": {
       "description": "ETH vs USD",
       "base_currency": "ETH",
       "quote_currency": "USD",
       "trade_allowed": true,
-      "volume_min": 0.001,
+      "volume_min": 0.002,
+      "cost_min": 0.5,
       "volume_max": 10000.0,
       "volume_step": 1e-08,
       "volume_limit": 0.0,
@@ -69,7 +71,7 @@
       "freeze_level": 0,
       "kraken_pair_name": "XETHZUSD",
       "_active": true,
-      "_last_fetched": "2026-05-04T12:26:28Z"
+      "_last_fetched": "2026-10-18T12:54:22Z"
     },
     "ADAUSD": {
       "description": "ADA vs USD",
@@ -77,6 +79,7 @@
       "quote_currency": "USD",
       "trade_allowed": true,
       "volume_min": 20.0,
+      "cost_min": 0.5,
       "volume_max": 10000.0,
       "volume_step": 1e-08,
       "volume_limit": 0.0,
@@ -89,14 +92,15 @@
       "freeze_level": 0,
       "kraken_pair_name": "ADAUSD",
       "_active": true,
-      "_last_fetched": "2026-05-04T18:49:01Z"
+      "_last_fetched": "2026-10-18T12:54:22Z"
     },
     "BTCUSD": {
       "description": "BTC vs USD",
       "base_currency": "BTC",
       "quote_currency": "USD",
       "trade_allowed": true,
-      "volume_min": 5e-05,
+      "volume_min": 6e-05,
+      "cost_min": 0.5,
       "volume_max": 10000.0,
       "volume_step": 1e-08,
       "volume_limit": 0.0,
@@ -109,14 +113,15 @@
       "freeze_level": 0,
       "kraken_pair_name": "XXBTZUSD",
       "_active": true,
-      "_last_fetched": "2026-05-04T18:49:01Z"
+      "_last_fetched": "2026-10-18T12:54:22Z"
     },
     "DASHUSD": {
       "description": "DASH vs USD",
       "base_currency": "DASH",
       "quote_currency": "USD",
       "trade_allowed": true,
-      "volume_min": 0.15,
+      "volume_min": 0.08,
+      "cost_min": 0.5,
       "volume_max": 10000.0,
       "volume_step": 1e-08,
       "volume_limit": 0.0,
@@ -129,14 +134,15 @@
       "freeze_level": 0,
       "kraken_pair_name": "DASHUSD",
       "_active": true,
-      "_last_fetched": "2026-05-04T18:49:01Z"
+      "_last_fetched": "2026-10-18T12:54:22Z"
     },
     "ETHEUR": {
       "description": "ETH vs EUR",
       "base_currency": "ETH",
       "quote_currency": "EUR",
       "trade_allowed": true,
-      "volume_min": 0.001,
+      "volume_min": 0.002,
+      "cost_min": 0.45,
       "volume_max": 10000.0,
       "volume_step": 1e-08,
       "volume_limit": 0.0,
@@ -149,14 +155,15 @@
       "freeze_level": 0,
       "kraken_pair_name": "XETHZEUR",
       "_active": true,
-      "_last_fetched": "2026-05-04T18:49:01Z"
+      "_last_fetched": "2026-10-18T12:54:22Z"
     },
     "LTCUSD": {
       "description": "LTC vs USD",
       "base_currency": "LTC",
       "quote_currency": "USD",
       "trade_allowed": true,
-      "volume_min": 0.1,
+      "volume_min": 0.08,
+      "cost_min": 0.5,
       "volume_max": 10000.0,
       "volume_step": 1e-08,
       "volume_limit": 0.0,
@@ -169,14 +176,15 @@
       "freeze_level": 0,
       "kraken_pair_name": "XLTCZUSD",
       "_active": true,
-      "_last_fetched": "2026-05-04T18:49:01Z"
+      "_last_fetched": "2026-10-18T12:54:22Z"
     },
     "SOLUSD": {
       "description": "SOL vs USD",
       "base_currency": "SOL",
       "quote_currency": "USD",
       "trade_allowed": true,
-      "volume_min": 0.02,
+      "volume_min": 0.05,
+      "cost_min": 0.5,
       "volume_max": 10000.0,
       "volume_step": 1e-08,
       "volume_limit": 0.0,
@@ -189,14 +197,15 @@
       "freeze_level": 0,
       "kraken_pair_name": "SOLUSD",
       "_active": true,
-      "_last_fetched": "2026-05-04T18:49:02Z"
+      "_last_fetched": "2026-10-18T12:54:22Z"
     },
     "XRPUSD": {
       "description": "XRP vs USD",
       "base_currency": "XRP",
       "quote_currency": "USD",
       "trade_allowed": true,
-      "volume_min": 1.65,
+      "volume_min": 4.0,
+      "cost_min": 0.5,
       "volume_max": 10000.0,
       "volume_step": 1e-08,
       "volume_limit": 0.0,
@@ -209,12 +218,12 @@
       "freeze_level": 0,
       "kraken_pair_name": "XXRPZUSD",
       "_active": true,
-      "_last_fetched": "2026-05-04T18:49:02Z"
+      "_last_fetched": "2026-10-18T12:54:23Z"
     }
   },
   "_config_meta": {
     "schema_version": "2.0",
-    "last_fetched": "2026-05-04T18:49:02Z",
-    "symbols_hash": "30b5e33a"
+    "last_fetched": "2026-10-18T12:54:23Z",
+    "symbols_hash": "596fa242"
   }
 }

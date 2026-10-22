@@ -11,9 +11,10 @@ them as much as an AutoTrader session does.
 
 import json
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from python.configuration.credentials_cascade import resolve_credentials_file
+from python.configuration.data_home import workspace_path
 from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.types.config_types.sentiment_config_types import (
     ActiveProducer,
@@ -35,17 +36,19 @@ class SentimentConfigManager:
     def __init__(
         self,
         config_path: str = 'configs/sentiment_config.json',
-        user_config_path: str = 'user_configs/sentiment_config.json',
+        user_config_path: Optional[str] = None,
     ):
         """
         Initialize the sentiment config manager.
 
         Args:
             config_path: Path to the base configuration
-            user_config_path: Path to the user override
+            user_config_path: Path to the user override; the workspace copy under the data home
+                when omitted
         """
         self._config_path = Path(config_path)
-        self._user_config_path = Path(user_config_path)
+        self._user_config_path = (Path(user_config_path) if user_config_path is not None
+                                  else workspace_path('sentiment_config.json'))
         self._config: SentimentConfig = SentimentConfig.model_validate(self._load())
 
     def get_config(self) -> SentimentConfig:

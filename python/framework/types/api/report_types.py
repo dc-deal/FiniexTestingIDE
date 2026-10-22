@@ -13,6 +13,7 @@ from typing import Any, Dict, Optional
 
 from pydantic import BaseModel, Field, computed_field
 
+from python.framework.types.api.recording_state_types import RecordingState
 from python.framework.types.autotrader_types.safety_session_types import FlattenOutcome
 from python.framework.types.live_types.broker_truth_types import (
     BrokerTruthPart,
@@ -995,7 +996,7 @@ class RunHeader(BaseModel):
             before this field existed, which is why nothing refuses the pair
         config_snapshot: File name of the config this run was commissioned with
         config_id: The registered identity of that configuration (#538) — SHA256 over its
-            normalised content, so two runs naming the same id ran the same configuration and a
+            normalised content, so two runs naming the same id were given the same file and a
             changed file mints a new one. Empty on a run that started before the store existed,
             and on one whose config could not be registered. It names the INPUT to the cascade —
             what the run was given, not what it ran with
@@ -1137,6 +1138,11 @@ class RunInfo(BaseModel):
     # so a session that died before its report HAS one, and counting it as an artifact would make
     # that session read as reported. A stream is served while the run is still going.
     stream_files: list[str] = Field(default_factory=list)
+    # Whether the session still records its state (#611): the verdict the latest-state-frame route
+    # gives, judged from the stream each time the list is served and never stored. None where the
+    # run records no state frames, has written none yet, replays recorded data before its end, or
+    # its stream cannot be read.
+    recording: Optional[RecordingState] = None
     # Straight from the run's header (#475) — the list answers "what was this run" on its own,
     # instead of making a consumer open each run to find out.
     start_time: str = ''
@@ -1147,8 +1153,8 @@ class RunInfo(BaseModel):
     # the discriminator existed, where the kind is genuinely unknown rather than absent.
     parent_id: Optional[str] = None
     parent_kind: Optional[ParentKind] = None
-    # The registered identity of the configuration this run used (#538). Two runs naming the
-    # same id ran the same configuration; empty on a run from before the store existed.
+    # The registered identity of the configuration file this run was given (#538). Two runs
+    # naming the same id were given the same file; empty on a run from before the store existed.
     config_id: str = ''
     app_version: str = ''
     git_commit: Optional[str] = None
@@ -1340,6 +1346,16 @@ class BookingPeriodRow(BaseModel):
     min_equity: float
     max_equity: float
     max_drawdown: float
+    # What the period CARRIES rather than what it did (contract 35): the account's decline since
+    # its equity curve began — a backtest's scenario start; for an AutoTrader session the curve it
+    # continues wherever its profile carries risk history over (`cold_start.enabled` and
+    # `safety.persist_baseline`), whatever its deployment (#497) — and what was still open when
+    # the period was sealed. The running decline repeats down the column on purpose; the period's
+    # own band and decline stand above it. None on a period whose record does not hold them.
+    account_max_drawdown: float | None = None
+    account_max_dd_pct: float | None = None
+    unrealized_pnl: float | None = None
+    open_position_count: int | None = None
 
 
 class BookingUnitTotalRow(BaseModel):
@@ -1797,7 +1813,9 @@ class DeploymentSessionRow(BaseModel):
 
 class DeploymentComparabilityAdvisory(BaseModel):
     """
-    A deployment whose sessions were not all produced by the same configuration.
+    A deployment whose sessions were not all produced by the same profile — the same strategy
+    parameters, the same operational settings, the same place the orders went. The code each
+    session ran and the broker configuration it traded with are not compared (#559).
 
     The per-session marks say WHERE something changed; this says WHETHER the history can be
     read as one series at all, and it says it BEFORE the table rather than inside it. The
@@ -2207,11 +2225,11 @@ class BrokerInfoRow(BaseModel):
     stopout_level: float = 0.0
     hedging_allowed: bool = False
     config_hash: str = ''
-    # Where the session's broker configuration was frozen (#547) — the run-config store id of
-    # the content `config_hash` only digests: symbol specs, fee structure, detected tier. Read
-    # it back to give a later backtest the configuration this session had. Empty for a
-    # simulation unit, which reads the archive's broker files at run time, and on a session
-    # recorded before the freeze existed.
+    # Where the run froze the broker configuration it traded with (#547) — the run-config store
+    # id of the whole configuration, of which `config_hash` digests the symbol specs and the fee
+    # structure (the detected tier's rates where a live session applied them). A session and a
+    # backtest freeze it alike. Empty on a run recorded before its pipeline froze it, and where
+    # the store could not be written.
     broker_config_id: str = ''
     scenarios: list[str] = []
     symbols: list[BrokerSymbolRow] = []

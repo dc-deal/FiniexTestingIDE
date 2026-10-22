@@ -36,6 +36,11 @@ from python.framework.types.api.report_types import (
     WarningsErrorsReport,
     WorkerDecisionReport,
 )
+from python.framework.types.log_layout_types import (
+    STATE_FRAMES_FILE,
+    TICK_STREAM_EVENTS_FILE,
+    WARMUP_HISTORY_FILE,
+)
 
 AGGREGATED_PORTFOLIO_ARTIFACT: ArtifactSpec[AggregatedPortfolioReport] = ArtifactSpec(
     'aggregated_portfolio.json', AggregatedPortfolioReport)
@@ -88,12 +93,19 @@ WORKER_DECISION_ARTIFACT: ArtifactSpec[WorkerDecisionReport] = ArtifactSpec(
     'worker_decision.json', WorkerDecisionReport)
 
 
-# Run STREAMS (#362) — written line by line while a run is in progress, and read back line by line.
+# Run STREAMS (#362) — written line by line while a run is in progress, and served while it is.
 # Not ArtifactSpecs: a spec decodes one JSON document, a stream is many. Kept apart from the report
-# artifacts for a reason beyond format: a live session writes its stream from its first order, so a
-# session that died before its report has one — counted as an artifact, it would read as reported.
+# artifacts for a reason beyond format: a live session writes its order events from its first order
+# and its state frames (#579 part A, served since #611) from its first pass, so a session that died
+# before its report has them — counted as artifacts, it would read as reported.
 ORDER_EVENTS_STREAM = 'order_events.jsonl'
-STREAM_FILENAMES: FrozenSet[str] = frozenset({ORDER_EVENTS_STREAM})
+STREAM_FILENAMES: FrozenSet[str] = frozenset({ORDER_EVENTS_STREAM, STATE_FRAMES_FILE})
+
+# Records a live session writes into io/ itself, as it runs — the warmup history it started from
+# (#588) and its tick stream's outages (#609). Neither a report artifact nor a served stream:
+# counted as an artifact, a session that died before its report would read as reported, and listed
+# among the streams it would promise a route that does not exist.
+RUN_RECORD_FILENAMES: FrozenSet[str] = frozenset({WARMUP_HISTORY_FILE, TICK_STREAM_EVENTS_FILE})
 
 # The acceptance studies' captures (#332, #358) — streams too, but at the run directory's root
 # rather than in io/, and read by their certificates rather than served, so they are not among the

@@ -13,14 +13,19 @@ pipelines: an **origin** and, for a run that reports, a **code identity**. This 
 what each one records, where it comes from, who reads it, what it costs, and the refusal it makes
 possible: a real-money session does not start from uncommitted code.
 
+Code is one of several things a run records about itself, and a matching commit alone does not
+reproduce a run: the backtest of a real-money session's window also needs the configuration, the
+broker configuration and the data that session used.
+[A run is a record, and an old one stays true](../introduction_to_the_ide.md#a-run-is-a-record-and-an-old-one-stays-true)
+maps where each is kept.
+
 **Not here:** how a token is bound to an account (see
 [Credentials Layout](credentials_layout.md#tokens-and-accounts--a-client-and-the-one-it-acts-for)),
 how the patch of a dirty tree is stored and restored (see
 [Data Storage Layout](data_storage_layout.md#run-patches-keep-the-code-a-dirty-tree-ran-551)),
 what the API serves and when its contract changed (see
-[API Contract Log](../consumer/contract-log.md)), and the run header's other fields (see
-[Reporting Pipeline](reporting_pipeline.md) and
-[API Server Architecture](api_server_architecture.md)).
+[API Contract Log](../consumer/contract-log.md)), and the run header's other fields (see the
+served [run header](../consumer/run-header.md) document, which lists every key).
 
 ## What a run header carries
 
@@ -66,7 +71,7 @@ never as a guess — there is no migration.
 |---|---|---|
 | `channel` | `cli` · `sweep` · `direct` | declared by the entry point (below) |
 | `client` | `console` | the caller; an API consumer name once the `api` channel exists |
-| `person` | `operator` | the principal the client acts for |
+| `principal` | `operator` | on whose behalf the run was started: `operator` at the console, the account a token acts for once the `api` channel exists |
 | `host` | `h_` plus six characters | minted once per installation |
 | `allow_dirty` | `false` | `--allow-dirty` on the AutoTrader CLI |
 

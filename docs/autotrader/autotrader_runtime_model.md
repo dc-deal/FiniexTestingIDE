@@ -131,6 +131,11 @@ components into the shared framework.
 3. `setup_tick_source()` starts tick source thread
 4. Enter tick loop
 
+Before step 2 the session has already written its run header, which names the profile it was
+given (`config_id`), what it runs with (`rendered_config_id`) and its code; step 2 freezes the
+broker configuration it trades with (`broker_config_id`). So the record exists before the first
+tick — see [What a session records](autotrader_architecture.md#what-a-session-records).
+
 Between steps 2 and 3, `_validate_startup()` refuses what must not start at all — one session,
 nothing to exclude, so it aborts. Among its refusals: a session that would send REAL
 orders from uncommitted code, and one whose code changed between the capture of its code identity
@@ -229,7 +234,8 @@ A **refusal at the first tick** (#588) is an `emergency` that is neither a crash
 abort, like a safety escalation: a live session could not complete its warmup history when its
 first trade arrived — the venue had not yet committed the period that ended since the boot read, or
 could not be read again — and stopped before that tick's workers and decision ran. It is graded
-`FAILED` like the others, so whoever relaunches sessions relaunches it, and it is SHOWN as what it
+`FAILED` like the others, but its cause is passing, so the process exits 75 and a supervisor
+relaunches it (#598); and it is SHOWN as what it
 is: the console prints a `⛔ REFUSED AT THE FIRST TICK — its workers and decision did not run` block
 instead of `RUNTIME ERROR — SESSION ABORTED`, the session log carries the reason as an error, the
 summary reads `Shutdown: emergency (refused at the first tick)`, and the served warnings-errors
@@ -266,6 +272,10 @@ Lifecycle: restore runs after warmup and before the first decision; saves fire o
 cadence (every N ticks OR M seconds) from the tick loop — both the per-tick and the idle
 heartbeat branch — plus a final save on shutdown. An empty snapshot writes no file; a
 mid-session save failure is logged (error pot) but never aborts the session.
+
+What was restored is not kept with the run: the session log notes the load, the snapshot's age and
+whether the algo took it, and the next save overwrites the file. A backtest never restores, so this
+is one place a restarted session and the backtest of its window can part — see the authoring guide.
 
 Two load-time policies. **Corrupt** (`on_corrupt`: `warn_reset` / `fail`) handles an unreadable
 or wrong-schema file. **Stale** (`on_stale`: `warn_reset` / `halt`) handles a snapshot older than

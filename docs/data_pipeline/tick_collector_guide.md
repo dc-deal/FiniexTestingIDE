@@ -262,6 +262,10 @@ data format 1.3.0, the MT5 file 1.1.0.
 - `spread_pct`: Spread as percentage of bid
 - `tick_flags`: Tick type flags (e.g. "BID ASK", "BUY", "SELL")
 - `session`: Trading session label (broker-side, recalculated to UTC by importer)
+- `trade_id`: The venue's public id of the trade (Kraken, from data format 1.7.0; a quote-driven
+  venue has none). Rising per pair, so a run of missing ids marks trades the collector may not have
+  seen — the tick index counts them per file (`trade_id_gaps`). An upper bound: the venue also
+  allocates ids that never become public trades. Not the id of one of our own executions.
 
 > **Why a second timestamp at all?** `time_msc` says when the tick *happened* at the broker,
 > `collected_msc` says when it *reached us* — two different questions, and only the second one

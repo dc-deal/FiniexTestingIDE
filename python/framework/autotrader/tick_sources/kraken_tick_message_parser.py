@@ -13,13 +13,24 @@ valuation plane — equity, drawdown, the mark price, the slippage baseline.
 
 Without a quote — the first trades after a start or a reconnect, or a ticker channel that
 never came up — the trade price stands in for both sides exactly as it always did.
+
+A trade the venue sends in a shape we cannot trust — no venue time, a time without an offset, a
+price or quantity that is not a finite positive number — is REFUSED and counted, never repaired:
+an event time is never replaced by the local clock, which is the receipt time and has a field of
+its own (`collected_msc`). The public trade id of every accepted trade goes to the tick stream
+recorder (#609) and nowhere else: it names what a reconnect missed, and no worker reads it.
 """
 
 import json
+import math
 import time
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
+from python.framework.autotrader.tick_sources.tick_stream_recorder import TickStreamRecorder
+from python.framework.types.autotrader_types.tick_stream_event_types import (
+    RefusedPublicTradeReason,
+)
 from python.framework.types.market_types.market_data_types import ObservedQuote, TickData
 
 
@@ -41,10 +52,13 @@ class KrakenTickMessageParser:
 
     Args:
         symbol: Internal trading symbol (e.g., 'BTCUSD')
+        recorder: Learns each accepted trade's public id and each refused trade (#609); None
+            for a parser that keeps no record
     """
 
-    def __init__(self, symbol: str):
+    def __init__(self, symbol: str, recorder: Optional[TickStreamRecorder] = None):
         self._symbol = symbol
+        self._recorder = recorder
         # Written on the socket thread, read there and by the display thread. One reference to
         # a frozen value, so the reader either sees the previous quote or the next one whole,
         # and no lock is needed for either.
@@ -91,6 +105,9 @@ class KrakenTickMessageParser:
             return None
 
         trade_data = data.get('data', [])
+        if not isinstance(trade_data, list):
+            self._refuse(RefusedPublicTradeReason.UNREADABLE_ENTRY, None, trade_data)
+            return None
         if not trade_data:
             return None
 
@@ -101,6 +118,23 @@ class KrakenTickMessageParser:
                 ticks.append(tick)
 
         return ticks if ticks else None
+
+    def is_trade_message(self, raw_message: str) -> bool:
+        """
+        Whether a raw message carries trades — read without turning anything into a tick.
+
+        Args:
+            raw_message: JSON string from WebSocket
+
+        Returns:
+            True for a trade snapshot or update
+        """
+        try:
+            data = json.loads(raw_message)
+        except json.JSONDecodeError:
+            return False
+        return (isinstance(data, dict) and data.get('channel') == 'trade'
+                and data.get('type') in ('snapshot', 'update'))
 
     def get_last_quote(self) -> Optional[ObservedQuote]:
         """
@@ -150,17 +184,15 @@ class KrakenTickMessageParser:
             data: Parsed ticker message
         """
         ticker_data = data.get('data', [])
-        if not ticker_data:
+        if not isinstance(ticker_data, list):
             return
 
         for ticker in ticker_data:
-            try:
-                bid = float(ticker.get('bid', 0))
-                ask = float(ticker.get('ask', 0))
-            except (TypeError, ValueError):
+            if not isinstance(ticker, dict):
                 continue
-
-            if bid <= 0 or ask <= 0 or ask < bid:
+            bid = _positive_finite(ticker.get('bid'))
+            ask = _positive_finite(ticker.get('ask'))
+            if bid is None or ask is None or ask < bid:
                 continue
 
             self._last_quote = ObservedQuote(
@@ -170,9 +202,9 @@ class KrakenTickMessageParser:
             )
             self._quotes_received += 1
 
-    def _parse_single_trade(self, trade: Dict[str, Any]) -> Optional[TickData]:
+    def _parse_single_trade(self, trade: Any) -> Optional[TickData]:
         """
-        Convert a single trade dict to TickData.
+        Convert a single trade dict to TickData, or refuse it.
 
         The execution happened at one price; the quote it executed against comes from the
         ticker channel. Without one, the trade price stands in for both sides as it always
@@ -184,6 +216,8 @@ class KrakenTickMessageParser:
             "side": "buy",
             "price": 67123.4,
             "qty": 0.01,
+            "ord_type": "market",
+            "trade_id": 107927359,
             "timestamp": "2026-01-19T07:44:05.371000Z"
         }
 
@@ -191,55 +225,90 @@ class KrakenTickMessageParser:
             trade: Single trade entry from Kraken 'data' array
 
         Returns:
-            TickData or None if trade is invalid
+            TickData, or None when the trade was refused — the recorder learns why
         """
-        try:
-            price = float(trade.get('price', 0))
-            if price <= 0:
-                return None
-
-            qty = float(trade.get('qty', 0))
-
-            # Parse Kraken ISO timestamp -> datetime UTC + time_msc
-            timestamp_str = trade.get('timestamp', '')
-            if timestamp_str:
-                try:
-                    dt_utc = datetime.fromisoformat(
-                        timestamp_str.replace('Z', '+00:00')
-                    )
-                    time_msc = int(dt_utc.timestamp() * 1000)
-                except ValueError:
-                    dt_utc = datetime.now(timezone.utc)
-                    time_msc = int(time.time() * 1000)
-            else:
-                dt_utc = datetime.now(timezone.utc)
-                time_msc = int(time.time() * 1000)
-
-            # Local clock at receipt
-            collected_msc = int(time.time() * 1000)
-
-            quote = self._last_quote
-            bid = quote.bid if quote is not None else price
-            ask = quote.ask if quote is not None else price
-
-            return TickData(
-                timestamp=dt_utc,
-                symbol=self._symbol,
-                bid=bid,
-                ask=ask,
-                volume=qty,
-                time_msc=time_msc,
-                collected_msc=collected_msc,
-                # Kraken is order-driven: this IS the traded price, and carrying it keeps the
-                # live tick and an archived one the same shape. §41 — a field present in the
-                # archive and absent live is reachable by a worker and would read differently
-                # on the two sides, which is the parity break that rule exists to prevent.
-                # Unchanged by the quote above: bid/ask move, the traded price does not.
-                last=price,
-            )
-
-        except (KeyError, ValueError, TypeError):
+        if not isinstance(trade, dict):
+            self._refuse(RefusedPublicTradeReason.UNREADABLE_ENTRY, None, trade)
             return None
+        # A trade without a readable id is still a trade; only the gap around it stays unnamed.
+        public_trade_id = _public_trade_id(trade.get('trade_id'))
+
+        price = _positive_finite(trade.get('price'))
+        if price is None:
+            self._refuse(
+                RefusedPublicTradeReason.INVALID_PRICE, public_trade_id, trade.get('price'))
+            return None
+        qty = _positive_finite(trade.get('qty'))
+        if qty is None:
+            self._refuse(
+                RefusedPublicTradeReason.INVALID_QUANTITY, public_trade_id, trade.get('qty'))
+            return None
+
+        # The venue's time is the event time, and the local clock never stands in for it: a
+        # missing or unreadable one refuses the trade. A time without an offset parses as NAIVE;
+        # read as host-local time it would shift the event by the host's offset, and a naive
+        # value reaching the executor's aware clock ends the session with a TypeError.
+        timestamp_str = trade.get('timestamp')
+        if timestamp_str is None or timestamp_str == '':
+            self._refuse(RefusedPublicTradeReason.NO_VENUE_TIME, public_trade_id, timestamp_str)
+            return None
+        if not isinstance(timestamp_str, str):
+            self._refuse(
+                RefusedPublicTradeReason.UNREADABLE_VENUE_TIME, public_trade_id, timestamp_str)
+            return None
+        try:
+            venue_time = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
+        except ValueError:
+            self._refuse(
+                RefusedPublicTradeReason.UNREADABLE_VENUE_TIME, public_trade_id, timestamp_str)
+            return None
+        if venue_time.tzinfo is None:
+            self._refuse(
+                RefusedPublicTradeReason.VENUE_TIME_WITHOUT_OFFSET, public_trade_id, timestamp_str)
+            return None
+        dt_utc = venue_time.astimezone(timezone.utc)
+        time_msc = int(dt_utc.timestamp() * 1000)
+
+        # Local clock at receipt
+        collected_msc = int(time.time() * 1000)
+
+        quote = self._last_quote
+        bid = quote.bid if quote is not None else price
+        ask = quote.ask if quote is not None else price
+
+        tick = TickData(
+            timestamp=dt_utc,
+            symbol=self._symbol,
+            bid=bid,
+            ask=ask,
+            volume=qty,
+            time_msc=time_msc,
+            collected_msc=collected_msc,
+            # Kraken is order-driven: this IS the traded price, and carrying it keeps the
+            # live tick and an archived one the same shape. §41 — a field present in the
+            # archive and absent live is reachable by a worker and would read differently
+            # on the two sides, which is the parity break that rule exists to prevent.
+            # Unchanged by the quote above: bid/ask move, the traded price does not.
+            last=price,
+        )
+        if self._recorder is not None:
+            self._recorder.on_trade(public_trade_id, dt_utc)
+        return tick
+
+    def _refuse(self, reason: RefusedPublicTradeReason, public_trade_id: Optional[int],
+                raw_value: Any) -> None:
+        """
+        Hand a refused trade to the recorder, which counts it and lists the first of each reason.
+
+        Args:
+            reason: What was wrong with it
+            public_trade_id: Its id when the entry carried a readable one
+            raw_value: The offending value as the venue sent it
+        """
+        if self._recorder is None:
+            return
+        raw = raw_value if isinstance(raw_value, str) else json.dumps(raw_value, default=str)
+        self._recorder.on_refused_trade(reason, public_trade_id, raw)
 
     def is_subscription_confirmation(
         self,
@@ -294,3 +363,41 @@ class KrakenTickMessageParser:
             return None
         except json.JSONDecodeError:
             return None
+
+
+def _positive_finite(value: Any) -> Optional[float]:
+    """
+    A venue field as a finite positive number.
+
+    Args:
+        value: The field as received — a number, or a numeric string
+
+    Returns:
+        The number, or None when it is missing, not numeric, not finite or not positive
+    """
+    if value is None or isinstance(value, bool):
+        return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return number if math.isfinite(number) and number > 0 else None
+
+
+def _public_trade_id(value: Any) -> Optional[int]:
+    """
+    The venue's public id of a trade, read as an integer.
+
+    Args:
+        value: The `trade_id` field as received
+
+    Returns:
+        The id, or None when the field is absent or not a whole number
+    """
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str) and value.isdigit():
+        return int(value)
+    return None

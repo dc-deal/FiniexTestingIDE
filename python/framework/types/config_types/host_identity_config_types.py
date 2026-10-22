@@ -25,9 +25,10 @@ HOST_ID_ALPHABET = string.ascii_lowercase + string.digits
 HOST_ID_RANDOM_LENGTH = 6
 HOST_ID_PATTERN = f'^{re.escape(HOST_ID_PREFIX)}[a-z0-9]{{{HOST_ID_RANDOM_LENGTH}}}$'
 
-# Where the installation's identity lives: the workspace, which the `/app` bind mount carries across
-# a container rebuild, and which is never tracked — a tracked id would give every clone the same one.
-HOST_IDENTITY_FILE = 'user_configs/host_identity.json'
+# Where the installation's identity lives: the workspace under the data home, which a container
+# rebuild and a deploy into a new code tree both leave in place, and which is never tracked — a
+# tracked id would give every clone the same one. This is the file's name in the workspace.
+HOST_IDENTITY_FILE_NAME = 'host_identity.json'
 
 # The identity stated under config isolation. It deliberately does NOT match the minted shape,
 # so a record written by a test can never be mistaken for one written by a real installation.

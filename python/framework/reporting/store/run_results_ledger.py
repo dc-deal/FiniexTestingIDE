@@ -80,7 +80,8 @@ LEDGER_COLUMNS: List[str] = [
     # top of this list, one drawer over: that one says a measure may have changed under a stable
     # column name, these say the INPUT may have. A ranking across rows that read different
     # archives compares runs that are not comparable, and the thirty-day parity proof rests on
-    # being able to show an AutoTrader session and its backtest read the same thing.
+    # being able to show that the backtest compared with a real-money session read our own
+    # collector's stamped recording of that session's window — the session itself read a socket.
     # `input_plane` is what keeps an empty triple honest — a live-adapter session reads a
     # socket, so empty MEANS something there and would otherwise be indistinguishable from a
     # sim row that recorded nothing.

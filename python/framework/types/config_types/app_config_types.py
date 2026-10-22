@@ -2,7 +2,10 @@
 FiniexTestingIDE - Application Configuration Types
 Top-level Pydantic model for app_config.json.
 """
+from pathlib import Path
 from typing import List
+
+from pydantic import field_validator
 
 from python.framework.types.config_types.strict_config_model import StrictConfigModel
 
@@ -37,6 +40,37 @@ class SharedPaths(StrictConfigModel):
     config_directory: str = 'data/runtime/config_directory'
 
 
+class ActivitiesConfig(StrictConfigModel):
+    """What runs on this machine (#603)."""
+    # ONE directory per machine, outside every code tree: several checkouts or worktrees on one
+    # machine, and on a server one code tree per release tag, all list their work in it. An
+    # absolute path stands for itself; `~` is the home of the user the process runs as.
+    directory: str = '~/.finiex/activities'
+    # The environment variable whose value names the console session an activity was started
+    # from, so two people or two parallel workers on one machine are told apart. Empty: none.
+    session_env_var: str = ''
+
+    @field_validator('directory')
+    @classmethod
+    def _directory_stands_for_itself(cls, value: str) -> str:
+        """
+        Refuse a directory that would split the list by working directory.
+
+        Args:
+            value: The configured directory
+
+        Returns:
+            The directory, when it is absolute or starts at the home directory
+        """
+        if not value.strip():
+            raise ValueError('activities.directory is empty — name one directory per machine')
+        if not (value.startswith('~') or Path(value).is_absolute()):
+            raise ValueError(
+                f'activities.directory {value!r} is relative — each process would resolve it '
+                'against its own working directory, and the one list would split in several')
+        return value
+
+
 class HistoryConfig(StrictConfigModel):
     """In-memory history retention limits (shared across both pipelines)."""
     bar_max_history: int = 1000
@@ -68,6 +102,7 @@ class AppConfig(StrictConfigModel):
     file_logging: FileLoggingConfig
     paths: SharedPaths
     history: HistoryConfig = HistoryConfig()
+    activities: ActivitiesConfig = ActivitiesConfig()
     api: ApiConfig = ApiConfig()
     docs_search: DocsSearchConfig = DocsSearchConfig()
     autotrader: AutotraderDefaultsConfig = AutotraderDefaultsConfig()

@@ -4,15 +4,17 @@ FiniexTestingIDE - Kraken Adapter Live Integration Test — Fill Validation
 Validates that KrakenAdapter correctly reads fill responses from the Kraken API:
 fill_price, filled_lots, and BrokerOrderStatus.FILLED from QueryOrders.
 
-Flow: MARKET buy 0.001 ETHUSD → poll until filled → MARKET sell 0.001 ETHUSD → poll until filled.
-Net exposure: ~0. Cost: ~$0.012 in maker/taker fees.
+Flow: MARKET buy of ETHUSD's minimum size → poll until filled → MARKET sell of the same size → poll
+until filled.
+Net exposure: ~0. Cost: two taker fees on the minimum size, about $0.08 (0.002 ETH at ~$2,500
+and the account's 0.80 %, October 2026).
 
 Run explicitly:
     pytest tests/live_adapters/ -v -m live_adapter --place-real-orders
 
 Skipped by default and excluded from the unified test runner.
 Requires: user_configs/credentials/venues/kraken_credentials.json
-          Active Kraken account (funds not required beyond fees)
+          Active Kraken account with USD for one minimum-size buy (~$5), sold straight back
 """
 
 import json
@@ -111,16 +113,21 @@ class TestKrakenAdapterOrderLifecycleFill:
 
     Verifies that query_order_sync correctly parses Kraken's QueryOrders
     response for filled orders: fill_price > 0, filled_lots populated.
-    Net exposure is ~0. Cost: ~$0.012 in fees (0.001 ETH × ~$2300 × 0.26% × 2).
+    Net exposure is ~0. Cost: two taker fees on the minimum size — 0.002 ETH × ~$2,500 × 0.80 % × 2
+    ≈ $0.08 in October 2026.
     """
 
     def test_market_order_fill_roundtrip(self, live_adapter_fill, processor):
-        """MARKET buy 0.001 ETHUSD → verify fill → MARKET sell → verify fill."""
+        """MARKET buy of the minimum size → verify fill → MARKET sell → verify fill."""
+        # The smallest size the venue accepts, from the seed rather than a literal: Kraken raised
+        # ETHUSD's from 0.001 to 0.002 in October 2026, and the literal became a size it refuses
+        lots = live_adapter_fill.get_symbol_specification('ETHUSD').volume_min
+
         # 1. Buy
         buy_response = processor.submit_open_order(
             symbol='ETHUSD',
             direction=OrderDirection.LONG,
-            lots=0.001,
+            lots=lots,
             order_type=OrderType.MARKET,
             adapter=live_adapter_fill,
         )
@@ -149,7 +156,7 @@ class TestKrakenAdapterOrderLifecycleFill:
         sell_response = processor.submit_open_order(
             symbol='ETHUSD',
             direction=OrderDirection.SHORT,
-            lots=0.001,
+            lots=lots,
             order_type=OrderType.MARKET,
             adapter=live_adapter_fill,
         )

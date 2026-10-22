@@ -108,11 +108,23 @@ A unit is named the same thing everywhere, under four different field names; see
 ## Data windows are declared, not measured
 
 `data_windows` carries one window per unit, recorded when the run **started** — before a tick was
-read. It is what the run was asked to cover. What a unit actually processed is on
+read. It is what the run was asked to cover. What a backtest unit actually processed is on
 [scenario details](/api/v1/docs/scenario-details).
+
+A session has no scenario details. It serves the length of what it processed,
+`tick_timespan_seconds` on the [run summary](/api/v1/docs/run-summary), and not yet its two ends.
+Until it does: in a replayed session that reached its close, the last processed tick is the first
+booking period's `opened_at` plus `tick_timespan_seconds`. In a session on a live feed it lies
+between that instant and the `closed_at` of its `session_end` period. The two lie as far apart as
+the session went without a tick at its start and at its end: at most about fifteen seconds in the
+sessions recorded by 2026-10-19, and longer on a quiet market. A session that stopped before its
+close has no booking periods and no `tick_timespan_seconds`, and no end can be derived for it.
 
 `end_date` is null where the window is open: a run limited by a tick count rather than by a date,
 or a session on a live feed, whose window is recorded at its start and never closed on the record.
+Where a scenario declares both a tick count and an end date, the tick count decides and the end
+date is not applied: the scenario can read past its `end_date`, or stop before it. Read what it
+processed, never the declared end.
 
 There is deliberately no single window over all units. A span across several scenarios would
 cover the gaps between them and claim the run touched a week none of its scenarios read.

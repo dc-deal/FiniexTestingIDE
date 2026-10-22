@@ -6,12 +6,14 @@ its feeder thread (threading model 8.a).
 
 import queue
 import threading
+from pathlib import Path
 from typing import Optional
 
 from python.framework.autotrader.tick_sources.kraken_tick_source import KrakenTickSource
 from python.framework.autotrader.tick_sources.mock_tick_source import MockTickSource
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
+from python.framework.types.log_layout_types import IO_SUBDIR
 from python.framework.types.process_data_types import ProcessDataPackage
 from python.framework.utils.process_serialization_utils import process_deserialize_ticks_batch
 
@@ -22,7 +24,10 @@ def setup_tick_source(
     base_currency: str,
     quote_currency: str,
     logger: ScenarioLogger,
-    package: Optional[ProcessDataPackage] = None
+    package: Optional[ProcessDataPackage] = None,
+    session_logger: Optional[ScenarioLogger] = None,
+    run_dir: Optional[Path] = None,
+    run_id: str = '',
 ) -> tuple:
     """
     Create tick source and start it in a separate thread.
@@ -37,6 +42,10 @@ def setup_tick_source(
         quote_currency: Symbol quote currency from SymbolSpec (e.g., 'USD')
         logger: Logger instance
         package: Prepared scenario data package (#438) — the mock source replays its ticks
+        session_logger: The session's logger — the live source writes what the operator must
+            read there (#609)
+        run_dir: The run's directory; the live source records its outages in its io/ folder
+        run_id: Written into that record's header
 
     Returns:
         (tick_source, tick_thread)
@@ -65,9 +74,13 @@ def setup_tick_source(
             quote_channel_enabled=config.tick_source.quote_channel_enabled,
             reconnect_initial_delay_s=config.tick_source.reconnect_initial_delay_s,
             reconnect_max_delay_s=config.tick_source.reconnect_max_delay_s,
+            backoff_reset_after_s=config.tick_source.backoff_reset_after_s,
             connection_check_interval_s=config.tick_source.connection_check_interval_s,
             connection_dead_s=config.tick_source.connection_dead_s,
             logger=logger,
+            session_logger=session_logger,
+            record_dir=run_dir / IO_SUBDIR if run_dir is not None else None,
+            run_id=run_id,
         )
     else:
         raise ValueError(

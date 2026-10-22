@@ -59,7 +59,6 @@ from python.framework.trading_env.adapters.kraken_adapter import KrakenAdapter
 
 _BROKER_CONFIG = 'configs/brokers/kraken/kraken_spot_broker_config.json'
 _PAIR = 'ETHUSD'
-_LOTS = '0.001'
 # Far above any plausible ETH print, so the buy stop can never trigger inside the probe.
 _TRIGGER_INITIAL = 8000.0
 _TRIGGER_VIA_TRIGGER_PRICE = 8500.0
@@ -120,6 +119,9 @@ def _report(label: str, info: Optional[Dict[str, Any]]) -> None:
 def main() -> None:
     """Place a stop, amend its trigger two ways, report what moved, then cancel."""
     adapter = _build_adapter()
+    # The smallest size the venue accepts, from the seed: Kraken raised ETHUSD's from 0.001 to
+    # 0.002 in October 2026, and the literal the probe used to send became a size it refuses
+    lots = f'{adapter.get_symbol_specification(_PAIR).volume_min:.8f}'
     txid = None
     try:
         placed = adapter._fetch_private('/0/private/AddOrder', {
@@ -127,7 +129,7 @@ def main() -> None:
             'type': 'buy',
             'ordertype': 'stop-loss',
             'price': str(_TRIGGER_INITIAL),
-            'volume': _LOTS,
+            'volume': lots,
         })
         txid = (placed.get('txid') or [None])[0]
         print(f'placed stop {txid} at trigger {_TRIGGER_INITIAL}')

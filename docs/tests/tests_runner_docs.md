@@ -156,6 +156,7 @@ session. All of them are session-scoped and need no opt-in:
 | the run-patch store — except in a session of release-gate suites alone, whose certificate names its patch (`tests/shared/release_gate_session.py`) | `_isolate_run_patch_store` | `tmp_path_factory` |
 | every strategy repository's own patch home (`.finiex_run_patches/`) | `_isolate_foreign_run_patches` — a test in throwaway repositories puts the real one back with `real_foreign_patch_homes` | `tmp_path_factory` |
 | both carry-over stores | `_isolate_carry_over_stores` | `tmp_path_factory` |
+| the list of what runs on the machine (#603) | `_isolate_activity_registry` | `tmp_path_factory` |
 
 **Why redirect rather than switch logging off.** Turning `file_logging.scenario.enabled` off
 would also produce a clean tree — no directory, no header, and therefore no index row. But it
@@ -201,7 +202,8 @@ location and cleans it up:
 ├── config_directory0/          ← _isolate_config_directory
 ├── run_patches0/               ← _isolate_run_patch_store
 ├── foreign_run_patches0/       ← _isolate_foreign_run_patches
-└── carry_over0/                ← _isolate_carry_over_stores
+├── carry_over0/                ← _isolate_carry_over_stores
+└── activities0/                ← _isolate_activity_registry
 ```
 
 - **Retention is pytest's**, not ours: it keeps the last **3** numbered sessions and removes older

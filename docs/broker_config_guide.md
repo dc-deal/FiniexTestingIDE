@@ -65,6 +65,7 @@ Mt5Adapter / KrakenAdapter  → Broker-specific implementation
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `volume_min` | float | Always | Minimum lot size |
+| `cost_min` | float | Kraken | Minimum order VALUE in the quote currency (Kraken's `costmin`); absent or `0.0` = none. An order has to meet it beside `volume_min` |
 | `volume_max` | float | Always | Maximum lot size |
 | `volume_step` | float | Always | Lot increment |
 | `contract_size` | int | Always | Units per lot (100000 Forex, 1 Crypto) |
@@ -189,7 +190,7 @@ re-frozen to the measured rates on that date.
 
 | Reader | Source | Why |
 |---|---|---|
-| **Backtest** | the git-tracked **seed**, always. Never asks | A run must be reproducible from a COMMIT. The rate is a written-down decision with a date, not a by-product of whenever someone last synced |
+| **Backtest** | the git-tracked **seed**, always. Never asks | The rate a run prices with must be reproducible from a COMMIT. It is a written-down decision with a date, not a by-product of whenever someone last synced |
 | **Live-adapter session** | the seed as its baseline, **overridden by the venue's answer** when `auto_detect_fee_tier` is on | Correct by construction, and it starts from the same declared number the backtest uses so the two agree about what was expected |
 | **Both** | a **WARNING** whenever the venue disagrees with the seed | The signal to re-freeze. It fires even with the switch OFF, because only a human can update the seed and the backtest keeps the old rate until they do |
 
@@ -227,8 +228,7 @@ file, and the seed records WHEN and from WHAT:
 ```
 
 The provenance block sits OUTSIDE `fee_structure` deliberately: `config_hash` is computed over
-that block, so a note written inside it would move the reproducibility anchor without changing
-a single price.
+that block, so a note written inside it would move the hash without changing a single price.
 
 It stays a human act, and the reason is not caution — it is that **no fetch can answer the
 question a backtest asks.** The tier depends on 30-day rolling volume, which the bot's own
@@ -364,7 +364,7 @@ Every broker entry in `market_config.json` has an optional `config_mode` field:
 | Value | Meaning | Default |
 |-------|---------|---------|
 | `static` | Use the git-tracked JSON file (`broker_config_path`) directly | Yes |
-| `dynamic` | Use a runtime cache; refresh from broker API weekly | No |
+| `dynamic` | Use a runtime cache; a symbol is refreshed from the broker API once its entry is 7 days old | No |
 
 Currently only `kraken_spot` uses `dynamic`. MT5 and all future static brokers default to `static`.
 
@@ -434,15 +434,22 @@ configs/brokers/kraken/kraken_spot_broker_config.json  ← git-tracked "seed"
   → Never auto-overwritten
 
 data/runtime/brokers/kraken_spot/kraken_spot_broker_config.json  ← gitignored hot cache
-  → SYMBOL SPECS for dynamic-mode brokers, AutoTrader session and backtest alike
-  → Auto-refreshed from Kraken API (weekly)
+  → SYMBOL SPECS for dynamic-mode brokers, a live-adapter session and a backtest alike
+    (a mock session trades with the seed's)
+  → Refreshed per symbol from the Kraken API once that symbol's entry is 7 days old,
+    by a live-adapter session start or `broker_config_cli.py sync` — never by a backtest
 ```
 
 The static seed is committed with the codebase. The runtime cache is gitignored and machine-local.
 
+**The cache is replaced atomically**, so a session killed while writing it leaves the previous
+file whole. A cache that cannot be read — a torn write from before, or a hand edit — is set aside
+beside it as `<name>.unreadable-<UTC stamp>`, with a warning, before the refresh writes a new one;
+each symbol it held is fetched again when a session first asks for it.
+
 **The split is by CONCERN, not by pipeline (#337).** Symbol specifications come from whichever
-source the broker's `config_mode` selects — they are expensive to fetch and they genuinely change
-at the venue. The **fee structure always comes from the seed**, in both pipelines, and
+source the broker's `config_mode` selects — a mock session reads the seed whatever the mode — and
+they are expensive to fetch and genuinely change at the venue. The **fee structure always comes from the seed**, in both pipelines, and
 `BrokerDataPreparator._load_dynamic_broker_config` overwrites the cache's block with it.
 
 The reason is reproducibility and it is not a preference: a fee rate moves realised P&L on every
@@ -455,22 +462,36 @@ down in a commit.
 branch took the WHOLE config from the cache, fees included. It was harmless only because the
 fetcher hardcodes the rates rather than fetching them, so the two happened to agree.)*
 
+The symbol specifications are the other half of what a run trades under, and a commit cannot pin
+them: they change at the venue, and the cache that holds them is machine-local and versioned by
+nothing. So every run, a session and a backtest alike, keeps a copy of the broker configuration it
+trades with, as it stood when the run started — specifications and fee structure together — in
+the run-config store, and names it `broker_config_id` in its broker section. That copy is what
+*frozen* means in a run's record; re-freezing the seed's fee rate is a different act. Why a run
+keeps it: [A run is a record, and an old one stays
+true](introduction_to_the_ide.md#a-run-is-a-record-and-an-old-one-stays-true).
+
 ### Staleness Policy (dynamic mode)
 
-| Cache age | Behavior |
+| Age of the symbol's entry | Behavior |
 |-----------|----------|
 | < 7 days | Use cache silently — no API call (unless symbol is missing, see below) |
 | 7–30 days | Try API refresh; on failure warn + use stale cache |
 | > 30 days | Try API refresh; on failure strong warning (specs may be outdated) |
-| No cache | Try API refresh; on failure hard error (first run, no fallback) |
+| No entry, or no cache | Try API refresh; on failure hard error (first run, no fallback) |
 
 On first run, an internet connection is required. After the first successful fetch, the session can run offline for up to 30 days before generating a strong staleness warning.
 
-**Lazy symbol addition:** Symbols are added to the cache on demand. If a fresh cache exists but does
-not contain the requested symbol (e.g., the cache was built during an ETHUSD session and you now
-start a DOTUSD session), the missing symbol is fetched from the API and merged into the cache —
-without affecting the age or status of existing symbols. Each symbol carries a `_last_fetched` field
-indicating when it was last individually verified.
+**The age is the symbol's own.** Each symbol carries a `_last_fetched` field, and the table above
+reads the REQUESTED symbol's entry, never the file: every fetch rewrites the file, while a venue
+changes one symbol's minimum without touching the others (measured 2026-10-18: seven of nine Kraken
+symbols had moved their minimum, behind a file stamp four days old). A symbol missing from the cache
+is fetched and merged; an entry without a stamp counts as stale.
+
+**A refresh that changes `volume_min`, `volume_step`, `tick_size` or `cost_min` warns**, naming the
+old and the new value: a machine whose cache still holds the old value prepares backtests that fill
+orders the venue now refuses. A backtest reads the cache and never fetches; when the entry it read
+is older than seven days, the run says so once per symbol (`broker_spec_stale`).
 
 ### Tombstone Symbols
 
@@ -485,10 +506,18 @@ Each symbol in the runtime cache has an `_active` field. Symbols fetched from th
 Each loaded broker config is stamped with **two** 8-char SHA256 hashes, because they answer
 different questions (#337):
 
-- **`config_hash`** — the REPRODUCIBILITY anchor, over `symbols` **and** `fee_structure`. What
-  `BrokerConfig.config_hash` returns, and what the run report's broker section carries — so it
-  reaches the console, the report file and the API alike. A fee rate change moves it, because it
-  changes what the run produces.
+- **`config_hash`** — the identity of the configuration's VALUES, over `symbols` **and**
+  `fee_structure`. `symbols` is every symbol the configuration holds — for a dynamic broker's
+  backtest or live-adapter session every symbol this machine's cache has fetched, not only the
+  traded one — so a new or changed entry for any symbol moves it. It says whether two runs traded
+  under the same symbol specifications and fee structure, and cannot say what they were: those are
+  in the copy the run names as `broker_config_id` beside it. It leaves out when a value was
+  fetched, the `broker_info` block — leverage and the margin-call and stop-out levels a margin run
+  trades with — and `trading_permissions`; the broker section reports leverage and the margin
+  levels as fields of their own.
+  What `BrokerConfig.config_hash` returns, and what the run report's broker section carries — so
+  it reaches the console, the report file and the API alike. A fee rate change moves it, because
+  it changes what the run produces.
   **It does NOT reach the run ledger or any certificate yet** (#510): those are the artifacts
   that compare runs to each other, so until they carry it, two runs priced differently are still
   indistinguishable in the cross-run record.
@@ -510,22 +539,35 @@ The hash appears in:
 - Batch summary: `Config:  [a3f82c11]` line under broker info
 - AutoTrader live display header: `BTCUSD (kraken_spot) [a3f82c11] — DRY RUN`
 
-Neither hash covers `_config_meta`, so a timestamp refresh does not move them.
+Neither hash covers `_config_meta`, nor a symbol's `_last_fetched`: a refresh that reads the same
+values back moves neither, and `sync --force` moves them only where a value changed (#608).
+
+That is a change of definition — announced to API consumers as contract 36 — and a recorded hash
+is never recomputed. A hash recorded before it covered the fetch stamps too, wherever the symbols
+carry them — a dynamic broker's cache and the Kraken seed; the MT5 file has none, so its hashes did
+not move — and one recorded before `config_hash` took in the fee structure (#337) covered the
+symbols alone. Across such a change two runs over identical values carry different hashes, so compare hashes recorded under one
+definition, and read the frozen copies where they exist.
 
 ### Syncing the Static Seed
 
-When the runtime cache has been refreshed and you want to commit the new specs:
+When the runtime cache has been refreshed and you want to commit the new specs, refresh every
+symbol first, then copy the symbols' entries and the `_config_meta` block into the seed:
 
 ```bash
-cp data/runtime/brokers/kraken_spot/kraken_spot_broker_config.json \
-   configs/brokers/kraken/kraken_spot_broker_config.json
+python python/cli/broker_config_cli.py sync --force
+# copy each symbol's entry and `_config_meta` from data/runtime/brokers/kraken_spot/… into the seed
 git diff configs/brokers/kraken/kraken_spot_broker_config.json
 ```
 
-**Read the `fee_structure` half of that diff deliberately.** Symbol specs are the venue's facts
-and copying them is routine; the fee rates are the number every backtest will price its trades
-with from the next commit onwards. Committing them is the act of FREEZING a rate — give it the
-same attention as a threshold, and expect `config_hash` to move for every run afterwards.
+Copy those two, not the whole file: the seed's `fee_structure` and `_fee_structure_frozen` — the
+record of when and from what its fee rates were frozen — are not the cache's to replace.
+
+**This copy leaves the fee rates alone, on purpose.** Symbol specs are the venue's facts and
+copying them is routine; the fee rates are the number every backtest prices its trades with
+from the next commit onwards. Re-freezing them is an act of its own, described in *Where a fee
+rate comes from* above — give it the attention of a threshold, and expect `config_hash` to move
+for every run afterwards.
 
 Review the diff carefully before committing:
 
@@ -533,11 +575,11 @@ Review the diff carefully before committing:
 |------------|---------------|
 | `"_active": false` (new) | Expected delisting. Backtesting data for this symbol still works. |
 | New symbol entry | Does bar index show data for it? (`bar_index_cli.py data-coverage`) |
-| `volume_min` / `tick_size` changed | Any algos with hardcoded lot sizes? |
+| `volume_min` / `cost_min` / `tick_size` changed | Any algos with hardcoded lot sizes? |
 | `kraken_pair_name` changed | Rare — verify against Kraken API docs before committing. |
 | `base_currency` / `quote_currency` changed | Should not happen — integrity check raises on next load. |
-| `symbols_hash` changed | Actual spec change. Expected if any spec field changed above. |
-| Only `last_fetched` changed, hash same | Pure timestamp update — safe to commit without deep review. |
+| `symbols_hash` changed | A value changed — expected exactly where a field above changed. |
+| Only `_last_fetched` / `last_fetched` changed, hash same | The same values read again — safe to commit without deep review. |
 
 ### Pre-Populating the Runtime Cache
 
@@ -547,6 +589,8 @@ Before the first live-adapter session (or after deleting the cache), the runtime
 python python/cli/broker_config_cli.py sync
 # or for a specific broker:
 python python/cli/broker_config_cli.py sync --broker kraken_spot
+# every symbol, whatever the age of its entry:
+python python/cli/broker_config_cli.py sync --force
 ```
 
 The sync CLI:
@@ -554,7 +598,11 @@ The sync CLI:
 2. Fetches symbol specs from the broker API for each symbol
 3. Writes (or merges into) `data/runtime/brokers/<broker_type>/<broker_type>_broker_config.json`
 
-After syncing, AutoTrader sessions can start offline. The weekly staleness check still applies — a session started more than 7 days after the last sync triggers a fresh API fetch.
+After syncing, AutoTrader sessions can start offline. The weekly staleness check still applies — per
+symbol, a session started more than 7 days after that symbol's last fetch triggers a fresh API fetch.
+`--force` fetches every symbol whatever its age — the machine that runs a comparison backtest needs it,
+and so does a re-freeze of the seed; each symbol whose specification changed is printed with its old and
+new values.
 
 **VS Code:** Use `🔧 Broker Config: Sync (all dynamic brokers)` in launch.json for a one-click sync.
 

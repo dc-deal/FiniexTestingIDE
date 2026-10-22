@@ -478,6 +478,15 @@ A **venue-level** error is not a transport fault — Kraken's `{'error': ['EOrde
 funds']}` is the venue speaking, so it stays an ordinary exception and classifies TERMINAL.
 Retrying "insufficient funds" forever would report their outage for our order.
 
+**Except what the venue documents as not answering at all.** Kraken reports maintenance as
+`EService:Unavailable` inside an HTTP 200 answer, and documents `EService:Deadline elapsed` —
+after which an order may have been placed all the same — and `EGeneral:Internal error` beside it.
+Those codes are listed with their source in `kraken_error_codes.py` and raised as a transient
+`ConnectionAttemptFailedError`: a read retries them, a write comes back UNRESOLVED and is resolved
+by asking. The list is the venue's own fact, so it lives beside its adapter. A new adapter declares
+its venue's equivalents from the venue's documentation or a measurement, matched on the documented
+code and never on the wording around it.
+
 **2. Its numbers**, in `market_config.json::broker_transport.connection` — the same
 `ConnectionPolicy` schema every other connection uses.
 
@@ -596,7 +605,7 @@ Key rules:
 - `_live` fixture must explicitly set `dry_run=False` — never rely on the config file default
 - `_live` test wraps the order lifecycle in `try/finally` to guarantee cancellation on assertion failure
 - `_fill` test does MARKET buy → poll until FILLED → MARKET sell → poll until FILLED (net zero exposure)
-- Check the broker's minimum order cost (not just `volume_min`) — Kraken rejects orders below ~$5 even if `volume_min` is satisfied
+- Check the broker's minimum order value (not just `volume_min`) — Kraken's `costmin`, read as `cost_min`: 0.5 USD for ETHUSD (measured 2026-10-18), refused even when `volume_min` is satisfied. On 2026-09-07 a buy stop worth about $5 was refused with `EOrder:Cost minimum not met`; whether the venue has lowered its minimum since or judges a stop by more than `costmin` is not measured
 - The `live_adapter` mark and runner exclusion apply automatically via `tests/conftest.py`
 
 **Launch.json:** add entries in the release-gate group beside the Kraken ones

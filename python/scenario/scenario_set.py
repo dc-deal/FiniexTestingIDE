@@ -2,8 +2,8 @@
 The scenario set as a RUNTIME object — it opens a run, it does not describe one.
 
 `ScenarioSet` lived in `framework/types/scenario_types/` and is not a type: it takes an
-`AppConfigManager`, mints a run id, creates the run directory, writes the run header, registers
-the run in the index and in the run-config store, and copies the config snapshot. CLAUDE.md §6
+`AppConfigManager`, mints a run id, creates the run directory, writes the run header, and registers
+the run in the index and in the run-config store. CLAUDE.md §6
 says where such a thing belongs — a bundle of runtime COLLABORATORS lives beside the code that
 BUILDS it, never in `framework/types/` — and here it sits beside its loader.
 
@@ -16,14 +16,12 @@ own files cost 13.48 ms each across the bridged mount, against 0.67 ms for a thi
 on the container's own disk (§42).
 """
 
-import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional
 
 from python.api.api_contract import API_CONTRACT_VERSION
 from python.configuration.app_config_manager import AppConfigManager
-from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.logging.system_info_writer import write_system_version_parameters
 from python.framework.reporting.io.run_header_io import data_windows_of
@@ -39,7 +37,7 @@ from python.framework.types.api.report_types import (
 from python.framework.types.config_types.robustness_config_types import RobustnessConfig
 from python.framework.types.log_layout_types import MOUNT_BUILD_LOG, RUN_TYPE_SIMULATION
 from python.framework.types.run_config_types import RunConfigKind
-from python.framework.types.run_origin_types import CodeIdentity, RunChannel
+from python.framework.types.run_origin_types import CodeIdentity, RunChannel, RunOrigin
 from python.framework.types.scenario_types.scenario_set_types import (
     LoadedScenarioConfig,
     SingleScenario,
@@ -54,9 +52,9 @@ def _register_run_config(source: Path) -> str:
     """
     Record which configuration this run is starting from, and return its identity.
 
-    Never fatal. A config the store cannot register is a config the run can still execute — the
-    per-run snapshot beside the header is the evidence either way, and refusing to start a
-    backtest because a parquet index could not be written would be the wrong trade entirely.
+    Never fatal. A config the store cannot register is a config the run can still execute — its
+    header then names the file with an empty `config_id`, and refusing to start a backtest
+    because a parquet index could not be written would be the wrong trade entirely.
 
     Args:
         source: The scenario set file this run was commissioned with
@@ -106,7 +104,6 @@ class ScenarioSet:
         self.config_path = scenario_config.config_path
         self.app_config = app_config
         self._generator_profiles = scenario_config.generator_profiles
-        self._generator_profile_paths = scenario_config.generator_profile_paths
         self._robustness = scenario_config.robustness or RobustnessConfig()
         self._disabled_count = scenario_config.disabled_count
         self._run_purpose = scenario_config.run_purpose
@@ -127,6 +124,7 @@ class ScenarioSet:
         # the run directory, so a broken host identity refuses the start without leaving behind a
         # directory shaped like a run that has no header. A mount build is not a run.
         origin = None if mount_only else build_run_origin(channel)
+        self._run_origin: Optional[RunOrigin] = origin
         self._code_identity: Optional[CodeIdentity] = None
 
         self.logger = ScenarioLogger(
@@ -213,6 +211,11 @@ class ScenarioSet:
         return self._run_id
 
     @property
+    def run_origin(self) -> Optional[RunOrigin]:
+        """Who started this run, for whom, on which installation (#551) — None for a mount build."""
+        return self._run_origin
+
+    @property
     def run_timestamp(self) -> datetime:
         """Expose run_timestamp for easy access"""
         return self._run_timestamp
@@ -221,20 +224,6 @@ class ScenarioSet:
     def log_root(self) -> Path:
         """The category root this run's logs land under (file_logging.run_logs)."""
         return self._log_root
-
-    def _copy_generator_profiles(self) -> None:
-        """Copy generator profile JSON files to scenario_run_configs/ in log directory."""
-        log_dir = self.logger.get_log_dir()
-        run_configs_dir = log_dir / 'scenario_run_configs'
-        run_configs_dir.mkdir(exist_ok=True)
-
-        for profile_path in self._generator_profile_paths:
-            try:
-                shutil.copy2(profile_path, run_configs_dir / profile_path.name)
-            except Exception as e:
-                vLog = get_global_logger()
-                vLog.warning(
-                    f'⚠️ Failed to copy profile {profile_path.name}: {e}')
 
     def write_scenario_system_info_log(self):
         """
@@ -251,6 +240,16 @@ class ScenarioSet:
 
             write_system_version_parameters(system_info_logger)
             system_info_logger.close(flush_buffer=True)
+
+    def close_loggers(self) -> None:
+        """
+        Close the set's own log files — its run log and its summary — once nothing writes to them.
+        A sweep builds one set per combination in one process, so a set that leaves its files open
+        leaves two open files per combination.
+        """
+        self.logger.close()
+        if self.printed_summary_logger is not None:
+            self.printed_summary_logger.close()
 
     def get_valid_scenarios(self) -> List[SingleScenario]:
         """Get all scenarios that passed validation."""

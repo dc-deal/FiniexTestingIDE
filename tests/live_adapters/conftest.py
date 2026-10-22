@@ -146,9 +146,10 @@ def real_orders_authorised(request) -> None:
     Gate the phases that place REAL orders behind an explicit flag.
 
     The credentials check alone is not a gate — on a machine that HAS credentials it always
-    passes, so a bare `pytest tests/` would place two real orders (a LIMIT far below market
-    that reserves ~$10 until cancelled, and a 0.001 ETHUSD buy-and-sell costing ~$0.01 in
-    fees). The pytest marks here cannot help: they are path synonyms by design, so
+    passes, so a bare `pytest tests/` would place real orders (a LIMIT far below market that
+    reserves ~$10 until cancelled, a buy STOP far above it that holds up to ~$18 after its
+    amend, and a buy-and-sell of ETHUSD's minimum size costing a few cents in fees). The
+    pytest marks here cannot help: they are path synonyms by design, so
     `live_adapter` says WHERE a test lives and never that somebody meant to run it.
 
     Any fixture that builds an adapter with dry_run=False requests this first.

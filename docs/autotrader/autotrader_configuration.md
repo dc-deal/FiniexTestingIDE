@@ -5,9 +5,9 @@ before it starts, which is why a wrong key here is not a runtime surprise but a 
 why the identity a profile declares outlives the process that read it.
 
 This document is the AutoTrader's own cascade, the deployment identity a restarted bot inherits,
-and the two fingerprints that answer two different questions about what ran.
+and the two fingerprints that answer two different questions about what a profile sets.
 
-**Not here:** the simulation's scenario cascade — `docs/process_execution_guide.md`. The general
+**Not here:** the simulation's scenario cascade — `docs/config_cascade_guide.md`. The general
 override mechanism — `docs/user_configs_override_system.md`. Where credentials live —
 `docs/architecture/credentials_layout.md`.
 
@@ -217,6 +217,7 @@ Sections not listed here (`execution`, `clipping_monitor`, `order_guard`) inheri
 | `execution` | Runtime parameters | Inherits from `app_config.autotrader.execution`; override per profile if needed |
 | `clipping_monitor` | Timing config | Inherits from `app_config.autotrader.clipping_monitor`; strategy: `queue_all` or `drop_stale` |
 | `display` | Dashboard config | Inherits `enabled: true`, `update_interval_ms: 300` — test profiles set `enabled: false` |
+| `state_frames` | What the session records of its own state (#579) | Inherits `enabled: true`, `cadence_timeframe: "M1"` from `app_config.autotrader.state_frames`: a frame in `io/state_frames.jsonl` once per period of that timeframe on the canonical clock — the grid the bars open their periods on — at a closed bar, at an order and at the end, whether or not the display runs. Any timeframe the IDE knows is accepted; the stream's header names it. About 65–130 MB over thirty days at `M1`. See [Live Telemetry](../architecture/live_telemetry_architecture.md#the-recorded-state-frame--not-this-stream) |
 | `order_guard` | Pre-validation guard | Inherits from `app_config.autotrader.order_guard`; override per profile if needed |
 | `safety` | Circuit breaker | Always profile-specific. Omit or set `enabled: false` to disable |
 | `operator_alerts` | Out-of-band channels to the operator (#235) | Inherits from `app_config.autotrader.operator_alerts`, both halves off. `telegram`: alerts through a bot (`active` + `endpoints`, each pairing `base_url` with a `credentials_file` holding `bot_token` and `chat_id`), paced by `min_send_interval_s`, retried through `connection`, whose `attempt_budget` must be finite. A symptom is one alert episode, its all-clear sent once it stayed away for `all_clear_after_s`; `daily_digest` sends each trading day's close. `liveness`: a ping every `interval_s` while the tick loop has passed within `loop_stall_after_s`, to the `ping_url` in `services/liveness_<bot_id>.json` (one monitor check per bot; `credentials_file` names another), optionally a `liveness_stamp_file`. With the ping off and Telegram on, the loop is still watched and a stall alerted. A mock session switches both off unless its profile sets `enabled` itself. See [Unattended Operation](unattended_operation.md) |
@@ -228,6 +229,14 @@ configs/app_config.json::autotrader  ← Level 1 (global defaults for all sessio
 autotrader_profiles/*.json           ← Level 2 (session-specific overrides)
 ```
 `user_configs/app_config.json` can override the `autotrader` block too — same mechanism as all other app_config sections.
+
+A session records both ends of the cascade in its run header, before the first tick. The profile
+as you wrote it is frozen under `config_id`; what the session runs with — the merged result, every
+parameter default filled in, and the broker's entry in `market_config.json` with its local
+override — under `rendered_config_id`. A change to `app_config.json`, to a parameter default or to
+the local `market_config.json` that reaches the session therefore moves the second and never the
+first. Why a run keeps both:
+[A run is a record, and an old one stays true](../introduction_to_the_ide.md#a-run-is-a-record-and-an-old-one-stays-true).
 
 ### The deployment declaration (#497)
 
@@ -296,16 +305,27 @@ An AutoTrader session's ledger row carries two hashes over the profile, and the 
 
 | Hash | Covers | Answers |
 |---|---|---|
-| `param_hash` | `strategy_config` | Did the bot's DECISIONS change — what #512 compares a backtest against |
+| `param_hash` | `strategy_config` as the profile writes it | Did the parameters the profile sets change — what #512 compares a backtest against |
 | `profile_hash` | the operational rest — safety, order guard, execution, tick source, capital, the deployment declaration | Did what the session DOES change, without changing what it decides |
 
 One wide hash would answer neither. A raised stop level must not read as a different strategy — that
 would put an otherwise comparable run beyond comparison; and a changed RSI threshold must not pass
 as mere operation. Both are computed from the LOADED config, so a value the loader resolved is
-fingerprinted as resolved; `config_path`, `profile_name` and `symbol` are excluded, because where a
-profile sits on disk is not a property of the run. So are `run_purpose` and `carry_over_from`:
+fingerprinted as resolved; `config_path`, `profile_name`, `symbol`, `broker_type` and
+`scenario_settings` are excluded: where a profile sits on disk, which venue and symbol it trades
+and — for a mock session — which window it replays say which run this is, not how it operates.
+So are `run_purpose` and `carry_over_from`:
 what a session is FOR and which stage came before it say nothing about how it trades. A profile's `description` never reaches the loaded configuration
 at all, so a reworded one cannot mark a session as an operation change.
+
+**Neither covers the parameter defaults, the code or the broker.** The `app_config.json` defaults
+are in `profile_hash`, because the loader merges them in before it is computed. A parameter the
+profile leaves unset gets
+its schema default only when its component is built, so a default changed in a worker's or a
+decision logic's parameter schema moves neither hash. What the session ran with, every default
+filled in, is its rendered configuration (`rendered_config_id` in the run header). The code is the
+commit and the component versions on the same ledger row, and the code identity in the header. The
+broker configuration is `broker_config_id` beside `config_hash` in the run's broker section.
 
 **Three identity columns sit beside them on the ledger row, and they answer different
 questions.** `scenario_set_name` is what the profile is CALLED and an operator improves that;
@@ -325,7 +345,8 @@ Bot B   731d21024b31             a17e364498f6              dotlive02_dotusd
 
 Neither hash decides anything. A change is RECORDED and reported — `run_index_cli.py
 deployments` marks the session it happened on — and whether the halves may be compared is a
-judgement a person makes. The full resolved configuration rides the same row, so a tool can say
-`rsi_buy_threshold: 45 → 40` rather than only "the hash differs".
+judgement a person makes. The strategy configuration rides the same row as the profile gave it
+(`strategy_config_json`), so a tool can say `rsi_buy_threshold: 45 → 40` rather than only "the
+hash differs".
 
 End-user view of all of this: [Deployment Ledger](../user_guides/deployment_ledger_guide.md).

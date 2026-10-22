@@ -132,6 +132,11 @@ class SymbolSpecification:
     stops_level: int
     freeze_level: int        # Freeze distance in points (0 = no restriction)
 
+    # Order Value Limit — the smallest order VALUE the venue accepts, in the quote currency
+    # (Kraken's `costmin`; 0.0 = the venue declares none). Beside `volume_min`, not instead of it:
+    # an order has to meet both.
+    cost_min: float = 0.0
+
 
 @dataclass(frozen=True)
 class FeeTierInfo:

@@ -27,6 +27,8 @@ import pytest
 
 from python.api.api_app import create_app
 from python.framework.reporting.builders import deployment_history_builder
+from python.framework.types.activity_registry_types import ActivityKind, ActivityState
+from python.framework.types.api.api_types import ACTIVITY_ROW_KEY, ActivityRow
 from python.framework.types.api.report_types import (
     BOOKING_PERIOD_KEY,
     DEPLOYMENT_KEY,
@@ -242,6 +244,14 @@ class TestTheKeyActuallySeparatesTheRows:
         assert _distinct(rows, key) == 3
         assert _distinct(rows, ('position_id',)) == 1                  # what it would collapse to
 
+    def test_an_activity_is_its_own_id_never_its_process(self):
+        # Two activities of ONE process — a sweep and the backtest of its current combination —
+        # share a pid, and neither writes a run of its own under the sweep's row (#603).
+        rows = [_activity('act_20261019_080000_aaaa0000', pid=4821),
+                _activity('act_20261019_080130_bbbb1111', pid=4821)]
+        assert _distinct(rows, ACTIVITY_ROW_KEY) == 2
+        assert _distinct(rows, ('pid',)) == 1                         # what it would collapse to
+
     def test_a_pending_orders_unit_is_its_name(self):
         # One unit per scenario, and scenario names are unique within a set — a repeat is
         # refused at validation (`scenario_name_duplicate`). The run-scoped walk above exempts
@@ -249,6 +259,14 @@ class TestTheKeyActuallySeparatesTheRows:
         key = PendingOrdersReport.model_fields['key'].default
         assert key == ['name']
         assert set(key) <= set(PendingOrdersUnitRow.model_fields)
+
+
+def _activity(activity_id: str, pid: int) -> ActivityRow:
+    """An activity row that differs from its neighbour only where the test says."""
+    return ActivityRow(activity_id=activity_id, activity_kind=ActivityKind.BACKTEST,
+                       activity_state=ActivityState.RUNNING, activity_label='x', pid=pid,
+                       command_line='x', started_at='2026-10-19T08:00:00+00:00', uptime_s=1.0,
+                       working_tree='.', process_count=0)
 
 
 def _distinct(rows, key) -> int:

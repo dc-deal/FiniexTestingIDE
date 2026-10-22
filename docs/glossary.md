@@ -49,6 +49,15 @@ orders still resting when a run unit's data ended. In a backtest the same orders
 open. A LIMIT sits in the limit list, a STOP or STOP_LIMIT whose trigger was not reached in the stop
 list. See *resting*.
 
+**activity** — Two meanings, always qualified by where it stands. *Something running on the
+machine*: a backtest, a sweep, an AutoTrader session, an import, a discovery cache build, the test
+suite or the API server, entered in the machine's activity list while it runs and keyed by its own
+`activity_id` (`activity_kind`, `activity_state`, `activity_label` on `/api/v1/activities`). An
+activity can be a run, but it is not one: an import or the test suite writes no run, and an
+`activity_state` is not a run outcome. And *how busy a market was* — the activity measure of a bar
+or a profile (`primary_activity_metric`, a bar's tick count). See
+[What runs on this machine](architecture/activity_registry.md).
+
 **adapter** (broker adapter) — The code that speaks one venue's API behind one interface the rest
 of the framework uses. Chosen by `adapter_type`: `mock` for the broker-neutral `MockBrokerAdapter`,
 `live` for a real venue's adapter. See [Adapter Development](user_guides/adapter/adapter_development_guide.md).
@@ -66,7 +75,8 @@ not one per crossing. Not the *disturbance episode* a run report counts
 several of them. See [Unattended Operation](autotrader/unattended_operation.md) and, for the
 disturbance episode, [Outage Handling](user_guides/outage_handling_guide.md).
 
-**algo** — The user-authored code of a strategy, kept in `user_algos/`. See
+**algo** — The code of a strategy: its decision logic and its workers, whether shipped with the
+framework (CORE) or written by a user. A user's algos are kept in `user_algos/`. See
 [User Algo Workspace](user_guides/user_modules_and_hot_reload_mechanics.md).
 
 **archive** (tick archive) — The imported tick data a backtest and a mock session replay. The one
@@ -98,10 +108,12 @@ numbered from 1; the ledger holds one row per booking period and currency. In co
 unit read is its *data broker*. See [Broker Config](broker_config_guide.md).
 
 **broker configuration** (`broker_config_id`) — The symbol specifications and fee structure a run
-trades with, assembled from the broker's files at its start: for a live Kraken session the
-runtime cache's specs, the seed's fees and the detected fee tier. `config_hash` digests it; an
-AutoTrader session also freezes the content in the run-config store and names it as
-`broker_config_id` in its broker section. See [Data Storage Layout](architecture/data_storage_layout.md).
+trades with, assembled at its start: for a dynamic broker (`kraken_spot`) the runtime cache's specs
+and the seed's fees — in a live-adapter session with `auto_detect_fee_tier` on, the venue's fee tier
+replaces the seed's rates; for a static broker, and for a mock session, the seed file. `config_hash`
+digests its symbol specifications and fee structure; every run, a session and a backtest
+alike, freezes the content in the run-config store and names it as `broker_config_id` in its broker
+section. See [Data Storage Layout](architecture/data_storage_layout.md).
 
 **broker ref** (`broker_ref`) — The venue's handle for an order — a txid at Kraken, a ticket at MT5
 — under one name above the adapter. Known once the venue has answered; an amend that replaces it
@@ -120,11 +132,20 @@ its own book, and never in a dry run against a real venue, whose account reads n
 **cache** — A derived store of computed results. Deleting it loses nothing; a "cache" whose
 deletion loses data is misfiled. See [Data Storage Layout](architecture/data_storage_layout.md).
 
+**cadence** — How often something recurs; always said with WHAT recurs, because the word means
+different things in different places. The *state frame*'s cadence is a setting:
+`state_frames.cadence_timeframe` in a profile (`M1` by default), one frame per period of that
+timeframe on the *canonical clock*, served as `cadence_timeframe` and `cadence_s`. A signal
+source's `cadence_seconds` is a measurement: the median distance between its snapshots in the
+archive. How often a worker computes — on every tick or once per closed bar — is served as its
+`compute_basis` (`live` · `bar_close`). See [State frames](consumer/state-frames.md).
+
 **canonical clock** — The one clock a decision logic, a worker and the execution layer read:
 `get_current_time()`. In a backtest it is the time of the replayed tick. In an AutoTrader session a
 tick sets it to the tick's own time and an idle heartbeat to the machine's UTC clock, so timeouts
 keep tracking real elapsed time: in a live-adapter session the two are one clock, in a mock session
-it moves between replay time and the present. See *wall clock*.
+it moves between replay time and the present. See *wall clock*, and
+[Live Execution](architecture/live_execution_architecture.md#canonical-clock--idle-cadence-360).
 
 **carry-over** — What one session hands the next session of the same bot: the algo's memory, and
 the framework's record of keys, positions and the risk baseline. Keyed by the bot, overwritten, and
@@ -170,10 +191,24 @@ exists, in its own words, declared at the top of a scenario set or a profile; Ma
 Served on the configuration's directory row. Not the one-sentence description of a validation
 check. See [Directory](consumer/directory.md).
 
+**config hash** (`config_hash`) — Eight characters over two parts of a broker configuration: every
+symbol's specification in it, traded or not, and the fee structure — never when a value was
+fetched, and not the account terms (leverage, margin levels). Two runs with the same hash traded
+under the same specifications and fees, but the hash cannot give them back — `broker_config_id`
+names the copy that can. Where the symbols carry a fetch time, as on `kraken_spot`, its values
+shifted once when the fetch time left the digest, so an older run's hash differs from a newer
+run's over the same values. See [Broker Config](broker_config_guide.md).
+
+**config id** (`config_id`) — The content id of the configuration a run was GIVEN: the scenario set
+or profile as written, *frozen* when the run started. Not what it ran with — an AutoTrader
+session's configuration with every default filled is `rendered_config_id`, and a sweep's
+combinations all name the base set; what each changed is on its ledger row (`param_hash`,
+`strategy_config_json`).
+
 **config snapshot** — The FILE NAME of the configuration a run started from, recorded in its
 header (`config_snapshot`). The full strategy configuration a ledger row carries is a different
-field, `strategy_config_json`; the stored copy served at `/reports/runs/{run_id}/config` is the
-*stored configuration*. See [Data Storage Layout](architecture/data_storage_layout.md).
+field, `strategy_config_json`; the copy served at `/reports/runs/{run_id}/config` is the *frozen*
+configuration the run was given (`config_id`). See [Data Storage Layout](architecture/data_storage_layout.md).
 
 **continuous** — Never used alone. *Continuous mode*: a generator strategy that makes one window
 per continuous data region. *Continuous data region*: a stretch of ticks with no interrupting gap.
@@ -185,11 +220,23 @@ runs around the clock. See [Scenario Generator](generator/generator_block_splitt
 resolves against the framework's registry, anything else is a file path. The former `USER/`
 namespace no longer exists. See [Worker Naming](user_guides/worker_naming_doc.md).
 
+**cost_min** (on a symbol's specification) — The smallest order VALUE a venue accepts, in the quote
+currency — Kraken's `costmin`; `0.0` where the venue declares none. A second minimum beside
+`volume_min`, which counts lots — base units where `contract_size` is 1, as on Kraken spot: an
+order has to meet both. Not a fee. See
+[Broker Configuration](broker_config_guide.md).
+
 **data broker** (`data_broker_type`) — The broker whose tick archive a scenario or a mock session
 reads, and the key the bar routes are addressed by. A backtest simulates its orders against the
 same broker's configuration; a mock session may trade against another one (`broker_type`); a venue
 session reads its own broker's feed. In a report it is each unit's `data_broker_type`; in the
 configuration directory, a row's `data_broker_types`.
+
+**data home** (`FINIEX_DATA_HOME`) — The directory the operator's state lives in, apart from the
+code: the workspace (`user_configs/`), the strategy directories and every store root resolve under
+it, so a deploy into a new code tree finds them again. Unset, it is the working directory. Not
+the operating system's home directory (`~`), where the list of what runs on the machine lives. See
+[Data Storage Layout](architecture/data_storage_layout.md).
 
 **data origin** — Which kind of source produced an archived file: `origin_class` (`production`,
 `development`, `unknown`, `external`) with its evidence grade, stamped at import and carried into
@@ -292,6 +339,11 @@ swap on every position, open ones included. They differ by the fees of what is s
 **field study** — The real-money acceptance test of the live execution stack, whose record becomes
 a release certificate. See [Field Study](tests/live_field_study/field_study_guide.md).
 
+**first start** (`--first-start`, served as `origin.first_start`) — A start declared the bot's
+first: the one way a session trading real money starts without a carry-over to continue. A
+declared first start that finds a usable carry-over is refused. See
+[Unattended Operation](autotrader/unattended_operation.md).
+
 **fixture** — Never used alone. *Fixture run* (`run_purpose: fixture`): a run constructed to show
 something — every run a test starts, and every run a consumer pins; its numbers are built, not
 earned. *Test fixture*: the data a test reads from `tests/fixtures/`, or a pytest fixture in a
@@ -301,6 +353,12 @@ A *current fixture* is the run a catalog entry's newest verified production made
 was made by an older or a failed production. See *run purpose*.
 
 **fragment** — One ledger file, written per run. Nothing else is called a fragment.
+
+**frozen** — Kept by a run, at its start, as a copy in the run-config store and named by its
+content: the configuration it was given (`config_id`), the one an AutoTrader session ran with
+(`rendered_config_id`), the broker configuration (`broker_config_id`). A frozen copy is never
+rewritten, so an old run keeps saying what it used. Not the fee seed's `_fee_structure_frozen`,
+which records when a declared fee rate was set. See [Introduction](introduction_to_the_ide.md).
 
 **in flight** — A pending order that was sent and not yet acknowledged: in a backtest the latency
 simulator still holds it, in a session the venue has not yet answered. `in_flight_ms` on an order
@@ -332,6 +390,12 @@ order (the trade records); the *ledger* holds the period summaries (one row per 
 currency — the results table across runs, one fragment per run); the *closing* is the figures over
 many periods, such as a deployment's total or a month's drawdown. Sealing one booking period is
 *closing a period*. See [Accounting Periods](architecture/accounting_periods.md).
+
+**layer** — Never used alone. A configuration value is *layered* by its cascade (see *cascade*);
+the *execution layer* is the code that turns an order into a fill — the executors, the portfolio and
+the pending orders; and a *drawing layer* is one switchable set of drawings on a run's chart — the
+framework's, the algo's (its decision logic's own drawings) or one worker instance's (#379) — the
+sense of the viewer's Layers panel.
 
 **live** — Never used alone for a kind of run. In code identifiers — `LiveTradeExecutor`,
 `ExecutorMode.LIVE`, `live_types/` — it names the live execution stack that every AutoTrader
@@ -368,6 +432,13 @@ ignorable by design. Not the *warning count*. See [Warnings & Errors](architectu
 `resolved` event is about: `submit`, `cancel`, `modify`, or `status_read` — the read with which an
 order that waited too long for its fill is asked about. See [Order
 events](consumer/order-events.md).
+
+**mark** — Never used alone. A *valuation mark* is what an open position is worth at the price
+it is marked at — an `unrealized_pnl` is a valuation mark, not a result (see *plane*: the
+valuation plane). A deployment's *change marks* say what changed from one session to the next: the
+strategy, the operation, or where the orders went. A *chart mark* is something drawn on a run's
+chart: the framework's trades and levels, read from the record routes, or an algo's or a worker's
+drawing (#379).
 
 **market clock** — Not a term here: see *canonical clock* for the clock a decision reads, and
 *tick timespan* for the market time a unit processed.
@@ -442,9 +513,10 @@ the only value that means real money. Recorded on every run header and every led
 deployment lists the values of its sessions, and both together mean it mixed a rehearsal with real
 money. See [Introduction](introduction_to_the_ide.md#the-kinds-of-run).
 
-**origin** (`origin`) — Who started a run: how (`cli`, `sweep`, `direct`, `api`), which client, for
-which account and on which installation — the block every run header records at its start, served
-on the run list as `origin_channel`, `origin_client`, `origin_principal` and `origin_host`. The word
+**origin** (`origin`) — Who started a run or an activity: how (`cli`, `sweep`, `direct`, `api`),
+which client, for which account and on which installation — the block every run header records at
+its start, served on the run list and the activity list as `origin_channel`, `origin_client`,
+`origin_principal` and `origin_host`. The word
 keeps this one meaning: the configuration directory row's `origin` (where a file lives), a
 feed-health episode's `origin` (real or stress-injected) and the `origin_classes` /
 `origin_evidence_grades` of a run's data (see *data origin*) are being renamed (#581, #582). See
@@ -507,8 +579,25 @@ configuration file. *Generator profile*: a set of generated scenario windows, ru
 run*. *Volatility profile*: a discovery cache of volatility statistics. *Profiling*: measuring
 where tick-processing time goes.
 
+**public trade** (`public_trade_id`) — One print of the venue's market, as its public trade channel
+reports it, numbered by the venue with ids rising per pair — not every id becomes a public trade
+(Kraken's `trade_id`; the tick archive's
+`trade_id` column, from collector format 1.7.0; the tick index's `trade_id_gaps`). Not a *trade*
+(one close of our own position) and not the `trade_id` of one of OUR executions on an order event
+or an execution row. A live session records the public trade ids around each outage of its tick
+stream, never on a tick. See [AutoTrader Data Intake](autotrader/autotrader_data_intake.md).
+
 **real-money session** — A live-adapter session with `dry_run` false: its orders are placed at the
 venue and move the account.
+
+**recording** (`recording` on the latest-frame route and on the run list) — Whether a session is
+still recording its *state frames*, as the route judges it when it answers — never a yes or no:
+`current` when the latest frame is younger than three of its cadences, `stopped` when it is older
+and not the last one (the session hangs or its process died; the activity list tells which),
+`ended` when the latest frame is the one written at the session's end. Null for a session replaying
+recorded data before its end, whose frames come at replay speed. The run list carries the same
+verdict on every row that records state frames. Not the staleness contract's `stale`, which judges
+the session's INPUTS and travels inside the frame. See [state frames](consumer/state-frames.md).
 
 **refused at the first tick** (`refused_at_first_tick`) — A live-adapter session that stopped at its
 first tick because its *warmup history* could not be completed there: the venue had not yet
@@ -535,6 +624,12 @@ under, stamped at its start. Compared with the contract the server answers with,
 run from a wrong one: a figure a later contract added reads `0` or `null` on an older run. See
 [Contract Log](consumer/contract-log.md).
 
+**report section** (served as a route segment and in a run's `artifacts`) — One part of a run's
+report: `trade-history`, `portfolio`, `booking-periods` and the rest. Which sections a run holds
+depends on its pipeline, so `artifacts` is read before a section is asked for. Not to be confused
+with a *passage*, the unit the documentation search returns. See
+[Reporting Pipeline](architecture/reporting_pipeline.md).
+
 **resolved · unresolved** — Two meanings, told apart by where they stand. On an order event,
 `unresolved` is a request whose answer was lost or named nothing, and `resolved` the asking that
 settled it — the request is in `lost_request`. On a broker answer, `UNRESOLVED` is a transport
@@ -555,12 +650,6 @@ ended in an emergency) or `crashed` (the process did not complete). The exit cod
 declared at the top of the configuration it started from — absent means `regular`, and a
 configuration the user owns never declares one — and stamped on its header. It never says whether money moved; `orders_to` does. See *fixture*, *certificate run*
 and [Run Kinds](consumer/run-kinds.md).
-
-**report section** (served as a route segment and in a run's `artifacts`) — One part of a run's
-report: `trade-history`, `portfolio`, `booking-periods` and the rest. Which sections a run holds
-depends on its pipeline, so `artifacts` is read before a section is asked for. Not to be confused
-with a *passage*, the unit the documentation search returns. See
-[Reporting Pipeline](architecture/reporting_pipeline.md).
 
 **run type** (`run_type`, served as `group`) — The pipeline that produced a run: `simulation` or
 `autotrader`.
@@ -588,6 +677,12 @@ the risk baseline across a restart — in a sequence of sessions called *stages*
 rule live, offline or as waiting for a margin account. See
 [Security Study](tests/security_cert/security_cert_guide.md).
 
+**segment** — In the drawing channel (#379), a price held from one time to another: `from`, `to`,
+`price`. A span of time with no price is not a segment. Until contract 12 the API served a booking
+period's fields as `segment_*`; they are `period_*` since, and parts of the code still call a period
+a segment. Not a *route segment*, one part of a URL path, such as `trade-history` in
+`/api/v1/docs/trade-history`.
+
 **seq** · **submitted_seq** (on an order event) — `seq` numbers a run unit's order events and IS the
 order of the stream; never sort by time instead, because several steps often carry the same instant.
 `submitted_seq` is the `seq` of the submission an event belongs to — of the adoption, for an adopted
@@ -601,7 +696,9 @@ per tick by that rule, never by one fixed offset. Not the *canonical clock* and 
 machine's own clock. See [Data Import Pipeline](data_pipeline/data_import_pipeline.md).
 
 **session** — Never used for a backtest. An *AutoTrader session* is one start of a profile; a
-*market session* is Sydney, Tokyo, London or New York.
+*market session* is Sydney, Tokyo, London or New York; a *console session* (`console_session` on
+the activity list) is the terminal session an activity was started from, where an installation
+names an environment variable that carries one.
 
 **shared fill** (`shared_by`) — An execution that several trade rows of one unit carry: a partial
 close copies the position's entry fills onto every record it produces. `shared_by` counts them
@@ -613,6 +710,15 @@ per unit, because two scenarios on one symbol mint the same synthetic ids.
 external, pre-collected data such as sentiment. See [Signal Data Source](data_pipeline/signal_data_source.md).
 
 **signal basis** — A signal row's quality grade from the producer (`llm`, `no_data`, `degraded`).
+
+**state frame** (`io/state_frames.jsonl`, `state_frames` in a profile) — What an AutoTrader
+session held and decided at one moment: its account, its open positions and resting orders, every
+worker output and its decision. Written on a cadence of the canonical clock, when a bar closes,
+when the decision sends an order, and once at the end (#579) — the live side of a comparison with
+a backtest, which unlike the backtest cannot be run again. Its latest frame is served with its
+age while the session runs (#611, see *recording*). Not the dashboard's *frame*, which is built only
+while a display runs and keeps only the latest. See
+[Live Telemetry](architecture/live_telemetry_architecture.md#the-recorded-state-frame--not-this-stream).
 
 **stop trigger** (`trigger_price` on an order event, `stop_price` on a venue order) — The price at
 which a stop order activates. A triggered stop fills at the market, not at its trigger — the
@@ -627,9 +733,12 @@ it.
 **strategy** — A decision logic with its workers and all their parameters: exactly what
 `strategy_config` holds. A *bot* is a strategy bound to one AutoTrader profile.
 
-**stream files** (`stream_files` on the run list) — The files a run writes as it runs rather than
-at its end — today the order-event stream. Kept apart from `artifacts`, whose emptiness marks a run
-that never reached its report. Not the producer's stream (see *stream state*).
+**stream files** (`stream_files` on the run list) — The files a run keeps beside its report
+artifacts and that the API serves — today the order-event stream, which a live session writes as it
+runs and a backtest with its report. Kept apart from `artifacts`, whose emptiness marks a run that
+never reached its report. A session's other records — its warmup
+history, its tick stream record — are neither: listed nowhere on the run list. Not the producer's
+stream (see *stream state*).
 
 **stream state** — The producer's stream: `replay` while missed envelopes catch up, `live` once
 they arrive as they happen.
@@ -684,7 +793,9 @@ the reconciliation lines between, derived from the *broker truth* and served as 
 
 **wall clock** — The machine's clock. It stamps when WE did or saw something (`ts_init`, a run's
 `start_time`) and measures durations — on its monotonic form, because the wall clock itself can
-step backwards. Never the time a decision reads — that is the *canonical clock*.
+step backwards. Never the time a decision reads — that is the *canonical clock*. Where the one
+enters the other is in
+[Live Execution](architecture/live_execution_architecture.md#canonical-clock--idle-cadence-360).
 
 **warmup history** — The bars of each timeframe a run hands its workers before their first tick:
 the last N bars *complete at* that tick, N being what the most demanding worker reading the

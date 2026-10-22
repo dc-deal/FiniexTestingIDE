@@ -33,6 +33,95 @@ reads downwards from the version their fixtures hold until they reach the one be
 A test holds the newest heading in this log to the number the server answers with, so a version
 cannot ship without its entry.
 
+## Version 38 — 2026-10-21 (#611)
+
+A running session can be asked how it stands: its latest state frame, how old it is, and whether it
+is still recording.
+
+- `GET /api/v1/reports/runs/{run_id}/state-frames/latest`, new: one row per unit
+  (`key: ["unit_name"]`) with the latest `frame`, its `written_at` and `age_s`, and the unit's
+  cadence as `cadence_timeframe` (a timeframe, `M1` by default) and `cadence_s`;
+  `recording` — `current`, `stopped` or `ended`, null for a session replaying recorded data before
+  its end; `truncated_tail`; `first_frame`, the `written_at` and `process_memory` of the unit's first
+  frame; and `outcome`, the run's end classification exactly as `warnings-errors` serves it, once
+  the session ended and its report was written. Ask it once a cadence. On the `reports` surface.
+- Two new 404 codes: `state_frames_not_recorded` — the run records no state frames; and
+  `state_frame_not_written_yet` — its stream holds no frame yet.
+- `GET /api/v1/reports/runs`: `stream_files` names `state_frames.jsonl` for a session that records
+  state frames, from the moment the session opens the stream. A session recorded before this
+  version is named there once the server's run list is rebuilt.
+- `GET /api/v1/reports/runs`: `recording` on every row whose `stream_files` names
+  `state_frames.jsonl` — the verdict the latest-state-frame route gives (`current`, `stopped`,
+  `ended`), so a list can mark the sessions that still record and filter by it. Null elsewhere,
+  before a session's first frame, for a replay before its end, and where the stream cannot be read.
+
+A route, two codes and a run-list field added, a stream named; nothing removed or renamed. Its document is
+[state frames](/api/v1/docs/state-frames).
+
+## Version 37 — 2026-10-20 (#598)
+
+A session trading real money starts without a carry-over only when its start is declared the bot's
+first, and its header says so.
+
+- `GET /api/v1/reports/runs/{run_id}/header`: `origin.first_start` — `true` when the start of a
+  session trading real money was declared the bot's first: the one way such a session starts
+  without a carry-over to continue. A session that finds no carry-over it can use and is not
+  declared refuses to start, so it leaves a failed start rather than a run that began from
+  nothing. `false` on every other run, on a backtest, and on a run recorded before this version.
+
+One field added. Its document is [run header](/api/v1/docs/run-header).
+
+## Version 36 — 2026-10-19 (#547)
+
+A backtest keeps the broker configuration it traded with, as a session already does.
+
+- `broker_config_id` on every row of [broker](/api/v1/docs/broker) is set on a simulation row too:
+  the id under which the backtest froze the symbol specifications and fee structure it read when it
+  started. It was empty on every simulation row before, and a row recorded before this version keeps
+  it empty.
+- `config_hash` leaves out when a value was fetched. A refresh that reads the same values keeps it;
+  a changed value still moves it. Where the symbols carry a fetch time, as on a dynamic broker such
+  as `kraken_spot`, a row recorded before this version therefore differs from a later one over the
+  same values: compare those hashes within one side of this version. A static broker's hash did not
+  move.
+
+No field changed its shape.
+
+## Version 35 — 2026-10-19 (#603)
+
+What runs on the machine is served, the machine and the broker list need a grant, and a booking
+period says what it carries.
+
+- New `GET /api/v1/activities`: one row per activity running on the machine this server runs on —
+  a backtest, a parameter sweep, an AutoTrader session, an import, a discovery cache build, a test
+  suite, the server itself. A row is keyed by `activity_id`, never by a process id, and carries the
+  resident memory of its processes (`rss_bytes`, `process_count`). Beside the rows stand the
+  machine's memory and its pressure verdict, read at the same instant, and `server_activity_id`,
+  the row of the server answering.
+- `GET /api/v1/activities` and `GET /api/v1/machine-resources` sit on a new grant surface,
+  `machine`: a token reaches them with `machine:*` and is refused with 403 without it. Grants are
+  read at start-up, so a newly issued grant counts after the server restarts.
+- `GET /api/v1/brokers` moves onto the `brokers` surface: listing the brokers needs a `brokers`
+  grant, as a broker's symbols already did.
+- Every row of `GET /api/v1/brokers/{broker}/symbols` carries `tick_size`, the instrument's
+  smallest price step from the broker's configuration; null where the configuration names no such
+  symbol or cannot be read.
+- `from` and `to` on the bars and ATR routes accept an ISO-8601 instant only. A number that is no
+  ISO date, which was read as Unix seconds — `from=2026` became `1970-01-01T00:33:46Z` — and any
+  other text that is no instant, which answered `422`, are refused with `400 invalid_timestamp`. An
+  instant without an offset is read as UTC, and an eight-digit date in ISO's basic format
+  (`20261019`) is an ISO date and read as one.
+- Every booking period, a run's and a deployment's, carries what it carries beside what it did:
+  `account_max_drawdown` and `account_max_dd_pct`, the account's decline since its equity curve
+  began — an AutoTrader session continues its predecessor's curve wherever its profile carries the
+  risk history over, whatever its deployment — and `unrealized_pnl` and `open_position_count` at
+  the seal.
+- New error `activity_registry_unreadable` (500): the list of what runs could not be read, which
+  is not the same as nothing running.
+
+A route added, two routes and the broker list behind a grant, fields added, and two parameters
+read strictly. The new route's document is [activities](/api/v1/docs/activities).
+
 ## Version 34 — 2026-10-18 (#606)
 
 A price the venue quoted or traded is now served as the decimal the venue wrote.
@@ -48,113 +137,16 @@ A price the venue quoted or traded is now served as the decimal the venue wrote.
 
 No field was added or removed. A run recorded before this contract keeps the values it read.
 
-## Version 33 — 2026-10-16 (#602)
-
-A backtest over data recorded without a quote now pays a spread. Each such tick is given the quote
-the spread estimated for the previous day implies, and what the fills crossed against it is
-reported as a figure of its own beside the measured spread.
-
-- `GET /api/v1/reports/runs/{run_id}/trade-history`: every trade row carries
-  `modelled_spread_cost` — the spread its fills crossed against a modelled quote. It is inside
-  `gross_pnl` like `spread_cost`, beside `total_fees` and never inside it, and the two add up to
-  the trade's effective spread: a fill against a recorded quote counts in `spread_cost`, one
-  against a modelled quote in `modelled_spread_cost`. 0 where every quote was recorded. Every
-  `scenario_totals` row carries `total_modelled_spread_cost`, always a number.
-- `portfolio`: every unit row carries `total_modelled_spread_cost`; `aggregated-portfolio` sums it
-  per block.
-- `booking-periods`: every period carries `modelled_spread_cost` beside `spread_cost`; the
-  deployment rows carry it as `period_modelled_spread_cost`. Null on a period recorded before this
-  contract.
-- `scenario-details`: every row carries `modelled_spread` — `factor`, `estimator_version`,
-  `ticks_without_quote`, `ticks_modelled`, `median_spread_bps` and `day_digest` — null where the
-  scenario read no tick without a quote.
-- **A change of meaning on data without a quote:** a backtest's fills, the marks of its open
-  positions and its stops now see a spread there, so its `gross_pnl` and `net_pnl` are lower than
-  those of the same set run before this contract. `spread_cost` there stays what contract 32 made
-  it — nothing was measured.
-
-Fields added, none removed or renamed; the P&L of a backtest over data without a quote changes.
-Its documents are [trade history](/api/v1/docs/trade-history),
-[portfolio](/api/v1/docs/portfolio), [aggregated portfolio](/api/v1/docs/aggregated-portfolio),
-[booking periods](/api/v1/docs/booking-periods) and
-[scenario details](/api/v1/docs/scenario-details).
-
-## Version 32 — 2026-10-15 (#599)
-
-A gap says whose silence it is, and a symbol with years of a venue's history no longer has to be
-read in one piece. And a unit's trade totals carry the spread it paid.
-
-- `GET /api/v1/brokers/{broker}/symbols/{symbol}/gaps`: every gap carries `origin_class` — the
-  origin class of the tick file it lies in or follows (`production`, `development`, `unknown`,
-  `external`), null where no tick file could be found — and `origin_class_after`, which differs
-  from it only at a seam, where one origin's data ends and another's begins. A gap in `external`
-  data lies in a venue's published history: nobody traded there, and there is nothing to
-  re-collect.
-- New beside the gaps: `gaps_by_year` — per year and origin class the short, moderate and large
-  gaps and the hours without data, always over the whole archive.
-- **`key` is replaced by `keys`**, one entry per list, because the answer now carries two:
-  `{"gaps": ["start"], "gaps_by_year": ["year", "origin_class"]}`. Read the gaps' key from
-  `keys.gaps`.
-- Two query parameters narrow `gaps`, never `gap_counts` or `gaps_by_year`: `origin_class` (only
-  the gaps in data of that class) and `since` (only the gaps that start at or after it, ISO-8601;
-  anything else is refused with `400 invalid_timestamp`). Without them every gap is served, as
-  before.
-- `reason` no longer guesses at a cause: "check data collection" and "restart/connection?" are
-  gone, because the reason cannot know whose data surrounds a gap. A coverage cache built before
-  this contract still serves the old words until it is rebuilt.
-- `category` declares its closed set in the schema; its values are unchanged.
-- `GET /api/v1/reports/runs/{run_id}/trade-history`: every `scenario_totals` row carries
-  `total_spread_cost` — the unit's measured `spread_cost` summed, beside `total_fees` and never
-  inside it. On a quote-driven market it is usually the main cost while `total_fees` reads zero.
-  It is null where the unit read data without a quote, for the whole unit even where only part of
-  its window lacked one, and on a run recorded before this contract.
-- The portfolio's `total_spread_cost` follows the same rule, and is therefore now nullable: null
-  for a unit that read data without a quote, where it read `0.0`, and on the aggregated portfolio
-  — with `avg_spread` — null as soon as one unit's is.
-
-Fields and parameters added, `key` replaced by `keys`, one wording changed, and three spread
-figures may be null. Its documents are [gaps](/api/v1/docs/gaps),
-[trade history](/api/v1/docs/trade-history), [portfolio](/api/v1/docs/portfolio) and
-[aggregated portfolio](/api/v1/docs/aggregated-portfolio).
-
-## Version 31 — 2026-10-14 (#595)
-
-The machine this server runs on can be asked how full it is.
-
-- `GET /api/v1/machine-resources` — new, with a token and no grant: the processors and the memory
-  of the machine the server, the backtests and the live sessions run on. `memory` names the limit
-  that binds — a container's own where one is set below the machine's — and where it was read
-  (`limit_source`: `cgroup` or `machine`), how much is in use, and the two thresholds it is graded
-  against. `cpu` counts the processors that bind and says how busy the machine was over `window_s`,
-  the seconds since the previous reading of this route by any caller. `pressure_level` (`ok`,
-  `warn`, `critical`) grades memory alone, and `pressure_reasons` says why in a sentence for a
-  person. Its document is [server](/api/v1/docs/server).
-
-A route added; no field changed its shape.
-
-## Version 30 — 2026-10-14 (#561)
-
-A venue's published history can enter the archive, and what an input file lacks is named.
-
-- `GET /api/v1/validation-checks` and the findings of a run: `spreadless_tick_data` is gone.
-  `data_no_quote` counts every input file without a quote, whatever the reason — an older
-  collector format or a venue's history that keeps no quote. New beside it: `data_no_arrival_time`,
-  `data_arrival_time_reconstructed`, `data_missing_trades` and `data_origin_external`, and
-  `data_synthetic`, which takes over the synthetic-signal warning that `signal_availability`
-  carried. A run recorded before this contract may still name `spreadless_tick_data`; the catalog
-  no longer lists it, so show the id itself.
-- `origin_classes` on a ledger row and in the scenario details may hold `external`: data no
-  collector of ours recorded, such as a venue's published history. It is never admissible for a
-  parity measurement.
-
-An id removed and a value added; no field changed its shape.
-
-## Versions 29 and earlier
+## Versions 33 and earlier
 
 One line each. Every one of these moved a shape or a meaning; what they moved is summarised here
 rather than spelled out, because a consumer this far behind needs the list of steps, not each step's
 reasoning. The full text of a compressed version is in this repository's history.
 
+- **Version 33** — 2026-10-16 (#602): A backtest over data recorded without a quote pays a spread, reported beside the measured one — `modelled_spread_cost` on every trade row and booking period, `total_modelled_spread_cost` on the portfolio and on the scenario totals, `modelled_spread` on the scenario details; the P&L of such a backtest is lower than before.
+- **Version 32** — 2026-10-15 (#599): A gap says whose silence it is, and a unit's trade totals carry the spread it paid — `origin_class` and `origin_class_after` on every gap, `gaps_by_year` beside them, `key` replaced by `keys`, the `origin_class` and `since` parameters, `reason` without its guessed causes, and `total_spread_cost` on every trade-history `scenario_totals` row and the portfolio, null where a unit read data without a quote.
+- **Version 31** — 2026-10-14 (#595): The machine this server runs on can be asked how full it is — `GET /api/v1/machine-resources`, new, with the memory limit that binds and where it was read (`limit_source`), the processors and how busy they were over `window_s`, and `pressure_level` with its `pressure_reasons`; a route added, no field changed its shape.
+- **Version 30** — 2026-10-14 (#561): A venue's published history can enter the archive, and what an input file lacks is named — `spreadless_tick_data` gives way to `data_no_quote`, with new checks `data_no_arrival_time`, `data_arrival_time_reconstructed`, `data_missing_trades`, `data_origin_external` and `data_synthetic`, and `origin_classes` may hold `external`, never admissible for a parity measurement.
 - **Version 29** — 2026-10-13 (#588): A live session that refused at its first tick is told apart from one that crashed — `refused_at_first_tick` on the `warnings-errors` outcome, `true` when the warmup history could not be completed at the first tick, `false` on every other run, on a backtest and on a run recorded before.
 - **Version 28** — 2026-10-11 (#508): A run says how many of its fills were booked at the venue's own fee and how many at our estimate — `fill_fees_by_source` on every portfolio unit row, per-currency row and aggregated `headline` (entries `venue` / `estimate` with `fill_count` and `fill_fees`; empty where nothing executed), and `fee_source` on every order-history row (null where nothing executed).
 - **Version 27** — 2026-10-11 (#508): A live fill's fee is the venue's own charge wherever the venue reports it, and every executed order event says where its fee came from — `fee_source` (`venue` or `estimate`; null on an event that executed nothing, on a fill nothing could be booked for whose venue reported no fee, and on every event recorded before it); the same fee fields from another source, so a live run before and one after can differ in fees for the same orders.

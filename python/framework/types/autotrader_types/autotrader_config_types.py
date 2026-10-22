@@ -19,6 +19,7 @@ from python.framework.types.config_types.autotrader_defaults_config_types import
     ReconciliationDefaults,
     SafetyConfig,
     SessionEndDefaults,
+    StateFramesDefaults,
     StatePersistenceDefaults,
     TickSourceConfig,
 )
@@ -135,6 +136,7 @@ class AutoTraderConfig:
     reconciliation: ReconciliationDefaults = field(default_factory=ReconciliationDefaults)
     api_monitor: ApiMonitorConfig = field(default_factory=ApiMonitorConfig)
     state_persistence: StatePersistenceDefaults = field(default_factory=StatePersistenceDefaults)
+    state_frames: StateFramesDefaults = field(default_factory=StateFramesDefaults)
     cold_start: ColdStartDefaults = field(default_factory=ColdStartDefaults)
     session_end: SessionEndDefaults = field(default_factory=SessionEndDefaults)
     capital: CapitalDefaults = field(default_factory=CapitalDefaults)

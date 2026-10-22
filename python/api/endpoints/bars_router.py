@@ -134,8 +134,8 @@ def get_bars(
     broker: str,
     symbol: str,
     timeframe: str,
-    from_time: datetime = Query(..., alias='from'),
-    to_time: datetime = Query(..., alias='to'),
+    from_text: str = Query(..., alias='from'),
+    to_text: str = Query(..., alias='to'),
     limit: int = Query(MAX_BARS),
 ) -> list[BarResponse]:
     """
@@ -150,8 +150,8 @@ def get_bars(
         broker: Broker type identifier the bars were rendered for
         symbol: Trading symbol
         timeframe: Timeframe key (M1, M5, ...)
-        from_time: Range start, inclusive
-        to_time: Range end, inclusive
+        from_text: Range start, inclusive — ISO-8601, an instant without an offset read as UTC
+        to_text: Range end, inclusive — ISO-8601, an instant without an offset read as UTC
         limit: Maximum rows to return, at most MAX_BARS
 
     Returns:
@@ -163,8 +163,10 @@ def get_bars(
     if limit < 1 or limit > MAX_BARS:
         raise api_error(INVALID_LIMIT, maximum=MAX_BARS, limit=limit)
 
-    from_utc = _utc(from_time)
-    to_utc = _utc(to_time)
+    # Read strictly: a bare number is refused rather than taken as Unix seconds, which is what
+    # a `datetime` parameter does — `from=2026` would become 1970-01-01T00:33:46Z (contract 35)
+    from_utc = _utc(parse_iso_query(from_text, 'from'))
+    to_utc = _utc(parse_iso_query(to_text, 'to'))
 
     if from_utc >= to_utc:
         raise api_error(INVALID_RANGE)
@@ -294,8 +296,8 @@ def get_atr(
     broker: str,
     symbol: str,
     timeframe: str,
-    from_time: datetime = Query(..., alias='from'),
-    to_time: datetime = Query(..., alias='to'),
+    from_text: str = Query(..., alias='from'),
+    to_text: str = Query(..., alias='to'),
     period: int = Query(14),
     smoothing: MaType = Query(MaType.RMA),
     limit: int = Query(MAX_BARS),
@@ -316,8 +318,8 @@ def get_atr(
         broker: Broker type identifier
         symbol: Trading symbol
         timeframe: Timeframe key (M1, M5, ...)
-        from_time: Range start, inclusive
-        to_time: Range end, inclusive
+        from_text: Range start, inclusive — ISO-8601, an instant without an offset read as UTC
+        to_text: Range end, inclusive — ISO-8601, an instant without an offset read as UTC
         period: ATR period
         smoothing: Which average smooths the true range; Wilder by definition
         limit: Maximum rows to return, at most MAX_BARS
@@ -334,8 +336,10 @@ def get_atr(
     if limit < 1 or limit > MAX_BARS:
         raise api_error(INVALID_LIMIT, maximum=MAX_BARS, limit=limit)
 
-    from_utc = _utc(from_time)
-    to_utc = _utc(to_time)
+    # Read strictly: a bare number is refused rather than taken as Unix seconds, which is what
+    # a `datetime` parameter does — `from=2026` would become 1970-01-01T00:33:46Z (contract 35)
+    from_utc = _utc(parse_iso_query(from_text, 'from'))
+    to_utc = _utc(parse_iso_query(to_text, 'to'))
 
     if from_utc >= to_utc:
         raise api_error(INVALID_RANGE)

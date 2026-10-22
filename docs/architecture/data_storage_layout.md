@@ -51,6 +51,7 @@ worse. What they *can* share is how they describe themselves.
 | 12 | `data/raw/` → `data/finished/` | **SPECIAL** | file name | none — conveyor | — |
 | 13 | `logs/global.log` | **SPECIAL** | none | none — append stream | — |
 | 14 | `user_configs/host_identity.json` | **SPECIAL** | none | none — one file, read at boot by its manager | — |
+| 15 | `~/.finiex/activities/` — one per machine, configured | **SPECIAL** | `activity_id` | none — read by its own reader | — |
 
 **Row 1d is one file, not a folder.** It is the fixture catalog's production record — which runs
 each production of a catalog entry made, and whether they carried every property — and it sits
@@ -63,6 +64,24 @@ all of its ticks and replaces a file only once the new one reads back in full. D
 different producer, different index. Registering bars as
 ARCHIVE was the first defect this model found in itself — and the project's own store rules had
 already written down the sentence the registration then contradicted.
+
+### The data home — where every root lives
+
+A deploy on a server is a restart into another code tree (#598), and the stores above are what
+the new tree has to find again. So they do not live in the code tree: every root resolves under
+one data home, the directory the environment variable `FINIEX_DATA_HOME` names, together with
+the workspace (`user_configs/`) and the strategy directories. Unset, the working directory is
+the home, and a development checkout keeps every path exactly as configured.
+
+Three roots stay where they are, each on purpose: the certificates (row 3) and the generator
+profiles (row 9) are committed and belong to the code tree of the release that made them, and
+the activity list (row 15) is the machine's, at an absolute path every tree shares. An absolute
+path in the configuration stands for itself. A home that does not exist refuses the start
+instead of being created: an empty one holds no carry-over, and a session started on it would
+begin as the bot's first run. Which home a process uses is named at its start — in the session
+channel, beside the carry-over it read, and in the API server's boot lines. A store added later
+needs no list: its root resolves under the home by construction, and a test walks the catalog to
+prove it.
 
 ### The external history store
 
@@ -226,25 +245,32 @@ run_configs/
 That is not tidiness. A source may live in `user_algos/`, a separate repository, and an index
 whose entries lived outside its own root could not die with its store. The per-run copy of the
 config that each run directory once held was retired with #546: the frozen copy here is the
-evidence, and a run names it by `config_id`.
+evidence, and a run names it by `config_id`. The configuration is one of several things a run
+records about itself;
+[A run is a record, and an old one stays true](../introduction_to_the_ide.md#a-run-is-a-record-and-an-old-one-stays-true)
+maps the others.
 
 **A source is what a run was GIVEN; the two rendered kinds are what it RAN with (#547).** A
 profile file is the input to a cascade — the `app_config.autotrader` defaults lie under it, and
 every parameter it leaves unset gets its schema default only when the factory builds the
 component — and a month in which `app_config.json` or a default changes could prove the
-configuration moved and never say what it was. So an AutoTrader session freezes two more
-documents at its start:
+configuration moved and never say what it was. So an AutoTrader session freezes the rendered
+profile at its start, and every run — a session or a backtest — freezes the broker configuration
+it trades with:
 
 | kind | what it holds | named by |
 |---|---|---|
 | `autotrader_rendered` | the merged profile blocks, the strategy with every schema default filled (through the factories' own `resolve_parameters`), and the broker's `market_config.json` entry with its local override | the run header's `rendered_config_id`, written before the session can fail |
-| `broker_config` | the broker configuration the session trades with: symbol specs from the runtime cache, the seed's fee structure, the detected fee tier | the run's broker section (`broker_config_id`, beside `config_hash`) and a session-log line at startup |
+| `broker_config` | the broker configuration the run trades with, as it stands when the run starts: the symbol specifications — from the runtime cache for a dynamic broker's backtest or live-adapter session, from the seed file for a mock session or a static broker — and the seed's fee structure, its rates replaced by the venue's fee tier where a live-adapter session applies it | the run's broker section (`broker_config_id`, beside `config_hash`) and a log line at startup |
 
 The broker configuration needs the log line because the run's broker section is written at the
-END: a session killed before its report still says, in `autotrader_session.log`, where its
-configuration was frozen.
+END: a run killed before its report still says, in its own log (`autotrader_session.log` for a
+session, `scenario_global_log.log` for a backtest), where its configuration was frozen. A backtest
+has no rendered profile: what its scenario set and the application's `backtesting` defaults add up
+to for the execution and simulator blocks is covered only by a hash on its ledger row
+(`profile_hash`), not by a document.
 
-Both are frozen from CONTENT, so a session that restarts on an unchanged configuration names the
+Both are frozen from CONTENT, so a run that starts on an unchanged configuration names the
 same id and writes nothing new. Their source columns stay empty on purpose — those mean "the file
 a caller asks for", and a rendered document must never come back from `resolve()` or `history()`
 as the newest version of the profile it was rendered from. And both are RECORDS, never schemas: a
@@ -253,6 +279,15 @@ true as it was — nothing reads it back into a factory. A private profile's doc
 here too, like its source: the store is gitignored, nothing leaves the machine, and a
 configuration has to stay readable without the foreign repository checked out at the right
 commit — which a patch needs anyway, and a configuration must not.
+
+**For the broker configuration, "unchanged" means byte for byte.** Its document carries each
+symbol's fetch time and the file's own metadata, which `config_hash` leaves out, so a refresh that
+reads the same values back keeps `config_hash` and still gives the next run a new
+`broker_config_id`. `config_hash` covers only the symbols and the fee structure, not the account
+terms in `broker_info` (leverage, margin-call and stop-out levels) a margin broker trades with.
+Compare it to ask whether two runs traded under the same symbol specifications and fees — on a
+margin broker, the broker section's `leverage` and levels beside it — and open `broker_config_id`
+to read what one of them had ([Broker Configuration](../broker_config_guide.md#config-hash--seed-id)).
 
 **Several rows per source file are NORMAL here, unlike every other store.** Each row is one
 version, and the accumulation IS the history — which is why validity is not a row count against a
@@ -362,7 +397,7 @@ and the patch path is absolute because `git -C` resolves a relative one against 
 not against the project root:
 
 ```bash
-patch="$PWD/run_patches/<patch_hash>.patch"                   # run from the project root
+patch="${FINIEX_DATA_HOME:-$PWD}/run_patches/<patch_hash>.patch"  # run from the project root
 # a strategy repository's: patch="<repository>/.finiex_run_patches/<patch_hash>.patch"
 git -C <repository> worktree add /tmp/restored <commit>
 echo "<patch_hash>  $patch" | sha256sum --check && git -C /tmp/restored apply "$patch"
@@ -418,6 +453,13 @@ rather than serving it.
 | **DERIVED** | mirrors its source | **deletable** | none — *if deleting it loses something, it is misfiled* |
 | **SPECIAL** | — | — | catalogued with a stated reason, nothing else |
 
+**Deletable and append-only describe the store, not what a run read from it.** A fetch overwrites
+a symbol's entry in the runtime broker cache in place, a re-import with `--override` replaces tick
+files, and every render replaces bar files. So a run never relies on what it read staying as it
+was: it keeps a copy where it can — its broker configuration in `run_configs/`, the patch of
+uncommitted code in `run_patches/` — and describes the rest
+([A run is a record, and an old one stays true](../introduction_to_the_ide.md#a-run-is-a-record-and-an-old-one-stays-true)).
+
 ### A new thing joins an existing store before it becomes a new one
 
 The store is the umbrella, and its kind says what the content is. So something new that has to
@@ -465,6 +507,13 @@ bot's, rather than ignoring it and overwriting the successor's book.
   an input — and deleting it is not harmless: the next start mints a different identity, and every
   run header after it names another host. It lives in the workspace and is never tracked, because
   a tracked id would give every clone the same one.
+- **The activity list** (`activities.directory`, `~/.finiex/activities/` by default, #603) holds
+  one entry per activity running on the machine, each held by a kernel lock for its activity's
+  life and removed at its end; its own reader clears what a killed process left behind. Nothing in
+  it outlives its activity, so it is no record, no carry-over and no input, and it is built from no
+  store. It is one per MACHINE and lies outside every code tree, because a machine holds several
+  copies of the code and the list has to show the work of all of them. See
+  [What runs on this machine](activity_registry.md).
 
 **Not a store at all: a file the operator addresses for a reader outside the app.** The liveness
 stamp file (`operator_alerts.liveness.liveness_stamp_file`, #235) holds one UTC instant, rewritten
@@ -472,6 +521,12 @@ with each liveness ping, at a path the operator chooses — and nothing in this 
 no root the catalog could register, and deleting it loses nothing the app needs: the watcher it is
 written for reads its absence as silence. See
 [Unattended Operation](../autotrader/unattended_operation.md).
+
+**Nor is a bot's lock file** beside its carry-over (`<bot_id>_<symbol>.lock`, #598). The lock is
+the kernel's and the file only its handle: a session holds it while it runs, so a second start of
+the same bot is refused, and its note names the holder for that refusal and is never read back
+as data. Deleting it loses nothing; the kernel releases the lock with its process however that
+ends.
 
 ---
 
@@ -518,6 +573,15 @@ while a live session runs, and with its report by a backtest. It is part of the 
 store of its own, and not an artifact: the run index lists it under `stream_files`, because an empty
 artifact list is how a run that never reached its report is recognised. See [Order-Event
 Stream](order_event_stream.md).
+
+A live session writes more records into `io/` as it runs: the warmup history it started from
+(`warmup_history.json`, #588) and its tick stream's outages and refused trades
+(`tick_stream_events.jsonl`, #609). Neither is a report artifact or a served stream, so the run
+index lists neither (`RUN_RECORD_FILENAMES`): an artifact would make a session that died before its
+report read as reported, and a stream entry would promise a route that does not exist. Its state
+frames — what it held and decided, moment by moment (`state_frames.jsonl`, #579) — are a served
+stream like the order events: listed under `stream_files` from the moment the session opens them,
+and read at their two ends by the latest-frame route (#611).
 
 An AutoTrader session's directory also holds the **warmup history** it started from
 (`io/warmup_history.json`, #588) — the bars and the instants that selected them, written at
@@ -737,20 +801,22 @@ than handled automatically. If you ever meet it, this narrows it down:
 | Cause | How likely | How to tell |
 |---|---|---|
 | Someone deleted, moved or restored `data/runtime/` (a "clean start", a machine move, a backup) | the usual one | the carry-over file is missing or its `saved_at_utc` predates the order |
-| Two instances of the same bot ran at once and their key writes crossed | rare — the write is read-modify-write, so it needs overlapping saves; for the two stages of a declared continuation the boot refuses a partner's document whose run has not completed | two run ids in `runs_index.parquet` overlapping in time for one profile |
+| The session started in another data home — a deploy whose unit names no `FINIEX_DATA_HOME`, or the wrong one | right after a deploy | the boot named a home and a carry-over other than the last session's; a session trading real money refuses it rather than starting (#598) |
 | The document was hand-edited or corrupted | rare | the boot log carries the "unreadable" or "payload rejected" warning |
 | A schema version bump discarded it | only right after a deploy | the boot log names the version mismatch |
 | Genuinely another client using the same key format | improbable | the key's session half matches no run id of ours |
 
-Two paths are closed by construction and can be ruled out immediately: a **container rebuild**
-cannot lose it (`./data` is a bind mount from the host), and **eviction** cannot drop a key
-whose order is still resting (eviction is by relevance before recency).
+Three paths are closed by construction and can be ruled out immediately: a **container rebuild**
+cannot lose it (`./data` is a bind mount from the host), **eviction** cannot drop a key whose
+order is still resting (eviction is by relevance before recency), and **two instances of the
+same bot** cannot cross their writes — the second start is refused while the first holds the
+bot's lock (#598).
 
 ⚠️ **A schema-version bump on a carry-over does not lose state quietly — it makes the session
 trade beside its own forgotten orders.** The chain: envelope discarded → empty payload → the
 predecessor's session keys are gone → its resting orders read as `unknown_session` → they are
-NOT adopted. And there is no start ban: the boot reports this as an ERROR in the session pot and
-the session **starts anyway**, deliberately, because refusing forever would leave the operator no
-way out and would abandon whatever this bot already holds at the venue. So the consequence is not
-a bot that will not run; it is a bot that runs while its own resting orders are invisible to it.
-That has to be known before the deploy rather than discovered at 03:00.
+NOT adopted. A session trading real money is therefore refused when it finds its carry-over in
+another format, as when it finds none (#598): the way out is a declared first start
+(`--first-start`), which starts over deliberately. A dry run and a mock session still start
+fresh and report the discarded document as an ERROR in the session pot — they claim nothing about
+the venue. That has to be known before the deploy rather than discovered at 03:00.

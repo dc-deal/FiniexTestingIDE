@@ -30,6 +30,7 @@ from typing import Any, Dict, Optional, Tuple
 
 from pydantic import ValidationError
 
+from python.configuration.data_home import resolve_in_data_home
 from python.framework.exceptions.persistence_errors import StatePersistenceError
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.persistence.carry_over_identity import accepts_carry_over, carry_over_key
@@ -92,7 +93,8 @@ class AlgoStateStore:
         self._bot_id = bot_id
         self._carry_over_from = carry_over_from
 
-        self._path = Path(config.path) / f'{carry_over_key(profile, symbol, bot_id)}.json'
+        self._path = (resolve_in_data_home(Path(config.path))
+                      / f'{carry_over_key(profile, symbol, bot_id)}.json')
 
         self._last_save_tick: int = 0
         self._last_save_time: float = time.monotonic()
@@ -297,8 +299,9 @@ class AlgoStateStore:
 
         The warning is deliberately prominent and multi-line: when an operator
         reopens a bot after days away, they must understand the bot starts with an
-        EMPTY memory (counters/flags reset) and that open broker positions are not
-        yet recognized (until Cold-Start Recovery, #355).
+        EMPTY memory (counters/flags reset), and where its positions come from: a
+        real-money spot session restores them from the framework's own carry-over,
+        a dry run or a margin session does not.
 
         Args:
             saved_at: Snapshot timestamp (UTC)
@@ -317,8 +320,9 @@ class AlgoStateStore:
             f'⚠️ {message}.\n'
             f'   → Restored state DISCARDED. The bot starts with EMPTY algo memory: '
             f'counters, entry flags and risk high-water-marks are reset.\n'
-            f'   → Open broker positions are NOT recognized yet (until #355) — '
-            f'check your account before letting the bot run.'
+            f'   → Open positions are not part of this state: a real-money spot session '
+            f"restores them from the framework's own carry-over; a dry run or a margin session "
+            f'does not — check the account before letting the bot run.'
         )
         return None
 

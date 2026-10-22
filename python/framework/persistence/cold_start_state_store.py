@@ -160,7 +160,7 @@ class ColdStartStateStore:
         if envelope.schema_version != _SCHEMA_VERSION:
             self._last_load = CarryOverLoad(
                 path, CarryOverLoadOutcome.OTHER_SCHEMA, envelope.profile,
-                envelope.written_by_run_id)
+                envelope.written_by_run_id, saved_at_utc=envelope.saved_at_utc)
             self._logger.warning(
                 f'⚠️ Cold-start carry-over has schema_version {envelope.schema_version} '
                 f'(expected {_SCHEMA_VERSION}) — ignored. File: {self._path}'
@@ -173,7 +173,7 @@ class ColdStartStateStore:
             positions, keys = _claims_in(envelope.snapshot)
             self._last_load = CarryOverLoad(
                 path, CarryOverLoadOutcome.FOREIGN, envelope.profile, envelope.written_by_run_id,
-                positions, keys)
+                positions, keys, saved_at_utc=envelope.saved_at_utc)
             self._logger.warning(
                 f'⚠️ Cold-start carry-over belongs to {envelope.profile}/{envelope.symbol}, '
                 f'not {self._profile}/{self._symbol} — ignored'
@@ -187,14 +187,15 @@ class ColdStartStateStore:
         except ValidationError as e:
             self._last_load = CarryOverLoad(
                 path, CarryOverLoadOutcome.UNREADABLE, envelope.profile,
-                envelope.written_by_run_id)
+                envelope.written_by_run_id, saved_at_utc=envelope.saved_at_utc)
             self._logger.warning(
                 f'⚠️ Cold-start carry-over payload rejected ({e}) — continuing without it'
             )
             return ColdStartPayload()
         self._last_load = CarryOverLoad(
             path, CarryOverLoadOutcome.ACCEPTED, envelope.profile, envelope.written_by_run_id,
-            len(payload.open_positions), len(payload.session_keys))
+            len(payload.open_positions), len(payload.session_keys),
+            saved_at_utc=envelope.saved_at_utc)
         return payload
 
     # ============================================

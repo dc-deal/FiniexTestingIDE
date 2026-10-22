@@ -49,6 +49,10 @@
     "run_patches": "run_patches",
     "config_directory": "data/runtime/config_directory"
   },
+  "activities": {
+    "directory": "~/.finiex/activities",
+    "session_env_var": ""
+  },
   "history": {
     "bar_max_history": 1000,
     "order_history_max": 10000,
@@ -61,6 +65,10 @@
       "_comment": "The thresholds GET /api/v1/machine-resources grades memory against: the share of the binding memory limit in use from which the pressure level is warn, and from which it is critical. Memory alone - a busy processor is the machine doing its work, memory that runs out is the moment the kernel ends a process.",
       "memory_warn_pct": 80.0,
       "memory_critical_pct": 90.0
+    },
+    "state_frames": {
+      "_comment": "When GET /api/v1/reports/runs/{run_id}/state-frames/latest reads a session's recording as stopped: its latest state frame is older than this many of its cadences. Judged only for a session reading the venue - a replay's frames come at replay speed. Three at the default cadence of a minute lies above the liveness ping's stall of two minutes, so a stall the session can report itself, it reports first.",
+      "stopped_after_cadences": 3
     }
   },
   "docs_search": {
@@ -69,15 +77,16 @@
   },
   "autotrader": {
     "tick_source": {
-      "_comment": "How ticks are DELIVERED. A profile overrides any of these; the mock-only and kraken-only fields sit together because one block per concern beats two that a reader has to join. quote_channel_enabled subscribes to Kraken's ticker channel beside trades, so a live tick carries the real bid/ask it executed against - the same thing an archived tick has carried since collector format 1.6.0.",
+      "_comment": "How ticks are DELIVERED. A profile overrides any of these; the mock-only and kraken-only fields sit together because one block per concern beats two that a reader has to join. quote_channel_enabled subscribes to Kraken's ticker channel beside trades, so a live tick carries the real bid/ask it executed against - the same thing an archived tick has carried since collector format 1.6.0. connection_dead_s is the silence that declares a connection dead (Kraken sends a heartbeat about once a second, so 10 s is never a quiet market); backoff_reset_after_s is how long a connection must deliver before its loss starts the reconnect backoff over.",
       "type": "mock",
       "tick_delay_ms": 0,
       "ws_url": "wss://ws.kraken.com/v2",
       "quote_channel_enabled": true,
       "reconnect_initial_delay_s": 1.0,
       "reconnect_max_delay_s": 60.0,
-      "connection_check_interval_s": 30.0,
-      "connection_dead_s": 90.0,
+      "backoff_reset_after_s": 10.0,
+      "connection_check_interval_s": 1.0,
+      "connection_dead_s": 10.0,
       "freeze_after_ticks": 0,
       "freeze_duration_s": 0.0
     },
@@ -158,6 +167,11 @@
       "max_age_trading_days": 5,
       "on_corrupt": "warn_reset",
       "on_stale": "warn_reset"
+    },
+    "state_frames": {
+      "_comment": "What a session held and decided, moment by moment (#579 part A), in io/state_frames.jsonl: one frame per period of cadence_timeframe on the canonical clock (a timeframe such as M1 or M5, on the grid the bars open their periods on), at a closed bar, at an order, and once at the end. About 65-130 MB over thirty days at M1.",
+      "enabled": true,
+      "cadence_timeframe": "M1"
     },
     "cold_start": {
       "enabled": true,

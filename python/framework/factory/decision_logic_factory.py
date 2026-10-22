@@ -5,7 +5,7 @@ Config-driven decision logic instantiation with path-based loading
 Reference System:
 - CORE/logic_name → Framework decision logics (python/framework/decision_logic/core/)
 - File path        → Any .py file containing exactly one AbstractDecisionLogic subclass
-                     (absolute, or relative to project root)
+                     (absolute, or relative to the data home or the project root)
 
 Example Config:
 {
@@ -23,6 +23,7 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple, Type
 
+from python.configuration.data_home import resolve_strategy_file
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.decision_logic.core.aggressive_trend import AggressiveTrend
 from python.framework.decision_logic.core.test_probes.deterministic_probe import (
@@ -332,7 +333,8 @@ class DecisionLogicFactory:
         result in registry under the normalized absolute path string.
 
         Args:
-            path_str: File path (absolute or relative to base_path / project root)
+            path_str: File path — absolute, or relative to base_path, else to the data home
+                and then the project root
             base_path: Base directory for relative paths
 
         Returns:
@@ -346,7 +348,8 @@ class DecisionLogicFactory:
             if base_path:
                 p = (base_path / p).resolve()
             else:
-                p = (Path.cwd() / p).resolve()
+                # The data home first, then the code tree (#598)
+                p = resolve_strategy_file(path_str)
 
         cache_key = str(p)
         if cache_key in self._registry:

@@ -48,3 +48,16 @@ class ConnectionInadmissibleError(FiniexError, RuntimeError):
     degrade into.
     """
     pass
+
+
+class TransientStartError(FiniexError, RuntimeError):
+    """
+    A session could not start because an external system did not answer within its budget, and
+    the cause is passing (#598).
+
+    Raised by a boot step that turns a ladder's give-up into its own refusal — the warmup history,
+    the alert channel's check — when every attempt failed on a transient fault. The start still
+    ends as FAILED, but with exit 75, which a supervisor restarts after its pause; a refusal by
+    decision keeps exit 2.
+    """
+    pass

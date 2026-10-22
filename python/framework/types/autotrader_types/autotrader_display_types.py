@@ -226,12 +226,18 @@ class TickSourceSnapshot:
         last_message_time: When the last transport message arrived, heartbeats included
         last_tick_time: When the last trade tick arrived
         quote: The quote channel's state, None for a source without one
+        message_age_s: Seconds since the last transport message, on the monotonic clock; None
+            before the first one or for a source without a connection
+        connection_dead_s: The silence after which the source reconnects (#609); None for a
+            source without a connection
     """
     reconnect_count: int = 0
     ticks_emitted: int = 0
     last_message_time: Optional[datetime] = None
     last_tick_time: Optional[datetime] = None
     quote: Optional[QuoteFeedStats] = None
+    message_age_s: Optional[float] = None
+    connection_dead_s: Optional[float] = None
 
 
 @dataclass

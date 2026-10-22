@@ -22,19 +22,21 @@ from typing import Dict, Optional
 
 from pydantic import ValidationError
 
+from python.configuration.data_home import workspace_path
 from python.framework.exceptions.host_identity_errors import HostIdentityError
 from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.types.config_types.host_identity_config_types import (
     HOST_ID_ALPHABET,
     HOST_ID_PREFIX,
     HOST_ID_RANDOM_LENGTH,
-    HOST_IDENTITY_FILE,
+    HOST_IDENTITY_FILE_NAME,
     TEST_HOST_ID,
     HostIdentityRecord,
 )
 from python.framework.utils.config_merge_utils import is_config_isolation_active
 
-_HOST_IDENTITY_PATH = HOST_IDENTITY_FILE
+# The identity file is the workspace copy under the data home; a test may point this at a file of its own.
+_HOST_IDENTITY_PATH: Optional[str] = None
 
 
 class HostIdentityManager:
@@ -61,9 +63,10 @@ class HostIdentityManager:
         signature default, so a test can point the manager at a temporary file.
 
         Args:
-            identity_path: The identity file; `user_configs/host_identity.json` when omitted
+            identity_path: The identity file; `host_identity.json` in the workspace when omitted
         """
-        self._path = Path(identity_path or _HOST_IDENTITY_PATH)
+        self._path = Path(identity_path or _HOST_IDENTITY_PATH
+                          or workspace_path(HOST_IDENTITY_FILE_NAME))
 
     def get_host_id(self) -> str:
         """

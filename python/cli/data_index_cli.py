@@ -28,6 +28,7 @@ from python.data_management.index.data_inspector import DataInspector
 from python.data_management.index.tick_index_manager import TickIndexManager
 from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.types.import_types.import_progress_types import ImportSection
+from python.framework.types.run_origin_types import RunChannel
 
 vLog = get_global_logger()
 
@@ -67,6 +68,7 @@ class DataIndexCli:
             only=ImportSection(only) if only else None,
             include_finished=include_finished,
             show_display=show_display,
+            channel=RunChannel.CLI,
         )
         return IMPORT_EXIT_CODES[coordinator.run()]
 

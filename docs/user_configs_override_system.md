@@ -133,6 +133,19 @@ isolation it is neither read nor written. See
 
 ---
 
+## Where the folder lives — the data home
+
+On a development machine `user_configs/` is the folder in the checkout. A server that deploys
+each release into a new code tree keeps it apart from the code instead, in the directory the
+environment variable `FINIEX_DATA_HOME` names (#598): the workspace is then
+`$FINIEX_DATA_HOME/user_configs/`, and both systems above read from there — the merge override
+files, the credentials, the profiles and scenario sets, the host identity. The tracked side does
+not move: `configs/` belongs to the code tree, so a new release brings its own defaults and keeps
+your overrides. Unset, the working directory is the home and nothing changes. See
+[Unattended Operation](autotrader/unattended_operation.md#a-deploy--a-restart-into-a-new-code-tree).
+
+---
+
 ## Related docs
 
 - [Config Cascade Guide](config_cascade_guide.md) — the scenario-set cascade (`app_config → global → scenario`) which is a separate, content-internal system on top of merged `app_config.json`.

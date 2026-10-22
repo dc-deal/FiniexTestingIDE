@@ -116,6 +116,35 @@ class TestNextDelay:
         assert len(set(samples)) > 1
 
 
+class TestAttemptAfterLoss:
+    """attempt_after_loss() — a long-lived connection starts the ladder over once it delivered."""
+
+    def test_a_connection_that_never_delivered_keeps_the_ladder_climbing(self):
+        ladder = build_ladder(RecordingLogger())
+        assert ladder.attempt_after_loss(4, delivered_for_s=0.2, stable_after_s=10.0) == 4
+
+    def test_a_connection_that_delivered_long_enough_starts_it_over(self):
+        ladder = build_ladder(RecordingLogger())
+        assert ladder.attempt_after_loss(4, delivered_for_s=10.0, stable_after_s=10.0) == 0
+        assert ladder.attempt_after_loss(4, delivered_for_s=3600.0, stable_after_s=10.0) == 0
+
+    def test_accept_and_close_waits_longer_each_time(self):
+        """The far side accepts and closes at once, over and over: the waits keep growing."""
+        ladder = build_ladder(RecordingLogger())
+        attempt, waits = 0, []
+        for _ in range(8):
+            attempt = ladder.attempt_after_loss(attempt, delivered_for_s=0.0, stable_after_s=10.0)
+            waits.append(ladder.next_delay(attempt + 1))
+            attempt += 1
+        assert waits == sorted(waits)
+        assert waits[-1] == ladder.get_policy().max_delay_s
+
+    def test_a_ladder_that_never_gives_up_never_overflows(self):
+        """Past step 1024 the doubling would overflow a float and end a never-give-up connection."""
+        ladder = build_ladder(RecordingLogger())
+        assert ladder.next_delay(5000) == ladder.get_policy().max_delay_s
+
+
 class TestBudget:
     """is_exhausted(attempt) — when the ladder stops trying."""
 

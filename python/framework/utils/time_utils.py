@@ -63,8 +63,9 @@ def format_log_elapsed(seconds: float) -> str:
     """
     Format elapsed time as the log line's fixed-width bracket form.
 
-    Fixed width on purpose — the log's timestamp is a column, so it must not shift as the run
-    gets longer. Distinct from format_duration, which is variable width and made for prose.
+    The seconds are padded to three digits, so the column holds still for the first 999 seconds;
+    a longer run widens it by a digit per decade, and a reader of the file must not rely on its
+    width. Distinct from format_duration, which is variable width and made for prose.
 
     Args:
         seconds: Elapsed seconds since the run started

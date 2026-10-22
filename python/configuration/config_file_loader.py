@@ -1,8 +1,8 @@
 import json
-from pathlib import Path
 from threading import Lock
 from typing import Any, Dict, Optional, Tuple
 
+from python.configuration.data_home import workspace_path
 from python.framework.utils.config_merge_utils import deep_merge, is_config_isolation_active
 
 
@@ -13,7 +13,7 @@ class ConfigFileLoader:
 
     _config: Optional[Dict[str, Any]] = None
     _config_path: Optional[str] = 'configs/app_config.json'
-    _user_config_path: Optional[str] = 'user_configs/app_config.json'
+    _user_config_name: Optional[str] = 'app_config.json'
     _lock = Lock()
 
     @staticmethod
@@ -87,8 +87,9 @@ class ConfigFileLoader:
         # Try to load user override configuration.
         # Tests run with FINIEX_CONFIG_ISOLATION=1 (see tests/conftest.py) — the
         # user workspace must never bleed into the test suite (non-determinism).
-        user_config_path = ConfigFileLoader._user_config_path
-        if user_config_path and Path(user_config_path).exists() and not is_config_isolation_active():
+        user_config_name = ConfigFileLoader._user_config_name
+        user_config_path = workspace_path(user_config_name) if user_config_name else None
+        if user_config_path and user_config_path.exists() and not is_config_isolation_active():
             try:
                 with open(user_config_path, 'r') as f:
                     user_override = json.load(f)
@@ -96,7 +97,7 @@ class ConfigFileLoader:
                 # Merge user overrides into base config
                 merged_config = ConfigFileLoader._deep_merge(
                     base_config, user_override)
-                print('✅ Merged user_configs/app_config.json')
+                print(f'✅ Merged {user_config_path}')
                 return merged_config
 
             except json.JSONDecodeError as e:

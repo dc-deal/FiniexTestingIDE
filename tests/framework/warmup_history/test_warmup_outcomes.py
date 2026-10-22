@@ -23,7 +23,11 @@ from python.framework.autotrader.startup.autotrader_warmup_preparator import (
 )
 from python.framework.autotrader.kraken_ohlc_bar_fetcher import KrakenOhlcBarFetcher
 from python.framework.bars.bar_rendering_controller import BarRenderingController
-from python.framework.exceptions.connection_errors import ConnectionInadmissibleError
+from python.framework.exceptions.connection_errors import (
+    ConnectionAttemptFailedError,
+    ConnectionInadmissibleError,
+    TransientStartError,
+)
 from python.framework.exceptions.warmup_history_errors import WarmupHistoryRefusedError
 from python.framework.types.config_types.connection_policy_config_types import ConnectionPolicy
 from python.framework.types.process_data_types import ProcessDataPackage, RequirementsMap
@@ -149,6 +153,21 @@ class TestTheSessionOutcomes:
         venue.failing = True
         with pytest.raises(ConnectionInadmissibleError, match='could not be read for H1'):
             _session('live', {'H1': 3}, policy=NO_WAIT)
+
+    def test_a_venue_that_answers_nothing_for_now_ends_the_start_for_a_later_one(
+            self, monkeypatch):
+        """#598: every attempt timed out — a passing cause, so the supervisor starts again."""
+        attempts = []
+
+        def timed_out(self, pair, interval, since):
+            attempts.append(interval)
+            raise ConnectionAttemptFailedError('ReadTimeout on /0/public/OHLC', terminal=False)
+
+        monkeypatch.setattr(KrakenOhlcBarFetcher, '_fetch_ohlc', timed_out)
+        with pytest.raises(TransientStartError, match='could not be read for H1'):
+            _session('live', {'H1': 3}, policy=ConnectionPolicy(
+                attempt_budget=3, initial_delay_s=0.0, max_delay_s=0.0, jitter=False))
+        assert len(attempts) == 3, 'the budget is used before the start gives up'
 
     def test_bars_without_a_trade_are_named_in_a_live_session(self, monkeypatch):
         """

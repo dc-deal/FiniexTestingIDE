@@ -91,7 +91,8 @@ references of orders the session cannot place (`ghost_orders`, `abandoned_orders
 The answer is a 404 that names its cause, as for every section — see
 [errors](/api/v1/docs/errors). A backtest has no venue account: its venue is its own book, and
 there is nothing to ask. Neither has a dry run against a real venue, whose account reads are
-answered by the session itself rather than by the venue. And a session from before this section
-existed has none until it is run again.
+answered by the session itself rather than by the venue. And a session recorded before this
+section existed has none, and keeps having none: starting its profile again makes a new session,
+with a run id of its own.
 
 The account's values are the venue's own decimals: [prices](/api/v1/docs/prices).

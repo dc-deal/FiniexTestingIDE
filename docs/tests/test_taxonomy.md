@@ -87,6 +87,8 @@ tests/
 │   ├── session_end/       unit — what a session leaves standing and how it is reported (#492):
 │   │                      the policy, the cleanup, realised-vs-valued, the phantom-drawdown guard
 │   ├── session_validation/ unit — SessionPostRunValidator: the AutoTrader Tier-1 channel, shared stress/slow-component checks
+│   ├── state_frames/      unit + integration — what a session records of its own state, moment by moment (#579):
+│   │                      the cadence, a closed bar, an order, the last frame against the report
 │   ├── api_monitor/       unit — broker REST latency/error telemetry (#351)
 │   ├── field_study_machine/  unit — Field Study phase state machine (#332)
 │   ├── security_study/    unit — security study phase machine, phase declarations, lot rules, the
@@ -123,6 +125,8 @@ tests/
 │   ├── market_compatibility/ unit — market activity metric, validator
 │   ├── tick_parquet_reader/  unit — parquet reader normalization
 │   ├── path_based_loading/ unit — workers and decision logics loaded by CORE name or file path
+│   ├── activities/        unit + process — the activity list (#603): the kernel lock, entering and leaving, a holder
+│   │                      killed with `kill -9` cleared, memory counted once per process, the memory check, every long-running entry point
 │   ├── api/               unit — REST API endpoints
 │   ├── live_telemetry/    unit — live-telemetry frame serializer (frame_to_json, #400); every dashboard panel rendered, the progress screen and its senders, render-failure reporting (#586)
 │   ├── field_study_recorder/ unit — Field Study JSONL recorder + stream projection + certificate analyzer (#332, #566)

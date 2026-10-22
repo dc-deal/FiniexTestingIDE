@@ -56,7 +56,8 @@
          "phase_id": "protective_level_test", "phase_type": "protective_level", "side": "long", "lots": 0.003, "stop_loss_offset_pct": 0.05, "fill_timeout_s": 45},
         {"phase_id": "multi_concurrent_limits", "phase_type": "multi_limit", "side": "long", "order_count": 3, "limit_offset_pct": 0.005, "fill_timeout_s": 30},
         {"phase_id": "multi_cancel_all", "phase_type": "multi_cancel", "fill_timeout_s": 30},
-        {"phase_id": "partial_close_test", "phase_type": "partial_close", "side": "long", "fill_timeout_s": 30},
+        {"_comment": "Its own size ON PURPOSE (2026-10-18). The phase sells half, and the half and the rest each have to clear the venue's minimum size: at lot_size 0.002 the half is 0.001, below Kraken's ETHUSD minimum since October 2026 (0.002), and the executor refuses such a partial close before anything is sent (REMAINDER_BELOW_MINIMUM). 0.005 leaves 0.0025 on each side.",
+         "phase_id": "partial_close_test", "phase_type": "partial_close", "side": "long", "lots": 0.005, "fill_timeout_s": 30},
         {"phase_id": "idle_heartbeat_test", "phase_type": "idle", "idle_seconds": 20},
         {"phase_id": "force_close_all", "phase_type": "force_close", "fill_timeout_s": 30},
         {"phase_id": "final_summary", "phase_type": "final_summary"}

@@ -10,17 +10,22 @@ afterwards by reading the ledger — the runner itself collects nothing in memor
 """
 
 from datetime import datetime, timezone
-from typing import Optional
+from pathlib import Path
+from typing import Any, Dict, List, Optional
 
 from python.configuration.app_config_manager import AppConfigManager
 from python.configuration.optimization_config_loader import OptimizationConfigLoader
+from python.framework.activities.activity_registry import ActivityRegistry
 from python.framework.batch.batch_orchestrator import BatchOrchestrator
 from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.optimization.grid_expander import expand_grid
 from python.framework.optimization.parameter_override import apply_overrides
+from python.framework.types.activity_registry_types import ActivityKind
 from python.framework.types.batch_execution_types import BatchExecutionSummary
+from python.framework.types.config_types.optimization_config_types import SweepSpec
 from python.framework.types.run_origin_types import RunChannel
 from python.framework.types.run_results_types import SweepContext
+from python.framework.types.scenario_types.scenario_set_types import LoadedScenarioConfig
 from python.framework.utils.run_id_utils import mint_run_id
 from python.scenario.scenario_set import ScenarioSet
 from python.framework.validators.sweep_grid_validator import validate_sweep_grid
@@ -39,12 +44,13 @@ class OptimizationRunner:
         self._scenario_loader = ScenarioConfigLoader()
         self._app_config = AppConfigManager()
 
-    def run(self, spec_file: str) -> str:
+    def run(self, spec_file: str, channel: RunChannel = RunChannel.DIRECT) -> str:
         """
         Run a full parameter sweep.
 
         Args:
             spec_file: Sweep spec filename or path
+            channel: How the sweep was started, as its entry point declares it (#603)
 
         Returns:
             The sweep id (group the ledger rows of this sweep by it)
@@ -67,6 +73,26 @@ class OptimizationRunner:
             f"🎛 Sweep {sweep_id}: {len(combos)} combination(s) over "
             f"'{spec.base_scenario_set}' (objective: {spec.objective})")
 
+        # Listed as running for as long as it runs (#603); each combination's backtest is listed
+        # under it while that combination runs.
+        with ActivityRegistry().running(ActivityKind.SWEEP, Path(spec_file).stem,
+                                        sweep_id=sweep_id, channel=channel):
+            return self._run_combinations(spec, base, combos, sweep_id)
+
+    def _run_combinations(self, spec: SweepSpec, base: LoadedScenarioConfig,
+                          combos: List[Dict[str, Any]], sweep_id: str) -> str:
+        """
+        Build the shared mount and run every combination, while the sweep is listed.
+
+        Args:
+            spec: The sweep spec
+            base: The base scenario set the combinations override
+            combos: The expanded grid, one parameter set per combination
+            sweep_id: The sweep's id
+
+        Returns:
+            The sweep id
+        """
         # All of this sweep's runs (the base mount build + every combination) nest under one
         # grouping dir so the log root stays tidy (#419).
         # Mount reuse (#419): load the data ONCE from the base and reuse it across every
@@ -77,7 +103,11 @@ class OptimizationRunner:
             # goes flat into the sweep directory instead of leaving a run-shaped one.
             base_set = ScenarioSet(base, self._app_config, sweep_id=sweep_id,
                                    mount_only=True, channel=RunChannel.SWEEP)
-            mount = BatchOrchestrator(base_set, self._app_config).build_mount()
+            try:
+                mount = BatchOrchestrator(base_set, self._app_config).build_mount()
+            finally:
+                # The build is the base set's only work: nothing writes to its log after it.
+                base_set.close_loggers()
             if not mount.scenario_packages:
                 # Data-level failure (invalid window / missing data) — invariant across every
                 # combination → abort the whole sweep, nothing ran (§35).

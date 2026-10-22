@@ -18,7 +18,10 @@ from python.framework.autotrader.kraken_ohlc_bar_fetcher import KrakenOhlcBarFet
 from python.framework.bars.bar_rendering_controller import BarRenderingController
 from python.framework.bars.warmup_history import WarmupHistory
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
-from python.framework.exceptions.connection_errors import ConnectionInadmissibleError
+from python.framework.exceptions.connection_errors import (
+    ConnectionInadmissibleError,
+    TransientStartError,
+)
 from python.framework.exceptions.timeframe_errors import UnsupportedTimeframeError
 from python.framework.exceptions.warmup_history_errors import WarmupHistoryRefusedError
 from python.framework.logging.scenario_logger import ScenarioLogger
@@ -359,12 +362,19 @@ class AutotraderWarmupPreparator:
             # is wrong, and NOTHING declares it wrong: unlike a stale signal or a stale feed,
             # an empty indicator history has no contract to degrade into. Trading on it is not
             # a reduced run, it is a different one.
-            raise ConnectionInadmissibleError(
+            message = (
                 f"Warmup requirement unmet: the broker's bar history could not be read for "
                 f'{", ".join(unreadable)}, and there is no staleness contract for an empty '
                 f'indicator history — refusing to start rather than trading on unreliable '
                 f'worker output.'
             )
+            # #598: the venue only did not answer within its budget — a later start may
+            # read it, so the supervisor tries again (exit 75)
+            if history.is_unreadable_only_for_now():
+                raise TransientStartError(
+                    f'{message} Every attempt failed on a passing fault (a timeout, a server '
+                    f'error, a rate limit).')
+            raise ConnectionInadmissibleError(message)
 
         shortfalls = find_warmup_shortfalls(history.get_available_by_timeframe(), warmup_by_tf)
         empty = [shortfall for shortfall in shortfalls if shortfall.is_empty()]

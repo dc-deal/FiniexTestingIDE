@@ -43,3 +43,8 @@ _EXIT_CODES = {
     RunOutcome.FAILED: 2,
     RunOutcome.FINISHED_WITH_ERRORS: 3,
 }
+
+# A FAILED start whose cause was passing — the venue did not answer within its budget, or the
+# first tick came before the venue had committed its bar (#598). `sysexits.h` names the code
+# EX_TEMPFAIL: a supervisor restarts it after its pause, where exit 2 stays down for a person.
+TRANSIENT_START_EXIT_CODE = 75

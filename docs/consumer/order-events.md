@@ -11,8 +11,15 @@ reported each time the session asked it, in a second list on the same counter.
 
 ```
 GET /api/v1/reports/runs/{run_id}/order-events
+GET /api/v1/reports/runs/{run_id}/order-events?scenario_name=<unit>
 GET /api/v1/reports/runs/{run_id}/order-events?scenario_name=<unit>&order_id=<order>
 ```
+
+`scenario_name` and `order_id` are two filters, each usable alone. `scenario_name` keeps one unit's
+lines; a name the run does not have answers an empty list, not an error. `order_id` keeps the
+events that carry that id — a position's open and its market closes share one. In a backtest every
+unit numbers its positions from 1, so units that trade the same symbol carry the same ids — give
+`scenario_name` with it.
 
 **What is not here:** what a closed position earned — that is
 [trade history](/api/v1/docs/trade-history). The per-unit counts of orders submitted, executed and
@@ -219,16 +226,29 @@ one row — the fill of what executed — and the stream has two steps: `partial
 
 A live session writes the stream as the steps happen, so it is served from the session's first
 order, and a session that ended without its report still has it. A backtest writes its stream with
-its report. The run list names it under `stream_files`. If the
-session was stopped while a line was being written, that last line is left out and
-`truncated_tail` is `true`; everything before it is complete.
+its report, in one go after every other section, and the run list names it under `stream_files`
+once it is written. If the session was stopped while a line was being written, that last line is
+left out and `truncated_tail` is `true`; everything before it is complete.
+
+`truncated_tail` sees only a line cut in half. A backtest stopped between two lines of its stream
+leaves a file that ends cleanly but early, and `truncated_tail` stays `false`; no warning names it
+either, because the run's own check compares the events it holds in memory, before the report
+writes them. Until the answer says itself whether a unit's stream is complete, check it per unit
+against [execution stats](/api/v1/docs/execution-stats), whose counts are booked in the same step
+as their events: `submitted` against `orders_submitted`, `adopted` against `orders_adopted`, and
+each ending against its count — `filled` against `orders_executed`, `denied` against
+`orders_denied`, and `rejected`, `cancelled` and `expired` against theirs. A shortfall in any of
+them means the stream was cut. `submitted` alone is not enough: a unit whose orders were all
+refused before sending submits nothing.
 
 ## When there is no stream
 
 A run from before the stream existed has none, and a backtest whose scenarios never placed an
 order writes none. The answer is a 404 that names the cause, as for every section — see
 [errors](/api/v1/docs/errors). A stream written in an earlier form of the stream — before the
-venue's lines — is answered as unreadable (409) until its run is run again.
+venue's lines — is answered as unreadable (409), and stays so: the stored stream is not rewritten,
+and running the configuration again makes a new run rather than repairing this one. A run that read
+the venue as it happened cannot be repeated at all.
 
 Which of these prices are the venue's decimals and which are computed, and how to round them
 for display: [prices](/api/v1/docs/prices).

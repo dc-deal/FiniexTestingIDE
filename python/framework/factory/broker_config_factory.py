@@ -235,20 +235,25 @@ class BrokerConfigFactory:
         `symbols_hash` — the SYMBOL SET's identity. What the config fetcher and its CLI print,
         and what says whether a cache still describes the same instruments. Unchanged.
 
-        `config_hash` — the REPRODUCIBILITY anchor, carried by the run report's broker section
-        and from there to every surface it renders to. It covers everything that changes what
-        a run PRODUCES, which is the symbols AND the fee structure: a fee rate moves realised
-        P&L on every trade, so two runs with different rates are different runs. Reading
-        `symbols_hash` for this made them indistinguishable. The run ledger and the
-        certificates do not carry it yet (#510), so the cross-run record still cannot tell
-        two differently-priced runs apart.
+        `config_hash` — the identity of what a run is priced with, carried by the run report's
+        broker section and from there to every surface it renders to. It covers the symbols
+        AND the fee structure: a fee rate moves realised P&L on every trade, so two runs with
+        different rates are different runs. Reading `symbols_hash` for this made them
+        indistinguishable. The run ledger and the certificates do not carry it yet (#510), so
+        the cross-run record still cannot tell two differently-priced runs apart.
+        Margin gap (2026-10-19, #209): the account terms in `broker_info` — leverage, the
+        margin-call and stop-out levels — are not in it, though at margin they change what a
+        run produces; two runs at different leverage share one hash. Inert at spot.
 
-        Neither hash covers `_config_meta` itself, so injecting them is idempotent.
+        Neither hash covers `_config_meta` itself, so injecting them is idempotent — nor a
+        symbol's `_last_fetched`: a refresh that reads the same values back is the same
+        configuration, and a hash that moved with it would hide a real change among the
+        refreshes (#608).
 
         Args:
             config_dict: Broker config dict to update
         """
-        symbols = config_dict.get('symbols', {})
+        symbols = BrokerConfigFactory._identity_view(config_dict.get('symbols', {}))
         symbols_hash = BrokerConfigFactory._hash_block(symbols)
         config_hash = BrokerConfigFactory._hash_block({
             'symbols': symbols,
@@ -258,6 +263,36 @@ class BrokerConfigFactory:
             config_dict['_config_meta'] = {}
         config_dict['_config_meta']['symbols_hash'] = symbols_hash
         config_dict['_config_meta']['config_hash'] = config_hash
+
+    @staticmethod
+    def compute_symbols_hash(symbols: Dict[str, Any]) -> str:
+        """
+        The symbol set's identity hash — the value `_config_meta.symbols_hash` holds.
+
+        Args:
+            symbols: The 'symbols' block of a broker config
+
+        Returns:
+            8-character hex hash, unmoved by a refresh that only re-stamps `_last_fetched`
+        """
+        return BrokerConfigFactory._hash_block(BrokerConfigFactory._identity_view(symbols))
+
+    @staticmethod
+    def _identity_view(symbols: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        The symbols block as the identity hashes see it: each entry without its `_last_fetched`.
+
+        Args:
+            symbols: The 'symbols' block of a broker config
+
+        Returns:
+            A copy of the block, the fetch stamps left out
+        """
+        return {
+            name: ({key: value for key, value in entry.items() if key != '_last_fetched'}
+                   if isinstance(entry, dict) else entry)
+            for name, entry in symbols.items()
+        }
 
     @staticmethod
     def _hash_block(block: Any) -> str:

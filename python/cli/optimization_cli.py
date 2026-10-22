@@ -17,6 +17,7 @@ from typing import Optional
 
 from python.framework.optimization.optimization_report import render_sweep_list, render_sweep_report
 from python.framework.optimization.optimization_runner import OptimizationRunner
+from python.framework.types.run_origin_types import RunChannel
 
 
 class OptimizationCli:
@@ -29,7 +30,7 @@ class OptimizationCli:
         Args:
             spec_file: Sweep spec filename or path
         """
-        sweep_id = OptimizationRunner().run(spec_file)
+        sweep_id = OptimizationRunner().run(spec_file, channel=RunChannel.CLI)
         print(f'\nSweep id: {sweep_id}')
         print(f'Report:   python python/cli/optimization_cli.py report {sweep_id}')
 

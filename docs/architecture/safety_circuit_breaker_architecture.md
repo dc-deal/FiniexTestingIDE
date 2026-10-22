@@ -11,7 +11,7 @@
 
 ## Overview
 
-The Safety Circuit Breaker is an account-level protection mechanism of the AutoTrader session (`SafetyCircuitBreaker`, which the tick loop feeds on every tick). It monitors balance/equity and drawdown thresholds on every tick and blocks all new position entries when thresholds are breached.
+The Safety Circuit Breaker is an account-level protection mechanism of the AutoTrader session (`SafetyCircuitBreaker`, which the tick loop feeds on every tick). It monitors the account value and the drawdown on every tick, and while a threshold is breached it forces every decision's action to FLAT — no new entry, and no close or reduction a strategy expresses as a BUY or SELL either.
 
 **Key characteristic: AutoTrader pipeline only.** The Safety Circuit Breaker does not exist in
 backtesting. In simulation, you want to see the full consequences of an algorithm's behavior —
@@ -38,8 +38,9 @@ AutoTrader Tick Loop (every tick)
     │   └── Sets _safety_blocked = True if ANY triggers (OR-combined, every one named)
     │
     ├── if _safety_blocked:
-    │   └── decision overridden to FLAT → send_order() never called
-    │       (existing positions run out normally — soft stop, not hard liquidation)
+    │   └── decision's action overridden to FLAT → no order from the action
+    │       (an action-driven close is suppressed too; position management, resting
+    │        orders and SL/TP keep working — soft stop, not hard liquidation)
     │
     └── if NOT _safety_blocked:
         └── normal decision execution proceeds
@@ -63,8 +64,12 @@ drawdown series three methods away had the right number all along.
 ### Soft Stop Behavior
 
 When triggered, Safety is a **soft stop**:
-- New position entries are blocked (decision forced to FLAT)
-- Existing open positions **continue running** — they are NOT force-closed
+- The decision's action is forced to FLAT: no new entry, and no close or reduction the strategy
+  expresses as a BUY or SELL — a strategy that reduces by deciding SELL keeps its exposure for as
+  long as the block holds
+- What a strategy sends from its own position management whatever the action — a close, a stop
+  amend, a cancel — still goes out, and a resting order can still fill
+- Existing open positions are NOT force-closed by the breaker
 - SL/TP triggers still execute normally
 - If the checked value recovers above thresholds (e.g. equity rises), the breaker **automatically clears** and trading resumes
 
@@ -88,9 +93,9 @@ Configured in AutoTrader profile JSON (`configs/autotrader_profiles/*.json`):
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `enabled` | bool | `false` | Master switch — must be explicitly enabled |
-| `min_balance` | float | `0.0` | Block entries if balance drops below this (margin mode). 0 = disabled |
-| `min_equity` | float | `0.0` | Block entries if equity drops below this (spot mode). 0 = disabled |
-| `max_drawdown_pct` | float | `0.0` | Block entries if session drawdown exceeds this %. Computed from balance (margin) or equity (spot). 0 = disabled |
+| `min_balance` | float | `0.0` | Force decisions FLAT while the account value is below this — the key a margin profile writes. 0 = disabled |
+| `min_equity` | float | `0.0` | The same floor, the key a spot profile writes. 0 = disabled |
+| `max_drawdown_pct` | float | `0.0` | Force decisions FLAT while the session drawdown exceeds this %, on the account value in both models (#356). 0 = disabled |
 
 Both conditions are OR-combined — either alone triggers the block. Each mode uses its own min-threshold field; the other is ignored.
 

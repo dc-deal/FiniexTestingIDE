@@ -2,12 +2,16 @@
 
 `ComponentMetadata` (`python/framework/types/component_metadata_types.py`) is an
 author-declared metadata surface for workers and decision logics. It complements the
-automatic `config_fingerprint` (a hash of the exact parameter set) with **semantic intent**:
-a human-maintained version, a documentation pointer, and an advisory market/instrument fit.
+automatic `param_hash` (a hash of the exact parameter set a run's strategy configuration holds)
+with **semantic intent**: a human-maintained version, a documentation pointer, and an advisory
+market/instrument fit.
 
-> version = what the author means ("new state-machine logic, v0.2"); fingerprint = the exact
-> params that produced a run. Together with git (the code commit) this is the standard quant
-> provenance model (nautilus serializable config; MLflow run metadata).
+> version = what the author means ("new state-machine logic, v0.2"); `param_hash` = the exact
+> params that produced a run; the run header's code identity = the code itself — the commit, a
+> hash of any uncommitted changes with the patch that restores them, and a digest of each
+> component loaded from a path ([Run Origin and Code Identity](run_origin_and_code_identity.md)).
+> Together this is the standard quant provenance model (nautilus serializable config; MLflow run
+> metadata).
 
 ## Interface
 

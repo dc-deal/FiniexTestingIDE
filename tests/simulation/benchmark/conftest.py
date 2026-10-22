@@ -194,6 +194,10 @@ def is_debugger_attached() -> bool:
 
 BENCHMARK_CONFIG_DIR = Path(__file__).parent / 'config'
 BENCHMARK_REPORTS_DIR = Path(__file__).parent / 'reports'
+# The same directory as git names it — relative to the repository root, the form the tree-state
+# check compares its untracked paths against. An absolute path there would match nothing.
+BENCHMARK_REPORTS_DIR_IN_REPO = BENCHMARK_REPORTS_DIR.resolve().relative_to(
+    Path(__file__).resolve().parents[3]).as_posix()
 
 
 # =============================================================================
@@ -480,10 +484,13 @@ def benchmark_report(
     # The shared identity: declared version beside the version the TREE says, git state,
     # validity window, and the environment the measurement was taken in. All four
     # certificates build it the same way (certificate_identity_builder).
+    # Its own reports directory is named, as every other certificate names its own: a report an
+    # earlier attempt left uncommitted is the previous artifact, not a change to the code.
     identity = build_certificate_identity(
         release_version=request.config.getoption('release_version'),
         comment=request.config.getoption('comment'),
-        validity_days=benchmark_config['certificate']['validity_days'])
+        validity_days=benchmark_config['certificate']['validity_days'],
+        reports_dir=BENCHMARK_REPORTS_DIR_IN_REPO)
     app_config_manager = AppConfigManager()
 
     tolerances = benchmark_config['tolerances']

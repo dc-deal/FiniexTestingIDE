@@ -36,6 +36,16 @@ MOUNT_BUILD_LOG = 'mount_build.log'
 # it without importing the store.
 IO_SUBDIR = 'io'
 
+# The records a live session writes into its io/ folder itself, as it runs — neither a report nor
+# a served stream. Named here because the writer and the run index both need the name, and the
+# run index must not count them as report artifacts.
+# The warmup history the session started from (#588).
+WARMUP_HISTORY_FILE = 'warmup_history.json'
+# The tick stream's own outages and refused trades (#609).
+TICK_STREAM_EVENTS_FILE = 'tick_stream_events.jsonl'
+# What the session held and decided, moment by moment (#579 part A).
+STATE_FRAMES_FILE = 'state_frames.jsonl'
+
 # The framework-wide log file, inside file_logging.global_log_dir. Named here for the same reason
 # as the rest: the logger writes it and the store catalog registers it, and two literals for one
 # file is how they drift apart.

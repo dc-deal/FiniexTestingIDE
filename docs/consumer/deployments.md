@@ -54,9 +54,10 @@ measured; null when none could.
 
 ## `changed` is a flag; the advisory is the reason
 
-`changed: true` means the row's sessions were **not** all produced by one configuration. It is a
-one-bit summary for a list a reader is scanning to decide what to open. What actually moved is on
-the detail route, as the advisory.
+`changed: true` means the row's sessions did **not** all run under one profile — one set of strategy
+parameters, one operational configuration and one place for their orders. It is a one-bit summary
+for a list a reader is scanning to decide what to open. What actually moved is on the detail route,
+as the advisory.
 
 ## Real money or a rehearsal — `orders_to`
 
@@ -133,12 +134,13 @@ false where either of the two sessions did not record it — not recorded is not
 
 All are false on the first session of a currency series, which has nothing to differ from.
 
-## The advisory says whether the history is one series at all
+## The advisory says whether the profile held across the history
 
-The per-session marks say *where* something changed. The advisory says *whether* the rows may be
-read as one series, and it says it **before** the table rather than inside it. On a thirty-day run,
-eleven sessions with three parameter changes show three marks somewhere in the middle, and the
-reader has already added up the P&L column by the time they reach them.
+The per-session marks say *where* something changed. The advisory says *whether* the profile held
+across the rows — its strategy parameters, its operational configuration, where its orders went —
+and it says it **before** the table rather than inside it. On a thirty-day run, eleven sessions with
+three parameter changes show three marks somewhere in the middle, and the reader has already added
+up the P&L column by the time they reach them.
 
 | Field | Meaning |
 |---|---|
@@ -151,6 +153,13 @@ reader has already added up the P&L column by the time they reach them.
 operational stand and one place the orders went, across the whole deployment. A deployment of a single session answers null too,
 having nothing to compare against. A warning that fires on the normal case is a warning that gets
 skipped.
+
+**What the advisory does not compare:** the code each session ran (`code_identity` on that
+session's [run header](/api/v1/docs/run-header) — a deploy is one of the reasons a bot restarts),
+the broker configuration it traded under (`config_hash` and `broker_config_id` on its
+[broker](/api/v1/docs/broker) section) and the market data it read. Two sessions with no mark
+between them can have run different code, or against a different venue minimum: no mark means the
+same profile, not the same run.
 
 It renders no verdict. Whether the halves of a changed history may be compared is a judgement a
 person makes with what it reports.

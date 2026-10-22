@@ -16,14 +16,20 @@ This suite pins the surviving property: a run that executes can be resolved to i
 no matter who started it.
 """
 
+import json
 from pathlib import Path
+from typing import Iterator, Tuple
 
 import pytest
 
 from python.configuration.app_config_manager import AppConfigManager
 from python.framework.batch.batch_orchestrator import BatchOrchestrator
+from python.framework.reporting.builders.broker_report_builder import build_broker_report_from_batch
 from python.framework.reporting.store.report_store import ReportStore
+from python.framework.store.run_config_store import RunConfigStore
 from python.framework.types.api.report_types import RunReporting
+from python.framework.types.batch_execution_types import BatchExecutionSummary
+from python.framework.utils.config_fingerprint_utils import to_plain
 from python.scenario.scenario_set import ScenarioSet
 from python.scenario.scenario_config_loader import ScenarioConfigLoader
 
@@ -31,7 +37,7 @@ SCENARIO_SET = 'backtesting/multi_position_test.json'
 
 
 @pytest.fixture(scope='module')
-def harness_run() -> ScenarioSet:
+def harness() -> Iterator[Tuple[ScenarioSet, BatchExecutionSummary]]:
     """
     A run started the way the benchmark harness starts one: ScenarioSet + orchestrator, directly.
 
@@ -42,8 +48,15 @@ def harness_run() -> ScenarioSet:
     app_config = AppConfigManager()
     scenario_set = ScenarioSet(ScenarioConfigLoader().load_config(SCENARIO_SET), app_config,
                                reporting=RunReporting.NONE)
-    BatchOrchestrator(scenario_set, app_config).run()
-    return scenario_set
+    summary = BatchOrchestrator(scenario_set, app_config).run()
+    yield scenario_set, summary
+    scenario_set.close_loggers()
+
+
+@pytest.fixture(scope='module')
+def harness_run(harness) -> ScenarioSet:
+    """The harness run's scenario set. Returns: it."""
+    return harness[0]
 
 
 class TestEveryExecutingRunCanNameItsConfig:
@@ -66,3 +79,24 @@ class TestEveryExecutingRunCanNameItsConfig:
         assert snapshot.config_snapshot == Path(SCENARIO_SET).name
         assert not (Path(harness_run.logger.get_log_dir()) / 'scenario_config.json').exists(), (
             'the retired copy is back')
+
+
+class TestEveryExecutingRunFreezesItsBrokerConfiguration:
+    """
+    A backtest keeps the broker configuration it read, the way a session does (#547). A dynamic
+    broker's specifications come from a cache any later fetch overwrites, so a run that only
+    hashed them could prove later that they changed and never say what they were.
+    """
+
+    def test_the_broker_section_names_a_frozen_copy(self, harness):
+        scenario_set, summary = harness
+        units = build_broker_report_from_batch(scenario_set.run_id, summary).units
+        assert units and all(unit.broker_config_id for unit in units)
+
+    def test_the_frozen_copy_is_what_the_run_read(self, harness):
+        _, summary = harness
+        store = RunConfigStore(Path(AppConfigManager().get_run_configs_path()))
+        for info in summary.broker_scenario_map.values():
+            frozen_id = info.broker_config.get_frozen_config_id()
+            frozen = json.loads(store.frozen_path_of(frozen_id).read_text())
+            assert frozen == to_plain(info.broker_config.adapter.broker_config)

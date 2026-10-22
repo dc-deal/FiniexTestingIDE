@@ -177,9 +177,13 @@ can answer the question at all.
 
 The argument is `logic_version`'s, one column over in the same table: that one exists because a
 ranking cannot otherwise tell it is comparing a measure taken one way against one taken another.
-These say the same about the INPUT. **For the thirty-day parity proof it is not a nicety** — a
-real-money session and the backtest it is compared against have to be *shown* to have read the same
-archive, and the ledger is where that survives.
+These say the same about the INPUT. **For the thirty-day parity proof it is not a nicety** — the
+backtest a real-money session is compared against has to be *shown* to have read data our own
+collector recorded, production-class and stamped, and the backtest's ledger row is where that
+survives; how many trades the collector missed is counted per file, wherever the venue numbers
+its trades ([What a file LACKS](#what-a-file-lacks--the-declared-deficiencies)).
+The session's own row can only say `input_plane: stream`: it read a socket, and the ticks it saw
+exist nowhere but in the collector's archive.
 
 **Two grains, and the finer one answers what the roll-up cannot.** The ledger records per RUN;
 `scenario_details.json` records the same three values per SCENARIO, in the same encoding. A run-level
@@ -290,10 +294,12 @@ Two questions, two places:
 | may these bytes enter the archive? | import | a block missing at or above its producer's boundary |
 | may a run USE data of this class? | scenario admission | a class outside `admitted_origin_classes` |
 
-`backtesting.data_validation.admitted_origin_classes` starts **open**, listing every class. That is
-deliberate rather than timid: until a producer stamps an identity and the legacy archive is
-attested, every file resolves to `unknown` — so a strict default would refuse every scenario on the
-day it shipped, which is how a gate gets switched off permanently instead of being narrowed once.
+`backtesting.data_validation.admitted_origin_classes` starts **open**: it lists `production`,
+`development` and `unknown`, and leaves out only `external`, which a configuration has to admit on
+purpose. That is deliberate rather than timid: until a producer stamps an identity and the legacy
+archive is attested, every file resolves to `unknown` — so a strict default would refuse every
+scenario on the day it shipped, which is how a gate gets switched off permanently instead of being
+narrowed once.
 
 Meanwhile the run reports how much of what it read carries no production stamp of its own — one
 finding for the whole run, in the post-run validator, beside the same question for

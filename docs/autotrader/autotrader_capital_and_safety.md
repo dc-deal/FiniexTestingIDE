@@ -87,6 +87,10 @@ The AND is deliberate: a spot bot may legitimately start holding only the BASE a
 selling — the Field Study funds both sides on purpose — so an empty quote balance alone is not a
 reason to refuse.
 
+A venue's minimum order VALUE (`cost_min`, Kraken's `costmin`) raises the smallest order to
+`cost_min / price` wherever that is larger than `volume_min`, on both sides. It needs a price, so
+without one the sell side is judged on `volume_min` alone.
+
 **Where it sits, and why not earlier.** The check runs after warmup (Phase 9), because that is
 the first point a price exists: no tick has arrived during startup, and the adapter contract
 carries no price read at all. The reference price is the newest warmup bar close. A strategy
@@ -202,7 +206,7 @@ against a real account.
 
 ## Safety Circuit Breaker
 
-A soft-stop mechanism that blocks new position entries when configurable risk thresholds are exceeded. Existing open positions continue to run — SL, TP, and signal-based closes are not affected.
+A soft-stop mechanism: while a configured risk threshold is exceeded, the tick loop replaces the decision's ACTION with FLAT. Whatever a strategy sends only on a BUY or SELL action is suppressed — an entry, and also a close or a reduction it expresses as an action. What a strategy sends from its own position management whatever the action — a close, a stop amend, a cancel, a re-price — still goes out, an order already resting can still fill, and the protective levels (SL, TP) keep working. The breaker closes nothing itself. A strategy that reduces by deciding SELL therefore keeps its full exposure for as long as the block holds.
 
 ### Behavior
 
@@ -210,12 +214,12 @@ A soft-stop mechanism that blocks new position entries when configurable risk th
 Tick rein
   → executor.on_tick()    ← SL/TP checks run against the tick (see below)
   → Workers → Decision    ← produces BUY / SELL / FLAT
-  → [SAFETY CHECK]        ← evaluates thresholds against equity (spot) or balance (margin)
-  → if blocked: decision.action = FLAT  ← override, no trade opened
+  → [SAFETY CHECK]        ← evaluates thresholds against the account value (spot: the balances, holdings at mid; margin: balance + unrealised P&L)
+  → if blocked: decision.action = FLAT  ← override: no order from the action, an action-driven close included
   → execute_decision()
 ```
 
-The check runs after every tick. If conditions clear (e.g. equity/balance recovers above threshold), the block is automatically lifted and trading resumes.
+The check runs after every tick. If conditions clear (e.g. the account value recovers above the threshold), the block is automatically lifted and trading resumes.
 
 ### Configuration
 
@@ -240,7 +244,7 @@ The check runs after every tick. If conditions clear (e.g. equity/balance recove
 Every threshold defaults to `0.0` / `false` — an existing profile needs no migration, and a limit
 set to `0.0` is off while its siblings keep working.
 
-**The soft block** — stops new entries, leaves open positions alone:
+**The soft block** — replaces the decision's action with FLAT, an action-driven close included, and closes nothing itself:
 
 | Field | Description |
 |---|---|

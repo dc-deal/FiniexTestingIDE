@@ -119,6 +119,7 @@ from multiprocessing import Manager
 from typing import Any, Dict, List, Optional, Tuple
 
 from python.configuration.app_config_manager import AppConfigManager
+from python.framework.activities.activity_registry import ActivityRegistry
 from python.framework.batch.execution_coordinator import ExecutionCoordinator
 from python.framework.batch.live_stats_coordinator import LiveStatsCoordinator
 from python.framework.batch.mount_preparer import MountPreparer
@@ -128,6 +129,8 @@ from python.framework.exceptions.mount_errors import MountIdentityMismatchError
 from python.framework.exceptions.scenario_execution_errors import BatchExecutionError
 from python.framework.factory.decision_logic_factory import DecisionLogicFactory
 from python.framework.logging.abstract_logger import AbstractLogger
+from python.framework.store.broker_config_freeze import freeze_broker_config
+from python.framework.types.activity_registry_types import ActivityKind
 from python.framework.types.batch_execution_types import BatchExecutionSummary, WarmupPhaseEntry
 from python.framework.types.live_types.live_stats_config_types import (
     LiveStatsExportConfig,
@@ -282,11 +285,22 @@ class BatchOrchestrator:
         Returns:
             BatchExecutionSummary with aggregated results from all scenarios
         """
-        # The config snapshot belongs to a run that EXECUTES, so it is taken here rather than at
-        # one caller: the CLI path took it, the benchmark harness builds its ScenarioSet directly
-        # and did not — so the very runs that carry the release benchmark certificates were the
-        # ones without a snapshot. build_mount() deliberately does NOT pass through here; a mount
-        # build is not a run and has no run directory to snapshot into.
+        # Listed as running for as long as it runs (#603); inside a sweep, under the sweep.
+        with ActivityRegistry().running(ActivityKind.BACKTEST, self.scenario_set_name,
+                                        run_id=self._scenario_set.run_id,
+                                        origin=self._scenario_set.run_origin, logger=self._logger):
+            return self._run(mount)
+
+    def _run(self, mount: Optional[MountPackage]) -> BatchExecutionSummary:
+        """
+        The batch itself, while its activity is listed.
+
+        Args:
+            mount: Optional shared data mount to reuse (#419); None → build a fresh one (cold)
+
+        Returns:
+            BatchExecutionSummary with aggregated results from all scenarios
+        """
 
         self._logger.info(
             f'🚀 Starting batch execution '
@@ -320,6 +334,13 @@ class BatchOrchestrator:
                 mount = self.prepare_mount()
         else:
             mount = self.prepare_mount()
+
+        # The broker configuration belongs to a run that EXECUTES, so it is frozen here rather
+        # than in prepare_mount(): build_mount() does not pass through here, and a mount build is
+        # not a run. A dynamic broker's specifications come from a cache any later fetch
+        # overwrites, so the run keeps what it read, the way a session does (#547).
+        for info in mount.broker_scenario_map.values():
+            freeze_broker_config(info.broker_config, self._logger)
 
         summary = self.execute(
             mount, self._scenario_set.get_all_scenarios())

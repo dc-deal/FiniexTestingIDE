@@ -18,6 +18,9 @@ from pathlib import Path
 from typing import List
 
 from python.configuration.test_config_loader import TestConfigLoader
+from python.framework.activities.activity_registry import ActivityRegistry
+from python.framework.types.activity_registry_types import ActivityKind
+from python.framework.types.run_origin_types import RunChannel
 
 
 @dataclass
@@ -47,6 +50,15 @@ class TestRunnerCli:
     def cmd_run(self) -> None:
         """
         Run all core test suites and print compact summary.
+        """
+        # Listed as running for as long as it runs (#603). Its pytest processes count toward it;
+        # what the tests start inside them is listed in an isolated directory, not here.
+        with ActivityRegistry().running(ActivityKind.TEST_SUITE, 'full', channel=RunChannel.CLI):
+            self._run_suites()
+
+    def _run_suites(self) -> None:
+        """
+        Discover and run every core suite, while the suite run is listed.
         """
         config = TestConfigLoader()
         excluded = config.get_excluded()
@@ -111,13 +123,18 @@ class TestRunnerCli:
         aborted = False
         max_name_len = max(len(name) for name, _ in suites)
 
-        for suite_name, pytest_paths in suites:
+        for position, (suite_name, pytest_paths) in enumerate(suites, start=1):
             # Show "running..." on current line
             running_text = f'  {suite_name.ljust(max_name_len)}   running...'
             sys.stdout.write(running_text)
             sys.stdout.flush()
 
-            result = self._run_suite(suite_name, pytest_paths)
+            # Listed under the full run while it runs, with its place in the run (#603). Its pytest
+            # process counts toward the full run, the outermost activity of this process
+            with ActivityRegistry().running(ActivityKind.TEST_SUITE,
+                                            f'{suite_name} ({position}/{len(suites)})',
+                                            channel=RunChannel.CLI):
+                result = self._run_suite(suite_name, pytest_paths)
             results.append(result)
 
             # Overwrite "running..." with result

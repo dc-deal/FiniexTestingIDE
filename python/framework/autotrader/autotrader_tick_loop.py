@@ -30,6 +30,7 @@ from python.framework.autotrader.operator_alerts.operator_alerts_setup import (
 from python.framework.autotrader.operator_alerts.signal_staleness_alerter import (
     SignalStalenessAlerter,
 )
+from python.framework.autotrader.run_record.state_frame_recorder import StateFrameRecorder
 from python.framework.autotrader.safety.risk_baseline_tracker import RiskBaselineTracker
 from python.framework.autotrader.safety.safety_circuit_breaker import SafetyCircuitBreaker
 from python.framework.autotrader.session_log_rotator import SessionLogRotator
@@ -103,6 +104,8 @@ class AutotraderTickLoop:
         run_dir: Session run directory (for log rotation)
         operator_alerts: The out-of-band channels to the operator (#235) — the loop stamps their
             loop progress on every pass and reports its symptoms through them; off by default
+        state_frames: Records what the session holds and decides, moment by moment (#579 part A)
+            — asked at the end of every pass; None when the profile records no frames
     """
 
     def __init__(
@@ -135,6 +138,7 @@ class AutotraderTickLoop:
         carried_period_no: int = 0,
         stale_stress_driver: Optional[StaleDataStressDriver] = None,
         operator_alerts: Optional[OperatorAlerts] = None,
+        state_frames: Optional[StateFrameRecorder] = None,
     ):
         self._config = config
         self._tick_queue = tick_queue
@@ -190,6 +194,7 @@ class AutotraderTickLoop:
         self._reconciler = reconciler
         self._api_monitor = api_monitor
         self._state_store = state_store
+        self._state_frames = state_frames
         self._risk_baseline = risk_baseline
         # #355 — the open book is written when it CHANGES, in two classes. A STRUCTURAL
         # change (a position opens, closes, is partially closed) is written at once: it cannot
@@ -430,11 +435,17 @@ class AutotraderTickLoop:
                 # #360 ghost-pass: let an opt-in decision act between ticks (advance
                 # phases, react to drained events, issue follow-up orders) with no
                 # synthetic tick and no tick-state mutation.
-                self._run_decision_heartbeat(ticks_processed)
+                ghost_order = self._run_decision_heartbeat(ticks_processed)
                 # #354: persist algo state on the idle timer too (hybrid cadence).
                 self._persist_state_if_due(ticks_processed)
                 # #355: a fill can resolve on the heartbeat, so the book can change here too.
                 self._persist_carry_over_if_needed(ticks_processed)
+                # #579: the cadence runs on a quiet feed too — a live session's clock is the
+                # wall clock here — and an order a ghost pass sent is a moment of its own
+                if self._state_frames is not None:
+                    self._state_frames.on_pass(
+                        ticks_processed, self._last_real_decision,
+                        self._safety.get_display_state(), on_tick=False, order=ghost_order)
                 if self._executor.is_session_end_requested():
                     self._logger.info(
                         f'🛑 Session end requested: {self._executor.get_session_end_reason()}')
@@ -522,6 +533,10 @@ class AutotraderTickLoop:
 
             # === 2. Bar Rendering (shared core, #303) ===
             current_bars = render_bars_for_tick(tick, self._bar_controller)
+            # #579: read before the algo pass below consumes them — a state frame names the bar
+            # the decision just saw close
+            closed_timeframes = (self._bar_controller.get_pending_closed_timeframes()
+                                 if self._state_frames is not None else frozenset())
 
             # === 3+4. Bar History + Worker Processing + Decision (shared core, #303) ===
             decision = execute_algo_path(
@@ -628,6 +643,13 @@ class AutotraderTickLoop:
                 except queue.Full:
                     pass  # Display will use last known state
 
+            # === 9. State Frame (#579 part A) — on its cadence, at a closed bar, at an order ===
+            # After the timing above: recording is not the algo being slow
+            if self._state_frames is not None:
+                self._state_frames.on_pass(
+                    ticks_processed, decision, self._safety.get_display_state(), on_tick=True,
+                    closed_timeframes=closed_timeframes, order=order_result)
+
             # Track last valid tick/decision for the final shutdown snapshot
             # and heartbeat pulse frames (#320).
             last_tick = tick
@@ -677,6 +699,22 @@ class AutotraderTickLoop:
 
         self._running = False
         return ticks_processed, ticks_clipped
+
+    def write_final_state_frame(self, ticks_processed: int) -> None:
+        """
+        Write the session's last state frame and close the stream (#579 part A).
+
+        Called by the shutdown once the session's orders are finished and the venue was asked
+        once more, before the results are collected — so the frame shows the state the report
+        describes, valued at the same price.
+
+        Args:
+            ticks_processed: The session's tick count
+        """
+        if self._state_frames is None:
+            return
+        self._state_frames.write_shutdown(
+            ticks_processed, self._last_real_decision, self._safety.get_display_state())
 
     def _drain_signal_inbox(self, off_tick: bool) -> None:
         """
@@ -868,7 +906,7 @@ class AutotraderTickLoop:
 
         return ticks_processed - self._last_book_drift_tick >= self._book_drift_interval_ticks
 
-    def _run_decision_heartbeat(self, ticks_processed: int) -> None:
+    def _run_decision_heartbeat(self, ticks_processed: int) -> Optional[OrderResult]:
         """
         #360 ghost-pass: run an opt-in decision between ticks without a synthetic tick.
 
@@ -880,10 +918,13 @@ class AutotraderTickLoop:
 
         Args:
             ticks_processed: Current tick counter (unchanged on a ghost-pass)
+
+        Returns:
+            What the decision sent, or None when it sent nothing or did not run
         """
         decision = run_ghost_pass(self._worker_orchestrator)
         if decision is None:
-            return
+            return None
         self._ghost_pass_count += 1
         if self._safety.entries_blocked():
             decision.action = DecisionLogicAction.FLAT
@@ -891,6 +932,7 @@ class AutotraderTickLoop:
         if order_result is not None:
             self._ghost_action_count += 1
         self._record_rejection(order_result, decision)
+        return order_result
 
     def _push_pulse_frame(self, ticks_processed: int) -> None:
         """
@@ -938,15 +980,7 @@ class AutotraderTickLoop:
         stale, the readable status stays current (escalation input for
         heartbeat-driven logics).
         """
-        # Reconnect visibility (error channel v0): surface transport
-        # reconnects to the session pot; typed connection events are #375/#331.
-        if self._tick_source is not None:
-            reconnects = self._tick_source.get_reconnect_count()
-            if reconnects > self._last_reconnect_count:
-                self._logger.warning(
-                    f'🔌 Tick stream reconnected '
-                    f'(+{reconnects - self._last_reconnect_count}, total {reconnects})')
-                self._last_reconnect_count = reconnects
+        self._note_reconnects()
 
         if self._market_data_stale_after_s <= 0:
             return
@@ -983,18 +1017,23 @@ class AutotraderTickLoop:
         self._market_data_tracker.on_heartbeat(
             self._executor.get_current_time(), status, self._injected_outage_label())
         if flipped:
+            # One episode, two instants: the last tick is when the feed fell silent — the start
+            # the episode record and its recovery line count from — and the flip is when the
+            # threshold revealed the silence and entries were blocked. Both are named.
+            last_tick = self._last_tick_time or self._market_stale_since
             self._logger.warning(
                 f"⚠️ Market data stale since "
-                f"{self._market_stale_since.strftime('%H:%M:%S')}: no tick for "
-                f"{seconds_since:.0f}s (threshold "
+                f"{self._market_stale_since.strftime('%H:%M:%S')}: no tick since "
+                f"{last_tick.strftime('%H:%M:%S')} ({seconds_since:.0f}s, threshold "
                 f"{self._market_data_stale_after_s:.0f}s) — entries guard-blocked"
             )
             if self._market_data_alert.opens(self._executor.get_current_time()):
                 self._operator_alerts.send(
                     OperatorAlertKind.MARKET_DATA_STALE, OperatorAlertLevel.WARNING,
                     'Market data stale — new entries blocked',
-                    f'No tick for {seconds_since:.0f}s (threshold '
-                    f'{self._market_data_stale_after_s:.0f}s), stale since '
+                    f"No tick since {last_tick.strftime('%H:%M:%S')} UTC "
+                    f'({seconds_since:.0f}s, threshold {self._market_data_stale_after_s:.0f}s) '
+                    f"— stale, new entries blocked since "
                     f"{self._market_stale_since.strftime('%H:%M:%S')} UTC")
             self._decision_logic.on_market_data_stale(status)
 
@@ -1023,6 +1062,24 @@ class AutotraderTickLoop:
                 f'No tick for {waited:.0f}s since the tick loop started (threshold '
                 f'{self._market_data_stale_after_s:.0f}s). The feed may not be connected.')
 
+    def _note_reconnects(self) -> None:
+        """
+        Surface the outages the tick stream came back from to the session pot, and keep the count
+        the market-data status carries current (typed connection events are #375/#331).
+
+        The source counts an outage when the first trade after it arrives (#609) — the very tick
+        that ends a stale episode — so the recovery reads the count here too, not only the idle
+        heartbeat; otherwise the status after a recovery would miss the outage that just ended.
+        """
+        if self._tick_source is None:
+            return
+        reconnects = self._tick_source.get_reconnect_count()
+        if reconnects > self._last_reconnect_count:
+            self._logger.warning(
+                f'🔌 Tick stream reconnected '
+                f'(+{reconnects - self._last_reconnect_count}, total {reconnects})')
+            self._last_reconnect_count = reconnects
+
     def _end_market_stale_episode(self) -> None:
         """
         Close a stale episode on tick resumption (#436): fresh status + edge reset.
@@ -1031,6 +1088,7 @@ class AutotraderTickLoop:
         (#451), which derives both from the observed status change — so a real and an
         injected outage travel the exact same path into the report.
         """
+        self._note_reconnects()
         self._market_stale = False
         self._market_stale_since = None
         self._executor.set_market_data_status(MarketDataStatus(

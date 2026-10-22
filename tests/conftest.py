@@ -29,6 +29,10 @@ from copy import deepcopy
 from pathlib import Path
 
 os.environ.setdefault('FINIEX_CONFIG_ISOLATION', '1')
+# A data home named in the developer's shell would send every store the suite writes there
+# (#598); the suite's paths are relative to the checkout, and a test that wants a home sets
+# one of its own.
+os.environ.pop('FINIEX_DATA_HOME', None)
 
 import pytest
 
@@ -178,6 +182,22 @@ def _isolate_config_directory(tmp_path_factory):
     store_dir = tmp_path_factory.mktemp('config_directory')
     mp = pytest.MonkeyPatch()
     mp.setattr(AppConfigManager, 'get_config_directory_path', lambda self: str(store_dir))
+    yield
+    mp.undo()
+
+
+@pytest.fixture(scope='session', autouse=True)
+def _isolate_activity_registry(tmp_path_factory):
+    """
+    Redirect the list of what runs on the machine (#603) to a throwaway dir for the whole session.
+
+    Every backtest and session a test starts registers itself; without this, each would appear
+    in the operator's list for as long as it runs — beside the suite that started it, which is
+    listed there already.
+    """
+    registry_dir = tmp_path_factory.mktemp('activities')
+    mp = pytest.MonkeyPatch()
+    mp.setattr(AppConfigManager, 'get_activity_registry_path', lambda self: registry_dir)
     yield
     mp.undo()
 

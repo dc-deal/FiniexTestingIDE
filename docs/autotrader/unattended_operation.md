@@ -7,6 +7,10 @@ three pieces that turn that silence into a message (#235): **operator alerts** t
 about itself, a **liveness ping** whose absence an outside monitor turns into an alarm, and a
 **supervisor** that brings a dead process back.
 
+It also covers the two things a restart must survive: a second start of a bot that is still
+running, and a deploy into a new code tree — and the daily check-in, which reads the session from
+outside without touching it.
+
 Not here: what the session does when it runs — that is
 [AutoTrader Runtime Model](autotrader_runtime_model.md); how a restart picks up the open book —
 [Live Execution Architecture](../architecture/live_execution_architecture.md), *Cold Start*; the
@@ -44,6 +48,31 @@ A test run reads only the tracked copy, so it never reaches your bot or your mon
 A **mock** session switches both off unless its profile switches them on itself — switched on in
 `user_configs/app_config.json`, they would otherwise reach every test replay and feed the live
 bot's monitor check.
+
+## The daily check-in — how the session stands, read from outside
+
+Once a day, from your own machine, five reads answer whether everything runs to plan. None of them
+reaches into the session; each reads what the session recorded, through the API of the machine it
+runs on:
+
+```
+1  GET /api/v1/activities                                   is the session's process alive?
+2  GET /api/v1/reports/runs/{run_id}/state-frames/latest    how does it stand, how old is that,
+                                                            what does its process hold?
+3  GET /api/v1/machine-resources                            how full is the machine?
+4  GET /api/v1/reports/runs/{run_id}/order-events           what happened to its orders?
+5  GET /api/v1/deployments/{deployment_id}/booking-periods  what did each trading day book?
+```
+
+The second is the session's own latest state frame: its account, positions and resting orders,
+worker outputs and decision, with `age_s` and `recording` — `current` while it writes on its
+cadence, `stopped` when its frames stop without an end (the first read tells whether the process
+died or hangs), `ended` once it wrote its last frame, with how it ended beside it. `first_frame`
+beside the latest frame's `process_memory` is the memory's growth since the start — a leak shows
+there, long before it fills the machine. The fifth answers for completed sessions only: a session
+books its periods at its end, and yesterday's period of a session still running reaches you as the
+daily close over Telegram (below). What each field means is the served document
+[state frames](../consumer/state-frames.md).
 
 ## What the operator hears
 
@@ -171,22 +200,28 @@ decision** — and the exit code says which one it was:
 |---|---|---|
 | 0 | ended because it was asked to | no |
 | 1 | did not complete — an uncaught exception | yes |
-| 2 | ended in an emergency — a hard stop, a runtime error, a start that failed | no |
+| 2 | ended in an emergency — a hard stop, a runtime error, a start that failed for good, a second start of a bot that already runs | no |
 | 3 | finished but logged errors — a start the cold start refused among them | no |
+| 75 | a start that failed for a passing cause — the venue did not answer within its budget, or the first tick came before it had committed its bar | yes, after a pause |
 | killed — `kill -9`, an OOM kill | ended by the operating system | yes |
 
-Each of 0, 2 and 3 needs a person, and a restart repeats it. **Nothing carries a hard stop over
+Each of 0, 2 and 3 needs a person, and a restart repeats it. Exit 75 does not: a timeout at the
+start after a nightly reboot is gone a minute later, and a venue's maintenance window ends; left
+down, either would cost a trading day.
+The code is the one `sysexits.h` reserves for a temporary failure. **Nothing carries a hard stop over
 to the next session:** after one, a restarted session takes over what was kept and trips the stop
 again at its first valued tick — or, when the risk baseline is not carried over, starts from the
 drawn-down value and trades on. A supervisor that restarts exit 2 turns the hard stop into a
 loop or into a pause. A refused start refuses again.
 
-- **Natively on Windows** — a service wrapper such as NSSM can be told exactly that:
-  `nssm set <service> AppExit Default Restart`, then `AppExit 0 Exit`, `AppExit 2 Exit` and
-  `AppExit 3 Exit`.
-- **On a Linux server** — systemd says it in two lines of the unit: `Restart=on-failure` restarts
-  a crash and a kill, and `RestartPreventExitStatus=2 3` keeps the session's own decisions down;
-  exit 0 is not restarted anyway. `systemctl enable` brings the session back after a reboot.
+- **On a Linux server** — systemd says it in three lines of the unit: `Restart=on-failure`
+  restarts a crash, a kill and exit 75, `RestartPreventExitStatus=2 3` keeps the session's own
+  decisions down, and `RestartSec=60` puts a minute between two attempts — without it systemd
+  starts again at once and gives up after five quick failures. From systemd 254 on,
+  `RestartSteps=` and `RestartMaxDelaySec=` let the pause grow while the cause lasts. Exit 0 is
+  not restarted anyway, and `systemctl enable` brings the session back after a reboot.
+- **Not natively on Windows** — the session runs on Linux: a server, WSL or a container. The lock
+  that keeps one bot from running twice is a file lock of the POSIX kernel.
 - **In Docker** — the restart policies decide on whether an exit code is zero, not on which one:
   `unless-stopped` restarts every end and `on-failure` every non-zero one, a hard stop included.
   Neither fits; restart a session in Docker by hand after its alarm, or run it under a supervisor
@@ -194,12 +229,82 @@ loop or into a pause. A refused start refuses again.
 - **Task Scheduler alone is not enough**: its restart triggers on a FAILED run, and a hung
   process never ends. That case is the liveness ping's.
 
-**The restart and the adoption are one decision.** A restart finds the previous session's orders
-and positions; with `cold_start.adoption_mode: operator_confirm` and no terminal attached it
-refuses to adopt them and stays flat — at 03:00, unattended, that is a bot that is up and does
-nothing. The STARTUP REFUSED alert tells you, quoting the cold start; whether a restart may adopt
-on its own (`adoption_mode: auto`) is the profile's decision, made before the run, not discovered
-during it.
+**One bot runs once.** A second start of a bot whose session is still running is refused before
+it reads or sends anything — exit 2, not restarted — with a message naming the running session's
+run, its process and the lock file. systemd never starts one unit twice; the refusal is for
+everything else: a start from a second terminal, a manual start after a liveness alarm while the
+hung process lives on, two units for one bot, or a deploy's new code tree started before the old
+session has ended. The lock lies beside the bot's carry-over and is held until the session has
+written its last record; the kernel drops it with the process however that ends, so there is
+never a stale lock to clear.
+
+**The restart and the adoption are one decision.** A session that starts restores the previous
+session's position book whatever the adoption mode (at spot, in a real-money session — a dry run
+restores none); what the adoption may refuse is the start itself, over an ORDER. When an order of
+ours still rests at the venue, `cold_start.adoption_mode: operator_confirm` asks a person, and a
+session started without `--attended` has nobody to ask: it refuses to start rather than trade
+beside an order it cannot account for. A refused start restores nothing — the book waits on disk
+for the next start, and the holding sits at the venue unmanaged, protected only by a stop the venue
+itself holds. At 03:00, unattended, that is a bot that stays down until somebody reads the alert.
+The STARTUP REFUSED alert tells you, quoting the cold start. Whether a restart may adopt such
+orders on its own (`adoption_mode: auto`, or a decision logic that accounts for each of them by
+name) is the profile's decision, made before the run, not discovered during it. A bot that rests
+nothing — market orders only — restarts the same way in both modes.
+
+**A restart runs what is on disk.** The supervisor starts the same command again, so the restarted
+session runs the code and the profile it finds at that moment, and records both in its own header.
+A real-money start refuses uncommitted code, but a clean new commit — a `git pull` between two
+restarts — passes, and the deployment history draws no line for it: it compares the strategy
+parameters, the operational settings and where the orders went, never the code. A backtest of the
+whole period runs at one commit. For a run you mean to compare, leave the checkout, your strategy's
+repository and the profile alone until it ends, or read each session's `code_identity` from its run
+header before you compare: it names the commit of every repository a component came from, while the
+ledger row names only this repository's commit and the component versions — see
+[A run is a record, and an old one stays true](../introduction_to_the_ide.md#a-run-is-a-record-and-an-old-one-stays-true).
+
+## A deploy — a restart into a new code tree
+
+A fix during a long run is a deploy: the session stops, the new tag is checked out BESIDE the old
+tree, and the session starts from there. Not a checkout in place, because that changes the files
+under every process still running from them and leaves no old tree to step back to. The new tree
+has to find what the old one wrote — the carry-over above all — so the operator's state lives
+apart from the code, in one **data home** that the environment variable `FINIEX_DATA_HOME`
+names: the workspace (`user_configs/`), the strategy directories and every store the session
+writes. The code tree keeps what a tag carries: `configs/`, `docs/`, the code. Unset, the working
+directory is the home, as on a development machine. A named home that does not exist refuses
+the start; it is never created on the fly. See
+[Data Storage Layout](../architecture/data_storage_layout.md) for which store lives where.
+
+**A session trading real money proves it continued, or refuses.** Before its first order it names
+the data home and the carry-over it read — the run that wrote it and when. A session that finds
+no carry-over it can use — none, an unreadable one, one in another format, or another profile's —
+refuses to start with exit 2: that is a start in the wrong home caught before it trades blind
+beside a holding the venue still has. The bot's very first real-money start is declared,
+`--first-start`, and the run header records the declaration; a declared first start that finds
+a carry-over it could use refuses too, so a flag left behind in a unit cannot switch the rule
+off. A dry run and a mock session still start fresh on an empty carry-over: they claim nothing
+about the venue.
+
+```
+1  systemctl stop <unit>          SIGTERM → normal shutdown: carry-over and ledger row written, exit 0
+2  run_index_cli.py status        the stopped session completed — run with FINIEX_DATA_HOME set
+3  git checkout of the new tag beside the old tree (a clone or a worktree), its requirements
+   installed in an environment of its own — a checkout, never an export: a tree git cannot
+   read counts as uncommitted, and real orders refuse to start from it
+4  the unit points at the new tree; the home and the profile path stay
+     WorkingDirectory=/srv/finiex/releases/v1.5.1
+     Environment=PYTHONPATH=/srv/finiex/releases/v1.5.1
+     Environment=FINIEX_DATA_HOME=/srv/finiex/home
+5  systemctl start <unit>         the boot names the home and the carry-over it continued
+6  GET /api/v1/reports/runs       the new tag's commit, the same installation, the same deployment
+```
+
+The code is imported from `PYTHONPATH`, not from the working directory: left on the old tree, the
+new command runs the old code, and step 6 shows the old commit. The API server's unit moves to
+the new tree in the same step and names the same home, so a store's reader and its writer never
+run two versions. Going back is the same steps with the old tree. The stop must finish inside
+systemd's stop timeout (`TimeoutStopSec`, 90 s by default); a kill after that costs the session
+its ledger row, never its carry-over.
 
 ## What the venue could do, and why it does not here
 

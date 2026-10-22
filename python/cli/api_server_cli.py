@@ -12,6 +12,10 @@ import argparse
 
 import uvicorn
 
+from python.framework.activities.activity_registry import ActivityRegistry
+from python.framework.types.activity_registry_types import ActivityKind
+from python.framework.types.run_origin_types import RunChannel
+
 
 class ApiServerCli:
     """
@@ -30,13 +34,17 @@ class ApiServerCli:
 
     def run(self) -> None:
         """Start the uvicorn server with the configured parameters."""
-        uvicorn.run(
-            'python.api.api_app:create_app',
-            host=self._host,
-            port=self._port,
-            reload=self._reload,
-            factory=True,
-        )
+        # Listed as running for as long as it serves (#603). Registered here and never in
+        # create_app(): every test builds the app, and none of them is a server that runs.
+        with ActivityRegistry().running(ActivityKind.API_SERVER, f'port {self._port}',
+                                        channel=RunChannel.CLI):
+            uvicorn.run(
+                'python.api.api_app:create_app',
+                host=self._host,
+                port=self._port,
+                reload=self._reload,
+                factory=True,
+            )
 
 
 def main() -> None:

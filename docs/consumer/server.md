@@ -5,7 +5,8 @@ this server restart since you last cached anything? Was your token accepted, or 
 tokens at all — both of those answer `200`. Which timeframe names will the bar routes take? And a
 finding has just handed you a `check` id, which is a label nobody outside this API can read. And
 how full is the machine all of this runs on? These routes answer those, and the ones that only
-state the server's own declarations need no credentials to ask.
+state the server's own declarations need no credentials to ask. What runs on that machine, and what
+each activity holds, is [activities](/api/v1/docs/activities).
 
 **Routes**
 
@@ -21,17 +22,24 @@ GET /api/v1/machine-resources
 `/api/v1/contract`, and [the contract log](/api/v1/docs/contract-log) explains how to use it. What
 a refusal means is in [errors](/api/v1/docs/errors).
 
-## `/caller` and `/machine-resources` need a token
+## Without a grant, the server only describes itself
 
-`/health`, `/timeframes` and `/validation-checks` are open, and that is a decision rather than an
-oversight. A timeframe list and a check vocabulary are this server's own static declaration — what
-a name *means* — and say nothing about a venue, a run or an account. Gating the timeframe list
-would make a market-data grant the precondition for a list that reveals nothing about market data.
+One rule decides what each route needs. Open, or behind a token alone, are only the routes that say
+what this server IS: whether it answers, which contract it serves, the names its routes take, and
+who you are to it. Everything about what this installation holds or does — market data, runs,
+configurations, the machine and what runs on it — needs a grant.
+
+`/health`, `/timeframes` and `/validation-checks` are open. A timeframe list and a check vocabulary
+are this server's own static declaration — what a name *means* — and say nothing about a venue, a
+run or an account. Gating the timeframe list would make a market-data grant the precondition for a
+list that reveals nothing about market data.
 
 `/caller` needs a token while gating is on, and takes no grant: a grant required in order to ask
-what you hold would be circular. `/machine-resources` needs a token and takes no grant either: how
-loaded the machine is is nothing a stranger needs to read, and the route has no path parameter for
-a grant to be about.
+what you hold would be circular.
+
+`/machine-resources` needs the `machine` grant, as [activities](/api/v1/docs/activities) does: how
+loaded the machine is and what runs on it say what this installation does. Neither route has a path
+parameter, so any grant on the surface reaches both — `machine:*` is the one to issue.
 
 ## `/health` — whether it answers, and since when
 
@@ -161,7 +169,8 @@ your copy is older than the server, not that the id was never declared.
 The machine this server runs on is the one the backtests and the live sessions run on too. When
 many scenarios run in parallel they fill it, and memory that runs out is the moment a process is
 ended by the operating system — nothing refuses politely before that. This route says how close
-that moment is.
+that moment is; [activities](/api/v1/docs/activities) says who holds the memory. It needs the
+`machine` grant.
 
 ```json
 {"measured_at": "2026-10-14T12:00:05+00:00",
@@ -199,5 +208,5 @@ current.
 
 `/timeframes` and `/validation-checks` change only when the server does. Fetch each once and keep
 it; re-fetch when `/health` answers with a `version` or a `started_at` you have not seen before.
-`/caller` changes when your token or its account changes, which is also a restart. `/health` and
-`/machine-resources` are the ones meant to be asked repeatedly.
+`/caller` changes when your token or its account changes, which is also a restart. `/health`,
+`/machine-resources` and `/activities` are the ones meant to be asked repeatedly.

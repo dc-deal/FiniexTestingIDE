@@ -68,7 +68,13 @@ numbers are the venue's and which it computed.
   decimals into the same type. Only `spread_pct`, a ratio no surface serves as a price, stays
   float32.
 - **The archive was re-imported in full from its raw files on 2026-10-17** rather than repaired,
-  because a repair could not restore what float32 had already rounded away.
+  because a repair could not restore what float32 had already rounded away. A run made before
+  that date read the float32 values, and only its start time says so: the data format version it
+  records did not change, because a run records the kind and count of the files it read, not
+  their content
+  ([A run is a record, and an old one stays true](../introduction_to_the_ide.md#a-run-is-a-record-and-an-old-one-stays-true)).
+  Run again, it reads the exact decimals and can come out different in the last digits — a
+  difference of the input, not of the code.
 - **No `Decimal`, no fixed-point.** float64 holds 15 to 17 significant digits — far more than any
   instrument we trade quotes — at the cost of the hot path's native type.
 - **A computed price keeps full precision**; it is rounded for display by the instrument's tick

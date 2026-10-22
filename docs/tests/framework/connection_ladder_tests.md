@@ -17,6 +17,7 @@ than observed as duration.
 |---|---|
 | `TestClassify` | registered transient / terminal types · **an unregistered type is TERMINAL** (an exception nobody declared is most likely our own defect) · `ConnectionAttemptFailedError` carries its own verdict · `INADMISSIBLE` passes through · terminal wins over transient on an overlapping subclass |
 | `TestNextDelay` | first retry uses the initial delay · doubles per attempt · capped at max · attempt 0 does not go below initial · jitter stays within `[0.5, 1.0)` of the delay and is not a constant |
+| `TestAttemptAfterLoss` | a long-lived connection starts the ladder over only once it delivered for the stable time · one that never delivered keeps it climbing · accept-and-close over and over waits longer each time, up to the cap · a ladder that never gives up never overflows, however many attempts (#609) |
 | `TestBudget` | budget 0 never exhausts (a long-lived connection's job is to come back) · exhausts exactly at the budget |
 | `TestGiveUp` | ABORT raises and names the SYSTEM ("not the trading logic") · DEGRADE returns and says so · INADMISSIBLE raises regardless of the rule · **every give-up reaches the error pot** |
 | `TestRunWithLadder` | returns on first success without waiting · succeeds on the third attempt with the expected delay sequence · exhausted budget degrades to `None` · a TERMINAL failure stops immediately **without waiting** · ABORT propagates · every retry is announced |
@@ -27,6 +28,21 @@ It is the one assertion that decides the failure mode of the whole unit. If an u
 exception were TRANSIENT, a defect in our own parsing would be retried forever against a
 healthy venue — reporting their outage for our mistake, quietly, for as long as the session
 runs.
+
+## One HTTP attempt, classified — `test_http_attempt.py`
+
+The other side of that rule. A raw `requests` exception is a type nobody registered, so it is
+TERMINAL — which made the warmup read give up at its first timeout with two attempts of its
+budget unused. A `requests` call that a ladder retries therefore goes through `send_classified`
+(#598), which turns each failure into a `ConnectionAttemptFailedError` carrying its verdict.
+
+| Group | Checks |
+|---|---|
+| `TestTheClassification` | a timeout and a refused connection are TRANSIENT and name the fault · 429 and 5xx are TRANSIENT, another 4xx TERMINAL, by the shared status rule · a good answer is handed back unchanged |
+| `TestTheLadderRetriesWhatWasClassified` | a timeout is tried as often as the budget allows · a 401 ends at the first attempt |
+
+What the venue says inside a successful answer (Kraken's `error` list) is not classified here;
+the caller judges it.
 
 ## Sibling suites
 

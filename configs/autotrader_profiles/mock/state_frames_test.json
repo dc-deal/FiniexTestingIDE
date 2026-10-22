@@ -1,0 +1,69 @@
+{
+  "profile_name": "state_frames_test",
+  "run_purpose": "fixture",
+  "bot_id": "frames01",
+  "symbol": "BTCUSD",
+  "broker_type": "kraken_spot",
+  "adapter_type": "mock",
+  "deployment": {
+    "_comment": "A test profile: every session stands alone.",
+    "continuous": false
+  },
+  "strategy_config": {
+    "decision_logic_type": "CORE/simple_consensus",
+    "worker_instances": {
+      "rsi_fast": "CORE/rsi",
+      "bollinger_main": "CORE/bollinger",
+      "obv_volume": "CORE/obv"
+    },
+    "workers": {
+      "rsi_fast": {
+        "periods": {
+          "M5": 14
+        }
+      },
+      "bollinger_main": {
+        "periods": {
+          "M30": 20
+        },
+        "deviation": 2
+      },
+      "obv_volume": {
+        "periods": {
+          "M5": 20
+        }
+      }
+    },
+    "decision_logic_config": {
+      "rsi_oversold": 30,
+      "rsi_overbought": 70,
+      "bollinger_lower_threshold": 0.3,
+      "bollinger_upper_threshold": 0.7,
+      "min_confidence": 0.5,
+      "lot_size": 0.1,
+      "min_entry_capital": 1000,
+      "obv_filter_enabled": true,
+      "obv_block_opposite_trend": true,
+      "obv_confidence_boost": 0.1
+    }
+  },
+  "tick_source": {
+    "type": "mock"
+  },
+  "display": {
+    "enabled": false
+  },
+  "state_frames": {
+    "_comment": "The state frames suite (#579 part A): a frame every minute of the replayed tick time, at every closed M5 and M30 bar, and at the order this window holds (the strategy buys around 06:12).",
+    "enabled": true,
+    "cadence_timeframe": "M1"
+  },
+  "scenario_settings": {
+    "start_date": "2026-01-25T02:19:46+00:00",
+    "end_date": "2026-01-25T08:00:00+00:00",
+    "balances": {
+      "USD": 10000.0,
+      "BTC": 0.0
+    }
+  }
+}

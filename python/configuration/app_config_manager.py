@@ -3,9 +3,11 @@ FiniexTestingIDE - Application Configuration Loader
 Centralized app config management
 """
 
+from pathlib import Path
 from typing import Any, Dict, List
 
 from python.configuration.config_file_loader import ConfigFileLoader
+from python.configuration.data_home import get_data_home, resolve_in_data_home, workspace_path
 from python.framework.types.config_types.app_config_types import AppConfig
 from python.framework.types.config_types.console_logging_config_types import ConsoleLoggingConfig
 from python.framework.types.config_types.data_origin_config_types import OriginClass
@@ -13,6 +15,7 @@ from python.framework.types.config_types.file_logging_config_types import FileLo
 from python.framework.types.config_types.machine_resources_config_types import (
     MachineResourcesConfig,
 )
+from python.framework.types.config_types.state_frames_api_config_types import StateFramesApiConfig
 
 
 class AppConfigManager:
@@ -50,7 +53,19 @@ class AppConfigManager:
         Get structured file logging configuration.
             ValueError: If config structure invalid
         """
-        return self._app_config.file_logging
+        file_logging = self._app_config.file_logging
+        if get_data_home() is None:
+            return file_logging
+        # The run tree and the global log belong to the data home (#598).
+        run_logs = file_logging.run_logs
+        return file_logging.model_copy(update={
+            'global_log_dir': resolve_in_data_home(file_logging.global_log_dir),
+            'run_logs': run_logs.model_copy(update={
+                'simulation': resolve_in_data_home(run_logs.simulation),
+                'autotrader': resolve_in_data_home(run_logs.autotrader),
+            }),
+            'run_index': resolve_in_data_home(file_logging.run_index),
+        })
 
     def get_config(self) -> Dict[str, Any]:
         """
@@ -248,6 +263,15 @@ class AppConfigManager:
         """
         return self._app_config.api.machine_resources
 
+    def get_state_frames_api_config(self) -> StateFramesApiConfig:
+        """
+        When the latest-frame route reads a session's recording as stopped (#611).
+
+        Returns:
+            The `api.state_frames` block
+        """
+        return self._app_config.api.state_frames
+
     # ============================================
     # Documentation Search Config
     # ============================================
@@ -318,9 +342,10 @@ class AppConfigManager:
         Get user algo directories scanned for scenario sets, AutoTrader profiles and sweep specs.
 
         Returns:
-            List of directory paths (default: ["user_algos/"])
+            List of directory paths (default: ["user_algos/"]), under the data home
         """
-        return self._app_config.paths.user_algo_dirs
+        return [resolve_in_data_home(directory)
+                for directory in self._app_config.paths.user_algo_dirs]
 
     def get_data_processed_path(self) -> str:
         """
@@ -332,7 +357,7 @@ class AppConfigManager:
         Raises:
             ValueError: If path not configured
         """
-        return self._app_config.paths.data_processed
+        return resolve_in_data_home(self._app_config.paths.data_processed)
 
     def get_run_ledger_path(self) -> str:
         """
@@ -341,7 +366,7 @@ class AppConfigManager:
         Returns:
             Path string for the run-results ledger directory
         """
-        return self._app_config.paths.run_ledger
+        return resolve_in_data_home(self._app_config.paths.run_ledger)
 
     def get_run_configs_path(self) -> str:
         """
@@ -350,7 +375,7 @@ class AppConfigManager:
         Returns:
             Path string for the run-config store
         """
-        return self._app_config.paths.run_configs
+        return resolve_in_data_home(self._app_config.paths.run_configs)
 
     def get_run_patches_path(self) -> str:
         """
@@ -359,7 +384,30 @@ class AppConfigManager:
         Returns:
             Path string for the run-patch store
         """
-        return self._app_config.paths.run_patches
+        return resolve_in_data_home(self._app_config.paths.run_patches)
+
+    def get_activity_registry_path(self) -> Path:
+        """
+        Get the directory of what runs on this machine (#603).
+
+        Returns:
+            The registry directory with `~` expanded; where no home directory can be resolved, as
+            configured — a relative path, which the registry's writer and reader refuse to use
+        """
+        directory = Path(self._app_config.activities.directory)
+        try:
+            return directory.expanduser()
+        except RuntimeError:
+            return directory
+
+    def get_activity_session_env_var(self) -> str:
+        """
+        Get the environment variable that names an activity's console session (#603).
+
+        Returns:
+            The variable's name, or '' when the installation names none
+        """
+        return self._app_config.activities.session_env_var
 
     def get_config_directory_path(self) -> str:
         """
@@ -368,7 +416,7 @@ class AppConfigManager:
         Returns:
             Path string for the config-directory cache
         """
-        return self._app_config.paths.config_directory
+        return resolve_in_data_home(self._app_config.paths.config_directory)
 
     def get_scenario_sets_path(self) -> str:
         """
@@ -387,9 +435,9 @@ class AppConfigManager:
         Get user override scenario sets path (gitignored, personal configs).
 
         Returns:
-            Path string for user scenario sets directory
+            Path string for user scenario sets directory, in the workspace under the data home
         """
-        return 'user_configs/scenario_sets'
+        return str(workspace_path('scenario_sets'))
 
     def get_autotrader_profiles_path(self) -> str:
         """
@@ -405,9 +453,10 @@ class AppConfigManager:
         Get the operator's own AutoTrader profile root (gitignored).
 
         Returns:
-            Path string for the user AutoTrader profiles directory
+            Path string for the user AutoTrader profiles directory, in the workspace under the
+            data home
         """
-        return 'user_configs/autotrader_profiles'
+        return str(workspace_path('autotrader_profiles'))
 
     def get_generator_template_path(self) -> str:
         """

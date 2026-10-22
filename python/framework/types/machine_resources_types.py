@@ -59,6 +59,15 @@ class MemoryReading:
     used_pct: float
     limit_source: LimitSource
 
+    def free_bytes(self) -> int:
+        """
+        What the binding limit leaves free, never below zero.
+
+        Returns:
+            The limit minus what is in use
+        """
+        return max(self.limit_bytes - self.used_bytes, 0)
+
 
 @dataclass
 class MachineResourcesReading:
@@ -73,3 +82,19 @@ class MachineResourcesReading:
     measured_at: datetime
     cpu: CpuReading
     memory: MemoryReading
+
+
+@dataclass
+class FreeMemoryVerdict:
+    """
+    Whether the memory a caller asked for is free (#603) — what a wrapper script asks before it
+    starts a run.
+
+    Args:
+        free_bytes: The binding limit minus what is in use
+        required_bytes: What the caller asked to be free
+        enough: Whether `free_bytes` reaches `required_bytes`
+    """
+    free_bytes: int
+    required_bytes: int
+    enough: bool

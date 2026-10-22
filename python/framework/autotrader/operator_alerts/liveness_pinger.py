@@ -32,6 +32,7 @@ from typing import Any, Callable, Optional
 
 import requests
 
+from python.configuration.data_home import resolve_in_data_home
 from python.framework.autotrader.operator_alerts.loop_progress import LoopProgress
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.types.autotrader_types.operator_alert_types import (
@@ -317,7 +318,9 @@ class LivenessPinger:
         """Rewrite the stamp file with the time now, atomically — when one is configured."""
         if not self._stamp_file:
             return
-        path = Path(self._stamp_file)
+        # A relative path is the data home's, so a deploy into a new code tree keeps the address
+        # the watcher reads (#598).
+        path = resolve_in_data_home(Path(self._stamp_file))
         try:
             staging = path.with_name(path.name + '.tmp')
             path.parent.mkdir(parents=True, exist_ok=True)

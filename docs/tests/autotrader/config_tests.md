@@ -67,6 +67,17 @@ It has TWO jobs, and the second runs even when the first is switched off:
 | `test_a_divergence_warns_with_the_switch_on_too` | Applying is not a reason to stay quiet |
 | `test_agreement_is_quiet` | Rates that match produce no warning |
 
+### `test_broker_config_boot_line.py` (#608)
+
+The boot's broker-config line shows how long ago the session's symbol was fetched from the venue —
+its own entry's `_last_fetched`. The file's age once stood there and said nothing: any symbol's
+refresh rewrites the file, so it read 0.0 days beside an entry almost a week old.
+
+| Test | Description |
+|------|-------------|
+| `test_the_line_names_the_symbol_and_its_age` | ETHUSD fetched 6.9 days ago → `[ETHUSD spec fetched 6.9d ago]` |
+| `test_an_entry_without_a_stamp_shows_no_age` | No `_last_fetched` → no age, rather than a guessed one |
+
 ### `test_startup_guards.py` (#503, finding 205)
 
 `setup_pipeline` is the one path every AutoTrader session is obliged to walk, and until 2026-09-10 no

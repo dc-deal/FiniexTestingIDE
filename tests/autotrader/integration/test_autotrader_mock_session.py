@@ -361,6 +361,7 @@ class TestProfileLoader:
             'ws_url': 'wss://example/v2',
             'reconnect_initial_delay_s': 2.5,
             'reconnect_max_delay_s': 90.0,
+            'backoff_reset_after_s': 12.5,
             'connection_check_interval_s': 15.0,
             'connection_dead_s': 45.0,
             'freeze_after_ticks': 500,
@@ -407,6 +408,19 @@ class TestSessionExitCode:
                                   emergency_reason='tick loop crashed')
         assert result.get_outcome() == RunOutcome.FAILED
         assert result.get_exit_code() == 2
+
+    def test_a_start_that_failed_for_a_passing_cause_exits_seventy_five(self):
+        """#598: the venue did not answer within its budget — a supervisor starts it again."""
+        result = AutoTraderResult(shutdown_mode='emergency', start_failure_transient=True,
+                                  emergency_reason='broker_boot_read is unreachable after 3 attempt(s)')
+        assert result.get_outcome() == RunOutcome.FAILED
+        assert result.get_exit_code() == 75
+
+    def test_a_passing_cause_never_changes_a_run_that_did_not_fail(self):
+        """Only a failed start becomes 75; an operator's stop stays 0."""
+        result = AutoTraderResult(shutdown_mode='emergency', operator_interrupted=True,
+                                  start_failure_transient=True)
+        assert result.get_exit_code() == 0
 
     def test_normal_shutdown_exits_zero(self):
         """A normal shutdown reports success."""

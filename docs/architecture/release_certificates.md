@@ -14,7 +14,7 @@ and spread into every certificate body.
 | Certificate | Proves | Costs | Producer |
 |---|---|---|---|
 | **Benchmark** | Throughput has not regressed on registered hardware | nothing | `tests/simulation/benchmark/conftest.py` |
-| **Live Adapter** | The broker adapter really places, modifies, cancels and fills orders | ~$0.01 in fees | `tests/live_adapters/conftest.py` |
+| **Live Adapter** | The broker adapter really places, modifies, cancels and fills orders | a few cents in fees | `tests/live_adapters/conftest.py` |
 | **Field Study** | The full live execution stack works on a funded account | ~$0.50 | `certificates/field_study_certificate.py` |
 | **Signal Feed** | The producer contract holds against the running production journal | nothing (3 free GETs) | `certificates/signal_feed_certificate.py` |
 | **Security Study** | The account's protective rules fire on a funded account — the order guard, the circuit breaker's soft block and hard stop, the risk baseline across a restart (#358) | ~$0.25 (measured 2026-10-14) | `certificates/security_cert_certificate.py` |
@@ -131,15 +131,18 @@ failure mode is a well-meant extension that adds "just the keys" to be more info
 
 ## Taking them
 
-Order matters. Commit first — the dirty-tree guard will otherwise fail every declared
-certificate — then bump the version, then take them:
+Order matters. Bump the version first and commit it — a declared certificate is refused from a
+tree that says another version (`VERSION MISMATCH`) and from one with uncommitted changes
+(`DIRTY TREE`). Then take them one suite at a time, and commit each suite's generated artifact
+before the next: to every other suite, an uncommitted artifact is an uncommitted change like any
+other.
 
 ```bash
 # 1. benchmark (idle machine, nothing else running, one run per sitting)
 pytest tests/simulation/benchmark/test_throughput_regression.py -v --release-version X.Y.Z
 pytest tests/simulation/benchmark/test_benchmark_certificate.py -v
 
-# 2. live adapters — PLACES REAL ORDERS (~$0.01 fees, ~$10 briefly reserved)
+# 2. live adapters — PLACES REAL ORDERS (a few cents in fees, up to ~$18 briefly reserved)
 pytest tests/live_adapters/ -v -m live_adapter --place-real-orders --release-version X.Y.Z
 pytest tests/live_adapters/test_live_adapter_certificate.py -v
 
@@ -157,7 +160,8 @@ python python/cli/security_cert_cli.py run --release-version X.Y.Z
 pytest tests/security_cert/test_security_cert_certificate.py -v
 ```
 
-Commit the generated artifacts from each suite's `reports/` directory.
+Each suite writes its artifact into its own `reports/` directory, which is where it is committed
+from.
 
 **Changing the identity invalidates every certificate**, because every artifact carries it. That
 is the cost of the shared shape, and it is the right cost: certificates that disagree about what

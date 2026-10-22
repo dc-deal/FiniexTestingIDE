@@ -110,6 +110,20 @@ class TestWhatTheTableShows:
             _summary(net_pnl=50.0, total_trades=3))
         assert report.total_final_equity == 9_990.0
 
+    def test_a_period_carries_the_running_decline_and_what_was_open(self):
+        # Contract 35: what a period DID stands beside what it CARRIES — the account's decline
+        # so far, and the open part at the seal (#603, asked for by a consumer).
+        period = _segment(3, 2, 4.10, 2)
+        period.figures = _figures(net_pnl=4.10, total_trades=2, final_equity=10_004.10,
+                                  account_max_drawdown=680.0, account_max_dd_pct=6.8,
+                                  unrealized_pnl=-2.30, open_position_count=1)
+        report = build_booking_periods_report('r', _units(period),
+                                              _summary(net_pnl=4.10, total_trades=2))
+        [row] = report.periods
+        assert row.max_drawdown == 40.0
+        assert (row.account_max_drawdown, row.account_max_dd_pct) == (680.0, 6.8)
+        assert (row.unrealized_pnl, row.open_position_count) == (-2.30, 1)
+
     def test_the_close_reason_survives_into_the_row(self):
         # Only a `session_end` on the last period says the books are complete.
         report = build_booking_periods_report(

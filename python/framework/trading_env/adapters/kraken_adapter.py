@@ -23,7 +23,7 @@ import time
 import urllib.parse
 from dataclasses import replace
 from datetime import datetime, timezone
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import requests
 
@@ -33,7 +33,7 @@ from python.configuration.credentials_cascade import (
     tracked_credentials_path,
     workspace_credentials_path,
 )
-from python.framework.exceptions.connection_errors import ConnectionAttemptFailedError
+from python.framework.trading_env.adapters.kraken_error_codes import raise_for_kraken_errors
 from python.framework.types.config_types.market_config_types import BrokerTransportConfig
 from python.framework.types.live_types.live_execution_types import BrokerOrderStatus, BrokerResponse
 from python.framework.types.live_types.reconciliation_types import BrokerOrder, BrokerPosition
@@ -57,7 +57,7 @@ from python.framework.types.trading_env_types.order_types import (
     OrderType,
     StopLimitOrder,
 )
-from python.framework.utils.connection_ladder import is_terminal_status
+from python.framework.utils.http_attempt import send_classified
 
 from .abstract_adapter import AbstractAdapter
 from .dry_run_simulator import DryRunOrderSimulator
@@ -477,7 +477,10 @@ class KrakenAdapter(AbstractAdapter):
 
             # Order Restrictions
             stops_level=raw.get('stops_level', 0),
-            freeze_level=raw.get('freeze_level', 0)
+            freeze_level=raw.get('freeze_level', 0),
+
+            # Order Value Limit — absent in a cache written before it was read
+            cost_min=raw.get('cost_min', 0.0),
         )
 
     def get_broker_specification(self) -> BrokerSpecification:
@@ -1744,17 +1747,18 @@ class KrakenAdapter(AbstractAdapter):
         """
         POST request to Kraken private API with HMAC-SHA512 signing.
 
+        A request that did not complete — a transport fault or an HTTP status — raises
+        ConnectionAttemptFailedError carrying whether retrying could help (#473), so the
+        caller's ladder does not have to guess from a message string; so does an answer the
+        venue documents as "not now" (`kraken_error_codes`). Any other error in the answer is
+        the venue's answer, raised as ConnectionError.
+
         Args:
             endpoint: API path (e.g., '/0/private/AddOrder')
             data: Optional POST data
 
         Returns:
             API result dict
-
-        Raises:
-            ConnectionAttemptFailedError: the request did not complete — a transport fault
-                or an HTTP status. Carries whether retrying could help (§473), so the
-                caller's ladder does not have to guess from a message string
         """
         if data is None:
             data = {}
@@ -1768,7 +1772,7 @@ class KrakenAdapter(AbstractAdapter):
             self._enforce_rate_limit()
             headers = self._sign_request(endpoint, data)
             url = f'{self._api_base_url}{endpoint}'
-            response = self._request(
+            response = send_classified(
                 lambda: requests.post(
                     url,
                     headers=headers,
@@ -1781,44 +1785,12 @@ class KrakenAdapter(AbstractAdapter):
         result = response.json()
         # A Kraken-level error is the VENUE speaking, not a transport fault — it stays a
         # plain ConnectionError and therefore classifies TERMINAL. Retrying "Insufficient
-        # funds" forever would report their outage for our order.
-        errors = result.get('error', [])
-        if errors:
-            raise ConnectionError(f'Kraken API error: {errors}')
+        # funds" forever would report their outage for our order. The exceptions are the codes
+        # Kraken documents as the venue not answering at all (#598): a read retries them, a
+        # write comes back UNRESOLVED and is resolved by asking
+        raise_for_kraken_errors(result.get('error', []))
 
         return result.get('result', {})
-
-    @staticmethod
-    def _request(send: Callable[[], requests.Response], endpoint: str) -> requests.Response:
-        """
-        Perform one HTTP attempt and translate its failure into the shared vocabulary.
-
-        The translation belongs here rather than in the ladder: only the transport knows
-        whether it saw a dropped socket or a 400, and #473's classification is by exception
-        type, never by parsing a message.
-
-        Args:
-            send: The request to make
-            endpoint: API path, for the message the operator reads
-
-        Returns:
-            The response, already status-checked
-
-        Raises:
-            ConnectionAttemptFailedError: transport fault (retryable) or HTTP status
-        """
-        try:
-            response = send()
-            response.raise_for_status()
-            return response
-        except requests.exceptions.HTTPError as error:
-            status = error.response.status_code if error.response is not None else 0
-            raise ConnectionAttemptFailedError(
-                f'HTTP {status} from {endpoint}',
-                terminal=is_terminal_status(status)) from error
-        except requests.exceptions.RequestException as error:
-            raise ConnectionAttemptFailedError(
-                f'{type(error).__name__} on {endpoint}: {error}', terminal=False) from error
 
     def _sign_request(self, url_path: str, data: Dict) -> Dict[str, str]:
         """

@@ -87,7 +87,8 @@ class TestTheHeaderIsServedWhole:
         body = client.get(_URL).json()
         assert (body['run_id'], body['config_snapshot']) == (_RUN, 'my_set.json')
         assert body['origin'] == {'channel': 'cli', 'client': 'console', 'principal': 'operator',
-                                  'host': 'h_test01', 'allow_dirty': False}
+                                  'host': 'h_test01', 'allow_dirty': False,
+                                  'first_start': False}
 
     def test_every_path_is_relative_to_its_repository(self, client):
         identity = client.get(_URL).json()['code_identity']

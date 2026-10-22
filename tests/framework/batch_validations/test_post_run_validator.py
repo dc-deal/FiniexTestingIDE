@@ -9,7 +9,7 @@ The coordination-overhead + infra-bottleneck advisories (lifted out of the repor
 are tested here with real tick-loop / profiling fixtures.
 """
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.data_deficiency_types import DataDeficiency
@@ -267,6 +267,38 @@ class TestTheModelledSpreadIsSaidOnce:
 
     def test_a_run_without_such_ticks_says_nothing(self):
         assert 'data_modelled_spread' not in _warnings(_batch([_scenario()]))
+
+
+class TestTheBrokerSpecAgeIsSaidOnce:
+    """A symbol specification read from an old cache entry (#608): one line per symbol."""
+
+    def _fetched(self, scenario: SingleScenario, days_ago: float) -> SingleScenario:
+        scenario.broker_spec_fetched_at = datetime.now(timezone.utc) - timedelta(days=days_ago)
+        return scenario
+
+    def test_an_old_entry_is_said_once_with_its_count(self):
+        scenarios = [self._fetched(_scenario(name='a'), 11.2),
+                     self._fetched(_scenario(name='b', idx=1), 11.2)]
+        out = _warnings(_batch(scenarios))['broker_spec_stale']
+
+        assert 'kraken_spot BTCUSD' in out and '(11 days ago)' in out
+        assert '2 of 2 scenario(s)' in out
+        assert 'sync --force' in out
+
+    def test_each_old_symbol_gets_its_own_line(self):
+        batch = _batch([self._fetched(_scenario(name='a'), 9),
+                        self._fetched(_scenario(name='b', idx=1, symbol='ETHUSD'), 30)])
+        PostRunValidator(batch, _RUN_ID).validate()
+        lines = [finding.message for vr in batch.batch_validation_result
+                 for finding in vr.findings if finding.check == 'broker_spec_stale']
+
+        assert len(lines) == 2
+        assert any('BTCUSD' in line for line in lines) and any('ETHUSD' in line for line in lines)
+
+    def test_a_fresh_entry_and_a_static_broker_say_nothing(self):
+        fresh = self._fetched(_scenario(name='a'), 1)
+        static = _scenario(name='b', idx=1, broker='mt5', symbol='EURUSD')
+        assert 'broker_spec_stale' not in _warnings(_batch([fresh, static]))
 
 
 def test_coordination_overhead():

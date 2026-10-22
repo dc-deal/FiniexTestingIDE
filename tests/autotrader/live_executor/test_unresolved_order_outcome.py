@@ -23,6 +23,7 @@ import pytest
 from python.framework.exceptions.connection_errors import ConnectionAttemptFailedError
 from python.framework.testing.mock_broker_adapter import MockExecutionMode
 from python.framework.testing.mock_order_execution import MockOrderExecution
+from python.framework.trading_env.adapters.kraken_error_codes import raise_for_kraken_errors
 from python.framework.trading_env.live.live_request_processor import LiveRequestProcessor
 from python.framework.types.config_types.autotrader_defaults_config_types import (
     UnresolvedResolutionDefaults,
@@ -71,6 +72,19 @@ class TestFailureClassification:
             operation='submit',
         )
         assert response.status is BrokerOrderStatus.REJECTED
+
+    def test_the_venue_not_answering_is_unresolved(self, processor):
+        # Kraken documents that an order answered "Deadline elapsed" may have been placed all
+        # the same (#598): it is asked about, never booked as refused
+        with pytest.raises(ConnectionAttemptFailedError) as raised:
+            raise_for_kraken_errors(['EService:Deadline elapsed'])
+        response = processor._failure_response(
+            raised.value,
+            broker_ref='',
+            timestamp=datetime.now(timezone.utc),
+            operation='submit',
+        )
+        assert response.status is BrokerOrderStatus.UNRESOLVED
 
     def test_refused_credential_is_a_rejection_not_a_blip(self, processor):
         response = processor._failure_response(
