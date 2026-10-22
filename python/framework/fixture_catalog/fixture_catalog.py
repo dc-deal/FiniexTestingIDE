@@ -6,13 +6,15 @@ an entry's runs and checks them; the newest production that carried every proper
 CURRENT fixture, derived from the production record and never written into a run.
 
 The properties are the ones the consumers assert. FiniexViewer replays its tests from the
-report-coverage run and the demo deployment; #557 freezes its golden samples from the backtest,
-the mock sessions, the deployment and the sweep — both pipelines, both account models.
+report-coverage run, the demo deployment and the state-frame session; #557 freezes its golden
+samples from the backtest, the mock sessions, the deployment and the sweep — both pipelines, both
+account models.
 """
 
 from collections import defaultdict
 from typing import Dict, List, Optional, Tuple
 
+from python.framework.types.api.recording_state_types import RecordingState
 from python.framework.types.api.report_types import (
     CloseType,
     DeploymentDetailResponse,
@@ -243,6 +245,56 @@ def _orders_simulated(evidence: FixtureEvidence) -> bool:
         Whether the production carries this property
     """
     return bool(evidence.runs) and all(run.orders_to == OrdersTo.SIMULATED for run in evidence.runs)
+
+
+def _an_order(evidence: FixtureEvidence) -> bool:
+    """
+    At least one order was sent.
+
+    Args:
+        evidence: What the production made, as the API serves it
+
+    Returns:
+        Whether the production carries this property
+    """
+    return any(report.orders for report in evidence.order_history.values())
+
+
+def _state_frames_to_the_end(evidence: FixtureEvidence) -> bool:
+    """
+    Every run recorded its state frames to its end: the latest frame the check-in route serves is
+    the one written at the end, with the run's end classification and its first frame beside it.
+
+    Args:
+        evidence: What the production made, as the API serves it
+
+    Returns:
+        Whether the production carries this property
+    """
+    if not evidence.runs:
+        return False
+    for run in evidence.runs:
+        answer = evidence.latest_state_frames.get(run.run_id)
+        if answer is None or not answer.units:
+            return False
+        if not all(unit.recording == RecordingState.ENDED and unit.outcome is not None
+                   and unit.first_frame is not None for unit in answer.units):
+            return False
+    return True
+
+
+def _position_in_the_last_frame(evidence: FixtureEvidence) -> bool:
+    """
+    A position is still open in the last state frame the check-in route serves.
+
+    Args:
+        evidence: What the production made, as the API serves it
+
+    Returns:
+        Whether the production carries this property
+    """
+    return any(unit.frame.open_positions
+               for answer in evidence.latest_state_frames.values() for unit in answer.units)
 
 
 # ============================================
@@ -508,6 +560,24 @@ FIXTURE_CATALOG: Tuple[FixtureEntry, ...] = (
                             _two_histories_one_bot),
             FixtureProperty('sessions_key', 'A history lists its sessions keyed by run id',
                             _sessions_keyed_by_run),
+        ),
+    ),
+    FixtureEntry(
+        entry_id='state_frames_session',
+        title='One AutoTrader mock session that records its state frames to its end — an order '
+              'sent, its position still open in the last frame',
+        producer=FixtureProducerKind.PROFILE,
+        source='configs/autotrader_profiles/mock/state_frames_test.json',
+        consumers=(_FINIEX_VIEWER,),
+        properties=(
+            FixtureProperty('reported', 'The session reaches its report', _reported),
+            FixtureProperty('state_frames_ended', 'Its latest state frame is the one written at '
+                            'its end, with how it ended and its first frame beside it',
+                            _state_frames_to_the_end),
+            FixtureProperty('an_order', 'It sends an order', _an_order),
+            FixtureProperty('position_in_last_frame', 'A position is still open in its last '
+                            'frame', _position_in_the_last_frame),
+            FixtureProperty('simulated', 'No order goes to a venue', _orders_simulated),
         ),
     ),
     FixtureEntry(

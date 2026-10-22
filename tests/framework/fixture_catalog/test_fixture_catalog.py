@@ -34,7 +34,22 @@ from python.framework.fixture_catalog.fixture_production_store import (
 )
 from python.framework.reporting.store.report_store import ReportStore
 from python.framework.reporting.store.run_index import RunIndex
-from python.framework.types.api.report_types import DeploymentSummary, RunHeader
+from python.framework.types.api.recording_state_types import RecordingState
+from python.framework.types.api.report_types import (
+    DeploymentSummary,
+    OpenPositionRow,
+    OrderHistoryReport,
+    RunHeader,
+    RunInfo,
+    WarningsErrorsOutcome,
+)
+from python.framework.types.api.state_frame_types import (
+    FirstFrameRow,
+    LatestStateFramesResponse,
+    LatestStateFrameUnit,
+    StateFrame,
+    StateFrameCause,
+)
 from python.framework.types.fixture_catalog_types import (
     FixtureEntry,
     FixtureEvidence,
@@ -79,6 +94,36 @@ def _check(entry_id: str, property_id: str) -> Callable[[FixtureEvidence], bool]
     """
     entry = FIXTURE_CATALOG_BY_ID[entry_id]
     return next(prop.check for prop in entry.properties if prop.property_id == property_id)
+
+
+def _state_frame_evidence(recording: Optional[RecordingState], outcome: bool = True,
+                          first_frame: bool = True, position: bool = False) -> FixtureEvidence:
+    """
+    One run's latest state frames as the check-in route would answer them.
+
+    Args:
+        recording: The verdict on its recording
+        outcome: Whether its end classification comes beside the frame
+        first_frame: Whether its first frame comes beside it
+        position: Whether the frame holds an open position
+
+    Returns:
+        The evidence for that one run
+    """
+    now = datetime(2026, 11, 1, 8, tzinfo=timezone.utc)
+    positions = [OpenPositionRow(position_id='my_position', direction='long', lots=0.01,
+                                 entry_price=2412.5, entry_time='2026-11-01T06:12:00Z')]
+    frame = StateFrame(frame_time=now, written_at=now, written_for=StateFrameCause.SHUTDOWN,
+                       ticks_processed=10, symbol='ETHUSD', account_currency='USD', balance=248.10,
+                       open_positions=positions if position else [])
+    unit = LatestStateFrameUnit(
+        unit_name='my_unit', cadence_timeframe='M1', cadence_s=60.0, written_at=now, age_s=5.0,
+        recording=recording,
+        first_frame=FirstFrameRow(written_at=now) if first_frame else None,
+        outcome=WarningsErrorsOutcome() if outcome else None, frame=frame)
+    return FixtureEvidence(
+        runs=[RunInfo(run_id='r1', group='autotrader', name='my_profile')],
+        latest_state_frames={'r1': LatestStateFramesResponse(served_at=now, units=[unit])})
 
 
 def _production(entry_id: str, produced_at: str, verified: bool) -> FixtureProduction:
@@ -281,6 +326,29 @@ class TestAPropertyReadsWhatIsServed:
                                                       history('d2', 'demo-btc')]))
         assert not check(FixtureEvidence(deployment_rows=[history('d1', 'demo-btc'),
                                                           history('d2', 'other')]))
+
+    def test_a_session_whose_latest_frame_is_its_end_frame_recorded_to_its_end(self):
+        check = _check('state_frames_session', 'state_frames_ended')
+        ended = _state_frame_evidence(RecordingState.ENDED)
+        assert check(ended)
+        assert not check(_state_frame_evidence(None)), 'a replay before its end is not ended'
+        assert not check(FixtureEvidence(runs=ended.runs)), 'no frame served, nothing recorded'
+
+    def test_an_end_frame_without_its_classification_or_first_frame_is_not_enough(self):
+        check = _check('state_frames_session', 'state_frames_ended')
+        assert not check(_state_frame_evidence(RecordingState.ENDED, outcome=False))
+        assert not check(_state_frame_evidence(RecordingState.ENDED, first_frame=False))
+
+    def test_a_position_open_in_the_last_frame(self):
+        check = _check('state_frames_session', 'position_in_last_frame')
+        assert check(_state_frame_evidence(RecordingState.ENDED, position=True))
+        assert not check(_state_frame_evidence(RecordingState.ENDED))
+
+    def test_an_order_sent(self):
+        check = _check('state_frames_session', 'an_order')
+        assert not check(FixtureEvidence(
+            order_history={'r1': OrderHistoryReport(run_id='r1', orders=[], count=0,
+                                                      symbols=[])}))
 
 
 
