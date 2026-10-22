@@ -17,7 +17,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from python.framework.reporting.io.run_header_io import (
-    RUN_HEADER_ARTIFACT,
     read_run_header,
     write_run_header,
 )
@@ -30,7 +29,12 @@ from python.framework.types.api.report_types import (
     TicksFrom,
 )
 from python.framework.types.config_types.file_logging_config_types import RunLogPaths
-from python.framework.types.log_layout_types import IO_SUBDIR, RUN_TYPE_AUTOTRADER, RUN_TYPE_SIMULATION
+from python.framework.types.log_layout_types import (
+    IO_SUBDIR,
+    RUN_HEADER_ARTIFACT,
+    RUN_TYPE_AUTOTRADER,
+    RUN_TYPE_SIMULATION,
+)
 from python.framework.types.run_purpose_types import RunPurpose
 from python.framework.utils.run_id_utils import mint_run_id
 

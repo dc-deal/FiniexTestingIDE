@@ -29,10 +29,6 @@ from python.framework.types.api.report_types import (
 )
 from python.framework.types.decision_logic_types import DecisionLogicAction
 
-# The stream's name and the version of its line shapes, both written into its header
-STATE_FRAMES_STREAM = 'state_frames'
-STATE_FRAMES_SCHEMA_VERSION = 1
-
 
 class StateFrameCause(StrEnum):
     """Why a frame was written."""

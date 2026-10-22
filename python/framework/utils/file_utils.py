@@ -1,5 +1,7 @@
 import re
 
+from python.framework.types.log_layout_types import SCENARIO_LOG_NAME_PATTERN
+
 
 def sanitize_filename(name: str) -> str:
     """
@@ -32,4 +34,5 @@ def pad_int(value: int, width: int = 2) -> str:
 
 
 def file_name_for_scenario(scenario_index: int, name: str):
-    return f'{pad_int(scenario_index+1)}_{sanitize_filename(name)}'
+    return SCENARIO_LOG_NAME_PATTERN.format(
+        scenario_no=pad_int(scenario_index + 1), scenario=sanitize_filename(name))

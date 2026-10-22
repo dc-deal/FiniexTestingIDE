@@ -58,7 +58,6 @@ from python.framework.reporting.io.artifact_specs import (
 )
 from python.framework.reporting.io.report_artifact_io import write_artifact
 from python.framework.reporting.shared_report_coordinator import SharedReportCoordinator
-from python.framework.reporting.store.report_store import IO_SUBDIR
 from python.framework.reporting.store.run_provenance_builder import (
     build_run_provenance_from_session,
 )
@@ -71,6 +70,7 @@ from python.framework.trading_env.broker_config import BrokerConfig
 from python.framework.types.api.report_types import RunSummary
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
 from python.framework.types.autotrader_types.autotrader_result_types import AutoTraderResult
+from python.framework.types.log_layout_types import IO_SUBDIR, SESSION_EVENTS_FILE
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
 from python.framework.types.log_level import LogLevel
 from python.framework.types.signal_data_types import SignalObservedSeries
@@ -162,7 +162,7 @@ class AutotraderReportCoordinator:
             trade_history=result.trade_history or [],
             order_history=result.order_history or [],
             run_dir=self._run_dir,
-        ).flush('events.csv')
+        ).flush(SESSION_EVENTS_FILE)
 
         # Unified report artifacts (#391) — the canonical models the console/CSV
         # render and the API serves; same shape as sim, one set per session run.

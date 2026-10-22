@@ -19,18 +19,13 @@ import pytest
 from python.framework.exceptions.report_artifact_errors import ReportArtifactUnreadableError
 from python.framework.logging.global_logger import GlobalLogger
 from python.framework.reporting.acceptance_study_recorder import AcceptanceStudyRecorder
-from python.framework.reporting.io.artifact_specs import (
-    ORDER_EVENTS_STREAM,
-    RUN_RECORD_FILENAMES,
-)
+from python.framework.reporting.io.artifact_specs import RUN_RECORD_FILENAMES
 from python.framework.reporting.io.jsonl_stream_writer import JsonlStreamWriter
 from python.framework.reporting.io.order_event_stream_io import (
-    ORDER_EVENTS_SCHEMA_VERSION,
     read_order_event_stream,
     write_order_event_stream,
 )
 from python.framework.reporting.io.order_event_stream_writer import OrderEventStreamWriter
-from python.framework.reporting.store.report_store import IO_SUBDIR
 from python.framework.reporting.store.run_index import RunIndex
 from python.framework.types.api.report_types import RunHeader
 from python.framework.types.live_types.broker_truth_types import (
@@ -45,7 +40,12 @@ from python.framework.types.live_types.reconciliation_types import (
     ReconcileDivergence,
     ReconcileState,
 )
-from python.framework.types.log_layout_types import RUN_TYPE_SIMULATION
+from python.framework.types.log_layout_types import (
+    IO_SUBDIR,
+    ORDER_EVENTS_FILE,
+    ORDER_EVENTS_SCHEMA_VERSION,
+    RUN_TYPE_SIMULATION,
+)
 from python.framework.types.trading_env_types.order_event_types import (
     OrderEvent,
     OrderEventPlane,
@@ -95,7 +95,7 @@ class TestTheFile:
         writer(_event(1))
         writer.close()
 
-        header, line = _lines(tmp_path / ORDER_EVENTS_STREAM)
+        header, line = _lines(tmp_path / ORDER_EVENTS_FILE)
         assert header == {'record_kind': 'header', 'stream': 'order_events',
                           'schema_version': ORDER_EVENTS_SCHEMA_VERSION, 'run_id': _RUN_ID}
         assert 'schema_version' not in line, 'stated once, not on every line'
@@ -104,7 +104,7 @@ class TestTheFile:
         writer = OrderEventStreamWriter(tmp_path, _RUN_ID, 'btc_run', RecordingLogger())
         writer(_event(1))
 
-        rows, _, truncated = read_order_event_stream(tmp_path / ORDER_EVENTS_STREAM)
+        rows, _, truncated = read_order_event_stream(tmp_path / ORDER_EVENTS_FILE)
         assert [r.seq for r in rows] == [1] and not truncated, 'flushed, not buffered'
         writer.close()
 
@@ -113,7 +113,7 @@ class TestTheFile:
         writer(_event(1))
         writer.close()
 
-        line = _lines(tmp_path / ORDER_EVENTS_STREAM)[1]
+        line = _lines(tmp_path / ORDER_EVENTS_FILE)[1]
         assert 'fill_price' not in line and 'ts_init' not in line
         assert line['scenario_name'] == 'btc_run'
 
@@ -135,7 +135,7 @@ class TestTheFile:
         writer.close()
 
         assert len(logger.errors) == 1 and 'seq 2' in logger.errors[0]
-        rows, _, truncated = read_order_event_stream(tmp_path / ORDER_EVENTS_STREAM)
+        rows, _, truncated = read_order_event_stream(tmp_path / ORDER_EVENTS_FILE)
         assert [r.seq for r in rows] == [1] and not truncated
 
     def test_a_backtest_writes_its_units_one_after_the_other(self, tmp_path):
@@ -152,7 +152,7 @@ class TestTheFile:
 
     def test_a_backtest_that_placed_no_order_writes_no_stream(self, tmp_path):
         assert write_order_event_stream(tmp_path, _RUN_ID, [('btc_run', [])]) is None
-        assert not (tmp_path / ORDER_EVENTS_STREAM).exists()
+        assert not (tmp_path / ORDER_EVENTS_FILE).exists()
 
 
 class TestReadingItBack:
@@ -164,7 +164,7 @@ class TestReadingItBack:
         writer(_event(1))
         writer(_event(2, OrderEventType.ACCEPTED))
         writer.close()
-        return tmp_path / ORDER_EVENTS_STREAM
+        return tmp_path / ORDER_EVENTS_FILE
 
     def test_a_cut_off_last_line_is_left_out_and_reported(self, tmp_path):
         path = self._two_events(tmp_path)
@@ -239,7 +239,7 @@ class TestBrokerTruthLines:
             else:
                 writer(record)
         writer.close()
-        return tmp_path / ORDER_EVENTS_STREAM
+        return tmp_path / ORDER_EVENTS_FILE
 
     def test_both_planes_read_back_on_one_counter(self, tmp_path):
         path = self._write(
@@ -349,7 +349,7 @@ class TestTheRunIndexListsItAsAStream:
         index.record_streams(_RUN_ID, run_dir)
 
         run = index.list_runs()[0]
-        assert run.stream_files == [ORDER_EVENTS_STREAM]
+        assert run.stream_files == [ORDER_EVENTS_FILE]
         assert run.artifacts == [], 'a run with only its stream has not reported'
 
     def test_the_report_records_artifacts_without_the_stream(self, tmp_path):
@@ -360,7 +360,7 @@ class TestTheRunIndexListsItAsAStream:
 
         run = index.list_runs()[0]
         assert run.artifacts == ['portfolio.json']
-        assert run.stream_files == [ORDER_EVENTS_STREAM]
+        assert run.stream_files == [ORDER_EVENTS_FILE]
 
 
 class TestTheRunIndexKeepsRunRecordsOut:

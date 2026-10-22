@@ -54,6 +54,24 @@ seen), and rebuilding it without accepting the loss is refused before the index 
 config directory is declared self-healing: its rebuild deletes the file and its next read writes
 it again, so the catalog must not answer a rebuild with "rebuild before trusting it".
 
+## `test_run_entry_members.py`
+
+**The store's declaration of what a run directory and a sweep directory may hold (#621).** It reads
+the declaration alone and takes milliseconds; whether the writers keep to it is the census's question.
+
+- **Complete:** every member id has exactly one member, and every report spec is declared once as a
+  file in `io/`. A store that holds another store's entries points at one that declares them.
+- **One path, one member:** every member's example path matches its own member, and within one
+  pipeline no two members claim the same path; a placeholder never spans a directory.
+- **What it promises:** only a member written at the run's END is listed among the run's
+  `artifacts` — the rule a deny-list could break, because a file written earlier made a session that
+  died before its report read as reported. Only a stream is listed among the stream files, a stream
+  declares its schema version and nothing else does, each shape is written the way it allows, and
+  every member's help link reaches a real heading.
+- **Light:** importing the declaration in a fresh process loads no report model, no reporting
+  machinery, no configuration manager and no logger. Every writer may import it, so it may import
+  nothing that imports them back.
+
 ## `test_store_catalog_views.py`
 
 What `store_cli.py catalog` and `rebuild` print, over hand-built rows, so no store on disk decides

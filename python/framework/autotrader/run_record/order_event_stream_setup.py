@@ -12,17 +12,16 @@ from typing import List, Tuple
 from python.configuration.app_config_manager import AppConfigManager
 from python.framework.exceptions.report_artifact_errors import ReportArtifactUnreadableError
 from python.framework.logging.abstract_logger import AbstractLogger
-from python.framework.reporting.io.artifact_specs import ORDER_EVENTS_STREAM
 from python.framework.reporting.io.order_event_stream_io import (
     broker_truth_from_row,
     order_event_from_row,
     read_order_event_stream,
 )
 from python.framework.reporting.io.order_event_stream_writer import OrderEventStreamWriter
-from python.framework.reporting.store.report_store import IO_SUBDIR
 from python.framework.reporting.store.run_index import RunIndex
 from python.framework.trading_env.abstract_trade_executor import AbstractTradeExecutor
 from python.framework.types.live_types.broker_truth_types import BrokerTruthRecord
+from python.framework.types.log_layout_types import IO_SUBDIR, ORDER_EVENTS_FILE
 from python.framework.types.trading_env_types.order_event_types import OrderEvent
 
 
@@ -80,7 +79,7 @@ def read_back_order_event_stream(
         (the events, the broker-truth lines), each in the order it was recorded; both empty when
         there is no readable stream
     """
-    path = run_dir / IO_SUBDIR / ORDER_EVENTS_STREAM
+    path = run_dir / IO_SUBDIR / ORDER_EVENTS_FILE
     if not path.exists():
         return [], []
     try:

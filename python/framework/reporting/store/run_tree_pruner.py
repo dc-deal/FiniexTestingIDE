@@ -22,8 +22,6 @@ from python.framework.fixture_catalog.fixture_production_store import (
     PRODUCTION_RECORD_FILE,
     FixtureProductionStore,
 )
-from python.framework.reporting.io.artifact_specs import FIELD_STUDY_CAPTURE
-from python.framework.reporting.io.run_header_io import RUN_HEADER_ARTIFACT
 from python.framework.reporting.store.run_index import (
     RunIndex,
     dir_size,
@@ -33,7 +31,11 @@ from python.framework.reporting.store.run_ledger_index import LEDGER_INDEX_FILE
 from python.framework.reporting.store.run_results_ledger import RunResultsLedger
 from python.framework.types.api.report_types import RunInfo, RunReporting
 from python.framework.types.config_types.file_logging_config_types import RunLogPaths
-from python.framework.types.log_layout_types import IO_SUBDIR
+from python.framework.types.log_layout_types import (
+    FIELD_STUDY_CAPTURE,
+    IO_SUBDIR,
+    RUN_HEADER_ARTIFACT,
+)
 from python.framework.types.run_prune_types import (
     PruneCandidate,
     PruneReport,

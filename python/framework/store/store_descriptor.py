@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Callable, Optional, Tuple, Union
 
 from python.framework.store.abstract_store_index import AbstractStoreIndex
+from python.framework.types.store_member_types import EntryMember
 from python.framework.types.store_types import (
     RetrievalForm,
     StoreBackend,
@@ -66,6 +67,11 @@ class StoreDescriptor:
             written into the index. Empty for every index that is disposable, as the store model
             requires; a store that declares a loss is left out of `rebuild --all` and rebuilt
             alone only on request. A declared exception rather than a silent one
+        entry_members: Every file ONE entry may hold, when an entry is a directory of files (a
+            run, a sweep) — the store's declaration of what may be written into it. Empty when
+            an entry is a single file
+        contains_entries_of: The store whose entries nest inside this one's — a sweep holds its
+            combinations, which are runs. A walk over this store's entries stops at theirs
     """
     store_id: StoreId
     kind: StoreKind
@@ -82,6 +88,8 @@ class StoreDescriptor:
     self_healing: bool = False
     note: str = ''
     rebuild_loses: str = ''
+    entry_members: Tuple[EntryMember, ...] = ()
+    contains_entries_of: Optional[StoreId] = None
 
     def build_index(self) -> Optional[AbstractStoreIndex]:
         """

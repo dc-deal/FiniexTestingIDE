@@ -15,7 +15,6 @@ from python.configuration.market_config_manager import MarketConfigManager
 from python.configuration.sentiment_config_manager import SentimentConfigManager
 from python.framework.autotrader.dry_run_resolver import resolve_orders_to
 from python.framework.autotrader.live_clipping_monitor import LiveClippingMonitor
-from python.framework.autotrader.session_log_retention import SESSION_LOGS_SUBDIR
 from python.framework.autotrader.startup.autotrader_account_model import AutotraderAccountModel
 from python.framework.autotrader.startup.autotrader_broker_config_setup import create_broker_config
 from python.framework.autotrader.startup.autotrader_data_preparer import build_scenario_from_config
@@ -59,7 +58,12 @@ from python.framework.types.config_types.connection_policy_config_types import C
 from python.framework.types.live_types.live_execution_types import TimeoutConfig
 from python.framework.types.log_layout_types import (
     IO_SUBDIR,
+    RUN_SUMMARY_LOG_NAME,
     RUN_TYPE_AUTOTRADER,
+    SESSION_GLOBAL_LOG_NAME,
+    SESSION_LOG_NAME,
+    SESSION_LOG_PREFIX,
+    SESSION_LOGS_SUBDIR,
     WARMUP_HISTORY_FILE,
 )
 from python.framework.types.market_types.market_data_types import Bar
@@ -229,11 +233,11 @@ def create_autotrader_loggers(
     # Global logger — startup/shutdown/errors
     global_logger = ScenarioLogger(
         scenario_set_name=session_name,
-        scenario_name='global',
+        scenario_name=SESSION_GLOBAL_LOG_NAME,
         run_timestamp=run_timestamp,
         run_id=run_id,
         log_root_override=log_root,
-        file_name_prefix_override='autotrader'
+        file_name_prefix_override=SESSION_LOG_PREFIX
     )
 
     run_dir = global_logger.get_log_dir()
@@ -241,11 +245,11 @@ def create_autotrader_loggers(
     # Summary logger — post-session report (shares run_dir with global)
     summary_logger = ScenarioLogger(
         scenario_set_name=session_name,
-        scenario_name='summary',
+        scenario_name=RUN_SUMMARY_LOG_NAME,
         run_timestamp=run_timestamp,
         run_id=run_id,
         log_root_override=log_root,
-        file_name_prefix_override='autotrader'
+        file_name_prefix_override=SESSION_LOG_PREFIX
     )
 
     # Session logger — tick loop, daily rotated in session_logs/ subdir
@@ -253,11 +257,11 @@ def create_autotrader_loggers(
     # the first tick to match the tick's date (avoids wallclock vs replay mismatch).
     session_logger = ScenarioLogger(
         scenario_set_name=session_name,
-        scenario_name='session',
+        scenario_name=SESSION_LOG_NAME,
         run_timestamp=run_timestamp,
         run_id=run_id,
         log_root_override=log_root,
-        file_name_prefix_override='autotrader',
+        file_name_prefix_override=SESSION_LOG_PREFIX,
         # The tick-by-tick record of the session — every line carries the run's own time.
         # global and summary do not: they describe the session from outside a moment in it.
         event_time_column=True

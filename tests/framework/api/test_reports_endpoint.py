@@ -23,7 +23,6 @@ from python.framework.reporting.io.artifact_specs import (
     BROKER_ARTIFACT,
     EXECUTION_STATS_ARTIFACT,
     FEED_STABILITY_ARTIFACT,
-    ORDER_EVENTS_STREAM,
     ORDER_HISTORY_ARTIFACT,
     PENDING_ORDERS_ARTIFACT,
     PORTFOLIO_ARTIFACT,
@@ -37,7 +36,7 @@ from python.framework.reporting.io.artifact_specs import (
 from python.framework.reporting.io.order_event_stream_io import write_order_event_stream
 from python.framework.reporting.io.order_event_stream_writer import OrderEventStreamWriter
 from python.framework.reporting.io.report_artifact_io import write_artifact
-from python.framework.reporting.store.report_store import IO_SUBDIR, ReportStore
+from python.framework.reporting.store.report_store import ReportStore
 from python.framework.reporting.store.run_index import RunIndex
 from python.framework.types.api.report_types import (
     ActiveOrderRow,
@@ -95,7 +94,12 @@ from python.framework.types.live_types.broker_truth_types import (
     BrokerTruthSnapshot,
 )
 from python.framework.types.live_types.reconciliation_types import ReconcileState
-from python.framework.types.log_layout_types import RUN_TYPE_AUTOTRADER, RUN_TYPE_SIMULATION
+from python.framework.types.log_layout_types import (
+    IO_SUBDIR,
+    ORDER_EVENTS_FILE,
+    RUN_TYPE_AUTOTRADER,
+    RUN_TYPE_SIMULATION,
+)
 from python.framework.types.trading_env_types.broker_types import FeeSource
 from python.framework.types.trading_env_types.order_event_types import (
     OrderEvent,
@@ -708,7 +712,7 @@ class TestTheOrderEventStream:
             ]),
         ])
         if tail:
-            with open(io_dir / ORDER_EVENTS_STREAM, 'a', encoding='utf-8') as handle:
+            with open(io_dir / ORDER_EVENTS_FILE, 'a', encoding='utf-8') as handle:
                 handle.write(tail)
 
     def test_every_step_is_served_in_stream_order_with_its_key(self, client, tmp_path):
@@ -785,7 +789,7 @@ class TestTheOrderEventStream:
 
     def test_a_damaged_stream_is_unreadable_not_a_server_error(self, client, tmp_path):
         self._plant_stream(tmp_path)
-        path = _run_logs(tmp_path).simulation / 'my_set' / _RUN / IO_SUBDIR / ORDER_EVENTS_STREAM
+        path = _run_logs(tmp_path).simulation / 'my_set' / _RUN / IO_SUBDIR / ORDER_EVENTS_FILE
         lines = path.read_text(encoding='utf-8').splitlines()
         lines.insert(2, '{"broken')
         path.write_text('\n'.join(lines) + '\n', encoding='utf-8')

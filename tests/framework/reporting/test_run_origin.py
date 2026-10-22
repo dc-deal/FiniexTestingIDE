@@ -41,7 +41,6 @@ from python.framework.decision_logic.core.simple_consensus import SimpleConsensu
 from python.framework.exceptions.host_identity_errors import HostIdentityError
 from python.framework.optimization.optimization_runner import OptimizationRunner
 from python.framework.reporting.io.run_header_io import (
-    RUN_HEADER_ARTIFACT,
     read_run_header,
     write_run_header,
 )
@@ -57,7 +56,11 @@ from python.framework.types.autotrader_types.autotrader_config_types import Auto
 from python.framework.types.config_types.file_logging_config_types import RunLogPaths
 from python.framework.types.config_types.host_identity_config_types import TEST_HOST_ID
 from python.framework.types.git_info_types import GitInfo
-from python.framework.types.log_layout_types import RUN_TYPE_AUTOTRADER, RUN_TYPE_SIMULATION
+from python.framework.types.log_layout_types import (
+    RUN_HEADER_ARTIFACT,
+    RUN_TYPE_AUTOTRADER,
+    RUN_TYPE_SIMULATION,
+)
 from python.framework.types.run_origin_types import (
     CONSOLE_CLIENT,
     OPERATOR_PRINCIPAL,

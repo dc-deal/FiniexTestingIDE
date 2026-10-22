@@ -24,7 +24,6 @@ from python.framework.decision_logic.core.security_cert_study.security_cert_phas
     SecurityCertPhaseMachine,
 )
 from python.framework.logging.scenario_logger import ScenarioLogger
-from python.framework.reporting.io.artifact_specs import SECURITY_CERT_CAPTURE
 from python.framework.types.acceptance_study_types.security_cert_types import (
     LotRule,
     SecurityCertPhase,
@@ -34,6 +33,7 @@ from python.framework.types.acceptance_study_types.study_phase_types import (
     PhaseAction,
     PhaseResult,
 )
+from python.framework.types.log_layout_types import SECURITY_CERT_CAPTURE
 from python.framework.types.market_types.market_types import TradingContext
 from python.framework.types.parameter_types import InputParamDef
 from python.framework.types.trading_env_types.broker_types import SymbolSpecification

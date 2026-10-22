@@ -11,7 +11,6 @@ from pathlib import Path
 from pydantic import BaseModel
 
 from python.framework.logging.abstract_logger import AbstractLogger
-from python.framework.reporting.io.artifact_specs import ORDER_EVENTS_STREAM
 from python.framework.reporting.io.jsonl_stream_writer import JsonlStreamWriter
 from python.framework.reporting.io.order_event_stream_io import (
     broker_truth_row,
@@ -19,6 +18,7 @@ from python.framework.reporting.io.order_event_stream_io import (
     order_event_row,
 )
 from python.framework.types.live_types.broker_truth_types import BrokerTruthRecord
+from python.framework.types.log_layout_types import ORDER_EVENTS_FILE
 from python.framework.types.trading_env_types.order_event_types import OrderEvent
 
 
@@ -42,7 +42,7 @@ class OrderEventStreamWriter:
         self._scenario_name = scenario_name
         self._logger = logger
         self._failed = False
-        self._writer = JsonlStreamWriter(Path(io_dir) / ORDER_EVENTS_STREAM)
+        self._writer = JsonlStreamWriter(Path(io_dir) / ORDER_EVENTS_FILE)
         self._writer.write(order_event_header(run_id))
 
     def __call__(self, event: OrderEvent) -> None:

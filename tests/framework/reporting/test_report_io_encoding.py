@@ -17,16 +17,14 @@ from python.framework.reporting.io.artifact_specs import (
     WARNINGS_ERRORS_ARTIFACT,
 )
 from python.framework.reporting.io.report_artifact_io import read_artifact, write_artifact
-from python.framework.reporting.io.report_csv_io import (
-    TRADE_HISTORY_CSV,
-    write_trade_history_csv,
-)
+from python.framework.reporting.io.report_csv_io import write_trade_history_csv
 
 from python.framework.types.api.report_types import (
     TradeHistoryReport,
     WarningRow,
     WarningsErrorsReport,
 )
+from python.framework.types.log_layout_types import TRADE_HISTORY_CSV
 
 # Every report artifact names its run (#475); the value is opaque to these tests.
 _RUN_ID = '20260830_120000_a1b2c3d4'

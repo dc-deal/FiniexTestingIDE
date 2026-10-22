@@ -11,12 +11,12 @@ import pytest
 from fastapi.testclient import TestClient
 
 from python.api.api_app import create_app
-from python.framework.reporting.io.run_header_io import RUN_HEADER_ARTIFACT, write_run_header
+from python.framework.reporting.io.run_header_io import write_run_header
 from python.framework.reporting.store.report_store import ReportStore
 from python.framework.reporting.store.served_run_header import served_run_header
 from python.framework.reporting.store.run_index import RunIndex
 from python.framework.types.api.report_types import RunHeader
-from python.framework.types.log_layout_types import RUN_TYPE_SIMULATION
+from python.framework.types.log_layout_types import RUN_HEADER_ARTIFACT, RUN_TYPE_SIMULATION
 from python.framework.types.run_origin_types import (
     CodeIdentity,
     ComponentIdentity,

@@ -28,9 +28,9 @@ from python.framework.acceptance_studies.security_cert_stages import (
     stage_profile_path,
 )
 from python.framework.autotrader.autotrader_main import AutotraderMain
-from python.framework.reporting.io.artifact_specs import SAFETY_ARTIFACT, SECURITY_CERT_CAPTURE
+from python.framework.reporting.io.artifact_specs import SAFETY_ARTIFACT
 from python.framework.types.acceptance_study_types.security_cert_types import SecurityStageId
-from python.framework.types.log_layout_types import IO_SUBDIR
+from python.framework.types.log_layout_types import IO_SUBDIR, SECURITY_CERT_CAPTURE
 from tests.shared.fixture_helpers import remove_run_dir
 
 MOCK_DIR = Path('configs/autotrader_profiles/mock/security_cert')

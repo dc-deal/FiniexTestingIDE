@@ -17,10 +17,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from python.framework.autotrader.session_log_retention import (
-    SESSION_LOGS_SUBDIR,
-    prune_rotated_session_logs,
-)
+from python.framework.autotrader.session_log_retention import prune_rotated_session_logs
+from python.framework.types.log_layout_types import SESSION_LOGS_SUBDIR
 
 CURRENT_DAY = '20260924'
 

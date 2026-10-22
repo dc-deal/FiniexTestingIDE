@@ -108,8 +108,10 @@ each grid value is written into every scenario's `strategy_config` (in-memory, n
 is never mutated). The scenario set name is tagged per combination (`__<sweep_id>_c<idx>`) so each
 combination gets a unique run directory.
 
-**What a sweep directory holds.** One directory per combination, and the sweep's own two
-artifacts — nothing else:
+### What a sweep directory holds
+
+One directory per combination, and the sweep's own two artifacts — nothing else. The store
+catalog registers the directory as the sweep store and declares both files (#621):
 
 ```
 runs/simulation/sweeps/<sweep_id>/

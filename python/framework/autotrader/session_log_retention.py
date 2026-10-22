@@ -18,13 +18,17 @@ from pathlib import Path
 from typing import List
 
 from python.framework.logging.scenario_logger import ScenarioLogger
+from python.framework.types.log_layout_types import (
+    SESSION_DAY_LOG_FILE_PATTERN,
+    SESSION_LOGS_SUBDIR,
+)
 
 # The rotated files, and ONLY those. Anything else in the directory is left alone: the
 # retention rule was written for a known name pattern, and a pattern that also matched
 # something unforeseen would delete it just as quietly.
-_ROTATED_LOG_PATTERN = re.compile(r'^autotrader_session_(\d{8})\.log$')
-
-SESSION_LOGS_SUBDIR = 'session_logs'
+_DAY_LOG_PREFIX, _DAY_LOG_SUFFIX = SESSION_DAY_LOG_FILE_PATTERN.split('{day}')
+_ROTATED_LOG_PATTERN = re.compile(
+    '^' + re.escape(_DAY_LOG_PREFIX) + r'(\d{8})' + re.escape(_DAY_LOG_SUFFIX) + '$')
 
 
 def prune_rotated_session_logs(

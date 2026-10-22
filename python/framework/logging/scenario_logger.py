@@ -22,6 +22,7 @@ from typing import Optional
 
 from python.framework.logging.abstract_logger import AbstractLogger, ColorCodes
 from python.framework.logging.file_logger import FileLogger
+from python.framework.types.log_layout_types import RUN_LOG_FILE_PATTERN, SCENARIO_LOGS_SUBDIR
 from python.framework.types.log_level import LogLevel
 from python.framework.types.log_record_types import LogRecord
 from python.framework.utils.time_utils import format_log_elapsed
@@ -103,10 +104,12 @@ class ScenarioLogger(AbstractLogger):
                 self.run_dir.mkdir(parents=True, exist_ok=True)
 
                 # Per-scenario files go into scenario_logs/ subdir (backtesting only)
-                log_dir = self.run_dir / 'scenario_logs' if use_scenario_logs_subdir else self.run_dir
+                log_dir = (self.run_dir / SCENARIO_LOGS_SUBDIR if use_scenario_logs_subdir
+                           else self.run_dir)
                 if use_scenario_logs_subdir:
                     log_dir.mkdir(exist_ok=True)
-                log_filename = prefix + '_' + scenario_name + '.log'
+                log_filename = RUN_LOG_FILE_PATTERN.format(
+                    log_prefix=prefix, log_name=scenario_name)
 
             self.file_logger = FileLogger(
                 log_filename=log_filename,

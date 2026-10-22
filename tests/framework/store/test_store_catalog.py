@@ -8,7 +8,6 @@ compares. So both are asserted here.
 """
 
 import json
-import re
 from pathlib import Path
 
 import pandas as pd
@@ -29,6 +28,7 @@ from python.framework.types.store_types import (
     StoreId,
     StoreKind,
 )
+from tests.shared.markdown_anchor_helpers import heading_anchors
 
 
 class _ToyIndex(AbstractStoreIndex):
@@ -46,27 +46,6 @@ class _ToyIndex(AbstractStoreIndex):
                 for f in sorted(self._source.glob('*.json'))]
         self.write(pd.DataFrame(rows, columns=self.COLUMNS))
         return len(rows)
-
-
-def _heading_anchors(doc: Path) -> set:
-    """
-    The anchors GitHub derives from a document's headings, fenced code excluded.
-
-    Args:
-        doc: The Markdown file
-
-    Returns:
-        One anchor per heading: lower-cased, punctuation dropped, spaces turned into hyphens
-    """
-    anchors, fenced = set(), False
-    for line in doc.read_text(encoding='utf-8').splitlines():
-        if line.lstrip().startswith('```'):
-            fenced = not fenced
-            continue
-        heading = re.match(r'#{1,6}\s+(.+?)\s*$', line)
-        if heading and not fenced:
-            anchors.add(re.sub(r'[^\w\- ]', '', heading.group(1).lower()).replace(' ', '-'))
-    return anchors
 
 
 class TestCatalogCompleteness:
@@ -114,7 +93,7 @@ class TestCatalogCompleteness:
             doc = Path(path)
             assert doc.is_file(), f'{descriptor.store_id}: help link {path!r} is no file'
             if anchor:
-                assert anchor in _heading_anchors(doc), (
+                assert anchor in heading_anchors(doc), (
                     f'{descriptor.store_id}: {doc} has no heading with the anchor #{anchor}')
 
     def test_a_special_store_states_why_it_is_special(self):

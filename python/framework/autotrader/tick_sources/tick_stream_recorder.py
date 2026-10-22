@@ -28,10 +28,12 @@ from python.framework.types.autotrader_types.tick_stream_event_types import (
     TickStreamLossCause,
     TickStreamOutage,
 )
-from python.framework.types.log_layout_types import TICK_STREAM_EVENTS_FILE
+from python.framework.types.log_layout_types import (
+    TICK_STREAM_EVENTS_FILE,
+    TICK_STREAM_EVENTS_SCHEMA_VERSION,
+    TICK_STREAM_EVENTS_STREAM,
+)
 
-# The version of this record's line shapes, written into its header.
-TICK_STREAM_EVENTS_SCHEMA_VERSION = 1
 # How much of a refused value is kept: enough to recognise the frame, never the whole frame.
 _RAW_EXCERPT_CHARS = 120
 # How many refusals of one reason are listed; the rest are counted, and the totals close the
@@ -99,7 +101,7 @@ class TickStreamRecorder:
         if record_dir is not None:
             self._stream = RunStreamAppender(
                 path=Path(record_dir) / TICK_STREAM_EVENTS_FILE,
-                stream='tick_stream_events',
+                stream=TICK_STREAM_EVENTS_STREAM,
                 schema_version=TICK_STREAM_EVENTS_SCHEMA_VERSION,
                 run_id=run_id,
                 logger=session_logger,

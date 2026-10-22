@@ -26,7 +26,6 @@ from python.framework.fixture_catalog.fixture_production_store import (
     FixtureProductionStore,
 )
 from python.framework.reporting.io.artifact_specs import (
-    ORDER_EVENTS_STREAM,
     ORDER_HISTORY_ARTIFACT,
     TRADE_HISTORY_ARTIFACT,
 )
@@ -36,7 +35,7 @@ from python.framework.reporting.io.report_filters import (
     filter_order_history_report,
     filter_trade_history_report,
 )
-from python.framework.reporting.io.run_header_io import RUN_HEADER_ARTIFACT, read_run_header
+from python.framework.reporting.io.run_header_io import read_run_header
 from python.framework.reporting.io.run_stream_reader import read_stream_ends
 from python.framework.reporting.store.run_index import RunIndex
 from python.framework.reporting.store.run_list_figures import get_run_list_figures
@@ -52,12 +51,17 @@ from python.framework.types.api.report_types import (
     TradeHistoryReport,
 )
 from python.framework.types.api.state_frame_types import (
-    STATE_FRAMES_SCHEMA_VERSION,
-    STATE_FRAMES_STREAM,
     StateFrame,
     StateFrameStreamEnds,
 )
-from python.framework.types.log_layout_types import IO_SUBDIR, STATE_FRAMES_FILE
+from python.framework.types.log_layout_types import (
+    IO_SUBDIR,
+    ORDER_EVENTS_FILE,
+    RUN_HEADER_ARTIFACT,
+    STATE_FRAMES_FILE,
+    STATE_FRAMES_SCHEMA_VERSION,
+    STATE_FRAMES_STREAM,
+)
 
 T = TypeVar('T', bound=BaseModel)
 
@@ -209,7 +213,7 @@ class ReportStore:
         Returns:
             The report, or None when the run has no stream
         """
-        path = self._resolve(run_id, ORDER_EVENTS_STREAM)
+        path = self._resolve(run_id, ORDER_EVENTS_FILE)
         if path is None:
             return None
         rows, truths, truncated = read_order_event_stream(path)

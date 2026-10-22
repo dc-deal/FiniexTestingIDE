@@ -29,7 +29,7 @@ from python.configuration.app_config_manager import AppConfigManager
 from python.configuration.market_config_manager import MarketConfigManager
 from python.framework.autotrader.dry_run_resolver import resolve_orders_to
 from python.framework.logging.abstract_logger import AbstractLogger
-from python.framework.reporting.io.run_header_io import RUN_HEADER_ARTIFACT, read_run_header
+from python.framework.reporting.io.run_header_io import read_run_header
 from python.framework.types.api.report_types import OrdersTo, WarningsErrorsReport
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
 from python.framework.types.batch_execution_types import BatchExecutionSummary
@@ -39,6 +39,7 @@ from python.framework.types.data_origin_types import (
 )
 from python.framework.types.git_info_types import GitInfo
 from python.framework.types.log_layout_types import (
+    RUN_HEADER_ARTIFACT,
     RUN_TYPE_AUTOTRADER,
     RUN_TYPE_SIMULATION,
 )

@@ -9,19 +9,28 @@ Built by **#486**. The logical layer above it — model · codec · store · pre
 
 ---
 
-## The three levels
+## The levels
 
-Only the top two are unified. That is the finding, not a compromise.
+The catalog and the index are shared by every store, and the bytes stay each store's own. That is
+the finding, not a compromise.
 
 ```
 CATALOG   StoreCatalog          which stores exist, where, of what kind    ← ONE, a code registry
 INDEX     AbstractStoreIndex    what lies in one store                     ← one per store, shared base
+MEMBERS   EntryMember           what ONE entry may hold, file by file      ← where an entry is a directory
 STORE     the bytes             per domain, deliberately different         ← untouched
 ```
 
 Different stores have different access patterns. A carry-over file swapped atomically every 60 s and a
 300 MB tick archive share nothing but the word "file"; forcing one shape on both makes one of them
 worse. What they *can* share is how they describe themselves.
+
+Where one entry is a directory of files — a run, a sweep — the store also declares what may be in
+it, file by file: the file's path, its shape (a snapshot replaced whole, a stream appended line by
+line, a report output written at the run's end, a log), which pipeline writes it and when, and
+which column of the run index lists it. The writers build their paths from the same names
+([`log_layout_types.py`](../../python/framework/types/log_layout_types.py)), so a declared name
+and a written one cannot drift apart (#621).
 
 ---
 
@@ -34,6 +43,7 @@ worse. What they *can* share is how they describe themselves.
 | 1c | `run_patches/` — this repository's; a strategy repository keeps its own inside itself | RECORD | patch hash — SHA256 over the patch bytes | none — opened by id | A · document |
 | 1d | `runs/fixture_productions.jsonl` | RECORD | `entry_id` + `produced_at` — one line per production | none — one file, read whole | B · set |
 | 1e | `logs/imports/` | RECORD | import id — the UTC start plus a random half, e.g. `20261010_090011_a3f9c2d1` | none — opened by the id its file is named after | A · document |
+| 1f | `runs/simulation/sweeps/` — the parameter sweeps; their combinations are runs of row 1 | RECORD | `sweep_id` | none — its figures are the ledger's rows, `ranked.csv` an export of them | A · document |
 | 2 | `runs/ledger/` | RECORD | `(run_id, unit, period_no, currency)` — columns, never a path | `run_ledger_index.parquet` | B · set |
 | 3 | `tests/*/reports/` | RECORD | family + version + date | `certificates_index.parquet` | A · document |
 | 4 | `data/runtime/session_state/` | **CARRY-OVER** | `<bot_id>_<symbol>`, separator reserved | none — opened by key | A · document |
@@ -57,6 +67,12 @@ worse. What they *can* share is how they describe themselves.
 each production of a catalog entry made, and whether they carried every property — and it sits
 beside the run index so it dies with the run tree. The current fixture of an entry is derived from
 it, never stored ([Fixture Catalog](fixture_catalog.md#the-production-record)).
+
+**Row 1f holds runs.** A sweep's directory keeps the log of the data load its combinations share
+and the ranking the report command writes, and each combination is a run of row 1, inside it
+([Parameter Optimization](parameter_optimization_system.md#what-a-sweep-directory-holds)). The sweep
+store declares both files and that it holds runs; it keeps no index, because what a sweep is and how
+its combinations rank are read from the ledger.
 
 **Ticks and bars are two stores, and bars are DERIVED.** Ticks are IMPORTED from the collector's
 JSON; bars are GENERATED from those ticks, by a render that writes each symbol's files anew from

@@ -13,14 +13,13 @@ import pandas as pd
 from python.framework.exceptions.store_errors import StoreIndexSourceMissingError
 from python.framework.reporting.io.artifact_specs import RUN_RECORD_FILENAMES, STREAM_FILENAMES
 from python.framework.reporting.io.run_header_io import (
-    RUN_HEADER_ARTIFACT,
     read_run_header,
     write_run_header,
 )
 from python.framework.store.abstract_store_index import AbstractStoreIndex
 from python.framework.types.api.report_types import DataWindow, RunHeader, RunInfo, RunReporting
 from python.framework.types.config_types.file_logging_config_types import RunLogPaths
-from python.framework.types.log_layout_types import IO_SUBDIR
+from python.framework.types.log_layout_types import IO_SUBDIR, RUN_HEADER_ARTIFACT
 from python.framework.types.run_purpose_types import RunPurpose
 
 

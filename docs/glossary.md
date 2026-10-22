@@ -293,6 +293,13 @@ protective order released, the order timeout, the resolution ceiling, the end of
 the backtest's data, or the venue's own cancel or expiry. Stands beside *initiator* on the same row
 or event.
 
+**entry member** — One file a store entry may hold, declared by the store: its path, its shape
+(a *snapshot member*, a stream, a report output, a log), which pipeline writes it and when, and which
+column of the run index lists it. A run's directory and a sweep's are declared this way, and the
+writers build their paths from the same names. Never *member* alone — an archive's members and an
+enum's are other things. See
+[Data Storage Layout](architecture/data_storage_layout.md#the-levels).
+
 **error count** (`error_count`) — The ERROR records in a run's error pot. A unit that failed
 without logging an error shows in the *run outcome*, not here. See
 [Warnings & Errors](architecture/warnings_errors_tiers.md).
@@ -711,6 +718,13 @@ external, pre-collected data such as sentiment. See [Signal Data Source](data_pi
 
 **signal basis** — A signal row's quality grade from the producer (`llm`, `no_data`, `degraded`).
 
+**snapshot** — Several meanings, each qualified. A *snapshot member* is an *entry member*'s shape:
+a file that says what is true now and is replaced whole, never appended to — a run's header, a
+session's warmup history. A *signal snapshot* is one archived line of a signal source: the
+producer's envelope with the stamp of its receipt. A *broker-truth snapshot* is what one read of
+the venue returned: its open orders and positions. The *config snapshot* names the configuration
+file a run started from.
+
 **state frame** (`io/state_frames.jsonl`, `state_frames` in a profile) — What an AutoTrader
 session held and decided at one moment: its account, its open positions and resting orders, every
 worker output and its decision. Written on a cadence of the canonical clock, when a bar closes,
@@ -727,18 +741,21 @@ The `triggered` order event records the moment, in a backtest only: a live venue
 it.
 
 **store** — One registered place where persistent bytes live, of exactly one kind: *record*,
-*carry-over*, *archive*, *derived* or *special*. `store_cli.py catalog` lists them. See
+*carry-over*, *archive*, *derived* or *special*. Where one entry is a directory of files — a run,
+a sweep — the store also declares each file it may hold (*entry member*). `store_cli.py catalog`
+lists them. See
 [Data Storage Layout](architecture/data_storage_layout.md).
 
 **strategy** — A decision logic with its workers and all their parameters: exactly what
 `strategy_config` holds. A *bot* is a strategy bound to one AutoTrader profile.
 
 **stream files** (`stream_files` on the run list) — The files a run keeps beside its report
-artifacts and that the API serves — today the order-event stream, which a live session writes as it
-runs and a backtest with its report. Kept apart from `artifacts`, whose emptiness marks a run that
-never reached its report. A session's other records — its warmup
-history, its tick stream record — are neither: listed nowhere on the run list. Not the producer's
-stream (see *stream state*).
+artifacts and that the API serves while it runs — such as the order-event stream, which a live
+session writes as it runs and a backtest with its report, or a session's state frames. Kept apart
+from `artifacts`, whose emptiness marks a run that never reached its report. A session's other
+records — its warmup history, its tick stream record — are neither: listed nowhere on the run list.
+The run store declares which of its *entry members* are stream files. Not the producer's stream
+(see *stream state*).
 
 **stream state** — The producer's stream: `replay` while missed envelopes catch up, `live` once
 they arrive as they happen.

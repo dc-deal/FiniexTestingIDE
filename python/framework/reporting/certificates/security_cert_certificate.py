@@ -47,10 +47,9 @@ from python.framework.reporting.certificates.study_certificate_writer import (
 from python.framework.reporting.io.artifact_specs import (
     RUN_SUMMARY_ARTIFACT,
     SAFETY_ARTIFACT,
-    SECURITY_CERT_CAPTURE,
 )
 from python.framework.reporting.io.report_artifact_io import read_artifact
-from python.framework.reporting.io.run_header_io import RUN_HEADER_ARTIFACT, read_run_header
+from python.framework.reporting.io.run_header_io import read_run_header
 from python.framework.types.acceptance_study_types.security_cert_types import (
     ExpectedOutcome,
     RuleCertification,
@@ -65,7 +64,11 @@ from python.framework.types.acceptance_study_types.study_capture_types import (
 from python.framework.types.acceptance_study_types.study_phase_types import PhaseOutcome
 from python.framework.types.api.report_types import OrdersTo, RunHeader, SafetyReport
 from python.framework.types.autotrader_types.safety_session_types import FlattenOutcome
-from python.framework.types.log_layout_types import IO_SUBDIR
+from python.framework.types.log_layout_types import (
+    IO_SUBDIR,
+    RUN_HEADER_ARTIFACT,
+    SECURITY_CERT_CAPTURE,
+)
 from python.framework.types.trading_env_types.order_event_types import OrderEventType
 
 # Default home for committed certificates — sibling of tests/live_field_study/reports

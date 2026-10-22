@@ -27,7 +27,7 @@ from python.framework.reporting.io.report_csv_io import (
     write_execution_stats_csv,
     write_trade_history_csv,
 )
-from python.framework.reporting.store.report_store import IO_SUBDIR, ReportStore
+from python.framework.reporting.store.report_store import ReportStore
 from python.framework.reporting.store.run_index import RunIndex
 from python.framework.types.api.report_types import (
     ActiveOrderRow,
@@ -63,6 +63,7 @@ from python.framework.types.api.report_types import (
 from python.framework.types.config_types.file_logging_config_types import RunLogPaths
 from python.framework.types.trading_env_types.order_types import CloseType
 from python.framework.types.log_layout_types import (
+    IO_SUBDIR,
     RUN_TYPE_AUTOTRADER,
     RUN_TYPE_SIMULATION,
 )

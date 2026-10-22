@@ -45,7 +45,7 @@ from python.configuration.app_config_manager import AppConfigManager
 from python.framework.reporting.certificates.study_certificate_writer import (
     write_study_certificate,
 )
-from python.framework.reporting.io.artifact_specs import FIELD_STUDY_CAPTURE, RUN_SUMMARY_ARTIFACT
+from python.framework.reporting.io.artifact_specs import RUN_SUMMARY_ARTIFACT
 from python.framework.reporting.io.report_artifact_io import read_artifact
 from python.framework.types.acceptance_study_types.study_capture_types import (
     SESSION_END_PHASE,
@@ -53,7 +53,7 @@ from python.framework.types.acceptance_study_types.study_capture_types import (
 )
 from python.framework.types.acceptance_study_types.study_phase_types import PhaseOutcome
 from python.framework.types.live_types.reconciliation_types import ReconcileState
-from python.framework.types.log_layout_types import IO_SUBDIR
+from python.framework.types.log_layout_types import FIELD_STUDY_CAPTURE, IO_SUBDIR
 from python.framework.types.trading_env_types.broker_types import FeeSource
 from python.framework.types.trading_env_types.order_types import FeeReport, OrderSide
 from python.framework.utils.trading_math.slippage_math import adverse_slippage

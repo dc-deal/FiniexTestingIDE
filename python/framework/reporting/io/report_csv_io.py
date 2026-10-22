@@ -20,11 +20,11 @@ from python.framework.types.api.report_types import (
     TradeHistoryReport,
     TradeHistoryRow,
 )
-
-# Canonical CSV names inside a run directory
-EXECUTION_STATS_CSV = 'execution_stats.csv'
-ORDER_HISTORY_CSV = 'order_history.csv'
-TRADE_HISTORY_CSV = 'trade_history.csv'
+from python.framework.types.log_layout_types import (
+    EXECUTION_STATS_CSV,
+    ORDER_HISTORY_CSV,
+    TRADE_HISTORY_CSV,
+)
 
 
 def write_trade_history_csv(report: TradeHistoryReport, run_dir: Path) -> Path:

@@ -12,12 +12,13 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from python.configuration.app_config_manager import AppConfigManager
-from python.framework.autotrader.session_log_retention import (
-    SESSION_LOGS_SUBDIR,
-    prune_rotated_session_logs,
-)
+from python.framework.autotrader.session_log_retention import prune_rotated_session_logs
 from python.framework.logging.file_logger import FileLogger
 from python.framework.logging.scenario_logger import ScenarioLogger
+from python.framework.types.log_layout_types import (
+    SESSION_DAY_LOG_FILE_PATTERN,
+    SESSION_LOGS_SUBDIR,
+)
 
 
 class SessionLogRotator:
@@ -133,7 +134,7 @@ def create_session_file_logger(run_dir: Path, date_suffix: str) -> FileLogger:
     session_logs_dir = run_dir / SESSION_LOGS_SUBDIR
     session_logs_dir.mkdir(parents=True, exist_ok=True)
     return FileLogger(
-        log_filename=f'autotrader_session_{date_suffix}.log',
+        log_filename=SESSION_DAY_LOG_FILE_PATTERN.format(day=date_suffix),
         file_path=session_logs_dir,
         # The threshold the session logger actually gates on, read from config (§28) — not
         # carried over from the file logger being replaced, which never enforced it anyway.

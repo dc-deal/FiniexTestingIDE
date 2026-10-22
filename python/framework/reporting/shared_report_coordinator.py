@@ -53,12 +53,10 @@ from python.framework.reporting.io.report_csv_io import (
     write_order_history_csv,
     write_trade_history_csv,
 )
-from python.framework.reporting.io.run_header_io import (
-    RUN_HEADER_ARTIFACT,
-    read_run_header,
-)
+from python.framework.reporting.io.run_header_io import read_run_header
 from python.framework.reporting.store.run_index import RunIndex
 from python.framework.types.api.report_types import UnitRoster
+from python.framework.types.log_layout_types import RUN_HEADER_ARTIFACT
 from python.framework.types.signal_data_types import SignalObservedSeries
 
 

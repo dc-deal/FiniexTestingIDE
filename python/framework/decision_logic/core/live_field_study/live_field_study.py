@@ -24,7 +24,6 @@ from python.framework.decision_logic.core.live_field_study.field_study_phase_mac
     FieldStudyPhaseMachine,
 )
 from python.framework.logging.scenario_logger import ScenarioLogger
-from python.framework.reporting.io.artifact_specs import FIELD_STUDY_CAPTURE
 from python.framework.types.acceptance_study_types.field_study_types import (
     FieldStudyPhase,
     PhaseType,
@@ -37,6 +36,7 @@ from python.framework.types.autotrader_types.cold_start_types import (
     ColdStartSituation,
     ColdStartVerdict,
 )
+from python.framework.types.log_layout_types import FIELD_STUDY_CAPTURE
 from python.framework.types.market_types.market_types import TradingContext
 from python.framework.types.parameter_types import InputParamDef
 from python.framework.types.trading_env_types.order_types import OrderType

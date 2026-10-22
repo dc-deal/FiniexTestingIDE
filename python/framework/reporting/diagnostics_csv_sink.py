@@ -16,6 +16,12 @@ import csv
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from python.framework.types.log_layout_types import (
+    DIAGNOSTICS_FILE_PATTERN,
+    DIAGNOSTICS_SUBDIR,
+    SCENARIO_DIAGNOSTICS_FILE_PATTERN,
+)
+
 
 class DiagnosticsCsvSink:
     """A named, algo-declared diagnostics CSV — columns declared, rows appended."""
@@ -77,7 +83,8 @@ class DiagnosticsCsvSink:
             return None
 
         run_dir.mkdir(parents=True, exist_ok=True)
-        filename = f'{self._name}_{scenario_suffix}.csv' if scenario_suffix else f'{self._name}.csv'
+        filename = (SCENARIO_DIAGNOSTICS_FILE_PATTERN.format(sink=self._name, scenario=scenario_suffix)
+                    if scenario_suffix else DIAGNOSTICS_FILE_PATTERN.format(sink=self._name))
         out_path = run_dir / filename
         try:
             with open(out_path, 'w', newline='', encoding='utf-8') as f:
@@ -91,9 +98,6 @@ class DiagnosticsCsvSink:
             return None
 
         return out_path
-
-
-DIAGNOSTICS_SUBDIR = 'diagnostics'
 
 
 def flush_decision_diagnostics(

@@ -68,7 +68,6 @@ from python.framework.reporting.io.artifact_specs import (
 from python.framework.reporting.io.order_event_stream_io import write_order_event_stream
 from python.framework.reporting.io.report_artifact_io import write_artifact
 from python.framework.reporting.shared_report_coordinator import SharedReportCoordinator
-from python.framework.reporting.store.report_store import IO_SUBDIR
 from python.framework.reporting.store.run_provenance_builder import build_run_provenance
 from python.framework.reporting.builders.booking_periods_report_builder import (
     build_booking_periods_report,
@@ -76,6 +75,11 @@ from python.framework.reporting.builders.booking_periods_report_builder import (
 from python.framework.reporting.console.booking_periods_summary import BookingPeriodsSummary
 from python.framework.reporting.store.run_results_ledger import append_run_to_ledger
 from python.framework.types.batch_execution_types import BatchExecutionSummary
+from python.framework.types.log_layout_types import (
+    EVENTS_SUBDIR,
+    IO_SUBDIR,
+    SCENARIO_EVENTS_FILE_PATTERN,
+)
 from python.framework.types.run_results_types import SweepContext
 from python.scenario.scenario_set import ScenarioSet
 from python.framework.utils.console_renderer import ConsoleRenderer
@@ -248,7 +252,7 @@ class BatchReportCoordinator:
         # Writes one events_<scenario>.csv per scenario into an events/
         # subfolder of the scenario set's log dir — keeps the run dir tidy
         # when many scenarios produce many CSVs.
-        events_dir = run_dir / 'events'
+        events_dir = run_dir / EVENTS_SUBDIR
         events_dir.mkdir(exist_ok=True)
         for process_result in self._batch_execution_summary.process_result_list:
             tlr = process_result.tick_loop_results
@@ -258,7 +262,7 @@ class BatchReportCoordinator:
                 trade_history=tlr.trade_history or [],
                 order_history=tlr.order_history or [],
                 run_dir=events_dir,
-            ).flush(f'events_{process_result.scenario_name}.csv')
+            ).flush(SCENARIO_EVENTS_FILE_PATTERN.format(scenario=process_result.scenario_name))
 
         # === PERSIST the pipeline-specific sections (the shared 7 were written by the
         # shared coordinator above); same io/ subfolder (#396 housekeeping) ===

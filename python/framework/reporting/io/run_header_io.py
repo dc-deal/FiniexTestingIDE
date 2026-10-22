@@ -8,9 +8,8 @@ from pathlib import Path
 from typing import List
 
 from python.framework.types.api.report_types import DataWindow, RunHeader
+from python.framework.types.log_layout_types import RUN_HEADER_ARTIFACT
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
-
-RUN_HEADER_ARTIFACT = 'header.json'
 
 
 def write_run_header(header: RunHeader, run_dir: Path) -> Path:

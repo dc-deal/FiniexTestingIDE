@@ -35,7 +35,13 @@ from python.framework.types.api.report_types import (
     TicksFrom,
 )
 from python.framework.types.config_types.robustness_config_types import RobustnessConfig
-from python.framework.types.log_layout_types import MOUNT_BUILD_LOG, RUN_TYPE_SIMULATION
+from python.framework.types.log_layout_types import (
+    BACKTEST_GLOBAL_LOG_NAME,
+    BACKTEST_SYSTEM_INFO_LOG_NAME,
+    MOUNT_BUILD_LOG,
+    RUN_SUMMARY_LOG_NAME,
+    RUN_TYPE_SIMULATION,
+)
 from python.framework.types.run_config_types import RunConfigKind
 from python.framework.types.run_origin_types import CodeIdentity, RunChannel, RunOrigin
 from python.framework.types.scenario_types.scenario_set_types import (
@@ -129,7 +135,7 @@ class ScenarioSet:
 
         self.logger = ScenarioLogger(
             scenario_set_name=self.scenario_set_name,
-            scenario_name='global_log',
+            scenario_name=BACKTEST_GLOBAL_LOG_NAME,
             run_timestamp=self._run_timestamp,
             run_id=self._run_id,
             log_root_override=self._log_root,
@@ -190,7 +196,7 @@ class ScenarioSet:
         # own header — which is exactly what it used to do.
         self.printed_summary_logger = None if mount_only else ScenarioLogger(
             scenario_set_name=self.scenario_set_name,
-            scenario_name='summary',
+            scenario_name=RUN_SUMMARY_LOG_NAME,
             run_timestamp=self._run_timestamp,
             run_id=self._run_id,
             log_root_override=self._log_root
@@ -232,7 +238,7 @@ class ScenarioSet:
         if self.app_config.get_logging_write_system_info():
             system_info_logger = ScenarioLogger(
                 scenario_set_name=self.scenario_set_name,
-                scenario_name='system_info',
+                scenario_name=BACKTEST_SYSTEM_INFO_LOG_NAME,
                 run_timestamp=self.logger.get_run_timestamp(),
                 run_id=self._run_id,
                 log_root_override=self._log_root

@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 from python.framework.types.event_stream_types import TradeEvent, TradeEventType
+from python.framework.types.log_layout_types import SESSION_EVENTS_FILE
 from python.framework.types.portfolio_types.portfolio_trade_record_types import TradeRecord
 from python.framework.types.trading_env_types.broker_trade_types import BrokerTrade
 from python.framework.types.trading_env_types.order_types import (
@@ -112,7 +113,7 @@ class EventStreamWriter:
         events = _build_events(trade_history, order_history)
         return cls(run_dir, events)
 
-    def flush(self, filename: str = 'events.csv') -> Optional[Path]:
+    def flush(self, filename: str = SESSION_EVENTS_FILE) -> Optional[Path]:
         """
         Sort events by timestamp and write the CSV file.
 

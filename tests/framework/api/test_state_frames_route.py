@@ -19,7 +19,7 @@ from python.framework.reporting.io.artifact_specs import WARNINGS_ERRORS_ARTIFAC
 from python.framework.reporting.io.report_artifact_io import write_artifact
 from python.framework.reporting.io.run_stream_reader import read_stream_ends
 from python.framework.reporting.io.run_stream_appender import RunStreamAppender
-from python.framework.reporting.store.report_store import IO_SUBDIR, ReportStore
+from python.framework.reporting.store.report_store import ReportStore
 from python.framework.reporting.store.run_index import RunIndex
 from python.framework.types.api.report_types import (
     RunHeader,
@@ -28,13 +28,17 @@ from python.framework.types.api.report_types import (
     WarningsErrorsReport,
 )
 from python.framework.types.api.state_frame_types import (
-    STATE_FRAMES_SCHEMA_VERSION,
-    STATE_FRAMES_STREAM,
     ProcessMemoryRow,
     StateFrame,
     StateFrameCause,
 )
-from python.framework.types.log_layout_types import RUN_TYPE_AUTOTRADER, STATE_FRAMES_FILE
+from python.framework.types.log_layout_types import (
+    IO_SUBDIR,
+    RUN_TYPE_AUTOTRADER,
+    STATE_FRAMES_FILE,
+    STATE_FRAMES_SCHEMA_VERSION,
+    STATE_FRAMES_STREAM,
+)
 from python.framework.types.run_outcome_types import RunOutcome
 
 _RUN = '20261101_000012_4c7e19a2'
