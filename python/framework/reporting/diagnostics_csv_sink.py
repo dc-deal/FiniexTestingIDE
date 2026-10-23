@@ -9,19 +9,14 @@ strategy owns the schema: it declares columns and appends rows.
 Distinct from the trade-domain event_stream_csv_writer (fixed schema, post-loop
 reconstruction). Rows here accumulate in memory during the run (decision moments
 are low-frequency, not per-tick) and are flushed once at run end, so nothing
-touches the hot tick path. A no-op when file logging is disabled (run_dir None).
+touches the hot tick path. A no-op where the run has no writer.
 """
 
-import csv
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from python.framework.constants.run_layout_constants import (
-    DIAGNOSTICS_FILE_PATTERN,
-    DIAGNOSTICS_SUBDIR,
-    SCENARIO_DIAGNOSTICS_FILE_PATTERN,
-)
-from python.framework.utils.file_utils import create_directory
+from python.framework.store.entry_members.run_entry_writer import RunEntryWriter
+from python.framework.types.store_member_types import RunEntryMemberId
 
 
 class DiagnosticsCsvSink:
@@ -71,17 +66,17 @@ class DiagnosticsCsvSink:
 
     def flush(
         self,
-        run_dir: Optional[Path],
+        writer: Optional[RunEntryWriter],
         scenario_suffix: Optional[str] = None,
     ) -> Optional[Path]:
         """
-        Write the buffered rows to a CSV in the run directory.
+        Write the buffered rows to a CSV in the run's diagnostics folder.
 
-        No-op when there is no run directory (a test without one) or no rows were
+        No-op when there is no writer (a test without a run) or no rows were
         appended — mirrors the EventStreamWriter convention.
 
         Args:
-            run_dir: Directory to write into (next to events.csv)
+            writer: The run's writer
             scenario_suffix: Optional scenario name → <name>_<suffix>.csv
                 (sim writes all scenarios into one run dir; the suffix
                 disambiguates and aligns with events_<scenario>.csv)
@@ -89,30 +84,25 @@ class DiagnosticsCsvSink:
         Returns:
             Path to the written CSV, or None if nothing was written
         """
-        if run_dir is None or not self._rows:
+        if writer is None or not self._rows:
             return None
 
-        create_directory(run_dir, holds="the strategy's diagnostics tables")
-        filename = (SCENARIO_DIAGNOSTICS_FILE_PATTERN.format(sink=self._name, scenario=scenario_suffix)
-                    if scenario_suffix else DIAGNOSTICS_FILE_PATTERN.format(sink=self._name))
-        out_path = run_dir / filename
+        if scenario_suffix:
+            member_id, names = RunEntryMemberId.SCENARIO_DIAGNOSTICS, {
+                'sink': self._name, 'scenario': scenario_suffix}
+        else:
+            member_id, names = RunEntryMemberId.SESSION_DIAGNOSTICS, {'sink': self._name}
         try:
-            with open(out_path, 'w', newline='', encoding='utf-8') as f:
-                writer = csv.DictWriter(
-                    f, fieldnames=self._columns, extrasaction='ignore')
-                writer.writeheader()
-                for row in self._rows:
-                    writer.writerow(row)
+            return writer.write_table(member_id, self._columns, self._rows,
+                                      ignore_extra_columns=True, **names)
         except Exception as e:
-            print(f'Warning: Failed to write diagnostics CSV {out_path}: {e}')
+            print(f'Warning: Failed to write diagnostics CSV {self._name}: {e}')
             return None
-
-        return out_path
 
 
 def flush_decision_diagnostics(
     decision_logic,
-    run_dir: Optional[Path],
+    writer: Optional[RunEntryWriter],
     scenario_suffix: Optional[str] = None,
 ) -> None:
     """
@@ -126,9 +116,8 @@ def flush_decision_diagnostics(
 
     Args:
         decision_logic: The AbstractDecisionLogic instance for the run
-        run_dir: Run directory, or None when file logging is disabled
+        writer: The run's writer, or None when there is no run directory
         scenario_suffix: Optional scenario name for the sim per-scenario filename
     """
-    target = run_dir / DIAGNOSTICS_SUBDIR if run_dir is not None else None
     for sink in decision_logic.get_diagnostics_sinks():
-        sink.flush(target, scenario_suffix)
+        sink.flush(writer, scenario_suffix)

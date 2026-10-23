@@ -9,14 +9,9 @@ stays hand-written here while the JSON side collapses onto the generic artifact 
 its run is a row nobody can trace back (#475).
 """
 
-import csv
 from pathlib import Path
 
-from python.framework.constants.run_layout_constants import (
-    EXECUTION_STATS_CSV,
-    ORDER_HISTORY_CSV,
-    TRADE_HISTORY_CSV,
-)
+from python.framework.store.entry_members.run_entry_writer import RunEntryWriter
 from python.framework.types.api.report_types import (
     ExecutionStatsReport,
     ExecutionStatsRow,
@@ -25,16 +20,17 @@ from python.framework.types.api.report_types import (
     TradeHistoryReport,
     TradeHistoryRow,
 )
+from python.framework.types.store_member_types import RunEntryMemberId
 
 
-def write_trade_history_csv(report: TradeHistoryReport, run_dir: Path) -> Path:
+def write_trade_history_csv(report: TradeHistoryReport, writer: RunEntryWriter) -> Path:
     """
     Persist the report as a CSV table — the same columns as the JSON / API model,
     so CSV, console, and API show one table.
 
     Args:
         report: The built trade-history report
-        run_dir: The run's directory
+        writer: The run's writer
 
     Returns:
         Path of the written CSV
@@ -42,56 +38,44 @@ def write_trade_history_csv(report: TradeHistoryReport, run_dir: Path) -> Path:
     # Flat aggregate table: the nested per-fill executions (#393) are JSON-only —
     # they do not flatten into a single CSV row (same rule as the portfolio model).
     nested = {'entry_executions', 'exit_executions'}
-    path = Path(run_dir) / TRADE_HISTORY_CSV
     columns = ['run_id'] + [k for k in TradeHistoryRow.model_fields if k not in nested]
-    with path.open('w', newline='', encoding='utf-8') as handle:
-        writer = csv.DictWriter(handle, fieldnames=columns)
-        writer.writeheader()
-        for row in report.trades:
-            # JSON mode: an enum is written as its value (`partial`, not `CloseType.PARTIAL`)
-            writer.writerow({'run_id': report.run_id,
-                             **row.model_dump(mode='json', exclude=nested)})
-    return path
+    # JSON mode: an enum is written as its value (`partial`, not `CloseType.PARTIAL`)
+    return writer.write_table(
+        RunEntryMemberId.TRADE_HISTORY_CSV, columns,
+        ({'run_id': report.run_id, **row.model_dump(mode='json', exclude=nested)}
+         for row in report.trades))
 
 
-def write_order_history_csv(report: OrderHistoryReport, run_dir: Path) -> Path:
+def write_order_history_csv(report: OrderHistoryReport, writer: RunEntryWriter) -> Path:
     """
     Persist the report as a CSV table — same columns as the JSON / API model.
 
     Args:
         report: The built order-history report
-        run_dir: The run's directory
+        writer: The run's writer
 
     Returns:
         Path of the written CSV
     """
-    path = Path(run_dir) / ORDER_HISTORY_CSV
     columns = ['run_id'] + list(OrderHistoryRow.model_fields.keys())
-    with path.open('w', newline='', encoding='utf-8') as handle:
-        writer = csv.DictWriter(handle, fieldnames=columns)
-        writer.writeheader()
-        for row in report.orders:
-            # JSON mode: an enum is written as its value and an absent field as an empty cell.
-            writer.writerow({'run_id': report.run_id, **row.model_dump(mode='json')})
-    return path
+    # JSON mode: an enum is written as its value and an absent field as an empty cell.
+    return writer.write_table(
+        RunEntryMemberId.ORDER_HISTORY_CSV, columns,
+        ({'run_id': report.run_id, **row.model_dump(mode='json')} for row in report.orders))
 
 
-def write_execution_stats_csv(report: ExecutionStatsReport, run_dir: Path) -> Path:
+def write_execution_stats_csv(report: ExecutionStatsReport, writer: RunEntryWriter) -> Path:
     """
     Persist the per-unit rows as a CSV table (same columns as the JSON unit rows).
 
     Args:
         report: The built execution-stats report
-        run_dir: The run's directory
+        writer: The run's writer
 
     Returns:
         Path of the written CSV
     """
-    path = Path(run_dir) / EXECUTION_STATS_CSV
     columns = ['run_id'] + list(ExecutionStatsRow.model_fields)
-    with path.open('w', newline='', encoding='utf-8') as handle:
-        writer = csv.DictWriter(handle, fieldnames=columns)
-        writer.writeheader()
-        for row in report.units:
-            writer.writerow({'run_id': report.run_id, **row.model_dump()})
-    return path
+    return writer.write_table(
+        RunEntryMemberId.EXECUTION_STATS_CSV, columns,
+        ({'run_id': report.run_id, **row.model_dump()} for row in report.units))

@@ -18,10 +18,8 @@ from python.configuration.app_config_manager import AppConfigManager
 from python.framework.acceptance_studies.abstract_acceptance_study import AbstractAcceptanceStudy
 from python.framework.constants.run_layout_constants import (
     FIELD_STUDY_CAPTURE,
-    IO_SUBDIR,
     RUN_TYPE_AUTOTRADER,
     SECURITY_CERT_CAPTURE,
-    SESSION_EVENTS_FILE,
 )
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.discoveries.signal_coverage.signal_scenario_info import SignalScenarioInfo
@@ -64,7 +62,6 @@ from python.framework.reporting.io.artifact_specs import (
     VENUE_ACCOUNT_ARTIFACT,
     WARNINGS_ERRORS_ARTIFACT,
 )
-from python.framework.reporting.io.report_artifact_io import write_artifact
 from python.framework.reporting.shared_report_coordinator import SharedReportCoordinator
 from python.framework.reporting.store.run_provenance_builder import (
     build_run_provenance_from_session,
@@ -74,6 +71,7 @@ from python.framework.reporting.builders.booking_periods_report_builder import (
 )
 from python.framework.reporting.console.booking_periods_summary import BookingPeriodsSummary
 from python.framework.reporting.store.run_results_ledger import append_run_to_ledger
+from python.framework.store.entry_members.run_entry_writer import RunEntryWriter
 from python.framework.store.entry_members.run_footprint import (
     expectation,
     expectation_after,
@@ -168,6 +166,7 @@ class AutotraderReportCoordinator:
             them from here rather than computing its own (#235)
         """
         result = self._result
+        writer = RunEntryWriter(self._run_dir, RUN_TYPE_AUTOTRADER)
 
         # Long-format event-stream CSV (#330) — replaces the previous
         # autotrader_orders.csv + autotrader_trades.csv pair with a single
@@ -175,9 +174,8 @@ class AutotraderReportCoordinator:
         events_writer = EventStreamWriter.from_autotrader_result(
             trade_history=result.trade_history or [],
             order_history=result.order_history or [],
-            run_dir=self._run_dir,
         )
-        events_writer.flush(SESSION_EVENTS_FILE)
+        events_writer.flush(writer, RunEntryMemberId.SESSION_EVENTS)
 
         # Unified report artifacts (#391) — the canonical models the console/CSV
         # render and the API serves; same shape as sim, one set per session run.
@@ -201,14 +199,11 @@ class AutotraderReportCoordinator:
                 self._config.scenario_settings.stress_test_config
                 if self._config.scenario_settings else None))
 
-        # Report artifacts (JSON + CSV) go into the session's io/ subfolder (#396 housekeeping).
-        io_dir = self._run_dir / IO_SUBDIR
-
         # DERIVE + PERSIST the 7 units-derived sections shared with sim (#403): trade / order /
         # portfolio (single session = its own currency aggregate) / pending (empty for live) /
         # execution-stats / run-summary / worker-decision. The models feed the unified console.
         unified = SharedReportCoordinator.derive_and_persist(
-            self._run_id, units, io_dir, self._signal_scenario_map, self._observed_feed,
+            self._run_id, units, writer, self._signal_scenario_map, self._observed_feed,
             roster=unit_roster_from_session(result, name))
 
         # Warnings & errors — tiered model (#395). Persisted for API parity with the sim runs;
@@ -216,7 +211,7 @@ class AutotraderReportCoordinator:
         # avoids double-rendering the emergency cause, §35).
         warnings_errors_report = build_warnings_errors_report_from_session(
             self._run_id, result, name, self._config.symbol)
-        write_artifact(warnings_errors_report, io_dir, WARNINGS_ERRORS_ARTIFACT)
+        writer.write_section(WARNINGS_ERRORS_ARTIFACT, warnings_errors_report)
 
         # Broker configuration — the session's single broker + symbol (unified model;
         # same artifact + API shape as the sim runs). Skipped if the session never built
@@ -225,7 +220,7 @@ class AutotraderReportCoordinator:
         if self._broker_config is not None:
             broker_report = build_broker_report_from_session(
                 self._run_id, self._broker_config, self._config.symbol)
-            write_artifact(broker_report, io_dir, BROKER_ARTIFACT)
+            writer.write_section(BROKER_ARTIFACT, broker_report)
 
         # Cold start (#355 / #493) — what the boot step found and what was decided about it.
         # Absent for a simulation, a dry run and a Field Study: the three cases with nothing
@@ -242,7 +237,7 @@ class AutotraderReportCoordinator:
                 result.cold_start_verdict,
                 type(self._decision_logic).__name__ if self._decision_logic else '',
             )
-            write_artifact(cold_start_report, io_dir, COLD_START_ARTIFACT)
+            writer.write_section(COLD_START_ARTIFACT, cold_start_report)
 
         # Safety (#356 / #314) — the risk denominator this session ran against and how far
         # the account moved away from it. Written whenever a baseline was TAKEN, including
@@ -256,7 +251,7 @@ class AutotraderReportCoordinator:
             safety_report = build_safety_report_from_session(
                 self._run_id, result.safety_session, self._config.safety,
                 self._config.symbol)
-            write_artifact(safety_report, io_dir, SAFETY_ARTIFACT)
+            writer.write_section(SAFETY_ARTIFACT, safety_report)
 
         # Venue account (#362) — what the venue held at the session's start and end, and what
         # the reconciliation recorded in between, derived from the broker-truth lines of the
@@ -265,7 +260,7 @@ class AutotraderReportCoordinator:
         venue_account_report = None
         if any(unit.broker_truth for unit in units):
             venue_account_report = build_venue_account_report(self._run_id, units)
-            write_artifact(venue_account_report, io_dir, VENUE_ACCOUNT_ARTIFACT)
+            writer.write_section(VENUE_ACCOUNT_ARTIFACT, venue_account_report)
 
         # The booking periods, derived once and used three times: the artifact, the table below,
         # and — through the periods themselves — the ledger rows. The reconciliation against the
@@ -274,7 +269,7 @@ class AutotraderReportCoordinator:
         # checks against exists only while the run does (#539).
         booking_periods = build_booking_periods_report(
             self._run_id, units, unified.run_summary)
-        write_artifact(booking_periods, io_dir, BOOKING_PERIODS_ARTIFACT)
+        writer.write_section(BOOKING_PERIODS_ARTIFACT, booking_periods)
 
         # Every artifact of this session is on disk now — the index records WHICH, so a consumer
         # knows what it can fetch instead of discovering it by 404 (#475).
@@ -299,7 +294,7 @@ class AutotraderReportCoordinator:
 
         # Diagnostics CSV (#376) — algo-declared sinks, next to events.csv.
         if self._decision_logic:
-            flush_decision_diagnostics(self._decision_logic, self._run_dir)
+            flush_decision_diagnostics(self._decision_logic, writer)
 
         # === PRESENT — the unified end-of-run console (#403 Phase 2): the shared sections in
         # sim order (trade / portfolio / broker / worker performance), then the AutoTrader

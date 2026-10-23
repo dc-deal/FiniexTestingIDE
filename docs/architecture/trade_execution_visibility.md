@@ -275,7 +275,7 @@ Where an `OrderResult` is constructed:
 | `python/system/ui/autotrader_live_display.py` | Live panel sub-rows + `partial` / `remain` reason markers |
 | `python/framework/types/autotrader_types/autotrader_display_types.py` | `TradeHistoryEntry` — the dashboard's row, `entry_lots` included |
 | `python/framework/autotrader/autotrader_display_exporter.py` | `trade_history_entry` — copies the row from the trade record, every field |
-| `python/framework/autotrader/autotrader_main.py` | AutoTrader-side `EventStreamWriter.from_autotrader_result(...).flush('events.csv')` |
+| `python/framework/autotrader/run_record/autotrader_report_coordinator.py` | AutoTrader-side `EventStreamWriter.from_autotrader_result(...).flush(writer, SESSION_EVENTS)` → `events.csv`, through the run's writer |
 | `python/framework/batch/batch_report_coordinator.py` | Sim-side per-scenario loop emitting `events_<scenario>.csv` into `events/` subfolder |
 
 ## Latent for Future Work

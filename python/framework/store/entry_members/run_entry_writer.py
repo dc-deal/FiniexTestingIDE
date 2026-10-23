@@ -95,7 +95,8 @@ class RunEntryWriter:
         return path
 
     def write_table(self, member_id: RunEntryMemberId, columns: List[str],
-                    rows: Iterable[Dict[str, Any]], **names: str) -> Path:
+                    rows: Iterable[Dict[str, Any]], ignore_extra_columns: bool = False,
+                    **names: str) -> Path:
         """
         Write one table as CSV: a header row, then one row per record.
 
@@ -103,6 +104,8 @@ class RunEntryWriter:
             member_id: The member, a report output written as a table
             columns: The column names, in order
             rows: One mapping of column to value per row
+            ignore_extra_columns: Leave out a row's keys that are no column, instead of refusing
+                the row — for a table whose rows a strategy fills
             names: One value per variable part of the member's path
 
         Returns:
@@ -112,7 +115,8 @@ class RunEntryWriter:
         path = self._run_dir / member.path_for(**names)
         create_directory(path.parent, holds=f'the table {path.name}')
         with path.open('w', newline='', encoding='utf-8') as handle:
-            writer = csv.DictWriter(handle, fieldnames=columns)
+            writer = csv.DictWriter(handle, fieldnames=columns,
+                                    extrasaction='ignore' if ignore_extra_columns else 'raise')
             writer.writeheader()
             for row in rows:
                 writer.writerow(row)

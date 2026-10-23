@@ -16,15 +16,15 @@ walks them chronologically to emit synthetic events. No inline tick-loop
 instrumentation needed — keeps the hot path untouched.
 """
 
-import csv
 from dataclasses import fields
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional
 
-from python.framework.constants.run_layout_constants import SESSION_EVENTS_FILE
+from python.framework.store.entry_members.run_entry_writer import RunEntryWriter
 from python.framework.types.event_stream_types import TradeEvent, TradeEventType
 from python.framework.types.portfolio_types.portfolio_trade_record_types import TradeRecord
+from python.framework.types.store_member_types import RunEntryMemberId
 from python.framework.types.trading_env_types.broker_trade_types import BrokerTrade
 from python.framework.types.trading_env_types.order_types import (
     CloseType,
@@ -50,18 +50,15 @@ class EventStreamWriter:
     """
     Long-format event-stream CSV writer.
 
-    Constructed with a run_dir + a list of events. Events are produced
-    post-loop by from_autotrader_result() or from_sim_result(). flush()
-    sorts by timestamp and writes one CSV row per event.
+    Constructed with a list of events. Events are produced post-loop by
+    from_autotrader_result() or from_sim_result(). flush() sorts by timestamp and writes one
+    CSV row per event through the run's writer.
 
     Args:
-        run_dir: Directory to write the CSV into. If None, flush is a no-op
-            (matches the file-logging-disabled convention used across the run tree).
         events: Pre-built event list (typically from a from_* classmethod).
     """
 
-    def __init__(self, run_dir: Optional[Path], events: List[TradeEvent]):
-        self._run_dir = run_dir
+    def __init__(self, events: List[TradeEvent]):
         self._events = events
 
     @classmethod
@@ -69,7 +66,6 @@ class EventStreamWriter:
         cls,
         trade_history: List[TradeRecord],
         order_history: List[OrderResult],
-        run_dir: Optional[Path],
     ) -> 'EventStreamWriter':
         """
         Build an EventStreamWriter from an AutoTrader session's terminal state.
@@ -80,20 +76,17 @@ class EventStreamWriter:
         Args:
             trade_history: All completed TradeRecord (full + partial closes)
             order_history: All OrderResult (multiple statuses per order_id)
-            run_dir: Session log directory (e.g. runs/autotrader/<name>/<run_id>/)
 
         Returns:
             EventStreamWriter ready to flush.
         """
-        events = _build_events(trade_history, order_history)
-        return cls(run_dir, events)
+        return cls(_build_events(trade_history, order_history))
 
     @classmethod
     def from_sim_result(
         cls,
         trade_history: List[TradeRecord],
         order_history: List[OrderResult],
-        run_dir: Optional[Path],
     ) -> 'EventStreamWriter':
         """
         Build an EventStreamWriter from a sim ProcessResult's terminal state.
@@ -105,13 +98,11 @@ class EventStreamWriter:
         Args:
             trade_history: All TradeRecord from process_result.tick_loop_results
             order_history: All OrderResult from process_result.tick_loop_results
-            run_dir: Scenario set log directory (e.g. runs/simulation/<set>/<run_id>/)
 
         Returns:
             EventStreamWriter ready to flush.
         """
-        events = _build_events(trade_history, order_history)
-        return cls(run_dir, events)
+        return cls(_build_events(trade_history, order_history))
 
     def has_events(self) -> bool:
         """
@@ -123,19 +114,21 @@ class EventStreamWriter:
         """
         return bool(self._events)
 
-    def flush(self, filename: str = SESSION_EVENTS_FILE) -> Optional[Path]:
+    def flush(self, writer: Optional[RunEntryWriter], member_id: RunEntryMemberId,
+              **names: str) -> Optional[Path]:
         """
         Sort events by timestamp and write the CSV file.
 
         Args:
-            filename: Output filename inside run_dir. AutoTrader convention
-                is 'events.csv'; sim convention is 'events_<scenario>.csv'
-                (caller passes the scenario name).
+            writer: The run's writer; None writes nothing
+            member_id: The table: a session's `events.csv`, or a scenario's
+                `events/events_<scenario>.csv`
+            names: One value per variable part of the member's path — the scenario's name
 
         Returns:
-            Path to the written CSV, or None if run_dir is None or no events.
+            Path to the written CSV, or None if there is no writer or no event.
         """
-        if self._run_dir is None or not self._events:
+        if writer is None or not self._events:
             return None
 
         # Sort defensively: promote any naive timestamp to UTC so mixed
@@ -149,18 +142,14 @@ class EventStreamWriter:
             return ts
 
         sorted_events = sorted(self._events, key=_sort_key)
-        out_path = self._run_dir / filename
         try:
-            with open(out_path, 'w', newline='', encoding='utf-8') as f:
-                writer = csv.writer(f)
-                writer.writerow(EVENT_FIELDS)
-                for event in sorted_events:
-                    writer.writerow(_event_to_row(event))
+            return writer.write_table(
+                member_id, list(EVENT_FIELDS),
+                (dict(zip(EVENT_FIELDS, _event_to_row(event))) for event in sorted_events),
+                **names)
         except Exception as e:
-            print(f'Warning: Failed to write event-stream CSV {out_path}: {e}')
+            print(f'Warning: Failed to write event-stream CSV {member_id.value}: {e}')
             return None
-
-        return out_path
 
 
 # ============================================

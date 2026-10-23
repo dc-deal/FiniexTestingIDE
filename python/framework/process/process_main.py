@@ -5,11 +5,13 @@ import traceback
 from multiprocessing import Queue
 from typing import Optional
 
+from python.framework.constants.run_layout_constants import RUN_TYPE_SIMULATION
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.process.process_live_queue_helper import send_status_update_process
 from python.framework.process.process_startup_preparation import process_startup_preparation
 from python.framework.process.process_tick_loop import execute_tick_loop
 from python.framework.reporting.diagnostics_csv_sink import flush_decision_diagnostics
+from python.framework.store.entry_members.run_entry_writer import RunEntryWriter
 from python.framework.trading_env.decision_event_dispatcher import DecisionEventDispatcher
 from python.framework.types.live_types.live_stats_config_types import ScenarioStatus
 from python.framework.types.log_level import LogLevel
@@ -100,8 +102,9 @@ def process_main(
         # === DIAGNOSTICS CSV (#376) ===
         # Flush algo-declared diagnostics sinks next to events_<scenario>.csv.
         # Suffix matches process_result.scenario_name (config.name) for alignment.
+        run_dir = scenario_logger.get_log_dir()
         flush_decision_diagnostics(
-            decision_logic, scenario_logger.get_log_dir(),
+            decision_logic, RunEntryWriter(run_dir, RUN_TYPE_SIMULATION) if run_dir else None,
             scenario_suffix=config.name)
 
         # === Process Final status ===

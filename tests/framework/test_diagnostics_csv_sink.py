@@ -9,11 +9,16 @@ and the flush_decision_diagnostics helper used by both pipelines.
 import csv
 from unittest.mock import MagicMock
 
+from python.framework.constants.run_layout_constants import (
+    RUN_TYPE_AUTOTRADER,
+    RUN_TYPE_SIMULATION,
+)
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.reporting.diagnostics_csv_sink import (
     DiagnosticsCsvSink,
     flush_decision_diagnostics,
 )
+from python.framework.store.entry_members.run_entry_writer import RunEntryWriter
 
 
 class _DummyDecision(AbstractDecisionLogic):
@@ -37,6 +42,16 @@ def _make_decision() -> _DummyDecision:
     return _DummyDecision(name='dummy', logger=MagicMock())
 
 
+def _writer(run_dir) -> RunEntryWriter:
+    """A session's writer over a run directory in the test's temporary folder."""
+    return RunEntryWriter(run_dir, RUN_TYPE_AUTOTRADER)
+
+
+def _backtest_writer(run_dir) -> RunEntryWriter:
+    """A backtest's writer — the one a scenario's tables, named with its suffix, belong to."""
+    return RunEntryWriter(run_dir, RUN_TYPE_SIMULATION)
+
+
 def _read_csv(path):
     with open(path, newline='') as f:
         return list(csv.reader(f))
@@ -50,9 +65,9 @@ class TestDiagnosticsCsvSink:
         sink.append_row({'id': 'p1', 'outcome': 'TRADED', 'conf': 0.6})
         sink.append_row({'id': 'p2', 'outcome': 'RESET', 'conf': 0.1})
 
-        out = sink.flush(tmp_path)
+        out = sink.flush(_writer(tmp_path))
 
-        assert out == tmp_path / 'funnel.csv'
+        assert out == tmp_path / 'diagnostics' / 'funnel.csv'
         rows = _read_csv(out)
         assert rows[0] == ['id', 'outcome', 'conf']
         assert rows[1] == ['p1', 'TRADED', '0.6']
@@ -62,7 +77,7 @@ class TestDiagnosticsCsvSink:
         sink = DiagnosticsCsvSink('funnel', ['id', 'outcome', 'conf'])
         sink.append_row({'id': 'p1', 'outcome': 'REJECTED'})  # no conf
 
-        rows = _read_csv(sink.flush(tmp_path))
+        rows = _read_csv(sink.flush(_writer(tmp_path)))
 
         assert rows[1] == ['p1', 'REJECTED', '']
 
@@ -70,7 +85,7 @@ class TestDiagnosticsCsvSink:
         sink = DiagnosticsCsvSink('funnel', ['id'])
         sink.append_row({'id': 'p1', 'unexpected': 'x'})
 
-        rows = _read_csv(sink.flush(tmp_path))
+        rows = _read_csv(sink.flush(_writer(tmp_path)))
 
         assert rows[0] == ['id']
         assert rows[1] == ['p1']
@@ -79,12 +94,12 @@ class TestDiagnosticsCsvSink:
         sink = DiagnosticsCsvSink('funnel', ['id'])
         sink.append_row({'id': 'p1'})
 
-        out = sink.flush(tmp_path, scenario_suffix='EURUSD_w1')
+        out = sink.flush(_backtest_writer(tmp_path), scenario_suffix='EURUSD_w1')
 
-        assert out == tmp_path / 'funnel_EURUSD_w1.csv'
+        assert out == tmp_path / 'diagnostics' / 'funnel_EURUSD_w1.csv'
         assert out.exists()
 
-    def test_noop_when_run_dir_none(self):
+    def test_noop_without_a_writer(self):
         sink = DiagnosticsCsvSink('funnel', ['id'])
         sink.append_row({'id': 'p1'})
 
@@ -93,8 +108,8 @@ class TestDiagnosticsCsvSink:
     def test_noop_when_no_rows(self, tmp_path):
         sink = DiagnosticsCsvSink('funnel', ['id'])
 
-        assert sink.flush(tmp_path) is None
-        assert not (tmp_path / 'funnel.csv').exists()
+        assert sink.flush(_writer(tmp_path)) is None
+        assert not (tmp_path / 'diagnostics' / 'funnel.csv').exists()
 
     def test_get_name(self):
         assert DiagnosticsCsvSink('funnel', ['id']).get_name() == 'funnel'
@@ -130,7 +145,7 @@ class TestFlushDecisionDiagnostics:
         dl.diagnostics_csv('funnel', ['id']).append_row({'id': 'p1'})
         dl.diagnostics_csv('quality', ['id']).append_row({'id': 'q1'})
 
-        flush_decision_diagnostics(dl, tmp_path)
+        flush_decision_diagnostics(dl, _writer(tmp_path))
 
         # Strategy diagnostics live in a dedicated diagnostics/ subfolder
         assert (tmp_path / 'diagnostics' / 'funnel.csv').exists()
@@ -140,14 +155,14 @@ class TestFlushDecisionDiagnostics:
         dl = _make_decision()
         dl.diagnostics_csv('funnel', ['id']).append_row({'id': 'p1'})
 
-        flush_decision_diagnostics(dl, tmp_path, scenario_suffix='BTCUSD_b04')
+        flush_decision_diagnostics(dl, _backtest_writer(tmp_path), scenario_suffix='BTCUSD_b04')
 
         assert (tmp_path / 'diagnostics' / 'funnel_BTCUSD_b04.csv').exists()
 
     def test_no_sinks_is_safe(self, tmp_path):
-        flush_decision_diagnostics(_make_decision(), tmp_path)  # no raise
+        flush_decision_diagnostics(_make_decision(), _writer(tmp_path))  # no raise
 
-    def test_run_dir_none_is_safe(self):
+    def test_no_writer_is_safe(self):
         dl = _make_decision()
         dl.diagnostics_csv('funnel', ['id']).append_row({'id': 'p1'})
 
