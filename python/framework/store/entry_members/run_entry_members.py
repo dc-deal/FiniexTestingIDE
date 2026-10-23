@@ -49,6 +49,7 @@ from python.framework.constants.run_layout_constants import (
     SCENARIO_EVENTS_FILE_PATTERN,
     SCENARIO_LOG_NAME_PATTERN,
     SCENARIO_LOGS_SUBDIR,
+    SCENARIO_STRATEGY_FILE_PATTERN,
     SECURITY_CERT_CAPTURE,
     SESSION_DAY_LOG_FILE_PATTERN,
     SESSION_EVENTS_FILE,
@@ -59,6 +60,8 @@ from python.framework.constants.run_layout_constants import (
     SIGNAL_ARTIFACT_FILE,
     STATE_FRAMES_FILE,
     STATE_FRAMES_SCHEMA_VERSION,
+    STRATEGY_FILE_PATTERN,
+    STRATEGY_FILES_SUBDIR,
     TICK_STREAM_EVENTS_FILE,
     TICK_STREAM_EVENTS_SCHEMA_VERSION,
     TRADE_HISTORY_ARTIFACT_FILE,
@@ -85,6 +88,7 @@ _DOC_SESSION_LOGS = ('docs/autotrader/autotrader_architecture.md'
 _DOC_OBSERVABILITY = 'docs/autotrader/autotrader_observability.md#logging'
 _DOC_SECTIONS = 'docs/architecture/reporting_pipeline.md#report-sections--domain--migration-status'
 _DOC_DIAGNOSTICS = 'docs/architecture/diagnostics_csv_sink.md#lifecycle-framework-owned'
+_DOC_STRATEGY_FILES = 'docs/architecture/store_entry_members.md#strategy-files'
 
 
 def _backtest_log(log_name: str) -> str:
@@ -243,6 +247,21 @@ RUN_ENTRY_MEMBERS: Tuple[EntryMember, ...] = (
         EntryMemberShape.REPORT_OUTPUT, 'a decision logic\'s own diagnostics table',
         _at_end(RUN_TYPE_AUTOTRADER, condition='the logic declares a sink and recorded a row'),
         EntryMemberWriteMode.IN_PLACE, _DOC_DIAGNOSTICS),
+
+    # --- The strategy's own files, written through its helper as it runs
+    EntryMember(
+        RunEntryMemberId.SCENARIO_STRATEGY_FILE,
+        f'{STRATEGY_FILES_SUBDIR}/{SCENARIO_STRATEGY_FILE_PATTERN}',
+        EntryMemberShape.STRATEGY_OUTPUT, 'a file the strategy keeps with the run, per scenario',
+        (EntryMemberWrite(RUN_TYPE_SIMULATION, EntryMemberMoment.AS_IT_RUNS,
+                          'the strategy writes a file of its own'),),
+        EntryMemberWriteMode.ATOMIC_REPLACE, _DOC_STRATEGY_FILES),
+    EntryMember(
+        RunEntryMemberId.SESSION_STRATEGY_FILE, f'{STRATEGY_FILES_SUBDIR}/{STRATEGY_FILE_PATTERN}',
+        EntryMemberShape.STRATEGY_OUTPUT, 'a file the strategy keeps with the run',
+        (EntryMemberWrite(RUN_TYPE_AUTOTRADER, EntryMemberMoment.AS_IT_RUNS,
+                          'the strategy writes a file of its own'),),
+        EntryMemberWriteMode.ATOMIC_REPLACE, _DOC_STRATEGY_FILES),
 
     # --- The acceptance studies' captures
     EntryMember(

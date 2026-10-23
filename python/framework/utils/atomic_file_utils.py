@@ -7,6 +7,7 @@ step, so a reader opens either the old file or the new one. The temporary name i
 writer, so two writers of one target cannot rename each other's half-written file into place.
 """
 
+import functools
 import os
 import tempfile
 from pathlib import Path
@@ -42,10 +43,13 @@ def write_text_atomic(path: Path, text: str, mode: Optional[int] = None) -> None
         raise
 
 
+@functools.lru_cache(maxsize=1)
 def _current_umask() -> int:
     """
     The process's file-creation mask. Python can only read it by setting it, so it is set and
-    restored at once.
+    restored — once per process: for that instant the mask is 0 for every thread, and a file
+    another thread creates then would be writable by anyone. Nothing in this process changes the
+    mask afterwards.
 
     Returns:
         The mask, e.g. 0o022

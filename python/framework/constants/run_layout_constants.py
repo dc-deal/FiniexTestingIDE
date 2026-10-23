@@ -83,6 +83,12 @@ DIAGNOSTICS_SUBDIR = 'diagnostics'
 DIAGNOSTICS_FILE_PATTERN = '{sink}.csv'
 SCENARIO_DIAGNOSTICS_FILE_PATTERN = '{sink}_{scenario}.csv'
 
+# A strategy's own files, written through its helper as it runs — one folder per scenario in a
+# backtest. The run keeps them; nothing in the framework reads or serves them.
+STRATEGY_FILES_SUBDIR = 'strategy_files'
+STRATEGY_FILE_PATTERN = '{name}'
+SCENARIO_STRATEGY_FILE_PATTERN = '{scenario}/{name}'
+
 # The report sections in io/, written at the run's end. The report specs bind each name to the
 # model it decodes to.
 AGGREGATED_PORTFOLIO_ARTIFACT_FILE = 'aggregated_portfolio.json'

@@ -78,6 +78,15 @@ the seeded sim latency).
 |---|---|
 | `test_positions_stack_concurrently` | two distinct positions were open at the same time (tick-index overlap) |
 
+### TestTheStrategyKeepsItsLastSetup
+
+The STOP fixture runs with `write_strategy_files` on, the LIMIT fixture with it off.
+
+| Test | Description |
+|---|---|
+| `test_the_stop_run_kept_its_last_setup` | the run holds `strategy_files/<scenario>/last_setup.json` with the mode, both bands, the gate and the entry geometry of the last submitted setup |
+| `test_the_limit_run_with_it_off_kept_none` | with the parameter off, no strategy file is written |
+
 ---
 
 ## Running the Tests

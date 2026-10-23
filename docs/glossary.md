@@ -768,6 +768,12 @@ lists them. See
 **strategy** — A decision logic with its workers and all their parameters: exactly what
 `strategy_config` holds. A *bot* is a strategy bound to one AutoTrader profile.
 
+**strategy files** (`strategy_files/` in a run directory) — The files a strategy keeps with its
+run through `self.strategy_file(name)`: written at once, replaced whole, never read or served by
+the framework, one folder per scenario in a backtest. Not the *strategy* configuration a run
+records, and not its diagnostics tables. See
+[Store Entry Members](architecture/store_entry_members.md#strategy-files).
+
 **stream files** (`stream_files` on the run list) — The files a run keeps beside its report
 artifacts and that the API serves while it runs — such as the order-event stream, which a live
 session writes as it runs and a backtest with its report, or a session's state frames. Kept apart

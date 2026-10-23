@@ -25,6 +25,7 @@ from python.framework.reporting.store.run_index import RunIndex
 from python.framework.store.entry_members.run_entry_members import RUN_ENTRY_MEMBERS
 from python.framework.types.run_footprint_types import (
     FootprintFile,
+    FootprintFolder,
     MemberExpectation,
     MemberFootprint,
     MemberFootprintState,
@@ -205,15 +206,23 @@ def write_footprint(run_dir: Path, run_id: str, run_type: str,
     """
     members = pipeline_members(run_type)
     files = []
+    folders: Dict[RunEntryMemberId, FootprintFolder] = {}
     for path in run_files(run_dir):
         if path == FOOTPRINT_FILE:
             continue
         for member in _claims(path, members):
-            files.append(FootprintFile(path=path, member_id=member.member_id,
-                                       size_bytes=(run_dir / path).stat().st_size))
+            size = (run_dir / path).stat().st_size
+            if member.shape is EntryMemberShape.STRATEGY_OUTPUT:
+                folder = folders.setdefault(member.member_id, FootprintFolder(
+                    member_id=member.member_id, file_count=0, size_bytes=0))
+                folder.file_count += 1
+                folder.size_bytes += size
+                continue
+            files.append(FootprintFile(path=path, member_id=member.member_id, size_bytes=size))
     record = RunFootprintRecord(
         schema_version=FOOTPRINT_SCHEMA_VERSION, run_id=run_id, run_type=run_type,
-        closed_at=datetime.now(timezone.utc), files=files, expectations=expectations)
+        closed_at=datetime.now(timezone.utc), files=files, expectations=expectations,
+        folders=list(folders.values()))
     write_text_atomic(run_dir / FOOTPRINT_FILE, record.model_dump_json(indent=2))
 
 
@@ -312,6 +321,8 @@ def _assess_member(member: EntryMember, run_type: str, on_disk: List[str],
         state = MemberFootprintState.PRESENT if on_disk else MemberFootprintState.UNKNOWN
         return MemberFootprint(member.member_id, state, on_disk,
                                '' if on_disk else 'the run has not closed')
+    if record is not None and member.shape is EntryMemberShape.STRATEGY_OUTPUT:
+        return _assess_strategy_files(member, on_disk, record)
     if record is None:
         if on_disk:
             return MemberFootprint(member.member_id, MemberFootprintState.PRESENT, on_disk)
@@ -345,3 +356,32 @@ def _assess_member(member: EntryMember, run_type: str, on_disk: List[str],
                                       f"run's log says why")
     return MemberFootprint(member.member_id, MemberFootprintState.SKIPPED,
                            reason=expectation.reason)
+
+
+def _assess_strategy_files(member: EntryMember, on_disk: List[str],
+                           record: RunFootprintRecord) -> MemberFootprint:
+    """
+    The strategy's own files of a closed run, held to the count its footprint took. Whether a
+    strategy writes any is its own choice, so none is never a failure.
+
+    Args:
+        member: The member, a strategy output
+        on_disk: Its files on disk
+        record: The run's footprint
+
+    Returns:
+        What the run directory says about the member
+    """
+    counted = next((folder.file_count for folder in record.folders
+                    if folder.member_id is member.member_id), 0)
+    if len(on_disk) < counted:
+        return MemberFootprint(member.member_id, MemberFootprintState.MISSING, on_disk,
+                               f'{counted - len(on_disk)} of {counted} counted at the close are '
+                               f'gone')
+    if len(on_disk) > counted:
+        return MemberFootprint(member.member_id, MemberFootprintState.LATE, on_disk,
+                               f'{len(on_disk) - counted} written after the run closed')
+    if on_disk:
+        return MemberFootprint(member.member_id, MemberFootprintState.PRESENT, on_disk)
+    return MemberFootprint(member.member_id, MemberFootprintState.SKIPPED,
+                           reason='the strategy wrote no file of its own')

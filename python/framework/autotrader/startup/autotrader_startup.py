@@ -54,6 +54,8 @@ from python.framework.trading_env.broker_config import BrokerConfig
 from python.framework.trading_env.decision_trading_api import DecisionTradingApi
 from python.framework.trading_env.live.live_trade_executor import LiveTradeExecutor
 from python.framework.store.broker_config_freeze import freeze_broker_config
+from python.framework.store.entry_members.run_entry_writer import RunEntryWriter
+from python.framework.store.entry_members.strategy_file_writer import StrategyFileWriter
 from python.framework.store.run_config_store import RunConfigStore
 from python.framework.types.api.report_types import (
     DataWindow,
@@ -75,6 +77,7 @@ from python.framework.types.signal_data_types import (
     SignalSourceMode,
     SignalSourceResolution,
 )
+from python.framework.types.store_member_types import RunEntryMemberId
 from python.framework.types.trading_env_types.broker_types import BrokerType
 from python.framework.types.trading_env_types.order_types import OrderType
 from python.framework.types.trading_env_types.stress_test_types import StressTestConfig
@@ -423,6 +426,10 @@ def setup_pipeline(
     decision_logic, worker_orchestrator = _build_decision_layer(
         config, logger, decision_logic_factory, trading_context, workers,
         signal_source, live_boot, executor, required_order_types)
+    # The strategy's own files (#621): written at once, into the session's folder of the run
+    decision_logic.set_strategy_file_writer(StrategyFileWriter(
+        RunEntryWriter(run_dir, RUN_TYPE_AUTOTRADER) if run_dir else None,
+        RunEntryMemberId.SESSION_STRATEGY_FILE, logger))
 
     # === Phase 8: BarRenderingController ===
     bar_controller = BarRenderingController(

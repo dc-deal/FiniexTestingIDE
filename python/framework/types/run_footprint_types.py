@@ -32,6 +32,23 @@ class FootprintFile(BaseModel):
     size_bytes: int
 
 
+class FootprintFolder(BaseModel):
+    """
+    The files of one member a strategy writes for itself, counted rather than listed: their names
+    are the strategy's, and there may be many.
+
+    Args:
+        member_id: The member
+        file_count: How many files it held at the close
+        size_bytes: Their size together
+    """
+    model_config = ConfigDict(extra='forbid')
+
+    member_id: RunEntryMemberId
+    file_count: int
+    size_bytes: int
+
+
 class MemberExpectation(BaseModel):
     """
     Whether the run expected to write a member that is written only sometimes, and why.
@@ -57,8 +74,10 @@ class RunFootprintRecord(BaseModel):
         run_id: The run it describes
         run_type: The pipeline that wrote it
         closed_at: When it was written
-        files: Every file the run directory held then, the footprint itself left out
+        files: Every file the run directory held then, the footprint itself and the strategy's own
+            files left out
         expectations: For the members written only sometimes, whether this run expected them
+        folders: The strategy's own files, counted per member
     """
     model_config = ConfigDict(extra='forbid')
 
@@ -68,6 +87,7 @@ class RunFootprintRecord(BaseModel):
     closed_at: datetime
     files: List[FootprintFile]
     expectations: List[MemberExpectation] = []
+    folders: List[FootprintFolder] = []
 
 
 class MemberFootprintState(StrEnum):

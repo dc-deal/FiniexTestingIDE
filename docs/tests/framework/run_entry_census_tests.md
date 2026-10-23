@@ -32,8 +32,9 @@ takes about 18 s (measured 2026-10-23).
   each running two short BTCUSD windows with the robustness mode on, and the ranking written as the
   report command writes it. The decision logic is a probe
   ([`census_probe_decision.py`](../../../tests/fixtures/run_entry_census/census_probe_decision.py))
-  that writes one diagnostics row and opens and closes one position, so every member that hangs on
-  an order, a sink or the robustness mode is written.
+  that writes one diagnostics row and one file of its own and opens and closes one position, so
+  every member that hangs on an order, a sink, the strategy's own folder or the robustness mode is
+  written.
 - **A mock session** on [`run_entry_census_test.json`](../../../configs/autotrader_profiles/mock/run_entry_census_test.json)
   with the same probe and its state frames recorded.
 - **The same session with its log files switched off**, which must still be a declared run with its

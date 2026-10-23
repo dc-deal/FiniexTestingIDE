@@ -139,6 +139,24 @@ class RunEntryWriter:
             self._run_dir / member.path_for(), member.member_id.value, member.schema_version,
             run_id, logger, stops=stops, header_fields=header_fields)
 
+    def write_strategy_file(self, member_id: RunEntryMemberId, text: str, **names: str) -> Path:
+        """
+        Write one of the strategy's own files whole, replacing what was there — old or new,
+        never half.
+
+        Args:
+            member_id: The member, a strategy output
+            text: The full content
+            names: One value per variable part of the member's path
+
+        Returns:
+            The written file
+        """
+        member = self._member(member_id, EntryMemberShape.STRATEGY_OUTPUT)
+        path = self._run_dir / member.path_for(**names)
+        write_text_atomic(path, text)
+        return path
+
     def log_path(self, member_id: RunEntryMemberId, **names: str) -> Path:
         """
         Where one log of this run lies, for its logger to open.

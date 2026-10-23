@@ -103,6 +103,25 @@ section written before the index lists it is there. A member's path is built onl
 declaration: a missing name part, an extra one, an empty one and one that reaches out of the run
 directory are refused, every report section is a member, and a section nobody declared is refused.
 
+## `test_run_entry_writer.py`
+
+**One run's files written by member (#621).** A member another pipeline writes and a member of
+another shape than the method writes are refused. A report section is the bytes the section writer
+has always written; an atomic snapshot leaves no temporary file behind; a table is its header row
+and one row per record; a stream's header line names its member and the version the declaration
+gives it; a log's path is the declared one. Each run stream is named for its member.
+
+## `test_strategy_files.py`
+
+**A strategy's own files (#621).** A session's file lands in `strategy_files/`, a scenario's in
+`strategy_files/<scenario>/`, and a second write replaces the first. A name that would reach out
+of the folder or take a temporary write's name is refused; a disk that refuses, content that is
+no JSON and a run without a directory each answer False and are said once on the run's channel —
+a failed write never ends the run, and a logic the framework wired nothing into writes nothing.
+The footprint counts the files per member, never lists them: present when the count holds,
+skipped when the strategy wrote none, missing when one is gone since the close and late when one
+was written after it.
+
 ## `test_store_entry_members_view.py`
 
 What `store_cli.py entry-members` prints, and the Markdown form the

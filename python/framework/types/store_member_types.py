@@ -32,6 +32,7 @@ _EXAMPLE_VALUES = {
     'scenario': 'window_01',
     'day': '20261022',
     'sink': 'entry_signals',
+    'name': 'last_setup.json',
 }
 
 
@@ -44,6 +45,7 @@ class EntryMemberShape(StrEnum):
     STREAM = 'stream'                # records appended line by line, a header line first
     REPORT_OUTPUT = 'report_output'  # derived by the reporting pipeline at the run's end
     LOG = 'log'                      # lines for a person to read, never parsed by the code
+    STRATEGY_OUTPUT = 'strategy_output'  # a strategy's own file: kept with the run, never read
 
 
 class EntryMemberMoment(StrEnum):
@@ -89,6 +91,8 @@ class RunEntryMemberId(StrEnum):
     SESSION_EVENTS = 'session_events'
     SCENARIO_DIAGNOSTICS = 'scenario_diagnostics'
     SESSION_DIAGNOSTICS = 'session_diagnostics'
+    SCENARIO_STRATEGY_FILE = 'scenario_strategy_file'
+    SESSION_STRATEGY_FILE = 'session_strategy_file'
     FIELD_STUDY_CAPTURE = 'field_study_capture'
     SECURITY_CERT_CAPTURE = 'security_cert_capture'
     AGGREGATED_PORTFOLIO = 'aggregated_portfolio'

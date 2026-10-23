@@ -46,12 +46,14 @@ _ALL_MEMBERS = RUN_ENTRY_MEMBERS + SWEEP_ENTRY_MEMBERS
 
 # How each shape may reach the disk: a stream and a log append lines, a report output is written
 # once at the run's end, a snapshot is replaced whole — atomically, or in place where nothing reads
-# it while it is written.
+# it while it is written — and a strategy's own file is replaced whole, atomically, whenever the
+# strategy writes it while the run goes on.
 _WRITE_MODES_BY_SHAPE = {
     EntryMemberShape.STREAM: {EntryMemberWriteMode.APPEND_LINES},
     EntryMemberShape.LOG: {EntryMemberWriteMode.APPEND_LINES},
     EntryMemberShape.REPORT_OUTPUT: {EntryMemberWriteMode.IN_PLACE},
     EntryMemberShape.SNAPSHOT: {EntryMemberWriteMode.ATOMIC_REPLACE, EntryMemberWriteMode.IN_PLACE},
+    EntryMemberShape.STRATEGY_OUTPUT: {EntryMemberWriteMode.ATOMIC_REPLACE},
 }
 
 # The file names the run list serves in each index column. Changing one changes what a consumer of
