@@ -9,7 +9,9 @@ comes from is declared once, in STATUS_TYPE_BY_LINE.
 """
 
 from dataclasses import dataclass
+from datetime import datetime
 from enum import Enum, StrEnum
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
 from python.framework.types.acceptance_study_types.study_phase_types import PhaseOutcome
@@ -178,3 +180,56 @@ def status_fits_line(event_type: CaptureLineType, status: Optional[Enum]) -> boo
         return True
     expected = STATUS_TYPE_BY_LINE[event_type]
     return expected is not None and isinstance(status, expected)
+
+
+@dataclass
+class StudyCaptureContent:
+    """
+    A capture as a certificate reads it.
+
+    Args:
+        header: The header line
+        events: Every line after it
+        cut_last_line: True when the last line was cut off — the session stopped while writing it,
+            and the lines before it are read
+    """
+    header: Dict[str, Any]
+    events: List[Dict[str, Any]]
+    cut_last_line: bool
+
+
+@dataclass
+class StudyRunCandidate:
+    """
+    A run that wrote a study's capture, as its header and directory describe it.
+
+    Args:
+        run_dir: The run's directory
+        run_id: The run
+        run_name: The profile it ran
+        start_time: When it started, from its header
+        capture_path: Its capture
+        closed: True when the run wrote its footprint
+    """
+    run_dir: Path
+    run_id: str
+    run_name: str
+    start_time: datetime
+    capture_path: Path
+    closed: bool
+
+
+@dataclass
+class StudyEvidenceRun:
+    """
+    One run a study certificate rests on, as its header names it — what the certificate's commit
+    and its validity are held to.
+
+    Args:
+        run_id: The run; the directory's name when it holds no readable header
+        commit: The commit the run's code came from; None when nothing says
+        started: When the run started; None when nothing says
+    """
+    run_id: str
+    commit: Optional[str]
+    started: Optional[datetime]

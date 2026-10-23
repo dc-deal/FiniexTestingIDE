@@ -145,6 +145,14 @@ absolute paths throughout — so the tests can see what the route makes of them.
 | `TestTheRunListSaysWhoStartedEachRun` | `origin_channel`, `origin_client`, `origin_principal` and `origin_host` on the run's row, from the header's origin block |
 | `TestAPathFromAnotherSystemIsServedTheSameWay` | a header written on Windows — drive letter, backslashes — has its paths made relative the same way |
 
+## A run's files and their routes (`test_run_entry_member_routes.py`)
+
+The run store declares, for each file a run may hold, the route that serves it (#621). This holds
+the declaration to the routes the application mounts below `/reports/runs/{run_id}/`, in both
+directions: every declared route is served, every route below a run serves a declared file — or
+names the other store it serves from, such as the run's configuration — and no two files claim one
+route.
+
 ## Machine resources (`test_machine_resources.py`)
 
 What the machine the server runs on has and uses (#595) — the route the viewer polls before

@@ -36,6 +36,7 @@ from python.configuration.app_config_manager import AppConfigManager
 from python.framework.acceptance_studies.security_cert_stages import (
     SECURITY_CERT_PROFILE_DIR,
     SECURITY_STAGES,
+    stage_profile_path,
     stage_unit_name,
 )
 from python.framework.constants.run_layout_constants import (
@@ -45,6 +46,11 @@ from python.framework.constants.run_layout_constants import (
 )
 from python.framework.reporting.certificates.security_cert_rule_catalog import (
     SECURITY_RULE_CATALOG,
+)
+from python.framework.reporting.certificates.study_capture_reader import (
+    find_study_runs,
+    read_study_capture,
+    study_evidence_run,
 )
 from python.framework.reporting.certificates.study_certificate_writer import (
     write_study_certificate,
@@ -65,6 +71,7 @@ from python.framework.types.acceptance_study_types.study_capture_types import (
     PREFLIGHT_PHASE,
     SESSION_END_PHASE,
     CaptureLineType,
+    StudyRunCandidate,
 )
 from python.framework.types.acceptance_study_types.study_phase_types import PhaseOutcome
 from python.framework.types.api.report_types import OrdersTo, RunHeader, SafetyReport
@@ -99,9 +106,10 @@ class _StageRun:
     def __init__(self, stage_id: SecurityStageId, capture_path: Path):
         self.stage_id = stage_id
         self.capture_path = capture_path
-        lines = [ln for ln in capture_path.read_text(encoding='utf-8').splitlines() if ln.strip()]
-        self.header: Dict[str, Any] = json.loads(lines[0])
-        self.events: List[Dict[str, Any]] = [json.loads(ln) for ln in lines[1:]]
+        capture = read_study_capture(capture_path)
+        self.header: Dict[str, Any] = capture.header
+        self.events: List[Dict[str, Any]] = capture.events
+        self.cut_last_line = capture.cut_last_line
         run_dir = capture_path.parent
         self.run_header: Optional[RunHeader] = _read_or_none(
             lambda: read_run_header(run_dir / RUN_HEADER_ARTIFACT))
@@ -147,7 +155,7 @@ class SecurityCertCertificate:
         profile_dir: Path = SECURITY_CERT_PROFILE_DIR,
     ) -> Dict[SecurityStageId, Path]:
         """
-        Find the newest capture of every stage under the AutoTrader run root.
+        Find the capture of every stage's newest run under the AutoTrader run root.
 
         Args:
             search_root: The run root; None resolves run_logs.autotrader from config
@@ -157,33 +165,66 @@ class SecurityCertCertificate:
         Returns:
             Stage → its newest capture; a stage that never ran is absent
         """
+        return {stage_id: candidate.capture_path for stage_id, candidate
+                in SecurityCertCertificate.find_latest_stage_runs(search_root, profile_dir).items()}
+
+    @staticmethod
+    def find_latest_stage_runs(
+        search_root: Optional[str] = None,
+        profile_dir: Path = SECURITY_CERT_PROFILE_DIR,
+    ) -> Dict[SecurityStageId, StudyRunCandidate]:
+        """
+        Every stage's newest run under the AutoTrader run root, by its identity.
+
+        A stage's run is a run of the stage's own profile — its name and the purpose the profile
+        declares, so a mock rehearsal's stages (fixtures) count exactly as a real study's
+        (certificates) — and the newest by the start its header records, never by the newest
+        file: a rehearsal that aborted after the real stage is newer on disk and is not the run.
+
+        Args:
+            search_root: The run root; None resolves run_logs.autotrader from config
+            profile_dir: Where the stage profiles are — their names are the units the runs are
+                filed under
+
+        Returns:
+            Stage → its newest run; a stage that never ran is absent
+        """
         root = Path(search_root) if search_root else Path(
             AppConfigManager().get_file_logging_config_object().run_logs.autotrader)
-        found: Dict[SecurityStageId, Path] = {}
+        found: Dict[SecurityStageId, StudyRunCandidate] = {}
         for stage in SECURITY_STAGES:
-            unit_dir = root / stage_unit_name(stage, profile_dir)
-            if not unit_dir.exists():
-                continue
-            candidates = list(unit_dir.rglob(SECURITY_CERT_CAPTURE))
+            unit = stage_unit_name(stage, profile_dir)
+            profile = json.loads(stage_profile_path(stage, profile_dir).read_text(encoding='utf-8'))
+            candidates = find_study_runs(root / unit, SECURITY_CERT_CAPTURE, run_name=unit,
+                                         run_purpose=profile.get('run_purpose'))
             if candidates:
-                found[stage.stage_id] = max(candidates, key=lambda p: p.stat().st_mtime)
+                found[stage.stage_id] = candidates[0]
         return found
 
     @staticmethod
     def stage_failures(stage_id: SecurityStageId, capture_path: Path) -> List[str]:
         """
-        What failed in ONE stage's phases — the check the study runner makes after each stage.
+        What failed in ONE stage — the check the study runner makes after each stage, before it
+        spends money on the next one. A capture the session did not close fails the stage too:
+        the session stopped before its end, and the study's order check would fail it later.
 
         Args:
             stage_id: The stage
             capture_path: Its capture file
 
         Returns:
-            One line per failed phase check; empty when the stage passed
+            One line per failed check; empty when the stage passed
         """
-        checks = _phase_checks(_StageRun(stage_id, capture_path))
-        return [f"{name}: {check['detail']}" for name, check in checks.items()
-                if not check['passed']]
+        run = _StageRun(stage_id, capture_path)
+        checks = _phase_checks(run)
+        failures = [f"{name}: {check['detail']}" for name, check in checks.items()
+                    if not check['passed']]
+        if run.cut_last_line:
+            failures.append('capture: its last line was cut off — the session stopped while '
+                            'writing it')
+        if run.ended_utc() is None:
+            failures.append('capture: the session did not close it — it stopped before its end')
+        return failures
 
     @staticmethod
     def analyze(captures: Dict[SecurityStageId, Path]) -> Dict[str, Any]:
@@ -218,7 +259,9 @@ class SecurityCertCertificate:
             'rules': rules,
             'fees_charged': {stage_id.value: _fees_charged(run) for stage_id, run in runs.items()},
             'account_delta': _account_delta(runs),
-            'warnings': [],
+            'warnings': [f"Stage {stage_id.value}: its capture's last line was cut off — the "
+                         f'session stopped while writing it; the lines before it are read.'
+                         for stage_id, run in runs.items() if run.cut_last_line],
         }
 
     @staticmethod
@@ -248,6 +291,7 @@ class SecurityCertCertificate:
             comment=comment,
             reports_dir=reports_dir,
             report_prefix=REPORT_PREFIX,
+            evidence=[study_evidence_run(path.parent) for path in captures.values()],
         )
         _print_summary(out_path, certificate)
         return out_path

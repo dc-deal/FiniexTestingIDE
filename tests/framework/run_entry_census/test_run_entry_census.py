@@ -14,13 +14,19 @@ from pathlib import Path
 import pytest
 
 from python.configuration.app_config_manager import AppConfigManager
-from python.framework.constants.run_layout_constants import IO_SUBDIR, RUN_TYPE_SIMULATION
+from python.framework.constants.run_layout_constants import (
+    FOOTPRINT_FILE,
+    IO_SUBDIR,
+    RUN_TYPE_SIMULATION,
+)
 from python.framework.reporting.store.run_index import RunIndex
 from python.framework.store.entry_members.run_entry_members import (
     RUN_ENTRY_MEMBERS,
     RUN_ENTRY_MEMBERS_BY_ID,
     RUN_INDEX_COLUMN_MEMBERS,
 )
+from python.framework.store.entry_members.run_footprint import assess
+from python.framework.types.run_footprint_types import MemberFootprintState, RunCloseState
 from python.framework.types.store_member_types import (
     EntryMemberShape,
     RunEntryMemberId,
@@ -38,6 +44,13 @@ from tests.shared.entry_census_helpers import (
 )
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[3]
+
+# Members written only sometimes whose condition no coordinator sees at the close, and why — they
+# read as unknown when absent, never as skipped.
+_JUDGED_ELSEWHERE = {
+    RunEntryMemberId.SCENARIO_DIAGNOSTICS: "written by the scenario's own process",
+    RunEntryMemberId.WARMUP_HISTORY: 'decided by the workers at the start',
+}
 
 # The members the census runs cannot produce, the test that covers each one, and how far that test
 # reaches. Only the two captures are written into a real run directory there, held to the
@@ -128,6 +141,84 @@ class TestEveryMemberIsWrittenSomewhere:
             assert (_PROJECT_ROOT / test_file).is_file(), f'{member_id}: {test_file}'
 
 
+class TestEveryRunCloses:
+    """Each census run writes its footprint last, and reads clean against it."""
+
+    def test_every_run_is_closed_and_needs_no_look(self, census_runs):
+        for run_dir in census_runs:
+            assessment = assess(run_dir)
+            assert assessment.close_state is RunCloseState.CLOSED, run_dir
+            assert not assessment.has_problems(), [
+                (member.member_id.value, member.state.value, member.reason)
+                for member in assessment.members if member.state.needs_a_look()]
+
+    def test_every_member_written_only_sometimes_is_judged_at_the_close(
+            self, census_runs, census_session_without_log_files):
+        """The coordinators say for each such member whether the run expected it, so a writer
+        that failed reads as failed — only the members no coordinator sees are left unjudged."""
+        for run_dir in census_runs + [census_session_without_log_files]:
+            unjudged = {member.member_id for member in assess(run_dir).members
+                        if member.state is MemberFootprintState.UNKNOWN}
+            assert unjudged <= set(_JUDGED_ELSEWHERE), (run_dir.name, sorted(unjudged))
+
+    def test_a_session_without_log_files_skips_them_and_says_why(
+            self, census_session_without_log_files):
+        assessment = assess(census_session_without_log_files)
+        assert assessment.close_state is RunCloseState.CLOSED
+        logs = [member for member in assessment.members
+                if RUN_ENTRY_MEMBERS_BY_ID[member.member_id].shape is EntryMemberShape.LOG]
+        assert logs and all(member.state is MemberFootprintState.SKIPPED for member in logs)
+        assert all(member.reason == 'log files are switched off' for member in logs)
+
+
+def _closed_and_clean(run_dir: Path) -> dict:
+    """
+    Assert a run closed and needs no look; what it says about each member.
+
+    Args:
+        run_dir: The run directory
+
+    Returns:
+        member id -> (state, reason)
+    """
+    assessment = assess(run_dir)
+    assert assessment.close_state is RunCloseState.CLOSED, run_dir
+    assert not assessment.has_problems(), [
+        (member.member_id.value, member.state.value, member.reason)
+        for member in assessment.members if member.state.needs_a_look()]
+    return {member.member_id: (member.state, member.reason) for member in assessment.members}
+
+
+class TestARunThatStopsEarlyClosesClean:
+    """
+    A refused or aborted start, or a backtest none of whose scenarios ran, still closes — and a
+    file it never got to reads as skipped with the step it stopped before, never as failed.
+    """
+
+    def test_a_backtest_whose_scenario_never_ran_skips_the_scenario_log(
+            self, census_backtest_where_no_scenario_ran):
+        members = _closed_and_clean(census_backtest_where_no_scenario_ran)
+        assert members[RunEntryMemberId.SCENARIO_LOG] == (
+            MemberFootprintState.SKIPPED, 'no scenario reached its process')
+
+    def test_a_session_refused_at_its_cold_start_kept_its_order_record(
+            self, census_session_refused_at_its_cold_start):
+        members = _closed_and_clean(census_session_refused_at_its_cold_start)
+        assert members[RunEntryMemberId.ORDER_EVENTS][0] is MemberFootprintState.PRESENT
+        assert members[RunEntryMemberId.STATE_FRAMES] == (
+            MemberFootprintState.SKIPPED, 'the session stopped before its tick loop')
+        assert members[RunEntryMemberId.SESSION_DAY_LOG] == (
+            MemberFootprintState.SKIPPED, 'the session made no pass of its tick loop')
+
+    def test_a_session_aborted_before_its_order_record_skips_it(
+            self, census_session_aborted_before_its_order_record):
+        members = _closed_and_clean(census_session_aborted_before_its_order_record)
+        assert members[RunEntryMemberId.ORDER_EVENTS] == (
+            MemberFootprintState.SKIPPED, 'the session stopped before it opened its order record')
+        assert members[RunEntryMemberId.SESSION_EVENTS] == (
+            MemberFootprintState.SKIPPED, 'the session placed no order')
+
+
 class TestTheStreamsAndTheIndexAgree:
     """What the files say and what the run list serves match the declaration."""
 
@@ -173,6 +264,16 @@ class TestTheCensusCanFail:
         assert RunEntryMemberId.TRADE_HISTORY in members_present(copy)
         (copy / trade_history.example()).unlink()
         assert RunEntryMemberId.TRADE_HISTORY not in members_present(copy)
+
+    def test_a_run_without_its_footprint_is_not_closed(self, copy):
+        (copy / FOOTPRINT_FILE).unlink()
+        assert assess(copy).close_state is RunCloseState.NOT_CLOSED
+
+    def test_a_file_lost_after_the_close_is_missing(self, copy):
+        trade_history = RUN_ENTRY_MEMBERS_BY_ID[RunEntryMemberId.TRADE_HISTORY]
+        (copy / trade_history.example()).unlink()
+        states = {member.member_id: member.state for member in assess(copy).members}
+        assert states[RunEntryMemberId.TRADE_HISTORY] is MemberFootprintState.MISSING
 
     def test_a_stream_with_another_version_is_named(self, copy):
         stream = next(member for member in RUN_ENTRY_MEMBERS

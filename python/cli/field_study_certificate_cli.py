@@ -32,8 +32,15 @@ def _build_parser() -> argparse.ArgumentParser:
     source.add_argument('--jsonl', help='Path to the run field_study.jsonl')
     source.add_argument(
         '--latest', action='store_true',
-        help='Use the newest field_study.jsonl under the AutoTrader run root '
-             '(file_logging.run_logs.autotrader)',
+        help='Use the capture of the newest field-study run under the AutoTrader run root '
+             '(file_logging.run_logs.autotrader) — newest by the start its header records, among '
+             'the runs declared for a certificate',
+    )
+    generate.add_argument(
+        '--profile', default=None,
+        help='With --latest: only runs of this profile, whatever their purpose — a mock '
+             'rehearsal included, whose certificate then fails because its orders did not go '
+             'to the venue',
     )
     generate.add_argument(
         '--release-version', default='dev',
@@ -54,11 +61,13 @@ def main() -> None:
     if args.command == 'generate':
         jsonl_path = args.jsonl
         if args.latest:
-            latest = FieldStudyCertificate.find_latest_jsonl()
+            latest = FieldStudyCertificate.find_latest_jsonl(profile_name=args.profile)
             if latest is None:
                 raise SystemExit(
-                    'No field_study.jsonl found under the AutoTrader run root '
-                    '(file_logging.run_logs.autotrader)')
+                    'No field-study run with a capture found under the AutoTrader run root '
+                    '(file_logging.run_logs.autotrader)'
+                    + (f' for the profile {args.profile}' if args.profile else
+                       ' among the runs declared for a certificate'))
             jsonl_path = str(latest)
 
         FieldStudyCertificate.generate(

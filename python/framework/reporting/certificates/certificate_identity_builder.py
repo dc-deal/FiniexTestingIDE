@@ -35,6 +35,7 @@ def build_certificate_identity(
     validity_days: int = VALIDITY_DAYS,
     now: Optional[datetime] = None,
     reports_dir: Optional[str] = None,
+    valid_from: Optional[datetime] = None,
 ) -> CertificateIdentity:
     """
     Read the declared version, the tree and the environment into one identity.
@@ -50,6 +51,8 @@ def build_certificate_identity(
             count as a dirty tree and are not in the patch — otherwise a run is dirtied by the
             artifact of the previous one, and a repeated release attempt fails for a reason
             that has nothing to do with the code
+        valid_from: What the validity counts from — the start of the run a study certificate
+            rests on, so old evidence does not get a fresh window; the capture moment when None
 
     Returns:
         The identity, ready to spread into a certificate body
@@ -65,7 +68,7 @@ def build_certificate_identity(
         release_version=release_version,
         app_version=AppConfigManager().get_version(),
         timestamp=stamped,
-        valid_until=stamped + timedelta(days=validity_days),
+        valid_until=(valid_from or stamped) + timedelta(days=validity_days),
         git_commit=framework.commit or 'unknown',
         # Three parts only: a patch release is not a different interpreter for any purpose a
         # certificate serves, and the full string carries a build date that would make two

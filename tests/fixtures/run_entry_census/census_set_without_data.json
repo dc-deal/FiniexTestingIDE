@@ -1,0 +1,47 @@
+{
+  "version": "1.0",
+  "scenario_set_name": "run_entry_census_set_without_data",
+  "run_purpose": "fixture",
+  "created": "2026-10-23T00:00:00+00:00",
+  "description": "The run entry census (#621): one BTCUSD window before any data the archive holds, collected or published, so the scenario is excluded before its process starts and the run closes without a scenario of its own.",
+  "global": {
+    "strategy_config": {
+      "decision_logic_type": "tests/fixtures/run_entry_census/census_probe_decision.py",
+      "worker_instances": {
+        "rsi_fast": "CORE/rsi"
+      },
+      "workers": {
+        "rsi_fast": {
+          "periods": {
+            "M5": 14
+          }
+        }
+      },
+      "decision_logic_config": {
+        "open_tick": 20,
+        "close_tick": 60,
+        "lot_size": 0.001
+      }
+    },
+    "execution_config": {
+      "parallel_workers": false
+    },
+    "trade_simulator_config": {
+      "balances": {
+        "USD": 10000.0,
+        "BTC": 0.0
+      }
+    }
+  },
+  "scenarios": [
+    {
+      "scenario_name": "census_before_the_archive",
+      "symbol": "BTCUSD",
+      "data_broker_type": "kraken_spot",
+      "start_date": "2010-01-05T16:00:00+00:00",
+      "end_date": "2010-01-05T20:00:00+00:00",
+      "max_ticks": 300,
+      "enabled": true
+    }
+  ]
+}

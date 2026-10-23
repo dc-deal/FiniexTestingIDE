@@ -98,7 +98,10 @@ from python.framework.trading_env.live.reconciler import Reconciler
 from python.framework.types.activity_registry_types import ActivityKind
 from python.framework.types.api.report_types import RunSummary
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
-from python.framework.types.autotrader_types.autotrader_result_types import AutoTraderResult
+from python.framework.types.autotrader_types.autotrader_result_types import (
+    AutoTraderResult,
+    SessionReach,
+)
 from python.framework.types.autotrader_types.display_label_cache import DisplayLabelCache
 from python.framework.types.autotrader_types.operator_alert_types import (
     OperatorAlertKind,
@@ -1371,6 +1374,12 @@ class AutotraderMain:
             session_end_policy=(
                 f'{self._session_end.orders}/{self._session_end.positions}'
                 if self._session_end is not None else ''),
+            session_reach=SessionReach(
+                order_record_opened=self._order_event_stream is not None,
+                capture_opened=self._study_recorder is not None,
+                tick_source_started=self._tick_source is not None,
+                tick_loop_entered=self._tick_loop_started,
+                day_log_opened=self._tick_loop is not None and self._tick_loop.has_opened_day_log()),
         )
 
         # A collection failure goes to the SESSION logger (§35): the global one only reaches

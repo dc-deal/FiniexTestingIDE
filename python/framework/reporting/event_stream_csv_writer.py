@@ -113,6 +113,16 @@ class EventStreamWriter:
         events = _build_events(trade_history, order_history)
         return cls(run_dir, events)
 
+    def has_events(self) -> bool:
+        """
+        Whether there is anything to write — what a run's close judges the table by, since a write
+        that fails returns nothing as well.
+
+        Returns:
+            True when at least one event was built
+        """
+        return bool(self._events)
+
     def flush(self, filename: str = SESSION_EVENTS_FILE) -> Optional[Path]:
         """
         Sort events by timestamp and write the CSV file.

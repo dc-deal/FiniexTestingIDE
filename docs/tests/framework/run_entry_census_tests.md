@@ -26,7 +26,7 @@ Not here: what a report section or a stream line carries. Those are their own su
 ## The runs it makes
 
 All of them land in the suite's isolated run tree and are removed afterwards; the whole suite
-takes about 11 s (measured 2026-10-23).
+takes about 18 s (measured 2026-10-23).
 
 - **A sweep** of two combinations over [`census_grid.json`](../../../tests/fixtures/run_entry_census/census_grid.json),
   each running two short BTCUSD windows with the robustness mode on, and the ranking written as the
@@ -38,6 +38,12 @@ takes about 11 s (measured 2026-10-23).
   with the same probe and its state frames recorded.
 - **The same session with its log files switched off**, which must still be a declared run with its
   header, reports and streams, and no log.
+- **Three runs that stop early and still close:** a backtest over
+  [`census_set_without_data.json`](../../../tests/fixtures/run_entry_census/census_set_without_data.json),
+  whose only window lies before the archive, so its scenario is excluded before its process starts;
+  a session its cold start refuses, after it opened its order record; and a session whose startup
+  checks fail, before it opened its order record. The refusal and the failure are provoked by
+  replacing one startup step in the test, never by a switch in the code.
 
 ## `test_run_entry_census.py`
 
@@ -45,8 +51,10 @@ takes about 11 s (measured 2026-10-23).
 |---|---|
 | `TestNoFileWithoutAMember` | every file of every run is declared for that run's pipeline, every file of the sweep directory is a sweep member, and both sweep members are written |
 | `TestEveryMemberIsWrittenSomewhere` | every member is written by a census run or named in the short table of exceptions with the test that covers it; what a pipeline always writes is seen in that pipeline's own runs, so a write one pipeline drops is not hidden by the other's; a member the census does write is not in that table; each named test exists |
+| `TestEveryRunCloses` | every census run writes its footprint and reads clean against it: closed, nothing failed, lost or late; every member written only sometimes is judged at the close — only a scenario's diagnostics (its own process writes them) and the warmup history (decided by the workers at the start) may stay unjudged; a session without log files skips them and says why |
+| `TestARunThatStopsEarlyClosesClean` | each of the three runs that stop early closes and needs no look; a file it never got to reads as skipped with the step it stopped before — the backtest's scenario log, the refused session's state frames and day log, the failed session's order record — while the refused session keeps the order record it opened |
 | `TestTheStreamsAndTheIndexAgree` | every stream's header line carries the version the declaration names, and the run index row lists exactly the files the declaration puts in `artifacts` and `stream_files` |
-| `TestTheCensusCanFail` | on a copy of a real run directory: a planted file is named, a file only the other pipeline writes is named, a deleted member is missed, a stream with another version is named |
+| `TestTheCensusCanFail` | on a copy of a real run directory: a planted file is named, a file only the other pipeline writes is named, a deleted member is missed, a run without its footprint is not closed, a file lost after the close is missing, a stream with another version is named |
 | `TestWithoutLogFilesTheRecordStays` | a session with its log files off still holds its header, its trades, its order events and its state frames, nothing undeclared, and no log |
 
 The exceptions are the members no census run can produce: the acceptance studies' captures, the

@@ -223,18 +223,19 @@ meets Kraken's ~$5 order minimum at that unit price where ETH needs 0.002), and
 `max_rearm_attempts` (6 against 0, which means *unbounded* — the primary re-prices toward market
 until the limit phases fill, so they end conclusive rather than timing out).
 
-> ⚠️ **`--latest` picks the newest run by TIMESTAMP, not by profile.** A BTCUSD run started after
-> an ETHUSD one becomes the certified run. The certificate records `profile` and `symbol` and
-> prints both at generation, so the evidence is right there — but nothing asserts which one was
-> expected. **Read the profile line the generator prints before committing the certificate**, or
-> pass `--jsonl` explicitly.
+> ⚠️ **`--latest` picks the newest certificate run, of either pair.** It reads the runs' headers
+> and takes the latest START among the runs declared for a certificate — never the newest file, so
+> a rehearsal that aborted afterwards does not become the certified run. A BTCUSD run started after
+> an ETHUSD one still does. **Pass `--profile kraken_spot_ethusd_field_study`** to certify one pair,
+> or `--jsonl` for one capture. The certificate records `profile` and `symbol` and prints both.
 
 ## Certificate
 
 After the run, generate the PASS/FAIL certificate:
 
 ```bash
-python python/cli/field_study_certificate_cli.py generate --latest --release-version X.Y.Z
+python python/cli/field_study_certificate_cli.py generate --latest \
+    --profile kraken_spot_ethusd_field_study --release-version X.Y.Z
 # or: --jsonl <path/to/field_study.jsonl>  [--comment "..."]
 ```
 
@@ -252,9 +253,22 @@ The certificate is written to `tests/live_field_study/reports/field_study_report
   book (status `unread`, no count) does not pass either: the gate needs a counted, empty book. The account holds base by design, so order-book
   flatness (not a zero base balance) is the criterion; what the account actually MOVED is the
   certificate's `account_delta`, derived from the two snapshots rather than asserted in prose
+- **the run itself is a real one** — the header beside the capture says its orders went to the
+  venue (`study:real_orders`) and its code was committed (`study:committed_code`); a mock or dry
+  run, or a capture lying in no run directory, fails here, so a rehearsal can never pass for the
+  real run
+- **a declared release names the commit the run ran on** — a certificate generated on another
+  commit fails with `EVIDENCE COMMIT`, clean tree or not: generate it right after the run, before
+  anything else is committed. Its `valid_until` counts from the run's start, so old evidence gets
+  no fresh window. The runs it rests on stand in `evidence_runs`
 
 **Informational (not pass-gating)** — each says where it came from, or that it is missing, never a
 silent zero:
+- `run_directory` — the run directory beside the capture, held to what the run store declares a
+  session may hold: whether the run closed (its footprint), the files nobody declared, and the
+  files that failed, went missing or came late. Each finding is a printed warning. This is the one
+  real-venue run before a release, so it is where the tick stream's outage record is seen written
+  in a run directory at all. A capture outside a run directory is `checked: false`.
 - `fees_charged` — what the run booked, read from the run's own report beside the capture
   (`io/run_summary.json`, source `run_record`); where that report is gone, no longer reads or names
   no single currency, the sum of the fill

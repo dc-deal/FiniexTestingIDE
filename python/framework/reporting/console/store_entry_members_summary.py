@@ -46,10 +46,11 @@ def render_entry_members(descriptor: StoreDescriptor) -> None:
     run_types = _run_types_of(members)
     rows = [(member.member_id.value, member.path_pattern, _shape(member),
              *(_moment(member, run_type) for run_type in run_types),
-             member.index_column.value if member.index_column else '—')
+             member.index_column.value if member.index_column else '—',
+             member.served_route or '—')
             for member in members]
     headers = ('MEMBER', 'FILE', 'SHAPE', *(run_type.upper() for run_type in run_types),
-               'LISTED IN')
+               'LISTED IN', 'SERVED AT')
     widths = [max(len(text) for text in column) for column in zip(headers, *rows)]
     header = '  ' + '  '.join(f'{text:<{width}}' for text, width in zip(headers, widths)).rstrip()
     print('\n' + '=' * len(header))
@@ -96,14 +97,15 @@ def entry_members_markdown(members: Tuple[EntryMember, ...]) -> str:
         The table, one line per member, without a trailing newline
     """
     run_types = _run_types_of(members)
-    lines = ['| Member | File | Shape | ' + ' | '.join(run_types) + ' | Listed in |',
-             '|' + '---|' * (4 + len(run_types))]
+    lines = ['| Member | File | Shape | ' + ' | '.join(run_types) + ' | Listed in | Served at |',
+             '|' + '---|' * (5 + len(run_types))]
     for member in members:
         written = [_moment(member, run_type, with_condition=True) for run_type in run_types]
         listed = f'`{member.index_column.value}`' if member.index_column else '—'
+        served = f'`…/{member.served_route}`' if member.served_route else '—'
         lines.append(f'| [`{member.member_id.value}`]({_doc_link(member.doc)}) | '
                      f'`{member.path_pattern}` | {_shape(member)} | '
-                     + ' | '.join(written) + f' | {listed} |')
+                     + ' | '.join(written) + f' | {listed} | {served} |')
     return '\n'.join(lines)
 
 

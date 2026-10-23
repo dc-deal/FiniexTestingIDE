@@ -241,8 +241,8 @@ class RunTreePruner:
             # and a guard that trusts a derived file deletes real evidence the day that file
             # is stale. One stat per run is what the guarantee costs.
             # The raw record behind a real-money release certificate: `FieldStudyCertificate`
-            # finds it by rglob under the live root, so a run holding one is evidence, not
-            # archive — no selector reaches it.
+            # finds it among the runs under the live root, by their headers, so a run holding
+            # one is evidence, not archive — no selector reaches it.
             if (run_dir / FIELD_STUDY_CAPTURE).exists():
                 report.kept_field_study.append(candidate)
                 continue

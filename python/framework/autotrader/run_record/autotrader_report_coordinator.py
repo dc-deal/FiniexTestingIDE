@@ -12,10 +12,17 @@ import re
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from python.configuration.app_config_manager import AppConfigManager
-from python.framework.constants.run_layout_constants import IO_SUBDIR, SESSION_EVENTS_FILE
+from python.framework.acceptance_studies.abstract_acceptance_study import AbstractAcceptanceStudy
+from python.framework.constants.run_layout_constants import (
+    FIELD_STUDY_CAPTURE,
+    IO_SUBDIR,
+    RUN_TYPE_AUTOTRADER,
+    SECURITY_CERT_CAPTURE,
+    SESSION_EVENTS_FILE,
+)
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.discoveries.signal_coverage.signal_scenario_info import SignalScenarioInfo
 from python.framework.logging.scenario_logger import ScenarioLogger
@@ -67,13 +74,20 @@ from python.framework.reporting.builders.booking_periods_report_builder import (
 )
 from python.framework.reporting.console.booking_periods_summary import BookingPeriodsSummary
 from python.framework.reporting.store.run_results_ledger import append_run_to_ledger
+from python.framework.store.entry_members.run_footprint import (
+    expectation,
+    expectation_after,
+    write_footprint,
+)
 from python.framework.trading_env.broker_config import BrokerConfig
 from python.framework.types.api.report_types import RunSummary
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
 from python.framework.types.autotrader_types.autotrader_result_types import AutoTraderResult
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
 from python.framework.types.log_level import LogLevel
+from python.framework.types.run_footprint_types import MemberExpectation
 from python.framework.types.signal_data_types import SignalObservedSeries
+from python.framework.types.store_member_types import RunEntryMemberId
 from python.framework.utils.console_renderer import ConsoleRenderer
 
 
@@ -158,11 +172,12 @@ class AutotraderReportCoordinator:
         # Long-format event-stream CSV (#330) — replaces the previous
         # autotrader_orders.csv + autotrader_trades.csv pair with a single
         # chronological events.csv (FIX ExecutionReport style).
-        EventStreamWriter.from_autotrader_result(
+        events_writer = EventStreamWriter.from_autotrader_result(
             trade_history=result.trade_history or [],
             order_history=result.order_history or [],
             run_dir=self._run_dir,
-        ).flush(SESSION_EVENTS_FILE)
+        )
+        events_writer.flush(SESSION_EVENTS_FILE)
 
         # Unified report artifacts (#391) — the canonical models the console/CSV
         # render and the API serves; same shape as sim, one set per session run.
@@ -332,4 +347,93 @@ class AutotraderReportCoordinator:
             f'📋 Session summary written — {result.ticks_processed} ticks, '
             f'{result.count_logged(LogLevel.WARNING)} warnings, '
             f'{result.count_logged(LogLevel.ERROR)} errors')
+
+        # === CLOSE (#621): the session's own footprint, written last so a session that has one
+        # got here — after the console and the summary log, which can still fail ===
+        expectations = self._footprint_expectations(
+            # From what the table had to hold, not from the write: a write that fails returns
+            # nothing either, and must not read as a session that placed no order
+            events_written=events_writer.has_events(),
+            broker_written=broker_report is not None,
+            cold_start_written=cold_start_report is not None,
+            safety_written=safety_report is not None,
+            venue_account_written=venue_account_report is not None)
+        try:
+            write_footprint(self._run_dir, self._run_id, RUN_TYPE_AUTOTRADER, expectations)
+        except OSError as error:
+            self._global_logger.error(
+                f"The session's footprint could not be written ({error}) — the session reads as "
+                f'not closed')
         return unified.run_summary
+
+    def _footprint_expectations(self, events_written: bool, broker_written: bool,
+                                cold_start_written: bool, safety_written: bool,
+                                venue_account_written: bool) -> List[MemberExpectation]:
+        """
+        For each file a session writes only sometimes, whether this session expected it — judged
+        from what the session knows at its close, so a writer that failed reads as failed rather
+        than as a file that did not apply. The report sections are judged by the branches above
+        that decided them; the streams by the profile and by how far the session got, since a
+        start that was refused or aborted closes too; the logs by the log switch.
+
+        Args:
+            events_written: Whether the event table was written
+            broker_written: Whether the broker section was written
+            cold_start_written: Whether the cold-start section was written
+            safety_written: Whether the safety section was written
+            venue_account_written: Whether the venue-account section was written
+
+        Returns:
+            One expectation per member the session decides on
+        """
+        logs_on = AppConfigManager().get_file_logging_config_object().scenario_enabled
+        capture = (self._decision_logic.get_capture_name()
+                   if isinstance(self._decision_logic, AbstractAcceptanceStudy) else None)
+        sinks = self._decision_logic.get_diagnostics_sinks() if self._decision_logic else []
+        reach = self._result.session_reach
+        log_members = (RunEntryMemberId.SESSION_GLOBAL_LOG, RunEntryMemberId.SESSION_SUMMARY_LOG,
+                       RunEntryMemberId.SESSION_BOOT_LOG)
+        return [
+            *(expectation(member_id, logs_on, 'log files are switched on',
+                          'log files are switched off') for member_id in log_members),
+            expectation_after(RunEntryMemberId.SESSION_DAY_LOG, logs_on, reach.day_log_opened,
+                              'log files are switched on', 'log files are switched off',
+                              'the session made no pass of its tick loop'),
+            expectation_after(RunEntryMemberId.ORDER_EVENTS, True, reach.order_record_opened,
+                              'the session opened its order record', '',
+                              'the session stopped before it opened its order record'),
+            expectation(RunEntryMemberId.SESSION_EVENTS, events_written,
+                        'the session placed an order', 'the session placed no order'),
+            expectation(RunEntryMemberId.BROKER, broker_written,
+                        'the session built its broker configuration',
+                        'the session built no broker configuration'),
+            expectation(RunEntryMemberId.COLD_START, cold_start_written,
+                        'the boot found something to inherit', 'the boot found nothing to inherit'),
+            expectation(RunEntryMemberId.SAFETY, safety_written,
+                        'a risk baseline was taken', 'no risk baseline was taken'),
+            expectation(RunEntryMemberId.VENUE_ACCOUNT, venue_account_written,
+                        'the session asked its venue', 'the session asked its venue nothing'),
+            expectation(RunEntryMemberId.SESSION_DIAGNOSTICS,
+                        any(sink.get_row_count() for sink in sinks),
+                        'the logic recorded a diagnostics row',
+                        'the logic recorded no diagnostics row'),
+            expectation_after(RunEntryMemberId.STATE_FRAMES, self._config.state_frames.enabled,
+                              reach.tick_loop_entered, 'the profile records state frames',
+                              'the profile records no state frames',
+                              'the session stopped before its tick loop'),
+            expectation_after(RunEntryMemberId.TICK_STREAM_EVENTS,
+                              self._config.tick_source.type != 'mock', reach.tick_source_started,
+                              'the session reads its ticks from a venue',
+                              'the session replays recorded ticks',
+                              'the session stopped before its tick source started'),
+            expectation_after(RunEntryMemberId.FIELD_STUDY_CAPTURE,
+                              capture == FIELD_STUDY_CAPTURE, reach.capture_opened,
+                              'the decision logic is the field study',
+                              'the decision logic is no field study',
+                              'the session stopped before the study opened its capture'),
+            expectation_after(RunEntryMemberId.SECURITY_CERT_CAPTURE,
+                              capture == SECURITY_CERT_CAPTURE, reach.capture_opened,
+                              'the decision logic is a security-study stage',
+                              'the decision logic is no security-study stage',
+                              'the session stopped before the study opened its capture'),
+        ]

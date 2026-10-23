@@ -60,6 +60,15 @@ class DiagnosticsCsvSink:
         """
         self._rows.append(row)
 
+    def get_row_count(self) -> int:
+        """
+        How many rows the strategy has appended.
+
+        Returns:
+            The buffered row count
+        """
+        return len(self._rows)
+
     def flush(
         self,
         run_dir: Optional[Path],

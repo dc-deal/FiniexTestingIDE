@@ -171,6 +171,10 @@ venue's answers and its list of open orders can be matched back to us — and to
 run id it carries a piece of, beside a counter. Live only; a backtest sends none. Not the *order id*
 (`pos_btcusd_47`), which never goes on the wire, and not the *broker ref*, which is the venue's.
 
+**closed** (a run) — A run that wrote its *footprint*, its very last step: everything it was going
+to write is written. Not *completed*, which means its results reached the ledger — the step just
+before. See [Store Entry Members](architecture/store_entry_members.md#the-footprint-a-run-closes-with).
+
 **close type** (`close_type` on an order-history row and a trade) — Whether a close took the whole
 position (`full`) or part of it (`partial`). Set once the close fills; empty on every other row.
 
@@ -311,6 +315,12 @@ only on a line written before the session's first market data — an order adopt
 the `session_start` *broker truth* line. A point in time — not the
 *execution time*, which is a duration.
 
+**evidence runs** (`evidence_runs` on a study certificate) — The runs a release certificate rests on,
+each with its run id, the commit its code came from and its start. A declared release fails when
+it is generated on another commit than theirs, and its `valid_until` counts from the first one's
+start. Not the *evidence grade* of a run's data (see *data origin*). See
+[Field Study](tests/live_field_study/field_study_guide.md#certificate).
+
 **execution time** — How long a run or one of its units took on the *wall clock*:
 `execution_time_ms` for a scenario, `execution_time_s` for a whole backtest run. It says nothing
 about how much market time was processed — that is the *tick timespan* — and it is never a point
@@ -357,6 +367,12 @@ earned. *Test fixture*: the data a test reads from `tests/fixtures/`, or a pytes
 A *current fixture* is the run a catalog entry's newest verified production made — see
 [Fixture Catalog](architecture/fixture_catalog.md); a *superseded* one (`fixture_superseded: true`)
 was made by an older or a failed production. See *run purpose*.
+
+**footprint** (`footprint.json` in a run directory) — A run's own record of what it wrote, written
+as its very last step: every file it held, with its size, and for each file written only sometimes
+whether this run expected it and why. A run with one is *closed*. Not the folder's listing, which
+anyone can take; the footprint is what the run itself said. `store_cli.py run-footprint` reads a
+run against it. See [Store Entry Members](architecture/store_entry_members.md#the-footprint-a-run-closes-with).
 
 **fragment** — One ledger file, written per run. Nothing else is called a fragment.
 

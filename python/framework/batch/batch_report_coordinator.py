@@ -8,11 +8,13 @@ This is the coordination layer — the section sub-presenters live in framework/
 import io
 import re
 import sys
+from typing import List
 
 from python.configuration.app_config_manager import AppConfigManager
 from python.framework.constants.run_layout_constants import (
     EVENTS_SUBDIR,
     IO_SUBDIR,
+    RUN_TYPE_SIMULATION,
     SCENARIO_EVENTS_FILE_PATTERN,
 )
 from python.framework.reporting.builders.aggregated_portfolio_report_builder import (
@@ -79,6 +81,13 @@ from python.framework.reporting.builders.booking_periods_report_builder import (
 )
 from python.framework.reporting.console.booking_periods_summary import BookingPeriodsSummary
 from python.framework.reporting.store.run_results_ledger import append_run_to_ledger
+from python.framework.store.entry_members.run_footprint import (
+    expectation,
+    expectation_after,
+    write_footprint,
+)
+from python.framework.types.run_footprint_types import MemberExpectation
+from python.framework.types.store_member_types import RunEntryMemberId
 from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.run_results_types import SweepContext
 from python.framework.utils.file_utils import create_directory
@@ -303,4 +312,65 @@ class BatchReportCoordinator:
         booking_periods = [
             period for unit in units for period in unit.booking_periods]
         append_run_to_ledger(run_summary, provenance, booking_periods)
+
+        # === CLOSE (#621): the run's own footprint, written last so a run that has one got here ===
+        process_results = self._batch_execution_summary.process_result_list
+        expectations = self._footprint_expectations(
+            # A scenario's process hands its log buffer back on success and on error alike; a
+            # scenario excluded before it ran has none, and wrote no log of its own
+            scenario_ran=any(result.scenario_logger_buffer is not None
+                             for result in process_results),
+            orders_placed=any(result.tick_loop_results is not None
+                              and (result.tick_loop_results.trade_history
+                                   or result.tick_loop_results.order_history)
+                              for result in process_results),
+            block_splitting_written=bool(block_splitting_report.symbols),
+            robustness_written=robustness_report.enabled,
+            order_events_written=any(unit.order_events for unit in units))
+        try:
+            write_footprint(run_dir, run_id, RUN_TYPE_SIMULATION, expectations)
+        except OSError as error:
+            self._scenario_set.logger.error(
+                f"The run's footprint could not be written ({error}) — the run reads as not closed")
+
+    def _footprint_expectations(self, scenario_ran: bool, orders_placed: bool,
+                                block_splitting_written: bool, robustness_written: bool,
+                                order_events_written: bool) -> List[MemberExpectation]:
+        """
+        For each file a backtest writes only sometimes, whether this run expected it — judged
+        from what the run knows at its close. A scenario's diagnostics tables are written by its
+        own process and stay unjudged here.
+
+        Args:
+            scenario_ran: Whether any scenario reached its own process
+            orders_placed: Whether any scenario placed an order or traded
+            block_splitting_written: Whether the block-splitting section was written
+            robustness_written: Whether the robustness section was written
+            order_events_written: Whether any scenario recorded an order event
+
+        Returns:
+            One expectation per member the run decides on
+        """
+        logs_on = self._app_config.get_file_logging_config_object().scenario_enabled
+        system_info_on = logs_on and self._app_config.get_logging_write_system_info()
+        log_members = (RunEntryMemberId.BACKTEST_GLOBAL_LOG, RunEntryMemberId.BACKTEST_SUMMARY_LOG)
+        return [
+            *(expectation(member_id, logs_on, 'log files are switched on',
+                          'log files are switched off') for member_id in log_members),
+            expectation_after(RunEntryMemberId.SCENARIO_LOG, logs_on, scenario_ran,
+                              'log files are switched on', 'log files are switched off',
+                              'no scenario reached its process'),
+            expectation(RunEntryMemberId.BACKTEST_SYSTEM_INFO_LOG, system_info_on,
+                        'log files and system information logging are switched on',
+                        'log files or system information logging are switched off'),
+            expectation(RunEntryMemberId.SCENARIO_EVENTS, orders_placed,
+                        'a scenario placed an order', 'no scenario placed an order'),
+            expectation(RunEntryMemberId.BLOCK_SPLITTING, block_splitting_written,
+                        'a profile run that split blocks', 'not a profile run that split blocks'),
+            expectation(RunEntryMemberId.ROBUSTNESS, robustness_written,
+                        'robustness mode is on', 'robustness mode is off'),
+            expectation(RunEntryMemberId.ORDER_EVENTS, order_events_written,
+                        'a scenario recorded an order event',
+                        'no scenario recorded an order event'),
+        ]
 

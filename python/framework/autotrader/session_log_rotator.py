@@ -52,6 +52,15 @@ class SessionLogRotator:
         # spurious rotation in mock/replay mode where tick timestamps differ from current date.
         self._current_log_date: Optional[str] = None
 
+    def has_opened_day_log(self) -> bool:
+        """
+        Whether a pass has opened a trading day's log; the session's close judges the day log by it.
+
+        Returns:
+            True once the first day's log is open
+        """
+        return self._current_log_date is not None
+
     def check_daily_rotation(self) -> None:
         """
         Rotate the session log when the market crosses into a new trading day (#476).

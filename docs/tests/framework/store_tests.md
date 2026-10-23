@@ -82,6 +82,27 @@ the declaration alone and takes milliseconds; whether the writers keep to it is 
   machinery, no configuration manager and no logger. Every writer may import it, so it may import
   nothing that imports them back.
 
+## `test_run_footprint.py`
+
+**The footprint a run closes with (#621).** A written footprint reads back with every file but
+itself. A run with one is closed; without one it is not closed and judges nothing, and a run still
+going is running. A backtest never commissioned to report is not held to a close, and an unreadable
+footprint is a failed close. Once closed: a file gone since is missing, a file written after is
+late — a log that grows is not — a member always written and absent has failed, and a member
+written only sometimes is judged by the run's own expectation: skipped when not expected, failed
+when expected and absent, unknown — never skipped — when the run said nothing; a member that opens
+at a later step of the run reads the step a run stopped before. A file nobody declared is named.
+The view gives every state its place and every close its words.
+
+## `test_run_entry_reader.py`
+
+**One run's files by member (#621).** A run is found by an exact match on its id — a pattern for an
+id finds nothing — and several runs are looked up in one read of the index; a run that registers
+after the first ask is found when asked again. Whether a file is there is asked of the disk, so a
+section written before the index lists it is there. A member's path is built only from the
+declaration: a missing name part, an extra one, an empty one and one that reaches out of the run
+directory are refused, every report section is a member, and a section nobody declared is refused.
+
 ## `test_store_entry_members_view.py`
 
 What `store_cli.py entry-members` prints, and the Markdown form the

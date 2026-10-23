@@ -4,7 +4,8 @@ FiniexTestingIDE - Run Completion Audit
 Which runs started and never reached their close.
 
 A run registers in the run index from its HEADER, written before anything can fail, and its
-ledger row is the LAST step of the report coordinator at close. Between those two moments a
+ledger row is written at its close — the last step before its footprint (#621), which is the run's
+own record of having closed and is read by `run_footprint`, not here. Between those two moments a
 process can be killed, crash, or lose its machine — and the run then exists in one store and
 not the other, with nothing anywhere saying so. Measured 2026-09-18 on a live-adapter session stopped
 from the debugger: the index held it, the ledger did not, and the summary file was created and
@@ -31,10 +32,11 @@ from python.framework.types.api.report_types import ParentKind, RunInfo, RunResu
 
 def run_completed(ledger: RunResultsLedger, run_id: str) -> bool:
     """
-    Whether one run reached its close — the ledger holds its row.
+    Whether one run booked its results — the ledger holds its row.
 
-    The ledger row is the LAST step of the report coordinator, so a run that has one completed
-    and a run that has none either is still going or died. The same rule `unfinished_runs`
+    The ledger row is written at the run's close, so a run that has one completed and a run that
+    has none either is still going or died. Whether the run then also CLOSED — wrote everything
+    and its footprint last — is a question for `run_footprint`. The same rule `unfinished_runs`
     applies to every run at once, asked here of one.
 
     Args:
