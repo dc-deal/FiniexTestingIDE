@@ -6,6 +6,7 @@
 
 > **Version:** 1.4.0
 > **Status:** Alpha
+> **Versioning:** until 2.0, a minor version counts a development cycle and may break what came before it; semantic versioning applies from 2.0 on. The API's compatibility is its contract version, which every answer carries
 > **Target:** Developers with Python experience who want to systematically backtest trading strategies
 
 **New here?** Start with the [Introduction](docs/introduction_to_the_ide.md) — the two pipelines and
