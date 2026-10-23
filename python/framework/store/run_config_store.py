@@ -36,6 +36,7 @@ from python.framework.types.run_config_types import (
     RunConfigKind,
 )
 from python.framework.utils.config_fingerprint_utils import generate_config_fingerprint
+from python.framework.utils.file_utils import create_directory
 
 # The keys that decide WHICH DATA a scenario runs, as opposed to what the algo decides with it.
 # Kept here rather than inferred, because a reader has to know the difference to read a history
@@ -249,7 +250,7 @@ class RunConfigStore:
             raw: The parsed configuration
             target: Where the copy belongs
         """
-        target.parent.mkdir(parents=True, exist_ok=True)
+        create_directory(target.parent, holds='the frozen run configurations')
         tmp = target.with_suffix('.tmp')
         tmp.write_text(json.dumps(raw, sort_keys=True, indent=1), encoding='utf-8')
         os.replace(tmp, target)

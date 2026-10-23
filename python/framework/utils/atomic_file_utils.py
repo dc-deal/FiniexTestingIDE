@@ -12,6 +12,8 @@ import tempfile
 from pathlib import Path
 from typing import Optional
 
+from python.framework.utils.file_utils import create_directory
+
 
 def write_text_atomic(path: Path, text: str, mode: Optional[int] = None) -> None:
     """
@@ -25,7 +27,7 @@ def write_text_atomic(path: Path, text: str, mode: Optional[int] = None) -> None
     Returns:
         None
     """
-    path.parent.mkdir(parents=True, exist_ok=True)
+    create_directory(path.parent, holds=f'the file {path.name}')
     handle, temporary = tempfile.mkstemp(
         dir=path.parent, prefix=f'.{path.name}.', suffix='.tmp')
     try:

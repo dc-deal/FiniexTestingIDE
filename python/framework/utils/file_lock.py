@@ -23,6 +23,7 @@ from types import TracebackType
 from typing import Optional, Self, Type
 
 from python.framework.exceptions.file_lock_errors import FileLockHeldError
+from python.framework.utils.file_utils import create_directory
 
 
 class FileLock:
@@ -39,7 +40,7 @@ class FileLock:
         """
         self._path = path
         self._descriptor: Optional[int] = None
-        path.parent.mkdir(parents=True, exist_ok=True)
+        create_directory(path.parent, holds=f'the lock file {path.name}')
         descriptor = os.open(path, os.O_RDWR | os.O_CREAT | os.O_CLOEXEC, 0o600)
         try:
             fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)

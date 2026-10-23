@@ -16,6 +16,7 @@ from typing import Any, Dict, Tuple
 from python.framework.reporting.certificates.certificate_identity_builder import (
     build_certificate_identity,
 )
+from python.framework.utils.file_utils import create_directory
 
 
 def write_study_certificate(
@@ -59,7 +60,7 @@ def write_study_certificate(
         certificate['warnings'] = warnings + certificate.get('warnings', [])
 
     reports_path = Path(reports_dir)
-    reports_path.mkdir(parents=True, exist_ok=True)
+    create_directory(reports_path, holds='the study certificates')
     version_tag = re.sub(r'[^a-zA-Z0-9._-]', '_', release_version)
     filename = (f'{report_prefix}_{version_tag}_'
                 f"{identity.timestamp.strftime('%Y-%m-%d_%H%M%S')}.json")

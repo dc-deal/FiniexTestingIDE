@@ -28,6 +28,7 @@ from python.framework.logging.abstract_logger import AbstractLogger, ColorCodes
 from python.framework.logging.file_logger import FileLogger
 from python.framework.types.log_level import LogLevel
 from python.framework.types.log_record_types import LogRecord
+from python.framework.utils.file_utils import create_directory
 from python.framework.utils.time_utils import format_log_elapsed
 
 
@@ -87,30 +88,36 @@ class ScenarioLogger(AbstractLogger):
         self.run_dir = None
         self.file_logger = None
 
+        # The caller hands over the root it belongs to — an AutoTrader session, a standalone
+        # run, or one sweep's combinations. They come from config (file_logging.run_logs),
+        # which is the same source the API reads.
+        log_root = (log_root_override if log_root_override
+                    else self._file_logging_config.run_logs.simulation)
+        if not flat_log_filename:
+            # Create scenario run directory. It is the run's record — header, reports, streams —
+            # so the IDE creates it whether or not log files are written: the switch below
+            # decides the log files alone (#621).
+            self.run_dir = create_directory(
+                log_root / scenario_set_name / run_id,
+                holds="the run's record: header, reports and streams",
+                setting='file_logging.run_logs')
+
         if self._file_logging_config.scenario_enabled:
-            # Create scenario run directory
-            # The caller hands over the root it belongs to — an AutoTrader session, a standalone
-            # run, or one sweep's combinations. They come from config (file_logging.run_logs),
-            # which is the same source the API reads.
-            log_root = (log_root_override if log_root_override
-                        else self._file_logging_config.run_logs.simulation)
             prefix = file_name_prefix_override if file_name_prefix_override else self._file_logging_config.scenario_file_name_prefix
 
             if flat_log_filename:
                 # One file, straight into the given root. No run directory is opened, because
                 # what is being logged here is not a run.
-                log_dir = log_root
-                log_dir.mkdir(parents=True, exist_ok=True)
+                log_dir = create_directory(
+                    log_root, holds="the log of the sweep's shared data load",
+                    setting='file_logging.run_logs')
                 log_filename = flat_log_filename
             else:
-                self.run_dir = log_root / scenario_set_name / run_id
-                self.run_dir.mkdir(parents=True, exist_ok=True)
-
                 # Per-scenario files go into scenario_logs/ subdir (backtesting only)
                 log_dir = (self.run_dir / SCENARIO_LOGS_SUBDIR if use_scenario_logs_subdir
                            else self.run_dir)
                 if use_scenario_logs_subdir:
-                    log_dir.mkdir(exist_ok=True)
+                    create_directory(log_dir, holds="the scenarios' own logs")
                 log_filename = RUN_LOG_FILE_PATTERN.format(
                     log_prefix=prefix, log_name=scenario_name)
 

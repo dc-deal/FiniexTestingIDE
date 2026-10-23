@@ -30,6 +30,7 @@ from python.framework.reporting.store.run_ledger_index import RunLedgerIndex
 from python.framework.types.api.report_types import RunResultRow, RunSummary
 from python.framework.types.run_results_types import BookingPeriod, Reduction, RunProvenance
 from python.framework.types.trading_env_types.trading_env_stats_types import EXECUTION_COUNT_FIELDS
+from python.framework.utils.file_utils import create_directory
 
 # Fixed column order — kept stable so fragments stay schema-compatible across runs.
 
@@ -408,7 +409,7 @@ class RunResultsLedger:
         else:
             rows = [self._row(provenance, currency, run_summary)
                     for currency in run_summary.currencies]
-        self._dir.mkdir(parents=True, exist_ok=True)
+        create_directory(self._dir, holds='the run-results ledger')
         # Fragment name unique per run: scenario_set_name is sweep-tagged per combination,
         # so combos that finish in the same wall-clock second never overwrite each other.
         path = self._dir / f'{provenance.scenario_set_name}_{provenance.run_id}.parquet'

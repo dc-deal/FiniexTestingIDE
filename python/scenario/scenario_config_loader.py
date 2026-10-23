@@ -9,6 +9,7 @@ from typing import Any, Dict, List
 
 from python.configuration.app_config_manager import AppConfigManager
 from python.framework.store.run_config_store import RunConfigStore
+from python.framework.utils.file_utils import create_directory
 from python.scenario.scenario_set_resolver import resolve_scenario_set_path
 from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.config_directory.config_directory_discovery import is_user_owned
@@ -93,9 +94,9 @@ class ScenarioConfigLoader:
         """
         app_config = AppConfigManager()
         self.config_path = Path(app_config.get_scenario_sets_path())
-        self.config_path.mkdir(parents=True, exist_ok=True)
+        create_directory(self.config_path, holds='the scenario sets')
         self._user_config_path = Path(app_config.get_user_scenario_sets_path())
-        self._user_config_path.mkdir(parents=True, exist_ok=True)
+        create_directory(self._user_config_path, holds="the user's scenario sets")
         self._user_algo_dirs = [Path(d) for d in app_config.get_user_algo_dirs()]
         # The accelerator, not a dependency: every lookup falls back to the search that was
         # always there, so a missing or empty store changes nothing but the speed (#538).

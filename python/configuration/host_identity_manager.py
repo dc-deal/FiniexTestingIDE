@@ -34,6 +34,7 @@ from python.framework.types.config_types.host_identity_config_types import (
     HostIdentityRecord,
 )
 from python.framework.utils.config_merge_utils import is_config_isolation_active
+from python.framework.utils.file_utils import create_directory
 
 # The identity file is the workspace copy under the data home; a test may point this at a file of its own.
 _HOST_IDENTITY_PATH: Optional[str] = None
@@ -145,7 +146,7 @@ class HostIdentityManager:
             minted_at=datetime.now(timezone.utc).replace(microsecond=0),
         )
 
-        self._path.parent.mkdir(parents=True, exist_ok=True)
+        create_directory(self._path.parent, holds="the installation's identity file")
         tmp_path = self._path.with_name(
             f'.{self._path.name}.{os.getpid()}.{secrets.token_hex(4)}.tmp')
         try:

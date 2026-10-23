@@ -19,6 +19,7 @@ from python.framework.constants.run_layout_constants import (
 )
 from python.framework.logging.file_logger import FileLogger
 from python.framework.logging.scenario_logger import ScenarioLogger
+from python.framework.utils.file_utils import create_directory
 
 
 class SessionLogRotator:
@@ -30,7 +31,7 @@ class SessionLogRotator:
     booking period and the daily loss limit use.
 
     Args:
-        run_dir: The session run directory; None means no files are written, so nothing rotates
+        run_dir: The session run directory; None in a test that keeps no files
         logger: The session logger whose file is swapped
         trading_day: The trading day the canonical clock stands in, None before it is first set
     """
@@ -44,6 +45,9 @@ class SessionLogRotator:
         self._run_dir = run_dir
         self._logger = logger
         self._trading_day = trading_day
+        # The run directory exists whether or not log files are written; the switch alone
+        # decides whether a daily log is opened (#621). Read once, at the session's start.
+        self._writes_logs = AppConfigManager().get_file_logging_config_object().scenario_enabled
         # Daily rotation: date initialized from the first pass (not wall clock). This prevents
         # spurious rotation in mock/replay mode where tick timestamps differ from current date.
         self._current_log_date: Optional[str] = None
@@ -60,7 +64,7 @@ class SessionLogRotator:
         at midnight UTC, and a feed that goes silent across the boundary no longer keeps the
         old file growing — the heartbeat advances the clock and calls this too.
         """
-        if not self._run_dir:
+        if not self._run_dir or not self._writes_logs:
             return
 
         current_day = self._trading_day()
@@ -109,7 +113,7 @@ class SessionLogRotator:
         Args:
             day_label: The trading day just rotated to (YYYYMMDD) — never deleted
         """
-        if not self._run_dir:
+        if not self._run_dir or not self._writes_logs:
             return
         retention_days = (AppConfigManager().get_file_logging_config_object()
                           .session_logs.retention_days)
@@ -132,7 +136,7 @@ def create_session_file_logger(run_dir: Path, date_suffix: str) -> FileLogger:
         FileLogger writing to session_logs/autotrader_session_YYYYMMDD.log
     """
     session_logs_dir = run_dir / SESSION_LOGS_SUBDIR
-    session_logs_dir.mkdir(parents=True, exist_ok=True)
+    create_directory(session_logs_dir, holds="the session's daily logs")
     return FileLogger(
         log_filename=SESSION_DAY_LOG_FILE_PATTERN.format(day=date_suffix),
         file_path=session_logs_dir,

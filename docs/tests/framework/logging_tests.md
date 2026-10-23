@@ -54,6 +54,13 @@ gets exactly the lines of the block, that a muted console prints nothing while t
 the line, that the console is audible again after the block, and that a second tee inside the
 first is refused — its end would close the outer file and give the console back too early.
 
+## `test_scenario_logger_run_directory.py` — the run directory is the record
+
+A run's directory holds its record — header, reports, streams — so the scenario logger creates it
+whether or not log files are written (#621). The tests pin both states: with the log switch
+(`file_logging.scenario.enabled`) on, the directory holds the log; with it off, the directory is
+still created and stays empty, and the logger has no file.
+
 ## Running the Tests
 
 ```bash

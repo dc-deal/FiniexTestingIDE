@@ -35,6 +35,7 @@ from python.framework.types.signal_data_types import (
     SignalParquetColumn,
     SignalSnapshot,
 )
+from python.framework.utils.file_utils import create_directory
 
 vLog = get_global_logger()
 
@@ -73,7 +74,7 @@ class SignalDataImporter:
                  finished_dir: Optional[str] = None, include_finished: bool = False):
         self.source_dir = Path(source_dir)
         self.target_dir = Path(target_dir)
-        self.target_dir.mkdir(parents=True, exist_ok=True)
+        create_directory(self.target_dir, holds='the imported signal files')
 
         self.override = override
         self.include_finished = include_finished
@@ -211,7 +212,7 @@ class SignalDataImporter:
         if target == jsonl_file:
             return
 
-        target.parent.mkdir(parents=True, exist_ok=True)
+        create_directory(target.parent, holds='the signal source files after their import')
         jsonl_file.replace(target)
         self.moved_files += 1
         vLog.info(f'   → archived to {target}')
@@ -264,7 +265,7 @@ class SignalDataImporter:
         df = pd.DataFrame(rows, columns=[c.value for c in SignalParquetColumn])
 
         target_path = self.target_dir / pipeline_id / f'{jsonl_file.stem}.parquet'
-        target_path.parent.mkdir(parents=True, exist_ok=True)
+        create_directory(target_path.parent, holds='a signal parquet file')
         if target_path.exists() and not self.override:
             raise SignalAlreadyImportedError(
                 f'{target_path.name} was already imported for {pipeline_id} — '

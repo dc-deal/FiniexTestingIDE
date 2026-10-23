@@ -47,6 +47,7 @@ from python.framework.types.fixture_catalog_types import (
     FixtureSession,
 )
 from python.framework.types.run_origin_types import RunChannel
+from python.framework.utils.file_utils import create_directory
 from python.scenario.scenario_config_loader import ScenarioConfigLoader
 from python.scenario.scenario_strategy_runner import initialize_batch_and_run
 
@@ -333,7 +334,7 @@ def _production_workspace(entry: FixtureEntry) -> Iterator[Path]:
     """
     workspace = _WORKSPACE_ROOT / entry.entry_id
     shutil.rmtree(workspace, ignore_errors=True)
-    workspace.mkdir(parents=True)
+    create_directory(workspace, holds="a fixture production's workspace")
     try:
         yield workspace
     finally:

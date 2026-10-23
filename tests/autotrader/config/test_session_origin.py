@@ -29,6 +29,7 @@ from python.framework.autotrader import autotrader_main as autotrader_main_modul
 from python.framework.autotrader.autotrader_main import AutotraderMain
 from python.framework.autotrader.startup.autotrader_startup import create_autotrader_loggers
 from python.framework.constants.run_layout_constants import RUN_HEADER_ARTIFACT
+from python.framework.exceptions.data_home_errors import DirectoryCreationDeniedError
 from python.framework.exceptions.host_identity_errors import HostIdentityError
 from python.framework.exceptions.persistence_errors import BotAlreadyRunningError
 from python.framework.reporting.io.run_header_io import read_run_header
@@ -215,6 +216,15 @@ class TestTheCommandLineDeclaresItself:
         output = capsys.readouterr().out
         assert 'host identity file cannot be trusted' in output
         assert 'Traceback' not in output
+
+    def test_a_refused_run_directory_is_a_refusal_not_a_crash(self, monkeypatch, capsys):
+        """#621: the run directory holds the record, so its refusal ends the start — exit 2, no trace."""
+        _RecordingTrader.failure = DirectoryCreationDeniedError(
+            'OS Permission Error — directory creation denied: runs/autotrader/my_profile/run_01')
+
+        assert _run_cli(monkeypatch) == 2
+        output = capsys.readouterr().out
+        assert 'directory creation denied' in output and 'Traceback' not in output
 
 
 def _run_real_cli(monkeypatch) -> int:

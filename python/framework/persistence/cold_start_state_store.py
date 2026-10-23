@@ -38,6 +38,7 @@ from python.framework.types.persistence_types import (
     RiskBaseline,
 )
 from python.framework.types.store_types import StoreId
+from python.framework.utils.file_utils import create_directory
 
 # Envelope format version for THIS store's documents — independent of the algo store's.
 _SCHEMA_VERSION = 1
@@ -358,7 +359,7 @@ class ColdStartStateStore:
         Args:
             payload: Serialized JSON envelope
         """
-        self._path.parent.mkdir(parents=True, exist_ok=True)
+        create_directory(self._path.parent, holds="the framework's state for the next session")
         tmp_path = self._path.with_name(self._path.name + '.tmp')
         with open(tmp_path, 'w', encoding='utf-8') as f:
             f.write(payload)

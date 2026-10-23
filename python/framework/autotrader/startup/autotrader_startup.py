@@ -78,6 +78,7 @@ from python.framework.types.signal_data_types import (
 from python.framework.types.trading_env_types.broker_types import BrokerType
 from python.framework.types.trading_env_types.order_types import OrderType
 from python.framework.types.trading_env_types.stress_test_types import StressTestConfig
+from python.framework.utils.file_utils import create_directory
 from python.framework.utils.git_info_utils import get_git_commit
 from python.framework.validators.adapter_wiring_validator import REPLAY_TICK_SOURCE
 from python.framework.utils.run_id_utils import mint_run_id, session_key_from_run_id
@@ -317,10 +318,10 @@ def create_autotrader_loggers(
         RunIndex(AppConfigManager().get_file_logging_config_object().run_index).register_run(
             header, run_dir)
 
-    # Create session_logs/ subdir (tick loop will create files there)
-    if run_dir:
-        session_logs_dir = run_dir / SESSION_LOGS_SUBDIR
-        session_logs_dir.mkdir(parents=True, exist_ok=True)
+    # Create session_logs/ subdir (tick loop will create files there) — only when log files are
+    # written: the run directory exists either way, the daily logs only with the switch on (#621)
+    if run_dir and AppConfigManager().get_file_logging_config_object().scenario_enabled:
+        create_directory(run_dir / SESSION_LOGS_SUBDIR, holds="the session's daily logs")
 
     return AutotraderLoggerBundle(
         global_logger=global_logger,

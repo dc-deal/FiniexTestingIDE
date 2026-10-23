@@ -11,6 +11,8 @@ import json
 from pathlib import Path
 from typing import Any, Dict, Optional, TextIO
 
+from python.framework.utils.file_utils import create_directory
+
 
 class JsonlStreamWriter:
     """
@@ -26,7 +28,7 @@ class JsonlStreamWriter:
 
     def __init__(self, path: Path, append: bool = False):
         self._path = Path(path)
-        self._path.parent.mkdir(parents=True, exist_ok=True)
+        create_directory(self._path.parent, holds=f'the stream {self._path.name}')
         self._handle: Optional[TextIO] = open(
             self._path, 'a' if append else 'w', encoding='utf-8')
 

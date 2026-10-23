@@ -10,6 +10,7 @@ from typing import List, Optional
 from python.configuration.app_config_manager import AppConfigManager
 from python.framework.batch.batch_orchestrator import BatchOrchestrator
 from python.framework.batch.batch_report_coordinator import BatchReportCoordinator
+from python.framework.exceptions.data_home_errors import DirectoryCreationDeniedError
 from python.framework.exceptions.host_identity_errors import HostIdentityError
 from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.types.batch_execution_types import BatchExecutionSummary
@@ -216,6 +217,11 @@ def initialize_batch_and_run(
         # be trusted, and the message already names the file and both ways forward. A stack
         # trace under it would suggest a defect. Raised before the run header is written, so no
         # run records an identity nobody trusts; the process ends with the startup-abort code.
+        vLog.config_error(str(refusal))
+
+    except DirectoryCreationDeniedError as refusal:
+        # The same kind of refusal (#621): the operating system refused the run's directory, and
+        # the message names the path, the cause and the setting. Raised before any scenario runs.
         vLog.config_error(str(refusal))
 
     except Exception as e:

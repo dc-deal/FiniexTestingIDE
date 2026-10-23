@@ -19,6 +19,7 @@ from pydantic import ValidationError
 
 from python.configuration.app_config_manager import AppConfigManager
 from python.framework.types.fixture_catalog_types import FixtureProduction
+from python.framework.utils.file_utils import create_directory
 
 PRODUCTION_RECORD_FILE = 'fixture_productions.jsonl'
 
@@ -53,7 +54,7 @@ class FixtureProductionStore:
         Args:
             production: What the production made and whether it carried every property
         """
-        self._path.parent.mkdir(parents=True, exist_ok=True)
+        create_directory(self._path.parent, holds='the fixture production record')
         with self._path.open('a', encoding='utf-8') as stream:
             stream.write(production.model_dump_json() + '\n')
 

@@ -21,6 +21,7 @@ from python.framework.constants.run_layout_constants import (
     DIAGNOSTICS_SUBDIR,
     SCENARIO_DIAGNOSTICS_FILE_PATTERN,
 )
+from python.framework.utils.file_utils import create_directory
 
 
 class DiagnosticsCsvSink:
@@ -67,7 +68,7 @@ class DiagnosticsCsvSink:
         """
         Write the buffered rows to a CSV in the run directory.
 
-        No-op when run_dir is None (file logging disabled) or no rows were
+        No-op when there is no run directory (a test without one) or no rows were
         appended — mirrors the EventStreamWriter convention.
 
         Args:
@@ -82,7 +83,7 @@ class DiagnosticsCsvSink:
         if run_dir is None or not self._rows:
             return None
 
-        run_dir.mkdir(parents=True, exist_ok=True)
+        create_directory(run_dir, holds="the strategy's diagnostics tables")
         filename = (SCENARIO_DIAGNOSTICS_FILE_PATTERN.format(sink=self._name, scenario=scenario_suffix)
                     if scenario_suffix else DIAGNOSTICS_FILE_PATTERN.format(sink=self._name))
         out_path = run_dir / filename

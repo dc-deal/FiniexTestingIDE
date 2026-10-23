@@ -26,6 +26,7 @@ from python.framework.optimization.optimization_analysis import (
 )
 from python.framework.reporting.store.run_results_ledger import RunResultsLedger
 from python.framework.types.api.report_types import RunResultRow
+from python.framework.utils.file_utils import create_directory
 
 
 
@@ -287,7 +288,7 @@ def _write_csv(ranked: List[RunResultRow], sweep_id: str) -> Path:
     """
     sweep_dir = Path(
         AppConfigManager().get_file_logging_config_object().run_logs.sweeps) / sweep_id
-    sweep_dir.mkdir(parents=True, exist_ok=True)
+    create_directory(sweep_dir, holds="the sweep's ranking", setting='file_logging.run_logs')
     path = sweep_dir / SWEEP_RANKING_FILE
     flat = [_flat(row) for row in ranked]
     # The header comes from a FLATTENED row, not from `model_fields`. `model_dump()` includes

@@ -58,6 +58,7 @@ from python.framework.reporting.io.run_header_io import read_run_header
 from python.framework.reporting.store.run_index import RunIndex
 from python.framework.types.api.report_types import UnitRoster
 from python.framework.types.signal_data_types import SignalObservedSeries
+from python.framework.utils.file_utils import create_directory
 
 
 class SharedReportCoordinator:
@@ -110,7 +111,7 @@ class SharedReportCoordinator:
         Returns:
             The built models, for the caller's console + ledger reuse
         """
-        io_dir.mkdir(parents=True, exist_ok=True)
+        create_directory(io_dir, holds="the run's reports")
 
         trade_history = build_trade_history_report(run_id, units)
         write_artifact(trade_history, io_dir, TRADE_HISTORY_ARTIFACT)

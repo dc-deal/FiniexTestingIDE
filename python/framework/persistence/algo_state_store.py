@@ -39,6 +39,7 @@ from python.framework.types.config_types.autotrader_defaults_config_types import
 )
 from python.framework.types.persistence_types import CarryOverEnvelope, RestoreContext
 from python.framework.types.store_types import StoreId
+from python.framework.utils.file_utils import create_directory
 from python.framework.utils.market_calendar import MarketCalendar
 from python.framework.utils.time_utils import parse_datetime
 
@@ -333,7 +334,7 @@ class AlgoStateStore:
         Args:
             payload: Serialized JSON envelope
         """
-        self._path.parent.mkdir(parents=True, exist_ok=True)
+        create_directory(self._path.parent, holds="the algo's state for the next session")
         tmp_path = self._path.with_name(self._path.name + '.tmp')
         with open(tmp_path, 'w', encoding='utf-8') as f:
             f.write(payload)

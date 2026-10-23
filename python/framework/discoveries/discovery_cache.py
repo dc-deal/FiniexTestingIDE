@@ -41,6 +41,7 @@ from python.framework.utils.config_fingerprint_utils import (
     read_cache_metadata,
     read_fingerprint_from_parquet,
 )
+from python.framework.utils.file_utils import create_directory
 
 vLog = get_global_logger()
 
@@ -61,7 +62,7 @@ class DiscoveryCache:
         self._app_config = AppConfigManager()
         self.data_dir = Path(self._app_config.get_data_processed_path())
         self.cache_dir = self.data_dir / self.CACHE_PARENT_DIR / self.CACHE_SUB_DIR
-        self.cache_dir.mkdir(parents=True, exist_ok=True)
+        create_directory(self.cache_dir, holds='a discovery cache')
         self._bar_index: Optional[BarsIndexManager] = None
         self._live_fingerprint: Optional[str] = None
 
