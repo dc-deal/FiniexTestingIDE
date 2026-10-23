@@ -67,6 +67,7 @@ ended, into the next session's ledger row.
 |------|-------------------|
 | `test_the_first_session_mints_one` | A profile declaring `deployment.continuous: true` with nothing to inherit names itself |
 | `test_the_second_session_inherits_it` | The carry-over reached the successor |
+| `test_every_session_is_a_declared_run` | Each of the four run directories holds only what the run store declares (#621) |
 | `test_both_ledger_rows_name_it` | It reached the RECORD, not only the running process |
 | `test_the_rows_read_back_as_one_history` | `build_deployment_histories` groups them, in order, with the gap |
 | `test_the_two_fingerprints_hold_across_a_restart` | Nothing changed, so `param_hash` and `profile_hash` must not move — a fingerprint that drifts would mark every restart |
@@ -271,6 +272,7 @@ belongs to is held deterministically by the projection's unit tests.
 
 | Test | What it validates |
 |------|-------------------|
+| `test_its_run_directory_holds_only_declared_files` | The run directory holds only what the run store declares, its capture among them — the run entry census counts on this run for the field study's capture (#621) |
 | `test_it_is_the_projected_schema` | The header is schema 2.0 and carries no `release_target` |
 | `test_the_header_records_where_the_venue_reports_a_fill_s_fee` | The header's `fee_report` is the mock venue's declaration, `status_answer` — as Kraken's — and `venue_fee_expected` is true: the mock session reads its venue's account |
 | `test_a_fill_names_the_phase_that_submitted_its_order` | The first order's fill is filed under the first phase |
@@ -297,6 +299,7 @@ wait for a mock fill are not asserted, for the reason the field study's capture 
 
 | Class | What it validates |
 |-------|-------------------|
+| `TestEveryStageIsADeclaredRun` | every stage's run directory holds only what the run store declares, its capture among them — the run entry census counts on these runs for the security study's capture (#621) |
 | `TestEveryStageStarts` | every stage writes a capture that reaches its `session_end` line |
 | `TestTheRefusalsThatCostNothing` | the guards stage's refusals pass with the reason the guard gives |
 | `TestAPhaseThatEndsWhereItBegan` | `s_start_flat`'s start and result are filed under its own name |

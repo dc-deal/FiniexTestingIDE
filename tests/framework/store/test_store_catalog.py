@@ -20,6 +20,7 @@ from python.framework.store.abstract_store_index import (
     AbstractStoreIndex,
     store_index_filename,
 )
+from python.framework.store.entry_members.run_entry_members import RUN_ENTRY_MEMBERS
 from python.framework.store.store_catalog import StoreCatalog
 from python.framework.store.store_descriptor import PURPOSE_MAX_LENGTH, StoreDescriptor
 from python.framework.types.store_types import (
@@ -376,6 +377,35 @@ class TestStatus:
         assert rows[StoreId.FINISHED_ARCHIVE].entries == 3, 'the dotfile is no entry'
         assert rows[StoreId.FINISHED_ARCHIVE].size_bytes == 3
         assert rows[StoreId.EXTERNAL_HISTORY].entries == 2, 'a zip matched twice is one entry'
+
+    def test_a_directory_entry_is_measured_whole_and_a_nested_store_counts_only_its_own_files(
+            self, tmp_path, monkeypatch):
+        """
+        A run is a directory whose header marks it: its size was the header's bytes alone. A
+        sweep holds its combinations, which are runs and are measured in the run store.
+        """
+        sweep = tmp_path / 'sweep_1'
+        run = sweep / 'my_set_c000' / '20261023_060000_aaaaaaaa'
+        (run / 'io').mkdir(parents=True)
+        (run / 'header.json').write_text('12345')
+        (run / 'io' / 'portfolio.json').write_text('1234567890')
+        (sweep / 'mount_build.log').write_text('123')
+
+        def _store(store_id: StoreId, glob: str, nested: bool) -> StoreDescriptor:
+            return StoreDescriptor(
+                store_id=store_id, kind=StoreKind.RECORD, purpose='toy record', doc='docs/x.md',
+                root=tmp_path, key='id', form=RetrievalForm.DOCUMENT, backend=StoreBackend.DISK,
+                entry_glob=glob, entry_members=RUN_ENTRY_MEMBERS,
+                contains_entries_of=StoreId.RUNS if nested else None)
+
+        monkeypatch.setattr('python.framework.store.store_catalog.build_registrations', lambda: {
+            StoreId.RUNS: _store(StoreId.RUNS, '**/header.json', nested=False),
+            StoreId.SWEEPS: _store(StoreId.SWEEPS, '*/mount_build.log', nested=True),
+        })
+        rows = {r.store_id: r for r in StoreCatalog().status(with_sizes=True)}
+
+        assert rows[StoreId.RUNS].size_bytes == 15, 'the header and the report, not the header'
+        assert rows[StoreId.SWEEPS].size_bytes == 3, "the sweep's own file, not its runs again"
 
 
 class TestStalenessReason:

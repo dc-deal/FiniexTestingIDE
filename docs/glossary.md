@@ -297,8 +297,7 @@ or event.
 (a *snapshot member*, a stream, a report output, a log), which pipeline writes it and when, and which
 column of the run index lists it. A run's directory and a sweep's are declared this way, and the
 writers build their paths from the same names. Never *member* alone — an archive's members and an
-enum's are other things. See
-[Data Storage Layout](architecture/data_storage_layout.md#the-levels).
+enum's are other things. See [Store Entry Members](architecture/store_entry_members.md).
 
 **error count** (`error_count`) — The ERROR records in a run's error pot. A unit that failed
 without logging an error shows in the *run outcome*, not here. See
@@ -647,6 +646,10 @@ price: a resting limit, a resting stop. See [Pending Orders](architecture/pendin
 
 **run** — One execution with one run id and one `header.json`: a backtest, or one AutoTrader
 session. See [Batch Data Flow](architecture/batch_data_flow.md).
+
+**run entry census** — The test suite that makes real runs and holds what they wrote to the run
+store's *entry members*, in both directions: no file without a member, and no member that no run
+writes. Not a count of runs. See [Run Entry Census Tests](tests/framework/run_entry_census_tests.md).
 
 **run outcome** (`run_outcome`) — How a run ended, graded once by its own pipeline: `success`,
 `finished_with_errors` (it completed, but errors were logged), `failed` (units failed, or the session

@@ -27,6 +27,10 @@ from python.framework.reporting.io.run_header_io import (
     write_run_header,
 )
 from python.framework.reporting.store.run_index import RunIndex
+from python.framework.store.entry_members.run_entry_members import (
+    RUN_ENTRY_MEMBERS,
+    RUN_INDEX_COLUMN_MEMBERS,
+)
 from python.framework.types.api.report_types import (
     DataWindow,
     OrdersTo,
@@ -36,6 +40,7 @@ from python.framework.types.api.report_types import (
 )
 from python.framework.types.config_types.file_logging_config_types import RunLogPaths
 from python.framework.types.run_purpose_types import RunPurpose
+from python.framework.types.store_member_types import RunIndexColumn
 from python.framework.utils.run_id_utils import mint_run_id
 
 _START = datetime(2026, 8, 30, 13, 20, 34, tzinfo=timezone.utc)
@@ -159,6 +164,19 @@ class TestTheIndexIsDerivedAndRebuildable:
         assert all(r.size_bytes > 0 for r in rebuilt), (
             'the rebuild did not measure what each run occupies')
 
+    def test_an_unreadable_header_is_left_out_and_the_rebuild_goes_on(self, tmp_path):
+        """One damaged run used to end the rebuild and leave every other run unindexed."""
+        roots = _run_tree(tmp_path)
+        index = RunIndex(tmp_path / 'index.parquet', roots)
+        good = roots.simulation / 'my_set' / '20260830_132034_aaaaaaaa'
+        write_run_header(_header('20260830_132034_aaaaaaaa'), good)
+        damaged = roots.autotrader / 'my_profile' / '20260830_132035_bbbbbbbb'
+        damaged.mkdir(parents=True)
+        (damaged / RUN_HEADER_ARTIFACT).write_text('{"run_id": "20260830_13', encoding='utf-8')
+
+        assert index.rebuild() == 1
+        assert [run.run_id for run in index.list_runs()] == ['20260830_132034_aaaaaaaa']
+
     def test_a_run_is_addressable_without_walking_the_tree(self, tmp_path):
         """The sweep combination sits one level deeper — the lookup no longer has to know that."""
         roots = _run_tree(tmp_path)
@@ -189,6 +207,57 @@ class TestTheIndexIsDerivedAndRebuildable:
         # that only learned "yes, some" would still be guessing which.
         assert index.list_runs()[0].artifacts == ['portfolio.json', 'trade_history.csv']
         assert index.list_runs()[0].has_reports is True
+
+
+class TestTheIndexListsOnlyWhatTheStoreDeclares:
+    """
+    `artifacts` and `stream_files` are allow-lists drawn from the run store's declaration. As a
+    deny-list, `artifacts` took every file in io/ that was not named as an exception — so the
+    temporary file an interrupted atomic write leaves behind made a session that died before its
+    report read as reported.
+    """
+
+    _RUN_ID = '20260830_132034_aaaaaaaa'
+
+    def _recorded(self, tmp_path: Path, names) -> tuple:
+        """A registered run whose io/ holds the given files, recorded as at the report."""
+        index = RunIndex(tmp_path / 'index.parquet')
+        run_dir = tmp_path / 'simulation' / 'my_set' / self._RUN_ID
+        (run_dir / IO_SUBDIR).mkdir(parents=True)
+        index.register_run(_header(self._RUN_ID), run_dir)
+        for name in names:
+            (run_dir / IO_SUBDIR / name).write_text('{}', encoding='utf-8')
+        index.record_artifacts(self._RUN_ID, run_dir)
+        return index.list_runs()[0]
+
+    @staticmethod
+    def _names(column: RunIndexColumn) -> list:
+        """The file names the declaration lists in one column."""
+        return sorted(member.example().split('/', 1)[1]
+                      for member in RUN_INDEX_COLUMN_MEMBERS[column])
+
+    def test_every_declared_file_in_io_lands_in_its_own_column(self, tmp_path):
+        in_io = [member.example().split('/', 1)[1] for member in RUN_ENTRY_MEMBERS
+                 if member.example().startswith(f'{IO_SUBDIR}/')]
+        run = self._recorded(tmp_path, in_io)
+
+        assert run.artifacts == self._names(RunIndexColumn.ARTIFACTS)
+        assert run.stream_files == self._names(RunIndexColumn.STREAM_FILES)
+        unlisted = set(in_io) - set(run.artifacts) - set(run.stream_files)
+        assert unlisted, 'the records a session writes as it runs are listed nowhere'
+
+    def test_a_file_nobody_declared_is_listed_nowhere(self, tmp_path):
+        run = self._recorded(tmp_path,
+                             ['portfolio.json', '.portfolio.json.k3j9x2.tmp', 'notes.txt'])
+
+        assert run.artifacts == ['portfolio.json']
+        assert run.stream_files == []
+
+    def test_an_interrupted_write_alone_is_not_a_report(self, tmp_path):
+        run = self._recorded(tmp_path, ['.portfolio.json.k3j9x2.tmp'])
+
+        assert run.artifacts == []
+        assert run.has_reports is False
 
 
 class TestTheParentIdSaysWhatKindOfParentItIs:

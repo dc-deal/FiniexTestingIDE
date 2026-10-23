@@ -61,6 +61,7 @@
 | [Market Model](architecture/market_model.md) | The three independent axes describing a venue — asset class, how a position is financed, and how prices come about — all eight combinations with what this project supports, and which price the strategy plane reads against the valuation plane |
 | [Price representation](architecture/price_representation.md) | How a price is stored, computed and served, why float64 and not Decimal, and when to re-open it |
 | [Data Storage Layout](architecture/data_storage_layout.md) | The store catalog — every data store by kind (record · carry-over · archive · derived · special) and retrieval form, the index obligation, why the bulk form stays outside the abstraction (#486) |
+| [Store Entry Members](architecture/store_entry_members.md) | What one run or sweep directory may hold, file by file — the shapes, who writes each file and when, what the run list serves, and how a file is added (#621) |
 | [Accounting Periods](architecture/accounting_periods.md) | Which clock resets what — the swap rollover at 17:00 New York against the risk day at midnight UTC, the tick-level equity sample, the two carry-over cadences, and what deliberately does not reset |
 | [Data Provenance](architecture/data_provenance.md) | Who wrote an imported file and what that is allowed to mean — the identity a producer states, the registry that maps it here, the three evidence grades, and the gate that keeps development data out of a measurement |
 | [Fixture Catalog](architecture/fixture_catalog.md) | The runs a consumer pins as a committed procedure — every entry produced and checked by one command, the production record, and why the current fixture is derived rather than stored (#576) |
@@ -231,6 +232,7 @@ Each test suite has its own documentation in [`tests/`](tests/).
 | [Algo Clock Convention](tests/framework/algo_clock_tests.md) | Wall-clock ban lint (decision logic/workers, CI plane) |
 | [Algo Clock Validator](tests/framework/algo_clock_validator_tests.md) | Wall-clock ban, runtime startup validator — AST scan of loaded algos (CORE + user) + batch pre-flight |
 | [Discovery Cache Validity](tests/framework/discovery_validity_tests.md) | The config-fingerprint comparison across all three cache families, and the single-open metadata reader behind it |
+| [Run Entry Census Tests](tests/framework/run_entry_census_tests.md) | Real runs held to what the run store declares a run directory may hold — both directions, the stream versions, the run index row (#621) |
 | [Store Model Tests](tests/framework/store_tests.md) | Catalog completeness, the shared index base (atomic write, delete-and-rebuild, logic version), generic form-A retrieval, carry-over envelope |
 | [Config Directory Tests](tests/framework/config_directory_tests.md) | Every file that can start a run, read without running it — unreadable files as rows, precedence, the per-file cache, run figures |
 | [Fixture Catalog Tests](tests/framework/fixture_catalog_tests.md) | The runs a consumer pins — the catalog's completeness, the production record, and one real production carrying every asserted property |

@@ -1,14 +1,14 @@
 """
 FiniexTestingIDE - Run Entry Members (#621)
 What a run directory may hold: every file, declared once, with the shape that decides how it is
-written and read. The writers build their paths from the same names in the run layout constants, and the
-census holds the two together.
+written and read. The writers build their paths from the same names in the run layout constants,
+and the census holds the two together.
 
 Constants only at import — no configuration is read and no pattern is compiled until something
 asks, because every process that imports the run index imports this.
 """
 
-from typing import Dict, Tuple
+from typing import Dict, FrozenSet, Tuple
 
 from python.framework.constants.run_layout_constants import (
     ACCEPTANCE_CAPTURE_SCHEMA_VERSION,
@@ -331,7 +331,8 @@ RUN_ENTRY_MEMBERS: Tuple[EntryMember, ...] = (
     EntryMember(
         RunEntryMemberId.WARMUP_HISTORY, f'{IO_SUBDIR}/{WARMUP_HISTORY_FILE}',
         EntryMemberShape.SNAPSHOT,
-        'the warmup bars the session started from, written again when the first tick closes the seam',
+        'the warmup bars the session started from, written again when the first tick closes '
+        'the seam',
         (EntryMemberWrite(RUN_TYPE_AUTOTRADER, EntryMemberMoment.RUN_START,
                           'a worker requires bars'),),
         EntryMemberWriteMode.ATOMIC_REPLACE,
@@ -340,3 +341,14 @@ RUN_ENTRY_MEMBERS: Tuple[EntryMember, ...] = (
 
 RUN_ENTRY_MEMBERS_BY_ID: Dict[RunEntryMemberId, EntryMember] = {
     member.member_id: member for member in RUN_ENTRY_MEMBERS}
+
+# The members each run index column lists — what the API promises a reader of the run list.
+RUN_INDEX_COLUMN_MEMBERS: Dict[RunIndexColumn, Tuple[EntryMember, ...]] = {
+    column: tuple(member for member in RUN_ENTRY_MEMBERS if member.index_column is column)
+    for column in RunIndexColumn}
+
+# The directories a run directory holds: the first part of every member path that has one. They go
+# with the run that contains them and are never a run of their own.
+RUN_ENTRY_SUBDIRS: FrozenSet[str] = frozenset(
+    member.path_pattern.split('/', 1)[0] for member in RUN_ENTRY_MEMBERS
+    if '/' in member.path_pattern)

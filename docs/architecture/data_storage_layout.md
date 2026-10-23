@@ -30,7 +30,8 @@ it, file by file: the file's path, its shape (a snapshot replaced whole, a strea
 line, a report output written at the run's end, a log), which pipeline writes it and when, and
 which column of the run index lists it. The writers build their paths from the same names
 ([`run_layout_constants.py`](../../python/framework/constants/run_layout_constants.py)), so a declared name
-and a written one cannot drift apart (#621).
+and a written one cannot drift apart (#621). The tables, the shapes and how a file is added are
+[Store Entry Members](store_entry_members.md).
 
 ---
 
@@ -119,8 +120,9 @@ archive by its zips as well as by its loose files.
 See it live, with entry counts and the stated reasons:
 
 ```bash
-python python/cli/store_cli.py catalog          # add --sizes to also walk for bytes
-python python/cli/store_cli.py rebuild --all    # every index a rebuild restores fully
+python python/cli/store_cli.py catalog               # add --sizes to also walk for bytes
+python python/cli/store_cli.py entry-members runs    # what one run directory may hold
+python python/cli/store_cli.py rebuild --all         # every index a rebuild restores fully
 ```
 
 Underneath the stores the catalog shows two advisories about dated claims the installation holds:
@@ -593,8 +595,9 @@ Stream](order_event_stream.md).
 A live session writes more records into `io/` as it runs: the warmup history it started from
 (`warmup_history.json`, #588) and its tick stream's outages and refused trades
 (`tick_stream_events.jsonl`, #609). Neither is a report artifact or a served stream, so the run
-index lists neither (`RUN_RECORD_FILENAMES`): an artifact would make a session that died before its
-report read as reported, and a stream entry would promise a route that does not exist. Its state
+store declares them for neither index column ([Store Entry Members](store_entry_members.md)): an
+artifact would make a session that died before its report read as reported, and a stream entry
+would promise a route that does not exist. Its state
 frames — what it held and decided, moment by moment (`state_frames.jsonl`, #579) — are a served
 stream like the order events: listed under `stream_files` from the moment the session opens them,
 and read at their two ends by the latest-frame route (#611).

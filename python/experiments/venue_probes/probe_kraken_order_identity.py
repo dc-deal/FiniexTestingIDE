@@ -147,6 +147,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
+from python.configuration.app_config_manager import AppConfigManager
 from python.configuration.market_config_manager import MarketConfigManager
 from python.framework.trading_env.adapters.kraken_adapter import KrakenAdapter
 from python.framework.utils.run_id_utils import (
@@ -157,7 +158,9 @@ from python.framework.utils.run_id_utils import (
 
 _ROOT = Path(__file__).resolve().parents[3]
 _BROKER_CONFIG = _ROOT / 'configs/brokers/kraken/kraken_spot_broker_config.json'
-_RUNS_DIR = _ROOT / 'runs/autotrader'
+# The configured AutoTrader run root, under the data home when one is set — where the sessions
+# wrote, which a fixed folder of the code tree is not.
+_RUNS_DIR = AppConfigManager().get_file_logging_config_object().run_logs.autotrader
 
 # Kraken's own reference shape. Every payload is validated against it, so a client order id
 # can never end up in a txid slot — the one confusion that could aim a cancel at a stranger.

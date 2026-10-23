@@ -4,15 +4,13 @@ Report artifact specs (#486) — every artifact a run writes, declared once.
 Data, not machinery: a file name bound to the model it decodes to. This is the whole of what
 the eighteen former `*_io.py` units carried between them, minus the three that also own a CSV
 surface (`report_csv_io.py`) or a row filter (`report_filters.py`). The file names themselves are
-declared with every other name a run directory holds, in the run layout constants (#621), so the store's
-declaration of a run reads them without importing a model.
+declared with every other name a run directory holds, in the run layout constants (#621), so the
+store's declaration of a run reads them without importing a model.
 
 The run header is deliberately NOT here. It is the run's identity rather than a report artifact:
 it is written at the run's START, lives beside the io/ directory rather than in it, and the run
 index reads it without going through the report store.
 """
-
-from typing import FrozenSet
 
 from python.framework.constants.run_layout_constants import (
     AGGREGATED_PORTFOLIO_ARTIFACT_FILE,
@@ -22,7 +20,6 @@ from python.framework.constants.run_layout_constants import (
     COLD_START_ARTIFACT_FILE,
     EXECUTION_STATS_ARTIFACT_FILE,
     FEED_STABILITY_ARTIFACT_FILE,
-    ORDER_EVENTS_FILE,
     ORDER_HISTORY_ARTIFACT_FILE,
     PENDING_ORDERS_ARTIFACT_FILE,
     PORTFOLIO_ARTIFACT_FILE,
@@ -33,11 +30,8 @@ from python.framework.constants.run_layout_constants import (
     SAFETY_ARTIFACT_FILE,
     SCENARIO_DETAILS_ARTIFACT_FILE,
     SIGNAL_ARTIFACT_FILE,
-    STATE_FRAMES_FILE,
-    TICK_STREAM_EVENTS_FILE,
     TRADE_HISTORY_ARTIFACT_FILE,
     VENUE_ACCOUNT_ARTIFACT_FILE,
-    WARMUP_HISTORY_FILE,
     WARNINGS_ERRORS_ARTIFACT_FILE,
     WORKER_DECISION_ARTIFACT_FILE,
 )
@@ -115,17 +109,3 @@ WARNINGS_ERRORS_ARTIFACT: ArtifactSpec[WarningsErrorsReport] = ArtifactSpec(
     WARNINGS_ERRORS_ARTIFACT_FILE, WarningsErrorsReport)
 WORKER_DECISION_ARTIFACT: ArtifactSpec[WorkerDecisionReport] = ArtifactSpec(
     WORKER_DECISION_ARTIFACT_FILE, WorkerDecisionReport)
-
-
-# Run STREAMS (#362) — written line by line while a run is in progress, and served while it is.
-# Not ArtifactSpecs: a spec decodes one JSON document, a stream is many. Kept apart from the report
-# artifacts for a reason beyond format: a live session writes its order events from its first order
-# and its state frames (#579 part A, served since #611) from its first pass, so a session that died
-# before its report has them — counted as artifacts, it would read as reported.
-STREAM_FILENAMES: FrozenSet[str] = frozenset({ORDER_EVENTS_FILE, STATE_FRAMES_FILE})
-
-# Records a live session writes into io/ itself, as it runs — the warmup history it started from
-# (#588) and its tick stream's outages (#609). Neither a report artifact nor a served stream:
-# counted as an artifact, a session that died before its report would read as reported, and listed
-# among the streams it would promise a route that does not exist.
-RUN_RECORD_FILENAMES: FrozenSet[str] = frozenset({WARMUP_HISTORY_FILE, TICK_STREAM_EVENTS_FILE})

@@ -17,6 +17,7 @@ from typing import List, Optional
 import pandas as pd
 
 from python.framework.exceptions.store_errors import StoreCatalogError
+from python.framework.reporting.store.run_index import dir_size, own_files_size
 from python.framework.store.store_descriptor import StoreDescriptor
 from python.framework.store.store_registrations import build_registrations
 from python.framework.types.store_types import StoreId, StoreStatus
@@ -138,6 +139,7 @@ class StoreCatalog:
                 stale_reason=index.staleness_reason() if index is not None else None,
                 self_healing=descriptor.self_healing,
                 rebuild_loses=descriptor.rebuild_loses,
+                entry_members=len(descriptor.entry_members),
             ))
         return rows
 
@@ -183,6 +185,12 @@ class StoreCatalog:
             return descriptor.root.stat().st_size
         if descriptor.entry_glob is None:
             return None
+        if descriptor.entry_members:
+            # An entry is a directory, and the glob finds the one file that marks it. A store whose
+            # entries hold another store's counts only its own files — a sweep's combinations are
+            # runs, already measured in the run store.
+            measure = own_files_size if descriptor.contains_entries_of is not None else dir_size
+            return sum(measure(path.parent) for path in self._entries(descriptor))
         return sum(path.stat().st_size for path in self._entries(descriptor))
 
     @staticmethod

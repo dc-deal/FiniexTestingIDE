@@ -19,7 +19,6 @@ from python.configuration.app_config_manager import AppConfigManager
 from python.framework.config_directory.config_directory import declared_run_purposes
 from python.framework.constants.run_layout_constants import (
     FIELD_STUDY_CAPTURE,
-    IO_SUBDIR,
     RUN_HEADER_ARTIFACT,
 )
 from python.framework.fixture_catalog.fixture_catalog import entry_ids
@@ -34,6 +33,7 @@ from python.framework.reporting.store.run_index import (
 )
 from python.framework.reporting.store.run_ledger_index import LEDGER_INDEX_FILE
 from python.framework.reporting.store.run_results_ledger import RunResultsLedger
+from python.framework.store.entry_members.run_entry_members import RUN_ENTRY_SUBDIRS
 from python.framework.types.api.report_types import RunInfo, RunReporting
 from python.framework.types.config_types.file_logging_config_types import RunLogPaths
 from python.framework.types.run_prune_types import (
@@ -44,10 +44,6 @@ from python.framework.types.run_prune_types import (
 )
 from python.framework.types.run_purpose_types import RunPurpose
 from python.framework.utils.time_utils import ensure_utc_aware, parse_datetime
-
-# A run's own substructure. These are never candidates in their own right; they go with the run
-# directory that contains them.
-_RUN_SUBDIRS = {IO_SUBDIR, 'scenario_logs', 'session_logs', 'diagnostics', 'events'}
 
 
 def _declared_purpose(run_dir: Path) -> Optional[str]:
@@ -423,7 +419,7 @@ class RunTreePruner:
                 # Filtering here rather than skipping after the fact saved one listing per
                 # run: 2.79 s down to 0.9 s over 118 runs, measured 2026-09-18.
                 dirnames[:] = [d for d in dirnames
-                               if d not in _RUN_SUBDIRS and (path / d) not in known_dirs]
+                               if d not in RUN_ENTRY_SUBDIRS and (path / d) not in known_dirs]
                 if path == root or path in known_dirs:
                     continue
                 if self._is_sweep_dir(path):
@@ -459,20 +455,6 @@ class RunTreePruner:
         report.to_delete_orphans.extend(
             candidate for candidate in found
             if not any(held.is_relative_to(candidate.path.resolve()) for held in holders))
-
-    @staticmethod
-    def _inside_run_dir(path: Path, known_dirs: set) -> bool:
-        """
-        Whether a directory lives inside a known run.
-
-        Args:
-            path: The directory
-            known_dirs: The directories the index lists
-
-        Returns:
-            True when one of its parents is an indexed run
-        """
-        return any(parent in known_dirs for parent in path.parents)
 
     def _is_sweep_dir(self, path: Path) -> bool:
         """

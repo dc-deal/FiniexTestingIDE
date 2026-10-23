@@ -54,6 +54,11 @@ seen), and rebuilding it without accepting the loss is refused before the index 
 config directory is declared self-healing: its rebuild deletes the file and its next read writes
 it again, so the catalog must not answer a rebuild with "rebuild before trusting it".
 
+**Sizes.** A store counted by several patterns counts each file once. A store whose entry is a
+directory is measured whole — a run's size used to be its header's bytes — and a store whose
+entries hold another store's counts only its own files, so a sweep's combinations are measured
+once, as runs.
+
 ## `test_run_entry_members.py`
 
 **The store's declaration of what a run directory and a sweep directory may hold (#621).** It reads
@@ -65,12 +70,25 @@ the declaration alone and takes milliseconds; whether the writers keep to it is 
   pipeline no two members claim the same path; a placeholder never spans a directory.
 - **What it promises:** only a member written at the run's END is listed among the run's
   `artifacts` — the rule a deny-list could break, because a file written earlier made a session that
-  died before its report read as reported. Only a stream is listed among the stream files, a stream
+  died before its report read as reported. Only a stream is listed among the stream files, a listed
+  member lies directly in `io/` (the run index lists the file names it finds there), a stream
   declares its schema version and nothing else does, each shape is written the way it allows, and
   every member's help link reaches a real heading.
+- **What the run list serves:** the file names each index column lists are pinned as literals,
+  so a renamed constant cannot carry the pin along with it. A change there changes what a consumer
+  of the run list reads, so the failure says to raise the API contract first — a pin of a
+  contract, not a count.
 - **Light:** importing the declaration in a fresh process loads no report model, no reporting
   machinery, no configuration manager and no logger. Every writer may import it, so it may import
   nothing that imports them back.
+
+## `test_store_entry_members_view.py`
+
+What `store_cli.py entry-members` prints, and the Markdown form the
+[Store Entry Members](../../architecture/store_entry_members.md) document carries. The document's
+two tables are the ones the declaration produces — regenerate them with `--markdown` when this
+fails — and every link in them reaches a real heading. Every moment has a label, the console lists
+every member, and a store whose entry is a single file says so.
 
 ## `test_store_catalog_views.py`
 

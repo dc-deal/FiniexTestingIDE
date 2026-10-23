@@ -1,0 +1,50 @@
+{
+  "profile_name": "run_entry_census_test",
+  "run_purpose": "fixture",
+  "bot_id": "census01",
+  "symbol": "BTCUSD",
+  "broker_type": "kraken_spot",
+  "adapter_type": "mock",
+  "deployment": {
+    "_comment": "A test profile: every session stands alone.",
+    "continuous": false
+  },
+  "strategy_config": {
+    "_comment": "The run entry census (#621): a probe logic that writes one diagnostics row and opens and closes one position, so the session writes every member that hangs on an order or a declared sink.",
+    "decision_logic_type": "tests/fixtures/run_entry_census/census_probe_decision.py",
+    "worker_instances": {
+      "rsi_fast": "CORE/rsi"
+    },
+    "workers": {
+      "rsi_fast": {
+        "periods": {
+          "M5": 14
+        }
+      }
+    },
+    "decision_logic_config": {
+      "open_tick": 20,
+      "close_tick": 60,
+      "lot_size": 0.001
+    }
+  },
+  "tick_source": {
+    "type": "mock"
+  },
+  "display": {
+    "enabled": false
+  },
+  "state_frames": {
+    "_comment": "Recorded, so the census sees the state-frame stream.",
+    "enabled": true,
+    "cadence_timeframe": "M1"
+  },
+  "scenario_settings": {
+    "start_date": "2026-01-25T02:19:46+00:00",
+    "max_ticks": 200,
+    "balances": {
+      "USD": 10000.0,
+      "BTC": 0.0
+    }
+  }
+}

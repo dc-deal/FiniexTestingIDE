@@ -22,7 +22,7 @@ FiniexTestingIDE provides a collection of CLI tools for the complete workflow fr
 | `run_index_cli.py` | Run Index Management | rebuild, status, prune |
 | `run_config_cli.py` | Run Config Store (#538) | list, history, show |
 | `config_directory_cli.py` | Every configuration that can start a run (#554) | list, show |
-| `store_cli.py` | Every data store and its index (#486) | catalog, rebuild |
+| `store_cli.py` | Every data store and its index (#486) | catalog, entry-members, rebuild |
 | `discoveries_cli.py` | Volatility Profiles, Discoveries & Data Coverage | volatility-profile, extreme-moves, data-coverage (build/show/validate/status/clear), signal-coverage (validate/show), cache (rebuild-all/status) |
 | `generator_cli.py` | Block & Generator-Profile Generation | generate-blocks, generate-profile, generate-all-profiles |
 | `strategy_runner_cli.py` | Backtesting | run, run --generator-profile, validate |
@@ -930,6 +930,17 @@ reader who runs only backtests would never see that warning, which is why the ca
 `run_configs`, whose index alone knows which file each configuration version came from, when it
 was first seen and how often it ran. Rebuilding it empties every history, so it runs only alone and
 only with `--accept-loss`.
+
+### 📈 Store: Entry Members
+
+| | |
+|---|---|
+| **VS Code** | `📈 Store: Entry Members (runs)` |
+| **CLI** | `python python/cli/store_cli.py entry-members <store> [--markdown]` |
+| **Purpose** | Every file one entry of a store may hold — for a run or a sweep: its shape, which pipeline writes it and when, and which run index column lists it |
+
+`--markdown` prints the table the [Store Entry Members](architecture/store_entry_members.md)
+document carries; a test holds the two together. A store whose entry is a single file says so.
 
 ### Index Rebuild (Maintenance)
 

@@ -12,6 +12,7 @@ from pathlib import Path
 
 import pytest
 
+from python.api.api_contract import API_CONTRACT_VERSION
 from python.framework.constants.run_layout_constants import (
     IO_SUBDIR,
     RUN_TYPE_AUTOTRADER,
@@ -22,6 +23,7 @@ from python.framework.reporting.io.report_artifact_io import ArtifactSpec
 from python.framework.store.entry_members.run_entry_members import (
     RUN_ENTRY_MEMBERS,
     RUN_ENTRY_MEMBERS_BY_ID,
+    RUN_INDEX_COLUMN_MEMBERS,
 )
 from python.framework.store.entry_members.sweep_entry_members import (
     SWEEP_ENTRY_MEMBERS,
@@ -52,6 +54,22 @@ _WRITE_MODES_BY_SHAPE = {
     EntryMemberShape.SNAPSHOT: {EntryMemberWriteMode.ATOMIC_REPLACE, EntryMemberWriteMode.IN_PLACE},
 }
 
+# The file names the run list serves in each index column. Changing one changes what a consumer of
+# the run list reads, so they are pinned here as literals rather than derived from the constants: a
+# renamed constant would carry a derived pin along with it. The declaration may grow, the contract
+# moves only on purpose.
+_SERVED_BY_COLUMN = {
+    RunIndexColumn.STREAM_FILES: {'order_events.jsonl', 'state_frames.jsonl'},
+    RunIndexColumn.ARTIFACTS: {
+        'aggregated_portfolio.json', 'block_splitting.json', 'booking_periods.json', 'broker.json',
+        'cold_start.json', 'execution_stats.json', 'feed_stability.json', 'order_history.json',
+        'pending_orders.json', 'portfolio.json', 'profiling.json', 'robustness.json',
+        'run_meta.json', 'run_summary.json', 'safety.json', 'scenario_details.json', 'signal.json',
+        'trade_history.json', 'venue_account.json', 'warnings_errors.json',
+        'worker_decision.json', 'execution_stats.csv', 'order_history.csv', 'trade_history.csv',
+    },
+}
+
 # What the declaration must never load: the report models, the reporting machinery, a
 # configuration manager, a logger, the data libraries.
 _HEAVY_MODULE_PREFIXES = ('python.framework.types.api', 'python.framework.reporting',
@@ -75,7 +93,8 @@ class TestTheDeclarationIsComplete:
         assert set(SWEEP_ENTRY_MEMBERS_BY_ID) == set(SweepEntryMemberId)
 
     def test_every_report_spec_is_declared_once_in_io(self):
-        specs = [value for value in vars(artifact_specs).values() if isinstance(value, ArtifactSpec)]
+        specs = [value for value in vars(artifact_specs).values()
+                 if isinstance(value, ArtifactSpec)]
         assert specs
         patterns = [member.path_pattern for member in RUN_ENTRY_MEMBERS]
         for spec in specs:
@@ -125,7 +144,8 @@ class TestEveryPathHasOneMember:
     def test_every_member_is_written_by_a_known_pipeline(self):
         for member in _ALL_MEMBERS:
             assert member.written_by, member.member_id
-            assert all(write.run_type in _RUN_TYPES for write in member.written_by), member.member_id
+            assert all(write.run_type in _RUN_TYPES
+                       for write in member.written_by), member.member_id
 
 
 class TestWhatTheDeclarationPromises:
@@ -148,6 +168,23 @@ class TestWhatTheDeclarationPromises:
             if member.index_column is RunIndexColumn.STREAM_FILES:
                 assert member.shape is EntryMemberShape.STREAM, member.member_id
 
+    def test_a_listed_member_lies_directly_in_io(self):
+        """The run index lists the file names it finds in io/; a member elsewhere it never sees."""
+        for members in RUN_INDEX_COLUMN_MEMBERS.values():
+            for member in members:
+                folder, _, name = member.path_pattern.partition('/')
+                assert folder == IO_SUBDIR and name and '/' not in name, member.member_id
+
+    @pytest.mark.parametrize('column', list(RunIndexColumn))
+    def test_what_the_run_list_serves_changes_only_with_the_contract(self, column):
+        listed = {member.path_pattern.split('/', 1)[1]
+                  for member in RUN_INDEX_COLUMN_MEMBERS[column]}
+        assert listed == _SERVED_BY_COLUMN[column], (
+            f'`{column}` on the run list would change by '
+            f'{sorted(listed ^ _SERVED_BY_COLUMN[column])}'
+            f' — that changes what the API serves: raise API_CONTRACT_VERSION to '
+            f'{API_CONTRACT_VERSION + 1} with its entry in the contract log, then update this pin')
+
     def test_a_stream_declares_its_schema_version_and_nothing_else_does(self):
         for member in _ALL_MEMBERS:
             is_stream = member.shape is EntryMemberShape.STREAM
@@ -166,7 +203,8 @@ class TestWhatTheDeclarationPromises:
             path, _, anchor = member.doc.partition('#')
             doc = _PROJECT_ROOT / path
             assert doc.is_file(), f'{member.member_id}: {path} does not exist'
-            assert anchor in heading_anchors(doc), f'{member.member_id}: no heading #{anchor} in {path}'
+            assert anchor in heading_anchors(doc), (
+                f'{member.member_id}: no heading #{anchor} in {path}')
 
 
 class TestTheDeclarationIsLight:

@@ -88,8 +88,9 @@ hiding superseded fixtures filters on `true` alone.
 
 ## `artifacts` and `reporting`, read as a pair
 
-`artifacts` names every report file the run persisted. `has_reports` is derived from that list
-being non-empty, so the two can never disagree.
+`artifacts` names every report file the run persisted, and nothing else the run's folder holds —
+never a stream, a record a session writes as it runs, or a file left by an interrupted write.
+`has_reports` is derived from that list being non-empty, so the two can never disagree.
 
 **The two pipelines produce different sets of sections.** An AutoTrader session has no scenario
 details, no profiling and no aggregated portfolio, so a client that assumes one fixed list of

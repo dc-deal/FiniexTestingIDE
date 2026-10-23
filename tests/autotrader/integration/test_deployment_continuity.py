@@ -37,6 +37,7 @@ from python.framework.reporting.builders.deployment_history_builder import (
     build_deployment_histories,
 )
 from python.framework.reporting.store.run_results_ledger import RunResultsLedger
+from tests.shared.entry_census_helpers import assert_run_dir_declared
 from tests.shared.fixture_helpers import remove_run_dir
 
 PROFILE = 'configs/autotrader_profiles/mock/deployment_continuity_test.json'
@@ -117,6 +118,11 @@ class TestTheIdentityTravels:
     def test_the_second_session_inherits_it(self, chain):
         assert chain['second']._deployment_id == chain['first']._deployment_id, (
             'the carry-over did not reach the successor')
+
+    def test_every_session_is_a_declared_run(self, chain):
+        """A session that inherits holds only what the run store declares too (#621)."""
+        for session in chain.values():
+            assert_run_dir_declared(Path(session._run_dir))
 
     def test_both_ledger_rows_name_it(self, chain, rows):
         """

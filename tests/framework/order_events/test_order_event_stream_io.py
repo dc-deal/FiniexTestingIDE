@@ -21,11 +21,12 @@ from python.framework.constants.run_layout_constants import (
     ORDER_EVENTS_FILE,
     ORDER_EVENTS_SCHEMA_VERSION,
     RUN_TYPE_SIMULATION,
+    TICK_STREAM_EVENTS_FILE,
+    WARMUP_HISTORY_FILE,
 )
 from python.framework.exceptions.report_artifact_errors import ReportArtifactUnreadableError
 from python.framework.logging.global_logger import GlobalLogger
 from python.framework.reporting.acceptance_study_recorder import AcceptanceStudyRecorder
-from python.framework.reporting.io.artifact_specs import RUN_RECORD_FILENAMES
 from python.framework.reporting.io.jsonl_stream_writer import JsonlStreamWriter
 from python.framework.reporting.io.order_event_stream_io import (
     read_order_event_stream,
@@ -374,7 +375,7 @@ class TestTheRunIndexKeepsRunRecordsOut:
         (run_dir / IO_SUBDIR).mkdir(parents=True)
         index.register_run(RunHeader(run_id=_RUN_ID, start_time=_TIME,
                                      run_type=RUN_TYPE_SIMULATION, run_name='my_bot'), run_dir)
-        for name in RUN_RECORD_FILENAMES:
+        for name in (TICK_STREAM_EVENTS_FILE, WARMUP_HISTORY_FILE):
             (run_dir / IO_SUBDIR / name).write_text('{}', encoding='utf-8')
 
         index.record_artifacts(_RUN_ID, run_dir)

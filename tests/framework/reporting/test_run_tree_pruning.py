@@ -30,6 +30,7 @@ from python.framework.fixture_catalog.fixture_production_store import (
 )
 from python.framework.reporting.store.run_tree_pruner import RunTreePruner
 from python.framework.reporting.store.run_results_ledger import RunResultsLedger
+from python.framework.store.entry_members.run_entry_members import RUN_ENTRY_MEMBERS
 from python.framework.types.api.report_types import (
     ParentKind,
     RunHeader,
@@ -43,6 +44,7 @@ from python.framework.types.config_types.file_logging_config_types import RunLog
 from python.framework.types.fixture_catalog_types import FixtureProduction
 from python.framework.types.run_prune_types import PruneSelectors
 from python.framework.types.run_purpose_types import RunPurpose
+from python.framework.types.store_member_types import RunEntryMemberId
 
 _START = datetime(2026, 8, 30, 13, 20, 34, tzinfo=timezone.utc)
 
@@ -213,6 +215,24 @@ class TestTheSelectors:
 
         assert run_dir / IO_SUBDIR not in _deleted_paths(report)
         assert report.to_delete_orphans == []
+
+    def test_every_directory_the_run_store_declares_goes_with_its_parent(self, tmp_path):
+        """
+        A header-less directory holding a run's whole footprint is ONE orphan. The pruner takes
+        its list of a run's own directories from the declaration, so none of them is listed as an
+        orphan of its own. A run the index knows is never entered at all.
+        """
+        orphan = _orphan(tmp_path, 'my_set/20260830_132034_aaaaaaaa')
+        for member in RUN_ENTRY_MEMBERS:
+            if member.member_id is RunEntryMemberId.HEADER:
+                continue
+            path = orphan / member.example()
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text('x', encoding='utf-8')
+
+        report = _pruner(tmp_path).plan(PruneSelectors(orphans=True))
+
+        assert [candidate.path for candidate in report.to_delete_orphans] == [orphan]
 
 
 class TestASweepIsAFamily:

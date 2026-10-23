@@ -4,10 +4,11 @@ The overview across every registered data store, and the rebuild handle for thei
 
 Parameter reception only: the rows come from `StoreCatalog`, the advisories from
 `validators/store_health_checks.py`, and everything is rendered in
-`reporting/console/store_catalog_summary.py`.
+`reporting/console/store_catalog_summary.py` and `store_entry_members_summary.py`.
 
 Usage:
     python python/cli/store_cli.py catalog [--sizes]
+    python python/cli/store_cli.py entry-members <store> [--markdown]
     python python/cli/store_cli.py rebuild <store> [--accept-loss]
     python python/cli/store_cli.py rebuild --all
 """
@@ -22,6 +23,10 @@ from python.framework.reporting.console.store_catalog_summary import (
     render_store_rebuild_refused,
     render_store_rebuild_skipped,
     render_store_rebuilt,
+)
+from python.framework.reporting.console.store_entry_members_summary import (
+    render_entry_members,
+    render_entry_members_markdown,
 )
 from python.framework.store.store_catalog import StoreCatalog
 from python.framework.types.store_types import StoreId
@@ -46,6 +51,24 @@ class StoreCli:
         """
         render_store_catalog(self._catalog.status(with_sizes=with_sizes), check_store_health(),
                              with_sizes)
+        return 0
+
+    def cmd_entry_members(self, store: str, markdown: bool) -> int:
+        """
+        Print what one entry of a store may hold, as the store declares it.
+
+        Args:
+            store: The store id
+            markdown: Print the Markdown table the architecture document carries instead
+
+        Returns:
+            Process exit code
+        """
+        descriptor = self._catalog.get(StoreId(store))
+        if markdown:
+            render_entry_members_markdown(descriptor)
+        else:
+            render_entry_members(descriptor)
         return 0
 
     def cmd_rebuild(self, store: Optional[str], rebuild_all: bool, accept_loss: bool) -> int:
@@ -93,6 +116,15 @@ def main() -> int:
         '--sizes', action='store_true', default=False,
         help='Also measure bytes on disk — one stat per entry, opt-in for that reason')
 
+    members_parser = subparsers.add_parser(
+        'entry-members', help='Show every file one entry of a store may hold')
+    members_parser.add_argument(
+        'store', choices=[s.value for s in StoreId],
+        help='Which store — one whose entry is a directory of files, such as runs or sweeps')
+    members_parser.add_argument(
+        '--markdown', action='store_true', default=False,
+        help='Print the table as Markdown, as the architecture document carries it')
+
     rebuild_parser = subparsers.add_parser(
         'rebuild', help='Rebuild a store index from the store contents')
     rebuild_parser.add_argument(
@@ -113,6 +145,8 @@ def main() -> int:
     cli = StoreCli()
     if args.command == 'catalog':
         return cli.cmd_catalog(args.sizes)
+    if args.command == 'entry-members':
+        return cli.cmd_entry_members(args.store, args.markdown)
     if not args.store and not args.rebuild_all:
         rebuild_parser.error('give a store name, or --all')
     if args.accept_loss and args.rebuild_all:

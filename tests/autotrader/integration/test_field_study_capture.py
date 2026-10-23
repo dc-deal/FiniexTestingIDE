@@ -25,8 +25,10 @@ from python.framework.autotrader.autotrader_main import AutotraderMain
 from python.framework.constants.run_layout_constants import IO_SUBDIR, ORDER_EVENTS_FILE
 from python.framework.reporting.certificates.field_study_certificate import FieldStudyCertificate
 from python.framework.types.log_level import LogLevel
+from python.framework.types.store_member_types import RunEntryMemberId
 from python.framework.types.trading_env_types.broker_types import FeeSource
 from python.framework.types.trading_env_types.order_types import FeeReport
+from tests.shared.entry_census_helpers import assert_run_dir_declared, members_present
 from tests.shared.fixture_helpers import logged_messages, remove_run_dir
 
 MOCK_PROFILE = 'configs/autotrader_profiles/mock/field_study_mock.json'
@@ -60,6 +62,15 @@ def _of(lines, event_type, phase=None):
 
 def _fills(lines):
     return [line for line in lines if line['event_type'] in ('order_filled', 'partial_close')]
+
+
+class TestTheRunIsDeclared:
+    """The run entry census counts on this suite for the field study's capture (#621)."""
+
+    def test_its_run_directory_holds_only_declared_files(self, session):
+        _, run_dir = session
+        assert_run_dir_declared(run_dir)
+        assert RunEntryMemberId.FIELD_STUDY_CAPTURE in members_present(run_dir)
 
 
 class TestTheCapture:
