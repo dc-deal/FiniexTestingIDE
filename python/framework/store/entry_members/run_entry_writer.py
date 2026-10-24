@@ -18,8 +18,10 @@ from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.reporting.io.artifact_specs import ArtifactSpec
 from python.framework.reporting.io.report_artifact_io import write_artifact
 from python.framework.reporting.io.run_stream_appender import RunStreamAppender
-from python.framework.store.entry_members.run_entry_members import RUN_ENTRY_MEMBERS_BY_ID
-from python.framework.store.entry_members.run_entry_reader import section_member
+from python.framework.store.entry_members.run_entry_members import (
+    RUN_ENTRY_MEMBERS_BY_ID,
+    section_member_of,
+)
 from python.framework.types.store_member_types import (
     EntryMember,
     EntryMemberShape,
@@ -68,7 +70,7 @@ class RunEntryWriter:
         Returns:
             The written file
         """
-        member = self._member(section_member(spec).member_id)
+        member = self._member(section_member_of(spec.filename).member_id)
         path = self._run_dir / member.path_for()
         create_directory(path.parent, holds="the run's report sections")
         return write_artifact(report, path.parent, spec)

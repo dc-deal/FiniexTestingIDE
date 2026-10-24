@@ -16,15 +16,13 @@ from pathlib import Path
 from typing import Dict, Iterable, Optional, TypeVar
 
 from python.configuration.app_config_manager import AppConfigManager
-from python.framework.constants.run_layout_constants import IO_SUBDIR
-from python.framework.exceptions.store_errors import EntryMemberRefusedError
 from python.framework.reporting.io.artifact_specs import ArtifactSpec
 from python.framework.reporting.io.report_artifact_io import read_artifact
 from python.framework.reporting.io.run_header_io import read_run_header
 from python.framework.reporting.store.run_index import RunIndex
 from python.framework.store.entry_members.run_entry_members import (
-    RUN_ENTRY_MEMBERS,
     RUN_ENTRY_MEMBERS_BY_ID,
+    section_member_of,
 )
 from python.framework.types.api.report_types import RunHeader
 from python.framework.types.store_member_types import EntryMember, RunEntryMemberId
@@ -158,8 +156,4 @@ def section_member(spec: ArtifactSpec) -> EntryMember:
     Returns:
         Its member
     """
-    path = f'{IO_SUBDIR}/{spec.filename}'
-    for member in RUN_ENTRY_MEMBERS:
-        if member.path_pattern == path:
-            return member
-    raise EntryMemberRefusedError(f'no member of a run is the report section {spec.filename}')
+    return section_member_of(spec.filename)

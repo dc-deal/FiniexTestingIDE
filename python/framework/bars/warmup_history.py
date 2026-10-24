@@ -24,7 +24,6 @@ exists nowhere else afterwards.
 import json
 from dataclasses import asdict
 from datetime import datetime
-from pathlib import Path
 from typing import Callable, Dict, List, Optional
 
 from python.framework.bars.bar_rendering_controller import BarRenderingController
@@ -37,8 +36,9 @@ from python.framework.types.market_types.warmup_history_types import (
     WarmupSource,
     WarmupTimeframeRecord,
 )
+from python.framework.store.entry_members.run_entry_writer import RunEntryWriter
 from python.framework.types.process_data_types import ProcessDataPackage
-from python.framework.utils.atomic_file_utils import write_text_atomic
+from python.framework.types.store_member_types import RunEntryMemberId
 from python.framework.utils.bar_period import open_time_of, period_end, period_start
 from python.framework.utils.connection_ladder import ConnectionLadder, run_with_ladder
 from python.framework.utils.process_serialization_utils import deserialize_bars_batch
@@ -93,7 +93,7 @@ class WarmupHistory:
         self._read_at = reference_time
         self._first_tick_time: Optional[datetime] = None
         self._reread_at_first_tick: List[str] = []
-        self._record_path: Optional[Path] = None
+        self._run_writer: Optional[RunEntryWriter] = None
 
     @classmethod
     def from_package(
@@ -238,15 +238,15 @@ class WarmupHistory:
     def inject_into(
         self,
         bar_controller: BarRenderingController,
-        record_path: Optional[Path] = None,
+        run_writer: Optional[RunEntryWriter] = None,
     ) -> None:
         """
         Hand the history to the renderer through its checked route, and arm the seam.
 
         Args:
             bar_controller: The session's bar rendering controller
-            record_path: Where to record the history (a session's `io/warmup_history.json`);
-                written now and again once the seam has closed. None records nothing
+            run_writer: The session's writer — the history is recorded as its warmup history,
+                now and again once the seam has closed. None records nothing
 
         Returns:
             None
@@ -254,7 +254,7 @@ class WarmupHistory:
         if self._reference_time is None or not self._bars_by_timeframe:
             self._logger.debug('⏭️  No warmup history to inject')
             return
-        self._record_path = record_path
+        self._run_writer = run_writer
 
         bar_controller.inject_warmup_bars(
             self._symbol, self._bars_by_timeframe, self._reference_time)
@@ -385,14 +385,16 @@ class WarmupHistory:
 
     def _write_record(self) -> None:
         """
-        Write the record where inject_into was told to, atomically; nowhere when it was not.
+        Write the record through the writer inject_into was given, atomically; nowhere when it
+        was given none.
 
         Returns:
             None
         """
-        if self._record_path is None:
+        if self._run_writer is None:
             return
-        write_text_atomic(self._record_path, json.dumps(asdict(self.build_record()), indent=1))
+        self._run_writer.write_snapshot(RunEntryMemberId.WARMUP_HISTORY,
+                                        json.dumps(asdict(self.build_record()), indent=1))
 
     def _log_tails(self) -> None:
         """

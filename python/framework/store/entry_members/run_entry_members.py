@@ -71,6 +71,7 @@ from python.framework.constants.run_layout_constants import (
     WARNINGS_ERRORS_ARTIFACT_FILE,
     WORKER_DECISION_ARTIFACT_FILE,
 )
+from python.framework.exceptions.store_errors import EntryMemberRefusedError
 from python.framework.types.store_member_types import (
     EntryMember,
     EntryMemberMoment,
@@ -392,3 +393,20 @@ RUN_INDEX_COLUMN_MEMBERS: Dict[RunIndexColumn, Tuple[EntryMember, ...]] = {
 RUN_ENTRY_SUBDIRS: FrozenSet[str] = frozenset(
     member.path_pattern.split('/', 1)[0] for member in RUN_ENTRY_MEMBERS
     if '/' in member.path_pattern)
+
+
+def section_member_of(file_name: str) -> EntryMember:
+    """
+    The member a report section in io/ is, by the section's file name.
+
+    Args:
+        file_name: The section's file name
+
+    Returns:
+        Its member
+    """
+    path = f'{IO_SUBDIR}/{file_name}'
+    for member in RUN_ENTRY_MEMBERS:
+        if member.path_pattern == path:
+            return member
+    raise EntryMemberRefusedError(f'no member of a run is the report section {file_name}')

@@ -23,6 +23,7 @@ from python.framework.constants.run_layout_constants import (
 )
 from python.framework.reporting.store.run_index import RunIndex
 from python.framework.store.entry_members.run_entry_members import RUN_ENTRY_MEMBERS
+from python.framework.store.entry_members.run_entry_writer import RunEntryWriter
 from python.framework.types.run_footprint_types import (
     FootprintFile,
     FootprintFolder,
@@ -38,7 +39,6 @@ from python.framework.types.store_member_types import (
     EntryMemberShape,
     RunEntryMemberId,
 )
-from python.framework.utils.atomic_file_utils import write_text_atomic
 
 
 def is_run_directory(directory: Path) -> bool:
@@ -223,7 +223,8 @@ def write_footprint(run_dir: Path, run_id: str, run_type: str,
         schema_version=FOOTPRINT_SCHEMA_VERSION, run_id=run_id, run_type=run_type,
         closed_at=datetime.now(timezone.utc), files=files, expectations=expectations,
         folders=list(folders.values()))
-    write_text_atomic(run_dir / FOOTPRINT_FILE, record.model_dump_json(indent=2))
+    RunEntryWriter(run_dir, run_type).write_snapshot(
+        RunEntryMemberId.FOOTPRINT, record.model_dump_json(indent=2))
 
 
 def read_footprint(run_dir: Path) -> Optional[RunFootprintRecord]:

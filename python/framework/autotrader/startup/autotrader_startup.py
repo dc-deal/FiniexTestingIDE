@@ -25,14 +25,12 @@ from python.framework.autotrader.startup.autotrader_warmup_preparator import (
 )
 from python.framework.bars.bar_rendering_controller import BarRenderingController
 from python.framework.constants.run_layout_constants import (
-    IO_SUBDIR,
     RUN_SUMMARY_LOG_NAME,
     RUN_TYPE_AUTOTRADER,
     SESSION_GLOBAL_LOG_NAME,
     SESSION_LOG_NAME,
     SESSION_LOG_PREFIX,
     SESSION_LOGS_SUBDIR,
-    WARMUP_HISTORY_FILE,
 )
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.factory.decision_logic_factory import DecisionLogicFactory
@@ -427,9 +425,9 @@ def setup_pipeline(
         config, logger, decision_logic_factory, trading_context, workers,
         signal_source, live_boot, executor, required_order_types)
     # The strategy's own files (#621): written at once, into the session's folder of the run
+    run_writer = RunEntryWriter(run_dir, RUN_TYPE_AUTOTRADER) if run_dir else None
     decision_logic.set_strategy_file_writer(StrategyFileWriter(
-        RunEntryWriter(run_dir, RUN_TYPE_AUTOTRADER) if run_dir else None,
-        RunEntryMemberId.SESSION_STRATEGY_FILE, logger))
+        run_writer, RunEntryMemberId.SESSION_STRATEGY_FILE, logger))
 
     # === Phase 8: BarRenderingController ===
     bar_controller = BarRenderingController(
@@ -442,8 +440,7 @@ def setup_pipeline(
     # === Phase 9: Warmup + Display Label Cache ===
     display_label_cache = _run_warmup(
         config, logger, workers, bar_controller, connection_policy,
-        decision_logic, balances, account, package,
-        record_path=run_dir / IO_SUBDIR / WARMUP_HISTORY_FILE if run_dir else None)
+        decision_logic, balances, account, package, run_writer=run_writer)
 
     # === Phase 10: LiveClippingMonitor ===
     clipping_monitor = LiveClippingMonitor(
@@ -861,7 +858,7 @@ def _run_warmup(
     balances: Dict[str, float],
     account: AutotraderAccountModel,
     package: Optional[ProcessDataPackage],
-    record_path: Optional[Path] = None,
+    run_writer: Optional[RunEntryWriter] = None,
 ) -> DisplayLabelCache:
     """
     Phase 9 — fill the workers' history, build the display labels, and refuse a session that
@@ -878,8 +875,8 @@ def _run_warmup(
         account: The account model from phase 3
         package: A mock session's prepared data, whose warmup bars fill the history; None
             for a live-adapter session, which fetches them from the venue
-        record_path: Where the session records the warmup history it started from; None
-            records nothing
+        run_writer: The session's writer, which records the warmup history it started from;
+            None records nothing
 
     Returns:
         The pre-resolved display labels
@@ -891,7 +888,7 @@ def _run_warmup(
         bar_controller=bar_controller,
         connection_policy=connection_policy,
         package=package,
-        record_path=record_path,
+        run_writer=run_writer,
     )
     display_label_cache = warmup_preparator.build_display_label_cache(
         decision_logic=decision_logic,
