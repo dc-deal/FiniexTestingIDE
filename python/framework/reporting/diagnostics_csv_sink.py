@@ -15,6 +15,7 @@ touches the hot tick path. A no-op where the run has no writer.
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from python.framework.exceptions.data_home_errors import DirectoryCreationDeniedError
 from python.framework.store.entry_members.run_entry_writer import RunEntryWriter
 from python.framework.types.store_member_types import RunEntryMemberId
 
@@ -95,6 +96,10 @@ class DiagnosticsCsvSink:
         try:
             return writer.write_table(member_id, self._columns, self._rows,
                                       ignore_extra_columns=True, **names)
+        except DirectoryCreationDeniedError:
+            # A directory the IDE may not create is a refusal that stops the run, not a table
+            # that failed to write
+            raise
         except Exception as e:
             print(f'Warning: Failed to write diagnostics CSV {self._name}: {e}')
             return None

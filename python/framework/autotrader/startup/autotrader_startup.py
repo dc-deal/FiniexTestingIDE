@@ -29,7 +29,6 @@ from python.framework.constants.run_layout_constants import (
     RUN_TYPE_AUTOTRADER,
     SESSION_GLOBAL_LOG_NAME,
     SESSION_LOG_NAME,
-    SESSION_LOGS_SUBDIR,
 )
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.factory.decision_logic_factory import DecisionLogicFactory
@@ -51,6 +50,7 @@ from python.framework.trading_env.broker_config import BrokerConfig
 from python.framework.trading_env.decision_trading_api import DecisionTradingApi
 from python.framework.trading_env.live.live_trade_executor import LiveTradeExecutor
 from python.framework.store.broker_config_freeze import freeze_broker_config
+from python.framework.store.entry_members.run_entry_members import run_member_folder
 from python.framework.store.entry_members.run_entry_writer import RunEntryWriter
 from python.framework.store.entry_members.strategy_file_writer import StrategyFileWriter
 from python.framework.store.run_config_store import RunConfigStore
@@ -324,7 +324,8 @@ def create_autotrader_loggers(
     # Create session_logs/ subdir (tick loop will create files there) — only when log files are
     # written: the run directory exists either way, the daily logs only with the switch on (#621)
     if run_dir and AppConfigManager().get_file_logging_config_object().scenario_enabled:
-        create_directory(run_dir / SESSION_LOGS_SUBDIR, holds="the session's daily logs")
+        create_directory(run_dir / run_member_folder(RunEntryMemberId.SESSION_DAY_LOG),
+                         holds="the session's daily logs")
 
     return AutotraderLoggerBundle(
         global_logger=global_logger,

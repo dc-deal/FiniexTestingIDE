@@ -103,6 +103,25 @@ section written before the index lists it is there. A member's path is built onl
 declaration: a missing name part, an extra one, an empty one and one that reaches out of the run
 directory are refused, every report section is a member, and a section nobody declared is refused.
 
+## `test_run_dir_reader.py`
+
+**One run directory's files by member (#621).** A member's path, folder and file name are the ones
+the declaration gives, and a member in the run directory itself has no folder. The header and a
+report section are read by their own readers: a missing header raises, a section is None until it
+is written, and one that no longer fits its model raises the validation error. A stream's path is
+given only when the stream is there, and the files of a member with variable parts are exactly the
+files that are that member.
+
+## `test_run_entry_paths_guard.py`
+
+**No module builds a run file's path itself (#621).** A layout constant whose value is a part of a
+declared member path is imported only by its sources — the constants module, the run and sweep
+declarations and the report section specs — and by the modules the test lists with their reason;
+the list may only shrink. Such a file name never stands as a literal outside the constants module,
+and no path is joined from a section spec's file name outside the section writer. The production
+code is parsed once per module; the one-time scripts in `python/experiments/` are not scanned, the
+venue probes and the re-import tool are.
+
 ## `test_run_entry_writer.py`
 
 **One run's files written by member (#621).** A member another pipeline writes and a member of
@@ -117,8 +136,9 @@ and a member of another shape is refused.
 
 **A strategy's own files (#621).** A session's file lands in `strategy_files/`, a scenario's in
 `strategy_files/<scenario>/`, and a second write replaces the first. A name that would reach out
-of the folder or take a temporary write's name is refused; a disk that refuses, content that is
-no JSON and a run without a directory each answer False and are said once on the run's channel —
+of the folder or take a temporary write's name is refused; a disk that refuses, a character no
+file name or text can hold, content that is no JSON — NaN included — and a run without a directory
+each answer False and are said once on the run's channel —
 a failed write never ends the run, and a logic the framework wired nothing into writes nothing.
 The footprint counts the files per member, never lists them: present when the count holds,
 skipped when the strategy wrote none, missing when one is gone since the close and late when one

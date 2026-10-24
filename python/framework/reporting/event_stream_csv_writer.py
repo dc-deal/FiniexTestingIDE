@@ -21,6 +21,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional
 
+from python.framework.exceptions.data_home_errors import DirectoryCreationDeniedError
 from python.framework.store.entry_members.run_entry_writer import RunEntryWriter
 from python.framework.types.event_stream_types import TradeEvent, TradeEventType
 from python.framework.types.portfolio_types.portfolio_trade_record_types import TradeRecord
@@ -147,6 +148,10 @@ class EventStreamWriter:
                 member_id, list(EVENT_FIELDS),
                 (dict(zip(EVENT_FIELDS, _event_to_row(event))) for event in sorted_events),
                 **names)
+        except DirectoryCreationDeniedError:
+            # A directory the IDE may not create is a refusal that stops the run, not a table
+            # that failed to write
+            raise
         except Exception as e:
             print(f'Warning: Failed to write event-stream CSV {member_id.value}: {e}')
             return None

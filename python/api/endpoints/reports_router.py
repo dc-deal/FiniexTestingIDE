@@ -26,7 +26,6 @@ from python.api.api_error_catalog import (
 from python.api.api_query_params import parse_iso_query
 from python.api.api_route_documents import describes
 from python.api.served_state_frames import describe_latest_state_frames, recording_of
-from python.framework.constants.run_layout_constants import STATE_FRAMES_FILE
 from python.framework.exceptions.api_errors import ApiException
 from python.framework.exceptions.report_artifact_errors import ReportArtifactUnreadableError
 from python.framework.reporting.io.artifact_specs import (
@@ -46,6 +45,7 @@ from python.framework.reporting.io.artifact_specs import (
     WORKER_DECISION_ARTIFACT,
 )
 from python.framework.reporting.store.report_store import ReportStore
+from python.framework.store.entry_members.run_entry_members import run_member_file_name
 from python.framework.types.api.recording_state_types import RecordingState
 from python.framework.types.api.report_types import (
     AggregatedPortfolioReport,
@@ -72,8 +72,13 @@ from python.framework.types.api.report_types import (
     WorkerDecisionReport,
 )
 from python.framework.types.api.state_frame_types import LatestStateFramesResponse, StateFrameCause
+from python.framework.types.store_member_types import RunEntryMemberId
 
 router = APIRouter()
+
+# The name the run list's `stream_files` gives the state-frame stream: its file name, as the run
+# store declares it
+_STATE_FRAMES_NAME = run_member_file_name(RunEntryMemberId.STATE_FRAMES)
 
 
 def _missing_artifact(run_id: str, section: str) -> ApiException:
@@ -127,7 +132,7 @@ def list_runs(request: Request) -> RunListResponse:
     runs: list[RunInfo] = store.list_runs_with_results()
     served_at = datetime.now(timezone.utc)
     runs = [run.model_copy(update={'recording': _recording_of_row(store, run, request, served_at)})
-            if STATE_FRAMES_FILE in run.stream_files else run
+            if _STATE_FRAMES_NAME in run.stream_files else run
             for run in runs]
     return RunListResponse(runs=runs, count=len(runs))
 

@@ -33,6 +33,7 @@ from python.framework.reporting.certificates.study_capture_reader import (
 from python.framework.reporting.io.run_header_io import write_run_header
 from python.framework.types.api.report_types import RunHeader
 from python.framework.types.run_purpose_types import RunPurpose
+from python.framework.types.store_member_types import RunEntryMemberId
 
 _START = datetime(2026, 10, 23, 12, 0, tzinfo=timezone.utc)
 _MOCK_STAGES = Path('configs/autotrader_profiles/mock/security_cert')
@@ -72,7 +73,7 @@ class TestTheRunIsFoundByItsIdentity:
         older = _study_run(tmp_path, 'my_study', minutes=10)
         os.utime(older, (older.stat().st_atime, real.stat().st_mtime + 3600))
 
-        candidates = find_study_runs(tmp_path, FIELD_STUDY_CAPTURE)
+        candidates = find_study_runs(tmp_path, RunEntryMemberId.FIELD_STUDY_CAPTURE)
 
         assert [candidate.capture_path for candidate in candidates] == [real, older]
 
@@ -82,16 +83,16 @@ class TestTheRunIsFoundByItsIdentity:
         _study_run(tmp_path, 'my_study', minutes=3, run_type=RUN_TYPE_SIMULATION)
         wanted = _study_run(tmp_path, 'my_study', minutes=4)
 
-        candidates = find_study_runs(tmp_path, FIELD_STUDY_CAPTURE, run_name='my_study',
+        candidates = find_study_runs(tmp_path, RunEntryMemberId.FIELD_STUDY_CAPTURE, run_name='my_study',
                                      run_purpose=RunPurpose.CERTIFICATE.value)
 
         assert [candidate.capture_path for candidate in candidates] == [wanted]
 
     def test_a_candidate_says_whether_it_closed(self, tmp_path):
         capture = _study_run(tmp_path, 'my_study', minutes=1)
-        assert find_study_runs(tmp_path, FIELD_STUDY_CAPTURE)[0].closed is False
+        assert find_study_runs(tmp_path, RunEntryMemberId.FIELD_STUDY_CAPTURE)[0].closed is False
         (capture.parent / FOOTPRINT_FILE).write_text('{}', encoding='utf-8')
-        assert find_study_runs(tmp_path, FIELD_STUDY_CAPTURE)[0].closed is True
+        assert find_study_runs(tmp_path, RunEntryMemberId.FIELD_STUDY_CAPTURE)[0].closed is True
 
     def test_the_field_study_takes_certificate_runs_unless_a_profile_is_named(self, tmp_path):
         rehearsal = _study_run(tmp_path, 'my_mock_study', minutes=20, purpose=RunPurpose.FIXTURE)

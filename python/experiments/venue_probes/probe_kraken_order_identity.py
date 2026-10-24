@@ -149,7 +149,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
 from python.configuration.app_config_manager import AppConfigManager
 from python.configuration.market_config_manager import MarketConfigManager
+from python.framework.store.entry_members.run_dir_reader import RunDirReader
 from python.framework.trading_env.adapters.kraken_adapter import KrakenAdapter
+from python.framework.types.store_member_types import RunEntryMemberId
 from python.framework.utils.run_id_utils import (
     build_client_order_id,
     parse_client_order_id,
@@ -212,7 +214,7 @@ def _harvest_subjects() -> list:
         if not profile_dir.is_dir():
             continue
         for run_dir in sorted(profile_dir.iterdir()):
-            events = run_dir / 'events.csv'
+            events = RunDirReader(run_dir).path_of(RunEntryMemberId.SESSION_EVENTS)
             if not events.is_file():
                 continue
             session_key = session_key_from_run_id(run_dir.name)
@@ -258,10 +260,7 @@ def _harvest_bare_txids() -> list:
         if not profile_dir.is_dir():
             continue
         for run_dir in sorted(profile_dir.iterdir()):
-            logs = run_dir / 'session_logs'
-            if not logs.is_dir():
-                continue
-            for log in sorted(logs.glob('*.log')):
+            for log in RunDirReader(run_dir).files_of(RunEntryMemberId.SESSION_DAY_LOG):
                 for txid in loose.findall(log.read_text(errors='ignore')):
                     if txid not in seen:
                         seen.add(txid)

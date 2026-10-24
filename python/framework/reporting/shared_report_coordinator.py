@@ -12,7 +12,6 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 from python.configuration.app_config_manager import AppConfigManager
-from python.framework.constants.run_layout_constants import RUN_HEADER_ARTIFACT
 from python.framework.discoveries.signal_coverage.signal_scenario_info import SignalScenarioInfo
 from python.framework.reporting.builders.execution_stats_report_builder import (
     build_execution_stats_report,
@@ -53,11 +52,12 @@ from python.framework.reporting.io.report_csv_io import (
     write_order_history_csv,
     write_trade_history_csv,
 )
-from python.framework.reporting.io.run_header_io import read_run_header
 from python.framework.reporting.store.run_index import RunIndex
+from python.framework.store.entry_members.run_dir_reader import RunDirReader
 from python.framework.store.entry_members.run_entry_writer import RunEntryWriter
 from python.framework.types.api.report_types import UnitRoster
 from python.framework.types.signal_data_types import SignalObservedSeries
+from python.framework.types.store_member_types import RunEntryMemberId
 
 
 class SharedReportCoordinator:
@@ -76,11 +76,11 @@ class SharedReportCoordinator:
         Args:
             run_dir: The run's own directory
         """
-        header_path = run_dir / RUN_HEADER_ARTIFACT
-        if not header_path.exists():
+        directory = RunDirReader(run_dir)
+        if not directory.has(RunEntryMemberId.HEADER):
             return
         RunIndex(AppConfigManager().get_file_logging_config_object().run_index) \
-            .record_artifacts(read_run_header(header_path).run_id, run_dir)
+            .record_artifacts(directory.read_header().run_id, run_dir)
 
     @staticmethod
     def derive_and_persist(

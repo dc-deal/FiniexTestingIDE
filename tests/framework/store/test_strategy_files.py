@@ -83,6 +83,26 @@ class TestAFailedWriteNeverEndsTheRun:
 
         assert len([line for line in logger.lines if line[0] == 'error']) == 1
 
+    @pytest.mark.parametrize('name, text', [('a\x00b.json', 'x'), ('a.txt', 'bad \udc80 text')])
+    def test_a_character_no_file_can_hold_is_said_once_and_never_raised(self, tmp_path, name,
+                                                                         text):
+        logger = RecordingLogger()
+        files = _session_files(tmp_path, logger)
+
+        assert files.write_text(name, text) is False
+        assert files.write_text(name, text) is False
+
+        assert not [path for path in tmp_path.rglob('*') if path.is_file()]
+        assert len([line for line in logger.lines if line[0] == 'error']) == 1
+
+    def test_nan_is_no_json_and_is_not_written(self, tmp_path):
+        logger = RecordingLogger()
+
+        assert _session_files(tmp_path, logger).write_json('a.json', {'v': float('nan')}) is False
+
+        assert not (tmp_path / 'strategy_files').exists()
+        assert logger.lines[0][0] == 'error'
+
     def test_content_that_is_no_json_is_said_and_not_written(self, tmp_path):
         logger = RecordingLogger()
 

@@ -577,7 +577,7 @@ substrate the Parameter Optimization system ranks over. Both pipelines append (#
    dissolved into `BatchReportCoordinator` (sub-presenters stay; render orchestration in
    `generate_and_log`). Pure file-move + import refactor; the models stay in `types/api/report_types.py`.
    **On disk:** the persisted report artifacts (JSON + CSV) now live in the run's **`io/`** subfolder
-   (`<run_dir>/io/`, the `IO_SUBDIR` constant in `report_store`) — both pipelines write there and
+   (`<run_dir>/io/`, where the run store's declaration places them) — both pipelines write there and
    `ReportStore` reads from there; `events/`, `scenario_logs/` and the run logs stay at the run-dir root.
 8. **Shared coordinator + folder split (#403, structural) — DONE.** The units-derived DERIVE+PERSIST
    sequence both coordinators copy-pasted (the 7 sections trade / order / portfolio / pending /

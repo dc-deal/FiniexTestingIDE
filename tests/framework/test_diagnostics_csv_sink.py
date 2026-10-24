@@ -9,11 +9,14 @@ and the flush_decision_diagnostics helper used by both pipelines.
 import csv
 from unittest.mock import MagicMock
 
+import pytest
+
 from python.framework.constants.run_layout_constants import (
     RUN_TYPE_AUTOTRADER,
     RUN_TYPE_SIMULATION,
 )
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
+from python.framework.exceptions.data_home_errors import DirectoryCreationDeniedError
 from python.framework.reporting.diagnostics_csv_sink import (
     DiagnosticsCsvSink,
     flush_decision_diagnostics,
@@ -72,6 +75,15 @@ class TestDiagnosticsCsvSink:
         assert rows[0] == ['id', 'outcome', 'conf']
         assert rows[1] == ['p1', 'TRADED', '0.6']
         assert rows[2] == ['p2', 'RESET', '0.1']
+
+    def test_a_directory_the_ide_may_not_create_stops_the_run(self, tmp_path):
+        """A refusal is not a table that failed to write: it ends the run with its named error."""
+        (tmp_path / 'diagnostics').write_text('a file where the folder should be')
+        sink = DiagnosticsCsvSink('funnel', ['id'])
+        sink.append_row({'id': 'p1'})
+
+        with pytest.raises(DirectoryCreationDeniedError):
+            sink.flush(_backtest_writer(tmp_path), scenario_suffix='window_01')
 
     def test_missing_key_renders_empty_cell(self, tmp_path):
         sink = DiagnosticsCsvSink('funnel', ['id', 'outcome', 'conf'])

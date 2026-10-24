@@ -76,6 +76,24 @@ member names, and a logger without a member writes no file.
 A sweep directory's own files — the mount build's log and the ranking — are written the same way
 by `SweepEntryWriter(sweep_dir)`; each combination is a run.
 
+## Reading a run's files
+
+A reader asks for a member too. `RunEntryReader` finds a run by its id through the run index — an
+exact match, the guard an id arriving from a URL needs — and `RunDirReader(run_dir)` reads a run
+directory a caller already holds: the run itself while it reports, a walk that finds runs by their
+header, the pruner, a certificate. Both read a header, a report section and a stream's path, and
+ask the disk whether a file is there. What a file holds is read by its own reader, with that
+reader's errors: a section that no longer fits its model raises the validation error, a missing
+header raises like any missing file. A walk searches by the member's declared path, and a message
+names a file by the member's declared file name.
+
+A test holds the code to this: a layout constant that names a part of a member's path is imported
+only by its sources, such a file name never stands as a literal, and no path is joined from a
+report section's file name outside the section writer
+([store_tests.md](../tests/framework/store_tests.md)). One module keeps its own name rule on
+purpose — the session-log retention deletes only names of eight digits, narrower than the declared
+day log — and the test lists it with that reason.
+
 ## Shapes, moments and write modes
 
 The shape decides how a file is written and how it is read.
@@ -231,7 +249,8 @@ directory.
 ## Adding a member
 
 1. Name the file in `run_layout_constants.py`. The declaration reads the constant; the writer asks
-   the run entry writer for the member and never builds the path itself.
+   the run entry writer for the member, the reader asks a run reader, and neither builds the path
+   itself.
 2. Add its id to `RunEntryMemberId` and declare it in `run_entry_members.py`: path, shape, what it
    holds, who writes it and when, the write mode, its document — its index column only if the
    run list is meant to serve it, which changes what the API serves and raises its contract, and

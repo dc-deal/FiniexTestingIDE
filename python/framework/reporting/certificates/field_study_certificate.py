@@ -41,7 +41,6 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from python.configuration.app_config_manager import AppConfigManager
-from python.framework.constants.run_layout_constants import FIELD_STUDY_CAPTURE, IO_SUBDIR
 from python.framework.reporting.certificates.study_capture_reader import (
     find_study_runs,
     read_study_capture,
@@ -53,7 +52,7 @@ from python.framework.reporting.certificates.study_certificate_writer import (
 )
 from python.framework.reporting.console.run_footprint_summary import CLOSE_LABELS
 from python.framework.reporting.io.artifact_specs import RUN_SUMMARY_ARTIFACT
-from python.framework.reporting.io.report_artifact_io import read_artifact
+from python.framework.store.entry_members.run_dir_reader import RunDirReader
 from python.framework.store.entry_members.run_footprint import assess, is_run_directory
 from python.framework.types.acceptance_study_types.study_capture_types import (
     SESSION_END_PHASE,
@@ -64,6 +63,7 @@ from python.framework.types.api.report_types import OrdersTo, RunHeader
 from python.framework.types.live_types.reconciliation_types import ReconcileState
 from python.framework.types.run_footprint_types import RunCloseState
 from python.framework.types.run_purpose_types import RunPurpose
+from python.framework.types.store_member_types import RunEntryMemberId
 from python.framework.types.trading_env_types.broker_types import FeeSource
 from python.framework.types.trading_env_types.order_types import FeeReport, OrderSide
 from python.framework.utils.trading_math.slippage_math import adverse_slippage
@@ -106,7 +106,7 @@ class FieldStudyCertificate:
         root = Path(search_root) if search_root else Path(
             AppConfigManager().get_file_logging_config_object().run_logs.autotrader)
         candidates = find_study_runs(
-            root, FIELD_STUDY_CAPTURE, run_name=profile_name,
+            root, RunEntryMemberId.FIELD_STUDY_CAPTURE, run_name=profile_name,
             run_purpose=None if profile_name else RunPurpose.CERTIFICATE.value)
         return candidates[0].capture_path if candidates else None
 
@@ -264,11 +264,10 @@ class FieldStudyCertificate:
         Returns:
             {'value', 'currency', 'source'} — source 'run_record', 'event_sum' or 'not_available'
         """
-        summary_path = Path(jsonl_path).parent / IO_SUBDIR / RUN_SUMMARY_ARTIFACT.filename
         charged = []
         try:
-            if summary_path.exists():
-                summary = read_artifact(summary_path, RUN_SUMMARY_ARTIFACT)
+            summary = RunDirReader(Path(jsonl_path).parent).read_section(RUN_SUMMARY_ARTIFACT)
+            if summary is not None:
                 charged = [row for row in summary.currencies if row.fees_charged is not None]
         except ValueError:
             # A report written by another version of its model no longer validates — the

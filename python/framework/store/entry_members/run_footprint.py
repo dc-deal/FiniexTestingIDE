@@ -16,13 +16,14 @@ from typing import Dict, List, Optional
 from python.configuration.app_config_manager import AppConfigManager
 from python.framework.activities.activity_registry_reader import ActivityRegistryReader
 from python.framework.constants.run_layout_constants import (
-    FOOTPRINT_FILE,
     FOOTPRINT_SCHEMA_VERSION,
-    RUN_HEADER_ARTIFACT,
     RUN_TYPE_SIMULATION,
 )
 from python.framework.reporting.store.run_index import RunIndex
-from python.framework.store.entry_members.run_entry_members import RUN_ENTRY_MEMBERS
+from python.framework.store.entry_members.run_entry_members import (
+    RUN_ENTRY_MEMBERS,
+    run_member_path,
+)
 from python.framework.store.entry_members.run_entry_writer import RunEntryWriter
 from python.framework.types.run_footprint_types import (
     FootprintFile,
@@ -51,7 +52,7 @@ def is_run_directory(directory: Path) -> bool:
     Returns:
         True when a header lies in it
     """
-    return (directory / RUN_HEADER_ARTIFACT).is_file()
+    return (directory / run_member_path(RunEntryMemberId.HEADER)).is_file()
 
 
 def _read_header(run_dir: Path) -> Dict:
@@ -64,7 +65,8 @@ def _read_header(run_dir: Path) -> Dict:
     Returns:
         The header's fields
     """
-    return json.loads((run_dir / RUN_HEADER_ARTIFACT).read_text(encoding='utf-8'))
+    return json.loads(
+        (run_dir / run_member_path(RunEntryMemberId.HEADER)).read_text(encoding='utf-8'))
 
 
 def run_type_of(run_dir: Path) -> str:
@@ -208,7 +210,7 @@ def write_footprint(run_dir: Path, run_id: str, run_type: str,
     files = []
     folders: Dict[RunEntryMemberId, FootprintFolder] = {}
     for path in run_files(run_dir):
-        if path == FOOTPRINT_FILE:
+        if path == run_member_path(RunEntryMemberId.FOOTPRINT):
             continue
         for member in _claims(path, members):
             size = (run_dir / path).stat().st_size
@@ -237,7 +239,7 @@ def read_footprint(run_dir: Path) -> Optional[RunFootprintRecord]:
     Returns:
         The record, or None when the run has none
     """
-    path = run_dir / FOOTPRINT_FILE
+    path = run_dir / run_member_path(RunEntryMemberId.FOOTPRINT)
     if not path.is_file():
         return None
     return RunFootprintRecord.model_validate_json(path.read_text(encoding='utf-8'))

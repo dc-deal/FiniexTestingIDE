@@ -20,6 +20,9 @@ The `tests/framework/config/` suite holds complementary test files:
   anything else.
 - **`test_data_home.py`** — where the operator's state lives (#598). See
   [The data home](#test_data_homepy--where-the-operators-state-lives) below.
+- **`test_scenario_log_prefix.py`** — the scenario log prefix is one plain name (#621): every
+  backtest log's file name begins with it, so an empty value, a dot and a path are refused when the
+  configuration loads rather than at the start of the first run.
 - **`test_committed_data_origin.py`** — nothing kept in `configs/` or `tests/fixtures/` rests
   on external data (#561): no generator profile records `external` among its origin classes,
   and one without the field predates external data; no scenario set's window or warmup reaches

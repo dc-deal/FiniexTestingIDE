@@ -28,8 +28,6 @@ from python.framework.config_directory.config_directory_index import (
 from python.framework.constants.run_layout_constants import (
     GLOBAL_LOG_FILE,
     IMPORT_LOG_SUBDIR,
-    MOUNT_BUILD_LOG,
-    RUN_HEADER_ARTIFACT,
 )
 from python.framework.discoveries.discovery_cache_index import (
     DISCOVERY_INDEX_FILE,
@@ -50,13 +48,20 @@ from python.framework.reporting.store.run_ledger_index import (
     RunLedgerIndex,
 )
 from python.framework.reporting.store.run_results_ledger import LEDGER_COLUMNS
-from python.framework.store.entry_members.run_entry_members import RUN_ENTRY_MEMBERS
-from python.framework.store.entry_members.sweep_entry_members import SWEEP_ENTRY_MEMBERS
+from python.framework.store.entry_members.run_entry_members import (
+    RUN_ENTRY_MEMBERS,
+    run_member_path,
+)
+from python.framework.store.entry_members.sweep_entry_members import (
+    SWEEP_ENTRY_MEMBERS,
+    SWEEP_ENTRY_MEMBERS_BY_ID,
+)
 from python.framework.store.run_config_index import RUN_CONFIG_INDEX_FILE, RunConfigIndex
 from python.framework.store.run_patch_store import PATCH_SUFFIX
 from python.framework.store.store_descriptor import StoreDescriptor
 from python.framework.types.activity_registry_types import ACTIVITY_ID_PREFIX
 from python.framework.types.config_types.host_identity_config_types import HOST_IDENTITY_FILE_NAME
+from python.framework.types.store_member_types import RunEntryMemberId, SweepEntryMemberId
 from python.framework.types.store_types import (
     DISCOVERY_CACHE_DIRNAME,
     RetrievalForm,
@@ -96,6 +101,10 @@ def build_registrations() -> Dict[StoreId, StoreDescriptor]:
     # the tree it describes), so it is derived rather than declared a fourth time.
     runs_root = Path(file_logging.run_index).parent
     sweeps_root = Path(file_logging.run_logs.sweeps)
+    # A run is found by its header and a sweep by its mount build's log, as their declarations
+    # name them
+    run_header = run_member_path(RunEntryMemberId.HEADER)
+    mount_build_log = SWEEP_ENTRY_MEMBERS_BY_ID[SweepEntryMemberId.MOUNT_BUILD_LOG].path_for()
     ledger_root = Path(app_config.get_run_ledger_path())
     run_configs_root = Path(app_config.get_run_configs_path())
     run_patches_root = Path(app_config.get_run_patches_path())
@@ -112,7 +121,7 @@ def build_registrations() -> Dict[StoreId, StoreDescriptor]:
             key='run_id',
             form=RetrievalForm.DOCUMENT,
             backend=StoreBackend.DISK,
-            entry_glob=f'**/{RUN_HEADER_ARTIFACT}',
+            entry_glob=f'**/{run_header}',
             index_path=Path(file_logging.run_index),
             index_factory=lambda: RunIndex(file_logging.run_index, file_logging.run_logs,
                                            declared_purposes=declared_run_purposes),
@@ -127,7 +136,7 @@ def build_registrations() -> Dict[StoreId, StoreDescriptor]:
             key='sweep_id',
             form=RetrievalForm.DOCUMENT,
             backend=StoreBackend.DISK,
-            entry_glob=f'*/{MOUNT_BUILD_LOG}',
+            entry_glob=f'*/{mount_build_log}',
             entry_members=SWEEP_ENTRY_MEMBERS,
             contains_entries_of=StoreId.RUNS,
             note='A sweep keeps no index of its own: the run-results ledger names the sweep on '

@@ -9,7 +9,8 @@ Whether a file is there is asked of the disk, never of the index row: the row's 
 when the reports land, so between a section's write and that stamp — or for a run whose row a
 concurrent write lost — the row would say no where the file is there.
 
-Reading a stream's content stays with the stream readers; this hands them the path.
+Reading a stream's content stays with the stream readers; this hands them the path. Once a run
+is found, its directory is read by the run directory reader.
 """
 
 from pathlib import Path
@@ -17,13 +18,9 @@ from typing import Dict, Iterable, Optional, TypeVar
 
 from python.configuration.app_config_manager import AppConfigManager
 from python.framework.reporting.io.artifact_specs import ArtifactSpec
-from python.framework.reporting.io.report_artifact_io import read_artifact
-from python.framework.reporting.io.run_header_io import read_run_header
 from python.framework.reporting.store.run_index import RunIndex
-from python.framework.store.entry_members.run_entry_members import (
-    RUN_ENTRY_MEMBERS_BY_ID,
-    section_member_of,
-)
+from python.framework.store.entry_members.run_dir_reader import RunDirReader
+from python.framework.store.entry_members.run_entry_members import section_member_of
 from python.framework.types.api.report_types import RunHeader
 from python.framework.types.store_member_types import EntryMember, RunEntryMemberId
 
@@ -71,6 +68,19 @@ class RunEntryReader:
             self.remember_run_dirs([run_id])
         return self._run_dirs.get(run_id)
 
+    def directory(self, run_id: str) -> Optional[RunDirReader]:
+        """
+        One run's directory, to read by member.
+
+        Args:
+            run_id: The run
+
+        Returns:
+            Its reader, or None when the index does not carry the run
+        """
+        run_dir = self.run_dir(run_id)
+        return RunDirReader(run_dir) if run_dir is not None else None
+
     def path_of(self, run_id: str, member_id: RunEntryMemberId, **names: str) -> Optional[Path]:
         """
         Where one member of one run lies, whether or not it is there.
@@ -83,10 +93,8 @@ class RunEntryReader:
         Returns:
             The path, or None when the run is unknown
         """
-        run_dir = self.run_dir(run_id)
-        if run_dir is None:
-            return None
-        return run_dir / RUN_ENTRY_MEMBERS_BY_ID[member_id].path_for(**names)
+        directory = self.directory(run_id)
+        return directory.path_of(member_id, **names) if directory is not None else None
 
     def has(self, run_id: str, member_id: RunEntryMemberId, **names: str) -> bool:
         """
@@ -100,8 +108,8 @@ class RunEntryReader:
         Returns:
             True when the file exists
         """
-        path = self.path_of(run_id, member_id, **names)
-        return path is not None and path.is_file()
+        directory = self.directory(run_id)
+        return directory is not None and directory.has(member_id, **names)
 
     def read_header(self, run_id: str) -> Optional[RunHeader]:
         """
@@ -113,8 +121,10 @@ class RunEntryReader:
         Returns:
             The header, or None when the run is unknown or holds no header
         """
-        path = self.path_of(run_id, RunEntryMemberId.HEADER)
-        return read_run_header(path) if path is not None and path.is_file() else None
+        directory = self.directory(run_id)
+        if directory is None or not directory.has(RunEntryMemberId.HEADER):
+            return None
+        return directory.read_header()
 
     def read_section(self, run_id: str, spec: ArtifactSpec[T]) -> Optional[T]:
         """
@@ -127,9 +137,8 @@ class RunEntryReader:
         Returns:
             The decoded section, or None when the run is unknown or did not write it
         """
-        member = section_member(spec)
-        path = self.path_of(run_id, member.member_id)
-        return read_artifact(path, spec) if path is not None and path.is_file() else None
+        directory = self.directory(run_id)
+        return directory.read_section(spec) if directory is not None else None
 
     def stream_path(self, run_id: str, member_id: RunEntryMemberId) -> Optional[Path]:
         """
@@ -142,8 +151,8 @@ class RunEntryReader:
         Returns:
             The path when the stream is there; None otherwise
         """
-        path = self.path_of(run_id, member_id)
-        return path if path is not None and path.is_file() else None
+        directory = self.directory(run_id)
+        return directory.stream_path(member_id) if directory is not None else None
 
 
 def section_member(spec: ArtifactSpec) -> EntryMember:

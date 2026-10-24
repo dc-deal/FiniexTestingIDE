@@ -10,11 +10,7 @@ from pathlib import Path
 from typing import List, Tuple
 
 from python.configuration.app_config_manager import AppConfigManager
-from python.framework.constants.run_layout_constants import (
-    IO_SUBDIR,
-    ORDER_EVENTS_FILE,
-    RUN_TYPE_AUTOTRADER,
-)
+from python.framework.constants.run_layout_constants import RUN_TYPE_AUTOTRADER
 from python.framework.exceptions.report_artifact_errors import ReportArtifactUnreadableError
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.reporting.io.order_event_stream_io import (
@@ -24,6 +20,7 @@ from python.framework.reporting.io.order_event_stream_io import (
 )
 from python.framework.reporting.io.order_event_stream_writer import OrderEventStreamWriter
 from python.framework.reporting.store.run_index import RunIndex
+from python.framework.store.entry_members.run_dir_reader import RunDirReader
 from python.framework.store.entry_members.run_entry_writer import RunEntryWriter
 from python.framework.trading_env.abstract_trade_executor import AbstractTradeExecutor
 from python.framework.types.live_types.broker_truth_types import BrokerTruthRecord
@@ -88,8 +85,8 @@ def read_back_order_event_stream(
         (the events, the broker-truth lines), each in the order it was recorded; both empty when
         there is no readable stream
     """
-    path = run_dir / IO_SUBDIR / ORDER_EVENTS_FILE
-    if not path.exists():
+    path = RunDirReader(run_dir).stream_path(RunEntryMemberId.ORDER_EVENTS)
+    if path is None:
         return [], []
     try:
         rows, truths, truncated = read_order_event_stream(path)

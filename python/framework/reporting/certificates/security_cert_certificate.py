@@ -39,11 +39,6 @@ from python.framework.acceptance_studies.security_cert_stages import (
     stage_profile_path,
     stage_unit_name,
 )
-from python.framework.constants.run_layout_constants import (
-    IO_SUBDIR,
-    RUN_HEADER_ARTIFACT,
-    SECURITY_CERT_CAPTURE,
-)
 from python.framework.reporting.certificates.security_cert_rule_catalog import (
     SECURITY_RULE_CATALOG,
 )
@@ -59,8 +54,7 @@ from python.framework.reporting.io.artifact_specs import (
     RUN_SUMMARY_ARTIFACT,
     SAFETY_ARTIFACT,
 )
-from python.framework.reporting.io.report_artifact_io import read_artifact
-from python.framework.reporting.io.run_header_io import read_run_header
+from python.framework.store.entry_members.run_dir_reader import RunDirReader
 from python.framework.types.acceptance_study_types.security_cert_types import (
     ExpectedOutcome,
     RuleCertification,
@@ -76,6 +70,7 @@ from python.framework.types.acceptance_study_types.study_capture_types import (
 from python.framework.types.acceptance_study_types.study_phase_types import PhaseOutcome
 from python.framework.types.api.report_types import OrdersTo, RunHeader, SafetyReport
 from python.framework.types.autotrader_types.safety_session_types import FlattenOutcome
+from python.framework.types.store_member_types import RunEntryMemberId
 from python.framework.types.trading_env_types.order_event_types import OrderEventType
 
 # Default home for committed certificates — sibling of tests/live_field_study/reports
@@ -111,10 +106,10 @@ class _StageRun:
         self.events: List[Dict[str, Any]] = capture.events
         self.cut_last_line = capture.cut_last_line
         run_dir = capture_path.parent
-        self.run_header: Optional[RunHeader] = _read_or_none(
-            lambda: read_run_header(run_dir / RUN_HEADER_ARTIFACT))
+        directory = RunDirReader(run_dir)
+        self.run_header: Optional[RunHeader] = _read_or_none(directory.read_header)
         self.safety: Optional[SafetyReport] = _read_or_none(
-            lambda: read_artifact(run_dir / IO_SUBDIR / SAFETY_ARTIFACT.filename, SAFETY_ARTIFACT))
+            lambda: directory.read_section(SAFETY_ARTIFACT))
         self.run_dir = run_dir
 
     def results(self) -> Dict[str, Dict[str, Any]]:
@@ -195,8 +190,8 @@ class SecurityCertCertificate:
         for stage in SECURITY_STAGES:
             unit = stage_unit_name(stage, profile_dir)
             profile = json.loads(stage_profile_path(stage, profile_dir).read_text(encoding='utf-8'))
-            candidates = find_study_runs(root / unit, SECURITY_CERT_CAPTURE, run_name=unit,
-                                         run_purpose=profile.get('run_purpose'))
+            candidates = find_study_runs(root / unit, RunEntryMemberId.SECURITY_CERT_CAPTURE,
+                                         run_name=unit, run_purpose=profile.get('run_purpose'))
             if candidates:
                 found[stage.stage_id] = candidates[0]
         return found
@@ -563,8 +558,7 @@ def _fees_charged(run: _StageRun) -> Dict[str, Any]:
     Returns:
         {'value', 'currency', 'source'} or {'source': 'not_available'}
     """
-    summary = _read_or_none(lambda: read_artifact(
-        run.run_dir / IO_SUBDIR / RUN_SUMMARY_ARTIFACT.filename, RUN_SUMMARY_ARTIFACT))
+    summary = _read_or_none(lambda: RunDirReader(run.run_dir).read_section(RUN_SUMMARY_ARTIFACT))
     if summary is None:
         return {'source': 'not_available'}
     charged = [row for row in summary.currencies if row.fees_charged is not None]

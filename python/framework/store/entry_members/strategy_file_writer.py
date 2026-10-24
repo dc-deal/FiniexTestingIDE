@@ -70,6 +70,11 @@ class StrategyFileWriter:
             self._say_once('os_error', f"Strategy file '{name}' could not be written ({error}); "
                                        f'the run goes on, and this is said once')
             return False
+        except ValueError as error:
+            # A character no file name or no UTF-8 text can hold — a NUL, a lone surrogate
+            self._say_once(f'not_text:{name}', f"Strategy file '{name}' is not written: its name "
+                                               f'or its text cannot be stored ({error})')
+            return False
         return True
 
     def write_json(self, name: str, data: Any) -> bool:
@@ -84,7 +89,8 @@ class StrategyFileWriter:
             True when the file was written
         """
         try:
-            text = json.dumps(data, indent=2)
+            # NaN and Infinity are no JSON; a strict reader refuses a file that holds them
+            text = json.dumps(data, indent=2, allow_nan=False)
         except (TypeError, ValueError) as error:
             self._say_once(f'not_json:{name}', f"Strategy file '{name}' is not written: its "
                                                f'content is no JSON ({error})')

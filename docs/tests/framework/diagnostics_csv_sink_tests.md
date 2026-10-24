@@ -16,7 +16,8 @@ the AutoTrader pipeline flushes a real algo-declared sink to the run dir at sess
 | `test_missing_key_renders_empty_cell` | a declared column missing from a row → empty cell |
 | `test_extra_key_is_ignored` | keys not in the declared columns are dropped on flush |
 | `test_scenario_suffix_in_filename` | `scenario_suffix` → `<name>_<suffix>.csv` |
-| `test_noop_when_run_dir_none` | `run_dir=None` (file logging disabled) → no write, returns None |
+| `test_a_directory_the_ide_may_not_create_stops_the_run` | a refused `diagnostics/` folder raises its named error instead of reading as a table that failed to write |
+| `test_noop_without_a_writer` | no run writer (the run has no directory) → no write, returns None |
 | `test_noop_when_no_rows` | no appended rows → no file written |
 | `test_get_name` | sink reports its name |
 
@@ -35,4 +36,4 @@ the AutoTrader pipeline flushes a real algo-declared sink to the run dir at sess
 | `test_flushes_all_sinks_into_diagnostics_subdir` | every declared sink is written into the `diagnostics/` subfolder |
 | `test_applies_scenario_suffix` | the sim per-scenario suffix is applied to each sink |
 | `test_no_sinks_is_safe` | a logic with no sinks does not raise |
-| `test_run_dir_none_is_safe` | disabled file logging does not raise, writes nothing |
+| `test_no_writer_is_safe` | no run writer does not raise, writes nothing |

@@ -12,19 +12,17 @@ import json
 from pathlib import Path
 from typing import List, Optional
 
-from python.framework.constants.run_layout_constants import (
-    FOOTPRINT_FILE,
-    RUN_HEADER_ARTIFACT,
-    RUN_TYPE_AUTOTRADER,
-)
+from python.framework.constants.run_layout_constants import RUN_TYPE_AUTOTRADER
 from python.framework.exceptions.acceptance_study_errors import AcceptanceCaptureUnreadableError
-from python.framework.reporting.io.run_header_io import read_run_header
+from python.framework.store.entry_members.run_dir_reader import RunDirReader
+from python.framework.store.entry_members.run_entry_members import run_member_path
 from python.framework.types.acceptance_study_types.study_capture_types import (
     StudyCaptureContent,
     StudyEvidenceRun,
     StudyRunCandidate,
 )
 from python.framework.types.api.report_types import RunHeader
+from python.framework.types.store_member_types import RunEntryMemberId
 from python.framework.utils.time_utils import parse_datetime
 
 
@@ -66,14 +64,14 @@ def read_study_capture(capture_path: Path) -> StudyCaptureContent:
     return StudyCaptureContent(header=header, events=events, cut_last_line=cut_last_line)
 
 
-def find_study_runs(root: Path, capture_name: str, run_name: Optional[str] = None,
+def find_study_runs(root: Path, capture_member: RunEntryMemberId, run_name: Optional[str] = None,
                     run_purpose: Optional[str] = None) -> List[StudyRunCandidate]:
     """
     The AutoTrader runs below a root that wrote a study's capture, newest first by their start.
 
     Args:
         root: Where to look
-        capture_name: The capture file a run directory must hold
+        capture_member: The capture a run directory must hold
         run_name: Only runs of this profile; None for any
         run_purpose: Only runs whose header declares this purpose; None for any
 
@@ -83,9 +81,10 @@ def find_study_runs(root: Path, capture_name: str, run_name: Optional[str] = Non
     if not root.exists():
         return []
     candidates = []
-    for header_path in root.rglob(RUN_HEADER_ARTIFACT):
+    for header_path in root.rglob(run_member_path(RunEntryMemberId.HEADER)):
         run_dir = header_path.parent
-        capture_path = run_dir / capture_name
+        directory = RunDirReader(run_dir)
+        capture_path = directory.path_of(capture_member)
         if not capture_path.is_file():
             continue
         try:
@@ -101,7 +100,7 @@ def find_study_runs(root: Path, capture_name: str, run_name: Optional[str] = Non
         candidates.append(StudyRunCandidate(
             run_dir=run_dir, run_id=header.get('run_id', run_dir.name),
             run_name=header.get('run_name', ''), start_time=parse_datetime(header['start_time']),
-            capture_path=capture_path, closed=(run_dir / FOOTPRINT_FILE).is_file()))
+            capture_path=capture_path, closed=directory.has(RunEntryMemberId.FOOTPRINT)))
     return sorted(candidates, key=lambda candidate: candidate.start_time, reverse=True)
 
 
@@ -116,7 +115,7 @@ def read_study_run_header(run_dir: Path) -> Optional[RunHeader]:
         The header, or None when the directory holds none that can be read
     """
     try:
-        return read_run_header(run_dir / RUN_HEADER_ARTIFACT)
+        return RunDirReader(run_dir).read_header()
     except (OSError, ValueError):
         return None
 

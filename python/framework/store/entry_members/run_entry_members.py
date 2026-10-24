@@ -395,6 +395,48 @@ RUN_ENTRY_SUBDIRS: FrozenSet[str] = frozenset(
     if '/' in member.path_pattern)
 
 
+def run_member_path(member_id: RunEntryMemberId, **names: str) -> str:
+    """
+    Where one member lies inside a run directory — for a caller that searches for it, such as a
+    walk that finds runs by their header.
+
+    Args:
+        member_id: The member
+        names: One value per variable part of the member's path
+
+    Returns:
+        The path inside the run directory, with forward slashes
+    """
+    return RUN_ENTRY_MEMBERS_BY_ID[member_id].path_for(**names)
+
+
+def run_member_folder(member_id: RunEntryMemberId) -> str:
+    """
+    The folder of a run directory that holds a member — its path without the file name.
+
+    Args:
+        member_id: The member
+
+    Returns:
+        The folder inside the run directory, with forward slashes; '' for the run directory itself
+    """
+    pattern = RUN_ENTRY_MEMBERS_BY_ID[member_id].path_pattern
+    return pattern.rsplit('/', 1)[0] if '/' in pattern else ''
+
+
+def run_member_file_name(member_id: RunEntryMemberId) -> str:
+    """
+    A member's file name without its folder — the name a message or the run list calls it by.
+
+    Args:
+        member_id: The member, one without variable parts
+
+    Returns:
+        The file name
+    """
+    return run_member_path(member_id).rsplit('/', 1)[-1]
+
+
 def section_member_of(file_name: str) -> EntryMember:
     """
     The member a report section in io/ is, by the section's file name.

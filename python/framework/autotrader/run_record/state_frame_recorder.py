@@ -35,10 +35,7 @@ from typing import Any, Callable, Dict, FrozenSet, Mapping, Optional
 
 from python.configuration.app_config_manager import AppConfigManager
 from python.framework.bars.bar_rendering_controller import BarRenderingController
-from python.framework.constants.run_layout_constants import (
-    RUN_TYPE_AUTOTRADER,
-    STATE_FRAMES_FILE,
-)
+from python.framework.constants.run_layout_constants import RUN_TYPE_AUTOTRADER
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.reporting.builders.pending_orders_report_builder import active_order_rows
 from python.framework.reporting.builders.portfolio_report_builder import open_position_rows
@@ -243,8 +240,8 @@ class StateFrameRecorder:
         if self._build_failures:
             self._logger.warning(
                 f'📼 {self._build_failures} state frame(s) could not be built this session and are '
-                f'missing from {STATE_FRAMES_FILE}; the first failure was reported when it '
-                f'happened.')
+                f'missing from {self._appender.get_path().name}; the first failure was reported '
+                f'when it happened.')
         self._appender.close()
 
     def close(self) -> None:
