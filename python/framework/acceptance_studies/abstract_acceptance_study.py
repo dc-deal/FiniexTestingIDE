@@ -11,7 +11,8 @@ DecisionTradingApi, feeds order/lifecycle events (#348) back as observations, gu
 cost and duration, and writes the phases into the capture. Submits route through the standard
 Decision action so the safety circuit breaker can suppress them; closes/cancels are not
 suppressed. A study adds its phase machine, its own actions and what it tells the framework about
-itself — its name, its capture file, the step after it, and whether a boot may adopt for it.
+itself — its name, which member of the run's record its capture is, the step after it, and
+whether a boot may adopt for it.
 """
 
 from abc import abstractmethod
@@ -50,6 +51,7 @@ from python.framework.types.decision_logic_types import (
 from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.market_types.market_types import TradingContext
 from python.framework.types.parameter_types import InputParamDef, OutputParamDef
+from python.framework.types.store_member_types import RunEntryMemberId
 from python.framework.types.trading_env_types.latency_simulator_types import PendingOrder
 from python.framework.types.trading_env_types.market_data_status_types import MarketDataStatus
 from python.framework.types.trading_env_types.order_types import (
@@ -181,12 +183,13 @@ class AbstractAcceptanceStudy(AbstractDecisionLogic):
 
     @classmethod
     @abstractmethod
-    def get_capture_name(cls) -> str:
+    def get_capture_member(cls) -> RunEntryMemberId:
         """
-        The capture file this study writes in its run directory.
+        The member of the run's record this study's capture is — its file stands in the run
+        store's declaration.
 
         Returns:
-            File name, e.g. 'field_study.jsonl'
+            The capture's member
         """
 
     @classmethod

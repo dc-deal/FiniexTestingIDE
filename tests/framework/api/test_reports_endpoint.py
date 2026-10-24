@@ -699,7 +699,7 @@ class TestTheOrderEventStream:
         """
         io_dir = _run_logs(tmp_path).simulation / 'my_set' / _RUN / IO_SUBDIR
         moment = datetime(2026, 6, 15, 12, 0, tzinfo=timezone.utc)
-        write_order_event_stream(io_dir, _RUN_ID, [
+        write_order_event_stream(io_dir / ORDER_EVENTS_FILE, _RUN_ID, [
             ('btc_run', [
                 OrderEvent(seq=1, event_type=OrderEventType.SUBMITTED, order_id='pos_btcusd_1',
                            submitted_seq=1, event_time=moment),
@@ -735,7 +735,7 @@ class TestTheOrderEventStream:
         profiling report's `operation`.
         """
         io_dir = _run_logs(tmp_path).simulation / 'my_set' / _RUN / IO_SUBDIR
-        write_order_event_stream(io_dir, _RUN_ID, [('btc_run', [
+        write_order_event_stream(io_dir / ORDER_EVENTS_FILE, _RUN_ID, [('btc_run', [
             OrderEvent(seq=1, event_type=OrderEventType.UNRESOLVED, order_id='pos_btcusd_1',
                        submitted_seq=1, lost_request=OrderOperation.MODIFY),
         ])])
@@ -752,7 +752,7 @@ class TestTheOrderEventStream:
         """
         io_dir = _run_logs(tmp_path).simulation / 'my_set' / _RUN / IO_SUBDIR
         io_dir.mkdir(parents=True, exist_ok=True)
-        writer = OrderEventStreamWriter(io_dir, _RUN_ID, 'btc_session',
+        writer = OrderEventStreamWriter(io_dir / ORDER_EVENTS_FILE, _RUN_ID, 'btc_session',
                                         GlobalLogger('ReportsEndpointTest'))
         writer.write_broker_truth(BrokerTruthRecord(
             seq=1, read_reason=BrokerTruthReadReason.SESSION_START,

@@ -16,11 +16,7 @@ from typing import Dict, List, Optional, Tuple
 
 from python.configuration.app_config_manager import AppConfigManager
 from python.framework.acceptance_studies.abstract_acceptance_study import AbstractAcceptanceStudy
-from python.framework.constants.run_layout_constants import (
-    FIELD_STUDY_CAPTURE,
-    RUN_TYPE_AUTOTRADER,
-    SECURITY_CERT_CAPTURE,
-)
+from python.framework.constants.run_layout_constants import RUN_TYPE_AUTOTRADER
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.discoveries.signal_coverage.signal_scenario_info import SignalScenarioInfo
 from python.framework.logging.scenario_logger import ScenarioLogger
@@ -382,7 +378,7 @@ class AutotraderReportCoordinator:
             One expectation per member the session decides on
         """
         logs_on = AppConfigManager().get_file_logging_config_object().scenario_enabled
-        capture = (self._decision_logic.get_capture_name()
+        capture = (self._decision_logic.get_capture_member()
                    if isinstance(self._decision_logic, AbstractAcceptanceStudy) else None)
         sinks = self._decision_logic.get_diagnostics_sinks() if self._decision_logic else []
         reach = self._result.session_reach
@@ -422,12 +418,14 @@ class AutotraderReportCoordinator:
                               'the session replays recorded ticks',
                               'the session stopped before its tick source started'),
             expectation_after(RunEntryMemberId.FIELD_STUDY_CAPTURE,
-                              capture == FIELD_STUDY_CAPTURE, reach.capture_opened,
+                              capture is RunEntryMemberId.FIELD_STUDY_CAPTURE,
+                              reach.capture_opened,
                               'the decision logic is the field study',
                               'the decision logic is no field study',
                               'the session stopped before the study opened its capture'),
             expectation_after(RunEntryMemberId.SECURITY_CERT_CAPTURE,
-                              capture == SECURITY_CERT_CAPTURE, reach.capture_opened,
+                              capture is RunEntryMemberId.SECURITY_CERT_CAPTURE,
+                              reach.capture_opened,
                               'the decision logic is a security-study stage',
                               'the decision logic is no security-study stage',
                               'the session stopped before the study opened its capture'),

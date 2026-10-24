@@ -13,9 +13,13 @@ because an empty artifact list is how a run that never finished is told apart fr
 import json
 from datetime import datetime, timezone
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
+from python.framework.autotrader.run_record.order_event_stream_setup import (
+    open_order_event_stream,
+)
 from python.framework.constants.run_layout_constants import (
     IO_SUBDIR,
     ORDER_EVENTS_FILE,
@@ -92,7 +96,7 @@ class TestTheFile:
     """A header, then one flushed line per event, nulls left out."""
 
     def test_the_first_line_names_the_schema_once(self, tmp_path):
-        writer = OrderEventStreamWriter(tmp_path, _RUN_ID, 'btc_run', RecordingLogger())
+        writer = OrderEventStreamWriter(tmp_path / ORDER_EVENTS_FILE, _RUN_ID, 'btc_run', RecordingLogger())
         writer(_event(1))
         writer.close()
 
@@ -102,7 +106,7 @@ class TestTheFile:
         assert 'schema_version' not in line, 'stated once, not on every line'
 
     def test_an_event_is_on_disk_before_the_next_is_recorded(self, tmp_path):
-        writer = OrderEventStreamWriter(tmp_path, _RUN_ID, 'btc_run', RecordingLogger())
+        writer = OrderEventStreamWriter(tmp_path / ORDER_EVENTS_FILE, _RUN_ID, 'btc_run', RecordingLogger())
         writer(_event(1))
 
         rows, _, truncated = read_order_event_stream(tmp_path / ORDER_EVENTS_FILE)
@@ -110,7 +114,7 @@ class TestTheFile:
         writer.close()
 
     def test_a_field_with_no_value_is_left_out(self, tmp_path):
-        writer = OrderEventStreamWriter(tmp_path, _RUN_ID, 'btc_run', RecordingLogger())
+        writer = OrderEventStreamWriter(tmp_path / ORDER_EVENTS_FILE, _RUN_ID, 'btc_run', RecordingLogger())
         writer(_event(1))
         writer.close()
 
@@ -124,7 +128,7 @@ class TestTheFile:
         session. It is said once on the session's channel, and nothing follows the broken line.
         """
         logger = RecordingLogger()
-        writer = OrderEventStreamWriter(tmp_path, _RUN_ID, 'btc_run', logger)
+        writer = OrderEventStreamWriter(tmp_path / ORDER_EVENTS_FILE, _RUN_ID, 'btc_run', logger)
         writer(_event(1))
 
         def refuse(self, record):
@@ -140,7 +144,7 @@ class TestTheFile:
         assert [r.seq for r in rows] == [1] and not truncated
 
     def test_a_backtest_writes_its_units_one_after_the_other(self, tmp_path):
-        path = write_order_event_stream(tmp_path, _RUN_ID, [
+        path = write_order_event_stream(tmp_path / ORDER_EVENTS_FILE, _RUN_ID, [
             ('btc_run', [_event(1), _event(2, OrderEventType.FILLED)]),
             ('eth_run', []),
             ('sol_run', [_event(1)]),
@@ -152,8 +156,28 @@ class TestTheFile:
             ('btc_run', 1), ('btc_run', 2), ('sol_run', 1)]
 
     def test_a_backtest_that_placed_no_order_writes_no_stream(self, tmp_path):
-        assert write_order_event_stream(tmp_path, _RUN_ID, [('btc_run', [])]) is None
+        assert write_order_event_stream(tmp_path / ORDER_EVENTS_FILE, _RUN_ID, [('btc_run', [])]) is None
         assert not (tmp_path / ORDER_EVENTS_FILE).exists()
+
+
+class TestASessionWhoseStreamCannotOpen:
+    """
+    The stream is the session's money record: one that cannot be opened is not swallowed, so the
+    session's start ends instead of trading without it.
+    """
+
+    def test_the_open_fails_and_nothing_is_registered(self, tmp_path):
+        (tmp_path / IO_SUBDIR).write_text('a file where the io/ folder should be',
+                                          encoding='utf-8')
+        listeners = []
+        executor = SimpleNamespace(logger=RecordingLogger(),
+                                   add_order_event_listener=listeners.append,
+                                   add_broker_truth_listener=listeners.append)
+
+        with pytest.raises(OSError):
+            open_order_event_stream(executor, tmp_path, _RUN_ID, 'btc_session')
+
+        assert listeners == [], 'no transition is recorded into a stream that does not exist'
 
 
 class TestReadingItBack:
@@ -161,7 +185,7 @@ class TestReadingItBack:
 
     def _two_events(self, tmp_path: Path) -> Path:
         """A stream with two complete events."""
-        writer = OrderEventStreamWriter(tmp_path, _RUN_ID, 'btc_run', RecordingLogger())
+        writer = OrderEventStreamWriter(tmp_path / ORDER_EVENTS_FILE, _RUN_ID, 'btc_run', RecordingLogger())
         writer(_event(1))
         writer(_event(2, OrderEventType.ACCEPTED))
         writer.close()
@@ -233,7 +257,7 @@ class TestBrokerTruthLines:
 
     def _write(self, tmp_path: Path, *records) -> Path:
         """A session stream holding the given records, events and broker truth alike."""
-        writer = OrderEventStreamWriter(tmp_path, _RUN_ID, 'btc_session', RecordingLogger())
+        writer = OrderEventStreamWriter(tmp_path / ORDER_EVENTS_FILE, _RUN_ID, 'btc_session', RecordingLogger())
         for record in records:
             if isinstance(record, BrokerTruthRecord):
                 writer.write_broker_truth(record)
@@ -338,8 +362,8 @@ class TestTheRunIndexListsItAsAStream:
         (run_dir / IO_SUBDIR).mkdir(parents=True)
         index.register_run(RunHeader(run_id=_RUN_ID, start_time=_TIME,
                                      run_type=RUN_TYPE_SIMULATION, run_name='my_set'), run_dir)
-        writer = OrderEventStreamWriter(run_dir / IO_SUBDIR, _RUN_ID, 'btc_run',
-                                        RecordingLogger())
+        writer = OrderEventStreamWriter(run_dir / IO_SUBDIR / ORDER_EVENTS_FILE, _RUN_ID,
+                                        'btc_run', RecordingLogger())
         writer(_event(1))
         writer.close()
         return index, run_dir

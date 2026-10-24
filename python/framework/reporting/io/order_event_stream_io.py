@@ -224,7 +224,7 @@ def order_event_from_row(row: OrderEventRow) -> OrderEvent:
 
 
 def write_order_event_stream(
-    io_dir: Path,
+    path: Path,
     run_id: str,
     units: Iterable[Tuple[str, List[OrderEvent]]],
 ) -> Optional[Path]:
@@ -232,7 +232,7 @@ def write_order_event_stream(
     Write a backtest's stream at report time — every unit's events, each in its own order.
 
     Args:
-        io_dir: The run's io/ directory
+        path: The stream file, where the run's writer places it
         run_id: The run the stream belongs to
         units: (scenario name, its events) per unit
 
@@ -242,7 +242,7 @@ def write_order_event_stream(
     units = [(name, events) for name, events in units if events]
     if not units:
         return None
-    writer = JsonlStreamWriter(Path(io_dir) / ORDER_EVENTS_FILE)
+    writer = JsonlStreamWriter(path)
     try:
         writer.write(order_event_header(run_id))
         for scenario_name, events in units:

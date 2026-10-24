@@ -11,10 +11,7 @@ import sys
 from typing import List
 
 from python.configuration.app_config_manager import AppConfigManager
-from python.framework.constants.run_layout_constants import (
-    IO_SUBDIR,
-    RUN_TYPE_SIMULATION,
-)
+from python.framework.constants.run_layout_constants import RUN_TYPE_SIMULATION
 from python.framework.reporting.builders.aggregated_portfolio_report_builder import (
     build_aggregated_portfolio_report,
 )
@@ -146,7 +143,6 @@ class BatchReportCoordinator:
         # === DERIVE + PERSIST the shared units-derived sections (#403) ===
         # The 7 sections both pipelines share are built + written once by the shared
         # coordinator (into the run's io/ subfolder); the names below stay for the console.
-        io_dir = run_dir / IO_SUBDIR
         writer = RunEntryWriter(run_dir, RUN_TYPE_SIMULATION)
         units = run_units_from_batch(self._batch_execution_summary)
         disabled_count = self._scenario_set.get_disabled_count()
@@ -288,7 +284,8 @@ class BatchReportCoordinator:
         # they are written here at once. Not in the shared coordinator — a live session writes its
         # own stream while it runs, and a report written over it would replace that record.
         write_order_event_stream(
-            io_dir, run_id, ((unit.name, unit.order_events) for unit in units))
+            writer.path_of(RunEntryMemberId.ORDER_EVENTS), run_id,
+            ((unit.name, unit.order_events) for unit in units))
 
         # Every artifact of this run is on disk now — the index records WHICH, so a consumer
         # knows what it can fetch instead of discovering it by 404 (#475).

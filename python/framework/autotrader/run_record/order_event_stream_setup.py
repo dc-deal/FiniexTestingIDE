@@ -10,7 +10,11 @@ from pathlib import Path
 from typing import List, Tuple
 
 from python.configuration.app_config_manager import AppConfigManager
-from python.framework.constants.run_layout_constants import IO_SUBDIR, ORDER_EVENTS_FILE
+from python.framework.constants.run_layout_constants import (
+    IO_SUBDIR,
+    ORDER_EVENTS_FILE,
+    RUN_TYPE_AUTOTRADER,
+)
 from python.framework.exceptions.report_artifact_errors import ReportArtifactUnreadableError
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.reporting.io.order_event_stream_io import (
@@ -20,8 +24,10 @@ from python.framework.reporting.io.order_event_stream_io import (
 )
 from python.framework.reporting.io.order_event_stream_writer import OrderEventStreamWriter
 from python.framework.reporting.store.run_index import RunIndex
+from python.framework.store.entry_members.run_entry_writer import RunEntryWriter
 from python.framework.trading_env.abstract_trade_executor import AbstractTradeExecutor
 from python.framework.types.live_types.broker_truth_types import BrokerTruthRecord
+from python.framework.types.store_member_types import RunEntryMemberId
 from python.framework.types.trading_env_types.order_event_types import OrderEvent
 
 
@@ -49,8 +55,11 @@ def open_order_event_stream(
     Returns:
         The open writer; the session closes it at shutdown
     """
-    # The executor's logger is the session channel, where a failed write has to be heard
-    writer = OrderEventStreamWriter(run_dir / IO_SUBDIR, run_id, unit_name, executor.logger)
+    # The executor's logger is the session channel, where a failed write has to be heard. A
+    # stream that cannot be opened is not caught here: the session's money record would be
+    # missing from its start, so the start ends.
+    path = RunEntryWriter(run_dir, RUN_TYPE_AUTOTRADER).path_of(RunEntryMemberId.ORDER_EVENTS)
+    writer = OrderEventStreamWriter(path, run_id, unit_name, executor.logger)
     executor.add_order_event_listener(writer)
     executor.add_broker_truth_listener(writer.write_broker_truth)
     RunIndex(AppConfigManager().get_file_logging_config_object().run_index) \

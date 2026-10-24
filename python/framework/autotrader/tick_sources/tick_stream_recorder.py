@@ -16,16 +16,12 @@ that thread starts.
 
 import time
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Callable, Dict, Optional, Tuple
 
-from python.framework.constants.run_layout_constants import (
-    TICK_STREAM_EVENTS_FILE,
-    TICK_STREAM_EVENTS_SCHEMA_VERSION,
-    TICK_STREAM_EVENTS_STREAM,
-)
+from python.framework.constants.run_layout_constants import TICK_STREAM_EVENTS_FILE
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.reporting.io.run_stream_appender import RunStreamAppender
+from python.framework.store.entry_members.run_entry_writer import RunEntryWriter
 from python.framework.types.autotrader_types.tick_stream_event_types import (
     RefusedPublicTrade,
     RefusedPublicTradeReason,
@@ -33,6 +29,7 @@ from python.framework.types.autotrader_types.tick_stream_event_types import (
     TickStreamLossCause,
     TickStreamOutage,
 )
+from python.framework.types.store_member_types import RunEntryMemberId
 
 # How much of a refused value is kept: enough to recognise the frame, never the whole frame.
 _RAW_EXCERPT_CHARS = 120
@@ -58,7 +55,7 @@ class TickStreamRecorder:
 
     Args:
         symbol: The session's symbol
-        record_dir: The run's `io/` directory, or None when the session keeps no record
+        run_writer: The run's writer, which places the record; None when the session keeps none
         run_id: Written into the record's header
         session_logger: Where the operator reads a refusal and a failed write; None for nowhere
         wall_clock: Reads the instant of an observation
@@ -68,7 +65,7 @@ class TickStreamRecorder:
     def __init__(
         self,
         symbol: str,
-        record_dir: Optional[Path] = None,
+        run_writer: Optional[RunEntryWriter] = None,
         run_id: str = '',
         session_logger: Optional[AbstractLogger] = None,
         wall_clock: Callable[[], datetime] = _utc_now,
@@ -98,11 +95,9 @@ class TickStreamRecorder:
         # session's channel — it never reaches the socket loop, where it would read as a broken
         # connection.
         self._stream: Optional[RunStreamAppender] = None
-        if record_dir is not None:
-            self._stream = RunStreamAppender(
-                path=Path(record_dir) / TICK_STREAM_EVENTS_FILE,
-                stream=TICK_STREAM_EVENTS_STREAM,
-                schema_version=TICK_STREAM_EVENTS_SCHEMA_VERSION,
+        if run_writer is not None:
+            self._stream = run_writer.open_stream(
+                RunEntryMemberId.TICK_STREAM_EVENTS,
                 run_id=run_id,
                 logger=session_logger,
                 stops='Outages and refused trades are no longer recorded this session',
