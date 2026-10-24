@@ -37,23 +37,33 @@ Warned, never failed: a fill booked from the estimate on a venue that reports it
 that reports the fill. The run traded; one of its figures is not the venue's, and `warnings` says so.
 """
 
-import json
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from python.configuration.app_config_manager import AppConfigManager
-from python.framework.constants.run_layout_constants import FIELD_STUDY_CAPTURE, IO_SUBDIR
+from python.framework.reporting.certificates.study_capture_reader import (
+    find_study_runs,
+    read_study_capture,
+    read_study_run_header,
+    study_evidence_run,
+)
 from python.framework.reporting.certificates.study_certificate_writer import (
     write_study_certificate,
 )
+from python.framework.reporting.console.run_footprint_summary import CLOSE_LABELS
 from python.framework.reporting.io.artifact_specs import RUN_SUMMARY_ARTIFACT
-from python.framework.reporting.io.report_artifact_io import read_artifact
+from python.framework.store.entry_members.run_dir_reader import RunDirReader
+from python.framework.store.entry_members.run_footprint import assess, is_run_directory
 from python.framework.types.acceptance_study_types.study_capture_types import (
     SESSION_END_PHASE,
     CaptureLineType,
 )
 from python.framework.types.acceptance_study_types.study_phase_types import PhaseOutcome
+from python.framework.types.api.report_types import OrdersTo, RunHeader
 from python.framework.types.live_types.reconciliation_types import ReconcileState
+from python.framework.types.run_footprint_types import RunCloseState
+from python.framework.types.run_purpose_types import RunPurpose
+from python.framework.types.store_member_types import RunEntryMemberId
 from python.framework.types.trading_env_types.broker_types import FeeSource
 from python.framework.types.trading_env_types.order_types import FeeReport, OrderSide
 from python.framework.utils.trading_math.slippage_math import adverse_slippage
@@ -73,27 +83,32 @@ class FieldStudyCertificate:
     """Reads a Field Study JSONL run and produces / writes a PASS/FAIL certificate."""
 
     @staticmethod
-    def find_latest_jsonl(search_root: Optional[str] = None) -> Optional[Path]:
+    def find_latest_jsonl(search_root: Optional[str] = None,
+                          profile_name: Optional[str] = None) -> Optional[Path]:
         """
-        Find the most recent field_study.jsonl under the AutoTrader run root.
+        Find the capture of the newest field-study run under the AutoTrader run root.
+
+        Newest by the start its header records, never by the newest file: a rehearsal that
+        aborted after the real run is newer on disk and is not the run. Without a profile, only
+        runs whose header declares the certificate purpose count; a profile names one study, a
+        mock rehearsal included.
 
         The root is resolved from config when not given — a default literal here is a second
         declaration of a path config already owns, and it is correct only until the tree moves.
 
         Args:
             search_root: Directory to scan recursively; None resolves run_logs.autotrader
+            profile_name: Only runs of this profile; None for every certificate run
 
         Returns:
-            Path to the newest field_study.jsonl, or None if none exist
+            Path to the newest run's field_study.jsonl, or None if no run wrote one
         """
         root = Path(search_root) if search_root else Path(
             AppConfigManager().get_file_logging_config_object().run_logs.autotrader)
-        if not root.exists():
-            return None
-        candidates = list(root.rglob(FIELD_STUDY_CAPTURE))
-        if not candidates:
-            return None
-        return max(candidates, key=lambda p: p.stat().st_mtime)
+        candidates = find_study_runs(
+            root, RunEntryMemberId.FIELD_STUDY_CAPTURE, run_name=profile_name,
+            run_purpose=None if profile_name else RunPurpose.CERTIFICATE.value)
+        return candidates[0].capture_path if candidates else None
 
     @staticmethod
     def analyze(jsonl_path: str) -> Dict[str, Any]:
@@ -107,7 +122,8 @@ class FieldStudyCertificate:
             Analysis dict (overall_status + per-phase outcomes + summaries + the warnings that
             do not fail it)
         """
-        header, events = FieldStudyCertificate._read(jsonl_path)
+        capture = read_study_capture(Path(jsonl_path))
+        header, events = capture.header, capture.events
         phase_ids: List[str] = header.get('phases', [])
 
         results = {
@@ -159,8 +175,13 @@ class FieldStudyCertificate:
             if via:
                 detected_via[via] = detected_via.get(via, 0) + 1
 
-        overall = 'PASSED' if (not failed and not missing and flat_at_end) else 'FAILED'
+        checks = FieldStudyCertificate._run_checks(
+            read_study_run_header(Path(jsonl_path).parent))
+        failed_checks = [name for name, check in checks.items() if not check['passed']]
+        overall = ('PASSED' if (not failed and not missing and flat_at_end and not failed_checks)
+                   else 'FAILED')
         fee_source = FieldStudyCertificate._fee_source(header, events)
+        run_directory = FieldStudyCertificate._run_directory(Path(jsonl_path).parent)
 
         return {
             'profile': header.get('profile'),
@@ -172,6 +193,8 @@ class FieldStudyCertificate:
             'failed_phases': failed,
             'missing_phases': missing,
             'flat_at_session_end': flat_at_end,
+            'checks': checks,
+            'failed_checks': failed_checks,
             'fees_charged': FieldStudyCertificate._fees_charged(jsonl_path, events),
             'fee_source': fee_source,
             'account_delta': account_delta,
@@ -179,8 +202,11 @@ class FieldStudyCertificate:
             'api_calls': FieldStudyCertificate._api_calls(events),
             'reconciliation': FieldStudyCertificate._reconciliation(events),
             'detected_via': detected_via,
+            'run_directory': run_directory,
             # Said, never failed on — `generate` puts the identity's own warnings in front
-            'warnings': FieldStudyCertificate._fee_source_warnings(fee_source),
+            'warnings': (FieldStudyCertificate._fee_source_warnings(fee_source)
+                         + FieldStudyCertificate._capture_warnings(capture.cut_last_line)
+                         + FieldStudyCertificate._run_directory_warnings(run_directory)),
         }
 
     @staticmethod
@@ -210,6 +236,7 @@ class FieldStudyCertificate:
             comment=comment,
             reports_dir=reports_dir,
             report_prefix='field_study_report',
+            evidence=[study_evidence_run(Path(jsonl_path).parent)],
         )
         FieldStudyCertificate._print_summary(out_path, certificate)
         return out_path
@@ -237,11 +264,10 @@ class FieldStudyCertificate:
         Returns:
             {'value', 'currency', 'source'} — source 'run_record', 'event_sum' or 'not_available'
         """
-        summary_path = Path(jsonl_path).parent / IO_SUBDIR / RUN_SUMMARY_ARTIFACT.filename
         charged = []
         try:
-            if summary_path.exists():
-                summary = read_artifact(summary_path, RUN_SUMMARY_ARTIFACT)
+            summary = RunDirReader(Path(jsonl_path).parent).read_section(RUN_SUMMARY_ARTIFACT)
+            if summary is not None:
                 charged = [row for row in summary.currencies if row.fees_charged is not None]
         except ValueError:
             # A report written by another version of its model no longer validates — the
@@ -337,6 +363,109 @@ class FieldStudyCertificate:
             f'account was charged; the session log names each order, and the venue has its own '
             f'figure in its execution records.'
         ]
+
+    @staticmethod
+    def _run_checks(run_header: Optional[RunHeader]) -> Dict[str, Dict[str, Any]]:
+        """
+        What the run itself has to be for its capture to certify a release: a run whose orders
+        went to the venue, from committed code — the same two things the security study holds
+        each of its stages to.
+
+        Args:
+            run_header: The header of the run the capture lies in; None when it lies in no run
+                directory, which proves neither
+
+        Returns:
+            Check name → whether it passed and why
+        """
+        if run_header is None:
+            unproven = 'the capture lies in no run directory, so no header says'
+            return {'study:real_orders': {'passed': False, 'detail': f'{unproven} where its '
+                                                                     f'orders went'},
+                    'study:committed_code': {'passed': False, 'detail': f'{unproven} which code '
+                                                                        f'ran'}}
+        real = run_header.orders_to is OrdersTo.VENUE
+        orders_to = run_header.orders_to.value if run_header.orders_to else 'nowhere recorded'
+        committed = (run_header.code_identity is not None
+                     and not run_header.code_identity.is_dirty())
+        return {
+            'study:real_orders': {
+                'passed': real,
+                'detail': ('the run sent its orders to the venue' if real
+                           else f'the run sent its orders to {orders_to}, not to the venue')},
+            'study:committed_code': {
+                'passed': committed,
+                'detail': ('the run ran from committed code' if committed
+                           else 'the run ran from uncommitted or unreadable code')},
+        }
+
+    @staticmethod
+    def _run_directory(run_dir: Path) -> Dict[str, Any]:
+        """
+        The run directory the capture lies in, held to the run store's declaration — said in the
+        certificate, never failed on.
+
+        Args:
+            run_dir: The capture's directory
+
+        Returns:
+            Whether it was checked, how the run closed, the files nobody declared and the members
+            that need a look
+        """
+        if not is_run_directory(run_dir):
+            return {'checked': False, 'reason': 'the capture does not lie in a run directory'}
+        try:
+            assessment = assess(run_dir)
+        except (OSError, ValueError, KeyError) as error:
+            return {'checked': False, 'reason': f"the run's header cannot be read ({error})"}
+        return {
+            'checked': True,
+            'close_state': assessment.close_state.value,
+            'undeclared': assessment.undeclared,
+            'needs_a_look': [f'{member.member_id.value}: {member.state.value} — {member.reason}'
+                             for member in assessment.members if member.state.needs_a_look()],
+        }
+
+    @staticmethod
+    def _run_directory_warnings(run_directory: Dict[str, Any]) -> List[str]:
+        """
+        What the run directory check found, as warnings.
+
+        Args:
+            run_directory: The check's result
+
+        Returns:
+            One line per finding; empty when the run directory is as declared
+        """
+        if not run_directory.get('checked'):
+            return []
+        warnings = []
+        close_state = RunCloseState(run_directory['close_state'])
+        if close_state is not RunCloseState.CLOSED:
+            warnings.append(f'The run is not closed ({CLOSE_LABELS[close_state]}): its record may '
+                            f'be incomplete.')
+        if run_directory['undeclared']:
+            warnings.append(f"The run directory holds files the run store does not declare: "
+                            f"{', '.join(run_directory['undeclared'])}.")
+        for line in run_directory['needs_a_look']:
+            warnings.append(f'A file of the run needs a look — {line}.')
+        return warnings
+
+    @staticmethod
+    def _capture_warnings(cut_last_line: bool) -> List[str]:
+        """
+        What reading the capture found, as warnings.
+
+        Args:
+            cut_last_line: Whether the capture's last line was cut off
+
+        Returns:
+            One line when it was; empty otherwise
+        """
+        if not cut_last_line:
+            return []
+        return ["The capture's last line was cut off — the session stopped while writing it; "
+                'the lines before it are read.']
 
     @staticmethod
     def _slippage(events: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -532,6 +661,8 @@ class FieldStudyCertificate:
             print(f"  failed:  {cert['failed_phases']}")
         if cert['missing_phases']:
             print(f"  missing: {cert['missing_phases']}")
+        for name in cert.get('failed_checks') or []:
+            print(f"  failed:  {name} — {cert['checks'][name]['detail']}")
         # The source is printed beside the figure: a total read from the run's report and one
         # added up from the capture are the same bookings, but only the first is the run's own.
         # Whose figure the fills' fees are follows it.
@@ -603,14 +734,3 @@ class FieldStudyCertificate:
         if fee_source['not_recorded']:
             text += f", {fee_source['not_recorded']} without a source"
         return text
-
-    @staticmethod
-    def _read(jsonl_path: str) -> tuple:
-        """Read a JSONL run into (header, events). Raises on an empty file."""
-        path = Path(jsonl_path)
-        lines = [ln for ln in path.read_text(encoding='utf-8').splitlines() if ln.strip()]
-        if not lines:
-            raise ValueError(f'Field Study JSONL is empty: {jsonl_path}')
-        header = json.loads(lines[0])
-        events = [json.loads(ln) for ln in lines[1:]]
-        return header, events

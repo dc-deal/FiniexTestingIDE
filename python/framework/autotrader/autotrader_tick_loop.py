@@ -1131,6 +1131,15 @@ class AutotraderTickLoop:
         """
         return self._market_data_tracker.get_episodes(self._executor.get_current_time())
 
+    def has_opened_day_log(self) -> bool:
+        """
+        Whether a pass of this loop has opened a trading day's session log.
+
+        Returns:
+            True once the first day's log is open
+        """
+        return self._log_rotator.has_opened_day_log()
+
     def get_tick_span(self) -> Tuple[Optional[datetime], Optional[datetime]]:
         """
         The first and the latest tick this session processed.

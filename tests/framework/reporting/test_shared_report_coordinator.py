@@ -10,6 +10,10 @@ UnifiedReports carries the same models the caller reuses for console + ledger.
 
 from datetime import datetime, timezone
 
+from python.framework.constants.run_layout_constants import (
+    RUN_TYPE_AUTOTRADER,
+    RUN_TYPE_SIMULATION,
+)
 from python.framework.reporting.builders.run_unit import (
     run_units_from_batch,
     run_units_from_session,
@@ -17,6 +21,7 @@ from python.framework.reporting.builders.run_unit import (
 )
 from python.framework.reporting.builders.unified_reports import UnifiedReports
 from python.framework.reporting.shared_report_coordinator import SharedReportCoordinator
+from python.framework.store.entry_members.run_entry_writer import RunEntryWriter
 from python.framework.types.autotrader_types.autotrader_result_types import AutoTraderResult
 from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.portfolio_types.portfolio_aggregation_types import PortfolioStats
@@ -72,20 +77,23 @@ class TestDeriveAndPersist:
 
     def test_writes_all_artifacts_batch(self, tmp_path):
         io_dir = tmp_path / 'io'
-        SharedReportCoordinator.derive_and_persist(_RUN_ID, run_units_from_batch(_batch()), io_dir)
+        SharedReportCoordinator.derive_and_persist(
+            _RUN_ID, run_units_from_batch(_batch()), RunEntryWriter(tmp_path, RUN_TYPE_SIMULATION))
         for name in _EXPECTED_FILES:
             assert (io_dir / name).exists(), f'missing artifact: {name}'
 
     def test_creates_io_dir_if_missing(self, tmp_path):
-        # A nested, not-yet-existing io/ path must be created by the coordinator.
+        # A nested, not-yet-existing io/ path must be created on the way.
         io_dir = tmp_path / 'run' / 'io'
-        SharedReportCoordinator.derive_and_persist(_RUN_ID, run_units_from_batch(_batch()), io_dir)
+        SharedReportCoordinator.derive_and_persist(
+            _RUN_ID, run_units_from_batch(_batch()),
+            RunEntryWriter(tmp_path / 'run', RUN_TYPE_SIMULATION))
         assert io_dir.is_dir()
         assert (io_dir / 'run_summary.json').exists()
 
     def test_returns_populated_unified_reports(self, tmp_path):
-        unified = SharedReportCoordinator.derive_and_persist(_RUN_ID, 
-            run_units_from_batch(_batch()), tmp_path / 'io')
+        unified = SharedReportCoordinator.derive_and_persist(
+            _RUN_ID, run_units_from_batch(_batch()), RunEntryWriter(tmp_path, RUN_TYPE_SIMULATION))
         assert isinstance(unified, UnifiedReports)
         # Two scenario units flow into every per-unit section.
         assert [u.name for u in unified.execution_stats.units] == ['s1', 's2']
@@ -97,8 +105,9 @@ class TestDeriveAndPersist:
     def test_session_single_unit(self, tmp_path):
         io_dir = tmp_path / 'io'
         result = AutoTraderResult(execution_stats=_stats(7, 6, 1, 4))
-        unified = SharedReportCoordinator.derive_and_persist(_RUN_ID, 
-            run_units_from_session(result, 'my_profile', 'BTCUSD'), io_dir,
+        unified = SharedReportCoordinator.derive_and_persist(
+            _RUN_ID, run_units_from_session(result, 'my_profile', 'BTCUSD'),
+            RunEntryWriter(tmp_path, RUN_TYPE_AUTOTRADER),
             roster=unit_roster_from_session(result, 'my_profile'))
         for name in _EXPECTED_FILES:
             assert (io_dir / name).exists(), f'missing artifact: {name}'

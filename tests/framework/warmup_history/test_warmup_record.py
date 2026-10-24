@@ -14,12 +14,14 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from python.framework.autotrader.kraken_ohlc_bar_fetcher import KrakenOhlcBarFetcher
 from python.framework.autotrader.startup.autotrader_warmup_preparator import (
     AutotraderWarmupPreparator,
 )
-from python.framework.autotrader.kraken_ohlc_bar_fetcher import KrakenOhlcBarFetcher
 from python.framework.bars.bar_rendering_controller import BarRenderingController
+from python.framework.constants.run_layout_constants import RUN_TYPE_AUTOTRADER
 from python.framework.process.tick_pipeline_core import render_bars_for_tick
+from python.framework.store.entry_members.run_entry_writer import RunEntryWriter
 from python.framework.types.config_types.connection_policy_config_types import ConnectionPolicy
 from tests.framework.warmup_history.warmup_history_builders import (
     SYMBOL,
@@ -60,7 +62,7 @@ def test_a_mock_session_records_its_history_and_its_first_tick(preparator, strea
         config=session_config('mock'), workers=[RequirementWorker(REQUIRED)],
         bar_controller=controller, package=archive_package(preparator, REQUIRED, start,
                                                            first.timestamp),
-        record_path=record_path)
+        run_writer=RunEntryWriter(tmp_path, RUN_TYPE_AUTOTRADER))
 
     record = _read(record_path)
     assert record['source'] == 'archive'
@@ -88,7 +90,7 @@ def test_a_live_session_records_the_history_after_the_seam(venue, stream, tmp_pa
     AutotraderWarmupPreparator(MagicMock(), clock=lambda: read_at).prepare_and_inject(
         config=session_config('live'), workers=[RequirementWorker(REQUIRED)],
         bar_controller=controller, connection_policy=ConnectionPolicy(),
-        record_path=record_path)
+        run_writer=RunEntryWriter(tmp_path, RUN_TYPE_AUTOTRADER))
 
     at_boot = _read(record_path)
     assert at_boot['source'] == 'venue'

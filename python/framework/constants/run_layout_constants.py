@@ -11,9 +11,9 @@ every file a run or a sweep directory holds, with the version of each stream's l
 #
 # TWO values, not three, because type and NESTING are different questions and each has its own
 # field. A sweep combination is a simulation with a `parent_id`; a live day record (#476) will be an
-# autotrader run with a `parent_id`. Folding nesting into the type would make the most basic question —
-# "is this a simulation?" — a two-value comparison, and would need a new value for every new kind
-# of parent.
+# autotrader run with a `parent_id`. Folding nesting into the type would make the most basic
+# question — "is this a simulation?" — a two-value comparison, and would need a new value for every
+# new kind of parent.
 #
 # WHERE each type writes is configuration (file_logging.run_logs) — one source read by the
 # writers and by ReportStore alike, so a moved log root cannot make runs invisible. The NAMES
@@ -50,6 +50,11 @@ IO_SUBDIR = 'io'
 # What the run IS — kind, windows, configuration and code identity — written at its start.
 RUN_HEADER_ARTIFACT = 'header.json'
 
+# What the run wrote, and why it left a declared file out — written as its very last step, so a run
+# with a footprint is closed and a run without one did not get there (#621).
+FOOTPRINT_FILE = 'footprint.json'
+FOOTPRINT_SCHEMA_VERSION = 1
+
 # A run's logs are named '<prefix>_<name>.log'. A backtest's prefix comes from configuration
 # (file_logging's scenario file-name prefix); an AutoTrader session's is fixed.
 RUN_LOG_FILE_PATTERN = '{log_prefix}_{log_name}.log'
@@ -77,6 +82,12 @@ SESSION_EVENTS_FILE = 'events.csv'
 DIAGNOSTICS_SUBDIR = 'diagnostics'
 DIAGNOSTICS_FILE_PATTERN = '{sink}.csv'
 SCENARIO_DIAGNOSTICS_FILE_PATTERN = '{sink}_{scenario}.csv'
+
+# A strategy's own files, written through its helper as it runs — one folder per scenario in a
+# backtest. The run keeps them; nothing in the framework reads or serves them.
+STRATEGY_FILES_SUBDIR = 'strategy_files'
+STRATEGY_FILE_PATTERN = '{name}'
+SCENARIO_STRATEGY_FILE_PATTERN = '{scenario}/{name}'
 
 # The report sections in io/, written at the run's end. The report specs bind each name to the
 # model it decodes to.

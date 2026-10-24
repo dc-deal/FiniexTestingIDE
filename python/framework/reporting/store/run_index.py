@@ -10,7 +10,6 @@ from typing import Any, Callable, Dict, Iterable, List, Optional
 
 import pandas as pd
 
-from python.framework.constants.run_layout_constants import IO_SUBDIR, RUN_HEADER_ARTIFACT
 from python.framework.exceptions.store_errors import StoreIndexSourceMissingError
 from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.reporting.io.run_header_io import (
@@ -18,11 +17,15 @@ from python.framework.reporting.io.run_header_io import (
     write_run_header,
 )
 from python.framework.store.abstract_store_index import AbstractStoreIndex
-from python.framework.store.entry_members.run_entry_members import RUN_INDEX_COLUMN_MEMBERS
+from python.framework.store.entry_members.run_entry_members import (
+    RUN_INDEX_COLUMN_MEMBERS,
+    run_member_folder,
+    run_member_path,
+)
 from python.framework.types.api.report_types import DataWindow, RunHeader, RunInfo, RunReporting
 from python.framework.types.config_types.file_logging_config_types import RunLogPaths
 from python.framework.types.run_purpose_types import RunPurpose
-from python.framework.types.store_member_types import RunIndexColumn
+from python.framework.types.store_member_types import RunEntryMemberId, RunIndexColumn
 
 
 def _or_none(value) -> Optional[str]:
@@ -67,25 +70,25 @@ def _origin_columns(header: RunHeader) -> Dict[str, Any]:
     }
 
 
-def _io_file_names(run_dir: Path) -> List[str]:
+def _file_names(folder: Path) -> List[str]:
     """
-    Every file in a run's io/ subfolder, by name.
+    Every file in one folder of a run, by name.
 
     Args:
-        run_dir: The run's own directory
+        folder: The folder
 
     Returns:
-        Sorted file names; empty when the run has no io/ subfolder
+        Sorted file names; empty when the folder does not exist
     """
-    io_dir = run_dir / IO_SUBDIR
-    if not io_dir.is_dir():
+    if not folder.is_dir():
         return []
-    return sorted(f.name for f in io_dir.iterdir() if f.is_file())
+    return sorted(f.name for f in folder.iterdir() if f.is_file())
 
 
 def _listed_names(run_dir: Path, column: RunIndexColumn) -> List[str]:
     """
-    The files in a run's io/ subfolder that the run store declares for one index column.
+    The files of a run that the run store declares for one index column, by name — each member's
+    folder as the declaration places it, listed once.
 
     An allow-list, never a deny-list: a file no member declares for the column — the temporary
     file of an interrupted write, a file nobody declared — is listed in neither column. The census
@@ -98,9 +101,15 @@ def _listed_names(run_dir: Path, column: RunIndexColumn) -> List[str]:
     Returns:
         Sorted file names
     """
-    members = RUN_INDEX_COLUMN_MEMBERS[column]
-    return [name for name in _io_file_names(run_dir)
-            if any(member.matches(f'{IO_SUBDIR}/{name}') for member in members)]
+    listings: Dict[str, List[str]] = {}
+    names = set()
+    for member in RUN_INDEX_COLUMN_MEMBERS[column]:
+        folder = run_member_folder(member.member_id)
+        if folder not in listings:
+            listings[folder] = _file_names(run_dir / folder)
+        names.update(name for name in listings[folder]
+                     if member.matches(f'{folder}/{name}' if folder else name))
+    return sorted(names)
 
 
 def _artifact_names(run_dir: Path) -> List[str]:
@@ -572,7 +581,7 @@ class RunIndex(AbstractStoreIndex):
         declared = self._declared_purposes() if self._declared_purposes is not None else {}
         rows = []
         for root in (self._roots.simulation, self._roots.autotrader):
-            for header_path in Path(root).rglob(RUN_HEADER_ARTIFACT):
+            for header_path in Path(root).rglob(run_member_path(RunEntryMemberId.HEADER)):
                 run_dir = header_path.parent
                 try:
                     header = read_run_header(header_path)

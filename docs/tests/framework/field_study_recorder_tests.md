@@ -49,10 +49,26 @@ The projection from the order-event stream into the capture:
 | `TestTheSlippageSources` | A fill carries what it is measured against: the mid at submission, its limit, its trigger |
 | `TestTheVenueReads` | The start and end reads become the preflight and session-end snapshots; an unread book proves nothing; a reconciliation change becomes an alert |
 
+### `test_study_capture_reader.py`
+
+How a release certificate finds the run it certifies and reads that run's capture (#621). The newest
+START wins, never the newest file — an older run whose capture was touched later loses. Only
+AutoTrader runs of the asked profile and purpose count; a candidate says whether it closed. The field
+study takes certificate runs unless a profile is named, and a security stage takes the purpose its
+own profile declares, so the mock rehearsal's stages are found. A cut last line is left out and
+said; an empty capture, a header that is not JSON and a broken line before the last are refused by
+name. A capture outside a run directory is not checked against the run store's declaration; a run
+without a footprint is said to be not closed with both of its causes, and a header that cannot be
+read is said while the certificate is still written.
+
 ### `test_certificate_analyzer.py`
 
 The certificate over synthetic captures: a clean run certifies, a failed or aborted one does not,
-and the end gate passes only on a counted, empty order book. Beside the verdict, every figure says
+and the end gate passes only on a counted, empty order book. A passing capture lies in a run
+directory whose header says where its orders went and which code ran;
+`TestTheCertificateIsBoundToItsRun` fails a mock run on its orders, a run from uncommitted code,
+and a capture in no run directory on both, fails a declared release generated on another commit
+than the run's while a rehearsal is not held to one, and counts the validity from the run's start. Beside the verdict, every figure says
 where it came from or that it is missing — the fees from the run's own report (or the capture's
 fills where the report is gone or no longer reads), the account's movement, the slippage per order
 type, the REST calls, and whether the session reconciled at all.

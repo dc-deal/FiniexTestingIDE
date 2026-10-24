@@ -5,6 +5,8 @@ Pydantic models for the file_logging section of app_config.json.
 from pathlib import Path
 from typing import Optional
 
+from pydantic import Field
+
 from python.framework.constants.run_layout_constants import SWEEPS_SUBDIR
 from python.framework.types.config_types.strict_config_model import StrictConfigModel
 
@@ -41,7 +43,9 @@ class ScenarioFileLoggingConfig(StrictConfigModel):
     """Scenario-level file logging config. None fields inherit from global."""
     enabled: Optional[bool] = None
     log_level: Optional[LogLevel] = None
-    file_name_prefix: str
+    # Every backtest log's file name begins with it, so it is one plain name: no directory
+    # separator, and at least one character that is not a dot — never empty, '.' or '..'
+    file_name_prefix: str = Field(pattern=r'^[^/\\]*[^/\\.][^/\\]*$')
 
 
 class SessionLogsConfig(StrictConfigModel):

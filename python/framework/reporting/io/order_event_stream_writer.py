@@ -10,7 +10,6 @@ from pathlib import Path
 
 from pydantic import BaseModel
 
-from python.framework.constants.run_layout_constants import ORDER_EVENTS_FILE
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.reporting.io.jsonl_stream_writer import JsonlStreamWriter
 from python.framework.reporting.io.order_event_stream_io import (
@@ -32,17 +31,17 @@ class OrderEventStreamWriter:
     broken one would turn a readable cut-off tail into a damaged file.
 
     Args:
-        io_dir: The run's io/ directory
+        path: The stream file, where the run's writer places it
         run_id: The run the stream belongs to
         scenario_name: The unit every line is filed under
         logger: Where a failed write is reported — the session's own channel
     """
 
-    def __init__(self, io_dir: Path, run_id: str, scenario_name: str, logger: AbstractLogger):
+    def __init__(self, path: Path, run_id: str, scenario_name: str, logger: AbstractLogger):
         self._scenario_name = scenario_name
         self._logger = logger
         self._failed = False
-        self._writer = JsonlStreamWriter(Path(io_dir) / ORDER_EVENTS_FILE)
+        self._writer = JsonlStreamWriter(path)
         self._writer.write(order_event_header(run_id))
 
     def __call__(self, event: OrderEvent) -> None:

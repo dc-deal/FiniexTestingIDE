@@ -12,7 +12,6 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 from python.configuration.app_config_manager import AppConfigManager
-from python.framework.constants.run_layout_constants import RUN_HEADER_ARTIFACT
 from python.framework.discoveries.signal_coverage.signal_scenario_info import SignalScenarioInfo
 from python.framework.reporting.builders.execution_stats_report_builder import (
     build_execution_stats_report,
@@ -48,17 +47,17 @@ from python.framework.reporting.io.artifact_specs import (
     TRADE_HISTORY_ARTIFACT,
     WORKER_DECISION_ARTIFACT,
 )
-from python.framework.reporting.io.report_artifact_io import write_artifact
 from python.framework.reporting.io.report_csv_io import (
     write_execution_stats_csv,
     write_order_history_csv,
     write_trade_history_csv,
 )
-from python.framework.reporting.io.run_header_io import read_run_header
 from python.framework.reporting.store.run_index import RunIndex
+from python.framework.store.entry_members.run_dir_reader import RunDirReader
+from python.framework.store.entry_members.run_entry_writer import RunEntryWriter
 from python.framework.types.api.report_types import UnitRoster
 from python.framework.types.signal_data_types import SignalObservedSeries
-from python.framework.utils.file_utils import create_directory
+from python.framework.types.store_member_types import RunEntryMemberId
 
 
 class SharedReportCoordinator:
@@ -77,17 +76,17 @@ class SharedReportCoordinator:
         Args:
             run_dir: The run's own directory
         """
-        header_path = run_dir / RUN_HEADER_ARTIFACT
-        if not header_path.exists():
+        directory = RunDirReader(run_dir)
+        if not directory.has(RunEntryMemberId.HEADER):
             return
         RunIndex(AppConfigManager().get_file_logging_config_object().run_index) \
-            .record_artifacts(read_run_header(header_path).run_id, run_dir)
+            .record_artifacts(directory.read_header().run_id, run_dir)
 
     @staticmethod
     def derive_and_persist(
         run_id: str,
         units: List[RunUnit],
-        io_dir: Path,
+        writer: RunEntryWriter,
         signal_scenario_map: Optional[Dict[Tuple[str, str], SignalScenarioInfo]] = None,
         observed_feed: Optional[SignalObservedSeries] = None,
         roster: Optional[UnitRoster] = None,
@@ -99,7 +98,7 @@ class SharedReportCoordinator:
             run_id: The run these reports belong to — every artifact names it, so a consumer
                 can check what it received instead of trusting the route it asked on (#475)
             units: The run's units (sim: N scenarios; live: 1 session)
-            io_dir: The run's io/ subfolder (created if missing)
+            writer: The run's writer — the sections land where the run store declares them
             observed_feed: What a live transport accumulated while the session ran — the
                 live-adapter counterpart of the prepared map, since such a session has no archive
             signal_scenario_map: The prepared signal sources (#433); both pipelines get it
@@ -111,48 +110,46 @@ class SharedReportCoordinator:
         Returns:
             The built models, for the caller's console + ledger reuse
         """
-        create_directory(io_dir, holds="the run's reports")
-
         trade_history = build_trade_history_report(run_id, units)
-        write_artifact(trade_history, io_dir, TRADE_HISTORY_ARTIFACT)
-        write_trade_history_csv(trade_history, io_dir)
+        writer.write_section(TRADE_HISTORY_ARTIFACT, trade_history)
+        write_trade_history_csv(trade_history, writer)
 
         order_history = build_order_history_report(run_id, units)
-        write_artifact(order_history, io_dir, ORDER_HISTORY_ARTIFACT)
-        write_order_history_csv(order_history, io_dir)
+        writer.write_section(ORDER_HISTORY_ARTIFACT, order_history)
+        write_order_history_csv(order_history, writer)
 
         # Portfolio full projection — per-unit rows + per-currency roll-up.
         portfolio = build_portfolio_report(run_id, units)
-        write_artifact(portfolio, io_dir, PORTFOLIO_ARTIFACT)
+        writer.write_section(PORTFOLIO_ARTIFACT, portfolio)
 
         # Pending-orders — per-unit lifecycle + latency + active orders.
         pending_orders = build_pending_orders_report(run_id, units)
-        write_artifact(pending_orders, io_dir, PENDING_ORDERS_ARTIFACT)
+        writer.write_section(PENDING_ORDERS_ARTIFACT, pending_orders)
 
         # Execution-stats headline — per-unit order counts + summed total.
         execution_stats = build_execution_stats_report(run_id, units)
-        write_artifact(execution_stats, io_dir, EXECUTION_STATS_ARTIFACT)
-        write_execution_stats_csv(execution_stats, io_dir)
+        writer.write_section(EXECUTION_STATS_ARTIFACT, execution_stats)
+        write_execution_stats_csv(execution_stats, writer)
 
         # Signal configuration — archive provenance + what the strategy decided on (#433).
         # Built BEFORE the run summary: it supplies the run's weakest fresh ratio.
         signal = build_signal_report(run_id, signal_scenario_map or {}, units, observed_feed)
-        write_artifact(signal, io_dir, SIGNAL_ARTIFACT)
+        writer.write_section(SIGNAL_ARTIFACT, signal)
 
         # Feed stability — the observed outage episodes of both staleness domains (#451).
         # Also before the run summary: it supplies the run's disturbance totals.
         feed_stability = build_feed_stability_report(run_id, units)
-        write_artifact(feed_stability, io_dir, FEED_STABILITY_ARTIFACT)
+        writer.write_section(FEED_STABILITY_ARTIFACT, feed_stability)
 
         # Run summary — cross-section KPIs composed from the section aggregates (#390 prework).
         run_summary = build_run_summary(
             run_id, portfolio, trade_history, execution_stats, signal, feed_stability, roster,
             units)
-        write_artifact(run_summary, io_dir, RUN_SUMMARY_ARTIFACT)
+        writer.write_section(RUN_SUMMARY_ARTIFACT, run_summary)
 
         # Worker/decision — per-unit worker + decision performance (#398).
         worker_decision = build_worker_decision_report(run_id, units)
-        write_artifact(worker_decision, io_dir, WORKER_DECISION_ARTIFACT)
+        writer.write_section(WORKER_DECISION_ARTIFACT, worker_decision)
 
         return UnifiedReports(
             trade_history=trade_history,

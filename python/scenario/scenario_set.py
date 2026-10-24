@@ -25,7 +25,6 @@ from python.configuration.app_config_manager import AppConfigManager
 from python.framework.constants.run_layout_constants import (
     BACKTEST_GLOBAL_LOG_NAME,
     BACKTEST_SYSTEM_INFO_LOG_NAME,
-    MOUNT_BUILD_LOG,
     RUN_SUMMARY_LOG_NAME,
     RUN_TYPE_SIMULATION,
 )
@@ -33,6 +32,7 @@ from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.logging.system_info_writer import write_system_version_parameters
 from python.framework.reporting.io.run_header_io import data_windows_of
 from python.framework.reporting.store.run_index import RunIndex
+from python.framework.store.entry_members.sweep_entry_writer import SweepEntryWriter
 from python.framework.store.run_config_store import RunConfigStore
 from python.framework.types.api.report_types import (
     OrdersTo,
@@ -49,6 +49,7 @@ from python.framework.types.scenario_types.scenario_set_types import (
     SingleScenario,
 )
 from python.framework.types.scenario_types.window_set_types import WindowSet
+from python.framework.types.store_member_types import RunEntryMemberId, SweepEntryMemberId
 from python.framework.utils.git_info_utils import get_git_commit
 from python.framework.utils.run_id_utils import mint_run_id
 from python.framework.utils.run_origin_builder import build_run_origin, capture_code_identity
@@ -139,8 +140,11 @@ class ScenarioSet:
             run_timestamp=self._run_timestamp,
             run_id=self._run_id,
             log_root_override=self._log_root,
+            log_member=RunEntryMemberId.BACKTEST_GLOBAL_LOG,
+            run_type=RUN_TYPE_SIMULATION,
             use_global_log_level_for_console=True,
-            flat_log_filename=MOUNT_BUILD_LOG if mount_only else None
+            flat_log_path=(SweepEntryWriter(self._log_root).log_path(
+                SweepEntryMemberId.MOUNT_BUILD_LOG) if mount_only else None)
         )
         # The run header goes down FIRST, before anything else can fail. A mount build gets
         # none: it has no run directory, because it is not a run.
@@ -199,7 +203,9 @@ class ScenarioSet:
             scenario_name=RUN_SUMMARY_LOG_NAME,
             run_timestamp=self._run_timestamp,
             run_id=self._run_id,
-            log_root_override=self._log_root
+            log_root_override=self._log_root,
+            log_member=RunEntryMemberId.BACKTEST_SUMMARY_LOG,
+            run_type=RUN_TYPE_SIMULATION
         )
 
     def get_code_identity(self) -> Optional[CodeIdentity]:
@@ -241,7 +247,9 @@ class ScenarioSet:
                 scenario_name=BACKTEST_SYSTEM_INFO_LOG_NAME,
                 run_timestamp=self.logger.get_run_timestamp(),
                 run_id=self._run_id,
-                log_root_override=self._log_root
+                log_root_override=self._log_root,
+                log_member=RunEntryMemberId.BACKTEST_SYSTEM_INFO_LOG,
+                run_type=RUN_TYPE_SIMULATION
             )
 
             write_system_version_parameters(system_info_logger)

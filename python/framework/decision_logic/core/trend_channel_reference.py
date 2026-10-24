@@ -114,6 +114,7 @@ class TrendChannelReference(AbstractDecisionLogic):
         self.max_positions = self.params.get('max_positions')
         self.lot_size = self.params.get('lot_size')
         self.min_entry_capital = self.params.get('min_entry_capital')
+        self.write_strategy_files = self.params.get('write_strategy_files')
 
         # ============================================
         # Per-tick worker read (stashed for the execution pass)
@@ -203,6 +204,11 @@ class TrendChannelReference(AbstractDecisionLogic):
                             'position — free quote balance at spot, free margin at '
                             'margin (0 disables)'
             ),
+            'write_strategy_files': InputParamDef(
+                param_type=bool, default=False,
+                description='Keep the last submitted setup in the run as the strategy file '
+                            'strategy_files/last_setup.json'
+            ),
         }
 
     @classmethod
@@ -260,7 +266,7 @@ class TrendChannelReference(AbstractDecisionLogic):
     def get_metadata(cls) -> ComponentMetadata:
         """Didactic CORE reference logic — teaching example, no profitability claim."""
         return ComponentMetadata(
-            version='1.4.0',
+            version='1.5.0',
             doc_link='docs/user_guides/trend_channel_reference_guide.md',
             recommended_markets=('forex',),
         )
@@ -631,6 +637,8 @@ class TrendChannelReference(AbstractDecisionLogic):
                 AwarenessLevel.INFO, 'entry_submitted',
             )
             self._record_setup_diagnostic(side, decision, tick)
+            if self.write_strategy_files:
+                self._keep_last_setup(side, decision, tick)
         elif result and result.is_refused:
             self.logger.warning(
                 f"✗ Entry rejected: "
@@ -927,6 +935,29 @@ class TrendChannelReference(AbstractDecisionLogic):
             'stop_loss': round(decision.outputs['stop_loss'], 5),
             'take_profit': round(decision.outputs['take_profit'], 5),
             'band_width': round(decision.outputs['band_width'], 5),
+        })
+
+    def _keep_last_setup(self, side: OrderSide, decision: Decision, tick: TickData) -> None:
+        """
+        Keep the last submitted setup as a file of the strategy's own, replaced on every entry —
+        a write at a decision moment, never per tick.
+
+        Args:
+            side: Entry side
+            decision: The armed decision (carries the geometry)
+            tick: Current tick (for the timestamp)
+        """
+        self.strategy_file('last_setup.json').write_json({
+            'timestamp': tick.timestamp.isoformat(),
+            'symbol': tick.symbol,
+            'mode': self.entry_mode,
+            'side': side.value,
+            'gate': decision.outputs['gate'],
+            'upper_band': self._upper,
+            'lower_band': self._lower,
+            'entry_price': decision.outputs['entry_price'],
+            'stop_loss': decision.outputs['stop_loss'],
+            'take_profit': decision.outputs['take_profit'],
         })
 
     # ============================================

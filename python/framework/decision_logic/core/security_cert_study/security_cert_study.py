@@ -20,7 +20,6 @@ import math
 from typing import Any, Dict, List, Optional
 
 from python.framework.acceptance_studies.abstract_acceptance_study import AbstractAcceptanceStudy
-from python.framework.constants.run_layout_constants import SECURITY_CERT_CAPTURE
 from python.framework.decision_logic.core.security_cert_study.security_cert_phase_machine import (
     SecurityCertPhaseMachine,
 )
@@ -36,6 +35,7 @@ from python.framework.types.acceptance_study_types.study_phase_types import (
 )
 from python.framework.types.market_types.market_types import TradingContext
 from python.framework.types.parameter_types import InputParamDef
+from python.framework.types.store_member_types import RunEntryMemberId
 from python.framework.types.trading_env_types.broker_types import SymbolSpecification
 from python.framework.types.trading_env_types.order_types import OrderType
 
@@ -77,8 +77,8 @@ class SecurityCertStudy(AbstractAcceptanceStudy):
         return [SecurityCertPhase.from_dict(raw) for raw in raw_sequence]
 
     @classmethod
-    def get_capture_name(cls) -> str:
-        return SECURITY_CERT_CAPTURE
+    def get_capture_member(cls) -> RunEntryMemberId:
+        return RunEntryMemberId.SECURITY_CERT_CAPTURE
 
     @classmethod
     def get_capture_next_step(cls) -> str:

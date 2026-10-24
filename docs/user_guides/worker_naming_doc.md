@@ -179,6 +179,12 @@ normalization step. See [`docs/architecture/normalization_system.md`](../archite
 file logistics — it flushes the CSV into a `diagnostics/` subfolder of the run directory at
 run end, in both pipelines. See [`docs/architecture/diagnostics_csv_sink.md`](../architecture/diagnostics_csv_sink.md).
 
+**Strategy-owned files.** A decision logic that wants to keep a file of its own with the run — a
+setup, a drawn channel, a table — writes it with `self.strategy_file(name).write_json(data)` or
+`.write_text(text)`. It lands in the run's `strategy_files/` folder at once, is replaced on every
+write, and a failed write never ends the run. Write at decision moments, not per tick. See
+[Store Entry Members — Strategy files](../architecture/store_entry_members.md#strategy-files).
+
 **Component metadata.** Every worker and decision logic should declare `get_metadata()` →
 `ComponentMetadata` (version, doc_link, and — for decision logics — recommended_markets /
 recommended_instruments). The framework logs the version at run start and raises a soft

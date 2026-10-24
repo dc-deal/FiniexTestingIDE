@@ -47,6 +47,7 @@ from python.framework.constants.run_layout_constants import IO_SUBDIR
 from python.framework.reporting.io.artifact_specs import ORDER_HISTORY_ARTIFACT
 from python.framework.reporting.io.report_artifact_io import write_artifact
 from python.framework.reporting.io.report_csv_io import write_order_history_csv
+from python.framework.store.entry_members.run_entry_writer import RunEntryWriter
 from python.framework.types.api.report_types import OrderHistoryReport
 
 # The served field's old name and its new one.
@@ -162,7 +163,7 @@ def main() -> None:
     index = pd.read_parquet(Path(AppConfigManager().get_file_logging_config_object().run_index))
     carried, untouched, refused = 0, 0, []
     totals = {'rows': 0, 'symbol_filled': 0, 'action_filled': 0}
-    for run_dir in sorted(index.run_dir):
+    for run_dir, run_type in sorted(zip(index.run_dir, index.run_type)):
         io_dir = Path(run_dir) / IO_SUBDIR
         path = io_dir / ORDER_HISTORY_ARTIFACT.filename
         if not path.exists():
@@ -185,7 +186,7 @@ def main() -> None:
         carried += 1
         if not args.preview:
             write_artifact(report, io_dir, ORDER_HISTORY_ARTIFACT)
-            write_order_history_csv(report, io_dir)
+            write_order_history_csv(report, RunEntryWriter(Path(run_dir), run_type))
 
     verb = 'would carry over' if args.preview else 'carried over'
     print(f'{verb}: {carried} run(s), {totals["rows"]} row(s) — symbol filled on '

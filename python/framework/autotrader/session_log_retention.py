@@ -17,11 +17,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import List
 
-from python.framework.constants.run_layout_constants import (
-    SESSION_DAY_LOG_FILE_PATTERN,
-    SESSION_LOGS_SUBDIR,
-)
+from python.framework.constants.run_layout_constants import SESSION_DAY_LOG_FILE_PATTERN
 from python.framework.logging.scenario_logger import ScenarioLogger
+from python.framework.store.entry_members.run_entry_members import run_member_folder
+from python.framework.types.store_member_types import RunEntryMemberId
 
 # The rotated files, and ONLY those. Anything else in the directory is left alone: the
 # retention rule was written for a known name pattern, and a pattern that also matched
@@ -61,7 +60,7 @@ def prune_rotated_session_logs(
     if retention_days <= 0:
         return []
 
-    log_dir = run_dir / SESSION_LOGS_SUBDIR
+    log_dir = run_dir / run_member_folder(RunEntryMemberId.SESSION_DAY_LOG)
     if not log_dir.is_dir():
         return []
 

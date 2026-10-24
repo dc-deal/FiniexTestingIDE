@@ -38,6 +38,26 @@ from python.framework.types.validation_types import ValidationResult
 
 
 @dataclass
+class SessionReach:
+    """
+    How far a session got before it ended. A refused or aborted start still closes with a
+    footprint, and a file the session never got to is not a file it failed to write (#621).
+
+    Args:
+        order_record_opened: The order-event stream was opened
+        capture_opened: An acceptance study's capture was opened
+        tick_source_started: The tick source was built and started
+        tick_loop_entered: The state frames were opened and the tick loop was built
+        day_log_opened: A pass of the tick loop opened the trading day's session log
+    """
+    order_record_opened: bool = False
+    capture_opened: bool = False
+    tick_source_started: bool = False
+    tick_loop_entered: bool = False
+    day_log_opened: bool = False
+
+
+@dataclass
 class AutoTraderResult:
     """
     Complete result of an AutoTrader session.
@@ -101,6 +121,8 @@ class AutoTraderResult:
             is derived from it
         session_validation_result: Post-run advisory findings (Tier 1) — the live counterpart
             of BatchExecutionSummary.batch_validation_result
+        session_reach: How far the session got — what its footprint judges the files that open
+            at a later step of the start by
     """
     session_duration_s: float = 0.0
     ticks_processed: int = 0
@@ -141,6 +163,7 @@ class AutoTraderResult:
     # path and the simulation's subprocess can carry the same shape back over its bridge.
     booking_periods: List[BookingPeriod] = field(default_factory=list)
     session_validation_result: List[ValidationResult] = field(default_factory=list)
+    session_reach: SessionReach = field(default_factory=SessionReach)
 
     def add_session_validation_result(self, result: ValidationResult) -> None:
         """

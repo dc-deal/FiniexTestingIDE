@@ -36,13 +36,15 @@ from python.framework.autotrader.tick_sources.tick_stream_recorder import (
     REFUSALS_LISTED_PER_REASON,
     TickStreamRecorder,
 )
-from python.framework.constants.run_layout_constants import TICK_STREAM_EVENTS_FILE
+from python.framework.constants.run_layout_constants import RUN_TYPE_AUTOTRADER
 from python.framework.reporting.io.jsonl_stream_writer import JsonlStreamWriter
+from python.framework.store.entry_members.run_entry_writer import RunEntryWriter
 from python.framework.types.autotrader_types.tick_stream_event_types import (
     RefusedPublicTradeReason,
     TickStreamLossCause,
 )
 from python.framework.types.config_types.autotrader_defaults_config_types import TickSourceConfig
+from python.framework.types.store_member_types import RunEntryMemberId
 from tests.shared.recording_logger import RecordingLogger
 
 _FRAMES = (Path(__file__).resolve().parents[2] / 'fixtures' / 'tick_sources'
@@ -76,20 +78,20 @@ def _trade_frame(*entries: Any) -> str:
     return json.dumps({'channel': 'trade', 'type': 'update', 'data': list(entries)})
 
 
-def _record(directory: Path) -> List[Dict[str, Any]]:
+def _record(run_dir: Path) -> List[Dict[str, Any]]:
     """Every line of a session's tick stream record."""
-    path = directory / TICK_STREAM_EVENTS_FILE
+    path = RunEntryWriter(run_dir, RUN_TYPE_AUTOTRADER).path_of(RunEntryMemberId.TICK_STREAM_EVENTS)
     return [json.loads(line) for line in path.read_text(encoding='utf-8').splitlines()]
 
 
-def _outages(directory: Path) -> List[Dict[str, Any]]:
+def _outages(run_dir: Path) -> List[Dict[str, Any]]:
     """The outage lines of a session's record."""
-    return [line for line in _record(directory) if line['record_kind'] == 'outage']
+    return [line for line in _record(run_dir) if line['record_kind'] == 'outage']
 
 
-def _refusals(directory: Path) -> List[Dict[str, Any]]:
+def _refusals(run_dir: Path) -> List[Dict[str, Any]]:
     """The refused-trade lines of a session's record."""
-    return [line for line in _record(directory) if line['record_kind'] == 'refused_public_trade']
+    return [line for line in _record(run_dir) if line['record_kind'] == 'refused_public_trade']
 
 
 def _received_ticks(ticks: queue.Queue) -> List[Any]:
@@ -130,11 +132,12 @@ class _Clock:
         return self.monotonic_s
 
 
-def _recorder(directory: Path, clock: _Clock,
+def _recorder(run_dir: Path, clock: _Clock,
               logger: Optional[RecordingLogger] = None) -> TickStreamRecorder:
-    """A recorder writing into a test directory on a hand-moved clock."""
+    """A recorder writing into a test run directory on a hand-moved clock."""
     return TickStreamRecorder(
-        symbol='ETHUSD', record_dir=directory, run_id='run-1', session_logger=logger,
+        symbol='ETHUSD', run_writer=RunEntryWriter(run_dir, RUN_TYPE_AUTOTRADER), run_id='run-1',
+        session_logger=logger,
         wall_clock=clock.read_wall, monotonic_clock=clock.read_monotonic)
 
 
@@ -352,7 +355,7 @@ class TestARecordThatCannotBeWritten:
 
     def test_it_is_said_once_and_never_raised(self, tmp_path):
         occupied = tmp_path / 'not_a_directory'
-        occupied.write_text('a file where the io/ folder should be', encoding='utf-8')
+        occupied.write_text('a file where the run directory should be', encoding='utf-8')
         logger = RecordingLogger()
 
         recorder = _recorder(occupied, _Clock(), logger)
@@ -369,8 +372,9 @@ class TestARecordThatCannotBeWritten:
 
 @pytest.fixture
 def parser_and_record(tmp_path) -> Tuple[KrakenTickMessageParser, TickStreamRecorder, Path]:
-    """A parser reporting into a recorder that writes into a test directory."""
-    recorder = TickStreamRecorder(symbol='ETHUSD', record_dir=tmp_path,
+    """A parser reporting into a recorder that writes into a test run directory."""
+    recorder = TickStreamRecorder(symbol='ETHUSD',
+                                  run_writer=RunEntryWriter(tmp_path, RUN_TYPE_AUTOTRADER),
                                   session_logger=RecordingLogger())
     return KrakenTickMessageParser('ETHUSD', recorder=recorder), recorder, tmp_path
 
@@ -672,7 +676,7 @@ def _drop_tcp(trade_id: int) -> Callable:
     return script
 
 
-def _start(venue: _LocalVenue, record_dir: Path,
+def _start(venue: _LocalVenue, run_dir: Path,
            **overrides: float) -> Tuple[KrakenTickSource, threading.Thread, queue.Queue]:
     """A Kraken tick source on its own thread, pointed at the local venue."""
     ticks: queue.Queue = queue.Queue()
@@ -680,8 +684,8 @@ def _start(venue: _LocalVenue, record_dir: Path,
     settings.update(overrides)
     source = KrakenTickSource(
         symbol='ETHUSD', ws_pair=_PAIR, tick_queue=ticks, ws_url=venue.url(),
-        quote_channel_enabled=False, session_logger=RecordingLogger(), record_dir=record_dir,
-        run_id='run-1', **settings)
+        quote_channel_enabled=False, session_logger=RecordingLogger(),
+        run_writer=RunEntryWriter(run_dir, RUN_TYPE_AUTOTRADER), run_id='run-1', **settings)
     thread = threading.Thread(target=source.start, daemon=True)
     thread.start()
     return source, thread, ticks

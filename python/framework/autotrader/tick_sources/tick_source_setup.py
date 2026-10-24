@@ -11,8 +11,9 @@ from typing import Optional
 
 from python.framework.autotrader.tick_sources.kraken_tick_source import KrakenTickSource
 from python.framework.autotrader.tick_sources.mock_tick_source import MockTickSource
-from python.framework.constants.run_layout_constants import IO_SUBDIR
+from python.framework.constants.run_layout_constants import RUN_TYPE_AUTOTRADER
 from python.framework.logging.scenario_logger import ScenarioLogger
+from python.framework.store.entry_members.run_entry_writer import RunEntryWriter
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
 from python.framework.types.process_data_types import ProcessDataPackage
 from python.framework.utils.process_serialization_utils import process_deserialize_ticks_batch
@@ -79,7 +80,7 @@ def setup_tick_source(
             connection_dead_s=config.tick_source.connection_dead_s,
             logger=logger,
             session_logger=session_logger,
-            record_dir=run_dir / IO_SUBDIR if run_dir is not None else None,
+            run_writer=RunEntryWriter(run_dir, RUN_TYPE_AUTOTRADER) if run_dir is not None else None,
             run_id=run_id,
         )
     else:

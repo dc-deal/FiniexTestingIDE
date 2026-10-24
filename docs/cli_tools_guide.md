@@ -22,7 +22,7 @@ FiniexTestingIDE provides a collection of CLI tools for the complete workflow fr
 | `run_index_cli.py` | Run Index Management | rebuild, status, prune |
 | `run_config_cli.py` | Run Config Store (#538) | list, history, show |
 | `config_directory_cli.py` | Every configuration that can start a run (#554) | list, show |
-| `store_cli.py` | Every data store and its index (#486) | catalog, entry-members, rebuild |
+| `store_cli.py` | Every data store and its index (#486) | catalog, entry-members, run-footprint, rebuild |
 | `discoveries_cli.py` | Volatility Profiles, Discoveries & Data Coverage | volatility-profile, extreme-moves, data-coverage (build/show/validate/status/clear), signal-coverage (validate/show), cache (rebuild-all/status) |
 | `generator_cli.py` | Block & Generator-Profile Generation | generate-blocks, generate-profile, generate-all-profiles |
 | `strategy_runner_cli.py` | Backtesting | run, run --generator-profile, validate |
@@ -941,6 +941,19 @@ only with `--accept-loss`.
 
 `--markdown` prints the table the [Store Entry Members](architecture/store_entry_members.md)
 document carries; a test holds the two together. A store whose entry is a single file says so.
+
+### 📈 Store: Run Footprint
+
+| | |
+|---|---|
+| **VS Code** | `📈 Store: Run Footprint` (asks for the run id) |
+| **CLI** | `python python/cli/store_cli.py run-footprint <run_id>` |
+| **Purpose** | One run's directory against its declaration and the footprint it closed with: closed or not, and every file present, skipped, failed, lost or late |
+
+It exits 1 when something needs a look — a lost, failed or late file, a file nobody declared, or a
+run that never closed — so a script can ask it. A run still going reads as running and exits 0.
+Runs from before footprints existed have none and read as not closed. What each state means:
+[Store Entry Members](architecture/store_entry_members.md), *The footprint a run closes with*.
 
 ### Index Rebuild (Maintenance)
 

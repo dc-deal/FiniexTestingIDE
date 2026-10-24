@@ -22,7 +22,6 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 from pydantic import ValidationError
 
 from python.framework.constants.run_layout_constants import (
-    ORDER_EVENTS_FILE,
     ORDER_EVENTS_SCHEMA_VERSION,
     ORDER_EVENTS_STREAM,
 )
@@ -224,7 +223,7 @@ def order_event_from_row(row: OrderEventRow) -> OrderEvent:
 
 
 def write_order_event_stream(
-    io_dir: Path,
+    path: Path,
     run_id: str,
     units: Iterable[Tuple[str, List[OrderEvent]]],
 ) -> Optional[Path]:
@@ -232,7 +231,7 @@ def write_order_event_stream(
     Write a backtest's stream at report time — every unit's events, each in its own order.
 
     Args:
-        io_dir: The run's io/ directory
+        path: The stream file, where the run's writer places it
         run_id: The run the stream belongs to
         units: (scenario name, its events) per unit
 
@@ -242,7 +241,7 @@ def write_order_event_stream(
     units = [(name, events) for name, events in units if events]
     if not units:
         return None
-    writer = JsonlStreamWriter(Path(io_dir) / ORDER_EVENTS_FILE)
+    writer = JsonlStreamWriter(path)
     try:
         writer.write(order_event_header(run_id))
         for scenario_name, events in units:
@@ -273,11 +272,11 @@ def read_order_event_stream(
         (the order events in file order, the broker-truth lines in file order, whether the last
         line was cut off)
     """
+    name = Path(path).name
     try:
         raw = Path(path).read_text(encoding='utf-8')
     except UnicodeDecodeError as e:
-        raise ReportArtifactUnreadableError(
-            ORDER_EVENTS_FILE, str(path), f'not UTF-8: {e}') from e
+        raise ReportArtifactUnreadableError(name, str(path), f'not UTF-8: {e}') from e
     lines = raw.split('\n')
     complete_tail = raw.endswith('\n')
     if complete_tail:
@@ -293,11 +292,11 @@ def read_order_event_stream(
             record = json.loads(line)
             if not isinstance(record, dict):
                 raise ReportArtifactUnreadableError(
-                    ORDER_EVENTS_FILE, str(path), f'line {index + 1}: not a JSON object')
+                    name, str(path), f'line {index + 1}: not a JSON object')
             if record.get('record_kind') == _HEADER_KIND:
                 if record.get('schema_version') != ORDER_EVENTS_SCHEMA_VERSION:
                     raise ReportArtifactUnreadableError(
-                        ORDER_EVENTS_FILE, str(path),
+                        name, str(path),
                         f"schema_version {record.get('schema_version')!r}, this reader knows "
                         f'{ORDER_EVENTS_SCHEMA_VERSION}')
                 continue
@@ -309,6 +308,5 @@ def read_order_event_stream(
             if is_last and not complete_tail:
                 truncated = True
                 continue
-            raise ReportArtifactUnreadableError(
-                ORDER_EVENTS_FILE, str(path), f'line {index + 1}: {e}') from e
+            raise ReportArtifactUnreadableError(name, str(path), f'line {index + 1}: {e}') from e
     return rows, truths, truncated

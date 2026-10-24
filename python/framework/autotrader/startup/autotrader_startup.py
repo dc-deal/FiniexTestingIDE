@@ -25,14 +25,10 @@ from python.framework.autotrader.startup.autotrader_warmup_preparator import (
 )
 from python.framework.bars.bar_rendering_controller import BarRenderingController
 from python.framework.constants.run_layout_constants import (
-    IO_SUBDIR,
     RUN_SUMMARY_LOG_NAME,
     RUN_TYPE_AUTOTRADER,
     SESSION_GLOBAL_LOG_NAME,
     SESSION_LOG_NAME,
-    SESSION_LOG_PREFIX,
-    SESSION_LOGS_SUBDIR,
-    WARMUP_HISTORY_FILE,
 )
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.factory.decision_logic_factory import DecisionLogicFactory
@@ -54,6 +50,9 @@ from python.framework.trading_env.broker_config import BrokerConfig
 from python.framework.trading_env.decision_trading_api import DecisionTradingApi
 from python.framework.trading_env.live.live_trade_executor import LiveTradeExecutor
 from python.framework.store.broker_config_freeze import freeze_broker_config
+from python.framework.store.entry_members.run_entry_members import run_member_folder
+from python.framework.store.entry_members.run_entry_writer import RunEntryWriter
+from python.framework.store.entry_members.strategy_file_writer import StrategyFileWriter
 from python.framework.store.run_config_store import RunConfigStore
 from python.framework.types.api.report_types import (
     DataWindow,
@@ -75,6 +74,7 @@ from python.framework.types.signal_data_types import (
     SignalSourceMode,
     SignalSourceResolution,
 )
+from python.framework.types.store_member_types import RunEntryMemberId
 from python.framework.types.trading_env_types.broker_types import BrokerType
 from python.framework.types.trading_env_types.order_types import OrderType
 from python.framework.types.trading_env_types.stress_test_types import StressTestConfig
@@ -238,7 +238,8 @@ def create_autotrader_loggers(
         run_timestamp=run_timestamp,
         run_id=run_id,
         log_root_override=log_root,
-        file_name_prefix_override=SESSION_LOG_PREFIX
+        log_member=RunEntryMemberId.SESSION_GLOBAL_LOG,
+        run_type=RUN_TYPE_AUTOTRADER
     )
 
     run_dir = global_logger.get_log_dir()
@@ -250,7 +251,8 @@ def create_autotrader_loggers(
         run_timestamp=run_timestamp,
         run_id=run_id,
         log_root_override=log_root,
-        file_name_prefix_override=SESSION_LOG_PREFIX
+        log_member=RunEntryMemberId.SESSION_SUMMARY_LOG,
+        run_type=RUN_TYPE_AUTOTRADER
     )
 
     # Session logger — tick loop, daily rotated in session_logs/ subdir
@@ -262,7 +264,8 @@ def create_autotrader_loggers(
         run_timestamp=run_timestamp,
         run_id=run_id,
         log_root_override=log_root,
-        file_name_prefix_override=SESSION_LOG_PREFIX,
+        log_member=RunEntryMemberId.SESSION_BOOT_LOG,
+        run_type=RUN_TYPE_AUTOTRADER,
         # The tick-by-tick record of the session — every line carries the run's own time.
         # global and summary do not: they describe the session from outside a moment in it.
         event_time_column=True
@@ -321,7 +324,8 @@ def create_autotrader_loggers(
     # Create session_logs/ subdir (tick loop will create files there) — only when log files are
     # written: the run directory exists either way, the daily logs only with the switch on (#621)
     if run_dir and AppConfigManager().get_file_logging_config_object().scenario_enabled:
-        create_directory(run_dir / SESSION_LOGS_SUBDIR, holds="the session's daily logs")
+        create_directory(run_dir / run_member_folder(RunEntryMemberId.SESSION_DAY_LOG),
+                         holds="the session's daily logs")
 
     return AutotraderLoggerBundle(
         global_logger=global_logger,
@@ -423,6 +427,10 @@ def setup_pipeline(
     decision_logic, worker_orchestrator = _build_decision_layer(
         config, logger, decision_logic_factory, trading_context, workers,
         signal_source, live_boot, executor, required_order_types)
+    # The strategy's own files (#621): written at once, into the session's folder of the run
+    run_writer = RunEntryWriter(run_dir, RUN_TYPE_AUTOTRADER) if run_dir else None
+    decision_logic.set_strategy_file_writer(StrategyFileWriter(
+        run_writer, RunEntryMemberId.SESSION_STRATEGY_FILE, logger))
 
     # === Phase 8: BarRenderingController ===
     bar_controller = BarRenderingController(
@@ -435,8 +443,7 @@ def setup_pipeline(
     # === Phase 9: Warmup + Display Label Cache ===
     display_label_cache = _run_warmup(
         config, logger, workers, bar_controller, connection_policy,
-        decision_logic, balances, account, package,
-        record_path=run_dir / IO_SUBDIR / WARMUP_HISTORY_FILE if run_dir else None)
+        decision_logic, balances, account, package, run_writer=run_writer)
 
     # === Phase 10: LiveClippingMonitor ===
     clipping_monitor = LiveClippingMonitor(
@@ -854,7 +861,7 @@ def _run_warmup(
     balances: Dict[str, float],
     account: AutotraderAccountModel,
     package: Optional[ProcessDataPackage],
-    record_path: Optional[Path] = None,
+    run_writer: Optional[RunEntryWriter] = None,
 ) -> DisplayLabelCache:
     """
     Phase 9 — fill the workers' history, build the display labels, and refuse a session that
@@ -871,8 +878,8 @@ def _run_warmup(
         account: The account model from phase 3
         package: A mock session's prepared data, whose warmup bars fill the history; None
             for a live-adapter session, which fetches them from the venue
-        record_path: Where the session records the warmup history it started from; None
-            records nothing
+        run_writer: The session's writer, which records the warmup history it started from;
+            None records nothing
 
     Returns:
         The pre-resolved display labels
@@ -884,7 +891,7 @@ def _run_warmup(
         bar_controller=bar_controller,
         connection_policy=connection_policy,
         package=package,
-        record_path=record_path,
+        run_writer=run_writer,
     )
     display_label_cache = warmup_preparator.build_display_label_cache(
         decision_logic=decision_logic,

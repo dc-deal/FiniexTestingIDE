@@ -22,7 +22,6 @@ import queue
 import ssl
 import time
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Awaitable, List, Optional
 from urllib.parse import urlparse
 
@@ -37,6 +36,7 @@ from python.framework.autotrader.tick_sources.kraken_tick_message_parser import 
 )
 from python.framework.autotrader.tick_sources.tick_stream_recorder import TickStreamRecorder
 from python.framework.logging.scenario_logger import ScenarioLogger
+from python.framework.store.entry_members.run_entry_writer import RunEntryWriter
 from python.framework.types.autotrader_types.autotrader_display_types import (
     QuoteFeedState,
     QuoteFeedStats,
@@ -90,7 +90,7 @@ class KrakenTickSource(AbstractTickSource):
         logger: ScenarioLogger instance for the connection's own lines (the global log)
         session_logger: The session's logger, for what the operator must read — a refused
             trade, a degraded quote channel, a record that cannot be written, the source's end
-        record_dir: The run's io/ folder for the tick stream record; None keeps no record
+        run_writer: The run's writer, which places the tick stream record; None keeps no record
         run_id: Written into the record's header
     """
 
@@ -108,7 +108,7 @@ class KrakenTickSource(AbstractTickSource):
         connection_dead_s: float = 10.0,
         logger: Optional[ScenarioLogger] = None,
         session_logger: Optional[ScenarioLogger] = None,
-        record_dir: Optional[Path] = None,
+        run_writer: Optional[RunEntryWriter] = None,
         run_id: str = '',
     ):
         self._symbol = symbol
@@ -140,7 +140,7 @@ class KrakenTickSource(AbstractTickSource):
         # The record of this stream's outages and refused trades (#609) — written on the socket
         # thread only, and finished there when the loop ends.
         self._recorder = TickStreamRecorder(
-            symbol=symbol, record_dir=record_dir, run_id=run_id, session_logger=session_logger)
+            symbol=symbol, run_writer=run_writer, run_id=run_id, session_logger=session_logger)
         self._parser = KrakenTickMessageParser(symbol=symbol, recorder=self._recorder)
         self._ssl_context: Optional[ssl.SSLContext] = None
         # Created inside the socket thread's event loop; stop() sets the event through that loop,

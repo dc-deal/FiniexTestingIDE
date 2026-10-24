@@ -43,7 +43,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
 from python.configuration.app_config_manager import AppConfigManager
 from python.configuration.market_config_manager import MarketConfigManager
+from python.framework.store.entry_members.run_dir_reader import RunDirReader
+from python.framework.store.entry_members.run_entry_members import run_member_path
 from python.framework.trading_env.adapters.kraken_adapter import KrakenAdapter
+from python.framework.types.store_member_types import RunEntryMemberId
 
 _ROOT = Path(__file__).resolve().parents[3]
 _BROKER_CONFIG = _ROOT / 'configs/brokers/kraken/kraken_spot_broker_config.json'
@@ -67,12 +70,12 @@ def _pick_run(argv: list) -> Path:
     if len(argv) > 1:
         return Path(argv[1])
     candidates = [
-        p.parent for p in _RUNS_DIR.rglob('events.csv')
+        p for p in _RUNS_DIR.rglob(run_member_path(RunEntryMemberId.SESSION_EVENTS))
         if _TXID_PATTERN.search(p.read_text(errors='ignore'))
     ]
     if not candidates:
         return None
-    return max(candidates, key=lambda p: (p / 'events.csv').stat().st_mtime)
+    return max(candidates, key=lambda p: p.stat().st_mtime).parent
 
 
 def _booked_legs(run_dir: Path) -> list:
@@ -86,7 +89,8 @@ def _booked_legs(run_dir: Path) -> list:
     """
     legs = []
     seen_open = set()
-    with open(run_dir / 'events.csv', newline='', encoding='utf-8') as handle:
+    with open(RunDirReader(run_dir).path_of(RunEntryMemberId.SESSION_EVENTS), newline='',
+              encoding='utf-8') as handle:
         for row in csv.DictReader(handle):
             if row.get('event_type') != 'FILL':
                 continue
@@ -187,7 +191,7 @@ def _real_rates(adapter: KrakenAdapter, pair: str) -> tuple:
 def main() -> None:
     """Compare what the run booked against what the venue charged."""
     run_dir = _pick_run(sys.argv)
-    if run_dir is None or not (run_dir / 'events.csv').exists():
+    if run_dir is None or not RunDirReader(run_dir).has(RunEntryMemberId.SESSION_EVENTS):
         print(f'no live run with Kraken references found under {_RUNS_DIR}')
         return
 

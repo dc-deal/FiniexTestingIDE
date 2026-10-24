@@ -1,9 +1,10 @@
 """
 Test-only decision logic for the run entry census (#621).
 
-Writes one diagnostics row on its first tick, opens one MARKET position at `open_tick` and closes
-it at `close_tick` — enough to make a run write every member that hangs on an order or on a
-declared sink, in both pipelines. It decides on nothing it reads.
+Writes one diagnostics row and one file of its own on its first tick, opens one MARKET position at
+`open_tick` and closes it at `close_tick` — enough to make a run write every member that hangs on
+an order, on a declared sink or on the strategy's own folder, in both pipelines. It decides on
+nothing it reads.
 """
 
 from typing import Any, Dict, List, Optional
@@ -18,7 +19,7 @@ from python.framework.types.worker_types import WorkerRequirement, WorkerResult
 
 
 class CensusProbeDecision(AbstractDecisionLogic):
-    """One diagnostics row, one position opened and closed."""
+    """One diagnostics row, one file of its own, one position opened and closed."""
 
     def __init__(self, name, logger, config=None, trading_context=None):
         super().__init__(name, logger, config, trading_context=trading_context)
@@ -72,6 +73,7 @@ class CensusProbeDecision(AbstractDecisionLogic):
                 'tick_time': tick.timestamp.isoformat(),
                 'note': 'census',
             })
+            self.strategy_file('census_note.json').write_json({'first_tick': tick.timestamp.isoformat()})
             self._wrote = True
         if self._tick_count == self._open_tick and not self._opened:
             return Decision(action=DecisionLogicAction.BUY, outputs={})

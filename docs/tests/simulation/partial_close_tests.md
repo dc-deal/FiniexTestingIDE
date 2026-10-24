@@ -272,6 +272,13 @@ A refused order built by the rejection factory itself, one on each side — no s
 |------|-------------|
 | `test_a_refused_close_is_not_lost` | A refused close gets its ORDER_REJECT, although closes are otherwise taken from the trade history, where a refused one never lands |
 | `test_a_rejection_carries_its_own_time_never_the_wall_clock` | The event is stamped with the refusal's own time; it used to fall back to the moment the report was written |
+| `test_the_status_column_says_who_refused` | A denial and a venue rejection are both ORDER_REJECT; the status column tells them apart |
+
+#### TestARefusedDirectory
+
+| Test | Description |
+|------|-------------|
+| `test_the_refusal_is_raised` | An `events/` folder the IDE may not create raises its named error; it does not read as a table that failed to write (#621) |
 
 #### TestUnfilledEndEvents
 

@@ -11,7 +11,6 @@ Two paths:
 """
 
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Callable, Dict, Iterable, List, Optional
 
 from python.framework.autotrader.kraken_ohlc_bar_fetcher import KrakenOhlcBarFetcher
@@ -25,6 +24,7 @@ from python.framework.exceptions.connection_errors import (
 from python.framework.exceptions.timeframe_errors import UnsupportedTimeframeError
 from python.framework.exceptions.warmup_history_errors import WarmupHistoryRefusedError
 from python.framework.logging.scenario_logger import ScenarioLogger
+from python.framework.store.entry_members.run_entry_writer import RunEntryWriter
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
 from python.framework.types.autotrader_types.display_label_cache import DisplayLabelCache
 from python.framework.types.config_types.connection_policy_config_types import ConnectionPolicy
@@ -71,7 +71,7 @@ class AutotraderWarmupPreparator:
         bar_controller: BarRenderingController,
         connection_policy: Optional[ConnectionPolicy] = None,
         package: Optional[ProcessDataPackage] = None,
-        record_path: Optional[Path] = None,
+        run_writer: Optional[RunEntryWriter] = None,
     ) -> Optional[WarmupHistory]:
         """
         Calculate warmup requirements, load bars, validate, and inject.
@@ -84,7 +84,7 @@ class AutotraderWarmupPreparator:
                 path only; the mock path reads its prepared package
             package: The mock session's prepared data package, whose warmup bars the shared
                 mount selected; None on the live path
-            record_path: Where the session records the history it started from
+            run_writer: The session's writer, which records the history it started from
                 (`io/warmup_history.json`); None records nothing
 
         Returns:
@@ -122,7 +122,7 @@ class AutotraderWarmupPreparator:
             self._warn_tradeless_bars(config.symbol, history)
 
         # === Step 5: Inject through the checked route; the seam closes at the first tick ===
-        history.inject_into(bar_controller, record_path)
+        history.inject_into(bar_controller, run_writer)
         return history
 
     def _require_capacity(self, warmup_by_tf: Dict[str, int], capacity: int) -> None:

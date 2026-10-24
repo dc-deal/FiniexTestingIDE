@@ -9,6 +9,7 @@ Parameter reception only: the rows come from `StoreCatalog`, the advisories from
 Usage:
     python python/cli/store_cli.py catalog [--sizes]
     python python/cli/store_cli.py entry-members <store> [--markdown]
+    python python/cli/store_cli.py run-footprint <run_id>
     python python/cli/store_cli.py rebuild <store> [--accept-loss]
     python python/cli/store_cli.py rebuild --all
 """
@@ -18,6 +19,7 @@ import sys
 from typing import Optional
 
 from python.framework.exceptions.store_errors import StoreCatalogError
+from python.framework.reporting.console.run_footprint_summary import render_run_footprint
 from python.framework.reporting.console.store_catalog_summary import (
     render_store_catalog,
     render_store_rebuild_refused,
@@ -28,6 +30,7 @@ from python.framework.reporting.console.store_entry_members_summary import (
     render_entry_members,
     render_entry_members_markdown,
 )
+from python.framework.store.entry_members.run_footprint import assess_indexed_run
 from python.framework.store.store_catalog import StoreCatalog
 from python.framework.types.store_types import StoreId
 from python.framework.validators.store_health_checks import check_store_health
@@ -70,6 +73,20 @@ class StoreCli:
         else:
             render_entry_members(descriptor)
         return 0
+
+    def cmd_run_footprint(self, run_id: str) -> int:
+        """
+        Print one run's directory against its declaration and its footprint.
+
+        Args:
+            run_id: The run
+
+        Returns:
+            Process exit code: 1 when the run is unknown or something needs a look
+        """
+        assessment = assess_indexed_run(run_id)
+        render_run_footprint(assessment, run_id)
+        return 1 if assessment is None or assessment.has_problems() else 0
 
     def cmd_rebuild(self, store: Optional[str], rebuild_all: bool, accept_loss: bool) -> int:
         """
@@ -125,6 +142,11 @@ def main() -> int:
         '--markdown', action='store_true', default=False,
         help='Print the table as Markdown, as the architecture document carries it')
 
+    footprint_parser = subparsers.add_parser(
+        'run-footprint',
+        help='Show one run against its declaration and the footprint it closed with')
+    footprint_parser.add_argument('run_id', help='The run')
+
     rebuild_parser = subparsers.add_parser(
         'rebuild', help='Rebuild a store index from the store contents')
     rebuild_parser.add_argument(
@@ -147,6 +169,8 @@ def main() -> int:
         return cli.cmd_catalog(args.sizes)
     if args.command == 'entry-members':
         return cli.cmd_entry_members(args.store, args.markdown)
+    if args.command == 'run-footprint':
+        return cli.cmd_run_footprint(args.run_id)
     if not args.store and not args.rebuild_all:
         rebuild_parser.error('give a store name, or --all')
     if args.accept_loss and args.rebuild_all:

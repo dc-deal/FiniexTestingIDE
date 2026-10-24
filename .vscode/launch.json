@@ -710,6 +710,22 @@
             }
         },
         {
+            "name": "📈 Store: Run Footprint",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/store_cli.py",
+            "args": [
+                "run-footprint",
+                "${input:footprintRunId}"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "04_coverage",
+                "order": 7
+            }
+        },
+        {
             "name": "📚 File Coverage: mt5/EURUSD",
             "type": "debugpy",
             "request": "launch",
@@ -723,7 +739,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "04_coverage",
-                "order": 7
+                "order": 8
             }
         },
         {
@@ -738,7 +754,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "04_coverage",
-                "order": 8
+                "order": 9
             }
         },
         {
@@ -753,7 +769,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "04_coverage",
-                "order": 9
+                "order": 10
             }
         },
         {
@@ -769,7 +785,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "04_coverage",
-                "order": 10
+                "order": 11
             }
         },
         {
@@ -785,7 +801,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "04_coverage",
-                "order": 11
+                "order": 12
             }
         },
         {
@@ -801,7 +817,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "04_coverage",
-                "order": 12
+                "order": 13
             }
         },
         {
@@ -819,7 +835,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "04_coverage",
-                "order": 13
+                "order": 14
             }
         },
         {
@@ -837,7 +853,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "04_coverage",
-                "order": 14
+                "order": 15
             }
         },
         {
@@ -855,7 +871,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "04_coverage",
-                "order": 15
+                "order": 16
             }
         },
         {
@@ -873,7 +889,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "04_coverage",
-                "order": 16
+                "order": 17
             }
         },
         {
@@ -891,7 +907,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "04_coverage",
-                "order": 17
+                "order": 18
             }
         },
         {
@@ -909,7 +925,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "04_coverage",
-                "order": 18
+                "order": 19
             }
         },
         {
@@ -927,7 +943,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "04_coverage",
-                "order": 19
+                "order": 20
             }
         },
         // ====================================================
@@ -4504,6 +4520,11 @@
         }
     ],
     "inputs": [
+        {
+            "id": "footprintRunId",
+            "type": "promptString",
+            "description": "The run whose directory to read against its footprint (its run id)"
+        },
         {
             "id": "activityMinFreeGb",
             "type": "promptString",

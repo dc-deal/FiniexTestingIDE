@@ -29,7 +29,6 @@ from typing import Any, Callable, Dict, Iterator, List, Optional, Set
 from python.api.api_contract import API_CONTRACT_VERSION
 from python.configuration.app_config_manager import AppConfigManager
 from python.configuration.autotrader.autotrader_config_loader import load_autotrader_config
-from python.framework.constants.run_layout_constants import IO_SUBDIR, ORDER_EVENTS_FILE
 from python.framework.fixture_catalog.fixture_catalog import (
     DECLARED_RUN_COUNT,
     declared_run_count,
@@ -39,6 +38,7 @@ from python.framework.fixture_catalog.fixture_production_store import FixturePro
 from python.framework.optimization.optimization_runner import OptimizationRunner
 from python.framework.reporting.io.order_event_stream_io import read_order_event_stream
 from python.framework.reporting.store.run_index import RunIndex
+from python.framework.store.entry_members.run_dir_reader import RunDirReader
 from python.framework.types.api.report_types import ParentKind, RunInfo
 from python.framework.types.fixture_catalog_types import (
     FixtureEntry,
@@ -47,6 +47,7 @@ from python.framework.types.fixture_catalog_types import (
     FixtureSession,
 )
 from python.framework.types.run_origin_types import RunChannel
+from python.framework.types.store_member_types import RunEntryMemberId
 from python.framework.utils.file_utils import create_directory
 from python.scenario.scenario_config_loader import ScenarioConfigLoader
 from python.scenario.scenario_strategy_runner import initialize_batch_and_run
@@ -249,8 +250,9 @@ class FixtureProducer:
                 return False
             new = frame[(frame['run_name'] == run_name) & ~frame['run_id'].isin(before)]
             for run_dir in new['run_dir']:
-                stream = _PROJECT_ROOT / run_dir / IO_SUBDIR / ORDER_EVENTS_FILE
-                if stream.exists() and read_order_event_stream(stream)[0]:
+                stream = RunDirReader(_PROJECT_ROOT / run_dir).stream_path(
+                    RunEntryMemberId.ORDER_EVENTS)
+                if stream is not None and read_order_event_stream(stream)[0]:
                     return True
             return False
 

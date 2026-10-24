@@ -17,10 +17,6 @@ from typing import Callable, Dict, List, Optional
 
 from python.configuration.app_config_manager import AppConfigManager
 from python.framework.config_directory.config_directory import declared_run_purposes
-from python.framework.constants.run_layout_constants import (
-    FIELD_STUDY_CAPTURE,
-    RUN_HEADER_ARTIFACT,
-)
 from python.framework.fixture_catalog.fixture_catalog import entry_ids
 from python.framework.fixture_catalog.fixture_production_store import (
     PRODUCTION_RECORD_FILE,
@@ -33,7 +29,11 @@ from python.framework.reporting.store.run_index import (
 )
 from python.framework.reporting.store.run_ledger_index import LEDGER_INDEX_FILE
 from python.framework.reporting.store.run_results_ledger import RunResultsLedger
-from python.framework.store.entry_members.run_entry_members import RUN_ENTRY_SUBDIRS
+from python.framework.store.entry_members.run_dir_reader import RunDirReader
+from python.framework.store.entry_members.run_entry_members import (
+    RUN_ENTRY_SUBDIRS,
+    run_member_path,
+)
 from python.framework.types.api.report_types import RunInfo, RunReporting
 from python.framework.types.config_types.file_logging_config_types import RunLogPaths
 from python.framework.types.run_prune_types import (
@@ -43,6 +43,7 @@ from python.framework.types.run_prune_types import (
     PruneSelectors,
 )
 from python.framework.types.run_purpose_types import RunPurpose
+from python.framework.types.store_member_types import RunEntryMemberId
 from python.framework.utils.time_utils import ensure_utc_aware, parse_datetime
 
 
@@ -59,7 +60,7 @@ def _declared_purpose(run_dir: Path) -> Optional[str]:
         The declared value; '' for a header older than the field; None when the header exists and
         cannot be read — which no guard can clear
     """
-    header_path = run_dir / RUN_HEADER_ARTIFACT
+    header_path = RunDirReader(run_dir).path_of(RunEntryMemberId.HEADER)
     if not header_path.exists():
         return ''
     try:
@@ -241,9 +242,9 @@ class RunTreePruner:
             # and a guard that trusts a derived file deletes real evidence the day that file
             # is stale. One stat per run is what the guarantee costs.
             # The raw record behind a real-money release certificate: `FieldStudyCertificate`
-            # finds it by rglob under the live root, so a run holding one is evidence, not
-            # archive — no selector reaches it.
-            if (run_dir / FIELD_STUDY_CAPTURE).exists():
+            # finds it among the runs under the live root, by their headers, so a run holding
+            # one is evidence, not archive — no selector reaches it.
+            if RunDirReader(run_dir).has(RunEntryMemberId.FIELD_STUDY_CAPTURE):
                 report.kept_field_study.append(candidate)
                 continue
             # A certificate run is never deleted (#576) — asked of the run's own HEADER, for the
@@ -430,7 +431,7 @@ class RunTreePruner:
                     report.skipped_sweep_dirs.append(
                         PruneCandidate(path=path, size_bytes=own_files_size(path)))
                     continue
-                if RUN_HEADER_ARTIFACT in filenames:
+                if run_member_path(RunEntryMemberId.HEADER) in filenames:
                     # A run the index lost a row for — a concurrent write can do that. It is a
                     # run, so no guard below the index ever saw it; a rebuild re-indexes it.
                     report.kept_unindexed_run.append(
@@ -487,7 +488,7 @@ class RunTreePruner:
         for sweep_dir in sweeps_root.iterdir():
             if not sweep_dir.is_dir():
                 continue
-            combinations = [d for d in sweep_dir.rglob(RUN_HEADER_ARTIFACT)]
+            combinations = [d for d in sweep_dir.rglob(run_member_path(RunEntryMemberId.HEADER))]
             if not combinations:
                 continue
             if all(header.parent in going for header in combinations):

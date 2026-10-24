@@ -33,3 +33,10 @@ class LedgerRowUnreadableError(FiniexError, ValueError):
             f"The whole ledger reads as one table, so this one row stops every reader — "
             f"the fragment is runs/ledger/*_{run_id}.parquet."
         )
+
+
+class EntryMemberRefusedError(FiniexError, ValueError):
+    """
+    A store entry was asked for a file its declaration does not allow: a member its pipeline never
+    writes, a name part missing, or a name part that would reach into another directory.
+    """

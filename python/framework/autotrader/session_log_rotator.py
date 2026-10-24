@@ -13,12 +13,11 @@ from typing import Callable, Optional
 
 from python.configuration.app_config_manager import AppConfigManager
 from python.framework.autotrader.session_log_retention import prune_rotated_session_logs
-from python.framework.constants.run_layout_constants import (
-    SESSION_DAY_LOG_FILE_PATTERN,
-    SESSION_LOGS_SUBDIR,
-)
+from python.framework.constants.run_layout_constants import RUN_TYPE_AUTOTRADER
 from python.framework.logging.file_logger import FileLogger
 from python.framework.logging.scenario_logger import ScenarioLogger
+from python.framework.store.entry_members.run_entry_writer import RunEntryWriter
+from python.framework.types.store_member_types import RunEntryMemberId
 from python.framework.utils.file_utils import create_directory
 
 
@@ -51,6 +50,15 @@ class SessionLogRotator:
         # Daily rotation: date initialized from the first pass (not wall clock). This prevents
         # spurious rotation in mock/replay mode where tick timestamps differ from current date.
         self._current_log_date: Optional[str] = None
+
+    def has_opened_day_log(self) -> bool:
+        """
+        Whether a pass has opened a trading day's log; the session's close judges the day log by it.
+
+        Returns:
+            True once the first day's log is open
+        """
+        return self._current_log_date is not None
 
     def check_daily_rotation(self) -> None:
         """
@@ -135,11 +143,12 @@ def create_session_file_logger(run_dir: Path, date_suffix: str) -> FileLogger:
     Returns:
         FileLogger writing to session_logs/autotrader_session_YYYYMMDD.log
     """
-    session_logs_dir = run_dir / SESSION_LOGS_SUBDIR
-    create_directory(session_logs_dir, holds="the session's daily logs")
+    path = RunEntryWriter(run_dir, RUN_TYPE_AUTOTRADER).log_path(
+        RunEntryMemberId.SESSION_DAY_LOG, day=date_suffix)
+    create_directory(path.parent, holds="the session's daily logs")
     return FileLogger(
-        log_filename=SESSION_DAY_LOG_FILE_PATTERN.format(day=date_suffix),
-        file_path=session_logs_dir,
+        log_filename=path.name,
+        file_path=path.parent,
         # The threshold the session logger actually gates on, read from config (§28) — not
         # carried over from the file logger being replaced, which never enforced it anyway.
         log_level=AppConfigManager().get_file_logging_config_object().scenario_log_level

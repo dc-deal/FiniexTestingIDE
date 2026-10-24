@@ -7,9 +7,10 @@ pipelines stamp the same way.
 from pathlib import Path
 from typing import List
 
-from python.framework.constants.run_layout_constants import RUN_HEADER_ARTIFACT
+from python.framework.store.entry_members.run_entry_writer import RunEntryWriter
 from python.framework.types.api.report_types import DataWindow, RunHeader
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
+from python.framework.types.store_member_types import RunEntryMemberId
 from python.framework.utils.file_utils import create_directory
 
 
@@ -30,9 +31,8 @@ def write_run_header(header: RunHeader, run_dir: Path) -> Path:
     """
     create_directory(
         run_dir, holds="the run's record: header, reports and streams", setting='file_logging.run_logs')
-    path = run_dir / RUN_HEADER_ARTIFACT
-    path.write_text(header.model_dump_json(indent=2), encoding='utf-8')
-    return path
+    return RunEntryWriter(run_dir, header.run_type).write_snapshot(
+        RunEntryMemberId.HEADER, header.model_dump_json(indent=2))
 
 
 def read_run_header(path: Path) -> RunHeader:

@@ -19,6 +19,7 @@ from python.framework.constants.run_layout_constants import (
     STATE_FRAMES_STREAM,
     TICK_STREAM_EVENTS_STREAM,
 )
+from python.framework.exceptions.store_errors import EntryMemberRefusedError
 
 # A placeholder stands for one variable part of a file name and never spans a directory.
 _PLACEHOLDER_REGEX = r'[^/]+'
@@ -31,6 +32,7 @@ _EXAMPLE_VALUES = {
     'scenario': 'window_01',
     'day': '20261022',
     'sink': 'entry_signals',
+    'name': 'last_setup.json',
 }
 
 
@@ -43,6 +45,7 @@ class EntryMemberShape(StrEnum):
     STREAM = 'stream'                # records appended line by line, a header line first
     REPORT_OUTPUT = 'report_output'  # derived by the reporting pipeline at the run's end
     LOG = 'log'                      # lines for a person to read, never parsed by the code
+    STRATEGY_OUTPUT = 'strategy_output'  # a strategy's own file: kept with the run, never read
 
 
 class EntryMemberMoment(StrEnum):
@@ -58,7 +61,8 @@ class EntryMemberMoment(StrEnum):
 
 class EntryMemberWriteMode(StrEnum):
     """How a member's bytes reach the disk — and so what a crash in the middle leaves behind."""
-    ATOMIC_REPLACE = 'atomic_replace'  # a temporary file renamed over the old one: old or new, never half
+    # a temporary file renamed over the old one: old or new, never half
+    ATOMIC_REPLACE = 'atomic_replace'
     IN_PLACE = 'in_place'              # written over in place: a crash can leave a cut file
     APPEND_LINES = 'append_lines'      # lines appended and flushed: a crash can cut the last line
 
@@ -87,6 +91,8 @@ class RunEntryMemberId(StrEnum):
     SESSION_EVENTS = 'session_events'
     SCENARIO_DIAGNOSTICS = 'scenario_diagnostics'
     SESSION_DIAGNOSTICS = 'session_diagnostics'
+    SCENARIO_STRATEGY_FILE = 'scenario_strategy_file'
+    SESSION_STRATEGY_FILE = 'session_strategy_file'
     FIELD_STUDY_CAPTURE = 'field_study_capture'
     SECURITY_CERT_CAPTURE = 'security_cert_capture'
     AGGREGATED_PORTFOLIO = 'aggregated_portfolio'
@@ -117,6 +123,7 @@ class RunEntryMemberId(StrEnum):
     STATE_FRAMES = STATE_FRAMES_STREAM
     TICK_STREAM_EVENTS = TICK_STREAM_EVENTS_STREAM
     WARMUP_HISTORY = 'warmup_history'
+    FOOTPRINT = 'footprint'
 
 
 class SweepEntryMemberId(StrEnum):
@@ -156,6 +163,8 @@ class EntryMember:
         doc: The document that explains it, relative to the project root, with a heading anchor
         index_column: The run index column that lists it, or None when none does
         schema_version: The version of its line shapes, written into its header — streams only
+        served_route: The path the API serves it under, below a run's report routes, or None when
+            no route serves it
     """
     member_id: Union[RunEntryMemberId, SweepEntryMemberId]
     path_pattern: str
@@ -166,6 +175,7 @@ class EntryMember:
     doc: str
     index_column: Optional[RunIndexColumn] = None
     schema_version: Optional[Union[int, str]] = None
+    served_route: Optional[str] = None
 
     def placeholders(self) -> Tuple[str, ...]:
         """
@@ -200,6 +210,40 @@ class EntryMember:
             True when the member is declared for that run type
         """
         return any(write.run_type == run_type for write in self.written_by)
+
+    def require_shape(self, shape: EntryMemberShape) -> None:
+        """
+        Refuse a write of another shape than this member is — a log opened as a table, a
+        stream written as a snapshot.
+
+        Args:
+            shape: The shape the writing method writes
+        """
+        if self.shape is not shape:
+            raise EntryMemberRefusedError(
+                f'{self.member_id.value} is a {self.shape.value}, not a {shape.value}')
+
+    def path_for(self, **names: str) -> str:
+        """
+        The member's path inside the entry, its variable parts filled with the given names.
+
+        Args:
+            names: One value per placeholder of the pattern
+
+        Returns:
+            The path, with forward slashes
+        """
+        wanted = set(self.placeholders())
+        if set(names) != wanted:
+            raise EntryMemberRefusedError(
+                f'{self.member_id.value} needs the name parts {sorted(wanted)}, was given '
+                f'{sorted(names)}')
+        for name, value in names.items():
+            if not value or '/' in value or '\\' in value or value in ('.', '..'):
+                raise EntryMemberRefusedError(
+                    f'{self.member_id.value}: the name part {name}={value!r} must be one plain '
+                    f'name — not empty, not "." or "..", and no directory separator')
+        return self.path_pattern.format(**names)
 
     def example(self) -> str:
         """

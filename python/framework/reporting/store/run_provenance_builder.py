@@ -29,12 +29,11 @@ from python.configuration.app_config_manager import AppConfigManager
 from python.configuration.market_config_manager import MarketConfigManager
 from python.framework.autotrader.dry_run_resolver import resolve_orders_to
 from python.framework.constants.run_layout_constants import (
-    RUN_HEADER_ARTIFACT,
     RUN_TYPE_AUTOTRADER,
     RUN_TYPE_SIMULATION,
 )
 from python.framework.logging.abstract_logger import AbstractLogger
-from python.framework.reporting.io.run_header_io import read_run_header
+from python.framework.store.entry_members.run_dir_reader import RunDirReader
 from python.framework.types.api.report_types import OrdersTo, WarningsErrorsReport
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
 from python.framework.types.batch_execution_types import BatchExecutionSummary
@@ -419,7 +418,7 @@ def _read_code_identity(run_id: str, run_dir: Optional[Path],
                        f'names its code {consequence}')
         return None
     try:
-        header = read_run_header(Path(run_dir) / RUN_HEADER_ARTIFACT)
+        header = RunDirReader(Path(run_dir)).read_header()
     except (OSError, ValueError) as error:
         logger.warning(f'⚠️ Ledger provenance: the header of run {run_id} could not be read '
                        f'({error}) {consequence}')

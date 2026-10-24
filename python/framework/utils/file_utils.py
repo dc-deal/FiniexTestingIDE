@@ -1,5 +1,6 @@
 import re
 from pathlib import Path
+from typing import Dict
 
 from python.framework.constants.run_layout_constants import SCENARIO_LOG_NAME_PATTERN
 from python.framework.exceptions.data_home_errors import DirectoryCreationDeniedError
@@ -36,8 +37,22 @@ def pad_int(value: int, width: int = 2) -> str:
 
 
 def file_name_for_scenario(scenario_index: int, name: str):
-    return SCENARIO_LOG_NAME_PATTERN.format(
-        scenario_no=pad_int(scenario_index + 1), scenario=sanitize_filename(name))
+    return SCENARIO_LOG_NAME_PATTERN.format(**scenario_log_names(scenario_index, name))
+
+
+def scenario_log_names(scenario_index: int, name: str) -> Dict[str, str]:
+    """
+    The variable parts of a scenario's log file name: its number, counted from one and padded,
+    and its name made safe for a file.
+
+    Args:
+        scenario_index: The scenario's position in its set, counted from zero
+        name: The scenario's name
+
+    Returns:
+        The parts by placeholder
+    """
+    return {'scenario_no': pad_int(scenario_index + 1), 'scenario': sanitize_filename(name)}
 
 
 def create_directory(path: Path, holds: str, setting: str = '', mode: int = 0o777) -> Path:

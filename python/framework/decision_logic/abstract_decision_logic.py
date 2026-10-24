@@ -19,6 +19,8 @@ from python.framework.decision_logic.decision_logic_performance_tracker import (
 )
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.reporting.diagnostics_csv_sink import DiagnosticsCsvSink
+from python.framework.store.entry_members.strategy_file import StrategyFile
+from python.framework.store.entry_members.strategy_file_writer import StrategyFileWriter
 from python.framework.trading_env.decision_trading_api import DecisionTradingApi
 from python.framework.types.autotrader_types.cold_start_types import (
     ColdStartSituation,
@@ -133,6 +135,9 @@ class AbstractDecisionLogic(ABC):
 
         # Diagnostics CSV sinks (#376) — algo-declared, framework-flushed at run end
         self._diagnostics_sinks: Dict[str, DiagnosticsCsvSink] = {}
+
+        # The strategy's own files (#621) — written at once, into the run's declared folder
+        self._strategy_file_writer: Optional[StrategyFileWriter] = None
 
     def get_trading_context(self) -> Optional[TradingContext]:
         """
@@ -497,6 +502,37 @@ class AbstractDecisionLogic(ABC):
             List of DiagnosticsCsvSink (empty if none declared)
         """
         return list(self._diagnostics_sinks.values())
+
+    # ============================================
+    # Strategy Files (#621)
+    # ============================================
+
+    def strategy_file(self, name: str) -> StrategyFile:
+        """
+        A file this strategy keeps with its run, written at once and replaced whole on every write.
+
+        The framework owns where it lands — `strategy_files/` in the run directory, one folder per
+        scenario in a backtest — and never reads it. A write that fails is said once on the run's
+        channel and answers False; it never ends the run. Write at decision moments, never per
+        tick: one write costs about a fifth of a millisecond on a local disk and about twelve on
+        the development container's bridged mount.
+
+        Args:
+            name: The file's name, such as 'last_setup.json' — no folder, no leading dot
+
+        Returns:
+            The file, with write_json and write_text
+        """
+        return StrategyFile(name, self._strategy_file_writer)
+
+    def set_strategy_file_writer(self, writer: StrategyFileWriter) -> None:
+        """
+        Inject the writer of this run's strategy files — the framework's, at the run's start.
+
+        Args:
+            writer: The run's strategy file writer
+        """
+        self._strategy_file_writer = writer
 
     # ============================================
     # Decision Event Channel (#348)

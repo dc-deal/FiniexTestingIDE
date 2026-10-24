@@ -7,14 +7,12 @@ moves the objective most). Also writes the ranked table as CSV. Pure presentatio
 ranking/sensitivity calculation lives in optimization_analysis.
 """
 
-import csv
 import json
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from python.configuration.app_config_manager import AppConfigManager
-from python.framework.constants.run_layout_constants import SWEEP_RANKING_FILE
 from python.framework.optimization.optimization_analysis import (
     DegenerateRankingAdvisory,
     MixedLogicVersionAdvisory,
@@ -25,7 +23,9 @@ from python.framework.optimization.optimization_analysis import (
     summarize_sweeps,
 )
 from python.framework.reporting.store.run_results_ledger import RunResultsLedger
+from python.framework.store.entry_members.sweep_entry_writer import SweepEntryWriter
 from python.framework.types.api.report_types import RunResultRow
+from python.framework.types.store_member_types import SweepEntryMemberId
 from python.framework.utils.file_utils import create_directory
 
 
@@ -289,7 +289,6 @@ def _write_csv(ranked: List[RunResultRow], sweep_id: str) -> Path:
     sweep_dir = Path(
         AppConfigManager().get_file_logging_config_object().run_logs.sweeps) / sweep_id
     create_directory(sweep_dir, holds="the sweep's ranking", setting='file_logging.run_logs')
-    path = sweep_dir / SWEEP_RANKING_FILE
     flat = [_flat(row) for row in ranked]
     # The header comes from a FLATTENED row, not from `model_fields`. `model_dump()` includes
     # COMPUTED fields and `model_fields` does not, so `run_kind` was in every dict and in no
@@ -298,11 +297,7 @@ def _write_csv(ranked: List[RunResultRow], sweep_id: str) -> Path:
     # is why it stood. Falling back to the declared fields keeps the empty case writing a
     # header-only file rather than an empty one.
     fieldnames = list(flat[0]) if flat else list(RunResultRow.model_fields)
-    with open(path, 'w', newline='') as f:
-        writer = csv.DictWriter(f, fieldnames=fieldnames)
-        writer.writeheader()
-        writer.writerows(flat)
-    return path
+    return SweepEntryWriter(sweep_dir).write_table(SweepEntryMemberId.RANKING, fieldnames, flat)
 
 
 def _flat(row: RunResultRow) -> Dict[str, Any]:
