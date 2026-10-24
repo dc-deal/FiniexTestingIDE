@@ -59,7 +59,10 @@ first is refused — its end would close the outer file and give the console bac
 A run's directory holds its record — header, reports, streams — so the scenario logger creates it
 whether or not log files are written (#621). The tests pin both states: with the log switch
 (`file_logging.scenario.enabled`) on, the directory holds the log; with it off, the directory is
-still created and stays empty, and the logger has no file.
+still created and stays empty, and the logger has no file. Which file a logger writes is its
+member of the run's declaration: a backtest log, a scenario's log and a session log each land
+where the declaration says, a logger without a member writes no file, and a log of the other
+pipeline is refused.
 
 ## Running the Tests
 

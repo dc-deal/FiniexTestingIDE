@@ -9,7 +9,6 @@ logger opens and keeps open, and the two streams that keep their own writer unti
 of the run store is built (the order-event stream and the study captures).
 """
 
-import csv
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, TypeVar
 
@@ -29,6 +28,7 @@ from python.framework.types.store_member_types import (
     RunEntryMemberId,
 )
 from python.framework.utils.atomic_file_utils import write_text_atomic
+from python.framework.utils.csv_table_utils import write_csv_table
 from python.framework.utils.file_utils import create_directory
 
 T = TypeVar('T')
@@ -114,15 +114,8 @@ class RunEntryWriter:
             The written file
         """
         member = self._member(member_id, EntryMemberShape.REPORT_OUTPUT)
-        path = self._run_dir / member.path_for(**names)
-        create_directory(path.parent, holds=f'the table {path.name}')
-        with path.open('w', newline='', encoding='utf-8') as handle:
-            writer = csv.DictWriter(handle, fieldnames=columns,
-                                    extrasaction='ignore' if ignore_extra_columns else 'raise')
-            writer.writeheader()
-            for row in rows:
-                writer.writerow(row)
-        return path
+        return write_csv_table(self._run_dir / member.path_for(**names), columns, rows,
+                               ignore_extra_columns)
 
     def open_stream(self, member_id: RunEntryMemberId, run_id: str,
                     logger: Optional[AbstractLogger], stops: str,
@@ -190,11 +183,10 @@ class RunEntryWriter:
             The declared member
         """
         member = RUN_ENTRY_MEMBERS_BY_ID[member_id]
-        if not any(write.run_type == self._run_type for write in member.written_by):
+        if not member.is_written_by(self._run_type):
             raise EntryMemberRefusedError(
                 f'a {self._run_type} run does not write {member_id.value} '
                 f'({member.path_pattern})')
-        if shape is not None and member.shape is not shape:
-            raise EntryMemberRefusedError(
-                f'{member_id.value} is a {member.shape.value}, not a {shape.value}')
+        if shape is not None:
+            member.require_shape(shape)
         return member

@@ -56,11 +56,25 @@ Three things are derived from it, and none of them keeps a list of its own:
 
 The names come from one place too. Every file and directory name a run writes, and every stream's
 schema version, is a constant in
-[`run_layout_constants.py`](../../python/framework/constants/run_layout_constants.py); the writers
-build their paths from it and the declaration reads the same constants. That module imports
-nothing, so a writer, a reader and the declaration can each import it without a cycle — measured
-2026-10-22: through the report specs the declaration would have loaded 719 modules in 1.6 s and
-could not have been imported by the report writer, the run stream appender or the logger base.
+[`run_layout_constants.py`](../../python/framework/constants/run_layout_constants.py), and the
+declaration reads them. That module imports nothing, so a writer, a reader and the declaration can
+each import it without a cycle — measured 2026-10-22: through the report specs the declaration
+would have loaded 719 modules in 1.6 s and could not have been imported by the report writer, the
+run stream appender or the logger base.
+
+## Writing a run's files
+
+A writer names a member and hands over the content; the path comes from the declaration, never
+from the writer. `RunEntryWriter(run_dir, run_type)` has one method per shape — a report section,
+a snapshot, a table, a stream, a strategy file — and refuses a member its pipeline does not write
+or a member of another shape than the method writes. Three kinds still receive a path from it and
+open the file themselves: a log, which its logger keeps open (`log_path`); and the order-event
+stream and the acceptance studies' captures, which keep their own writer and its failure rule
+until they move onto the run stream appender with #476 (`path_of`). A logger writes the log its
+member names, and a logger without a member writes no file.
+
+A sweep directory's own files — the mount build's log and the ranking — are written the same way
+by `SweepEntryWriter(sweep_dir)`; each combination is a run.
 
 ## Shapes, moments and write modes
 
@@ -216,7 +230,8 @@ directory.
 
 ## Adding a member
 
-1. Name the file in `run_layout_constants.py`, and build the writer's path from that constant.
+1. Name the file in `run_layout_constants.py`. The declaration reads the constant; the writer asks
+   the run entry writer for the member and never builds the path itself.
 2. Add its id to `RunEntryMemberId` and declare it in `run_entry_members.py`: path, shape, what it
    holds, who writes it and when, the write mode, its document — its index column only if the
    run list is meant to serve it, which changes what the API serves and raises its contract, and
@@ -236,8 +251,8 @@ writes any more is caught by it too.
 
 ## What does not belong here
 
-- **The bytes.** The declaration names files; it does not read or write them. A writer and a
-  reader per shape that the store hands out are the next step of #621.
+- **The bytes.** The declaration names files; it does not read or write them. The run entry writer
+  and reader do, by member.
 - **The run's own content.** What a report section or a stream line carries is its own document,
   linked from each member above.
 - **Other stores.** The carry-overs and the archives keep one file per entry today and declare no

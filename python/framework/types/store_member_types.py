@@ -211,6 +211,18 @@ class EntryMember:
         """
         return any(write.run_type == run_type for write in self.written_by)
 
+    def require_shape(self, shape: EntryMemberShape) -> None:
+        """
+        Refuse a write of another shape than this member is — a log opened as a table, a
+        stream written as a snapshot.
+
+        Args:
+            shape: The shape the writing method writes
+        """
+        if self.shape is not shape:
+            raise EntryMemberRefusedError(
+                f'{self.member_id.value} is a {self.shape.value}, not a {shape.value}')
+
     def path_for(self, **names: str) -> str:
         """
         The member's path inside the entry, its variable parts filled with the given names.

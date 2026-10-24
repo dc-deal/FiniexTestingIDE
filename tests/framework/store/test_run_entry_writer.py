@@ -1,6 +1,7 @@
 """
 The run entry writer (#621): a run's files written by member — the path from the declaration, the
-write by the member's shape, a member the pipeline does not write refused.
+write by the member's shape, a member the pipeline does not write refused. A sweep's own files are
+written the same way by the sweep entry writer.
 """
 
 import json
@@ -22,8 +23,14 @@ from python.framework.store.entry_members.run_entry_members import (
     RUN_ENTRY_MEMBERS_BY_ID,
 )
 from python.framework.store.entry_members.run_entry_writer import RunEntryWriter
+from python.framework.store.entry_members.sweep_entry_members import SWEEP_ENTRY_MEMBERS_BY_ID
+from python.framework.store.entry_members.sweep_entry_writer import SweepEntryWriter
 from python.framework.types.api.report_types import RunSummary
-from python.framework.types.store_member_types import EntryMemberShape, RunEntryMemberId
+from python.framework.types.store_member_types import (
+    EntryMemberShape,
+    RunEntryMemberId,
+    SweepEntryMemberId,
+)
 
 _RUN_ID = '20261023_150000_cccccccc'
 
@@ -96,6 +103,27 @@ class TestEachShapeIsWrittenItsWay:
 
         assert path.relative_to(tmp_path).as_posix() == (
             'session_logs/autotrader_session_20261023.log')
+
+
+class TestASweepWritesItsOwnFiles:
+
+    def test_the_ranking_is_its_declared_table(self, tmp_path):
+        path = SweepEntryWriter(tmp_path).write_table(
+            SweepEntryMemberId.RANKING, ['run_id', 'score'], [{'run_id': 'r1', 'score': 1.5}])
+
+        assert SWEEP_ENTRY_MEMBERS_BY_ID[SweepEntryMemberId.RANKING].matches(
+            path.relative_to(tmp_path).as_posix())
+        assert path.read_bytes() == b'run_id,score\r\nr1,1.5\r\n'
+
+    def test_the_mount_build_log_is_its_declared_log(self, tmp_path):
+        path = SweepEntryWriter(tmp_path).log_path(SweepEntryMemberId.MOUNT_BUILD_LOG)
+
+        assert SWEEP_ENTRY_MEMBERS_BY_ID[SweepEntryMemberId.MOUNT_BUILD_LOG].matches(
+            path.relative_to(tmp_path).as_posix())
+
+    def test_a_member_of_another_shape_is_refused(self, tmp_path):
+        with pytest.raises(EntryMemberRefusedError):
+            SweepEntryWriter(tmp_path).log_path(SweepEntryMemberId.RANKING)
 
 
 def test_a_run_stream_is_named_for_its_member():

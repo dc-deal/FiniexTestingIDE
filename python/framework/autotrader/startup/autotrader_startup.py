@@ -29,7 +29,6 @@ from python.framework.constants.run_layout_constants import (
     RUN_TYPE_AUTOTRADER,
     SESSION_GLOBAL_LOG_NAME,
     SESSION_LOG_NAME,
-    SESSION_LOG_PREFIX,
     SESSION_LOGS_SUBDIR,
 )
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
@@ -239,7 +238,8 @@ def create_autotrader_loggers(
         run_timestamp=run_timestamp,
         run_id=run_id,
         log_root_override=log_root,
-        file_name_prefix_override=SESSION_LOG_PREFIX
+        log_member=RunEntryMemberId.SESSION_GLOBAL_LOG,
+        run_type=RUN_TYPE_AUTOTRADER
     )
 
     run_dir = global_logger.get_log_dir()
@@ -251,7 +251,8 @@ def create_autotrader_loggers(
         run_timestamp=run_timestamp,
         run_id=run_id,
         log_root_override=log_root,
-        file_name_prefix_override=SESSION_LOG_PREFIX
+        log_member=RunEntryMemberId.SESSION_SUMMARY_LOG,
+        run_type=RUN_TYPE_AUTOTRADER
     )
 
     # Session logger — tick loop, daily rotated in session_logs/ subdir
@@ -263,7 +264,8 @@ def create_autotrader_loggers(
         run_timestamp=run_timestamp,
         run_id=run_id,
         log_root_override=log_root,
-        file_name_prefix_override=SESSION_LOG_PREFIX,
+        log_member=RunEntryMemberId.SESSION_BOOT_LOG,
+        run_type=RUN_TYPE_AUTOTRADER,
         # The tick-by-tick record of the session — every line carries the run's own time.
         # global and summary do not: they describe the session from outside a moment in it.
         event_time_column=True

@@ -21,7 +21,8 @@ from python.framework.types.process_data_types import (
     ProcessResult,
     ProcessScenarioConfig,
 )
-from python.framework.utils.file_utils import file_name_for_scenario
+from python.framework.types.store_member_types import RunEntryMemberId
+from python.framework.utils.file_utils import file_name_for_scenario, scenario_log_names
 
 
 def process_main(
@@ -61,7 +62,9 @@ def process_main(
             run_timestamp=config.run_timestamp,
             run_id=config.run_id,
             log_root_override=config.log_root,
-            use_scenario_logs_subdir=True,
+            log_member=RunEntryMemberId.SCENARIO_LOG,
+            log_names=scenario_log_names(config.scenario_index, config.name),
+            run_type=RUN_TYPE_SIMULATION,
             # This log IS the run's tick-by-tick record, so every line carries the run's own
             # time. The clock itself is attached once the executor exists (startup preparation).
             event_time_column=True

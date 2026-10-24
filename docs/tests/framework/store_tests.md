@@ -109,7 +109,9 @@ directory are refused, every report section is a member, and a section nobody de
 another shape than the method writes are refused. A report section is the bytes the section writer
 has always written; an atomic snapshot leaves no temporary file behind; a table is its header row
 and one row per record; a stream's header line names its member and the version the declaration
-gives it; a log's path is the declared one. Each run stream is named for its member.
+gives it; a log's path is the declared one. Each run stream is named for its member. A sweep's own
+files go the same way: the ranking is its declared table, the mount build's log its declared log,
+and a member of another shape is refused.
 
 ## `test_strategy_files.py`
 
