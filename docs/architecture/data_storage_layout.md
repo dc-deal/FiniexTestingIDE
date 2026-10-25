@@ -257,6 +257,7 @@ run_configs/
   scenario_sets/<config_id>.json
   autotrader_profiles/<config_id>.json
   autotrader_rendered/<config_id>.json     what a session RAN with (#547)
+  scenario_set_rendered/<config_id>.json   what a backtest RAN with (#547)
   broker_configs/<config_id>.json          the broker configuration it traded with (#547)
 ```
 
@@ -268,33 +269,30 @@ records about itself;
 [A run is a record, and an old one stays true](../introduction_to_the_ide.md#a-run-is-a-record-and-an-old-one-stays-true)
 maps the others.
 
-**A source is what a run was GIVEN; the two rendered kinds are what it RAN with (#547).** A
-profile file is the input to a cascade — the `app_config.autotrader` defaults lie under it, and
-every parameter it leaves unset gets its schema default only when the factory builds the
-component — and a month in which `app_config.json` or a default changes could prove the
-configuration moved and never say what it was. So an AutoTrader session freezes the rendered
-profile at its start, and every run — a session or a backtest — freezes the broker configuration
-it trades with:
+**A source is what a run was GIVEN; the rendered kinds are what it RAN with (#547).** A profile
+or a scenario set is the input to a cascade — the `app_config` defaults lie under it, and every
+parameter it leaves unset gets its schema default only when the factory builds the component — and
+a month in which `app_config.json` or a default changes could prove the configuration moved and
+never say what it was. So every run freezes what it ran with at its start — a session its rendered
+profile, a backtest its rendered scenario set — and the broker configuration it trades with:
 
 | kind | what it holds | named by |
 |---|---|---|
 | `autotrader_rendered` | the merged profile blocks, the strategy with every schema default filled (through the factories' own `resolve_parameters`), and the broker's `market_config.json` entry with its local override | the run header's `rendered_config_id`, written before the session can fail |
+| `scenario_set_rendered` | per scenario the strategy with every schema default filled (through the same strategy renderer a session uses), the execution, simulator, order-guard and stress blocks as the scenario's subprocess reads them, the broker's `market_config.json` entry and the market rules of its market type; at run level the `backtesting` settings and the history limits. A strategy component given as a file is named as the configuration names it | the run header's `rendered_config_id`, written before the run can fail; every sweep combination names its own, a mount build none |
 | `broker_config` | the broker configuration the run trades with, as it stands when the run starts: the symbol specifications — from the runtime cache for a dynamic broker's backtest or live-adapter session, from the seed file for a mock session or a static broker — and the seed's fee structure, its rates replaced by the venue's fee tier where a live-adapter session applies it | the run's broker section (`broker_config_id`, beside `config_hash`) and a log line at startup |
 
 The broker configuration needs the log line because the run's broker section is written at the
 END: a run killed before its report still says, in its own log (`autotrader_session.log` for a
-session, `scenario_global_log.log` for a backtest), where its configuration was frozen. A backtest
-has no rendered profile: what its scenario set and the application's `backtesting` defaults add up
-to for the execution and simulator blocks is covered only by a hash on its ledger row
-(`profile_hash`), not by a document.
+session, `scenario_global_log.log` for a backtest), where its configuration was frozen.
 
-Both are frozen from CONTENT, so a run that starts on an unchanged configuration names the
+All three are frozen from CONTENT, so a run that starts on an unchanged configuration names the
 same id and writes nothing new. Their source columns stay empty on purpose — those mean "the file
 a caller asks for", and a rendered document must never come back from `resolve()` or `history()`
-as the newest version of the profile it was rendered from. And both are RECORDS, never schemas: a
+as the newest version of the source it was rendered from. And all three are RECORDS, never schemas: a
 later version of an algo may rename or drop a parameter, and an old document stays exactly as
-true as it was — nothing reads it back into a factory. A private profile's documents are frozen
-here too, like its source: the store is gitignored, nothing leaves the machine, and a
+true as it was — nothing reads it back into a factory. A private profile's or scenario set's
+documents are frozen here too, like its source: the store is gitignored, nothing leaves the machine, and a
 configuration has to stay readable without the foreign repository checked out at the right
 commit — which a patch needs anyway, and a configuration must not.
 

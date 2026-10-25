@@ -1000,13 +1000,14 @@ class RunHeader(BaseModel):
             changed file mints a new one. Empty on a run that started before the store existed,
             and on one whose config could not be registered. It names the INPUT to the cascade —
             what the run was given, not what it ran with
-        rendered_config_id: What an AutoTrader session RAN with (#547): the run-config store's
-            id of the rendered profile — the `app_config` layer merged in, every schema default
-            filled, the broker's `market_config` entry beside it. Rendered before this header is
-            written, so a session that dies at its first tick still names it. Empty on a
-            simulation run (its half is not built yet), on a run written before the field
-            existed, and on a session whose profile could not be rendered — that last case says
-            so in its session log
+        rendered_config_id: What the run RAN with (#547): the run-config store's id of its
+            rendered configuration — for an AutoTrader session the rendered profile, for a
+            backtest the rendered scenario set with a section per scenario; either way the
+            `app_config` layer merged in, every schema default filled, the broker's
+            `market_config` entry beside it. Rendered before this header is written, so a run
+            that dies at its first tick still names it. Empty on a run written before the field
+            existed — for a backtest, one recorded before backtests rendered theirs — and on one
+            whose configuration could not be rendered or frozen, which its log then says
         app_version: The app version that produced it
         git_commit: The commit it ran from, when the working tree exposes one
         reporting: Whether this run was COMMISSIONED to write report artifacts. Declared at

@@ -52,8 +52,7 @@ vLog = get_global_logger()
 # Derived from the schema that holds each section's defaults, so a field added there is accepted
 # here without a second list to extend.
 _KNOWN_EXECUTION_KEYS: frozenset = allowlist_from(DefaultScenarioExecutionConfig)
-# `broker_config_path` is set per set or scenario only, so no defaults schema holds it
-_KNOWN_TRADE_SIM_KEYS: frozenset = allowlist_from(TradeSimulatorDefaults) | {'broker_config_path'}
+_KNOWN_TRADE_SIM_KEYS: frozenset = allowlist_from(TradeSimulatorDefaults)
 _KNOWN_ORDER_GUARD_KEYS: frozenset = allowlist_from(OrderGuardDefaults)
 _KNOWN_STRESS_TEST_KEYS: frozenset = allowlist_from(StressTestConfig)
 # The set's own top level. `version` and `created` are the generator's provenance stamps;
@@ -368,6 +367,15 @@ class ScenarioConfigLoader:
         # App-level defaults for 3-tier cascade
         app_config = AppConfigManager()
         app_trade_simulator_defaults = app_config.get_trade_simulator_defaults()
+        app_execution_defaults = app_config.get_scenario_execution_defaults()
+
+        # Merge execution_config: app_defaults → global, the same base layer a scenario set's
+        # scenarios get — without it a profile run never saw an override of the app's defaults
+        merged_execution = ScenarioCascade.merge_execution_config(
+            app_execution_defaults,
+            global_execution,
+            {}  # No per-scenario overrides in profile mode
+        )
 
         # Merge trade_simulator_config: app_defaults → global (no per-scenario in profile mode)
         merged_trade_simulator = ScenarioCascade.merge_trade_simulator_config(
@@ -377,7 +385,7 @@ class ScenarioConfigLoader:
         )
 
         # Post-merge type validation (global level — no per-scenario overrides in profile mode)
-        validate_merged_config(DefaultScenarioExecutionConfig, global_execution,       'global.execution_config (profile)')
+        validate_merged_config(DefaultScenarioExecutionConfig, merged_execution,       'global.execution_config (profile)')
         validate_merged_config(TradeSimulatorDefaults,         merged_trade_simulator, 'global.trade_simulator_config (profile)')
         validate_merged_config(OrderGuardDefaults,             global_order_guard,     'global.order_guard (profile)')
 
@@ -391,7 +399,7 @@ class ScenarioConfigLoader:
             set_scenarios = materializer.to_single_scenarios(
                 window_set,
                 global_strategy=global_strategy,
-                global_execution=global_execution,
+                global_execution=merged_execution,
                 merged_trade_simulator=merged_trade_simulator,
                 global_stress=global_stress_test,
                 global_order_guard=global_order_guard,

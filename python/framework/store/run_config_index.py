@@ -36,6 +36,7 @@ FROZEN_SUBDIR: Dict[RunConfigKind, str] = {
     RunConfigKind.SCENARIO_SET: 'scenario_sets',
     RunConfigKind.AUTOTRADER_PROFILE: 'autotrader_profiles',
     RunConfigKind.AUTOTRADER_RENDERED: 'autotrader_rendered',
+    RunConfigKind.SCENARIO_SET_RENDERED: 'scenario_set_rendered',
     RunConfigKind.BROKER_CONFIG: 'broker_configs',
 }
 

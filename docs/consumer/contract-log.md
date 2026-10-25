@@ -33,6 +33,20 @@ reads downwards from the version their fixtures hold until they reach the one be
 A test holds the newest heading in this log to the number the server answers with, so a version
 cannot ship without its entry.
 
+## Version 39 — 2026-10-25 (#547)
+
+A backtest names the configuration it RAN with, as a session does.
+
+- `rendered_config_id` on a run's [header](/api/v1/docs/run-header) is now filled for a backtest
+  too. It names the backtest's rendered scenario set: one section per scenario, holding the strategy
+  with every parameter default filled in, the blocks the scenario ran with, and the broker's market
+  entry and market rules — beside `config_id`, the file the run was given. Every combination of a
+  parameter sweep names its own.
+- Empty on a backtest recorded before this contract, and on a run whose configuration could not be
+  rendered or frozen. No route serves a rendered document's content yet.
+
+No field was added or removed.
+
 ## Version 38 — 2026-10-21 (#611)
 
 A running session can be asked how it stands: its latest state frame, how old it is, and whether it
@@ -122,27 +136,13 @@ period says what it carries.
 A route added, two routes and the broker list behind a grant, fields added, and two parameters
 read strictly. The new route's document is [activities](/api/v1/docs/activities).
 
-## Version 34 — 2026-10-18 (#606)
-
-A price the venue quoted or traded is now served as the decimal the venue wrote.
-
-- Every price a run read from the tick archive — a tick's `bid`, `ask` and `last`, the open, high,
-  low and close of a bar whose price basis is `order_driven`, a fill at a recorded quote — is the
-  decimal the collector recorded: `0.87957`, where a run before this contract read
-  `0.8795700073242188`. The archive was re-imported from its raw files on 2026-10-17 and keeps
-  double precision from now on.
-- `real_volume` keeps every decimal the venue reported.
-- New document [prices](/api/v1/docs/prices): which prices are the venue's decimals and which are
-  computed, and how to round a computed one for display by the instrument's `tick_size`.
-
-No field was added or removed. A run recorded before this contract keeps the values it read.
-
-## Versions 33 and earlier
+## Versions 34 and earlier
 
 One line each. Every one of these moved a shape or a meaning; what they moved is summarised here
 rather than spelled out, because a consumer this far behind needs the list of steps, not each step's
 reasoning. The full text of a compressed version is in this repository's history.
 
+- **Version 34** — 2026-10-18 (#606): A price the venue quoted or traded is served as the decimal the venue wrote — a tick's `bid`, `ask` and `last`, an `order_driven` bar's prices and a fill at a recorded quote read `0.87957` where they read `0.8795700073242188`, `real_volume` keeps every decimal, and the new document [prices](/api/v1/docs/prices) says how to round a computed price by `tick_size`.
 - **Version 33** — 2026-10-16 (#602): A backtest over data recorded without a quote pays a spread, reported beside the measured one — `modelled_spread_cost` on every trade row and booking period, `total_modelled_spread_cost` on the portfolio and on the scenario totals, `modelled_spread` on the scenario details; the P&L of such a backtest is lower than before.
 - **Version 32** — 2026-10-15 (#599): A gap says whose silence it is, and a unit's trade totals carry the spread it paid — `origin_class` and `origin_class_after` on every gap, `gaps_by_year` beside them, `key` replaced by `keys`, the `origin_class` and `since` parameters, `reason` without its guessed causes, and `total_spread_cost` on every trade-history `scenario_totals` row and the portfolio, null where a unit read data without a quote.
 - **Version 31** — 2026-10-14 (#595): The machine this server runs on can be asked how full it is — `GET /api/v1/machine-resources`, new, with the memory limit that binds and where it was read (`limit_source`), the processors and how busy they were over `window_s`, and `pressure_level` with its `pressure_reasons`; a route added, no field changed its shape.

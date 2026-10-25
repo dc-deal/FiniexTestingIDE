@@ -168,10 +168,11 @@ def build_registrations() -> Dict[StoreId, StoreDescriptor]:
                  'history. Three hashes per entry, because a change means three things: the '
                  'content id says the bytes differ, param_hash what the algo DECIDES, '
                  'scope_hash WHICH DATA runs. Renaming a scenario moves the first and neither '
-                 'of the others. Two more kinds have no source file (#547): what an AutoTrader '
-                 'session RAN with — the rendered profile, every default filled — and the broker '
-                 "configuration it traded with; both are frozen from content at the session's "
-                 'start, found by the id the run names, and are records rather than schemas.',
+                 'of the others. Three more kinds have no source file (#547): what a run RAN '
+                 "with — a session's rendered profile, a backtest's rendered scenario set, every "
+                 'default filled — and the broker configuration it traded with; each is frozen '
+                 "from content at the run's start, found by the id the run names, and is a "
+                 'record rather than a schema.',
             # The frozen copies carry the content; what was OBSERVED at registration exists
             # only in the index. Correcting that, so the store rejoins `rebuild --all`, is #547.
             rebuild_loses='which file each version came from, when it was first seen, how often '

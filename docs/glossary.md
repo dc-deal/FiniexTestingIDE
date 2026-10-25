@@ -638,10 +638,14 @@ check of that tick may have sent a close. Not a start refused before the loop �
 or the Field Study's preflight: that one is graded by what it logged, and its operator alert reads
 STARTUP REFUSED. See [Warmup History](architecture/warmup_history.md).
 
-**rendered configuration** (`rendered_config_id`) — What an AutoTrader session RAN with, as
-opposed to the profile file it was GIVEN: the profile with the `app_config.autotrader` layer merged
-in, every parameter's schema default filled, and the broker's `market_config.json` entry. Frozen
-in the run-config store at the session's start and named by its header. A record of what ran, not
+**rendered configuration** (`rendered_config_id`) — What a run RAN with, as opposed to the file
+it was GIVEN: for an AutoTrader session the profile with the `app_config.autotrader` layer merged
+in, every parameter's schema default filled, and the broker's `market_config.json` entry; for a
+backtest the same per scenario — the strategy with every default filled, the blocks the scenario
+ran with, the broker's entry and the market rules of its market type — with every sweep
+combination rendering its own. A strategy component given as a file is named the way the
+configuration names it, never by the absolute path a machine resolved. Frozen in the run-config
+store at the run's start and named by its header. A record of what ran, not
 a schema — a later algo version may drop a parameter and the document stays true. See
 [Data Storage Layout](architecture/data_storage_layout.md).
 

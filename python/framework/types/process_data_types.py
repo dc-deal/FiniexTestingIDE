@@ -18,6 +18,10 @@ from typing import Any, Dict, List, Optional, Tuple
 from python.configuration.app_config_manager import AppConfigManager
 from python.configuration.market_config_manager import MarketConfigManager
 from python.framework.types.config_types.autotrader_defaults_config_types import OrderGuardDefaults
+from python.framework.types.config_types.backtesting_config_types import (
+    DefaultScenarioExecutionConfig,
+    TradeSimulatorDefaults,
+)
 from python.framework.types.config_types.market_config_types import MarketType, TradingModel
 from python.framework.types.disturbance_episode_types import DisturbanceEpisode, MarketDataTickStats
 from python.framework.types.live_types.live_stats_config_types import LiveStatsExportConfig
@@ -199,6 +203,11 @@ class ProcessDataPackage:
 # SCENARIO CONFIG (Phase 1 → Process)
 # ============================================================================
 
+# What a block that lacks a value falls back to — the block's own model, the one place its
+# defaults are written.
+_EXECUTION_DEFAULTS = DefaultScenarioExecutionConfig()
+_TRADE_SIMULATOR_DEFAULTS = TradeSimulatorDefaults()
+
 @dataclass
 class ProcessScenarioConfig:
     """
@@ -339,15 +348,19 @@ class ProcessScenarioConfig:
         decision_logic_config = strategy_config.get(
             'decision_logic_config', {})
 
-        # Execution config
-        exec_config = scenario.execution_config or app_config_loader.get_execution_config()
-        parallel_workers = exec_config.get('parallel_workers', False)
+        # Execution config: the scenario's block, complete after the loader's cascade (app →
+        # global → scenario); a scenario built without one takes the app's per-scenario defaults.
+        # A value the block lacks gets its model's default, never a second default written here.
+        # Read as given rather than through the model: `parallel_workers: None` asks the worker
+        # orchestrator to decide, which the model does not hold.
+        exec_config = scenario.resolve_execution_config(
+            app_config_loader.get_scenario_execution_defaults())
+        parallel_workers = exec_config.get(
+            'parallel_workers', _EXECUTION_DEFAULTS.parallel_workers)
         parallel_threshold = exec_config.get(
-            'worker_parallel_threshold_ms', 1.0
-        )
+            'worker_parallel_threshold_ms', _EXECUTION_DEFAULTS.worker_parallel_threshold_ms)
         strict_parameter_validation = exec_config.get(
-            'strict_parameter_validation', True
-        )
+            'strict_parameter_validation', _EXECUTION_DEFAULTS.strict_parameter_validation)
 
         # Performance tracking sub-group (#137) — both switches default to
         # the app-level defaults when the scenario does not override them.
@@ -367,9 +380,9 @@ class ProcessScenarioConfig:
 
         # Latency simulation ranges (ms-based)
         inbound_latency_min_ms = scenario.trade_simulator_config.get(
-            'inbound_latency_min_ms', 20)
+            'inbound_latency_min_ms', _TRADE_SIMULATOR_DEFAULTS.inbound_latency_min_ms)
         inbound_latency_max_ms = scenario.trade_simulator_config.get(
-            'inbound_latency_max_ms', 80)
+            'inbound_latency_max_ms', _TRADE_SIMULATOR_DEFAULTS.inbound_latency_max_ms)
 
         # Derive market_type and trading_model from broker_type
         market_config_manager = MarketConfigManager()
@@ -384,28 +397,19 @@ class ProcessScenarioConfig:
 
         # Tick processing budget (clipping simulation)
         tick_processing_budget_ms = exec_config.get(
-            'tick_processing_budget_ms', 0.0
-        )
+            'tick_processing_budget_ms', _EXECUTION_DEFAULTS.tick_processing_budget_ms)
 
         # Idle-heartbeat cadence for the sim ghost-pass (#360)
-        heartbeat_interval_ms = exec_config.get('heartbeat_interval_ms', 1000)
+        heartbeat_interval_ms = exec_config.get(
+            'heartbeat_interval_ms', _EXECUTION_DEFAULTS.heartbeat_interval_ms)
 
         # Parse stress test config from scenario
         stress_test_config = StressTestConfig.from_dict(
             scenario.stress_test_config)
 
-        # Parse order_guard config from scenario (defaults if None)
-        if scenario.order_guard_config:
-            order_guard_config = OrderGuardDefaults(
-                cooldown_seconds=scenario.order_guard_config.get(
-                    'cooldown_seconds', 60.0),
-                max_consecutive_rejections=scenario.order_guard_config.get(
-                    'max_consecutive_rejections', 2),
-                block_stale_market_data=scenario.order_guard_config.get(
-                    'block_stale_market_data', True),
-            )
-        else:
-            order_guard_config = OrderGuardDefaults()
+        # Order guard: the scenario's block as a whole through its model — unset fields and an
+        # absent block both take the model's defaults
+        order_guard_config = OrderGuardDefaults(**(scenario.order_guard_config or {}))
 
         # Default live stats config if not provided
         if live_stats_config is None:

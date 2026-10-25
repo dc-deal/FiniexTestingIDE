@@ -95,7 +95,7 @@ to infer one from another:
 | Does it stand alone? | `parent_kind` · `parent_id` — the sweep or the deployment it belongs to |
 | Who started it, and where? | `origin` — channel, client, principal, host |
 | Which configuration was it given? | `config_snapshot` · `config_id` |
-| Which configuration did it run with? | `rendered_config_id` — an AutoTrader session |
+| Which configuration did it run with? | `rendered_config_id` — a session's rendered profile, a backtest's rendered scenario set |
 | Which code ran it? | `code_identity` |
 | What is it FOR? | `run_purpose` — `regular`; `fixture`, a run constructed to show something (every run a test starts, every run a consumer pins); `certificate`, a release-gate run |
 | Why does its configuration exist? | the configuration's own `description` |
@@ -123,7 +123,7 @@ why.
 |---|---|---|
 | the code | the header's `code_identity`: the commit of this repository and of every repository a component came from, a hash of any uncommitted change, each component's version | the commits, plus the patch that restores an uncommitted change |
 | the configuration it was given | the header's `config_id`: the scenario set or AutoTrader profile as written | a frozen copy; a sweep's combinations all name the base set, and what each changed is on its ledger row (`param_hash`, the strategy configuration it ran); a profile run keeps no copy of its generator profiles — the windows it took from them are the header's `data_windows` |
-| the configuration it ran with | an AutoTrader session's `rendered_config_id`: the profile with the application defaults merged in and every parameter default filled | a frozen copy for a session; for a backtest only the ledger row's `profile_hash` over the merged simulator settings |
+| the configuration it ran with | the header's `rendered_config_id`: for a session the profile with the application defaults merged in and every parameter default filled; for a backtest the same per scenario — the strategy, the blocks it ran with, the broker's market entry and market rules — and every sweep combination its own | a frozen copy, for a session and a backtest alike |
 | the broker configuration | the run's broker section: `broker_config_id` beside `config_hash` — the symbol specifications and fee structure it traded with, as they stood when it started | a frozen copy, for a session and a backtest alike; `config_hash` digests every symbol's specification in the configuration, traded or not, and the fee structure, so it moves when any of them changes |
 | the input data | the header's `data_windows`; on the ledger row the data's format versions, origin classes and file counts; for a session also the warmup history it started from | a description — the tick and bar files are too large to copy |
 

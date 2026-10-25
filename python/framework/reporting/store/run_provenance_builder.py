@@ -78,8 +78,8 @@ def build_run_provenance(
 
     # param_hash spans ALL scenarios so a multi-scenario run with per-scenario param
     # differences is not collapsed to scenario[0]; a uniform run (every sweep) keeps the
-    # single fingerprint. Component versions + snapshot read scenario[0] (the full
-    # per-scenario config is preserved separately in the run dir's config snapshot).
+    # single fingerprint. Component versions + snapshot read scenario[0]; what every scenario
+    # ran with is the rendered document the header names as `rendered_config_id` (#547).
     strategy_config = scenarios[0].strategy_config or {}
     fingerprints = sorted(
         generate_config_fingerprint(s.strategy_config or {}) for s in scenarios)

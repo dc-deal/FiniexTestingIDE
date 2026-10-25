@@ -59,13 +59,13 @@ strategy configuration it ran.
 It is a SHA256 over the file's normalised content. Two runs naming the same id were given the same
 file, and a changed file mints a new one.
 
-It names the **input**: what the run was given, before any layer was merged into it. An AutoTrader
-session resolves a rendered profile from that input — the layers merged, every default filled, the
-broker's entry beside it — and records that separately, as `rendered_config_id` on its
-[run header](/api/v1/docs/run-header). This route does not serve the rendered form. A backtest
-records no rendered form: of the simulator settings merged in under its file it keeps only a
-fingerprint, which [sweeps](/api/v1/docs/sweeps) serves for a sweep's combinations as
-`profile_hash`.
+It names the **input**: what the run was given, before any layer was merged into it. A run
+resolves a rendered form from that input — the layers merged, every default filled, the broker's
+entry beside it — and records that separately, as `rendered_config_id` on its
+[run header](/api/v1/docs/run-header): a session its rendered profile, a backtest its rendered
+scenario set with one section per scenario, and every combination of a sweep its own. This route
+does not serve the rendered form. For a sweep's combinations, [sweeps](/api/v1/docs/sweeps) also
+serves a fingerprint of the simulator settings merged in under the file, as `profile_hash`.
 
 It is served here as well as in the run list, so you can assert that the body you received is the
 one the index attributes to this run rather than trusting the join. Nothing on this API takes a

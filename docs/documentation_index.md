@@ -233,6 +233,7 @@ Each test suite has its own documentation in [`tests/`](tests/).
 | [Algo Clock Convention](tests/framework/algo_clock_tests.md) | Wall-clock ban lint (decision logic/workers, CI plane) |
 | [Algo Clock Validator](tests/framework/algo_clock_validator_tests.md) | Wall-clock ban, runtime startup validator — AST scan of loaded algos (CORE + user) + batch pre-flight |
 | [Discovery Cache Validity](tests/framework/discovery_validity_tests.md) | The config-fingerprint comparison across all three cache families, and the single-open metadata reader behind it |
+| [Rendered Configuration Tests](tests/framework/rendered_config_tests.md) | What a run records it ran with, held to what it actually ran with — every shipped scenario set's document against its subprocess configuration, the portable strategy key, the header naming it, a sweep combination's own, never fatal, one strategy section in both pipelines |
 | [Run Entry Census Tests](tests/framework/run_entry_census_tests.md) | Real runs held to what the run store declares a run directory may hold — both directions, the stream versions, the run index row (#621) |
 | [Store Model Tests](tests/framework/store_tests.md) | Catalog completeness, the shared index base (atomic write, delete-and-rebuild, logic version), generic form-A retrieval, carry-over envelope |
 | [Config Directory Tests](tests/framework/config_directory_tests.md) | Every file that can start a run, read without running it — unreadable files as rows, precedence, the per-file cache, run figures |

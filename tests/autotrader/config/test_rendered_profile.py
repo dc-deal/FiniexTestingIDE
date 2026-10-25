@@ -79,7 +79,7 @@ class TestTheDocumentCarriesEveryLayer:
         assert blocks['order_guard'] == to_plain(config.order_guard)
         assert 'config_path' not in blocks and 'strategy_config' not in blocks
 
-    def test_every_type_key_is_the_one_the_factory_injects(self):
+    def test_every_type_key_is_the_one_the_configuration_names(self):
         config = load_autotrader_config(_PROFILE)
         strategy = render_autotrader_profile(config)['strategy_config']
 

@@ -9,6 +9,7 @@ from typing import Any, Dict, List
 from python.configuration.config_file_loader import ConfigFileLoader
 from python.configuration.data_home import get_data_home, resolve_in_data_home, workspace_path
 from python.framework.types.config_types.app_config_types import AppConfig
+from python.framework.types.config_types.backtesting_config_types import DataValidationConfig
 from python.framework.types.config_types.console_logging_config_types import ConsoleLoggingConfig
 from python.framework.types.config_types.data_origin_config_types import OriginClass
 from python.framework.types.config_types.file_logging_config_types import FileLoggingConfig
@@ -314,6 +315,16 @@ class AppConfigManager:
     def get_trade_history_max(self) -> int:
         """Get max trade history entries (0=unlimited)."""
         return self._app_config.history.trade_history_max
+
+    def get_data_validation_config(self) -> DataValidationConfig:
+        """
+        Get the backtest's data validation settings as a whole — which gaps and which data origins
+        a scenario may read.
+
+        Returns:
+            The data validation block
+        """
+        return self._app_config.backtesting.data_validation
 
     def get_allowed_gap_categories(self) -> List[str]:
         """

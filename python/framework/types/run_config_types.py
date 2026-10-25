@@ -29,17 +29,19 @@ class RunConfigKind(StrEnum):
     one symbol. They share a store because they answer the same question — what was this run
     configured with — and nothing beyond that.
 
-    The two RENDERED kinds (#547) answer the question a source cannot: what the run actually RAN
-    with. A source file is the input to a cascade; the rendered profile is its result, with the
-    `app_config` layer merged in and every schema default filled, and the broker configuration is
-    what the venue's cache, the seed's fees and the detected fee tier added up to at session start.
-    Neither has a file of its own to point at, so both are frozen from content. They are records of
+    The kinds frozen from content (#547) answer the question a source cannot: what the run actually
+    RAN with. A source file is the input to a cascade; the rendered profile and the rendered scenario
+    set are its result, with the `app_config` layer merged in and every schema default filled, and
+    the broker configuration is what the venue's cache, the seed's fees and the detected fee tier
+    added up to when the run started. None has a file of its own to point at, so each is frozen
+    from content. They are records of
     what ran, never schemas: a later version of an algo may rename or drop a parameter, and an old
     rendered document stays exactly as true as it was — it is never fed back into a factory.
     """
     SCENARIO_SET = 'scenario_set'
     AUTOTRADER_PROFILE = 'autotrader_profile'
     AUTOTRADER_RENDERED = 'autotrader_rendered'
+    SCENARIO_SET_RENDERED = 'scenario_set_rendered'
     BROKER_CONFIG = 'broker_config'
 
     def has_source_file(self) -> bool:

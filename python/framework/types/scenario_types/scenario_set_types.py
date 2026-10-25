@@ -145,6 +145,19 @@ class SingleScenario:
                 'strict_parameter_validation': True,
             }
 
+    def resolve_execution_config(self, app_defaults: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        The execution block this scenario runs with: its own — complete once the loader's cascade
+        put the app layer under it — or the app's per-scenario defaults when it has none.
+
+        Args:
+            app_defaults: The app's per-scenario execution defaults
+
+        Returns:
+            The execution block, as given
+        """
+        return self.execution_config or app_defaults
+
     def get_modelled_spread_factor(self) -> float:
         """
         The factor this scenario's ticks without a quote are modelled with.

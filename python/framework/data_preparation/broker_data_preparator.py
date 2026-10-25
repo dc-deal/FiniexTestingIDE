@@ -172,8 +172,7 @@ class BrokerDataPreparator:
                 scenario.broker_spec_fetched_at = get_entry_fetched_at(
                     broker_config.adapter.broker_config['symbols'].get(scenario.symbol))
             else:
-                # Get config_path from MarketConfigManager via data_broker_type
-                # This replaces: scenario.trade_simulator_config.get("broker_config_path")
+                # The broker configuration comes from the market config, via data_broker_type
                 config_path = market_config.get_broker_config_path(data_broker_type)
                 # Load broker config (cached: only once per unique config_path)
                 if config_path not in self._config_path_cache:
