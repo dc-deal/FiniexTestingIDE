@@ -5,7 +5,7 @@ Coordinates multiple workers and delegates decision-making to DecisionLogic
 
 import time
 import traceback
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
@@ -896,11 +896,13 @@ class WorkerOrchestrator:
             )
             future_to_worker[future] = (name, worker)
 
-        # Collect results as they complete
+        # Collect the results in declaration order, as the sequential path does — not in the
+        # order the threads happen to finish. The results dict keeps the order its keys first
+        # arrived in, so completion order would make a logic that iterates it decide differently
+        # from run to run. All futures already run concurrently, so waiting in order costs no time.
         sequential_time_estimate = 0.0
 
-        for future in as_completed(future_to_worker):
-            name, worker = future_to_worker[future]
+        for future, (name, worker) in future_to_worker.items():
 
             try:
                 result, computation_time_ms = future.result()

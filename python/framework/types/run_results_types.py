@@ -252,6 +252,21 @@ class BookingPeriod:
     trading_day: Optional[date] = None
 
 
+class FigureKind(Enum):
+    """
+    What kind of figure a ledger column holds — which decides whether it may cross accounts.
+
+    A flow adds up over any rows. A ratio is never combined, only re-derived from the flows of the
+    rows it describes. A reading belongs to one account — a stock, a peak, a trough, an extreme —
+    and has no value over several. A description is no figure at all. A total over several
+    composites carries flows only (#615).
+    """
+    FLOW = 'flow'
+    RATIO = 'ratio'
+    ACCOUNT_READING = 'account_reading'
+    DESCRIPTION = 'description'
+
+
 class Reduction(Enum):
     """
     How a ledger column combines when several rows are read as one.
@@ -303,27 +318,33 @@ class Reduction(Enum):
     # The companion's comment names the column that LEADS it.
     COMPANION = 'companion'
 
-    def is_figure(self) -> bool:
+    def figure_kind(self) -> FigureKind:
         """
-        Whether a column reduced this way holds a FIGURE rather than a description of its row.
-
-        A flow, a ratio and a reading of one account are figures: numbers a total or a ranking is
-        built from. An identity, a set and the ends of a span describe the row. Declared beside
-        the members, so a new member cannot arrive without an answer — a test holds the two sets
-        below to the whole enum.
+        The kind of figure a column with this reduction holds.
 
         Returns:
-            True for a figure
+            Its FigureKind, declared per member in `_FIGURE_KIND_OF`
         """
-        return self in FIGURE_REDUCTIONS
+        return _FIGURE_KIND_OF[self]
 
 
-# Every Reduction is exactly one of these two.
-FIGURE_REDUCTIONS = frozenset({
-    Reduction.SUM, Reduction.DERIVE, Reduction.LAST, Reduction.FIRST, Reduction.MAX,
-    Reduction.MIN, Reduction.MAX_ABS, Reduction.COMPANION})
-DESCRIPTION_REDUCTIONS = frozenset({
-    Reduction.IDENTITY, Reduction.UNION, Reduction.SPAN_START, Reduction.SPAN_END})
+# The kind of figure behind each reduction (#615). Every member is listed, and a test holds the
+# map to the enum, so a new reduction cannot arrive without saying whether its columns may cross
+# accounts — a member missing here would raise rather than fall into a default kind.
+_FIGURE_KIND_OF: Dict[Reduction, FigureKind] = {
+    Reduction.SUM: FigureKind.FLOW,
+    Reduction.DERIVE: FigureKind.RATIO,
+    Reduction.MAX: FigureKind.ACCOUNT_READING,
+    Reduction.MAX_ABS: FigureKind.ACCOUNT_READING,
+    Reduction.MIN: FigureKind.ACCOUNT_READING,
+    Reduction.LAST: FigureKind.ACCOUNT_READING,
+    Reduction.FIRST: FigureKind.ACCOUNT_READING,
+    Reduction.COMPANION: FigureKind.ACCOUNT_READING,
+    Reduction.IDENTITY: FigureKind.DESCRIPTION,
+    Reduction.UNION: FigureKind.DESCRIPTION,
+    Reduction.SPAN_START: FigureKind.DESCRIPTION,
+    Reduction.SPAN_END: FigureKind.DESCRIPTION,
+}
 
 
 class NullMeaning(Enum):

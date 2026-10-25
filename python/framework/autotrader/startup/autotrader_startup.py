@@ -78,6 +78,7 @@ from python.framework.types.store_member_types import RunEntryMemberId
 from python.framework.types.trading_env_types.broker_types import BrokerType
 from python.framework.types.trading_env_types.order_types import OrderType
 from python.framework.types.trading_env_types.stress_test_types import StressTestConfig
+from python.framework.utils.account_currency_resolver import resolve_account_currency
 from python.framework.utils.file_utils import create_directory
 from python.framework.utils.git_info_utils import get_git_commit
 from python.framework.validators.adapter_wiring_validator import REPLAY_TICK_SOURCE
@@ -401,7 +402,7 @@ def setup_pipeline(
 
     # === Phase 3: Resolve trading model ===
     account = _resolve_account_model(
-        config, broker_config, balances, explicit_account_currency)
+        config, broker_config, balances, explicit_account_currency, logger)
 
     # === Phase 4: LiveTradeExecutor ===
     executor, connection_policy = _build_executor(
@@ -577,6 +578,7 @@ def _resolve_account_model(
     broker_config: BrokerConfig,
     balances: Dict[str, float],
     explicit_account_currency: Optional[str],
+    logger: ScenarioLogger,
 ) -> AutotraderAccountModel:
     """
     Phase 3 — what kind of account this session trades, and in which currency.
@@ -586,6 +588,7 @@ def _resolve_account_model(
         broker_config: The broker config from phase 1
         balances: The balances from phase 1
         explicit_account_currency: The profile's override, or None
+        logger: ScenarioLogger instance — a currency the rule normalized is logged there
 
     Returns:
         The resolved account model
@@ -601,16 +604,26 @@ def _resolve_account_model(
             f"Live: the broker returned no balance for the symbol's currencies."
         )
 
-    # Determine account_currency: explicit override or derive from balances + symbol
+    # The one rule both pipelines share (#615): explicit override, else derived from the
+    # balances and the symbol; spot settles in the quote currency.
     symbol_spec = broker_config.adapter.get_symbol_specification(config.symbol)
-    if explicit_account_currency:
-        account_currency = explicit_account_currency
-    elif symbol_spec.quote_currency in balances:
-        account_currency = symbol_spec.quote_currency
-    elif symbol_spec.base_currency in balances:
-        account_currency = symbol_spec.base_currency
-    else:
-        account_currency = list(balances.keys())[0]
+    resolution = resolve_account_currency(
+        explicit_account_currency, balances,
+        symbol_spec.base_currency, symbol_spec.quote_currency, trading_model)
+    if resolution.account_currency is None:
+        raise ValueError(
+            f"Configuration error: AutoTrader profile '{config.profile_name}' declares no account "
+            f"currency, and its balances {sorted(balances)} hold neither "
+            f"{symbol_spec.base_currency} nor {symbol_spec.quote_currency}.\n"
+            f"Set 'scenario_settings.account_currency', or give a balance in one of the two."
+        )
+    if resolution.normalized_from is not None:
+        logger.warning(
+            f"💱 account_currency '{resolution.normalized_from}' normalized to quote "
+            f"'{resolution.account_currency}' — spot settles in the quote currency, not the base "
+            f"asset (base-denominated P&L would mix units)"
+        )
+    account_currency = resolution.account_currency
 
     return AutotraderAccountModel(
         market_type=market_type,

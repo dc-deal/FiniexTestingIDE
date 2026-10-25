@@ -21,8 +21,7 @@ from python.framework.reporting.store.run_results_ledger import (
 from python.framework.types.api.report_types import OrdersTo, RunResultRow, RunSummary
 from python.framework.types.run_outcome_types import RunOutcome
 from python.framework.types.run_results_types import (
-    DESCRIPTION_REDUCTIONS,
-    FIGURE_REDUCTIONS,
+    FigureKind,
     PeriodCloseReason,
     Reduction,
 )
@@ -675,12 +674,6 @@ def test_a_sealed_row_leaves_exactly_the_run_end_columns_empty(
     assert left_empty == set(RUN_END_COLUMNS)
 
 
-def test_every_reduction_is_a_figure_or_a_description():
-    """A new reduction cannot arrive without saying whether its column is a figure."""
-    assert FIGURE_REDUCTIONS | DESCRIPTION_REDUCTIONS == set(Reduction)
-    assert not FIGURE_REDUCTIONS & DESCRIPTION_REDUCTIONS
-
-
 def test_every_nullable_figure_declares_what_its_null_means():
     """
     An empty cell means one of two things, and a ranking decides on it: a figure that can be
@@ -691,7 +684,7 @@ def test_every_nullable_figure_declares_what_its_null_means():
     nullable_figures = {
         name for name, field in RunResultRow.model_fields.items()
         if type(None) in get_args(field.annotation) and name in COLUMN_REDUCTION
-        and COLUMN_REDUCTION[name].is_figure()}
+        and COLUMN_REDUCTION[name].figure_kind() is not FigureKind.DESCRIPTION}
 
     undeclared = sorted(nullable_figures - set(COLUMN_NULL_MEANING))
     stale = sorted(set(COLUMN_NULL_MEANING) - nullable_figures)

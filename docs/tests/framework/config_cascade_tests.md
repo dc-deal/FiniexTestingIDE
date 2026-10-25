@@ -181,6 +181,20 @@ real spread arrives, and then change every bar at once.
 
 Background: [Market Model](../../architecture/market_model.md).
 
+## Trading Model Declared (`test_trading_model_declared.py`)
+
+`trading_model` — spot or margin — decides the account model, which no two accounts of one
+composite may differ in (#615). It used to default to margin, so a broker entry without it traded
+as margin unnoticed; it is now **required**, like `price_formation`, and asserted rather than
+trusted.
+
+| Test | What it verifies |
+|---|---|
+| `test_an_entry_without_it_is_refused` | An entry without it fails at load instead of resolving to margin |
+| `test_an_entry_with_it_loads` | Both models load and carry through untouched |
+| `test_every_broker_resolves_to_a_trading_model` | Every configured broker declares it, read through the manager |
+| `test_the_two_shipped_venues_are_declared_correctly` | Kraken spot, MT5 margin, pinned by name |
+
 ## Server Clock Declared (`test_server_clock_declared.py`)
 
 `server_clock` is the rule the importer converts a venue's own timestamps to UTC with. It is

@@ -136,6 +136,8 @@ tests/
 │   ├── algo_clock_validator/ unit — wall-clock ban, runtime startup validator: AST scan of loaded algos (CORE + user) + batch pre-flight (#359)
 │   ├── discovery_validity/ unit — the three discovery caches compare the config fingerprint they were already writing (#486 finding 57); a config change moves no bar file, so mtime alone kept serving a stale cache
 │   ├── static_analysis/   unit — undefined-name gate (pyflakes) over python/ + tests/; the ruff/vulture backlog tier is measured, not gated
+│   ├── composite/         unit — which accounts may add up: the composite definition and its floor, the key projected from
+│   │                      the rendered configuration, joins and splits, the excluded member, every shipped value classified (#615)
 │   ├── rendered_config/   unit — what a run records it ran with: the one strategy renderer and its portable type key, every shipped
 │   │                      scenario set's document against what its subprocess reads, the header naming it, never fatal (#547)
 │   ├── run_entry_census/  integration — real runs held to the run store's declaration: no undeclared file, every member written

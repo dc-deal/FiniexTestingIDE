@@ -11,9 +11,27 @@ Unit tests for batch pipeline validation and configuration components:
 account's fee tier), and `ScenarioDataValidator`'s **data-origin gate** — which archive
 origins a scenario may read, and the warning that measures what arming the gate would
 cost before it is armed (see
-[`data_provenance.md`](../../architecture/data_provenance.md)).
+[`data_provenance.md`](../../architecture/data_provenance.md)). It also holds the one rule both pipelines use for an account's currency (#615).
 
 ## What Is Tested
+
+### `test_account_currency_resolver.py`
+
+The rule existed twice, and the copies differed at spot: the backtest replaced a currency other than
+the quote by the quote, a session kept it. One profile run both ways could account in two
+currencies. The tests hold the shared rule in both account models, and a session's phase 3 to it.
+
+| Test | Description |
+|------|-------------|
+| `test_the_quote_wins_when_the_balances_hold_it` | Spot and margin: the quote currency, nothing replaced |
+| `test_a_configured_base_currency_is_replaced_at_spot_only` | A configured base currency: spot settles in the quote and says what it replaced, margin keeps it |
+| `test_a_base_only_balance_is_replaced_at_spot_only` | Only a base balance: the same split |
+| `test_the_only_balance_is_taken_when_it_names_neither` | One balance in a third currency at margin: taken |
+| `test_balances_that_name_neither_leave_it_open` | Several balances, neither base nor quote: unresolved, in both models |
+| `test_a_configured_currency_wins_over_the_balances` | A configured currency at margin wins over the balances |
+| `test_a_spot_session_with_a_base_currency_settles_in_the_quote` | A session's phase 3, spot, configured base: the quote, with a warning — the case the copies answered differently |
+| `test_a_margin_session_keeps_its_base_currency` | A session's phase 3, margin: the base is kept, no warning |
+| `test_balances_that_name_neither_refuse_the_start` | A session whose balances name neither currency refuses to start, naming what to set |
 
 ### `test_scenario_validator.py`
 

@@ -23,7 +23,6 @@ from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.trading_env.broker_config import BrokerType
 from python.framework.validators.component_metadata_advisory import check_market_fit
-from python.framework.types.config_types.market_config_types import TradingModel
 from python.framework.types.scenario_types.scenario_set_types import (
     SingleScenario,
 )
@@ -33,6 +32,7 @@ from python.framework.types.validation_types import (
     ValidationFinding,
     ValidationResult,
 )
+from python.framework.utils.account_currency_resolver import resolve_account_currency
 
 
 class ScenarioValidator:
@@ -244,38 +244,31 @@ class ScenarioValidator:
             base, quote = ScenarioValidator._get_symbol_currencies(
                 symbol, scenario.broker_type, broker_scenario_map)
 
-            # Explicit override or derive from balances keys + symbol
-            explicit = scenario.trade_simulator_config.get('account_currency', '')
-            if explicit:
-                account_currency = explicit
-            else:
-                if quote in balances:
-                    account_currency = quote
-                elif base in balances:
-                    account_currency = base
-                elif len(balances) == 1:
-                    account_currency = list(balances.keys())[0]
-                else:
-                    # ambiguous — validation will catch this
-                    continue
-
-            # Spot settles in the quote currency (institutional norm). A base-denominated
-            # account would mix units: gross P&L in base, fees in quote. Normalize to
-            # quote and warn — the operator sees the override took effect.
+            # The one rule both pipelines share: explicit override, else derived from the
+            # balances and the symbol; spot settles in the quote currency.
             trading_model = market_config.get_trading_model(scenario.broker_type.value)
-            if trading_model == TradingModel.SPOT and account_currency != quote:
+            resolution = resolve_account_currency(
+                scenario.trade_simulator_config.get('account_currency', ''),
+                balances, base, quote, trading_model)
+            if resolution.account_currency is None:
+                # ambiguous — validation will catch this
+                continue
+
+            # A base-denominated spot account would mix units: gross P&L in base, fees in
+            # quote. The rule normalized it to quote; warn — the operator sees it took effect.
+            if resolution.normalized_from is not None:
                 logger.warning(
-                    f"💱 {scenario.name}: account_currency '{account_currency}' "
+                    f"💱 {scenario.name}: account_currency '{resolution.normalized_from}' "
                     f"normalized to quote '{quote}' — spot settles in the quote currency"
                 )
                 scenario.validation_result.append(ValidationResult(scenario.name, [
                     ValidationFinding(
                         severity=Severity.WARNING, check='account_currency_normalized',
                         domain=ValidationDomain.CONFIG,
-                        message=f"account_currency '{account_currency}' normalized to quote "
-                            f"'{quote}' — spot settles in the quote currency, not the base "
+                        message=f"account_currency '{resolution.normalized_from}' normalized to "
+                            f"quote '{quote}' — spot settles in the quote currency, not the base "
                             f"asset (base-denominated P&L would mix units).", scope=scenario.name)]))
-                account_currency = quote
+            account_currency = resolution.account_currency
 
             logger.debug(
                 f'💱 Account Currency: {account_currency} (derived from balances)'
