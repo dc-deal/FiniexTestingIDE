@@ -350,18 +350,6 @@ COLUMN_REDUCTION: Dict[str, Reduction] = {
 }
 
 
-# The booking-period group (#537). Named once so a row that books NO period can leave them out
-# as a group rather than by luck: a blanket zero would give such a row `period_no = 0`, which
-# reads as a period rather than as the absence of one — and on the string members it is not even
-# a valid value.
-BOOKING_COLUMNS: List[str] = [
-    'unit_name', 'period_no', 'period_opened_at', 'period_closed_at',
-    'period_close_reason',
-    'period_max_equity', 'period_min_equity', 'period_max_drawdown',
-    'period_tick_count',
-]
-
-
 # What a run knows only when it ENDS (#476). A session writes its booking periods into the ledger
 # as each trading day seals, long before it ends, and those rows leave these columns empty: an
 # early `ok` would outlive a later `error` under the first-present fold, and a count taken at the
@@ -857,19 +845,27 @@ class RunResultsLedger:
         return row
 
     def _error_row(self, p: RunProvenance, error: str) -> Dict[str, Any]:
-        """An error row: provenance + the failure reason; no usable KPIs (all zero/empty)."""
-        row = {
+        """
+        An error row: provenance and the failure reason, and no figure at all.
+
+        A run that produced nothing measured nothing, so every figure column stays empty — the
+        frame the row is written with leaves each column the row does not name empty. A zero
+        would claim a measurement, and a fold would take it: a unit's latest final equity, a
+        count that has to agree across a run's rows.
+
+        Args:
+            p: The run's provenance
+            error: Why the run produced nothing
+
+        Returns:
+            The row
+        """
+        return {
             **self._provenance_fields(p),
             'status': 'error',
             'error': error,
             'currency': '',
         }
-        for column in LEDGER_COLUMNS:
-            if column in BOOKING_COLUMNS:
-                continue                # books no period — absent, never a period zero
-            if column not in row:       # all KPI / order-count columns → 0
-                row[column] = 0
-        return row
 
 
 def period_ledger_fields(period: BookingPeriod) -> Dict[str, Any]:

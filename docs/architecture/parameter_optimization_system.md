@@ -165,7 +165,8 @@ Read the whole directory back as one table.
 - **`status` is a FLAG on the row, not a reason to empty it.** A run that errored still writes its
   figures; `status='error'` and the `error` column travel beside them, and the ranking excludes the
   row on that column. Only a run that produced NOTHING — no currencies at all, e.g. a combination
-  rejected at validation before it ever ran — writes the one figureless `status='error'` row. The
+  rejected at validation before it ever ran — writes the one figureless `status='error'` row, its
+  figure columns empty rather than zero, because nothing was measured. The
   distinction matters because an AutoTrader session has exactly one unit: any uncaught exception,
   including one in the shutdown path, marks the whole session failed, and zeroing its KPIs discarded
   real money figures (measured: a field-study session whose own artifact recorded a final equity of

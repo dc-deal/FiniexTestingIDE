@@ -18,7 +18,7 @@ from python.framework.reporting.store.run_results_ledger import (
     RUN_END_COLUMNS,
     RunResultsLedger,
 )
-from python.framework.types.api.report_types import OrdersTo, RunResultRow
+from python.framework.types.api.report_types import OrdersTo, RunResultRow, RunSummary
 from python.framework.types.run_outcome_types import RunOutcome
 from python.framework.types.run_results_types import (
     DESCRIPTION_REDUCTIONS,
@@ -173,13 +173,26 @@ def test_explicit_error_is_flagged_on_the_row_and_keeps_its_figures(
 
 def test_no_currencies_writes_error_row(tmp_ledger, make_provenance):
     """A run with no usable data (no currencies) is recorded as an error row, never absent."""
-    from python.framework.types.api.report_types import RunSummary
     empty = RunSummary(run_id=_RUN_ID, currencies=[])
     tmp_ledger.append(empty, make_provenance(run_id='r1'))
     rows = tmp_ledger.read_rows()
     assert len(rows) == 1
     assert rows[0].status == 'error'
     assert rows[0].error                               # a default reason is recorded
+
+
+def test_the_figureless_error_row_writes_no_figure(tmp_ledger, make_provenance):
+    """
+    A run that produced nothing measured nothing: its figure columns stay empty. A zero would
+    claim a measurement, and a fold would take it — as a unit's latest final equity, say.
+    """
+    tmp_ledger.append(RunSummary(run_id=_RUN_ID, currencies=[]), make_provenance(run_id='r1'))
+
+    stored = tmp_ledger.read().iloc[0]
+    for column in ('net_pnl', 'account_max_drawdown', 'final_equity', 'orders_submitted',
+                   'total_trades'):
+        assert pd.isna(stored[column]), f'{column} holds {stored[column]!r}, a figure nobody measured'
+    assert tmp_ledger.read_rows()[0].account_max_drawdown is None
 
 
 def test_read_handles_schema_evolution(tmp_path, tmp_ledger, make_run_summary, make_provenance):
