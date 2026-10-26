@@ -56,7 +56,7 @@
     "scenario_settings.data_broker_type": "defining",
     "scenario_settings.data_sentiment_type": "defining",
     "scenario_settings.stress_test_config": "excluding",
-    "session_end": "neutral",
+    "session_end": "defining",
     "state_frames": "neutral",
     "state_persistence": "neutral",
     "symbol": "neutral",

@@ -27,6 +27,7 @@ stressed session was indistinguishable from a clean one, in the console, in
 | `TestTheChannelReachesTheReport` | a finding becomes a Tier-1 `WarningRow` carrying `check` / `domain` / `scope`; the log pot still arrives as Tier 2 with both empty; a clean session reports nothing |
 | `TestTheSharedChecksProduceOneFormula` | sim and AutoTrader differ only in the unit label — the property a copied check would have lost |
 | `TestTheSessionStreamHoldsEverySubmission` | a stream read back with fewer submissions than the executor counted is reported as `order_event_stream_incomplete` (#362); a complete one says nothing |
+| `TestReadingsThatStartedFresh` | #626 — the note the start logged when it did not continue the carried drawdown curve and risk baseline becomes a `carried_readings_not_continued` portfolio warning on the session's own record; a session that continued them says nothing |
 | `TestCodeUnderNoVersionControl` | the shared `unversioned_code` warning on the AutoTrader side (#551): a dry run from code in no repository is warned about; an `--allow-dirty` real-money run carries the `uncommitted_code` finding alone, never both |
 
 The `uncommitted_code` check (#551) is pinned beside the guard that decides it, in

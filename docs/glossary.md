@@ -24,6 +24,14 @@ run fit together; the linked documents explain the rest.
 
 ---
 
+**accept composite change** (`--accept-composite-change <key>`, served as
+`origin.accept_composite_change`) — A start told it may continue what the venue still holds — this
+bot's position, its resting orders — under a configuration that defines another *composite* than
+the one that opened it. The key names that composite, as the refusal printed it, so the flag
+accepts that one change and never a later one. Without it such a start is refused. See
+[Unattended Operation](autotrader/unattended_operation.md), and a worked week in
+[Changing a Live Bot](user_guides/changing_a_live_bot_guide.md).
+
 **acceptance study** — A real-money session sequence whose record becomes a release certificate:
 the *field study* proves the order path, the *security study* the account's protective rules.
 Both run on one engine and write one capture format. Not a test suite — the suite only validates
@@ -149,9 +157,10 @@ it moves between replay time and the present. See *wall clock*, and
 [Live Execution](architecture/live_execution_architecture.md#canonical-clock--idle-cadence-360).
 
 **carry-over** — What one session hands the next session of the same bot: the algo's memory, and
-the framework's record of keys, positions and the risk baseline. Keyed by the bot, overwritten, and
-never kept per run. A document written under another profile name is not this bot's, except for a
-*declared continuation*. See [Data Storage Layout](architecture/data_storage_layout.md).
+the framework's record of keys, positions, the risk baseline and the drawdown curve. Keyed by the
+bot, overwritten, and never kept per run. A document written under another profile name is not
+this bot's, except for a *declared continuation*. The baseline and the curve follow the kind of
+run: a rehearsal's never reach real money. See [Data Storage Layout](architecture/data_storage_layout.md).
 
 **cascade** — How a configuration value is layered. For a scenario: application defaults, then the
 set's `global` block, then the scenario. For an AutoTrader profile: `app_config.autotrader`
@@ -193,7 +202,8 @@ the ratios are recomputed from the added parts; a reading of one account (`final
 `unrealized_pnl`) has no answer across them. The term is the one the Global Investment Performance
 Standards (GIPS) use, where a composite holds the accounts managed to one strategy. The scenarios
 of one backtest run are folded this way. See
-[Reading the Results Ledger](user_guides/results_ledger_guide.md).
+[Reading the Results Ledger](user_guides/results_ledger_guide.md); how a live bot's composite
+changes with its configuration, in [Changing a Live Bot](user_guides/changing_a_live_bot_guide.md).
 
 **compute basis** — When a worker recomputes: `live` on every tick (the forming bar included) or
 `bar_close` only when a bar closes. Not a kind of run. See [Worker Naming](user_guides/worker_naming_doc.md).

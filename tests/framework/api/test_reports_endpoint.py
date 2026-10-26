@@ -64,7 +64,6 @@ from python.framework.types.api.report_types import (
     FeeSourceFills,
     OrderHistoryReport,
     OrderHistoryRow,
-    OrdersTo,
     PendingOrdersReport,
     PendingOrdersUnitRow,
     PortfolioAggregateRow,
@@ -80,7 +79,6 @@ from python.framework.types.api.report_types import (
     SignalReport,
     SignalSourceRow,
     SignalUsageRow,
-    TicksFrom,
     TradeAnalytics,
     TradeHistoryReport,
     TradeHistoryRow,
@@ -100,6 +98,7 @@ from python.framework.types.live_types.broker_truth_types import (
     BrokerTruthSnapshot,
 )
 from python.framework.types.live_types.reconciliation_types import ReconcileState
+from python.framework.types.run_kind_types import OrdersTo, TicksFrom
 from python.framework.types.trading_env_types.broker_types import FeeSource
 from python.framework.types.trading_env_types.order_event_types import (
     OrderEvent,

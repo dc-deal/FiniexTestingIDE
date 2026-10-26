@@ -194,6 +194,11 @@ same construction; after a recovery they are different numbers about the same se
 them is the defect #497 removed, and the labels are what keep them apart.
 `safety.persist_baseline` governs BOTH across a restart — deliberately one switch, because a
 session where only one survived would show two figures silently describing different periods.
+Both also follow the kind of run (#626): a session placing real orders never continues a
+rehearsal's baseline or curve — a dry run's or a mock session's — because a simulated peak above
+the real account would block entries from the first tick, or flatten real positions past the hard
+limit, and a simulated denominator below it would loosen every limit; and a rehearsal never writes
+over real money's. `--new-deployment` starts both afresh. [Unattended Operation](../autotrader/unattended_operation.md) has the table.
 
 **How far the account actually moved.** The extremes are RUNNING MAXIMA, not the value at the end.
 A session that touched 18 % at hour three and recovered by hour four ends at −0 %, and read from a

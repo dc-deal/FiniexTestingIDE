@@ -222,9 +222,14 @@ why every run keeps them is in
 
 **A session that places nothing hands on what it can honestly claim — and nothing more.** A dry
 run or a mock session places no order at any venue, so it never records a session key or an open position book: a successor
-inheriting either would trade beside orders that do not exist. But the deployment identity, the
-risk baseline and the drawdown curve are numbers the process computed, and those are true
-whether or not the venue was real, so they are carried.
+inheriting either would trade beside orders that do not exist. The deployment identity is an
+identity, true whatever the venue, and every session hands it on. The risk baseline and the
+drawdown curve are readings of the account they were measured on, and a rehearsal's account is
+simulated — so they go only to the next session of the SAME kind: a session placing real orders
+starts its own instead of continuing a rehearsal's, and a rehearsal never writes over real money's.
+Real money, a dry run in between, and real money again continue the real account's readings. A
+start with `--new-deployment` begins its own as well (#626). What a deployment's history looks like
+after a week of such changes: [Changing a Live Bot](changing_a_live_bot_guide.md).
 
 The practical consequence is a good one: **a mock profile CAN rehearse a whole deployment
 chain** — start it, stop it, start it again, and read the history. What a mock session cannot show

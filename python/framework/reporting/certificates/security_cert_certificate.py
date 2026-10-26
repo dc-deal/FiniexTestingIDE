@@ -68,8 +68,9 @@ from python.framework.types.acceptance_study_types.study_capture_types import (
     StudyRunCandidate,
 )
 from python.framework.types.acceptance_study_types.study_phase_types import PhaseOutcome
-from python.framework.types.api.report_types import OrdersTo, RunHeader, SafetyReport
+from python.framework.types.api.report_types import RunHeader, SafetyReport
 from python.framework.types.autotrader_types.safety_session_types import FlattenOutcome
+from python.framework.types.run_kind_types import OrdersTo
 from python.framework.types.store_member_types import RunEntryMemberId
 from python.framework.types.trading_env_types.order_event_types import OrderEventType
 

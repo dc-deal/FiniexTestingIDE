@@ -163,6 +163,7 @@ python/framework/autotrader/
   cold_start/                    What an earlier session left behind (#355)
     cold_start_setup.py            Reads the carry-over at boot, builds the cold start, runs its boot step
     cold_start_adopter.py          Takes over what an earlier session left at the venue — or refuses
+    carried_readings.py            Whether the carried drawdown curve and risk baseline continue (#626)
   run_record/                    What the run leaves as its record
     rendered_profile_builder.py    What the session runs with, as one document (#547)
     order_event_stream_setup.py    The order-event stream: opened, registered, read back (#362)

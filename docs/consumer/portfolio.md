@@ -136,6 +136,12 @@ month of restarts — and nothing in the amount itself says so. Three fields say
 An empty `drawdown_carried_from` is always the case in a backtest: a scenario starts its own
 curve.
 
+A live session begins its own curve too when the one it would inherit was written by another kind
+of run — a session placing real orders never continues a rehearsal's curve, nor a rehearsal real
+money's — when the inherited curve does not say which kind of run wrote it, and when the start was
+told `--new-deployment`. In the first two cases its warnings carry `carried_readings_not_continued`,
+saying which it was; a new deployment the operator asked for is not warned about.
+
 ## What was still open when the run ended
 
 A run no longer flattens its positions at the end. In a live session that flatten never reached

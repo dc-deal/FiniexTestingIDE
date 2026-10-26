@@ -19,7 +19,6 @@ from python.framework.types.api.report_types import (
     CloseType,
     DeploymentDetailResponse,
     OrderStatus,
-    OrdersTo,
     ParentKind,
 )
 from python.framework.types.fixture_catalog_types import (
@@ -29,6 +28,7 @@ from python.framework.types.fixture_catalog_types import (
     FixtureProperty,
     FixtureSession,
 )
+from python.framework.types.run_kind_types import OrdersTo
 from python.framework.types.run_outcome_types import RunOutcome
 
 _FINIEX_VIEWER = 'FiniexViewer'

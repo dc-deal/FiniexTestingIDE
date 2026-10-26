@@ -30,7 +30,6 @@ from python.framework.reporting.store.report_store import ReportStore
 from python.framework.reporting.store.run_index import RunIndex
 from python.framework.types.api.report_types import (
     RunHeader,
-    TicksFrom,
     WarningsErrorsOutcome,
     WarningsErrorsReport,
 )
@@ -39,6 +38,7 @@ from python.framework.types.api.state_frame_types import (
     StateFrame,
     StateFrameCause,
 )
+from python.framework.types.run_kind_types import TicksFrom
 from python.framework.types.run_outcome_types import RunOutcome
 
 _RUN = '20261101_000012_4c7e19a2'

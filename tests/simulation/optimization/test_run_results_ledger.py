@@ -18,7 +18,8 @@ from python.framework.reporting.store.run_results_ledger import (
     RUN_END_COLUMNS,
     RunResultsLedger,
 )
-from python.framework.types.api.report_types import OrdersTo, RunResultRow, RunSummary
+from python.framework.types.api.report_types import RunResultRow, RunSummary
+from python.framework.types.run_kind_types import OrdersTo
 from python.framework.types.run_outcome_types import RunOutcome
 from python.framework.types.run_results_types import (
     FigureKind,

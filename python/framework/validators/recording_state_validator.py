@@ -13,10 +13,10 @@ judged only once it has ended.
 
 from typing import Optional
 
-from python.framework.types.api.report_types import TicksFrom
 from python.framework.types.api.recording_state_types import RecordingState
 from python.framework.types.api.state_frame_types import StateFrameCause
 from python.framework.types.config_types.state_frames_api_config_types import StateFramesApiConfig
+from python.framework.types.run_kind_types import TicksFrom
 
 
 def judge_recording(

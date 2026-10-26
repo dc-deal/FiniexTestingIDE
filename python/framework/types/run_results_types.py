@@ -13,7 +13,8 @@ from datetime import date, datetime
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
-from python.framework.types.api.report_types import OrdersTo, RunSummaryCurrency
+from python.framework.types.api.report_types import RunSummaryCurrency
+from python.framework.types.run_kind_types import OrdersTo
 from python.framework.types.run_outcome_types import RunOutcome
 
 

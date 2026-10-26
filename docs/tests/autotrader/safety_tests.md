@@ -49,6 +49,7 @@ Direct tests against `check_safety` using a lightweight stub that mirrors the in
 | `TestDisabled` | Zero thresholds disabled, `enabled=False` skips all checks |
 | `TestDisplayState` | `_safety_current_value` stored, `_safety_drawdown_pct` stored, drawdown floored at 0% (profit case) |
 | `TestTheOperatorHearsOneEpisode` | #235 — a breaker flapping around its limit sends ONE alert out of band and one all-clear once it has stayed clear for the quiet period; the record still counts every engagement |
+| `TestABaselineARehearsalLeft` | #626 — what a risk baseline carried from a dry run does to the breaker of the real-money session after it, in both account models: a simulated peak above the real account blocks entries from the first tick, a simulated denominator below it lets a real loss beyond the limit pass; under the run-kind rule the real session takes its own baseline and both are gone, while a rehearsal after a rehearsal still measures against the carried peak |
 
 ### Level 1 — The Baseline (`test_risk_baseline.py`, #356)
 

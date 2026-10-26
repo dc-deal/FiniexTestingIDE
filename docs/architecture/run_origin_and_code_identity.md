@@ -37,7 +37,9 @@ The shape, with illustrative values — a session whose decision logic is loaded
   "client": "console",
   "principal": "operator",
   "host": "h_7k2m9q",
-  "allow_dirty": false
+  "allow_dirty": false,
+  "first_start": false,
+  "accept_composite_change": null
 },
 "code_identity": {
   "framework": { "root": "/app", "in_repository": true, "commit": "151c9889", "dirty": true,
@@ -74,6 +76,8 @@ never as a guess — there is no migration.
 | `principal` | `operator` | on whose behalf the run was started: `operator` at the console, the account a token acts for once the `api` channel exists |
 | `host` | `h_` plus six characters | minted once per installation |
 | `allow_dirty` | `false` | `--allow-dirty` on the AutoTrader CLI |
+| `first_start` | `false` | `--first-start` on the AutoTrader CLI — the bot's first start, the one way a session trading real money starts without a carry-over |
+| `accept_composite_change` | `null` | `--accept-composite-change <key>` on the AutoTrader CLI — the one composite this start may continue what the venue still holds under |
 
 **The channel is DECLARED by the entry point, never inferred.** Detecting pytest from the
 environment would be a heuristic, and a heuristic in a provenance field is a guess recorded as a

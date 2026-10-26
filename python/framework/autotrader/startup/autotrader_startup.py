@@ -13,7 +13,7 @@ from python.api.api_contract import API_CONTRACT_VERSION
 from python.configuration.app_config_manager import AppConfigManager
 from python.configuration.market_config_manager import MarketConfigManager
 from python.configuration.sentiment_config_manager import SentimentConfigManager
-from python.framework.autotrader.dry_run_resolver import resolve_orders_to
+from python.framework.autotrader.dry_run_resolver import resolve_orders_to, session_orders_to
 from python.framework.autotrader.live_clipping_monitor import LiveClippingMonitor
 from python.framework.autotrader.startup.autotrader_account_model import AutotraderAccountModel
 from python.framework.autotrader.startup.autotrader_broker_config_setup import create_broker_config
@@ -54,12 +54,8 @@ from python.framework.store.entry_members.run_entry_members import run_member_fo
 from python.framework.store.entry_members.run_entry_writer import RunEntryWriter
 from python.framework.store.entry_members.strategy_file_writer import StrategyFileWriter
 from python.framework.store.run_config_store import RunConfigStore
-from python.framework.types.api.report_types import (
-    DataWindow,
-    ParentKind,
-    RunHeader,
-    TicksFrom,
-)
+from python.framework.types.api.report_types import DataWindow, ParentKind, RunHeader
+from python.framework.types.composite_types import RunAxes
 from python.framework.types.run_config_types import RunConfigKind
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
 from python.framework.types.autotrader_types.display_label_cache import DisplayLabelCache
@@ -68,6 +64,7 @@ from python.framework.types.live_types.live_execution_types import TimeoutConfig
 from python.framework.types.market_types.market_data_types import Bar
 from python.framework.types.market_types.market_types import TradingContext
 from python.framework.types.process_data_types import ProcessDataPackage
+from python.framework.types.run_kind_types import TicksFrom
 from python.framework.types.run_origin_types import CodeIdentity, RunOrigin
 from python.framework.types.signal_data_types import (
     SignalLiveBoot,
@@ -272,12 +269,14 @@ def create_autotrader_loggers(
         event_time_column=True
     )
 
+    rendered_config_id = ''
     # The run header goes down FIRST, before the session can fail — a crashed session is
     # exactly the one somebody needs to identify afterwards.
     # Only the COMMIT is needed here — `get_git_commit()` costs 68 ms where the full read
     # costs ~2.0 s, and the header has no use for branch / dirty (§42). The dirty state
     # arrives with the code identity, which the caller has already paid for (#551).
     if run_dir:
+        rendered_config_id = _register_rendered_profile(rendered_profile)
         header = RunHeader(
             run_id=run_id,
             start_time=run_timestamp,
@@ -303,7 +302,7 @@ def create_autotrader_loggers(
             # merged in and every schema default filled. Frozen here, at the start, because
             # this header has no update path and a session that dies at its first tick is the
             # one whose configuration somebody will want to read.
-            rendered_config_id=_register_rendered_profile(rendered_profile),
+            rendered_config_id=rendered_config_id,
             app_version=AppConfigManager().get_version(),
             git_commit=get_git_commit(),
             # Always both (#551): an AutoTrader session always reports, so its code identity is
@@ -334,7 +333,22 @@ def create_autotrader_loggers(
         summary_logger=summary_logger,
         run_dir=run_dir,
         run_id=run_id,
+        rendered_config_id=rendered_config_id,
     )
+
+
+def session_run_axes(config: AutoTraderConfig) -> RunAxes:
+    """
+    The resolved axes of this session's kind of run — the run part of its composite key (#626).
+
+    Args:
+        config: The resolved AutoTrader configuration
+
+    Returns:
+        The axes — raises DryRunConflictError for a profile the dry-run rule refuses
+    """
+    return RunAxes(run_type=RUN_TYPE_AUTOTRADER, ticks_from=_ticks_from(config),
+                   orders_to=session_orders_to(config))
 
 
 def _newest_bar_close(bar_controller: BarRenderingController, symbol: str) -> Optional[float]:

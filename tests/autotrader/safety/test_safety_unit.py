@@ -10,18 +10,31 @@ Covers:
 - Drawdown: the ACCOUNT VALUE in both models (#356), no phantom drawdown
 - OR-combined conditions
 - Disabled thresholds (0.0) and disabled safety (enabled=False)
+- A baseline a rehearsal left, as the restore used it and under the run-kind rule (#626)
 """
 
 import logging
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
+import pytest
+
+from python.framework.autotrader.cold_start.carried_readings import carried_readings_verdict
+from python.framework.autotrader.safety.risk_baseline_tracker import RiskBaselineTracker
 from python.framework.autotrader.safety.safety_circuit_breaker import SafetyCircuitBreaker
 from python.framework.autotrader.operator_alerts.alert_episode import AlertEpisode
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
 from python.framework.types.autotrader_types.operator_alert_types import OperatorAlertKind
 from python.framework.types.config_types.autotrader_defaults_config_types import SafetyConfig
 from python.framework.types.config_types.market_config_types import TradingModel
+from python.framework.types.persistence_types import (
+    BaselineKind,
+    BaselineOrigin,
+    ColdStartPayload,
+    ReadingsVerdict,
+    RiskBaseline,
+)
+from python.framework.types.run_kind_types import OrdersTo
 from tests.shared.operator_alert_recorder import OperatorAlertRecorder
 
 
@@ -456,4 +469,89 @@ class TestTheOperatorHearsOneEpisode:
         stub.check_safety(current_value=6.0, initial_balance=12.49)
 
         assert stub._operator_alerts.kinds == [OperatorAlertKind.SAFETY_BLOCKED]
+
+
+# =============================================================================
+# A BASELINE A REHEARSAL LEFT (#626)
+# =============================================================================
+
+class TestABaselineARehearsalLeft:
+    """
+    What a risk baseline carried from a rehearsal does to the breaker of the real-money session
+    after it, and that the run-kind rule keeps it out (#626).
+
+    The breaker measures every drawdown limit against the session's denominator, and a restored
+    one is the predecessor's. A simulated peak ABOVE the real account blocks entries from the
+    first tick — and past a hard limit the breaker would flatten real positions over a decline
+    real money never had. A simulated denominator BELOW the real account loosens every limit: a
+    real loss beyond it stays invisible. Both directions are pinned first as the restore used to
+    produce them, then through the rule that decides the restore.
+    """
+
+    _CLOCK = datetime(2026, 11, 4, 8, 0, tzinfo=timezone.utc)
+
+    @staticmethod
+    def _rehearsal_left(value: float, kind: BaselineKind) -> ColdStartPayload:
+        """The carry-over of a dry run: its denominator, stamped as a rehearsal's."""
+        return ColdStartPayload(
+            risk_baseline=RiskBaseline(
+                kind=kind, value=value, taken_at_utc='2026-11-03T22:10:41+00:00',
+                origin=BaselineOrigin.HWM_UPDATE),
+            readings_orders_to=OrdersTo.SIMULATED)
+
+    def _denominator(self, carried: ColdStartPayload, orders_to: OrdersTo,
+                     opening_value: float) -> float:
+        """
+        The baseline a session of this kind measures against, built the way the boot builds it.
+
+        Args:
+            carried: What the predecessor left
+            orders_to: Where the session's orders go
+            opening_value: The account value at the session's first tick
+
+        Returns:
+            The denominator
+        """
+        verdict = carried_readings_verdict(carried, orders_to, False, True)
+        tracker = RiskBaselineTracker(
+            mode=carried.risk_baseline.kind,
+            restored=carried.risk_baseline if verdict is ReadingsVerdict.CONTINUED else None,
+            spot_mode=False, exclusive_account=False,
+            clock_fn=lambda: self._CLOCK, logger=logging.getLogger('test_rehearsal_baseline'))
+        tracker.ensure_taken(opening_value)
+        return tracker.get_value()
+
+    @pytest.mark.parametrize('model', [TradingModel.SPOT, TradingModel.MARGIN])
+    def test_a_simulated_peak_above_the_real_account_blocks_the_first_tick(self, model):
+        carried = self._rehearsal_left(10_400.0, BaselineKind.HIGH_WATER_MARK)
+
+        restored = _make_stub(model, max_drawdown_pct=3.0)
+        restored.check_safety(current_value=10_000.0,
+                              initial_balance=carried.risk_baseline.value)
+        assert restored._safety_blocked, 'the restore no longer measures against the carried peak'
+
+        ruled = _make_stub(model, max_drawdown_pct=3.0)
+        ruled.check_safety(current_value=10_000.0,
+                           initial_balance=self._denominator(carried, OrdersTo.VENUE, 10_000.0))
+        assert not ruled._safety_blocked, (
+            "a real-money session's breaker measured against a rehearsal's simulated peak")
+
+    @pytest.mark.parametrize('model', [TradingModel.SPOT, TradingModel.MARGIN])
+    def test_a_simulated_denominator_below_the_real_account_loosens_the_limit(self, model):
+        # The real account opened at 10 000 and lost 7 % — beyond a 5 % limit
+        carried = self._rehearsal_left(9_000.0, BaselineKind.SESSION_FIXED)
+
+        restored = _make_stub(model, max_drawdown_pct=5.0)
+        restored.check_safety(current_value=9_300.0, initial_balance=carried.risk_baseline.value)
+        assert not restored._safety_blocked, 'measured against 9 000 the real loss is invisible'
+
+        ruled = _make_stub(model, max_drawdown_pct=5.0)
+        ruled.check_safety(current_value=9_300.0,
+                           initial_balance=self._denominator(carried, OrdersTo.VENUE, 10_000.0))
+        assert ruled._safety_blocked
+
+    def test_a_rehearsal_after_a_rehearsal_keeps_measuring_against_the_carried_peak(self):
+        carried = self._rehearsal_left(10_400.0, BaselineKind.HIGH_WATER_MARK)
+
+        assert self._denominator(carried, OrdersTo.SIMULATED, 10_000.0) == 10_400.0
 

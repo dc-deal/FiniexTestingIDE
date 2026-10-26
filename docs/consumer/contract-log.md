@@ -33,6 +33,28 @@ reads downwards from the version their fixtures hold until they reach the one be
 A test holds the newest heading in this log to the number the server answers with, so a version
 cannot ship without its entry.
 
+## Version 41 — 2026-10-26 (#626)
+
+What a carry-over may carry across a change: a rehearsal's readings never reach real money, and a
+start that continues an open position under a changed configuration says so.
+
+- `GET /api/v1/reports/runs/{run_id}/header`: `origin.accept_composite_change` — the key the start
+  was given with `--accept-composite-change`: the composite it may continue what the venue still
+  holds — a position, resting orders — under, though it is not the one that opened them. Recorded as
+  typed; whether it let anything through is the session's `composite_change_accepted` warning. Null
+  on every other run, on a backtest, and on a run recorded before this version.
+- Three checks a session may report in its [warnings](/api/v1/docs/warnings-errors), described by
+  `GET /api/v1/validation-checks`: `composite_change_accepted`, `carried_configuration_not_compared`
+  and `carried_readings_not_continued`.
+- A change of meaning: a session's drawdown no longer continues across a change of run kind. A
+  session placing real orders never inherits a rehearsal's curve, a rehearsal never inherits real
+  money's, a curve that does not say which kind of run wrote it is not inherited, and a start told
+  `--new-deployment` begins its own. Such a session reads `drawdown_carried_from` empty on its
+  [portfolio](/api/v1/docs/portfolio), and its [deployment](/api/v1/docs/deployments) row's
+  `max_drawdown` starts there.
+
+One field added; no field removed.
+
 ## Version 40 — 2026-10-25 (#476)
 
 A trading day ends at its boundary, every trading day has its row, and a session's days are booked
@@ -129,28 +151,13 @@ first, and its header says so.
 
 One field added. Its document is [run header](/api/v1/docs/run-header).
 
-## Version 36 — 2026-10-19 (#547)
-
-A backtest keeps the broker configuration it traded with, as a session already does.
-
-- `broker_config_id` on every row of [broker](/api/v1/docs/broker) is set on a simulation row too:
-  the id under which the backtest froze the symbol specifications and fee structure it read when it
-  started. It was empty on every simulation row before, and a row recorded before this version keeps
-  it empty.
-- `config_hash` leaves out when a value was fetched. A refresh that reads the same values keeps it;
-  a changed value still moves it. Where the symbols carry a fetch time, as on a dynamic broker such
-  as `kraken_spot`, a row recorded before this version therefore differs from a later one over the
-  same values: compare those hashes within one side of this version. A static broker's hash did not
-  move.
-
-No field changed its shape.
-
-## Versions 35 and earlier
+## Versions 36 and earlier
 
 One line each. Every one of these moved a shape or a meaning; what they moved is summarised here
 rather than spelled out, because a consumer this far behind needs the list of steps, not each step's
 reasoning. The full text of a compressed version is in this repository's history.
 
+- **Version 36** — 2026-10-19 (#547): A backtest keeps the broker configuration it traded with — `broker_config_id` on every row of [broker](/api/v1/docs/broker) is set on a simulation row too, and `config_hash` leaves out when a value was fetched, so on a dynamic broker a hash recorded before this version differs from a later one over the same values.
 - **Version 35** — 2026-10-19 (#603): What runs on the machine is served (`GET /api/v1/activities`, keyed by `activity_id`, with each activity's memory and the machine's pressure verdict), the machine routes and the broker list need a grant (`machine`, `brokers`), every symbol row carries `tick_size`, `from` and `to` on the bars and ATR routes accept an ISO-8601 instant only (`400 invalid_timestamp`), every booking period carries `account_max_drawdown`, `account_max_dd_pct`, `unrealized_pnl` and `open_position_count`, and `activity_registry_unreadable` (500) is new.
 - **Version 34** — 2026-10-18 (#606): A price the venue quoted or traded is served as the decimal the venue wrote — a tick's `bid`, `ask` and `last`, an `order_driven` bar's prices and a fill at a recorded quote read `0.87957` where they read `0.8795700073242188`, `real_volume` keeps every decimal, and the new document [prices](/api/v1/docs/prices) says how to round a computed price by `tick_size`.
 - **Version 33** — 2026-10-16 (#602): A backtest over data recorded without a quote pays a spread, reported beside the measured one — `modelled_spread_cost` on every trade row and booking period, `total_modelled_spread_cost` on the portfolio and on the scenario totals, `modelled_spread` on the scenario details; the P&L of such a backtest is lower than before.

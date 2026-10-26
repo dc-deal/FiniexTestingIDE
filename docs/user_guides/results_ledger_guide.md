@@ -188,7 +188,9 @@ ranked per combination:     A before B            ← what the sweep asked
 Asset managers face the same question with real money: one strategy run in several separate client
 accounts. What the strategy earned across them is a sensible figure; what "the" balance is has no
 answer. The industry calls such a group of accounts a **composite**, the term of the Global
-Investment Performance Standards (GIPS, CFA Institute).
+Investment Performance Standards (GIPS, CFA Institute). A live bot is one account over time, and
+its composite changes whenever a defining value of its configuration does —
+[Changing a Live Bot](changing_a_live_bot_guide.md) follows one through a week of such changes.
 
 ## What the ledger keeps apart today
 

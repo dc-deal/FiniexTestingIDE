@@ -34,15 +34,10 @@ from python.framework.reporting.io.run_header_io import data_windows_of
 from python.framework.reporting.store.run_index import RunIndex
 from python.framework.store.entry_members.sweep_entry_writer import SweepEntryWriter
 from python.framework.store.run_config_store import RunConfigStore
-from python.framework.types.api.report_types import (
-    OrdersTo,
-    ParentKind,
-    RunHeader,
-    RunReporting,
-    TicksFrom,
-)
+from python.framework.types.api.report_types import ParentKind, RunHeader, RunReporting
 from python.framework.types.config_types.robustness_config_types import RobustnessConfig
 from python.framework.types.run_config_types import RunConfigKind
+from python.framework.types.run_kind_types import OrdersTo, TicksFrom
 from python.framework.types.run_origin_types import CodeIdentity, RunChannel, RunOrigin
 from python.framework.types.scenario_types.scenario_set_types import (
     LoadedScenarioConfig,

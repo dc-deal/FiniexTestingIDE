@@ -46,6 +46,8 @@ _RUN_SCOPE = 'run'
 _SESSION_UNIT_LABEL = 'Session'
 # Stable id of the clipping advisory (live-only — sim judges against a configured budget).
 _CLIPPING_CHECK = 'clipping'
+# Stable id of the note that a session started its own drawdown curve and risk baseline (#626).
+_CARRIED_READINGS_CHECK = 'carried_readings_not_continued'
 
 
 class SessionPostRunValidator:
@@ -57,6 +59,7 @@ class SessionPostRunValidator:
         config: AutoTraderConfig,
         uncommitted_code_allowed: bool = False,
         code_identity: Optional[CodeIdentity] = None,
+        readings_note: str = '',
     ):
         """
         Initialize the session post-run validator.
@@ -67,11 +70,16 @@ class SessionPostRunValidator:
             uncommitted_code_allowed: The startup guard's verdict — True when `--allow-dirty` let
                 real orders run from uncommitted code (#551)
             code_identity: The code the session ran, named in that warning
+            readings_note: Why the session did not continue the drawdown curve and the risk
+                baseline its carry-over held, as its start logged it; '' when it continued them
+                or had a reason nobody needs told — a first run, `persist_baseline` off, a new
+                deployment (#626)
         """
         self._result = result
         self._config = config
         self._uncommitted_code_allowed = uncommitted_code_allowed
         self._code_identity = code_identity
+        self._readings_note = readings_note
 
     def validate(self) -> None:
         """Run all post-run advisory checks; append a run-scoped ValidationResult per finding."""
@@ -80,6 +88,7 @@ class SessionPostRunValidator:
         self._check_uncommitted_code()
         self._check_unversioned_code()
         self._check_order_event_stream()
+        self._check_carried_readings()
 
     def _add_finding(self, finding: ValidationFinding) -> None:
         """
@@ -151,6 +160,20 @@ class SessionPostRunValidator:
         if not self._uncommitted_code_allowed:
             return
         self._add_finding(build_uncommitted_code_finding(self._code_identity, _RUN_SCOPE))
+
+    def _check_carried_readings(self) -> None:
+        """
+        Say on the session's own record that its drawdown and risk baseline started fresh (#626).
+
+        Decided at startup, where the readings are restored; the record needs it because the
+        figures alone cannot show it — a fresh curve looks like a first run.
+        """
+        if not self._readings_note:
+            return
+        self._add_finding(ValidationFinding(
+            severity=Severity.WARNING, check=_CARRIED_READINGS_CHECK,
+            domain=ValidationDomain.PORTFOLIO, scope=_RUN_SCOPE,
+            message=self._readings_note))
 
     def _check_unversioned_code(self) -> None:
         """

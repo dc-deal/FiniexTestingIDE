@@ -12,6 +12,7 @@ what to do when the answer is "do not start".
 """
 
 from dataclasses import dataclass, field
+from functools import partial
 from pathlib import Path
 from typing import Optional, Set
 
@@ -27,12 +28,18 @@ from python.framework.types.autotrader_types.autotrader_config_types import Auto
 from python.framework.types.autotrader_types.cold_start_types import (
     ColdStartSituation,
     ColdStartVerdict,
+    ConfigurationComparison,
+    CurrentConfiguration,
 )
 from python.framework.types.persistence_types import (
     CarryOverLoad,
     CarryOverLoadOutcome,
     CarryOverRead,
     ColdStartPayload,
+)
+from python.framework.types.validation_types import ValidationFinding
+from python.framework.validators.carry_over_configuration_validator import (
+    compare_carried_configuration,
 )
 
 
@@ -64,6 +71,11 @@ class ColdStartSetup:
             an unreachable venue, or a session with no cold start at all
         verdict: What the decision logic answered, when it was asked
         refusal: Why the boot was refused, as the session log says it — '' when it was not
+        configuration_comparison: How the session's configuration compared with the one the
+            claims it takes over were made under (#626) — None when no comparison was made
+        configuration_finding: What that comparison leaves on the run's record, when anything
+        acceptance_notice: The notice of a change `--accept-composite-change` let through, for
+            the console — '' when none was
     """
     proceed: bool = True
     store: Optional[ColdStartStateStore] = None
@@ -73,6 +85,9 @@ class ColdStartSetup:
     situation: Optional[ColdStartSituation] = None
     verdict: Optional[ColdStartVerdict] = None
     refusal: str = ''
+    configuration_comparison: Optional[ConfigurationComparison] = None
+    configuration_finding: Optional[ValidationFinding] = None
+    acceptance_notice: str = ''
 
 
 def setup_cold_start(
@@ -85,6 +100,8 @@ def setup_cold_start(
     adoption_skipped_by: Optional[str],
     dry_run: bool,
     session_end_orders: str = 'cancel',
+    current_configuration: Optional[CurrentConfiguration] = None,
+    accept_composite_change: Optional[str] = None,
 ) -> ColdStartSetup:
     """
     Run the cold-start boot step and hand back what the session keeps.
@@ -113,6 +130,10 @@ def setup_cold_start(
         session_end_orders: The resolved session-end policy for the ORDERS axis (#492). The
             adoption prompt states what will happen to the very orders it asks about, so it
             is told rather than left asserting the unconditional cleanup that used to exist
+        current_configuration: What the session runs with, held against the configuration
+            the claims it takes over were made under (#626); None compares nothing
+        accept_composite_change: The composite this one start accepts
+            (`--accept-composite-change <key>`); None when the flag was not given
 
     Returns:
         A ColdStartSetup; `proceed=False` means the session must not start
@@ -141,6 +162,10 @@ def setup_cold_start(
         decision_logic=decision_logic,
         session_end_orders=session_end_orders,
         exclusive_account=config.capital.exclusive_account,
+        compare_configuration=(
+            partial(compare_carried_configuration, current=current_configuration)
+            if current_configuration is not None else None),
+        accept_composite_change=accept_composite_change,
     )
 
     if not adopter.run():
@@ -158,6 +183,7 @@ def setup_cold_start(
             situation=adopter.get_situation(),
             verdict=adopter.get_verdict(),
             refusal=adopter.get_refusal(),
+            configuration_comparison=adopter.get_configuration_comparison(),
         )
 
     return ColdStartSetup(
@@ -174,6 +200,9 @@ def setup_cold_start(
         keys_in_use=adopter.get_venue_session_keys(),
         situation=adopter.get_situation(),
         verdict=adopter.get_verdict(),
+        configuration_comparison=adopter.get_configuration_comparison(),
+        configuration_finding=adopter.get_configuration_finding(),
+        acceptance_notice=adopter.get_acceptance_notice(),
     )
 
 

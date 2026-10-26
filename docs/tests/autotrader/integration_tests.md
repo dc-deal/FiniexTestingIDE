@@ -75,6 +75,7 @@ ended, into the next session's ledger row.
 | `test_a_one_off_start_does_not_end_the_deployment` | It stays out of the history without destroying it |
 | `test_new_deployment_begins_a_second_history` | Two deployments over the same three rows |
 | `test_a_dry_run_session_leaves_no_carry_over` | The LIMIT of the mechanism, pinned rather than discovered at a venue |
+| `test_an_ordinary_restart_continues_them` · `test_a_new_deployment_starts_them_fresh` | #626 — the drawdown curve and the risk baseline follow the deployment: `second` continues `first`'s, and `--new-deployment` begins its own curve (`restarts` 0) instead of inheriting the first deployment's; the document stamps them as a rehearsal's |
 
 **No arming, no patching.** These are ordinary mock sessions, which is possible because the
 carry-over's write gate is split by what each field CLAIMS: a session whose `dry_run` resolves

@@ -34,7 +34,7 @@ from python.framework.constants.run_layout_constants import (
 )
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.store.entry_members.run_dir_reader import RunDirReader
-from python.framework.types.api.report_types import OrdersTo, WarningsErrorsReport
+from python.framework.types.api.report_types import WarningsErrorsReport
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
 from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.data_origin_types import (
@@ -42,6 +42,7 @@ from python.framework.types.data_origin_types import (
     joined_distinct,
 )
 from python.framework.types.git_info_types import GitInfo
+from python.framework.types.run_kind_types import OrdersTo
 from python.framework.types.run_origin_types import CodeIdentity, ComponentRole
 from python.framework.types.run_results_types import RunProvenance, SweepContext
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario

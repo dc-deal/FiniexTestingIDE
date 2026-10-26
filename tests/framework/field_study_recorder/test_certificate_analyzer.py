@@ -28,18 +28,14 @@ from python.framework.reporting.io.report_artifact_io import write_artifact
 from python.framework.reporting.io.run_header_io import write_run_header
 from python.framework.types.acceptance_study_types.study_capture_types import CaptureLineType
 from python.framework.types.acceptance_study_types.study_phase_types import PhaseOutcome
-from python.framework.types.api.report_types import (
-    OrdersTo,
-    RunHeader,
-    RunSummary,
-    RunSummaryCurrency,
-)
+from python.framework.types.api.report_types import RunHeader, RunSummary, RunSummaryCurrency
 from python.framework.types.live_types.broker_truth_types import (
     BrokerTruthPart,
     BrokerTruthReadReason,
     BrokerTruthRecord,
     BrokerTruthSnapshot,
 )
+from python.framework.types.run_kind_types import OrdersTo
 from python.framework.types.trading_env_types.broker_types import FeeSource
 from python.framework.types.trading_env_types.order_event_types import OrderEventPlane
 from python.framework.types.run_origin_types import CodeIdentity, RepositoryState

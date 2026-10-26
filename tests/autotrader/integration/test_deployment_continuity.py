@@ -37,6 +37,7 @@ from python.framework.reporting.builders.deployment_history_builder import (
     build_deployment_histories,
 )
 from python.framework.reporting.store.run_results_ledger import RunResultsLedger
+from python.framework.types.persistence_types import ReadingsVerdict
 from tests.shared.entry_census_helpers import assert_run_dir_declared
 from tests.shared.fixture_helpers import remove_run_dir
 
@@ -225,6 +226,28 @@ class TestWhatADryRunMayNotHandOn:
             'a dry run recorded a key it never sent orders under')
         assert stored['open_positions'] == [], (
             'the successor would inherit a book the venue does not hold')
+
+
+class TestTheReadingsFollowTheDeployment:
+    """
+    `--new-deployment` begins a second history, and the account's readings with it (#626).
+
+    Before, the flag changed only the identity: the drawdown curve and the risk baseline of the
+    first deployment came back regardless, so the second history opened with the first one's peak
+    and its deepest decline. An ordinary restart still continues them — every session of this
+    chain is a mock session, so all of them are rehearsals and their readings belong together.
+    """
+
+    def test_an_ordinary_restart_continues_them(self, chain):
+        assert chain['second']._readings_verdict is ReadingsVerdict.CONTINUED
+
+    def test_a_new_deployment_starts_them_fresh(self, chain):
+        assert chain['fresh']._readings_verdict is ReadingsVerdict.NEW_DEPLOYMENT
+        carry_over = Path(chain['first']._config.cold_start.path)
+        stored = json.loads(sorted(carry_over.glob('*.json'))[0].read_text())['snapshot']
+        assert stored['account_drawdown']['restarts'] == 0, (
+            "the new deployment's curve continued the first deployment's")
+        assert stored['readings_orders_to'] == 'simulated'
 
 
 def _period_numbers(run_id: str) -> list:

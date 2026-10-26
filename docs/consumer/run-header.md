@@ -87,6 +87,7 @@ sweep combinations (the class of instance that produced a run's data).
 | `origin.host` | Host | the installation the run ran on: its minted identity, `h_` and six characters | | `origin_host` |
 | `origin.allow_dirty` | Uncommitted code allowed | whether real orders were explicitly allowed from code that was not committed | `true` · `false` | — |
 | `origin.first_start` | Declared first start | whether a session trading real money was declared the bot's first start — the one way it starts without a carry-over to continue; `false` on a run recorded before contract 37 | `true` · `false` | — |
+| `origin.accept_composite_change` | Changed configuration accepted | the composite the start was told it may continue what the venue still held under — the key the start was given, recorded as typed; the session's `composite_change_accepted` warning says whether it let anything through; null when the start was given none, and on a run recorded before contract 41 | a key, e.g. `7f3a9c2e` · null | — |
 
 ## Code — which code ran
 

@@ -10,8 +10,8 @@ from typing import Optional
 
 from python.configuration.market_config_manager import MarketConfigManager
 from python.framework.exceptions.live_execution_errors import DryRunConflictError
-from python.framework.types.api.report_types import OrdersTo
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
+from python.framework.types.run_kind_types import OrdersTo
 
 
 def resolve_dry_run(config: AutoTraderConfig) -> bool:
@@ -66,6 +66,20 @@ def resolve_orders_to(config: AutoTraderConfig) -> Optional[OrdersTo]:
         never trades
     """
     try:
-        return OrdersTo.SIMULATED if resolve_dry_run(config) else OrdersTo.VENUE
+        return session_orders_to(config)
     except DryRunConflictError:
         return None
+
+
+def session_orders_to(config: AutoTraderConfig) -> OrdersTo:
+    """
+    Where the orders of a session that got past the dry-run rule go — for the steps after it,
+    which have no refused case to represent.
+
+    Args:
+        config: The resolved AutoTrader configuration
+
+    Returns:
+        SIMULATED or VENUE — raises DryRunConflictError for a profile the rule refuses
+    """
+    return OrdersTo.SIMULATED if resolve_dry_run(config) else OrdersTo.VENUE

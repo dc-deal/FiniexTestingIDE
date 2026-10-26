@@ -26,6 +26,11 @@ from python.framework.acceptance_studies.acceptance_study_setup import (
 )
 from python.framework.activities.activity_registry import ActivityRegistry
 from python.framework.autotrader.autotrader_tick_loop import AutotraderTickLoop
+from python.framework.autotrader.cold_start.carried_readings import (
+    carried_readings_verdict,
+    describe_readings_verdict,
+    may_write_readings,
+)
 from python.framework.autotrader.cold_start.cold_start_setup import (
     ColdStartSetup,
     describe_carry_over_read,
@@ -33,7 +38,7 @@ from python.framework.autotrader.cold_start.cold_start_setup import (
     setup_cold_start,
 )
 from python.framework.autotrader.deployment_resolver import resolve_deployment
-from python.framework.autotrader.dry_run_resolver import resolve_dry_run
+from python.framework.autotrader.dry_run_resolver import resolve_dry_run, session_orders_to
 from python.framework.autotrader.live_clipping_monitor import LiveClippingMonitor
 from python.framework.autotrader.operator_alerts.operator_alert_messages import (
     session_ended_text,
@@ -69,6 +74,7 @@ from python.framework.autotrader.safety.risk_baseline_tracker import RiskBaselin
 from python.framework.autotrader.startup.autotrader_data_preparer import prepare_mock_session_data
 from python.framework.autotrader.startup.autotrader_startup import (
     create_autotrader_loggers,
+    session_run_axes,
     setup_pipeline,
 )
 from python.framework.autotrader.startup.bot_instance_lock import record_holder_run, take_bot_lock
@@ -109,6 +115,7 @@ from python.framework.types.autotrader_types.autotrader_result_types import (
     AutoTraderResult,
     SessionReach,
 )
+from python.framework.types.autotrader_types.cold_start_types import CurrentConfiguration
 from python.framework.types.autotrader_types.display_label_cache import DisplayLabelCache
 from python.framework.types.autotrader_types.operator_alert_types import (
     OperatorAlertKind,
@@ -125,9 +132,12 @@ from python.framework.types.persistence_types import (
     BaselineKind,
     CarryOverLoad,
     ColdStartPayload,
+    ConfigurationCarryOver,
+    ReadingsVerdict,
     RiskBaseline,
 )
 from python.framework.types.process_data_types import ProcessDataPackage
+from python.framework.types.run_kind_types import OrdersTo
 from python.framework.types.run_origin_types import CodeIdentity, RunChannel
 from python.framework.types.run_outcome_types import RunOutcome
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
@@ -193,6 +203,7 @@ class AutotraderMain:
         channel: RunChannel = RunChannel.DIRECT,
         allow_dirty: bool = False,
         first_start: bool = False,
+        accept_composite_change: Optional[str] = None,
     ):
         self._config = config
         # #355: a human DECLARED that they are watching this start (CLI --attended). Cold-start
@@ -214,6 +225,11 @@ class AutotraderMain:
         # #598: the operator declared this the bot's first start (`--first-start`) — the one way
         # a session trading real money starts without a carry-over. Lands in the header's origin.
         self._first_start = first_start
+        # #626: the composite the operator lets THIS start continue what the venue still holds
+        # under (`--accept-composite-change <key>`, the key a refusal printed). It names one
+        # composite, so a flag left behind can never accept a later change; lands in the header's
+        # origin as typed.
+        self._accept_composite_change = accept_composite_change
         # #598: this bot's lock, held from before the first carry-over read until after the
         # last write; and whether a failed start had a passing cause (exit 75)
         self._bot_lock: Optional[FileLock] = None
@@ -250,6 +266,17 @@ class AutotraderMain:
         # What that read found — the startup's continuity checks decide on it (#358)
         self._carried_load: Optional[CarryOverLoad] = None
         self._deployment_id: str = ''
+        # #626: what this session does with the carried drawdown curve and risk baseline, decided
+        # where they are restored. Until then it writes none of its own, and nothing is stamped.
+        self._readings_verdict: Optional[ReadingsVerdict] = None
+        self._readings_note = ''
+        self._may_write_readings = False
+        self._readings_stamp: Optional[OrdersTo] = None
+        self._replace_readings_pending = False
+        # #626: what this session runs with, frozen at the header (#547), and the configuration
+        # its claims about the venue are made under — None until the account is resolved
+        self._rendered_config_id = ''
+        self._venue_claims_configuration: Optional[ConfigurationCarryOver] = None
 
         # Tick communication (Threading model 8.a)
         self._tick_queue: queue.Queue = queue.Queue()
@@ -397,7 +424,8 @@ class AutotraderMain:
         # work, before a patch is stored, and before the header, which must not state that
         # identity. The HostIdentityError travels to the CLI, which reports it as a refusal.
         origin = build_run_origin(self._channel, allow_dirty=self._allow_dirty,
-                                  first_start=self._first_start)
+                                  first_start=self._first_start,
+                                  accept_composite_change=self._accept_composite_change)
         # Then the code identity: before the loggers, because the header written in there records
         # it, and held here, because the startup guard asks it — which must not depend on a header
         # having been written. A capture that FAILS is held too, and refused inside the startup
@@ -424,6 +452,7 @@ class AutotraderMain:
         self._summary_logger = loggers.summary_logger
         self._run_dir = loggers.run_dir
         self._run_id = loggers.run_id
+        self._rendered_config_id = loggers.rendered_config_id
         if self._bot_lock is not None:
             record_holder_run(self._bot_lock, self._run_id)
 
@@ -560,6 +589,18 @@ class AutotraderMain:
                 f'🧾 Session-end policy: orders={self._session_end.orders} · '
                 f'positions={self._session_end.positions}')
 
+            # === WHAT THIS SESSION RUNS UNDER (#626) ===
+            # Its kind of run and the configuration its claims about the venue are made under,
+            # now that the account is resolved — the carry-over records it beside those claims.
+            run_axes = session_run_axes(self._config)
+            self._venue_claims_configuration = ConfigurationCarryOver(
+                run_id=self._run_id,
+                profile_name=self._config.get_unit_name(),
+                account_currency=self._executor.portfolio.account_currency,
+                ticks_from=run_axes.ticks_from,
+                orders_to=session_orders_to(self._config),
+                rendered_config_id=self._rendered_config_id)
+
             # === COLD-START ADOPTION (#355) ===
             self._cold_start = setup_cold_start(
                 config=self._config,
@@ -575,7 +616,25 @@ class AutotraderMain:
                 # The adoption prompt tells the operator what will happen to these very
                 # orders at session end (#492) — resolved above, never assumed there.
                 session_end_orders=self._session_end.orders,
+                # #626: what this session runs with, held against what the claims it takes over
+                # were made under — and whether this one start accepts a change
+                current_configuration=CurrentConfiguration(
+                    profile_name=self._config.get_unit_name(),
+                    carry_over_from=self._config.carry_over_from,
+                    deployment_id=self._deployment_id,
+                    rendered_profile=self._rendered_profile,
+                    account_currency=self._executor.portfolio.account_currency,
+                    run_axes=run_axes,
+                    profile_path=self._config.config_path,
+                    broker_type=self._config.broker_type),
+                accept_composite_change=self._accept_composite_change,
             )
+            if self._cold_start.configuration_finding is not None:
+                # Held like the market-fit advisory: the record's channel lives on the result
+                self._startup_findings.append(self._cold_start.configuration_finding)
+            if self._cold_start.acceptance_notice:
+                # The person at the terminal sees it before the first order, as with --allow-dirty
+                print(f'  {self._cold_start.acceptance_notice}')
             if not self._cold_start.proceed:
                 # The loud banner is already in the session log, and therefore the pot. Raised
                 # rather than returned, so the one guarded shutdown below runs it.
@@ -590,7 +649,7 @@ class AutotraderMain:
             # document twice, which this tree charges 110x for (§42) — and the two answers
             # have to come from the same document anyway, or a write between them would leave
             # the denominator and the curve describing different predecessors.
-            carried = self._load_carry_over_records()
+            carried = self._load_carry_over_records(session_orders_to(self._config))
             self._risk_baseline = self._build_risk_baseline_tracker(carried.risk_baseline)
 
             # === REPORTED DRAWDOWN CONTINUITY (#497) ===
@@ -1379,7 +1438,8 @@ class AutotraderMain:
         SessionPostRunValidator(
             result, self._config,
             uncommitted_code_allowed=self._uncommitted_code_allowed,
-            code_identity=self._code_identity).validate()
+            code_identity=self._code_identity,
+            readings_note=self._readings_note).validate()
         self._generate_reports(result)
         return result
 
@@ -1732,20 +1792,39 @@ class AutotraderMain:
     # HELPERS
     # =========================================================================
 
-    def _load_carry_over_records(self) -> ColdStartPayload:
+    def _load_carry_over_records(self, orders_to: OrdersTo) -> ColdStartPayload:
         """
         The records the predecessor left, for both readers that continue them.
 
-        Already read at boot — this applies the SWITCH and hands the payload on. Doing both
-        in one place is what keeps "does risk history survive a restart" answered once for
-        the denominator (#356) and the reported drawdown curve (#497) alike; an empty payload
-        is the honest answer for a first boot and for a profile that asked for a fresh
-        reference, and the two are indistinguishable on purpose.
+        Already read at boot — this applies the SWITCH and the run kind (#626) and hands the
+        payload on. Doing it in one place is what keeps "does risk history survive a restart"
+        answered once for the denominator (#356) and the reported drawdown curve (#497) alike;
+        an empty payload is the honest answer for a first boot, for a profile that asked for a
+        fresh reference, and for readings another kind of run wrote. It also decides what the
+        session's own writes may do to them, and says in the session log why it starts fresh.
+
+        Args:
+            orders_to: Where this session's orders go
 
         Returns:
             The stored payload, or an empty one when nothing may be carried
         """
-        if not self._config.safety.persist_baseline:
+        new_deployment = self._new_deployment and bool(self._deployment_id)
+        verdict = carried_readings_verdict(
+            self._carried, orders_to, new_deployment, self._config.safety.persist_baseline)
+        self._readings_verdict = verdict
+        self._may_write_readings = may_write_readings(self._carried, orders_to, new_deployment)
+        self._readings_stamp = orders_to
+        # A session that starts its own readings replaces the carried ones at its first write:
+        # until its own exist, the document would pair another session's with this one's stamp
+        self._replace_readings_pending = (
+            self._may_write_readings and verdict is not ReadingsVerdict.CONTINUED)
+        reason = describe_readings_verdict(verdict, self._carried, orders_to)
+        if reason:
+            self._session_logger.info(f'📉 {reason}')
+        if verdict in (ReadingsVerdict.RUN_KIND_CHANGED, ReadingsVerdict.NOT_RECORDED):
+            self._readings_note = reason
+        if verdict is not ReadingsVerdict.CONTINUED:
             return ColdStartPayload()
         return self._carried
 
@@ -1812,7 +1891,7 @@ class AutotraderMain:
             f'📉 Reported drawdown continues from the previous session: peak '
             f'{carried.max_equity:.2f}, deepest {carried.max_drawdown:.2f} '
             f'({carried.max_drawdown_pct:.2f} %), carried {carried.taken_at_utc} — '
-            f'this figure now spans {carried.restarts + 1} session(s)')
+            f'carried across {carried.restarts + 1} restart(s)')
 
     def _persist_cold_start_carry_over(self, refresh_index: bool = True) -> bool:
         """
@@ -1827,9 +1906,10 @@ class AutotraderMain:
         writes exist for the same reason one level down: a position opened at 09:00 and killed
         at 11:00 must not be a position the successor never hears about.
 
-        `persist` is False for a dry run — it sent no order to any venue, so recording its key
-        as one this bot "sent orders under" would be an untruth — and False for a boot that was
-        refused, which must not let a restart loop consume its own key window.
+        `persist` is False for a boot that was refused, which must not let a restart loop consume
+        its own key window. A dry run writes too, but only its own records: it sent no order to any
+        venue, so `persist_venue_claims` keeps its key and its book out — recording the key as one
+        this bot "sent orders under" would be an untruth.
 
         A failure is logged to the session channel and swallowed — a carry-over problem must
         never end an AutoTrader session. It is REPORTED, though: the caller that watches the
@@ -1856,6 +1936,9 @@ class AutotraderMain:
             # and a dry run sent nothing, so its successor must not inherit either. Everything
             # below `risk_baseline` is OUR OWN record and is written regardless.
             venue = self._cold_start.persist_venue_claims
+            # #626 — the readings below follow the run kind: a rehearsal over real money's writes
+            # none, and a session that starts its own replaces the carried ones at its first write.
+            readings = self._may_write_readings
             self._cold_start.store.save(
                 session_key=self._executor.get_session_key() if venue else '',
                 highest_position_counter=(
@@ -1883,7 +1966,7 @@ class AutotraderMain:
                 # see the loss LEAST. None while no baseline has been taken yet, which the
                 # store reads as "not supplied" and therefore leaves the stored one alone.
                 risk_baseline=(self._risk_baseline.get_baseline()
-                               if self._risk_baseline is not None else None),
+                               if readings and self._risk_baseline is not None else None),
                 # #497 — the REPORT's peak and deepest decline. Rides these existing write
                 # points rather than a cadence of its own: one write plus its index rebuild
                 # costs tens of milliseconds on this tree (§42) and has no business in a tick
@@ -1892,7 +1975,15 @@ class AutotraderMain:
                 # whatever `safety.persist_baseline` says, like the denominator above and the
                 # final figures: the switch decides at the READ whether a successor continues
                 # the curve (`_load_carry_over_records`), once for both records.
-                account_drawdown=portfolio.get_account_drawdown_carry_over(),
+                account_drawdown=(
+                    portfolio.get_account_drawdown_carry_over() if readings else None),
+                readings_orders_to=self._readings_stamp if readings else None,
+                replace_readings=self._replace_readings_pending,
+                # #626 — what the claims above were made under, so the next start that takes them
+                # over can tell whether it runs the same composite. A claim about the venue, so a
+                # dry run leaves it alone.
+                venue_claims_configuration=(
+                    self._venue_claims_configuration if venue else None),
                 # The join key, written on every one of these points rather than once at boot:
                 # a session that dies before its first structural write must still leave its
                 # membership behind, or its ledger row is an orphan nobody can attach. None
@@ -1902,6 +1993,7 @@ class AutotraderMain:
                 deployment_id=self._deployment_id or None,
                 refresh_index=refresh_index,
             )
+            self._replace_readings_pending = False
             return True
         except Exception as e:
             # The consequence, not only the fault: a failed write while positions are open
@@ -1949,6 +2041,8 @@ class AutotraderMain:
                 and self._tick_loop):
             return
         try:
+            readings = self._may_write_readings
+            replace = self._replace_readings_pending
             self._cold_start.store.save(
                 # Everything the venue owns stays untouched: '' appends no key, 0 is a floor
                 # that cannot lower the stored counter, and the omitted arguments default to
@@ -1957,10 +2051,19 @@ class AutotraderMain:
                 session_key='',
                 highest_position_counter=0,
                 highest_period_no=self._tick_loop.get_highest_period_no(),
+                # A replacement still pending — no earlier write went through — carries the
+                # baseline as well, or replacing the readings would erase it (#626)
+                risk_baseline=(self._risk_baseline.get_baseline()
+                               if replace and self._risk_baseline is not None else None),
                 # OUR OWN record, like the floor above — never a claim about the venue — so it
-                # rides this write without the dry-run split the first one needs.
-                account_drawdown=self._executor.portfolio.get_account_drawdown_carry_over(),
+                # rides this write without the dry-run split the first one needs. Only the run
+                # kind decides it: a rehearsal over real money's readings writes none (#626).
+                account_drawdown=(self._executor.portfolio.get_account_drawdown_carry_over()
+                                  if readings else None),
+                readings_orders_to=self._readings_stamp if readings else None,
+                replace_readings=replace,
             )
+            self._replace_readings_pending = False
         except Exception as e:
             # The consequence, not only the fault: the successor would open its first period
             # under a number this session already used, so two periods of one deployment

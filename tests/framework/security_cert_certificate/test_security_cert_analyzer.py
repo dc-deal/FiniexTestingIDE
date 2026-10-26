@@ -19,9 +19,9 @@ from python.framework.types.acceptance_study_types.security_cert_types import (
     RuleCertification,
     SecurityStageId,
 )
-from python.framework.types.api.report_types import OrdersTo
 from python.framework.types.autotrader_types.safety_session_types import FlattenOutcome
 from python.framework.types.persistence_types import BaselineOrigin
+from python.framework.types.run_kind_types import OrdersTo
 from python.framework.types.run_origin_types import CodeIdentity, RepositoryState
 from tests.framework.security_cert_certificate.conftest import StageSpec
 

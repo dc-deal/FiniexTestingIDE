@@ -64,9 +64,16 @@ as the advisory.
 `orders_to` on a row lists where its sessions' orders went, each value once: `["venue"]` is a
 deployment that traded real money, `["simulated"]` one that rehearsed — a dry run or a mock
 session — and both together a deployment that did each in different sessions. A mixed row is also
-`changed`, because its `net_pnl` adds simulated fills to real money. Empty when none of its sessions
+`changed`, because every figure on it mixes the two: `net_pnl` adds simulated fills to real money,
+and `max_drawdown` with `max_drawdown_pct` is the deepest decline of either kind, `sessions` and
+`longest_gap_hours` count both. Read such a row by its sessions. Empty when none of its sessions
 recorded it — a session recorded before contract 23 does not say. A single run says the same in the
 run list, as `orders_to`; see [run kinds](/api/v1/docs/run-kinds).
+
+The sessions themselves no longer mix since contract 41: a session placing real orders begins its
+own drawdown curve instead of continuing a rehearsal's, and a rehearsal never continues real
+money's, so the session rows' `max_drawdown` restarts where the kind of run changes. A start with
+`--new-deployment` begins its own curve as well.
 
 ## What one session says
 

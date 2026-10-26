@@ -12,10 +12,16 @@ own resting orders, and the reconciler reports the rest to the log, not to the a
 """
 
 from dataclasses import dataclass, field
-from enum import Enum
-from typing import List, Optional
+from enum import Enum, StrEnum
+from typing import Any, Dict, List, Optional
 
-from python.framework.types.persistence_types import PositionCarryOver
+from python.framework.types.composite_types import (
+    CompositePart,
+    ConfigChange,
+    RunAxes,
+    ValueOrigin,
+)
+from python.framework.types.persistence_types import ConfigurationCarryOver, PositionCarryOver
 from python.framework.types.trading_env_types.order_types import OrderDirection, OrderType
 
 
@@ -201,3 +207,70 @@ class ColdStartVerdict:
     accounted_for: bool = False
     note: str = ''
     accounted_order_ids: List[str] = field(default_factory=list)
+
+
+class ConfigurationVerdict(StrEnum):
+    """
+    What a start found when it held its configuration against the one its carry-over's claims
+    about the venue were made under (#626).
+    """
+    SAME = 'same'                        # one composite
+    CHANGED = 'changed'                  # another composite
+    PARTNER = 'partner'                  # a declared partner made the claims — exempt (#358)
+    NOT_COMPARED = 'not_compared'        # the comparison could not be made; the reason says why
+    NOTHING_CARRIED = 'nothing_carried'  # no claims and no record — a first start, or rehearsals only
+
+
+@dataclass
+class CurrentConfiguration:
+    """
+    What a starting session runs with — the side of the comparison no carry-over holds (#626).
+
+    Args:
+        profile_name: This profile's run unit name
+        carry_over_from: The profile a declared continuation names, or ''
+        deployment_id: The deployment the session continues or begins; '' for a one-off
+        rendered_profile: What it runs with (#547); None when it could not be rendered
+        account_currency: The account currency the start resolved
+        run_axes: The resolved axes of its kind of run
+        profile_path: The profile file, read for where a changed value comes from
+        broker_type: The broker whose entry in `market_config.json` the session uses
+    """
+    profile_name: str
+    carry_over_from: str
+    deployment_id: str
+    rendered_profile: Optional[Dict[str, Any]]
+    account_currency: str
+    run_axes: RunAxes
+    profile_path: str
+    broker_type: str
+
+
+@dataclass
+class ConfigurationComparison:
+    """
+    A starting session's configuration held against the one its carry-over recorded (#626).
+
+    Args:
+        verdict: What was found
+        current: The starting session's side
+        carried: The side the carry-over recorded; None when it recorded none
+        changes: Every changed value that feeds the composite key, in path order
+        changed_parts: The parts of the key that differ
+        origins: Where each changed value comes from now, by setting
+        one_sided: The changed settings only one of the two documents holds — a field the code
+            added or dropped between the two sessions, which no file can undo
+        current_key: The starting session's composite key — what `--accept-composite-change`
+            names; '' when no key was computed
+        reason: Why the comparison could not be made — '' unless NOT_COMPARED
+    """
+    verdict: ConfigurationVerdict
+    current: CurrentConfiguration
+    carried: Optional[ConfigurationCarryOver] = None
+    changes: List[ConfigChange] = field(default_factory=list)
+    changed_parts: List[CompositePart] = field(default_factory=list)
+    origins: Dict[str, ValueOrigin] = field(default_factory=dict)
+    one_sided: List[str] = field(default_factory=list)
+    current_key: str = ''
+    reason: str = ''
+

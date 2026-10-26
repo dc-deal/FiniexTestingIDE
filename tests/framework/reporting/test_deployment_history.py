@@ -25,7 +25,8 @@ from python.framework.reporting.console.deployment_history_summary import (
     render_deployment_history,
     render_deployment_list,
 )
-from python.framework.types.api.report_types import OrdersTo, RunResultRow
+from python.framework.types.api.report_types import RunResultRow
+from python.framework.types.run_kind_types import OrdersTo
 
 DEPLOYMENT = 'deploy_20260901_060000_ab12'
 

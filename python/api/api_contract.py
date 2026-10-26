@@ -23,7 +23,7 @@ from typing import List
 
 # One monotonic integer. Not a date and not the app version: a consumer compares it for
 # equality, and equality is the only question they have.
-API_CONTRACT_VERSION = 40
+API_CONTRACT_VERSION = 41
 
 # Every response carries it, so a saved fixture carries it too.
 CONTRACT_HEADER = 'X-Api-Contract'
@@ -36,24 +36,16 @@ API_PREFIX = '/api/v1'
 # What moved INTO the current version. One line per change, written for someone who cannot
 # read this repository.
 CHANGES: List[str] = [
-    "A booking period a trading day closed ends at that day's boundary (closed_at), and the tick "
-    'that crosses it belongs to the new day: its fills, its trades and its move',
-    'Every trading day has its booking period: a day the run heard nothing from is booked with '
-    'tick_count 0; a market that closes books no closed day, and the period after a weekend opens '
-    'where the last trading day ended',
-    'tick_count on every booking-period row, null on a period recorded before this contract',
-    'final_equity, min_equity, max_equity and max_drawdown of a booking period are null where the '
-    'period could value the account at no point; deepest_period_drawdown is null when none could',
-    "A period's band starts at its opening value; a session's last period includes its end",
-    "A session's trading days reach the ledger as they close: a running or dead session shows its "
-    'sealed days, and its ended, ran_hours, run_outcome and counts are null until its close',
-    'account_max_drawdown, max_equity and account_max_dd_pct of the run summary are typed nullable',
-    "A deployment's unfinished overlaps with its sessions: a session that sealed a day and never "
-    'closed stands in both',
-    'max_drawdown and max_drawdown_pct of a deployment and of its sessions, and '
-    'account_max_drawdown of a sweep combination and of a booking-period unit total, are null '
-    'where no drawdown was measured',
-    'unranked on a sweep: the combinations its ranking left out because they carry no value for '
-    'its objective',
-    'rendered_config_id, broker_config_id and period_tick_count on every sweep combination row',
+    'origin.accept_composite_change on the run header: the key the start was given with '
+    '--accept-composite-change — the composite it may continue what the venue still held under, '
+    'though it is not the one that opened it. Recorded as typed; null on every other run and on a '
+    'run recorded before this contract',
+    'Three validation checks a session may report: composite_change_accepted (the flag let a start '
+    'continue open positions or orders under another composite), carried_configuration_not_compared '
+    '(a start took them over without being able to compare), carried_readings_not_continued (its '
+    'drawdown curve and risk baseline started fresh)',
+    "A session's drawdown no longer continues across a change of run kind: a session placing real "
+    "orders never inherits a rehearsal's curve, a rehearsal never inherits real money's, a curve "
+    "that does not say which kind of run wrote it is not inherited, and --new-deployment starts the "
+    'curve afresh — drawdown_carried_from is then empty',
 ]

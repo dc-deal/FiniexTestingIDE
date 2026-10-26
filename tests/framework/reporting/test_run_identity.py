@@ -31,14 +31,9 @@ from python.framework.store.entry_members.run_entry_members import (
     RUN_ENTRY_MEMBERS,
     RUN_INDEX_COLUMN_MEMBERS,
 )
-from python.framework.types.api.report_types import (
-    DataWindow,
-    OrdersTo,
-    ParentKind,
-    RunHeader,
-    TicksFrom,
-)
+from python.framework.types.api.report_types import DataWindow, ParentKind, RunHeader
 from python.framework.types.config_types.file_logging_config_types import RunLogPaths
+from python.framework.types.run_kind_types import OrdersTo, TicksFrom
 from python.framework.types.run_purpose_types import RunPurpose
 from python.framework.types.store_member_types import RunIndexColumn
 from python.framework.utils.run_id_utils import mint_run_id

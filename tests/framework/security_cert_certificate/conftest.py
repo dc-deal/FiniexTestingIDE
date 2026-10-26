@@ -29,9 +29,10 @@ from python.framework.types.acceptance_study_types.security_cert_types import (
     SecurityPhaseType,
     SecurityStageId,
 )
-from python.framework.types.api.report_types import OrdersTo, RunHeader, SafetyReport
+from python.framework.types.api.report_types import RunHeader, SafetyReport
 from python.framework.types.autotrader_types.safety_session_types import FlattenOutcome
 from python.framework.types.persistence_types import BaselineKind, BaselineOrigin, RiskBaseline
+from python.framework.types.run_kind_types import OrdersTo
 from python.framework.types.run_origin_types import CodeIdentity, RepositoryState
 
 _COMMIT = 'abc1234'

@@ -6,8 +6,8 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any, Optional
 
-from python.framework.types.api.report_types import OrdersTo, TicksFrom
 from python.framework.types.config_types.composite_definition_config_types import CompositeTier
+from python.framework.types.run_kind_types import OrdersTo, TicksFrom
 
 
 class CompositeDocument(StrEnum):
@@ -95,3 +95,20 @@ class ConfigChange:
     after: Any
     composite_tier: CompositeTier
     composite_part: Optional[CompositePart]
+
+
+class ValueOrigin(StrEnum):
+    """
+    Where a value of an AutoTrader session's rendered configuration comes from now (#626).
+
+    The layers of the cascade, from the profile down to the code, and RESOLVED for what the start
+    works out itself rather than reads from one place — the account currency and the run axes.
+    """
+    PROFILE = 'profile'                                  # the profile file
+    APP_CONFIG = 'app_config'                            # app_config.json as shipped
+    APP_CONFIG_WORKSPACE = 'app_config_workspace'        # the workspace override of app_config.json
+    MARKET_CONFIG = 'market_config'                      # the broker's entry in market_config.json
+    MARKET_CONFIG_WORKSPACE = 'market_config_workspace'  # its workspace override
+    CODE_DEFAULT = 'code_default'                        # set in no file — a model or parameter default
+    RESOLVED = 'resolved'                                # worked out at the start
+

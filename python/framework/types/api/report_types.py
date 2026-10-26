@@ -26,6 +26,7 @@ from python.framework.types.live_types.reconciliation_types import ReconcileStat
 # re-derived from — and the safety report's job is to surface exactly that record. A parallel
 # row type would be a hand-maintained copy of it, and a copy is what silently drops a field.
 from python.framework.types.persistence_types import RiskBaseline
+from python.framework.types.run_kind_types import OrdersTo, TicksFrom
 from python.framework.types.run_origin_types import CodeIdentity, RunChannel, RunOrigin
 from python.framework.types.run_outcome_types import RunOutcome
 from python.framework.types.run_purpose_types import RunPurpose
@@ -923,29 +924,6 @@ class ParentKind(StrEnum):
     """
     SWEEP = 'sweep'
     DEPLOYMENT = 'deployment'
-
-
-class TicksFrom(StrEnum):
-    """
-    Where a run's ticks came from — one of the two axes that tell the kinds of run apart.
-
-    ARCHIVE: replayed from the tick archive — every backtest, and a mock session
-    VENUE: read from the venue as they happened — a dry run or a real-money session
-    """
-    ARCHIVE = 'archive'
-    VENUE = 'venue'
-
-
-class OrdersTo(StrEnum):
-    """
-    Where a run's orders went — the other axis. Together with `run_type` the two say which kind
-    of run this is (`docs/introduction_to_the_ide.md`), so no reader has to derive it.
-
-    SIMULATED: filled by a simulator — every backtest, a mock session, and a dry run
-    VENUE: placed at the venue — a real-money session, and only that
-    """
-    SIMULATED = 'simulated'
-    VENUE = 'venue'
 
 
 class DataWindow(BaseModel):

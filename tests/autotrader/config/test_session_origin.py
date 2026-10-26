@@ -112,6 +112,18 @@ class TestTheSessionStatesItsOrigin:
 
         assert received['origin'].first_start is True
 
+    def test_an_accepted_composite_change_reaches_the_header(self, stopped_session):
+        """#626: one start's acceptance of a changed configuration is recorded as typed."""
+        _, received = stopped_session
+        trader = AutotraderMain(load_autotrader_config(PROFILE),
+                                accept_composite_change='7f3a9c2e')
+
+        with pytest.raises(_StopAtLoggers):
+            trader.run()
+
+        assert received['origin'].accept_composite_change == '7f3a9c2e'
+        assert received['origin'].first_start is False
+
     def test_the_identity_is_captured_over_the_profile_before_the_header(
             self, stopped_session):
         """Captured BEFORE the header exists — the guard must not depend on one."""
@@ -190,6 +202,11 @@ class TestTheCommandLineDeclaresItself:
         assert _RecordingTrader.constructed['channel'] is RunChannel.CLI
         assert _RecordingTrader.constructed['allow_dirty'] is False
         assert _RecordingTrader.constructed['first_start'] is False
+        assert _RecordingTrader.constructed['accept_composite_change'] is None
+
+    def test_accept_composite_change_is_carried_through(self, monkeypatch):
+        assert _run_cli(monkeypatch, '--accept-composite-change', '7f3a9c2e') == 0
+        assert _RecordingTrader.constructed['accept_composite_change'] == '7f3a9c2e'
 
     def test_first_start_is_carried_through(self, monkeypatch):
         assert _run_cli(monkeypatch, '--first-start') == 0

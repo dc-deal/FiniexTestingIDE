@@ -11,9 +11,9 @@ from typing import Any, Dict
 import pytest
 
 from python.configuration.composite_definition_manager import CompositeDefinitionManager
-from python.framework.types.api.report_types import OrdersTo, TicksFrom
 from python.framework.types.composite_types import CompositeDocument, CompositePart, RunAxes
 from python.framework.types.config_types.composite_definition_config_types import CompositeTier
+from python.framework.types.run_kind_types import OrdersTo, TicksFrom
 from python.framework.utils.composite_key_builder import (
     KEY_VERSION,
     build_composite_key,

@@ -52,6 +52,9 @@ class RunOrigin(BaseModel):
             (`--allow-dirty`); recorded because an override nobody can see afterwards is not one
         first_start: Whether the operator declared this the bot's first start (`--first-start`) —
             the one way a session trading real money starts without a carry-over (#598)
+        accept_composite_change: The composite the operator let this one start continue what the
+            venue still held under (`--accept-composite-change <key>`, #626) — recorded as typed,
+            None when not given; the session's own record says whether it let anything through
     """
     channel: RunChannel
     client: str
@@ -59,6 +62,7 @@ class RunOrigin(BaseModel):
     host: str
     allow_dirty: bool = False
     first_start: bool = False
+    accept_composite_change: Optional[str] = None
 
 
 class RepositoryState(BaseModel):

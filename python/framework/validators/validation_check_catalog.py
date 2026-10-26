@@ -147,6 +147,19 @@ VALIDATION_CHECKS: Tuple[ValidationCheckInfo, ...] = (
         'A session trading real orders was started with --allow-dirty from code that is not '
         'exactly one commit.'),
     ValidationCheckInfo(
+        'composite_change_accepted', 'Open positions continued under a changed configuration',
+        'A start declared --accept-composite-change and continued what the venue still held '
+        'under another composite than the one that opened it.'),
+    ValidationCheckInfo(
+        'carried_configuration_not_compared', 'Configuration not compared with the carry-over',
+        'The session took over what the venue still held without being able to compare its '
+        'configuration with the one that opened it.'),
+    ValidationCheckInfo(
+        'carried_readings_not_continued', 'Drawdown and risk baseline started fresh',
+        'The session did not continue the drawdown curve and the risk baseline its carry-over '
+        'held: a rehearsal wrote them and the session placed real orders, or the other way round, '
+        'or the carry-over does not say which.'),
+    ValidationCheckInfo(
         'unversioned_code', 'Code not under version control',
         'A component was loaded from a directory that git does not track or cannot read, so the '
         'run cannot name the code it ran.'),
