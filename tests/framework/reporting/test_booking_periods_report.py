@@ -7,6 +7,7 @@ the portfolio aggregate. These tests pin that the agreement is computed and stat
 disagreement is reported rather than smoothed over.
 """
 
+from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -345,6 +346,19 @@ class TestAPeriodThatValuedNothing:
                          if line.strip().startswith('1 '))
         assert first_row.rstrip().endswith('—')
         assert '0.00' not in first_row.split()[-2:]
+
+
+class TestADayThatNeverFellReadsZero:
+    """`-abs(0.0)` is -0.0, which printed as "-0.00" — a decline nobody had."""
+
+    def test_a_zero_decline_prints_as_zero(self, capsys):
+        flat = replace(_segment(1, 0, 0.0, 0), period_max_drawdown=0.0)
+        render_booking_periods(build_booking_periods_report(
+            'r', _units(flat), _summary(net_pnl=0.0, total_trades=0)))
+        printed = capsys.readouterr().out
+        assert '-0.00' not in printed
+        first_row = next(line for line in printed.splitlines() if line.strip().startswith('1 '))
+        assert first_row.split()[-1] == '0.00'
 
 
 class TestTheFileGetsEverythingAndOnlyTheConsoleIsTrimmed:

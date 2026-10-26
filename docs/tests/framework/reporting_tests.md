@@ -265,6 +265,8 @@ share, and what was still open at the seal.
 `TestAPeriodThatValuedNothing` pins a period sealed before anything could be valued (#476): its row
 carries null equity, band and decline, the report's deepest decline is null, and the table prints a
 dash rather than 0.00 — or failing on the missing number, which the renderer did before.
+`TestADayThatNeverFellReadsZero` pins the other end: a measured decline of zero prints `0.00`, never
+the `-0.00` that `-abs(0.0)` gives.
 
 ## `test_signal_report.py` — two planes, and what each may claim
 
@@ -344,6 +346,7 @@ compared byte for byte across the move.
 | `test_the_rows_carry_the_running_figure` | the drawdown column is CUMULATIVE — `max()` is the deployment's reduction and a sum double-counts |
 | `TestWhereTheOrdersWent` | each session says whether its orders went to the venue, and a switch from a rehearsal to real money is marked; a mix alone raises the advisory, with one strategy and one operation; the overview lists both values and marks the deployment changed; a row recorded before the field says nothing and changes nothing; the console prints the mix above the table, the separator and the list column |
 | `TestASessionEndsWithTheRowOfItsClose` | a session books its days while it runs (#476): with only sealed days it has no `ended` and no length, the row of its close ends it, and the gap after a session that never closed is measured between the starts and marked; the heading names the sessions the ledger holds and the never-completed ones without adding the two |
+| `TestADeclineIsShownNegativeAndZeroAsZero` | a decline is stored either way round and printed negative either way; a measured zero prints `0.00` in the list and the detail, never `-0.00` |
 | `TestADrawdownShareNobodyMeasuredStaysUnknown` · `TestADrawdownNobodyMeasuredStaysUnknown` | a session whose rows carry no drawdown — every day sealed before its account's first valuation — reads as null, never as a decline of zero: its share and its decline are null on the session and the console prints dashes; a deployment's deepest decline is taken over the sessions that measured one, and is null when none did (#476) |
 
 No threshold anywhere decides what counts as too long a gap: that is a judgement about the

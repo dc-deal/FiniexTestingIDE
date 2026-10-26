@@ -15,8 +15,11 @@ reconciliation, because the reconciliation is a CHECK rather than a detail — i
 says the ledger rows this run just wrote are complete.
 """
 
+from typing import Optional
+
 from python.framework.types.api.report_types import BookingPeriodsReport
 from python.framework.utils.console_renderer import ConsoleRenderer
+from python.framework.utils.math_utils import negated_magnitude
 
 # The period's close reason, as one character in a column rather than a word in every row.
 _REASON_MARK = {
@@ -138,7 +141,7 @@ def _render_period_rows(rows, indent: str) -> None:
               f'{_decline(row.max_drawdown):>11}')
 
 
-def _decline(amount) -> str:
+def _decline(amount: Optional[float]) -> str:
     """
     A decline as a column shows it: negative, two decimals, or a dash where none was observed.
 
@@ -148,7 +151,7 @@ def _decline(amount) -> str:
     Returns:
         The cell text
     """
-    return '—' if amount is None else f'{-abs(amount):.2f}'
+    return '—' if amount is None else f'{negated_magnitude(amount):.2f}'
 
 
 def _render_unit_total(total, indent: str) -> None:

@@ -278,6 +278,32 @@ class TestADrawdownNobodyMeasuredStaysUnknown:
         assert line.split()[-2:] == ['—', '—'], 'the decline and its share read as unknown'
 
 
+class TestADeclineIsShownNegativeAndZeroAsZero:
+    """
+    A decline is stored either way round, and the console shows it negative either way; a
+    measured zero reads 0.00 — `-abs(0.0)` is -0.0, which printed as "-0.00".
+    """
+
+    def test_a_measured_zero_prints_as_zero(self, capsys):
+        histories = build_deployment_histories([row('r1', '2026-09-01T06:00:00+00:00')])
+        render_deployment_list(summarize_deployments(histories, {DEPLOYMENT: None}))
+        render_deployment_history(DEPLOYMENT, histories[DEPLOYMENT])
+        printed = capsys.readouterr().out
+        assert '-0.00' not in printed
+        line = next(text for text in printed.splitlines() if text.startswith('r1 '))
+        assert line.split()[-2:] == ['0.00', '0.00%']
+
+    def test_either_sign_prints_negative(self, capsys):
+        histories = build_deployment_histories([
+            row('r1', '2026-09-01T06:00:00+00:00', account_max_drawdown=120.0),
+            row('r2', '2026-09-02T06:00:00+00:00', account_max_drawdown=-450.0),
+        ])
+        render_deployment_history(DEPLOYMENT, histories[DEPLOYMENT])
+        lines = {text.split()[0]: text for text in capsys.readouterr().out.splitlines()
+                 if text.startswith(('r1 ', 'r2 '))}
+        assert ' -120.00 ' in lines['r1'] and ' -450.00 ' in lines['r2']
+
+
 class TestRendering:
     """PRESENT formats what DERIVE already decided (§12)."""
 

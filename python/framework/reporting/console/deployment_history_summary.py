@@ -22,6 +22,7 @@ from python.framework.types.api.report_types import (
     DeploymentSessionRow,
     DeploymentSummary,
 )
+from python.framework.utils.math_utils import negated_magnitude
 
 
 def render_deployment_list(summaries: List[DeploymentSummary]) -> None:
@@ -52,7 +53,8 @@ def render_deployment_list(summaries: List[DeploymentSummary]) -> None:
         # Where the orders went — `venue` is real money. Both values: a rehearsal and real money
         # in one history; a dash: not recorded.
         orders_to = ','.join(value.value for value in summary.orders_to) or '—'
-        deepest = (f'{-abs(summary.max_drawdown):>11.2f}' if summary.max_drawdown is not None
+        deepest = (f'{negated_magnitude(summary.max_drawdown):>11.2f}'
+                   if summary.max_drawdown is not None
                    else f'{"—":>11}')
         print(f'{summary.deployment_id:<32} {summary.bot:<22} '
               f'{(summary.bot_id or "—"):<20} {orders_to:<16} {summary.sessions:>8} '
@@ -133,7 +135,8 @@ def render_deployment_history(
             notes.append(f'idle {session.gap_hours:.1f} h{measure}'
                          if session.gap_hours < 48
                          else f'idle {session.gap_hours / 24:.1f} d{measure}')
-        decline = (f'{-abs(session.max_drawdown):>13.2f}' if session.max_drawdown is not None
+        decline = (f'{negated_magnitude(session.max_drawdown):>13.2f}'
+                   if session.max_drawdown is not None
                    else f'{"—":>13}')
         share = (f'{session.max_drawdown_pct:>6.2f}%' if session.max_drawdown_pct is not None
                  else f'{"—":>7}')
