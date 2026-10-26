@@ -1923,7 +1923,10 @@ class AutotraderMain:
 
         Returns:
             True when the carry-over is on disk, False when there was nothing to write or the
-            write failed
+            write failed. A write the store declines because another profile's document still
+            holds venue claims returns True as well: the store logs that refusal to the session
+            as an error, and the bot lock (#598) takes the same key as the document, so the
+            second session that could leave such a document behind cannot run beside this one
         """
         if not (self._cold_start.persist
                 and self._cold_start.store

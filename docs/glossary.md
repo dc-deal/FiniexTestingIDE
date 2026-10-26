@@ -850,10 +850,6 @@ time on the *canonical clock*, never in its place.
 know how it ended: its answer was lost and the venue was asked until the resolution ran out, or the
 session ended with it unconfirmed. The venue may still hold it, filled or not. Never a refusal.
 
-**undelivered** (an order status and an order event) — The venue confirms it never received the
-order: its answer was lost, and asking by our own key after the venue's records had settled found
-nothing. Never a refusal — the venue refused nothing.
-
 **undefined** · **unmeasured** (an empty figure) — The two things a null figure can mean, declared
 per ledger column. *Undefined*: no value exists for the row — a profit factor without a losing
 trade, a mean over no trades, a reading of one account over several. *Unmeasured*: a value existed
@@ -861,6 +857,10 @@ and was not recorded — a row written before its column, a day sealed before th
 valuation. A sweep's ranking refuses an undefined figure as its objective and ranks an unmeasured
 one over the combinations that carry it, counting the rest in `unranked`. Not JavaScript's
 `undefined`.
+
+**undelivered** (an order status and an order event) — The venue confirms it never received the
+order: its answer was lost, and asking by our own key after the venue's records had settled found
+nothing. Never a refusal — the venue refused nothing.
 
 **venue** — The real marketplace behind a broker entry: Kraken, an MT5 broker.
 
