@@ -21,6 +21,7 @@ from python.framework.optimization.optimization_analysis import (
     rank,
     sensitivity,
     summarize_sweeps,
+    unranked_count,
 )
 from python.framework.reporting.store.run_results_ledger import RunResultsLedger
 from python.framework.store.entry_members.sweep_entry_writer import SweepEntryWriter
@@ -101,6 +102,9 @@ def render_sweep_report(
     _print_header_meta(rows)
 
     ranked = rank(rows, objective, maximize, objective_currency)
+    unranked = unranked_count(rows, objective, objective_currency)
+    if unranked:
+        print(f'⚪ {unranked} combination(s) left out of the ranking: no {objective} recorded')
     _print_mixed_logic_version(mixed_logic_version_advisory(ranked))
     _print_degenerate_ranking(degenerate_ranking_advisory(ranked, objective))
     _print_ranking(ranked, objective, top_n)

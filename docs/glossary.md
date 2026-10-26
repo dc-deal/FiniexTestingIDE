@@ -100,7 +100,8 @@ exposure. See [Capital and Safety](autotrader/autotrader_capital_and_safety.md).
 basis*, *signal basis*, *time basis*, *trade window basis* — each below.
 
 **booking period** — One sealed period of one run unit, bounded by the market's trading day and
-numbered from 1; the ledger holds one row per booking period, in its account's currency. In code
+numbered from 1; the ledger holds one row per booking period, in its account's currency. Every
+trading day of the market calendar has one, a day without a tick included (`tick_count` 0). In code
 `BookingPeriod` and `period_no`. See [Accounting Periods](architecture/accounting_periods.md).
 
 **broker** (`broker_type`) — Our configuration entry for one venue and product in
@@ -701,6 +702,12 @@ three field names. See [API Server](architecture/api_server_architecture.md).
 configuration (`scenario_name` in the file). A scenario set is the file holding a `global` block and
 the scenarios (`scenario_set_name`). See [Process Execution](process_execution_guide.md).
 
+**seal** (of a booking period) — The close of a booking period at its trading day's boundary: stamped
+with the boundary instant, whichever event noticed it, and read as the account stood before that
+event. A session books each sealed day into the ledger at once; the log line says
+`Booking period 001 sealed`. See
+[Accounting Periods](architecture/accounting_periods.md#where-a-trading-day-ends).
+
 **seam** (of data origins) — Where one origin's tick files end and another's begin: Kraken's
 published history and our first collected tick, for instance. A gap there takes the origin class of
 the file before it. The coverage report words it as "where the external data ends and the production
@@ -836,6 +843,14 @@ session ended with it unconfirmed. The venue may still hold it, filled or not. N
 **undelivered** (an order status and an order event) — The venue confirms it never received the
 order: its answer was lost, and asking by our own key after the venue's records had settled found
 nothing. Never a refusal — the venue refused nothing.
+
+**undefined** · **unmeasured** (an empty figure) — The two things a null figure can mean, declared
+per ledger column. *Undefined*: no value exists for the row — a profit factor without a losing
+trade, a mean over no trades, a reading of one account over several. *Unmeasured*: a value existed
+and was not recorded — a row written before its column, a day sealed before the account's first
+valuation. A sweep's ranking refuses an undefined figure as its objective and ranks an unmeasured
+one over the combinations that carry it, counting the rest in `unranked`. Not JavaScript's
+`undefined`.
 
 **venue** — The real marketplace behind a broker entry: Kraken, an MT5 broker.
 

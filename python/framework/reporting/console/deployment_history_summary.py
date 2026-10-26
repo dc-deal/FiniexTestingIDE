@@ -52,9 +52,11 @@ def render_deployment_list(summaries: List[DeploymentSummary]) -> None:
         # Where the orders went — `venue` is real money. Both values: a rehearsal and real money
         # in one history; a dash: not recorded.
         orders_to = ','.join(value.value for value in summary.orders_to) or '—'
+        deepest = (f'{-abs(summary.max_drawdown):>11.2f}' if summary.max_drawdown is not None
+                   else f'{"—":>11}')
         print(f'{summary.deployment_id:<32} {summary.bot:<22} '
               f'{(summary.bot_id or "—"):<20} {orders_to:<16} {summary.sessions:>8} '
-              f'{since:<17} {summary.net_pnl:>11.2f} {-abs(summary.max_drawdown):>11.2f} '
+              f'{since:<17} {summary.net_pnl:>11.2f} {deepest} '
               f'{gap:>9}{mark}')
     print('─' * 155)
     if any(s.changed for s in summaries):
@@ -82,13 +84,14 @@ def render_deployment_history(
             found anything. Above, because the question it answers — may these rows be read
             as one series — has to reach the reader before the numbers do
         unfinished: How many of this deployment's runs never reached their close. The table
-            is built from the LEDGER, whose row is written last, so those runs are absent
-            from it by construction — and a bare session count would then be a number the
-            reader has no reason to doubt. Zero leaves the line exactly as it was
+            is built from the LEDGER, which holds a session's sealed days (#476) but the row
+            of its close only at the end — so such a run stands in the table without an end
+            when it sealed a day, and is absent from it when it died before its first seal.
+            The two counts overlap and are never added. Zero leaves the line exactly as it was
     """
     currency = sessions[0].currency if sessions else ''
     first = sessions[0].started.strftime('%Y-%m-%d %H:%M') if sessions and sessions[0].started else '?'
-    recorded = (f'{len(sessions)} session(s) recorded + {unfinished} never completed'
+    recorded = (f'{len(sessions)} session(s) in the ledger · {unfinished} never completed'
                 if unfinished else f'{len(sessions)} session(s)')
     bot_id = next((s.bot_id for s in sessions if s.bot_id), '')
     identity = f' · bot {bot_id}' if bot_id else ''
@@ -130,8 +133,12 @@ def render_deployment_history(
             notes.append(f'idle {session.gap_hours:.1f} h{measure}'
                          if session.gap_hours < 48
                          else f'idle {session.gap_hours / 24:.1f} d{measure}')
+        decline = (f'{-abs(session.max_drawdown):>13.2f}' if session.max_drawdown is not None
+                   else f'{"—":>13}')
+        share = (f'{session.max_drawdown_pct:>6.2f}%' if session.max_drawdown_pct is not None
+                 else f'{"—":>7}')
         print(f'{session.run_id:<26} {started:<17} {ran:>7} {session.net_pnl:>11.2f} '
-              f'{-abs(session.max_drawdown):>13.2f} {session.max_drawdown_pct:>6.2f}%   '
+              f'{decline} {share}   '
               f'{" · ".join(notes)}')
 
         # A SEPARATOR rather than a mark in the notes column. The change belongs BETWEEN two

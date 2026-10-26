@@ -13,6 +13,12 @@ never filled.
 
 The derivation is a set difference and needs no new state.
 
+**A row is not yet a close (#476).** A session writes its booking periods into the ledger as each
+trading day seals, so a running session — or one that died on day 29 — has rows. What says a run
+COMPLETED is the row its close wrote: the period its end sealed (`session_end`), or a row that books
+no period at all, which is only ever written at the close. A row a trading day sealed (`anchor`)
+says the run was alive then, nothing more.
+
 TWO questions live here, and they are not each other's mirror image however much they look it.
 `unfinished_runs` asks which run STARTED and never booked; `rows_with_missing_records` asks which
 booking lost the run behind it. The second is deliberately NOT the plain reverse set difference:
@@ -23,30 +29,58 @@ the ones a prune stamped, because a deliberate deletion is accounted for and an 
 is the whole point.
 """
 
+import math
 from pathlib import Path
-from typing import Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from python.framework.reporting.store.run_results_ledger import RunResultsLedger
 from python.framework.types.api.report_types import ParentKind, RunInfo, RunResultRow
+from python.framework.types.run_results_types import PeriodCloseReason
+
+
+def closes_its_run(period_close_reason: Any) -> bool:
+    """
+    Whether a ledger row was written at its run's close (#476).
+
+    The period a run's end sealed says `session_end`; a row that books no period — every row
+    written before booking periods existed, and an error row — is only ever written at the close.
+    A trading day's seal (`anchor`) and an operator's close are written while the run goes on.
+
+    Args:
+        period_close_reason: The row's `period_close_reason` cell — empty, None or NaN on a row
+            that books no period
+
+    Returns:
+        True when the row is the run's own close
+    """
+    if period_close_reason is None or (
+            isinstance(period_close_reason, float) and math.isnan(period_close_reason)):
+        return True
+    return period_close_reason in ('', PeriodCloseReason.SESSION_END.value)
 
 
 def run_completed(ledger: RunResultsLedger, run_id: str) -> bool:
     """
-    Whether one run booked its results — the ledger holds its row.
+    Whether one run booked its results — the ledger holds the row its close wrote.
 
-    The ledger row is written at the run's close, so a run that has one completed and a run that
-    has none either is still going or died. Whether the run then also CLOSED — wrote everything
-    and its footprint last — is a question for `run_footprint`. The same rule `unfinished_runs`
-    applies to every run at once, asked here of one.
+    Written at the run's close, so a run that has one completed, and a run that has none either
+    is still going or died — whatever rows its sealed trading days left. Whether the run then
+    also CLOSED — wrote everything and its footprint last — is a question for `run_footprint`.
+    The same rule `unfinished_runs` applies to every run at once, asked here of one.
 
     Args:
         ledger: The run ledger
         run_id: The run in question
 
     Returns:
-        True when the ledger holds at least one row of that run
+        True when the ledger holds the row of that run's close
     """
-    return not ledger.read(run_id=run_id).empty
+    frame = ledger.read(run_id=run_id)
+    if frame.empty:
+        return False
+    if 'period_close_reason' not in frame.columns:
+        return True
+    return any(closes_its_run(reason) for reason in frame['period_close_reason'])
 
 
 def unfinished_runs(
@@ -59,8 +93,8 @@ def unfinished_runs(
     Runs the index registered at start that the ledger never received at close.
 
     A session running RIGHT NOW is indistinguishable from one that died — both have a header
-    and no ledger row — so the answer is stated as "not completed" and never as "aborted".
-    Whoever reads it knows whether a bot is up.
+    and no row of a close, whatever rows their sealed days left — so the answer is stated as
+    "not completed" and never as "aborted". Whoever reads it knows whether a bot is up.
 
     Args:
         runs: Every run the index holds
@@ -77,7 +111,7 @@ def unfinished_runs(
     Returns:
         The unfinished runs, oldest first
     """
-    completed = {row.run_id for row in ledger_rows}
+    completed = {row.run_id for row in ledger_rows if closes_its_run(row.period_close_reason)}
     selected = [r for r in runs if r.run_id not in completed]
     if parent_id is not None:
         selected = [r for r in selected if r.parent_id == parent_id]

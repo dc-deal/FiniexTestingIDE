@@ -126,7 +126,8 @@ def build_booking_periods_report(
         # The deepest SINGLE-period decline, which is what this table's column holds. Not the
         # run's drawdown: a fall that runs across a period boundary is deeper than any one
         # period's own, and the run summary is where that figure lives.
-        deepest_period_drawdown=max((row.max_drawdown for row in rows), default=0.0),
+        deepest_period_drawdown=max(
+            (row.max_drawdown for row in rows if row.max_drawdown is not None), default=None),
         total_final_equity=(None if any(value is None for value in closing) else sum(closing)),
     )
 
@@ -143,9 +144,12 @@ def _unit_totals(run_id: str, periods: List[BookingPeriod]) -> List[BookingUnitT
         One total per unit, ordered by unit name
     """
     # The two identity fields the row model requires and this fold never reads: the rows exist
-    # only inside this call, and the fold drops an empty value as "not measured".
+    # only inside this call, and the fold drops an empty value as "not measured". A figure the
+    # period could not measure is left out the way the ledger's own read leaves out an empty
+    # cell, so the fold sees here exactly what it sees there (#476).
     rows = [RunResultRow(run_id=run_id, param_hash='-', run_timestamp=period.opened_at.isoformat(),
-                         **period_ledger_fields(period))
+                         **{column: value for column, value in period_ledger_fields(period).items()
+                            if value is not None})
             for period in periods]
     return unit_totals_from_ledger_rows(rows)
 
@@ -214,6 +218,7 @@ def _row(period) -> BookingPeriodRow:
         reason=period.reason.value,
         currency=f.currency,
         trade_count=period.trade_count,
+        tick_count=period.tick_count,
         net_pnl=f.net_pnl,
         total_fees=f.total_fees,
         commission_cost=period.commission_cost,
@@ -270,6 +275,7 @@ def booking_periods_from_ledger_rows(
             reason=row.period_close_reason,
             currency=row.currency,
             trade_count=row.total_trades,
+            tick_count=row.period_tick_count,
             net_pnl=row.net_pnl,
             total_fees=row.total_fees,
             commission_cost=row.period_commission_cost,
@@ -283,9 +289,9 @@ def booking_periods_from_ledger_rows(
             # The period's OWN band and decline, never the cumulative trio beside them on the
             # row: on this table the question is what each period did, and the running figure
             # would repeat the same number down the column.
-            min_equity=row.period_min_equity or 0.0,
-            max_equity=row.period_max_equity or 0.0,
-            max_drawdown=row.period_max_drawdown or 0.0,
+            min_equity=row.period_min_equity,
+            max_equity=row.period_max_equity,
+            max_drawdown=row.period_max_drawdown,
             # What it carries: the running decline and what was open at the seal
             account_max_drawdown=row.account_max_drawdown,
             account_max_dd_pct=row.account_max_drawdown_pct,

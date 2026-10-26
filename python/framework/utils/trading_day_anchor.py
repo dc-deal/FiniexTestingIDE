@@ -46,6 +46,26 @@ def boundary_opening(day: date, anchor: DayAnchorConfig) -> datetime:
     return local_time_to_utc(day, anchor.local_time, anchor.timezone)
 
 
+def trade_date_of(day: date, anchor: DayAnchorConfig) -> date:
+    """
+    The calendar date a trading day trades FOR — the date the market calendar is asked about.
+
+    A trading day is labelled by the date it OPENED, and under an evening anchor that is the
+    date before the one it trades for: the forex session that opens Sunday 17:00 New York is
+    Monday's trading. So the date is read at the day's LAST instant, in the anchor's own
+    timezone — the next date under an evening anchor, the label itself under a midnight one.
+
+    Args:
+        day: The trading day's label
+        anchor: Where this market's day flips
+
+    Returns:
+        The calendar date that trading day trades for
+    """
+    last_instant = boundary_opening(day + timedelta(days=1), anchor) - timedelta(microseconds=1)
+    return last_instant.astimezone(ZoneInfo(anchor.timezone)).date()
+
+
 def trading_day_of(instant: datetime, anchor: DayAnchorConfig) -> date:
     """
     Which trading day an instant falls in.

@@ -262,6 +262,21 @@ class ScenarioLogger(AbstractLogger):
         # Clear buffer
         self.console_buffer.clear()
 
+    def trim_buffer_below(self, level: LogLevel) -> None:
+        """
+        Drop the buffered records below a level — what keeps a long session's memory bounded (#476).
+
+        A session buffers every record for its end, where the report reads only the warnings and
+        the errors; every record is in the log file already, written as it was logged. Trimmed at
+        each trading day's seal, a thirty-day session holds the warnings of thirty days rather
+        than every line of them.
+
+        Args:
+            level: The lowest level that stays in the buffer
+        """
+        self.console_buffer = [record for record in self.console_buffer
+                               if LogLevel.should_log(record.level, level)]
+
     def close(self, flush_buffer: bool = False):
         """
         Close logger and flush any remaining buffers.

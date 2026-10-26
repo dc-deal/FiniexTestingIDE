@@ -1,16 +1,31 @@
 """Run-results ledger tests (#390) — append per run + read all + filter."""
 
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from typing import get_args
 
 import pandas as pd
 
 from python.framework.constants.run_layout_constants import RUN_TYPE_AUTOTRADER, RUN_TYPE_SIMULATION
+from python.framework.reporting.builders.booking_period_builder import (
+    PeriodSnapshot,
+    derive_booking_period,
+)
 from python.framework.reporting.store.run_results_ledger import (
+    COLUMN_NULL_MEANING,
     COLUMN_REDUCTION,
     LEDGER_COLUMNS,
+    RUN_END_COLUMNS,
+    RunResultsLedger,
 )
 from python.framework.types.api.report_types import OrdersTo, RunResultRow
-from python.framework.types.run_results_types import Reduction
+from python.framework.types.run_outcome_types import RunOutcome
+from python.framework.types.run_results_types import (
+    DESCRIPTION_REDUCTIONS,
+    FIGURE_REDUCTIONS,
+    PeriodCloseReason,
+    Reduction,
+)
 
 # Every report artifact names its run (#475); the value is opaque to these tests.
 _RUN_ID = '20260830_120000_a1b2c3d4'
@@ -566,3 +581,106 @@ def test_the_stamp_survives_the_index(tmp_ledger, make_run_summary, make_provena
     tmp_ledger.mark_records_pruned(['gone'])
     assert tmp_ledger.read_rows()[0].records_pruned_at != ''
 
+
+
+# === A session's sealed trading days reach the ledger as they seal (#476) ========================
+
+_MON = datetime(2026, 9, 21, tzinfo=timezone.utc)
+
+
+def _day(no: int, reason: PeriodCloseReason = PeriodCloseReason.ANCHOR):
+    """One trading day's booking period of a session, nothing traded."""
+    return derive_booking_period(
+        'session', no, _MON + timedelta(days=no - 1), _MON + timedelta(days=no), reason, [],
+        PeriodSnapshot(currency='USD', final_equity=1_000.0, account_max_drawdown=0.0,
+                       max_equity=1_000.0, account_max_dd_pct=0.0), tick_count=10)
+
+
+def _fragment(ledger_dir: Path) -> pd.DataFrame:
+    """The one fragment in a ledger directory, read as written."""
+    (path,) = list(ledger_dir.glob('*.parquet'))
+    return pd.read_parquet(path)
+
+
+def test_a_sealed_day_is_written_without_the_run_end_columns(
+        tmp_path, tmp_ledger, make_provenance):
+    """What the start knows is on the row; what only the end knows is left empty."""
+    tmp_ledger.write_sealed_periods(
+        make_provenance(run_id='live', run_type=RUN_TYPE_AUTOTRADER, deployment_id='deploy_x'),
+        [_day(1)])
+
+    frame = _fragment(tmp_path / 'run_results')
+    assert len(frame) == 1
+    row = frame.iloc[0]
+    assert (row['param_hash'], row['deployment_id'], row['period_close_reason']) == (
+        'hash', 'deploy_x', 'anchor')
+    for column in RUN_END_COLUMNS:
+        assert pd.isna(row[column]), f'{column} is filled on a row written at a seal'
+
+
+def test_each_seal_replaces_the_fragment_whole(tmp_path, tmp_ledger, make_provenance):
+    prov = make_provenance(run_id='live', run_type=RUN_TYPE_AUTOTRADER)
+    tmp_ledger.write_sealed_periods(prov, [_day(1)])
+    tmp_ledger.write_sealed_periods(prov, [_day(1), _day(2)])
+
+    assert list(_fragment(tmp_path / 'run_results')['period_no']) == [1, 2]
+
+
+def test_the_session_s_last_write_replaces_its_sealed_days(
+        tmp_path, tmp_ledger, make_run_summary, make_provenance):
+    prov = make_provenance(run_id='live', run_type=RUN_TYPE_AUTOTRADER)
+    tmp_ledger.write_sealed_periods(prov, [_day(1), _day(2)])
+    tmp_ledger.append(make_run_summary(), prov,
+                      [_day(1), _day(2), _day(3, PeriodCloseReason.SESSION_END)])
+
+    frame = _fragment(tmp_path / 'run_results')
+    assert list(frame['period_no']) == [1, 2, 3]
+    assert list(frame['status']) == ['ok', 'ok', 'ok']
+
+
+def test_a_sealed_row_leaves_exactly_the_run_end_columns_empty(
+        tmp_path, make_run_summary, make_provenance):
+    """
+    The declaration is complete in both directions: every column the session's last write fills
+    and a seal leaves empty is declared run-end, and every declared one is such a column.
+    """
+    prov = make_provenance(run_id='live', run_type=RUN_TYPE_AUTOTRADER, status='error',
+                           error='boom', run_outcome=RunOutcome.FAILED, error_count=1,
+                           warning_count=2, log_warning_count=3)
+    summary = make_run_summary()
+    summary.signal_fresh_ratio = 0.9
+    summary.tick_timespan_seconds = 86_400.0
+    sealed = RunResultsLedger(tmp_path / 'sealed')
+    final = RunResultsLedger(tmp_path / 'final')
+    sealed.write_sealed_periods(prov, [_day(1)])
+    final.append(summary, prov, [_day(1)])
+
+    sealed_row = _fragment(tmp_path / 'sealed').iloc[0]
+    final_row = _fragment(tmp_path / 'final').iloc[0]
+    left_empty = {column for column in LEDGER_COLUMNS
+                  if pd.isna(sealed_row[column]) and not pd.isna(final_row[column])}
+    assert left_empty == set(RUN_END_COLUMNS)
+
+
+def test_every_reduction_is_a_figure_or_a_description():
+    """A new reduction cannot arrive without saying whether its column is a figure."""
+    assert FIGURE_REDUCTIONS | DESCRIPTION_REDUCTIONS == set(Reduction)
+    assert not FIGURE_REDUCTIONS & DESCRIPTION_REDUCTIONS
+
+
+def test_every_nullable_figure_declares_what_its_null_means():
+    """
+    An empty cell means one of two things, and a ranking decides on it: a figure that can be
+    undefined for a run is refused as an objective, one that was only not measured is ranked over
+    the rows that carry it. Held both ways, so a figure widened to Optional cannot arrive without
+    an answer, and the map cannot outlive a field.
+    """
+    nullable_figures = {
+        name for name, field in RunResultRow.model_fields.items()
+        if type(None) in get_args(field.annotation) and name in COLUMN_REDUCTION
+        and COLUMN_REDUCTION[name].is_figure()}
+
+    undeclared = sorted(nullable_figures - set(COLUMN_NULL_MEANING))
+    stale = sorted(set(COLUMN_NULL_MEANING) - nullable_figures)
+    assert undeclared == [], f'{undeclared} can be null and do not say what their null means'
+    assert stale == [], f'{stale} declare a null meaning and are no nullable figure'

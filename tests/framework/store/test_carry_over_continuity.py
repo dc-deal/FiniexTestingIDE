@@ -9,6 +9,7 @@ document while it still speaks for the venue — and a real-money start without 
 carry-over goes ahead only when declared the bot's first.
 """
 
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import List, Optional
 
@@ -21,8 +22,13 @@ from python.framework.exceptions.persistence_errors import (
     CarryOverRequiredError,
     FirstStartContradictedError,
 )
+from python.framework.reporting.builders.booking_period_builder import (
+    PeriodSnapshot,
+    derive_booking_period,
+)
 from python.framework.reporting.store.run_results_ledger import RunResultsLedger
 from python.framework.types.persistence_types import CarryOverLoad, CarryOverLoadOutcome
+from python.framework.types.run_results_types import PeriodCloseReason, RunProvenance
 from python.framework.acceptance_studies import security_cert_runner
 from python.framework.acceptance_studies.security_cert_runner import starts_without_a_carry_over
 from python.framework.validators.carry_over_continuity_validator import (
@@ -164,6 +170,29 @@ def test_a_real_ledger_without_the_run_refuses(tmp_path):
         validate_carry_over_continuity(
             'cert_restart', 'cert_soft', True, None, _load(CarryOverLoadOutcome.ACCEPTED),
             RunResultsLedger(tmp_path / 'ledger'))
+
+
+def test_a_partner_whose_ledger_holds_only_sealed_days_refuses(tmp_path):
+    """
+    A session books each trading day as it seals (#476), so a partner still running — or one
+    that died after a seal — has ledger rows. None of them is its close, and two sessions must
+    not manage one book.
+    """
+    ledger = RunResultsLedger(tmp_path / 'ledger')
+    monday = datetime(2026, 9, 21, tzinfo=timezone.utc)
+    ledger.write_sealed_periods(
+        RunProvenance(
+            param_hash='hash', status='ok', error=None, run_id='run_soft', run_timestamp=monday,
+            scenario_set_name='cert_soft', app_version='1.4.0', git_commit='abc1234',
+            git_branch='dev', git_dirty=False, decision_logic_type='CORE/aggressive_trend',
+            decision_version='1.0.0', worker_versions={}, strategy_config_json='{}',
+            symbols=['BTCUSD'], data_broker_type='kraken_spot'),
+        [derive_booking_period('cert_soft', 1, monday, monday + timedelta(days=1),
+                               PeriodCloseReason.ANCHOR, [], PeriodSnapshot(currency='USD'))])
+
+    with pytest.raises(CarryOverContinuationError, match='not completed'):
+        validate_carry_over_continuity(
+            'cert_restart', 'cert_soft', True, None, _load(CarryOverLoadOutcome.ACCEPTED), ledger)
 
 
 class TestARealMoneyStartNeedsACarryOverOrItsDeclaration:

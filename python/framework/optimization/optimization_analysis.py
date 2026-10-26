@@ -13,16 +13,19 @@ from datetime import datetime
 from typing import Dict, List, Optional, get_args
 
 from python.framework.reporting.store.ledger_aggregation import aggregate_ledger_rows
+from python.framework.reporting.store.run_results_ledger import COLUMN_NULL_MEANING
 from python.framework.types.api.report_types import RunResultRow, SweepSummary
+from python.framework.types.run_results_types import NullMeaning
 
-# A KPI that may be undefined cannot order a ranking: the comparison against None
-# raises, and there is no honest position for 'not measured' in a best-first list.
-# Derived from the model, so a KPI widened to Optional later is covered without
-# touching this module. Today: profit_factor (no losing trade), avg_win_r /
-# avg_loss_r (empty R subset), signal_fresh_ratio (no SIGNAL worker).
+# What may be empty on a row and still order a ranking: a figure that was only not MEASURED for
+# some runs — they are left out, and `unranked_count` says how many. A figure that can be
+# UNDEFINED cannot: leaving out the runs without a profit factor drops the runs that never lost.
+# Neither can a description a row may lack. Derived from the model and the ledger's declaration,
+# so a field widened to Optional later is covered without touching this module.
 _UNRANKABLE_OBJECTIVES = frozenset(
     name for name, field in RunResultRow.model_fields.items()
-    if type(None) in get_args(field.annotation))
+    if type(None) in get_args(field.annotation)
+    and COLUMN_NULL_MEANING.get(name) is not NullMeaning.UNMEASURED)
 
 
 @dataclass
@@ -212,9 +215,11 @@ def rank(
         objective_currency: Restrict to this currency (required when > 1 currency present)
 
     Returns:
-        The rows sorted by the objective (stable tie-break by run_id), best first
+        The rows sorted by the objective (stable tie-break by run_id), best first — without the
+        combinations that carry no value for it, which `unranked_count` counts
     """
-    scoped = _scope(rows, objective, objective_currency)
+    scoped = [row for row in _scope(rows, objective, objective_currency)
+              if getattr(row, objective) is not None]
     if not scoped:
         return []
     # Two stable passes: secondary key (run_id asc) first, then primary (objective) — so
@@ -222,6 +227,29 @@ def rank(
     scoped = sorted(scoped, key=lambda r: r.run_id)
     scoped = sorted(scoped, key=lambda r: getattr(r, objective), reverse=maximize)
     return scoped
+
+
+def unranked_count(
+    rows: List[RunResultRow],
+    objective: str,
+    objective_currency: Optional[str] = None,
+) -> int:
+    """
+    How many combinations a ranking by the objective leaves out: they carry no value for it.
+
+    Only a figure that was not measured for some runs can be ranked with gaps, and the count is
+    what keeps a shorter ranking from reading as the whole sweep.
+
+    Args:
+        rows: Raw ledger rows
+        objective: The RunResultRow field the ranking orders by
+        objective_currency: Restrict to this currency, or None for every currency
+
+    Returns:
+        The number of combinations, one per run and currency, without a value for the objective
+    """
+    return sum(1 for row in _scope(rows, objective, objective_currency)
+               if getattr(row, objective) is None)
 
 
 def rank_per_currency(
@@ -266,7 +294,8 @@ def sensitivity(
     Returns:
         Per-parameter sensitivity, ranked by influence (descending)
     """
-    scoped = [r for r in _scope(rows, objective, objective_currency) if r.sweep_params]
+    scoped = [r for r in _scope(rows, objective, objective_currency)
+              if r.sweep_params and getattr(r, objective) is not None]
     if not scoped:
         return []
 

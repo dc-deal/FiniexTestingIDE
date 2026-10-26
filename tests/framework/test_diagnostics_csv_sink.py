@@ -3,13 +3,20 @@ FiniexTestingIDE - Diagnostics CSV Sink Tests (#376)
 
 Tests the generic strategy-owned diagnostics CSV channel: the DiagnosticsCsvSink
 (file logistics), the AbstractDecisionLogic API (diagnostics_csv / get_diagnostics_sinks),
-and the flush_decision_diagnostics helper used by both pipelines.
+the flush_decision_diagnostics helper used by both pipelines, and the rows a session streams as
+they are appended (#476).
 """
 
 import csv
+import json
+from datetime import datetime, timezone
+from enum import Enum
 from unittest.mock import MagicMock
 
+import numpy as np
 import pytest
+
+from python.framework.autotrader.run_record.session_records import stream_diagnostics_rows
 
 from python.framework.constants.run_layout_constants import (
     RUN_TYPE_AUTOTRADER,
@@ -22,6 +29,7 @@ from python.framework.reporting.diagnostics_csv_sink import (
     flush_decision_diagnostics,
 )
 from python.framework.store.entry_members.run_entry_writer import RunEntryWriter
+from python.framework.types.store_member_types import RunEntryMemberId
 
 
 class _DummyDecision(AbstractDecisionLogic):
@@ -179,3 +187,52 @@ class TestFlushDecisionDiagnostics:
         dl.diagnostics_csv('funnel', ['id']).append_row({'id': 'p1'})
 
         flush_decision_diagnostics(dl, None)  # no raise, nothing written
+
+
+class _Side(Enum):
+    LONG = 'long'
+
+
+def _stream_lines(run_dir, sink: str) -> list:
+    """The records a sink's stream holds, header first."""
+    path = RunEntryWriter(run_dir, RUN_TYPE_AUTOTRADER).path_of(
+        RunEntryMemberId.DIAGNOSTICS_ROWS, sink=sink)
+    return [json.loads(line) for line in path.read_text().splitlines()]
+
+
+class TestASessionStreamsItsRows:
+    """
+    A session streams every row as it is appended (#476): the table is written at the end, and a
+    session killed before it would keep no row. A row the table takes must never end the session
+    through its stream.
+    """
+
+    def test_a_row_is_a_line_the_moment_it_is_appended(self, tmp_path):
+        dl = _make_decision()
+        stream_diagnostics_rows(tmp_path, 'run_x', dl, MagicMock())
+        dl.diagnostics_csv('setup', ['bars', 'note']).append_row({'note': 'n', 'bars': 3, 'x': 1})
+
+        header, row = _stream_lines(tmp_path, 'setup')
+        assert header['columns'] == ['bars', 'note'] and header['sink'] == 'setup'
+        assert row == {'bars': 3, 'note': 'n'}
+
+    def test_rows_appended_before_the_stream_opened_are_written_when_it_opens(self, tmp_path):
+        dl = _make_decision()
+        dl.diagnostics_csv('setup', ['bars']).append_row({'bars': 1})
+        stream_diagnostics_rows(tmp_path, 'run_x', dl, MagicMock())
+        dl.diagnostics_csv('setup', ['bars']).append_row({'bars': 2})
+
+        assert [line.get('bars') for line in _stream_lines(tmp_path, 'setup')[1:]] == [1, 2]
+
+    def test_a_cell_only_the_table_could_write_is_written_as_the_table_writes_it(self, tmp_path):
+        stamp = datetime(2026, 10, 25, 12, tzinfo=timezone.utc)
+        dl = _make_decision()
+        stream_diagnostics_rows(tmp_path, 'run_x', dl, MagicMock())
+        dl.diagnostics_csv('setup', ['at', 'bars', 'ok', 'side', 'arr']).append_row(
+            {'at': stamp, 'bars': np.int64(3), 'ok': np.bool_(True), 'side': _Side.LONG,
+             'arr': np.array([1, 2])})
+
+        row = _stream_lines(tmp_path, 'setup')[1]
+        assert row == {'at': str(stamp), 'bars': 3, 'ok': True, 'side': str(_Side.LONG),
+                       'arr': str(np.array([1, 2]))}
+

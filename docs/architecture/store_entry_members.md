@@ -230,7 +230,10 @@ behind its `write_strategy_files` parameter.
 | [`order_events`](order_event_stream.md#storage) | `io/order_events.jsonl` | stream · v2 | at end — a scenario recorded an order event | at start — the session got through its startup checks | `stream_files` | `…/order-events` |
 | [`state_frames`](live_telemetry_architecture.md#the-recorded-state-frame--not-this-stream) | `io/state_frames.jsonl` | stream · v1 | — | at start — the profile records state frames | `stream_files` | `…/state-frames/latest` |
 | [`tick_stream_events`](../autotrader/autotrader_architecture.md#what-a-session-records) | `io/tick_stream_events.jsonl` | stream · v1 | — | at start — the session reads its ticks from a venue | — | — |
+| [`diagnostics_rows`](diagnostics_csv_sink.md#lifecycle-framework-owned) | `diagnostics/{sink}.jsonl` | stream · v1 | — | as it runs — the logic declared a diagnostics sink | — | — |
+| [`trades`](../autotrader/autotrader_architecture.md#what-a-session-records) | `io/trades.jsonl` | stream · v1 | — | at start — the session reached its tick loop | — | — |
 | [`warmup_history`](warmup_history.md#what-a-session-records) | `io/warmup_history.json` | snapshot | — | at start — a worker requires bars | — | — |
+| [`algo_state_restored`](../user_guides/algo_state_persistence_guide.md#lifecycle) | `io/algo_state_restored.json` | snapshot | — | at start — the logic keeps its state and a saved state was found | — | — |
 <!-- end of generated table -->
 
 Where a member is written only sometimes, the cell says when. The `{name}` parts of a path stand

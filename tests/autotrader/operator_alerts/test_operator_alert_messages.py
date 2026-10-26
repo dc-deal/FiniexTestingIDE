@@ -15,6 +15,7 @@ from python.framework.autotrader.operator_alerts.operator_alert_messages import 
     END_LEVEL_BY_OUTCOME,
     LEVEL_MARK,
     day_closed_text,
+    days_closed_unheard_text,
     format_duration,
     session_ended_text,
     session_started_text,
@@ -124,6 +125,28 @@ class TestTheStartMessage:
     (5, '5s'), (725, '12m 5s'), (15_120, '4h 12m'), (187_920, '2d 4h 12m')])
 def test_a_duration_reads_the_way_a_person_says_it(seconds, text):
     assert format_duration(seconds) == text
+
+
+class TestTheDaysClosedUnheard:
+    """The days one late check sealed after the first, said once (#476)."""
+
+    @staticmethod
+    def _silent_day(day: int) -> BookingPeriod:
+        period = _period(opening=1_012.4, closing=1_012.4)
+        period.trading_day = date(2026, 10, day)
+        period.trade_count = 0
+        return period
+
+    def test_several_days_are_one_message_named_by_their_span(self):
+        title, detail = days_closed_unheard_text([self._silent_day(21), self._silent_day(22)])
+        assert title == 'Days closed unheard — 2026-10-21 → 2026-10-22'
+        assert detail == ('2 trading day(s) closed at once, with no market data\n'
+                          'Trades: 0\n'
+                          'Equity: 1,012.40 → 1,012.40 USD')
+
+    def test_one_day_is_named_by_itself(self):
+        title, _ = days_closed_unheard_text([self._silent_day(21)])
+        assert title == 'Days closed unheard — 2026-10-21'
 
 
 class TestTheDayClose:

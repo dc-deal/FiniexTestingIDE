@@ -205,8 +205,14 @@ one.
 ## `test_run_completion_audit.py`
 
 Which runs started and never reached their close. A run registers in the run index from its
-header, written before anything can fail; its ledger row is the last step at close. A process
+header, written before anything can fail; the ledger row of its close is the last step. A process
 killed between the two exists in one store and not the other, and nothing said so.
+
+Since #476 a session books its trading days while it runs, so a row alone does not say a run
+completed. `TestARowOfASealedDayIsNotAClose` pins the rule (`closes_its_run`): a run with only
+sealed days is unfinished, the period its end sealed completes it, a row that books no period is a
+close, and the reasons read as one table — `session_end`, empty and NaN close, `anchor` and
+`operator` do not.
 
 The plain reverse set difference stays **out**. The ledger predates the run index, so it
 legitimately holds rows for runs the index never saw — reporting that direction would bury the
@@ -304,7 +310,7 @@ between that and a session trading against a state that is not its own:
 |---|---|
 | `TestADeclaredContinuationReadsACarryOver` | a declaration with the cold start off, or on a study that skips the adoption step, is refused |
 | `TestADeclaredContinuationFindsWhatItContinues` | no document, an unreadable one, one in another format, or one another profile wrote is refused, naming the stage to run first; its own document from an earlier run passes without asking the ledger |
-| `TestAPartnersDocumentComesFromACompletedRun` | a partner's document is taken only from a run with a ledger row — in both directions — and the refusal says "not completed", never "aborted" |
+| `TestAPartnersDocumentComesFromACompletedRun` | a partner's document is taken only from a run with the ledger row of its close — in both directions — and the refusal says "not completed", never "aborted"; `test_a_partner_whose_ledger_holds_only_sealed_days_refuses` pins that a partner with only sealed days (#476) is still running or died, and refused |
 | `TestAnotherProfilesClaimsStopTheBoot` | another profile's document holding an open position or a session key refuses the boot, naming the writer, its run and the name to restore; one that claims nothing may be started over |
 | `TestARealMoneyStartNeedsACarryOverOrItsDeclaration` | a session trading real money that finds no usable carry-over — none, unreadable, another format, another profile's — is refused unless its start was declared the bot's first (`--first-start`), and the refusal names the data home and both ways forward; a declared first start that finds a usable carry-over is refused, naming the run that wrote it; a usable one continues without a declaration; a dry or mock session, a study that skips adoption and a session without a cold start are not covered |
 

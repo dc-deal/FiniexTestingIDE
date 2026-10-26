@@ -79,6 +79,11 @@ Restore runs **after** warmup and **before** the first decision. Saves are atomi
 rename) — a crash mid-write never corrupts the file. A mid-session save failure is logged but
 never aborts the AutoTrader session.
 
+What the session found at its start is also kept in its own run, once: `io/algo_state_restored.json`
+holds the state as the store held it, whether the logic took it or refused it, and how old it was.
+The store itself is overwritten by the first save, so this is the one place that still says what a
+session started from.
+
 ## Staleness — opening a bot after days away
 
 When you restart a bot whose saved state is older than `max_age_trading_days`, the state is

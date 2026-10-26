@@ -93,6 +93,25 @@ and the state frames written as the session runs:
   canonical clock, at a closed bar, at an order and at its end (#579). The live side of the
   comparison, which unlike the backtest cannot be run again; its latest frame is served while the
   session runs, with its age (`GET /api/v1/reports/runs/{run_id}/state-frames/latest`, #611)
+- `io/trades.jsonl` — every trade the session closed, one line each the moment it closed, in the
+  shape the trade history serves (#476). The history the report reads at the end keeps only the
+  newest trades, and a session killed before its end writes no report at all
+- `diagnostics/<sink>.jsonl` — every row a diagnostics sink records, as the logic records it, beside
+  the table written at the end (#476)
+- `io/algo_state_restored.json` — the algo state the session found at its start, taken or refused,
+  with its age (#476): the store is overwritten while the session runs, so no later read can say
+  what the session started from
+- its ledger rows — each trading day booked as it seals, the row of its close written last (#476):
+  a session killed on day 29 keeps the 28 days it sealed, and the missing close says it did not end
+  ([Reading the Results Ledger](../user_guides/results_ledger_guide.md))
+
+What keeping them costs the session, measured 2026-10-26 on the development container with
+`python/experiments/cost_probes/probe_run_record_cost.py`: a seal rewrites the session's ledger
+fragment in about 9 ms on a local disk and about 100 ms on the container's drive behind its bridge,
+once per boundary check; a streamed trade line takes about 15 µs and a diagnostics line about 6 µs
+(about 200 µs behind the bridge); letting the log buffer go of a day's ordinary lines about 25 ms per
+100,000. The boundary check itself costs 95 ns per tick. The probe is run again on a server and after
+the seal changes.
 
 Why a run keeps these, and what no run records:
 [A run is a record, and an old one stays true](../introduction_to_the_ide.md#a-run-is-a-record-and-an-old-one-stays-true).

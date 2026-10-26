@@ -10,8 +10,9 @@ every file a run or a sweep directory holds, with the version of each stream's l
 #   autotrader    an AutoTrader session — mock, dry run or real orders alike
 #
 # TWO values, not three, because type and NESTING are different questions and each has its own
-# field. A sweep combination is a simulation with a `parent_id`; a live day record (#476) will be an
-# autotrader run with a `parent_id`. Folding nesting into the type would make the most basic
+# field. A sweep combination is a simulation with a `parent_id`; a session of a deployment is an
+# autotrader run with one. A sealed trading day (#476) is no run at all — it lives in its session's
+# directory, as its rows and files. Folding nesting into the type would make the most basic
 # question — "is this a simulation?" — a two-value comparison, and would need a new value for every
 # new kind of parent.
 #
@@ -81,6 +82,11 @@ SESSION_EVENTS_FILE = 'events.csv'
 # A decision logic's own diagnostics tables, one per sink it declares — per scenario in a backtest.
 DIAGNOSTICS_SUBDIR = 'diagnostics'
 DIAGNOSTICS_FILE_PATTERN = '{sink}.csv'
+# A session's diagnostics rows as they are recorded (#476), one stream per sink beside its table:
+# the table is written at the end, and a session killed before it would keep no row
+DIAGNOSTICS_ROWS_FILE_PATTERN = '{sink}.jsonl'
+DIAGNOSTICS_ROWS_STREAM = 'diagnostics_rows'
+DIAGNOSTICS_ROWS_SCHEMA_VERSION = 1
 SCENARIO_DIAGNOSTICS_FILE_PATTERN = '{sink}_{scenario}.csv'
 
 # A strategy's own files, written through its helper as it runs — one folder per scenario in a
@@ -127,12 +133,19 @@ ORDER_EVENTS_SCHEMA_VERSION = 2
 STATE_FRAMES_FILE = 'state_frames.jsonl'
 STATE_FRAMES_STREAM = 'state_frames'
 STATE_FRAMES_SCHEMA_VERSION = 1
+# Every trade the session closed, as it closed (#476) — the trade history's rows, written while the
+# session runs, because the history the report reads keeps only the newest trades.
+TRADES_FILE = 'trades.jsonl'
+TRADES_STREAM = 'trades'
+TRADES_SCHEMA_VERSION = 1
 
 # The records a live session writes into its io/ folder itself, as it runs — neither a report nor
 # a served stream. Named here because the writer and the run index both need the name, and the
 # run index must not count them as report artifacts.
 # The warmup history the session started from (#588).
 WARMUP_HISTORY_FILE = 'warmup_history.json'
+# The algo state the session found at its start, taken or refused (#476).
+ALGO_STATE_RESTORED_FILE = 'algo_state_restored.json'
 # The tick stream's own outages and refused trades (#609).
 TICK_STREAM_EVENTS_FILE = 'tick_stream_events.jsonl'
 TICK_STREAM_EVENTS_STREAM = 'tick_stream_events'

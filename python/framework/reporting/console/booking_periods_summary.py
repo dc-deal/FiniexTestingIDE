@@ -110,7 +110,7 @@ def render_booking_periods(
     print(f'{indent}' + '─' * 104)
     print(f'{indent}{"Σ":>3}  {"":<17} {"":<17} {report.total_trades:>6} '
           f'{report.total_net_pnl:>11.2f} {report.total_fees:>8.2f} {"":>6} '
-          f'{equity:>12} {-abs(report.deepest_period_drawdown):>11.2f}')
+          f'{equity:>12} {_decline(report.deepest_period_drawdown):>11}')
 
     _render_reconciliation(report, indent)
     print(f'{indent}● = the last period, closed by the session ending rather than by the '
@@ -131,10 +131,24 @@ def _render_period_rows(rows, indent: str) -> None:
     """
     for row in rows:
         mark = _REASON_MARK.get(row.reason, '?')
+        equity = '—' if row.final_equity is None else f'{row.final_equity:.2f}'
         print(f'{indent}{row.period_no:>3}{mark} {_stamp(row.opened_at):<17} '
               f'{_stamp(row.closed_at):<17} {row.trade_count:>6} {row.net_pnl:>11.2f} '
-              f'{row.total_fees:>8.2f} {row.win_rate * 100:>5.0f}% {row.final_equity:>12.2f} '
-              f'{-abs(row.max_drawdown):>11.2f}')
+              f'{row.total_fees:>8.2f} {row.win_rate * 100:>5.0f}% {equity:>12} '
+              f'{_decline(row.max_drawdown):>11}')
+
+
+def _decline(amount) -> str:
+    """
+    A decline as a column shows it: negative, two decimals, or a dash where none was observed.
+
+    Args:
+        amount: The decline's magnitude, or None
+
+    Returns:
+        The cell text
+    """
+    return '—' if amount is None else f'{-abs(amount):.2f}'
 
 
 def _render_unit_total(total, indent: str) -> None:
@@ -146,9 +160,9 @@ def _render_unit_total(total, indent: str) -> None:
         indent: Left padding
     """
     equity = '—' if total.final_equity is None else f'{total.final_equity:.2f}'
-    deepest = -abs(total.deepest_period_drawdown or 0.0)
     print(f'{indent}{"Σ":>4} {"":<17} {"":<17} {total.trade_count:>6} {total.net_pnl:>11.2f} '
-          f'{total.total_fees:>8.2f} {total.win_rate * 100:>5.0f}% {equity:>12} {deepest:>11.2f}')
+          f'{total.total_fees:>8.2f} {total.win_rate * 100:>5.0f}% {equity:>12} '
+          f'{_decline(total.deepest_period_drawdown):>11}')
 
 
 def _render_reconciliation(report: BookingPeriodsReport, indent: str) -> None:
@@ -287,15 +301,15 @@ def _render_collapsed(report: BookingPeriodsReport, units: dict, indent: str) ->
     print(f'{indent}{"unit":<40} {"periods":>8} {"trades":>7} {"net P&L":>13} '
           f'{"deepest period DD":>19}')
     print(f'{indent}' + '─' * 104)
-    for name, rows in units.items():
-        deepest = max((row.max_drawdown for row in rows), default=0.0)
-        print(f'{indent}{name[:40]:<40} {len(rows):>8} '
-              f'{sum(row.trade_count for row in rows):>7} '
-              f'{sum(row.net_pnl for row in rows):>13.2f} {-abs(deepest):>19.2f}')
+    # Each unit's line is its folded total from the model — the renderer formats, it never sums
+    for total in report.unit_totals:
+        print(f'{indent}{total.unit_name[:40]:<40} {total.period_count:>8} '
+              f'{total.trade_count:>7} {total.net_pnl:>13.2f} '
+              f'{_decline(total.deepest_period_drawdown):>19}')
     print(f'{indent}' + '─' * 104)
     print(f'{indent}{"Σ":<40} {len(report.periods):>8} {report.total_trades:>7} '
           f'{report.total_net_pnl:>13.2f} '
-          f'{-abs(report.deepest_period_drawdown):>19.2f}')
+          f'{_decline(report.deepest_period_drawdown):>19}')
     _render_reconciliation(report, indent)
     print(f'{indent}Collapsed because the run has more units than the console detail '
           f'threshold. Every period is')

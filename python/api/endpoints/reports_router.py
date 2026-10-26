@@ -142,10 +142,11 @@ def _recording_of_row(store: ReportStore, run: RunInfo, request: Request,
     """
     Whether a run that records state frames still records, for its row in the run list.
 
-    The verdict comes from the stream alone, never from the ledger: once each closed day books its
-    own row there (#476), a ledger row no longer means the session ended. An ended recording cannot
-    change — the stream's last line stays its end frame — so a run read as ended is remembered and
-    not read again; a running, a dead and a hanging session are read on every call.
+    The verdict comes from the stream alone, never from the ledger: each closed day books its own
+    row there as it closes (#476), so a ledger row does not mean the session ended. An ended
+    recording cannot change — the stream's last line stays its end frame — so a run read as ended
+    is remembered and not read again; a running, a dead and a hanging session are read on every
+    call.
 
     Args:
         store: The report store

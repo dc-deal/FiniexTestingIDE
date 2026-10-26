@@ -319,29 +319,35 @@ gone for good, because it happened in a session somebody ran with a flag.
 
 ## A session that never reached its close
 
-The session table is built from the ledger, and a row is written as the **last** step at close.
-A session killed before that — a crash, a reboot, a hard stop in the debugger — therefore never
-appears in it. It is not hidden; it was never recorded.
+A session books each trading day into the ledger as the day seals, and the row of its close is
+the **last** step. A session killed before that — a crash, a reboot, a hard stop in the debugger —
+keeps the days it sealed, and the row of its close is missing: in the session table it has no `ended`
+and no length, and the gap after it is measured between the starts. A session killed before its
+first seal appears nowhere in the table. It is not hidden; nothing of it was recorded yet.
 
-The run index is what still holds it, because a run registers from its header before anything
-can fail. The report reads both and names the difference:
+The run index is what still holds every one of them, because a run registers from its header
+before anything can fail. The report reads both and names the difference:
 
 ```
-⚠️  1 run(s) started and never completed — no ledger row was written.
-   A run registers at START; its ledger row is the LAST step at close. So
-   these ended abnormally — or one of them is running right now.
-   AutoTrader session — ran, and left no record of what it did
+⚠️  1 run(s) started and never completed — the ledger holds no row of their close.
+   A run registers at START; the row of its close is the LAST step. A session
+   books each trading day as it closes, so these may have rows of their sealed
+   days. They ended abnormally — or one of them is running right now.
+   AutoTrader session — ran, and left no record of its close
      20260918_174713_0dbd978c  2026-09-18T17:47:13  deployment_continuity_test  parent=deploy_...
 ```
 
 Two things follow, and both matter more than they look.
 
-**The session count above the table counts completed sessions only.** A deployment whose bot was
-killed twice reports fewer sessions than it ran, and the block below the table is what reconciles
-them.
+**The session count above the table counts the sessions the ledger holds** — the completed ones
+and those that sealed at least one day. A session killed before its first seal is not among
+them, so a deployment whose bot was killed that early reports fewer sessions than it ran. The
+"never completed" count beside it overlaps with the table and is never added to it; the block
+below the table names every one of those runs, in the table or not.
 
-**A session running RIGHT NOW looks exactly the same** — a header, no ledger row. The wording says
-"not completed" rather than "aborted" for that reason; whoever reads it knows whether a bot is up.
+**A session running RIGHT NOW looks exactly the same** — a header, the rows of its sealed days, no
+row of a close. The wording says "not completed" rather than "aborted" for that reason; the run
+list's `recording` says whether a bot is up.
 
 What the killed session still leaves behind is the carry-over in `data/runtime/cold_start_state/`:
 the open position book, the risk baseline and the drawdown curve. So the next session resumes
@@ -464,9 +470,10 @@ open it for. And the warning block is a field on the response (`advisory`) rathe
 so a client cannot render the table and drop the sentence that says whether the rows may be
 added up at all.
 
-The response also carries `unfinished`: the sessions come from the ledger, whose row is written
-last, so a session killed before its close is missing from the list by construction. A bare
-count would be a number with nothing to doubt about it.
+The response also carries `unfinished`: the runs of this deployment that never reached their
+close. One that sealed a day is in the list with `ended` null; one killed before its first seal
+is missing from it — so the two overlap. A bare count would be a number with nothing to doubt
+about it.
 
 A token needs the `deployments` grant — `deployments:*` for every bot, or one deployment's id
 for one of them.

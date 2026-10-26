@@ -155,7 +155,8 @@ class TestWhereTheOrdersWent:
             scenario_set_name='my_set')
 
         provenance = build_run_provenance(
-            SimpleNamespace(single_scenario_list=[scenario]), scenario_set, _RUN_ID)
+            SimpleNamespace(single_scenario_list=[scenario], broker_scenario_map={}),
+            scenario_set, _RUN_ID)
 
         assert provenance.orders_to is OrdersTo.SIMULATED
 

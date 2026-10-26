@@ -23,6 +23,7 @@ save on shutdown) is exercised by a real AutoTrader run, not by this unit suite.
 tests/autotrader/state_persistence/
 ├── conftest.py                  ← StubDecisionLogic, RecordingLogger, store_config (tmp dir)
 ├── test_algo_state_store.py     ← persistence, cadence, corrupt + staleness, weekend-aware
+├── test_restored_state_record.py ← #476: what a session found at its start, kept in its run
 ├── test_state_preflight.py      ← snapshot serializability + opt-in bypass
 └── test_collector_preflight.py  ← centralized batch pre-flight: ValidationResult + caching + mixed
 ```
@@ -44,6 +45,13 @@ tests/autotrader/state_persistence/
 - Weekend-aware staleness — `weekend_aware=True` counts a Fri→Mon span as 1 trading day;
   `weekend_aware=False` (crypto) counts 3 calendar days (the store's `datetime.now` is frozen to a
   known Monday for determinism).
+
+**The restored state's record (`test_restored_state_record.py`, #476):** what a session found at
+its start lands in its run as `io/algo_state_restored.json` — the state, taken or refused, its age
+in seconds and in trading days — and the run directory it is written into holds nothing the run
+store does not declare. A refused state is recorded as refused, and a session without a run
+directory writes nothing. It is the test the run entry census names for this member, which no
+census session writes.
 
 **Pre-flight (`test_state_preflight.py`):**
 - Opt-out is a no-op — an algo that does not opt in is never checked.

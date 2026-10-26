@@ -915,10 +915,11 @@ class ParentKind(StrEnum):
     reader that must treat them differently — and the pruner does — has nothing to tell them
     apart by.
 
-    Deriving it from `run_type` would be right today and silently wrong later: a simulation's
-    parent is a sweep and an AutoTrader session's is a deployment ONLY until #476 gives a day
-    record a parent that is itself a SESSION. A rule that expires without saying so is worse
-    than a column.
+    Deriving it from `run_type` would be a rule nobody declared: a simulation's parent is a sweep
+    and an AutoTrader session's is a deployment because no other kind of parent exists today, and
+    a reader holding the id should not have to know that. A sealed trading day (#476) adds no
+    kind — it is no run, it lives in its session's directory. A column says what a rule only
+    implies.
     """
     SWEEP = 'sweep'
     DEPLOYMENT = 'deployment'
@@ -986,10 +987,9 @@ class RunHeader(BaseModel):
         run_name: The owning scenario set (sim) or profile (AutoTrader)
         parent_id: What this run belongs to, or None when it stands alone — a sweep's id for one
             of its combinations, a deployment's id for one of its sessions. Named `parent_id`
-            and not `parent_run_id` on purpose: a sweep is NOT itself a run (it has no header —
-            it is defined by the runs naming it), while the day records of #476 will point
-            at a parent that IS one. One field, several kinds of parent, and the name has to
-            stay true for all of them
+            and not `parent_run_id` on purpose: neither parent is itself a run (a sweep has no
+            header — it is defined by the runs naming it). One field, several kinds of parent,
+            and the name has to stay true for all of them
         parent_kind: WHICH kind of parent `parent_id` names. Written together with it and never
             apart: the id alone is an untagged union, so a consumer that has to treat the kinds
             differently can only guess. None on a standalone run — and also on a run written
@@ -1148,8 +1148,7 @@ class RunInfo(BaseModel):
     # instead of making a consumer open each run to find out.
     start_time: str = ''
     # The run this one belongs to: a sweep for one of its combinations, a deployment for one of
-    # its sessions, and — once the daily cycle lands (#476) — the session a day record was cut
-    # from. None means it stands alone. `parent_kind` says WHICH of those the id is; read the
+    # its sessions. None means it stands alone. `parent_kind` says WHICH of those the id is; read the
     # two together, because the ids are indistinguishable by shape. None on a row indexed before
     # the discriminator existed, where the kind is genuinely unknown rather than absent.
     parent_id: Optional[str] = None
@@ -1255,13 +1254,17 @@ class RunSummaryCurrency(BaseModel):
     net_pnl: float          # ← PortfolioAggregateRow.net_profit
     profit_factor: float | None  # ← PortfolioAggregateRow (None = no losing trade)
     win_rate: float         # ← PortfolioAggregateRow.win_rate
-    account_max_drawdown: float     # ← PortfolioAggregateRow.account_max_drawdown
+    # ← PortfolioAggregateRow.account_max_drawdown. None only on a booking period sealed before
+    # the account's equity curve had its first valuation: nothing was measured, and a zero
+    # would say a decline was measured as none (#476).
+    account_max_drawdown: float | None
     # The peak it fell from and the share it was, from the SAME unit as the amount. The
     # percentage is not derivable from the other two — it was measured against the peak
     # standing at the time — and the ledger is the one record that has to carry it, because
     # a live row is cumulative over its deployment and a reader comparing rows needs both.
-    max_equity: float = 0.0
-    account_max_dd_pct: float = 0.0
+    # None on the same terms as the amount.
+    max_equity: float | None = 0.0
+    account_max_dd_pct: float | None = 0.0
     # ← PortfolioAggregateRow.account_max_drawdown_unit; '' on a booking period, which is one
     # unit's own row.
     account_max_drawdown_unit: str = ''
@@ -1325,6 +1328,10 @@ class BookingPeriodRow(BaseModel):
     reason: str
     currency: str
     trade_count: int
+    # How many ticks the period applied (#476). 0 is a trading day the run never heard from — a
+    # data gap the market calendar still counts — so a measure over the rows can leave it out.
+    # None on a period recorded before contract 40.
+    tick_count: int | None = None
     net_pnl: float
     total_fees: float
     # The costs split the way a trade row splits them, over the same trades `total_fees` is
@@ -1341,12 +1348,16 @@ class BookingPeriodRow(BaseModel):
     # What the account stood at when the period OPENED — the previous period's close, or a
     # unit's first observed value. None where it was not recorded.
     opening_equity: float | None = None
-    final_equity: float
+    # None where the account could not be valued at the seal — a spot holding before the first
+    # tick priced it (#476); a zero would be an equity nobody measured
+    final_equity: float | None = None
     # The period's OWN band and decline, not the cumulative ones: on this table the question is
     # what each period did, and the running figure would repeat the same number down the column.
-    min_equity: float
-    max_equity: float
-    max_drawdown: float
+    # None on a period that could value the account at no point (#476), and on a ledger row that
+    # did not record them.
+    min_equity: float | None = None
+    max_equity: float | None = None
+    max_drawdown: float | None = None
     # What the period CARRIES rather than what it did (contract 35): the account's decline since
     # its equity curve began — a backtest's scenario start; for an AutoTrader session the curve it
     # continues wherever its profile carries risk history over (`cold_start.enabled` and
@@ -1392,7 +1403,8 @@ class BookingUnitTotalRow(BaseModel):
     deepest_period_drawdown: float | None = None
     # The account's curve decline and the share it was, as the ledger records it — cumulative
     # from the unit's start, and for a session in a deployment from the deployment's (#497).
-    account_max_drawdown: float = 0.0
+    # None where none of the unit's periods measured one.
+    account_max_drawdown: float | None = None
     account_max_dd_pct: float | None = None
 
 
@@ -1436,7 +1448,8 @@ class BookingPeriodsReport(RunScopedReport):
     reconciles: bool | None = None
     # The deepest single-period decline and the band across all of them — the column's own
     # extremes, which is what a reader scanning the table is comparing against.
-    deepest_period_drawdown: float = 0.0
+    # None when no period could value the account at all
+    deepest_period_drawdown: float | None = None
     # The sum of the units' closing equities: a TOTAL over separate accounts, defined the same
     # way `run-summary` defines it. It used to be the last row's own figure, i.e. one scenario
     # of several. None when a unit's closing equity was not recorded.
@@ -1586,6 +1599,12 @@ class RunResultRow(BaseModel):
     # Where the run's orders went — `venue` is real money and nothing else (#362). None on a
     # fragment written before the column existed: not recorded.
     orders_to: OrdersTo | None = None
+    # What the run ran with (#547, on every row since #476): the run-config store ids of its
+    # rendered configuration and of its frozen broker configuration — comma-joined where a
+    # backtest traded under several. '' on a fragment written before the columns existed, and
+    # where the run froze none.
+    rendered_config_id: str = ''
+    broker_config_id: str = ''
     # When this row was written — within seconds of the run's end. '' on an older fragment,
     # which is what makes a gap measured from it fall back to start-to-start and SAY so.
     recorded_at_utc: str = ''
@@ -1619,6 +1638,8 @@ class RunResultRow(BaseModel):
     period_max_equity: float | None = None
     period_min_equity: float | None = None
     period_max_drawdown: float | None = None
+    # How many ticks the period applied (#476) — 0 a trading day the run never heard from
+    period_tick_count: int | None = None
     period_opening_equity: float | None = None
     period_commission_cost: float | None = None
     period_swap_cost: float | None = None
@@ -1639,7 +1660,9 @@ class RunResultRow(BaseModel):
     expectancy: float = 0.0
     profit_factor: float | None = None  # None = undefined (no losing trade)
     win_rate: float = 0.0
-    account_max_drawdown: float = 0.0
+    # None where no drawdown was measured — a session whose every sealed day came before its
+    # account's first valuation — never a zero, for the reason the block below gives
+    account_max_drawdown: float | None = None
     # None, never a zero. These arrive on a fragment only if the column existed when it was
     # written, and a fabricated 0.0 asserts a measurement nobody took — an equity of zero, a
     # drawdown of zero — where the truth is that the run predates the column. The same
@@ -1751,6 +1774,10 @@ class SweepDetailResponse(BaseModel):
     maximize: bool
     combinations: list[RunResultRow]
     count: int
+    # Combinations the ranking left out: they carry no value for the objective, which happens
+    # only for a figure some runs did not measure. Without it a shorter list would read as the
+    # whole sweep.
+    unranked: int = 0
 
 
 class DeploymentSessionRow(BaseModel):
@@ -1763,8 +1790,11 @@ class DeploymentSessionRow(BaseModel):
         started: Its start, parsed from the run timestamp
         net_pnl: Realised P&L of that session
         max_drawdown: The CUMULATIVE account drawdown as of that session — a live row carries
-            the running figure against the inherited peak, never that session's own
-        max_drawdown_pct: Its share of the peak standing at the time
+            the running figure against the inherited peak, never that session's own. None where
+            the session's rows carry none
+        max_drawdown_pct: Its share of the peak standing at the time — None where the session's
+            rows carry none: rows written before the column existed, or a session whose every
+            sealed day came before its account curve began
         bot: Which bot ran it — the AutoTrader profile's name, which the ledger stores in
             `scenario_set_name` for a live row. Carried so the OVERVIEW can show that two
             deployments belong to the same bot: `--new-deployment` mints a fresh identity and
@@ -1776,8 +1806,10 @@ class DeploymentSessionRow(BaseModel):
             column to ask, and it is what the carry-over state is filed under. Empty on a
             profile that declares none
         currency: The row's account currency
-        ended: When its ledger row was written, i.e. when it stopped — None on a row written
-            before that stamp existed
+        ended: When the row of its close was written, i.e. when it stopped — None while the
+            ledger holds no such row: the session is still running or died before its close,
+            and its sealed trading days are rows already (#476); also None on a row written
+            before the stamp existed
         ran_hours: How long it ran, None when its end is unknown. Derived from the two
             stamps rather than stored: the row is written as the session closes, so this is
             the session's length plus the seconds its reports took
@@ -1797,8 +1829,8 @@ class DeploymentSessionRow(BaseModel):
     run_id: str
     started: Optional[datetime]
     net_pnl: float
-    max_drawdown: float
-    max_drawdown_pct: float
+    max_drawdown: Optional[float]
+    max_drawdown_pct: Optional[float]
     currency: str
     bot: str = ''
     bot_id: str = ''
@@ -1860,8 +1892,10 @@ class DeploymentSummary(BaseModel):
         last_started: When its most recent session began
         net_pnl: Realised P&L summed over its sessions — this one DOES add up
         max_drawdown: The deepest decline, which is the LARGEST of the rows and never a sum:
-            a live row carries the running figure against the inherited peak
-        max_drawdown_pct: That decline as a share of the peak standing when it happened
+            a live row carries the running figure against the inherited peak. None where no
+            session carries one
+        max_drawdown_pct: That decline as a share of the peak standing when it happened — None
+            where the deepest session carries no share
         bot: The AutoTrader profile that ran it
         bot_id: Its DECLARED identity — see `DeploymentSessionRow.bot_id`. Two deployments
             sharing one `bot_id` are one bot restarted with `--new-deployment`
@@ -1877,8 +1911,8 @@ class DeploymentSummary(BaseModel):
     first_started: Optional[datetime]
     last_started: Optional[datetime]
     net_pnl: float
-    max_drawdown: float
-    max_drawdown_pct: float
+    max_drawdown: Optional[float]
+    max_drawdown_pct: Optional[float]
     currency: str
     bot: str = ''
     bot_id: str = ''
@@ -1905,9 +1939,11 @@ class DeploymentDetailResponse(BaseModel):
     One deployment's sessions, oldest first — a life reads forwards.
 
     `unfinished` is the count of this deployment's runs that never reached their close. The
-    sessions are built from the LEDGER, whose row is written last (§44), so those runs are
-    absent from the list by construction — and a bare session count would then be a number the
-    reader has no reason to doubt.
+    sessions are built from the LEDGER, which holds a session's sealed trading days while it
+    runs and the row of its close only at the end (#476): such a run is in the list without an
+    `ended` when it sealed a day, and absent from it when it died before its first seal. So the
+    two overlap and are never added — and without the count a short list would be a number
+    the reader has no reason to doubt.
 
     There is deliberately NO reconciliation line here, and there cannot be one: over many runs
     no single run summary exists to sum against, so the second, independent derivation that

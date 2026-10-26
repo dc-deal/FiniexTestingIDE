@@ -12,6 +12,7 @@ from typing import Dict, FrozenSet, Optional, Tuple
 
 from python.framework.constants.run_layout_constants import (
     ACCEPTANCE_CAPTURE_SCHEMA_VERSION,
+    ALGO_STATE_RESTORED_FILE,
     AGGREGATED_PORTFOLIO_ARTIFACT_FILE,
     BACKTEST_GLOBAL_LOG_NAME,
     BACKTEST_SYSTEM_INFO_LOG_NAME,
@@ -20,6 +21,8 @@ from python.framework.constants.run_layout_constants import (
     BROKER_ARTIFACT_FILE,
     COLD_START_ARTIFACT_FILE,
     DIAGNOSTICS_FILE_PATTERN,
+    DIAGNOSTICS_ROWS_FILE_PATTERN,
+    DIAGNOSTICS_ROWS_SCHEMA_VERSION,
     DIAGNOSTICS_SUBDIR,
     EVENTS_SUBDIR,
     EXECUTION_STATS_ARTIFACT_FILE,
@@ -66,6 +69,8 @@ from python.framework.constants.run_layout_constants import (
     TICK_STREAM_EVENTS_SCHEMA_VERSION,
     TRADE_HISTORY_ARTIFACT_FILE,
     TRADE_HISTORY_CSV,
+    TRADES_FILE,
+    TRADES_SCHEMA_VERSION,
     VENUE_ACCOUNT_ARTIFACT_FILE,
     WARMUP_HISTORY_FILE,
     WARNINGS_ERRORS_ARTIFACT_FILE,
@@ -370,6 +375,22 @@ RUN_ENTRY_MEMBERS: Tuple[EntryMember, ...] = (
         'docs/autotrader/autotrader_architecture.md#what-a-session-records',
         schema_version=TICK_STREAM_EVENTS_SCHEMA_VERSION),
     EntryMember(
+        RunEntryMemberId.DIAGNOSTICS_ROWS,
+        f'{DIAGNOSTICS_SUBDIR}/{DIAGNOSTICS_ROWS_FILE_PATTERN}', EntryMemberShape.STREAM,
+        'each row a diagnostics sink records, as the logic records it',
+        (EntryMemberWrite(RUN_TYPE_AUTOTRADER, EntryMemberMoment.AS_IT_RUNS,
+                          'the logic declared a diagnostics sink'),),
+        EntryMemberWriteMode.APPEND_LINES, _DOC_DIAGNOSTICS,
+        schema_version=DIAGNOSTICS_ROWS_SCHEMA_VERSION),
+    EntryMember(
+        RunEntryMemberId.TRADES, f'{IO_SUBDIR}/{TRADES_FILE}', EntryMemberShape.STREAM,
+        'every trade the session closed, as it closed',
+        (EntryMemberWrite(RUN_TYPE_AUTOTRADER, EntryMemberMoment.RUN_START,
+                          'the session reached its tick loop'),),
+        EntryMemberWriteMode.APPEND_LINES,
+        'docs/autotrader/autotrader_architecture.md#what-a-session-records',
+        schema_version=TRADES_SCHEMA_VERSION),
+    EntryMember(
         RunEntryMemberId.WARMUP_HISTORY, f'{IO_SUBDIR}/{WARMUP_HISTORY_FILE}',
         EntryMemberShape.SNAPSHOT,
         'the warmup bars the session started from, written again when the first tick closes '
@@ -378,6 +399,14 @@ RUN_ENTRY_MEMBERS: Tuple[EntryMember, ...] = (
                           'a worker requires bars'),),
         EntryMemberWriteMode.ATOMIC_REPLACE,
         'docs/architecture/warmup_history.md#what-a-session-records'),
+    EntryMember(
+        RunEntryMemberId.ALGO_STATE_RESTORED, f'{IO_SUBDIR}/{ALGO_STATE_RESTORED_FILE}',
+        EntryMemberShape.SNAPSHOT,
+        'the algo state the session found at its start, taken or refused, with its age',
+        (EntryMemberWrite(RUN_TYPE_AUTOTRADER, EntryMemberMoment.RUN_START,
+                          'the logic keeps its state and a saved state was found'),),
+        EntryMemberWriteMode.ATOMIC_REPLACE,
+        'docs/user_guides/algo_state_persistence_guide.md#lifecycle'),
 )
 
 RUN_ENTRY_MEMBERS_BY_ID: Dict[RunEntryMemberId, EntryMember] = {

@@ -207,14 +207,19 @@ def execute_tick_loop(
         # No floor is carried in: a backtest has no predecessor to inherit a period count from,
         # so every scenario counts from 1. Resolved inside the try, so a market that declares no
         # anchor fails THIS scenario rather than the batch (§33).
+        market_config = MarketConfigManager()
         booking = BookingPeriodRecorder(
             unit_name=config.name,
             # None when the scenario declares no broker: it has no market, so it has no
             # trading day, and it books nothing. A real scenario always declares one — this is
             # the internal harness that builds a config without it.
-            anchor=(MarketConfigManager().get_trading_day_anchor(config.broker_type.value)
+            anchor=(market_config.get_trading_day_anchor(config.broker_type.value)
                     if config.broker_type else None),
             log=scenario_logger.info,
+            # Which days are trading days, asked the way an AutoTrader session asks it — so a
+            # backtest and a session over the same days book the same rows (#476)
+            weekend_closure=(market_config.has_weekend_closure(config.broker_type.value)
+                             if config.broker_type else False),
         )
 
         def seal_source():
@@ -269,13 +274,12 @@ def execute_tick_loop(
             if (decision_logic.wants_heartbeat()
                     and config.heartbeat_interval_ms > 0
                     and prev_interval_msc > 0 and current_msc > 0):
-                # #537: the boundary is checked on the heartbeat too, and that is the half
-                # that makes it reliable — the ghost passes are what advance the canonical
-                # clock across a gap, so a quiet stretch over a rollover would otherwise book
-                # one period spanning two trading days. The check therefore lives INSIDE the
-                # ghost loop: called here it would run on the clock the PREVIOUS tick already
-                # checked, which is no check at all, and a fill resolved in a ghost pass after
-                # the boundary would be booked into the day before it (#539 audit).
+                # #537: the boundary is checked on the heartbeat too — the ghost passes resolve
+                # fills between two ticks, and one resolved after the boundary belongs to the
+                # day it opened. The check therefore lives INSIDE the ghost loop: called here it
+                # would run on the clock the PREVIOUS tick already checked, which is no check at
+                # all, and that fill would be booked into the day before it (#539 audit). The
+                # boundary's stamp does not depend on it any more (#476).
                 if _run_sim_heartbeats(
                         prev_interval_msc, current_msc, config, trade_simulator,
                         worker_coordinator, decision_logic, decision_event_dispatcher,
@@ -285,6 +289,16 @@ def execute_tick_loop(
                     break
 
             prev_interval_msc = current_msc
+
+            # #476: the trading day ends BEFORE the tick that crosses its boundary is applied —
+            # the seal reads the account as the previous tick left it, stamps the boundary, and
+            # this tick's fills, trades and valuation open the new day. The canonical clock moves
+            # to the tick's instant first (on_tick keeps it there) and the boundary is checked on
+            # it — the clock of the event about to be applied. Exact without heartbeats too: a
+            # quiet stretch across the boundary is sealed at the boundary, as a live session's
+            # heartbeat seals it. Measured 2026-10-25: 95 ns per tick for the extra set.
+            trade_simulator.set_current_time(tick.timestamp)
+            booking.check_boundary(trade_simulator.get_current_time(), seal_source)
 
             # === 1. Trade Executor (BROKER PATH — all ticks) ===
             # Broker sees every tick regardless of algo processing budget.
@@ -333,11 +347,10 @@ def execute_tick_loop(
             if profiling_enabled: t14 = time.perf_counter()
             # The booking period's VALUATION half rides this sample rather than opening a
             # second evaluation: on MARGIN the note above measures it at 6.7 % of tick time,
-            # so asking twice would be the most expensive line in this loop (#537).
+            # so asking twice would be the most expensive line in this loop (#537). The tick
+            # counts even when the holdings cannot be valued yet: the market was heard.
             _equity = portfolio.sample_equity()
-            if _equity is not None:
-                booking.observe_equity(_equity)
-            booking.check_boundary(trade_simulator.get_current_time(), seal_source)
+            booking.observe_tick(_equity)
             if profiling_enabled:
                 profile_times['equity_sample'] += (time.perf_counter() - t14) * 1000
                 profile_counts['equity_sample'] += 1

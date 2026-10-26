@@ -179,6 +179,7 @@ def test_the_result_carries_the_refusal(monkeypatch):
     session._study_recorder = None
     session._tick_source = None
     session._tick_loop = None
+    session._algo_state_found = False
 
     def construct(**fields):
         raise _Constructed(fields)

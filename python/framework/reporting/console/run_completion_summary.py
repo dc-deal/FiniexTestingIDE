@@ -12,7 +12,7 @@ from python.framework.types.api.report_types import RunInfo, RunResultRow
 # A run whose group is not one of these still prints — the label just falls back to the raw
 # group name, because an unknown group is a reason to show MORE rather than to hide one.
 _GROUP_LABEL = {
-    'autotrader': 'AutoTrader session — ran, and left no record of what it did',
+    'autotrader': 'AutoTrader session — ran, and left no record of its close',
     'simulation': 'backtest — a batch that did not finish',
 }
 
@@ -33,9 +33,11 @@ def render_unfinished_runs(grouped: Dict[str, List[RunInfo]], indent: str = '  '
         print(f'{indent}✅ Every registered run reached its close — no missing ledger row.')
         return
 
-    print(f'{indent}⚠️  {total} run(s) started and never completed — no ledger row was written.')
-    print(f'{indent}   A run registers at START; its ledger row is the LAST step at close. So')
-    print(f'{indent}   these ended abnormally — or one of them is running right now.')
+    print(f'{indent}⚠️  {total} run(s) started and never completed — the ledger holds no row of '
+          f'their close.')
+    print(f'{indent}   A run registers at START; the row of its close is the LAST step. A session')
+    print(f'{indent}   books each trading day as it closes, so these may have rows of their sealed')
+    print(f'{indent}   days. They ended abnormally — or one of them is running right now.')
     for group in sorted(grouped):
         print(f'{indent}   {_GROUP_LABEL.get(group, group)}')
         for run in grouped[group]:

@@ -37,7 +37,9 @@ So what this guide says about a row holds on every one of these surfaces.
 **Every row is one booking period of one account.** An account is one scenario of a backtest, each
 started from its own capital, or the one session of an AutoTrader run. A booking period ends at
 the market's trading-day boundary — 17:00 New York for forex, midnight UTC for crypto — or when
-the run ends.
+the run ends. Every trading day of the market has its row, a day without a tick included; a market
+that closes has none for its closed days
+([Where a trading day ends](../architecture/accounting_periods.md#where-a-trading-day-ends)).
 
 A run therefore has several rows for exactly two reasons: it has several accounts, or an account
 ran across a trading-day boundary.
@@ -52,9 +54,11 @@ a backtest of two scenarios
 The currency is never a reason for a row of its own. An account trades in one account currency,
 so every period of it is in that currency.
 
-**All rows of a run are written together, when the run ends.** A run that is killed or crashes
-before its end has sealed periods but no rows; its run header still shows that it started. What
-that means for a bot is in
+**A backtest writes its rows when it ends; an AutoTrader session writes them as it goes.** A session
+rewrites its rows each time a trading day seals, once for all of them when one instant seals
+several. Those writes leave empty what only its end knows — its status, its outcome and its
+counts — and its last write fills them. A session killed on day 29 keeps the 28 days it sealed;
+the row of its close is what is missing. What that means for a bot is in
 [A session that never reached its close](deployment_ledger_guide.md#a-session-that-never-reached-its-close).
 
 ## What makes a row unique, and where the currency comes in
@@ -146,6 +150,13 @@ year-end balance sheet is the last one, not a sum of twelve.
 A few columns cannot be folded at all — a winning streak can cross a boundary, and per-period
 order counts are not recorded. They are null on a folded line; see
 [What the fold cannot answer](../consumer/sweeps.md#what-the-fold-cannot-answer).
+
+**An empty cell says which kind of empty it is.** A figure can be null for two reasons, declared
+per column beside the rules above: *undefined* — a profit factor without a losing trade, a mean
+over no trades, a reading of one account over several — or *unmeasured* — a row written before its
+column existed, a day sealed before the account's first valuation. A sweep's ranking refuses an
+undefined figure as its objective, and ranks an unmeasured one over the combinations that carry it,
+saying how many it left out.
 
 ## One account over time, several accounts side by side
 

@@ -533,6 +533,19 @@ class TestSweeps:
             data = client.get('/api/v1/sweeps/sweep_1').json()
         assert all(c['run_id'] for c in data['combinations'])
 
+    def test_a_combination_without_a_value_for_the_objective_is_counted_not_ranked(self, client):
+        """A shorter ranking has to say so, or it reads as the whole sweep (#476)."""
+        rows = [row.model_copy(update={'sweep_objective': 'account_max_drawdown',
+                                       'sweep_maximize': False})
+                for row in self._rows()]
+        rows[0] = rows[0].model_copy(update={'account_max_drawdown': 4.0})
+        ledger = MagicMock()
+        ledger.read_rows.return_value = rows
+        with patch('python.api.endpoints.sweeps_router._ledger', return_value=ledger):
+            data = client.get('/api/v1/sweeps/sweep_1').json()
+        assert [c['run_id'] for c in data['combinations']] == ['r2']
+        assert (data['count'], data['unranked']) == (1, 1)
+
     def test_unknown_sweep_is_a_404(self, client):
         ledger = MagicMock()
         ledger.read_rows.return_value = []

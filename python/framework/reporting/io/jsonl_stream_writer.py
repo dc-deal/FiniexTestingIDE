@@ -3,8 +3,7 @@ FiniexTestingIDE - JSON-Lines Stream Writer
 
 One JSON object per line, flushed after every line, so a file being written is readable while it
 grows and a process that dies loses at most the line it was writing. Shared by the run's streams
-that are written as they happen — the field study's record and the order-event stream (#362) —
-and by the day records of #476 when they come.
+that are written as they happen, such as the field study's record and the order-event stream (#362).
 """
 
 import json

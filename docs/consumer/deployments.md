@@ -45,7 +45,7 @@ The list is newest first. The detail route is oldest first — a life reads forw
 decline measured against the peak it inherited, so adding them counts one decline once per session
 that was still inside it. The row reports the deepest session's figure, and `max_drawdown_pct` is
 that same session's share of the peak standing at the time — not a percentage of anything else on
-this row.
+this row. Only the sessions that measured a drawdown take part; where none did, both are null.
 
 `longest_gap_hours` is the longest stretch the bot was not running, over the gaps that could be
 measured; null when none could.
@@ -80,7 +80,7 @@ run list, as `orders_to`; see [run kinds](/api/v1/docs/run-kinds).
 | `gap_hours` | hours the bot was **not** running before it |
 | `gap_between_starts` | whether that gap could only be measured the coarse way |
 | `net_pnl` | realised P&L of that session |
-| `max_drawdown` / `max_drawdown_pct` | the cumulative account decline as of that session |
+| `max_drawdown` / `max_drawdown_pct` | the cumulative account decline as of that session; both are null where the session's rows carry none |
 | `orders_to` | where its orders went — `venue` is real money, `simulated` a rehearsal; null when not recorded |
 | `strategy_changed` / `operation_changed` / `orders_to_changed` | what differed from the session before |
 | `bot` / `bot_id` | which bot ran it |
@@ -103,8 +103,11 @@ A fixture captured before this changed holds those figures measured across curre
 
 ## The time fields, and the one that overstates
 
-`ended` is when the session's ledger row was written, which is when it stopped. It is null on a row
-written before that stamp existed.
+`ended` is when the row of the session's close was written, which is when it stopped. A session
+books each trading day as it closes, so a session still running — or one that died before its end —
+already has rows; until the row of its close exists, `ended` and `ran_hours` are null. Whether the
+session is still running or stopped is what the run list's `recording` says. `ended` is also null on
+a row written before the stamp existed.
 
 `ran_hours` is derived from the two stamps rather than stored, so it is the session's length **plus
 the seconds its reports took**. Null when either end is unknown — an unmeasurable duration reports
@@ -114,10 +117,11 @@ as unmeasured rather than as a number nobody can check.
 session of a currency series, which has no predecessor.
 
 `gap_between_starts: true` is the warning on that figure. It means the gap could only be measured
-from one **start** to the next, because the predecessor's row predates the close stamp — so it
-contains the predecessor's whole runtime and **overstates** the downtime. A bot that ran 06:00 to
-18:00 and came back at 19:00 is a one-hour gap measured properly, and a thirteen-hour one measured
-this way. It is marked rather than quietly shown as the same measure.
+from one **start** to the next, because the predecessor's row predates the close stamp or the
+predecessor never wrote its close — so it contains the predecessor's whole runtime and
+**overstates** the downtime. A bot that ran 06:00 to 18:00 and came back at 19:00 is a one-hour gap
+measured properly, and a thirteen-hour one measured this way. It is marked rather than quietly shown
+as the same measure.
 
 `started` is null where the stored timestamp could not be read, and `ran_hours` and `gap_hours`
 follow it. See [nulls](/api/v1/docs/nulls).
@@ -164,12 +168,13 @@ same profile, not the same run.
 It renders no verdict. Whether the halves of a changed history may be compared is a judgement a
 person makes with what it reports.
 
-## `unfinished`: the sessions that are not in the list
+## `unfinished`: the sessions that never reached their close
 
-`unfinished` counts this deployment's runs that never reached their close. They are absent from
-`sessions` by construction: the row behind a session is written as the session closes, so a run
-killed before that leaves a start record and no session at all. Without the count, a short list
-would be a number you had no reason to doubt.
+`unfinished` counts this deployment's runs that never reached their close. A session books each
+trading day as it closes and the row of its own close last, so a run killed before that stands
+in `sessions` with `ended` null when it sealed at least one day, and is absent from `sessions`
+when it died before its first seal. The two counts therefore overlap and are never added.
+Without this one, a short list would be a number you had no reason to doubt.
 
 A session running **right now** looks exactly the same — a start record and no close. Render it as
 *not completed*, never as *aborted*; whoever reads it knows whether a bot is up.

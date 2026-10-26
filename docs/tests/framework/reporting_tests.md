@@ -179,13 +179,20 @@ BOTH event sources. The suite has two halves because that fact has two consequen
 
 The BEHAVIOUR half pins that a day flip seals exactly once and at the market's own boundary: a
 forex day flips at 17:00 New York (21:00 UTC in summer, 22:00 in winter) and NOT at midnight, a feed
-that goes quiet for two days still seals on the tick that returns, and a unit with no anchor books
-nothing at all.
+that goes quiet for two days books both days on the tick that returns, and a unit with no anchor
+books nothing at all. Since #476 it also pins where a day ends and which days have a period:
+`TestTheSealIsStampedWithTheBoundary` — a late check still closes the day at midnight, and the seal
+reads the account before the crossing event, whose move opens the new day's band;
+`TestEveryTradingDayGetsItsPeriod` — a day the run never heard from has its row (`tick_count` 0,
+the valuation it was left at), a forex weekend and a holiday book no row and leave no hole (the next
+period opens at the Friday close), a backtest silent over the weekend books the same rows as a
+session whose heartbeat crossed it, a forex session started on Saturday books Sunday's session, and
+a market that never closes books its weekend.
 
-The COST half pins that an ordinary tick does not convert a timezone. It counts the calls to
-`trading_day_of` by replacing it in the recorder's namespace: twenty-four ticks across one day
-must produce exactly ONE conversion, and forty-eight hours of ticks exactly two — one to open a
-period and one to seal it.
+The COST half pins that an ordinary tick does not convert a timezone. It counts the calls to every
+conversion the recorder makes — `trading_day_of`, `boundary_opening`, `trade_date_of` — by
+replacing them in the recorder's namespace: after the opening tick, a day of ticks adds none, and
+after a seal the rest of the next day adds none.
 
 That half is not premature optimisation. Measured 2026-09-22, `trading_day_of` costs 1.52 µs at
 UTC and 1.87 µs at America/New_York, so asking it per tick spends 2.3-2.8 s of a 1.5-million-tick
@@ -196,9 +203,14 @@ mutation-checked, the two cost tests go red against the uncached recorder (24 co
 of 1) while all five behaviour tests stay green.
 
 `TestWhatAPeriodOpenedWith` pins the opening equity: the previous period's close, or a unit's
-first observed value — and the SAME answer whether the caller observes before its boundary check,
-as both pipelines do on a tick, or checks without observing, as a heartbeat seal does. A first
-period nothing was observed in opens with nothing, never with a zero.
+first observed value — and the SAME answer whether the caller observes before its boundary check
+or checks first, as both pipelines do on a tick since #476. A first period nothing was observed in
+opens with nothing, never with a zero. It also pins the band: the next period's band starts at the
+value the seal read, the closing value lies inside its own band even when a heartbeat fill moved
+the account without a tick, an unread seal value opens the next period with nothing, and a period
+that valued nothing at all has no band. `TestTheTickCount` pins `tick_count`: every tick counts,
+valued or not, and the count starts again with each period. `TestEverySealIsHandedOn` also pins
+that a listener reads the day that has begun — what the daily loss limit rolls on.
 
 ## `test_booking_period_builder.py` — one booking period, from the records inside it
 
@@ -222,6 +234,12 @@ low of 90 — so `peak − drawdown` answers 110, a value that never occurred.
 period CLOSED add up to its `total_fees`, the measured spread stands apart, and a trade closed the
 next day takes its costs with it.
 
+`TestASessionsEndIsInsideItsLastPeriod` pins the one inclusive end (#476): a close on a session's
+last instant belongs to its last period, while the same trade against a day's boundary stays with
+the day that opens there. `TestAnUnmeasuredValueStaysUnmeasured` pins that an unread equity and a
+curve without its first valuation stay None, and `TestTheLogLine` that the seal's line names its
+tick count and says an unread equity rather than printing 0.00.
+
 ## `test_booking_periods_report.py` — the table, and the line that makes it trustworthy
 
 The reconciliation is the point. A column of period summaries is believed because it agrees with
@@ -243,6 +261,10 @@ taking the last row's.
 `TestWhatTheTableShows::test_a_period_carries_the_running_decline_and_what_was_open` pins the four
 fields a period CARRIES beside what it did (contract 35): the account's running decline and its
 share, and what was still open at the seal.
+
+`TestAPeriodThatValuedNothing` pins a period sealed before anything could be valued (#476): its row
+carries null equity, band and decline, the report's deepest decline is null, and the table prints a
+dash rather than 0.00 — or failing on the missing number, which the renderer did before.
 
 ## `test_signal_report.py` — two planes, and what each may claim
 
@@ -321,6 +343,8 @@ compared byte for byte across the move.
 | `test_an_unreadable_timestamp_yields_no_gap_rather_than_a_wrong_one` | an unmeasurable duration reported as unmeasured costs a blank; reported as a figure it costs an investigation |
 | `test_the_rows_carry_the_running_figure` | the drawdown column is CUMULATIVE — `max()` is the deployment's reduction and a sum double-counts |
 | `TestWhereTheOrdersWent` | each session says whether its orders went to the venue, and a switch from a rehearsal to real money is marked; a mix alone raises the advisory, with one strategy and one operation; the overview lists both values and marks the deployment changed; a row recorded before the field says nothing and changes nothing; the console prints the mix above the table, the separator and the list column |
+| `TestASessionEndsWithTheRowOfItsClose` | a session books its days while it runs (#476): with only sealed days it has no `ended` and no length, the row of its close ends it, and the gap after a session that never closed is measured between the starts and marked; the heading names the sessions the ledger holds and the never-completed ones without adding the two |
+| `TestADrawdownShareNobodyMeasuredStaysUnknown` · `TestADrawdownNobodyMeasuredStaysUnknown` | a session whose rows carry no drawdown — every day sealed before its account's first valuation — reads as null, never as a decline of zero: its share and its decline are null on the session and the console prints dashes; a deployment's deepest decline is taken over the sessions that measured one, and is null when none did (#476) |
 
 No threshold anywhere decides what counts as too long a gap: that is a judgement about the
 market and the operator's night, not about the data.

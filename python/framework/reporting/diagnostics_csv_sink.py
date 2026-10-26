@@ -10,12 +10,16 @@ Distinct from the trade-domain event_stream_csv_writer (fixed schema, post-loop
 reconstruction). Rows here accumulate in memory during the run (decision moments
 are low-frequency, not per-tick) and are flushed once at run end, so nothing
 touches the hot tick path. A no-op where the run has no writer.
+
+An AutoTrader session also streams every row as it is appended (#476), into a JSONL file beside
+the table: the table is written at the end, and a session killed before it would keep no row.
 """
 
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from python.framework.exceptions.data_home_errors import DirectoryCreationDeniedError
+from python.framework.reporting.io.run_stream_appender import RunStreamAppender
 from python.framework.store.entry_members.run_entry_writer import RunEntryWriter
 from python.framework.types.store_member_types import RunEntryMemberId
 
@@ -34,6 +38,8 @@ class DiagnosticsCsvSink:
         self._name = name
         self._columns = list(columns)
         self._rows: List[Dict[str, Any]] = []
+        # Where each row also goes as it is appended — a session's stream; None writes nothing
+        self._stream: Optional[RunStreamAppender] = None
 
     def get_name(self) -> str:
         """
@@ -55,6 +61,41 @@ class DiagnosticsCsvSink:
             row: Column-name → value mapping for this row
         """
         self._rows.append(row)
+        if self._stream is not None:
+            self._stream.write(self._declared(row))
+
+    def get_columns(self) -> List[str]:
+        """
+        The declared columns, in order.
+
+        Returns:
+            The column names
+        """
+        return list(self._columns)
+
+    def attach_stream(self, stream: RunStreamAppender) -> None:
+        """
+        Write every row into a stream as well — the rows so far at once, each later one as it is
+        appended (#476).
+
+        Args:
+            stream: The opened stream
+        """
+        self._stream = stream
+        for row in self._rows:
+            stream.write(self._declared(row))
+
+    def _declared(self, row: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        A row as a stream line holds it: the declared columns, in order, a missing one empty.
+
+        Args:
+            row: The appended row
+
+        Returns:
+            Column → value for the declared columns, every value one a JSON line can hold
+        """
+        return {column: _line_value(row.get(column)) for column in self._columns}
 
     def get_row_count(self) -> int:
         """
@@ -103,6 +144,36 @@ class DiagnosticsCsvSink:
         except Exception as e:
             print(f'Warning: Failed to write diagnostics CSV {self._name}: {e}')
             return None
+
+
+def _line_value(value: Any) -> Any:
+    """
+    One cell as a stream line holds it: JSON's own types as they are, anything else as the table
+    writes it.
+
+    The table turns every cell into text, so a strategy may append a datetime, a numpy number or an
+    enum and the backtest's table takes it. The stream keeps numbers and flags typed and writes
+    everything else as the table would — a row the table takes must never end a session through
+    its stream (#476).
+
+    Args:
+        value: The appended cell
+
+    Returns:
+        None, a bool, an int, a float, a str — or the cell's text
+    """
+    if value is None or isinstance(value, (bool, int, float, str)):
+        return value
+    # A numpy scalar holds a Python number or flag; an array of more than one value has none
+    item = getattr(value, 'item', None)
+    if callable(item):
+        try:
+            held = item()
+        except (TypeError, ValueError):
+            held = None
+        if isinstance(held, (bool, int, float, str)):
+            return held
+    return str(value)
 
 
 def flush_decision_diagnostics(

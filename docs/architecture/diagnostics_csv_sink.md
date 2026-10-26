@@ -43,7 +43,11 @@ separate from the framework's trade-event CSVs, and the run dir kept tidy when m
 produce many files:
 
 - **AutoTrader** (`run_record/autotrader_report_coordinator.py`): flushed at session end →
-  `diagnostics/<name>.csv`.
+  `diagnostics/<name>.csv`. A session also streams every row as the logic appends it, into
+  `diagnostics/<name>.jsonl` — a header line naming the sink and its columns, then one line per row
+  with the declared columns (#476). The table is written at the end, and a session killed before
+  it would keep no row; the stream keeps every one. A sink declared after the session opened its
+  streams gets its own when it is declared, its rows so far written at once.
 - **Simulation** (`process/process_main.py`): flushed in the scenario subprocess after the
   tick loop → `diagnostics/<name>_<scenario>.csv`. The scenario suffix matches
   `events_<scenario>.csv`, the join-partner — join on scenario + `order_id`.
@@ -56,7 +60,8 @@ run dir
 ├── events.csv                         ← framework trade record (AutoTrader)
 ├── events/  events_<scenario>.csv      ← framework trade record (simulation, per scenario)
 └── diagnostics/                        ← strategy-owned diagnostics (this sink)
-    ├── <name>.csv                       (AutoTrader)
+    ├── <name>.csv                       (AutoTrader, at the end)
+    ├── <name>.jsonl                     (AutoTrader, as the rows are appended)
     └── <name>_<scenario>.csv            (simulation, per scenario)
 ```
 

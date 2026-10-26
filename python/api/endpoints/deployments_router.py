@@ -92,11 +92,12 @@ def get_deployment(deployment_id: str) -> DeploymentDetailResponse:
     histories = build_deployment_histories(rows)
     sessions = histories.get(deployment_id, [])
 
-    # The sessions come from the LEDGER, whose row is written last, so a run killed before its
-    # close is absent from them by construction. The run index registered it at start, so the
-    # count is recoverable — and a session count with no such note is a number the reader has
-    # no reason to doubt. DEPLOYMENT explicitly: a sweep id has the same shape, so the kind is
-    # what makes the filter exact (#386).
+    # The sessions come from the LEDGER, which holds the row of a session's close only at the
+    # end: a run killed before it is in the list without an end when it sealed a day, and absent
+    # when it died before its first seal. The run index registered it at start, so the count is
+    # recoverable — and a session count with no such note is a number the reader has no reason
+    # to doubt. DEPLOYMENT explicitly: a sweep id has the same shape, so the kind is what makes
+    # the filter exact (#386).
     file_logging = AppConfigManager().get_file_logging_config_object()
     runs = RunIndex(file_logging.run_index, file_logging.run_logs).list_runs()
     missing = unfinished_by_group(

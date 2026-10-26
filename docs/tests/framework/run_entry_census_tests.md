@@ -60,9 +60,11 @@ takes about 18 s (measured 2026-10-23).
 
 The exceptions are the members no census run can produce: the acceptance studies' captures, the
 cold-start section (written only when a boot inherits a position or a resting order), the block
-splitting section (a profile run only) and the tick stream record (a venue's ticks only). The
-suites that produce the two captures in a real run directory hold it to the declaration too —
+splitting section (a profile run only), the tick stream record (a venue's ticks only) and the
+restored algo state (a logic that keeps its state and finds a saved one, #476). The suites that
+produce the two captures in a real run directory hold it to the declaration too —
 `test_field_study_capture.py` and `test_security_study_stages.py`, through
-`tests/shared/entry_census_helpers.py`. For the other three only the builder or the recorder is
-tested, and no test writes the file where a run writes it; the cold-start section waits for a
-session that keeps its own book across a restart (#304).
+`tests/shared/entry_census_helpers.py` — and so does `test_restored_state_record.py` for the
+restored state. For the other three only the builder or the recorder is tested, and no test writes
+the file where a run writes it; the cold-start section waits for a session that keeps its own book
+across a restart (#304).

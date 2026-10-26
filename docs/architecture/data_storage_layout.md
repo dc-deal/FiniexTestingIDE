@@ -149,7 +149,8 @@ per trading day of ITS window. A run whose scenarios are shorter than a day writ
 which is the shape the ledger had before — the grain widened, it did not change meaning.
 
 **No aggregate row is written beside the periods.** The run's total is derivable from them —
-`COLUMN_REDUCTION` beside `LEDGER_COLUMNS` states how every column combines — and a derivable
+`COLUMN_REDUCTION` beside `LEDGER_COLUMNS` states how every column combines, and
+`COLUMN_NULL_MEANING` what an empty cell of a nullable figure means — and a derivable
 copy kept next to its source is the pair that drifts. Keeping both would also be wrong in
 a way no reader could see: the deployment history SUMS rows and would count every month twice,
 the sweep ranking SORTS them and would see one candidate four times. One reduction has a limit

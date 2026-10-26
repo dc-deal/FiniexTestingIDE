@@ -603,7 +603,7 @@ class TestTheLedgerReadsItsProvenanceFromTheHeader:
                            data_broker_type='kraken_spot', start_date=_START,
                            strategy_config=other),
         ]
-        batch = SimpleNamespace(single_scenario_list=scenarios)
+        batch = SimpleNamespace(single_scenario_list=scenarios, broker_scenario_map={})
         summary_logger = _RecordingLogger()
         scenario_set = SimpleNamespace(
             logger=SimpleNamespace(get_log_dir=lambda: tmp_path),
@@ -630,7 +630,8 @@ class TestTheLedgerReadsItsProvenanceFromTheHeader:
             printed_summary_logger=summary_logger,
             run_timestamp=_START, scenario_set_name='my_set')
 
-        p = build_run_provenance(SimpleNamespace(single_scenario_list=scenarios), scenario_set,
+        p = build_run_provenance(SimpleNamespace(single_scenario_list=scenarios,
+                                                 broker_scenario_map={}), scenario_set,
                                  run_id)
 
         assert p.git_dirty is True and p.worker_versions == {}

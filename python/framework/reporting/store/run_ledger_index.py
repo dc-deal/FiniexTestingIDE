@@ -135,7 +135,15 @@ class RunLedgerIndex(AbstractStoreIndex):
     # of its sessions traded real money, and a deployment that mixes the two is reported rather
     # than summed as one series. Appended, no existing value changes; an older fragment answers
     # None — not recorded.
-    LOGIC_VERSION: int = 18
+    # 18 → 19 (contract 40, #476): a session books its trading days while it runs — a fragment
+    # is rewritten whole at each seal, its rows leaving the run-end columns (`status`, `error`,
+    # the outcome and its counts, `signal_fresh_ratio`, `tick_timespan_seconds`) empty until the
+    # session's last write fills them. A day ends at its boundary instant, the move of the tick
+    # that crosses it belonging to the new day, and every trading day of the market calendar
+    # gets its row. `rendered_config_id`, `broker_config_id` and `period_tick_count` appended —
+    # what the run ran with, and how many ticks a period applied (zero: a trading day the run
+    # never heard from). An older fragment answers '' or None.
+    LOGIC_VERSION: int = 19
 
     def __init__(self, ledger_dir: Path, columns: List[str]):
         super().__init__(Path(ledger_dir) / LEDGER_INDEX_FILE)

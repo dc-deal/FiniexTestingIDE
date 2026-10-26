@@ -280,7 +280,9 @@ class AutotraderReportCoordinator:
         provenance = build_run_provenance_from_session(
             self._config, self._run_id, self._run_timestamp, warnings_errors_report,
             deployment_id=self._deployment_id, run_dir=self._run_dir,
-            logger=self._summary_logger, replayed_scenario=self._replayed_scenario)
+            logger=self._summary_logger, replayed_scenario=self._replayed_scenario,
+            broker_config_id=(self._broker_config.get_frozen_config_id()
+                              if self._broker_config is not None else ''))
         # The session's ledger entries (#537): its booking periods ARE its ledger rows, and no
         # aggregate row is written beside them — the deployment history sums over rows, and a
         # summary standing next to its own evidence would count the month twice.
@@ -408,10 +410,20 @@ class AutotraderReportCoordinator:
                         any(sink.get_row_count() for sink in sinks),
                         'the logic recorded a diagnostics row',
                         'the logic recorded no diagnostics row'),
+            expectation_after(RunEntryMemberId.DIAGNOSTICS_ROWS, bool(sinks),
+                              reach.tick_loop_entered, 'the logic declared a diagnostics sink',
+                              'the logic declared no diagnostics sink',
+                              'the session stopped before its tick loop'),
             expectation_after(RunEntryMemberId.STATE_FRAMES, self._config.state_frames.enabled,
                               reach.tick_loop_entered, 'the profile records state frames',
                               'the profile records no state frames',
                               'the session stopped before its tick loop'),
+            expectation_after(RunEntryMemberId.TRADES, True, reach.tick_loop_entered,
+                              'the session reached its tick loop', '',
+                              'the session stopped before its tick loop'),
+            expectation(RunEntryMemberId.ALGO_STATE_RESTORED, reach.algo_state_found,
+                        'a saved algo state was found at the start',
+                        'no saved algo state was found at the start'),
             expectation_after(RunEntryMemberId.TICK_STREAM_EVENTS,
                               self._config.tick_source.type != 'mock', reach.tick_source_started,
                               'the session reads its ticks from a venue',

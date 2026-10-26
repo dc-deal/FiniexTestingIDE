@@ -55,9 +55,15 @@ from python.framework.autotrader.run_record.rendered_profile_builder import (
     assert_rendered_parameters_match,
     render_autotrader_profile,
 )
+from python.framework.autotrader.run_record.sealed_period_booker import SealedPeriodBooker
 from python.framework.autotrader.run_record.state_frame_recorder import (
     StateFrameRecorder,
     open_state_frame_stream,
+)
+from python.framework.autotrader.run_record.session_records import (
+    open_trade_stream,
+    record_restored_algo_state,
+    stream_diagnostics_rows,
 )
 from python.framework.autotrader.safety.risk_baseline_tracker import RiskBaselineTracker
 from python.framework.autotrader.startup.autotrader_data_preparer import prepare_mock_session_data
@@ -82,6 +88,7 @@ from python.framework.persistence.algo_state_store import AlgoStateStore
 from python.framework.reporting.acceptance_study_recorder import AcceptanceStudyRecorder
 from python.framework.reporting.api_perf_monitor import ApiPerfMonitor
 from python.framework.reporting.io.order_event_stream_writer import OrderEventStreamWriter
+from python.framework.reporting.io.run_stream_appender import RunStreamAppender
 from python.framework.reporting.store.run_results_ledger import RunResultsLedger
 from python.framework.signal_data.signal_observed_accumulator import SignalObservedAccumulator
 from python.framework.signal_data.transport.abstract_signal_transport import (
@@ -286,6 +293,8 @@ class AutotraderMain:
 
         # #354 — Algo state store (live-only, gated by config + algo opt-in)
         self._state_store: Optional[AlgoStateStore] = None
+        # Whether a saved algo state was found at the start (#476) — the report judges its record
+        self._algo_state_found = False
 
         # #355 — what the cold-start boot step left behind: the carry-over, whether this
         # session may write it, and the keys the venue is holding. An empty setup means the
@@ -313,6 +322,9 @@ class AutotraderMain:
         self._order_event_stream: Optional[OrderEventStreamWriter] = None
         # #579 part A — what the session holds and decides, moment by moment
         self._state_frames: Optional[StateFrameRecorder] = None
+        # #476 — every trade the session closes and every diagnostics row, written as they happen
+        self._trade_stream: Optional[RunStreamAppender] = None
+        self._diagnostics_streams: List[RunStreamAppender] = []
 
         # Loggers (created during run())
         self._global_logger: Optional[ScenarioLogger] = None
@@ -668,6 +680,13 @@ class AutotraderMain:
             # A Ctrl+C or SIGTERM during the start is a stop the loop honours before its first
             # pass — the executor that records it may not have existed when the signal came
             self._request_signal_end()
+            # === TRADES AND DIAGNOSTICS (#476) — written as they happen, so a killed session
+            # keeps them
+            self._trade_stream = open_trade_stream(
+                self._run_dir, self._run_id, self._config.get_unit_name(),
+                self._executor.portfolio, self._session_logger)
+            self._diagnostics_streams = stream_diagnostics_rows(
+                self._run_dir, self._run_id, self._decision_logic, self._session_logger)
             # === STATE FRAMES (#579 part A) ===
             # Opened with the loop that writes them, display or not
             self._state_frames = open_state_frame_stream(
@@ -1037,7 +1056,13 @@ class AutotraderMain:
             loaded = self._state_store.load()
             if loaded is not None:
                 snapshot, restore_ctx = loaded
-                if self._decision_logic.accepts_restored_state(snapshot, restore_ctx):
+                accepted = self._decision_logic.accepts_restored_state(snapshot, restore_ctx)
+                self._algo_state_found = True
+                # #476: what the session started from, kept in its run — the store is
+                # overwritten while it runs
+                record_restored_algo_state(self._run_dir, self._run_id, snapshot, restore_ctx,
+                                           accepted, self._session_logger)
+                if accepted:
                     self._decision_logic.restore_state(snapshot)
                     self._session_logger.info(
                         f'💾 Algo state restored '
@@ -1130,6 +1155,12 @@ class AutotraderMain:
                 (lambda: self._persist_cold_start_carry_over(refresh_index=False))
                 if self._cold_start.persist else None),
             state_frames=self._state_frames,
+            # #476: each sealed trading day reaches the ledger when it seals, so a session that
+            # dies on day 29 leaves the 28 days behind it
+            book_sealed_periods=SealedPeriodBooker(
+                self._config, self._run_id, run_timestamp, self._deployment_id, self._run_dir,
+                self._session_logger, self._replayed_scenario,
+                broker_config_id=self._executor.broker.get_frozen_config_id()).book,
         )
 
     # =========================================================================
@@ -1283,6 +1314,12 @@ class AutotraderMain:
             except Exception as e:
                 self._session_logger.error(f'Error closing the order-event stream: {e}')
 
+        # #476 — the trade stream ends after the order cleanup too, whose closes are trades
+        if self._trade_stream:
+            self._trade_stream.close()
+        for stream in self._diagnostics_streams:
+            stream.close()
+
         # #579 part A — the session's last state frame, at the state its report describes: the
         # orders are finished and the venue was asked once more, and the results are collected
         # next, at the same price. Its own try, like the order-event stream's.
@@ -1379,7 +1416,8 @@ class AutotraderMain:
                 capture_opened=self._study_recorder is not None,
                 tick_source_started=self._tick_source is not None,
                 tick_loop_entered=self._tick_loop_started,
-                day_log_opened=self._tick_loop is not None and self._tick_loop.has_opened_day_log()),
+                day_log_opened=self._tick_loop is not None and self._tick_loop.has_opened_day_log(),
+                algo_state_found=self._algo_state_found),
         )
 
         # A collection failure goes to the SESSION logger (§35): the global one only reaches

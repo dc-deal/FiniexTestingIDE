@@ -120,7 +120,8 @@ would read as reported. Ask for a stream whenever it is listed, whatever `artifa
 ## `recording` — whether a session still records
 
 A session that is running and one that died before its report look alike everywhere else on a row:
-both have a start and neither reached the ledger. A row whose `stream_files` names
+both have a start, and both have the ledger rows of the days they sealed but not the row of a
+close. A row whose `stream_files` names
 `state_frames.jsonl` therefore carries `recording`, the verdict the
 [state frames](/api/v1/docs/state-frames) route gives for the same stream at the same moment —
 `current` while it writes on its cadence, `stopped` when its frames stopped without an end, `ended`
@@ -135,9 +136,13 @@ costs one call rather than one call per run.
 
 `results` is one entry per account currency: `currency`, `net_pnl`, `total_trades`, folded from
 that run's booking periods. It has three states and they are not interchangeable — null, `[]`, and
-a list. Null means the ledger holds nothing for this run (it is still going, it died before its
-close, or it was never commissioned to report); `[]` means it closed with no figures to record.
-[Nulls](/api/v1/docs/nulls) has the general rule.
+a list. Null means the ledger holds nothing for this run (it has sealed no trading day yet, it died
+before it sealed one, or it was never commissioned to report); `[]` means it closed with no figures
+to record. [Nulls](/api/v1/docs/nulls) has the general rule.
+
+An AutoTrader session books each trading day as it closes, so a session still running — or one that
+died before its end — has `results` already: the days it sealed so far. Its `run_outcome` and the
+counts below stay null until its close is booked.
 
 **Nothing here is summed across currencies, and nothing should be.** The entries are folded per
 currency precisely because a P&L column added over two currencies is not a number.

@@ -16,6 +16,30 @@ from pydantic import BaseModel, Field
 from python.framework.types.run_purpose_types import RunPurpose
 
 
+class RestoredAlgoState(BaseModel):
+    """
+    The algo state a session found at its start, as it found it (#476) — written once into the run,
+    because the store is overwritten while the session runs and no later read could say what this
+    session started from.
+
+    Args:
+        run_id: The session that found it
+        accepted: Whether the logic took it; False when it chose to start fresh
+        saved_at_utc: When the predecessor wrote it (UTC)
+        found_at_utc: When this session read it (UTC, the framework's measure)
+        age_seconds: How old it was then
+        trading_days: How many trading days old — weekend-aware where the market closes
+        snapshot: The state itself, exactly as the store held it
+    """
+    run_id: str
+    accepted: bool
+    saved_at_utc: str
+    found_at_utc: str
+    age_seconds: float
+    trading_days: int
+    snapshot: Dict[str, Any]
+
+
 @dataclass
 class RestoreContext:
     """

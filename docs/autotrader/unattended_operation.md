@@ -96,7 +96,7 @@ true — a recurrence before the all-clear keeps the episode open.
 | Safety circuit breaker — new entries blocked / cleared | ⚠️ / ✅ |
 | Market data stale / fresh again — including no first tick within `market_data_stale_after_s` of the loop's start, a feed that never connected | ⚠️ / ✅ |
 | A signal input stale / fresh again | ⚠️ / ✅ |
-| A trading day closed — its booking period: trades, net P&L and the open part, fees, equity at the close and at the open, the deepest dip; `daily_digest` switches it off | ✅ |
+| A trading day closed — its booking period: trades, net P&L and the open part, fees, equity at the close and at the open, the deepest dip; `daily_digest` switches it off. Days one late check closes together — a machine that slept, a clock that jumped — are the first day in full and one message for the rest, naming their span | ✅ |
 | The session ended — its grade, exit code, why it was asked to end, duration, ticks, trades, net P&L and the open part, errors logged | by grade |
 
 An abort or a refused start is one message, sent at once, before the shutdown — not a second one

@@ -243,6 +243,7 @@ and what the sweep view must:
 | `test_no_sweep_is_not_an_error` | An empty ledger is a legitimate empty list, never a 404 |
 | `test_combinations_are_ranked_by_the_sweeps_own_objective` | `/sweeps/{id}` ranks by the objective the spec declared — ranking by anything else answers a question the sweep did not ask |
 | `test_each_combination_carries_its_run_id` | The hinge into the report routes; without it a sweep view is a dead end |
+| `test_a_combination_without_a_value_for_the_objective_is_counted_not_ranked` | A combination that measured no drawdown is left out of a ranking by drawdown and counted in `unranked` (#476) — a shorter list would otherwise read as the whole sweep |
 | `test_unknown_sweep_is_a_404` | An id with no ledger rows |
 
 ## Deployment routes (`TestDeployments`)

@@ -119,7 +119,8 @@ class RunEntryWriter:
 
     def open_stream(self, member_id: RunEntryMemberId, run_id: str,
                     logger: Optional[AbstractLogger], stops: str,
-                    header_fields: Optional[Dict[str, Any]] = None) -> RunStreamAppender:
+                    header_fields: Optional[Dict[str, Any]] = None,
+                    **names: str) -> RunStreamAppender:
         """
         Open one stream: its header line names the member and the version the declaration gives it.
 
@@ -129,14 +130,15 @@ class RunEntryWriter:
             logger: Where the first failed write is said
             stops: What the failure means for the session, said with it
             header_fields: Further fields of the header line
+            names: One value per variable part of the member's path
 
         Returns:
             The appender; one that could not open says so and writes nothing
         """
         member = self._member(member_id, EntryMemberShape.STREAM)
         return RunStreamAppender(
-            self._run_dir / member.path_for(), member.member_id.value, member.schema_version,
-            run_id, logger, stops=stops, header_fields=header_fields)
+            self._run_dir / member.path_for(**names), member.member_id.value,
+            member.schema_version, run_id, logger, stops=stops, header_fields=header_fields)
 
     def write_strategy_file(self, member_id: RunEntryMemberId, text: str, **names: str) -> Path:
         """

@@ -17,7 +17,7 @@ Split the way the pipeline is (#391): the CAPTURE half is driven against the rea
 methods bound to a stub, the DERIVE half against the real builder. Nothing here renders.
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from types import SimpleNamespace
 from typing import List, Optional
 
@@ -103,6 +103,9 @@ class _LoopStub:
         self._safety_days: List[SafetyDayRecord] = []
         self._safety_current_day: Optional[str] = None
         self._day_baseline: Optional[RiskBaselineTracker] = None
+        # The session's trading day — its booking period's, which a test sets by hand
+        self._day: Optional[date] = None
+        self._trading_day = lambda: self._day
         self._day_worst_loss_abs = 0.0
         self._day_worst_loss_pct = 0.0
         self._day_worst_loss_at = ''
@@ -145,17 +148,23 @@ class _LoopStub:
     def check(self, value: float, baseline: float) -> None:
         SafetyCircuitBreaker.check_safety(self, value, baseline)
 
-    def start_day(self, day: str, value: float) -> None:
-        """Open a new daily baseline, as a tick crossing into a new trading day does."""
-        self._close_safety_day()
-        self._safety_current_day = day
-        self._day_baseline = RiskBaselineTracker(
-            mode=BaselineKind.DAY_START, restored=None, spot_mode=False,
-            exclusive_account=False, clock_fn=lambda: self._now, logger=_NullLogger())
-        self._day_baseline.ensure_taken(value, origin=BaselineOrigin.DAY_BOUNDARY)
+    def start_day(self, day: str, value: Optional[float]) -> None:
+        """Roll into a new trading day, as the booking period's seal at its boundary does."""
+        self._day = date.fromisoformat(day)
+        SafetyCircuitBreaker.roll_day(self, self._now, value, None, None)
+
+    def ensure(self, value: float) -> None:
+        """A valued tick: takes the day's baseline only where the roll could not."""
+        SafetyCircuitBreaker.ensure_day_baseline(self, value, None, None)
+
+    def _new_day_baseline(self, clock_fn) -> RiskBaselineTracker:
+        return SafetyCircuitBreaker._new_day_baseline(self, clock_fn)
 
     def _close_safety_day(self) -> None:
         SafetyCircuitBreaker._close_safety_day(self)
+
+    def _note_day_loss(self, value: float, stamp_utc: str) -> None:
+        SafetyCircuitBreaker._note_day_loss(self, value, stamp_utc)
 
     def _block(self, reason: str) -> None:
         SafetyCircuitBreaker._block(self, reason)
@@ -386,6 +395,75 @@ class TestOneRowPerDay:
         stub.check(9_700.0, 10_000.0)
 
         assert stub.capture().days[0].limit_hit is False
+
+
+class TestTheDayRollsAtItsBoundary:
+    """
+    The day rolls on the booking period's seal, from the value the seal read, stamped with the
+    boundary — so the first tick of a day counts against that day's limit (#476). A tick only
+    takes what a roll could not: the session's first day, and a day whose seal could not value
+    the account.
+    """
+
+    def test_the_baseline_is_stamped_with_the_boundary(self):
+        midnight = datetime(2026, 9, 11, tzinfo=timezone.utc)
+        stub = _LoopStub(baseline=_baseline()).at(midnight)
+        stub.start_day('2026-09-11', 9_800.0)
+
+        stub.at(midnight + timedelta(seconds=3)).ensure(9_750.0)
+
+        day = stub.capture().days[0]
+        assert day.baseline.value == 9_800.0
+        assert day.baseline.taken_at_utc == midnight.isoformat()
+
+    def test_the_seal_s_reading_is_the_ending_day_s_last_loss(self):
+        """
+        A fill a heartbeat drained after the day's last tick moved the account where no tick
+        evaluated it; the seal's reading is that day's last instant, so the day files it.
+        """
+        midnight = datetime(2026, 9, 11, tzinfo=timezone.utc)
+        stub = _LoopStub(baseline=_baseline()).at(midnight - timedelta(days=1))
+        stub.start_day('2026-09-10', 10_000.0)
+        stub.at(midnight - timedelta(seconds=2)).observe(9_990.0, 10_000.0)
+
+        stub.at(midnight).start_day('2026-09-11', 9_970.0)
+
+        ended = stub.capture().days[0]
+        assert ended.worst_loss_abs == 30.0
+        assert ended.worst_loss_at == midnight.isoformat()
+
+    def test_a_seal_reading_beyond_the_limit_does_not_claim_the_limit_fired(self):
+        """`limit_hit` says a limit FIRED; nothing fires for a day that has ended."""
+        midnight = datetime(2026, 9, 11, tzinfo=timezone.utc)
+        stub = _LoopStub(
+            safety=SafetyConfig(enabled=True, max_daily_loss_pct=2.0),
+            baseline=_baseline()).at(midnight - timedelta(days=1))
+        stub.start_day('2026-09-10', 10_000.0)
+
+        stub.at(midnight).start_day('2026-09-11', 9_700.0)
+
+        ended = stub.capture().days[0]
+        assert ended.worst_loss_abs == 300.0
+        assert ended.limit_hit is False
+
+    def test_a_roll_that_could_not_value_the_account_takes_it_at_the_next_tick(self):
+        stub = _LoopStub(baseline=_baseline())
+        stub.start_day('2026-09-11', None)
+        assert stub._day_baseline is None
+
+        stub.ensure(9_900.0)
+
+        assert stub._day_baseline.get_value() == 9_900.0
+        assert stub._day_baseline.get_baseline().origin is BaselineOrigin.DAY_BOUNDARY
+
+    def test_the_session_s_first_day_is_taken_at_its_first_valued_tick(self):
+        stub = _LoopStub(baseline=_baseline())
+        stub._day = date(2026, 9, 10)
+
+        stub.ensure(10_000.0)
+        stub.ensure(9_000.0)        # no second baseline on the same day
+
+        assert stub.capture().days[0].baseline.value == 10_000.0
 
 
 class TestAnUnresolvedHardStopIsNotReportedAsNeverFired:

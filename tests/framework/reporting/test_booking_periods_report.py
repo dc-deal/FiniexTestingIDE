@@ -314,6 +314,39 @@ class TestManyUnitsCollapse:
         assert '▸' not in capsys.readouterr().out
 
 
+class TestAPeriodThatValuedNothing:
+    """
+    A spot session sealed by a heartbeat before its first tick priced the holdings has no equity
+    and no band (#476). The row carries the absence, and the table says it rather than printing
+    0.00 — or failing on a missing number.
+    """
+
+    @staticmethod
+    def _unvalued() -> BookingPeriod:
+        return BookingPeriod(
+            period_no=1, unit_name='session', opened_at=_MON, closed_at=_MON + timedelta(days=1),
+            reason=PeriodCloseReason.ANCHOR, trade_count=0,
+            figures=_figures(final_equity=None, account_max_drawdown=None),
+            period_max_equity=None, period_min_equity=None, period_max_drawdown=None)
+
+    def test_the_row_carries_the_absence(self):
+        report = build_booking_periods_report('r', _units(self._unvalued()), _summary())
+        row = report.periods[0]
+        assert (row.final_equity, row.min_equity, row.max_equity, row.max_drawdown) == (
+            None, None, None, None)
+        assert report.deepest_period_drawdown is None
+
+    def test_the_table_prints_a_dash(self, capsys):
+        report = build_booking_periods_report(
+            'r', _units(self._unvalued(), _segment(2, 1, 5.0, 1)), _summary(net_pnl=5.0,
+                                                                              total_trades=1))
+        render_booking_periods(report)
+        first_row = next(line for line in capsys.readouterr().out.splitlines()
+                         if line.strip().startswith('1 '))
+        assert first_row.rstrip().endswith('—')
+        assert '0.00' not in first_row.split()[-2:]
+
+
 class TestTheFileGetsEverythingAndOnlyTheConsoleIsTrimmed:
     """
     The project's rule for every end-of-run section: the summary FILE carries the whole thing,

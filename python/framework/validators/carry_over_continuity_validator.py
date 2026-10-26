@@ -193,10 +193,11 @@ def _refuse_an_unfinished_partner(
     ledger: RunResultsLedger,
 ) -> None:
     """
-    Refuse a partner's document whose writing run never reached its ledger row.
+    Refuse a partner's document whose writing run never reached the ledger row of its close.
 
-    A run still going and a run that died look the same here — a header and no ledger row — so
-    the message says "not completed" and never "aborted".
+    A run still going and a run that died look the same here — a header and no row of a close,
+    whatever rows its sealed trading days left (#476) — so the message says "not completed" and
+    never "aborted".
 
     Args:
         profile_name: This profile's run unit name
@@ -212,7 +213,8 @@ def _refuse_an_unfinished_partner(
     raise CarryOverContinuationError(
         f"This bot's carry-over was last written by '{load.writer_profile}' in {run}, which has "
         f'not completed —\n'
-        f'    it has no ledger row. It may still be running, or it ended without its close.\n'
+        f'    the ledger holds no row of its close. It may still be running, or it ended without '
+        f'its close.\n'
         f"    Two sessions must not manage one book: let it end, or run '{load.writer_profile}' "
         f'again so it\n'
         f"    completes, before starting '{profile_name}'. File: {load.path}")

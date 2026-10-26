@@ -15,9 +15,11 @@ from functools import lru_cache
 from typing import Optional, Tuple, Union
 
 from python.framework.constants.run_layout_constants import (
+    DIAGNOSTICS_ROWS_STREAM,
     ORDER_EVENTS_STREAM,
     STATE_FRAMES_STREAM,
     TICK_STREAM_EVENTS_STREAM,
+    TRADES_STREAM,
 )
 from python.framework.exceptions.store_errors import EntryMemberRefusedError
 
@@ -122,7 +124,10 @@ class RunEntryMemberId(StrEnum):
     ORDER_EVENTS = ORDER_EVENTS_STREAM
     STATE_FRAMES = STATE_FRAMES_STREAM
     TICK_STREAM_EVENTS = TICK_STREAM_EVENTS_STREAM
+    TRADES = TRADES_STREAM
+    DIAGNOSTICS_ROWS = DIAGNOSTICS_ROWS_STREAM
     WARMUP_HISTORY = 'warmup_history'
+    ALGO_STATE_RESTORED = 'algo_state_restored'
     FOOTPRINT = 'footprint'
 
 

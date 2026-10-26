@@ -11,6 +11,7 @@ from python.framework.optimization.optimization_analysis import (
     rank_per_currency,
     sensitivity,
     summarize_sweeps,
+    unranked_count,
 )
 from python.framework.reporting.store.run_ledger_index import RunLedgerIndex
 
@@ -408,3 +409,29 @@ class TestASweepRanksCandidatesNotDays:
         # One level per combination, each holding that combination's TOTAL — not a mean over
         # its days, which is what an unfolded input would have produced.
         assert effects[0].level_means == {'rA': 12.0, 'rB': 3.0}
+
+
+class TestAFigureSomeRunsDidNotMeasure:
+    """
+    A null that means 'not measured' leaves its run out of the ranking and is counted; a null
+    that means 'undefined' still refuses the objective (#476).
+    """
+
+    @pytest.fixture
+    def partly_measured(self, sweep_rows):
+        return [row.model_copy(update={'account_max_drawdown': None})
+                if row.run_id == 'r1' else row.model_copy(update={'account_max_drawdown': 10.0 * i})
+                for i, row in enumerate(sweep_rows, start=1)]
+
+    def test_the_ranking_leaves_the_unmeasured_run_out_and_counts_it(self, partly_measured):
+        ranked = rank(partly_measured, 'account_max_drawdown', maximize=False)
+
+        assert [row.run_id for row in ranked] == ['r0', 'r2', 'r3']
+        assert unranked_count(partly_measured, 'account_max_drawdown') == 1
+
+    def test_an_objective_every_run_measured_leaves_nothing_out(self, sweep_rows):
+        assert unranked_count(sweep_rows, 'net_pnl') == 0
+
+    def test_the_sensitivity_reads_only_the_measured_runs(self, partly_measured):
+        """A null would raise in the mean; it is left out like in the ranking."""
+        assert sensitivity(partly_measured, 'account_max_drawdown')

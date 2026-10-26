@@ -6,7 +6,7 @@ the ledger books it. The operator's message is one more distribution of that per
 trading-day boundary only, switchable, and never a reason for the session to end.
 """
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
 from python.framework.autotrader import autotrader_tick_loop as tick_loop_module
 from python.framework.autotrader.autotrader_tick_loop import AutotraderTickLoop
@@ -40,7 +40,8 @@ def _period(reason: PeriodCloseReason = PeriodCloseReason.ANCHOR) -> BookingPeri
         period_no=15, unit_name='eth_daily',
         opened_at=datetime(2026, 10, 20, tzinfo=timezone.utc),
         closed_at=datetime(2026, 10, 21, tzinfo=timezone.utc),
-        reason=reason, trade_count=3, figures=figures, period_opening_equity=1_000.0)
+        reason=reason, trade_count=3, figures=figures, period_opening_equity=1_000.0,
+        trading_day=date(2026, 10, 20))
 
 
 def test_a_closed_trading_day_is_one_message_named_by_its_day():

@@ -20,12 +20,12 @@ numbers add up, over one account and over several — is
 |---|---|---|---|
 | Tick | every tick | The equity sample: account peak, account drawdown, drawdown percentage | simulation + AutoTrader |
 | Swap rollover | 17:00 `America/New_York`, resolved per date (DST-aware) | One signed swap fee per rollover crossed, tripled on the configured weekday | both — MARGIN only; a no-op for spot and for markets without swap |
-| Trading day | the market's own anchor: crypto 00:00 UTC, forex the swap rollover — resolved per date, DST-aware | A fresh `DAY_START` baseline; the per-day worst-loss counters return to zero; the closing day is filed as one record | AutoTrader only |
-| Log rotation | the SAME anchor, read from the canonical clock | A new session log file. Fires on the heartbeat too, so a silent feed over the boundary still rotates |  AutoTrader only |
+| Trading day | the market's own anchor: crypto 00:00 UTC, forex the swap rollover — resolved per date, DST-aware; only the days the market calendar trades | A fresh `DAY_START` baseline, struck at the boundary from the value the booking period sealed with; the per-day worst-loss counters return to zero; the closing day is filed as one record | AutoTrader only |
+| Log rotation | the SAME day, read from the booking period | A new session log file, right after the seal, so the line that seals a day stays in that day's file. Fires on the heartbeat too, so a silent feed over the boundary still rotates |  AutoTrader only |
 | Algo state | hybrid tick / second cadence | What the algo chose to remember. Discarded once older than `max_age_trading_days` | AutoTrader |
 | Cold-start state | boot, shutdown, and a structural change of the open book; excursion extrema on a tick cadence | Session keys, the position-counter high-water mark, the open position book. Never discarded for age | AutoTrader |
-| **Booking period** | the SAME trading-day anchor, read from the canonical clock | One sealed `BookingPeriod` per run unit: the period's realised figures, its control total and its own equity band. Fires on the heartbeat too, so a quiet feed over the boundary still books. A live session also tells its operator how the day closed — the same period, rendered for Telegram ([Unattended Operation](../autotrader/unattended_operation.md)) | both — AutoTrader per session, simulation per SCENARIO |
-| Session end | once, when the run ends | The final equity sample, the report, and the ledger rows — one per booking period, not one per session | both |
+| **Booking period** | the SAME trading-day anchor, checked before each event is applied — every trading day of the market calendar, a day without a tick included | One sealed `BookingPeriod` per run unit: the period's realised figures, its control total, its tick count and its own equity band. Stamped at the boundary, whichever event noticed it. A live session books it into the ledger as it seals and tells its operator how the day closed — the same period, rendered for Telegram ([Unattended Operation](../autotrader/unattended_operation.md)) | both — AutoTrader per session, simulation per SCENARIO |
+| Session end | once, when the run ends | The final equity sample, the report, and the ledger rows written whole once more — one per booking period, not one per session, the run-end columns filled | both |
 
 **Both of those used to read midnight UTC off the TICK stamp, and both were corrected on
 2026-09-21 (#476).** Midnight is right for crypto by coincidence and wrong for forex, whose day
@@ -34,11 +34,40 @@ quiet across it, because only the heartbeat advances the clock in an illiquid ga
 now answers it — `framework/utils/trading_day_anchor.py` — and the anchor is config, with
 a hard error where a market declares none.
 
-**The two are still not simultaneous, and that is deliberate:** the log rotation also runs on the
-heartbeat, while the risk day reaches the boundary only on the next real TICK, because at spot
-the baseline needs a mark price and a heartbeat carries none. The lateness is self-limiting —
-nothing can move the account until a tick arrives, and that is the same tick which resets the
-denominator.
+**Since #476 all three cut the day at the same instant.** The booking period owns the day: the
+risk day rolls on its seal, from the value the seal read — at spot valued at the last tick's price —
+and the log rotates right after it. The tick that crosses the boundary therefore counts against the
+new day's loss limit; before, the risk day closed before that tick and took its new baseline after
+it, so the tick's move was in no day's record — on a forex open, the whole weekend's gap. The day
+that ended also takes the seal's reading into its worst loss, so a fill drained between its last
+tick and the boundary is that day's: [Where the daily loss limit's day
+ends](../autotrader/autotrader_capital_and_safety.md#where-the-daily-loss-limits-day-ends).
+
+## Where a trading day ends
+
+A trading day ends at its boundary, **before** the first event at or after that instant is applied.
+That event — a tick, or a heartbeat that resolves a fill — belongs to the new day: its fills, its
+trades and its valuation. The boundary is checked at the start of every pass of both loops, against
+the instant cached for the running day, so the ordinary tick pays one comparison.
+
+- **Stamped with the boundary.** `closed_at` is the boundary instant, not the moment a tick or a
+  heartbeat noticed it, and the next period opens there. A backtest without heartbeats and a live
+  session whose heartbeat crossed the boundary 300 ms late book the same span.
+- **Read as the last event left it.** The seal reads the account before the crossing event, folds
+  that reading into the closing band, and opens the next band at it — so a fall between the boundary
+  and the next tick is the new day's decline, and a closing value always lies inside its own band.
+- **Every trading day, and only those.** The market calendar decides, asked about the date a day
+  trades FOR — Monday for the forex session that opens Sunday 17:00 New York. Crypto books every
+  day. A forex market books no Friday or Saturday session and no holiday; the period after them
+  opens where the last trading day ended, so no stretch of the run falls between two periods.
+- **A day nobody heard from still gets its row.** An instant several boundaries past the last one —
+  a gap in the data, a feed back after days — seals the day that ran and then one period per
+  trading day in between: `tick_count` 0, nothing realised, the valuation it was left at. A metric
+  over the rows can leave those out. An AutoTrader session books the days one instant seals
+  together in one ledger write, and the operator hears the first in full and the rest in one
+  message.
+- **The session's end is inside its last period.** No period opens at a session's end, so the last
+  period's trade window includes its end instant.
 
 ## Two days, and when they coincide
 

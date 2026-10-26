@@ -14,6 +14,9 @@ The six shapes a trade can have against two periods:
     T3  wholly inside the second                             → period 2
     T4  opened in the second, still open at the end          → no period; a holding
     T0  closed exactly ON the boundary                       → period 2   (end is exclusive)
+
+The one end that is inclusive is a session's: no period opens there, so a close that fills in the
+pass that ends the session belongs to the last period (#476).
 """
 
 from dataclasses import replace
@@ -25,6 +28,11 @@ from python.framework.reporting.builders.booking_period_builder import (
     PeriodSnapshot,
     derive_booking_period,
     describe_segment,
+)
+from python.framework.reporting.builders.run_unit import RunUnit
+from python.framework.reporting.builders.trade_history_report_builder import (
+    TradeWindowBasis,
+    build_trade_history_report,
 )
 from python.framework.types.portfolio_types.portfolio_trade_record_types import (
     CloseReason,
@@ -153,6 +161,28 @@ class TestThePeriodsPartitionTheRecords:
         assert first.figures.unrealized_pnl == -4.0
 
 
+class TestASessionsEndIsInsideItsLastPeriod:
+    """
+    A close that fills in the pass that ends the session is stamped with the session's last
+    instant — the same instant the last period closes at. End-exclusive, that trade fell into no
+    period, and the books did not reconcile (measured 2026-10-14 on real money, #476).
+    """
+
+    def test_a_close_on_the_last_instant_belongs_to_the_last_period(self):
+        last = [_trade('T9', _MON + timedelta(hours=1), _TUE, -0.08)]
+        period = derive_booking_period(
+            'session', 1, _MON, _TUE, PeriodCloseReason.SESSION_END, last, _snapshot())
+        assert period.trade_count == 1
+        assert period.figures.net_pnl == pytest.approx(-0.08)
+
+    def test_a_trading_day_keeps_its_end_for_the_next_day(self):
+        # The same trade against a day's boundary stays with the day that opens there
+        last = [_trade('T9', _MON + timedelta(hours=1), _TUE, -0.08)]
+        period = derive_booking_period(
+            'session', 1, _MON, _TUE, PeriodCloseReason.ANCHOR, last, _snapshot())
+        assert period.trade_count == 0
+
+
 class TestThePeriodSplitsItsCosts:
     """
     The split is summed over the SAME trades `total_fees` is — the ones the period closed — so
@@ -241,14 +271,38 @@ class TestTheLogLine:
         assert '10369.90' in line
         assert _MON.isoformat() in line and _TUE.isoformat() in line
 
+    def test_names_how_many_ticks_the_period_heard(self):
+        period = derive_booking_period(
+            'session', 2, _MON, _TUE, PeriodCloseReason.ANCHOR, [],
+            _snapshot(final_equity=10_000.0), tick_count=0)
+        assert '0 tick(s)' in describe_segment(period)
+
+    def test_an_unread_equity_is_said_rather_than_printed_as_zero(self):
+        period = derive_booking_period(
+            'session', 1, _MON, _TUE, PeriodCloseReason.ANCHOR, [], _snapshot())
+        line = describe_segment(period)
+        assert 'equity not read' in line
+        assert 'equity 0.00' not in line
+
+
+class TestAnUnmeasuredValueStaysUnmeasured:
+    """
+    A spot holding before the first tick has priced it has no value, and an equity curve before its
+    first valuation has measured no decline. A period sealed then carries the absence — a zero
+    would be a measurement nobody took, and the next period would open at it (#476).
+    """
+
+    def test_the_figures_carry_none(self):
+        period = derive_booking_period(
+            'session', 1, _MON, _TUE, PeriodCloseReason.ANCHOR, [], _snapshot())
+        assert period.figures.final_equity is None
+        assert period.figures.account_max_drawdown is None
+        assert period.figures.max_equity is None
+        assert period.figures.account_max_dd_pct is None
+
 
 def _rows(period, trades, start, end):
     """Re-window the trades the way the derivation did, for a test that inspects membership."""
-    from python.framework.reporting.builders.run_unit import RunUnit
-    from python.framework.reporting.builders.trade_history_report_builder import (
-        TradeWindowBasis,
-        build_trade_history_report,
-    )
     return build_trade_history_report(
         run_id='', units=[RunUnit(name=period.unit_name, symbol='', trade_history=trades)],
         start=start, end=end, window_basis=TradeWindowBasis.EXIT).trades

@@ -31,6 +31,30 @@ Two rows of one deployment can both be number 1 when they belong to different bo
 before 2026-09-23 can even repeat a number within one bot: the floor was persisted before the last
 period was sealed, so a session restarted a number instead of continuing it.
 
+## Which days have a row, and where a day ends
+
+A period a trading day closed ends **at that day's boundary** — `closed_at` is the boundary
+instant, never the later moment the run noticed it — and the next period opens there. The tick that
+crosses the boundary belongs to the **new** day: its fills, its trades and its move. A live session
+and its backtest over the same days therefore book the same periods.
+
+**Every trading day of the market has its row**, whether or not the run heard from it. A day inside
+a gap in the data is booked with `tick_count` 0, nothing traded and the valuation it was left at —
+say so before you average over rows: a day that observed nothing has no return of its own. A market
+that closes books no row for a closed day, and the period after a weekend opens where the last
+trading day ended, so a forex row after a weekend reads from the Friday close:
+
+```
+opened_at 2026-10-22T21:00Z  closed_at 2026-10-23T21:00Z  anchor   tick_count 61 402
+opened_at 2026-10-23T21:00Z  closed_at 2026-10-26T21:00Z  anchor   tick_count 58 977
+```
+
+The second row books Monday's trading: the session that opened Sunday evening. Its span holds the
+weekend, in which nothing traded.
+
+A session's last period (`reason: session_end`) includes its end instant: a close that fills in the
+pass that ends the session is booked in it.
+
 ## One table is one account currency
 
 `currency` says which currency the **totals** are about. `currencies` names every currency the
@@ -46,6 +70,7 @@ every currency it booked; a backtest's other currencies are not served yet.
 |---|---|
 | `opened_at` / `closed_at` / `reason` | the period's span and why it ended |
 | `trade_count` · `net_pnl` · `total_fees` | what the period's **closed** trades did |
+| `tick_count` | how many ticks the period applied — 0 is a trading day the run never heard from |
 | `commission_cost` + `swap_cost` | equals `total_fees` |
 | `spread_cost` | measured, and stands **beside** `total_fees`, never inside it |
 | `modelled_spread_cost` | crossed against quotes a backtest modelled for data without one — beside `spread_cost`, the two adding up |
@@ -73,8 +98,13 @@ before contract 35 stored its report without them, so its own route serves them 
 deployment's route, which reads the ledger, serves what the ledger recorded for the same period.
 
 `commission_cost`, `swap_cost`, `spread_cost` and `opening_equity` are null on a period recorded
-before contract 17, and `modelled_spread_cost` on one recorded before contract 33 — see
-[nulls](/api/v1/docs/nulls).
+before contract 17, `modelled_spread_cost` on one recorded before contract 33, and `tick_count` on
+one recorded before contract 40 — see [nulls](/api/v1/docs/nulls).
+
+`final_equity`, `min_equity`, `max_equity` and `max_drawdown` are null on a period that could value
+the account at no point: a spot session whose first period was sealed before its first tick priced
+its holdings. The band otherwise starts at the value the period opened with, so a fall between the
+boundary and the first tick of the day is that day's decline.
 
 ## What a unit total says, and where it differs
 
@@ -90,7 +120,8 @@ The decline needs care, because two different figures sit side by side:
 
 A fall that runs across a period boundary is deeper than any one period's own. That is why both
 exist: the first is what the table's column shows, the second is what actually happened to the
-account. `account_max_dd_pct` is the share that decline was.
+account. `account_max_dd_pct` is the share that decline was. Both are null where none of the
+unit's periods measured one.
 
 ## The completeness check, and what it does not prove
 
@@ -138,6 +169,11 @@ two periods apart, and is the hinge into that run's report routes.
 
 Sessions that booked no period are skipped, and counted in `sessions_without_periods` — so an
 incomplete history is not read as a quiet one.
+
+**A session books its days while it runs**: each trading day's row appears when the day closes, so
+this route shows the days a running session has sealed so far, and those of a session that died
+before its end. A session's last row with `reason: session_end` is what says it ended; without one
+it is still running or did not end cleanly.
 
 **There is no reconciliation line here, and there cannot be one.** Over many runs there is no
 single run summary to sum against.

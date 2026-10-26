@@ -149,6 +149,7 @@ session. All of them are session-scoped and need no opt-in:
 | What | Fixture | Redirected to |
 |---|---|---|
 | user config overrides | `FINIEX_CONFIG_ISOLATION=1` at module import | skipped entirely |
+| the global log | the `pytest_configure` hook, before the test modules are collected | a temporary directory removed after the session |
 | the run tree + its index | `_isolate_run_tree` | `tmp_path_factory` |
 | the cross-run results ledger | `_isolate_run_results_ledger` | `tmp_path_factory` |
 | the run-config store | `_isolate_run_config_store` | `tmp_path_factory` |
@@ -167,6 +168,12 @@ leaves the operator's tree untouched.
 
 Measured 2026-08-30, before `_isolate_run_tree` existed: **134 of 138 rows** in the operator's
 production run index came from two suite runs. The API served them and the viewer listed them.
+
+**The global log is redirected in a hook, not a fixture.** Its logger is made the first time a
+module that logs through it is imported — while pytest collects the test modules, before any
+session fixture runs — and keeps its file for the rest of the process. A redirect in a fixture
+came too late: every suite wrote into the operator's `logs/global.log` (measured 2026-10-25: a
+three-second run of one suite appended 407 bytes to a 357 MB file).
 
 ### Every run a test starts is a fixture (#576)
 

@@ -697,9 +697,9 @@ def _build_executor(
         spot_mode=account.spot_mode,
         poll_interval_ms=broker_entry.broker_transport.poll_interval_ms,
         connection_policy=connection_policy,
-        # #473 — four characters of the run id's random half. The SESSION owns it: a #476
-        # day record mints its own run id and must not change the key mid-session, which
-        # is why it is derived here and never re-derived downstream.
+        # #473 — four characters of the run id's random half. The SESSION owns it, derived here
+        # once and never re-derived downstream: a key that changed mid-session would leave the
+        # orders sent under the old one looking like a stranger's.
         session_key=session_key_from_run_id(run_id),
         # #503 — the profile's intent. A per-order override still wins over it, and the
         # adapter's capability can refuse it outright.
