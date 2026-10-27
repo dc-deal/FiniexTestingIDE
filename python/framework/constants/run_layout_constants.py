@@ -72,6 +72,8 @@ SESSION_GLOBAL_LOG_NAME = 'global'
 SESSION_LOG_NAME = 'session'
 SESSION_LOGS_SUBDIR = 'session_logs'
 SESSION_DAY_LOG_FILE_PATTERN = f'{SESSION_LOG_PREFIX}_{SESSION_LOG_NAME}_{{day}}.log'
+# How a trading day names its files — a day log, a sealed day of a stream: the date it opened
+DAY_LABEL_FORMAT = '%Y%m%d'
 
 # The fills and order transitions as one chronological table: a backtest writes one per scenario
 # into events/, a session one beside its logs.
@@ -129,6 +131,12 @@ TRADE_HISTORY_CSV = 'trade_history.csv'
 ORDER_EVENTS_FILE = 'order_events.jsonl'
 ORDER_EVENTS_STREAM = 'order_events'
 ORDER_EVENTS_SCHEMA_VERSION = 2
+# The value of `record_kind` on a run stream's first line, its header.
+STREAM_HEADER_KIND = 'header'
+# What a session's stream header names, beside its stream, version and run: the trading day the
+# file holds (#476). A stream a backtest writes, or a session's first file before its first day
+# was sealed, names none.
+STREAM_TRADING_DAY_FIELD = 'trading_day'
 # What the session held and decided, moment by moment (#579 part A, served since #611).
 STATE_FRAMES_FILE = 'state_frames.jsonl'
 STATE_FRAMES_STREAM = 'state_frames'
@@ -150,6 +158,15 @@ ALGO_STATE_RESTORED_FILE = 'algo_state_restored.json'
 TICK_STREAM_EVENTS_FILE = 'tick_stream_events.jsonl'
 TICK_STREAM_EVENTS_STREAM = 'tick_stream_events'
 TICK_STREAM_EVENTS_SCHEMA_VERSION = 1
+
+# A session's streams, sealed at each trading-day boundary (#476): the day's lines move into an
+# immutable parquet file, and the stream's own file starts the next day afresh. One folder per
+# trading day, named the way the session's day logs are, holds each stream at the path it has in
+# the run, with this suffix — days/<day>/io/order_events.parquet, days/<day>/diagnostics/<sink>.parquet.
+DAYS_SUBDIR = 'days'
+DAY_RECORD_SUFFIX = '.parquet'
+# The version of a day record's columns and footer, written into its footer
+DAY_RECORD_FORMAT_VERSION = 1
 
 # The acceptance studies' captures (#332, #358) — streams too, but at the run directory's root
 # rather than in io/, and read by their certificates rather than served.

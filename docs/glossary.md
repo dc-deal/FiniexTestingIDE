@@ -274,6 +274,12 @@ header): a start, and an end unless it is open. Not a span over several units. O
 `windows` mean the same — never a docked panel: that is the FiniexViewer's *panel*, defined in its
 own glossary.
 
+**day record** — One trading day of a session's stream, sealed when the day ends: an immutable
+parquet file in the run's `days/<day>/` folder, holding every line of the day as it was written,
+at the path the stream has in the run (`days/20261102/io/order_events.parquet`). The stream's own
+file holds the running day. A backtest writes none. See
+[Day Records](architecture/run_stream_day_records.md).
+
 **decision basis** — The fresh / stale / blind counts of the inputs a decision was made on. See
 [Signal Data Source](data_pipeline/signal_data_source.md).
 
@@ -712,10 +718,11 @@ three field names. See [API Server](architecture/api_server_architecture.md).
 configuration (`scenario_name` in the file). A scenario set is the file holding a `global` block and
 the scenarios (`scenario_set_name`). See [Process Execution](process_execution_guide.md).
 
-**seal** (of a booking period) — The close of a booking period at its trading day's boundary: stamped
+**seal** (of a trading day) — The close of a booking period at its trading day's boundary: stamped
 with the boundary instant, whichever event noticed it, and read as the account stood before that
-event. A session books each sealed day into the ledger at once; the log line says
-`Booking period 001 sealed`. See
+event. A session books each sealed day into the ledger at once, and in the same step moves its
+streams' lines of that day into *day records*; the log lines say `Booking period 001 sealed` and
+`Day records sealed for …`. See
 [Accounting Periods](architecture/accounting_periods.md#where-a-trading-day-ends).
 
 **seam** (of data origins) — Where one origin's tick files end and another's begin: Kraken's

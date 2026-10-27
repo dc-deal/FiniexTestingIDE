@@ -12,7 +12,8 @@ import subprocess
 import sys
 from pathlib import Path
 
-from python.framework.reporting.io.run_stream_appender import STREAM_HEADER_KIND, RunStreamAppender
+from python.framework.constants.run_layout_constants import STREAM_HEADER_KIND
+from python.framework.reporting.io.run_stream_appender import RunStreamAppender
 from tests.shared.recording_logger import RecordingLogger
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
@@ -79,6 +80,8 @@ class TestTheFirstFailure:
         assert errors.count('could not be written') == 1
         assert 'my_stream' in errors and 'Nothing more is recorded; the session continues' in errors
         assert appender.is_writing() is False
+        appender.close()
+        assert logger.text_at('error').count('could not be written') == 1
 
     def test_a_stream_that_cannot_be_opened_is_said_and_the_run_goes_on(self, tmp_path):
         blocked = tmp_path / 'a_file'
@@ -105,6 +108,7 @@ class TestAKill:
             if writer.poll() is None:
                 writer.kill()
                 writer.wait(timeout=10)
+            writer.stdout.close()
         lines = _lines(path)
         assert lines[0]['record_kind'] == STREAM_HEADER_KIND
         assert [line['n'] for line in lines[1:]] == list(range(25))

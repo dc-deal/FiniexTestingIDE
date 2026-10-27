@@ -84,15 +84,16 @@ class TestWhatAFileHoldsIsReadByItsOwnReader:
         with pytest.raises(ValidationError):
             reader.read_section(RUN_SUMMARY_ARTIFACT)
 
-    def test_a_stream_path_only_when_the_stream_is_there(self, tmp_path):
+    def test_a_stream_reads_only_when_it_is_there(self, tmp_path):
         reader = RunDirReader(tmp_path)
-        assert reader.stream_path(RunEntryMemberId.ORDER_EVENTS) is None
+        assert reader.read_stream(RunEntryMemberId.ORDER_EVENTS) is None
+        assert reader.read_stream_ends(RunEntryMemberId.ORDER_EVENTS) is None
 
         path = reader.path_of(RunEntryMemberId.ORDER_EVENTS)
         path.parent.mkdir()
         path.write_text('', encoding='utf-8')
 
-        assert reader.stream_path(RunEntryMemberId.ORDER_EVENTS) == path
+        assert reader.read_stream(RunEntryMemberId.ORDER_EVENTS).records == []
         assert reader.has(RunEntryMemberId.ORDER_EVENTS)
 
 
@@ -111,3 +112,16 @@ class TestTheFilesOfAPatternMember:
 
     def test_none_when_the_folder_is_missing(self, tmp_path):
         assert RunDirReader(tmp_path).files_of(RunEntryMemberId.SESSION_DAY_LOG) == []
+
+    def test_a_member_whose_folder_is_a_variable_part_is_found(self, tmp_path):
+        """A day record lies in its day's own folder (#476): the walk starts above it, in days/."""
+        reader = RunDirReader(tmp_path)
+        days = [reader.path_of(RunEntryMemberId.TRADES_DAY, day=day)
+                for day in ('20261102', '20261103')]
+        for path in days:
+            path.parent.mkdir(parents=True)
+            path.write_bytes(b'not read here')
+        state = reader.path_of(RunEntryMemberId.STATE_FRAMES_DAY, day='20261102')
+        state.write_bytes(b'another member')
+
+        assert reader.files_of(RunEntryMemberId.TRADES_DAY) == days

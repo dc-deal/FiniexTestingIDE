@@ -6,12 +6,10 @@ its feeder thread (threading model 8.a).
 
 import queue
 import threading
-from pathlib import Path
 from typing import Optional
 
 from python.framework.autotrader.tick_sources.kraken_tick_source import KrakenTickSource
 from python.framework.autotrader.tick_sources.mock_tick_source import MockTickSource
-from python.framework.constants.run_layout_constants import RUN_TYPE_AUTOTRADER
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.store.entry_members.run_entry_writer import RunEntryWriter
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
@@ -27,7 +25,7 @@ def setup_tick_source(
     logger: ScenarioLogger,
     package: Optional[ProcessDataPackage] = None,
     session_logger: Optional[ScenarioLogger] = None,
-    run_dir: Optional[Path] = None,
+    run_writer: Optional[RunEntryWriter] = None,
     run_id: str = '',
 ) -> tuple:
     """
@@ -45,7 +43,8 @@ def setup_tick_source(
         package: Prepared scenario data package (#438) — the mock source replays its ticks
         session_logger: The session's logger — the live source writes what the operator must
             read there (#609)
-        run_dir: The run's directory; the live source records its outages in its io/ folder
+        run_writer: The session's run writer — the live source records its outages through it,
+            as a stream its sealer seals per trading day; None records none
         run_id: Written into that record's header
 
     Returns:
@@ -80,7 +79,7 @@ def setup_tick_source(
             connection_dead_s=config.tick_source.connection_dead_s,
             logger=logger,
             session_logger=session_logger,
-            run_writer=RunEntryWriter(run_dir, RUN_TYPE_AUTOTRADER) if run_dir is not None else None,
+            run_writer=run_writer,
             run_id=run_id,
         )
     else:

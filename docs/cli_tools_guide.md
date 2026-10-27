@@ -244,9 +244,10 @@ USDJPY:
   20260830_173704_ce76e830  simulation  18 artifact(s)  multi_position_test
 ```
 
-**`run_type` is the PIPELINE, never the nesting.** Two values only — `simulation` and
-`autotrader`. A sweep combination is a `simulation` whose `parent_id` names its sweep; a day record
-(#476) will be an `autotrader` run whose `parent_id` names its session.
+**`run_type` is the PIPELINE, never the nesting.** Two values only — `simulation` and `autotrader`.
+A sweep combination is a `simulation` whose `parent_id` names its sweep; a session of a restarted
+bot is an `autotrader` run whose `parent_id` names its deployment. A trading day of a session is
+not a run: its day records lie inside the session's directory.
 
 The artifact count is the length of the run's `artifacts` list — every report file it persisted,
 by name. A run with none is not automatically incomplete: the header's `reporting` field says

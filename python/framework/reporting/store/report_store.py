@@ -33,13 +33,12 @@ from python.framework.reporting.io.artifact_specs import (
     ORDER_HISTORY_ARTIFACT,
     TRADE_HISTORY_ARTIFACT,
 )
-from python.framework.reporting.io.order_event_stream_io import read_order_event_stream
+from python.framework.reporting.io.order_event_stream_io import order_events_of
 from python.framework.reporting.io.report_artifact_io import ArtifactSpec
 from python.framework.reporting.io.report_filters import (
     filter_order_history_report,
     filter_trade_history_report,
 )
-from python.framework.reporting.io.run_stream_reader import read_stream_ends
 from python.framework.reporting.store.run_index import RunIndex
 from python.framework.reporting.store.run_list_figures import get_run_list_figures
 from python.framework.reporting.store.served_run_header import served_run_header
@@ -197,9 +196,10 @@ class ReportStore:
         """
         Read a run's order-event stream, optionally narrowed to one unit or one order (#362).
 
-        Read whenever the file exists — a live session's stream grows from its first order, and
+        Read whenever the stream exists — a live session's stream grows from its first order, and
         a session that died before its report has one, which is when it is worth the most. A
-        cut-off last line is left out and reported on the report rather than failing the read.
+        session's stream is read across the trading days it sealed out of it (#476). A cut-off
+        last line is left out and reported on the report rather than failing the read.
 
         Narrowed to one order, the broker-truth lines drop out: each one is the venue's whole
         account at a moment, never a step of one order.
@@ -212,10 +212,11 @@ class ReportStore:
         Returns:
             The report, or None when the run has no stream
         """
-        path = self._reader.stream_path(run_id, RunEntryMemberId.ORDER_EVENTS)
-        if path is None:
+        stream = self._reader.read_stream(run_id, RunEntryMemberId.ORDER_EVENTS)
+        if stream is None:
             return None
-        rows, truths, truncated = read_order_event_stream(path)
+        path = self._reader.directory(run_id).path_of(RunEntryMemberId.ORDER_EVENTS)
+        rows, truths, truncated = order_events_of(stream, path.name, str(path))
         if scenario_name is not None:
             rows = [row for row in rows if row.scenario_name == scenario_name]
             truths = [truth for truth in truths if truth.scenario_name == scenario_name]
@@ -231,9 +232,10 @@ class ReportStore:
         A run's state-frame stream at its two ends — its first frame and its latest (#611).
 
         Read without the lines between, whatever the stream's length, and while the session still
-        writes it. A header naming another stream or a schema this reader does not know, records
-        without a header, and a frame that does not fit the model make the stream unreadable
-        rather than half-read.
+        writes it — across the trading days it sealed out of it (#476), so right after a seal the
+        latest frame is the sealed day's last. A header naming another stream or a schema this
+        reader does not know, records without a header, and a frame that does not fit the model
+        make the stream unreadable rather than half-read.
 
         Args:
             run_id: The run's identity
@@ -241,10 +243,10 @@ class ReportStore:
         Returns:
             The two ends, or None when the run records no state frames
         """
-        path = self._reader.stream_path(run_id, RunEntryMemberId.STATE_FRAMES)
-        if path is None:
+        ends = self._reader.read_stream_ends(run_id, RunEntryMemberId.STATE_FRAMES)
+        if ends is None:
             return None
-        ends = read_stream_ends(path)
+        path = self._reader.directory(run_id).path_of(RunEntryMemberId.STATE_FRAMES)
         if ends.header is None:
             if ends.last is not None:
                 raise ReportArtifactUnreadableError(

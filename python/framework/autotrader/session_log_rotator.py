@@ -13,7 +13,7 @@ from typing import Callable, Optional
 
 from python.configuration.app_config_manager import AppConfigManager
 from python.framework.autotrader.session_log_retention import prune_rotated_session_logs
-from python.framework.constants.run_layout_constants import RUN_TYPE_AUTOTRADER
+from python.framework.constants.run_layout_constants import DAY_LABEL_FORMAT, RUN_TYPE_AUTOTRADER
 from python.framework.logging.file_logger import FileLogger
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.store.entry_members.run_entry_writer import RunEntryWriter
@@ -78,7 +78,7 @@ class SessionLogRotator:
         current_day = self._trading_day()
         if current_day is None:
             return
-        day_label = current_day.strftime('%Y%m%d')
+        day_label = current_day.strftime(DAY_LABEL_FORMAT)
 
         if self._current_log_date is None:
             # First pass — ensure the file matches the trading day

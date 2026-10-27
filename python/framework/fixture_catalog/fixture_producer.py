@@ -36,7 +36,7 @@ from python.framework.fixture_catalog.fixture_catalog import (
 from python.framework.fixture_catalog.fixture_evidence_reader import read_fixture_evidence
 from python.framework.fixture_catalog.fixture_production_store import FixtureProductionStore
 from python.framework.optimization.optimization_runner import OptimizationRunner
-from python.framework.reporting.io.order_event_stream_io import read_order_event_stream
+from python.framework.reporting.io.order_event_stream_io import order_events_of
 from python.framework.reporting.store.run_index import RunIndex
 from python.framework.store.entry_members.run_dir_reader import RunDirReader
 from python.framework.types.api.report_types import ParentKind, RunInfo
@@ -250,9 +250,9 @@ class FixtureProducer:
                 return False
             new = frame[(frame['run_name'] == run_name) & ~frame['run_id'].isin(before)]
             for run_dir in new['run_dir']:
-                stream = RunDirReader(_PROJECT_ROOT / run_dir).stream_path(
+                stream = RunDirReader(_PROJECT_ROOT / run_dir).read_stream(
                     RunEntryMemberId.ORDER_EVENTS)
-                if stream is not None and read_order_event_stream(stream)[0]:
+                if stream is not None and order_events_of(stream, run_dir, run_dir)[0]:
                     return True
             return False
 

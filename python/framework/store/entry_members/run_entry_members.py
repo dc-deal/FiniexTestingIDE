@@ -20,6 +20,8 @@ from python.framework.constants.run_layout_constants import (
     BOOKING_PERIODS_ARTIFACT_FILE,
     BROKER_ARTIFACT_FILE,
     COLD_START_ARTIFACT_FILE,
+    DAY_RECORD_SUFFIX,
+    DAYS_SUBDIR,
     DIAGNOSTICS_FILE_PATTERN,
     DIAGNOSTICS_ROWS_FILE_PATTERN,
     DIAGNOSTICS_ROWS_SCHEMA_VERSION,
@@ -95,6 +97,7 @@ _DOC_OBSERVABILITY = 'docs/autotrader/autotrader_observability.md#logging'
 _DOC_SECTIONS = 'docs/architecture/reporting_pipeline.md#report-sections--domain--migration-status'
 _DOC_DIAGNOSTICS = 'docs/architecture/diagnostics_csv_sink.md#lifecycle-framework-owned'
 _DOC_STRATEGY_FILES = 'docs/architecture/store_entry_members.md#strategy-files'
+_DOC_DAY_RECORDS = 'docs/architecture/run_stream_day_records.md#what-a-day-record-holds'
 
 
 def _backtest_log(log_name: str) -> str:
@@ -156,6 +159,30 @@ def _section(member_id: RunEntryMemberId, served_route: Optional[str], file_name
     return EntryMember(member_id, f'{IO_SUBDIR}/{file_name}', EntryMemberShape.REPORT_OUTPUT,
                        purpose, written_by, EntryMemberWriteMode.IN_PLACE, _DOC_SECTIONS,
                        index_column=RunIndexColumn.ARTIFACTS, served_route=served_route)
+
+
+def _day_record(member_id: RunEntryMemberId, stream_path: str, purpose: str,
+                stream_condition: str) -> EntryMember:
+    """
+    One sealed trading day of a session's stream (#476): written at the boundary that ends the day,
+    once and whole, into the day's folder in days/ at the path the stream has in the run.
+
+    Args:
+        member_id: Its identity
+        stream_path: The stream's own path in the run
+        purpose: What it holds
+        stream_condition: When the session writes the stream at all
+
+    Returns:
+        The member
+    """
+    sealed_path = stream_path.rsplit('.', 1)[0] + DAY_RECORD_SUFFIX
+    return EntryMember(
+        member_id, f'{DAYS_SUBDIR}/{{day}}/{sealed_path}',
+        EntryMemberShape.DAY_RECORD, purpose,
+        (EntryMemberWrite(RUN_TYPE_AUTOTRADER, EntryMemberMoment.AS_IT_RUNS,
+                          f'{stream_condition}, and a trading day ended while the session ran'),),
+        EntryMemberWriteMode.ATOMIC_REPLACE, _DOC_DAY_RECORDS)
 
 
 _BOTH = (RUN_TYPE_SIMULATION, RUN_TYPE_AUTOTRADER)
@@ -356,7 +383,8 @@ RUN_ENTRY_MEMBERS: Tuple[EntryMember, ...] = (
                           'the session got through its startup checks')),
         EntryMemberWriteMode.APPEND_LINES, 'docs/architecture/order_event_stream.md#storage',
         index_column=RunIndexColumn.STREAM_FILES, schema_version=ORDER_EVENTS_SCHEMA_VERSION,
-        served_route='order-events'),
+        served_route='order-events', time_fields=('event_time',),
+        day_record=RunEntryMemberId.ORDER_EVENTS_DAY),
     EntryMember(
         RunEntryMemberId.STATE_FRAMES, f'{IO_SUBDIR}/{STATE_FRAMES_FILE}', EntryMemberShape.STREAM,
         'what the session held and decided, moment by moment',
@@ -365,7 +393,8 @@ RUN_ENTRY_MEMBERS: Tuple[EntryMember, ...] = (
         EntryMemberWriteMode.APPEND_LINES,
         'docs/architecture/live_telemetry_architecture.md#the-recorded-state-frame--not-this-stream',
         index_column=RunIndexColumn.STREAM_FILES, schema_version=STATE_FRAMES_SCHEMA_VERSION,
-        served_route='state-frames/latest'),
+        served_route='state-frames/latest', time_fields=('frame_time',),
+        day_record=RunEntryMemberId.STATE_FRAMES_DAY),
     EntryMember(
         RunEntryMemberId.TICK_STREAM_EVENTS, f'{IO_SUBDIR}/{TICK_STREAM_EVENTS_FILE}',
         EntryMemberShape.STREAM, 'the tick stream\'s outages and the trades it refused',
@@ -373,7 +402,8 @@ RUN_ENTRY_MEMBERS: Tuple[EntryMember, ...] = (
                           'the session reads its ticks from a venue'),),
         EntryMemberWriteMode.APPEND_LINES,
         'docs/autotrader/autotrader_architecture.md#what-a-session-records',
-        schema_version=TICK_STREAM_EVENTS_SCHEMA_VERSION),
+        schema_version=TICK_STREAM_EVENTS_SCHEMA_VERSION, time_fields=('lost_at', 'received_at'),
+        day_record=RunEntryMemberId.TICK_STREAM_EVENTS_DAY),
     EntryMember(
         RunEntryMemberId.DIAGNOSTICS_ROWS,
         f'{DIAGNOSTICS_SUBDIR}/{DIAGNOSTICS_ROWS_FILE_PATTERN}', EntryMemberShape.STREAM,
@@ -381,7 +411,8 @@ RUN_ENTRY_MEMBERS: Tuple[EntryMember, ...] = (
         (EntryMemberWrite(RUN_TYPE_AUTOTRADER, EntryMemberMoment.AS_IT_RUNS,
                           'the logic declared a diagnostics sink'),),
         EntryMemberWriteMode.APPEND_LINES, _DOC_DIAGNOSTICS,
-        schema_version=DIAGNOSTICS_ROWS_SCHEMA_VERSION),
+        schema_version=DIAGNOSTICS_ROWS_SCHEMA_VERSION, time_fields=(),
+        day_record=RunEntryMemberId.DIAGNOSTICS_ROWS_DAY),
     EntryMember(
         RunEntryMemberId.TRADES, f'{IO_SUBDIR}/{TRADES_FILE}', EntryMemberShape.STREAM,
         'every trade the session closed, as it closed',
@@ -389,7 +420,26 @@ RUN_ENTRY_MEMBERS: Tuple[EntryMember, ...] = (
                           'the session reached its tick loop'),),
         EntryMemberWriteMode.APPEND_LINES,
         'docs/autotrader/autotrader_architecture.md#what-a-session-records',
-        schema_version=TRADES_SCHEMA_VERSION),
+        schema_version=TRADES_SCHEMA_VERSION, time_fields=('exit_time',),
+        day_record=RunEntryMemberId.TRADES_DAY),
+
+    # --- The session's streams sealed per trading day (#476), in days/
+    _day_record(RunEntryMemberId.ORDER_EVENTS_DAY, f'{IO_SUBDIR}/{ORDER_EVENTS_FILE}',
+                'one trading day of the order events, sealed',
+                'the session got through its startup checks'),
+    _day_record(RunEntryMemberId.STATE_FRAMES_DAY, f'{IO_SUBDIR}/{STATE_FRAMES_FILE}',
+                'one trading day of the state frames, sealed',
+                'the profile records state frames'),
+    _day_record(RunEntryMemberId.TICK_STREAM_EVENTS_DAY, f'{IO_SUBDIR}/{TICK_STREAM_EVENTS_FILE}',
+                'one trading day of the tick stream\'s outages and refused trades, sealed',
+                'the session reads its ticks from a venue'),
+    _day_record(RunEntryMemberId.TRADES_DAY, f'{IO_SUBDIR}/{TRADES_FILE}',
+                'one trading day of the closed trades, sealed',
+                'the session reached its tick loop'),
+    _day_record(RunEntryMemberId.DIAGNOSTICS_ROWS_DAY,
+                f'{DIAGNOSTICS_SUBDIR}/{DIAGNOSTICS_ROWS_FILE_PATTERN}',
+                'one trading day of one diagnostics sink\'s rows, sealed',
+                'the logic declared a diagnostics sink'),
     EntryMember(
         RunEntryMemberId.WARMUP_HISTORY, f'{IO_SUBDIR}/{WARMUP_HISTORY_FILE}',
         EntryMemberShape.SNAPSHOT,

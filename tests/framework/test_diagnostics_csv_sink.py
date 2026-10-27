@@ -209,7 +209,8 @@ class TestASessionStreamsItsRows:
 
     def test_a_row_is_a_line_the_moment_it_is_appended(self, tmp_path):
         dl = _make_decision()
-        stream_diagnostics_rows(tmp_path, 'run_x', dl, MagicMock())
+        stream_diagnostics_rows(RunEntryWriter(tmp_path, RUN_TYPE_AUTOTRADER), 'run_x', dl,
+                                MagicMock())
         dl.diagnostics_csv('setup', ['bars', 'note']).append_row({'note': 'n', 'bars': 3, 'x': 1})
 
         header, row = _stream_lines(tmp_path, 'setup')
@@ -219,7 +220,8 @@ class TestASessionStreamsItsRows:
     def test_rows_appended_before_the_stream_opened_are_written_when_it_opens(self, tmp_path):
         dl = _make_decision()
         dl.diagnostics_csv('setup', ['bars']).append_row({'bars': 1})
-        stream_diagnostics_rows(tmp_path, 'run_x', dl, MagicMock())
+        stream_diagnostics_rows(RunEntryWriter(tmp_path, RUN_TYPE_AUTOTRADER), 'run_x', dl,
+                                MagicMock())
         dl.diagnostics_csv('setup', ['bars']).append_row({'bars': 2})
 
         assert [line.get('bars') for line in _stream_lines(tmp_path, 'setup')[1:]] == [1, 2]
@@ -227,7 +229,8 @@ class TestASessionStreamsItsRows:
     def test_a_cell_only_the_table_could_write_is_written_as_the_table_writes_it(self, tmp_path):
         stamp = datetime(2026, 10, 25, 12, tzinfo=timezone.utc)
         dl = _make_decision()
-        stream_diagnostics_rows(tmp_path, 'run_x', dl, MagicMock())
+        stream_diagnostics_rows(RunEntryWriter(tmp_path, RUN_TYPE_AUTOTRADER), 'run_x', dl,
+                                MagicMock())
         dl.diagnostics_csv('setup', ['at', 'bars', 'ok', 'side', 'arr']).append_row(
             {'at': stamp, 'bars': np.int64(3), 'ok': np.bool_(True), 'side': _Side.LONG,
              'arr': np.array([1, 2])})

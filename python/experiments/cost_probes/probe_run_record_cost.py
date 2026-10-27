@@ -2,11 +2,11 @@
 
 The question arose in #476 (sealed trading days), which owns the probe. A session books each
 trading day into the results ledger as the day seals — it rewrites its ledger fragment whole, once
-per boundary check — streams every closed trade and every diagnostics row as a flushed line, and
-lets its log buffer go of a sealed day's ordinary lines. The answer moves with the machine — this
-development container writes /app through a bridge to a Windows drive, a server writes to a local
-disk — and with the code: stage B of #476 adds a parquet day record to the seal, and the ledger row
-grows with every column. That is why this is re-runnable rather than a one-shot script.
+per boundary check — streams every closed trade and every diagnostics row as a flushed line, lets
+its log buffer go of a sealed day's ordinary lines, and seals each stream's day into a parquet day
+record. The answer moves with the machine — this development container writes /app through a bridge
+to a Windows drive, a server writes to a local disk — and with the code: the ledger row grows with
+every column. That is why this is re-runnable rather than a one-shot script.
 
 Writes only into a temporary folder it creates under each --dir and removes again; no run, ledger
 or carry-over of the operator is touched. Like every start of the framework, it leaves its header
@@ -23,6 +23,16 @@ Recorded results:
       Measured inside the suite the same day, the trim read 0.08 ms: the suite's configuration
       buffers no INFO line at all, so the figure measured an empty buffer. Run the probe as a plain
       script.
+  2026-10-26 15:30 and 15:32 UTC — the same container, the day seal added: a day of 1,440 records
+      of about 3.9 KB each (a day of state frames at an M1 cadence) sealed in 140 ms median with
+      the record times parsed by dateutil; parsed by `parse_iso_datetime`, 81 and 94 ms median in
+      two runs, max 150 ms, on the overlay, and 172 ms behind the bridge. A day of 10 records:
+      2-4 ms, and 70 ms behind the bridge. Most of a large day's seal is parsing its lines.
+  2026-10-27 08:43 UTC — the same container, the day record and the ledger fragment now written
+      durably (fsync of the file before its rename, of its folder after): the fragment 12-14 ms on
+      the overlay (was 8-10) and 105-115 ms behind the bridge (was about 95); a day of 10 records
+      6 ms (was 2-4), of 1,440 records 98 ms (was 81-94, within the runs' spread), 189 ms behind
+      the bridge.
 
 Usage:
     python python/experiments/cost_probes/probe_run_record_cost.py [--dir PATH ...] [--repeats N]
@@ -43,6 +53,7 @@ from python.framework.reporting.builders.booking_period_builder import (
     PeriodSnapshot,
     derive_booking_period,
 )
+from python.framework.reporting.io.run_stream_sealer import RunStreamSealer
 from python.framework.reporting.store.run_results_ledger import RunResultsLedger
 from python.framework.store.entry_members.run_entry_writer import RunEntryWriter
 from python.framework.types.log_level import LogLevel
@@ -60,6 +71,31 @@ _TRADE_ROW: Dict[str, object] = {
     f'field_{i}': (i * 1.2345 if i % 3 else f'value_{i}') for i in range(40)}
 _DIAGNOSTICS_ROW: Dict[str, object] = {f'column_{i}': i * 0.5 for i in range(10)}
 _TRIM_LINES = (10_000, 100_000)
+# One sealed day of a stream, each record about as wide as a state frame of a session with a handful
+# of workers: a few records, as a day of trades holds, and a day of frames at an M1 cadence
+_SEAL_DAY_RECORDS = (10, 1440)
+_FRAME_ROW: Dict[str, object] = {
+    'frame_time': '2026-01-05T12:00:00+00:00', **{f'output_{i}': i * 1.2345 for i in range(150)}}
+
+
+class _QuietLogger:
+    """Takes the seal's lines and keeps none — the probe prints its own table."""
+
+    def info(self, message: str) -> None:
+        """
+        Drop an info line.
+
+        Args:
+            message: The line
+        """
+
+    def error(self, message: str) -> None:
+        """
+        Drop an error line.
+
+        Args:
+            message: The line
+        """
 
 
 def _provenance() -> RunProvenance:
@@ -146,6 +182,35 @@ def _stream_line_us(folder: Path, member: RunEntryMemberId, row: Dict[str, objec
     return samples
 
 
+def _seal_ms(folder: Path, lines: int, repeats: int) -> List[float]:
+    """
+    Time the seal of one trading day of one stream: its file read, its day record written, the file
+    started afresh.
+
+    Args:
+        folder: Where the run directories are made
+        lines: How many records the day holds
+        repeats: How many timed seals, each of a fresh day
+
+    Returns:
+        One duration per seal, milliseconds
+    """
+    samples = []
+    for repeat in range(repeats):
+        sealer = RunStreamSealer(_QuietLogger())
+        writer = RunEntryWriter(folder / f'seal_{lines}_{repeat}', RUN_TYPE_AUTOTRADER,
+                                streams=sealer)
+        stream = writer.open_stream(RunEntryMemberId.STATE_FRAMES, 'cost_probe', None, stops='-')
+        for _ in range(lines):
+            stream.write(_FRAME_ROW)
+        day = _MONDAY.date() + timedelta(days=repeat)
+        started = time.perf_counter()
+        sealer.seal(day, day + timedelta(days=1))
+        samples.append((time.perf_counter() - started) * 1000)
+        stream.close()
+    return samples
+
+
 def _trim_ms(lines: int) -> float:
     """
     Time the log buffer letting go of a sealed day's ordinary lines.
@@ -218,6 +283,8 @@ def _measure(root: Path, repeats: int, lines: int) -> None:
         diagnostics = _stream_line_us(folder, RunEntryMemberId.DIAGNOSTICS_ROWS,
                                       _DIAGNOSTICS_ROW, lines, sink='probe')
         print(f'  diagnostics line, 10 fields   {_us(diagnostics)}')
+        for records in _SEAL_DAY_RECORDS:
+            print(f'  seal a day, {records:>5,} records   {_ms(_seal_ms(folder, records, repeats))}')
     finally:
         shutil.rmtree(folder, ignore_errors=True)
 

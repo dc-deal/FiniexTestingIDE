@@ -606,6 +606,13 @@ An AutoTrader session's directory also holds the **warmup history** it started f
 injection and again once the seam at the first tick has closed. Part of the run's record like the
 stream; a live session's warmup exists nowhere else. See [Warmup History](warmup_history.md).
 
+At each trading day's boundary a session seals the day of every stream it writes line by line into
+**day records** — `days/<day>/io/order_events.parquet`, `days/<day>/diagnostics/<sink>.parquet` — and
+each stream's file starts the next day afresh (#476). They are members of the run directory, not a
+store and not an index: what a sealed day holds is in its own footer, and a reader keeps it in
+memory once read, so no index file can drift from the days it describes. See
+[Day Records](run_stream_day_records.md).
+
 ---
 
 ## The index contract

@@ -68,6 +68,7 @@ from python.framework.reporting.builders.booking_periods_report_builder import (
 from python.framework.reporting.console.booking_periods_summary import BookingPeriodsSummary
 from python.framework.reporting.store.run_results_ledger import append_run_to_ledger
 from python.framework.store.entry_members.run_entry_writer import RunEntryWriter
+from python.framework.store.entry_members.run_entry_members import RUN_ENTRY_MEMBERS
 from python.framework.store.entry_members.run_footprint import (
     expectation,
     expectation_after,
@@ -81,8 +82,12 @@ from python.framework.types.scenario_types.scenario_set_types import SingleScena
 from python.framework.types.log_level import LogLevel
 from python.framework.types.run_footprint_types import MemberExpectation
 from python.framework.types.signal_data_types import SignalObservedSeries
-from python.framework.types.store_member_types import RunEntryMemberId
+from python.framework.types.store_member_types import EntryMemberShape, RunEntryMemberId
 from python.framework.utils.console_renderer import ConsoleRenderer
+
+# The day records a session may seal (#476), read from the run store's declaration
+_DAY_RECORD_MEMBERS = tuple(member.member_id for member in RUN_ENTRY_MEMBERS
+                            if member.shape is EntryMemberShape.DAY_RECORD)
 
 
 class AutotraderReportCoordinator:
@@ -441,4 +446,9 @@ class AutotraderReportCoordinator:
                               'the decision logic is a security-study stage',
                               'the decision logic is no security-study stage',
                               'the session stopped before the study opened its capture'),
+            # #476: the day records of every stream that was open when a trading day ended
+            *(expectation(member_id, member_id in reach.sealed_day_records,
+                          'the stream was open when a trading day ended',
+                          'no trading day ended while the stream was open')
+              for member_id in _DAY_RECORD_MEMBERS),
         ]

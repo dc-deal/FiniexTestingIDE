@@ -5,7 +5,7 @@ Result data structures for live AutoTrader sessions.
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import List, Optional
+from typing import FrozenSet, List, Optional
 
 from python.framework.types.autotrader_types.clipping_monitor_types import ClippingSessionSummary
 from python.framework.types.autotrader_types.cold_start_types import (
@@ -28,6 +28,7 @@ from python.framework.types.portfolio_types.portfolio_trade_record_types import 
 from python.framework.types.portfolio_types.portfolio_types import Position
 from python.framework.types.run_outcome_types import TRANSIENT_START_EXIT_CODE, RunOutcome
 from python.framework.types.signal_data_types import SignalResolutionStats
+from python.framework.types.store_member_types import RunEntryMemberId
 from python.framework.types.trading_env_types.active_orders_snapshot_types import (
     ActiveOrdersSnapshot,
 )
@@ -50,6 +51,8 @@ class SessionReach:
         tick_loop_entered: The state frames were opened and the tick loop was built
         day_log_opened: A pass of the tick loop opened the trading day's session log
         algo_state_found: The start found a saved algo state, so it recorded what it found (#476)
+        sealed_day_records: The day records a seal was due for — the members of every stream
+            that was open when a trading day ended (#476)
     """
     order_record_opened: bool = False
     capture_opened: bool = False
@@ -57,6 +60,7 @@ class SessionReach:
     tick_loop_entered: bool = False
     day_log_opened: bool = False
     algo_state_found: bool = False
+    sealed_day_records: FrozenSet[RunEntryMemberId] = frozenset()
 
 
 @dataclass

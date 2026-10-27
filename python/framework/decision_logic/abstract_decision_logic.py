@@ -500,7 +500,7 @@ class AbstractDecisionLogic(ABC):
             self._attach_sink_stream(sink)
         return self._diagnostics_sinks[name]
 
-    def stream_diagnostics(
+    def set_diagnostics_stream_opener(
         self,
         open_sink_stream: Callable[[DiagnosticsCsvSink], Optional[RunStreamAppender]],
     ) -> None:

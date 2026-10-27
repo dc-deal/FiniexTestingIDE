@@ -53,10 +53,10 @@ _JUDGED_ELSEWHERE = {
 }
 
 # The members the census runs cannot produce, the test that covers each one, and how far that test
-# reaches. The two captures and the restored algo state are written into a real run directory there,
-# held to the declaration by `assert_run_dir_declared`; for the other three no test writes the file
-# where a run writes it. Kept short on purpose: a member that joins this table is one the census no
-# longer sees.
+# reaches. The captures, the restored algo state and the tick stream's sealed day are written into a
+# real run directory there, held to the declaration by `assert_run_dir_declared`; for the others no
+# test writes the file where a run writes it. Kept short on purpose: a member that joins this table
+# is one the census no longer sees.
 _COVERED_ELSEWHERE = {
     RunEntryMemberId.BLOCK_SPLITTING: (
         'tests/framework/reporting/test_block_splitting_report.py',
@@ -81,6 +81,10 @@ _COVERED_ELSEWHERE = {
         'tests/autotrader/state_persistence/test_restored_state_record.py',
         'written only by a session whose logic keeps its state and finds a saved one; that test '
         'writes it into a run directory and holds it to the declaration'),
+    RunEntryMemberId.TICK_STREAM_EVENTS_DAY: (
+        'tests/framework/reporting/test_run_stream_day_records.py',
+        'a sealed day of the tick stream record, which only a session reading its ticks from a '
+        'venue writes; that test seals one into a run directory and holds it to the declaration'),
 }
 
 

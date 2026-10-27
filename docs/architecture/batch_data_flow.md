@@ -83,13 +83,13 @@ It is minted ONCE per run and passed down: to the three loggers of an AutoTrader
 three ids and therefore three directories.
 
 Each run writes a `header.json` at its START — id, start time, category, owner, and the parent it
-belongs to (a sweep or a deployment today; a session once #476's day records exist). At the start
-rather than the end, because a run that crashes is exactly the run somebody needs to identify. The
-same header states where the run came from and, for a run that reports, which code it ran — see
-[Run Origin and Code Identity](run_origin_and_code_identity.md). It names the configuration
-twice: `config_id`, the source file it was given, and — for an AutoTrader session —
-`rendered_config_id`, what it ran with once the `app_config` layer and every schema default were
-applied (see [Data Storage Layout](data_storage_layout.md)).
+belongs to (a sweep or a deployment). At the start rather than the end, because a run that crashes
+is exactly the run somebody needs to identify. The same header states where the run came from and,
+for a run that reports, which code it ran — see [Run Origin and Code
+Identity](run_origin_and_code_identity.md). It names the configuration twice: `config_id`, the
+source file it was given, and — for an AutoTrader session — `rendered_config_id`, what it ran with
+once the `app_config` layer and every schema default were applied (see [Data Storage
+Layout](data_storage_layout.md)).
 
 `runs/runs_index.parquet` is ONE compacted file DERIVED from those headers, and it is what the API
 reads. Derived is the point: it may be deleted or go stale without anything being lost —
@@ -106,14 +106,15 @@ file_logging.run_logs.simulation    runs/simulation/<set>/<run_id>/
 file_logging.run_logs.autotrader    runs/autotrader/<profile>/<run_id>/
 ```
 
-**Two roots, because there are two run TYPES** — and the type is the PIPELINE, not the nesting.
-A sweep combination is a `simulation` with a `parent_id`; an AutoTrader day record (#476) will be an
-`autotrader` run with a `parent_id`. Folding nesting into the type would make the most basic question —
-"is this a simulation?" — a two-value comparison, and would need a new value for every new kind
-of parent. Which KIND of parent an id names is its own field, `parent_kind` — the ids are all a
-prefix plus a timestamp, so nothing about the id itself tells them apart, and deriving the kind
-from the run type would be right exactly until #476 gives an `autotrader` run a parent that is a
-session rather than a deployment.
+**Two roots, because there are two run TYPES** — and the type is the PIPELINE, not the nesting. A
+sweep combination is a `simulation` with a `parent_id`; a restarted bot's session is an
+`autotrader` run whose `parent_id` names its deployment. A trading day of a session is no run of
+its own: its records are day records inside the session's directory ([Day
+Records](run_stream_day_records.md)). Folding nesting into the type would make the most basic
+question — "is this a simulation?" — a two-value comparison, and would need a new value for every
+new kind of parent. Which KIND of parent an id names is its own field, `parent_kind` — the ids are
+all a prefix plus a timestamp, so nothing about the id itself tells them apart, and deriving the
+kind from the run type would be right exactly until a run type gets a second kind of parent.
 
 **The paths are configuration** (`app_config.json` → `file_logging.run_logs`), read by the
 writers (`ScenarioSet`, `autotrader_startup`) AND by the run index — one source, so a moved log

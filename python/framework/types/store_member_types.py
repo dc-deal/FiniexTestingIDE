@@ -48,6 +48,7 @@ class EntryMemberShape(StrEnum):
     REPORT_OUTPUT = 'report_output'  # derived by the reporting pipeline at the run's end
     LOG = 'log'                      # lines for a person to read, never parsed by the code
     STRATEGY_OUTPUT = 'strategy_output'  # a strategy's own file: kept with the run, never read
+    DAY_RECORD = 'day_record'        # a stream's sealed trading day: written once, whole, never again
 
 
 class EntryMemberMoment(StrEnum):
@@ -126,6 +127,11 @@ class RunEntryMemberId(StrEnum):
     TICK_STREAM_EVENTS = TICK_STREAM_EVENTS_STREAM
     TRADES = TRADES_STREAM
     DIAGNOSTICS_ROWS = DIAGNOSTICS_ROWS_STREAM
+    ORDER_EVENTS_DAY = 'order_events_day'
+    STATE_FRAMES_DAY = 'state_frames_day'
+    TICK_STREAM_EVENTS_DAY = 'tick_stream_events_day'
+    TRADES_DAY = 'trades_day'
+    DIAGNOSTICS_ROWS_DAY = 'diagnostics_rows_day'
     WARMUP_HISTORY = 'warmup_history'
     ALGO_STATE_RESTORED = 'algo_state_restored'
     FOOTPRINT = 'footprint'
@@ -170,6 +176,11 @@ class EntryMember:
         schema_version: The version of its line shapes, written into its header — streams only
         served_route: The path the API serves it under, below a run's report routes, or None when
             no route serves it
+        time_fields: The fields a stream's line takes its time from — the first one the line
+            carries; empty when its lines carry none, None where nothing was declared. A sealed
+            stream declares them
+        day_record: The member a session's stream is sealed into at each trading-day boundary
+            (#476), or None when it is not sealed
     """
     member_id: Union[RunEntryMemberId, SweepEntryMemberId]
     path_pattern: str
@@ -181,6 +192,8 @@ class EntryMember:
     index_column: Optional[RunIndexColumn] = None
     schema_version: Optional[Union[int, str]] = None
     served_route: Optional[str] = None
+    time_fields: Optional[Tuple[str, ...]] = None
+    day_record: Optional[RunEntryMemberId] = None
 
     def placeholders(self) -> Tuple[str, ...]:
         """

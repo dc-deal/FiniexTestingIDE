@@ -163,14 +163,18 @@ at most one per pass of the loop. It is what a backtest of the same period is co
 
 It is built on its own from the session's objects — `framework/autotrader/run_record/state_frame_recorder.py`,
 the line `framework/types/api/state_frame_types.py` — and written through the run-stream appender
-(`framework/reporting/io/run_stream_appender.py`), the hot half of #476's day records. The process's
+(`framework/reporting/io/run_stream_appender.py`). At each trading-day boundary the session seals the
+day's frames into `days/<day>/io/state_frames.parquet` and the file starts afresh
+([Day Records](run_stream_day_records.md)). The process's
 memory rides on every frame of a live session. A replay compresses hours into seconds, and reading
 the memory costs about a millisecond in a session-sized process, so a replay reads it at most once
 per cadence interval of the monotonic clock and at its last frame.
 
 **Served while it is written (#611).** `GET /api/v1/reports/runs/{run_id}/state-frames/latest`
 reads the stream's two ends — its header, its first frame and its last complete line — never the
-lines between (`framework/reporting/io/run_stream_reader.py`), and serves each unit's latest frame
+lines between (`framework/reporting/io/run_stream_union_reader.py`), across the sealed days and the
+running file: right after a seal the latest frame is the sealed day's last. It serves each unit's
+latest frame
 with its age and `recording`: `current`, `stopped` (no frame for three cadences and no end
 recorded) or `ended`. Nothing reaches into the running session; the record is the only thing
 between the session and the API server. The consumer's side is the served document

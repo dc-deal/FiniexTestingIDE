@@ -40,7 +40,6 @@ from python.framework.reporting.io.artifact_specs import (
     WARNINGS_ERRORS_ARTIFACT,
 )
 from python.framework.reporting.io.order_event_stream_io import write_order_event_stream
-from python.framework.reporting.io.order_event_stream_writer import OrderEventStreamWriter
 from python.framework.reporting.io.report_artifact_io import write_artifact
 from python.framework.reporting.store.report_store import ReportStore
 from python.framework.reporting.store.run_index import RunIndex
@@ -105,6 +104,7 @@ from python.framework.types.trading_env_types.order_event_types import (
     OrderEventType,
     OrderOperation,
 )
+from tests.shared.order_event_test_stream import open_test_order_event_writer
 
 # Every report artifact names its run (#475); the value is opaque to these tests.
 _RUN_ID = '20260830_120000_a1b2c3d4'
@@ -751,8 +751,8 @@ class TestTheOrderEventStream:
         """
         io_dir = _run_logs(tmp_path).simulation / 'my_set' / _RUN / IO_SUBDIR
         io_dir.mkdir(parents=True, exist_ok=True)
-        writer = OrderEventStreamWriter(io_dir / ORDER_EVENTS_FILE, _RUN_ID, 'btc_session',
-                                        GlobalLogger('ReportsEndpointTest'))
+        writer = open_test_order_event_writer(io_dir / ORDER_EVENTS_FILE, _RUN_ID, 'btc_session',
+                                              GlobalLogger('ReportsEndpointTest'))
         writer.write_broker_truth(BrokerTruthRecord(
             seq=1, read_reason=BrokerTruthReadReason.SESSION_START,
             snapshot=BrokerTruthSnapshot(venue_orders=[], venue_balances={'USD': 812.4})))

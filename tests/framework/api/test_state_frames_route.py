@@ -225,8 +225,9 @@ class TestTheRunListCarriesTheVerdict:
     def test_an_ended_session_is_read_once(self, client, tmp_path, monkeypatch):
         self._record(tmp_path, [_frame(StateFrameCause.SHUTDOWN, _ago(60))])
         reads = []
-        monkeypatch.setattr('python.framework.reporting.store.report_store.read_stream_ends',
-                            lambda path: reads.append(path) or read_stream_ends(path))
+        monkeypatch.setattr(
+            'python.framework.reporting.io.run_stream_union_reader.read_stream_ends',
+            lambda path: reads.append(path) or read_stream_ends(path))
         assert [self._recording(client) for _ in range(3)] == ['ended'] * 3
         assert len(reads) == 1, 'an ended recording cannot change, so its stream is read once'
 

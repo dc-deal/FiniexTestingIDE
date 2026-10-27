@@ -30,7 +30,7 @@ from python.framework.types.store_member_types import RunEntryMemberId
 
 
 def open_trade_stream(
-    run_dir: Optional[Path],
+    run_writer: Optional[RunEntryWriter],
     run_id: str,
     unit_name: str,
     portfolio: PortfolioManager,
@@ -40,7 +40,8 @@ def open_trade_stream(
     Open the session's trade stream and have the portfolio write every trade record into it.
 
     Args:
-        run_dir: The session's run directory; None when the session keeps none
+        run_writer: The session's run writer, whose stream sealer the stream joins; None when the
+            session keeps no run directory
         run_id: Written into the stream's header line
         unit_name: The session's unit, on the header line and on every row
         portfolio: The session's portfolio, which files the trade records
@@ -49,9 +50,9 @@ def open_trade_stream(
     Returns:
         The stream, to be closed after the session's last close; None without a run directory
     """
-    if run_dir is None:
+    if run_writer is None:
         return None
-    appender = RunEntryWriter(run_dir, RUN_TYPE_AUTOTRADER).open_stream(
+    appender = run_writer.open_stream(
         RunEntryMemberId.TRADES, run_id, logger,
         stops='The trades this session closes are no longer recorded as they close; the report '
               'at its end still lists the newest of them',
@@ -62,7 +63,7 @@ def open_trade_stream(
 
 
 def stream_diagnostics_rows(
-    run_dir: Optional[Path],
+    run_writer: Optional[RunEntryWriter],
     run_id: str,
     decision_logic: AbstractDecisionLogic,
     logger: AbstractLogger,
@@ -72,7 +73,8 @@ def stream_diagnostics_rows(
     the sinks declared so far at once, each later one when the logic declares it.
 
     Args:
-        run_dir: The session's run directory; None when the session keeps none
+        run_writer: The session's run writer, whose stream sealer each stream joins; None when the
+            session keeps no run directory
         run_id: Written into each stream's header line
         decision_logic: The session's logic, whose sinks are streamed
         logger: Where a failed write is said
@@ -81,12 +83,11 @@ def stream_diagnostics_rows(
         The streams, one per sink — filled as the logic declares sinks, to be closed at the end
     """
     streams: List[RunStreamAppender] = []
-    if run_dir is None:
+    if run_writer is None:
         return streams
-    writer = RunEntryWriter(run_dir, RUN_TYPE_AUTOTRADER)
 
     def open_sink_stream(sink: DiagnosticsCsvSink) -> RunStreamAppender:
-        stream = writer.open_stream(
+        stream = run_writer.open_stream(
             RunEntryMemberId.DIAGNOSTICS_ROWS, run_id, logger,
             stops=f"The rows of the diagnostics sink '{sink.get_name()}' are no longer recorded "
                   f'as they are appended; its table at the end still holds them',
@@ -95,7 +96,7 @@ def stream_diagnostics_rows(
         streams.append(stream)
         return stream
 
-    decision_logic.stream_diagnostics(open_sink_stream)
+    decision_logic.set_diagnostics_stream_opener(open_sink_stream)
     return streams
 
 

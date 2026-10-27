@@ -14,6 +14,8 @@ import pytest
 
 from python.api.api_contract import API_CONTRACT_VERSION
 from python.framework.constants.run_layout_constants import (
+    DAY_RECORD_SUFFIX,
+    DAYS_SUBDIR,
     IO_SUBDIR,
     RUN_TYPE_AUTOTRADER,
     RUN_TYPE_SIMULATION,
@@ -54,6 +56,7 @@ _WRITE_MODES_BY_SHAPE = {
     EntryMemberShape.REPORT_OUTPUT: {EntryMemberWriteMode.IN_PLACE},
     EntryMemberShape.SNAPSHOT: {EntryMemberWriteMode.ATOMIC_REPLACE, EntryMemberWriteMode.IN_PLACE},
     EntryMemberShape.STRATEGY_OUTPUT: {EntryMemberWriteMode.ATOMIC_REPLACE},
+    EntryMemberShape.DAY_RECORD: {EntryMemberWriteMode.ATOMIC_REPLACE},
 }
 
 # The file names the run list serves in each index column. Changing one changes what a consumer of
@@ -207,6 +210,44 @@ class TestWhatTheDeclarationPromises:
             assert doc.is_file(), f'{member.member_id}: {path} does not exist'
             assert anchor in heading_anchors(doc), (
                 f'{member.member_id}: no heading #{anchor} in {path}')
+
+
+class TestASealedStreamIsDeclaredWhole:
+    """
+    A stream sealed per trading day (#476) names the member its days are sealed into, and that
+    member names it back: the pair is held both ways, so a sealed stream cannot arrive without its
+    day record, nor a day record without the stream it seals.
+    """
+
+    def test_a_sealed_stream_points_at_a_day_record_at_its_own_path(self):
+        sealed = [member for member in RUN_ENTRY_MEMBERS if member.day_record is not None]
+        assert sealed
+        for member in sealed:
+            assert member.shape is EntryMemberShape.STREAM, member.member_id
+            day = RUN_ENTRY_MEMBERS_BY_ID[member.day_record]
+            assert day.shape is EntryMemberShape.DAY_RECORD, member.member_id
+            stem = member.path_pattern.rsplit('.', 1)[0]
+            assert day.path_pattern == f'{DAYS_SUBDIR}/{{day}}/{stem}{DAY_RECORD_SUFFIX}', (
+                member.member_id)
+
+    def test_every_day_record_is_the_sealed_form_of_exactly_one_stream(self):
+        days = [member.member_id for member in RUN_ENTRY_MEMBERS
+                if member.shape is EntryMemberShape.DAY_RECORD]
+        assert days
+        for day in days:
+            sealers = [member.member_id for member in RUN_ENTRY_MEMBERS
+                       if member.day_record is day]
+            assert len(sealers) == 1, (day, sealers)
+
+    def test_a_sealed_stream_declares_its_time_fields_or_that_it_has_none(self):
+        """
+        Undeclared reads as None, a stream whose lines carry no time as an empty tuple: a sealed
+        stream that forgot would seal every record without a time, and its time windows would
+        read whole days without a word.
+        """
+        for member in RUN_ENTRY_MEMBERS:
+            if member.day_record is not None:
+                assert member.time_fields is not None, member.member_id
 
 
 class TestTheDeclarationIsLight:

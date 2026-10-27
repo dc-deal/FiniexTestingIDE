@@ -20,7 +20,11 @@ from zoneinfo import ZoneInfo
 import pandas as pd
 import pytest
 
-from python.framework.utils.time_utils import ensure_utc_aware, parse_datetime
+from python.framework.utils.time_utils import (
+    ensure_utc_aware,
+    parse_datetime,
+    parse_iso_datetime,
+)
 
 
 @pytest.fixture
@@ -76,3 +80,20 @@ def test_a_pandas_timestamp_stays_a_timestamp():
 
     assert isinstance(converted, pd.Timestamp)
     assert converted.hour == 14 and converted == stamp
+
+
+@pytest.mark.parametrize('text', ['2026-01-05T12:00:00+00:00', '2026-01-05T12:00:00Z',
+                                  '2026-01-05T13:00:00+01:00', '2026-01-05T12:00:00'])
+def test_the_fast_iso_parse_answers_as_the_lenient_one(machine_in_berlin, text):
+    """
+    The parse a sealed trading day reads its record times with (#476): the same UTC instant as
+    `parse_datetime` for every ISO form the IDE writes, a naive one taken as UTC.
+    """
+    parsed = parse_iso_datetime(text)
+    assert parsed == parse_datetime(text) == datetime(2026, 1, 5, 12, tzinfo=timezone.utc)
+    assert parsed.tzinfo is timezone.utc
+
+
+def test_the_fast_iso_parse_refuses_what_is_not_iso():
+    with pytest.raises(ValueError):
+        parse_iso_datetime('5 Jan 2026 12:00')

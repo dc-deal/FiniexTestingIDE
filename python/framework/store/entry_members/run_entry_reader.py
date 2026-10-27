@@ -22,6 +22,11 @@ from python.framework.reporting.store.run_index import RunIndex
 from python.framework.store.entry_members.run_dir_reader import RunDirReader
 from python.framework.store.entry_members.run_entry_members import section_member_of
 from python.framework.types.api.report_types import RunHeader
+from python.framework.types.run_stream_types import (
+    RunStreamEnds,
+    RunStreamLines,
+    StreamTimeWindow,
+)
 from python.framework.types.store_member_types import EntryMember, RunEntryMemberId
 
 T = TypeVar('T')
@@ -140,19 +145,39 @@ class RunEntryReader:
         directory = self.directory(run_id)
         return directory.read_section(spec) if directory is not None else None
 
-    def stream_path(self, run_id: str, member_id: RunEntryMemberId) -> Optional[Path]:
+    def read_stream(self, run_id: str, member_id: RunEntryMemberId,
+                    window: Optional[StreamTimeWindow] = None,
+                    **names: str) -> Optional[RunStreamLines]:
         """
-        Where one stream of one run lies, for its reader to open.
+        Read one stream of one run across its sealed trading days and its own file.
 
         Args:
             run_id: The run
             member_id: The stream
+            window: The stretch to read, or None for the whole stream
+            names: One value per variable part of the stream's path
 
         Returns:
-            The path when the stream is there; None otherwise
+            Its records, or None when the run is unknown or holds no such stream
         """
         directory = self.directory(run_id)
-        return directory.stream_path(member_id) if directory is not None else None
+        return directory.read_stream(member_id, window, **names) if directory is not None else None
+
+    def read_stream_ends(self, run_id: str, member_id: RunEntryMemberId,
+                         **names: str) -> Optional[RunStreamEnds]:
+        """
+        One stream's header, its first record and its latest one, without the records between.
+
+        Args:
+            run_id: The run
+            member_id: The stream
+            names: One value per variable part of the stream's path
+
+        Returns:
+            The two ends, or None when the run is unknown or holds no such stream
+        """
+        directory = self.directory(run_id)
+        return directory.read_stream_ends(member_id, **names) if directory is not None else None
 
 
 def section_member(spec: ArtifactSpec) -> EntryMember:

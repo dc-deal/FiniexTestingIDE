@@ -83,6 +83,7 @@ from python.framework.autotrader.tick_sources.abstract_tick_source import Abstra
 from python.framework.autotrader.tick_sources.tick_source_setup import setup_tick_source
 from python.framework.bars.bar_rendering_controller import BarRenderingController
 from python.framework.config_directory.config_directory_discovery import profile_homes
+from python.framework.constants.run_layout_constants import RUN_TYPE_AUTOTRADER
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.discoveries.signal_coverage.signal_scenario_info import SignalScenarioInfo
 from python.framework.exceptions.code_identity_errors import CodeIdentityCaptureError
@@ -95,6 +96,7 @@ from python.framework.reporting.acceptance_study_recorder import AcceptanceStudy
 from python.framework.reporting.api_perf_monitor import ApiPerfMonitor
 from python.framework.reporting.io.order_event_stream_writer import OrderEventStreamWriter
 from python.framework.reporting.io.run_stream_appender import RunStreamAppender
+from python.framework.reporting.io.run_stream_sealer import RunStreamSealer
 from python.framework.reporting.store.run_results_ledger import RunResultsLedger
 from python.framework.signal_data.signal_observed_accumulator import SignalObservedAccumulator
 from python.framework.signal_data.transport.abstract_signal_transport import (
@@ -102,6 +104,7 @@ from python.framework.signal_data.transport.abstract_signal_transport import (
 )
 from python.framework.signal_data.transport.signal_inbox import SignalInbox
 from python.framework.signal_data.transport.signal_transport_setup import setup_signal_transport
+from python.framework.store.entry_members.run_entry_writer import RunEntryWriter
 from python.framework.stress_test.stale_data_stress_driver import StaleDataStressDriver
 from python.framework.trading_env.abstract_trade_executor import AbstractTradeExecutor
 from python.framework.trading_env.decision_event_dispatcher import DecisionEventDispatcher
@@ -358,6 +361,10 @@ class AutotraderMain:
         self._session_logger: Optional[ScenarioLogger] = None
         self._summary_logger: Optional[ScenarioLogger] = None
         self._run_dir: Optional[Path] = None
+        # The session's run writer and the stream sealer it carries (#476): every stream the
+        # session opens through it is sealed into day records at each trading day's boundary
+        self._stream_sealer: Optional[RunStreamSealer] = None
+        self._run_writer: Optional[RunEntryWriter] = None
 
         # Display (#228)
         self._display: Optional[AutoTraderLiveDisplay] = None
@@ -453,6 +460,9 @@ class AutotraderMain:
         self._run_dir = loggers.run_dir
         self._run_id = loggers.run_id
         self._rendered_config_id = loggers.rendered_config_id
+        self._stream_sealer = RunStreamSealer(self._session_logger)
+        self._run_writer = RunEntryWriter(
+            self._run_dir, RUN_TYPE_AUTOTRADER, streams=self._stream_sealer)
         if self._bot_lock is not None:
             record_holder_run(self._bot_lock, self._run_id)
 
@@ -565,7 +575,7 @@ class AutotraderMain:
             # Before the cold start: an order the boot takes over is the first step a session
             # records.
             self._order_event_stream = open_order_event_stream(
-                self._executor, self._run_dir, self._run_id, self._config.get_unit_name())
+                self._executor, self._run_writer, self._run_id, self._config.get_unit_name())
 
             self._restore_algo_state()
 
@@ -722,7 +732,7 @@ class AutotraderMain:
                 # The live source writes what the operator must read into the session log, and
                 # its outages into the run's io/ folder (#609).
                 session_logger=self._session_logger,
-                run_dir=self._run_dir,
+                run_writer=self._run_writer,
                 run_id=self._run_id,
             )
             self._print_startup_phase('Tick source running')
@@ -742,14 +752,14 @@ class AutotraderMain:
             # === TRADES AND DIAGNOSTICS (#476) — written as they happen, so a killed session
             # keeps them
             self._trade_stream = open_trade_stream(
-                self._run_dir, self._run_id, self._config.get_unit_name(),
+                self._run_writer, self._run_id, self._config.get_unit_name(),
                 self._executor.portfolio, self._session_logger)
             self._diagnostics_streams = stream_diagnostics_rows(
-                self._run_dir, self._run_id, self._decision_logic, self._session_logger)
+                self._run_writer, self._run_id, self._decision_logic, self._session_logger)
             # === STATE FRAMES (#579 part A) ===
             # Opened with the loop that writes them, display or not
             self._state_frames = open_state_frame_stream(
-                self._config, self._run_dir, self._run_id, self._executor,
+                self._config, self._run_writer, self._run_id, self._executor,
                 self._worker_orchestrator, self._bar_controller, self._trading_model,
                 self._reconciler, self._session_logger)
             self._tick_loop = self._build_tick_loop(run_timestamp, dry_run)
@@ -1220,6 +1230,8 @@ class AutotraderMain:
                 self._config, self._run_id, run_timestamp, self._deployment_id, self._run_dir,
                 self._session_logger, self._replayed_scenario,
                 broker_config_id=self._executor.broker.get_frozen_config_id()).book,
+            # #476: and its streams' day moves into their day records at the same boundary
+            seal_streams=self._stream_sealer.seal,
         )
 
     # =========================================================================
@@ -1477,7 +1489,9 @@ class AutotraderMain:
                 tick_source_started=self._tick_source is not None,
                 tick_loop_entered=self._tick_loop_started,
                 day_log_opened=self._tick_loop is not None and self._tick_loop.has_opened_day_log(),
-                algo_state_found=self._algo_state_found),
+                algo_state_found=self._algo_state_found,
+                sealed_day_records=(self._stream_sealer.get_due_day_members()
+                                    if self._stream_sealer is not None else frozenset())),
         )
 
         # A collection failure goes to the SESSION logger (§35): the global one only reaches

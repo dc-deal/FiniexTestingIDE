@@ -30,12 +30,10 @@ import math
 import time
 from datetime import datetime, timezone
 from enum import Enum
-from pathlib import Path
 from typing import Any, Callable, Dict, FrozenSet, Mapping, Optional
 
 from python.configuration.app_config_manager import AppConfigManager
 from python.framework.bars.bar_rendering_controller import BarRenderingController
-from python.framework.constants.run_layout_constants import RUN_TYPE_AUTOTRADER
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.reporting.builders.pending_orders_report_builder import active_order_rows
 from python.framework.reporting.builders.portfolio_report_builder import open_position_rows
@@ -458,7 +456,7 @@ class StateFrameRecorder:
 
 def open_state_frame_stream(
     config: AutoTraderConfig,
-    run_dir: Path,
+    run_writer: RunEntryWriter,
     run_id: str,
     executor: AbstractTradeExecutor,
     worker_orchestrator: WorkerOrchestrator,
@@ -475,7 +473,7 @@ def open_state_frame_stream(
 
     Args:
         config: The resolved profile — its `state_frames` block, its unit and its tick source
-        run_dir: The run's own directory
+        run_writer: The session's run writer, whose stream sealer the stream joins (#476)
         run_id: The run the stream belongs to
         executor: The session's executor
         worker_orchestrator: The session's workers
@@ -491,7 +489,7 @@ def open_state_frame_stream(
     if not settings.enabled:
         logger.info('📼 State frames: not recorded — switched off in the profile')
         return None
-    appender = RunEntryWriter(run_dir, RUN_TYPE_AUTOTRADER).open_stream(
+    appender = run_writer.open_stream(
         RunEntryMemberId.STATE_FRAMES, run_id, logger,
         stops='The session\'s state is no longer recorded',
         header_fields={'unit_name': config.get_unit_name(),
@@ -501,7 +499,7 @@ def open_state_frame_stream(
         f'📼 State frames: one per {settings.cadence_timeframe} period of the canonical clock, at '
         f'a closed bar and at an order → {appender.get_path()}')
     RunIndex(AppConfigManager().get_file_logging_config_object().run_index) \
-        .record_streams(run_id, run_dir)
+        .record_streams(run_id, run_writer.get_run_dir())
     return StateFrameRecorder(
         appender, settings.cadence_timeframe, config, executor, worker_orchestrator,
         bar_controller, trading_model, reconciler,

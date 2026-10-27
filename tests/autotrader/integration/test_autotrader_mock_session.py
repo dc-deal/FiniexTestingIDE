@@ -29,9 +29,10 @@ from python.framework.reporting.io.artifact_specs import (
     SAFETY_ARTIFACT,
     VENUE_ACCOUNT_ARTIFACT,
 )
-from python.framework.reporting.io.order_event_stream_io import read_order_event_stream
+from python.framework.reporting.io.order_event_stream_io import order_events_of
 from python.framework.reporting.io.report_artifact_io import read_artifact
 from python.framework.reporting.io.run_header_io import read_run_header
+from python.framework.store.entry_members.run_dir_reader import RunDirReader
 from python.framework.store.run_config_index import FROZEN_SUBDIR
 from python.framework.store.run_config_store import RunConfigStore
 from python.framework.types.autotrader_types.autotrader_result_types import AutoTraderResult
@@ -40,6 +41,7 @@ from python.framework.types.log_level import LogLevel
 from python.framework.types.log_record_types import LogRecord
 from python.framework.types.run_config_types import RunConfigKind
 from python.framework.types.run_outcome_types import RunOutcome
+from python.framework.types.store_member_types import RunEntryMemberId
 from python.framework.utils.config_fingerprint_utils import generate_config_fingerprint
 from tests.shared.fixture_helpers import logged_messages, remove_run_dir
 
@@ -243,6 +245,12 @@ class TestTheSessionRecordsWhatItRan:
         assert f'frozen as broker_config {unit.broker_config_id[:12]}' in session_log
 
 
+def _order_events(run_dir: Path):
+    """The session's order-event stream as the run's reader returns it."""
+    stream = RunDirReader(run_dir).read_stream(RunEntryMemberId.ORDER_EVENTS)
+    return order_events_of(stream, ORDER_EVENTS_FILE, str(run_dir))
+
+
 class TestTheVenuesHalfOfTheStream:
     """
     The session asks its venue what it holds at its start and at its end, into its own stream
@@ -250,9 +258,9 @@ class TestTheVenuesHalfOfTheStream:
     """
 
     def test_the_stream_opens_and_closes_with_the_venues_account(self, mock_session):
+        """Read as one across the trading days the session sealed out of it (#476)."""
         _, run_dir = mock_session
-        events, truths, truncated = read_order_event_stream(
-            run_dir / IO_SUBDIR / ORDER_EVENTS_FILE)
+        events, truths, truncated = _order_events(run_dir)
 
         assert [truth.read_reason for truth in truths] == [
             BrokerTruthReadReason.SESSION_START, BrokerTruthReadReason.SESSION_END]
@@ -267,7 +275,7 @@ class TestTheVenuesHalfOfTheStream:
         read back into the session's result once the stream closed.
         """
         result, run_dir = mock_session
-        _, truths, _ = read_order_event_stream(run_dir / IO_SUBDIR / ORDER_EVENTS_FILE)
+        _, truths, _ = _order_events(run_dir)
 
         report = read_artifact(run_dir / IO_SUBDIR / VENUE_ACCOUNT_ARTIFACT.filename,
                                VENUE_ACCOUNT_ARTIFACT)

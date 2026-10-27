@@ -250,6 +250,21 @@ def parse_datetime(dt_str: str) -> datetime:
     return dt
 
 
+def parse_iso_datetime(text: str) -> datetime:
+    """
+    Parse an ISO-8601 instant the IDE wrote itself — a record's `isoformat()` — to a UTC-aware
+    datetime. Strict where `parse_datetime` is lenient, and about a hundred times faster: for reading
+    many of our own records at once, such as a sealed trading day (#476).
+
+    Args:
+        text: The instant, ISO-8601
+
+    Returns:
+        UTC-aware datetime
+    """
+    return ensure_utc_aware(datetime.fromisoformat(text))
+
+
 def parse_age_duration(text: str) -> timedelta:
     """
     Parse an operator-written age such as '30d' or '12h' into a duration.

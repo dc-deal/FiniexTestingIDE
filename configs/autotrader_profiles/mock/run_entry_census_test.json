@@ -10,7 +10,7 @@
     "continuous": false
   },
   "strategy_config": {
-    "_comment": "The run entry census (#621): a probe logic that writes one diagnostics row and opens and closes one position, so the session writes every member that hangs on an order or a declared sink.",
+    "_comment": "The run entry census (#621): a probe logic that writes one diagnostics row and opens and closes one position, so the session writes every member that hangs on an order or a declared sink. It starts ten minutes before a trading-day boundary (00:00 UTC for crypto) and runs across it, so the session also seals a day and writes its streams' day records (#476).",
     "decision_logic_type": "tests/fixtures/run_entry_census/census_probe_decision.py",
     "worker_instances": {
       "rsi_fast": "CORE/rsi"
@@ -40,7 +40,7 @@
     "cadence_timeframe": "M1"
   },
   "scenario_settings": {
-    "start_date": "2026-01-25T02:19:46+00:00",
+    "start_date": "2026-01-24T23:50:00+00:00",
     "max_ticks": 200,
     "balances": {
       "USD": 10000.0,

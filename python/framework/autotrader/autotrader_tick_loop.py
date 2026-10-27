@@ -112,6 +112,8 @@ class AutotraderTickLoop:
             — asked at the end of every pass; None when the profile records no frames
         book_sealed_periods: Writes the booking periods sealed so far into the results ledger,
             called at each trading day's seal (#476); None writes nothing before the session ends
+        seal_streams: Seals the session's streams into day records at a trading day's boundary
+            (#476), given the day that ended and the day that opened; None seals nothing
     """
 
     def __init__(
@@ -146,6 +148,7 @@ class AutotraderTickLoop:
         operator_alerts: Optional[OperatorAlerts] = None,
         state_frames: Optional[StateFrameRecorder] = None,
         book_sealed_periods: Optional[Callable[[List[BookingPeriod]], None]] = None,
+        seal_streams: Optional[Callable[[date, date], None]] = None,
     ):
         self._config = config
         self._tick_queue = tick_queue
@@ -213,6 +216,7 @@ class AutotraderTickLoop:
         # it stands after adoption, so a session that changes nothing never writes.
         self._persist_carry_over = persist_carry_over
         self._book_sealed_periods = book_sealed_periods
+        self._seal_streams = seal_streams
         # The trading days one boundary check sealed, closed together once the check is done:
         # a check several days late seals one period per day, and booking each on its own would
         # rewrite the ledger fragment once per day inside one pass (#476)
@@ -1304,16 +1308,18 @@ class AutotraderTickLoop:
         """
         What the trading days one boundary check sealed set off, once for all of them (#476).
 
-        The days are booked into the ledger and their number into the carry-over, the log buffer
-        lets go of their ordinary lines, and the operator hears how the day closed (#235). Once
-        and not per day: a check several days late — a machine that slept, a replay whose clock
-        jumped to the present (#616) — seals one period per day, and each would otherwise
-        rewrite the whole ledger fragment and send its own message within one pass.
+        The days are booked into the ledger and their number into the carry-over, the session's
+        streams are sealed into day records, the log buffer lets go of their ordinary lines, and
+        the operator hears how the day closed (#235). Once and not per day: a check several days
+        late — a machine that slept, a replay whose clock jumped to the present (#616) — seals
+        one period per day, and each would otherwise rewrite the whole ledger fragment and send
+        its own message within one pass.
         """
         if not self._sealed_in_check:
             return
         sealed, self._sealed_in_check = self._sealed_in_check, []
         self._book_sealed_day()
+        self._seal_streams_of(sealed[0])
         # The days' lines are in their log files; the end reads only warnings and errors from
         # the buffer, so the rest of the days leave memory here
         self._logger.trim_buffer_below(LogLevel.WARNING)
@@ -1337,6 +1343,20 @@ class AutotraderTickLoop:
             self._book_watcher.accept(self._executor.portfolio.get_open_positions())
             self._persisted_baseline = (
                 self._risk_baseline.get_baseline() if self._risk_baseline is not None else None)
+
+    def _seal_streams_of(self, period: BookingPeriod) -> None:
+        """
+        Seal the session's streams into the day records of the first trading day a check sealed
+        (#476) — once, however many days the check sealed: in the days a late check passed over
+        the loop did not run, so nothing was written in them.
+
+        Args:
+            period: The first booking period the check sealed
+        """
+        next_day = self._booking.get_current_day()
+        if self._seal_streams is None or period.trading_day is None or next_day is None:
+            return
+        self._seal_streams(period.trading_day, next_day)
 
     def _roll_safety_day(self, period: BookingPeriod) -> None:
         """

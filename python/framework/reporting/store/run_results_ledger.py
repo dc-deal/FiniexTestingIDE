@@ -17,7 +17,6 @@ for ranking is `param_hash`; filter by any column.
 
 import json
 import math
-import os
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
@@ -35,6 +34,7 @@ from python.framework.types.run_results_types import (
     RunProvenance,
 )
 from python.framework.types.trading_env_types.trading_env_stats_types import EXECUTION_COUNT_FIELDS
+from python.framework.utils.atomic_file_utils import write_file_atomic
 from python.framework.utils.file_utils import create_directory
 
 # Fixed column order — kept stable so fragments stay schema-compatible across runs.
@@ -543,7 +543,8 @@ class RunResultsLedger:
     @staticmethod
     def _atomic_write(frame: pd.DataFrame, path: Path) -> None:
         """
-        Write the fragment via a temp file + os.replace, so a crash never truncates one.
+        Write the fragment via a temp file + os.replace, so a crash never truncates one — and
+        durably, so a crash of the machine does not either (the shared atomic writer).
 
         While a fragment is written exactly once, at run close, writing straight onto the
         target was harmless: a torn file belonged to a run that had just died anyway. That
@@ -554,16 +555,13 @@ class RunResultsLedger:
 
         The temp file carries a `.tmp` suffix on purpose. The index globs `*.parquet`, so a
         half-written file is invisible to it rather than merely unlikely to be caught.
-        Same shape as `ColdStartStateStore._atomic_write`, which the carry-over has used
-        since #355 for the same reason.
 
         Args:
             frame: The fragment's rows
             path: Where the finished fragment belongs
         """
-        tmp_path = path.with_name(path.name + '.tmp')
-        frame.to_parquet(tmp_path, index=False)
-        os.replace(tmp_path, path)
+        write_file_atomic(path, lambda temporary: frame.to_parquet(temporary, index=False),
+                          durable=True)
 
     def mark_records_pruned(self, run_ids: Iterable[str]) -> int:
         """

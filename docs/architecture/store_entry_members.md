@@ -67,11 +67,14 @@ run stream appender or the logger base.
 A writer names a member and hands over the content; the path comes from the declaration, never
 from the writer. `RunEntryWriter(run_dir, run_type)` has one method per shape — a report section,
 a snapshot, a table, a stream, a strategy file — and refuses a member its pipeline does not write
-or a member of another shape than the method writes. Three kinds still receive a path from it and
-open the file themselves: a log, which its logger keeps open (`log_path`); and the order-event
-stream and the acceptance studies' captures, which keep their own writer and its failure rule
-until they move onto the run stream appender with #476 (`path_of`). A logger writes the log its
-member names, and a logger without a member writes no file.
+or a member of another shape than the method writes. Two kinds still receive a path from it and
+open the file themselves: a log, which its logger keeps open (`log_path`), and the acceptance
+studies' captures, which keep their own writer (`path_of`) until #631 records what they need
+through the session's own records. A stream opened by a session's writer joins the session's stream
+sealer, which seals its trading days into day records
+([Day Records](run_stream_day_records.md)); a stream that may not be missing is opened as required,
+so a failed open ends the start — the order-event stream is. A logger writes the log its member
+names, and a logger without a member writes no file.
 
 A sweep directory's own files — the mount build's log and the ranking — are written the same way
 by `SweepEntryWriter(sweep_dir)`; each combination is a run.
@@ -81,8 +84,9 @@ by `SweepEntryWriter(sweep_dir)`; each combination is a run.
 A reader asks for a member too. `RunEntryReader` finds a run by its id through the run index — an
 exact match, the guard an id arriving from a URL needs — and `RunDirReader(run_dir)` reads a run
 directory a caller already holds: the run itself while it reports, a walk that finds runs by their
-header, the pruner, a certificate. Both read a header, a report section and a stream's path, and
-ask the disk whether a file is there. What a file holds is read by its own reader, with that
+header, the pruner, a certificate. Both read a header and a report section, and a stream as one —
+its sealed trading days and its own file (`read_stream`, `read_stream_ends`, `read_stream_index`) —
+and ask the disk whether a file is there. What a file holds is read by its own reader, with that
 reader's errors: a section that no longer fits its model raises the validation error, a missing
 header raises like any missing file. A walk searches by the member's declared path, and a message
 names a file by the member's declared file name.
@@ -105,6 +109,7 @@ The shape decides how a file is written and how it is read.
 | report output | derived by the reporting pipeline at the run's end | once, at the end |
 | log | lines for a person to read, never parsed by the code | appended |
 | strategy output | a strategy's own file, kept with the run and never read by the framework | replaced whole, atomically, whenever the strategy writes it |
+| day record | one trading day of a session's stream, sealed at the day's boundary ([run_stream_day_records.md](run_stream_day_records.md)) | once, whole and atomically; never again |
 
 The moment says when a member's file **first appears** — and so what a run that stopped at that
 point already holds. A file created at the start and filled at the end appears at the start.
@@ -232,6 +237,11 @@ behind its `write_strategy_files` parameter.
 | [`tick_stream_events`](../autotrader/autotrader_architecture.md#what-a-session-records) | `io/tick_stream_events.jsonl` | stream · v1 | — | at start — the session reads its ticks from a venue | — | — |
 | [`diagnostics_rows`](diagnostics_csv_sink.md#lifecycle-framework-owned) | `diagnostics/{sink}.jsonl` | stream · v1 | — | as it runs — the logic declared a diagnostics sink | — | — |
 | [`trades`](../autotrader/autotrader_architecture.md#what-a-session-records) | `io/trades.jsonl` | stream · v1 | — | at start — the session reached its tick loop | — | — |
+| [`order_events_day`](run_stream_day_records.md#what-a-day-record-holds) | `days/{day}/io/order_events.parquet` | day record | — | as it runs — the session got through its startup checks, and a trading day ended while the session ran | — | — |
+| [`state_frames_day`](run_stream_day_records.md#what-a-day-record-holds) | `days/{day}/io/state_frames.parquet` | day record | — | as it runs — the profile records state frames, and a trading day ended while the session ran | — | — |
+| [`tick_stream_events_day`](run_stream_day_records.md#what-a-day-record-holds) | `days/{day}/io/tick_stream_events.parquet` | day record | — | as it runs — the session reads its ticks from a venue, and a trading day ended while the session ran | — | — |
+| [`trades_day`](run_stream_day_records.md#what-a-day-record-holds) | `days/{day}/io/trades.parquet` | day record | — | as it runs — the session reached its tick loop, and a trading day ended while the session ran | — | — |
+| [`diagnostics_rows_day`](run_stream_day_records.md#what-a-day-record-holds) | `days/{day}/diagnostics/{sink}.parquet` | day record | — | as it runs — the logic declared a diagnostics sink, and a trading day ended while the session ran | — | — |
 | [`warmup_history`](warmup_history.md#what-a-session-records) | `io/warmup_history.json` | snapshot | — | at start — a worker requires bars | — | — |
 | [`algo_state_restored`](../user_guides/algo_state_persistence_guide.md#lifecycle) | `io/algo_state_restored.json` | snapshot | — | at start — the logic keeps its state and a saved state was found | — | — |
 <!-- end of generated table -->

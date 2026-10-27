@@ -24,6 +24,7 @@ from python.framework.constants.run_layout_constants import (
     IO_SUBDIR,
     ORDER_EVENTS_FILE,
     ORDER_EVENTS_SCHEMA_VERSION,
+    RUN_TYPE_AUTOTRADER,
     RUN_TYPE_SIMULATION,
     TICK_STREAM_EVENTS_FILE,
     WARMUP_HISTORY_FILE,
@@ -33,11 +34,10 @@ from python.framework.logging.global_logger import GlobalLogger
 from python.framework.reporting.acceptance_study_recorder import AcceptanceStudyRecorder
 from python.framework.reporting.io.jsonl_stream_writer import JsonlStreamWriter
 from python.framework.reporting.io.order_event_stream_io import (
-    read_order_event_stream,
     write_order_event_stream,
 )
-from python.framework.reporting.io.order_event_stream_writer import OrderEventStreamWriter
 from python.framework.reporting.store.run_index import RunIndex
+from python.framework.store.entry_members.run_entry_writer import RunEntryWriter
 from python.framework.types.api.report_types import RunHeader
 from python.framework.types.live_types.broker_truth_types import (
     BrokerTruthPart,
@@ -58,6 +58,10 @@ from python.framework.types.trading_env_types.order_event_types import (
 )
 from python.framework.types.trading_env_types.order_types import OrderDirection, OrderType
 from tests.autotrader.cold_start.conftest import RecordingLogger
+from tests.shared.order_event_test_stream import (
+    open_test_order_event_writer,
+    read_order_event_file,
+)
 
 _RUN_ID = '20261006_120000_a1b2c3d4'
 _TIME = datetime(2026, 10, 6, 12, 0, tzinfo=timezone.utc)
@@ -96,7 +100,7 @@ class TestTheFile:
     """A header, then one flushed line per event, nulls left out."""
 
     def test_the_first_line_names_the_schema_once(self, tmp_path):
-        writer = OrderEventStreamWriter(tmp_path / ORDER_EVENTS_FILE, _RUN_ID, 'btc_run', RecordingLogger())
+        writer = open_test_order_event_writer(tmp_path / ORDER_EVENTS_FILE, _RUN_ID, 'btc_run', RecordingLogger())
         writer(_event(1))
         writer.close()
 
@@ -106,15 +110,15 @@ class TestTheFile:
         assert 'schema_version' not in line, 'stated once, not on every line'
 
     def test_an_event_is_on_disk_before_the_next_is_recorded(self, tmp_path):
-        writer = OrderEventStreamWriter(tmp_path / ORDER_EVENTS_FILE, _RUN_ID, 'btc_run', RecordingLogger())
+        writer = open_test_order_event_writer(tmp_path / ORDER_EVENTS_FILE, _RUN_ID, 'btc_run', RecordingLogger())
         writer(_event(1))
 
-        rows, _, truncated = read_order_event_stream(tmp_path / ORDER_EVENTS_FILE)
+        rows, _, truncated = read_order_event_file(tmp_path / ORDER_EVENTS_FILE)
         assert [r.seq for r in rows] == [1] and not truncated, 'flushed, not buffered'
         writer.close()
 
     def test_a_field_with_no_value_is_left_out(self, tmp_path):
-        writer = OrderEventStreamWriter(tmp_path / ORDER_EVENTS_FILE, _RUN_ID, 'btc_run', RecordingLogger())
+        writer = open_test_order_event_writer(tmp_path / ORDER_EVENTS_FILE, _RUN_ID, 'btc_run', RecordingLogger())
         writer(_event(1))
         writer.close()
 
@@ -128,7 +132,7 @@ class TestTheFile:
         session. It is said once on the session's channel, and nothing follows the broken line.
         """
         logger = RecordingLogger()
-        writer = OrderEventStreamWriter(tmp_path / ORDER_EVENTS_FILE, _RUN_ID, 'btc_run', logger)
+        writer = open_test_order_event_writer(tmp_path / ORDER_EVENTS_FILE, _RUN_ID, 'btc_run', logger)
         writer(_event(1))
 
         def refuse(self, record):
@@ -140,7 +144,7 @@ class TestTheFile:
         writer.close()
 
         assert len(logger.errors) == 1 and 'seq 2' in logger.errors[0]
-        rows, _, truncated = read_order_event_stream(tmp_path / ORDER_EVENTS_FILE)
+        rows, _, truncated = read_order_event_file(tmp_path / ORDER_EVENTS_FILE)
         assert [r.seq for r in rows] == [1] and not truncated
 
     def test_a_backtest_writes_its_units_one_after_the_other(self, tmp_path):
@@ -150,7 +154,7 @@ class TestTheFile:
             ('sol_run', [_event(1)]),
         ])
 
-        rows, truths, _ = read_order_event_stream(path)
+        rows, truths, _ = read_order_event_file(path)
         assert truths == [], 'a backtest asks no venue'
         assert [(r.scenario_name, r.seq) for r in rows] == [
             ('btc_run', 1), ('btc_run', 2), ('sol_run', 1)]
@@ -175,7 +179,8 @@ class TestASessionWhoseStreamCannotOpen:
                                    add_broker_truth_listener=listeners.append)
 
         with pytest.raises(OSError):
-            open_order_event_stream(executor, tmp_path, _RUN_ID, 'btc_session')
+            open_order_event_stream(executor, RunEntryWriter(tmp_path, RUN_TYPE_AUTOTRADER),
+                                    _RUN_ID, 'btc_session')
 
         assert listeners == [], 'no transition is recorded into a stream that does not exist'
 
@@ -185,7 +190,7 @@ class TestReadingItBack:
 
     def _two_events(self, tmp_path: Path) -> Path:
         """A stream with two complete events."""
-        writer = OrderEventStreamWriter(tmp_path / ORDER_EVENTS_FILE, _RUN_ID, 'btc_run', RecordingLogger())
+        writer = open_test_order_event_writer(tmp_path / ORDER_EVENTS_FILE, _RUN_ID, 'btc_run', RecordingLogger())
         writer(_event(1))
         writer(_event(2, OrderEventType.ACCEPTED))
         writer.close()
@@ -196,7 +201,7 @@ class TestReadingItBack:
         with open(path, 'a', encoding='utf-8') as handle:
             handle.write('{"scenario_name": "btc_run", "seq": 3, "event_ty')
 
-        rows, _, truncated = read_order_event_stream(path)
+        rows, _, truncated = read_order_event_file(path)
 
         assert [r.seq for r in rows] == [1, 2]
         assert truncated
@@ -208,7 +213,7 @@ class TestReadingItBack:
         path.write_text('\n'.join(lines) + '\n', encoding='utf-8')
 
         with pytest.raises(ReportArtifactUnreadableError):
-            read_order_event_stream(path)
+            read_order_event_file(path)
 
     def test_a_schema_this_reader_does_not_know_is_refused(self, tmp_path):
         path = self._two_events(tmp_path)
@@ -219,7 +224,7 @@ class TestReadingItBack:
         path.write_text('\n'.join(lines) + '\n', encoding='utf-8')
 
         with pytest.raises(ReportArtifactUnreadableError):
-            read_order_event_stream(path)
+            read_order_event_file(path)
 
     def test_the_previous_schema_is_refused_too(self, tmp_path):
         """One version is read: a stream of the previous one is rewritten by re-running its run."""
@@ -231,7 +236,7 @@ class TestReadingItBack:
         path.write_text('\n'.join(lines) + '\n', encoding='utf-8')
 
         with pytest.raises(ReportArtifactUnreadableError):
-            read_order_event_stream(path)
+            read_order_event_file(path)
 
     @pytest.mark.parametrize('line', ['[1, 2]', '42', '"text"'])
     def test_a_line_that_is_not_an_object_is_a_damaged_file(self, tmp_path, line):
@@ -240,7 +245,7 @@ class TestReadingItBack:
             handle.write(line + '\n')
 
         with pytest.raises(ReportArtifactUnreadableError):
-            read_order_event_stream(path)
+            read_order_event_file(path)
 
     def test_a_byte_that_is_not_utf8_is_a_damaged_file(self, tmp_path):
         """The writer escapes everything outside ASCII, so this cannot be a cut-off line."""
@@ -249,7 +254,7 @@ class TestReadingItBack:
             handle.write(b'\xff\xfe')
 
         with pytest.raises(ReportArtifactUnreadableError):
-            read_order_event_stream(path)
+            read_order_event_file(path)
 
 
 class TestBrokerTruthLines:
@@ -257,7 +262,7 @@ class TestBrokerTruthLines:
 
     def _write(self, tmp_path: Path, *records) -> Path:
         """A session stream holding the given records, events and broker truth alike."""
-        writer = OrderEventStreamWriter(tmp_path / ORDER_EVENTS_FILE, _RUN_ID, 'btc_session', RecordingLogger())
+        writer = open_test_order_event_writer(tmp_path / ORDER_EVENTS_FILE, _RUN_ID, 'btc_session', RecordingLogger())
         for record in records:
             if isinstance(record, BrokerTruthRecord):
                 writer.write_broker_truth(record)
@@ -274,7 +279,7 @@ class TestBrokerTruthLines:
             _truth(3, BrokerTruthReadReason.SESSION_END, venue_orders=[],
                    venue_balances={'USD': 800.0}))
 
-        rows, truths, truncated = read_order_event_stream(path)
+        rows, truths, truncated = read_order_event_file(path)
 
         assert [r.seq for r in rows] == [2]
         assert [(t.seq, t.read_reason) for t in truths] == [
@@ -296,7 +301,7 @@ class TestBrokerTruthLines:
             1, venue_orders=[], venue_balances=None,
             unread_parts=[BrokerTruthPart.VENUE_BALANCES]))
 
-        _, (truth,), _ = read_order_event_stream(path)
+        _, (truth,), _ = read_order_event_file(path)
 
         assert truth.venue_orders == [], 'the venue holds no order — a statement, not a gap'
         assert truth.venue_balances is None
@@ -313,7 +318,7 @@ class TestBrokerTruthLines:
             ts_init=_TIME)
         path = self._write(tmp_path, record)
 
-        _, (truth,), _ = read_order_event_stream(path)
+        _, (truth,), _ = read_order_event_file(path)
 
         assert truth.reconcile_state is ReconcileState.DIVERGENT
         assert truth.divergence.ghost_orders == ['OQ3V2K-ABCDE-FGHIJK']
@@ -362,7 +367,7 @@ class TestTheRunIndexListsItAsAStream:
         (run_dir / IO_SUBDIR).mkdir(parents=True)
         index.register_run(RunHeader(run_id=_RUN_ID, start_time=_TIME,
                                      run_type=RUN_TYPE_SIMULATION, run_name='my_set'), run_dir)
-        writer = OrderEventStreamWriter(run_dir / IO_SUBDIR / ORDER_EVENTS_FILE, _RUN_ID,
+        writer = open_test_order_event_writer(run_dir / IO_SUBDIR / ORDER_EVENTS_FILE, _RUN_ID,
                                         'btc_run', RecordingLogger())
         writer(_event(1))
         writer.close()

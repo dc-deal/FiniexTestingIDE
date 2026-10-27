@@ -13,6 +13,19 @@ from typing import Any, Dict, Optional, TextIO
 from python.framework.utils.file_utils import create_directory
 
 
+def jsonl_line(record: Dict[str, Any]) -> str:
+    """
+    One record as the line a JSON-lines stream holds: its None values left out, its newline on.
+
+    Args:
+        record: JSON-serializable values
+
+    Returns:
+        The line
+    """
+    return json.dumps({key: value for key, value in record.items() if value is not None}) + '\n'
+
+
 class JsonlStreamWriter:
     """
     Append records to a JSON-lines file, one flushed line each.
@@ -40,8 +53,7 @@ class JsonlStreamWriter:
         """
         if self._handle is None:
             return
-        compact = {key: value for key, value in record.items() if value is not None}
-        self._handle.write(json.dumps(compact) + '\n')
+        self._handle.write(jsonl_line(record))
         self._handle.flush()
 
     def close(self) -> None:

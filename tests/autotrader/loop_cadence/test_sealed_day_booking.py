@@ -153,3 +153,20 @@ def test_a_boundary_a_heartbeat_notices_is_sealed_before_the_pass_resolves(monke
     assert periods[0].closed_at == MIDNIGHT
     assert periods[1].tick_count == 0
     assert calls[calls.index('booking'):][:3] == ['booking', 'rotation', 'heartbeat']
+
+
+def test_the_streams_are_sealed_after_the_ledger_once_per_check():
+    """
+    The session's streams move their day into day records at the same seal (#476) — after the
+    ledger row, the more important record, and once per check however many days it sealed: in the
+    days a late check passed over the loop did not run, so nothing was written in them.
+    """
+    calls: List[tuple] = []
+    loop = autotrader_loop(
+        ticks_across_midnight(days_skipped=1), spot_mode=True,
+        book_sealed_periods=lambda periods: calls.append(('ledger', len(periods))),
+        seal_streams=lambda sealed_day, next_day: calls.append(('streams', sealed_day, next_day)))
+    loop.run()
+
+    first_day = (MIDNIGHT - timedelta(days=1)).date()
+    assert calls == [('ledger', 2), ('streams', first_day, first_day + timedelta(days=2))]

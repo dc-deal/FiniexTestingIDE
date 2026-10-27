@@ -80,7 +80,8 @@ class TestWhetherAFileIsThereIsAskedOfTheDisk:
     def test_an_absent_section_reads_as_none(self, indexed_run):
         reader, _ = indexed_run
         assert reader.read_section(_RUN_ID, RUN_SUMMARY_ARTIFACT) is None
-        assert reader.stream_path(_RUN_ID, RunEntryMemberId.ORDER_EVENTS) is None
+        assert reader.read_stream(_RUN_ID, RunEntryMemberId.ORDER_EVENTS) is None
+        assert reader.read_stream_ends(_RUN_ID, RunEntryMemberId.ORDER_EVENTS) is None
 
     def test_a_section_and_the_header_read_back(self, indexed_run):
         reader, run_dir = indexed_run

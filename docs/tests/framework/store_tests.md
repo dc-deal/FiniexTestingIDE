@@ -74,6 +74,10 @@ the declaration alone and takes milliseconds; whether the writers keep to it is 
   member lies directly in `io/` (the run index lists the file names it finds there), a stream
   declares its schema version and nothing else does, each shape is written the way it allows, and
   every member's help link reaches a real heading.
+- **A sealed stream is declared whole (#476):** a stream sealed per trading day points at a day
+  record that lies in the day's folder at the stream's own path, every day record is the sealed
+  form of exactly one stream, and a sealed stream declares its time fields — an empty tuple where
+  its lines carry none, never left undeclared.
 - **What the run list serves:** the file names each index column lists are pinned as literals,
   so a renamed constant cannot carry the pin along with it. A change there changes what a consumer
   of the run list reads, so the failure says to raise the API contract first — a pin of a
@@ -108,9 +112,11 @@ directory are refused, every report section is a member, and a section nobody de
 **One run directory's files by member (#621).** A member's path, folder and file name are the ones
 the declaration gives, and a member in the run directory itself has no folder. The header and a
 report section are read by their own readers: a missing header raises, a section is None until it
-is written, and one that no longer fits its model raises the validation error. A stream's path is
-given only when the stream is there, and the files of a member with variable parts are exactly the
-files that are that member.
+is written, and one that no longer fits its model raises the validation error. A stream reads, and
+has ends, only when it is there — an empty file reads as a stream without records — and the files
+of a member with variable parts are exactly the files that are that member — a day record too,
+whose own folder is a trading day. How a stream is read across the trading days a session sealed
+out of it is pinned in the reporting suite (`test_run_stream_day_records.py`).
 
 ## `test_run_entry_paths_guard.py`
 
