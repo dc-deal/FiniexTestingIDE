@@ -76,6 +76,28 @@ class TestARouteWithARunIdInItsPath:
         assert access_filter.filter(_access_record(_POLLED, 200)) is False
 
 
+class TestARouteWithTwoBracedSegments:
+    """A unit's timeline is polled under the run's id and the unit's name (#580)."""
+
+    _TEMPLATE = '/api/v1/reports/runs/{run_id}/units/{unit_name}/recorded-streams'
+
+    @pytest.fixture
+    def access_filter(self) -> PolledRouteAccessFilter:
+        return PolledRouteAccessFilter(frozenset({self._TEMPLATE}))
+
+    def test_any_run_and_unit_fill_the_template(self, access_filter):
+        path = '/api/v1/reports/runs/20261201_010500_ab12cd34/units/my_session/recorded-streams'
+        assert access_filter.filter(_access_record(path, 200)) is False
+        assert access_filter.filter(_access_record(path, 404)) is True
+
+    @pytest.mark.parametrize('path', [
+        '/api/v1/reports/runs/20261201_010500_ab12cd34/units/my_session/recorded-streams/window',
+        '/api/v1/reports/runs/20261201_010500_ab12cd34/units/recorded-streams',
+    ])
+    def test_its_window_and_a_path_missing_a_segment_stay(self, access_filter, path):
+        assert access_filter.filter(_access_record(path, 200)) is True
+
+
 class TestTheDeclarationHoldsToTheApp:
 
     def test_every_polled_path_is_a_mounted_route(self):

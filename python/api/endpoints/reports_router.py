@@ -15,17 +15,29 @@ from python.api.api_error_catalog import (
     ARTIFACT_NOT_PRODUCED,
     ARTIFACT_UNREADABLE,
     CONFIG_SNAPSHOT_MISSING,
+    INVALID_LIMIT,
+    INVALID_RANGE,
     REPORTS_NOT_COMMISSIONED,
     RUN_HEADER_MISSING,
     RUN_NOT_COMPLETED,
     RUN_NOT_FOUND,
     STATE_FRAME_NOT_WRITTEN_YET,
     STATE_FRAMES_NOT_RECORDED,
+    STREAMS_NOT_RECORDED,
+    UNIT_NOT_FOUND,
     api_error,
 )
 from python.api.api_query_params import parse_iso_query
 from python.api.api_route_documents import describes
+from python.api.served_recorded_streams import (
+    describe_recorded_streams_window,
+    describe_unit_recorded_streams,
+)
 from python.api.served_state_frames import describe_latest_state_frames, recording_of
+from python.framework.constants.recorded_stream_constants import (
+    UNIT_RECORDED_STREAMS_ROUTE,
+    UNIT_RECORDED_STREAMS_WINDOW_ROUTE,
+)
 from python.framework.exceptions.api_errors import ApiException
 from python.framework.exceptions.report_artifact_errors import ReportArtifactUnreadableError
 from python.framework.reporting.io.artifact_specs import (
@@ -46,6 +58,10 @@ from python.framework.reporting.io.artifact_specs import (
 )
 from python.framework.reporting.store.report_store import ReportStore
 from python.framework.store.entry_members.run_entry_members import run_member_file_name
+from python.framework.types.api.recorded_stream_types import (
+    RecordedStreamsWindow,
+    UnitRecordedStreams,
+)
 from python.framework.types.api.recording_state_types import RecordingState
 from python.framework.types.api.report_types import (
     AggregatedPortfolioReport,
@@ -72,13 +88,20 @@ from python.framework.types.api.report_types import (
     WorkerDecisionReport,
 )
 from python.framework.types.api.state_frame_types import LatestStateFramesResponse, StateFrameCause
+from python.framework.types.run_stream_types import StreamTimeWindow
 from python.framework.types.store_member_types import RunEntryMemberId
+from python.framework.utils.time_utils import ensure_utc_aware
 
 router = APIRouter()
 
 # The name the run list's `stream_files` gives the state-frame stream: its file name, as the run
 # store declares it
 _STATE_FRAMES_NAME = run_member_file_name(RunEntryMemberId.STATE_FRAMES)
+
+# The most records a unit's window serves in one answer — a trading day of state frames at the
+# default cadence of a minute, about 3 MB of JSON. Raising it later stays compatible; lowering it
+# would not.
+MAX_WINDOW_RECORDS = 2_000
 
 
 def _missing_artifact(run_id: str, section: str) -> ApiException:
@@ -293,6 +316,104 @@ def get_latest_state_frames(run_id: str, request: Request) -> LatestStateFramesR
         raise api_error(ARTIFACT_UNREADABLE, reason=str(e)) from e
     return describe_latest_state_frames(
         ends, run, outcome, request.app.state.state_frames_thresholds, datetime.now(timezone.utc))
+
+
+@router.get(f'/reports/runs/{{run_id}}/{UNIT_RECORDED_STREAMS_ROUTE}',
+            response_model=UnitRecordedStreams, openapi_extra=describes('recorded-streams'))
+def get_unit_recorded_streams(run_id: str, unit_name: str,
+                              request: Request) -> UnitRecordedStreams:
+    """
+    A unit's timeline (#580): every stream it records, with its record count and the time of its
+    first and latest record, and whether the session still records — made to be asked every second
+    or two while a session runs.
+
+    Args:
+        run_id: The run's id (<timestamp>_<hash>), resolved through the run index
+        unit_name: The unit, as the run records it
+        request: The request, for the thresholds the application read at its start
+
+    Returns:
+        The UnitRecordedStreams (404 naming why there is none, 409 if a stream cannot be read)
+    """
+    store = ReportStore()
+    run = next((info for info in store.list_runs() if info.run_id == run_id), None)
+    if run is None:
+        raise api_error(RUN_NOT_FOUND, run_id=run_id)
+    try:
+        overview = store.get_state_frame_overview(run_id)
+    except ReportArtifactUnreadableError as e:
+        raise api_error(ARTIFACT_UNREADABLE, reason=str(e)) from e
+    if overview is None:
+        raise api_error(STREAMS_NOT_RECORDED, run_id=run_id)
+    _require_unit(run_id, unit_name, overview.ends.unit_name)
+    return describe_unit_recorded_streams(
+        overview, run, request.app.state.state_frames_thresholds, datetime.now(timezone.utc))
+
+
+@router.get(f'/reports/runs/{{run_id}}/{UNIT_RECORDED_STREAMS_WINDOW_ROUTE}',
+            response_model=RecordedStreamsWindow, openapi_extra=describes('recorded-streams'))
+def get_unit_recorded_streams_window(
+    run_id: str,
+    unit_name: str,
+    window_from: Optional[str] = Query(None, alias='from'),
+    window_to: Optional[str] = Query(None, alias='to'),
+    limit: int = Query(MAX_WINDOW_RECORDS),
+) -> RecordedStreamsWindow:
+    """
+    A unit's records within a time window [from, to) on each record's own time, oldest first, at
+    most `limit` of them unless one millisecond holds more (#580). `from` left out starts with the
+    stream, `to` left out ends after its newest record; a page never ends inside a millisecond, and
+    `next_from` says where the rest begins when the page left some out.
+
+    Args:
+        run_id: The run's id (<timestamp>_<hash>), resolved through the run index
+        unit_name: The unit, as the run records it
+        window_from: The window's first instant (ISO-8601, UTC when no offset is written)
+        window_to: Its first instant no longer read
+        limit: The most records served, from 1 to the ceiling — refused outside it, never clamped
+
+    Returns:
+        The RecordedStreamsWindow (400 for a refused parameter, 404 naming why there is none, 409
+        if a stream cannot be read)
+    """
+    if limit < 1 or limit > MAX_WINDOW_RECORDS:
+        raise api_error(INVALID_LIMIT, maximum=MAX_WINDOW_RECORDS, limit=limit)
+    since_at = parse_iso_query(window_from, 'from')
+    until_at = parse_iso_query(window_to, 'to')
+    since = ensure_utc_aware(since_at) if since_at is not None else None
+    until = ensure_utc_aware(until_at) if until_at is not None else None
+    if since is not None and until is not None and since >= until:
+        raise api_error(INVALID_RANGE)
+    store = ReportStore()
+    if not any(info.run_id == run_id for info in store.list_runs()):
+        raise api_error(RUN_NOT_FOUND, run_id=run_id)
+    try:
+        page = store.get_state_frame_page(run_id, StreamTimeWindow(since=since, until=until), limit)
+    except ReportArtifactUnreadableError as e:
+        raise api_error(ARTIFACT_UNREADABLE, reason=str(e)) from e
+    if page is None:
+        raise api_error(STREAMS_NOT_RECORDED, run_id=run_id)
+    _require_unit(run_id, unit_name, page.unit_name)
+    return describe_recorded_streams_window(
+        page, run_id, since, until, limit, datetime.now(timezone.utc))
+
+
+def _require_unit(run_id: str, unit_name: str, recorded_unit: Optional[str]) -> None:
+    """
+    Refuse a unit the run does not record.
+
+    Args:
+        run_id: The run
+        unit_name: The unit asked for
+        recorded_unit: The unit the run's stream names, None before its header was written
+
+    Returns:
+        Nothing; raises the 404 that names why
+    """
+    if recorded_unit is None:
+        raise api_error(STATE_FRAME_NOT_WRITTEN_YET, run_id=run_id)
+    if recorded_unit != unit_name:
+        raise api_error(UNIT_NOT_FOUND, run_id=run_id, unit_name=unit_name)
 
 
 @router.get('/reports/runs/{run_id}/portfolio', response_model=PortfolioReport,

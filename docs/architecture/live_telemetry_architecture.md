@@ -178,7 +178,9 @@ latest frame
 with its age and `recording`: `current`, `stopped` (no frame for three cadences and no end
 recorded) or `ended`. Nothing reaches into the running session; the record is the only thing
 between the session and the API server. The consumer's side is the served document
-[state frames](../consumer/state-frames.md).
+[state frames](../consumer/state-frames.md). A unit's frames over time — its timeline, and a window
+of them a page at a time — are served by the recorded-streams routes (#580), read across the same
+days and file; their document is [recorded streams](../consumer/recorded-streams.md).
 
 ## Files
 

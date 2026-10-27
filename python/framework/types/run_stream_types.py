@@ -3,7 +3,7 @@ FiniexTestingIDE - Run Stream Types
 
 What is read from a run stream without reading all of it (#611): its two ends. And what a session's
 stream is made of once its trading days are sealed (#476): where its lines lie, what a sealed day
-says about itself, and a stream read whole or within a time window.
+says about itself, and a stream read whole, within a time window, or one page at a time (#580).
 """
 
 from dataclasses import dataclass
@@ -174,6 +174,49 @@ class RunStreamLines:
     last_unterminated: bool
 
 
+@dataclass(frozen=True)
+class RunStreamPage:
+    """
+    One page of a run stream within a time window, oldest first, at most a given number of records
+    (#580). Each record is numbered by its position in the whole stream, so a page names its rows
+    without a field of their own.
+
+    Args:
+        header: The stream's header — its own file's, or the newest sealed day's when that file is
+            left out or gone
+        records: The page's records, oldest first
+        record_nos: Each record's position in the whole stream, from 1 — the sealed days in order,
+            then the stream's file — one per record
+        matched: How many records the window holds, the page's and the ones after it
+        truncated: Whether the window holds records the page left out
+        next_time: Where the records left out begin — the start of the millisecond of the first of
+            them; None when the page left none out
+        newest_time: The time of the stream's newest record, None when no record carries one
+        truncated_tail: Whether a last line cut off mid-write was left out — at the end of the
+            stream's file, or of a day that was sealed with one
+        last_unterminated: Whether the page's last record is a line of the stream's file whose
+            newline was never written — complete JSON that a model may still refuse as cut off
+    """
+    header: Optional[Dict[str, Any]]
+    records: List[Dict[str, Any]]
+    record_nos: List[int]
+    matched: int
+    truncated: bool
+    next_time: Optional[datetime]
+    newest_time: Optional[datetime]
+    truncated_tail: bool
+    last_unterminated: bool
+
+
+class RecordedStreamKind(StrEnum):
+    """
+    The kinds of stream a run records over time for one of its units, served by the unit's
+    timeline and its window (#580). A stream member declares the kind it is; drawings and algo
+    events (#379) and a strategy's tables (#589) join as kinds of their own.
+    """
+    STATE_FRAMES = 'state_frames'    # what a session held and decided, moment by moment (#579)
+
+
 class StreamDaySource(StrEnum):
     """Where one trading day of a stream lies."""
     SEALED = 'sealed'    # a day record: written once, whole, when the day ended
@@ -200,3 +243,17 @@ class StreamDayIndexRow:
     first_time: Optional[datetime]
     last_time: Optional[datetime]
     size_bytes: int
+
+
+@dataclass(frozen=True)
+class RunStreamOverview:
+    """
+    A run stream's two ends and its trading days, from one read of its file (#580) — so the count,
+    the times and the latest record describe the same moment even while a seal happens.
+
+    Args:
+        ends: Its header, its first record and its latest one
+        days: One row per trading day, oldest first, read without the records
+    """
+    ends: RunStreamEnds
+    days: List[StreamDayIndexRow]

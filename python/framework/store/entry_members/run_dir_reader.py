@@ -19,9 +19,10 @@ from python.framework.reporting.io.artifact_specs import ArtifactSpec
 from python.framework.reporting.io.report_artifact_io import read_artifact
 from python.framework.reporting.io.run_header_io import read_run_header
 from python.framework.reporting.io.run_stream_union_reader import (
+    read_stream_page,
     read_stream_union,
     read_stream_union_ends,
-    read_stream_union_index,
+    read_stream_union_overview,
 )
 from python.framework.store.entry_members.run_entry_members import (
     RUN_ENTRY_MEMBERS_BY_ID,
@@ -32,7 +33,8 @@ from python.framework.types.api.report_types import RunHeader
 from python.framework.types.run_stream_types import (
     RunStreamEnds,
     RunStreamLines,
-    StreamDayIndexRow,
+    RunStreamOverview,
+    RunStreamPage,
     StreamTimeWindow,
 )
 from python.framework.types.store_member_types import RunEntryMemberId
@@ -137,6 +139,26 @@ class RunDirReader:
             self.path_of(member_id, **names), lambda: self.day_record_paths(member_id, **names),
             RUN_ENTRY_MEMBERS_BY_ID[member_id].time_fields or (), window)
 
+    def read_stream_page(self, member_id: RunEntryMemberId, window: StreamTimeWindow, limit: int,
+                         **names: str) -> Optional[RunStreamPage]:
+        """
+        One page of a stream within a time window — at most `limit` records unless one
+        millisecond holds more, oldest first, each numbered by its position in the whole stream
+        (#580).
+
+        Args:
+            member_id: The stream
+            window: The stretch to read
+            limit: The most records the page holds, at least one
+            names: One value per variable part of the stream's path
+
+        Returns:
+            The page, or None when the run holds no such stream
+        """
+        return read_stream_page(
+            self.path_of(member_id, **names), lambda: self.day_record_paths(member_id, **names),
+            RUN_ENTRY_MEMBERS_BY_ID[member_id].time_fields or (), window, limit)
+
     def read_stream_ends(self, member_id: RunEntryMemberId,
                          **names: str) -> Optional[RunStreamEnds]:
         """
@@ -152,20 +174,19 @@ class RunDirReader:
         return read_stream_union_ends(
             self.path_of(member_id, **names), lambda: self.day_record_paths(member_id, **names))
 
-    def read_stream_index(self, member_id: RunEntryMemberId,
-                          **names: str) -> List[StreamDayIndexRow]:
+    def read_stream_overview(self, member_id: RunEntryMemberId,
+                             **names: str) -> Optional[RunStreamOverview]:
         """
-        One stream's trading days with their counts and the time of their first and last record,
-        read without their records.
+        One stream's two ends and its trading days, from one read of its file (#580).
 
         Args:
             member_id: The stream
             names: One value per variable part of the stream's path
 
         Returns:
-            One row per day, oldest first; empty when the run holds no such stream
+            The overview, or None when the run holds no such stream
         """
-        return read_stream_union_index(
+        return read_stream_union_overview(
             self.path_of(member_id, **names), lambda: self.day_record_paths(member_id, **names),
             RUN_ENTRY_MEMBERS_BY_ID[member_id].time_fields or ())
 

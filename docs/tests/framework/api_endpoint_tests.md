@@ -151,7 +151,9 @@ The run store declares, for each file a run may hold, the route that serves it (
 the declaration to the routes the application mounts below `/reports/runs/{run_id}/`, in both
 directions: every declared route is served, every route below a run serves a declared file — or
 names the other store it serves from, such as the run's configuration — and no two files claim one
-route.
+route. A unit's timeline and window (#580) are claimed by every stream that declares a recorded-stream
+kind: both are served, at least one stream declares a kind, no file claims them as its own route,
+and the window carries a list and a row key for every declared kind.
 
 ## Machine resources (`test_machine_resources.py`)
 
@@ -192,6 +194,19 @@ written through the same appender a session uses, beside a run registered in a t
 | `TestTheRunListCarriesTheVerdict` | each run-list row that records state frames carries the route's verdict: `current` on its cadence, `stopped` when its frames stopped; an ended recording is read once and remembered; a replay before its end and a run without frames carry none; a stream that cannot be read costs its row the verdict, never the list |
 | `TestTheRunListNamesTheStream` | once the session recorded the stream in the run index, the run list names it under `stream_files`, and never among the report artifacts |
 
+## A unit's recorded streams over time (`test_recorded_streams_routes.py`)
+
+`/reports/runs/{run_id}/units/{unit_name}/recorded-streams` and its `/window` (#580) serve a unit's
+timeline and a window of its records a page at a time. The run is written through the session's own
+run writer and stream sealer — three trading days of state frames, two sealed and one running —
+beside a run registered in a tmp run index.
+
+| Class | Validates |
+|---|---|
+| `TestTheTimeline` | a running unit lists its stream across the sealed days and its file — the count, the first and latest frame time, the cadence, the key and `current`; its verdict is the latest-frame route's (`stopped` for both) and judged on the newest frame — days written long ago and a frame written just now read `current`; a unit before its first seal lists its running file; it lists every kind the store declares, and the window's `keys` name the same; a stream holding only its header counts none with no times; a stream opened before its header names `state_frame_not_written_yet` |
+| `TestEveryAbsenceNamesItsCause` | on both routes an unknown run is `run_not_found`, a run recording no stream `streams_not_recorded`, a unit the run does not record `unit_not_found`; a header naming another schema is `artifact_unreadable` |
+| `TestTheWindow` | left open it serves the whole stream with `record_no` from 1 and says which instants it covered; walking the pages from `next_from` meets every frame once for several limits; a window across a day boundary serves both sides; seeking with `limit=1` serves the first frame at or after the instant; a bound left out is a record's millisecond, never finer; a window holding no record — one before the stream, one after it, or a stream holding only its header — leaves the bound it was not given null, never an end before its start; a limit outside 1 to the ceiling is `invalid_limit`, a window ending before it starts `invalid_range`, an instant that is not ISO `invalid_timestamp` |
+
 ## Polled routes in the access log (`test_polled_route_access_filter.py`)
 
 A route made to be polled stays out of the server's access log while it answers successfully
@@ -202,6 +217,7 @@ requests that carry meaning.
 |---|---|
 | `TestOnlyASuccessfulReadingIsDropped` | a successful answer (200, 304) on a polled route is dropped; a failed one (401, 403, 500) stays; another route stays; a query string does not hide the path; a record not shaped like an access line is left alone |
 | `TestARouteWithARunIdInItsPath` | a polled path written as mounted, with `{run_id}` in braces, matches any run's id in that segment (#611); a sibling route, a longer path and a missing segment stay in the log; an exact path still matches |
+| `TestARouteWithTwoBracedSegments` | a unit's timeline matches any run id and unit name in its two braced segments (#580); its window and a path missing a segment stay in the log |
 | `TestTheDeclarationHoldsToTheApp` | every path in `POLLED_PATHS` is a mounted route, so a renamed route cannot leave a declaration that filters nothing; the factory installs one filter however often it runs |
 
 ## Row keys (`test_row_keys.py`)
@@ -222,7 +238,9 @@ optional list included — so a route added tomorrow is covered the day it exist
   symbol both count from `pos_<symbol>_1`). Plus the pending-orders unit, keyed by its name
   (contract 19): the run-scoped walk exempts every report route, so that case is what holds the
   declaration. And an activity, keyed by its own id: two activities of one process differ in
-  nothing else.
+  nothing else. And a unit's recorded streams (#580): a frame keyed by its `record_no`, since two
+  frames can share an instant, and a stream by its name beside its kind, since a strategy's tables
+  are to be one kind with names of their own.
 
 ## Mocking Strategy
 

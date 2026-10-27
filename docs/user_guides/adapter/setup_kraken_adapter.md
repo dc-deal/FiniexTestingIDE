@@ -15,6 +15,9 @@ Go to **kraken.com/u/security/api** and create a new key:
 **Required permissions:**
 - Query Funds
 - Query Open Orders & Trades
+- Query Closed Orders & Trades — a market order is closed the moment it fills, so reading it back
+  (`QueryOrders`, `QueryTrades`) and the look at recently closed orders (`ClosedOrders`) need it; without it
+  Kraken answers `EGeneral:Permission denied`
 - Create & Modify Orders
 
 **Do NOT enable:** Withdraw Funds

@@ -79,6 +79,7 @@ from python.framework.constants.run_layout_constants import (
     WORKER_DECISION_ARTIFACT_FILE,
 )
 from python.framework.exceptions.store_errors import EntryMemberRefusedError
+from python.framework.types.run_stream_types import RecordedStreamKind
 from python.framework.types.store_member_types import (
     EntryMember,
     EntryMemberMoment,
@@ -394,7 +395,8 @@ RUN_ENTRY_MEMBERS: Tuple[EntryMember, ...] = (
         'docs/architecture/live_telemetry_architecture.md#the-recorded-state-frame--not-this-stream',
         index_column=RunIndexColumn.STREAM_FILES, schema_version=STATE_FRAMES_SCHEMA_VERSION,
         served_route='state-frames/latest', time_fields=('frame_time',),
-        day_record=RunEntryMemberId.STATE_FRAMES_DAY),
+        day_record=RunEntryMemberId.STATE_FRAMES_DAY,
+        recorded_stream_kind=RecordedStreamKind.STATE_FRAMES),
     EntryMember(
         RunEntryMemberId.TICK_STREAM_EVENTS, f'{IO_SUBDIR}/{TICK_STREAM_EVENTS_FILE}',
         EntryMemberShape.STREAM, 'the tick stream\'s outages and the trades it refused',

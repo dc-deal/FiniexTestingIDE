@@ -14,7 +14,7 @@ tokens, and `get(run_id, BROKER_ARTIFACT)` is still statically a `BrokerReport`.
 from datetime import datetime
 from pathlib import Path
 import json
-from typing import Any, Dict, List, Optional, TypeVar
+from typing import Any, Dict, List, Optional, Tuple, TypeVar
 
 from pydantic import BaseModel, ValidationError
 
@@ -44,6 +44,11 @@ from python.framework.reporting.store.run_list_figures import get_run_list_figur
 from python.framework.reporting.store.served_run_header import served_run_header
 from python.framework.store.entry_members.run_entry_reader import RunEntryReader
 from python.framework.store.run_config_store import RunConfigStore
+from python.framework.types.api.recorded_stream_types import (
+    RecordedStateFrame,
+    StateFramePage,
+    StateFrameStreamOverview,
+)
 from python.framework.types.api.report_types import (
     OrderEventsReport,
     OrderHistoryReport,
@@ -57,6 +62,7 @@ from python.framework.types.api.state_frame_types import (
     StateFrame,
     StateFrameStreamEnds,
 )
+from python.framework.types.run_stream_types import RunStreamEnds, StreamTimeWindow
 from python.framework.types.store_member_types import RunEntryMemberId
 
 T = TypeVar('T', bound=BaseModel)
@@ -246,25 +252,70 @@ class ReportStore:
         ends = self._reader.read_stream_ends(run_id, RunEntryMemberId.STATE_FRAMES)
         if ends is None:
             return None
-        path = self._reader.directory(run_id).path_of(RunEntryMemberId.STATE_FRAMES)
-        if ends.header is None:
-            if ends.last is not None:
-                raise ReportArtifactUnreadableError(
-                    path.name, str(path), 'records without a header line')
-            # Opened, and its header not yet on the disk: no frame yet
-            return StateFrameStreamEnds(unit_name=None, cadence_timeframe=None, cadence_s=None,
-                                        first=None, last=None, truncated_tail=ends.truncated_tail)
-        stream = ends.header.get('stream')
-        version = ends.header.get('schema_version')
-        if stream != STATE_FRAMES_STREAM or version != STATE_FRAMES_SCHEMA_VERSION:
-            raise ReportArtifactUnreadableError(
-                path.name, str(path),
-                f'its header names stream {stream!r} at schema_version {version!r}; this reader '
-                f'knows {STATE_FRAMES_STREAM!r} at {STATE_FRAMES_SCHEMA_VERSION}')
+        return self._state_frame_ends_of(run_id, ends)
+
+    def get_state_frame_overview(self, run_id: str) -> Optional[StateFrameStreamOverview]:
+        """
+        A run's state-frame stream at its two ends and by its trading days, from one read of its
+        file (#580) — a unit's timeline. Unreadable on the same terms as its two ends.
+
+        Args:
+            run_id: The run's identity
+
+        Returns:
+            The overview, or None when the run records no state frames
+        """
+        overview = self._reader.read_stream_overview(run_id, RunEntryMemberId.STATE_FRAMES)
+        if overview is None:
+            return None
+        return StateFrameStreamOverview(ends=self._state_frame_ends_of(run_id, overview.ends),
+                                        days=overview.days)
+
+    def get_state_frame_page(self, run_id: str, window: StreamTimeWindow,
+                             limit: int) -> Optional[StateFramePage]:
+        """
+        One page of a run's state frames within a time window, each with its position in the
+        stream (#580). Unreadable on the same terms as its two ends, and a frame on the page that
+        does not fit the model makes it unreadable too.
+
+        Args:
+            run_id: The run's identity
+            window: The stretch to read
+            limit: The most frames the page holds, at least one
+
+        Returns:
+            The page, or None when the run records no state frames
+        """
+        page = self._reader.read_stream_page(run_id, RunEntryMemberId.STATE_FRAMES, window, limit)
+        if page is None:
+            return None
+        path = self._state_frames_path(run_id)
+        unit_name = self._state_frame_header_of(path, page.header, bool(page.records))[0]
         try:
-            unit_name = str(ends.header['unit_name'])
-            cadence_timeframe = str(ends.header['cadence_timeframe'])
-            cadence_s = float(ends.header['cadence_s'])
+            frames = [RecordedStateFrame.model_validate({**record, 'record_no': record_no})
+                      for record, record_no in zip(page.records, page.record_nos)]
+        except ValidationError as e:
+            raise ReportArtifactUnreadableError(path.name, str(path), str(e)) from e
+        return StateFramePage(unit_name=unit_name, frames=frames, matched=page.matched,
+                              truncated=page.truncated, next_time=page.next_time,
+                              newest_time=page.newest_time)
+
+    def _state_frame_ends_of(self, run_id: str, ends: RunStreamEnds) -> StateFrameStreamEnds:
+        """
+        A state-frame stream's two ends as the routes read them — its header checked, its frames
+        held to the model.
+
+        Args:
+            run_id: The run's identity
+            ends: The stream's two ends as read
+
+        Returns:
+            The two ends
+        """
+        path = self._state_frames_path(run_id)
+        unit_name, cadence_timeframe, cadence_s = self._state_frame_header_of(
+            path, ends.header, ends.last is not None)
+        try:
             first = StateFrame.model_validate(ends.first) if ends.first is not None else None
             last = StateFrame.model_validate(ends.last) if ends.last is not None else None
         except (KeyError, TypeError, ValueError) as e:
@@ -272,6 +323,55 @@ class ReportStore:
         return StateFrameStreamEnds(unit_name=unit_name, cadence_timeframe=cadence_timeframe,
                                     cadence_s=cadence_s, first=first, last=last,
                                     truncated_tail=ends.truncated_tail)
+
+    def _state_frames_path(self, run_id: str) -> Path:
+        """
+        Where a run's state-frame stream is written, for the message that it cannot be read.
+
+        Args:
+            run_id: The run's identity
+
+        Returns:
+            The stream's file
+        """
+        return self._reader.directory(run_id).path_of(RunEntryMemberId.STATE_FRAMES)
+
+    @staticmethod
+    def _state_frame_header_of(path: Path, header: Optional[Dict[str, Any]],
+                               has_records: bool
+                               ) -> Tuple[Optional[str], Optional[str], Optional[float]]:
+        """
+        What a state-frame stream's header says — the unit, and the cadence as a timeframe and in
+        seconds. A header naming another stream or a schema this reader does not know, and records
+        without a header, make the stream unreadable rather than half-read.
+
+        Args:
+            path: The stream's file, for the message
+            header: Its header line, None when none was read
+            has_records: Whether the stream holds a record
+
+        Returns:
+            (unit name, cadence timeframe, cadence in seconds) — all None while the stream is
+            opened and its header not yet on the disk
+        """
+        if header is None:
+            if has_records:
+                raise ReportArtifactUnreadableError(
+                    path.name, str(path), 'records without a header line')
+            # Opened, and its header not yet on the disk: no frame yet
+            return None, None, None
+        stream = header.get('stream')
+        version = header.get('schema_version')
+        if stream != STATE_FRAMES_STREAM or version != STATE_FRAMES_SCHEMA_VERSION:
+            raise ReportArtifactUnreadableError(
+                path.name, str(path),
+                f'its header names stream {stream!r} at schema_version {version!r}; this reader '
+                f'knows {STATE_FRAMES_STREAM!r} at {STATE_FRAMES_SCHEMA_VERSION}')
+        try:
+            return (str(header['unit_name']), str(header['cadence_timeframe']),
+                    float(header['cadence_s']))
+        except (KeyError, TypeError, ValueError) as e:
+            raise ReportArtifactUnreadableError(path.name, str(path), str(e)) from e
 
     def get_config_snapshot(self, run_id: str) -> Optional[RunConfigSnapshot]:
         """

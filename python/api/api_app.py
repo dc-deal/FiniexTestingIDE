@@ -41,6 +41,7 @@ from python.api.endpoints import (
 from python.configuration.app_config_manager import AppConfigManager
 from python.configuration.data_home import describe_data_home
 from python.framework.activities.activity_registry_reader import ActivityRegistryReader
+from python.framework.constants.recorded_stream_constants import UNIT_RECORDED_STREAMS_ROUTE
 from python.framework.docs_search.docs_corpus import DOCS_ROOT
 from python.framework.docs_search.docs_search_index import docs_search_index
 from python.framework.exceptions.api_errors import ApiException
@@ -87,6 +88,7 @@ POLLED_PATHS = frozenset({
     '/api/v1/activities',
     '/api/v1/machine-resources',
     '/api/v1/reports/runs/{run_id}/state-frames/latest',
+    f'/api/v1/reports/runs/{{run_id}}/{UNIT_RECORDED_STREAMS_ROUTE}',
 })
 
 # The bar routes answer with a bare array, so everything a consumer needs ABOUT the rows travels

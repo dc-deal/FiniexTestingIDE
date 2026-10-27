@@ -33,6 +33,32 @@ reads downwards from the version their fixtures hold until they reach the one be
 A test holds the newest heading in this log to the number the server answers with, so a version
 cannot ship without its entry.
 
+## Version 43 — 2026-10-27 (#580)
+
+A unit's recorded streams can be read over time: a timeline to draw the axis from, and a window to
+read them a page at a time — a finished run's and a running session's alike.
+
+- `GET /api/v1/reports/runs/{run_id}/units/{unit_name}/recorded-streams`, new: one row per stream
+  the unit records (`key: ["stream_kind", "stream_name"]`) — today its state frames — with
+  `record_count`, `first_record_time` and `last_record_time` on the stream's own
+  `record_time_field`, its cadence (`cadence_timeframe`, `cadence_s`) and `truncated_tail`; beside
+  them the unit's `recording`, the verdict the latest-state-frame route gives. Made to be asked
+  every second or two.
+- `GET /api/v1/reports/runs/{run_id}/units/{unit_name}/recorded-streams/window?from=&to=&limit=`,
+  new: the unit's records in `[from, to)`, oldest first, at most `limit` of them (1 to 2000,
+  omitted 2000; outside it refused with `invalid_limit`, never clamped) — more only where one
+  millisecond holds more, as a page never ends inside one. `from` left out starts with the stream,
+  `to` left out ends after its newest record, and `window` says which instants the answer covers: a
+  bound left out is resolved from the records the window holds, and stays null when it holds none.
+  `matched`, `returned`, `limit`, `truncated`, and `next_from` — set only when the page left records
+  out, always on a millisecond boundary: ask the next page from there. Each state frame carries
+  `record_no`, its position in the stream (`keys: {"state_frames": ["record_no"]}`).
+- Two new 404 codes: `unit_not_found` — the run records no unit of that name; and
+  `streams_not_recorded` — the run records no stream over time.
+
+Two routes and two codes added; nothing removed or renamed. Its document is
+[recorded streams](/api/v1/docs/recorded-streams).
+
 ## Version 42 — 2026-10-27 (#476)
 
 A booking period counts the orders it handled, so a run's order counts can be read from its periods
@@ -127,37 +153,13 @@ A backtest names the configuration it RAN with, as a session does.
 
 No field was added or removed.
 
-## Version 38 — 2026-10-21 (#611)
-
-A running session can be asked how it stands: its latest state frame, how old it is, and whether it
-is still recording.
-
-- `GET /api/v1/reports/runs/{run_id}/state-frames/latest`, new: one row per unit
-  (`key: ["unit_name"]`) with the latest `frame`, its `written_at` and `age_s`, and the unit's
-  cadence as `cadence_timeframe` (a timeframe, `M1` by default) and `cadence_s`;
-  `recording` — `current`, `stopped` or `ended`, null for a session replaying recorded data before
-  its end; `truncated_tail`; `first_frame`, the `written_at` and `process_memory` of the unit's first
-  frame; and `outcome`, the run's end classification exactly as `warnings-errors` serves it, once
-  the session ended and its report was written. Ask it once a cadence. On the `reports` surface.
-- Two new 404 codes: `state_frames_not_recorded` — the run records no state frames; and
-  `state_frame_not_written_yet` — its stream holds no frame yet.
-- `GET /api/v1/reports/runs`: `stream_files` names `state_frames.jsonl` for a session that records
-  state frames, from the moment the session opens the stream. A session recorded before this
-  version is named there once the server's run list is rebuilt.
-- `GET /api/v1/reports/runs`: `recording` on every row whose `stream_files` names
-  `state_frames.jsonl` — the verdict the latest-state-frame route gives (`current`, `stopped`,
-  `ended`), so a list can mark the sessions that still record and filter by it. Null elsewhere,
-  before a session's first frame, for a replay before its end, and where the stream cannot be read.
-
-A route, two codes and a run-list field added, a stream named; nothing removed or renamed. Its document is
-[state frames](/api/v1/docs/state-frames).
-
-## Versions 37 and earlier
+## Versions 38 and earlier
 
 One line each. Every one of these moved a shape or a meaning; what they moved is summarised here
 rather than spelled out, because a consumer this far behind needs the list of steps, not each step's
 reasoning. The full text of a compressed version is in this repository's history.
 
+- **Version 38** — 2026-10-21 (#611): A running session can be asked how it stands — `GET /api/v1/reports/runs/{run_id}/state-frames/latest`, one row per unit with the latest frame, its age, its cadence (`cadence_timeframe`, `cadence_s`) and `recording`; the codes `state_frames_not_recorded` and `state_frame_not_written_yet`; and `stream_files` and `recording` on the run list. Its document is [state frames](/api/v1/docs/state-frames).
 - **Version 37** — 2026-10-20 (#598): A session trading real money starts without a carry-over only when its start is declared the bot's first — `origin.first_start` on the [run header](/api/v1/docs/run-header), `true` for such a start and `false` on every other run, a backtest and a run recorded before this version.
 - **Version 36** — 2026-10-19 (#547): A backtest keeps the broker configuration it traded with — `broker_config_id` on every row of [broker](/api/v1/docs/broker) is set on a simulation row too, and `config_hash` leaves out when a value was fetched, so on a dynamic broker a hash recorded before this version differs from a later one over the same values.
 - **Version 35** — 2026-10-19 (#603): What runs on the machine is served (`GET /api/v1/activities`, keyed by `activity_id`, with each activity's memory and the machine's pressure verdict), the machine routes and the broker list need a grant (`machine`, `brokers`), every symbol row carries `tick_size`, `from` and `to` on the bars and ATR routes accept an ISO-8601 instant only (`400 invalid_timestamp`), every booking period carries `account_max_drawdown`, `account_max_dd_pct`, `unrealized_pnl` and `open_position_count`, and `activity_registry_unreadable` (500) is new.

@@ -233,7 +233,7 @@ behind its `write_strategy_files` parameter.
 | [`order_history_csv`](reporting_pipeline.md#report-sections--domain--migration-status) | `io/order_history.csv` | report output | at end | at end | `artifacts` | — |
 | [`trade_history_csv`](reporting_pipeline.md#report-sections--domain--migration-status) | `io/trade_history.csv` | report output | at end | at end | `artifacts` | — |
 | [`order_events`](order_event_stream.md#storage) | `io/order_events.jsonl` | stream · v2 | at end — a scenario recorded an order event | at start — the session got through its startup checks | `stream_files` | `…/order-events` |
-| [`state_frames`](live_telemetry_architecture.md#the-recorded-state-frame--not-this-stream) | `io/state_frames.jsonl` | stream · v1 | — | at start — the profile records state frames | `stream_files` | `…/state-frames/latest` |
+| [`state_frames`](live_telemetry_architecture.md#the-recorded-state-frame--not-this-stream) | `io/state_frames.jsonl` | stream · v1 | — | at start — the profile records state frames | `stream_files` | `…/state-frames/latest` · `…/units/{unit_name}/recorded-streams` · `…/units/{unit_name}/recorded-streams/window` |
 | [`tick_stream_events`](../autotrader/autotrader_architecture.md#what-a-session-records) | `io/tick_stream_events.jsonl` | stream · v1 | — | at start — the session reads its ticks from a venue | — | — |
 | [`diagnostics_rows`](diagnostics_csv_sink.md#lifecycle-framework-owned) | `diagnostics/{sink}.jsonl` | stream · v1 | — | as it runs — the logic declared a diagnostics sink | — | — |
 | [`trades`](../autotrader/autotrader_architecture.md#what-a-session-records) | `io/trades.jsonl` | stream · v1 | — | at start — the session reached its tick loop | — | — |
@@ -268,7 +268,9 @@ directory.
    holds, who writes it and when, the write mode, its document — its index column only if the
    run list is meant to serve it, which changes what the API serves and raises its contract, and
    its `served_route` when a route below a run serves the file. A test holds the declared routes
-   to the routes the API mounts.
+   to the routes the API mounts. A stream a unit's timeline and window serve declares its
+   `recorded_stream_kind` instead of a route of its own (#580); a test holds every kind to exactly
+   one stream, and that stream to the one time field its pages are cut by.
 3. Where a pipeline writes it only sometimes, have that pipeline's report coordinator judge it at
    the close — an expectation in its `_footprint_expectations`, so a run that did not write it
    reads as skipped with the reason, or as failed. A member nobody judges reads as unknown, and

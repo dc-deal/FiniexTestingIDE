@@ -78,6 +78,8 @@ the declaration alone and takes milliseconds; whether the writers keep to it is 
   record that lies in the day's folder at the stream's own path, every day record is the sealed
   form of exactly one stream, and a sealed stream declares its time fields — an empty tuple where
   its lines carry none, never left undeclared.
+- **A recorded stream is declared once (#580):** every kind a unit's timeline and window serve is
+  declared by exactly one stream, and that stream names the one time field its pages are cut by.
 - **What the run list serves:** the file names each index column lists are pinned as literals,
   so a renamed constant cannot carry the pin along with it. A change there changes what a consumer
   of the run list reads, so the failure says to raise the API contract first — a pin of a

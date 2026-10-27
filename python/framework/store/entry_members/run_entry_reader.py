@@ -25,6 +25,8 @@ from python.framework.types.api.report_types import RunHeader
 from python.framework.types.run_stream_types import (
     RunStreamEnds,
     RunStreamLines,
+    RunStreamOverview,
+    RunStreamPage,
     StreamTimeWindow,
 )
 from python.framework.types.store_member_types import EntryMember, RunEntryMemberId
@@ -178,6 +180,42 @@ class RunEntryReader:
         """
         directory = self.directory(run_id)
         return directory.read_stream_ends(member_id, **names) if directory is not None else None
+
+    def read_stream_page(self, run_id: str, member_id: RunEntryMemberId, window: StreamTimeWindow,
+                         limit: int, **names: str) -> Optional[RunStreamPage]:
+        """
+        One page of one run's stream within a time window, at most `limit` records (#580).
+
+        Args:
+            run_id: The run
+            member_id: The stream
+            window: The stretch to read
+            limit: The most records the page holds, at least one
+            names: One value per variable part of the stream's path
+
+        Returns:
+            The page, or None when the run is unknown or holds no such stream
+        """
+        directory = self.directory(run_id)
+        return (directory.read_stream_page(member_id, window, limit, **names)
+                if directory is not None else None)
+
+    def read_stream_overview(self, run_id: str, member_id: RunEntryMemberId,
+                             **names: str) -> Optional[RunStreamOverview]:
+        """
+        One run's stream at its two ends and by its trading days, from one read of its file (#580).
+
+        Args:
+            run_id: The run
+            member_id: The stream
+            names: One value per variable part of the stream's path
+
+        Returns:
+            The overview, or None when the run is unknown or holds no such stream
+        """
+        directory = self.directory(run_id)
+        return (directory.read_stream_overview(member_id, **names)
+                if directory is not None else None)
 
 
 def section_member(spec: ArtifactSpec) -> EntryMember:

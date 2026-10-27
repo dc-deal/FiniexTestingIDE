@@ -12,10 +12,11 @@ whether the session is still recording: the check-in on a running session.
 GET /api/v1/reports/runs/{run_id}/state-frames/latest
 ```
 
-**What is not here:** the frames between the first and the latest; every step of every order — the
-[order events](/api/v1/docs/order-events); whether the session's process is alive and what it holds
-from outside — the [activities](/api/v1/docs/activities); the report sections a session writes when
-it ends, such as the [portfolio](/api/v1/docs/portfolio).
+**What is not here:** the frames between the first and the latest — a unit's
+[recorded streams](/api/v1/docs/recorded-streams) serve them by time window; every step of every
+order — the [order events](/api/v1/docs/order-events); whether the session's process is alive and
+what it holds from outside — the [activities](/api/v1/docs/activities); the report sections a
+session writes when it ends, such as the [portfolio](/api/v1/docs/portfolio).
 
 Reached with a grant on the `reports` surface — `reports:<run_id>`, or `reports:*` for every run.
 

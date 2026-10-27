@@ -32,6 +32,7 @@ from python.framework.store.entry_members.sweep_entry_members import (
     SWEEP_ENTRY_MEMBERS_BY_ID,
 )
 from python.framework.store.store_catalog import StoreCatalog
+from python.framework.types.run_stream_types import RecordedStreamKind
 from python.framework.types.store_member_types import (
     EntryMemberMoment,
     EntryMemberShape,
@@ -248,6 +249,34 @@ class TestASealedStreamIsDeclaredWhole:
         for member in RUN_ENTRY_MEMBERS:
             if member.day_record is not None:
                 assert member.time_fields is not None, member.member_id
+
+
+class TestARecordedStreamIsDeclaredOnce:
+    """
+    A unit's timeline and window (#580) serve every stream a member declares a kind for. The kinds
+    and the members are held both ways, so a kind cannot arrive without the stream that is it, and
+    a stream cannot be served without the time its pages are cut by.
+    """
+
+    def test_every_kind_is_declared_by_exactly_one_stream(self):
+        for kind in RecordedStreamKind:
+            members = [member for member in RUN_ENTRY_MEMBERS
+                       if member.recorded_stream_kind is kind]
+            assert len(members) == 1, (kind, [member.member_id for member in members])
+            assert members[0].shape is EntryMemberShape.STREAM, kind
+
+    def test_a_recorded_stream_names_the_one_time_its_pages_are_cut_by(self):
+        """
+        A page is read in the order of its records' own time, so a recorded stream names exactly
+        one field: with two, a record could take its time from either, and the order the stream
+        was written in would no longer be the order of its time.
+        """
+        recorded = [member for member in RUN_ENTRY_MEMBERS
+                    if member.recorded_stream_kind is not None]
+        assert recorded
+        for member in recorded:
+            assert member.time_fields is not None and len(member.time_fields) == 1, (
+                member.member_id, member.time_fields)
 
 
 class TestTheDeclarationIsLight:

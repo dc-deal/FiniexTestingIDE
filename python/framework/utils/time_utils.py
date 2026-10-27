@@ -311,6 +311,20 @@ def ensure_utc_aware(dt: datetime) -> datetime:
     return dt.astimezone(timezone.utc)
 
 
+def floor_to_millisecond(instant: datetime) -> datetime:
+    """
+    The start of the millisecond an instant falls in — the precision a JavaScript client keeps a
+    time in, so an instant served at it comes back unchanged.
+
+    Args:
+        instant: The instant
+
+    Returns:
+        It with its microseconds cut to the millisecond
+    """
+    return instant.replace(microsecond=instant.microsecond - instant.microsecond % 1000)
+
+
 def mt5_weekday_to_python(mt5_weekday: int) -> int:
     """
     Convert an MT5 weekday index to Python's datetime.weekday() convention.

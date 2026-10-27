@@ -22,6 +22,7 @@ from python.framework.constants.run_layout_constants import (
     RUN_TYPE_AUTOTRADER,
     STREAM_TRADING_DAY_FIELD,
 )
+from python.framework.exceptions.report_artifact_errors import ReportArtifactUnreadableError
 from python.framework.reporting.io.jsonl_stream_writer import JsonlStreamWriter
 from python.framework.reporting.io.order_event_stream_io import order_events_of
 from python.framework.reporting.io.run_stream_appender import RunStreamAppender
@@ -30,7 +31,7 @@ from python.framework.reporting.io.run_stream_day_record import record_time_of, 
 from python.framework.reporting.io.run_stream_sealer import RunStreamSealer
 from python.framework.reporting.io.run_stream_union_reader import (
     read_stream_union,
-    read_stream_union_index,
+    read_stream_union_overview,
 )
 from python.framework.store.entry_members.run_dir_reader import RunDirReader
 from python.framework.store.entry_members.run_entry_writer import RunEntryWriter
@@ -428,7 +429,7 @@ class TestReadingTheStreamAsOne:
 
         assert stream.records == written
 
-    def test_an_index_a_seal_overtakes_counts_each_record_once(self, tmp_path):
+    def test_an_overview_a_seal_overtakes_counts_each_record_once(self, tmp_path):
         """The running file is read once: a seal between two reads of it would count a day twice."""
         sealer, writer, trades = _session(tmp_path)
         _write_trades(trades, range(1, 4), _T0)
@@ -438,29 +439,31 @@ class TestReadingTheStreamAsOne:
             sealer.seal(_DAY_1, _DAY_2)
             return reader.day_record_paths(RunEntryMemberId.TRADES)
 
-        rows = read_stream_union_index(writer.path_of(RunEntryMemberId.TRADES), seal_then_list,
-                                       ('exit_time',))
+        overview = read_stream_union_overview(writer.path_of(RunEntryMemberId.TRADES),
+                                              seal_then_list, ('exit_time',))
 
-        assert [(row.trading_day, row.source, row.record_count) for row in rows] == [
+        assert [(row.trading_day, row.source, row.record_count) for row in overview.days] == [
             (_DAY_1, StreamDaySource.SEALED, 3)]
 
-    def test_an_index_reads_the_running_file_once(self, tmp_path, monkeypatch):
+    def test_an_overview_reads_the_running_file_once(self, tmp_path, monkeypatch):
         """
         Read twice, a seal between the two reads would describe two files: the bytes of the day
-        that ended and the ends of the fresh one, counting the day twice.
+        that ended and the ends of the fresh one, counting the day twice. The seal here lands
+        between the file's one read and the reading of its ends from those bytes.
         """
         sealer, writer, trades = _session(tmp_path)
         _write_trades(trades, range(1, 4), _T0)
-        real_ends = union_module.read_stream_ends
+        real_ends = union_module.stream_ends_of_bytes
 
-        def seal_then_read(path):
+        def seal_then_read(data, path):
             sealer.seal(_DAY_1, _DAY_2)
-            return real_ends(path)
-        monkeypatch.setattr(union_module, 'read_stream_ends', seal_then_read)
+            return real_ends(data, path)
+        monkeypatch.setattr(union_module, 'stream_ends_of_bytes', seal_then_read)
 
-        rows = RunDirReader(tmp_path).read_stream_index(RunEntryMemberId.TRADES)
+        overview = RunDirReader(tmp_path).read_stream_overview(RunEntryMemberId.TRADES)
 
-        assert sum(row.record_count for row in rows) == 3
+        assert [(row.trading_day, row.source, row.record_count) for row in overview.days] == [
+            (_DAY_1, StreamDaySource.SEALED, 3)]
 
     def test_a_time_window_reads_the_records_inside_it(self, tmp_path):
         sealer, _, trades = _session(tmp_path)
@@ -507,15 +510,18 @@ class TestReadingTheStreamAsOne:
 
         assert (ends.first, ends.last) == (day_one[0], day_two[-1])
 
-    def test_the_index_lists_each_day_without_reading_its_records(self, tmp_path, monkeypatch):
+    def test_the_overview_lists_each_day_from_its_footer(self, tmp_path, monkeypatch):
+        """A day is described by its footer; of its records only the stream's two ends are read."""
         sealer, _, trades = _session(tmp_path)
         _write_trades(trades, range(1, 4), _T0)
         sealer.seal(_DAY_1, _DAY_2)
         _write_trades(trades, range(4, 6), _T0 + timedelta(days=1))
         monkeypatch.setattr(union_module, 'read_day_record_lines',
-                            lambda *args: pytest.fail('the index read a day\'s records'))
+                            lambda *args: pytest.fail('the overview read a day\'s records'))
+        monkeypatch.setattr(union_module, 'read_day_record_rows',
+                            lambda *args: pytest.fail('the overview read a day\'s records'))
 
-        rows = RunDirReader(tmp_path).read_stream_index(RunEntryMemberId.TRADES)
+        rows = RunDirReader(tmp_path).read_stream_overview(RunEntryMemberId.TRADES).days
 
         assert [(row.trading_day, row.source, row.record_count) for row in rows] == [
             (_DAY_1, StreamDaySource.SEALED, 3), (_DAY_2, StreamDaySource.HOT, 2)]
@@ -532,7 +538,7 @@ class TestReadingTheStreamAsOne:
                             lambda path: reads.append(path) or real_summary(path))
 
         for _ in range(3):
-            RunDirReader(tmp_path).read_stream_index(RunEntryMemberId.TRADES)
+            RunDirReader(tmp_path).read_stream_overview(RunEntryMemberId.TRADES)
 
         assert len(reads) == 1
 
@@ -540,7 +546,189 @@ class TestReadingTheStreamAsOne:
         reader = RunDirReader(tmp_path)
         assert reader.read_stream(RunEntryMemberId.TRADES) is None
         assert reader.read_stream_ends(RunEntryMemberId.TRADES) is None
-        assert reader.read_stream_index(RunEntryMemberId.TRADES) == []
+        assert reader.read_stream_overview(RunEntryMemberId.TRADES) is None
+
+
+def _three_days(run_dir: Path) -> List[dict]:
+    """
+    A session's trade stream over three trading days: two sealed, the third in its file.
+
+    Returns:
+        Every record written, oldest first — three, four and two per day
+    """
+    sealer, _, trades = _session(run_dir)
+    written = _write_trades(trades, range(1, 4), _T0)
+    sealer.seal(_DAY_1, _DAY_2)
+    written += _write_trades(trades, range(4, 8), _T0 + timedelta(days=1))
+    sealer.seal(_DAY_2, _DAY_3)
+    written += _write_trades(trades, range(8, 10), _T0 + timedelta(days=2))
+    return written
+
+
+def _page(run_dir: Path, limit: int, since=None, until=None):
+    """The trade stream's page within [since, until), as the run's reader returns it."""
+    return RunDirReader(run_dir).read_stream_page(
+        RunEntryMemberId.TRADES, StreamTimeWindow(since=since, until=until), limit)
+
+
+def _walk(run_dir: Path, limit: int):
+    """
+    Every page of the trade stream from its start, each asked from where the last one ended.
+
+    Returns:
+        The pages, in order
+    """
+    pages = [_page(run_dir, limit)]
+    while pages[-1].truncated:
+        pages.append(_page(run_dir, limit, since=pages[-1].next_time))
+    return pages
+
+
+def _at(milliseconds: float) -> datetime:
+    """An instant that many milliseconds after the stream's first, microseconds included."""
+    return _T0 + timedelta(microseconds=round(milliseconds * 1000))
+
+
+class TestReadingAPage:
+    """
+    A page (#580): a window's records oldest first, at most a limit of them, each numbered by its
+    position in the whole stream. A client walks the stream page by page from where the last one
+    ended — and meets every record once, across the sealed days and the stream's file.
+    """
+
+    @pytest.mark.parametrize('limit', range(1, 11))
+    def test_walking_the_pages_meets_every_record_once(self, tmp_path, limit):
+        written = _three_days(tmp_path)
+
+        pages = _walk(tmp_path, limit)
+
+        assert [record for page in pages for record in page.records] == written
+        assert [number for page in pages for number in page.record_nos] == list(range(1, 10))
+        assert all(len(page.records) <= limit for page in pages)
+        assert [page.matched for page in pages][0] == len(written)
+
+    def test_a_record_keeps_its_number_when_its_day_is_sealed(self, tmp_path):
+        sealer, _, trades = _session(tmp_path)
+        _write_trades(trades, range(1, 4), _T0)
+        before = _page(tmp_path, 10).record_nos
+        sealer.seal(_DAY_1, _DAY_2)
+        _write_trades(trades, range(4, 6), _T0 + timedelta(days=1))
+
+        after = _page(tmp_path, 10)
+
+        assert before == [1, 2, 3]
+        assert after.record_nos == [1, 2, 3, 4, 5]
+
+    def test_a_page_never_ends_inside_a_millisecond(self, tmp_path):
+        """
+        The third record would end the page inside the millisecond of the fourth: the page ends
+        before that millisecond instead, and the next one starts at it — a client that keeps
+        time in milliseconds asks again without repeating a record.
+        """
+        _, _, trades = _session(tmp_path)
+        moments = [_at(0.1), _at(0.2), _at(1.0), _at(1.5), _at(2.0)]
+        written = [_trade(number, moment) for number, moment in enumerate(moments, start=1)]
+        for record in written:
+            trades.write(record)
+
+        first = _page(tmp_path, 3)
+        second = _page(tmp_path, 3, since=first.next_time)
+
+        assert first.records == written[:2]
+        assert first.next_time == _at(1.0)
+        assert second.records == written[2:]
+        assert not second.truncated
+
+    def test_a_millisecond_fuller_than_the_page_is_served_whole(self, tmp_path):
+        _, _, trades = _session(tmp_path)
+        moments = [_at(0.1), _at(0.2), _at(0.3), _at(5.0)]
+        written = [_trade(number, moment) for number, moment in enumerate(moments, start=1)]
+        for record in written:
+            trades.write(record)
+
+        page = _page(tmp_path, 2)
+
+        assert page.records == written[:3]
+        assert page.truncated and page.next_time == _at(5.0)
+
+    def test_the_read_stops_at_the_day_that_fills_the_page(self, tmp_path, monkeypatch):
+        """The days after it are counted from their footers, never opened for their lines."""
+        written = _three_days(tmp_path)
+        opened = []
+        real_rows = union_module.read_day_record_rows
+        monkeypatch.setattr(union_module, 'read_day_record_rows',
+                            lambda path, window=None: opened.append(path) or real_rows(path, window))
+        counted = []
+        monkeypatch.setattr(union_module, 'read_day_record_times',
+                            lambda path: counted.append(path) or [])
+
+        page = _page(tmp_path, 2)
+
+        assert opened == [_day_path(tmp_path, _DAY_1)]
+        assert counted == []
+        assert page.records == written[:2]
+        assert page.matched == len(written)
+
+    def test_a_window_ending_inside_a_day_counts_that_day_by_its_times(self, tmp_path):
+        written = _three_days(tmp_path)
+        since = _T0 + timedelta(minutes=1)
+        until = _T0 + timedelta(days=1, minutes=2)
+
+        page = _page(tmp_path, 3, since=since, until=until)
+
+        inside = [record for record in written
+                  if since <= datetime.fromisoformat(record['exit_time']) < until]
+        assert page.matched == len(inside) == 4
+        assert page.records == inside[:3]
+        assert page.truncated
+        assert page.next_time == datetime.fromisoformat(inside[3]['exit_time'])
+
+    def test_the_newest_time_is_the_streams_last_record(self, tmp_path):
+        written = _three_days(tmp_path)
+
+        page = _page(tmp_path, 1)
+
+        assert page.newest_time == datetime.fromisoformat(written[-1]['exit_time'])
+
+    def test_a_session_killed_between_the_record_and_the_fresh_file_numbers_each_line_once(
+            self, tmp_path):
+        _, writer, trades = _session(tmp_path)
+        written = _write_trades(trades, range(1, 4), _T0)
+        trades.close()
+        seal_stream_day(writer.path_of(RunEntryMemberId.TRADES), _day_path(tmp_path, _DAY_1),
+                        ('exit_time',), _DAY_1)
+
+        page = _page(tmp_path, 10)
+
+        assert page.records == written
+        assert page.record_nos == [1, 2, 3]
+
+    def test_a_run_without_the_stream_reads_none(self, tmp_path):
+        assert _page(tmp_path, 10) is None
+
+    @pytest.mark.parametrize('where', ['running_file', 'sealed_day', 'counted_day'])
+    def test_a_record_without_its_time_makes_the_page_unreadable(self, tmp_path, where):
+        """
+        A page is ordered by its records' time, so a record without one has no place on it: the
+        stream is unreadable by pages rather than served with that record on every page whose
+        window touches its day. In the counted case the page is full before the day is reached.
+        """
+        sealer, _, trades = _session(tmp_path)
+        _write_trades(trades, range(1, 4), _T0)
+        if where == 'counted_day':
+            sealer.seal(_DAY_1, _DAY_2)
+        start = _T0 + timedelta(days=1) if where == 'counted_day' else _T0 + timedelta(minutes=10)
+        _write_trades(trades, range(4, 5), start)
+        trades.write({'position_id': 'pos_untimed', 'net_pnl': 0.0})
+        _write_trades(trades, range(5, 7), start + timedelta(minutes=5))
+        if where != 'running_file':
+            sealer.seal(start.date(), start.date() + timedelta(days=1))
+        # Ending on the day's last record, the window does not hold the whole day: it is counted
+        # by its times rather than its footer
+        until = start + timedelta(minutes=6) if where == 'counted_day' else None
+
+        with pytest.raises(ReportArtifactUnreadableError, match='carries no time'):
+            _page(tmp_path, 1, until=until)
 
 
 class TestWhatTheSealWasDueFor:

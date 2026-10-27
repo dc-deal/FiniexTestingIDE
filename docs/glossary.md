@@ -511,6 +511,11 @@ report) — A submission the venue never confirmed: `undelivered` (it confirmed 
 order) or `unaccounted` (we stopped asking, and it may still hold the order — the case to check by
 hand). Live only: a simulated venue answers every order.
 
+**next_from** (on a unit's recorded-streams window) — Where the records a page left out begin: the
+start of the millisecond the first of them falls in, set only when the page left some out
+(`truncated`). The next page is asked from it; a page never ends inside a millisecond, so no
+record is repeated or skipped. See [recorded streams](consumer/recorded-streams.md).
+
 **observation** — A dry run whose profile pins `dry_run: true`, kept in
 `configs/autotrader_profiles/observation/`.
 
@@ -637,13 +642,26 @@ stream, never on a tick. See [AutoTrader Data Intake](autotrader/autotrader_data
 **real-money session** — A live-adapter session with `dry_run` false: its orders are placed at the
 venue and move the account.
 
-**recording** (`recording` on the latest-frame route and on the run list) — Whether a session is
+**record_no** (on every record of a unit's recorded-streams window) — A record's position in its
+unit's stream, counted from 1 over the sealed trading days in order and then the running file. It
+identifies the record in every answer — two state frames may share an instant — keeps its value when
+its day is sealed, and the newest one equals the timeline's `record_count`. Derived when read, not
+written into the record.
+
+**recorded stream** (`stream_kind`, `stream_name` on a unit's recorded-streams timeline) — A stream a
+run records over time for one of its units and serves by time window: today a session's *state
+frames*; drawings, algo events and a strategy's tables are to join. Not the run list's *stream
+files*, which names files, and not the producer's *stream state*. See
+[recorded streams](consumer/recorded-streams.md).
+
+**recording** (`recording` wherever a session's state frames are served) — Whether a session is
 still recording its *state frames*, as the route judges it when it answers — never a yes or no:
 `current` when the latest frame is younger than three of its cadences, `stopped` when it is older
 and not the last one (the session hangs or its process died; the activity list tells which),
 `ended` when the latest frame is the one written at the session's end. Null for a session replaying
 recorded data before its end, whose frames come at replay speed. The run list carries the same
-verdict on every row that records state frames. Not the staleness contract's `stale`, which judges
+verdict on every row that records state frames, and a unit's recorded-streams timeline beside its
+streams. Not the staleness contract's `stale`, which judges
 the session's INPUTS and travels inside the frame. See [state frames](consumer/state-frames.md).
 
 **refused at the first tick** (`refused_at_first_tick`) — A live-adapter session that stopped at its

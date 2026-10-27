@@ -23,7 +23,7 @@ from typing import List
 
 # One monotonic integer. Not a date and not the app version: a consumer compares it for
 # equality, and equality is the only question they have.
-API_CONTRACT_VERSION = 42
+API_CONTRACT_VERSION = 43
 
 # Every response carries it, so a saved fixture carries it too.
 CONTRACT_HEADER = 'X-Api-Contract'
@@ -36,8 +36,14 @@ API_PREFIX = '/api/v1'
 # What moved INTO the current version. One line per change, written for someone who cannot
 # read this repository.
 CHANGES: List[str] = [
-    'A booking period carries its own order counts: every orders_* field and sl_tp_triggered on a '
-    "sweep combination folded from a run's periods is now the sum of those periods' counts — they "
-    'were null there, because a period carried none. Null only on a row written before this '
-    'contract',
+    "GET /api/v1/reports/runs/{run_id}/units/{unit_name}/recorded-streams, new: a unit's timeline — "
+    'every stream it records over time (today its state frames) with its record_count and the time '
+    'of its first and latest record, its cadence, and recording; made to be asked every second or two',
+    "GET /api/v1/reports/runs/{run_id}/units/{unit_name}/recorded-streams/window, new: a unit's "
+    'records in [from, to), oldest first, at most limit of them (1 to 2000, refused outside it, never '
+    'clamped) — more only where one millisecond holds more, as a page never ends inside one; a bound '
+    'left out is resolved from the records the window holds, null when it holds none; each state '
+    'frame carries record_no, its position in the stream; matched, returned, truncated, and '
+    'next_from — set only when the page left records out, on a millisecond boundary',
+    'Two new 404 codes: unit_not_found and streams_not_recorded',
 ]

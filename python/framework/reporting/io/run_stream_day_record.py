@@ -154,13 +154,32 @@ def read_day_record_lines(
     Returns:
         The records
     """
+    return [record for _, _, record in read_day_record_rows(day_path, window)]
+
+
+def read_day_record_rows(
+    day_path: Path,
+    window: Optional[StreamTimeWindow] = None,
+) -> List[Tuple[int, Optional[datetime], Dict[str, Any]]]:
+    """
+    The records of a sealed day with their position in the day and their time, oldest first —
+    within a time window when one is given. A record whose line carries no time belongs to its day
+    and is kept; a line outside the window is not parsed.
+
+    Args:
+        day_path: The day record
+        window: The stretch to read, or None for the whole day
+
+    Returns:
+        (its position in the day from 0, its time or None, the record) for each record kept
+    """
     try:
         table = pq.read_table(day_path, columns=['record_time', 'line'])
     except (OSError, pa.ArrowInvalid) as e:
         raise ReportArtifactUnreadableError(day_path.name, str(day_path), str(e)) from e
     times = table.column('record_time').to_pylist()
     texts = table.column('line').to_pylist()
-    records: List[Dict[str, Any]] = []
+    rows: List[Tuple[int, Optional[datetime], Dict[str, Any]]] = []
     for index, (moment, text) in enumerate(zip(times, texts)):
         if window is not None and moment is not None and not window.holds(moment):
             continue
@@ -172,8 +191,26 @@ def read_day_record_lines(
         if not isinstance(record, dict):
             raise ReportArtifactUnreadableError(
                 day_path.name, str(day_path), f'row {index + 1}: not a JSON object')
-        records.append(record)
-    return records
+        rows.append((index, moment, record))
+    return rows
+
+
+def read_day_record_times(day_path: Path) -> List[Optional[datetime]]:
+    """
+    The time of every record of a sealed day, oldest first, read without the lines — what a count
+    over part of the day needs.
+
+    Args:
+        day_path: The day record
+
+    Returns:
+        One time per record, None for a record whose line carries none
+    """
+    try:
+        table = pq.read_table(day_path, columns=['record_time'])
+    except (OSError, pa.ArrowInvalid) as e:
+        raise ReportArtifactUnreadableError(day_path.name, str(day_path), str(e)) from e
+    return table.column('record_time').to_pylist()
 
 
 def record_time_of(record: Dict[str, Any], time_fields: Tuple[str, ...]) -> Optional[datetime]:
