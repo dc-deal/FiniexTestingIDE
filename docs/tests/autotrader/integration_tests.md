@@ -12,7 +12,7 @@ Full pipeline integration: runs a complete session with deterministic parquet re
 
 | Test | What it validates |
 |------|-------------------|
-| `test_full_mock_session` | Normal shutdown + **exit code 0**, tick count (63412), 0 clipping, 0 warnings/errors, trades produced, stats collected |
+| `test_full_mock_session` | Normal shutdown + **exit code 0**, tick count (63412), 0 warnings/errors, trades produced, stats collected. Clipping is not asserted: it compares wall-clock processing with the recorded tick spacing, so it measures the machine — the monitor's rule is tested in `test_live_clipping_monitor.py` |
 | `test_log_files_created` | Log directory structure: global, summary, session_logs/, events.csv |
 | `test_broker_report_written` | Broker report persisted (unified model) + rendered in the summary |
 | `test_safety_report_written` | The safety record reaches disk and names its baseline (#356 Phase C) — the end-to-end the unit tests cannot show: a chain of proven links is not a proven chain. Also pins that an unarmed limit reports `null`, not `0.0` |

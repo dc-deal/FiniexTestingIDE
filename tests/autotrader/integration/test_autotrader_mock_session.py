@@ -95,10 +95,11 @@ class TestAutotraderMockSession:
             f'Expected 63412 ticks, got {result.ticks_processed}'
         )
 
-        # === No clipping in replay mode ===
-        assert result.ticks_clipped == 0, (
-            f'Expected 0 clipped ticks in replay mode, got {result.ticks_clipped}'
-        )
+        # Clipping is not asserted here: a tick counts as clipped when its wall-clock processing
+        # outlasts the recorded spacing to the previous one, so the count measures the machine —
+        # 7,434 of these ticks under a parallel load of 30 on 16 cores (2026-10-27). The monitor's
+        # rule is tested in test_live_clipping_monitor.py; whether a replay keeps up is the
+        # benchmark's question, on a quiet machine.
 
         # === Clean session — no unexpected warnings or errors ===
         # A position left open at the end is a POLICY outcome now, not a warning (#492):
