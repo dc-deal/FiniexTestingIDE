@@ -6,9 +6,10 @@ where the last page ended meets every frame once; a refused parameter and every 
 cause.
 """
 
+import threading
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
-from typing import List
+from typing import Dict, List
 from unittest.mock import patch
 
 import pytest
@@ -30,6 +31,7 @@ from python.framework.types.api.report_types import RunHeader
 from python.framework.types.api.state_frame_types import StateFrame, StateFrameCause
 from python.framework.types.run_kind_types import TicksFrom
 from python.framework.types.store_member_types import RunEntryMemberId
+from python.framework.utils.time_utils import floor_to_millisecond
 from tests.shared.recording_logger import RecordingLogger
 
 _RUN = '20261201_010500_ab12cd34'
@@ -80,9 +82,10 @@ def _session(root: Path):
 
 
 def _write_frames(stream, day: date, count: int, written_at: datetime,
-                  microsecond: int = 412000) -> List[datetime]:
+                  microsecond: int = 412000, first_minute: int = 0) -> List[datetime]:
     """Write `count` frames a minute apart from 01:05 of a day; their frame times."""
-    start = datetime(day.year, day.month, day.day, 1, 5, 0, microsecond, tzinfo=timezone.utc)
+    start = (datetime(day.year, day.month, day.day, 1, 5, 0, microsecond, tzinfo=timezone.utc)
+             + timedelta(minutes=first_minute))
     times = [start + timedelta(minutes=minute) for minute in range(count)]
     for moment in times:
         assert stream.write(_frame(moment, written_at))
@@ -118,6 +121,35 @@ def _iso(moment: datetime) -> str:
 
 def _parse(text: str) -> datetime:
     return datetime.fromisoformat(text.replace('Z', '+00:00'))
+
+
+def _follow(client: TestClient, held: Dict[int, datetime], counts: List[int]) -> None:
+    """
+    Follow a running unit one step, the way its document says: ask the timeline, then the window
+    from the millisecond of the newest frame held, page by page, dropping the frames already held.
+
+    Args:
+        client: The API client
+        held: The frames held so far, their time by their record_no — filled in
+        counts: Each timeline answer's record count — appended to
+    """
+    timeline = client.get(_BASE)
+    assert timeline.status_code == 200, timeline.json()
+    counts.append(timeline.json()['streams'][0]['record_count'])
+    params: Dict[str, object] = {'limit': 50}
+    if held:
+        params['from'] = _iso(floor_to_millisecond(max(held.values())))
+    while True:
+        answer = client.get(f'{_BASE}/window', params=params)
+        assert answer.status_code == 200, answer.json()
+        page = answer.json()
+        for frame in page['state_frames']:
+            moment = _parse(frame['frame_time'])
+            # A frame already held keeps its number and its time in every answer
+            assert held.setdefault(frame['record_no'], moment) == moment
+        if not page['truncated']:
+            return
+        params['from'] = page['next_from']
 
 
 @pytest.fixture
@@ -362,3 +394,53 @@ class TestTheWindow:
         answer = client.get(f'{_BASE}/window', params={'from': 'yesterday'})
 
         assert answer.status_code == 400 and answer.json()['error'] == 'invalid_timestamp'
+
+
+class TestFollowingASessionWhileItWrites:
+    """
+    A running session is followed by asking (#380): the timeline every second or two, and the
+    window from the newest frame held whenever the timeline moved. The session here writes and
+    seals a trading day on a thread of its own while the routes are asked.
+    """
+
+    def test_following_meets_every_frame_once_across_a_seal(self, client, tmp_path):
+        now = datetime.now(timezone.utc)
+        sealer, stream = _session(tmp_path)
+        written: List[datetime] = []
+        failures: List[BaseException] = []
+        # The session goes on only once the follower has seen the stage it is in, so the answers
+        # come from before the seal and from after it, whatever the pace of the two threads
+        followed_first_day = threading.Event()
+        followed_after_seal = threading.Event()
+
+        def run_session() -> None:
+            try:
+                written.extend(_write_frames(stream, _DAY_1, 300, now))
+                followed_first_day.wait(timeout=30)
+                sealer.seal(_DAY_1, _DAY_2)
+                written.extend(_write_frames(stream, _DAY_2, 100, now))
+                followed_after_seal.wait(timeout=30)
+                written.extend(_write_frames(stream, _DAY_2, 200, now, first_minute=100))
+            except BaseException as e:
+                failures.append(e)
+
+        session = threading.Thread(target=run_session)
+        held: Dict[int, datetime] = {}
+        counts: List[int] = []
+        session.start()
+        while session.is_alive():
+            _follow(client, held, counts)
+            if counts[-1]:
+                followed_first_day.set()
+            if counts[-1] > 300:
+                followed_after_seal.set()
+        session.join()
+        stream.close()
+        _follow(client, held, counts)
+
+        assert not failures, failures
+        assert counts == sorted(counts)
+        assert any(0 < count <= 300 for count in counts)
+        assert any(300 < count < len(written) for count in counts)
+        assert sorted(held) == list(range(1, len(written) + 1))
+        assert [held[number] for number in sorted(held)] == written

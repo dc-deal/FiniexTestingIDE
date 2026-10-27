@@ -113,7 +113,7 @@ whatever columns their strategy chose, so they declare none, and a time window r
 ## How a stream is read
 
 The run directory's reader reads a stream as one (`RunDirReader.read_stream`): the sealed days, oldest
-first, then the stream's own file. Two rules keep that exact while a session seals underneath a
+first, then the stream's own file. These rules keep that exact while a session seals underneath a
 reader:
 
 - **The file is read first, the days are listed after it.** A seal that happens in between has
@@ -121,6 +121,9 @@ reader:
   the day is still in the file.
 - **A file whose day is already sealed is left out.** Its header names its day; the session's first
   file names none and counts as sealed once any day is.
+- **A day record gone by the time the read asks for it was taken back.** A seal whose fresh file
+  could not be started removes its day record again, and the day's lines are still in the file the
+  read began with — so the day is read from there, as if it had never been sealed.
 
 A read can be narrowed to a time window: a day whose records all lie outside it is not opened, and a
 record without a time is read with its day. The two ends of a stream — its header, first and latest
@@ -129,9 +132,14 @@ from the newest day's last line. A stream's overview — what a unit's timeline 
 each day with its record count and the times of its first and last record from the day's footer, and
 reads no record but the stream's two ends. A sealed day never changes, so the reading
 process keeps what its footer and its two end lines say by the file's path, size and modification
-time. Once read, the two ends cost a listing of the days and the two ends of the stream's file; the
-overview costs the same plus one read of the running file, whose records it counts by their line
-ends — at most one trading day of them, a few megabytes at the default frame cadence.
+time. A read asks each day record for its status once — two calls per sealed day with its listing —
+and answers every question it has of the day from that. Once read, the two ends cost a listing of the
+days and the two ends of the stream's file; the overview costs the same plus one read of the running
+file, whose records it counts by their line ends — at most one trading day of them, a few megabytes
+at the default frame cadence. Measured on a stream thirty days in with
+`python/experiments/cost_probes/probe_recorded_stream_read_cost.py`: a unit's timeline 1.7 ms on a
+local disk and about 210 ms on this container's bridged drive, where each status call costs
+milliseconds — before each day was asked once, 3.2 ms and 1,056 ms.
 
 **A page** (`RunDirReader.read_stream_page`) reads a window up to a limit — what a unit's window over
 the API serves (#580). A stream's records come in the order of their time, because its writer stamps

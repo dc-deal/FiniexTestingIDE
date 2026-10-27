@@ -6,6 +6,7 @@ while a seal happens underneath it and after a session died in the middle of one
 """
 
 import json
+import os
 import threading
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
@@ -27,10 +28,16 @@ from python.framework.reporting.io.jsonl_stream_writer import JsonlStreamWriter
 from python.framework.reporting.io.order_event_stream_io import order_events_of
 from python.framework.reporting.io.run_stream_appender import RunStreamAppender
 from python.framework.reporting.io.run_header_io import write_run_header
-from python.framework.reporting.io.run_stream_day_record import record_time_of, seal_stream_day
+from python.framework.reporting.io.run_stream_day_record import (
+    read_day_record_summary,
+    record_time_of,
+    seal_stream_day,
+)
 from python.framework.reporting.io.run_stream_sealer import RunStreamSealer
 from python.framework.reporting.io.run_stream_union_reader import (
+    read_stream_page,
     read_stream_union,
+    read_stream_union_ends,
     read_stream_union_overview,
 )
 from python.framework.store.entry_members.run_dir_reader import RunDirReader
@@ -149,7 +156,7 @@ class TestASealMovesTheDay:
 
         sealer.seal(_DAY_1, _DAY_2)
 
-        summary = union_module.day_record_summary(_day_path(tmp_path, _DAY_1))
+        summary = read_day_record_summary(_day_path(tmp_path, _DAY_1))
         assert (summary.stream, summary.run_id, summary.trading_day) == ('trades', _RUN_ID, _DAY_1)
         assert summary.record_count == 3
         assert (summary.first_time, summary.last_time) == (_T0, _T0 + timedelta(minutes=2))
@@ -161,7 +168,7 @@ class TestASealMovesTheDay:
 
         sealer.seal(_DAY_1, _DAY_2)
 
-        assert union_module.day_record_summary(_day_path(tmp_path, _DAY_1)).record_count == 0
+        assert read_day_record_summary(_day_path(tmp_path, _DAY_1)).record_count == 0
 
     def test_the_seal_is_said_in_one_line(self, tmp_path):
         logger = RecordingLogger()
@@ -233,7 +240,7 @@ class TestASealThatGoesWrong:
         errors = [message for level, message in logger.lines if level == 'error']
         assert len(errors) == 1 and 'could not be sealed' in errors[0]
         assert not _day_path(tmp_path, _DAY_2).exists()
-        assert union_module.day_record_summary(
+        assert read_day_record_summary(
             _day_path(tmp_path, _DAY_1)).record_count == 4
         assert _read(tmp_path) == first + second
 
@@ -262,7 +269,7 @@ class TestASealThatGoesWrong:
 
         errors = [message for level, message in logger.lines if level == 'error']
         assert len(errors) == 1 and 'could not be sealed' in errors[0]
-        assert union_module.day_record_summary(
+        assert read_day_record_summary(
             _day_path(tmp_path, _DAY_1)).record_count == 4
         assert _header(writer.path_of(RunEntryMemberId.TRADES))[STREAM_TRADING_DAY_FIELD] == \
             _DAY_3.isoformat()
@@ -343,7 +350,7 @@ class TestALineCutOffBeforeTheSeal:
         reader = self._sealed_with_a_cut_line(tmp_path)
         day = reader.day_record_paths(RunEntryMemberId.ORDER_EVENTS)[0]
 
-        summary = union_module.day_record_summary(day)
+        summary = read_day_record_summary(day)
         assert summary.cut_last_line and summary.record_count == 1
 
     def test_every_reader_still_says_so(self, tmp_path):
@@ -731,6 +738,72 @@ class TestReadingAPage:
             _page(tmp_path, 1, until=until)
 
 
+class TestWhatAReadCosts:
+    """
+    A read asks each sealed day for its status once, whatever it asks of the day (#580). A viewer
+    polls a unit's timeline every second or two, and behind a bridged drive each status call costs
+    milliseconds: measured 2026-10-27, a read asked each day up to five times — 237 calls for a
+    stream thirty days in.
+    """
+
+    @pytest.mark.parametrize('read', ['overview', 'ends', 'page', 'stream'])
+    def test_a_read_asks_each_sealed_day_for_its_status_once(self, tmp_path, monkeypatch, read):
+        _three_days(tmp_path)
+        sealed_days = 2
+        reader = RunDirReader(tmp_path)
+        reads = {
+            'overview': lambda: reader.read_stream_overview(RunEntryMemberId.TRADES),
+            'ends': lambda: reader.read_stream_ends(RunEntryMemberId.TRADES),
+            'page': lambda: reader.read_stream_page(
+                RunEntryMemberId.TRADES, StreamTimeWindow(), 100),
+            'stream': lambda: reader.read_stream(
+                RunEntryMemberId.TRADES, StreamTimeWindow(since=_T0 + timedelta(days=2))),
+        }
+        reads[read]()
+        calls = []
+        real_stat = os.stat
+        monkeypatch.setattr(os, 'stat', lambda *args, **kwargs: (
+            calls.append(args[0]) or real_stat(*args, **kwargs)))
+
+        reads[read]()
+
+        # One call finds a day's record in its folder, one reads what its footer says; one more
+        # is the stream's own file
+        assert len(calls) <= 2 * sealed_days + 1, calls
+
+    def test_a_day_record_taken_back_after_the_listing_is_read_from_the_file(self, tmp_path):
+        """
+        A seal whose fresh file could not be started takes its day record back. A read that listed
+        the record before it went reads the day from the file it began with, never a failure.
+        """
+        _, writer, trades = _session(tmp_path)
+        written = _write_trades(trades, range(1, 4), _T0)
+        trades.close()
+        hot_path = writer.path_of(RunEntryMemberId.TRADES)
+        day_path = _day_path(tmp_path, _DAY_1)
+        reader = RunDirReader(tmp_path)
+        fields = ('exit_time',)
+
+        def list_then_take_back() -> List[Path]:
+            # The record is written and the file not started afresh; the seal takes the record
+            # back after this read listed it
+            seal_stream_day(hot_path, day_path, fields, _DAY_1)
+            listed = reader.day_record_paths(RunEntryMemberId.TRADES)
+            day_path.unlink()
+            return listed
+
+        overview = read_stream_union_overview(hot_path, list_then_take_back, fields)
+        ends = read_stream_union_ends(hot_path, list_then_take_back)
+        page = read_stream_page(hot_path, list_then_take_back, fields, StreamTimeWindow(), 10)
+        lines = read_stream_union(hot_path, list_then_take_back, fields)
+
+        assert [(row.source, row.record_count) for row in overview.days] == [
+            (StreamDaySource.HOT, 3)]
+        assert (ends.first, ends.last) == (written[0], written[-1])
+        assert (page.records, page.record_nos) == (written, [1, 2, 3])
+        assert lines.records == written
+
+
 class TestWhatTheSealWasDueFor:
 
     def test_a_stream_opened_after_the_last_seal_was_not_due(self, tmp_path):
@@ -780,7 +853,7 @@ class TestEveryStreamOfTheSessionIsSealed:
 
         day = RunDirReader(tmp_path).path_of(RunEntryMemberId.TICK_STREAM_EVENTS_DAY,
                                              day=_DAY_1.strftime(DAY_LABEL_FORMAT))
-        summary = union_module.day_record_summary(day)
+        summary = read_day_record_summary(day)
         assert summary.record_count == 1 and summary.first_time is not None
         assert_run_dir_declared(tmp_path)
 

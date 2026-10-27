@@ -22,6 +22,12 @@ Recorded results:
       mid-stream 62 ms and 648 ms, a page in the running day 29 ms and 549 ms (119 calls each). A
       status call cost about 4.4 ms behind the bridge during the run, 1.2 ms in a quiet minute the
       same hour. Not yet measured on a server.
+  2026-10-27 19:35 UTC — the same container, after a read asks each sealed day for its status once
+      and lists the days with their folder entries' types: 59 status calls for every read, where the
+      timeline made 237. The timeline 27.2 ms on its first read and 1.7 ms after it on the overlay,
+      487 and 211 ms behind the bridge; the latest frame 1.0 ms and 230 ms; a page of 2,000 from the
+      start 103 ms and 347 ms, a seek mid-stream 41 ms and 269 ms, a page in the running day 15 ms
+      and 219 ms. Not yet measured on a server.
 
 Usage:
     python python/experiments/cost_probes/probe_recorded_stream_read_cost.py [--dir PATH ...]

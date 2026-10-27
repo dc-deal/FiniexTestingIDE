@@ -4,7 +4,7 @@ FiniexTestingIDE - Run Stream Union Reader (#476)
 A session's stream read as one: the trading days sealed out of it, oldest first, then its own file.
 A backtest's stream, and a session's before its first seal, is its file alone.
 
-Two rules keep the union exact while the session seals a day underneath a reader:
+These rules keep the union exact while the session seals a day underneath a reader:
 - **The file is read first, the sealed days are listed after it.** A seal that happens in between
   has then either sealed the day the reader already holds — and the next rule drops it — or it has
   not, and the day is still in the file. Listed the other way round, a seal in between would leave
@@ -13,11 +13,16 @@ Two rules keep the union exact while the session seals a day underneath a reader
   that names none was the session's first and is sealed once any day is. This also covers a
   session that died between writing a day record and starting its file afresh: the day lies in
   both, and is read once.
+- **A day record gone by the time the read asks for it was taken back.** A seal whose fresh file
+  could not be started removes its day record again, and the day's lines are still in the file the
+  read began with — so the day is read from there, as if it had never been sealed.
 
 A sealed day is immutable, so what its footer says — and its first and last line — is kept in this
-process by path, size and modification time. Once the days were read, a stream's two ends cost a
-listing of its days and the two ends of its file; its overview costs the same plus one read of the
-running file, whose records it counts by their line ends — at most one trading day of them.
+process by path, size and modification time. A read asks each day record for its status once — two
+calls per sealed day with the listing that finds it — and answers every question it has of the day
+from that. Once the days were read, a stream's two ends cost a listing of its days and the two ends
+of its file; its overview costs the same plus one read of the running file, whose records it counts
+by their line ends — at most one trading day of them.
 
 A page (#580) reads a window up to a limit and stops at the day that fills it, because a stream's
 records come in the order of their time: its writer stamps them from a clock that only moves
@@ -56,6 +61,7 @@ from python.framework.types.run_stream_types import (
     RunStreamLines,
     RunStreamOverview,
     RunStreamPage,
+    SealedStreamDay,
     StreamDayIndexRow,
     StreamDaySource,
     StreamTimeWindow,
@@ -87,17 +93,17 @@ def read_stream_union(
         The stream's records, or None when the run holds no such stream
     """
     hot = read_stream_lines(hot_path) if hot_path is not None and hot_path.is_file() else None
-    days = list_days()
+    days = _sealed_days(list_days())
     if hot is None and not days:
         return None
     records: List[Dict[str, Any]] = []
     truncated = False
-    for day_path in days:
-        summary = day_record_summary(day_path)
+    for day in days:
+        summary = day.summary
         truncated = truncated or summary.cut_last_line
         if window is not None and not window.overlaps(summary.first_time, summary.last_time):
             continue
-        records.extend(read_day_record_lines(day_path, window))
+        records.extend(read_day_record_lines(day.path, window))
     header = _newest_day_header(days)
     last_unterminated = False
     if hot is not None and not _is_sealed(hot.header, days):
@@ -143,7 +149,7 @@ def read_stream_page(
         The page, or None when the run holds no such stream
     """
     hot = read_stream_lines(hot_path) if hot_path is not None and hot_path.is_file() else None
-    days = list_days()
+    days = _sealed_days(list_days())
     if hot is None and not days:
         return None
     # (record number, time, record, whether it is a line whose newline was never written)
@@ -153,17 +159,17 @@ def read_stream_page(
     closed = False
     truncated_tail = False
     newest: Optional[datetime] = None
-    for day_path in days:
-        summary = day_record_summary(day_path)
+    for day in days:
+        summary = day.summary
         truncated_tail = truncated_tail or summary.cut_last_line
         newest = summary.last_time if summary.last_time is not None else newest
         if window.overlaps(summary.first_time, summary.last_time):
             if closed:
-                matched += _day_count_within(day_path, summary, window)
+                matched += _day_count_within(day.path, summary, window)
             else:
-                rows = read_day_record_rows(day_path, window)
+                rows = read_day_record_rows(day.path, window)
                 if any(moment is None for _, moment, _ in rows):
-                    raise _record_without_time(day_path)
+                    raise _record_without_time(day.path)
                 matched += len(rows)
                 collected.extend((offset + position + 1, moment, record, False)
                                  for position, moment, record in rows)
@@ -211,7 +217,7 @@ def read_stream_union_ends(
         The two ends, or None when the run holds no such stream
     """
     hot = read_stream_ends(hot_path) if hot_path is not None and hot_path.is_file() else None
-    days = list_days()
+    days = _sealed_days(list_days())
     if hot is None and not days:
         return None
     return _union_ends(hot, days)
@@ -244,16 +250,16 @@ def read_stream_union_overview(
         hot_size = len(data)
         hot_ends = stream_ends_of_bytes(data, hot_path)
         hot_count = _record_count(data, hot_ends)
-    days = list_days()
+    days = _sealed_days(list_days())
     if hot_ends is None and not days:
         return None
     rows: List[StreamDayIndexRow] = []
-    for day_path in days:
-        summary = day_record_summary(day_path)
+    for day in days:
+        summary = day.summary
         rows.append(StreamDayIndexRow(
             trading_day=summary.trading_day, source=StreamDaySource.SEALED,
             record_count=summary.record_count, first_time=summary.first_time,
-            last_time=summary.last_time, size_bytes=day_path.stat().st_size))
+            last_time=summary.last_time, size_bytes=day.size_bytes))
     if hot_ends is not None and not _is_sealed(hot_ends.header, days):
         rows.append(StreamDayIndexRow(
             trading_day=hot_file_trading_day(hot_ends.header), source=StreamDaySource.HOT,
@@ -264,7 +270,7 @@ def read_stream_union_overview(
     return RunStreamOverview(ends=_union_ends(hot_ends, days), days=rows)
 
 
-def _union_ends(hot: Optional[RunStreamEnds], days: List[Path]) -> RunStreamEnds:
+def _union_ends(hot: Optional[RunStreamEnds], days: List[SealedStreamDay]) -> RunStreamEnds:
     """
     A stream's header, first and latest record across its sealed days and its file's two ends —
     the file left out when its day is sealed.
@@ -276,11 +282,11 @@ def _union_ends(hot: Optional[RunStreamEnds], days: List[Path]) -> RunStreamEnds
     Returns:
         The stream's two ends
     """
-    filled = [day for day in days if day_record_summary(day).record_count]
+    filled = [day for day in days if day.summary.record_count]
     first = _day_end_record(filled[0], first=True) if filled else None
     last = _day_end_record(filled[-1], first=False) if filled else None
     header = _newest_day_header(days)
-    truncated = any(day_record_summary(day).cut_last_line for day in days)
+    truncated = any(day.summary.cut_last_line for day in days)
     if hot is not None and not _is_sealed(hot.header, days):
         header = hot.header if hot.header is not None else header
         first = first if first is not None else hot.first
@@ -289,18 +295,29 @@ def _union_ends(hot: Optional[RunStreamEnds], days: List[Path]) -> RunStreamEnds
     return RunStreamEnds(header=header, first=first, last=last, truncated_tail=truncated)
 
 
-def day_record_summary(day_path: Path) -> DayRecordSummary:
+def _sealed_days(day_paths: List[Path]) -> List[SealedStreamDay]:
     """
-    What a sealed day says about itself — read once per process, since the day never changes.
+    The listed days with what their footers say — each day record asked for its status once, its
+    footer read once per process, since the day never changes. A day record gone since it was
+    listed was taken back by a seal whose fresh file could not be started: its lines are still in
+    the stream's file, which was read before the days were listed, so the day is left out here.
 
     Args:
-        day_path: The day record
+        day_paths: The stream's sealed days as listed, oldest first
 
     Returns:
-        Its summary
+        The days still there, oldest first
     """
-    stat = day_path.stat()
-    return _cached_summary(str(day_path), stat.st_size, stat.st_mtime_ns)
+    days: List[SealedStreamDay] = []
+    for day_path in day_paths:
+        try:
+            stat = day_path.stat()
+        except FileNotFoundError:
+            continue
+        days.append(SealedStreamDay(
+            path=day_path, summary=_cached_summary(str(day_path), stat.st_size, stat.st_mtime_ns),
+            size_bytes=stat.st_size, modified_ns=stat.st_mtime_ns))
+    return days
 
 
 @functools.lru_cache(maxsize=_DAY_CACHE_SIZE)
@@ -319,7 +336,7 @@ def _cached_summary(path: str, size: int, mtime_ns: int) -> DayRecordSummary:
     return read_day_record_summary(Path(path))
 
 
-def _newest_day_header(days: List[Path]) -> Optional[Dict[str, Any]]:
+def _newest_day_header(days: List[SealedStreamDay]) -> Optional[Dict[str, Any]]:
     """
     The header line the newest sealed day's file opened with — a copy, since the summary it comes
     from is kept for the whole process.
@@ -332,32 +349,31 @@ def _newest_day_header(days: List[Path]) -> Optional[Dict[str, Any]]:
     """
     if not days:
         return None
-    header = day_record_summary(days[-1]).header
+    header = days[-1].summary.header
     return dict(header) if header is not None else None
 
 
-def _day_end_record(day_path: Path, first: bool) -> Optional[Dict[str, Any]]:
+def _day_end_record(day: SealedStreamDay, first: bool) -> Optional[Dict[str, Any]]:
     """
     The first or the last record of a sealed day.
 
     Args:
-        day_path: The day record
+        day: The sealed day
         first: True for the first record, False for the last
 
     Returns:
         The record, or None when the day holds none
     """
-    stat = day_path.stat()
-    first_text, last_text = _cached_end_lines(str(day_path), stat.st_size, stat.st_mtime_ns)
+    first_text, last_text = _cached_end_lines(str(day.path), day.size_bytes, day.modified_ns)
     text = first_text if first else last_text
     if text is None:
         return None
     try:
         record = json.loads(text)
     except json.JSONDecodeError as e:
-        raise ReportArtifactUnreadableError(day_path.name, str(day_path), str(e)) from e
+        raise ReportArtifactUnreadableError(day.path.name, str(day.path), str(e)) from e
     if not isinstance(record, dict):
-        raise ReportArtifactUnreadableError(day_path.name, str(day_path), 'not a JSON object')
+        raise ReportArtifactUnreadableError(day.path.name, str(day.path), 'not a JSON object')
     return record
 
 
@@ -383,7 +399,7 @@ def _cached_end_lines(path: str, size: int, mtime_ns: int) -> Tuple[Optional[str
     return lines[0].as_py(), lines[len(lines) - 1].as_py()
 
 
-def _is_sealed(header: Optional[Dict[str, Any]], days: List[Path]) -> bool:
+def _is_sealed(header: Optional[Dict[str, Any]], days: List[SealedStreamDay]) -> bool:
     """
     Whether the day a stream's file holds is already among its sealed days.
 
@@ -400,7 +416,7 @@ def _is_sealed(header: Optional[Dict[str, Any]], days: List[Path]) -> bool:
     if day is None:
         # The session's first file names no day; once any day is sealed, it was sealed with it
         return True
-    return any(day_record_summary(path).trading_day == day for path in days)
+    return any(sealed.summary.trading_day == day for sealed in days)
 
 
 def _within(records: List[Dict[str, Any]], time_fields: Tuple[str, ...],

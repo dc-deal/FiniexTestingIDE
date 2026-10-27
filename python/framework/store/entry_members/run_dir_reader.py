@@ -12,6 +12,7 @@ A stream is read as one across the trading days a session sealed out of it and i
 (#476) — the caller asks for the stream, never for its files.
 """
 
+import os
 from pathlib import Path
 from typing import List, Optional, TypeVar
 
@@ -205,12 +206,16 @@ class RunDirReader:
         if day_member_id is None:
             return []
         day_member = RUN_ENTRY_MEMBERS_BY_ID[day_member_id]
-        # One folder per trading day, named by the day, so the names sort oldest first
+        # One folder per trading day, named by the day, so the names sort oldest first. A listing
+        # carries each entry's type, so the folders cost one call rather than one each
         days_dir = self._run_dir / day_member.path_pattern.split('/', 1)[0]
-        if not days_dir.is_dir():
+        try:
+            with os.scandir(days_dir) as entries:
+                day_names = sorted(entry.name for entry in entries if entry.is_dir())
+        except (FileNotFoundError, NotADirectoryError):
             return []
-        paths = (self._run_dir / day_member.path_for(day=day_dir.name, **names)
-                 for day_dir in sorted(days_dir.iterdir()) if day_dir.is_dir())
+        paths = (self._run_dir / day_member.path_for(day=day_name, **names)
+                 for day_name in day_names)
         return [path for path in paths if path.is_file()]
 
     def files_of(self, member_id: RunEntryMemberId) -> List[Path]:

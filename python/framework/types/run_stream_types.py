@@ -155,6 +155,25 @@ class DayRecordSummary:
 
 
 @dataclass(frozen=True)
+class SealedStreamDay:
+    """
+    One sealed trading day of a stream as a read found it (#580): its day record, what the
+    record's footer says, and the file's size and modification time. A read asks each day record
+    for its status once and answers every question it has of the day from that one answer.
+
+    Args:
+        path: The day record
+        summary: What its footer says
+        size_bytes: Its size on disk
+        modified_ns: Its modification time, in nanoseconds
+    """
+    path: Path
+    summary: DayRecordSummary
+    size_bytes: int
+    modified_ns: int
+
+
+@dataclass(frozen=True)
 class RunStreamLines:
     """
     A run stream read across its sealed days and its own file, in the order it was written.
