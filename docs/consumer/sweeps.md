@@ -87,17 +87,18 @@ declares. See [row keys](/api/v1/docs/row-keys) and
 
 ### What the fold cannot answer
 
-Three groups of fields are null on a folded row, each for its own reason:
+Two groups of fields are null on a folded row, each for its own reason:
 
 - **A reading of one account** — `final_equity`, `unrealized_pnl`, `open_position_count`. A
   combination of several scenarios is several accounts, and the latest reading of one account is
   not the run's. Null since contract 17.
-- **The order counts** — every `orders_*` field and `sl_tp_triggered`. A booking period carries
-  none, so a row folded from periods has nothing to add up. They read `0` before contract 18, which
-  turned an absence into a measured zero.
 - **The streaks** — `max_consecutive_wins`, `max_consecutive_losses`. A run of winners can cross a
   period boundary, so 2 and 3 in adjacent periods may be a run of 5, and no arithmetic over two
   summaries recovers it.
+
+The order counts — every `orders_*` field and `sl_tp_triggered` — DO fold: since contract 42 each
+booking period counts the orders it handled, and a combination is the sum of its periods. They are
+null on a combination recorded before that, when a period carried none.
 
 [Nulls](/api/v1/docs/nulls) has the general rule: render absence as absence.
 

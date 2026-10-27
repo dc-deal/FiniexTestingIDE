@@ -68,9 +68,10 @@ history may hold fewer rows than a long run produced; this count holds them all.
 counts beside it. Read it alongside them, never added into them.
 
 **None of them is ever null on this route.** They are whole numbers, and a zero is a real zero
-rather than something nobody measured. The same names do answer `null` on a sweep combination
-folded from booking periods, which carry no order counts — see [sweeps](/api/v1/docs/sweeps) and
-[nulls](/api/v1/docs/nulls) for why the two differ.
+rather than something nobody measured. The same names on a sweep combination are the sum of its
+booking periods' own counts, which add up to these; they answer `null` there only for a run
+recorded before contract 42, when a period carried none — see [sweeps](/api/v1/docs/sweeps) and
+[nulls](/api/v1/docs/nulls).
 
 ## `totals` is one object, not one per currency
 

@@ -16,6 +16,7 @@ from typing import Any, Dict, List, Optional
 from python.framework.types.api.report_types import RunSummaryCurrency
 from python.framework.types.run_kind_types import OrdersTo
 from python.framework.types.run_outcome_types import RunOutcome
+from python.framework.types.trading_env_types.trading_env_stats_types import ExecutionStats
 
 
 @dataclass
@@ -233,6 +234,10 @@ class BookingPeriod:
             row, with the valuation it was left at and no movement of its own (#476)
         trading_day: The trading day the period books, in the market's own calendar and labelled
             by the date it opened (`trading_day_anchor`); None for a unit with no market
+        execution: The orders the period handled — submitted, adopted, and booked rows by the
+            status they ended with — counted inside the period where the executor counts them,
+            so a run's periods add up to its execution statistics (#476). None where nothing
+            counted them: a period built without an executor
     """
     period_no: int
     unit_name: str
@@ -251,6 +256,7 @@ class BookingPeriod:
     modelled_spread_cost: float = 0.0
     tick_count: int = 0
     trading_day: Optional[date] = None
+    execution: Optional[ExecutionStats] = None
 
 
 class FigureKind(Enum):

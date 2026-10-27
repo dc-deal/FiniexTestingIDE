@@ -13,7 +13,8 @@ field, the gap is the new day's in both, each closing value lies inside its own 
 AutoTrader's daily loss limit cuts the day where its booking period does. And the same for the
 boundaries no tick lands on: one passed in the quiet between two ticks, two crossed by one gap,
 and a stop the boundary tick breaches — and a fill that lands between the day's last tick and its
-boundary, which the daily loss limit books to the day that ends.
+boundary, which the daily loss limit books to the day that ends. And the orders each day handled:
+counted inside the day in both pipelines, adding up to the run's execution statistics.
 """
 
 from datetime import datetime, timedelta
@@ -24,13 +25,19 @@ import pytest
 import python.framework.autotrader.autotrader_tick_loop as tick_loop_module
 from python.framework.trading_env.live.live_trade_executor import LiveTradeExecutor
 from python.framework.types.run_results_types import BookingPeriod, PeriodCloseReason
+from python.framework.types.trading_env_types.trading_env_stats_types import (
+    EXECUTION_COUNT_FIELDS,
+    ExecutionStats,
+)
 from tests.shared.booking_day_harness import (
     GAP,
     LOTS,
     MIDNIGHT,
     autotrader_loop,
     autotrader_periods,
+    live_executor,
     simulation_periods,
+    simulation_result,
     ticks_across_midnight,
 )
 
@@ -76,6 +83,29 @@ def test_both_pipelines_book_the_day_the_same_way(spot_mode):
         PeriodCloseReason.ANCHOR, PeriodCloseReason.SESSION_END]
     _assert_books_agree(sim_periods, at_periods)
     assert at_periods[0].closed_at == sim_periods[0].closed_at == MIDNIGHT
+
+
+@ACCOUNT_MODELS
+def test_each_day_counts_the_orders_it_handled(spot_mode):
+    """
+    The position opens before midnight and closes after it: the day that ends counts the open,
+    the new day the close, the same in both pipelines — and the days add up to the run's
+    execution statistics (#476).
+    """
+    ticks = ticks_across_midnight()
+    simulation = simulation_result(ticks, spot_mode)
+    executor = live_executor(spot_mode)
+    loop = autotrader_loop(ticks, spot_mode, executor=executor)
+    loop.run()
+    at_periods = loop.get_booking_periods()
+
+    one_filled_order = ExecutionStats(orders_submitted=1, orders_executed=1)
+    for periods, run_stats in ((simulation.booking_periods, simulation.execution_stats),
+                               (at_periods, executor.get_execution_stats())):
+        assert [period.execution for period in periods] == [one_filled_order, one_filled_order]
+        for field_name in EXECUTION_COUNT_FIELDS:
+            assert (sum(getattr(period.execution, field_name) for period in periods)
+                    == getattr(run_stats, field_name)), field_name
 
 
 @ACCOUNT_MODELS

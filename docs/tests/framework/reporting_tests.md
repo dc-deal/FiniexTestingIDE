@@ -188,7 +188,9 @@ reads the account before the crossing event, whose move opens the new day's band
 the valuation it was left at), a forex weekend and a holiday book no row and leave no hole (the next
 period opens at the Friday close), a backtest silent over the weekend books the same rows as a
 session whose heartbeat crossed it, a forex session started on Saturday books Sunday's session, and
-a market that never closes books its weekend.
+a market that never closes books its weekend. `TestThePeriodsOrderCounts`: a late check that files
+several days at once books the orders to the day that was running, the days it passed over count
+none, and the last period takes the rest.
 
 The COST half pins that an ordinary tick does not convert a timezone. It counts the calls to every
 conversion the recorder makes — `trading_day_of`, `boundary_opening`, `trade_date_of` — by

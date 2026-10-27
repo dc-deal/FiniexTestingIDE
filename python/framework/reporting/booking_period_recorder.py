@@ -423,16 +423,17 @@ class BookingPeriodRecorder:
         return list(self._segments)
 
 
-def snapshot_from_portfolio(portfolio):
+def snapshot_from_executor(executor):
     """
-    The records and the stock reading a seal needs, taken from a portfolio manager.
+    The records and the stock reading a seal needs, taken from a unit's executor and its portfolio.
 
     Shared by both loops so the two pipelines read the same figures from the same accessors — a
     second transcription here is exactly how a simulation and an AutoTrader session come to disagree
-    about what a period held.
+    about what a period held. It TAKES the period's order counts, which starts the next period's
+    count, so it is called once per filed period — which is what the recorder does.
 
     Args:
-        portfolio: The unit's PortfolioManager
+        executor: The unit's trade executor
 
     Returns:
         `(trade records, PeriodSnapshot)` — the band fields are left at zero and filled by the
@@ -440,6 +441,7 @@ def snapshot_from_portfolio(portfolio):
         stays None, and so do the curve figures before the curve's first valuation: a zero in
         either would be a measurement nobody took (#476)
     """
+    portfolio = executor.portfolio
     stats = portfolio.get_portfolio_statistics()
     curve = portfolio.is_equity_curve_established()
     open_positions = portfolio.get_open_positions()
@@ -454,4 +456,5 @@ def snapshot_from_portfolio(portfolio):
         account_max_drawdown=stats.account_max_drawdown if curve else None,
         max_equity=stats.max_equity if curve else None,
         account_max_dd_pct=stats.account_max_drawdown_pct if curve else None,
+        execution=executor.take_period_execution_stats(),
     )

@@ -18,6 +18,7 @@ is `docs/tests/framework/reporting_tests.md` (the recorder and the booking-perio
 | Test | Focus |
 |------|-------|
 | `test_both_pipelines_book_the_day_the_same_way` | The trading day's period and the one after it agree field by field — reason, number, opening instant, trade count, net P&L, closing and opening equity, the band's high and low, the deepest decline — and the day closes at midnight in both |
+| `test_each_day_counts_the_orders_it_handled` | The position opens before midnight and closes after it: in both pipelines the day that ended counts one order submitted and filled, the new day the other, and the days add up to the run's execution statistics count by count |
 | `test_the_gap_on_the_boundary_tick_belongs_to_the_new_day` | In each pipeline on its own: the day that ended closes at midnight with the value its last tick left and no part of the gap; the new day opens at that value and carries the gap in its deepest decline; each closing value lies inside its own band |
 | `test_the_daily_loss_limit_cuts_the_day_where_the_booking_period_does` | The AutoTrader's safety days are the booking period's trading days; the new day's baseline is the value the seal read, stamped at midnight, and the gap is the new day's worst loss |
 | `test_a_boundary_between_two_ticks_is_cut_at_its_instant` | No tick within five seconds of midnight: both pipelines agree field by field, the day closes at midnight rather than at the tick that noticed it, and that tick's gap is the new day's |

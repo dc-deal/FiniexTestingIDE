@@ -45,6 +45,7 @@ from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.trading_env.abstract_pending_order_manager import AbstractPendingOrderManager
 from python.framework.trading_env.abstract_trading_fee import AbstractTradingFee
 from python.framework.trading_env.broker_config import BrokerConfig
+from python.framework.trading_env.execution_counters import ExecutionCounters
 from python.framework.trading_env.market_clock import MarketClock
 from python.framework.trading_env.portfolio_manager import (
     UNSET,
@@ -120,7 +121,6 @@ from python.framework.types.trading_env_types.order_types import (
 )
 from python.framework.types.trading_env_types.submission_metadata_types import SubmissionMetadata
 from python.framework.types.trading_env_types.trading_env_stats_types import (
-    EXECUTION_STATS_FIELD_BY_STATUS,
     AccountInfo,
     ExecutionStats,
     FreeAssetFunds,
@@ -214,11 +214,9 @@ class AbstractTradeExecutor(ABC):
 
         # Execution statistics — the rows are counted by status where they are booked
         # (`_book_order_result`), the submissions where an order is handed to the venue, the
-        # adoptions where a previous session's order is taken over
-        self._orders_submitted = 0
-        self._orders_adopted = 0
-        self._order_status_counts: Dict[OrderStatus, int] = {status: 0 for status in OrderStatus}
-        self._sl_tp_triggered = 0
+        # adoptions where a previous session's order is taken over; each over the run and over
+        # the running booking period (#476)
+        self._execution_counts = ExecutionCounters()
 
         # Order-event stream (#362) — one record per order transition, numbered within the
         # unit, handed to every registered listener (the run's stream writer among them)
@@ -318,7 +316,7 @@ class AbstractTradeExecutor(ABC):
         Returns:
             The same row, so a caller can book and return it in one statement
         """
-        self._order_status_counts[result.status] += 1
+        self._execution_counts.count_status(result.status)
         self._check_order_history_limit()
         self._order_history.append(result)
         recorded_as = event_type or ORDER_EVENT_BY_STATUS[result.status]
@@ -606,7 +604,7 @@ class AbstractTradeExecutor(ABC):
         Args:
             pending: The order just handed over
         """
-        self._orders_submitted += 1
+        self._execution_counts.count_submission()
         self._record_order_event(
             OrderEventType.SUBMITTED,
             pending=pending,
@@ -624,7 +622,7 @@ class AbstractTradeExecutor(ABC):
         Args:
             pending: The order taken over
         """
-        self._orders_adopted += 1
+        self._execution_counts.count_adoption()
         event = self._record_order_event(
             OrderEventType.ADOPTED,
             pending=pending,
@@ -1094,7 +1092,7 @@ class AbstractTradeExecutor(ABC):
             # backtest whose exits are stops reported more orders executed than submitted
             self._record_submission(synthetic)
             self._fill_close_order(synthetic, fill_price=level, close_reason=close_reason)
-            self._sl_tp_triggered += 1
+            self._execution_counts.count_protective_close()
             return
 
         result = self.close_position(position.position_id, close_reason=close_reason)
@@ -1104,7 +1102,7 @@ class AbstractTradeExecutor(ABC):
                 f'({close_reason.value} @ {level:.5f}): {result.rejection_message}. '
                 f'The position is still open and still unprotected.')
             return
-        self._sl_tp_triggered += 1
+        self._execution_counts.count_protective_close()
 
     # ============================================
     # Order Side Resolution (DecisionTradingApi → executor)
@@ -3162,14 +3160,17 @@ class AbstractTradeExecutor(ABC):
         Returns:
             The submissions, and the booked rows counted by status
         """
-        return ExecutionStats(
-            orders_submitted=self._orders_submitted,
-            orders_adopted=self._orders_adopted,
-            sl_tp_triggered=self._sl_tp_triggered,
-            **{field_name: self._order_status_counts[status]
-               for status, field_name in EXECUTION_STATS_FIELD_BY_STATUS.items()
-               if field_name is not None},
-        )
+        return self._execution_counts.get_run_stats()
+
+    def take_period_execution_stats(self) -> ExecutionStats:
+        """
+        The order counts of the booking period that is ending, and a fresh count for the next
+        (#476) — taken once per filed period, where the period is sealed.
+
+        Returns:
+            The ending period's submissions, and its booked rows counted by status
+        """
+        return self._execution_counts.take_period_stats()
 
     def get_order_history(self) -> List[OrderResult]:
         """Get complete order history."""
@@ -3213,10 +3214,7 @@ class AbstractTradeExecutor(ABC):
         self._current_prices.clear()
         self._order_counter = 0
         self._order_history.clear()
-        self._orders_submitted = 0
-        self._orders_adopted = 0
-        self._order_status_counts = {status: 0 for status in OrderStatus}
-        self._sl_tp_triggered = 0
+        self._execution_counts = ExecutionCounters()
         self._order_event_seq = 0
         self._recent_endings.clear()
         self._active_limit_orders.clear()

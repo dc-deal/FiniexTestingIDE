@@ -41,6 +41,7 @@ from python.framework.reporting.builders.run_unit import RunUnit
 from python.framework.types.api.report_types import RunSummaryCurrency, TradeHistoryRow
 from python.framework.types.portfolio_types.portfolio_trade_record_types import TradeRecord
 from python.framework.types.run_results_types import BookingPeriod, PeriodCloseReason
+from python.framework.types.trading_env_types.trading_env_stats_types import ExecutionStats
 
 
 @dataclass
@@ -74,6 +75,8 @@ class PeriodSnapshot:
             on the same terms
         period_opening_equity: The account value the period opened with, None when nothing was
             observed — stamped by the recorder, which saw it
+        execution: The orders the period handled, taken from the executor's period counts at the
+            seal (#476); None where no executor counted them
     """
     currency: str
     final_equity: Optional[float] = None
@@ -86,6 +89,7 @@ class PeriodSnapshot:
     period_min_equity: Optional[float] = 0.0
     period_max_drawdown: Optional[float] = 0.0
     period_opening_equity: Optional[float] = None
+    execution: Optional[ExecutionStats] = None
 
 
 def derive_booking_period(
@@ -143,6 +147,7 @@ def derive_booking_period(
         modelled_spread_cost=sum(r.modelled_spread_cost for r in rows),
         tick_count=tick_count,
         trading_day=trading_day,
+        execution=snapshot.execution,
     )
 
 

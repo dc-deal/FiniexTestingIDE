@@ -31,7 +31,7 @@ from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.process.market_data_episode_tracker import MarketDataEpisodeTracker
 from python.framework.reporting.booking_period_recorder import (
     BookingPeriodRecorder,
-    snapshot_from_portfolio,
+    snapshot_from_executor,
 )
 from python.framework.process.process_live_export import process_live_export, process_live_setup
 from python.framework.process.tick_pipeline_core import (
@@ -224,7 +224,7 @@ def execute_tick_loop(
 
         def seal_source():
             """The records and the stock reading a seal needs, at this instant."""
-            return snapshot_from_portfolio(portfolio)
+            return snapshot_from_executor(trade_simulator)
 
         current_index = 0
 

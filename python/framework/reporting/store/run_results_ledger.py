@@ -799,12 +799,11 @@ class RunResultsLedger:
         """
         One booking period as a ledger row — the ledger entry.
 
-        The order counters are deliberately ABSENT rather than zero. They live as monotonic
-        totals on the executor with no time argument, so a period's share of them cannot be
-        derived without differencing two readings — which §48 forbids, and which would be the
-        one measure here that silently looks right because it happens to be additive. #476's
-        sealed records are what will make them windowable; until then the column says
-        "not measured" and means it.
+        The order counts are the period's own: the executor counts every order over the run and
+        over the running period in one statement, and the seal takes the period's (#476). Never
+        the difference of two run totals, which would be the one measure here that silently
+        looks right because it happens to be additive. A period nothing counted leaves them
+        empty — "not measured", and it means it.
 
         Args:
             p: The run's provenance
@@ -928,6 +927,10 @@ def period_ledger_fields(period: BookingPeriod) -> Dict[str, Any]:
         'period_swap_cost': period.swap_cost,
         'period_spread_cost': period.spread_cost,
         'period_modelled_spread_cost': period.modelled_spread_cost,
+        # --- the orders the period handled (#476): its own counts, empty where none were taken
+        **{field_name: (getattr(period.execution, field_name)
+                        if period.execution is not None else None)
+           for field_name in EXECUTION_COUNT_FIELDS},
     }
 
 

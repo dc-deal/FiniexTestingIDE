@@ -23,7 +23,7 @@ from typing import List
 
 # One monotonic integer. Not a date and not the app version: a consumer compares it for
 # equality, and equality is the only question they have.
-API_CONTRACT_VERSION = 41
+API_CONTRACT_VERSION = 42
 
 # Every response carries it, so a saved fixture carries it too.
 CONTRACT_HEADER = 'X-Api-Contract'
@@ -36,16 +36,8 @@ API_PREFIX = '/api/v1'
 # What moved INTO the current version. One line per change, written for someone who cannot
 # read this repository.
 CHANGES: List[str] = [
-    'origin.accept_composite_change on the run header: the key the start was given with '
-    '--accept-composite-change — the composite it may continue what the venue still held under, '
-    'though it is not the one that opened it. Recorded as typed; null on every other run and on a '
-    'run recorded before this contract',
-    'Three validation checks a session may report: composite_change_accepted (the flag let a start '
-    'continue open positions or orders under another composite), carried_configuration_not_compared '
-    '(a start took them over without being able to compare), carried_readings_not_continued (its '
-    'drawdown curve and risk baseline started fresh)',
-    "A session's drawdown no longer continues across a change of run kind: a session placing real "
-    "orders never inherits a rehearsal's curve, a rehearsal never inherits real money's, a curve "
-    "that does not say which kind of run wrote it is not inherited, and --new-deployment starts the "
-    'curve afresh — drawdown_carried_from is then empty',
+    'A booking period carries its own order counts: every orders_* field and sl_tp_triggered on a '
+    "sweep combination folded from a run's periods is now the sum of those periods' counts — they "
+    'were null there, because a period carried none. Null only on a row written before this '
+    'contract',
 ]

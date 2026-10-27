@@ -33,6 +33,20 @@ reads downwards from the version their fixtures hold until they reach the one be
 A test holds the newest heading in this log to the number the server answers with, so a version
 cannot ship without its entry.
 
+## Version 42 — 2026-10-27 (#476)
+
+A booking period counts the orders it handled, so a run's order counts can be read from its periods
+again.
+
+- A change of meaning: on a [sweep](/api/v1/docs/sweeps) combination folded from a run's booking
+  periods, every `orders_*` field and `sl_tp_triggered` is the sum of those periods' own counts. They
+  read null there before, because a booking period carried none. Null now only on a row written
+  before this version.
+- The counts are taken inside each period, where the run's [execution stats](/api/v1/docs/execution-stats)
+  count them, so a run's periods add up to its execution stats.
+
+No field added; no field removed.
+
 ## Version 41 — 2026-10-26 (#626)
 
 What a carry-over may carry across a change: a rehearsal's readings never reach real money, and a
@@ -138,25 +152,13 @@ is still recording.
 A route, two codes and a run-list field added, a stream named; nothing removed or renamed. Its document is
 [state frames](/api/v1/docs/state-frames).
 
-## Version 37 — 2026-10-20 (#598)
-
-A session trading real money starts without a carry-over only when its start is declared the bot's
-first, and its header says so.
-
-- `GET /api/v1/reports/runs/{run_id}/header`: `origin.first_start` — `true` when the start of a
-  session trading real money was declared the bot's first: the one way such a session starts
-  without a carry-over to continue. A session that finds no carry-over it can use and is not
-  declared refuses to start, so it leaves a failed start rather than a run that began from
-  nothing. `false` on every other run, on a backtest, and on a run recorded before this version.
-
-One field added. Its document is [run header](/api/v1/docs/run-header).
-
-## Versions 36 and earlier
+## Versions 37 and earlier
 
 One line each. Every one of these moved a shape or a meaning; what they moved is summarised here
 rather than spelled out, because a consumer this far behind needs the list of steps, not each step's
 reasoning. The full text of a compressed version is in this repository's history.
 
+- **Version 37** — 2026-10-20 (#598): A session trading real money starts without a carry-over only when its start is declared the bot's first — `origin.first_start` on the [run header](/api/v1/docs/run-header), `true` for such a start and `false` on every other run, a backtest and a run recorded before this version.
 - **Version 36** — 2026-10-19 (#547): A backtest keeps the broker configuration it traded with — `broker_config_id` on every row of [broker](/api/v1/docs/broker) is set on a simulation row too, and `config_hash` leaves out when a value was fetched, so on a dynamic broker a hash recorded before this version differs from a later one over the same values.
 - **Version 35** — 2026-10-19 (#603): What runs on the machine is served (`GET /api/v1/activities`, keyed by `activity_id`, with each activity's memory and the machine's pressure verdict), the machine routes and the broker list need a grant (`machine`, `brokers`), every symbol row carries `tick_size`, `from` and `to` on the bars and ATR routes accept an ISO-8601 instant only (`400 invalid_timestamp`), every booking period carries `account_max_drawdown`, `account_max_dd_pct`, `unrealized_pnl` and `open_position_count`, and `activity_registry_unreadable` (500) is new.
 - **Version 34** — 2026-10-18 (#606): A price the venue quoted or traded is served as the decimal the venue wrote — a tick's `bid`, `ask` and `last`, an `order_driven` bar's prices and a fill at a recorded quote read `0.87957` where they read `0.8795700073242188`, `real_volume` keeps every decimal, and the new document [prices](/api/v1/docs/prices) says how to round a computed price by `tick_size`.

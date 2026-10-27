@@ -2,7 +2,7 @@
 
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import get_args
+from typing import Optional, get_args
 
 import pandas as pd
 
@@ -11,6 +11,7 @@ from python.framework.reporting.builders.booking_period_builder import (
     PeriodSnapshot,
     derive_booking_period,
 )
+from python.framework.reporting.store.ledger_aggregation import aggregate_ledger_rows
 from python.framework.reporting.store.run_results_ledger import (
     COLUMN_NULL_MEANING,
     COLUMN_REDUCTION,
@@ -25,6 +26,10 @@ from python.framework.types.run_results_types import (
     FigureKind,
     PeriodCloseReason,
     Reduction,
+)
+from python.framework.types.trading_env_types.trading_env_stats_types import (
+    EXECUTION_COUNT_FIELDS,
+    ExecutionStats,
 )
 
 # Every report artifact names its run (#475); the value is opaque to these tests.
@@ -601,12 +606,14 @@ def test_the_stamp_survives_the_index(tmp_ledger, make_run_summary, make_provena
 _MON = datetime(2026, 9, 21, tzinfo=timezone.utc)
 
 
-def _day(no: int, reason: PeriodCloseReason = PeriodCloseReason.ANCHOR):
+def _day(no: int, reason: PeriodCloseReason = PeriodCloseReason.ANCHOR,
+         execution: Optional[ExecutionStats] = None):
     """One trading day's booking period of a session, nothing traded."""
     return derive_booking_period(
         'session', no, _MON + timedelta(days=no - 1), _MON + timedelta(days=no), reason, [],
         PeriodSnapshot(currency='USD', final_equity=1_000.0, account_max_drawdown=0.0,
-                       max_equity=1_000.0, account_max_dd_pct=0.0), tick_count=10)
+                       max_equity=1_000.0, account_max_dd_pct=0.0, execution=execution),
+        tick_count=10)
 
 
 def _fragment(ledger_dir: Path) -> pd.DataFrame:
@@ -629,6 +636,35 @@ def test_a_sealed_day_is_written_without_the_run_end_columns(
         'hash', 'deploy_x', 'anchor')
     for column in RUN_END_COLUMNS:
         assert pd.isna(row[column]), f'{column} is filled on a row written at a seal'
+
+
+def test_a_period_row_carries_the_orders_the_period_handled(tmp_path, tmp_ledger, make_provenance):
+    """
+    A day's own order counts reach its row, and the run read back over its days adds them up
+    (#476) — a run that books in periods writes no aggregate row to take them from.
+    """
+    tmp_ledger.write_sealed_periods(
+        make_provenance(run_id='live', run_type=RUN_TYPE_AUTOTRADER),
+        [_day(1, execution=ExecutionStats(orders_submitted=2, orders_executed=1,
+                                          orders_cancelled=1)),
+         _day(2, execution=ExecutionStats(orders_submitted=1, orders_executed=1,
+                                          sl_tp_triggered=1))])
+
+    assert list(_fragment(tmp_path / 'run_results')['orders_submitted']) == [2, 1]
+    run = aggregate_ledger_rows(tmp_ledger.read_rows())[0]
+    assert (run.orders_submitted, run.orders_executed, run.orders_cancelled,
+            run.sl_tp_triggered, run.orders_rejected) == (3, 2, 1, 1, 0)
+
+
+def test_a_period_nothing_counted_leaves_its_order_columns_empty(
+        tmp_path, tmp_ledger, make_provenance):
+    """Not measured, never a zero: a period built without an executor counted no order."""
+    tmp_ledger.write_sealed_periods(
+        make_provenance(run_id='live', run_type=RUN_TYPE_AUTOTRADER), [_day(1)])
+
+    row = _fragment(tmp_path / 'run_results').iloc[0]
+    for field_name in EXECUTION_COUNT_FIELDS:
+        assert pd.isna(row[field_name]), field_name
 
 
 def test_each_seal_replaces_the_fragment_whole(tmp_path, tmp_ledger, make_provenance):

@@ -147,9 +147,11 @@ profit divided by gross loss, both summed, never the mean of the two daily ones.
 A company's books work the same way: the year's profit and loss is the sum of the months, and the
 year-end balance sheet is the last one, not a sum of twelve.
 
-A few columns cannot be folded at all — a winning streak can cross a boundary, and per-period
-order counts are not recorded. They are null on a folded line; see
-[What the fold cannot answer](../consumer/sweeps.md#what-the-fold-cannot-answer).
+A few columns cannot be folded at all — a winning streak can cross a boundary. They are null on a
+folded line; see [What the fold cannot answer](../consumer/sweeps.md#what-the-fold-cannot-answer).
+The order counts do fold: each booking period counts the orders it handled where the run counts
+them, so a run's periods add up to its execution statistics. A row written before they were
+counted per period leaves them empty.
 
 **An empty cell says which kind of empty it is.** A figure can be null for two reasons, declared
 per column beside the rules above: *undefined* — a profit factor without a losing trade, a mean

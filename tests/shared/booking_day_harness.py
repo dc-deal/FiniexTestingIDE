@@ -34,7 +34,10 @@ from python.framework.types.config_types.market_config_types import TradingModel
 from python.framework.types.live_types.live_stats_config_types import LiveStatsExportConfig
 from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.persistence_types import BaselineKind
-from python.framework.types.process_data_types import ProcessScenarioConfig
+from python.framework.types.process_data_types import (
+    ProcessScenarioConfig,
+    ProcessTickLoopResult,
+)
 from python.framework.types.run_results_types import BookingPeriod
 from python.framework.types.trading_env_types.broker_types import BrokerType
 from python.framework.utils.run_id_utils import mint_run_id
@@ -170,6 +173,22 @@ def simulation_periods(ticks: List[TickData], spot_mode: bool,
     Returns:
         Its booking periods
     """
+    return simulation_result(ticks, spot_mode, stop_loss).booking_periods
+
+
+def simulation_result(ticks: List[TickData], spot_mode: bool,
+                      stop_loss: Optional[float] = None) -> ProcessTickLoopResult:
+    """
+    Run the simulation's tick loop over the ticks.
+
+    Args:
+        ticks: The input
+        spot_mode: The account model
+        stop_loss: The position's stop level, or None for none
+
+    Returns:
+        Everything the loop returns — its booking periods and its execution statistics among it
+    """
     logger = _logger('booking_parity_sim')
     simulator = TradeSimulator(
         broker_config=BrokerConfig(
@@ -192,7 +211,7 @@ def simulation_periods(ticks: List[TickData], spot_mode: bool,
         ticks=tuple(ticks),
         live_queue=None,
     )
-    return result.booking_periods
+    return result
 
 
 def autotrader_periods(ticks: List[TickData], spot_mode: bool,
@@ -218,6 +237,7 @@ def autotrader_loop(ticks: List[TickData], spot_mode: bool,
                     stop_loss: Optional[float] = None,
                     idle_heartbeats: int = 0,
                     hold_ticks: Optional[int] = None,
+                    executor: Optional[LiveTradeExecutor] = None,
                     **loop_options: Any) -> AutotraderTickLoop:
     """
     The AutoTrader tick loop over the ticks, built the way a session builds it.
@@ -233,6 +253,8 @@ def autotrader_loop(ticks: List[TickData], spot_mode: bool,
         idle_heartbeats: How many idle heartbeats the feed allows after its last tick before
             it reports itself exhausted; 0 ends the feed with its last tick
         hold_ticks: How many ticks the position is held; None keeps the fixture's
+        executor: The executor to trade through, so a caller can read it afterwards; a fresh
+            one when None
         loop_options: Further collaborators the session would hand the loop, by name
 
     Returns:
@@ -245,11 +267,7 @@ def autotrader_loop(ticks: List[TickData], spot_mode: bool,
     if not idle_heartbeats:
         tick_queue.put(None)
 
-    executor = LiveTradeExecutor(
-        broker_config=BrokerConfig(
-            BrokerType.KRAKEN_SPOT, MockBrokerAdapter(mode=MockExecutionMode.INSTANT_FILL)),
-        initial_balance=10000.0, account_currency='USD', logger=logger,
-        spot_mode=spot_mode, initial_balances=_balances(spot_mode))
+    executor = executor or live_executor(spot_mode, logger)
     logic = _probe(executor, logger, stop_loss, hold_ticks)
     tick_source = MagicMock()
     # Exhausted once the idle heartbeats it allows have passed, and from then on
@@ -282,3 +300,22 @@ def autotrader_loop(ticks: List[TickData], spot_mode: bool,
         **loop_options,
     )
     return loop
+
+
+def live_executor(spot_mode: bool, logger: Optional[ScenarioLogger] = None) -> LiveTradeExecutor:
+    """
+    The executor an AutoTrader loop of this harness trades through.
+
+    Args:
+        spot_mode: The account model
+        logger: The session logger; a fresh one when None
+
+    Returns:
+        A live executor over the instantly filling mock venue
+    """
+    return LiveTradeExecutor(
+        broker_config=BrokerConfig(
+            BrokerType.KRAKEN_SPOT, MockBrokerAdapter(mode=MockExecutionMode.INSTANT_FILL)),
+        initial_balance=10000.0, account_currency='USD',
+        logger=logger or _logger('booking_parity_at'),
+        spot_mode=spot_mode, initial_balances=_balances(spot_mode))

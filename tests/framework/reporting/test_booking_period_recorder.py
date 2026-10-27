@@ -23,8 +23,11 @@ from zoneinfo import ZoneInfo
 from python.framework.reporting import booking_period_recorder
 from python.framework.reporting.booking_period_recorder import BookingPeriodRecorder
 from python.framework.reporting.builders.booking_period_builder import PeriodSnapshot
+from python.framework.trading_env.execution_counters import ExecutionCounters
 from python.framework.types.config_types.market_config_types import DayAnchorConfig
 from python.framework.types.run_results_types import PeriodCloseReason
+from python.framework.types.trading_env_types.order_types import OrderStatus
+from python.framework.types.trading_env_types.trading_env_stats_types import ExecutionStats
 
 # Crypto: the day flips at midnight UTC. Forex: at the 17:00 New York swap rollover, which is
 # 21:00 UTC in summer and 22:00 in winter — the case a midnight assumption gets wrong.
@@ -104,6 +107,32 @@ class TestWhereTheDayFlips:
         rec.check_boundary(_MON + timedelta(days=5), _seal_source)
 
         assert rec.get_highest_period_no() == 0
+
+
+class TestThePeriodsOrderCounts:
+    """
+    Each filed period takes the executor's period counts once (#476), so the orders a day handled
+    are booked to that day — also when one late check files several days at once.
+    """
+
+    def test_a_late_check_books_the_orders_to_the_day_that_was_running(self):
+        counters = ExecutionCounters()
+
+        def seal_source():
+            return [], PeriodSnapshot(currency='USD', execution=counters.take_period_stats())
+        rec = _recorder()
+        rec.check_boundary(_MON + timedelta(hours=1), seal_source)
+        counters.count_submission()
+        counters.count_status(OrderStatus.EXECUTED)
+        rec.check_boundary(_MON + timedelta(days=2, hours=3), seal_source)
+        counters.count_submission()
+        periods = rec.close(_MON + timedelta(days=2, hours=4), seal_source)
+
+        assert [p.execution for p in periods] == [
+            ExecutionStats(orders_submitted=1, orders_executed=1),
+            ExecutionStats(),
+            ExecutionStats(orders_submitted=1),
+        ]
 
 
 class TestTheSealIsStampedWithTheBoundary:

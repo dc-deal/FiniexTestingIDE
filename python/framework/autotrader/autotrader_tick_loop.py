@@ -52,7 +52,7 @@ from python.framework.process.tick_pipeline_core import (
 from python.framework.reporting.api_perf_monitor import ApiPerfMonitor
 from python.framework.reporting.booking_period_recorder import (
     BookingPeriodRecorder,
-    snapshot_from_portfolio,
+    snapshot_from_executor,
 )
 from python.framework.signal_data.transport.abstract_signal_transport import (
     AbstractSignalTransport,
@@ -1268,13 +1268,13 @@ class AutotraderTickLoop:
         The records and the stock reading a seal needs, at this instant.
 
         Handed to the recorder as a CALLABLE rather than as values: a boundary check runs on
-        every pass and almost never seals, so the portfolio is only read when a period actually
-        closes.
+        every pass and almost never seals, so the portfolio is only read, and the period's order
+        counts only taken, when a period actually closes.
 
         Returns:
             (trade records, PeriodSnapshot)
         """
-        return snapshot_from_portfolio(self._executor.portfolio)
+        return snapshot_from_executor(self._executor)
 
     def get_highest_period_no(self) -> int:
         """

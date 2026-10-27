@@ -1668,9 +1668,9 @@ class RunResultRow(BaseModel):
     # declared on disk, dropped on the way in.
     r_win_count: int | None = None
     r_loss_count: int | None = None
-    # None where not measured — a booking-period row carries no order counts (they are
-    # monotonic executor totals with no time argument, so a period's share is not derivable),
-    # and a default of 0 turned that absence into a measured zero on every folded row.
+    # None where not measured — a booking-period row written before contract 42, when a period
+    # carried no order counts of its own (#476), and a default of 0 turned that absence into a
+    # measured zero on every folded row.
     orders_submitted: int | None = None
     orders_adopted: int | None = None
     orders_executed: int | None = None
