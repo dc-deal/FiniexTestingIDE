@@ -18,6 +18,10 @@ from typing import Any, Dict, List
 import pytest
 
 from python.configuration.app_config_manager import AppConfigManager
+from python.framework.constants.currency_constants import (
+    format_currency_signed,
+    format_currency_simple,
+)
 from python.framework.reporting.builders.aggregated_portfolio_report_builder import (
     build_aggregated_portfolio_report,
 )
@@ -39,10 +43,6 @@ from python.framework.types.api.report_types import (
     WarningsErrorsReport,
 )
 from python.framework.types.trading_env_types.broker_types import FeeSource
-from python.framework.types.trading_env_types.currency_codes import (
-    format_currency_signed,
-    format_currency_simple,
-)
 from python.framework.utils.console_renderer import ConsoleRenderer
 
 # Every report artifact names its run (#475); the value is opaque to these tests.

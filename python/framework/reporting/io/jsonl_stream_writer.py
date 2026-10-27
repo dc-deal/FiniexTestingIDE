@@ -3,13 +3,27 @@ FiniexTestingIDE - JSON-Lines Stream Writer
 
 One JSON object per line, flushed after every line, so a file being written is readable while it
 grows and a process that dies loses at most the line it was writing. Shared by the run's streams
-that are written as they happen — the field study's record and the order-event stream (#362) —
-and by the day records of #476 when they come.
+that are written as they happen, such as the field study's record and the order-event stream (#362).
 """
 
 import json
 from pathlib import Path
 from typing import Any, Dict, Optional, TextIO
+
+from python.framework.utils.file_utils import create_directory
+
+
+def jsonl_line(record: Dict[str, Any]) -> str:
+    """
+    One record as the line a JSON-lines stream holds: its None values left out, its newline on.
+
+    Args:
+        record: JSON-serializable values
+
+    Returns:
+        The line
+    """
+    return json.dumps({key: value for key, value in record.items() if value is not None}) + '\n'
 
 
 class JsonlStreamWriter:
@@ -26,7 +40,7 @@ class JsonlStreamWriter:
 
     def __init__(self, path: Path, append: bool = False):
         self._path = Path(path)
-        self._path.parent.mkdir(parents=True, exist_ok=True)
+        create_directory(self._path.parent, holds=f'the stream {self._path.name}')
         self._handle: Optional[TextIO] = open(
             self._path, 'a' if append else 'w', encoding='utf-8')
 
@@ -39,8 +53,7 @@ class JsonlStreamWriter:
         """
         if self._handle is None:
             return
-        compact = {key: value for key, value in record.items() if value is not None}
-        self._handle.write(json.dumps(compact) + '\n')
+        self._handle.write(jsonl_line(record))
         self._handle.flush()
 
     def close(self) -> None:

@@ -1,7 +1,7 @@
 # Time Utils UTC Tests
 
-`tests/framework/test_time_utils_utc.py` — that `parse_datetime` and `ensure_utc_aware`
-(`python/framework/utils/time_utils.py`) hand back UTC and nothing else. Runs under the
+`tests/framework/test_time_utils_utc.py` — that `parse_datetime`, `parse_iso_datetime` and
+`ensure_utc_aware` (`python/framework/utils/time_utils.py`) hand back UTC and nothing else. Runs under the
 synthetic `framework/_root` suite.
 
 ## Why this file exists at all
@@ -26,6 +26,8 @@ suite otherwise never runs on, and one a contributor may. The fixture sets `TZ`,
 | `test_the_utc_day_is_the_day_near_midnight` | 00:30 on the 25th in Berlin is the 24th in UTC — `.date()` says the 24th |
 | `test_an_aware_value_in_another_zone_is_converted_not_passed_through` | a `zoneinfo` New York value becomes 22:00 UTC; the instant is unchanged |
 | `test_a_pandas_timestamp_stays_a_timestamp` | the coverage report hands in a bar's `Timestamp`; it comes back as one, in UTC |
+| `test_the_fast_iso_parse_answers_as_the_lenient_one` | the strict parse a sealed trading day reads its record times with (#476) gives the same UTC instant as `parse_datetime` for every ISO form the IDE writes, a naive one taken as UTC — parametrized, on the Berlin machine |
+| `test_the_fast_iso_parse_refuses_what_is_not_iso` | a date in words is refused, never guessed |
 
 ## What Is Not Tested Here
 

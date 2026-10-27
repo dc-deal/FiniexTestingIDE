@@ -56,6 +56,7 @@ from python.framework.types.import_types.import_progress_types import (
     BarRenderProgress,
 )
 from python.framework.types.import_types.import_result_types import BarRenderResult
+from python.framework.utils.file_utils import create_directory
 
 vLog = get_global_logger()
 
@@ -318,7 +319,7 @@ def _write_bar_file(
         log_buffer: Buffer for log messages
     """
     bars_dir = data_dir / broker_type / 'bars' / symbol
-    bars_dir.mkdir(parents=True, exist_ok=True)
+    create_directory(bars_dir, holds="a symbol's rendered bar files")
 
     filename = f'{symbol}_{timeframe}{BAR_FILE_SUFFIX}'
     filepath = bars_dir / filename

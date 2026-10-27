@@ -20,6 +20,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 
 from python.framework.types.store_types import StoreId
+from python.framework.utils.file_utils import create_directory
 
 # Arrow schema-metadata key carrying the producing code's version. Same mechanism the discovery
 # caches already use for their source mtime and config fingerprint.
@@ -118,7 +119,7 @@ class AbstractStoreIndex(ABC):
                 every row was produced by the current logic — i.e. by `rebuild()`. An
                 incremental writer must go through `write_incremental` instead
         """
-        self._path.parent.mkdir(parents=True, exist_ok=True)
+        create_directory(self._path.parent, holds=f'the index {self._path.name}')
         table = pa.Table.from_pandas(frame[self.COLUMNS], preserve_index=False)
         metadata = dict(table.schema.metadata or {})
         version = self.LOGIC_VERSION if logic_version is None else logic_version

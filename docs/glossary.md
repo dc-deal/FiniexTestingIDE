@@ -24,6 +24,14 @@ run fit together; the linked documents explain the rest.
 
 ---
 
+**accept composite change** (`--accept-composite-change <key>`, served as
+`origin.accept_composite_change`) — A start told it may continue what the venue still holds — this
+bot's position, its resting orders — under a configuration that defines another *composite* than
+the one that opened it. The key names that composite, as the refusal printed it, so the flag
+accepts that one change and never a later one. Without it such a start is refused. See
+[Unattended Operation](autotrader/unattended_operation.md), and a worked week in
+[Changing a Live Bot](user_guides/changing_a_live_bot_guide.md).
+
 **acceptance study** — A real-money session sequence whose record becomes a release certificate:
 the *field study* proves the order path, the *security study* the account's protective rules.
 Both run on one engine and write one capture format. Not a test suite — the suite only validates
@@ -100,7 +108,8 @@ exposure. See [Capital and Safety](autotrader/autotrader_capital_and_safety.md).
 basis*, *signal basis*, *time basis*, *trade window basis* — each below.
 
 **booking period** — One sealed period of one run unit, bounded by the market's trading day and
-numbered from 1; the ledger holds one row per booking period and currency. In code
+numbered from 1; the ledger holds one row per booking period, in its account's currency. Every
+trading day of the market calendar has one, a day without a tick included (`tick_count` 0). In code
 `BookingPeriod` and `period_no`. See [Accounting Periods](architecture/accounting_periods.md).
 
 **broker** (`broker_type`) — Our configuration entry for one venue and product in
@@ -148,9 +157,10 @@ it moves between replay time and the present. See *wall clock*, and
 [Live Execution](architecture/live_execution_architecture.md#canonical-clock--idle-cadence-360).
 
 **carry-over** — What one session hands the next session of the same bot: the algo's memory, and
-the framework's record of keys, positions and the risk baseline. Keyed by the bot, overwritten, and
-never kept per run. A document written under another profile name is not this bot's, except for a
-*declared continuation*. See [Data Storage Layout](architecture/data_storage_layout.md).
+the framework's record of keys, positions, the risk baseline and the drawdown curve. Keyed by the
+bot, overwritten, and never kept per run. A document written under another profile name is not
+this bot's, except for a *declared continuation*. The baseline and the curve follow the kind of
+run: a rehearsal's never reach real money. See [Data Storage Layout](architecture/data_storage_layout.md).
 
 **cascade** — How a configuration value is layered. For a scenario: application defaults, then the
 set's `global` block, then the scenario. For an AutoTrader profile: `app_config.autotrader`
@@ -171,6 +181,10 @@ venue's answers and its list of open orders can be matched back to us — and to
 run id it carries a piece of, beside a counter. Live only; a backtest sends none. Not the *order id*
 (`pos_btcusd_47`), which never goes on the wire, and not the *broker ref*, which is the venue's.
 
+**closed** (a run) — A run that wrote its *footprint*, its very last step: everything it was going
+to write is written. Not *completed*, which means its results reached the ledger — the step just
+before. See [Store Entry Members](architecture/store_entry_members.md#the-footprint-a-run-closes-with).
+
 **close type** (`close_type` on an order-history row and a trade) — Whether a close took the whole
 position (`full`) or part of it (`partial`). Set once the close fills; empty on every other row.
 
@@ -182,6 +196,14 @@ opening time plus its timeframe's duration lies at or before that instant. A bar
 the instant its period opens but known only when it ends, so a bar that *opened* before a start is
 not therefore complete at it — the bar holding the start opened before it and closes after. See
 [Warmup History](architecture/warmup_history.md).
+
+**composite** — Several separate accounts read as one result. What happened in them adds up and
+the ratios are recomputed from the added parts; a reading of one account (`final_equity`,
+`unrealized_pnl`) has no answer across them. The term is the one the Global Investment Performance
+Standards (GIPS) use, where a composite holds the accounts managed to one strategy. The scenarios
+of one backtest run are folded this way. See
+[Reading the Results Ledger](user_guides/results_ledger_guide.md); how a live bot's composite
+changes with its configuration, in [Changing a Live Bot](user_guides/changing_a_live_bot_guide.md).
 
 **compute basis** — When a worker recomputes: `live` on every tick (the forming bar included) or
 `bar_close` only when a bar closes. Not a kind of run. See [Worker Naming](user_guides/worker_naming_doc.md).
@@ -252,6 +274,12 @@ header): a start, and an end unless it is open. Not a span over several units. O
 `windows` mean the same — never a docked panel: that is the FiniexViewer's *panel*, defined in its
 own glossary.
 
+**day record** — One trading day of a session's stream, sealed when the day ends: an immutable
+parquet file in the run's `days/<day>/` folder, holding every line of the day as it was written,
+at the path the stream has in the run (`days/20261102/io/order_events.parquet`). The stream's own
+file holds the running day. A backtest writes none. See
+[Day Records](architecture/run_stream_day_records.md).
+
 **decision basis** — The fresh / stale / blind counts of the inputs a decision was made on. See
 [Signal Data Source](data_pipeline/signal_data_source.md).
 
@@ -293,6 +321,12 @@ protective order released, the order timeout, the resolution ceiling, the end of
 the backtest's data, or the venue's own cancel or expiry. Stands beside *initiator* on the same row
 or event.
 
+**entry member** — One file a store entry may hold, declared by the store: its path, its shape
+(a *snapshot member*, a stream, a report output, a log), which pipeline writes it and when, and which
+column of the run index lists it. A run's directory and a sweep's are declared this way, and the
+writers build their paths from the same names. Never *member* alone — an archive's members and an
+enum's are other things. See [Store Entry Members](architecture/store_entry_members.md).
+
 **error count** (`error_count`) — The ERROR records in a run's error pot. A unit that failed
 without logging an error shows in the *run outcome*, not here. See
 [Warnings & Errors](architecture/warnings_errors_tiers.md).
@@ -304,6 +338,12 @@ cancelled, expired, undelivered or unaccounted. On an order event, when that ste
 only on a line written before the session's first market data — an order adopted at its start, and
 the `session_start` *broker truth* line. A point in time — not the
 *execution time*, which is a duration.
+
+**evidence runs** (`evidence_runs` on a study certificate) — The runs a release certificate rests on,
+each with its run id, the commit its code came from and its start. A declared release fails when
+it is generated on another commit than theirs, and its `valid_until` counts from the first one's
+start. Not the *evidence grade* of a run's data (see *data origin*). See
+[Field Study](tests/live_field_study/field_study_guide.md#certificate).
 
 **execution time** — How long a run or one of its units took on the *wall clock*:
 `execution_time_ms` for a scenario, `execution_time_s` for a whole backtest run. It says nothing
@@ -352,6 +392,12 @@ A *current fixture* is the run a catalog entry's newest verified production made
 [Fixture Catalog](architecture/fixture_catalog.md); a *superseded* one (`fixture_superseded: true`)
 was made by an older or a failed production. See *run purpose*.
 
+**footprint** (`footprint.json` in a run directory) — A run's own record of what it wrote, written
+as its very last step: every file it held, with its size, and for each file written only sometimes
+whether this run expected it and why. A run with one is *closed*. Not the folder's listing, which
+anyone can take; the footprint is what the run itself said. `store_cli.py run-footprint` reads a
+run against it. See [Store Entry Members](architecture/store_entry_members.md#the-footprint-a-run-closes-with).
+
 **fragment** — One ledger file, written per run. Nothing else is called a fragment.
 
 **frozen** — Kept by a run, at its start, as a copy in the run-config store and named by its
@@ -386,10 +432,11 @@ from the store's own entries. See [Data Storage Layout](architecture/data_storag
 `venue` — and, on a cancel request in the order-event stream, who asked for it. See *end reason*.
 
 **journal · ledger · closing** — The three bookkeeping levels. The *journal* is every booking in
-order (the trade records); the *ledger* holds the period summaries (one row per booking period and
-currency — the results table across runs, one fragment per run); the *closing* is the figures over
-many periods, such as a deployment's total or a month's drawdown. Sealing one booking period is
-*closing a period*. See [Accounting Periods](architecture/accounting_periods.md).
+order (the trade records); the *ledger* holds the period summaries (one row per booking period, in
+its account's currency — the results table across runs, one fragment per run); the *closing* is
+the figures over many periods, such as a deployment's total or a month's drawdown. Sealing one
+booking period is *closing a period*. See [Accounting Periods](architecture/accounting_periods.md)
+and [Reading the Results Ledger](user_guides/results_ledger_guide.md).
 
 **layer** — Never used alone. A configuration value is *layered* by its cascade (see *cascade*);
 the *execution layer* is the code that turns an order into a fill — the executors, the portfolio and
@@ -608,10 +655,14 @@ check of that tick may have sent a close. Not a start refused before the loop �
 or the Field Study's preflight: that one is graded by what it logged, and its operator alert reads
 STARTUP REFUSED. See [Warmup History](architecture/warmup_history.md).
 
-**rendered configuration** (`rendered_config_id`) — What an AutoTrader session RAN with, as
-opposed to the profile file it was GIVEN: the profile with the `app_config.autotrader` layer merged
-in, every parameter's schema default filled, and the broker's `market_config.json` entry. Frozen
-in the run-config store at the session's start and named by its header. A record of what ran, not
+**rendered configuration** (`rendered_config_id`) — What a run RAN with, as opposed to the file
+it was GIVEN: for an AutoTrader session the profile with the `app_config.autotrader` layer merged
+in, every parameter's schema default filled, and the broker's `market_config.json` entry; for a
+backtest the same per scenario — the strategy with every default filled, the blocks the scenario
+ran with, the broker's entry and the market rules of its market type — with every sweep
+combination rendering its own. A strategy component given as a file is named the way the
+configuration names it, never by the absolute path a machine resolved. Frozen in the run-config
+store at the run's start and named by its header. A record of what ran, not
 a schema — a later algo version may drop a parameter and the document stays true. See
 [Data Storage Layout](architecture/data_storage_layout.md).
 
@@ -641,6 +692,10 @@ price: a resting limit, a resting stop. See [Pending Orders](architecture/pendin
 **run** — One execution with one run id and one `header.json`: a backtest, or one AutoTrader
 session. See [Batch Data Flow](architecture/batch_data_flow.md).
 
+**run entry census** — The test suite that makes real runs and holds what they wrote to the run
+store's *entry members*, in both directions: no file without a member, and no member that no run
+writes. Not a count of runs. See [Run Entry Census Tests](tests/framework/run_entry_census_tests.md).
+
 **run outcome** (`run_outcome`) — How a run ended, graded once by its own pipeline: `success`,
 `finished_with_errors` (it completed, but errors were logged), `failed` (units failed, or the session
 ended in an emergency) or `crashed` (the process did not complete). The exit code says the same. See
@@ -662,6 +717,13 @@ three field names. See [API Server](architecture/api_server_architecture.md).
 **scenario** · **scenario set** — A scenario is one symbol over one market window with its merged
 configuration (`scenario_name` in the file). A scenario set is the file holding a `global` block and
 the scenarios (`scenario_set_name`). See [Process Execution](process_execution_guide.md).
+
+**seal** (of a trading day) — The close of a booking period at its trading day's boundary: stamped
+with the boundary instant, whichever event noticed it, and read as the account stood before that
+event. A session books each sealed day into the ledger at once, and in the same step moves its
+streams' lines of that day into *day records*; the log lines say `Booking period 001 sealed` and
+`Day records sealed for …`. See
+[Accounting Periods](architecture/accounting_periods.md#where-a-trading-day-ends).
 
 **seam** (of data origins) — Where one origin's tick files end and another's begin: Kraken's
 published history and our first collected tick, for instance. A gap there takes the origin class of
@@ -711,6 +773,13 @@ external, pre-collected data such as sentiment. See [Signal Data Source](data_pi
 
 **signal basis** — A signal row's quality grade from the producer (`llm`, `no_data`, `degraded`).
 
+**snapshot** — Several meanings, each qualified. A *snapshot member* is an *entry member*'s shape:
+a file that says what is true now and is replaced whole, never appended to — a run's header, a
+session's warmup history. A *signal snapshot* is one archived line of a signal source: the
+producer's envelope with the stamp of its receipt. A *broker-truth snapshot* is what one read of
+the venue returned: its open orders and positions. The *config snapshot* names the configuration
+file a run started from.
+
 **state frame** (`io/state_frames.jsonl`, `state_frames` in a profile) — What an AutoTrader
 session held and decided at one moment: its account, its open positions and resting orders, every
 worker output and its decision. Written on a cadence of the canonical clock, when a bar closes,
@@ -727,18 +796,27 @@ The `triggered` order event records the moment, in a backtest only: a live venue
 it.
 
 **store** — One registered place where persistent bytes live, of exactly one kind: *record*,
-*carry-over*, *archive*, *derived* or *special*. `store_cli.py catalog` lists them. See
+*carry-over*, *archive*, *derived* or *special*. Where one entry is a directory of files — a run,
+a sweep — the store also declares each file it may hold (*entry member*). `store_cli.py catalog`
+lists them. See
 [Data Storage Layout](architecture/data_storage_layout.md).
 
 **strategy** — A decision logic with its workers and all their parameters: exactly what
 `strategy_config` holds. A *bot* is a strategy bound to one AutoTrader profile.
 
+**strategy files** (`strategy_files/` in a run directory) — The files a strategy keeps with its
+run through `self.strategy_file(name)`: written at once, replaced whole, never read or served by
+the framework, one folder per scenario in a backtest. Not the *strategy* configuration a run
+records, and not its diagnostics tables. See
+[Store Entry Members](architecture/store_entry_members.md#strategy-files).
+
 **stream files** (`stream_files` on the run list) — The files a run keeps beside its report
-artifacts and that the API serves — today the order-event stream, which a live session writes as it
-runs and a backtest with its report. Kept apart from `artifacts`, whose emptiness marks a run that
-never reached its report. A session's other records — its warmup
-history, its tick stream record — are neither: listed nowhere on the run list. Not the producer's
-stream (see *stream state*).
+artifacts and that the API serves while it runs — such as the order-event stream, which a live
+session writes as it runs and a backtest with its report, or a session's state frames. Kept apart
+from `artifacts`, whose emptiness marks a run that never reached its report. A session's other
+records — its warmup history, its tick stream record — are neither: listed nowhere on the run list.
+The run store declares which of its *entry members* are stream files. Not the producer's stream
+(see *stream state*).
 
 **stream state** — The producer's stream: `replay` while missed envelopes catch up, `live` once
 they arrive as they happen.
@@ -778,6 +856,14 @@ time on the *canonical clock*, never in its place.
 **unaccounted** (an order status and an order event) — We stopped asking about an order and do not
 know how it ended: its answer was lost and the venue was asked until the resolution ran out, or the
 session ended with it unconfirmed. The venue may still hold it, filled or not. Never a refusal.
+
+**undefined** · **unmeasured** (an empty figure) — The two things a null figure can mean, declared
+per ledger column. *Undefined*: no value exists for the row — a profit factor without a losing
+trade, a mean over no trades, a reading of one account over several. *Unmeasured*: a value existed
+and was not recorded — a row written before its column, a day sealed before the account's first
+valuation. A sweep's ranking refuses an undefined figure as its objective and ranks an unmeasured
+one over the combinations that carry it, counting the rest in `unranked`. Not JavaScript's
+`undefined`.
 
 **undelivered** (an order status and an order event) — The venue confirms it never received the
 order: its answer was lost, and asking by our own key after the venue's records had settled found

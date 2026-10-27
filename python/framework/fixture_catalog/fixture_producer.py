@@ -36,9 +36,9 @@ from python.framework.fixture_catalog.fixture_catalog import (
 from python.framework.fixture_catalog.fixture_evidence_reader import read_fixture_evidence
 from python.framework.fixture_catalog.fixture_production_store import FixtureProductionStore
 from python.framework.optimization.optimization_runner import OptimizationRunner
-from python.framework.reporting.io.artifact_specs import ORDER_EVENTS_STREAM
-from python.framework.reporting.io.order_event_stream_io import read_order_event_stream
+from python.framework.reporting.io.order_event_stream_io import order_events_of
 from python.framework.reporting.store.run_index import RunIndex
+from python.framework.store.entry_members.run_dir_reader import RunDirReader
 from python.framework.types.api.report_types import ParentKind, RunInfo
 from python.framework.types.fixture_catalog_types import (
     FixtureEntry,
@@ -46,8 +46,9 @@ from python.framework.types.fixture_catalog_types import (
     FixtureProduction,
     FixtureSession,
 )
-from python.framework.types.log_layout_types import IO_SUBDIR
 from python.framework.types.run_origin_types import RunChannel
+from python.framework.types.store_member_types import RunEntryMemberId
+from python.framework.utils.file_utils import create_directory
 from python.scenario.scenario_config_loader import ScenarioConfigLoader
 from python.scenario.scenario_strategy_runner import initialize_batch_and_run
 
@@ -249,8 +250,9 @@ class FixtureProducer:
                 return False
             new = frame[(frame['run_name'] == run_name) & ~frame['run_id'].isin(before)]
             for run_dir in new['run_dir']:
-                stream = _PROJECT_ROOT / run_dir / IO_SUBDIR / ORDER_EVENTS_STREAM
-                if stream.exists() and read_order_event_stream(stream)[0]:
+                stream = RunDirReader(_PROJECT_ROOT / run_dir).read_stream(
+                    RunEntryMemberId.ORDER_EVENTS)
+                if stream is not None and order_events_of(stream, run_dir, run_dir)[0]:
                     return True
             return False
 
@@ -334,7 +336,7 @@ def _production_workspace(entry: FixtureEntry) -> Iterator[Path]:
     """
     workspace = _WORKSPACE_ROOT / entry.entry_id
     shutil.rmtree(workspace, ignore_errors=True)
-    workspace.mkdir(parents=True)
+    create_directory(workspace, holds="a fixture production's workspace")
     try:
         yield workspace
     finally:

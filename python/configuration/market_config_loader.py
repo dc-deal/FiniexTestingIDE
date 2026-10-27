@@ -92,8 +92,8 @@ class MarketConfigFileLoader:
         # Try to load user override configuration.
         # Tests run with FINIEX_CONFIG_ISOLATION=1 (see tests/conftest.py) — the
         # user workspace must never bleed into the test suite (non-determinism).
-        user_config_path = workspace_path(MarketConfigFileLoader._user_config_name)
-        if user_config_path.exists() and not is_config_isolation_active():
+        user_config_path = MarketConfigFileLoader._workspace_override_path()
+        if user_config_path is not None:
             try:
                 with open(user_config_path, 'r', encoding='utf-8') as f:
                     user_override = json.load(f)
@@ -118,6 +118,39 @@ class MarketConfigFileLoader:
 
         # No user config - return base config
         return base_config
+
+    @staticmethod
+    def get_layers() -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        """
+        The shipped market configuration and the workspace override as each file holds them,
+        unmerged — for a reader that has to say which of the two a value came from (#626).
+
+        Returns:
+            (shipped, override); the override is empty when there is none to merge
+        """
+        with open(MarketConfigFileLoader._config_path, 'r', encoding='utf-8') as f:
+            shipped = json.load(f)
+        override_path = MarketConfigFileLoader._workspace_override_path()
+        if override_path is None:
+            return shipped, {}
+        with open(override_path, 'r', encoding='utf-8') as f:
+            return shipped, json.load(f)
+
+    @staticmethod
+    def _workspace_override_path() -> Optional[Path]:
+        """
+        The workspace override this loader merges, when there is one to merge.
+
+        Tests run with FINIEX_CONFIG_ISOLATION=1 (see tests/conftest.py) — the user workspace must
+        never bleed into the test suite (non-determinism).
+
+        Returns:
+            Its path; None when there is none, or the configuration is isolated
+        """
+        path = workspace_path(MarketConfigFileLoader._user_config_name)
+        if not path.exists() or is_config_isolation_active():
+            return None
+        return path
 
     @staticmethod
     def _deep_merge(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]:

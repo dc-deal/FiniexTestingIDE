@@ -53,10 +53,12 @@ including performance and durability trade-offs."*
 Strong: *"The position book is written on structural change, not on every tick. One write costs
 11 ms on this tree, and a trailing stop would otherwise write on nearly every tick of a trend."*
 
-## 5. A number carries its date and its source
+## 5. A number — and what another system offers — carries its date and its source
 
-Measurements age. A number without a date cannot be re-checked, and an undated number that has
-gone stale is worse than no number, because it looks verified.
+Measurements age, and so do other systems: a venue adds an order type, a framework changes a default. A
+number, or a statement about what a venue, a broker or another framework offers, without a date cannot be
+re-checked — and an undated one that has gone stale is worse than none, because it looks verified. Say when
+it was checked and where it was read.
 
 > Measured 2026-08-31, `/app` against the container's own ext4: `stat` 616× · `read` 110× ·
 > `write` 65× · a directory walk 282×.
@@ -174,7 +176,7 @@ another served document by its route.
 
 - Does the first paragraph say what breaks without this?
 - Would a reader in the wrong document know within one screen?
-- Is every number dated, and does every count refer to something that cannot grow?
+- Is every number, and every statement about another system, dated — and does every count refer to something that cannot grow?
 - One H1, headings named for their content, prose wrapped?
 - Is anything restated here that another document owns?
 - Does any sentence lean on a rule number (`§…`) instead of saying the rule?

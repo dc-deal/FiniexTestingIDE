@@ -18,6 +18,7 @@ from python.framework.types.config_types.market_config_types import (
     MarketType,
     PriceFormation,
     ServerClockConfig,
+    TradingModel,
 )
 
 
@@ -31,6 +32,7 @@ class TestTheFieldIsRequired:
                 broker_type='somevenue',
                 market_type=MarketType.CRYPTO,
                 server_clock=ServerClockConfig(timezone='UTC', hours_ahead=0),
+                trading_model=TradingModel.SPOT,
             )
 
     def test_an_entry_with_it_loads(self):
@@ -40,6 +42,7 @@ class TestTheFieldIsRequired:
             market_type=MarketType.CRYPTO,
             price_formation=PriceFormation.ORDER_DRIVEN,
             server_clock=ServerClockConfig(timezone='UTC', hours_ahead=0),
+            trading_model=TradingModel.SPOT,
         )
 
         assert entry.price_formation is PriceFormation.ORDER_DRIVEN
@@ -52,6 +55,7 @@ class TestTheFieldIsRequired:
                 market_type=MarketType.CRYPTO,
                 price_formation='order-driven',  # hyphen, not underscore
                 server_clock=ServerClockConfig(timezone='UTC', hours_ahead=0),
+                trading_model=TradingModel.SPOT,
             )
 
 

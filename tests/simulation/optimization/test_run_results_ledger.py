@@ -1,16 +1,36 @@
 """Run-results ledger tests (#390) — append per run + read all + filter."""
 
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from typing import Optional, get_args
 
 import pandas as pd
 
+from python.framework.constants.run_layout_constants import RUN_TYPE_AUTOTRADER, RUN_TYPE_SIMULATION
+from python.framework.reporting.builders.booking_period_builder import (
+    PeriodSnapshot,
+    derive_booking_period,
+)
+from python.framework.reporting.store.ledger_aggregation import aggregate_ledger_rows
 from python.framework.reporting.store.run_results_ledger import (
+    COLUMN_NULL_MEANING,
     COLUMN_REDUCTION,
     LEDGER_COLUMNS,
+    RUN_END_COLUMNS,
+    RunResultsLedger,
 )
-from python.framework.types.api.report_types import OrdersTo, RunResultRow
-from python.framework.types.log_layout_types import RUN_TYPE_AUTOTRADER, RUN_TYPE_SIMULATION
-from python.framework.types.run_results_types import Reduction
+from python.framework.types.api.report_types import RunResultRow, RunSummary
+from python.framework.types.run_kind_types import OrdersTo
+from python.framework.types.run_outcome_types import RunOutcome
+from python.framework.types.run_results_types import (
+    FigureKind,
+    PeriodCloseReason,
+    Reduction,
+)
+from python.framework.types.trading_env_types.trading_env_stats_types import (
+    EXECUTION_COUNT_FIELDS,
+    ExecutionStats,
+)
 
 # Every report artifact names its run (#475); the value is opaque to these tests.
 _RUN_ID = '20260830_120000_a1b2c3d4'
@@ -158,13 +178,26 @@ def test_explicit_error_is_flagged_on_the_row_and_keeps_its_figures(
 
 def test_no_currencies_writes_error_row(tmp_ledger, make_provenance):
     """A run with no usable data (no currencies) is recorded as an error row, never absent."""
-    from python.framework.types.api.report_types import RunSummary
     empty = RunSummary(run_id=_RUN_ID, currencies=[])
     tmp_ledger.append(empty, make_provenance(run_id='r1'))
     rows = tmp_ledger.read_rows()
     assert len(rows) == 1
     assert rows[0].status == 'error'
     assert rows[0].error                               # a default reason is recorded
+
+
+def test_the_figureless_error_row_writes_no_figure(tmp_ledger, make_provenance):
+    """
+    A run that produced nothing measured nothing: its figure columns stay empty. A zero would
+    claim a measurement, and a fold would take it — as a unit's latest final equity, say.
+    """
+    tmp_ledger.append(RunSummary(run_id=_RUN_ID, currencies=[]), make_provenance(run_id='r1'))
+
+    stored = tmp_ledger.read().iloc[0]
+    for column in ('net_pnl', 'account_max_drawdown', 'final_equity', 'orders_submitted',
+                   'total_trades'):
+        assert pd.isna(stored[column]), f'{column} holds {stored[column]!r}, a figure nobody measured'
+    assert tmp_ledger.read_rows()[0].account_max_drawdown is None
 
 
 def test_read_handles_schema_evolution(tmp_path, tmp_ledger, make_run_summary, make_provenance):
@@ -566,3 +599,131 @@ def test_the_stamp_survives_the_index(tmp_ledger, make_run_summary, make_provena
     tmp_ledger.mark_records_pruned(['gone'])
     assert tmp_ledger.read_rows()[0].records_pruned_at != ''
 
+
+
+# === A session's sealed trading days reach the ledger as they seal (#476) ========================
+
+_MON = datetime(2026, 9, 21, tzinfo=timezone.utc)
+
+
+def _day(no: int, reason: PeriodCloseReason = PeriodCloseReason.ANCHOR,
+         execution: Optional[ExecutionStats] = None):
+    """One trading day's booking period of a session, nothing traded."""
+    return derive_booking_period(
+        'session', no, _MON + timedelta(days=no - 1), _MON + timedelta(days=no), reason, [],
+        PeriodSnapshot(currency='USD', final_equity=1_000.0, account_max_drawdown=0.0,
+                       max_equity=1_000.0, account_max_dd_pct=0.0, execution=execution),
+        tick_count=10)
+
+
+def _fragment(ledger_dir: Path) -> pd.DataFrame:
+    """The one fragment in a ledger directory, read as written."""
+    (path,) = list(ledger_dir.glob('*.parquet'))
+    return pd.read_parquet(path)
+
+
+def test_a_sealed_day_is_written_without_the_run_end_columns(
+        tmp_path, tmp_ledger, make_provenance):
+    """What the start knows is on the row; what only the end knows is left empty."""
+    tmp_ledger.write_sealed_periods(
+        make_provenance(run_id='live', run_type=RUN_TYPE_AUTOTRADER, deployment_id='deploy_x'),
+        [_day(1)])
+
+    frame = _fragment(tmp_path / 'run_results')
+    assert len(frame) == 1
+    row = frame.iloc[0]
+    assert (row['param_hash'], row['deployment_id'], row['period_close_reason']) == (
+        'hash', 'deploy_x', 'anchor')
+    for column in RUN_END_COLUMNS:
+        assert pd.isna(row[column]), f'{column} is filled on a row written at a seal'
+
+
+def test_a_period_row_carries_the_orders_the_period_handled(tmp_path, tmp_ledger, make_provenance):
+    """
+    A day's own order counts reach its row, and the run read back over its days adds them up
+    (#476) — a run that books in periods writes no aggregate row to take them from.
+    """
+    tmp_ledger.write_sealed_periods(
+        make_provenance(run_id='live', run_type=RUN_TYPE_AUTOTRADER),
+        [_day(1, execution=ExecutionStats(orders_submitted=2, orders_executed=1,
+                                          orders_cancelled=1)),
+         _day(2, execution=ExecutionStats(orders_submitted=1, orders_executed=1,
+                                          sl_tp_triggered=1))])
+
+    assert list(_fragment(tmp_path / 'run_results')['orders_submitted']) == [2, 1]
+    run = aggregate_ledger_rows(tmp_ledger.read_rows())[0]
+    assert (run.orders_submitted, run.orders_executed, run.orders_cancelled,
+            run.sl_tp_triggered, run.orders_rejected) == (3, 2, 1, 1, 0)
+
+
+def test_a_period_nothing_counted_leaves_its_order_columns_empty(
+        tmp_path, tmp_ledger, make_provenance):
+    """Not measured, never a zero: a period built without an executor counted no order."""
+    tmp_ledger.write_sealed_periods(
+        make_provenance(run_id='live', run_type=RUN_TYPE_AUTOTRADER), [_day(1)])
+
+    row = _fragment(tmp_path / 'run_results').iloc[0]
+    for field_name in EXECUTION_COUNT_FIELDS:
+        assert pd.isna(row[field_name]), field_name
+
+
+def test_each_seal_replaces_the_fragment_whole(tmp_path, tmp_ledger, make_provenance):
+    prov = make_provenance(run_id='live', run_type=RUN_TYPE_AUTOTRADER)
+    tmp_ledger.write_sealed_periods(prov, [_day(1)])
+    tmp_ledger.write_sealed_periods(prov, [_day(1), _day(2)])
+
+    assert list(_fragment(tmp_path / 'run_results')['period_no']) == [1, 2]
+
+
+def test_the_session_s_last_write_replaces_its_sealed_days(
+        tmp_path, tmp_ledger, make_run_summary, make_provenance):
+    prov = make_provenance(run_id='live', run_type=RUN_TYPE_AUTOTRADER)
+    tmp_ledger.write_sealed_periods(prov, [_day(1), _day(2)])
+    tmp_ledger.append(make_run_summary(), prov,
+                      [_day(1), _day(2), _day(3, PeriodCloseReason.SESSION_END)])
+
+    frame = _fragment(tmp_path / 'run_results')
+    assert list(frame['period_no']) == [1, 2, 3]
+    assert list(frame['status']) == ['ok', 'ok', 'ok']
+
+
+def test_a_sealed_row_leaves_exactly_the_run_end_columns_empty(
+        tmp_path, make_run_summary, make_provenance):
+    """
+    The declaration is complete in both directions: every column the session's last write fills
+    and a seal leaves empty is declared run-end, and every declared one is such a column.
+    """
+    prov = make_provenance(run_id='live', run_type=RUN_TYPE_AUTOTRADER, status='error',
+                           error='boom', run_outcome=RunOutcome.FAILED, error_count=1,
+                           warning_count=2, log_warning_count=3)
+    summary = make_run_summary()
+    summary.signal_fresh_ratio = 0.9
+    summary.tick_timespan_seconds = 86_400.0
+    sealed = RunResultsLedger(tmp_path / 'sealed')
+    final = RunResultsLedger(tmp_path / 'final')
+    sealed.write_sealed_periods(prov, [_day(1)])
+    final.append(summary, prov, [_day(1)])
+
+    sealed_row = _fragment(tmp_path / 'sealed').iloc[0]
+    final_row = _fragment(tmp_path / 'final').iloc[0]
+    left_empty = {column for column in LEDGER_COLUMNS
+                  if pd.isna(sealed_row[column]) and not pd.isna(final_row[column])}
+    assert left_empty == set(RUN_END_COLUMNS)
+
+
+def test_every_nullable_figure_declares_what_its_null_means():
+    """
+    An empty cell means one of two things, and a ranking decides on it: a figure that can be
+    undefined for a run is refused as an objective, one that was only not measured is ranked over
+    the rows that carry it. Held both ways, so a figure widened to Optional cannot arrive without
+    an answer, and the map cannot outlive a field.
+    """
+    nullable_figures = {
+        name for name, field in RunResultRow.model_fields.items()
+        if type(None) in get_args(field.annotation) and name in COLUMN_REDUCTION
+        and COLUMN_REDUCTION[name].figure_kind() is not FigureKind.DESCRIPTION}
+
+    undeclared = sorted(nullable_figures - set(COLUMN_NULL_MEANING))
+    stale = sorted(set(COLUMN_NULL_MEANING) - nullable_figures)
+    assert undeclared == [], f'{undeclared} can be null and do not say what their null means'
+    assert stale == [], f'{stale} declare a null meaning and are no nullable figure'

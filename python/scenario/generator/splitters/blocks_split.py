@@ -245,9 +245,7 @@ class BlocksSplit(AbstractSplitter):
             # MarketCalendar). A weekend gap inside a region never splits it, so a block
             # boundary can otherwise begin where no data exists. Crypto (24/7) is exempt —
             # snap_to_market_open is False there, so a Saturday boundary keeps its ticks.
-            if snap_to_market_open and (
-                    not MarketCalendar.is_market_open(current_start)
-                    or MarketCalendar.is_market_holiday(current_start)):
+            if snap_to_market_open and not MarketCalendar.is_trading_date(current_start):
                 snapped = MarketCalendar.next_market_open(current_start)
                 if snapped >= region_end:
                     break

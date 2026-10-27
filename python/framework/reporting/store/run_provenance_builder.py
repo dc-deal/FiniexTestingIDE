@@ -28,9 +28,13 @@ from typing import Any, Dict, List, Optional, Tuple
 from python.configuration.app_config_manager import AppConfigManager
 from python.configuration.market_config_manager import MarketConfigManager
 from python.framework.autotrader.dry_run_resolver import resolve_orders_to
+from python.framework.constants.run_layout_constants import (
+    RUN_TYPE_AUTOTRADER,
+    RUN_TYPE_SIMULATION,
+)
 from python.framework.logging.abstract_logger import AbstractLogger
-from python.framework.reporting.io.run_header_io import RUN_HEADER_ARTIFACT, read_run_header
-from python.framework.types.api.report_types import OrdersTo, WarningsErrorsReport
+from python.framework.store.entry_members.run_dir_reader import RunDirReader
+from python.framework.types.api.report_types import WarningsErrorsReport
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
 from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.data_origin_types import (
@@ -38,10 +42,7 @@ from python.framework.types.data_origin_types import (
     joined_distinct,
 )
 from python.framework.types.git_info_types import GitInfo
-from python.framework.types.log_layout_types import (
-    RUN_TYPE_AUTOTRADER,
-    RUN_TYPE_SIMULATION,
-)
+from python.framework.types.run_kind_types import OrdersTo
 from python.framework.types.run_origin_types import CodeIdentity, ComponentRole
 from python.framework.types.run_results_types import RunProvenance, SweepContext
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
@@ -78,8 +79,8 @@ def build_run_provenance(
 
     # param_hash spans ALL scenarios so a multi-scenario run with per-scenario param
     # differences is not collapsed to scenario[0]; a uniform run (every sweep) keeps the
-    # single fingerprint. Component versions + snapshot read scenario[0] (the full
-    # per-scenario config is preserved separately in the run dir's config snapshot).
+    # single fingerprint. Component versions + snapshot read scenario[0]; what every scenario
+    # ran with is the rendered document the header names as `rendered_config_id` (#547).
     strategy_config = scenarios[0].strategy_config or {}
     fingerprints = sorted(
         generate_config_fingerprint(s.strategy_config or {}) for s in scenarios)
@@ -108,7 +109,7 @@ def build_run_provenance(
                     else generate_config_fingerprint({'per_scenario': operational}))
     # Reported, when unreadable, in the run's summary log — the file an operator opens first,
     # and the same one the live side writes to.
-    code_identity = _read_code_identity(
+    code_identity, rendered_config_id = _read_header_identity(
         run_id, scenario_set.logger.get_log_dir(), scenario_set.printed_summary_logger)
     decision_version, worker_versions = _versions_from_identity(code_identity, strategy_config)
     # Cheap by now: the code identity captured at the start already paid this repository's
@@ -147,6 +148,12 @@ def build_run_provenance(
         run_type=RUN_TYPE_SIMULATION,
         # A backtest simulates every fill — the header's answer for every simulation run.
         orders_to=OrdersTo.SIMULATED,
+        # What every scenario ran with, and the broker configurations they traded under — on
+        # every row, so a ledger row names its configuration without its run directory (#476)
+        rendered_config_id=rendered_config_id,
+        broker_config_id=','.join(sorted(
+            {info.broker_config.get_frozen_config_id()
+             for info in batch_execution_summary.broker_scenario_map.values()} - {''})),
         **consumption_record(scenarios),
         **_run_counts(warnings_errors_report),
     )
@@ -162,6 +169,7 @@ def build_run_provenance_from_session(
     run_dir: Optional[Path],
     logger: AbstractLogger,
     replayed_scenario: Optional[SingleScenario] = None,
+    broker_config_id: str = '',
 ) -> RunProvenance:
     """
     Build an AutoTrader session's provenance bundle for the results ledger.
@@ -186,12 +194,14 @@ def build_run_provenance_from_session(
             operator finds it beside the session instead of only in the global log
         replayed_scenario: A mock session's scenario after the mount filled what it read. Its
             consumption is recorded exactly as a backtest's; None for a live-adapter session
+        broker_config_id: The run-config store id the session froze its broker configuration
+            under at its start (#547); '' where it was not frozen
 
     Returns:
         The provenance bundle
     """
     strategy_config = config.strategy_config or {}
-    code_identity = _read_code_identity(run_id, run_dir, logger)
+    code_identity, rendered_config_id = _read_header_identity(run_id, run_dir, logger)
     decision_version, worker_versions = _versions_from_identity(code_identity, strategy_config)
     git = get_git_info()
     git_commit = _framework_commit(code_identity, git)
@@ -240,6 +250,10 @@ def build_run_provenance_from_session(
         run_type=RUN_TYPE_AUTOTRADER,
         # The same resolution the header was stamped with at the start, so the two agree.
         orders_to=resolve_orders_to(config),
+        # What the session runs with, and the broker configuration it froze at its start — on
+        # every row, so a session killed on day 29 still names both in the rows it left (#476)
+        rendered_config_id=rendered_config_id,
+        broker_config_id=broker_config_id,
         **_run_counts(warnings_errors_report),
     )
 
@@ -386,10 +400,11 @@ def _run_status(report: Optional[WarningsErrorsReport]) -> Tuple[str, Optional[s
         outcome.first_failure_error or 'run produced no usable data')
 
 
-def _read_code_identity(run_id: str, run_dir: Optional[Path],
-                        logger: AbstractLogger) -> Optional[CodeIdentity]:
+def _read_header_identity(run_id: str, run_dir: Optional[Path],
+                          logger: AbstractLogger) -> Tuple[Optional[CodeIdentity], str]:
     """
-    The code identity a run recorded in its header at its start (#551).
+    The code identity a run recorded in its header at its start (#551), and the rendered
+    configuration the header names (#547) — both from one read of the header.
 
     Which runs reach the ledger decides what "missing" means here, and it was checked rather than
     assumed: both report coordinators write into the run directory the header was written into,
@@ -408,26 +423,30 @@ def _read_code_identity(run_id: str, run_dir: Optional[Path],
         logger: The run's own logger
 
     Returns:
-        The recorded code identity, or None when the header is missing, unreadable, belongs to
-        another run, or carries none
+        The recorded code identity — None when the header is missing, unreadable, belongs to
+        another run, or carries none — and the rendered configuration's id, '' on the same
+        terms or where the header names none
     """
     consequence = ('— the ledger row records it as UNKNOWN: git_dirty True and no component '
                    'versions, which here mean "not recorded", not "dirty" or "undeclared"')
     if run_dir is None:
         logger.warning(f'⚠️ Ledger provenance: run {run_id} has no run directory, so no header '
                        f'names its code {consequence}')
-        return None
+        return None, ''
     try:
-        header = read_run_header(Path(run_dir) / RUN_HEADER_ARTIFACT)
+        header = RunDirReader(Path(run_dir)).read_header()
     except (OSError, ValueError) as error:
         logger.warning(f'⚠️ Ledger provenance: the header of run {run_id} could not be read '
                        f'({error}) {consequence}')
-        return None
-    if header.run_id != run_id or header.code_identity is None:
+        return None, ''
+    if header.run_id != run_id:
         logger.warning(f'⚠️ Ledger provenance: the header in {run_dir} carries no code identity '
                        f'for run {run_id} {consequence}')
-        return None
-    return header.code_identity
+        return None, ''
+    if header.code_identity is None:
+        logger.warning(f'⚠️ Ledger provenance: the header in {run_dir} carries no code identity '
+                       f'for run {run_id} {consequence}')
+    return header.code_identity, header.rendered_config_id
 
 
 def _framework_commit(code_identity: Optional[CodeIdentity],

@@ -25,6 +25,7 @@ from python.framework.types.api.report_types import (
     TradeHistoryReport,
     WarningsErrorsReport,
 )
+from python.framework.types.api.state_frame_types import LatestStateFramesResponse
 
 
 class FixtureProducerKind(StrEnum):
@@ -82,6 +83,7 @@ class FixtureEvidence:
         deployments: Deployment id → its detail
         deployment_periods: Deployment id → its booking periods
         sweeps: Sweep id → its detail
+        latest_state_frames: Run id → its latest state frames, as the check-in route answers
     """
     runs: List[RunInfo] = field(default_factory=list)
     order_history: Dict[str, OrderHistoryReport] = field(default_factory=dict)
@@ -93,6 +95,7 @@ class FixtureEvidence:
     deployments: Dict[str, DeploymentDetailResponse] = field(default_factory=dict)
     deployment_periods: Dict[str, DeploymentBookingPeriodsResponse] = field(default_factory=dict)
     sweeps: Dict[str, SweepDetailResponse] = field(default_factory=dict)
+    latest_state_frames: Dict[str, LatestStateFramesResponse] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)

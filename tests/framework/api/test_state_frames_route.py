@@ -15,26 +15,30 @@ import pytest
 from fastapi.testclient import TestClient
 
 from python.api.api_app import create_app
+from python.framework.constants.run_layout_constants import (
+    IO_SUBDIR,
+    RUN_TYPE_AUTOTRADER,
+    STATE_FRAMES_FILE,
+    STATE_FRAMES_SCHEMA_VERSION,
+    STATE_FRAMES_STREAM,
+)
 from python.framework.reporting.io.artifact_specs import WARNINGS_ERRORS_ARTIFACT
 from python.framework.reporting.io.report_artifact_io import write_artifact
 from python.framework.reporting.io.run_stream_reader import read_stream_ends
 from python.framework.reporting.io.run_stream_appender import RunStreamAppender
-from python.framework.reporting.store.report_store import IO_SUBDIR, ReportStore
+from python.framework.reporting.store.report_store import ReportStore
 from python.framework.reporting.store.run_index import RunIndex
 from python.framework.types.api.report_types import (
     RunHeader,
-    TicksFrom,
     WarningsErrorsOutcome,
     WarningsErrorsReport,
 )
 from python.framework.types.api.state_frame_types import (
-    STATE_FRAMES_SCHEMA_VERSION,
-    STATE_FRAMES_STREAM,
     ProcessMemoryRow,
     StateFrame,
     StateFrameCause,
 )
-from python.framework.types.log_layout_types import RUN_TYPE_AUTOTRADER, STATE_FRAMES_FILE
+from python.framework.types.run_kind_types import TicksFrom
 from python.framework.types.run_outcome_types import RunOutcome
 
 _RUN = '20261101_000012_4c7e19a2'
@@ -221,8 +225,9 @@ class TestTheRunListCarriesTheVerdict:
     def test_an_ended_session_is_read_once(self, client, tmp_path, monkeypatch):
         self._record(tmp_path, [_frame(StateFrameCause.SHUTDOWN, _ago(60))])
         reads = []
-        monkeypatch.setattr('python.framework.reporting.store.report_store.read_stream_ends',
-                            lambda path: reads.append(path) or read_stream_ends(path))
+        monkeypatch.setattr(
+            'python.framework.reporting.io.run_stream_union_reader.read_stream_ends',
+            lambda path: reads.append(path) or read_stream_ends(path))
         assert [self._recording(client) for _ in range(3)] == ['ended'] * 3
         assert len(reads) == 1, 'an ended recording cannot change, so its stream is read once'
 

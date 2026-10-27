@@ -25,6 +25,7 @@ from python.framework.types.persistence_types import (
     PositionCarryOver,
     RiskBaseline,
 )
+from python.framework.types.run_kind_types import OrdersTo
 
 
 class TestRoundTrip:
@@ -331,6 +332,54 @@ class TestTheReportedDrawdownSurvivesTheDisk:
 
         assert payload.risk_baseline.value == pytest.approx(10_231.5)
         assert payload.account_drawdown.max_equity == pytest.approx(12_000.0)
+
+
+
+class TestTheReadingsCarryTheirRunKind:
+    """
+    The two readings say whose orders they followed (#626), and the stamp never lies about them.
+
+    A successor continues them only when its own orders go the same way. That works only if the
+    stamp always describes the readings beside it: a session that starts its own replaces the
+    carried ones as a whole at its first write, absent ones included, and every other write
+    leaves the stamp alone where it leaves the readings alone.
+    """
+
+    @staticmethod
+    def _both():
+        return dict(risk_baseline=TestTheRiskBaselineSurvivesTheDisk._baseline(),
+                    account_drawdown=TestTheReportedDrawdownSurvivesTheDisk._drawdown())
+
+    def test_the_stamp_survives_the_disk(self, store):
+        store.save(session_key='1641', highest_position_counter=1,
+                   readings_orders_to=OrdersTo.VENUE, **self._both())
+
+        assert store.load().readings_orders_to is OrdersTo.VENUE
+
+    def test_a_write_without_readings_leaves_the_stamp_and_the_readings(self, store):
+        store.save(session_key='1641', highest_position_counter=1,
+                   readings_orders_to=OrdersTo.VENUE, **self._both())
+        store.save(session_key='8b3f', highest_position_counter=2)
+
+        payload = store.load()
+        assert payload.readings_orders_to is OrdersTo.VENUE
+        assert payload.risk_baseline is not None and payload.account_drawdown is not None
+
+    def test_a_replacement_takes_absent_readings_as_absent(self, store):
+        """The boot write of a session that starts fresh: nothing of its own yet, nothing kept."""
+        store.save(session_key='1641', highest_position_counter=1,
+                   readings_orders_to=OrdersTo.SIMULATED, **self._both())
+        store.save(session_key='8b3f', highest_position_counter=2,
+                   readings_orders_to=OrdersTo.VENUE, replace_readings=True)
+
+        payload = store.load()
+        assert payload.risk_baseline is None and payload.account_drawdown is None
+        assert payload.readings_orders_to is OrdersTo.VENUE
+
+    def test_a_document_from_before_has_no_stamp(self, store):
+        store.save(session_key='1641', highest_position_counter=1, **self._both())
+
+        assert store.load().readings_orders_to is None
 
 
 class TestUnreadableDocument:

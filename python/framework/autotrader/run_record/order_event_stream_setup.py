@@ -12,23 +12,24 @@ from typing import List, Tuple
 from python.configuration.app_config_manager import AppConfigManager
 from python.framework.exceptions.report_artifact_errors import ReportArtifactUnreadableError
 from python.framework.logging.abstract_logger import AbstractLogger
-from python.framework.reporting.io.artifact_specs import ORDER_EVENTS_STREAM
 from python.framework.reporting.io.order_event_stream_io import (
     broker_truth_from_row,
     order_event_from_row,
-    read_order_event_stream,
+    order_events_of,
 )
 from python.framework.reporting.io.order_event_stream_writer import OrderEventStreamWriter
-from python.framework.reporting.store.report_store import IO_SUBDIR
 from python.framework.reporting.store.run_index import RunIndex
+from python.framework.store.entry_members.run_dir_reader import RunDirReader
+from python.framework.store.entry_members.run_entry_writer import RunEntryWriter
 from python.framework.trading_env.abstract_trade_executor import AbstractTradeExecutor
 from python.framework.types.live_types.broker_truth_types import BrokerTruthRecord
+from python.framework.types.store_member_types import RunEntryMemberId
 from python.framework.types.trading_env_types.order_event_types import OrderEvent
 
 
 def open_order_event_stream(
     executor: AbstractTradeExecutor,
-    run_dir: Path,
+    run_writer: RunEntryWriter,
     run_id: str,
     unit_name: str,
 ) -> OrderEventStreamWriter:
@@ -43,19 +44,24 @@ def open_order_event_stream(
 
     Args:
         executor: The session's executor, which records every order transition
-        run_dir: The run's own directory
+        run_writer: The session's run writer, whose stream sealer the stream joins (#476)
         run_id: The run the stream belongs to
         unit_name: The unit every line is filed under — the name the session's reports use
 
     Returns:
         The open writer; the session closes it at shutdown
     """
-    # The executor's logger is the session channel, where a failed write has to be heard
-    writer = OrderEventStreamWriter(run_dir / IO_SUBDIR, run_id, unit_name, executor.logger)
+    # The executor's logger is the session channel, where a failed write has to be heard. A
+    # stream that cannot be opened is not caught here: the session's money record would be
+    # missing from its start, so the start ends.
+    appender = run_writer.open_stream(
+        RunEntryMemberId.ORDER_EVENTS, run_id, executor.logger,
+        stops='The stream is incomplete from this event on', required=True)
+    writer = OrderEventStreamWriter(appender, unit_name)
     executor.add_order_event_listener(writer)
     executor.add_broker_truth_listener(writer.write_broker_truth)
     RunIndex(AppConfigManager().get_file_logging_config_object().run_index) \
-        .record_streams(run_id, run_dir)
+        .record_streams(run_id, run_writer.get_run_dir())
     return writer
 
 
@@ -69,8 +75,9 @@ def read_back_order_event_stream(
 
     The events are what the pending-order counters and the check that the stream holds every
     submission are derived from; the broker-truth lines are what the venue-account section is
-    derived from. A stream that cannot be read yields nothing, and says why on the session's
-    channel — the check then reports the submissions it cannot find.
+    derived from. The stream is read across the trading days the session sealed out of it (#476).
+    A stream that cannot be read yields nothing, and says why on the session's channel — the
+    check then reports the submissions it cannot find.
 
     Args:
         run_dir: The run's own directory
@@ -80,11 +87,13 @@ def read_back_order_event_stream(
         (the events, the broker-truth lines), each in the order it was recorded; both empty when
         there is no readable stream
     """
-    path = run_dir / IO_SUBDIR / ORDER_EVENTS_STREAM
-    if not path.exists():
-        return [], []
+    reader = RunDirReader(run_dir)
+    path = reader.path_of(RunEntryMemberId.ORDER_EVENTS)
     try:
-        rows, truths, truncated = read_order_event_stream(path)
+        stream = reader.read_stream(RunEntryMemberId.ORDER_EVENTS)
+        if stream is None:
+            return [], []
+        rows, truths, truncated = order_events_of(stream, path.name, str(path))
     except ReportArtifactUnreadableError as e:
         logger.error(f'❌ The order-event stream could not be read back: {e}')
         return [], []

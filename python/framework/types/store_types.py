@@ -64,6 +64,7 @@ class StoreId(StrEnum):
     type error instead of a silent gap.
     """
     RUNS = 'runs'
+    SWEEPS = 'sweeps'
     RUN_CONFIGS = 'run_configs'
     RUN_PATCHES = 'run_patches'
     RUN_LEDGER = 'run_ledger'
@@ -119,6 +120,8 @@ class StoreStatus:
             commands
         rebuild_loses: What a rebuild of the index cannot restore — empty when it restores
             everything
+        entry_members: How many files one entry may hold, as the store declares them — 0 when an
+            entry is a single file
     """
     store_id: StoreId
     kind: StoreKind
@@ -136,3 +139,4 @@ class StoreStatus:
     stale_reason: Optional[str] = None
     self_healing: bool = False
     rebuild_loses: str = ''
+    entry_members: int = 0

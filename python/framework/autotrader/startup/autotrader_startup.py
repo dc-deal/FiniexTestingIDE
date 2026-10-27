@@ -13,9 +13,8 @@ from python.api.api_contract import API_CONTRACT_VERSION
 from python.configuration.app_config_manager import AppConfigManager
 from python.configuration.market_config_manager import MarketConfigManager
 from python.configuration.sentiment_config_manager import SentimentConfigManager
-from python.framework.autotrader.dry_run_resolver import resolve_orders_to
+from python.framework.autotrader.dry_run_resolver import resolve_orders_to, session_orders_to
 from python.framework.autotrader.live_clipping_monitor import LiveClippingMonitor
-from python.framework.autotrader.session_log_retention import SESSION_LOGS_SUBDIR
 from python.framework.autotrader.startup.autotrader_account_model import AutotraderAccountModel
 from python.framework.autotrader.startup.autotrader_broker_config_setup import create_broker_config
 from python.framework.autotrader.startup.autotrader_data_preparer import build_scenario_from_config
@@ -25,6 +24,12 @@ from python.framework.autotrader.startup.autotrader_warmup_preparator import (
     AutotraderWarmupPreparator,
 )
 from python.framework.bars.bar_rendering_controller import BarRenderingController
+from python.framework.constants.run_layout_constants import (
+    RUN_SUMMARY_LOG_NAME,
+    RUN_TYPE_AUTOTRADER,
+    SESSION_GLOBAL_LOG_NAME,
+    SESSION_LOG_NAME,
+)
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.factory.decision_logic_factory import DecisionLogicFactory
 from python.framework.factory.live_trade_executor_factory import build_live_executor
@@ -45,35 +50,33 @@ from python.framework.trading_env.broker_config import BrokerConfig
 from python.framework.trading_env.decision_trading_api import DecisionTradingApi
 from python.framework.trading_env.live.live_trade_executor import LiveTradeExecutor
 from python.framework.store.broker_config_freeze import freeze_broker_config
+from python.framework.store.entry_members.run_entry_members import run_member_folder
+from python.framework.store.entry_members.run_entry_writer import RunEntryWriter
+from python.framework.store.entry_members.strategy_file_writer import StrategyFileWriter
 from python.framework.store.run_config_store import RunConfigStore
-from python.framework.types.api.report_types import (
-    DataWindow,
-    ParentKind,
-    RunHeader,
-    TicksFrom,
-)
+from python.framework.types.api.report_types import DataWindow, ParentKind, RunHeader
+from python.framework.types.composite_types import RunAxes
 from python.framework.types.run_config_types import RunConfigKind
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
 from python.framework.types.autotrader_types.display_label_cache import DisplayLabelCache
 from python.framework.types.config_types.connection_policy_config_types import ConnectionPolicy
 from python.framework.types.live_types.live_execution_types import TimeoutConfig
-from python.framework.types.log_layout_types import (
-    IO_SUBDIR,
-    RUN_TYPE_AUTOTRADER,
-    WARMUP_HISTORY_FILE,
-)
 from python.framework.types.market_types.market_data_types import Bar
 from python.framework.types.market_types.market_types import TradingContext
 from python.framework.types.process_data_types import ProcessDataPackage
+from python.framework.types.run_kind_types import TicksFrom
 from python.framework.types.run_origin_types import CodeIdentity, RunOrigin
 from python.framework.types.signal_data_types import (
     SignalLiveBoot,
     SignalSourceMode,
     SignalSourceResolution,
 )
+from python.framework.types.store_member_types import RunEntryMemberId
 from python.framework.types.trading_env_types.broker_types import BrokerType
 from python.framework.types.trading_env_types.order_types import OrderType
 from python.framework.types.trading_env_types.stress_test_types import StressTestConfig
+from python.framework.utils.account_currency_resolver import resolve_account_currency
+from python.framework.utils.file_utils import create_directory
 from python.framework.utils.git_info_utils import get_git_commit
 from python.framework.validators.adapter_wiring_validator import REPLAY_TICK_SOURCE
 from python.framework.utils.run_id_utils import mint_run_id, session_key_from_run_id
@@ -229,11 +232,12 @@ def create_autotrader_loggers(
     # Global logger — startup/shutdown/errors
     global_logger = ScenarioLogger(
         scenario_set_name=session_name,
-        scenario_name='global',
+        scenario_name=SESSION_GLOBAL_LOG_NAME,
         run_timestamp=run_timestamp,
         run_id=run_id,
         log_root_override=log_root,
-        file_name_prefix_override='autotrader'
+        log_member=RunEntryMemberId.SESSION_GLOBAL_LOG,
+        run_type=RUN_TYPE_AUTOTRADER
     )
 
     run_dir = global_logger.get_log_dir()
@@ -241,11 +245,12 @@ def create_autotrader_loggers(
     # Summary logger — post-session report (shares run_dir with global)
     summary_logger = ScenarioLogger(
         scenario_set_name=session_name,
-        scenario_name='summary',
+        scenario_name=RUN_SUMMARY_LOG_NAME,
         run_timestamp=run_timestamp,
         run_id=run_id,
         log_root_override=log_root,
-        file_name_prefix_override='autotrader'
+        log_member=RunEntryMemberId.SESSION_SUMMARY_LOG,
+        run_type=RUN_TYPE_AUTOTRADER
     )
 
     # Session logger — tick loop, daily rotated in session_logs/ subdir
@@ -253,22 +258,25 @@ def create_autotrader_loggers(
     # the first tick to match the tick's date (avoids wallclock vs replay mismatch).
     session_logger = ScenarioLogger(
         scenario_set_name=session_name,
-        scenario_name='session',
+        scenario_name=SESSION_LOG_NAME,
         run_timestamp=run_timestamp,
         run_id=run_id,
         log_root_override=log_root,
-        file_name_prefix_override='autotrader',
+        log_member=RunEntryMemberId.SESSION_BOOT_LOG,
+        run_type=RUN_TYPE_AUTOTRADER,
         # The tick-by-tick record of the session — every line carries the run's own time.
         # global and summary do not: they describe the session from outside a moment in it.
         event_time_column=True
     )
 
+    rendered_config_id = ''
     # The run header goes down FIRST, before the session can fail — a crashed session is
     # exactly the one somebody needs to identify afterwards.
     # Only the COMMIT is needed here — `get_git_commit()` costs 68 ms where the full read
     # costs ~2.0 s, and the header has no use for branch / dirty (§42). The dirty state
     # arrives with the code identity, which the caller has already paid for (#551).
     if run_dir:
+        rendered_config_id = _register_rendered_profile(rendered_profile)
         header = RunHeader(
             run_id=run_id,
             start_time=run_timestamp,
@@ -294,7 +302,7 @@ def create_autotrader_loggers(
             # merged in and every schema default filled. Frozen here, at the start, because
             # this header has no update path and a session that dies at its first tick is the
             # one whose configuration somebody will want to read.
-            rendered_config_id=_register_rendered_profile(rendered_profile),
+            rendered_config_id=rendered_config_id,
             app_version=AppConfigManager().get_version(),
             git_commit=get_git_commit(),
             # Always both (#551): an AutoTrader session always reports, so its code identity is
@@ -313,10 +321,11 @@ def create_autotrader_loggers(
         RunIndex(AppConfigManager().get_file_logging_config_object().run_index).register_run(
             header, run_dir)
 
-    # Create session_logs/ subdir (tick loop will create files there)
-    if run_dir:
-        session_logs_dir = run_dir / SESSION_LOGS_SUBDIR
-        session_logs_dir.mkdir(parents=True, exist_ok=True)
+    # Create session_logs/ subdir (tick loop will create files there) — only when log files are
+    # written: the run directory exists either way, the daily logs only with the switch on (#621)
+    if run_dir and AppConfigManager().get_file_logging_config_object().scenario_enabled:
+        create_directory(run_dir / run_member_folder(RunEntryMemberId.SESSION_DAY_LOG),
+                         holds="the session's daily logs")
 
     return AutotraderLoggerBundle(
         global_logger=global_logger,
@@ -324,7 +333,22 @@ def create_autotrader_loggers(
         summary_logger=summary_logger,
         run_dir=run_dir,
         run_id=run_id,
+        rendered_config_id=rendered_config_id,
     )
+
+
+def session_run_axes(config: AutoTraderConfig) -> RunAxes:
+    """
+    The resolved axes of this session's kind of run — the run part of its composite key (#626).
+
+    Args:
+        config: The resolved AutoTrader configuration
+
+    Returns:
+        The axes — raises DryRunConflictError for a profile the dry-run rule refuses
+    """
+    return RunAxes(run_type=RUN_TYPE_AUTOTRADER, ticks_from=_ticks_from(config),
+                   orders_to=session_orders_to(config))
 
 
 def _newest_bar_close(bar_controller: BarRenderingController, symbol: str) -> Optional[float]:
@@ -392,7 +416,7 @@ def setup_pipeline(
 
     # === Phase 3: Resolve trading model ===
     account = _resolve_account_model(
-        config, broker_config, balances, explicit_account_currency)
+        config, broker_config, balances, explicit_account_currency, logger)
 
     # === Phase 4: LiveTradeExecutor ===
     executor, connection_policy = _build_executor(
@@ -418,6 +442,10 @@ def setup_pipeline(
     decision_logic, worker_orchestrator = _build_decision_layer(
         config, logger, decision_logic_factory, trading_context, workers,
         signal_source, live_boot, executor, required_order_types)
+    # The strategy's own files (#621): written at once, into the session's folder of the run
+    run_writer = RunEntryWriter(run_dir, RUN_TYPE_AUTOTRADER) if run_dir else None
+    decision_logic.set_strategy_file_writer(StrategyFileWriter(
+        run_writer, RunEntryMemberId.SESSION_STRATEGY_FILE, logger))
 
     # === Phase 8: BarRenderingController ===
     bar_controller = BarRenderingController(
@@ -430,8 +458,7 @@ def setup_pipeline(
     # === Phase 9: Warmup + Display Label Cache ===
     display_label_cache = _run_warmup(
         config, logger, workers, bar_controller, connection_policy,
-        decision_logic, balances, account, package,
-        record_path=run_dir / IO_SUBDIR / WARMUP_HISTORY_FILE if run_dir else None)
+        decision_logic, balances, account, package, run_writer=run_writer)
 
     # === Phase 10: LiveClippingMonitor ===
     clipping_monitor = LiveClippingMonitor(
@@ -565,6 +592,7 @@ def _resolve_account_model(
     broker_config: BrokerConfig,
     balances: Dict[str, float],
     explicit_account_currency: Optional[str],
+    logger: ScenarioLogger,
 ) -> AutotraderAccountModel:
     """
     Phase 3 — what kind of account this session trades, and in which currency.
@@ -574,6 +602,7 @@ def _resolve_account_model(
         broker_config: The broker config from phase 1
         balances: The balances from phase 1
         explicit_account_currency: The profile's override, or None
+        logger: ScenarioLogger instance — a currency the rule normalized is logged there
 
     Returns:
         The resolved account model
@@ -589,16 +618,26 @@ def _resolve_account_model(
             f"Live: the broker returned no balance for the symbol's currencies."
         )
 
-    # Determine account_currency: explicit override or derive from balances + symbol
+    # The one rule both pipelines share (#615): explicit override, else derived from the
+    # balances and the symbol; spot settles in the quote currency.
     symbol_spec = broker_config.adapter.get_symbol_specification(config.symbol)
-    if explicit_account_currency:
-        account_currency = explicit_account_currency
-    elif symbol_spec.quote_currency in balances:
-        account_currency = symbol_spec.quote_currency
-    elif symbol_spec.base_currency in balances:
-        account_currency = symbol_spec.base_currency
-    else:
-        account_currency = list(balances.keys())[0]
+    resolution = resolve_account_currency(
+        explicit_account_currency, balances,
+        symbol_spec.base_currency, symbol_spec.quote_currency, trading_model)
+    if resolution.account_currency is None:
+        raise ValueError(
+            f"Configuration error: AutoTrader profile '{config.profile_name}' declares no account "
+            f"currency, and its balances {sorted(balances)} hold neither "
+            f"{symbol_spec.base_currency} nor {symbol_spec.quote_currency}.\n"
+            f"Set 'scenario_settings.account_currency', or give a balance in one of the two."
+        )
+    if resolution.normalized_from is not None:
+        logger.warning(
+            f"💱 account_currency '{resolution.normalized_from}' normalized to quote "
+            f"'{resolution.account_currency}' — spot settles in the quote currency, not the base "
+            f"asset (base-denominated P&L would mix units)"
+        )
+    account_currency = resolution.account_currency
 
     return AutotraderAccountModel(
         market_type=market_type,
@@ -685,9 +724,9 @@ def _build_executor(
         spot_mode=account.spot_mode,
         poll_interval_ms=broker_entry.broker_transport.poll_interval_ms,
         connection_policy=connection_policy,
-        # #473 — four characters of the run id's random half. The SESSION owns it: a #476
-        # day record mints its own run id and must not change the key mid-session, which
-        # is why it is derived here and never re-derived downstream.
+        # #473 — four characters of the run id's random half. The SESSION owns it, derived here
+        # once and never re-derived downstream: a key that changed mid-session would leave the
+        # orders sent under the old one looking like a stranger's.
         session_key=session_key_from_run_id(run_id),
         # #503 — the profile's intent. A per-order override still wins over it, and the
         # adapter's capability can refuse it outright.
@@ -849,7 +888,7 @@ def _run_warmup(
     balances: Dict[str, float],
     account: AutotraderAccountModel,
     package: Optional[ProcessDataPackage],
-    record_path: Optional[Path] = None,
+    run_writer: Optional[RunEntryWriter] = None,
 ) -> DisplayLabelCache:
     """
     Phase 9 — fill the workers' history, build the display labels, and refuse a session that
@@ -866,8 +905,8 @@ def _run_warmup(
         account: The account model from phase 3
         package: A mock session's prepared data, whose warmup bars fill the history; None
             for a live-adapter session, which fetches them from the venue
-        record_path: Where the session records the warmup history it started from; None
-            records nothing
+        run_writer: The session's writer, which records the warmup history it started from;
+            None records nothing
 
     Returns:
         The pre-resolved display labels
@@ -879,7 +918,7 @@ def _run_warmup(
         bar_controller=bar_controller,
         connection_policy=connection_policy,
         package=package,
-        record_path=record_path,
+        run_writer=run_writer,
     )
     display_label_cache = warmup_preparator.build_display_label_cache(
         decision_logic=decision_logic,

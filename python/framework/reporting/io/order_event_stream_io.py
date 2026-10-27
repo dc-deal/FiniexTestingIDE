@@ -8,12 +8,12 @@ BrokerTruthRow — what the venue reported when asked — told apart by `record_
 on one counter. Both are the models the API serves, so the file and the route cannot describe a
 line differently.
 
-Live, the session writes each event the moment it is recorded (OrderEventStreamWriter); a backtest
-carries its events back from the scenario subprocesses and the report writes them all at once. Either way the reader
-tolerates a cut-off last line — a session killed while writing it — and says so.
+Live, the session writes each event the moment it is recorded (OrderEventStreamWriter), and seals
+each trading day of it into a day record (#476); a backtest carries its events back from the
+scenario subprocesses and the report writes them all at once. Either way the reader tolerates a
+cut-off last line — a session killed while writing it — and says so.
 """
 
-import json
 from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
@@ -21,9 +21,13 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from pydantic import ValidationError
 
+from python.framework.constants.run_layout_constants import (
+    ORDER_EVENTS_SCHEMA_VERSION,
+    ORDER_EVENTS_STREAM,
+)
 from python.framework.exceptions.report_artifact_errors import ReportArtifactUnreadableError
-from python.framework.reporting.io.artifact_specs import ORDER_EVENTS_STREAM
 from python.framework.reporting.io.jsonl_stream_writer import JsonlStreamWriter
+from python.framework.reporting.io.run_stream_appender import stream_header
 from python.framework.types.api.report_types import (
     BrokerTruthRow,
     OrderEventRow,
@@ -40,15 +44,12 @@ from python.framework.types.live_types.reconciliation_types import (
     BrokerPosition,
     ReconcileDivergence,
 )
+from python.framework.types.run_stream_types import RunStreamLines
 from python.framework.types.trading_env_types.order_event_types import (
     OrderEvent,
     OrderEventPlane,
 )
 from python.framework.utils.time_utils import parse_datetime
-
-ORDER_EVENTS_SCHEMA_VERSION = 2
-_HEADER_KIND = 'header'
-
 
 def order_event_header(run_id: str) -> Dict[str, Any]:
     """
@@ -60,12 +61,7 @@ def order_event_header(run_id: str) -> Dict[str, Any]:
     Returns:
         The header record
     """
-    return {
-        'record_kind': _HEADER_KIND,
-        'stream': 'order_events',
-        'schema_version': ORDER_EVENTS_SCHEMA_VERSION,
-        'run_id': run_id,
-    }
+    return stream_header(ORDER_EVENTS_STREAM, ORDER_EVENTS_SCHEMA_VERSION, run_id)
 
 
 def order_event_row(event: OrderEvent, scenario_name: str) -> OrderEventRow:
@@ -221,7 +217,7 @@ def order_event_from_row(row: OrderEventRow) -> OrderEvent:
 
 
 def write_order_event_stream(
-    io_dir: Path,
+    path: Path,
     run_id: str,
     units: Iterable[Tuple[str, List[OrderEvent]]],
 ) -> Optional[Path]:
@@ -229,7 +225,7 @@ def write_order_event_stream(
     Write a backtest's stream at report time — every unit's events, each in its own order.
 
     Args:
-        io_dir: The run's io/ directory
+        path: The stream file, where the run's writer places it
         run_id: The run the stream belongs to
         units: (scenario name, its events) per unit
 
@@ -239,7 +235,7 @@ def write_order_event_stream(
     units = [(name, events) for name, events in units if events]
     if not units:
         return None
-    writer = JsonlStreamWriter(Path(io_dir) / ORDER_EVENTS_STREAM)
+    writer = JsonlStreamWriter(path)
     try:
         writer.write(order_event_header(run_id))
         for scenario_name, events in units:
@@ -250,62 +246,51 @@ def write_order_event_stream(
     return writer.get_path()
 
 
-def read_order_event_stream(
-    path: Path,
+def order_events_of(
+    stream: RunStreamLines,
+    name: str,
+    location: str,
 ) -> Tuple[List[OrderEventRow], List[BrokerTruthRow], bool]:
     """
-    Read a stream back.
+    The order events and the broker-truth lines of a stream read back.
 
     A last line without its newline that does not parse is a session killed while it was being
-    written: it is left out and reported, everything before it is complete. A broken line
-    anywhere else is a damaged file, and a header naming a schema this reader does not know is
-    a file it cannot read — both are named as ReportArtifactUnreadableError, as are a line that is
-    not a JSON object and a byte that is not UTF-8: the writer escapes everything outside ASCII,
-    so neither can be a line cut off mid-write.
+    written: it is left out and reported, everything before it is complete — and so is a last
+    record whose line was never finished and that does not fit its model. A broken line anywhere
+    else is a damaged file, and a header naming a schema this reader does not know is a file it
+    cannot read — both are named as ReportArtifactUnreadableError, as are a line that is not a JSON
+    object and a byte that is not UTF-8: the writer escapes everything outside ASCII, so neither
+    can be a line cut off mid-write.
 
     Args:
-        path: The stream's file
+        stream: The stream's records, with its header
+        name: What a refusal calls the stream
+        location: Where a refusal says it lies
 
     Returns:
-        (the order events in file order, the broker-truth lines in file order, whether the last
-        line was cut off)
+        (the order events in the order they were written, the broker-truth lines in the order
+        they were written, whether the last line was cut off)
     """
-    try:
-        raw = Path(path).read_text(encoding='utf-8')
-    except UnicodeDecodeError as e:
+    header = stream.header
+    if header is not None and header.get('schema_version') != ORDER_EVENTS_SCHEMA_VERSION:
         raise ReportArtifactUnreadableError(
-            ORDER_EVENTS_STREAM, str(path), f'not UTF-8: {e}') from e
-    lines = raw.split('\n')
-    complete_tail = raw.endswith('\n')
-    if complete_tail:
-        lines = lines[:-1]
+            name, location,
+            f"schema_version {header.get('schema_version')!r}, this reader knows "
+            f'{ORDER_EVENTS_SCHEMA_VERSION}')
     rows: List[OrderEventRow] = []
     truths: List[BrokerTruthRow] = []
-    truncated = False
-    for index, line in enumerate(lines):
-        if not line.strip():
-            continue
-        is_last = index == len(lines) - 1
+    truncated = stream.truncated_tail
+    last = len(stream.records) - 1
+    for index, record in enumerate(stream.records):
         try:
-            record = json.loads(line)
-            if not isinstance(record, dict):
-                raise ReportArtifactUnreadableError(
-                    ORDER_EVENTS_STREAM, str(path), f'line {index + 1}: not a JSON object')
-            if record.get('record_kind') == _HEADER_KIND:
-                if record.get('schema_version') != ORDER_EVENTS_SCHEMA_VERSION:
-                    raise ReportArtifactUnreadableError(
-                        ORDER_EVENTS_STREAM, str(path),
-                        f"schema_version {record.get('schema_version')!r}, this reader knows "
-                        f'{ORDER_EVENTS_SCHEMA_VERSION}')
-                continue
             if record.get('record_plane') == OrderEventPlane.BROKER_TRUTH.value:
                 truths.append(BrokerTruthRow.model_validate(record))
             else:
                 rows.append(OrderEventRow.model_validate(record))
-        except (json.JSONDecodeError, ValidationError) as e:
-            if is_last and not complete_tail:
+        except ValidationError as e:
+            if index == last and stream.last_unterminated:
                 truncated = True
                 continue
             raise ReportArtifactUnreadableError(
-                ORDER_EVENTS_STREAM, str(path), f'line {index + 1}: {e}') from e
+                name, location, f'record {index + 1}: {e}') from e
     return rows, truths, truncated

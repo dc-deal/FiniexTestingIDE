@@ -7,8 +7,8 @@ one function that constructs, wires and decides, and hands back what the session
 
 The capture is two writers on one file (#566): the recorder for the study's own choreography, and
 the projection that copies the live core's order-event stream into it while the executor records.
-Every acceptance study is set up here; what differs between them — its name, its capture file, the
-step after it — the study declares itself.
+Every acceptance study is set up here; what differs between them — its name, which member of the
+run's record its capture is, the step after it — the study declares itself.
 """
 
 from dataclasses import dataclass
@@ -16,12 +16,14 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 from python.framework.acceptance_studies.abstract_acceptance_study import AbstractAcceptanceStudy
+from python.framework.constants.run_layout_constants import RUN_TYPE_AUTOTRADER
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.reporting.acceptance_study_recorder import AcceptanceStudyRecorder
 from python.framework.reporting.acceptance_study_stream_projection import (
     AcceptanceStudyStreamProjection,
 )
 from python.framework.reporting.api_perf_monitor import ApiPerfMonitor
+from python.framework.store.entry_members.run_entry_writer import RunEntryWriter
 from python.framework.trading_env.abstract_trade_executor import AbstractTradeExecutor
 from python.framework.trading_env.live.reconciler import Reconciler
 from python.framework.types.acceptance_study_types.study_capture_types import CaptureCloseReason
@@ -94,7 +96,8 @@ def open_acceptance_study(
         return AcceptanceStudySetup(proceed=False, refusal=banner)
 
     recorder = AcceptanceStudyRecorder(
-        output_path=str(run_dir / decision_logic.get_capture_name()),
+        output_path=str(RunEntryWriter(run_dir, RUN_TYPE_AUTOTRADER).path_of(
+            decision_logic.get_capture_member())),
         profile=unit_name,
         symbol=symbol,
         phase_ids=decision_logic.get_phase_ids(),

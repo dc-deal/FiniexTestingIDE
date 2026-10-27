@@ -2,9 +2,9 @@
 Report store (#391) — resolves persisted run-report artifacts under the run tree.
 
 The API's read-only source: given a run id, find the run's artifact (written by either pipeline
-into its run directory), read it, and — where the API filters — apply the shared filter. The
-report artifacts live in the run's `io/` subfolder (`IO_SUBDIR`). A run is located through the
-run index, never by walking the tree — a directory means nothing to this class (#475).
+into its run directory), read it, and — where the API filters — apply the shared filter. Where a
+file lies is the run store's declaration, asked through the run entry reader. A run is located
+through the run index, never by walking the tree — a directory means nothing to this class (#475).
 
 ONE typed getter serves every artifact (#486). It used to be one hand-written getter per
 artifact, fifteen of them differing in three tokens each; the artifact spec carries those three
@@ -19,6 +19,10 @@ from typing import Any, Dict, List, Optional, TypeVar
 from pydantic import BaseModel, ValidationError
 
 from python.configuration.app_config_manager import AppConfigManager
+from python.framework.constants.run_layout_constants import (
+    STATE_FRAMES_SCHEMA_VERSION,
+    STATE_FRAMES_STREAM,
+)
 from python.framework.exceptions.report_artifact_errors import ReportArtifactUnreadableError
 from python.framework.fixture_catalog.fixture_catalog import entry_ids
 from python.framework.fixture_catalog.fixture_production_store import (
@@ -26,21 +30,19 @@ from python.framework.fixture_catalog.fixture_production_store import (
     FixtureProductionStore,
 )
 from python.framework.reporting.io.artifact_specs import (
-    ORDER_EVENTS_STREAM,
     ORDER_HISTORY_ARTIFACT,
     TRADE_HISTORY_ARTIFACT,
 )
-from python.framework.reporting.io.order_event_stream_io import read_order_event_stream
-from python.framework.reporting.io.report_artifact_io import ArtifactSpec, read_artifact
+from python.framework.reporting.io.order_event_stream_io import order_events_of
+from python.framework.reporting.io.report_artifact_io import ArtifactSpec
 from python.framework.reporting.io.report_filters import (
     filter_order_history_report,
     filter_trade_history_report,
 )
-from python.framework.reporting.io.run_header_io import RUN_HEADER_ARTIFACT, read_run_header
-from python.framework.reporting.io.run_stream_reader import read_stream_ends
 from python.framework.reporting.store.run_index import RunIndex
 from python.framework.reporting.store.run_list_figures import get_run_list_figures
 from python.framework.reporting.store.served_run_header import served_run_header
+from python.framework.store.entry_members.run_entry_reader import RunEntryReader
 from python.framework.store.run_config_store import RunConfigStore
 from python.framework.types.api.report_types import (
     OrderEventsReport,
@@ -52,12 +54,10 @@ from python.framework.types.api.report_types import (
     TradeHistoryReport,
 )
 from python.framework.types.api.state_frame_types import (
-    STATE_FRAMES_SCHEMA_VERSION,
-    STATE_FRAMES_STREAM,
     StateFrame,
     StateFrameStreamEnds,
 )
-from python.framework.types.log_layout_types import IO_SUBDIR, STATE_FRAMES_FILE
+from python.framework.types.store_member_types import RunEntryMemberId
 
 T = TypeVar('T', bound=BaseModel)
 
@@ -77,6 +77,7 @@ class ReportStore:
         index_path = Path(
             run_index_path or AppConfigManager().get_file_logging_config_object().run_index)
         self._index = RunIndex(index_path)
+        self._reader = RunEntryReader(index_path)
         self._ledger_dir = Path(ledger_dir or AppConfigManager().get_run_ledger_path())
         # Beside the index it describes runs of, wherever that index is (#576).
         self._fixture_record = FixtureProductionStore(index_path.parent / PRODUCTION_RECORD_FILE,
@@ -130,13 +131,14 @@ class ReportStore:
         Returns:
             The decoded report, or None when the run has no such artifact
         """
-        path = self._resolve(run_id, spec.filename)
-        if path is None:
+        directory = self._reader.directory(run_id)
+        if directory is None:
             return None
         try:
-            return read_artifact(path, spec)
+            return directory.read_section(spec)
         except ValidationError as e:
-            raise ReportArtifactUnreadableError(spec.filename, str(path), str(e)) from e
+            raise ReportArtifactUnreadableError(
+                spec.filename, str(directory.section_path(spec)), str(e)) from e
 
     def get_trade_history(
         self,
@@ -194,9 +196,10 @@ class ReportStore:
         """
         Read a run's order-event stream, optionally narrowed to one unit or one order (#362).
 
-        Read whenever the file exists — a live session's stream grows from its first order, and
+        Read whenever the stream exists — a live session's stream grows from its first order, and
         a session that died before its report has one, which is when it is worth the most. A
-        cut-off last line is left out and reported on the report rather than failing the read.
+        session's stream is read across the trading days it sealed out of it (#476). A cut-off
+        last line is left out and reported on the report rather than failing the read.
 
         Narrowed to one order, the broker-truth lines drop out: each one is the venue's whole
         account at a moment, never a step of one order.
@@ -209,10 +212,11 @@ class ReportStore:
         Returns:
             The report, or None when the run has no stream
         """
-        path = self._resolve(run_id, ORDER_EVENTS_STREAM)
-        if path is None:
+        stream = self._reader.read_stream(run_id, RunEntryMemberId.ORDER_EVENTS)
+        if stream is None:
             return None
-        rows, truths, truncated = read_order_event_stream(path)
+        path = self._reader.directory(run_id).path_of(RunEntryMemberId.ORDER_EVENTS)
+        rows, truths, truncated = order_events_of(stream, path.name, str(path))
         if scenario_name is not None:
             rows = [row for row in rows if row.scenario_name == scenario_name]
             truths = [truth for truth in truths if truth.scenario_name == scenario_name]
@@ -228,9 +232,10 @@ class ReportStore:
         A run's state-frame stream at its two ends — its first frame and its latest (#611).
 
         Read without the lines between, whatever the stream's length, and while the session still
-        writes it. A header naming another stream or a schema this reader does not know, records
-        without a header, and a frame that does not fit the model make the stream unreadable
-        rather than half-read.
+        writes it — across the trading days it sealed out of it (#476), so right after a seal the
+        latest frame is the sealed day's last. A header naming another stream or a schema this
+        reader does not know, records without a header, and a frame that does not fit the model
+        make the stream unreadable rather than half-read.
 
         Args:
             run_id: The run's identity
@@ -238,14 +243,14 @@ class ReportStore:
         Returns:
             The two ends, or None when the run records no state frames
         """
-        path = self._resolve(run_id, STATE_FRAMES_FILE)
-        if path is None:
+        ends = self._reader.read_stream_ends(run_id, RunEntryMemberId.STATE_FRAMES)
+        if ends is None:
             return None
-        ends = read_stream_ends(path)
+        path = self._reader.directory(run_id).path_of(RunEntryMemberId.STATE_FRAMES)
         if ends.header is None:
             if ends.last is not None:
                 raise ReportArtifactUnreadableError(
-                    STATE_FRAMES_FILE, str(path), 'records without a header line')
+                    path.name, str(path), 'records without a header line')
             # Opened, and its header not yet on the disk: no frame yet
             return StateFrameStreamEnds(unit_name=None, cadence_timeframe=None, cadence_s=None,
                                         first=None, last=None, truncated_tail=ends.truncated_tail)
@@ -253,7 +258,7 @@ class ReportStore:
         version = ends.header.get('schema_version')
         if stream != STATE_FRAMES_STREAM or version != STATE_FRAMES_SCHEMA_VERSION:
             raise ReportArtifactUnreadableError(
-                STATE_FRAMES_FILE, str(path),
+                path.name, str(path),
                 f'its header names stream {stream!r} at schema_version {version!r}; this reader '
                 f'knows {STATE_FRAMES_STREAM!r} at {STATE_FRAMES_SCHEMA_VERSION}')
         try:
@@ -263,7 +268,7 @@ class ReportStore:
             first = StateFrame.model_validate(ends.first) if ends.first is not None else None
             last = StateFrame.model_validate(ends.last) if ends.last is not None else None
         except (KeyError, TypeError, ValueError) as e:
-            raise ReportArtifactUnreadableError(STATE_FRAMES_FILE, str(path), str(e)) from e
+            raise ReportArtifactUnreadableError(path.name, str(path), str(e)) from e
         return StateFrameStreamEnds(unit_name=unit_name, cadence_timeframe=cadence_timeframe,
                                     cadence_s=cadence_s, first=first, last=last,
                                     truncated_tail=ends.truncated_tail)
@@ -316,46 +321,20 @@ class ReportStore:
             read raises ReportArtifactUnreadableError; one that is gone from a run the index still
             lists raises FileNotFoundError, because that is a different fault with its own remedy
         """
-        run_dir = self._index.run_dir(run_id)
-        if run_dir is None:
+        directory = self._reader.directory(run_id)
+        if directory is None:
             return None
         try:
-            header = read_run_header(run_dir / RUN_HEADER_ARTIFACT)
+            header = directory.read_header()
         except ValidationError as e:
             # The reason is served, so it names the run and the fields that failed and never a
             # value: Pydantic's own text quotes the input, and a header's input holds paths.
             failed = ', '.join('.'.join(str(part) for part in error['loc']) or error['type']
                                for error in e.errors()[:5])
             raise ReportArtifactUnreadableError(
-                RUN_HEADER_ARTIFACT, f'run {run_id}', f'fields that do not match: {failed}') from e
+                directory.path_of(RunEntryMemberId.HEADER).name, f'run {run_id}',
+                f'fields that do not match: {failed}') from e
         return served_run_header(header)
-
-    def _resolve(self, run_id: str, artifact: str) -> Optional[Path]:
-        """
-        Find a named report artifact through the run index.
-
-        The lookup is an EXACT match against the index, and that is the guard. The previous
-        implementation interpolated the id — which arrives from a URL — into a glob pattern,
-        where `'*'` is a valid-looking id that matches the first run in the tree. Membership in
-        a table of known ids is strictly stronger than a shape check: a shape accepts anything
-        well-formed, including ids that do not exist.
-
-        The index also replaces the depth-dependent search this used to need: a sweep's
-        combination sat one level deeper than a standalone run, so the lookup had to know the
-        shape of the tree. It now looks up a row.
-
-        Args:
-            run_id: The run's identity
-            artifact: The artifact's file name
-
-        Returns:
-            The artifact path, or None when the run is unknown or carries no such artifact
-        """
-        run_dir = self._index.run_dir(run_id)
-        if run_dir is None:
-            return None
-        path = run_dir / IO_SUBDIR / artifact
-        return path if path.exists() else None
 
 
 def _figure_fields(figures: RunListFigures) -> Dict[str, Any]:

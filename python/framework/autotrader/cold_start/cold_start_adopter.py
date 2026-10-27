@@ -18,7 +18,7 @@ a boot step, not a reconcile cycle, and tying it to `reconciliation.enabled` wou
 disappear exactly where it is cheapest to exercise — a mock session.
 """
 
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Callable, Dict, List, Optional, Set, Tuple
 
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.logging.abstract_logger import AbstractLogger
@@ -28,6 +28,8 @@ from python.framework.types.autotrader_types.cold_start_types import (
     AdoptedOrder,
     ColdStartSituation,
     ColdStartVerdict,
+    ConfigurationComparison,
+    ConfigurationVerdict,
     SkippedOrder,
     SkipReason,
 )
@@ -37,14 +39,25 @@ from python.framework.types.live_types.live_execution_types import (
     BrokerResponse,
 )
 from python.framework.types.live_types.reconciliation_types import BrokerOrder
-from python.framework.types.persistence_types import PositionCarryOver
+from python.framework.types.persistence_types import ColdStartPayload, PositionCarryOver
 from python.framework.types.trading_env_types.order_types import (
     RESTING_ORDER_TYPES,
     OrderDirection,
 )
+from python.framework.types.validation_types import ValidationFinding
 from python.framework.utils.broker_asset_utils import normalize_broker_asset
 from python.framework.utils.connection_ladder import run_with_ladder
 from python.framework.utils.run_id_utils import parse_client_order_id
+from python.framework.validators.carry_over_configuration_validator import (
+    accepted_notice,
+    accepts_composite,
+    composite_change_accepted_finding,
+    composite_change_refusal,
+    configuration_not_compared_finding,
+    new_stretch_notice,
+    not_compared_notice,
+    partner_notice,
+)
 
 # Below this, a difference between the book and the venue's balance is float noise rather
 # than a fact. One satoshi is the smallest unit any supported venue settles in, so a real
@@ -89,6 +102,22 @@ def _protection_filled(response: Optional[BrokerResponse]) -> bool:
     return bool(response.filled_lots and response.filled_lots > 0)
 
 
+def _describe_order(order: BrokerOrder) -> str:
+    """
+    One resting order as a refusal names it.
+
+    Args:
+        order: The order as the venue reports it
+
+    Returns:
+        For example 'a sell limit of 0.004 at 71200.0'
+    """
+    side = 'buy' if order.direction == OrderDirection.LONG else 'sell'
+    kind = order.order_type.value.replace('_', ' ')
+    price = order.stop_price if order.stop_price is not None else order.price
+    return f'a {side} {kind} of {order.lots:g} at {price}'
+
+
 class ColdStartAdopter:
     """
     Reconstructs this bot's resting orders from broker truth, once, before the tick loop.
@@ -120,6 +149,9 @@ class ColdStartAdopter:
         decision_logic: Optional[AbstractDecisionLogic] = None,
         session_end_orders: str = 'cancel',
         exclusive_account: bool = False,
+        compare_configuration: Optional[
+            Callable[[ColdStartPayload], ConfigurationComparison]] = None,
+        accept_composite_change: Optional[str] = None,
     ):
         self._executor = executor
         self._store = store
@@ -145,6 +177,41 @@ class ColdStartAdopter:
         # attribute it or not. The carry-over uses this to protect a key that a resting order
         # still depends on from being evicted by newer sessions.
         self._venue_session_keys: Set[str] = set()
+        # #626: holds this session's configuration against the one the claims it takes over
+        # were made under, and the composite one start accepts (--accept-composite-change <key>)
+        self._compare_configuration = compare_configuration
+        self._accept_composite_change = accept_composite_change
+        self._configuration_comparison: Optional[ConfigurationComparison] = None
+        self._configuration_finding: Optional[ValidationFinding] = None
+        self._acceptance_notice = ''
+
+    def get_configuration_comparison(self) -> Optional[ConfigurationComparison]:
+        """
+        What the configuration check found (#626).
+
+        Returns:
+            The comparison; None when none was made — a dry run, or no comparison wired
+        """
+        return self._configuration_comparison
+
+    def get_configuration_finding(self) -> Optional[ValidationFinding]:
+        """
+        The finding the configuration check leaves on the run's record (#626).
+
+        Returns:
+            A warning when a change was accepted, or what was taken over could not be compared;
+            None otherwise
+        """
+        return self._configuration_finding
+
+    def get_acceptance_notice(self) -> str:
+        """
+        The notice of an accepted change, for the console before the first order (#626).
+
+        Returns:
+            The notice; '' when no change was accepted
+        """
+        return self._acceptance_notice
 
     def get_situation(self) -> Optional[ColdStartSituation]:
         """
@@ -290,6 +357,11 @@ class ColdStartAdopter:
         # hook may only lift the one refusal the framework makes for lack of an ANSWER
         # (#493), and this one is made for lack of exclusivity, which no algo can supply.
         if not self._check_exclusivity(skipped):
+            return False
+
+        # #626 — here for the same reason as the exclusivity check: the situation is on file and
+        # nothing is applied yet, so a refused boot leaves the executor as it found it.
+        if not self._check_configuration(payload, ours, book):
             return False
 
         if ours:
@@ -860,6 +932,101 @@ class ColdStartAdopter:
             price=order.price,
             key_is_ours=key_is_ours,
         )
+
+    def _check_configuration(
+        self,
+        payload: ColdStartPayload,
+        ours: List[Tuple[str, BrokerOrder]],
+        book: List[PositionCarryOver],
+    ) -> bool:
+        """
+        Refuse to continue what is open under another composite than the one that opened it (#626).
+
+        A changed configuration with nothing of this bot open begins a new stretch and starts. A
+        change while our orders rest or the book holds a position refuses, unless this one start
+        names the composite it accepts — `--accept-composite-change <key>`, the key the refusal
+        printed; a key that names another composite refuses too. A declared partner's claims, and
+        claims that cannot be compared, start with a note — a store that cannot answer must not
+        lock the bot out of its own position.
+
+        Args:
+            payload: The carry-over this step read
+            ours: Our resting orders at the venue
+            book: The position notes this session would restore
+
+        Returns:
+            False when the start must not go on
+        """
+        if self._compare_configuration is None:
+            return True
+        comparison = self._compare_configuration(payload)
+        self._configuration_comparison = comparison
+        still_open = self._describe_open(ours, book)
+        verdict = comparison.verdict
+        if verdict is ConfigurationVerdict.CHANGED and still_open:
+            if not accepts_composite(self._accept_composite_change, comparison):
+                return self._refuse(composite_change_refusal(
+                    comparison, still_open, self._accept_composite_change))
+            self._acceptance_notice = accepted_notice(comparison, still_open)
+            self._logger.info(self._acceptance_notice)
+            self._configuration_finding = composite_change_accepted_finding(
+                comparison, still_open)
+            return True
+        if verdict is ConfigurationVerdict.CHANGED:
+            self._logger.info(new_stretch_notice(comparison))
+            self._note_nothing_to_accept('nothing of this bot is open at the venue')
+        elif verdict is ConfigurationVerdict.PARTNER:
+            self._logger.info(partner_notice(comparison))
+            self._note_nothing_to_accept('a declared continuation is not compared')
+        elif verdict is ConfigurationVerdict.NOT_COMPARED:
+            self._logger.info(not_compared_notice(comparison))
+            if still_open:
+                self._configuration_finding = configuration_not_compared_finding(comparison)
+            self._note_nothing_to_accept('the configuration could not be compared')
+        elif verdict is ConfigurationVerdict.NOTHING_CARRIED:
+            self._note_nothing_to_accept('the carry-over holds nothing to compare against')
+        else:
+            self._note_nothing_to_accept('the configuration defines the same composite')
+        return True
+
+    def _note_nothing_to_accept(self, why: str) -> None:
+        """
+        Say that `--accept-composite-change` was given and changed nothing — the header still
+        records that it was typed.
+
+        Args:
+            why: Why there was nothing to accept
+        """
+        if self._accept_composite_change:
+            self._logger.info(f'🧬 --accept-composite-change {self._accept_composite_change}: '
+                              f'nothing to accept — {why}.')
+
+    def _describe_open(
+        self,
+        ours: List[Tuple[str, BrokerOrder]],
+        book: List[PositionCarryOver],
+    ) -> List[str]:
+        """
+        What this bot still holds at the venue, in the words a refusal shows.
+
+        Args:
+            ours: Our resting orders at the venue
+            book: The position notes this session would restore
+
+        Returns:
+            One line per position, one for the resting orders; empty when nothing is open
+        """
+        lines: List[str] = []
+        if book:
+            base = self._executor.broker.get_symbol_specification(self._symbol).base_currency
+            for record in book:
+                lines.append(
+                    f'a {record.direction} position of {record.lots * record.contract_size:g} '
+                    f"{base} ({record.position_id}, this bot's position book)")
+        if ours:
+            orders = ', '.join(_describe_order(order) for _, order in ours)
+            lines.append(f'{len(ours)} resting order(s) of ours — {orders}')
+        return lines
 
     def _check_exclusivity(self, skipped: List[SkippedOrder]) -> bool:
         """

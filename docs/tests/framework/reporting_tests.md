@@ -35,7 +35,8 @@ Two rules the suite exists to defend:
 | **Store & warnings** | `test_report_store` · `test_warnings_errors_report` · `test_run_list_figures` | the cross-run ledger; that a CSV cell holds the value the JSON and the API serve — `partial`, never `CloseType.PARTIAL`; that a `run_group` does not hide a run from the index or from any report route; the tiered warning model (#395); that an operator Ctrl+C is told apart from a crash, both of which arrive as `shutdown_mode='emergency'`; that a finding's origin (`check` / `domain`) reaches `WarningRow`, that an advisory sharing a result with a rejection is kept, and that a Tier-2 log-pot row claims no origin; that the outcome counts each channel the same way in both pipelines although their warning rows differ; that the run list keeps its three states apart — no ledger record (null), closed without figures ([]), figures per currency — and reads the ledger again only after it changed |
 | **Run origin & code identity** | `test_git_repo_identity` · `test_code_identity` · `test_run_origin` · `test_certificate_tree_state` | see below |
 | **Run streams** | `test_run_stream_reader` | the two ends of a run stream, read without its middle (#611): the header, the first record and the last complete one; a stream with its header only, an empty file, a file without a header; a line cut off mid-write left out and reported, a record whose newline was not written kept; a last line longer than one step back from the end; a long stream read at its two ends only (the bytes read are counted); a complete line that does not parse, a line that is not an object and a byte that is not UTF-8 named as a damaged file |
-| **Run streams** | `test_run_stream_appender` | the appender a run stream is written through (#579, the hot half of #476's day records): a header line naming the stream, its version and its run; every record readable while the stream is open, a None value left out; the first failure — at a write or at the open — said once on the session's channel, after which nothing more is written; a killed writer leaves every record it wrote before the kill |
+| **Run streams** | `test_run_stream_appender` | the appender a run stream is written through (#579): a header line naming the stream, its version and its run; every record readable while the stream is open, a None value left out; the first failure — at a write or at the open — said once on the session's channel, after which nothing more is written; a killed writer leaves every record it wrote before the kill |
+| **Run streams** | `test_run_stream_day_records` | a session's streams sealed per trading day (#476): the day moves into its day record with every line as written and the file starts afresh, naming the next day; the footer says what the day holds; a day with no record is sealed too; a stream opened after a seal names the running day, one opened before names none, and a backtest's never; a stream that stopped writing is not sealed; a day that cannot be sealed is said once and goes with the next, and so does a day whose file cannot be started afresh — its record removed again, the stream still written; a record that cannot even be removed loses no line; a session killed between the day record and the fresh file, and a read a seal overtakes, read each line once (the rule that leaves a sealed file out is shown to matter: switched off, these go red); a writer on another thread never writes into a seal; the union equals the stream unsealed over several seal positions; a time window, and a day outside it not opened; the two ends right after a seal and across days; the index from the footers without reading a record, each footer read once, the running file read once — a seal between two reads of it would count a day twice, shown both by a seal at the listing and one between the reads; a last line cut off before the seal left out, with the footer, the read, the ends and the order-event report each still saying so; a stream opened after the last seal is not due a day record; a record's time is the first of its time fields that reads; the tick stream record and each diagnostics sink sealed into a run directory held to the declaration |
 | **Persistence contract** | `test_report_io_encoding` | artifacts are UTF-8 on disk and read back as bytes, so neither writer nor reader lets its locale pick the codec — plus a drift guard that no IO unit reintroduces the platform default |
 
 ## `test_run_identity.py` — the id, the header, the derived index (#475)
@@ -52,7 +53,8 @@ received instead of trusting the route it asked on.
 | `TestTheIdIsDistinctAndStillReadable` | two runs in the same second get different ids; the timestamp prefix keeps byte order equal to time order (the index sorts on it, the sweep ranking tie-breaks on it); a taken id is re-minted rather than joined; **the id stays inside `[0-9a-f_]`** — a consumer interpolates it into a URL path unencoded, and that safety is now asserted rather than merely true |
 | `TestTheHeaderSurvivesTheRunItDescribes` | the header round-trips, and it stands alone — written at the run's START, so a run that crashes before producing anything is still identifiable |
 | `TestTheParentIdSaysWhatKindOfParentItIs` | `parent_id` holds two different things of one shape — a sweep id and a deployment id — so the header carries `parent_kind` beside it. Pins the kind through a register and a rebuild, that a standalone run names neither, and that a header written before the field still reads: it keeps its parent and reports an unknown kind, because refusing the pair would make the index unreadable for its own history |
-| `TestTheIndexIsDerivedAndRebuildable` | delete the index, rebuild from the headers, get the identical result. That is the property the design rests on — an index that could not be rebuilt would be a second source of truth. Also: a run is addressable without walking the tree (the sweep combination sits one level deeper and the lookup no longer has to know — it is a `simulation` with a `parent_id`, not a type of its own), an unknown or crafted id resolves to nothing (index membership replaced a shape check — it is the stronger guard, since it accepts only ids that exist), and the run's **artifact list** is told, never inferred — the list rather than a boolean, because the two pipelines produce different sets (measured: an AutoTrader session writes fewer files than a sim run), so a consumer that only learned "yes, some" would still be guessing which |
+| `TestTheIndexIsDerivedAndRebuildable` | delete the index, rebuild from the headers, get the identical result. That is the property the design rests on — an index that could not be rebuilt would be a second source of truth. Also: a run is addressable without walking the tree (the sweep combination sits one level deeper and the lookup no longer has to know — it is a `simulation` with a `parent_id`, not a type of its own), an unknown or crafted id resolves to nothing (index membership replaced a shape check — it is the stronger guard, since it accepts only ids that exist), and the run's **artifact list** is told, never inferred — the list rather than a boolean, because the two pipelines produce different sets (measured: an AutoTrader session writes fewer files than a sim run), so a consumer that only learned "yes, some" would still be guessing which. A header that cannot be read is left out of a rebuild, and the rest of the runs are indexed |
+| `TestTheIndexListsOnlyWhatTheStoreDeclares` | #621: `artifacts` and `stream_files` are allow-lists drawn from the run store's declaration. Every declared file in `io/` lands in its own column and the records a session writes as it runs in neither; a file nobody declared — the temporary file of an interrupted atomic write among them — is listed nowhere, and such a file alone is not a report |
 | `TestTheRunSaysWhatItIsFor` | #576: `run_purpose` and `report_contract` survive the index and its rebuild; a header older than the field takes its configuration's CURRENT declaration in the index — never written back into the header — and reads as unknown when that configuration is gone; a header's own purpose is never replaced by a declaration |
 
 
@@ -153,7 +155,7 @@ around the refusals first.
 | Class | What it pins |
 |---|---|
 | `TestWhatMayNeverBeDeleted` | a run with `reporting=expected` and no artifacts survives `--keep-last 1` beside a newer sibling — it crashed before reporting, and that makes it the only record of the failure. Same for a run holding `field_study.jsonl`: raw evidence behind a real-money release certificate. And the preview leaves the tree byte-identical, because showing must be free of consequence |
-| `TestTheSelectors` | `--keep-last` counts per scenario set, not across the tree · the always-on `reporting=none` criterion · orphans stay untouched without `--orphans` · a run's own `io/` is never mistaken for an orphan |
+| `TestTheSelectors` | `--keep-last` counts per scenario set, not across the tree · the always-on `reporting=none` criterion · orphans stay untouched without `--orphans` · a run's own `io/` is never mistaken for an orphan · a header-less directory holding a run's whole declared footprint is ONE orphan, because the pruner takes a run's own directories from the declaration (#621) |
 | `TestASweepIsAFamily` | **the sweep is the unit, never the combination.** `--keep-last 1` over two 3-combination sweeps deletes all three of the older one and none of the newer — never 1 of 3, because a half-pruned sweep leaves a `ranked.csv` ranking runs that no longer exist. The sweep directory goes with its last combination, and is never itself classed as an orphan although it legitimately has no header |
 | `TestKeepLastCountsPerParentKind` | **the quota is per KIND, because a shared quota belongs to the louder population.** Both parent ids are a prefix plus a timestamp, and sorting them together sorts by the prefix — so `sweep_` outranks `deploy_` on every comparison and a deployment could never be spared while enough sweeps existed, however recent it was. Two sweeps and one deployment under `--keep-last 2`: the AutoTrader sessions survive although they are the newest runs in the tree. The second case shows the selector still SELECTS — the older parent of each kind goes |
 | `TestAnEmptyOrStaleTree` | the two states a hand-cleared tree reaches. An empty tree is a no-op that still writes an index. And index rows whose directory is gone are **reported** — the rebuild drops them either way, so a preview that showed an empty report while three rows were about to vanish would be lying by omission. Found by trying it, not by design |
@@ -178,13 +180,22 @@ BOTH event sources. The suite has two halves because that fact has two consequen
 
 The BEHAVIOUR half pins that a day flip seals exactly once and at the market's own boundary: a
 forex day flips at 17:00 New York (21:00 UTC in summer, 22:00 in winter) and NOT at midnight, a feed
-that goes quiet for two days still seals on the tick that returns, and a unit with no anchor books
-nothing at all.
+that goes quiet for two days books both days on the tick that returns, and a unit with no anchor
+books nothing at all. Since #476 it also pins where a day ends and which days have a period:
+`TestTheSealIsStampedWithTheBoundary` — a late check still closes the day at midnight, and the seal
+reads the account before the crossing event, whose move opens the new day's band;
+`TestEveryTradingDayGetsItsPeriod` — a day the run never heard from has its row (`tick_count` 0,
+the valuation it was left at), a forex weekend and a holiday book no row and leave no hole (the next
+period opens at the Friday close), a backtest silent over the weekend books the same rows as a
+session whose heartbeat crossed it, a forex session started on Saturday books Sunday's session, and
+a market that never closes books its weekend. `TestThePeriodsOrderCounts`: a late check that files
+several days at once books the orders to the day that was running, the days it passed over count
+none, and the last period takes the rest.
 
-The COST half pins that an ordinary tick does not convert a timezone. It counts the calls to
-`trading_day_of` by replacing it in the recorder's namespace: twenty-four ticks across one day
-must produce exactly ONE conversion, and forty-eight hours of ticks exactly two — one to open a
-period and one to seal it.
+The COST half pins that an ordinary tick does not convert a timezone. It counts the calls to every
+conversion the recorder makes — `trading_day_of`, `boundary_opening`, `trade_date_of` — by
+replacing them in the recorder's namespace: after the opening tick, a day of ticks adds none, and
+after a seal the rest of the next day adds none.
 
 That half is not premature optimisation. Measured 2026-09-22, `trading_day_of` costs 1.52 µs at
 UTC and 1.87 µs at America/New_York, so asking it per tick spends 2.3-2.8 s of a 1.5-million-tick
@@ -195,9 +206,14 @@ mutation-checked, the two cost tests go red against the uncached recorder (24 co
 of 1) while all five behaviour tests stay green.
 
 `TestWhatAPeriodOpenedWith` pins the opening equity: the previous period's close, or a unit's
-first observed value — and the SAME answer whether the caller observes before its boundary check,
-as both pipelines do on a tick, or checks without observing, as a heartbeat seal does. A first
-period nothing was observed in opens with nothing, never with a zero.
+first observed value — and the SAME answer whether the caller observes before its boundary check
+or checks first, as both pipelines do on a tick since #476. A first period nothing was observed in
+opens with nothing, never with a zero. It also pins the band: the next period's band starts at the
+value the seal read, the closing value lies inside its own band even when a heartbeat fill moved
+the account without a tick, an unread seal value opens the next period with nothing, and a period
+that valued nothing at all has no band. `TestTheTickCount` pins `tick_count`: every tick counts,
+valued or not, and the count starts again with each period. `TestEverySealIsHandedOn` also pins
+that a listener reads the day that has begun — what the daily loss limit rolls on.
 
 ## `test_booking_period_builder.py` — one booking period, from the records inside it
 
@@ -221,6 +237,12 @@ low of 90 — so `peak − drawdown` answers 110, a value that never occurred.
 period CLOSED add up to its `total_fees`, the measured spread stands apart, and a trade closed the
 next day takes its costs with it.
 
+`TestASessionsEndIsInsideItsLastPeriod` pins the one inclusive end (#476): a close on a session's
+last instant belongs to its last period, while the same trade against a day's boundary stays with
+the day that opens there. `TestAnUnmeasuredValueStaysUnmeasured` pins that an unread equity and a
+curve without its first valuation stay None, and `TestTheLogLine` that the seal's line names its
+tick count and says an unread equity rather than printing 0.00.
+
 ## `test_booking_periods_report.py` — the table, and the line that makes it trustworthy
 
 The reconciliation is the point. A column of period summaries is believed because it agrees with
@@ -242,6 +264,12 @@ taking the last row's.
 `TestWhatTheTableShows::test_a_period_carries_the_running_decline_and_what_was_open` pins the four
 fields a period CARRIES beside what it did (contract 35): the account's running decline and its
 share, and what was still open at the seal.
+
+`TestAPeriodThatValuedNothing` pins a period sealed before anything could be valued (#476): its row
+carries null equity, band and decline, the report's deepest decline is null, and the table prints a
+dash rather than 0.00 — or failing on the missing number, which the renderer did before.
+`TestADayThatNeverFellReadsZero` pins the other end: a measured decline of zero prints `0.00`, never
+the `-0.00` that `-abs(0.0)` gives.
 
 ## `test_signal_report.py` — two planes, and what each may claim
 
@@ -320,6 +348,9 @@ compared byte for byte across the move.
 | `test_an_unreadable_timestamp_yields_no_gap_rather_than_a_wrong_one` | an unmeasurable duration reported as unmeasured costs a blank; reported as a figure it costs an investigation |
 | `test_the_rows_carry_the_running_figure` | the drawdown column is CUMULATIVE — `max()` is the deployment's reduction and a sum double-counts |
 | `TestWhereTheOrdersWent` | each session says whether its orders went to the venue, and a switch from a rehearsal to real money is marked; a mix alone raises the advisory, with one strategy and one operation; the overview lists both values and marks the deployment changed; a row recorded before the field says nothing and changes nothing; the console prints the mix above the table, the separator and the list column |
+| `TestASessionEndsWithTheRowOfItsClose` | a session books its days while it runs (#476): with only sealed days it has no `ended` and no length, the row of its close ends it, and the gap after a session that never closed is measured between the starts and marked; the heading names the sessions the ledger holds and the never-completed ones without adding the two |
+| `TestADeclineIsShownNegativeAndZeroAsZero` | a decline is stored either way round and printed negative either way; a measured zero prints `0.00` in the list and the detail, never `-0.00` |
+| `TestADrawdownShareNobodyMeasuredStaysUnknown` · `TestADrawdownNobodyMeasuredStaysUnknown` | a session whose rows carry no drawdown — every day sealed before its account's first valuation — reads as null, never as a decline of zero: its share and its decline are null on the session and the console prints dashes; a deployment's deepest decline is taken over the sessions that measured one, and is null when none did (#476) |
 
 No threshold anywhere decides what counts as too long a gap: that is a judgement about the
 market and the operator's night, not about the data.

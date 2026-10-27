@@ -159,7 +159,10 @@ refuses before any order when one fails:
 | a document the partner wrote comes from a run that completed — reached its ledger row | a run still going and a run that died look the same, and two sessions must not manage one book |
 
 The declaration is read from the profile alone, never from `app_config.json`, and it is left out of
-both fingerprints: which stage came before says nothing about how this one trades.
+both fingerprints: which stage came before says nothing about how this one trades. A later stage
+taking over its partner's open book is also not held to the partner's configuration — the stages
+change it on purpose — where any other restart is
+([Unattended Operation](unattended_operation.md), *A restart under a changed configuration*).
 
 ## Configuration
 
@@ -261,7 +264,9 @@ BEFORE a deployment — the day the profile is run to see that it behaves, on a 
 already declares `continuous` but has never started one. Once the deployment exists the flag is
 REFUSED (`OneOffInsideDeploymentError`), because past that point it means something else: the
 session still trades the account, but leaves no mark on the history its own drawdown keeps
-running inside. `--new-deployment` begins a fresh history instead of continuing the last one. Declaring a
+running inside. `--new-deployment` begins a fresh history instead of continuing the last one, and
+its drawdown curve and risk baseline start fresh with it (#626) — the way to go live after a
+rehearsal, shown in [Changing a Live Bot](../user_guides/changing_a_live_bot_guide.md). Declaring a
 deployment from the command line is deliberately impossible: an unattended restart re-executes a
 command nobody typed, so a deployment declared there would break apart at exactly the restarts it
 exists to span — silently, because a missing flag looks like a one-off. **The flag whose absence

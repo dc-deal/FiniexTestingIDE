@@ -3,6 +3,7 @@
 from python.configuration.sentiment_config_manager import SentimentConfigManager
 from python.framework.bars.bar_rendering_controller import BarRenderingController
 from python.framework.bars.warmup_history import WarmupHistory
+from python.framework.constants.run_layout_constants import RUN_TYPE_SIMULATION
 from python.framework.factory.decision_logic_factory import DecisionLogicFactory
 from python.framework.factory.trade_simulator_factory import prepare_trade_executor_for_scenario
 from python.framework.factory.worker_factory import WorkerFactory
@@ -10,9 +11,12 @@ from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.process.process_pipeline_bundle import ProcessPipelineBundle
 from python.framework.signal_data.signal_data_provider import SignalDataProvider
 from python.framework.signal_data.signal_source_resolver import SignalSourceResolver
+from python.framework.store.entry_members.run_entry_writer import RunEntryWriter
+from python.framework.store.entry_members.strategy_file_writer import StrategyFileWriter
 from python.framework.trading_env.decision_trading_api import DecisionTradingApi
 from python.framework.types.market_types.market_types import TradingContext
 from python.framework.types.process_data_types import ProcessDataPackage, ProcessScenarioConfig
+from python.framework.types.store_member_types import RunEntryMemberId
 from python.framework.utils.process_debug_info_utils import (
     debug_warmup_bars_check,
     log_trade_simulator_config,
@@ -165,6 +169,12 @@ def process_startup_preparation(
     )
     decision_logic.set_trading_api(trading_api)
     scenario_logger.debug('✅ DecisionTradingApi injected into Decision Logic')
+
+    # The strategy's own files (#621): written at once, into this scenario's folder of the run
+    run_dir = scenario_logger.get_log_dir()
+    decision_logic.set_strategy_file_writer(StrategyFileWriter(
+        RunEntryWriter(run_dir, RUN_TYPE_SIMULATION) if run_dir else None,
+        RunEntryMemberId.SCENARIO_STRATEGY_FILE, scenario_logger, scenario=config.name))
 
     scenario_logger.debug(
         f'✅ Created trade simulator: balances={config.balances}'

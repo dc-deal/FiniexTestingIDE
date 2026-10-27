@@ -9,6 +9,10 @@ unified report model (#393) — `PortfolioReport` (full projection) + `PendingOr
 
 from typing import Dict, List, Optional
 
+from python.framework.constants.currency_constants import (
+    format_currency_signed,
+    format_currency_simple,
+)
 from python.framework.reporting.console.abstract_batch_summary_section import (
     AbstractBatchSummarySection,
 )
@@ -27,10 +31,6 @@ from python.framework.types.api.report_types import (
     PortfolioUnitRow,
 )
 from python.framework.types.trading_env_types.broker_types import FeeSource
-from python.framework.types.trading_env_types.currency_codes import (
-    format_currency_signed,
-    format_currency_simple,
-)
 from python.framework.types.trading_env_types.order_types import ProtectiveLevelEnforcement
 from python.framework.utils.console_renderer import ConsoleRenderer
 from python.framework.utils.math_utils import force_negative, force_positive

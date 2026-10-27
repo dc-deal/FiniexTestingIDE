@@ -6,7 +6,7 @@ EXTENDED  Comprehensive weekend analysis and gap classification
 ENHANCED  Calendar-based weekend detection for extended gaps
 """
 
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import Dict, List, Optional, Tuple
 
 from python.framework.types.coverage_report_types import GapCategory
@@ -228,11 +228,26 @@ class MarketCalendar:
             The next market-open instant (UTC); `after` itself if already open
         """
         current = after
-        while (not MarketCalendar.is_market_open(current)
-                or MarketCalendar.is_market_holiday(current)):
+        while not MarketCalendar.is_trading_date(current):
             current = (current + timedelta(days=1)).replace(
                 hour=0, minute=0, second=0, microsecond=0)
         return current
+
+    @staticmethod
+    def is_trading_date(day: date) -> bool:
+        """
+        Whether the market trades on a calendar date: a weekday that is not a market holiday.
+
+        Forex-shaped like the rest of this class — a market without weekend closure trades on
+        every date, and the caller gates on that before it asks.
+
+        Args:
+            day: A calendar date; a datetime is read by its date
+
+        Returns:
+            True when the market trades on that date
+        """
+        return MarketCalendar.is_market_open(day) and not MarketCalendar.is_market_holiday(day)
 
     # =========================================================================
     # EXTENDED WEEKEND ANALYSIS

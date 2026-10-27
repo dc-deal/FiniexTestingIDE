@@ -20,8 +20,8 @@ from pathlib import Path
 import pytest
 
 from python.configuration.app_config_manager import AppConfigManager
+from python.framework.constants.run_layout_constants import MOUNT_BUILD_LOG
 from python.framework.optimization.optimization_runner import OptimizationRunner
-from python.framework.types.log_layout_types import MOUNT_BUILD_LOG
 
 MINI_GRID = 'tests/fixtures/optimization/btcusd_mini_grid.json'
 

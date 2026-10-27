@@ -19,6 +19,7 @@ from datetime import datetime
 from typing import Dict, List, Optional
 
 from python.framework.reporting.store.ledger_aggregation import aggregate_ledger_rows
+from python.framework.reporting.store.run_completion_audit import closes_its_run
 from python.framework.types.api.report_types import (
     SESSION_KEY,
     DeploymentComparabilityAdvisory,
@@ -77,8 +78,10 @@ def _summarize_one(
         The summary line
     """
     # max(), never sum(): each live row carries the RUNNING decline against the inherited
-    # peak, so adding them counts one decline once per session that was still inside it.
-    deepest = max(sessions, key=lambda s: abs(s.max_drawdown))
+    # peak, so adding them counts one decline once per session that was still inside it. Over
+    # the sessions that measured one: a session without a drawdown is unknown, not a zero.
+    measured = [s for s in sessions if s.max_drawdown is not None]
+    deepest = max(measured, key=lambda s: abs(s.max_drawdown)) if measured else None
     gaps = [s.gap_hours for s in sessions if s.gap_hours is not None]
     return DeploymentSummary(
         deployment_id=deployment,
@@ -86,8 +89,8 @@ def _summarize_one(
         first_started=sessions[0].started,
         last_started=sessions[-1].started,
         net_pnl=sum(s.net_pnl for s in sessions),
-        max_drawdown=deepest.max_drawdown,
-        max_drawdown_pct=deepest.max_drawdown_pct,
+        max_drawdown=deepest.max_drawdown if deepest else None,
+        max_drawdown_pct=deepest.max_drawdown_pct if deepest else None,
         currency=sessions[0].currency,
         bot=sessions[0].bot,
         bot_id=sessions[0].bot_id,
@@ -182,8 +185,10 @@ def build_deployment_histories(rows: List[RunResultRow]) -> Dict[str, List[Deplo
             # that session — to this one's start. Measuring start-to-start instead counts the
             # predecessor's whole runtime as downtime: a bot that ran 06:00-18:00 and came
             # back at 19:00 would read as a 13-hour gap rather than a one-hour one. Rows
-            # written before `recorded_at_utc` existed fall back to start-to-start and say so.
-            ended = _parse(previous.recorded_at_utc) if previous else None
+            # written before `recorded_at_utc` existed fall back to start-to-start and say so,
+            # and so does a predecessor that never wrote its close (#476): its last row is
+            # its last sealed day, not its end.
+            ended = _session_end(previous) if previous else None
             fell_back = previous is not None and ended is None
             if fell_back:
                 ended = _parse(previous.run_timestamp)
@@ -197,8 +202,8 @@ def build_deployment_histories(rows: List[RunResultRow]) -> Dict[str, List[Deplo
                 currency=row.currency,
                 bot=row.scenario_set_name,
                 bot_id=row.bot_id,
-                ended=_parse(row.recorded_at_utc),
-                ran_hours=_ran_hours(started, _parse(row.recorded_at_utc)),
+                ended=_session_end(row),
+                ran_hours=_ran_hours(started, _session_end(row)),
                 gap_hours=(
                     (started - ended).total_seconds() / 3600
                     if started and ended else None),
@@ -215,6 +220,27 @@ def build_deployment_histories(rows: List[RunResultRow]) -> Dict[str, List[Deplo
             previous = row
         histories[deployment] = sessions
     return histories
+
+
+def _session_end(row: RunResultRow) -> Optional[datetime]:
+    """
+    When a session ended, if its ledger says it did (#476).
+
+    A session writes its rows at each trading day's seal while it runs, and every write stamps
+    `recorded_at_utc` — so the stamp is the session's end only once the row of its close is
+    among them. Without it the session is still running or died, and its end is unknown: the run
+    list's recording verdict says which. The stamp is the wall clock, as the start is, so a
+    replayed session's length is not measured against the market time it replayed.
+
+    Args:
+        row: One session's rows, folded — the last period's close reason is the folded one
+
+    Returns:
+        The end, or None while the ledger holds no row of the session's close
+    """
+    if not closes_its_run(row.period_close_reason):
+        return None
+    return _parse(row.recorded_at_utc)
 
 
 def _ran_hours(started: Optional[datetime], ended: Optional[datetime]) -> Optional[float]:

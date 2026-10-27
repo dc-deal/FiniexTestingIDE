@@ -11,7 +11,7 @@ import re
 from abc import ABC, abstractmethod
 from collections import deque
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Callable, Dict, List, Optional, Set
 
 from python.configuration.app_config_manager import AppConfigManager
 from python.framework.decision_logic.decision_logic_performance_tracker import (
@@ -19,6 +19,9 @@ from python.framework.decision_logic.decision_logic_performance_tracker import (
 )
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.reporting.diagnostics_csv_sink import DiagnosticsCsvSink
+from python.framework.reporting.io.run_stream_appender import RunStreamAppender
+from python.framework.store.entry_members.strategy_file import StrategyFile
+from python.framework.store.entry_members.strategy_file_writer import StrategyFileWriter
 from python.framework.trading_env.decision_trading_api import DecisionTradingApi
 from python.framework.types.autotrader_types.cold_start_types import (
     ColdStartSituation,
@@ -133,6 +136,12 @@ class AbstractDecisionLogic(ABC):
 
         # Diagnostics CSV sinks (#376) — algo-declared, framework-flushed at run end
         self._diagnostics_sinks: Dict[str, DiagnosticsCsvSink] = {}
+        # Opens a sink's stream in a session's run directory (#476); None streams nothing
+        self._open_sink_stream: Optional[
+            Callable[[DiagnosticsCsvSink], Optional[RunStreamAppender]]] = None
+
+        # The strategy's own files (#621) — written at once, into the run's declared folder
+        self._strategy_file_writer: Optional[StrategyFileWriter] = None
 
     def get_trading_context(self) -> Optional[TradingContext]:
         """
@@ -486,8 +495,41 @@ class AbstractDecisionLogic(ABC):
             The DiagnosticsCsvSink for this name (created on first call)
         """
         if name not in self._diagnostics_sinks:
-            self._diagnostics_sinks[name] = DiagnosticsCsvSink(name, columns)
+            sink = DiagnosticsCsvSink(name, columns)
+            self._diagnostics_sinks[name] = sink
+            self._attach_sink_stream(sink)
         return self._diagnostics_sinks[name]
+
+    def set_diagnostics_stream_opener(
+        self,
+        open_sink_stream: Callable[[DiagnosticsCsvSink], Optional[RunStreamAppender]],
+    ) -> None:
+        """
+        Stream every diagnostics row as it is appended — framework-only, called by a session
+        once its run directory exists (#476).
+
+        A sink declared before this call gets its stream now, its rows so far written at once;
+        one declared later gets it when it is declared. The table at the run's end is unchanged.
+
+        Args:
+            open_sink_stream: Opens one sink's stream; None when it could not be opened
+        """
+        self._open_sink_stream = open_sink_stream
+        for sink in self._diagnostics_sinks.values():
+            self._attach_sink_stream(sink)
+
+    def _attach_sink_stream(self, sink: DiagnosticsCsvSink) -> None:
+        """
+        Give one sink its stream, where the session streams diagnostics.
+
+        Args:
+            sink: The sink
+        """
+        if self._open_sink_stream is None:
+            return
+        stream = self._open_sink_stream(sink)
+        if stream is not None:
+            sink.attach_stream(stream)
 
     def get_diagnostics_sinks(self) -> List[DiagnosticsCsvSink]:
         """
@@ -497,6 +539,37 @@ class AbstractDecisionLogic(ABC):
             List of DiagnosticsCsvSink (empty if none declared)
         """
         return list(self._diagnostics_sinks.values())
+
+    # ============================================
+    # Strategy Files (#621)
+    # ============================================
+
+    def strategy_file(self, name: str) -> StrategyFile:
+        """
+        A file this strategy keeps with its run, written at once and replaced whole on every write.
+
+        The framework owns where it lands — `strategy_files/` in the run directory, one folder per
+        scenario in a backtest — and never reads it. A write that fails is said once on the run's
+        channel and answers False; it never ends the run. Write at decision moments, never per
+        tick: one write costs about a fifth of a millisecond on a local disk and about twelve on
+        the development container's bridged mount.
+
+        Args:
+            name: The file's name, such as 'last_setup.json' — no folder, no leading dot
+
+        Returns:
+            The file, with write_json and write_text
+        """
+        return StrategyFile(name, self._strategy_file_writer)
+
+    def set_strategy_file_writer(self, writer: StrategyFileWriter) -> None:
+        """
+        Inject the writer of this run's strategy files — the framework's, at the run's start.
+
+        Args:
+            writer: The run's strategy file writer
+        """
+        self._strategy_file_writer = writer
 
     # ============================================
     # Decision Event Channel (#348)

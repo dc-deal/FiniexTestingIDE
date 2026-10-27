@@ -12,12 +12,13 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from python.configuration.app_config_manager import AppConfigManager
-from python.framework.autotrader.session_log_retention import (
-    SESSION_LOGS_SUBDIR,
-    prune_rotated_session_logs,
-)
+from python.framework.autotrader.session_log_retention import prune_rotated_session_logs
+from python.framework.constants.run_layout_constants import DAY_LABEL_FORMAT, RUN_TYPE_AUTOTRADER
 from python.framework.logging.file_logger import FileLogger
 from python.framework.logging.scenario_logger import ScenarioLogger
+from python.framework.store.entry_members.run_entry_writer import RunEntryWriter
+from python.framework.types.store_member_types import RunEntryMemberId
+from python.framework.utils.file_utils import create_directory
 
 
 class SessionLogRotator:
@@ -29,7 +30,7 @@ class SessionLogRotator:
     booking period and the daily loss limit use.
 
     Args:
-        run_dir: The session run directory; None means no files are written, so nothing rotates
+        run_dir: The session run directory; None in a test that keeps no files
         logger: The session logger whose file is swapped
         trading_day: The trading day the canonical clock stands in, None before it is first set
     """
@@ -43,9 +44,21 @@ class SessionLogRotator:
         self._run_dir = run_dir
         self._logger = logger
         self._trading_day = trading_day
+        # The run directory exists whether or not log files are written; the switch alone
+        # decides whether a daily log is opened (#621). Read once, at the session's start.
+        self._writes_logs = AppConfigManager().get_file_logging_config_object().scenario_enabled
         # Daily rotation: date initialized from the first pass (not wall clock). This prevents
         # spurious rotation in mock/replay mode where tick timestamps differ from current date.
         self._current_log_date: Optional[str] = None
+
+    def has_opened_day_log(self) -> bool:
+        """
+        Whether a pass has opened a trading day's log; the session's close judges the day log by it.
+
+        Returns:
+            True once the first day's log is open
+        """
+        return self._current_log_date is not None
 
     def check_daily_rotation(self) -> None:
         """
@@ -59,13 +72,13 @@ class SessionLogRotator:
         at midnight UTC, and a feed that goes silent across the boundary no longer keeps the
         old file growing — the heartbeat advances the clock and calls this too.
         """
-        if not self._run_dir:
+        if not self._run_dir or not self._writes_logs:
             return
 
         current_day = self._trading_day()
         if current_day is None:
             return
-        day_label = current_day.strftime('%Y%m%d')
+        day_label = current_day.strftime(DAY_LABEL_FORMAT)
 
         if self._current_log_date is None:
             # First pass — ensure the file matches the trading day
@@ -108,7 +121,7 @@ class SessionLogRotator:
         Args:
             day_label: The trading day just rotated to (YYYYMMDD) — never deleted
         """
-        if not self._run_dir:
+        if not self._run_dir or not self._writes_logs:
             return
         retention_days = (AppConfigManager().get_file_logging_config_object()
                           .session_logs.retention_days)
@@ -130,11 +143,12 @@ def create_session_file_logger(run_dir: Path, date_suffix: str) -> FileLogger:
     Returns:
         FileLogger writing to session_logs/autotrader_session_YYYYMMDD.log
     """
-    session_logs_dir = run_dir / SESSION_LOGS_SUBDIR
-    session_logs_dir.mkdir(parents=True, exist_ok=True)
+    path = RunEntryWriter(run_dir, RUN_TYPE_AUTOTRADER).log_path(
+        RunEntryMemberId.SESSION_DAY_LOG, day=date_suffix)
+    create_directory(path.parent, holds="the session's daily logs")
     return FileLogger(
-        log_filename=f'autotrader_session_{date_suffix}.log',
-        file_path=session_logs_dir,
+        log_filename=path.name,
+        file_path=path.parent,
         # The threshold the session logger actually gates on, read from config (§28) — not
         # carried over from the file logger being replaced, which never enforced it anyway.
         log_level=AppConfigManager().get_file_logging_config_object().scenario_log_level

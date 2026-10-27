@@ -46,6 +46,7 @@ from python.framework.exceptions.run_patch_errors import (
     RunPatchHashMismatchError,
 )
 from python.framework.logging.bootstrap_logger import get_global_logger
+from python.framework.utils.file_utils import create_directory
 
 # One entry per distinct patch, named after the hash of its bytes.
 PATCH_SUFFIX = '.patch'
@@ -156,7 +157,7 @@ class RunPatchStore:
         An existing file is left as it is: it is this store's own, and a changed one is somebody's
         decision.
         """
-        self._root.mkdir(parents=True, exist_ok=True)
+        create_directory(self._root, holds='the run patches')
         marker = self._root / _SELF_IGNORE_FILE
         if not marker.exists():
             marker.write_text(_SELF_IGNORE, encoding='utf-8')
@@ -214,7 +215,7 @@ class RunPatchStore:
             target: The entry's path
             patch: The verified patch bytes
         """
-        self._root.mkdir(parents=True, exist_ok=True)
+        create_directory(self._root, holds='the run patches')
         handle, temporary = tempfile.mkstemp(
             dir=self._root, prefix=f'{target.stem}.', suffix='.tmp')
         try:

@@ -120,7 +120,10 @@ tests/
 │   ├── test_price_trigger.py  unit — the shared order-vs-quote predicate: limit/stop reached, book side (#505)
 │   ├── test_order_endings.py  unit — one status per way an order ends, in both pipelines, and the counts declared from them (#362)
 │   ├── order_events/      unit — every order transition as one event in both pipelines: the declared vocabulary held to the source, each order life step by step, the stream file, its run-index listing (#362)
+│   ├── test_atomic_file_utils.py  unit — an atomic write is old or new; a durable one is synced before and after its rename
+│   ├── test_execution_counters.py  unit — every order count reaches the run and the running booking period; a period is taken once
 │   ├── test_time_utils_utc.py  unit — every parsed or normalised datetime is UTC, also on a machine in another zone
+│   ├── test_create_directory.py  unit — the one way the IDE creates a directory; a refusal is a named hard error that says why (#621)
 │   ├── test_server_clock.py  unit — a broker server's wall clock to UTC through the zone's daylight saving rules: both seasons, the changed hours refused (#562)
 │   ├── market_compatibility/ unit — market activity metric, validator
 │   ├── tick_parquet_reader/  unit — parquet reader normalization
@@ -135,6 +138,12 @@ tests/
 │   ├── algo_clock_validator/ unit — wall-clock ban, runtime startup validator: AST scan of loaded algos (CORE + user) + batch pre-flight (#359)
 │   ├── discovery_validity/ unit — the three discovery caches compare the config fingerprint they were already writing (#486 finding 57); a config change moves no bar file, so mtime alone kept serving a stale cache
 │   ├── static_analysis/   unit — undefined-name gate (pyflakes) over python/ + tests/; the ruff/vulture backlog tier is measured, not gated
+│   ├── composite/         unit — which accounts may add up: the composite definition and its floor, the key projected from
+│   │                      the rendered configuration, joins and splits, the excluded member, every shipped value classified (#615)
+│   ├── rendered_config/   unit — what a run records it ran with: the one strategy renderer and its portable type key, every shipped
+│   │                      scenario set's document against what its subprocess reads, the header naming it, never fatal (#547)
+│   ├── run_entry_census/  integration — real runs held to the run store's declaration: no undeclared file, every member written
+│   │                      somewhere, the stream versions, the run index row; a sweep and mock sessions, one without log files (#621)
 │   └── store/             unit — the store catalog: completeness, what it prints, its two dated-claim advisories, the shared index base (atomic write, delete-and-rebuild, logic version), generic form-A retrieval, carry-over envelope (#486), carry-over identity + declared continuation + boot continuity checks (#358)
 │
 ├── data/

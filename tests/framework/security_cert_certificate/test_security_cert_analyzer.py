@@ -8,6 +8,8 @@ that does not say what the stage was there to provoke, a restart that measured a
 baseline, and anything left resting at the venue.
 """
 
+import json
+from datetime import datetime, timedelta
 from typing import Dict
 
 from python.framework.reporting.certificates.security_cert_certificate import (
@@ -17,9 +19,9 @@ from python.framework.types.acceptance_study_types.security_cert_types import (
     RuleCertification,
     SecurityStageId,
 )
-from python.framework.types.api.report_types import OrdersTo
 from python.framework.types.autotrader_types.safety_session_types import FlattenOutcome
 from python.framework.types.persistence_types import BaselineOrigin
+from python.framework.types.run_kind_types import OrdersTo
 from python.framework.types.run_origin_types import CodeIdentity, RepositoryState
 from tests.framework.security_cert_certificate.conftest import StageSpec
 
@@ -188,3 +190,40 @@ class TestOneStageAtATime:
         captures = build(passing_study)
         failures = SecurityCertCertificate.stage_failures(_S.SOFT, captures[_S.SOFT])
         assert failures == ['phase:s_start_flat: fail: the account holds 0.00020000 BTC']
+
+    def test_a_capture_cut_at_its_end_fails_the_stage(self, passing_study, build):
+        """The session died while writing its end: the runner must not spend on the next stage."""
+        captures = build(passing_study)
+        path = captures[_S.SOFT]
+        text = path.read_text(encoding='utf-8').rstrip('\n')
+        path.write_text(text[:-5], encoding='utf-8')
+
+        failures = SecurityCertCertificate.stage_failures(_S.SOFT, path)
+
+        assert failures == [
+            'capture: its last line was cut off — the session stopped while writing it',
+            'capture: the session did not close it — it stopped before its end']
+
+    def test_a_capture_the_session_never_closed_fails_the_stage(self, passing_study, build):
+        passing_study[_S.SOFT].lines[:] = [
+            line for line in passing_study[_S.SOFT].lines if line['event_type'] != 'session_end']
+        captures = build(passing_study)
+
+        failures = SecurityCertCertificate.stage_failures(_S.SOFT, captures[_S.SOFT])
+
+        assert failures == ['capture: the session did not close it — it stopped before its end']
+
+
+class TestTheCertificateIsBoundToItsStages:
+    """The certificate names every stage run it rests on and counts its validity from the first."""
+
+    def test_every_stage_is_evidence_and_the_validity_counts_from_the_first(
+            self, passing_study, build, tmp_path):
+        cert_path = SecurityCertCertificate.generate(
+            build(passing_study), release_version='dev', reports_dir=str(tmp_path / 'reports'))
+        cert = json.loads(cert_path.read_text(encoding='utf-8'))
+
+        assert [run['run_id'] for run in cert['evidence_runs']] == [
+            f'run_{stage.value}' for stage in _S]
+        first = min(datetime.fromisoformat(run['started']) for run in cert['evidence_runs'])
+        assert datetime.fromisoformat(cert['valid_until']) == first + timedelta(days=90)

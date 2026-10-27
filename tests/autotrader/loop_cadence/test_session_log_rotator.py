@@ -10,6 +10,7 @@ file at all.
 from datetime import date
 from typing import List, Optional
 
+from python.configuration.app_config_manager import AppConfigManager
 from python.framework.autotrader.session_log_rotator import SessionLogRotator
 
 
@@ -65,3 +66,15 @@ def test_a_session_without_a_run_directory_writes_no_file():
     logger = _SessionLogger()
     SessionLogRotator(None, logger, _TradingDay(date(2026, 10, 13))).check_daily_rotation()
     assert logger.files == []
+
+
+def test_with_log_files_switched_off_no_daily_log_is_opened(tmp_path, monkeypatch):
+    # The run directory exists either way (#621); the switch alone decides the log files.
+    real = AppConfigManager().get_file_logging_config_object()
+    switched_off = real.model_copy(
+        update={'scenario': real.scenario.model_copy(update={'enabled': False})})
+    monkeypatch.setattr(AppConfigManager, 'get_file_logging_config_object', lambda self: switched_off)
+    logger = _SessionLogger()
+    SessionLogRotator(tmp_path, logger, _TradingDay(date(2026, 10, 13))).check_daily_rotation()
+    assert logger.files == []
+    assert not (tmp_path / 'session_logs').exists()

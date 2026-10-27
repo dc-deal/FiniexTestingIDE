@@ -7,7 +7,6 @@ moves the objective most). Also writes the ranked table as CSV. Pure presentatio
 ranking/sensitivity calculation lives in optimization_analysis.
 """
 
-import csv
 import json
 from datetime import datetime
 from pathlib import Path
@@ -22,9 +21,13 @@ from python.framework.optimization.optimization_analysis import (
     rank,
     sensitivity,
     summarize_sweeps,
+    unranked_count,
 )
 from python.framework.reporting.store.run_results_ledger import RunResultsLedger
+from python.framework.store.entry_members.sweep_entry_writer import SweepEntryWriter
 from python.framework.types.api.report_types import RunResultRow
+from python.framework.types.store_member_types import SweepEntryMemberId
+from python.framework.utils.file_utils import create_directory
 
 
 
@@ -99,6 +102,9 @@ def render_sweep_report(
     _print_header_meta(rows)
 
     ranked = rank(rows, objective, maximize, objective_currency)
+    unranked = unranked_count(rows, objective, objective_currency)
+    if unranked:
+        print(f'⚪ {unranked} combination(s) left out of the ranking: no {objective} recorded')
     _print_mixed_logic_version(mixed_logic_version_advisory(ranked))
     _print_degenerate_ranking(degenerate_ranking_advisory(ranked, objective))
     _print_ranking(ranked, objective, top_n)
@@ -286,8 +292,7 @@ def _write_csv(ranked: List[RunResultRow], sweep_id: str) -> Path:
     """
     sweep_dir = Path(
         AppConfigManager().get_file_logging_config_object().run_logs.sweeps) / sweep_id
-    sweep_dir.mkdir(parents=True, exist_ok=True)
-    path = sweep_dir / 'ranked.csv'
+    create_directory(sweep_dir, holds="the sweep's ranking", setting='file_logging.run_logs')
     flat = [_flat(row) for row in ranked]
     # The header comes from a FLATTENED row, not from `model_fields`. `model_dump()` includes
     # COMPUTED fields and `model_fields` does not, so `run_kind` was in every dict and in no
@@ -296,11 +301,7 @@ def _write_csv(ranked: List[RunResultRow], sweep_id: str) -> Path:
     # is why it stood. Falling back to the declared fields keeps the empty case writing a
     # header-only file rather than an empty one.
     fieldnames = list(flat[0]) if flat else list(RunResultRow.model_fields)
-    with open(path, 'w', newline='') as f:
-        writer = csv.DictWriter(f, fieldnames=fieldnames)
-        writer.writeheader()
-        writer.writerows(flat)
-    return path
+    return SweepEntryWriter(sweep_dir).write_table(SweepEntryMemberId.RANKING, fieldnames, flat)
 
 
 def _flat(row: RunResultRow) -> Dict[str, Any]:

@@ -49,6 +49,7 @@ Direct tests against `check_safety` using a lightweight stub that mirrors the in
 | `TestDisabled` | Zero thresholds disabled, `enabled=False` skips all checks |
 | `TestDisplayState` | `_safety_current_value` stored, `_safety_drawdown_pct` stored, drawdown floored at 0% (profit case) |
 | `TestTheOperatorHearsOneEpisode` | #235 — a breaker flapping around its limit sends ONE alert out of band and one all-clear once it has stayed clear for the quiet period; the record still counts every engagement |
+| `TestABaselineARehearsalLeft` | #626 — what a risk baseline carried from a dry run does to the breaker of the real-money session after it, in both account models: a simulated peak above the real account blocks entries from the first tick, a simulated denominator below it lets a real loss beyond the limit pass; under the run-kind rule the real session takes its own baseline and both are gone, while a rehearsal after a rehearsal still measures against the carried peak |
 
 ### Level 1 — The Baseline (`test_risk_baseline.py`, #356)
 
@@ -91,6 +92,7 @@ bound to a stub, the DERIVE half against the real builder. Nothing here renders.
 | `TestTheTwoExtremesCanBeTwoMoments` | under a high-water mark the deepest amount and the deepest share are different instants and both are kept; under the default fixed baseline they coincide |
 | `TestTheBlockCountsEngagements` | a block held over many ticks counts once; cleared and returned counts twice; a session that ended clear still reports that it happened |
 | `TestOneRowPerDay` | a day boundary files the day that ended; the new day starts from zero; the final incomplete day is filed by the capture; capturing twice does not file it twice; a day that tripped its own limit is marked |
+| `TestTheDayRollsAtItsBoundary` | #476: the day rolls on the booking period's seal (`roll_day`, which the stub's `start_day` drives) — the new baseline is the value the seal read, stamped at the boundary; a roll that could not value the account leaves the baseline to the next valued tick (`ensure_day_baseline`); the session's first day is taken at its first valued tick and never twice. The seal's reading is the ending day's last loss, stamped with the boundary — and a reading beyond the limit fills the record without claiming the limit fired. That the roll cuts the day where the booking period does is the parity suite's (`booking_period_parity_tests.md`) |
 | `TestAnUnresolvedHardStopIsNotReportedAsNeverFired` | a drain still running at session end resolves to `unconfirmed` with the open positions named; a hard stop that never fired stays `None` |
 | `TestKeptHoldingsAreNotAnUnconfirmedClose` | spot holdings kept on purpose travel as `holdings_kept`, never as an unconfirmed close; the closing block says "kept, not sold" and asks for nothing, while an unconfirmed close still says "check the account by hand" and a completed stop says flat |
 | `TestTheReportNamesItsDenominator` | the baseline record travels whole; a carried baseline is flagged; a freshly struck one is not |

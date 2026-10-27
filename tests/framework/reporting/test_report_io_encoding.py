@@ -12,16 +12,15 @@ raise outright, because UTF-8's third emoji byte (0x8F) is undefined in cp1252.
 """
 
 from pathlib import Path
+
+from python.framework.constants.run_layout_constants import RUN_TYPE_SIMULATION, TRADE_HISTORY_CSV
 from python.framework.reporting.io.artifact_specs import (
     TRADE_HISTORY_ARTIFACT,
     WARNINGS_ERRORS_ARTIFACT,
 )
 from python.framework.reporting.io.report_artifact_io import read_artifact, write_artifact
-from python.framework.reporting.io.report_csv_io import (
-    TRADE_HISTORY_CSV,
-    write_trade_history_csv,
-)
-
+from python.framework.reporting.io.report_csv_io import write_trade_history_csv
+from python.framework.store.entry_members.run_entry_writer import RunEntryWriter
 from python.framework.types.api.report_types import (
     TradeHistoryReport,
     WarningRow,
@@ -76,7 +75,7 @@ class TestCsvSurfaceEncoding:
         """The CSV surface carries the same text and must not depend on the locale either."""
         report = TradeHistoryReport(run_id=_RUN_ID, trades=[], count=0, symbols=[], analytics=[])
         write_artifact(report, tmp_path, TRADE_HISTORY_ARTIFACT)
-        path = write_trade_history_csv(report, tmp_path)
+        path = write_trade_history_csv(report, RunEntryWriter(tmp_path, RUN_TYPE_SIMULATION))
         path.read_bytes().decode('utf-8')
         assert read_artifact(tmp_path / TRADE_HISTORY_ARTIFACT.filename, TRADE_HISTORY_ARTIFACT) == report
         assert path.name == TRADE_HISTORY_CSV

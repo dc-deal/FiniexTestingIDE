@@ -12,7 +12,7 @@ Full pipeline integration: runs a complete session with deterministic parquet re
 
 | Test | What it validates |
 |------|-------------------|
-| `test_full_mock_session` | Normal shutdown + **exit code 0**, tick count (63412), 0 clipping, 0 warnings/errors, trades produced, stats collected |
+| `test_full_mock_session` | Normal shutdown + **exit code 0**, tick count (63412), 0 warnings/errors, trades produced, stats collected. Clipping is not asserted: it compares wall-clock processing with the recorded tick spacing, so it measures the machine — the monitor's rule is tested in `test_live_clipping_monitor.py` |
 | `test_log_files_created` | Log directory structure: global, summary, session_logs/, events.csv |
 | `test_broker_report_written` | Broker report persisted (unified model) + rendered in the summary |
 | `test_safety_report_written` | The safety record reaches disk and names its baseline (#356 Phase C) — the end-to-end the unit tests cannot show: a chain of proven links is not a proven chain. Also pins that an unarmed limit reports `null`, not `0.0` |
@@ -67,6 +67,7 @@ ended, into the next session's ledger row.
 |------|-------------------|
 | `test_the_first_session_mints_one` | A profile declaring `deployment.continuous: true` with nothing to inherit names itself |
 | `test_the_second_session_inherits_it` | The carry-over reached the successor |
+| `test_every_session_is_a_declared_run` | Each of the four run directories holds only what the run store declares (#621) |
 | `test_both_ledger_rows_name_it` | It reached the RECORD, not only the running process |
 | `test_the_rows_read_back_as_one_history` | `build_deployment_histories` groups them, in order, with the gap |
 | `test_the_two_fingerprints_hold_across_a_restart` | Nothing changed, so `param_hash` and `profile_hash` must not move — a fingerprint that drifts would mark every restart |
@@ -74,6 +75,7 @@ ended, into the next session's ledger row.
 | `test_a_one_off_start_does_not_end_the_deployment` | It stays out of the history without destroying it |
 | `test_new_deployment_begins_a_second_history` | Two deployments over the same three rows |
 | `test_a_dry_run_session_leaves_no_carry_over` | The LIMIT of the mechanism, pinned rather than discovered at a venue |
+| `test_an_ordinary_restart_continues_them` · `test_a_new_deployment_starts_them_fresh` | #626 — the drawdown curve and the risk baseline follow the deployment: `second` continues `first`'s, and `--new-deployment` begins its own curve (`restarts` 0) instead of inheriting the first deployment's; the document stamps them as a rehearsal's |
 
 **No arming, no patching.** These are ordinary mock sessions, which is possible because the
 carry-over's write gate is split by what each field CLAIMS: a session whose `dry_run` resolves
@@ -271,6 +273,7 @@ belongs to is held deterministically by the projection's unit tests.
 
 | Test | What it validates |
 |------|-------------------|
+| `test_its_run_directory_holds_only_declared_files` | The run directory holds only what the run store declares, its capture among them — the run entry census counts on this run for the field study's capture (#621) |
 | `test_it_is_the_projected_schema` | The header is schema 2.0 and carries no `release_target` |
 | `test_the_header_records_where_the_venue_reports_a_fill_s_fee` | The header's `fee_report` is the mock venue's declaration, `status_answer` — as Kraken's — and `venue_fee_expected` is true: the mock session reads its venue's account |
 | `test_a_fill_names_the_phase_that_submitted_its_order` | The first order's fill is filed under the first phase |
@@ -297,6 +300,7 @@ wait for a mock fill are not asserted, for the reason the field study's capture 
 
 | Class | What it validates |
 |-------|-------------------|
+| `TestEveryStageIsADeclaredRun` | every stage's run directory holds only what the run store declares, its capture among them — the run entry census counts on these runs for the security study's capture (#621) |
 | `TestEveryStageStarts` | every stage writes a capture that reaches its `session_end` line |
 | `TestTheRefusalsThatCostNothing` | the guards stage's refusals pass with the reason the guard gives |
 | `TestAPhaseThatEndsWhereItBegan` | `s_start_flat`'s start and result are filed under its own name |

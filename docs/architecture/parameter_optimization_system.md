@@ -108,8 +108,10 @@ each grid value is written into every scenario's `strategy_config` (in-memory, n
 is never mutated). The scenario set name is tagged per combination (`__<sweep_id>_c<idx>`) so each
 combination gets a unique run directory.
 
-**What a sweep directory holds.** One directory per combination, and the sweep's own two
-artifacts — nothing else:
+### What a sweep directory holds
+
+One directory per combination, and the sweep's own two artifacts — nothing else. The store
+catalog registers the directory as the sweep store and declares both files (#621):
 
 ```
 runs/simulation/sweeps/<sweep_id>/
@@ -163,7 +165,8 @@ Read the whole directory back as one table.
 - **`status` is a FLAG on the row, not a reason to empty it.** A run that errored still writes its
   figures; `status='error'` and the `error` column travel beside them, and the ranking excludes the
   row on that column. Only a run that produced NOTHING — no currencies at all, e.g. a combination
-  rejected at validation before it ever ran — writes the one figureless `status='error'` row. The
+  rejected at validation before it ever ran — writes the one figureless `status='error'` row, its
+  figure columns empty rather than zero, because nothing was measured. The
   distinction matters because an AutoTrader session has exactly one unit: any uncaught exception,
   including one in the shutdown path, marks the whole session failed, and zeroing its KPIs discarded
   real money figures (measured: a field-study session whose own artifact recorded a final equity of

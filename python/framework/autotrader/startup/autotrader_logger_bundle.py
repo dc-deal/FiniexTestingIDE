@@ -35,9 +35,13 @@ class AutotraderLoggerBundle:
         summary_logger: The post-session summary (file plus console flush)
         run_dir: The run's output directory, created here
         run_id: The run identity minted with that directory
+        rendered_config_id: What the session runs with, frozen in the run-config store and named
+            in the header (#547); '' when it could not be rendered or frozen — the carry-over
+            records it beside the session's claims about the venue (#626)
     """
     global_logger: ScenarioLogger
     session_logger: ScenarioLogger
     summary_logger: ScenarioLogger
     run_dir: Path
     run_id: str
+    rendered_config_id: str = ''

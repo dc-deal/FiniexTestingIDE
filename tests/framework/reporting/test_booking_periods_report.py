@@ -7,6 +7,7 @@ the portfolio aggregate. These tests pin that the agreement is computed and stat
 disagreement is reported rather than smoothed over.
 """
 
+from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -312,6 +313,52 @@ class TestManyUnitsCollapse:
             'r', _units(_segment(1, 0, 60.0, 2)), _summary(net_pnl=60.0, total_trades=2))
         render_booking_periods(report, detail_threshold=9)
         assert '▸' not in capsys.readouterr().out
+
+
+class TestAPeriodThatValuedNothing:
+    """
+    A spot session sealed by a heartbeat before its first tick priced the holdings has no equity
+    and no band (#476). The row carries the absence, and the table says it rather than printing
+    0.00 — or failing on a missing number.
+    """
+
+    @staticmethod
+    def _unvalued() -> BookingPeriod:
+        return BookingPeriod(
+            period_no=1, unit_name='session', opened_at=_MON, closed_at=_MON + timedelta(days=1),
+            reason=PeriodCloseReason.ANCHOR, trade_count=0,
+            figures=_figures(final_equity=None, account_max_drawdown=None),
+            period_max_equity=None, period_min_equity=None, period_max_drawdown=None)
+
+    def test_the_row_carries_the_absence(self):
+        report = build_booking_periods_report('r', _units(self._unvalued()), _summary())
+        row = report.periods[0]
+        assert (row.final_equity, row.min_equity, row.max_equity, row.max_drawdown) == (
+            None, None, None, None)
+        assert report.deepest_period_drawdown is None
+
+    def test_the_table_prints_a_dash(self, capsys):
+        report = build_booking_periods_report(
+            'r', _units(self._unvalued(), _segment(2, 1, 5.0, 1)), _summary(net_pnl=5.0,
+                                                                              total_trades=1))
+        render_booking_periods(report)
+        first_row = next(line for line in capsys.readouterr().out.splitlines()
+                         if line.strip().startswith('1 '))
+        assert first_row.rstrip().endswith('—')
+        assert '0.00' not in first_row.split()[-2:]
+
+
+class TestADayThatNeverFellReadsZero:
+    """`-abs(0.0)` is -0.0, which printed as "-0.00" — a decline nobody had."""
+
+    def test_a_zero_decline_prints_as_zero(self, capsys):
+        flat = replace(_segment(1, 0, 0.0, 0), period_max_drawdown=0.0)
+        render_booking_periods(build_booking_periods_report(
+            'r', _units(flat), _summary(net_pnl=0.0, total_trades=0)))
+        printed = capsys.readouterr().out
+        assert '-0.00' not in printed
+        first_row = next(line for line in printed.splitlines() if line.strip().startswith('1 '))
+        assert first_row.split()[-1] == '0.00'
 
 
 class TestTheFileGetsEverythingAndOnlyTheConsoleIsTrimmed:

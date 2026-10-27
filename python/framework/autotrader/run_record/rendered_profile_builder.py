@@ -23,9 +23,12 @@ from typing import Any, Dict, List
 from python.configuration.market_config_manager import MarketConfigManager
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.exceptions.rendered_config_errors import RenderedConfigMismatchError
-from python.framework.factory.decision_logic_factory import DecisionLogicFactory
-from python.framework.factory.worker_factory import WorkerFactory
-from python.framework.logging.bootstrap_logger import get_global_logger
+from python.framework.factory.strategy_config_renderer import (
+    LOGIC_TYPE_KEY,
+    WORKER_TYPE_KEY,
+    render_strategy_config,
+    with_configured_type,
+)
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
 from python.framework.types.run_config_types import RunConfigKind
 from python.framework.utils.config_fingerprint_utils import to_plain
@@ -36,9 +39,6 @@ from python.framework.workers.abstract_worker import AbstractWorker
 # own, with its defaults filled in. What the session is FOR (#576) is not what it ran with: the
 # header carries it. Neither is whose carry-over it continues (#358) — where its state came from.
 _NOT_A_BLOCK = frozenset({'config_path', 'strategy_config', 'run_purpose', 'carry_over_from'})
-
-# The two strategy keys that are replaced by their rendered form rather than copied.
-_RENDERED_STRATEGY_KEYS = frozenset({'decision_logic_config', 'workers'})
 
 
 def render_autotrader_profile(config: AutoTraderConfig) -> Dict[str, Any]:
@@ -67,39 +67,6 @@ def render_autotrader_profile(config: AutoTraderConfig) -> Dict[str, Any]:
     }
 
 
-def render_strategy_config(strategy_config: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Render a strategy as its components are built: every schema default filled in, every resolved
-    type key injected.
-
-    Only the worker instances the strategy actually runs are rendered — a `workers` entry that no
-    instance names configures nothing.
-
-    Args:
-        strategy_config: The profile's `strategy_config`
-
-    Returns:
-        The rendered strategy
-    """
-    logger = get_global_logger()
-    rendered = {
-        key: to_plain(value)
-        for key, value in strategy_config.items()
-        if key not in _RENDERED_STRATEGY_KEYS
-    }
-    logic_type = strategy_config.get('decision_logic_type', '')
-    if logic_type:
-        rendered['decision_logic_config'] = to_plain(DecisionLogicFactory(logger).resolve_parameters(
-            logic_type, strategy_config.get('decision_logic_config', {})))
-    worker_factory = WorkerFactory(logger)
-    worker_configs = strategy_config.get('workers', {})
-    rendered['workers'] = {
-        name: to_plain(worker_factory.resolve_parameters(worker_type, worker_configs.get(name, {})))
-        for name, worker_type in strategy_config.get('worker_instances', {}).items()
-    }
-    return rendered
-
-
 def assert_rendered_parameters_match(
     rendered: Dict[str, Any],
     decision_logic: AbstractDecisionLogic,
@@ -110,7 +77,9 @@ def assert_rendered_parameters_match(
 
     Both sides come from the same factory helper, so this cannot fire on a setting — it fires on
     a defect: a construction step that changed a parameter after the factory filled it, or a
-    renderer that drifted from the factory.
+    renderer that drifted from the factory. The record names each component as the strategy
+    configures it, where the factory injected the path it resolved, so the built side is
+    projected the same way before the two are compared.
 
     Args:
         rendered: The document `render_autotrader_profile` produced for this session
@@ -119,7 +88,9 @@ def assert_rendered_parameters_match(
     """
     strategy = rendered.get('strategy_config', {})
     difference = _first_difference(
-        strategy.get('decision_logic_config', {}), to_plain(decision_logic.config))
+        strategy.get('decision_logic_config', {}),
+        with_configured_type(
+            to_plain(decision_logic.config), LOGIC_TYPE_KEY, strategy.get(LOGIC_TYPE_KEY, '')))
     if difference:
         raise RenderedConfigMismatchError('the decision logic', difference)
 
@@ -128,8 +99,12 @@ def assert_rendered_parameters_match(
         raise RenderedConfigMismatchError(
             'the worker set',
             f'recorded {sorted(recorded_workers)}, built {sorted(workers)}')
+    configured_workers = strategy.get('worker_instances', {})
     for name, worker in workers.items():
-        difference = _first_difference(recorded_workers[name], to_plain(worker.parameters))
+        difference = _first_difference(
+            recorded_workers[name],
+            with_configured_type(
+                to_plain(worker.parameters), WORKER_TYPE_KEY, configured_workers.get(name, '')))
         if difference:
             raise RenderedConfigMismatchError(f"worker '{name}'", difference)
 

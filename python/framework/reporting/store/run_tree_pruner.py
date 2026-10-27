@@ -22,8 +22,6 @@ from python.framework.fixture_catalog.fixture_production_store import (
     PRODUCTION_RECORD_FILE,
     FixtureProductionStore,
 )
-from python.framework.reporting.io.artifact_specs import FIELD_STUDY_CAPTURE
-from python.framework.reporting.io.run_header_io import RUN_HEADER_ARTIFACT
 from python.framework.reporting.store.run_index import (
     RunIndex,
     dir_size,
@@ -31,9 +29,13 @@ from python.framework.reporting.store.run_index import (
 )
 from python.framework.reporting.store.run_ledger_index import LEDGER_INDEX_FILE
 from python.framework.reporting.store.run_results_ledger import RunResultsLedger
+from python.framework.store.entry_members.run_dir_reader import RunDirReader
+from python.framework.store.entry_members.run_entry_members import (
+    RUN_ENTRY_SUBDIRS,
+    run_member_path,
+)
 from python.framework.types.api.report_types import RunInfo, RunReporting
 from python.framework.types.config_types.file_logging_config_types import RunLogPaths
-from python.framework.types.log_layout_types import IO_SUBDIR
 from python.framework.types.run_prune_types import (
     PruneCandidate,
     PruneReport,
@@ -41,11 +43,8 @@ from python.framework.types.run_prune_types import (
     PruneSelectors,
 )
 from python.framework.types.run_purpose_types import RunPurpose
+from python.framework.types.store_member_types import RunEntryMemberId
 from python.framework.utils.time_utils import ensure_utc_aware, parse_datetime
-
-# A run's own substructure. These are never candidates in their own right; they go with the run
-# directory that contains them.
-_RUN_SUBDIRS = {IO_SUBDIR, 'scenario_logs', 'session_logs', 'diagnostics', 'events'}
 
 
 def _declared_purpose(run_dir: Path) -> Optional[str]:
@@ -61,7 +60,7 @@ def _declared_purpose(run_dir: Path) -> Optional[str]:
         The declared value; '' for a header older than the field; None when the header exists and
         cannot be read — which no guard can clear
     """
-    header_path = run_dir / RUN_HEADER_ARTIFACT
+    header_path = RunDirReader(run_dir).path_of(RunEntryMemberId.HEADER)
     if not header_path.exists():
         return ''
     try:
@@ -243,9 +242,9 @@ class RunTreePruner:
             # and a guard that trusts a derived file deletes real evidence the day that file
             # is stale. One stat per run is what the guarantee costs.
             # The raw record behind a real-money release certificate: `FieldStudyCertificate`
-            # finds it by rglob under the live root, so a run holding one is evidence, not
-            # archive — no selector reaches it.
-            if (run_dir / FIELD_STUDY_CAPTURE).exists():
+            # finds it among the runs under the live root, by their headers, so a run holding
+            # one is evidence, not archive — no selector reaches it.
+            if RunDirReader(run_dir).has(RunEntryMemberId.FIELD_STUDY_CAPTURE):
                 report.kept_field_study.append(candidate)
                 continue
             # A certificate run is never deleted (#576) — asked of the run's own HEADER, for the
@@ -421,7 +420,7 @@ class RunTreePruner:
                 # Filtering here rather than skipping after the fact saved one listing per
                 # run: 2.79 s down to 0.9 s over 118 runs, measured 2026-09-18.
                 dirnames[:] = [d for d in dirnames
-                               if d not in _RUN_SUBDIRS and (path / d) not in known_dirs]
+                               if d not in RUN_ENTRY_SUBDIRS and (path / d) not in known_dirs]
                 if path == root or path in known_dirs:
                     continue
                 if self._is_sweep_dir(path):
@@ -432,7 +431,7 @@ class RunTreePruner:
                     report.skipped_sweep_dirs.append(
                         PruneCandidate(path=path, size_bytes=own_files_size(path)))
                     continue
-                if RUN_HEADER_ARTIFACT in filenames:
+                if run_member_path(RunEntryMemberId.HEADER) in filenames:
                     # A run the index lost a row for — a concurrent write can do that. It is a
                     # run, so no guard below the index ever saw it; a rebuild re-indexes it.
                     report.kept_unindexed_run.append(
@@ -457,20 +456,6 @@ class RunTreePruner:
         report.to_delete_orphans.extend(
             candidate for candidate in found
             if not any(held.is_relative_to(candidate.path.resolve()) for held in holders))
-
-    @staticmethod
-    def _inside_run_dir(path: Path, known_dirs: set) -> bool:
-        """
-        Whether a directory lives inside a known run.
-
-        Args:
-            path: The directory
-            known_dirs: The directories the index lists
-
-        Returns:
-            True when one of its parents is an indexed run
-        """
-        return any(parent in known_dirs for parent in path.parents)
 
     def _is_sweep_dir(self, path: Path) -> bool:
         """
@@ -503,7 +488,7 @@ class RunTreePruner:
         for sweep_dir in sweeps_root.iterdir():
             if not sweep_dir.is_dir():
                 continue
-            combinations = [d for d in sweep_dir.rglob(RUN_HEADER_ARTIFACT)]
+            combinations = [d for d in sweep_dir.rglob(run_member_path(RunEntryMemberId.HEADER))]
             if not combinations:
                 continue
             if all(header.parent in going for header in combinations):

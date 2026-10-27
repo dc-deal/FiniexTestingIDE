@@ -41,6 +41,7 @@ from python.framework.types.autotrader_types.operator_alert_types import (
 )
 from python.framework.types.config_types.operator_alerts_config_types import LivenessPingConfig
 from python.framework.utils.connection_ladder import is_terminal_status
+from python.framework.utils.file_utils import create_directory
 
 # Sends one operator alert: kind, level, title, detail.
 AlertSender = Callable[[OperatorAlertKind, OperatorAlertLevel, str, str], None]
@@ -323,7 +324,7 @@ class LivenessPinger:
         path = resolve_in_data_home(Path(self._stamp_file))
         try:
             staging = path.with_name(path.name + '.tmp')
-            path.parent.mkdir(parents=True, exist_ok=True)
+            create_directory(path.parent, holds='the liveness stamp file')
             staging.write_text(datetime.now(timezone.utc).isoformat() + '\n')
             os.replace(staging, path)
         except (OSError, ValueError) as error:

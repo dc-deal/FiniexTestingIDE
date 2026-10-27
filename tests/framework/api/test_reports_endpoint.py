@@ -16,6 +16,12 @@ import pytest
 from fastapi.testclient import TestClient
 
 from python.api.api_app import create_app
+from python.framework.constants.run_layout_constants import (
+    IO_SUBDIR,
+    ORDER_EVENTS_FILE,
+    RUN_TYPE_AUTOTRADER,
+    RUN_TYPE_SIMULATION,
+)
 from python.framework.logging.global_logger import GlobalLogger
 from python.framework.reporting.io.artifact_specs import (
     AGGREGATED_PORTFOLIO_ARTIFACT,
@@ -23,7 +29,6 @@ from python.framework.reporting.io.artifact_specs import (
     BROKER_ARTIFACT,
     EXECUTION_STATS_ARTIFACT,
     FEED_STABILITY_ARTIFACT,
-    ORDER_EVENTS_STREAM,
     ORDER_HISTORY_ARTIFACT,
     PENDING_ORDERS_ARTIFACT,
     PORTFOLIO_ARTIFACT,
@@ -35,9 +40,8 @@ from python.framework.reporting.io.artifact_specs import (
     WARNINGS_ERRORS_ARTIFACT,
 )
 from python.framework.reporting.io.order_event_stream_io import write_order_event_stream
-from python.framework.reporting.io.order_event_stream_writer import OrderEventStreamWriter
 from python.framework.reporting.io.report_artifact_io import write_artifact
-from python.framework.reporting.store.report_store import IO_SUBDIR, ReportStore
+from python.framework.reporting.store.report_store import ReportStore
 from python.framework.reporting.store.run_index import RunIndex
 from python.framework.types.api.report_types import (
     ActiveOrderRow,
@@ -59,7 +63,6 @@ from python.framework.types.api.report_types import (
     FeeSourceFills,
     OrderHistoryReport,
     OrderHistoryRow,
-    OrdersTo,
     PendingOrdersReport,
     PendingOrdersUnitRow,
     PortfolioAggregateRow,
@@ -75,7 +78,6 @@ from python.framework.types.api.report_types import (
     SignalReport,
     SignalSourceRow,
     SignalUsageRow,
-    TicksFrom,
     TradeAnalytics,
     TradeHistoryReport,
     TradeHistoryRow,
@@ -95,13 +97,14 @@ from python.framework.types.live_types.broker_truth_types import (
     BrokerTruthSnapshot,
 )
 from python.framework.types.live_types.reconciliation_types import ReconcileState
-from python.framework.types.log_layout_types import RUN_TYPE_AUTOTRADER, RUN_TYPE_SIMULATION
+from python.framework.types.run_kind_types import OrdersTo, TicksFrom
 from python.framework.types.trading_env_types.broker_types import FeeSource
 from python.framework.types.trading_env_types.order_event_types import (
     OrderEvent,
     OrderEventType,
     OrderOperation,
 )
+from tests.shared.order_event_test_stream import open_test_order_event_writer
 
 # Every report artifact names its run (#475); the value is opaque to these tests.
 _RUN_ID = '20260830_120000_a1b2c3d4'
@@ -695,7 +698,7 @@ class TestTheOrderEventStream:
         """
         io_dir = _run_logs(tmp_path).simulation / 'my_set' / _RUN / IO_SUBDIR
         moment = datetime(2026, 6, 15, 12, 0, tzinfo=timezone.utc)
-        write_order_event_stream(io_dir, _RUN_ID, [
+        write_order_event_stream(io_dir / ORDER_EVENTS_FILE, _RUN_ID, [
             ('btc_run', [
                 OrderEvent(seq=1, event_type=OrderEventType.SUBMITTED, order_id='pos_btcusd_1',
                            submitted_seq=1, event_time=moment),
@@ -708,7 +711,7 @@ class TestTheOrderEventStream:
             ]),
         ])
         if tail:
-            with open(io_dir / ORDER_EVENTS_STREAM, 'a', encoding='utf-8') as handle:
+            with open(io_dir / ORDER_EVENTS_FILE, 'a', encoding='utf-8') as handle:
                 handle.write(tail)
 
     def test_every_step_is_served_in_stream_order_with_its_key(self, client, tmp_path):
@@ -731,7 +734,7 @@ class TestTheOrderEventStream:
         profiling report's `operation`.
         """
         io_dir = _run_logs(tmp_path).simulation / 'my_set' / _RUN / IO_SUBDIR
-        write_order_event_stream(io_dir, _RUN_ID, [('btc_run', [
+        write_order_event_stream(io_dir / ORDER_EVENTS_FILE, _RUN_ID, [('btc_run', [
             OrderEvent(seq=1, event_type=OrderEventType.UNRESOLVED, order_id='pos_btcusd_1',
                        submitted_seq=1, lost_request=OrderOperation.MODIFY),
         ])])
@@ -748,8 +751,8 @@ class TestTheOrderEventStream:
         """
         io_dir = _run_logs(tmp_path).simulation / 'my_set' / _RUN / IO_SUBDIR
         io_dir.mkdir(parents=True, exist_ok=True)
-        writer = OrderEventStreamWriter(io_dir, _RUN_ID, 'btc_session',
-                                        GlobalLogger('ReportsEndpointTest'))
+        writer = open_test_order_event_writer(io_dir / ORDER_EVENTS_FILE, _RUN_ID, 'btc_session',
+                                              GlobalLogger('ReportsEndpointTest'))
         writer.write_broker_truth(BrokerTruthRecord(
             seq=1, read_reason=BrokerTruthReadReason.SESSION_START,
             snapshot=BrokerTruthSnapshot(venue_orders=[], venue_balances={'USD': 812.4})))
@@ -785,7 +788,7 @@ class TestTheOrderEventStream:
 
     def test_a_damaged_stream_is_unreadable_not_a_server_error(self, client, tmp_path):
         self._plant_stream(tmp_path)
-        path = _run_logs(tmp_path).simulation / 'my_set' / _RUN / IO_SUBDIR / ORDER_EVENTS_STREAM
+        path = _run_logs(tmp_path).simulation / 'my_set' / _RUN / IO_SUBDIR / ORDER_EVENTS_FILE
         lines = path.read_text(encoding='utf-8').splitlines()
         lines.insert(2, '{"broken')
         path.write_text('\n'.join(lines) + '\n', encoding='utf-8')

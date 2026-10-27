@@ -20,6 +20,9 @@ The `tests/framework/config/` suite holds complementary test files:
   anything else.
 - **`test_data_home.py`** — where the operator's state lives (#598). See
   [The data home](#test_data_homepy--where-the-operators-state-lives) below.
+- **`test_scenario_log_prefix.py`** — the scenario log prefix is one plain name (#621): every
+  backtest log's file name begins with it, so an empty value, a dot and a path are refused when the
+  configuration loads rather than at the start of the first run.
 - **`test_committed_data_origin.py`** — nothing kept in `configs/` or `tests/fixtures/` rests
   on external data (#561): no generator profile records `external` among its origin classes,
   and one without the field predates external data; no scenario set's window or warmup reaches
@@ -177,6 +180,20 @@ MT5 because its zero falls back — so the error would stay invisible until the 
 real spread arrives, and then change every bar at once.
 
 Background: [Market Model](../../architecture/market_model.md).
+
+## Trading Model Declared (`test_trading_model_declared.py`)
+
+`trading_model` — spot or margin — decides the account model, which no two accounts of one
+composite may differ in (#615). It used to default to margin, so a broker entry without it traded
+as margin unnoticed; it is now **required**, like `price_formation`, and asserted rather than
+trusted.
+
+| Test | What it verifies |
+|---|---|
+| `test_an_entry_without_it_is_refused` | An entry without it fails at load instead of resolving to margin |
+| `test_an_entry_with_it_loads` | Both models load and carry through untouched |
+| `test_every_broker_resolves_to_a_trading_model` | Every configured broker declares it, read through the manager |
+| `test_the_two_shipped_venues_are_declared_correctly` | Kraken spot, MT5 margin, pinned by name |
 
 ## Server Clock Declared (`test_server_clock_declared.py`)
 

@@ -10,6 +10,7 @@
 | [CLI Tools Guide](cli_tools_guide.md) | All CLI commands with examples and workflow overview |
 | [Worker Naming](user_guides/worker_naming_doc.md) | Worker reference system, path-based loading, requirements contract |
 | [Algo State Persistence](user_guides/algo_state_persistence_guide.md) | Restart-safe algo memory — snapshot/restore hooks, staleness, JSON contract |
+| [Reading the Results Ledger](user_guides/results_ledger_guide.md) | What one ledger row is, which of its numbers add up, and what changes between one account and several |
 | [Robustness Validation](user_guides/robustness_validation_guide.md) | Multi-window + In-Sample/Out-of-Sample overfit guard — roles, WFE, distribution, trust gate (#367) |
 | [Trend Channel Reference](user_guides/trend_channel_reference_guide.md) | Didactic full-order-surface reference strategy — LIMIT/STOP entries, SL/TP, trailing, partial close, multi-position (#118) |
 
@@ -43,6 +44,7 @@
 | [Unattended Operation](autotrader/unattended_operation.md) | What reaches the operator when nobody watches: Telegram alerts, the liveness ping a monitor turns into an alarm, the supervisor (#235) |
 | [Outage Handling](user_guides/outage_handling_guide.md) | Connection/feed outages — mandatory staleness hooks, escalation ladder, OrderGuard floor, outage drills (#434/#436) |
 | [Deployment & Ledger](user_guides/deployment_ledger_guide.md) | Reading a bot across its restarts — the mandatory `deployment` declaration, the history command, gaps and parameter changes (#497) |
+| [Changing a Live Bot](user_guides/changing_a_live_bot_guide.md) | One invented week of real money: what each change of a running bot's configuration does to its trades, its record and its series (#626) |
 | [Adapter Development Guide](user_guides/adapter/adapter_development_guide.md) | How to implement a new broker adapter (Tier 1/2/3, config files, credentials, test suite) |
 | [Kraken Adapter Setup](user_guides/adapter/setup_kraken_adapter.md) | API keys, broker settings, dry run, first run |
 
@@ -61,6 +63,8 @@
 | [Market Model](architecture/market_model.md) | The three independent axes describing a venue — asset class, how a position is financed, and how prices come about — all eight combinations with what this project supports, and which price the strategy plane reads against the valuation plane |
 | [Price representation](architecture/price_representation.md) | How a price is stored, computed and served, why float64 and not Decimal, and when to re-open it |
 | [Data Storage Layout](architecture/data_storage_layout.md) | The store catalog — every data store by kind (record · carry-over · archive · derived · special) and retrieval form, the index obligation, why the bulk form stays outside the abstraction (#486) |
+| [Store Entry Members](architecture/store_entry_members.md) | What one run or sweep directory may hold, file by file — the shapes, who writes each file and when, what the run list serves, and how a file is added (#621) |
+| [Day Records](architecture/run_stream_day_records.md) | A session's streams sealed per trading day — what a day folder holds, how a day is sealed, what a day record keeps, and how a stream is read as one (#476) |
 | [Accounting Periods](architecture/accounting_periods.md) | Which clock resets what — the swap rollover at 17:00 New York against the risk day at midnight UTC, the tick-level equity sample, the two carry-over cadences, and what deliberately does not reset |
 | [Data Provenance](architecture/data_provenance.md) | Who wrote an imported file and what that is allowed to mean — the identity a producer states, the registry that maps it here, the three evidence grades, and the gate that keeps development data out of a measurement |
 | [Fixture Catalog](architecture/fixture_catalog.md) | The runs a consumer pins as a committed procedure — every entry produced and checked by one command, the production record, and why the current fixture is derived rather than stored (#576) |
@@ -218,6 +222,8 @@ Each test suite has its own documentation in [`tests/`](tests/).
 | [Security Study Certificate Tests](tests/framework/security_cert_certificate_tests.md) | The certificate that judges the security study's stages together, and the catalog of how each rule is proven — offline |
 | [Trading Day Anchor Tests](tests/framework/trading_day_anchor_tests.md) | Where a market flips its trading day, and which day an instant belongs to — DST-aware, one answer for the log rotation, the daily-loss baseline and the record seal |
 | [Warmup History Tests](tests/framework/warmup_history_tests.md) | One synthetic stream through the backtest, the mock and the live warmup path — the same history at the first tick, the venue read by period and commit, start invariance, the guard and the outcome table (#588) |
+| [Execution Counters Tests](tests/framework/execution_counters_tests.md) | The executor's order counts over the run and over the running booking period, so a run's periods add up to its execution statistics |
+| [Atomic File Utils Tests](tests/framework/atomic_file_utils_tests.md) | A file written atomically is old or new, never half; written durably, it also survives a crash of the machine |
 | [Time Utils UTC Tests](tests/framework/time_utils_tests.md) | Every parsed or normalised datetime comes back in UTC — also on a machine whose own zone is not UTC |
 | [Server Clock Tests](tests/framework/server_clock_tests.md) | A broker server's wall clock to UTC through the zone's own daylight saving rules — both seasons, the payroll and weekly-open anchors, the changed hours refused |
 | [Market Calendar / Swap Rollover](tests/framework/market_calendar_tests.md) | Swap-rollover + DST calendar helpers + MarketClock awareness (#365) |
@@ -231,6 +237,9 @@ Each test suite has its own documentation in [`tests/`](tests/).
 | [Algo Clock Convention](tests/framework/algo_clock_tests.md) | Wall-clock ban lint (decision logic/workers, CI plane) |
 | [Algo Clock Validator](tests/framework/algo_clock_validator_tests.md) | Wall-clock ban, runtime startup validator — AST scan of loaded algos (CORE + user) + batch pre-flight |
 | [Discovery Cache Validity](tests/framework/discovery_validity_tests.md) | The config-fingerprint comparison across all three cache families, and the single-open metadata reader behind it |
+| [Composite Key Tests](tests/framework/composite_tests.md) | Which accounts may add up to one result — the composite definition and its floor, the key projected from the rendered configuration, what joins and what splits, the excluded member, the changed values, every value of every shipped document classified (#615) |
+| [Rendered Configuration Tests](tests/framework/rendered_config_tests.md) | What a run records it ran with, held to what it actually ran with — every shipped scenario set's document against its subprocess configuration, the portable strategy key, the header naming it, a sweep combination's own, never fatal, one strategy section in both pipelines |
+| [Run Entry Census Tests](tests/framework/run_entry_census_tests.md) | Real runs held to what the run store declares a run directory may hold — both directions, the stream versions, the run index row (#621) |
 | [Store Model Tests](tests/framework/store_tests.md) | Catalog completeness, the shared index base (atomic write, delete-and-rebuild, logic version), generic form-A retrieval, carry-over envelope |
 | [Config Directory Tests](tests/framework/config_directory_tests.md) | Every file that can start a run, read without running it — unreadable files as rows, precedence, the per-file cache, run figures |
 | [Fixture Catalog Tests](tests/framework/fixture_catalog_tests.md) | The runs a consumer pins — the catalog's completeness, the production record, and one real production carrying every asserted property |

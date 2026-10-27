@@ -80,7 +80,8 @@ What the stream records where answers cross, time out or come back late.
 | Test | Description |
 |------|-------------|
 | `TestTheFile` | the header names the schema once; an event is on disk before the next is recorded; empty fields are left out; a failed write is said once and ends the stream without ending the fill; a backtest writes its units one after the other, and none at all when no order was placed |
-| `TestReadingItBack` | a cut-off last line is left out and reported; a broken line in the middle, an unknown schema, the previous schema, a line that is not a JSON object and a byte that is not UTF-8 are unreadable |
+| `TestASessionWhoseStreamCannotOpen` | a stream that cannot be opened is not swallowed — the session's start ends — and no listener is registered with the executor |
+| `TestReadingItBack` | a cut-off last line is left out and reported; a broken line in the middle, an unknown schema, the previous schema, a line that is not a JSON object and a byte that is not UTF-8 are unreadable — one stream file read through the parser every run reader uses (`tests/shared/order_event_test_stream.py`); a session's stream across its sealed days is pinned in the reporting suite |
 | `TestBrokerTruthLines` | the venue's lines and the order events read back as two lists on one counter; a venue order is projected, its raw payload left with the adapter; the three states of a part survive the file; a divergent reconcile line names its members |
 | `TestTheSharedWriter` | one compact line per record, nothing after close, and the field study's lines unchanged by the move onto the shared writer |
 | `TestTheRunIndexListsItAsAStream` | the stream is named while the run is going and never counted among the artifacts |

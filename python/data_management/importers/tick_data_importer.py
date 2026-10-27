@@ -39,6 +39,7 @@ from python.framework.types.import_types.import_schema_types import (
     NESTED_METADATA_KEYS,
 )
 from python.framework.types.validation_types import TickFileValidationResult
+from python.framework.utils.file_utils import create_directory
 from python.framework.utils.market_session_utils import get_session_from_utc_hour
 from python.framework.utils.time_utils import server_clock_to_utc_ms
 from python.framework.validators.tick_import_validator import TickImportValidator
@@ -95,7 +96,7 @@ class TickDataImporter:
         """
         self.source_dir = Path(source_dir)
         self.target_dir = Path(target_dir)
-        self.target_dir.mkdir(parents=True, exist_ok=True)
+        create_directory(self.target_dir, holds='the imported tick files')
 
         self.override = override
         # Per broker: how many files resolved to each UTC offset — the summary's evidence that
@@ -500,7 +501,7 @@ class TickDataImporter:
             broker_type_normalized).value
 
         target_path = self.target_dir / broker_type_normalized / 'ticks' / symbol
-        target_path.mkdir(parents=True, exist_ok=True)
+        create_directory(target_path, holds="a symbol's tick parquet files")
 
         parquet_name = f"{symbol}_{start_time.strftime('%Y%m%d_%H%M%S')}.parquet"
         parquet_path = target_path / parquet_name
@@ -607,7 +608,7 @@ class TickDataImporter:
             compression_ratio = json_size / parquet_size if parquet_size > 0 else 0
 
             if self._move_processed_files and self._finished_dir:
-                self._finished_dir.mkdir(exist_ok=True)
+                create_directory(self._finished_dir, holds='the raw files after their import')
                 finished_file = self._finished_dir / json_file.name
                 json_file.rename(finished_file)
                 vLog.info(f'→ Moved {json_file.name} to finished/')

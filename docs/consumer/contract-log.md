@@ -33,6 +33,100 @@ reads downwards from the version their fixtures hold until they reach the one be
 A test holds the newest heading in this log to the number the server answers with, so a version
 cannot ship without its entry.
 
+## Version 42 — 2026-10-27 (#476)
+
+A booking period counts the orders it handled, so a run's order counts can be read from its periods
+again.
+
+- A change of meaning: on a [sweep](/api/v1/docs/sweeps) combination folded from a run's booking
+  periods, every `orders_*` field and `sl_tp_triggered` is the sum of those periods' own counts. They
+  read null there before, because a booking period carried none. Null now only on a row written
+  before this version.
+- The counts are taken inside each period, where the run's [execution stats](/api/v1/docs/execution-stats)
+  count them, so a run's periods add up to its execution stats.
+
+No field added; no field removed.
+
+## Version 41 — 2026-10-26 (#626)
+
+What a carry-over may carry across a change: a rehearsal's readings never reach real money, and a
+start that continues an open position under a changed configuration says so.
+
+- `GET /api/v1/reports/runs/{run_id}/header`: `origin.accept_composite_change` — the key the start
+  was given with `--accept-composite-change`: the composite it may continue what the venue still
+  holds — a position, resting orders — under, though it is not the one that opened them. Recorded as
+  typed; whether it let anything through is the session's `composite_change_accepted` warning. Null
+  on every other run, on a backtest, and on a run recorded before this version.
+- Three checks a session may report in its [warnings](/api/v1/docs/warnings-errors), described by
+  `GET /api/v1/validation-checks`: `composite_change_accepted`, `carried_configuration_not_compared`
+  and `carried_readings_not_continued`.
+- A change of meaning: a session's drawdown no longer continues across a change of run kind. A
+  session placing real orders never inherits a rehearsal's curve, a rehearsal never inherits real
+  money's, a curve that does not say which kind of run wrote it is not inherited, and a start told
+  `--new-deployment` begins its own. Such a session reads `drawdown_carried_from` empty on its
+  [portfolio](/api/v1/docs/portfolio), and its [deployment](/api/v1/docs/deployments) row's
+  `max_drawdown` starts there.
+
+One field added; no field removed.
+
+## Version 40 — 2026-10-25 (#476)
+
+A trading day ends at its boundary, every trading day has its row, and a session's days are booked
+while it runs.
+
+- **Where a day ends.** A booking period a trading day's boundary closed has `closed_at` at that
+  boundary — never the later moment the run noticed it — and the next period opens there. The tick
+  that crosses the boundary belongs to the new day: its fills, its trades and its move. So the two
+  periods around a boundary can read differently from a run recorded before; their sum does not.
+- **Every trading day has its row.** A day the run heard nothing from — a gap in the data — still
+  gets its period: `tick_count` 0, nothing traded, the valuation it was left at. A market that
+  closes books no row for a closed day, and the period after a weekend opens where the last
+  trading day ended — a forex row after a weekend opens at the Friday close.
+- `tick_count`, new on every booking-period row: how many ticks the period applied. Null on a
+  period recorded before this contract.
+- `final_equity`, `min_equity`, `max_equity` and `max_drawdown` of a booking period are null where
+  the period could value the account at no point — a spot session sealed before its first tick
+  priced its holdings. `deepest_period_drawdown` is null when no period could.
+- A period's band starts at the value it opened with: a fall between the boundary and the first
+  tick of the day is that day's decline.
+- A session's last period includes its end: a close that fills in the pass that ends the session
+  is booked in it.
+- **A running session is in the ledger.** Each trading day is booked as it closes, so a
+  deployment's booking periods, its history and the run list show the sealed days of a session
+  still running — or of one that died before its end. Until the row of its close exists, such a
+  session's `ended` and `ran_hours` are null, the gap after it is measured between the starts
+  (`gap_between_starts: true`), and its `run_outcome` and counts in the run list are null. A
+  deployment's `unfinished` still counts every session that never reached its close, so it now
+  overlaps with `sessions` — the two are never added.
+- The run summary's `account_max_drawdown`, `max_equity` and `account_max_dd_pct` are typed
+  nullable; a run's own summary always carries numbers.
+- `max_drawdown` and `max_drawdown_pct` of a deployment and of each of its sessions, and
+  `account_max_drawdown` of a sweep combination and of a booking-period unit total, are null where
+  no drawdown was measured: rows written before the column existed, or a session that had not
+  valued its account yet when its days were sealed. A deployment's deepest decline is taken over
+  the sessions that measured one.
+- `unranked`, new on a sweep: how many combinations its ranking left out because they carry no
+  value for its objective. A figure only some runs measured can now be the objective; one that can
+  be undefined for a run is still refused.
+- `rendered_config_id`, `broker_config_id` and `period_tick_count` on every row of a sweep's
+  combinations: what the run ran with, and the ticks its periods applied.
+
+No route moved; fields added, some figures nullable, and two meanings changed.
+
+## Version 39 — 2026-10-25 (#547)
+
+A backtest names the configuration it RAN with, as a session does.
+
+- `rendered_config_id` on a run's [header](/api/v1/docs/run-header) is now filled for a backtest
+  too. It names the backtest's rendered scenario set: one section per scenario, holding the strategy
+  with every parameter default filled in, the blocks the scenario ran with, and the broker's market
+  entry and market rules — beside `config_id`, the file the run was given. Every combination of a
+  parameter sweep names its own.
+- Empty on a backtest recorded before this contract, and on a run whose configuration could not be
+  rendered or frozen. No route serves a rendered document's content yet.
+
+No field was added or removed.
+
 ## Version 38 — 2026-10-21 (#611)
 
 A running session can be asked how it stands: its latest state frame, how old it is, and whether it
@@ -58,91 +152,16 @@ is still recording.
 A route, two codes and a run-list field added, a stream named; nothing removed or renamed. Its document is
 [state frames](/api/v1/docs/state-frames).
 
-## Version 37 — 2026-10-20 (#598)
-
-A session trading real money starts without a carry-over only when its start is declared the bot's
-first, and its header says so.
-
-- `GET /api/v1/reports/runs/{run_id}/header`: `origin.first_start` — `true` when the start of a
-  session trading real money was declared the bot's first: the one way such a session starts
-  without a carry-over to continue. A session that finds no carry-over it can use and is not
-  declared refuses to start, so it leaves a failed start rather than a run that began from
-  nothing. `false` on every other run, on a backtest, and on a run recorded before this version.
-
-One field added. Its document is [run header](/api/v1/docs/run-header).
-
-## Version 36 — 2026-10-19 (#547)
-
-A backtest keeps the broker configuration it traded with, as a session already does.
-
-- `broker_config_id` on every row of [broker](/api/v1/docs/broker) is set on a simulation row too:
-  the id under which the backtest froze the symbol specifications and fee structure it read when it
-  started. It was empty on every simulation row before, and a row recorded before this version keeps
-  it empty.
-- `config_hash` leaves out when a value was fetched. A refresh that reads the same values keeps it;
-  a changed value still moves it. Where the symbols carry a fetch time, as on a dynamic broker such
-  as `kraken_spot`, a row recorded before this version therefore differs from a later one over the
-  same values: compare those hashes within one side of this version. A static broker's hash did not
-  move.
-
-No field changed its shape.
-
-## Version 35 — 2026-10-19 (#603)
-
-What runs on the machine is served, the machine and the broker list need a grant, and a booking
-period says what it carries.
-
-- New `GET /api/v1/activities`: one row per activity running on the machine this server runs on —
-  a backtest, a parameter sweep, an AutoTrader session, an import, a discovery cache build, a test
-  suite, the server itself. A row is keyed by `activity_id`, never by a process id, and carries the
-  resident memory of its processes (`rss_bytes`, `process_count`). Beside the rows stand the
-  machine's memory and its pressure verdict, read at the same instant, and `server_activity_id`,
-  the row of the server answering.
-- `GET /api/v1/activities` and `GET /api/v1/machine-resources` sit on a new grant surface,
-  `machine`: a token reaches them with `machine:*` and is refused with 403 without it. Grants are
-  read at start-up, so a newly issued grant counts after the server restarts.
-- `GET /api/v1/brokers` moves onto the `brokers` surface: listing the brokers needs a `brokers`
-  grant, as a broker's symbols already did.
-- Every row of `GET /api/v1/brokers/{broker}/symbols` carries `tick_size`, the instrument's
-  smallest price step from the broker's configuration; null where the configuration names no such
-  symbol or cannot be read.
-- `from` and `to` on the bars and ATR routes accept an ISO-8601 instant only. A number that is no
-  ISO date, which was read as Unix seconds — `from=2026` became `1970-01-01T00:33:46Z` — and any
-  other text that is no instant, which answered `422`, are refused with `400 invalid_timestamp`. An
-  instant without an offset is read as UTC, and an eight-digit date in ISO's basic format
-  (`20261019`) is an ISO date and read as one.
-- Every booking period, a run's and a deployment's, carries what it carries beside what it did:
-  `account_max_drawdown` and `account_max_dd_pct`, the account's decline since its equity curve
-  began — an AutoTrader session continues its predecessor's curve wherever its profile carries the
-  risk history over, whatever its deployment — and `unrealized_pnl` and `open_position_count` at
-  the seal.
-- New error `activity_registry_unreadable` (500): the list of what runs could not be read, which
-  is not the same as nothing running.
-
-A route added, two routes and the broker list behind a grant, fields added, and two parameters
-read strictly. The new route's document is [activities](/api/v1/docs/activities).
-
-## Version 34 — 2026-10-18 (#606)
-
-A price the venue quoted or traded is now served as the decimal the venue wrote.
-
-- Every price a run read from the tick archive — a tick's `bid`, `ask` and `last`, the open, high,
-  low and close of a bar whose price basis is `order_driven`, a fill at a recorded quote — is the
-  decimal the collector recorded: `0.87957`, where a run before this contract read
-  `0.8795700073242188`. The archive was re-imported from its raw files on 2026-10-17 and keeps
-  double precision from now on.
-- `real_volume` keeps every decimal the venue reported.
-- New document [prices](/api/v1/docs/prices): which prices are the venue's decimals and which are
-  computed, and how to round a computed one for display by the instrument's `tick_size`.
-
-No field was added or removed. A run recorded before this contract keeps the values it read.
-
-## Versions 33 and earlier
+## Versions 37 and earlier
 
 One line each. Every one of these moved a shape or a meaning; what they moved is summarised here
 rather than spelled out, because a consumer this far behind needs the list of steps, not each step's
 reasoning. The full text of a compressed version is in this repository's history.
 
+- **Version 37** — 2026-10-20 (#598): A session trading real money starts without a carry-over only when its start is declared the bot's first — `origin.first_start` on the [run header](/api/v1/docs/run-header), `true` for such a start and `false` on every other run, a backtest and a run recorded before this version.
+- **Version 36** — 2026-10-19 (#547): A backtest keeps the broker configuration it traded with — `broker_config_id` on every row of [broker](/api/v1/docs/broker) is set on a simulation row too, and `config_hash` leaves out when a value was fetched, so on a dynamic broker a hash recorded before this version differs from a later one over the same values.
+- **Version 35** — 2026-10-19 (#603): What runs on the machine is served (`GET /api/v1/activities`, keyed by `activity_id`, with each activity's memory and the machine's pressure verdict), the machine routes and the broker list need a grant (`machine`, `brokers`), every symbol row carries `tick_size`, `from` and `to` on the bars and ATR routes accept an ISO-8601 instant only (`400 invalid_timestamp`), every booking period carries `account_max_drawdown`, `account_max_dd_pct`, `unrealized_pnl` and `open_position_count`, and `activity_registry_unreadable` (500) is new.
+- **Version 34** — 2026-10-18 (#606): A price the venue quoted or traded is served as the decimal the venue wrote — a tick's `bid`, `ask` and `last`, an `order_driven` bar's prices and a fill at a recorded quote read `0.87957` where they read `0.8795700073242188`, `real_volume` keeps every decimal, and the new document [prices](/api/v1/docs/prices) says how to round a computed price by `tick_size`.
 - **Version 33** — 2026-10-16 (#602): A backtest over data recorded without a quote pays a spread, reported beside the measured one — `modelled_spread_cost` on every trade row and booking period, `total_modelled_spread_cost` on the portfolio and on the scenario totals, `modelled_spread` on the scenario details; the P&L of such a backtest is lower than before.
 - **Version 32** — 2026-10-15 (#599): A gap says whose silence it is, and a unit's trade totals carry the spread it paid — `origin_class` and `origin_class_after` on every gap, `gaps_by_year` beside them, `key` replaced by `keys`, the `origin_class` and `since` parameters, `reason` without its guessed causes, and `total_spread_cost` on every trade-history `scenario_totals` row and the portfolio, null where a unit read data without a quote.
 - **Version 31** — 2026-10-14 (#595): The machine this server runs on can be asked how full it is — `GET /api/v1/machine-resources`, new, with the memory limit that binds and where it was read (`limit_source`), the processors and how busy they were over `window_s`, and `pressure_level` with its `pressure_reasons`; a route added, no field changed its shape.

@@ -11,17 +11,21 @@ from typing import Any, Callable, Dict, Iterable, List, Optional
 import pandas as pd
 
 from python.framework.exceptions.store_errors import StoreIndexSourceMissingError
-from python.framework.reporting.io.artifact_specs import RUN_RECORD_FILENAMES, STREAM_FILENAMES
+from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.reporting.io.run_header_io import (
-    RUN_HEADER_ARTIFACT,
     read_run_header,
     write_run_header,
 )
 from python.framework.store.abstract_store_index import AbstractStoreIndex
+from python.framework.store.entry_members.run_entry_members import (
+    RUN_INDEX_COLUMN_MEMBERS,
+    run_member_folder,
+    run_member_path,
+)
 from python.framework.types.api.report_types import DataWindow, RunHeader, RunInfo, RunReporting
 from python.framework.types.config_types.file_logging_config_types import RunLogPaths
-from python.framework.types.log_layout_types import IO_SUBDIR
 from python.framework.types.run_purpose_types import RunPurpose
+from python.framework.types.store_member_types import RunEntryMemberId, RunIndexColumn
 
 
 def _or_none(value) -> Optional[str]:
@@ -66,43 +70,69 @@ def _origin_columns(header: RunHeader) -> Dict[str, Any]:
     }
 
 
-def _io_file_names(run_dir: Path) -> List[str]:
+def _file_names(folder: Path) -> List[str]:
     """
-    Every file in a run's io/ subfolder, by name.
+    Every file in one folder of a run, by name.
+
+    Args:
+        folder: The folder
+
+    Returns:
+        Sorted file names; empty when the folder does not exist
+    """
+    if not folder.is_dir():
+        return []
+    return sorted(f.name for f in folder.iterdir() if f.is_file())
+
+
+def _listed_names(run_dir: Path, column: RunIndexColumn) -> List[str]:
+    """
+    The files of a run that the run store declares for one index column, by name — each member's
+    folder as the declaration places it, listed once.
+
+    An allow-list, never a deny-list: a file no member declares for the column — the temporary
+    file of an interrupted write, a file nobody declared — is listed in neither column. The census
+    suite is what finds such a file; this list only refuses to vouch for it.
 
     Args:
         run_dir: The run's own directory
+        column: The index column being filled
 
     Returns:
-        Sorted file names; empty when the run has no io/ subfolder
+        Sorted file names
     """
-    io_dir = run_dir / IO_SUBDIR
-    if not io_dir.is_dir():
-        return []
-    return sorted(f.name for f in io_dir.iterdir() if f.is_file())
+    listings: Dict[str, List[str]] = {}
+    names = set()
+    for member in RUN_INDEX_COLUMN_MEMBERS[column]:
+        folder = run_member_folder(member.member_id)
+        if folder not in listings:
+            listings[folder] = _file_names(run_dir / folder)
+        names.update(name for name in listings[folder]
+                     if member.matches(f'{folder}/{name}' if folder else name))
+    return sorted(names)
 
 
 def _artifact_names(run_dir: Path) -> List[str]:
     """
     The report artifacts a run has persisted, by file name.
 
-    A stream is not one (#362), and neither is a record the session writes as it runs — its
-    warmup history (#588), its tick stream's outages (#609): a session that died before its
-    report would otherwise read as reported — "not completed" hangs on this list being empty.
+    Only what the reporting writes at the run's end. A stream (#362) is not one, and neither is a
+    record the session writes as it runs — its warmup history (#588), its tick stream's outages
+    (#609): a session that died before its report would otherwise read as reported — "not
+    completed" hangs on this list being empty.
 
     Args:
         run_dir: The run's own directory
 
     Returns:
-        Sorted file names in the run's io/ subfolder, streams and run records left out
+        Sorted file names in the run's io/ subfolder
     """
-    return [name for name in _io_file_names(run_dir)
-            if name not in STREAM_FILENAMES and name not in RUN_RECORD_FILENAMES]
+    return _listed_names(run_dir, RunIndexColumn.ARTIFACTS)
 
 
 def _stream_names(run_dir: Path) -> List[str]:
     """
-    The streams a run has written, by file name.
+    The served streams a run has written, by file name.
 
     Args:
         run_dir: The run's own directory
@@ -110,7 +140,7 @@ def _stream_names(run_dir: Path) -> List[str]:
     Returns:
         Sorted stream file names in the run's io/ subfolder
     """
-    return [name for name in _io_file_names(run_dir) if name in STREAM_FILENAMES]
+    return _listed_names(run_dir, RunIndexColumn.STREAM_FILES)
 
 
 def _kind_columns(header: RunHeader) -> Dict[str, Any]:
@@ -337,7 +367,11 @@ class RunIndex(AbstractStoreIndex):
     # them either. No run wrote them before, so a rebuild changes no existing row.
     # 11 → 12 (#611): the state frames are a served stream, so `stream_files` names them; a rebuild
     # adds them to the rows of the sessions that wrote them.
-    LOGIC_VERSION: int = 12
+    # 12 → 13 (#621): `artifacts` and `stream_files` list only the files the run store declares for
+    # them, where `artifacts` used to take whatever io/ held minus a list of exceptions. A rebuild
+    # takes an undeclared file — the temporary file of an interrupted write — out of the rows that
+    # listed it, so a session that died mid-write no longer reads as reported.
+    LOGIC_VERSION: int = 13
 
     def __init__(self, path: Path, roots: Optional[RunLogPaths] = None,
                  declared_purposes: Optional[Callable[[], Dict[str, RunPurpose]]] = None):
@@ -532,7 +566,9 @@ class RunIndex(AbstractStoreIndex):
 
         The repair path, and the reason the index may be treated as disposable. A run without a
         header predates this mechanism and is skipped — it cannot be identified, which is exactly
-        the condition the header exists to end.
+        the condition the header exists to end. A header that cannot be read is skipped too, with
+        a warning naming it, rather than ending the rebuild: one damaged run would otherwise leave
+        every other run unindexed. The pruner keeps such a directory and lists it as unindexed.
 
         Returns:
             How many runs were indexed
@@ -545,9 +581,16 @@ class RunIndex(AbstractStoreIndex):
         declared = self._declared_purposes() if self._declared_purposes is not None else {}
         rows = []
         for root in (self._roots.simulation, self._roots.autotrader):
-            for header_path in Path(root).rglob(RUN_HEADER_ARTIFACT):
+            for header_path in Path(root).rglob(run_member_path(RunEntryMemberId.HEADER)):
                 run_dir = header_path.parent
-                header = read_run_header(header_path)
+                try:
+                    header = read_run_header(header_path)
+                except (OSError, ValueError) as error:
+                    get_global_logger().warning(
+                        f'⚠️  Run index rebuild: {header_path} cannot be read and is left out — '
+                        f'{type(error).__name__}: {str(error).splitlines()[0]}. Repair or remove '
+                        f'the header, then rebuild again.')
+                    continue
                 rows.append({
                     'run_id': header.run_id,
                     'start_time': header.start_time.isoformat(),

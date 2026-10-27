@@ -281,6 +281,39 @@ and an entry in between would keep the book from ever reaching flat.
 All conditions are OR-combined — any one alone triggers, and every condition that fired is named
 in the reason, so a blocked session says whether one limit was touched or three were blown through.
 
+### Where the daily loss limit's day ends
+
+The day of `max_daily_loss_abs` and `max_daily_loss_pct` is the trading day of the booking periods
+(#476): it ends at its boundary — midnight UTC for crypto, the swap rollover for forex — in the pass
+that seals the day's booking period. The new day starts from the account value the seal read at the
+boundary, so whatever the first tick of the day does counts against the new day.
+
+The day that ended is filed with the losses its ticks showed **and** with the seal's reading. The
+limit is evaluated on ticks, and a fill an idle heartbeat drains after the day's last tick moves the
+account where no tick evaluates it — the next tick already belongs to the new day. Without the
+seal's reading, that fill's cost would stand in neither day's record. It only completes the record:
+`limit_hit` says a limit FIRED, and nothing fires for a day that has ended.
+
+How others cut the day, read 2026-10-26 from their own documentation and source code:
+
+| System | When the limit is evaluated | The new day's reference |
+|---|---|---|
+| [FTMO](https://ftmo.com/en/trading-objectives/) | equity, commissions and swaps included, "cannot drop [below] at any time" — how it checks is not described | the balance recorded at 00:00 CE(S)T |
+| [NinjaTrader Prop](https://prop.ninjatrader.com/platform/risk-settings/) | "in real time", realised and unrealised losses | the day's opening balance |
+| [Topstep](https://help.topstep.com/en/articles/8284204-what-is-the-maximum-loss-limit) | its maximum loss "in real time throughout the session"; its daily limit "during the trading day", which starts at 5 PM CT | not stated for the daily limit |
+| [The5ers](https://the5ers.com/faqs/2-step-plan-rules-specifications/) | not stated | the previous day's closing balance or equity, whichever is higher |
+| QuantConnect LEAN (commit f3d841e6) | its risk models on each slice of data | no daily reference |
+| freqtrade (commit f81a494e) | its drawdown protection when a trade closes | a rolling window of closed trades |
+| nautilus_trader (v2.0.0rc8) | its risk engine has no daily loss limit | — |
+
+None of them describes a separate evaluation at the reset: a rule held "at any time" needs none.
+This layer evaluates on ticks, as LEAN evaluates on data, and needs one at the one instant where the
+next tick belongs to the next day. Evaluating on every fill, as freqtrade does, would also cover a
+heartbeat's fill during the day; there the next tick covers it already, and it would change when a
+block can fire. One difference is kept on purpose: this layer starts the day from the account value,
+equity, where FTMO starts it from the balance — an open loss carried over midnight counts against
+FTMO's new day and not against ours.
+
 ### Display
 
 SESSION panel shows safety state with mode indicator and headroom detail:

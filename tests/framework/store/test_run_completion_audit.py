@@ -11,9 +11,15 @@ legitimately holds rows for runs the index never saw, and reporting that would f
 with normal history. The second question here is a narrower one — a row the index DOES know
 whose directory is gone, with no prune having said so — and these tests pin exactly where that
 line runs.
+
+Since #476 a session writes a ledger row at every trading day's seal, so a row alone no longer
+says a run completed: only the row its close wrote does.
 """
 
+import math
+
 from python.framework.reporting.store.run_completion_audit import (
+    closes_its_run,
     rows_with_missing_records,
     unfinished_by_group,
     unfinished_runs,
@@ -91,6 +97,36 @@ class TestTheUnfinishedAreTheDifference:
         runs = [_run('late', start='2026-09-18T12:00:00+00:00'),
                 _run('early', start='2026-09-18T08:00:00+00:00')]
         assert [r.run_id for r in unfinished_runs(runs, [])] == ['early', 'late']
+
+
+class TestARowOfASealedDayIsNotAClose:
+    """
+    A running session — or one that died on day 29 — has a ledger row for every trading day it
+    sealed. None of them says it ended; the period its end sealed does, and so does a row that
+    books no period at all, which only a close ever writes.
+    """
+
+    @staticmethod
+    def _period(run_id: str, reason: str) -> RunResultRow:
+        return RunResultRow(run_id=run_id, param_hash='h',
+                            run_timestamp='2026-09-18T10:00:00+00:00',
+                            unit_name='session', period_no=1, period_close_reason=reason)
+
+    def test_a_run_with_only_sealed_days_is_unfinished(self):
+        rows = [self._period('a', 'anchor'), self._period('a', 'anchor')]
+        assert [r.run_id for r in unfinished_runs([_run('a')], rows)] == ['a']
+
+    def test_the_period_its_end_sealed_completes_it(self):
+        rows = [self._period('a', 'anchor'), self._period('a', 'session_end')]
+        assert unfinished_runs([_run('a')], rows) == []
+
+    def test_a_row_that_books_no_period_is_a_close(self):
+        assert unfinished_runs([_run('a')], [_row('a')]) == []
+
+    def test_the_reasons_read_as_a_close(self):
+        assert [closes_its_run(reason) for reason in
+                ('session_end', '', None, math.nan, 'anchor', 'operator')] == [
+            True, True, True, True, False, False]
 
 
 class TestScopingToOneParent:

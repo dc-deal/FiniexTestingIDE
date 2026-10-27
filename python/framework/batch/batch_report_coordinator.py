@@ -8,8 +8,10 @@ This is the coordination layer — the section sub-presenters live in framework/
 import io
 import re
 import sys
+from typing import List
 
 from python.configuration.app_config_manager import AppConfigManager
+from python.framework.constants.run_layout_constants import RUN_TYPE_SIMULATION
 from python.framework.reporting.builders.aggregated_portfolio_report_builder import (
     build_aggregated_portfolio_report,
 )
@@ -66,15 +68,21 @@ from python.framework.reporting.io.artifact_specs import (
     WARNINGS_ERRORS_ARTIFACT,
 )
 from python.framework.reporting.io.order_event_stream_io import write_order_event_stream
-from python.framework.reporting.io.report_artifact_io import write_artifact
 from python.framework.reporting.shared_report_coordinator import SharedReportCoordinator
-from python.framework.reporting.store.report_store import IO_SUBDIR
 from python.framework.reporting.store.run_provenance_builder import build_run_provenance
 from python.framework.reporting.builders.booking_periods_report_builder import (
     build_booking_periods_report,
 )
 from python.framework.reporting.console.booking_periods_summary import BookingPeriodsSummary
 from python.framework.reporting.store.run_results_ledger import append_run_to_ledger
+from python.framework.store.entry_members.run_footprint import (
+    expectation,
+    expectation_after,
+    write_footprint,
+)
+from python.framework.store.entry_members.run_entry_writer import RunEntryWriter
+from python.framework.types.run_footprint_types import MemberExpectation
+from python.framework.types.store_member_types import RunEntryMemberId
 from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.run_results_types import SweepContext
 from python.scenario.scenario_set import ScenarioSet
@@ -135,11 +143,11 @@ class BatchReportCoordinator:
         # === DERIVE + PERSIST the shared units-derived sections (#403) ===
         # The 7 sections both pipelines share are built + written once by the shared
         # coordinator (into the run's io/ subfolder); the names below stay for the console.
-        io_dir = run_dir / IO_SUBDIR
+        writer = RunEntryWriter(run_dir, RUN_TYPE_SIMULATION)
         units = run_units_from_batch(self._batch_execution_summary)
         disabled_count = self._scenario_set.get_disabled_count()
         unified = SharedReportCoordinator.derive_and_persist(
-            run_id, units, io_dir, self._batch_execution_summary.signal_scenario_map,
+            run_id, units, writer, self._batch_execution_summary.signal_scenario_map,
             roster=unit_roster_from_batch(self._batch_execution_summary, disabled_count))
         trade_report = unified.trade_history
         order_report = unified.order_history
@@ -248,8 +256,6 @@ class BatchReportCoordinator:
         # Writes one events_<scenario>.csv per scenario into an events/
         # subfolder of the scenario set's log dir — keeps the run dir tidy
         # when many scenarios produce many CSVs.
-        events_dir = run_dir / 'events'
-        events_dir.mkdir(exist_ok=True)
         for process_result in self._batch_execution_summary.process_result_list:
             tlr = process_result.tick_loop_results
             if tlr is None:
@@ -257,29 +263,29 @@ class BatchReportCoordinator:
             EventStreamWriter.from_sim_result(
                 trade_history=tlr.trade_history or [],
                 order_history=tlr.order_history or [],
-                run_dir=events_dir,
-            ).flush(f'events_{process_result.scenario_name}.csv')
+            ).flush(writer, RunEntryMemberId.SCENARIO_EVENTS, scenario=process_result.scenario_name)
 
         # === PERSIST the pipeline-specific sections (the shared 7 were written by the
         # shared coordinator above); same io/ subfolder (#396 housekeeping) ===
-        write_artifact(scenario_details_report, io_dir, SCENARIO_DETAILS_ARTIFACT)
-        write_artifact(run_meta_report, io_dir, RUN_META_ARTIFACT)
-        write_artifact(profiling_report, io_dir, PROFILING_ARTIFACT)
-        write_artifact(broker_report, io_dir, BROKER_ARTIFACT)
-        write_artifact(warnings_errors_report, io_dir, WARNINGS_ERRORS_ARTIFACT)
-        write_artifact(aggregated_portfolio_report, io_dir, AGGREGATED_PORTFOLIO_ARTIFACT)
-        write_artifact(booking_periods_report, io_dir, BOOKING_PERIODS_ARTIFACT)
+        writer.write_section(SCENARIO_DETAILS_ARTIFACT, scenario_details_report)
+        writer.write_section(RUN_META_ARTIFACT, run_meta_report)
+        writer.write_section(PROFILING_ARTIFACT, profiling_report)
+        writer.write_section(BROKER_ARTIFACT, broker_report)
+        writer.write_section(WARNINGS_ERRORS_ARTIFACT, warnings_errors_report)
+        writer.write_section(AGGREGATED_PORTFOLIO_ARTIFACT, aggregated_portfolio_report)
+        writer.write_section(BOOKING_PERIODS_ARTIFACT, booking_periods_report)
         # Block-splitting artifact only when there is something to report (Profile Runs).
         if block_splitting_report.symbols:
-            write_artifact(block_splitting_report, io_dir, BLOCK_SPLITTING_ARTIFACT)
+            writer.write_section(BLOCK_SPLITTING_ARTIFACT, block_splitting_report)
         # Robustness artifact only when robustness mode is enabled (#367).
         if robustness_report.enabled:
-            write_artifact(robustness_report, io_dir, ROBUSTNESS_ARTIFACT)
+            writer.write_section(ROBUSTNESS_ARTIFACT, robustness_report)
         # The order-event stream (#362): a backtest's scenarios carried their events back, and
         # they are written here at once. Not in the shared coordinator — a live session writes its
         # own stream while it runs, and a report written over it would replace that record.
         write_order_event_stream(
-            io_dir, run_id, ((unit.name, unit.order_events) for unit in units))
+            writer.path_of(RunEntryMemberId.ORDER_EVENTS), run_id,
+            ((unit.name, unit.order_events) for unit in units))
 
         # Every artifact of this run is on disk now — the index records WHICH, so a consumer
         # knows what it can fetch instead of discovering it by 404 (#475).
@@ -298,4 +304,65 @@ class BatchReportCoordinator:
         booking_periods = [
             period for unit in units for period in unit.booking_periods]
         append_run_to_ledger(run_summary, provenance, booking_periods)
+
+        # === CLOSE (#621): the run's own footprint, written last so a run that has one got here ===
+        process_results = self._batch_execution_summary.process_result_list
+        expectations = self._footprint_expectations(
+            # A scenario's process hands its log buffer back on success and on error alike; a
+            # scenario excluded before it ran has none, and wrote no log of its own
+            scenario_ran=any(result.scenario_logger_buffer is not None
+                             for result in process_results),
+            orders_placed=any(result.tick_loop_results is not None
+                              and (result.tick_loop_results.trade_history
+                                   or result.tick_loop_results.order_history)
+                              for result in process_results),
+            block_splitting_written=bool(block_splitting_report.symbols),
+            robustness_written=robustness_report.enabled,
+            order_events_written=any(unit.order_events for unit in units))
+        try:
+            write_footprint(run_dir, run_id, RUN_TYPE_SIMULATION, expectations)
+        except OSError as error:
+            self._scenario_set.logger.error(
+                f"The run's footprint could not be written ({error}) — the run reads as not closed")
+
+    def _footprint_expectations(self, scenario_ran: bool, orders_placed: bool,
+                                block_splitting_written: bool, robustness_written: bool,
+                                order_events_written: bool) -> List[MemberExpectation]:
+        """
+        For each file a backtest writes only sometimes, whether this run expected it — judged
+        from what the run knows at its close. A scenario's diagnostics tables are written by its
+        own process and stay unjudged here.
+
+        Args:
+            scenario_ran: Whether any scenario reached its own process
+            orders_placed: Whether any scenario placed an order or traded
+            block_splitting_written: Whether the block-splitting section was written
+            robustness_written: Whether the robustness section was written
+            order_events_written: Whether any scenario recorded an order event
+
+        Returns:
+            One expectation per member the run decides on
+        """
+        logs_on = self._app_config.get_file_logging_config_object().scenario_enabled
+        system_info_on = logs_on and self._app_config.get_logging_write_system_info()
+        log_members = (RunEntryMemberId.BACKTEST_GLOBAL_LOG, RunEntryMemberId.BACKTEST_SUMMARY_LOG)
+        return [
+            *(expectation(member_id, logs_on, 'log files are switched on',
+                          'log files are switched off') for member_id in log_members),
+            expectation_after(RunEntryMemberId.SCENARIO_LOG, logs_on, scenario_ran,
+                              'log files are switched on', 'log files are switched off',
+                              'no scenario reached its process'),
+            expectation(RunEntryMemberId.BACKTEST_SYSTEM_INFO_LOG, system_info_on,
+                        'log files and system information logging are switched on',
+                        'log files or system information logging are switched off'),
+            expectation(RunEntryMemberId.SCENARIO_EVENTS, orders_placed,
+                        'a scenario placed an order', 'no scenario placed an order'),
+            expectation(RunEntryMemberId.BLOCK_SPLITTING, block_splitting_written,
+                        'a profile run that split blocks', 'not a profile run that split blocks'),
+            expectation(RunEntryMemberId.ROBUSTNESS, robustness_written,
+                        'robustness mode is on', 'robustness mode is off'),
+            expectation(RunEntryMemberId.ORDER_EVENTS, order_events_written,
+                        'a scenario recorded an order event',
+                        'no scenario recorded an order event'),
+        ]
 

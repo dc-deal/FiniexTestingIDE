@@ -9,19 +9,29 @@ Built by **#486**. The logical layer above it — model · codec · store · pre
 
 ---
 
-## The three levels
+## The levels
 
-Only the top two are unified. That is the finding, not a compromise.
+The catalog and the index are shared by every store, and the bytes stay each store's own. That is
+the finding, not a compromise.
 
 ```
 CATALOG   StoreCatalog          which stores exist, where, of what kind    ← ONE, a code registry
 INDEX     AbstractStoreIndex    what lies in one store                     ← one per store, shared base
+MEMBERS   EntryMember           what ONE entry may hold, file by file      ← where an entry is a directory
 STORE     the bytes             per domain, deliberately different         ← untouched
 ```
 
 Different stores have different access patterns. A carry-over file swapped atomically every 60 s and a
 300 MB tick archive share nothing but the word "file"; forcing one shape on both makes one of them
 worse. What they *can* share is how they describe themselves.
+
+Where one entry is a directory of files — a run, a sweep — the store also declares what may be in
+it, file by file: the file's path, its shape (a snapshot replaced whole, a stream appended line by
+line, a report output written at the run's end, a log), which pipeline writes it and when, and
+which column of the run index lists it. The writers build their paths from the same names
+([`run_layout_constants.py`](../../python/framework/constants/run_layout_constants.py)), so a declared name
+and a written one cannot drift apart (#621). The tables, the shapes and how a file is added are
+[Store Entry Members](store_entry_members.md).
 
 ---
 
@@ -34,6 +44,7 @@ worse. What they *can* share is how they describe themselves.
 | 1c | `run_patches/` — this repository's; a strategy repository keeps its own inside itself | RECORD | patch hash — SHA256 over the patch bytes | none — opened by id | A · document |
 | 1d | `runs/fixture_productions.jsonl` | RECORD | `entry_id` + `produced_at` — one line per production | none — one file, read whole | B · set |
 | 1e | `logs/imports/` | RECORD | import id — the UTC start plus a random half, e.g. `20261010_090011_a3f9c2d1` | none — opened by the id its file is named after | A · document |
+| 1f | `runs/simulation/sweeps/` — the parameter sweeps; their combinations are runs of row 1 | RECORD | `sweep_id` | none — its figures are the ledger's rows, `ranked.csv` an export of them | A · document |
 | 2 | `runs/ledger/` | RECORD | `(run_id, unit, period_no, currency)` — columns, never a path | `run_ledger_index.parquet` | B · set |
 | 3 | `tests/*/reports/` | RECORD | family + version + date | `certificates_index.parquet` | A · document |
 | 4 | `data/runtime/session_state/` | **CARRY-OVER** | `<bot_id>_<symbol>`, separator reserved | none — opened by key | A · document |
@@ -57,6 +68,12 @@ worse. What they *can* share is how they describe themselves.
 each production of a catalog entry made, and whether they carried every property — and it sits
 beside the run index so it dies with the run tree. The current fixture of an entry is derived from
 it, never stored ([Fixture Catalog](fixture_catalog.md#the-production-record)).
+
+**Row 1f holds runs.** A sweep's directory keeps the log of the data load its combinations share
+and the ranking the report command writes, and each combination is a run of row 1, inside it
+([Parameter Optimization](parameter_optimization_system.md#what-a-sweep-directory-holds)). The sweep
+store declares both files and that it holds runs; it keeps no index, because what a sweep is and how
+its combinations rank are read from the ledger.
 
 **Ticks and bars are two stores, and bars are DERIVED.** Ticks are IMPORTED from the collector's
 JSON; bars are GENERATED from those ticks, by a render that writes each symbol's files anew from
@@ -103,8 +120,9 @@ archive by its zips as well as by its loose files.
 See it live, with entry counts and the stated reasons:
 
 ```bash
-python python/cli/store_cli.py catalog          # add --sizes to also walk for bytes
-python python/cli/store_cli.py rebuild --all    # every index a rebuild restores fully
+python python/cli/store_cli.py catalog               # add --sizes to also walk for bytes
+python python/cli/store_cli.py entry-members runs    # what one run directory may hold
+python python/cli/store_cli.py rebuild --all         # every index a rebuild restores fully
 ```
 
 Underneath the stores the catalog shows two advisories about dated claims the installation holds:
@@ -131,7 +149,8 @@ per trading day of ITS window. A run whose scenarios are shorter than a day writ
 which is the shape the ledger had before — the grain widened, it did not change meaning.
 
 **No aggregate row is written beside the periods.** The run's total is derivable from them —
-`COLUMN_REDUCTION` beside `LEDGER_COLUMNS` states how every column combines — and a derivable
+`COLUMN_REDUCTION` beside `LEDGER_COLUMNS` states how every column combines, and
+`COLUMN_NULL_MEANING` what an empty cell of a nullable figure means — and a derivable
 copy kept next to its source is the pair that drifts. Keeping both would also be wrong in
 a way no reader could see: the deployment history SUMS rows and would count every month twice,
 the sweep ranking SORTS them and would see one candidate four times. One reduction has a limit
@@ -239,6 +258,7 @@ run_configs/
   scenario_sets/<config_id>.json
   autotrader_profiles/<config_id>.json
   autotrader_rendered/<config_id>.json     what a session RAN with (#547)
+  scenario_set_rendered/<config_id>.json   what a backtest RAN with (#547)
   broker_configs/<config_id>.json          the broker configuration it traded with (#547)
 ```
 
@@ -250,33 +270,30 @@ records about itself;
 [A run is a record, and an old one stays true](../introduction_to_the_ide.md#a-run-is-a-record-and-an-old-one-stays-true)
 maps the others.
 
-**A source is what a run was GIVEN; the two rendered kinds are what it RAN with (#547).** A
-profile file is the input to a cascade — the `app_config.autotrader` defaults lie under it, and
-every parameter it leaves unset gets its schema default only when the factory builds the
-component — and a month in which `app_config.json` or a default changes could prove the
-configuration moved and never say what it was. So an AutoTrader session freezes the rendered
-profile at its start, and every run — a session or a backtest — freezes the broker configuration
-it trades with:
+**A source is what a run was GIVEN; the rendered kinds are what it RAN with (#547).** A profile
+or a scenario set is the input to a cascade — the `app_config` defaults lie under it, and every
+parameter it leaves unset gets its schema default only when the factory builds the component — and
+a month in which `app_config.json` or a default changes could prove the configuration moved and
+never say what it was. So every run freezes what it ran with at its start — a session its rendered
+profile, a backtest its rendered scenario set — and the broker configuration it trades with:
 
 | kind | what it holds | named by |
 |---|---|---|
 | `autotrader_rendered` | the merged profile blocks, the strategy with every schema default filled (through the factories' own `resolve_parameters`), and the broker's `market_config.json` entry with its local override | the run header's `rendered_config_id`, written before the session can fail |
+| `scenario_set_rendered` | per scenario the strategy with every schema default filled (through the same strategy renderer a session uses), the execution, simulator, order-guard and stress blocks as the scenario's subprocess reads them, the broker's `market_config.json` entry and the market rules of its market type; at run level the `backtesting` settings and the history limits. A strategy component given as a file is named as the configuration names it | the run header's `rendered_config_id`, written before the run can fail; every sweep combination names its own, a mount build none |
 | `broker_config` | the broker configuration the run trades with, as it stands when the run starts: the symbol specifications — from the runtime cache for a dynamic broker's backtest or live-adapter session, from the seed file for a mock session or a static broker — and the seed's fee structure, its rates replaced by the venue's fee tier where a live-adapter session applies it | the run's broker section (`broker_config_id`, beside `config_hash`) and a log line at startup |
 
 The broker configuration needs the log line because the run's broker section is written at the
 END: a run killed before its report still says, in its own log (`autotrader_session.log` for a
-session, `scenario_global_log.log` for a backtest), where its configuration was frozen. A backtest
-has no rendered profile: what its scenario set and the application's `backtesting` defaults add up
-to for the execution and simulator blocks is covered only by a hash on its ledger row
-(`profile_hash`), not by a document.
+session, `scenario_global_log.log` for a backtest), where its configuration was frozen.
 
-Both are frozen from CONTENT, so a run that starts on an unchanged configuration names the
+All three are frozen from CONTENT, so a run that starts on an unchanged configuration names the
 same id and writes nothing new. Their source columns stay empty on purpose — those mean "the file
 a caller asks for", and a rendered document must never come back from `resolve()` or `history()`
-as the newest version of the profile it was rendered from. And both are RECORDS, never schemas: a
+as the newest version of the source it was rendered from. And all three are RECORDS, never schemas: a
 later version of an algo may rename or drop a parameter, and an old document stays exactly as
-true as it was — nothing reads it back into a factory. A private profile's documents are frozen
-here too, like its source: the store is gitignored, nothing leaves the machine, and a
+true as it was — nothing reads it back into a factory. A private profile's or scenario set's
+documents are frozen here too, like its source: the store is gitignored, nothing leaves the machine, and a
 configuration has to stay readable without the foreign repository checked out at the right
 commit — which a patch needs anyway, and a configuration must not.
 
@@ -577,8 +594,9 @@ Stream](order_event_stream.md).
 A live session writes more records into `io/` as it runs: the warmup history it started from
 (`warmup_history.json`, #588) and its tick stream's outages and refused trades
 (`tick_stream_events.jsonl`, #609). Neither is a report artifact or a served stream, so the run
-index lists neither (`RUN_RECORD_FILENAMES`): an artifact would make a session that died before its
-report read as reported, and a stream entry would promise a route that does not exist. Its state
+store declares them for neither index column ([Store Entry Members](store_entry_members.md)): an
+artifact would make a session that died before its report read as reported, and a stream entry
+would promise a route that does not exist. Its state
 frames — what it held and decided, moment by moment (`state_frames.jsonl`, #579) — are a served
 stream like the order events: listed under `stream_files` from the moment the session opens them,
 and read at their two ends by the latest-frame route (#611).
@@ -587,6 +605,13 @@ An AutoTrader session's directory also holds the **warmup history** it started f
 (`io/warmup_history.json`, #588) — the bars and the instants that selected them, written at
 injection and again once the seam at the first tick has closed. Part of the run's record like the
 stream; a live session's warmup exists nowhere else. See [Warmup History](warmup_history.md).
+
+At each trading day's boundary a session seals the day of every stream it writes line by line into
+**day records** — `days/<day>/io/order_events.parquet`, `days/<day>/diagnostics/<sink>.parquet` — and
+each stream's file starts the next day afresh (#476). They are members of the run directory, not a
+store and not an index: what a sealed day holds is in its own footer, and a reader keeps it in
+memory once read, so no index file can drift from the days it describes. See
+[Day Records](run_stream_day_records.md).
 
 ---
 

@@ -25,6 +25,7 @@ from python.framework.config_directory.config_directory import (
     clear_config_directory_memo,
 )
 from python.framework.config_directory.config_directory_index import ConfigDirectoryIndex
+from python.framework.constants.run_layout_constants import RUN_TYPE_AUTOTRADER, RUN_TYPE_SIMULATION
 from python.framework.exceptions.config_name_errors import ConfigNameConflictError
 from python.framework.reporting.store.run_index import RunIndex
 from python.framework.reporting.store.run_results_ledger import RunResultsLedger
@@ -34,7 +35,6 @@ from python.framework.types.config_directory_types import (
     ConfigOrigin,
     ConfigReadStatus,
 )
-from python.framework.types.log_layout_types import RUN_TYPE_AUTOTRADER, RUN_TYPE_SIMULATION
 from python.framework.types.run_outcome_types import RunOutcome
 from python.framework.types.run_purpose_types import RunPurpose
 from python.framework.types.run_results_types import RunProvenance

@@ -22,7 +22,10 @@ from python.framework.autotrader.operator_alerts.alert_episode import (
     AlertEpisode,
     all_clear_detail,
 )
-from python.framework.autotrader.operator_alerts.operator_alert_messages import day_closed_text
+from python.framework.autotrader.operator_alerts.operator_alert_messages import (
+    day_closed_text,
+    days_closed_unheard_text,
+)
 from python.framework.autotrader.operator_alerts.operator_alerts import OperatorAlerts
 from python.framework.autotrader.operator_alerts.operator_alerts_setup import (
     disabled_operator_alerts,
@@ -49,7 +52,7 @@ from python.framework.process.tick_pipeline_core import (
 from python.framework.reporting.api_perf_monitor import ApiPerfMonitor
 from python.framework.reporting.booking_period_recorder import (
     BookingPeriodRecorder,
-    snapshot_from_portfolio,
+    snapshot_from_executor,
 )
 from python.framework.signal_data.transport.abstract_signal_transport import (
     AbstractSignalTransport,
@@ -71,12 +74,13 @@ from python.framework.types.autotrader_types.safety_session_types import SafetyS
 from python.framework.types.config_types.market_config_types import TradingModel
 from python.framework.types.decision_logic_types import Decision, DecisionLogicAction
 from python.framework.types.disturbance_episode_types import DisturbanceEpisode, MarketDataTickStats
+from python.framework.types.log_level import LogLevel
 from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.persistence_types import BaselineQuantities
 from python.framework.types.run_results_types import BookingPeriod, PeriodCloseReason
 from python.framework.types.trading_env_types.market_data_status_types import MarketDataStatus
 from python.framework.types.trading_env_types.order_types import OrderResult
-from python.framework.utils.trading_day_anchor import boundary_opening, trading_day_of
+from python.framework.utils.trading_day_anchor import boundary_opening
 from python.framework.workers.worker_orchestrator import WorkerOrchestrator
 
 
@@ -106,6 +110,10 @@ class AutotraderTickLoop:
             loop progress on every pass and reports its symptoms through them; off by default
         state_frames: Records what the session holds and decides, moment by moment (#579 part A)
             — asked at the end of every pass; None when the profile records no frames
+        book_sealed_periods: Writes the booking periods sealed so far into the results ledger,
+            called at each trading day's seal (#476); None writes nothing before the session ends
+        seal_streams: Seals the session's streams into day records at a trading day's boundary
+            (#476), given the day that ended and the day that opened; None seals nothing
     """
 
     def __init__(
@@ -139,6 +147,8 @@ class AutotraderTickLoop:
         stale_stress_driver: Optional[StaleDataStressDriver] = None,
         operator_alerts: Optional[OperatorAlerts] = None,
         state_frames: Optional[StateFrameRecorder] = None,
+        book_sealed_periods: Optional[Callable[[List[BookingPeriod]], None]] = None,
+        seal_streams: Optional[Callable[[date, date], None]] = None,
     ):
         self._config = config
         self._tick_queue = tick_queue
@@ -205,6 +215,12 @@ class AutotraderTickLoop:
         # protect a value the algo re-derives anyway. The watcher is seeded with the book as
         # it stands after adoption, so a session that changes nothing never writes.
         self._persist_carry_over = persist_carry_over
+        self._book_sealed_periods = book_sealed_periods
+        self._seal_streams = seal_streams
+        # The trading days one boundary check sealed, closed together once the check is done:
+        # a check several days late seals one period per day, and booking each on its own would
+        # rewrite the ledger fragment once per day inside one pass (#476)
+        self._sealed_in_check: List[BookingPeriod] = []
         self._book_watcher = PositionBookWatcher(executor.portfolio.get_open_positions())
         # #356 — the baseline record the carry-over on disk already carries. Seeded from the
         # tracker rather than from None: a tracker that already holds a record at
@@ -296,10 +312,11 @@ class AutotraderTickLoop:
         self._last_real_tick_wall_time: float = 0.0
 
         # #476 — where THIS market's trading day flips, resolved once. Crypto states
-        # 00:00 UTC, forex falls back to its swap rollover (17:00 New York). The log
-        # rotation and the daily-loss baseline below read the same answer, so a session
-        # cannot rotate its log on one boundary and reset its limit on another.
-        self._day_anchor = MarketConfigManager().get_trading_day_anchor(config.broker_type)
+        # 00:00 UTC, forex falls back to its swap rollover (17:00 New York). The booking period
+        # below owns the day; the log rotation and the daily-loss baseline read it from there,
+        # so a session cannot rotate its log on one boundary and reset its limit on another.
+        market_config = MarketConfigManager()
+        self._day_anchor = market_config.get_trading_day_anchor(config.broker_type)
 
         # === BOOKING PERIODS (#537) — this session's ledger entries ===
         # One recorder, shared with the simulation loop: the two are shaped differently (a class
@@ -315,7 +332,10 @@ class AutotraderTickLoop:
             anchor=self._day_anchor,
             carried_period_no=carried_period_no,
             log=self._logger.info,
-            on_seal=self._announce_day_closed,
+            on_seal=self._on_period_sealed,
+            # Which days are trading days, asked the way the simulation asks it — so a session
+            # and a backtest over the same days book the same rows (#476)
+            weekend_closure=market_config.has_weekend_closure(config.broker_type),
         )
 
         # The session log rotates on this market's trading day — the same day the booking
@@ -405,14 +425,16 @@ class AutotraderTickLoop:
                 # advances during idle (phase/op timeouts track real elapsed time),
                 # then run the side-effect-free cadence — no tick state mutation.
                 self._executor.set_current_time(datetime.now(timezone.utc))
-                # #476: the boundary is checked HERE too, and this is the half that makes
-                # it reliable — a feed that goes quiet across the rollover would otherwise
-                # never rotate. The clock is set one line above, so the day is current.
-                self._log_rotator.check_daily_rotation()
-                # #537: the booking period seals on the SAME boundary, in its own pass — a
-                # booking must not depend on whether logs are being written.
+                # #537 / #476: the boundary is checked HERE too, before anything this pass
+                # resolves — a fill the heartbeat drains after the boundary belongs to the day
+                # it opened. The seal is stamped with the boundary, whenever it is noticed.
                 self._booking.check_boundary(
                     self._executor.get_current_time_if_set(), self._seal_source)
+                self._close_sealed_days()
+                # The log follows the booking period's day, and after it: the line that seals a
+                # day is written into that day's file, and a feed that goes quiet across the
+                # rollover still rotates. A booking does not depend on whether logs are written.
+                self._log_rotator.check_daily_rotation()
                 # #320 + #360: drain async responses + check timeouts + re-poll
                 # active orders (the fill/cancel-confirm query now fires during idle).
                 self._executor.heartbeat()
@@ -478,18 +500,32 @@ class AutotraderTickLoop:
             # untouched.
             self._drain_signal_inbox(off_tick=False)
 
+            # === 0. Trading-day boundary (#476) — BEFORE the tick is applied ===
+            # A day ends at its boundary: the seal reads the account as the previous pass left
+            # it and is stamped with the boundary, so this tick's fills, trades and valuation
+            # open the new day — the same cut the heartbeat makes, and the one the simulation
+            # makes. The daily loss limit rolls on this seal too, from the value it read. The
+            # canonical clock moves to the tick's instant first — forward only, so a clock a
+            # heartbeat set ahead of the venue's stamp stays where it is, which is the instant
+            # on_tick applies the tick at — and the boundary is checked on it.
+            self._executor.set_current_time(tick.timestamp)
+            self._booking.check_boundary(
+                self._executor.get_current_time_if_set(), self._seal_source)
+            self._close_sealed_days()
+
+            # === DAILY LOG ROTATION ===
+            # On the booking period's day, which the check above advanced — after it, so the
+            # line that sealed the day stays in that day's file, and before the tick, so what the
+            # tick logs (a fill, a triggered stop) is in the file of the day it is booked to. In a
+            # live-adapter session the heartbeat has almost always rotated first; this covers a
+            # replay whose queue never runs empty.
+            self._log_rotator.check_daily_rotation()
+
             # === 1. Trade Executor — BROKER PATH (all ticks) ===
             self._executor.on_tick(tick)
             if self._first_tick_time is None:
                 self._first_tick_time = tick.timestamp
             self._last_tick_time = tick.timestamp
-
-            # === DAILY LOG ROTATION ===
-            # After on_tick, because that is what advances the canonical clock to this
-            # tick's time — before it, the clock still holds the previous pass. In a
-            # live-adapter session the heartbeat above has almost always rotated first; this
-            # covers a replay whose queue never runs empty.
-            self._log_rotator.check_daily_rotation()
 
             # #436: a real tick ends a stale episode (recovery, edge reset).
             if self._market_stale:
@@ -523,13 +559,9 @@ class AutotraderTickLoop:
             # `ensure_taken` does nothing when a record was restored from the predecessor, so
             # a restart mid-drawdown keeps the reference it had instead of re-anchoring at
             # the drawn-down value. `observe` then advances a high-water mark, and only that.
-            self._update_risk_baseline(tick)
-            # #537 — the booking boundary AFTER the valuation above, as the simulation orders
-            # it: the seal reads this tick's value as the closing period's final equity, so the
-            # value has to be inside that period's band. Checked first, the closing value sat
-            # outside the band it closed, and a drop on the boundary tick was in neither day.
-            self._booking.check_boundary(
-                self._executor.get_current_time_if_set(), self._seal_source)
+            # The booking period observes the same value; its boundary was checked above,
+            # before this tick moved the account (#476).
+            self._observe_account_value(tick)
 
             # === 2. Bar Rendering (shared core, #303) ===
             current_bars = render_bars_for_tick(tick, self._bar_controller)
@@ -1131,6 +1163,15 @@ class AutotraderTickLoop:
         """
         return self._market_data_tracker.get_episodes(self._executor.get_current_time())
 
+    def has_opened_day_log(self) -> bool:
+        """
+        Whether a pass of this loop has opened a trading day's session log.
+
+        Returns:
+            True once the first day's log is open
+        """
+        return self._log_rotator.has_opened_day_log()
+
     def get_tick_span(self) -> Tuple[Optional[datetime], Optional[datetime]]:
         """
         The first and the latest tick this session processed.
@@ -1173,23 +1214,25 @@ class AutotraderTickLoop:
                     f'NEW MAX: {dl_label:<16s} {current_max:.2f}ms  (prev: {prev:.2f}ms)'
                 )
 
-    def _update_risk_baseline(self, tick: TickData) -> None:
+    def _observe_account_value(self, tick: TickData) -> None:
         """
-        Take the session's risk baseline if it has none, and advance a high-water mark.
+        Value the account once for this tick, and hand the value to everything that tracks it.
 
-        Both calls are cheap and both are no-ops in the ordinary case — `ensure_taken` after
-        the first tick, `observe` for every mode except HIGH_WATER_MARK. They run on every
-        tick rather than on a cadence because a peak missed is a peak lost: the record is a
-        running maximum, and sampling it would make the limit depend on when we happened to
-        look.
+        The booking period counts the tick and observes the value. The risk baseline is taken if
+        the session has none, and a high-water mark advances. Both calls are cheap and both are
+        no-ops in the ordinary case — `ensure_taken` after the first tick, `observe` for every
+        mode except HIGH_WATER_MARK. They run on every tick rather than on a cadence because a
+        peak missed is a peak lost: the record is a running maximum, and sampling it would make
+        the limit depend on when we happened to look.
 
         Args:
             tick: The tick whose price values the holdings
         """
-        if self._risk_baseline is None:
-            return
         value = self._executor.portfolio.get_account_value()
-        if value is None:
+        # The booking period's VALUATION half (#537), and its tick count — the tick counts even
+        # when the holdings cannot be valued yet, because the market was heard (#476)
+        self._booking.observe_tick(value)
+        if self._risk_baseline is None or value is None:
             return
 
         mark_price: Optional[float] = None
@@ -1200,38 +1243,38 @@ class AutotraderTickLoop:
 
         self._risk_baseline.ensure_taken(value, mark_price, quantities)
         self._risk_baseline.observe(value, mark_price, quantities)
-        self._safety.update_day_baseline(value, mark_price, quantities)
-        # The report's equity curve too, before the booking boundary is checked: a seal reads the
-        # curve's running figures (peak, deepest decline), and the simulation samples before it
-        # seals. The safety pass samples again after the decision, which changes nothing unless
-        # an order filled within this tick.
+        # The day's baseline is struck where the day rolled — at the seal, from the value it
+        # read; this takes the first day's, and a day's whose seal could not value the account
+        self._safety.ensure_day_baseline(value, mark_price, quantities)
+        # The report's equity curve too: a seal reads the curve's running figures (peak, deepest
+        # decline), and the simulation samples on every tick as well. The safety pass samples
+        # again after the decision, which changes nothing unless an order filled within this tick.
         self._executor.portfolio.sample_equity(value)
-        # The booking period's VALUATION half, beside the risk one (#537). Same tick, same
-        # value, so the two never describe different instants.
-        self._booking.observe_equity(value)
 
     def _trading_day(self) -> Optional[date]:
         """
-        The trading day the canonical clock currently stands in (#476).
+        The trading day the session runs on — the one its open booking period books (#476).
+
+        The log rotation and the daily loss limit read it here, so all three agree on where a
+        day ends, and on which days a market that closes has at all.
 
         Returns:
-            The trading day's date, or None before the clock has been set for the first time
+            The trading day's date, or None before the first period opened
         """
-        now = self._executor.get_current_time_if_set()
-        return trading_day_of(now, self._day_anchor) if now else None
+        return self._booking.get_current_day()
 
     def _seal_source(self):
         """
         The records and the stock reading a seal needs, at this instant.
 
         Handed to the recorder as a CALLABLE rather than as values: a boundary check runs on
-        every pass and almost never seals, so the portfolio is only read when a period actually
-        closes.
+        every pass and almost never seals, so the portfolio is only read, and the period's order
+        counts only taken, when a period actually closes.
 
         Returns:
             (trade records, PeriodSnapshot)
         """
-        return snapshot_from_portfolio(self._executor.portfolio)
+        return snapshot_from_executor(self._executor)
 
     def get_highest_period_no(self) -> int:
         """
@@ -1243,6 +1286,118 @@ class AutotraderTickLoop:
             The high-water mark, which is the inherited floor when nothing was sealed
         """
         return self._booking.get_highest_period_no()
+
+    def _on_period_sealed(self, period: BookingPeriod) -> None:
+        """
+        What one sealed booking period sets off in the session, the moment it is sealed.
+
+        At a trading day's boundary the daily loss limit's day rolls on the same seal (#476) —
+        per day, because each day keeps its own record. What can wait for the end of the check
+        is collected for `_close_sealed_days`. The session's end has its own closing message and
+        no day after it.
+
+        Args:
+            period: The booking period just sealed
+        """
+        if period.reason is not PeriodCloseReason.ANCHOR:
+            return
+        self._roll_safety_day(period)
+        self._sealed_in_check.append(period)
+
+    def _close_sealed_days(self) -> None:
+        """
+        What the trading days one boundary check sealed set off, once for all of them (#476).
+
+        The days are booked into the ledger and their number into the carry-over, the session's
+        streams are sealed into day records, the log buffer lets go of their ordinary lines, and
+        the operator hears how the day closed (#235). Once and not per day: a check several days
+        late — a machine that slept, a replay whose clock jumped to the present (#616) — seals
+        one period per day, and each would otherwise rewrite the whole ledger fragment and send
+        its own message within one pass.
+        """
+        if not self._sealed_in_check:
+            return
+        sealed, self._sealed_in_check = self._sealed_in_check, []
+        self._book_sealed_day()
+        self._seal_streams_of(sealed[0])
+        # The days' lines are in their log files; the end reads only warnings and errors from
+        # the buffer, so the rest of the days leave memory here
+        self._logger.trim_buffer_below(LogLevel.WARNING)
+        self._announce_day_closed(sealed[0])
+        if len(sealed) > 1:
+            self._announce_days_closed_unheard(sealed[1:])
+
+    def _book_sealed_day(self) -> None:
+        """
+        Make a sealed trading day survive the session (#476): its ledger rows, then the period
+        number the carry-over hands the next session.
+
+        In that order, the order the recorder itself keeps: killed between the two, the next
+        session books the same number again — a visible duplicate — where the other order would
+        leave a number nobody booked.
+        """
+        if self._book_sealed_periods is not None:
+            self._book_sealed_periods(self._booking.get_sealed_periods())
+        if self._persist_carry_over is not None and self._persist_carry_over():
+            # The write carried the book and the baseline as they stand, so neither is behind
+            self._book_watcher.accept(self._executor.portfolio.get_open_positions())
+            self._persisted_baseline = (
+                self._risk_baseline.get_baseline() if self._risk_baseline is not None else None)
+
+    def _seal_streams_of(self, period: BookingPeriod) -> None:
+        """
+        Seal the session's streams into the day records of the first trading day a check sealed
+        (#476) — once, however many days the check sealed: in the days a late check passed over
+        the loop did not run, so nothing was written in them.
+
+        Args:
+            period: The first booking period the check sealed
+        """
+        next_day = self._booking.get_current_day()
+        if self._seal_streams is None or period.trading_day is None or next_day is None:
+            return
+        self._seal_streams(period.trading_day, next_day)
+
+    def _roll_safety_day(self, period: BookingPeriod) -> None:
+        """
+        Roll the daily loss limit's day at the boundary that sealed the period (#476).
+
+        The new day's baseline is the value the seal read — where the account stood at the
+        boundary — so whatever the first tick of the day does counts against the new day's
+        limit, a weekend's gap on a forex open included. At spot it is valued at the price the
+        seal valued it at, the last tick before the boundary.
+
+        Args:
+            period: The period the boundary sealed
+        """
+        value = period.figures.final_equity
+        mark_price: Optional[float] = None
+        quantities: Optional[BaselineQuantities] = None
+        if (self._trading_model == TradingModel.SPOT and value is not None
+                and self._last_real_tick is not None):
+            mark_price = self._last_real_tick.mid
+            quantities = self._spot_quantities()
+        self._safety.roll_day(period.closed_at, value, mark_price, quantities)
+
+    def _announce_days_closed_unheard(self, periods: List[BookingPeriod]) -> None:
+        """
+        #235: tell the operator, in one message, about the trading days a late check sealed after
+        the first — days with no market data, each booked on its own.
+
+        Args:
+            periods: Those days' booking periods, oldest first
+        """
+        if not self._daily_digest:
+            return
+        try:
+            title, detail = days_closed_unheard_text(periods)
+        except Exception as error:   # noqa: BLE001 — a message must never end a trading session
+            self._logger.error(
+                f'📣 The message for {len(periods)} trading days closed unheard could not be '
+                f'written ({type(error).__name__}: {error})')
+            return
+        self._operator_alerts.send(
+            OperatorAlertKind.DAY_CLOSED, OperatorAlertLevel.INFO, title, detail)
 
     def _announce_day_closed(self, period: BookingPeriod) -> None:
         """
@@ -1259,7 +1414,9 @@ class AutotraderTickLoop:
         if period.reason is not PeriodCloseReason.ANCHOR or not self._daily_digest:
             return
         try:
-            trading_day = trading_day_of(period.opened_at, self._day_anchor)
+            # The day the period booked, as the recorder knew it — after a market's closed days
+            # the period opened where the last day ended, so its opening names no day
+            trading_day = period.trading_day
             title, detail = day_closed_text(
                 period, trading_day, boundary_opening(trading_day, self._day_anchor))
         except Exception as error:   # noqa: BLE001 — a message must never end a trading session

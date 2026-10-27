@@ -25,6 +25,10 @@ from python.framework.config_directory.config_directory_index import (
     CONFIG_DIRECTORY_INDEX_FILE,
     ConfigDirectoryIndex,
 )
+from python.framework.constants.run_layout_constants import (
+    GLOBAL_LOG_FILE,
+    IMPORT_LOG_SUBDIR,
+)
 from python.framework.discoveries.discovery_cache_index import (
     DISCOVERY_INDEX_FILE,
     DiscoveryCacheIndex,
@@ -44,12 +48,20 @@ from python.framework.reporting.store.run_ledger_index import (
     RunLedgerIndex,
 )
 from python.framework.reporting.store.run_results_ledger import LEDGER_COLUMNS
+from python.framework.store.entry_members.run_entry_members import (
+    RUN_ENTRY_MEMBERS,
+    run_member_path,
+)
+from python.framework.store.entry_members.sweep_entry_members import (
+    SWEEP_ENTRY_MEMBERS,
+    SWEEP_ENTRY_MEMBERS_BY_ID,
+)
 from python.framework.store.run_config_index import RUN_CONFIG_INDEX_FILE, RunConfigIndex
 from python.framework.store.run_patch_store import PATCH_SUFFIX
 from python.framework.store.store_descriptor import StoreDescriptor
 from python.framework.types.activity_registry_types import ACTIVITY_ID_PREFIX
 from python.framework.types.config_types.host_identity_config_types import HOST_IDENTITY_FILE_NAME
-from python.framework.types.log_layout_types import GLOBAL_LOG_FILE, IMPORT_LOG_SUBDIR
+from python.framework.types.store_member_types import RunEntryMemberId, SweepEntryMemberId
 from python.framework.types.store_types import (
     DISCOVERY_CACHE_DIRNAME,
     RetrievalForm,
@@ -88,6 +100,11 @@ def build_registrations() -> Dict[StoreId, StoreDescriptor]:
     # The run tree's root is the index's parent by construction (#478 put the index at the top of
     # the tree it describes), so it is derived rather than declared a fourth time.
     runs_root = Path(file_logging.run_index).parent
+    sweeps_root = Path(file_logging.run_logs.sweeps)
+    # A run is found by its header and a sweep by its mount build's log, as their declarations
+    # name them
+    run_header = run_member_path(RunEntryMemberId.HEADER)
+    mount_build_log = SWEEP_ENTRY_MEMBERS_BY_ID[SweepEntryMemberId.MOUNT_BUILD_LOG].path_for()
     ledger_root = Path(app_config.get_run_ledger_path())
     run_configs_root = Path(app_config.get_run_configs_path())
     run_patches_root = Path(app_config.get_run_patches_path())
@@ -104,10 +121,30 @@ def build_registrations() -> Dict[StoreId, StoreDescriptor]:
             key='run_id',
             form=RetrievalForm.DOCUMENT,
             backend=StoreBackend.DISK,
-            entry_glob='**/header.json',
+            entry_glob=f'**/{run_header}',
             index_path=Path(file_logging.run_index),
             index_factory=lambda: RunIndex(file_logging.run_index, file_logging.run_logs,
                                            declared_purposes=declared_run_purposes),
+            entry_members=RUN_ENTRY_MEMBERS,
+        ),
+        StoreId.SWEEPS: StoreDescriptor(
+            store_id=StoreId.SWEEPS,
+            kind=StoreKind.RECORD,
+            purpose='one folder per sweep: its data load and ranking',
+            doc='docs/architecture/parameter_optimization_system.md#what-a-sweep-directory-holds',
+            root=sweeps_root,
+            key='sweep_id',
+            form=RetrievalForm.DOCUMENT,
+            backend=StoreBackend.DISK,
+            entry_glob=f'*/{mount_build_log}',
+            entry_members=SWEEP_ENTRY_MEMBERS,
+            contains_entries_of=StoreId.RUNS,
+            note='A sweep keeps no index of its own: the run-results ledger names the sweep on '
+                 'every combination\'s rows, so what a sweep is and how its combinations rank '
+                 'are read from there, and its ranking file is an export of those rows. The '
+                 'combinations are runs, kept in the run store inside the sweep\'s directory. A '
+                 'sweep is counted by its mount build\'s log, so one run with mount reuse '
+                 'switched off is not counted here; the ledger lists it.',
         ),
         StoreId.RUN_CONFIGS: StoreDescriptor(
             store_id=StoreId.RUN_CONFIGS,
@@ -131,10 +168,11 @@ def build_registrations() -> Dict[StoreId, StoreDescriptor]:
                  'history. Three hashes per entry, because a change means three things: the '
                  'content id says the bytes differ, param_hash what the algo DECIDES, '
                  'scope_hash WHICH DATA runs. Renaming a scenario moves the first and neither '
-                 'of the others. Two more kinds have no source file (#547): what an AutoTrader '
-                 'session RAN with — the rendered profile, every default filled — and the broker '
-                 "configuration it traded with; both are frozen from content at the session's "
-                 'start, found by the id the run names, and are records rather than schemas.',
+                 'of the others. Three more kinds have no source file (#547): what a run RAN '
+                 "with — a session's rendered profile, a backtest's rendered scenario set, every "
+                 'default filled — and the broker configuration it traded with; each is frozen '
+                 "from content at the run's start, found by the id the run names, and is a "
+                 'record rather than a schema.',
             # The frozen copies carry the content; what was OBSERVED at registration exists
             # only in the index. Correcting that, so the store rejoins `rebuild --all`, is #547.
             rebuild_loses='which file each version came from, when it was first seen, how often '

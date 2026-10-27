@@ -29,6 +29,7 @@ from python.framework.config_directory.config_directory_builder import (
 )
 from python.framework.config_directory.config_directory_discovery import discover_config_files
 from python.framework.config_directory.config_directory_index import ConfigDirectoryIndex
+from python.framework.constants.run_layout_constants import RUN_TYPE_AUTOTRADER, RUN_TYPE_SIMULATION
 from python.framework.reporting.store.run_index import RunIndex
 from python.framework.reporting.store.run_list_figures import get_run_list_figures
 from python.framework.types.api.directory_types import (
@@ -42,7 +43,6 @@ from python.framework.types.config_directory_types import (
     ConfigReadStatus,
     DiscoveredConfigFile,
 )
-from python.framework.types.log_layout_types import RUN_TYPE_AUTOTRADER, RUN_TYPE_SIMULATION
 from python.framework.types.run_purpose_types import RunPurpose
 from python.framework.validators.config_name_validator import config_name_conflict
 

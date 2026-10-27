@@ -173,6 +173,14 @@ def test_the_result_carries_the_refusal(monkeypatch):
     session._cold_start = SimpleNamespace(situation=None, verdict=None)
     session._first_interrupt_time = 0
     session._session_end = None
+    # What the result's reach is read from: a session refused at its first tick opened its order
+    # record and entered its loop, but this double built none of them
+    session._order_event_stream = None
+    session._study_recorder = None
+    session._tick_source = None
+    session._tick_loop = None
+    session._algo_state_found = False
+    session._stream_sealer = None
 
     def construct(**fields):
         raise _Constructed(fields)

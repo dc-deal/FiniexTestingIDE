@@ -45,6 +45,7 @@ from python.framework.reporting.io.artifact_specs import (
     WORKER_DECISION_ARTIFACT,
 )
 from python.framework.reporting.store.report_store import ReportStore
+from python.framework.store.entry_members.run_entry_members import run_member_file_name
 from python.framework.types.api.recording_state_types import RecordingState
 from python.framework.types.api.report_types import (
     AggregatedPortfolioReport,
@@ -71,9 +72,13 @@ from python.framework.types.api.report_types import (
     WorkerDecisionReport,
 )
 from python.framework.types.api.state_frame_types import LatestStateFramesResponse, StateFrameCause
-from python.framework.types.log_layout_types import STATE_FRAMES_FILE
+from python.framework.types.store_member_types import RunEntryMemberId
 
 router = APIRouter()
+
+# The name the run list's `stream_files` gives the state-frame stream: its file name, as the run
+# store declares it
+_STATE_FRAMES_NAME = run_member_file_name(RunEntryMemberId.STATE_FRAMES)
 
 
 def _missing_artifact(run_id: str, section: str) -> ApiException:
@@ -127,7 +132,7 @@ def list_runs(request: Request) -> RunListResponse:
     runs: list[RunInfo] = store.list_runs_with_results()
     served_at = datetime.now(timezone.utc)
     runs = [run.model_copy(update={'recording': _recording_of_row(store, run, request, served_at)})
-            if STATE_FRAMES_FILE in run.stream_files else run
+            if _STATE_FRAMES_NAME in run.stream_files else run
             for run in runs]
     return RunListResponse(runs=runs, count=len(runs))
 
@@ -137,10 +142,11 @@ def _recording_of_row(store: ReportStore, run: RunInfo, request: Request,
     """
     Whether a run that records state frames still records, for its row in the run list.
 
-    The verdict comes from the stream alone, never from the ledger: once each closed day books its
-    own row there (#476), a ledger row no longer means the session ended. An ended recording cannot
-    change — the stream's last line stays its end frame — so a run read as ended is remembered and
-    not read again; a running, a dead and a hanging session are read on every call.
+    The verdict comes from the stream alone, never from the ledger: each closed day books its own
+    row there as it closes (#476), so a ledger row does not mean the session ended. An ended
+    recording cannot change — the stream's last line stays its end frame — so a run read as ended
+    is remembered and not read again; a running, a dead and a hanging session are read on every
+    call.
 
     Args:
         store: The report store

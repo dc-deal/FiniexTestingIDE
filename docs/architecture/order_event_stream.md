@@ -149,24 +149,29 @@ venue said.
 ## Storage
 
 The stream is `io/order_events.jsonl` in the run's directory. Its first line names the schema once
-(`record_kind: header`, `schema_version`, `run_id`), the way a file of many records written by one
-writer states the writer's schema once rather than on every record; every later line is the
-API's `OrderEventRow` or — live — its `BrokerTruthRow`, told apart by `record_plane`, so the file
-and the route cannot describe a line differently. Empty fields are left out of a line.
+(`record_kind: header`, `schema_version`, `run_id`, and in a session the `trading_day` the file
+holds), the way a file of many records written by one writer states the writer's schema once rather
+than on every record; every later line is the API's `OrderEventRow` or — live — its
+`BrokerTruthRow`, told apart by `record_plane`, so the file and the route cannot describe a line
+differently. Empty fields are left out of a line.
 
 - **Backtest** — a listener in each scenario subprocess appends to a list, which travels back in
   `ProcessTickLoopResult.order_events` and `RunUnit.order_events`. `BatchReportCoordinator` writes
   every unit's events at report time, unit after unit. A backtest whose scenarios placed no order
   writes no stream.
 - **Live session** — `open_order_event_stream`
-  (`python/framework/autotrader/run_record/order_event_stream_setup.py`) opens the writer after the pipeline is
-  built and before the cold start, whose adoptions are the first steps a session can record,
-  registers it as an executor listener, and names the stream in the run index. Every event is
-  written and flushed as it is recorded; the writer closes after the session's order cleanup, whose
-  cancels are steps too. A session killed between two events loses nothing written; one killed
-  during a line loses that line, and the reader reports it. A write that fails — a full disk — is
-  reported once on the session's channel and ends the stream there; it never ends the fill it was
-  recorded in, or the session.
+  (`python/framework/autotrader/run_record/order_event_stream_setup.py`) opens the stream through
+  the session's run writer after the pipeline is built and before the cold start, whose adoptions
+  are the first steps a session can record, registers it as an executor listener, and names the
+  stream in the run index. A stream that cannot be opened ends the start: the session does not trade
+  without its order record. Every event is written and flushed as it is recorded; the writer closes
+  after the session's order cleanup, whose cancels are steps too. A session killed between two
+  events loses nothing written; one killed during a line loses that line, and the reader reports
+  it. A write that fails — a full disk — is reported once on the session's channel, naming the
+  event's `seq`, and ends the stream there; it never ends the fill it was recorded in, or the
+  session. At each trading-day boundary the session seals the day: its lines move into the day
+  record `days/<day>/io/order_events.parquet` and the file starts afresh with a header naming the
+  next day ([Day Records](run_stream_day_records.md)).
 
 The run index lists streams under `stream_files`, never under `artifacts`. An empty artifact list is
 how a run that never reached its report is told apart from one that did, and a stream written from
@@ -174,16 +179,17 @@ the first order on would otherwise make every killed session look finished.
 
 ## Reading it back
 
-`ReportStore.get_order_events` reads the file whenever it exists — a running session's stream grows
-from its first order — and filters by unit and by order; narrowed to one order, the broker-truth
-lines drop out. A last line without its newline that does not parse is a session killed
-mid-write: it is left out and `truncated_tail` says so. A broken line anywhere else, or a header
-naming any schema but the current one, is an unreadable file (`artifact_unreadable`), never a
-server error — a stream written under an earlier schema is written again by re-running its run.
-A live session reads its own stream back once it is closed (`read_back_order_event_stream`), one
-pass for both planes: the order events feed the pending-order counters and the check that every
-submission is in the stream, the broker-truth lines the venue-account section
-(`venue_account_report_builder`, served at `…/venue-account`).
+`ReportStore.get_order_events` reads the stream whenever it exists — a running session's stream
+grows from its first order — across the trading days a session sealed out of it and its own file,
+and filters by unit and by order; narrowed to one order, the broker-truth lines drop out. A last
+line without its newline that does not parse is a session killed mid-write: it is left out and
+`truncated_tail` says so. A broken line anywhere else, or a header naming any schema but the
+current one, is an unreadable file (`artifact_unreadable`), never a server error — a stream written
+under an earlier schema is written again by re-running its run. A live session reads its own stream
+back once it is closed (`read_back_order_event_stream`), across its sealed days too, one pass for
+both planes: the order events feed the pending-order counters and the check that every submission
+is in the stream, the broker-truth lines the venue-account section (`venue_account_report_builder`,
+served at `…/venue-account`).
 
 ## What is derived from it
 

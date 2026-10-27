@@ -5,7 +5,7 @@ Result data structures for live AutoTrader sessions.
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import List, Optional
+from typing import FrozenSet, List, Optional
 
 from python.framework.types.autotrader_types.clipping_monitor_types import ClippingSessionSummary
 from python.framework.types.autotrader_types.cold_start_types import (
@@ -28,6 +28,7 @@ from python.framework.types.portfolio_types.portfolio_trade_record_types import 
 from python.framework.types.portfolio_types.portfolio_types import Position
 from python.framework.types.run_outcome_types import TRANSIENT_START_EXIT_CODE, RunOutcome
 from python.framework.types.signal_data_types import SignalResolutionStats
+from python.framework.types.store_member_types import RunEntryMemberId
 from python.framework.types.trading_env_types.active_orders_snapshot_types import (
     ActiveOrdersSnapshot,
 )
@@ -35,6 +36,31 @@ from python.framework.types.trading_env_types.order_event_types import OrderEven
 from python.framework.types.trading_env_types.order_types import OrderResult
 from python.framework.types.trading_env_types.trading_env_stats_types import ExecutionStats
 from python.framework.types.validation_types import ValidationResult
+
+
+@dataclass
+class SessionReach:
+    """
+    How far a session got before it ended. A refused or aborted start still closes with a
+    footprint, and a file the session never got to is not a file it failed to write (#621).
+
+    Args:
+        order_record_opened: The order-event stream was opened
+        capture_opened: An acceptance study's capture was opened
+        tick_source_started: The tick source was built and started
+        tick_loop_entered: The state frames were opened and the tick loop was built
+        day_log_opened: A pass of the tick loop opened the trading day's session log
+        algo_state_found: The start found a saved algo state, so it recorded what it found (#476)
+        sealed_day_records: The day records a seal was due for — the members of every stream
+            that was open when a trading day ended (#476)
+    """
+    order_record_opened: bool = False
+    capture_opened: bool = False
+    tick_source_started: bool = False
+    tick_loop_entered: bool = False
+    day_log_opened: bool = False
+    algo_state_found: bool = False
+    sealed_day_records: FrozenSet[RunEntryMemberId] = frozenset()
 
 
 @dataclass
@@ -101,6 +127,8 @@ class AutoTraderResult:
             is derived from it
         session_validation_result: Post-run advisory findings (Tier 1) — the live counterpart
             of BatchExecutionSummary.batch_validation_result
+        session_reach: How far the session got — what its footprint judges the files that open
+            at a later step of the start by
     """
     session_duration_s: float = 0.0
     ticks_processed: int = 0
@@ -141,6 +169,7 @@ class AutoTraderResult:
     # path and the simulation's subprocess can carry the same shape back over its bridge.
     booking_periods: List[BookingPeriod] = field(default_factory=list)
     session_validation_result: List[ValidationResult] = field(default_factory=list)
+    session_reach: SessionReach = field(default_factory=SessionReach)
 
     def add_session_validation_result(self, result: ValidationResult) -> None:
         """

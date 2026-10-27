@@ -78,6 +78,25 @@ def build_trade_history_report(
                      without_quote)
 
 
+def trade_row(trade: TradeRecord, unit_name: str) -> TradeHistoryRow:
+    """
+    One closed trade as the row the trade history serves, on its own — what a session writes to
+    its trade stream the moment the trade closes (#476).
+
+    Mapped without the unit's other records, so two fields can differ from the report's row of the
+    same trade: an execution several partial closes share is counted once on each, and
+    `position_closes` is left unset.
+
+    Args:
+        trade: The record
+        unit_name: Its unit
+
+    Returns:
+        The row
+    """
+    return _to_row(trade, unit_name)
+
+
 def _execution_counts(trades: List[TradeRecord]) -> Counter:
     """
     How many of one unit's trade records carry each execution.

@@ -28,9 +28,11 @@ from python.configuration.host_identity_manager import HostIdentityManager
 from python.framework.autotrader import autotrader_main as autotrader_main_module
 from python.framework.autotrader.autotrader_main import AutotraderMain
 from python.framework.autotrader.startup.autotrader_startup import create_autotrader_loggers
+from python.framework.constants.run_layout_constants import RUN_HEADER_ARTIFACT
+from python.framework.exceptions.data_home_errors import DirectoryCreationDeniedError
 from python.framework.exceptions.host_identity_errors import HostIdentityError
 from python.framework.exceptions.persistence_errors import BotAlreadyRunningError
-from python.framework.reporting.io.run_header_io import RUN_HEADER_ARTIFACT, read_run_header
+from python.framework.reporting.io.run_header_io import read_run_header
 from python.framework.types.config_types.host_identity_config_types import TEST_HOST_ID
 from python.framework.types.run_origin_types import (
     CONSOLE_CLIENT,
@@ -110,6 +112,18 @@ class TestTheSessionStatesItsOrigin:
 
         assert received['origin'].first_start is True
 
+    def test_an_accepted_composite_change_reaches_the_header(self, stopped_session):
+        """#626: one start's acceptance of a changed configuration is recorded as typed."""
+        _, received = stopped_session
+        trader = AutotraderMain(load_autotrader_config(PROFILE),
+                                accept_composite_change='7f3a9c2e')
+
+        with pytest.raises(_StopAtLoggers):
+            trader.run()
+
+        assert received['origin'].accept_composite_change == '7f3a9c2e'
+        assert received['origin'].first_start is False
+
     def test_the_identity_is_captured_over_the_profile_before_the_header(
             self, stopped_session):
         """Captured BEFORE the header exists — the guard must not depend on one."""
@@ -188,6 +202,11 @@ class TestTheCommandLineDeclaresItself:
         assert _RecordingTrader.constructed['channel'] is RunChannel.CLI
         assert _RecordingTrader.constructed['allow_dirty'] is False
         assert _RecordingTrader.constructed['first_start'] is False
+        assert _RecordingTrader.constructed['accept_composite_change'] is None
+
+    def test_accept_composite_change_is_carried_through(self, monkeypatch):
+        assert _run_cli(monkeypatch, '--accept-composite-change', '7f3a9c2e') == 0
+        assert _RecordingTrader.constructed['accept_composite_change'] == '7f3a9c2e'
 
     def test_first_start_is_carried_through(self, monkeypatch):
         assert _run_cli(monkeypatch, '--first-start') == 0
@@ -214,6 +233,15 @@ class TestTheCommandLineDeclaresItself:
         output = capsys.readouterr().out
         assert 'host identity file cannot be trusted' in output
         assert 'Traceback' not in output
+
+    def test_a_refused_run_directory_is_a_refusal_not_a_crash(self, monkeypatch, capsys):
+        """#621: the run directory holds the record, so its refusal ends the start — exit 2, no trace."""
+        _RecordingTrader.failure = DirectoryCreationDeniedError(
+            'OS Permission Error — directory creation denied: runs/autotrader/my_profile/run_01')
+
+        assert _run_cli(monkeypatch) == 2
+        output = capsys.readouterr().out
+        assert 'directory creation denied' in output and 'Traceback' not in output
 
 
 def _run_real_cli(monkeypatch) -> int:

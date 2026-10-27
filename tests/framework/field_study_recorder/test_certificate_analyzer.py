@@ -10,11 +10,14 @@ the REST calls, the divergences.
 """
 
 import json
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 
 import pytest
 
+from python.configuration.app_config_manager import AppConfigManager
+from python.framework.constants.run_layout_constants import FIELD_STUDY_CAPTURE, IO_SUBDIR
 from python.framework.reporting.acceptance_study_recorder import AcceptanceStudyRecorder
 from python.framework.reporting.acceptance_study_stream_projection import (
     AcceptanceStudyStreamProjection,
@@ -22,26 +25,64 @@ from python.framework.reporting.acceptance_study_stream_projection import (
 from python.framework.reporting.certificates.field_study_certificate import FieldStudyCertificate
 from python.framework.reporting.io.artifact_specs import RUN_SUMMARY_ARTIFACT
 from python.framework.reporting.io.report_artifact_io import write_artifact
+from python.framework.reporting.io.run_header_io import write_run_header
 from python.framework.types.acceptance_study_types.study_capture_types import CaptureLineType
 from python.framework.types.acceptance_study_types.study_phase_types import PhaseOutcome
-from python.framework.types.api.report_types import RunSummary, RunSummaryCurrency
+from python.framework.types.api.report_types import RunHeader, RunSummary, RunSummaryCurrency
 from python.framework.types.live_types.broker_truth_types import (
     BrokerTruthPart,
     BrokerTruthReadReason,
     BrokerTruthRecord,
     BrokerTruthSnapshot,
 )
-from python.framework.types.log_layout_types import IO_SUBDIR
+from python.framework.types.run_kind_types import OrdersTo
 from python.framework.types.trading_env_types.broker_types import FeeSource
 from python.framework.types.trading_env_types.order_event_types import OrderEventPlane
+from python.framework.types.run_origin_types import CodeIdentity, RepositoryState
 from python.framework.types.trading_env_types.order_types import FeeReport
+from python.framework.utils.run_origin_builder import capture_code_identity
 
 _FIXTURES = Path('tests/fixtures/field_study')
+_RUN_ID = '20261012_072038_aaaaaaaa'
+_RUN_START = datetime(2026, 10, 12, 7, 20, 38, tzinfo=timezone.utc)
+
+
+def _in_a_run(tmp_path: Path, capture: Path, orders_to: OrdersTo = OrdersTo.VENUE,
+              commit: str = 'abcd1234', dirty: bool = False) -> Path:
+    """
+    A capture placed in a run directory whose header says where its orders went and which code
+    ran — what a real field study leaves on disk.
+
+    Args:
+        tmp_path: pytest temporary directory
+        capture: The capture to place
+        orders_to: Where the run's orders went
+        commit: The commit its code came from
+        dirty: Whether the run ran from uncommitted code
+
+    Returns:
+        The capture's path inside the run directory
+    """
+    run_dir = tmp_path / 'runs' / 'my_field_study' / _RUN_ID
+    write_run_header(RunHeader(
+        run_id=_RUN_ID, start_time=_RUN_START, run_type='autotrader', run_name='my_field_study',
+        orders_to=orders_to, git_commit=commit,
+        code_identity=CodeIdentity(framework=RepositoryState(
+            root='.', in_repository=True, commit=commit, dirty=dirty))), run_dir)
+    placed = run_dir / FIELD_STUDY_CAPTURE
+    placed.write_text(capture.read_text(encoding='utf-8'), encoding='utf-8')
+    return placed
+
+
+def _without_the_open_run(warnings: list) -> list:
+    """The warnings, less the one a hand-built run directory without a footprint carries."""
+    return [warning for warning in warnings if not warning.startswith('The run is not closed')]
 
 
 def test_pass_run_certifies_passed(tmp_path):
     cert_path = FieldStudyCertificate.generate(
-        str(_FIXTURES / 'pass_run.jsonl'), release_version='dev', reports_dir=str(tmp_path)
+        str(_in_a_run(tmp_path, _FIXTURES / 'pass_run.jsonl')), release_version='dev',
+        reports_dir=str(tmp_path / 'reports')
     )
     cert = json.loads(cert_path.read_text())
     assert cert['overall_status'] == 'PASSED'
@@ -560,9 +601,9 @@ class TestTheFeeSource:
 
     def test_an_estimate_where_the_venue_states_its_fee_is_a_warning_never_a_failure(
             self, tmp_path, capsys):
-        capture = _passing_capture(tmp_path, FeeReport.STATUS_ANSWER,
-                                   _fee_fill(2, FeeSource.VENUE), _fee_fill(3, FeeSource.ESTIMATE),
-                                   venue_fee_expected=True)
+        capture = _in_a_run(tmp_path, _passing_capture(
+            tmp_path, FeeReport.STATUS_ANSWER, _fee_fill(2, FeeSource.VENUE),
+            _fee_fill(3, FeeSource.ESTIMATE), venue_fee_expected=True))
 
         cert_path = FieldStudyCertificate.generate(
             str(capture), release_version='dev', reports_dir=str(tmp_path / 'reports'))
@@ -571,8 +612,9 @@ class TestTheFeeSource:
         assert cert['overall_status'] == 'PASSED'
         assert cert['fee_source']['by_source'] == {FeeSource.VENUE.value: 1,
                                                    FeeSource.ESTIMATE.value: 1}
-        assert len(cert['warnings']) == 1
-        assert cert['warnings'][0].startswith('ESTIMATED FEES: 1 of 2 fills')
+        warnings = _without_the_open_run(cert['warnings'])
+        assert len(warnings) == 1
+        assert warnings[0].startswith('ESTIMATED FEES: 1 of 2 fills')
         printed = capsys.readouterr().out
         assert 'venue 1/2 fills' in printed
         assert '⚠️  ESTIMATED FEES: 1 of 2 fills' in printed
@@ -621,7 +663,7 @@ class TestTheFeeSource:
         capture.write_text('\n'.join(lines) + '\n', encoding='utf-8')
 
         cert = json.loads(FieldStudyCertificate.generate(
-            str(capture), release_version='dev',
+            str(_in_a_run(tmp_path, capture)), release_version='dev',
             reports_dir=str(tmp_path / 'reports')).read_text())
 
         assert cert['overall_status'] == 'PASSED'
@@ -629,7 +671,7 @@ class TestTheFeeSource:
             'status': 'not_recorded', 'fills': 2,
             'by_source': {FeeSource.VENUE.value: 0, FeeSource.ESTIMATE.value: 0},
             'not_recorded': 2, 'fee_report': None, 'venue_fee_expected': None}
-        assert cert['warnings'] == []
+        assert _without_the_open_run(cert['warnings']) == []
         assert 'USD (event_sum) · source not recorded' in capsys.readouterr().out
 
     def test_a_fill_without_its_source_beside_recorded_ones(self, tmp_path):
@@ -660,3 +702,66 @@ class TestTheFeeSource:
         assert cert['overall_status'] == 'FAILED'
         assert cert['warnings'][0].startswith('VERSION MISMATCH')
         assert cert['warnings'][-1].startswith('ESTIMATED FEES: 1 of 1 fills')
+
+
+class TestTheCertificateIsBoundToItsRun:
+    """
+    A field-study certificate certifies a run whose orders went to the venue, from committed code,
+    on the commit the certificate names; its validity counts from that run's start.
+    """
+
+    def test_a_mock_run_fails_on_its_orders(self, tmp_path):
+        analysis = FieldStudyCertificate.analyze(str(_in_a_run(
+            tmp_path, _FIXTURES / 'pass_run.jsonl', orders_to=OrdersTo.SIMULATED)))
+
+        assert analysis['overall_status'] == 'FAILED'
+        assert analysis['failed_checks'] == ['study:real_orders']
+        assert analysis['checks']['study:real_orders']['detail'] == (
+            'the run sent its orders to simulated, not to the venue')
+
+    def test_a_run_from_uncommitted_code_fails(self, tmp_path):
+        analysis = FieldStudyCertificate.analyze(str(_in_a_run(
+            tmp_path, _FIXTURES / 'pass_run.jsonl', dirty=True)))
+
+        assert analysis['failed_checks'] == ['study:committed_code']
+
+    def test_a_capture_in_no_run_directory_proves_neither(self):
+        analysis = FieldStudyCertificate.analyze(str(_FIXTURES / 'pass_run.jsonl'))
+
+        assert analysis['overall_status'] == 'FAILED'
+        assert analysis['failed_checks'] == ['study:real_orders', 'study:committed_code']
+
+    def test_a_declared_release_on_another_commit_fails_on_its_evidence(self, tmp_path):
+        cert = json.loads(FieldStudyCertificate.generate(
+            str(_in_a_run(tmp_path, _FIXTURES / 'pass_run.jsonl', commit='deadbeef')),
+            release_version=AppConfigManager().get_version(),
+            reports_dir=str(tmp_path / 'reports')).read_text())
+
+        assert cert['overall_status'] == 'FAILED'
+        evidence = [w for w in cert['warnings'] if w.startswith('EVIDENCE COMMIT')]
+        assert evidence and evidence[0].startswith(f'EVIDENCE COMMIT: {_RUN_ID} ran on deadbeef')
+        assert cert['evidence_runs'] == [
+            {'run_id': _RUN_ID, 'commit': 'deadbeef', 'started': _RUN_START.isoformat()}]
+
+    def test_a_run_on_the_certificate_s_commit_is_its_evidence(self, tmp_path):
+        tree_commit = capture_code_identity([]).framework.commit
+        cert = json.loads(FieldStudyCertificate.generate(
+            str(_in_a_run(tmp_path, _FIXTURES / 'pass_run.jsonl', commit=tree_commit)),
+            release_version=AppConfigManager().get_version(),
+            reports_dir=str(tmp_path / 'reports')).read_text())
+
+        assert not [w for w in cert['warnings'] if w.startswith('EVIDENCE COMMIT')]
+
+    def test_a_rehearsal_is_not_held_to_a_commit(self, tmp_path):
+        cert = json.loads(FieldStudyCertificate.generate(
+            str(_in_a_run(tmp_path, _FIXTURES / 'pass_run.jsonl', commit='deadbeef')),
+            release_version='dev', reports_dir=str(tmp_path / 'reports')).read_text())
+
+        assert not [w for w in cert['warnings'] if w.startswith('EVIDENCE COMMIT')]
+
+    def test_the_validity_counts_from_the_run_s_start(self, tmp_path):
+        cert = json.loads(FieldStudyCertificate.generate(
+            str(_in_a_run(tmp_path, _FIXTURES / 'pass_run.jsonl')), release_version='dev',
+            reports_dir=str(tmp_path / 'reports')).read_text())
+
+        assert datetime.fromisoformat(cert['valid_until']) == _RUN_START + timedelta(days=90)

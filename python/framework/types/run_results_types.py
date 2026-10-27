@@ -9,12 +9,14 @@ combination carries into a batch so the ledger row can be grouped by sweep;
 """
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
-from python.framework.types.api.report_types import OrdersTo, RunSummaryCurrency
+from python.framework.types.api.report_types import RunSummaryCurrency
+from python.framework.types.run_kind_types import OrdersTo
 from python.framework.types.run_outcome_types import RunOutcome
+from python.framework.types.trading_env_types.trading_env_stats_types import ExecutionStats
 
 
 @dataclass
@@ -108,7 +110,7 @@ class RunProvenance:
     # changed stop level must not read as a different strategy.
     profile_hash: str = ''
     # WHICH PIPELINE produced this run — 'simulation' | 'autotrader', taken from the same constants
-    # the run tree is laid out with (`log_layout_types.RUN_TYPE_*`) rather than a literal, so
+    # the run tree is laid out with (`run_layout_constants.RUN_TYPE_*`) rather than a literal, so
     # the ledger, the run index and the directory on disk cannot drift into three vocabularies.
     run_type: str = ''
     # WHERE this run's orders went — a simulator or the venue, i.e. whether real money moved
@@ -139,6 +141,13 @@ class RunProvenance:
     error_count: Optional[int] = None       # ERROR records in the error pot
     warning_count: Optional[int] = None     # Tier-1 findings (validator-produced)
     log_warning_count: Optional[int] = None # Tier-2 WARNING records in the log pot
+    # WHAT the run ran with (#547), carried onto every row (#476): the run-config store id of its
+    # rendered configuration as its header names it, and of the broker configuration it froze —
+    # comma-joined where a backtest traded under several. A session books its trading days
+    # while it runs, so a session killed on day 29 names both in the rows it left rather than in
+    # a log line. '' where the run froze none.
+    rendered_config_id: str = ''
+    broker_config_id: str = ''
 
 
 class PeriodCloseReason(Enum):
@@ -183,11 +192,15 @@ class BookingPeriod:
             session in live. Load-bearing rather than decorative: a run's scenarios cover
             DIFFERENT windows (measured 2026-09-21: 40 scenarios, 40 distinct windows), so
             "day 1 of the run" is not a thing and only "day 1 of this unit" is
-        opened_at: When the period began, from the CANONICAL clock — the seal is an event (§9)
-        closed_at: When it ended, same clock. Read from the record and never re-derived from
-            config: during an anchor change the config describes what a run WOULD produce
-            while existing rows still hold the previous answer (§31c makes the same argument
-            for the price basis)
+        opened_at: When the period began, from the CANONICAL clock — the seal is an event (§9).
+            The previous period's close, so the periods leave no stretch of the run uncovered:
+            after a market's closed days it is the instant the last trading day ended, not the
+            instant the next one opened
+        closed_at: When it ended, same clock — the trading day's boundary instant for a day the
+            market ended (#476), not the moment the run noticed it. Read from the record and
+            never re-derived from config: during an anchor change the config describes what a
+            run WOULD produce while existing rows still hold the previous answer (§31c makes the
+            same argument for the price basis)
         reason: What closed it
         trade_count: How many trade records the period's figures were derived from. This is a
             CONTROL TOTAL (§48), not a statistic: it is what lets a reader re-derive the row
@@ -195,7 +208,10 @@ class BookingPeriod:
         figures: The period's KPIs for ONE account currency — the same shape a whole run
             reports, so a period and a run describe themselves with one vocabulary. A unit
             trading two account currencies emits one period per currency
-        period_max_equity: The highest account value seen INSIDE this period
+        period_max_equity: The highest account value seen INSIDE this period. None, with the two
+            below it, on a period that could value the account at no point — a spot holding
+            sealed before the first tick priced it — where a band from 0.00 to 0.00 would be a
+            measurement nobody took (#476)
         period_min_equity: The lowest. Not derivable from the two above it — the peak and the
             trough belong to different moments, so `high - drawdown` is a different number
             from the low whenever the peak came after it
@@ -213,6 +229,15 @@ class BookingPeriod:
             measured and stands beside it, never inside it
         modelled_spread_cost: The spread the same trades crossed against quotes the simulation
             modelled for ticks without one (#602) — beside `spread_cost`, the two adding up
+        tick_count: How many ticks the period applied. Zero says the market was not heard at all
+            in it — a trading day inside a data gap, booked so that every trading day has its
+            row, with the valuation it was left at and no movement of its own (#476)
+        trading_day: The trading day the period books, in the market's own calendar and labelled
+            by the date it opened (`trading_day_anchor`); None for a unit with no market
+        execution: The orders the period handled — submitted, adopted, and booked rows by the
+            status they ended with — counted inside the period where the executor counts them,
+            so a run's periods add up to its execution statistics (#476). None where nothing
+            counted them: a period built without an executor
     """
     period_no: int
     unit_name: str
@@ -221,14 +246,32 @@ class BookingPeriod:
     reason: PeriodCloseReason
     trade_count: int
     figures: RunSummaryCurrency
-    period_max_equity: float = 0.0
-    period_min_equity: float = 0.0
-    period_max_drawdown: float = 0.0
+    period_max_equity: Optional[float] = 0.0
+    period_min_equity: Optional[float] = 0.0
+    period_max_drawdown: Optional[float] = 0.0
     period_opening_equity: Optional[float] = None
     commission_cost: float = 0.0
     swap_cost: float = 0.0
     spread_cost: float = 0.0
     modelled_spread_cost: float = 0.0
+    tick_count: int = 0
+    trading_day: Optional[date] = None
+    execution: Optional[ExecutionStats] = None
+
+
+class FigureKind(Enum):
+    """
+    What kind of figure a ledger column holds — which decides whether it may cross accounts.
+
+    A flow adds up over any rows. A ratio is never combined, only re-derived from the flows of the
+    rows it describes. A reading belongs to one account — a stock, a peak, a trough, an extreme —
+    and has no value over several. A description is no figure at all. A total over several
+    composites carries flows only (#615).
+    """
+    FLOW = 'flow'
+    RATIO = 'ratio'
+    ACCOUNT_READING = 'account_reading'
+    DESCRIPTION = 'description'
 
 
 class Reduction(Enum):
@@ -281,3 +324,51 @@ class Reduction(Enum):
     # defect #497 removed from the console aggregate (report_aggregators.py:160-163 states it).
     # The companion's comment names the column that LEADS it.
     COMPANION = 'companion'
+
+    def figure_kind(self) -> FigureKind:
+        """
+        The kind of figure a column with this reduction holds.
+
+        Returns:
+            Its FigureKind, declared per member in `_FIGURE_KIND_OF`
+        """
+        return _FIGURE_KIND_OF[self]
+
+
+# The kind of figure behind each reduction (#615). Every member is listed, and a test holds the
+# map to the enum, so a new reduction cannot arrive without saying whether its columns may cross
+# accounts — a member missing here would raise rather than fall into a default kind.
+_FIGURE_KIND_OF: Dict[Reduction, FigureKind] = {
+    Reduction.SUM: FigureKind.FLOW,
+    Reduction.DERIVE: FigureKind.RATIO,
+    Reduction.MAX: FigureKind.ACCOUNT_READING,
+    Reduction.MAX_ABS: FigureKind.ACCOUNT_READING,
+    Reduction.MIN: FigureKind.ACCOUNT_READING,
+    Reduction.LAST: FigureKind.ACCOUNT_READING,
+    Reduction.FIRST: FigureKind.ACCOUNT_READING,
+    Reduction.COMPANION: FigureKind.ACCOUNT_READING,
+    Reduction.IDENTITY: FigureKind.DESCRIPTION,
+    Reduction.UNION: FigureKind.DESCRIPTION,
+    Reduction.SPAN_START: FigureKind.DESCRIPTION,
+    Reduction.SPAN_END: FigureKind.DESCRIPTION,
+}
+
+
+class NullMeaning(Enum):
+    """
+    What the empty cell of a nullable figure means — declared per column in
+    `run_results_ledger.COLUMN_NULL_MEANING`, which a test holds to the nullable figures.
+
+    A null can mean two things, and a reader who takes one for the other decides wrongly: a
+    ranking that leaves out the runs whose profit factor is undefined drops the runs that never
+    lost, and one that refuses a figure merely missing from some rows refuses a question it could
+    answer over the others.
+    """
+    # No value exists for the row: a ratio or a mean with nothing to divide by — a profit factor
+    # without a losing trade — a figure about something the run did not have — a signal ratio
+    # without a signal worker — or a reading of one account over the rows of several. A ranking
+    # cannot place such a row, so it refuses the objective.
+    UNDEFINED = 'undefined'
+    # A value existed and was not recorded: a row written before its column existed, a reading
+    # taken before the account's first valuation. A ranking leaves the row out and counts it.
+    UNMEASURED = 'unmeasured'

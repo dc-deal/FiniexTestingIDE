@@ -184,7 +184,6 @@ This system enables:
       "adaptive_parallelization": true
     },
     "trade_simulator_config": {
-      "broker_config_path": "./configs/brokers/mt5/ic_markets_demo.json",
       "balances": { "EUR": 10000 }
     }
   }
@@ -478,7 +477,7 @@ factors are three scenario sets.
 **Global:**
 ```json
 "trade_simulator_config": {
-  "broker_config_path": "./configs/brokers/mt5/ic_markets_demo.json",
+  "inbound_latency_max_ms": 120,
   "balances": { "EUR": 10000 }
 }
 ```
@@ -493,7 +492,7 @@ factors are three scenario sets.
 **Result (Merged):**
 ```json
 "trade_simulator_config": {
-  "broker_config_path": "./configs/brokers/mt5/ic_markets_demo.json", // ← FROM GLOBAL
+  "inbound_latency_max_ms": 120,   // ← FROM GLOBAL
   "balances": { "JPY": 50000 }  // ← ATOMIC REPLACE from scenario
 }
 ```
@@ -835,7 +834,6 @@ formatted = ParameterOverrideDetector.format_overrides_for_display(overrides)
 {
   "global": {
     "trade_simulator_config": {
-      "broker_config_path": "./configs/brokers/mt5/ic_markets_demo.json",
       "balances": { "EUR": 10000 }
     }
   },

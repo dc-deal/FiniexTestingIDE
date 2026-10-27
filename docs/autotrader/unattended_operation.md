@@ -7,9 +7,9 @@ three pieces that turn that silence into a message (#235): **operator alerts** t
 about itself, a **liveness ping** whose absence an outside monitor turns into an alarm, and a
 **supervisor** that brings a dead process back.
 
-It also covers the two things a restart must survive: a second start of a bot that is still
-running, and a deploy into a new code tree — and the daily check-in, which reads the session from
-outside without touching it.
+It also covers what a restart must survive: a second start of a bot that is still running, a
+deploy into a new code tree, and a configuration that changed while a position was open — and the
+daily check-in, which reads the session from outside without touching it.
 
 Not here: what the session does when it runs — that is
 [AutoTrader Runtime Model](autotrader_runtime_model.md); how a restart picks up the open book —
@@ -96,7 +96,7 @@ true — a recurrence before the all-clear keeps the episode open.
 | Safety circuit breaker — new entries blocked / cleared | ⚠️ / ✅ |
 | Market data stale / fresh again — including no first tick within `market_data_stale_after_s` of the loop's start, a feed that never connected | ⚠️ / ✅ |
 | A signal input stale / fresh again | ⚠️ / ✅ |
-| A trading day closed — its booking period: trades, net P&L and the open part, fees, equity at the close and at the open, the deepest dip; `daily_digest` switches it off | ✅ |
+| A trading day closed — its booking period: trades, net P&L and the open part, fees, equity at the close and at the open, the deepest dip; `daily_digest` switches it off. Days one late check closes together — a machine that slept, a clock that jumped — are the first day in full and one message for the rest, naming their span | ✅ |
 | The session ended — its grade, exit code, why it was asked to end, duration, ticks, trades, net P&L and the open part, errors logged | by grade |
 
 An abort or a refused start is one message, sent at once, before the shutdown — not a second one
@@ -305,6 +305,157 @@ the new tree in the same step and names the same home, so a store's reader and i
 run two versions. Going back is the same steps with the old tree. The stop must finish inside
 systemd's stop timeout (`TimeoutStopSec`, 90 s by default); a kill after that costs the session
 its ledger row, never its carry-over.
+
+## A restart under a changed configuration
+
+A whole week of it, change by change — a rehearsal, an edited parameter, a clean restart, a release,
+a flag left behind — is walked through in [Changing a Live Bot](../user_guides/changing_a_live_bot_guide.md).
+
+A restart continues what the last session left at the venue: the cold start takes over this bot's
+resting orders and, at spot, its position book. If the configuration changed in between, the new
+configuration finishes a trade the old one opened, and the trade's P&L lands in booking periods
+that belong to neither (#626). So a session that takes over something still open compares what it
+runs with against what the session that left it ran with — both projected onto their composite key
+— and refuses to start when the two differ:
+
+```
+❌ CONFIGURATION CHANGED WHILE POSITIONS ARE OPEN — start refused
+
+This session continues deployment deploy_20261103_090000_1a2b3c4d (bot my_bot_btcusd).
+What the venue still holds was carried over from run 20261104_180012_ab12cd34, and this session's configuration
+defines another composite (strategy, conditions changed):
+
+  strategy_config.decision_logic_config.rsi_oversold   40 → 35     strategy     your profile
+  safety.max_drawdown_pct                              25 → 12     conditions   your profile
+  execution.heartbeat_interval_ms                      500 → 250   conditions   app_config.json as shipped
+
+Still open at the venue:
+  · a long position of 0.004 BTC (pos_btcusd_47, this bot's position book)
+  · 2 resting order(s) of ours — a sell limit of 0.004 at 71200.0, a sell stop of 0.004 at 66500.0
+
+A trade opened under one configuration and closed under another is the result of neither, so the
+start stops.
+Ways on:
+  …
+  3. Accept it for this start — run again with --accept-composite-change 7f3a9c2e. What is open continues under the
+     new configuration, and the run records that it crossed. From here the deployment is two series:
+     figures that need one long unbroken series — Sharpe, profit factor, the drawdown of one composite,
+     a backtest of the same period — start over, or have to be rebuilt piece by piece.
+```
+
+Each changed value names the part of the key it feeds and where it comes from now — your profile,
+`app_config.json` as shipped or in your workspace, the broker's entry in `market_config.json` as
+shipped or in your workspace, a code default no file sets, or a value the start resolves itself
+(the account currency, the kind of run). Only the value the session runs with now can be placed:
+the files an earlier session read are not kept, only what it ran with. Which values define the
+composite is the `session` section of `configs/composite_definition.json`.
+
+### When the flag becomes necessary
+
+Every case is a value that defines the composite, changed while a position or an order was open at
+the venue — because a session left it open (positions always stay open at a session's end, resting
+orders with `session_end.orders: leave`), or because a session died. It arises in four ways:
+
+1. **The strategy in the profile was edited** — a parameter, a worker, the decision logic.
+2. **A condition in the profile was edited** — a safety limit, the order guard, the heartbeat
+   interval, the kind of tick source, the session-end policy itself.
+3. **A release moved a default the profile does not set.** The profile file is untouched; what the
+   session runs with is not. The refusal names the value as `app_config.json as shipped` or as a
+   code default. A release that ADDS a setting with a default shows it as `not set → <default>`:
+   it exists on one side only, and no file can take it back — when the new value keeps the old
+   behaviour, accept the start.
+4. **A workspace override changed** — the AutoTrader base layer in the workspace's
+   `app_config.json`, or the broker's entry in its `market_config.json` (market type, price
+   formation, server clock).
+
+Not cases:
+
+- **A rehearsal followed by real money, as such.** A dry run holds nothing at the venue, and its
+  readings never reach real money (below). What a rehearsal tried is not exempt, though: the start
+  compares with the configuration real money last ran under, so rehearsing a change while a real
+  position is open still needs one of the ways below when real money continues it.
+- **A changed composite definition alone.** Both sides are projected under the definition the start
+  runs with, so a new tier for a value is no change of what ran.
+- **A neutral value** — display, alerts, monitoring, the data window.
+- **A clean restart.** With nothing of this bot open, the start goes ahead, says in its log what
+  changed, and begins a new stretch of the deployment.
+- **A declared continuation** (`carry_over_from`) taking over its partner's book. A study's stages
+  change their configuration on purpose; the session log says the comparison was skipped.
+
+### Three ways on
+
+1. **Undo the change** — restore the values; for a shipped or a code default, write the old value
+   into the profile. The session continues as one series. A value marked `not set` cannot be
+   restored in a file (case 3).
+2. **Finish under the old configuration** — run it until nothing is open, then switch. Resting
+   orders alone can be cancelled at the venue. A holding sold by hand stays in the bot's position
+   book (#627), so at spot the bot has to close it itself.
+3. **Accept it for this start** — `--accept-composite-change <key>`, with the key the refusal
+   printed. What is open continues under the new configuration. The run header records the key
+   (`origin.accept_composite_change`), the session's warnings carry `composite_change_accepted` with
+   the changed values, and the carry-over is written under the new configuration, so the next
+   restart needs nothing.
+
+**The flag names the one composite it accepts.** The key is the first eight characters of the
+composite the start runs, as the refusal prints it (more characters work too). A start given
+another key is refused again, and the refusal says the configuration changed since the key was
+printed. Left in a service unit, the flag keeps naming that one composite, so it never accepts a
+later change — that one is refused like the first, and the chain goes on only after a person has
+looked at it. Given where nothing changed or nothing is open, the flag is ignored with a note, and
+the header still records what was typed. A mock session and a dry run are never checked: they
+hold nothing at the venue.
+
+### What a change costs beyond the trade
+
+The refusal is about the trade that crosses the change, but the change costs more than that, and
+it costs it whether or not anything was open — a clean restart under a new composite is only
+spared the refusal:
+
+- **The record becomes two series.** Every figure measured over one composite starts over at the
+  change: its profit factor, its drawdown, and above all its Sharpe ratio, whose reliability grows
+  with the length of the unbroken series behind it. A month of one configuration and a month of
+  another are two short track records, not one long one.
+- **The parity proof becomes several.** A backtest over the same period has to reproduce each
+  stretch with the configuration it ran — possible, because what each session ran with is frozen,
+  but every change adds a comparison, and the divergence is read stretch by stretch.
+- **The continuous test period is broken.** Whatever needed the whole period unbroken — a
+  thirty-day run, a year of live statistics — begins again at the change.
+
+So the question before a change is not only "is the new value better" but "is it worth starting
+the series again". When it is, accepting it is a decision the record keeps. What four such changes
+cost in one week: [Changing a Live Bot](../user_guides/changing_a_live_bot_guide.md), *What the
+week cost*.
+
+### What cannot be compared
+
+A carry-over written before the check existed records no configuration; a session whose own
+configuration could not be rendered, or whose predecessor's record the run-config store no longer
+holds, has nothing to compare either. The start goes ahead — a store that cannot answer must not
+lock a bot out of its own position — and its log says so; when something was open, its warnings
+carry `carried_configuration_not_compared`. At margin, open positions are read from the venue once
+#209 builds that read; until then the check sees our resting orders only.
+
+### The readings follow the kind of run
+
+The carry-over also hands on the account's readings — the drawdown curve and the risk baseline every
+limit measures against. A session continues them only when a session of its own kind wrote them,
+and a rehearsal never writes over what real money wrote:
+
+| Before → now | Continued | Written by this session |
+|---|---|---|
+| a rehearsal → a rehearsal | yes — the mechanism stays rehearsable | yes |
+| a rehearsal → real money | no, fresh | yes |
+| real money → real money | yes | yes |
+| real money → a rehearsal | no, fresh | no — real money's stay for its next session |
+| real money → a rehearsal → real money | yes, the first session's | yes |
+| `--new-deployment` | no, fresh | yes |
+| a carry-over from before this was recorded | no, fresh | yes |
+
+A rehearsal's account is simulated. Continued by real money, a simulated peak above the real account
+would block entries from the first tick — past a hard limit, flatten real positions over a decline
+real money never had — and a simulated denominator below it would loosen every limit. A session
+that starts fresh says why at its start and in its warnings (`carried_readings_not_continued`); a
+new deployment the operator asked for is only said.
 
 ## What the venue could do, and why it does not here
 

@@ -31,7 +31,7 @@ from typing import Dict, Optional, Set, Tuple
 import pandas as pd
 
 from python.configuration.app_config_manager import AppConfigManager
-from python.framework.types.log_layout_types import RUN_TYPE_AUTOTRADER, RUN_TYPE_SIMULATION
+from python.framework.constants.run_layout_constants import RUN_TYPE_AUTOTRADER, RUN_TYPE_SIMULATION
 
 
 def _text(value) -> str:

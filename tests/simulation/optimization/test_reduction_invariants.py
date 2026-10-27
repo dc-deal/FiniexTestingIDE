@@ -29,7 +29,7 @@ from python.framework.reporting.store.run_results_ledger import (
     COLUMN_REDUCTION,
 )
 from python.framework.types.api.report_types import RunResultRow
-from python.framework.types.run_results_types import Reduction
+from python.framework.types.run_results_types import FigureKind, Reduction
 
 _RUN = '20260922_000000_deadbeef'
 
@@ -198,3 +198,26 @@ class TestWhatIdentityDoesNotDo:
         ]
         combined = aggregate_ledger_rows(rows, by=('run_id', 'currency'))[0]
         assert combined.param_hash in ('aaa', 'bbb')
+
+
+class TestEveryReductionNamesItsKindOfFigure:
+    """The kind of figure decides what may cross accounts, so no reduction may lack one (#615)."""
+
+    def test_every_member_has_a_kind(self):
+        for reduction in Reduction:
+            assert isinstance(reduction.figure_kind(), FigureKind), reduction
+
+    def test_only_a_sum_is_a_flow(self):
+        # A control total over several composites takes exactly the flows — so the flows must be
+        # exactly the columns that add up.
+        flows = {r for r in Reduction if r.figure_kind() is FigureKind.FLOW}
+        assert flows == {Reduction.SUM}
+
+    def test_what_is_never_combined_is_never_a_flow(self):
+        for reduction in _NOT_COMBINED:
+            assert reduction.figure_kind() is not FigureKind.FLOW, reduction
+
+    def test_every_declared_column_has_a_kind(self):
+        kinds = {COLUMN_REDUCTION[column].figure_kind() for column in COLUMN_REDUCTION}
+        assert FigureKind.FLOW in kinds and FigureKind.DESCRIPTION in kinds
+

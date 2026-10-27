@@ -36,6 +36,7 @@ from python.framework.utils.config_fingerprint_utils import (
     read_cache_metadata,
     read_fingerprint_from_parquet,
 )
+from python.framework.utils.file_utils import create_directory
 
 vLog = get_global_logger()
 
@@ -71,7 +72,7 @@ class DataCoverageReportCache:
         self._granularity = DataCoverageReport.detection_granularity()
 
         # Ensure cache directory exists
-        self.cache_dir.mkdir(parents=True, exist_ok=True)
+        create_directory(self.cache_dir, holds='the data coverage cache')
 
         # Bar index for source file lookup
         self._bar_index: Optional[BarsIndexManager] = None

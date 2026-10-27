@@ -10,6 +10,7 @@ that model.
 
 import pytest
 
+from python.framework.constants.run_layout_constants import IO_SUBDIR, RUN_TYPE_SIMULATION
 from python.framework.exceptions.report_artifact_errors import ReportArtifactUnreadableError
 from python.framework.reporting.io import artifact_specs
 from python.framework.reporting.io.artifact_specs import (
@@ -30,7 +31,6 @@ from python.framework.types.api.report_types import (
     RunReporting,
     WarningsErrorsReport,
 )
-from python.framework.types.log_layout_types import IO_SUBDIR, RUN_TYPE_SIMULATION
 
 
 def _all_specs():

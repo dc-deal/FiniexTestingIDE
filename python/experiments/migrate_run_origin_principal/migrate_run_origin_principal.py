@@ -29,7 +29,7 @@ from typing import List, Optional
 from python.configuration.app_config_manager import AppConfigManager
 from python.framework.config_directory.config_directory import declared_run_purposes
 from python.framework.config_directory.config_directory_discovery import json_files_under
-from python.framework.reporting.io.run_header_io import RUN_HEADER_ARTIFACT
+from python.framework.constants.run_layout_constants import RUN_HEADER_ARTIFACT
 from python.framework.reporting.store.run_index import RunIndex
 
 _OLD_KEY = '"person": '

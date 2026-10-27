@@ -18,12 +18,16 @@ Usage:
 
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Dict, Optional
 
 from python.framework.logging.abstract_logger import AbstractLogger, ColorCodes
 from python.framework.logging.file_logger import FileLogger
+from python.framework.store.entry_members.run_entry_members import RUN_ENTRY_MEMBERS_BY_ID
+from python.framework.store.entry_members.run_entry_writer import RunEntryWriter
 from python.framework.types.log_level import LogLevel
 from python.framework.types.log_record_types import LogRecord
+from python.framework.types.store_member_types import RunEntryMemberId
+from python.framework.utils.file_utils import create_directory
 from python.framework.utils.time_utils import format_log_elapsed
 
 
@@ -44,33 +48,38 @@ class ScenarioLogger(AbstractLogger):
                  run_timestamp: datetime,
                  run_id: str,
                  log_root_override: Optional[Path] = None,
-                 file_name_prefix_override: Optional[str] = None,
+                 log_member: Optional[RunEntryMemberId] = None,
+                 log_names: Optional[Dict[str, str]] = None,
+                 run_type: Optional[str] = None,
                  use_global_log_level_for_console: bool = False,
-                 use_scenario_logs_subdir: bool = False,
                  event_time_column: bool = False,
-                 flat_log_filename: Optional[str] = None
+                 flat_log_path: Optional[Path] = None
                  ):
         """
         Initialize scenario logger.
 
         Args:
             scenario_set_name: Scenario set name
-            scenario_name: Scenario name (e.g., "GBPUSD_window_01")
+            scenario_name: The logger's name, shown on its lines (e.g., "01_GBPUSD_window_01")
             run_timestamp: Run start — the baseline the elapsed column is measured against
             run_id: The run's identity, minted ONCE per run and used verbatim as the run
                 directory name. Not derived here: every logger of one run must land in the same
                 directory, and three loggers deriving three ids would give three directories
             log_root_override: Custom log root path (bypasses config). Used by AutoTrader for separate log tree.
-            file_name_prefix_override: Custom file name prefix (bypasses config). E.g., 'autotrader' → autotrader_<name>.log
-            use_scenario_logs_subdir: Place log file in scenario_logs/ subdir (backtesting per-scenario logs only)
+            log_member: The log of the run's record this logger writes — the run store's
+                declaration names its file. None writes no file: a run directory holds only
+                declared files
+            log_names: The variable parts of that member's file name, such as a scenario's
+                number; the configured prefix of a backtest log is filled in here
+            run_type: The pipeline the run belongs to — what decides which logs it may write
             event_time_column: This log lies on the run's own time axis, so every line carries
                 the event-time column. True for the per-scenario logs and the AutoTrader session
                 log; false for the run-level logs (global, summary, system info), which describe the
                 run from outside rather than from a moment inside it
-            flat_log_filename: Write this ONE file directly into log_root_override instead of
-                opening a <owner>/<run_timestamp>/ run directory. For output that describes
-                something other than a run — today the shared data load a sweep performs once
-                for all its combinations. Without it, work that is not a run leaves a directory
+            flat_log_path: Write this ONE file instead of opening a <owner>/<run_id>/ run
+                directory. For output that describes something other than a run — today the
+                shared data load a sweep performs once for all its combinations, a member of the
+                sweep's own declaration. Without it, work that is not a run leaves a directory
                 shaped like one, and the API's run index has no way to tell the two apart
         """
         super().__init__(name=scenario_name, event_time_column=event_time_column)
@@ -83,39 +92,58 @@ class ScenarioLogger(AbstractLogger):
         self.run_dir = None
         self.file_logger = None
 
+        # The caller hands over the root it belongs to — an AutoTrader session, a standalone
+        # run, or one sweep's combinations. They come from config (file_logging.run_logs),
+        # which is the same source the API reads.
+        log_root = (log_root_override if log_root_override
+                    else self._file_logging_config.run_logs.simulation)
+        if not flat_log_path:
+            # Create scenario run directory. It is the run's record — header, reports, streams —
+            # so the IDE creates it whether or not log files are written: the switch below
+            # decides the log files alone (#621).
+            self.run_dir = create_directory(
+                log_root / scenario_set_name / run_id,
+                holds="the run's record: header, reports and streams",
+                setting='file_logging.run_logs')
+
         if self._file_logging_config.scenario_enabled:
-            # Create scenario run directory
-            # The caller hands over the root it belongs to — an AutoTrader session, a standalone
-            # run, or one sweep's combinations. They come from config (file_logging.run_logs),
-            # which is the same source the API reads.
-            log_root = (log_root_override if log_root_override
-                        else self._file_logging_config.run_logs.simulation)
-            prefix = file_name_prefix_override if file_name_prefix_override else self._file_logging_config.scenario_file_name_prefix
-
-            if flat_log_filename:
-                # One file, straight into the given root. No run directory is opened, because
-                # what is being logged here is not a run.
-                log_dir = log_root
-                log_dir.mkdir(parents=True, exist_ok=True)
-                log_filename = flat_log_filename
-            else:
-                self.run_dir = log_root / scenario_set_name / run_id
-                self.run_dir.mkdir(parents=True, exist_ok=True)
-
-                # Per-scenario files go into scenario_logs/ subdir (backtesting only)
-                log_dir = self.run_dir / 'scenario_logs' if use_scenario_logs_subdir else self.run_dir
-                if use_scenario_logs_subdir:
-                    log_dir.mkdir(exist_ok=True)
-                log_filename = prefix + '_' + scenario_name + '.log'
-
-            self.file_logger = FileLogger(
-                log_filename=log_filename,
-                file_path=log_dir,
-                log_level=self._file_logging_config.scenario_log_level
-            )
+            # One file, straight into the given place when what is logged is not a run;
+            # otherwise the file the declaration names for this logger's member, if it has one.
+            log_path = flat_log_path or self._declared_log_path(log_member, log_names, run_type)
+            if log_path is not None:
+                create_directory(log_path.parent, holds=f'the log {log_path.name}',
+                                 setting='file_logging.run_logs')
+                self.file_logger = FileLogger(
+                    log_filename=log_path.name,
+                    file_path=log_path.parent,
+                    log_level=self._file_logging_config.scenario_log_level
+                )
         else:
             # File logging disabled for scenarios
             pass
+
+    def _declared_log_path(self, log_member: Optional[RunEntryMemberId],
+                           log_names: Optional[Dict[str, str]],
+                           run_type: Optional[str]) -> Optional[Path]:
+        """
+        Where this logger's member lies in its run directory.
+
+        Args:
+            log_member: The member, or None for a logger that writes no file
+            log_names: The variable parts of its file name
+            run_type: The pipeline the run belongs to
+
+        Returns:
+            The path, or None when the logger has no member
+        """
+        if log_member is None:
+            return None
+        names = dict(log_names or {})
+        # A backtest log's file name begins with a prefix the configuration names; a session
+        # log's prefix is part of its declared name.
+        if 'log_prefix' in RUN_ENTRY_MEMBERS_BY_ID[log_member].placeholders():
+            names['log_prefix'] = self._file_logging_config.scenario_file_name_prefix
+        return RunEntryWriter(self.run_dir, run_type).log_path(log_member, **names)
 
     def _render_timestamp(self, record: LogRecord) -> str:
         """
@@ -233,6 +261,21 @@ class ScenarioLogger(AbstractLogger):
 
         # Clear buffer
         self.console_buffer.clear()
+
+    def trim_buffer_below(self, level: LogLevel) -> None:
+        """
+        Drop the buffered records below a level — what keeps a long session's memory bounded (#476).
+
+        A session buffers every record for its end, where the report reads only the warnings and
+        the errors; every record is in the log file already, written as it was logged. Trimmed at
+        each trading day's seal, a thirty-day session holds the warnings of thirty days rather
+        than every line of them.
+
+        Args:
+            level: The lowest level that stays in the buffer
+        """
+        self.console_buffer = [record for record in self.console_buffer
+                               if LogLevel.should_log(record.level, level)]
 
     def close(self, flush_buffer: bool = False):
         """

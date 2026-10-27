@@ -17,7 +17,11 @@ from fastapi import APIRouter
 from python.api.api_route_documents import describes
 from python.configuration.app_config_manager import AppConfigManager
 from python.api.api_error_catalog import SWEEP_NOT_FOUND, api_error
-from python.framework.optimization.optimization_analysis import rank_per_currency, summarize_sweeps
+from python.framework.optimization.optimization_analysis import (
+    rank_per_currency,
+    summarize_sweeps,
+    unranked_count,
+)
 from python.framework.reporting.store.run_results_ledger import RunResultsLedger
 from python.framework.types.api.report_types import SweepDetailResponse, SweepListResponse
 
@@ -68,4 +72,5 @@ def get_sweep(sweep_id: str) -> SweepDetailResponse:
     combinations = rank_per_currency(rows, objective, maximize=maximize)
     return SweepDetailResponse(
         sweep_id=sweep_id, objective=objective, maximize=maximize,
-        combinations=combinations, count=len(combinations))
+        combinations=combinations, count=len(combinations),
+        unranked=unranked_count(rows, objective))

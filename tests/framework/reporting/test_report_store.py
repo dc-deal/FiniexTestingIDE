@@ -10,6 +10,11 @@ import csv
 from datetime import datetime, timezone
 from pathlib import Path
 
+from python.framework.constants.run_layout_constants import (
+    IO_SUBDIR,
+    RUN_TYPE_AUTOTRADER,
+    RUN_TYPE_SIMULATION,
+)
 from python.framework.reporting.io.artifact_specs import (
     AGGREGATED_PORTFOLIO_ARTIFACT,
     BROKER_ARTIFACT,
@@ -27,8 +32,9 @@ from python.framework.reporting.io.report_csv_io import (
     write_execution_stats_csv,
     write_trade_history_csv,
 )
-from python.framework.reporting.store.report_store import IO_SUBDIR, ReportStore
+from python.framework.reporting.store.report_store import ReportStore
 from python.framework.reporting.store.run_index import RunIndex
+from python.framework.store.entry_members.run_entry_writer import RunEntryWriter
 from python.framework.types.api.report_types import (
     ActiveOrderRow,
     AggregatedPortfolioCurrency,
@@ -62,10 +68,6 @@ from python.framework.types.api.report_types import (
 )
 from python.framework.types.config_types.file_logging_config_types import RunLogPaths
 from python.framework.types.trading_env_types.order_types import CloseType
-from python.framework.types.log_layout_types import (
-    RUN_TYPE_AUTOTRADER,
-    RUN_TYPE_SIMULATION,
-)
 
 # Every report artifact names its run (#475); the value is opaque to these tests.
 _RUN_ID = '20260830_120000_a1b2c3d4'
@@ -283,8 +285,8 @@ class TestCsv:
     """CSV mirror of the model — same columns as JSON / API."""
 
     def test_csv_header_and_rows(self, tmp_path):
-        write_trade_history_csv(_report(), tmp_path)
-        lines = (tmp_path / 'trade_history.csv').read_text().splitlines()
+        write_trade_history_csv(_report(), RunEntryWriter(tmp_path, RUN_TYPE_SIMULATION))
+        lines = (tmp_path / 'io' / 'trade_history.csv').read_text().splitlines()
         # run_id leads every row: a CSV gets exported and merged, and a row that does not
         # name its run is a row nobody can trace back (#475).
         assert lines[0].startswith('run_id,position_id,symbol,direction')
@@ -297,8 +299,8 @@ class TestCsv:
         # `CloseType.PARTIAL` is found by no filter on the served value
         report = _report()
         report.trades[0].close_type = CloseType.PARTIAL
-        write_trade_history_csv(report, tmp_path)
-        with (tmp_path / 'trade_history.csv').open(newline='', encoding='utf-8') as handle:
+        write_trade_history_csv(report, RunEntryWriter(tmp_path, RUN_TYPE_SIMULATION))
+        with (tmp_path / 'io' / 'trade_history.csv').open(newline='', encoding='utf-8') as handle:
             rows = list(csv.DictReader(handle))
         assert rows[0]['close_type'] == 'partial'
         assert rows[1]['close_type'] == ''
@@ -390,8 +392,8 @@ class TestExecutionStats:
         assert ReportStore(_index_path(tmp_path)).get('nope', EXECUTION_STATS_ARTIFACT) is None
 
     def test_csv_header_and_rows(self, tmp_path):
-        write_execution_stats_csv(_execution_stats_report(), tmp_path)
-        lines = (tmp_path / 'execution_stats.csv').read_text().splitlines()
+        write_execution_stats_csv(_execution_stats_report(), RunEntryWriter(tmp_path, RUN_TYPE_SIMULATION))
+        lines = (tmp_path / 'io' / 'execution_stats.csv').read_text().splitlines()
         assert lines[0].startswith('run_id,name,symbol,orders_submitted')
         assert len(lines) == 1 + 1                 # header + 1 unit row
         assert lines[1].startswith(_RUN_ID + ',')

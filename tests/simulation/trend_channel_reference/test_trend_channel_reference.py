@@ -13,8 +13,11 @@ The robustness aggregation itself is covered by tests/simulation/robustness — 
 strategy behaviors on the real trade history.
 """
 
+import json
+from pathlib import Path
 from typing import Dict, List
 
+from python.configuration.app_config_manager import AppConfigManager
 from python.framework.types.portfolio_types.portfolio_trade_record_types import (
     CloseReason,
     EntryType,
@@ -130,3 +133,32 @@ class TestMultiPosition:
     def test_positions_stack_concurrently(self, limit_trades, stop_trades):
         # max_positions > 1 lets a second position open before the first closes.
         assert _has_concurrency(limit_trades) or _has_concurrency(stop_trades)
+
+
+def _last_setups(set_name: str) -> List[Path]:
+    """
+    The strategy files `last_setup.json` a fixture set's runs left, newest last.
+
+    Args:
+        set_name: The fixture's scenario set name
+
+    Returns:
+        Their paths
+    """
+    root = Path(AppConfigManager().get_file_logging_config_object().run_logs.simulation) / set_name
+    return sorted(root.glob('*/strategy_files/*/last_setup.json'), key=lambda p: p.stat().st_mtime)
+
+
+class TestTheStrategyKeepsItsLastSetup:
+    """With `write_strategy_files` on, the last submitted setup is a file of the strategy's own."""
+
+    def test_the_stop_run_kept_its_last_setup(self, stop_batch, stop_trades):
+        setups = _last_setups('trend_channel_reference_stop_fixture')
+        assert setups, 'no strategy file written'
+        setup = json.loads(setups[-1].read_text(encoding='utf-8'))
+        assert setup['mode'] == 'stop_breakout'
+        assert setup['lower_band'] < setup['upper_band']
+        assert {'entry_price', 'stop_loss', 'take_profit', 'gate', 'side'} <= set(setup)
+
+    def test_the_limit_run_with_it_off_kept_none(self, limit_batch, limit_trades):
+        assert _last_setups('trend_channel_reference_limit_fixture') == []

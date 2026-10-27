@@ -23,7 +23,7 @@ from typing import List
 
 # One monotonic integer. Not a date and not the app version: a consumer compares it for
 # equality, and equality is the only question they have.
-API_CONTRACT_VERSION = 38
+API_CONTRACT_VERSION = 42
 
 # Every response carries it, so a saved fixture carries it too.
 CONTRACT_HEADER = 'X-Api-Contract'
@@ -36,17 +36,8 @@ API_PREFIX = '/api/v1'
 # What moved INTO the current version. One line per change, written for someone who cannot
 # read this repository.
 CHANGES: List[str] = [
-    'GET /api/v1/reports/runs/{run_id}/state-frames/latest (new): the latest state frame of each '
-    'unit of a run with written_at and age_s, and its cadence as cadence_timeframe (a timeframe) '
-    'and cadence_s; recording — current, stopped or ended, '
-    'null for a session replaying recorded data before its end; truncated_tail; first_frame (its '
-    'written_at and process_memory); and once the session ended, outcome as warnings-errors serves '
-    'it. Ask it once a cadence; on the reports surface',
-    'Two 404 codes: state_frames_not_recorded (the run records no state frames) and '
-    'state_frame_not_written_yet (its stream holds no frame yet)',
-    'stream_files on the run list names state_frames.jsonl for a session that records state '
-    'frames, from the moment the session opens the stream',
-    'recording on the run list: on every row whose stream_files names state_frames.jsonl, the '
-    'verdict the latest-state-frame route gives — current, stopped or ended; null elsewhere, '
-    'before the first frame and where the stream cannot be read',
+    'A booking period carries its own order counts: every orders_* field and sl_tp_triggered on a '
+    "sweep combination folded from a run's periods is now the sum of those periods' counts — they "
+    'were null there, because a period carried none. Null only on a row written before this '
+    'contract',
 ]

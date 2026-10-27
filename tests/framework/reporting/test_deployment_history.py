@@ -25,7 +25,8 @@ from python.framework.reporting.console.deployment_history_summary import (
     render_deployment_history,
     render_deployment_list,
 )
-from python.framework.types.api.report_types import OrdersTo, RunResultRow
+from python.framework.types.api.report_types import RunResultRow
+from python.framework.types.run_kind_types import OrdersTo
 
 DEPLOYMENT = 'deploy_20260901_060000_ab12'
 
@@ -221,6 +222,88 @@ class TestDrawdownIsCarriedNotSummed:
         assert sum(abs(s.max_drawdown) for s in sessions) == 1020.0
 
 
+class TestADrawdownShareNobodyMeasuredStaysUnknown:
+    """
+    A session whose rows carry no drawdown share — every day it sealed came before its account
+    curve began (#476), or its rows predate the column — reads as unknown, never as zero, and
+    neither the history, the overview nor the console stops on it.
+    """
+
+    def test_the_session_and_its_deployment_carry_none(self):
+        histories = build_deployment_histories([
+            row('r1', '2026-09-01T06:00:00+00:00', account_max_drawdown_pct=None),
+        ])
+        assert histories[DEPLOYMENT][0].max_drawdown_pct is None
+        assert summarize_deployments(histories, {DEPLOYMENT: None})[0].max_drawdown_pct is None
+
+    def test_the_console_prints_a_dash(self, capsys):
+        sessions = build_deployment_histories([
+            row('r1', '2026-09-01T06:00:00+00:00', account_max_drawdown_pct=None),
+        ])[DEPLOYMENT]
+        render_deployment_history(DEPLOYMENT, sessions)
+        line = next(text for text in capsys.readouterr().out.splitlines()
+                    if text.startswith('r1 '))
+        assert '—' in line
+        assert '%' not in line
+
+
+class TestADrawdownNobodyMeasuredStaysUnknown:
+    """
+    A session whose rows carry no drawdown — every day it sealed came before its account's first
+    valuation — reads as unknown, never as a decline of zero (#476).
+    """
+
+    def test_the_session_carries_none_and_the_deepest_is_taken_over_the_others(self):
+        histories = build_deployment_histories([
+            row('r1', '2026-09-01T06:00:00+00:00', account_max_drawdown=None,
+                account_max_drawdown_pct=None),
+            row('r2', '2026-09-02T06:00:00+00:00', account_max_drawdown=-300.0,
+                account_max_drawdown_pct=3.0),
+        ])
+        assert histories[DEPLOYMENT][0].max_drawdown is None
+        summary = summarize_deployments(histories, {DEPLOYMENT: None})[0]
+        assert (summary.max_drawdown, summary.max_drawdown_pct) == (-300.0, 3.0)
+
+    def test_a_deployment_nobody_measured_has_no_deepest(self, capsys):
+        histories = build_deployment_histories([
+            row('r1', '2026-09-01T06:00:00+00:00', account_max_drawdown=None,
+                account_max_drawdown_pct=None),
+        ])
+        summaries = summarize_deployments(histories, {DEPLOYMENT: None})
+        assert summaries[0].max_drawdown is None
+        render_deployment_list(summaries)
+        render_deployment_history(DEPLOYMENT, histories[DEPLOYMENT])
+        line = next(text for text in capsys.readouterr().out.splitlines()
+                    if text.startswith('r1 '))
+        assert line.split()[-2:] == ['—', '—'], 'the decline and its share read as unknown'
+
+
+class TestADeclineIsShownNegativeAndZeroAsZero:
+    """
+    A decline is stored either way round, and the console shows it negative either way; a
+    measured zero reads 0.00 — `-abs(0.0)` is -0.0, which printed as "-0.00".
+    """
+
+    def test_a_measured_zero_prints_as_zero(self, capsys):
+        histories = build_deployment_histories([row('r1', '2026-09-01T06:00:00+00:00')])
+        render_deployment_list(summarize_deployments(histories, {DEPLOYMENT: None}))
+        render_deployment_history(DEPLOYMENT, histories[DEPLOYMENT])
+        printed = capsys.readouterr().out
+        assert '-0.00' not in printed
+        line = next(text for text in printed.splitlines() if text.startswith('r1 '))
+        assert line.split()[-2:] == ['0.00', '0.00%']
+
+    def test_either_sign_prints_negative(self, capsys):
+        histories = build_deployment_histories([
+            row('r1', '2026-09-01T06:00:00+00:00', account_max_drawdown=120.0),
+            row('r2', '2026-09-02T06:00:00+00:00', account_max_drawdown=-450.0),
+        ])
+        render_deployment_history(DEPLOYMENT, histories[DEPLOYMENT])
+        lines = {text.split()[0]: text for text in capsys.readouterr().out.splitlines()
+                 if text.startswith(('r1 ', 'r2 '))}
+        assert ' -120.00 ' in lines['r1'] and ' -450.00 ' in lines['r2']
+
+
 class TestRendering:
     """PRESENT formats what DERIVE already decided (§12)."""
 
@@ -291,6 +374,57 @@ class TestTheGapIsDowntimeNotTheSpanBetweenStarts:
         ])[DEPLOYMENT]
         render_deployment_history(DEPLOYMENT, sessions)
         assert 'between starts' in capsys.readouterr().out
+
+
+class TestASessionEndsWithTheRowOfItsClose:
+    """
+    A session writes a ledger row at every trading day's seal (#476), and every write stamps
+    `recorded_at_utc`. So the stamp is the session's end only once the row of its close is
+    there — before that the session is running or died, and its end is unknown rather than the
+    moment its last day sealed.
+    """
+
+    @staticmethod
+    def _day(run_id: str, start: str, no: int, reason: str, recorded: str) -> RunResultRow:
+        return row(run_id, start, unit_name='session', period_no=no,
+                   period_opened_at=f'2026-09-0{no}T00:00:00+00:00',
+                   period_closed_at=f'2026-09-0{no + 1}T00:00:00+00:00',
+                   period_close_reason=reason, recorded_at_utc=recorded)
+
+    def test_a_session_with_only_sealed_days_has_no_end(self):
+        sessions = build_deployment_histories([
+            self._day('r1', '2026-09-01T06:00:00+00:00', 1, 'anchor', '2026-09-02T00:00:01+00:00'),
+            self._day('r1', '2026-09-01T06:00:00+00:00', 2, 'anchor', '2026-09-03T00:00:01+00:00'),
+        ])[DEPLOYMENT]
+        assert sessions[0].ended is None
+        assert sessions[0].ran_hours is None
+
+    def test_the_row_of_its_close_ends_it(self):
+        sessions = build_deployment_histories([
+            self._day('r1', '2026-09-01T06:00:00+00:00', 1, 'anchor', '2026-09-02T18:00:00+00:00'),
+            self._day('r1', '2026-09-01T06:00:00+00:00', 2, 'session_end',
+                      '2026-09-02T18:00:00+00:00'),
+        ])[DEPLOYMENT]
+        assert sessions[0].ran_hours == 36.0
+
+    def test_the_heading_never_adds_the_unfinished_to_the_sessions(self, capsys):
+        """A session that sealed a day and never closed is in the table AND unfinished."""
+        sessions = build_deployment_histories([
+            self._day('r1', '2026-09-01T06:00:00+00:00', 1, 'anchor', '2026-09-02T00:00:01+00:00'),
+        ])[DEPLOYMENT]
+        render_deployment_history(DEPLOYMENT, sessions, unfinished=1)
+        printed = capsys.readouterr().out
+        assert '1 session(s) in the ledger · 1 never completed' in printed
+        assert '+' not in printed.splitlines()[1]
+
+    def test_the_gap_after_a_session_that_never_closed_is_marked(self):
+        """Its last sealed day is not its end: the gap falls back to the starts and says so."""
+        sessions = build_deployment_histories([
+            self._day('r1', '2026-09-01T06:00:00+00:00', 1, 'anchor', '2026-09-02T00:00:01+00:00'),
+            row('r2', '2026-09-03T06:00:00+00:00'),
+        ])[DEPLOYMENT]
+        assert sessions[1].gap_between_starts is True
+        assert sessions[1].gap_hours == 48.0
 
 
 class TestTheComparabilityAdvisory:

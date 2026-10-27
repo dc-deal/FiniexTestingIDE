@@ -13,8 +13,11 @@ from typing import List
 
 import pytest
 
+from python.framework.constants.run_layout_constants import RUN_TYPE_SIMULATION
 from python.framework.reporting.event_stream_csv_writer import EVENT_FIELDS, EventStreamWriter
+from python.framework.store.entry_members.run_entry_writer import RunEntryWriter
 from python.framework.types.portfolio_types.portfolio_trade_record_types import TradeRecord
+from python.framework.types.store_member_types import RunEntryMemberId
 from python.framework.types.trading_env_types.order_types import OrderResult
 
 
@@ -29,10 +32,10 @@ def events_csv_rows(
         EventStreamWriter.from_sim_result(
             trade_history=trade_history,
             order_history=order_history,
-            run_dir=run_dir,
-        ).flush('events.csv')
+        ).flush(RunEntryWriter(run_dir, RUN_TYPE_SIMULATION), RunEntryMemberId.SCENARIO_EVENTS,
+                scenario='probe')
 
-        with open(run_dir / 'events.csv') as f:
+        with open(run_dir / 'events' / 'events_probe.csv') as f:
             return list(csv.reader(f))
 
 

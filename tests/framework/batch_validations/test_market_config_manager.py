@@ -133,7 +133,7 @@ class TestATypoInMarketConfigIsRefused:
             The broker entry dict
         """
         entry = {'broker_type': 'kraken_spot', 'market_type': 'crypto',
-                 'price_formation': 'order_driven',
+                 'price_formation': 'order_driven', 'trading_model': 'spot',
                  'server_clock': {'timezone': 'UTC', 'hours_ahead': 0}}
         entry.update(overrides)
         return entry

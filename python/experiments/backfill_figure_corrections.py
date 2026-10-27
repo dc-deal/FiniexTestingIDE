@@ -33,6 +33,7 @@ from typing import Dict, List, Tuple
 import pandas as pd
 
 from python.configuration.app_config_manager import AppConfigManager
+from python.framework.constants.run_layout_constants import IO_SUBDIR
 from python.framework.reporting.builders.aggregated_portfolio_report_builder import (
     build_aggregated_portfolio_report,
 )
@@ -56,7 +57,6 @@ from python.framework.reporting.io.report_artifact_io import read_artifact, writ
 from python.framework.reporting.io.report_filters import filter_trade_history_report
 from python.framework.reporting.store.run_results_ledger import RunResultsLedger
 from python.framework.types.api.report_types import PortfolioReport, RunResultRow, TradeHistoryReport
-from python.framework.types.log_layout_types import IO_SUBDIR
 
 # A stored float carried through JSON: equal to this, or it is not the same figure.
 _TOLERANCE = 1e-6

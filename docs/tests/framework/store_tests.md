@@ -54,6 +54,110 @@ seen), and rebuilding it without accepting the loss is refused before the index 
 config directory is declared self-healing: its rebuild deletes the file and its next read writes
 it again, so the catalog must not answer a rebuild with "rebuild before trusting it".
 
+**Sizes.** A store counted by several patterns counts each file once. A store whose entry is a
+directory is measured whole — a run's size used to be its header's bytes — and a store whose
+entries hold another store's counts only its own files, so a sweep's combinations are measured
+once, as runs.
+
+## `test_run_entry_members.py`
+
+**The store's declaration of what a run directory and a sweep directory may hold (#621).** It reads
+the declaration alone and takes milliseconds; whether the writers keep to it is the census's question.
+
+- **Complete:** every member id has exactly one member, and every report spec is declared once as a
+  file in `io/`. A store that holds another store's entries points at one that declares them.
+- **One path, one member:** every member's example path matches its own member, and within one
+  pipeline no two members claim the same path; a placeholder never spans a directory.
+- **What it promises:** only a member written at the run's END is listed among the run's
+  `artifacts` — the rule a deny-list could break, because a file written earlier made a session that
+  died before its report read as reported. Only a stream is listed among the stream files, a listed
+  member lies directly in `io/` (the run index lists the file names it finds there), a stream
+  declares its schema version and nothing else does, each shape is written the way it allows, and
+  every member's help link reaches a real heading.
+- **A sealed stream is declared whole (#476):** a stream sealed per trading day points at a day
+  record that lies in the day's folder at the stream's own path, every day record is the sealed
+  form of exactly one stream, and a sealed stream declares its time fields — an empty tuple where
+  its lines carry none, never left undeclared.
+- **What the run list serves:** the file names each index column lists are pinned as literals,
+  so a renamed constant cannot carry the pin along with it. A change there changes what a consumer
+  of the run list reads, so the failure says to raise the API contract first — a pin of a
+  contract, not a count.
+- **Light:** importing the declaration in a fresh process loads no report model, no reporting
+  machinery, no configuration manager and no logger. Every writer may import it, so it may import
+  nothing that imports them back.
+
+## `test_run_footprint.py`
+
+**The footprint a run closes with (#621).** A written footprint reads back with every file but
+itself. A run with one is closed; without one it is not closed and judges nothing, and a run still
+going is running. A backtest never commissioned to report is not held to a close, and an unreadable
+footprint is a failed close. Once closed: a file gone since is missing, a file written after is
+late — a log that grows is not — a member always written and absent has failed, and a member
+written only sometimes is judged by the run's own expectation: skipped when not expected, failed
+when expected and absent, unknown — never skipped — when the run said nothing; a member that opens
+at a later step of the run reads the step a run stopped before. A file nobody declared is named.
+The view gives every state its place and every close its words.
+
+## `test_run_entry_reader.py`
+
+**One run's files by member (#621).** A run is found by an exact match on its id — a pattern for an
+id finds nothing — and several runs are looked up in one read of the index; a run that registers
+after the first ask is found when asked again. Whether a file is there is asked of the disk, so a
+section written before the index lists it is there. A member's path is built only from the
+declaration: a missing name part, an extra one, an empty one and one that reaches out of the run
+directory are refused, every report section is a member, and a section nobody declared is refused.
+
+## `test_run_dir_reader.py`
+
+**One run directory's files by member (#621).** A member's path, folder and file name are the ones
+the declaration gives, and a member in the run directory itself has no folder. The header and a
+report section are read by their own readers: a missing header raises, a section is None until it
+is written, and one that no longer fits its model raises the validation error. A stream reads, and
+has ends, only when it is there — an empty file reads as a stream without records — and the files
+of a member with variable parts are exactly the files that are that member — a day record too,
+whose own folder is a trading day. How a stream is read across the trading days a session sealed
+out of it is pinned in the reporting suite (`test_run_stream_day_records.py`).
+
+## `test_run_entry_paths_guard.py`
+
+**No module builds a run file's path itself (#621).** A layout constant whose value is a part of a
+declared member path is imported only by its sources — the constants module, the run and sweep
+declarations and the report section specs — and by the modules the test lists with their reason;
+the list may only shrink. Such a file name never stands as a literal outside the constants module,
+and no path is joined from a section spec's file name outside the section writer. The production
+code is parsed once per module; the one-time scripts in `python/experiments/` are not scanned, the
+venue probes and the re-import tool are.
+
+## `test_run_entry_writer.py`
+
+**One run's files written by member (#621).** A member another pipeline writes and a member of
+another shape than the method writes are refused. A report section is the bytes the section writer
+has always written; an atomic snapshot leaves no temporary file behind; a table is its header row
+and one row per record; a stream's header line names its member and the version the declaration
+gives it; a log's path is the declared one. Each run stream is named for its member. A sweep's own
+files go the same way: the ranking is its declared table, the mount build's log its declared log,
+and a member of another shape is refused.
+
+## `test_strategy_files.py`
+
+**A strategy's own files (#621).** A session's file lands in `strategy_files/`, a scenario's in
+`strategy_files/<scenario>/`, and a second write replaces the first. A name that would reach out
+of the folder or take a temporary write's name is refused; a disk that refuses, a character no
+file name or text can hold, content that is no JSON — NaN included — and a run without a directory
+each answer False and are said once on the run's channel —
+a failed write never ends the run, and a logic the framework wired nothing into writes nothing.
+The footprint counts the files per member, never lists them: present when the count holds,
+skipped when the strategy wrote none, missing when one is gone since the close and late when one
+was written after it.
+
+## `test_store_entry_members_view.py`
+
+What `store_cli.py entry-members` prints, and the Markdown form the
+[Store Entry Members](../../architecture/store_entry_members.md) document carries. The document's
+two tables are the ones the declaration produces — regenerate them with `--markdown` when this
+fails — and every link in them reaches a real heading. Every moment has a label, the console lists
+every member, and a store whose entry is a single file says so.
+
 ## `test_store_catalog_views.py`
 
 What `store_cli.py catalog` and `rebuild` print, over hand-built rows, so no store on disk decides
@@ -107,8 +211,14 @@ one.
 ## `test_run_completion_audit.py`
 
 Which runs started and never reached their close. A run registers in the run index from its
-header, written before anything can fail; its ledger row is the last step at close. A process
+header, written before anything can fail; the ledger row of its close is the last step. A process
 killed between the two exists in one store and not the other, and nothing said so.
+
+Since #476 a session books its trading days while it runs, so a row alone does not say a run
+completed. `TestARowOfASealedDayIsNotAClose` pins the rule (`closes_its_run`): a run with only
+sealed days is unfinished, the period its end sealed completes it, a row that books no period is a
+close, and the reasons read as one table — `session_end`, empty and NaN close, `anchor` and
+`operator` do not.
 
 The plain reverse set difference stays **out**. The ledger predates the run index, so it
 legitimately holds rows for runs the index never saw — reporting that direction would bury the
@@ -206,7 +316,7 @@ between that and a session trading against a state that is not its own:
 |---|---|
 | `TestADeclaredContinuationReadsACarryOver` | a declaration with the cold start off, or on a study that skips the adoption step, is refused |
 | `TestADeclaredContinuationFindsWhatItContinues` | no document, an unreadable one, one in another format, or one another profile wrote is refused, naming the stage to run first; its own document from an earlier run passes without asking the ledger |
-| `TestAPartnersDocumentComesFromACompletedRun` | a partner's document is taken only from a run with a ledger row — in both directions — and the refusal says "not completed", never "aborted" |
+| `TestAPartnersDocumentComesFromACompletedRun` | a partner's document is taken only from a run with the ledger row of its close — in both directions — and the refusal says "not completed", never "aborted"; `test_a_partner_whose_ledger_holds_only_sealed_days_refuses` pins that a partner with only sealed days (#476) is still running or died, and refused |
 | `TestAnotherProfilesClaimsStopTheBoot` | another profile's document holding an open position or a session key refuses the boot, naming the writer, its run and the name to restore; one that claims nothing may be started over |
 | `TestARealMoneyStartNeedsACarryOverOrItsDeclaration` | a session trading real money that finds no usable carry-over — none, unreadable, another format, another profile's — is refused unless its start was declared the bot's first (`--first-start`), and the refusal names the data home and both ways forward; a declared first start that finds a usable carry-over is refused, naming the run that wrote it; a usable one continues without a declaration; a dry or mock session, a study that skips adoption and a session without a cold start are not covered |
 

@@ -273,6 +273,21 @@ whenever it creates a worker and refuses one whose answers differ.
 
 ---
 
+### test_parallel_worker_order.py
+
+The orchestrator's results dict keeps the order its keys first arrived in. The parallel path used to
+fill it as threads finished, so a decision logic iterating its results could decide differently from
+one run to the next, on a path the live session shares. The composite key counts the parallelisation
+settings as neutral only while parallel and sequential execution give the same result (#615).
+
+| Test / Class | Description |
+|------|-------------|
+| `test_parallel_results_arrive_in_declaration_order` | Three workers built to finish in reverse: the results still arrive in declaration order |
+| `test_parallel_and_sequential_hand_over_the_same_results` | The same workers through both paths give the same results in the same order |
+| `TestABacktestRunBothWays` | A shipped two-worker set run once in parallel and once sequentially: the same trades and the same portfolio, scenario by scenario |
+
+---
+
 ### worker_computation_tests/
 
 Unit tests for indicator computation logic. Each test creates a worker with known input data and validates mathematical correctness.

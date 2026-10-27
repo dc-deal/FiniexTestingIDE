@@ -18,11 +18,12 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Iterator, Optional
 
+from python.framework.constants.run_layout_constants import GLOBAL_LOG_FILE
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.logging.file_logger import FileLogger
-from python.framework.types.log_layout_types import GLOBAL_LOG_FILE
 from python.framework.types.log_level import LogLevel
 from python.framework.types.log_record_types import LogRecord
+from python.framework.utils.file_utils import create_directory
 
 
 class GlobalLogger(AbstractLogger):
@@ -51,7 +52,7 @@ class GlobalLogger(AbstractLogger):
             # `.parent` of 'logs/' yields '.', so the real directory was never created and the
             # open only worked while it happened to exist already.
             log_dir = self._file_logging_config.global_log_dir
-            log_dir.mkdir(parents=True, exist_ok=True)
+            create_directory(log_dir, holds='the global log', setting='file_logging.global_log_dir')
 
             self.file_logger = FileLogger(
                 file_path=log_dir,
@@ -89,7 +90,7 @@ class GlobalLogger(AbstractLogger):
         if self._tee_logger is not None:
             raise RuntimeError(
                 f'tee_to does not nest: {file_path} opened while another tee is open')
-        file_path.parent.mkdir(parents=True, exist_ok=True)
+        create_directory(file_path.parent, holds='a copy of the global log')
         self._tee_logger = FileLogger(
             file_path=file_path.parent,
             log_filename=file_path.name,

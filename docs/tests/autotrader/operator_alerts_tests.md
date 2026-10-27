@@ -118,6 +118,7 @@ Also pinned in the suites whose code raises the alerts:
 | `test_missing_figures_are_said_rather_than_shown_as_zero` | no summary, no invented zeros |
 | `test_it_says_whether_real_orders_go_out` | mock, dry run or LIVE |
 | `test_a_duration_reads_the_way_a_person_says_it` | `2d 4h 12m` |
+| `TestTheDaysClosedUnheard` | the trading days one late check sealed after the first — a machine that slept, a clock that jumped — are one message, titled with their span (or the one day), counting the days and their trades and closing with the equity line |
 | `TestTheDayClose` | the sealed booking period rendered one figure per line — its own figures, an open holding beside the realised one, an unobserved value said rather than shown as zero (both ends, or which one), a day that never fell reading `0.00`, and a day the session started in saying it covers only the rest |
 
 ### `test_day_closed_message.py` — the day's close, as the operator hears it

@@ -143,13 +143,14 @@ class RunIndexCli:
             render_deployment_list(summarize_deployments(histories, advisories))
             return 0
 
-        # The sessions ABOVE come from the ledger, so a session that never reached its close
-        # is missing from that table by construction — which is exactly the shape a hard kill
-        # leaves. The run index registered it at start, so it is recoverable from there.
+        # The sessions ABOVE come from the ledger, which holds the row of a session's close
+        # only at the end: a hard kill leaves the session in that table without an end when it
+        # sealed a day, and out of it when it did not. The run index registered it at start, so
+        # every such run is recoverable from there.
         runs = self._index.list_runs()
         for name in sorted(histories):
-            # Resolved BEFORE rendering: the table's own heading counts the sessions it can
-            # show, so it has to be told how many it cannot.
+            # Resolved BEFORE rendering: the table's own heading counts the sessions the
+            # ledger holds, so it has to be told how many never completed.
             # DEPLOYMENT explicitly: this table is built from deployment ids, and a sweep
             # id is the same shape, so the kind is what makes the filter exact (#386).
             missing = unfinished_by_group(

@@ -13,7 +13,32 @@ from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
+from python.framework.types.run_kind_types import OrdersTo, TicksFrom
 from python.framework.types.run_purpose_types import RunPurpose
+
+
+class RestoredAlgoState(BaseModel):
+    """
+    The algo state a session found at its start, as it found it (#476) — written once into the run,
+    because the store is overwritten while the session runs and no later read could say what this
+    session started from.
+
+    Args:
+        run_id: The session that found it
+        accepted: Whether the logic took it; False when it chose to start fresh
+        saved_at_utc: When the predecessor wrote it (UTC)
+        found_at_utc: When this session read it (UTC, the framework's measure)
+        age_seconds: How old it was then
+        trading_days: How many trading days old — weekend-aware where the market closes
+        snapshot: The state itself, exactly as the store held it
+    """
+    run_id: str
+    accepted: bool
+    saved_at_utc: str
+    found_at_utc: str
+    age_seconds: float
+    trading_days: int
+    snapshot: Dict[str, Any]
 
 
 @dataclass
@@ -345,6 +370,34 @@ class AccountDrawdownCarryOver(BaseModel):
     curve_started_utc: str = ''
 
 
+class ConfigurationCarryOver(BaseModel):
+    """
+    The configuration a session's claims about the venue were made under (#626).
+
+    Written with the session key and the position book, and only with them: a rehearsal makes no
+    claim about the venue, so a rehearsal between two real-money sessions leaves this as the first
+    one wrote it. The next session that takes over what the venue still holds projects both
+    configurations onto their composite keys under the definition it runs with — so a definition
+    changed in between is no change of what ran.
+
+    Args:
+        run_id: The session that made the claims
+        profile_name: Its profile — a declared partner's (`carry_over_from`) is exempt from the
+            comparison
+        account_currency: Its account currency, as the one account-currency rule resolved it
+        ticks_from: Where its ticks came from
+        orders_to: Where its orders went
+        rendered_config_id: What it ran with, frozen in the run-config store (#547); '' when it
+            could not be rendered or frozen
+    """
+    run_id: str
+    profile_name: str
+    account_currency: str
+    ticks_from: TicksFrom
+    orders_to: OrdersTo
+    rendered_config_id: str = ''
+
+
 class ColdStartPayload(BaseModel):
     """
     The framework's own carry-over: what the NEXT session needs to recognise its predecessor
@@ -377,6 +430,15 @@ class ColdStartPayload(BaseModel):
         account_drawdown: The REPORT's peak and deepest decline (#497). Same convention as
             the baseline above and for the same reason: None means no session has written
             one, and the successor starts its curve at its own opening balance
+        readings_orders_to: Where the orders went in the session that wrote the two readings
+            above (#626). A successor continues them only when its own orders go the same way:
+            a rehearsal's drawdown and denominator never reach real money, and a rehearsal
+            never writes over real money's. None means not recorded — a document written before
+            this existed — and its readings are not continued
+        venue_claims_configuration: The configuration the session key and the open book were
+            written under (#626) — what a restart that takes them over compares its own against.
+            None means not recorded: a document written before this existed, or one no session
+            placing real orders has written yet
         deployment_id: Which continuous DEPLOYMENT this bot's sessions belong to — the span
             across restarts. An identity and nothing else, which is what a carry-over is for:
             the successor names the same one, so N session records become one history. It is
@@ -394,7 +456,24 @@ class ColdStartPayload(BaseModel):
     open_positions: List[PositionCarryOver] = Field(default_factory=list)
     risk_baseline: Optional[RiskBaseline] = None
     account_drawdown: Optional[AccountDrawdownCarryOver] = None
+    readings_orders_to: Optional[OrdersTo] = None
+    venue_claims_configuration: Optional[ConfigurationCarryOver] = None
     deployment_id: Optional[str] = None
+
+
+class ReadingsVerdict(StrEnum):
+    """
+    What a session does with the drawdown curve and the risk baseline its carry-over holds (#626).
+
+    Only CONTINUED restores them; every other answer starts the session's own, for the reason it
+    names.
+    """
+    CONTINUED = 'continued'              # written by a session whose orders went the same way
+    NONE_CARRIED = 'none_carried'        # nothing to continue — a first run, or a cleared document
+    SWITCHED_OFF = 'switched_off'        # `safety.persist_baseline` is false
+    NEW_DEPLOYMENT = 'new_deployment'    # the start began a new deployment (`--new-deployment`)
+    RUN_KIND_CHANGED = 'run_kind_changed'  # a rehearsal's readings and real money's never meet
+    NOT_RECORDED = 'not_recorded'        # the document does not say whose orders they followed
 
 
 class CarryOverLoadOutcome(StrEnum):

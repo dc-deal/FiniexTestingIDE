@@ -35,6 +35,7 @@ from typing import Dict, List, Optional, Tuple
 import pandas as pd
 
 from python.configuration.app_config_manager import AppConfigManager
+from python.framework.constants.run_layout_constants import IO_SUBDIR, RUN_TYPE_SIMULATION
 from python.framework.reporting.builders.aggregated_portfolio_report_builder import (
     build_aggregated_portfolio_report,
 )
@@ -57,7 +58,6 @@ from python.framework.reporting.io.report_artifact_io import read_artifact, writ
 from python.framework.reporting.store.run_ledger_index import RunLedgerIndex
 from python.framework.reporting.store.run_results_ledger import LEDGER_COLUMNS, RunResultsLedger
 from python.framework.types.api.report_types import RunResultRow, TradeHistoryReport
-from python.framework.types.log_layout_types import IO_SUBDIR, RUN_TYPE_SIMULATION
 from python.framework.utils.time_utils import covered_seconds
 
 # A stored float carried through JSON and parquet: equal to this, or it is not the same figure.

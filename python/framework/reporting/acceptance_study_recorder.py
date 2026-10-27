@@ -22,6 +22,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+from python.framework.constants.run_layout_constants import ACCEPTANCE_CAPTURE_SCHEMA_VERSION
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.reporting.io.jsonl_stream_writer import JsonlStreamWriter
 from python.framework.types.acceptance_study_types.study_capture_types import (
@@ -35,11 +36,6 @@ from python.framework.types.acceptance_study_types.study_capture_types import (
 from python.framework.types.acceptance_study_types.study_phase_types import PhaseResult
 from python.framework.types.trading_env_types.order_event_types import OrderEventPlane
 from python.framework.types.trading_env_types.order_types import FeeReport
-
-# 2.0 — order and venue lines are projected from the live core's record (#566): they name the
-# phase that submitted the order, a full close is a line of its own, a refusal made before sending
-# is one too, and a fill carries what its slippage is measured against.
-_SCHEMA_VERSION = '2.0'
 
 
 def _utc_now_iso() -> str:
@@ -89,7 +85,7 @@ class AcceptanceStudyRecorder:
         self._writer = JsonlStreamWriter(self._path)
 
         header = CaptureHeader(
-            schema_version=_SCHEMA_VERSION,
+            schema_version=ACCEPTANCE_CAPTURE_SCHEMA_VERSION,
             started_utc=_utc_now_iso(),
             profile=profile,
             symbol=symbol,

@@ -145,6 +145,8 @@ class PortfolioManager:
             maxlen=trade_history_max if trade_history_max > 0 else None
         )
         self._trade_history_limit_warned = False
+        # Who is told of each trade record as it is filed — a session's trade stream (#476)
+        self._trade_listeners: List[Callable[[TradeRecord], None]] = []
 
         # Position counter
         self._position_counter = 0
@@ -530,6 +532,9 @@ class PortfolioManager:
             # takes the untouched path.
             if exit_fee:
                 self._remark_position(position)
+            # Booked from the last mark, never from exit_price: a close that fills away from it —
+            # the simulation's stop at its level, a fill MT5 reports — records one price and
+            # books another (measured 2026-10-25, #209)
             realized_pnl = position.unrealized_pnl
             self.balance += realized_pnl
 
@@ -553,16 +558,7 @@ class PortfolioManager:
             exit_submission=exit_submission,
         )
         self._record_spread_attribution(trade_record)
-        if (self._trade_history_max > 0
-                and not self._trade_history_limit_warned
-                and len(self._trade_history) >= self._trade_history_max):
-            self._trade_history_limit_warned = True
-            self._logger.warning(
-                f'⚠️ Trade history limit reached ({self._trade_history_max}). '
-                f'Oldest entries will be discarded. Full history available in scenario log.'
-            )
-        self._trade_history.append(trade_record)
-        self._log_trade_record(trade_record)
+        self._file_trade_record(trade_record)
         del self.open_positions[position_id]
 
         # Update statistics
@@ -715,18 +711,7 @@ class PortfolioManager:
             exit_quote_modelled=exit_quote_modelled,
         )
         self._record_spread_attribution(trade_record)
-
-        # Append to trade history (with limit warning)
-        if (self._trade_history_max > 0
-                and not self._trade_history_limit_warned
-                and len(self._trade_history) >= self._trade_history_max):
-            self._trade_history_limit_warned = True
-            self._logger.warning(
-                f'⚠️ Trade history limit reached ({self._trade_history_max}). '
-                f'Oldest entries will be discarded. Full history available in scenario log.'
-            )
-        self._trade_history.append(trade_record)
-        self._log_trade_record(trade_record)
+        self._file_trade_record(trade_record)
 
         # --- Mutate position: reduce lots, scale fees for remaining portion ---
         position.lots = round(position.lots - close_lots, 8)
@@ -1217,6 +1202,19 @@ class PortfolioManager:
 
         return len(records)
 
+    def add_trade_listener(self, listener: Callable[[TradeRecord], None]) -> None:
+        """
+        Register a listener for every trade record, called as the record is filed.
+
+        The history above keeps the newest records only; a listener sees every one. A session
+        writes each into its trade stream, so a session killed on day 29 keeps every trade it
+        closed (#476).
+
+        Args:
+            listener: Function receiving each TradeRecord as it is filed
+        """
+        self._trade_listeners.append(listener)
+
     def get_trade_history(self) -> List[TradeRecord]:
         """
         Get list of all completed trades.
@@ -1477,6 +1475,19 @@ class PortfolioManager:
         self._drawdown_started_at = carried.curve_started_utc
         self._drawdown_established = True
 
+    def is_equity_curve_established(self) -> bool:
+        """
+        Whether the account's equity curve describes anything measured yet (#476).
+
+        A first valuation establishes it, and so does a predecessor's curve this session
+        continues. Before either, the peak is only the opening balance and the deepest decline a
+        zero nobody measured — a booking period sealed then carries no curve figures at all.
+
+        Returns:
+            True once the curve's figures are measured or inherited
+        """
+        return self._drawdown_established
+
     def get_account_drawdown_carry_over(self) -> Optional[AccountDrawdownCarryOver]:
         """
         The record the next session continues from (#497).
@@ -1710,6 +1721,26 @@ class PortfolioManager:
         self._drawdown_restarts = 0
         self._drawdown_started_at = ''
         self._drawdown_established = False
+
+    def _file_trade_record(self, trade_record: TradeRecord) -> None:
+        """
+        File a trade record: into the bounded history, into the log, and to every listener.
+
+        Args:
+            trade_record: The record of a close, full or partial
+        """
+        if (self._trade_history_max > 0
+                and not self._trade_history_limit_warned
+                and len(self._trade_history) >= self._trade_history_max):
+            self._trade_history_limit_warned = True
+            self._logger.warning(
+                f'⚠️ Trade history limit reached ({self._trade_history_max}). '
+                f'Oldest entries will be discarded. Full history available in scenario log.'
+            )
+        self._trade_history.append(trade_record)
+        self._log_trade_record(trade_record)
+        for listener in self._trade_listeners:
+            listener(trade_record)
 
     def _log_trade_record(self, record: TradeRecord) -> None:
         """

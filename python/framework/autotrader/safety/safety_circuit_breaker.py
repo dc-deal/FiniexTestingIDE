@@ -8,7 +8,7 @@ account value per tick and asks whether entries are blocked; everything the brea
 lives here, so the layer #358 certifies with real money is one unit.
 """
 
-from datetime import date
+from datetime import date, datetime
 from typing import Callable, List, Optional
 
 from python.framework.autotrader.operator_alerts.alert_episode import (
@@ -61,7 +61,8 @@ class SafetyCircuitBreaker:
         logger: Session logger — what the breaker does reaches the error pot (§35)
         operator_alerts: The out-of-band channels to the operator (#235)
         all_clear_after_s: How long the breaker must stay clear before its all-clear goes out
-        trading_day: The trading day the canonical clock stands in, None before it is first set
+        trading_day: The trading day the session runs on — its booking period's (#476) — None
+            before the first period opened
         on_hard_stop: Called with the reason the moment the hard stop fires — the seam #590's
             latch attaches to; None while nothing listens
     """
@@ -160,28 +161,25 @@ class SafetyCircuitBreaker:
                 return value
         return self._executor.portfolio.initial_balance
 
-    def update_day_baseline(
+    def ensure_day_baseline(
         self,
         value: float,
         mark_price: Optional[float],
         quantities: Optional[BaselineQuantities],
     ) -> None:
         """
-        Start a new daily baseline when the market crosses into a new trading day (#314).
+        Take the running trading day's baseline if it has none yet (#314).
 
-        The day comes from the canonical clock and this market's anchor (#476), never from
-        the wall clock and no longer from the tick stamp: both event sources advance that
-        clock, so a mock session and a live-adapter session still answer alike, and a quiet
-        feed over the boundary no longer hides it. The check stays deliberately independent of
-        the session log's rotation (`SessionLogRotator`): that one rotates a LOG file and returns
-        early when there is no run directory, and a loss limit must not depend on whether logs
-        are being written.
+        A day ROLLS at its boundary, from the value its booking period sealed with
+        (`roll_day`). This takes what a roll could not: the session's first day, at its first
+        valued tick, and a day whose seal could not value the account. Cheap and a no-op in the
+        ordinary case, which is why it runs on every tick.
 
-        Same ANCHOR as that rotation, but not the same MOMENT: the rotation also runs on the
-        heartbeat, while this reaches the boundary only on the next real TICK, because at spot
-        the baseline needs a mark price and a heartbeat carries none. The lateness is
-        self-limiting rather than a gap — nothing can move the account until a tick arrives,
-        and that is the same tick which resets the denominator.
+        The day is the booking period's (#476) — the canonical clock and this market's anchor,
+        and only the days the market trades — never the wall clock and never the tick stamp. The
+        check stays deliberately independent of the session log's rotation
+        (`SessionLogRotator`): that one rotates a LOG file and returns early when there is no run
+        directory, and a loss limit must not depend on whether logs are being written.
 
         Args:
             value: The account value at this moment
@@ -192,20 +190,77 @@ class SafetyCircuitBreaker:
         if current_day is None:
             return
         day = current_day.isoformat()
-        if day == self._safety_current_day:
+        if day != self._safety_current_day:
+            # Only the first day arrives here — every later one was adopted by its roll
+            self._close_safety_day()
+            self._safety_current_day = day
+            self._day_baseline = None
+        if self._day_baseline is not None:
             return
+        self._day_baseline = self._new_day_baseline(self._executor.get_current_time_if_set)
+        self._day_baseline.ensure_taken(
+            value, mark_price, quantities, origin=BaselineOrigin.DAY_BOUNDARY)
+
+    def roll_day(
+        self,
+        boundary: datetime,
+        value: Optional[float],
+        mark_price: Optional[float],
+        quantities: Optional[BaselineQuantities],
+    ) -> None:
+        """
+        End the trading day at its boundary and strike the next day's baseline (#476).
+
+        Called on the booking period's seal, so the limit and the period cut the day at the same
+        instant: the day that ended is filed with the losses it saw and the reading the seal
+        took, and the new day's baseline is where the account stood at the boundary. Whatever
+        the first tick of the new day does counts against the new day's limit — before, it
+        counted against neither, and a forex weekend's gap escaped every daily limit.
+
+        Args:
+            boundary: The instant the day ended — the baseline's stamp
+            value: The account value the seal read, None when it could not be read; the
+                baseline is then taken at the next valued tick
+            mark_price: The price the holdings were valued at (spot only)
+            quantities: What was held at that instant (spot only)
+        """
+        current_day = self._trading_day()
+        # The ending day is held to its limit up to its last instant, and the seal's reading is
+        # that instant: a fill an idle heartbeat drained after the last tick changed the account
+        # where no tick evaluated it, and the next tick already belongs to the new day. Only the
+        # worst loss takes it — `limit_hit` says a limit FIRED, and nothing fires for a day that
+        # has ended.
+        if value is not None:
+            self._note_day_loss(value, boundary.isoformat())
         self._close_safety_day()
-        self._safety_current_day = day
-        self._day_baseline = RiskBaselineTracker(
+        self._safety_current_day = current_day.isoformat() if current_day else None
+        self._day_baseline = None
+        if value is None or current_day is None:
+            return
+        self._day_baseline = self._new_day_baseline(lambda: boundary)
+        self._day_baseline.ensure_taken(
+            value, mark_price, quantities, origin=BaselineOrigin.DAY_BOUNDARY)
+
+    def _new_day_baseline(
+        self, clock_fn: Callable[[], Optional[datetime]],
+    ) -> RiskBaselineTracker:
+        """
+        A fresh tracker for one trading day's baseline.
+
+        Args:
+            clock_fn: What stamps the baseline when it is taken — the boundary at a roll
+
+        Returns:
+            The tracker, without a baseline yet
+        """
+        return RiskBaselineTracker(
             mode=BaselineKind.DAY_START,
             restored=None,
             spot_mode=self._trading_model == TradingModel.SPOT,
             exclusive_account=self._config.capital.exclusive_account,
-            clock_fn=self._executor.get_current_time_if_set,
+            clock_fn=clock_fn,
             logger=self._logger,
         )
-        self._day_baseline.ensure_taken(
-            value, mark_price, quantities, origin=BaselineOrigin.DAY_BOUNDARY)
 
     def observe_excursion(self, current_value: float, baseline: float) -> None:
         """
@@ -238,12 +293,22 @@ class SafetyCircuitBreaker:
                 self._safety_worst_dd_pct = drawdown_pct
                 self._safety_worst_dd_pct_at = stamp_utc
 
+        self._note_day_loss(current_value, stamp_utc)
+
+    def _note_day_loss(self, value: float, stamp_utc: str) -> None:
+        """
+        Take one account reading into the current trading day's worst loss.
+
+        Args:
+            value: The account value read
+            stamp_utc: When it was read, ISO-8601
+        """
         if self._day_baseline is None:
             return
         day_start = self._day_baseline.get_value()
         if day_start <= 0:
             return
-        daily_loss = day_start - current_value
+        daily_loss = day_start - value
         if daily_loss > self._day_worst_loss_abs:
             self._day_worst_loss_abs = daily_loss
             self._day_worst_loss_pct = daily_loss / day_start * 100.0

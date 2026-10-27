@@ -18,34 +18,37 @@ on the container's own disk (§42).
 
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from python.api.api_contract import API_CONTRACT_VERSION
 from python.configuration.app_config_manager import AppConfigManager
+from python.framework.constants.run_layout_constants import (
+    BACKTEST_GLOBAL_LOG_NAME,
+    BACKTEST_SYSTEM_INFO_LOG_NAME,
+    RUN_SUMMARY_LOG_NAME,
+    RUN_TYPE_SIMULATION,
+)
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.logging.system_info_writer import write_system_version_parameters
 from python.framework.reporting.io.run_header_io import data_windows_of
 from python.framework.reporting.store.run_index import RunIndex
+from python.framework.store.entry_members.sweep_entry_writer import SweepEntryWriter
 from python.framework.store.run_config_store import RunConfigStore
-from python.framework.types.api.report_types import (
-    OrdersTo,
-    ParentKind,
-    RunHeader,
-    RunReporting,
-    TicksFrom,
-)
+from python.framework.types.api.report_types import ParentKind, RunHeader, RunReporting
 from python.framework.types.config_types.robustness_config_types import RobustnessConfig
-from python.framework.types.log_layout_types import MOUNT_BUILD_LOG, RUN_TYPE_SIMULATION
 from python.framework.types.run_config_types import RunConfigKind
+from python.framework.types.run_kind_types import OrdersTo, TicksFrom
 from python.framework.types.run_origin_types import CodeIdentity, RunChannel, RunOrigin
 from python.framework.types.scenario_types.scenario_set_types import (
     LoadedScenarioConfig,
     SingleScenario,
 )
 from python.framework.types.scenario_types.window_set_types import WindowSet
+from python.framework.types.store_member_types import RunEntryMemberId, SweepEntryMemberId
 from python.framework.utils.git_info_utils import get_git_commit
 from python.framework.utils.run_id_utils import mint_run_id
 from python.framework.utils.run_origin_builder import build_run_origin, capture_code_identity
+from python.scenario.rendered_scenario_set_builder import render_scenario_set
 
 
 def _register_run_config(source: Path) -> str:
@@ -67,6 +70,28 @@ def _register_run_config(source: Path) -> str:
         entry = store.register(Path(source), RunConfigKind.SCENARIO_SET)
         # Registration says the content exists; this says a RUN used it. Two steps on
         # purpose — a config listed by the finder is registered without being run.
+        store.note_run(entry.config_id)
+        return entry.config_id
+    except (OSError, ValueError, KeyError):
+        return ''
+
+
+def _register_rendered_scenario_set(document: Dict[str, Any]) -> str:
+    """
+    Freeze what this run RUNS with, and return its identity (#547).
+
+    Never fatal, for the same reason as the source: the run executes whether or not the store can
+    be written, and its header then names no rendered document rather than an untrue one.
+
+    Args:
+        document: The rendered scenario set
+
+    Returns:
+        The registered content id, or an empty string when it could not be registered
+    """
+    try:
+        store = RunConfigStore(Path(AppConfigManager().get_run_configs_path()))
+        entry = store.register_document(document, RunConfigKind.SCENARIO_SET_RENDERED)
         store.note_run(entry.config_id)
         return entry.config_id
     except (OSError, ValueError, KeyError):
@@ -129,12 +154,15 @@ class ScenarioSet:
 
         self.logger = ScenarioLogger(
             scenario_set_name=self.scenario_set_name,
-            scenario_name='global_log',
+            scenario_name=BACKTEST_GLOBAL_LOG_NAME,
             run_timestamp=self._run_timestamp,
             run_id=self._run_id,
             log_root_override=self._log_root,
+            log_member=RunEntryMemberId.BACKTEST_GLOBAL_LOG,
+            run_type=RUN_TYPE_SIMULATION,
             use_global_log_level_for_console=True,
-            flat_log_filename=MOUNT_BUILD_LOG if mount_only else None
+            flat_log_path=(SweepEntryWriter(self._log_root).log_path(
+                SweepEntryMemberId.MOUNT_BUILD_LOG) if mount_only else None)
         )
         # The run header goes down FIRST, before anything else can fail. A mount build gets
         # none: it has no run directory, because it is not a run.
@@ -147,6 +175,9 @@ class ScenarioSet:
             # run is in flight must not change what the run says it ran (#538). Registration is
             # idempotent — unchanged content writes no second copy.
             config_id = _register_run_config(self.config_path)
+            # What the run RUNS with — every default filled in — frozen at the same moment as
+            # what it was given, and named by the same header (#547)
+            rendered_config_id = self._freeze_rendered_configuration()
             # Which code it runs, over EVERY scenario's strategy — a set may mix logics. Only
             # for a run that will report: the capture costs a `git status` (§42), which a
             # test that stops after the batch has no reader for. The ledger reads its
@@ -168,6 +199,7 @@ class ScenarioSet:
                 # once the store began freezing the same content under `config_id`.
                 config_snapshot=Path(self.config_path).name,
                 config_id=config_id,
+                rendered_config_id=rendered_config_id,
                 app_version=app_config.get_version(),
                 git_commit=get_git_commit(),
                 reporting=reporting,
@@ -190,11 +222,40 @@ class ScenarioSet:
         # own header — which is exactly what it used to do.
         self.printed_summary_logger = None if mount_only else ScenarioLogger(
             scenario_set_name=self.scenario_set_name,
-            scenario_name='summary',
+            scenario_name=RUN_SUMMARY_LOG_NAME,
             run_timestamp=self._run_timestamp,
             run_id=self._run_id,
-            log_root_override=self._log_root
+            log_root_override=self._log_root,
+            log_member=RunEntryMemberId.BACKTEST_SUMMARY_LOG,
+            run_type=RUN_TYPE_SIMULATION
         )
+
+    def _freeze_rendered_configuration(self) -> str:
+        """
+        Render what this run runs with and freeze it, without ever failing the run for it (#547).
+
+        A scenario whose strategy cannot be rendered most likely names a component that cannot be
+        resolved, and the run's validation refuses that scenario a moment later with its own
+        message. The header then names no rendered document rather than an incomplete one, and
+        the warning says so.
+
+        Returns:
+            The registered content id, or an empty string
+        """
+        try:
+            document = render_scenario_set(
+                self._scenarios, self._run_purpose, self._robustness, self.app_config)
+        except Exception as error:
+            self.logger.warning(
+                f"⚠️ Rendered configuration not frozen — this run's header names no record of what "
+                f'it ran with: {error}')
+            return ''
+        rendered_config_id = _register_rendered_scenario_set(document)
+        if rendered_config_id:
+            self.logger.info(
+                f'🗂️ Rendered configuration frozen as {RunConfigKind.SCENARIO_SET_RENDERED.value} '
+                f'{rendered_config_id[:12]} ({len(self._scenarios)} scenarios)')
+        return rendered_config_id
 
     def get_code_identity(self) -> Optional[CodeIdentity]:
         """
@@ -232,10 +293,12 @@ class ScenarioSet:
         if self.app_config.get_logging_write_system_info():
             system_info_logger = ScenarioLogger(
                 scenario_set_name=self.scenario_set_name,
-                scenario_name='system_info',
+                scenario_name=BACKTEST_SYSTEM_INFO_LOG_NAME,
                 run_timestamp=self.logger.get_run_timestamp(),
                 run_id=self._run_id,
-                log_root_override=self._log_root
+                log_root_override=self._log_root,
+                log_member=RunEntryMemberId.BACKTEST_SYSTEM_INFO_LOG,
+                run_type=RUN_TYPE_SIMULATION
             )
 
             write_system_version_parameters(system_info_logger)

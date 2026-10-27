@@ -25,6 +25,8 @@ specific failing test against a user config).
 
 import hashlib
 import os
+import shutil
+import tempfile
 from copy import deepcopy
 from pathlib import Path
 
@@ -48,6 +50,45 @@ from tests.shared.release_gate_session import is_release_gate_session
 
 # Switched on by `any_run_purpose` for the one test that requests it.
 _ANY_RUN_PURPOSE_ALLOWED = {'active': False}
+
+# Where the suite's global log goes, and the patch that sends it there (#476): set before the test
+# modules are collected, undone after the session.
+_GLOBAL_LOG_REDIRECT = {'dir': None, 'patch': None}
+
+
+def pytest_configure(config):
+    """
+    Send the global log to a throwaway directory before a single test module is collected.
+
+    The global logger is a singleton made the first time a module that logs through it is
+    imported — while the test modules are COLLECTED, which is before any session fixture runs. So
+    a redirect in a fixture came too late: every pytest process opened the operator's
+    `logs/global.log`, wrote its banner there and kept writing there for the whole session
+    (measured 2026-10-25: a three-second run of one suite appended 407 bytes to a 357 MB file).
+    This hook runs before the collection, and nothing the conftest imports makes the logger.
+
+    Args:
+        config: The pytest configuration
+    """
+    directory = Path(tempfile.mkdtemp(prefix='finiex_suite_global_log_'))
+    redirected = AppConfigManager().get_file_logging_config_object().model_copy(
+        update={'global_log_dir': directory})
+    patch = pytest.MonkeyPatch()
+    patch.setattr(AppConfigManager, 'get_file_logging_config_object', lambda self: redirected)
+    _GLOBAL_LOG_REDIRECT.update(dir=directory, patch=patch)
+
+
+def pytest_unconfigure(config):
+    """
+    Undo the global log's redirect and remove its directory.
+
+    Args:
+        config: The pytest configuration
+    """
+    if _GLOBAL_LOG_REDIRECT['patch'] is not None:
+        _GLOBAL_LOG_REDIRECT['patch'].undo()
+    if _GLOBAL_LOG_REDIRECT['dir'] is not None:
+        shutil.rmtree(_GLOBAL_LOG_REDIRECT['dir'], ignore_errors=True)
 
 
 @pytest.fixture(scope='session', autouse=True)
@@ -110,12 +151,13 @@ def _isolate_run_tree(tmp_path_factory):
     §36 diagnosis stays possible), and a failing test's log is still there to look at — just
     under tmp.
 
-    `global_log_dir` joins them here (#476 part b). It is the one write plane nothing bounds
-    — no rotation, no retention, not per-run: every process of every run in both pipelines
-    appends to the same file forever. Measured 2026-09-21: 2,606,808 lines / 197 MB in the
-    operator's working tree, against 161,068 lines / 12 MB measured on 2026-08-31, i.e. a
-    sixteenfold growth in three weeks, of which the suite is a large part. Bounding the file
-    itself — rotation plus a retention window — is the other half and stays with #476/#357.
+    The global log is not redirected here but in `pytest_configure`, before the collection that
+    makes its logger: it is the one write plane nothing bounds — no rotation, no retention, not
+    per-run: every process of every run in both pipelines appends to the same file forever.
+    Measured 2026-09-21: 2,606,808 lines / 197 MB in the operator's working tree, against 161,068
+    lines / 12 MB measured on 2026-08-31, i.e. a sixteenfold growth in three weeks, of which the
+    suite is a large part. Bounding the file itself — rotation plus a retention window — stays
+    with #535.
     """
     root = tmp_path_factory.mktemp('run_tree')
     real = AppConfigManager().get_file_logging_config_object()
@@ -123,7 +165,6 @@ def _isolate_run_tree(tmp_path_factory):
         'run_logs': RunLogPaths(simulation=root / 'simulation', autotrader=root / 'autotrader'),
         # Same naming rule as production (#486): <store_id>_index.parquet
         'run_index': root / store_index_filename(StoreId.RUNS),
-        'global_log_dir': root / 'global',
     })
     mp = pytest.MonkeyPatch()
     mp.setattr(AppConfigManager, 'get_file_logging_config_object', lambda self: isolated)

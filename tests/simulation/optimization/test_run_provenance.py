@@ -24,9 +24,10 @@ from python.framework.reporting.store.run_provenance_builder import (
     consumption_record,
     build_run_provenance_from_session,
 )
-from python.framework.types.api.report_types import OrdersTo, WarningsErrorsReport
+from python.framework.types.api.report_types import WarningsErrorsReport
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
 from python.framework.types.autotrader_types.autotrader_result_types import AutoTraderResult
+from python.framework.types.run_kind_types import OrdersTo
 from python.framework.types.run_results_types import RunProvenance
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
 from python.framework.utils.config_fingerprint_utils import generate_config_fingerprint
@@ -155,7 +156,8 @@ class TestWhereTheOrdersWent:
             scenario_set_name='my_set')
 
         provenance = build_run_provenance(
-            SimpleNamespace(single_scenario_list=[scenario]), scenario_set, _RUN_ID)
+            SimpleNamespace(single_scenario_list=[scenario], broker_scenario_map={}),
+            scenario_set, _RUN_ID)
 
         assert provenance.orders_to is OrdersTo.SIMULATED
 

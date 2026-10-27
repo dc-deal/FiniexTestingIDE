@@ -76,6 +76,7 @@ multi-symbol is a later milestone), so "multi-position" means several positions 
 | `max_positions` | `2` | Max concurrent positions stacked on the symbol |
 | `lot_size` | `0.1` | Fixed entry size |
 | `min_entry_capital` | `0` | Capital floor before opening an entry, in account currency — the free quote balance at spot, free margin at margin. `0` disables it |
+| `write_strategy_files` | `false` | Keep the last submitted setup in the run as `strategy_files/last_setup.json` |
 
 The required workers (`CORE/ma_trend` H1, `CORE/bollinger` M15): keep `m15_channel` on the default
 `compute_basis: live` (it reads the live band position), and run `h1_trend` with
@@ -176,3 +177,9 @@ setup, no-setup) and emits events on entry / partial / cancel. It also writes a 
 **setup-funnel** diagnostics CSV (`trend_channel_setups`) into the run's `diagnostics/` folder —
 one row per submitted entry (mode, side, gate, entry/SL/TP, band width). See
 [Diagnostics CSV Sink](../architecture/diagnostics_csv_sink.md).
+
+With `write_strategy_files` on, it also keeps the **last submitted setup** — gate, both bands,
+entry, SL and TP — as a file of its own, `strategy_files/last_setup.json`, replaced on every entry.
+The table above is the run's record of every setup; this file is what the strategy itself keeps,
+written at the decision moment. See
+[Store Entry Members — Strategy files](../architecture/store_entry_members.md#strategy-files).

@@ -53,7 +53,8 @@ def _build_parser() -> argparse.ArgumentParser:
         'generate', help="Certify the stages' latest runs again — no trade")
     generate.add_argument(
         '--latest', action='store_true', required=True,
-        help='Use the newest capture of every stage under the AutoTrader run root')
+        help="Use every stage's newest run under the AutoTrader run root — newest by the start "
+             'its header records')
     generate.add_argument('--release-version', default='dev',
                           help="Release version (e.g. 1.5.0). Defaults to 'dev'.")
     generate.add_argument('--comment', default='', help='Optional free-text note')

@@ -27,6 +27,7 @@ from python.framework.types.scenario_types.window_set_types import (
     WindowSet,
     WindowSplitConfig,
 )
+from python.framework.utils.file_utils import create_directory
 from python.scenario.generator.balance_defaults import ensure_quote_balance, resolve_quote_currency
 from python.scenario.generator.window_materializer import WindowMaterializer
 
@@ -48,9 +49,9 @@ class WindowSetSerializer:
         app_config = AppConfigManager()
         self._template_path = Path(app_config.get_generator_template_path())
         self._scenario_set_output_dir = Path(app_config.get_generator_output_path())
-        self._scenario_set_output_dir.mkdir(parents=True, exist_ok=True)
+        create_directory(self._scenario_set_output_dir, holds='the generated scenario sets')
         self._profile_output_dir = profile_output_dir
-        self._profile_output_dir.mkdir(parents=True, exist_ok=True)
+        create_directory(self._profile_output_dir, holds='the generated generator profiles')
         self._materializer = WindowMaterializer()
 
     # =========================================================================
@@ -182,7 +183,7 @@ class WindowSetSerializer:
 
         # Organize by split mode then broker_type: <mode>/<broker_type>/<filename>
         out_dir = self._profile_output_dir / window_set.mode / window_set.broker_type
-        out_dir.mkdir(parents=True, exist_ok=True)
+        create_directory(out_dir, holds='the generated generator profiles')
 
         output_path = out_dir / filename
         with open(output_path, 'w') as f:

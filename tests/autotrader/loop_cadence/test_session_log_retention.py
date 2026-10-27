@@ -17,10 +17,14 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from python.framework.autotrader.session_log_retention import (
+from python.framework.autotrader.session_log_retention import prune_rotated_session_logs
+from python.framework.constants.run_layout_constants import (
+    RUN_TYPE_AUTOTRADER,
     SESSION_LOGS_SUBDIR,
-    prune_rotated_session_logs,
 )
+from python.framework.store.entry_members.run_entry_members import RUN_ENTRY_MEMBERS_BY_ID
+from python.framework.store.entry_members.run_entry_writer import RunEntryWriter
+from python.framework.types.store_member_types import RunEntryMemberId
 
 CURRENT_DAY = '20260924'
 
@@ -118,6 +122,33 @@ class TestNothingElseIsTouched:
     def test_a_missing_directory_is_not_an_error(self, tmp_path):
         """A session that never rotated has no directory, and that is not a failure."""
         assert prune_rotated_session_logs(tmp_path, CURRENT_DAY, 30, MagicMock()) == []
+
+
+class TestItAgreesWithTheDeclaration:
+    """
+    The rule keeps its own name pattern — eight digits, where the run store's placeholder takes any
+    plain name — so it may be narrower than the declared day log, never wider, and it must find
+    the file the rotator writes.
+    """
+
+    def test_the_file_the_rotator_writes_is_the_one_it_removes(self, run_dir):
+        old = RunEntryWriter(run_dir, RUN_TYPE_AUTOTRADER).log_path(
+            RunEntryMemberId.SESSION_DAY_LOG, day='20260801')
+        old.write_text('log\n')
+
+        assert prune_rotated_session_logs(run_dir, CURRENT_DAY, 30, MagicMock()) == [old.name]
+        assert not old.exists()
+
+    def test_every_file_it_removes_is_the_declared_day_log(self, run_dir):
+        _write(run_dir,
+               'autotrader_summary.log', 'autotrader_session_20260801.log.gz',
+               'autotrader_session_2026080.log', _log('20260801'), _log('20260802'))
+        member = RUN_ENTRY_MEMBERS_BY_ID[RunEntryMemberId.SESSION_DAY_LOG]
+
+        removed = prune_rotated_session_logs(run_dir, CURRENT_DAY, 30, MagicMock())
+
+        assert removed
+        assert all(member.matches(f'{SESSION_LOGS_SUBDIR}/{name}') for name in removed)
 
 
 class TestItSaysWhatItDid:

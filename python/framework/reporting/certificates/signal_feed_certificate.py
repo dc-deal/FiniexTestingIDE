@@ -40,6 +40,7 @@ from python.framework.types.signal_certificate_types import (
 from python.framework.reporting.certificates.certificate_identity_builder import (
     build_certificate_identity,
 )
+from python.framework.utils.file_utils import create_directory
 from python.framework.utils.git_info_utils import get_git_info
 from python.framework.validators.signal_feed_contract_validator import (
     SignalFeedContractValidator,
@@ -170,7 +171,7 @@ class SignalFeedCertificate:
             certificate['identity_warnings'] = warnings
 
         reports_path = Path(reports_dir)
-        reports_path.mkdir(parents=True, exist_ok=True)
+        create_directory(reports_path, holds='the signal feed certificates')
         version_tag = re.sub(r'[^a-zA-Z0-9._-]', '_', release_version)
         filename = (f'{REPORT_PREFIX}_{version_tag}_'
                     f"{identity.timestamp.strftime('%Y-%m-%d_%H%M%S')}.json")

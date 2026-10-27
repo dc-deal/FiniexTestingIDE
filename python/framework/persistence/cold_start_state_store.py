@@ -34,10 +34,13 @@ from python.framework.types.persistence_types import (
     CarryOverLoad,
     CarryOverLoadOutcome,
     ColdStartPayload,
+    ConfigurationCarryOver,
     PositionCarryOver,
     RiskBaseline,
 )
+from python.framework.types.run_kind_types import OrdersTo
 from python.framework.types.store_types import StoreId
+from python.framework.utils.file_utils import create_directory
 
 # Envelope format version for THIS store's documents — independent of the algo store's.
 _SCHEMA_VERSION = 1
@@ -211,6 +214,9 @@ class ColdStartStateStore:
         open_positions: Optional[List[PositionCarryOver]] = None,
         risk_baseline: Optional[RiskBaseline] = None,
         account_drawdown: Optional[AccountDrawdownCarryOver] = None,
+        readings_orders_to: Optional[OrdersTo] = None,
+        replace_readings: bool = False,
+        venue_claims_configuration: Optional[ConfigurationCarryOver] = None,
         deployment_id: Optional[str] = None,
         refresh_index: bool = True,
     ) -> None:
@@ -250,6 +256,16 @@ class ColdStartStateStore:
                 and the same reason as the baseline above — a partial write that erased it
                 would let the next session start its curve at its own opening balance and
                 report a month's drawdown as an afternoon's
+            readings_orders_to: Where this session's orders go, stamped beside the two readings
+                above (#626). Same None convention: a session that may not write the readings
+                leaves the stamp as it is, and the stamp keeps describing them
+            replace_readings: Whether the two readings and their stamp are REPLACED as given,
+                None included, rather than left alone where None. For the first write of a
+                session that does not continue the carried readings: until its own exist, the
+                document would otherwise pair another session's readings with this one's stamp
+            venue_claims_configuration: The configuration the session key and the book above
+                were written under (#626). None leaves the stored one alone — what a dry run,
+                which writes neither, must do
             deployment_id: Which continuous deployment this bot's sessions belong to. Same
                 None convention once more, and here it is what makes N session records one
                 history: a join key not written WHILE the sessions ran cannot be added
@@ -299,10 +315,19 @@ class ColdStartStateStore:
             payload.highest_period_no, highest_period_no)
         if open_positions is not None:
             payload.open_positions = list(open_positions)
-        if risk_baseline is not None:
+        if replace_readings:
             payload.risk_baseline = risk_baseline
-        if account_drawdown is not None:
             payload.account_drawdown = account_drawdown
+            payload.readings_orders_to = readings_orders_to
+        else:
+            if risk_baseline is not None:
+                payload.risk_baseline = risk_baseline
+            if account_drawdown is not None:
+                payload.account_drawdown = account_drawdown
+            if readings_orders_to is not None:
+                payload.readings_orders_to = readings_orders_to
+        if venue_claims_configuration is not None:
+            payload.venue_claims_configuration = venue_claims_configuration
         if deployment_id is not None:
             payload.deployment_id = deployment_id
 
@@ -358,7 +383,7 @@ class ColdStartStateStore:
         Args:
             payload: Serialized JSON envelope
         """
-        self._path.parent.mkdir(parents=True, exist_ok=True)
+        create_directory(self._path.parent, holds="the framework's state for the next session")
         tmp_path = self._path.with_name(self._path.name + '.tmp')
         with open(tmp_path, 'w', encoding='utf-8') as f:
             f.write(payload)

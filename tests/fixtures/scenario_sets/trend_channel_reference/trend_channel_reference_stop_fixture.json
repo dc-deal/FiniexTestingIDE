@@ -37,7 +37,8 @@
         "partial_fraction": 0.5,
         "max_positions": 2,
         "lot_size": 0.1,
-        "min_entry_capital": 1000
+        "min_entry_capital": 1000,
+        "write_strategy_files": true
       }
     },
     "trade_simulator_config": {

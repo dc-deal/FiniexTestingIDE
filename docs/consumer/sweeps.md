@@ -52,7 +52,8 @@ nothing to span — a sweep of one run.
 
 ```json
 { "key": ["run_id", "currency"], "sweep_id": "...",
-  "objective": "expectancy", "maximize": true, "combinations": [ ... ], "count": 12 }
+  "objective": "expectancy", "maximize": true, "combinations": [ ... ], "count": 12,
+  "unranked": 0 }
 ```
 
 Ranked, not alphabetical: the question a sweep asks is which combination won. The ranking uses the
@@ -65,6 +66,16 @@ never left to assume.
 in two currencies is not one scale: one list ranking EUR rows against USD rows by `net_pnl`
 compares nothing.
 
+### A combination without a value is counted, not ranked
+
+`unranked` counts the combinations the ranking left out because they carry no value for the
+objective. That happens only with a figure some runs did not measure — `account_max_drawdown` of
+a session whose days were all sealed before its first valuation, or a column a row was written
+before. A figure that can be undefined for a run — `profit_factor` without a losing trade, the R
+and excursion means, a reading of one account — is refused as an objective instead: leaving out
+the runs without a profit factor would drop the runs that never lost. Without `unranked`, a
+shorter list would read as the whole sweep.
+
 ### Why a row is keyed by run *and* currency
 
 A run books one ledger row per booking period, so a sweep's rows far outnumber its combinations.
@@ -76,17 +87,18 @@ declares. See [row keys](/api/v1/docs/row-keys) and
 
 ### What the fold cannot answer
 
-Three groups of fields are null on a folded row, each for its own reason:
+Two groups of fields are null on a folded row, each for its own reason:
 
 - **A reading of one account** — `final_equity`, `unrealized_pnl`, `open_position_count`. A
   combination of several scenarios is several accounts, and the latest reading of one account is
   not the run's. Null since contract 17.
-- **The order counts** — every `orders_*` field and `sl_tp_triggered`. A booking period carries
-  none, so a row folded from periods has nothing to add up. They read `0` before contract 18, which
-  turned an absence into a measured zero.
 - **The streaks** — `max_consecutive_wins`, `max_consecutive_losses`. A run of winners can cross a
   period boundary, so 2 and 3 in adjacent periods may be a run of 5, and no arithmetic over two
   summaries recovers it.
+
+The order counts — every `orders_*` field and `sl_tp_triggered` — DO fold: since contract 42 each
+booking period counts the orders it handled, and a combination is the sum of its periods. They are
+null on a combination recorded before that, when a period carried none.
 
 [Nulls](/api/v1/docs/nulls) has the general rule: render absence as absence.
 
@@ -133,9 +145,13 @@ that before trusting the order:
   files it read and `unstamped_input_files` those that were not production data stamped by their
   producer, which a measurement may not rest on. They say what kind of data and how much, never
   which files. Empty, and the counts null, on a row written before they existed.
-
-None of these says which broker configuration a combination traded under: that is `config_hash`
-and `broker_config_id` on the run's [broker](/api/v1/docs/broker) section.
+- `rendered_config_id` · `broker_config_id` — what the combination ran with: the run-config
+  store's ids of its rendered scenario set and of the broker configuration it traded under,
+  comma-joined where it traded under several. `config_hash` on the run's
+  [broker](/api/v1/docs/broker) section digests the symbol specifications and fees inside the
+  latter. Empty on a row written before they existed.
+- `period_tick_count` — how many ticks the combination's booking periods applied, summed. Null on a
+  row written before it existed.
 
 `run_kind` is derived from the row rather than stored; inside a sweep it reads `sweep` on every
 row.
@@ -153,8 +169,9 @@ whose underlying records are gone.
 the trade counts are what a combination is judged on. Several of them are null rather than zero,
 and the distinction is the point: `profit_factor` is null where the combination had no losing
 trade and the ratio is therefore undefined, and `gross_profit`, `gross_loss`, `max_equity` and
-`account_max_drawdown_pct` are null on rows written before those columns existed. A fabricated
-zero would assert a measurement nobody took.
+`account_max_drawdown_pct` are null on rows written before those columns existed.
+`account_max_drawdown` is null where no drawdown was measured. A fabricated zero would assert a
+measurement nobody took.
 
 `signal_fresh_ratio` is the weakest signal channel of the run, and null where no signal worker was
 involved at all — deliberately not `1.0`, which would claim a perfect feed. See

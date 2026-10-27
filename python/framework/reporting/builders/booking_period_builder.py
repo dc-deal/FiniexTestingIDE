@@ -11,6 +11,8 @@ recomputed from the one below, and each carries a control total so it can dispro
 reads `exit_time` and why its end is exclusive: a trade realised exactly at a boundary falls in
 the period that OPENS there, never in both. Identical to what LEAN does for its rolling windows
 (`x.ExitTime.Date >= fromDate && x.ExitTime < toDate.AddDays(1)`), arrived at independently.
+The one end that is INCLUSIVE is a session's: no period opens there, so a close that fills in the
+pass that ends the session belongs to the period it ends (#476).
 
 The consequence is worth stating because it is the one thing a reader gets wrong: a position
 opened on Monday and closed on Tuesday puts its ENTIRE result on Tuesday, although it worked
@@ -27,7 +29,7 @@ figures are captured while their records still exist.
 """
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
 from typing import List, Optional
 
 from python.framework.reporting.builders.report_aggregators import aggregate_trade_analytics
@@ -39,6 +41,7 @@ from python.framework.reporting.builders.run_unit import RunUnit
 from python.framework.types.api.report_types import RunSummaryCurrency, TradeHistoryRow
 from python.framework.types.portfolio_types.portfolio_trade_record_types import TradeRecord
 from python.framework.types.run_results_types import BookingPeriod, PeriodCloseReason
+from python.framework.types.trading_env_types.trading_env_stats_types import ExecutionStats
 
 
 @dataclass
@@ -53,30 +56,40 @@ class PeriodSnapshot:
     Args:
         currency: The unit's account currency — one per unit, which is why a seal yields one
             period rather than a list
-        final_equity: The account value at the seal
+        final_equity: The account value at the seal, None when it could not be read — a spot
+            holding before the first tick has priced it. Never a zero, which the next period
+            would then open at (#476)
         unrealized_pnl: What the open positions were worth against their entries at that instant
         open_position_count: How many were still open
-        account_max_drawdown: The CUMULATIVE deepest decline, running across restarts (#497)
-        max_equity: The peak it was measured against
-        account_max_dd_pct: That decline as a share of the peak standing at the time
-        period_max_equity: The highest account value seen inside THIS period
+        account_max_drawdown: The CUMULATIVE deepest decline, running across restarts (#497);
+            None before the account's equity curve has its first valuation, where a zero would
+            claim a decline was measured and none was
+        max_equity: The peak it was measured against, None on the same terms
+        account_max_dd_pct: That decline as a share of the peak standing at the time, None on
+            the same terms
+        period_max_equity: The highest account value seen inside THIS period; None when the
+            period could value the account at no point — the band then says nothing (#476)
         period_min_equity: The lowest inside this period — tracked rather than derived, because
-            the peak and the trough are different moments
-        period_max_drawdown: The deepest decline inside this period against its own peak
+            the peak and the trough are different moments; None on the same terms
+        period_max_drawdown: The deepest decline inside this period against its own peak; None
+            on the same terms
         period_opening_equity: The account value the period opened with, None when nothing was
             observed — stamped by the recorder, which saw it
+        execution: The orders the period handled, taken from the executor's period counts at the
+            seal (#476); None where no executor counted them
     """
     currency: str
-    final_equity: float = 0.0
+    final_equity: Optional[float] = None
     unrealized_pnl: float = 0.0
     open_position_count: int = 0
-    account_max_drawdown: float = 0.0
-    max_equity: float = 0.0
-    account_max_dd_pct: float = 0.0
-    period_max_equity: float = 0.0
-    period_min_equity: float = 0.0
-    period_max_drawdown: float = 0.0
+    account_max_drawdown: Optional[float] = None
+    max_equity: Optional[float] = None
+    account_max_dd_pct: Optional[float] = None
+    period_max_equity: Optional[float] = 0.0
+    period_min_equity: Optional[float] = 0.0
+    period_max_drawdown: Optional[float] = 0.0
     period_opening_equity: Optional[float] = None
+    execution: Optional[ExecutionStats] = None
 
 
 def derive_booking_period(
@@ -87,6 +100,8 @@ def derive_booking_period(
     reason: PeriodCloseReason,
     trades: List[TradeRecord],
     snapshot: PeriodSnapshot,
+    tick_count: int = 0,
+    trading_day: Optional[date] = None,
 ) -> BookingPeriod:
     """
     Build one period's ledger entry from the records that fall inside it.
@@ -103,12 +118,16 @@ def derive_booking_period(
         reason: What closed it
         trades: The unit's trade records; only those realised inside the window are used
         snapshot: The stock figures read at the seal
+        tick_count: How many ticks the period applied
+        trading_day: The trading day it books, None for a unit with no market
 
     Returns:
         The period, with zero figures when nothing was realised in the window — a period in
         which the bot did not trade is a period, not an absence
     """
-    rows = _window(unit_name, trades, opened_at, closed_at)
+    # A session's end is the one boundary no period opens at, so its last period keeps it
+    rows = _window(unit_name, trades, opened_at,
+                   None if reason is PeriodCloseReason.SESSION_END else closed_at)
     return BookingPeriod(
         period_no=period_no,
         unit_name=unit_name,
@@ -126,6 +145,9 @@ def derive_booking_period(
         swap_cost=sum(r.swap_cost for r in rows),
         spread_cost=sum(r.spread_cost for r in rows),
         modelled_spread_cost=sum(r.modelled_spread_cost for r in rows),
+        tick_count=tick_count,
+        trading_day=trading_day,
+        execution=snapshot.execution,
     )
 
 
@@ -133,7 +155,7 @@ def _window(
     unit_name: str,
     trades: List[TradeRecord],
     opened_at: datetime,
-    closed_at: datetime,
+    closed_at: Optional[datetime],
 ) -> List[TradeHistoryRow]:
     """
     The trade rows realised inside the period.
@@ -144,7 +166,8 @@ def _window(
     Args:
         unit_name: Stamped onto the rows as their unit
         trades: The unit's full trade history
-        opened_at / closed_at: The period, `[opened, closed)` on the EXIT basis
+        opened_at / closed_at: The period, `[opened, closed)` on the EXIT basis; no end for
+            the period a session's end closed, which takes everything realised from its opening
 
     Returns:
         The rows of this period
@@ -243,13 +266,15 @@ def describe_segment(period: BookingPeriod) -> str:
         A single line, no trailing newline
     """
     f = period.figures
+    equity = ('equity not read' if f.final_equity is None or period.period_max_equity is None else
+              f'equity {f.final_equity:.2f} (band {period.period_min_equity:.2f}…'
+              f'{period.period_max_equity:.2f}, DD {-abs(period.period_max_drawdown):.2f})')
     return (
         f'📕 Booking period {period.period_no:03d} sealed — {period.reason.value} · '
         f'{period.opened_at.isoformat()} → {period.closed_at.isoformat()} · '
         f'{period.unit_name} · {period.trade_count} trade(s) · '
+        f'{period.tick_count} tick(s) · '
         f'net {f.net_pnl:+.2f} {f.currency} · '
         f'gross +{f.gross_profit:.2f}/-{f.gross_loss:.2f} · '
-        f'fees {f.total_fees:.2f} · '
-        f'equity {f.final_equity:.2f} (band {period.period_min_equity:.2f}…'
-        f'{period.period_max_equity:.2f}, DD {-abs(period.period_max_drawdown):.2f})'
+        f'fees {f.total_fees:.2f} · {equity}'
     )

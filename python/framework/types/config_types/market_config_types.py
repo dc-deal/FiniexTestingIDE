@@ -162,8 +162,11 @@ class BrokerEntryConfig(StrictConfigModel):
     # What the venue's own timestamps mean — REQUIRED for the same reason as price_formation:
     # a default would let the next broker's ticks be converted by someone else's clock.
     server_clock: ServerClockConfig
+    # Spot or margin — REQUIRED for the same reason: it decides the account model, which no two
+    # accounts of one composite may differ in, and a default let a broker without it trade as
+    # margin unnoticed.
+    trading_model: TradingModel
     broker_config_path: str = ''
-    trading_model: TradingModel = TradingModel.MARGIN
     config_mode: ConfigMode = ConfigMode.STATIC
     credentials_file: str = ''
     dry_run: bool = True

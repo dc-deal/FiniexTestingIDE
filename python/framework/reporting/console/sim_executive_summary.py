@@ -15,6 +15,11 @@ Provides comprehensive summary:
 from typing import Dict, List, Optional
 
 from python.configuration.app_config_manager import AppConfigManager
+from python.framework.constants.currency_constants import (
+    format_currency_cost,
+    format_currency_signed,
+    format_currency_simple,
+)
 from python.framework.reporting.console.abstract_batch_summary_section import (
     AbstractBatchSummarySection,
 )
@@ -31,11 +36,6 @@ from python.framework.types.api.report_types import (
     WarningsErrorsReport,
 )
 from python.framework.types.scenario_types.window_set_types import WindowSet
-from python.framework.types.trading_env_types.currency_codes import (
-    format_currency_cost,
-    format_currency_signed,
-    format_currency_simple,
-)
 from python.framework.utils.console_renderer import ConsoleRenderer
 from python.framework.utils.machine_resources_reader import MachineResourcesReader
 

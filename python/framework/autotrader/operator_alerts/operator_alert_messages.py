@@ -161,7 +161,8 @@ def day_closed_text(period: BookingPeriod, trading_day: date,
     """
     figures = period.figures
     # rounded first, so a dip below a cent reads 0.00 rather than -0.00
-    dip = round(abs(period.period_max_drawdown), 2)
+    dip = (round(abs(period.period_max_drawdown), 2)
+           if period.period_max_drawdown is not None else None)
     lines = []
     if period.opened_at - day_opened_at > _WHOLE_DAY_TOLERANCE:
         lines.append(f'Covers: from {period.opened_at:%H:%M} UTC — the session started '
@@ -170,9 +171,33 @@ def day_closed_text(period: BookingPeriod, trading_day: date,
         f'Fees: {figures.total_fees:,.2f} {figures.currency}',
         _equity_line(period),
         # a day that never fell reads 0.00, not -0.00
-        f'Deepest dip: {-dip if dip else 0.0:,.2f} {figures.currency}',
+        (f'Deepest dip: {-dip if dip else 0.0:,.2f} {figures.currency}' if dip is not None
+         else 'Deepest dip: not observed'),
     ]
     return f'Day closed — {trading_day.isoformat()}', '\n'.join(lines)
+
+
+def days_closed_unheard_text(periods: List[BookingPeriod]) -> Tuple[str, str]:
+    """
+    The one message for trading days that closed together, none of them having heard the market.
+
+    A session that could not pass its loop for days — a machine that slept, a clock that jumped —
+    seals every trading day in between at once (#476). Each is a booking period of its own, but a
+    message each would bury the operator under days that all say the same: nothing happened.
+
+    Args:
+        periods: The days sealed together after the first, oldest first
+
+    Returns:
+        Title and detail
+    """
+    first, last = periods[0], periods[-1]
+    span = (first.trading_day.isoformat() if first is last
+            else f'{first.trading_day.isoformat()} → {last.trading_day.isoformat()}')
+    return (f'Days closed unheard — {span}',
+            '\n'.join([f'{len(periods)} trading day(s) closed at once, with no market data',
+                       f'Trades: {sum(period.trade_count for period in periods)}',
+                       _equity_line(last)]))
 
 
 def _figures_lines(row: RunSummaryCurrency) -> List[str]:

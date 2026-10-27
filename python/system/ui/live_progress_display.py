@@ -35,6 +35,10 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
+from python.framework.constants.currency_constants import (
+    format_currency_signed,
+    format_currency_simple,
+)
 from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.types.live_types.live_core_snapshot_types import LiveCoreSnapshot
 from python.framework.types.live_types.live_scenario_stats_types import (
@@ -43,10 +47,6 @@ from python.framework.types.live_types.live_scenario_stats_types import (
     ScenarioStatus,
 )
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
-from python.framework.types.trading_env_types.currency_codes import (
-    format_currency_signed,
-    format_currency_simple,
-)
 from python.framework.utils.machine_resources_reader import MachineResourcesReader
 from python.system.ui.render_failure_reporter import RenderFailureReporter
 from python.system.ui.ui_render_utils import prove_printable

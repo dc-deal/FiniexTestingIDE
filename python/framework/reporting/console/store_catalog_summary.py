@@ -51,10 +51,26 @@ def render_store_catalog(rows: List[StoreStatus], findings: List[ValidationFindi
     print('\n  Where each store is explained:')
     for row in rows:
         print(f'      {row.store_id.value:<20} {row.doc}')
+    _render_entry_members(rows)
     _render_staleness(rows)
     _render_findings(findings)
     _render_notes(rows)
     print()
+
+
+def _render_entry_members(rows: List[StoreStatus]) -> None:
+    """
+    The stores whose entry is a directory, and the command that lists what one may hold.
+
+    Args:
+        rows: The catalog's status rows
+    """
+    declaring = [row for row in rows if row.entry_members]
+    if not declaring:
+        return
+    print('\n  What ONE entry holds — python python/cli/store_cli.py entry-members <store>:')
+    for row in declaring:
+        print(f'      {row.store_id.value:<20} {row.entry_members} declared file(s)')
 
 
 def render_store_rebuilt(store_id: StoreId, count: int) -> None:

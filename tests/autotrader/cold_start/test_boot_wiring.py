@@ -43,9 +43,12 @@ from python.framework.types.persistence_types import (
     BaselineOrigin,
     CarryOverLoadOutcome,
     ColdStartPayload,
+    ConfigurationCarryOver,
     PositionCarryOver,
+    ReadingsVerdict,
     RiskBaseline,
 )
+from python.framework.types.run_kind_types import OrdersTo, TicksFrom
 from tests.autotrader.cold_start.conftest import RecordingLogger
 
 _CLOCK = datetime(2026, 9, 14, 8, 0, tzinfo=timezone.utc)
@@ -64,6 +67,9 @@ class SpyStore:
              open_positions: Optional[List[PositionCarryOver]] = None,
              risk_baseline: Optional[RiskBaseline] = None,
              account_drawdown: Optional[AccountDrawdownCarryOver] = None,
+             readings_orders_to: Optional[OrdersTo] = None,
+             replace_readings: bool = False,
+             venue_claims_configuration: Optional[ConfigurationCarryOver] = None,
              deployment_id: Optional[str] = None,
              refresh_index: bool = True) -> None:
         if self._fail:
@@ -76,6 +82,9 @@ class SpyStore:
             'open_positions': open_positions,
             'risk_baseline': risk_baseline,
             'account_drawdown': account_drawdown,
+            'readings_orders_to': readings_orders_to,
+            'replace_readings': replace_readings,
+            'venue_claims_configuration': venue_claims_configuration,
             'deployment_id': deployment_id,
             'refresh_index': refresh_index,
         })
@@ -113,7 +122,7 @@ def _note() -> PositionCarryOver:
 
 def _main(executor, store, persist: bool, keys_in_use=None,
           risk_baseline=None, persist_baseline: bool = True,
-          persist_venue_claims: bool = True) -> AutotraderMain:
+          persist_venue_claims: bool = True, new_deployment: bool = False) -> AutotraderMain:
     """
     A session object carrying only what the carry-over write reads.
 
@@ -131,6 +140,8 @@ def _main(executor, store, persist: bool, keys_in_use=None,
             denominator (#356) and the reported drawdown curve (#497)
         persist_venue_claims: Whether the half that CLAIMS SOMETHING ABOUT THE VENUE — the
             session key and the open book — may be written. False for a dry run
+        new_deployment: Whether the start was told `--new-deployment` (#626 — the readings
+            start fresh with it)
     """
     main = AutotraderMain.__new__(AutotraderMain)
     main._executor = executor
@@ -157,6 +168,20 @@ def _main(executor, store, persist: bool, keys_in_use=None,
         persist_venue_claims=persist_venue_claims,
         keys_in_use=set(keys_in_use or ()),
     )
+    # #626 — what the read of the carried readings decides, as a session that continued them
+    # leaves it: its own readings are written under its own kind. `_load_carry_over_records`
+    # overwrites all of it for a test that reads a carry-over first.
+    main._carried = ColdStartPayload()
+    main._new_deployment = new_deployment
+    main._readings_verdict = None
+    main._readings_note = ''
+    main._may_write_readings = True
+    main._readings_stamp = OrdersTo.VENUE if persist_venue_claims else OrdersTo.SIMULATED
+    main._replace_readings_pending = False
+    # #626 — the configuration the claims about the venue are made under, as the boot records it
+    main._venue_claims_configuration = ConfigurationCarryOver(
+        run_id='20260914_080000_a1b2c3d4', profile_name='btcusd_test', account_currency='USD',
+        ticks_from=TicksFrom.VENUE, orders_to=OrdersTo.VENUE, rendered_config_id='3f9c')
     return main
 
 
@@ -331,9 +356,35 @@ class TestTheReportedDrawdownReachesTheStore:
         written = store.saves[0]['account_drawdown']
         assert written is not None
 
-        main._carried = ColdStartPayload(account_drawdown=written)
-        assert main._load_carry_over_records() == ColdStartPayload(), (
+        main._carried = ColdStartPayload(
+            account_drawdown=written, readings_orders_to=OrdersTo.VENUE)
+        assert main._load_carry_over_records(OrdersTo.VENUE) == ColdStartPayload(), (
             'the successor of a session with the switch off continued its curve anyway')
+
+
+
+class TestTheConfigurationRidesWithTheVenueClaims:
+    """
+    What the session key and the book were written under travels with them, and only with them
+    (#626) — a dry run, which writes neither, leaves the configuration of the last session that
+    did as it was, so a rehearsal between two real sessions cannot hide or invent a change.
+    """
+
+    def test_a_real_session_records_its_configuration(self, executor):
+        store = SpyStore()
+
+        _main(executor, store, persist=True)._persist_cold_start_carry_over()
+
+        written = store.saves[0]['venue_claims_configuration']
+        assert written is not None and written.rendered_config_id == '3f9c'
+
+    def test_a_dry_run_leaves_it_alone(self, executor):
+        store = SpyStore()
+
+        _main(executor, store, persist=True,
+              persist_venue_claims=False)._persist_cold_start_carry_over()
+
+        assert store.saves[0]['venue_claims_configuration'] is None
 
 
 class TestTheDeploymentIdentityReachesTheStore:
@@ -637,3 +688,163 @@ class TestTheBaselineReachesTheDiskBeforeAHardKill:
         loop._persist_carry_over_if_needed(ticks_processed=1)
 
         assert writes == []
+
+
+def _fixed_baseline(value: float, kind: BaselineKind = BaselineKind.SESSION_FIXED):
+    """A tracker that has taken its baseline, as the first tick leaves it."""
+    tracker = RiskBaselineTracker(
+        mode=kind, restored=None, spot_mode=False, exclusive_account=False,
+        clock_fn=lambda: _CLOCK, logger=RecordingLogger())
+    tracker.ensure_taken(value)
+    return tracker
+
+
+def _readings(value: float, orders_to: Optional[OrdersTo]) -> ColdStartPayload:
+    """A carry-over holding a denominator and a curve, written by a session of the given kind."""
+    return ColdStartPayload(
+        risk_baseline=RiskBaseline(
+            kind=BaselineKind.HIGH_WATER_MARK, value=value,
+            taken_at_utc=_CLOCK.isoformat(), origin=BaselineOrigin.HWM_UPDATE),
+        account_drawdown=AccountDrawdownCarryOver(
+            max_equity=value, max_drawdown=0.0, max_drawdown_pct=0.0,
+            taken_at_utc=_CLOCK.isoformat()),
+        readings_orders_to=orders_to)
+
+
+class TestTheReadingsFollowTheRunKind:
+    """
+    The drawdown curve and the risk baseline are readings of ONE account (#626).
+
+    A rehearsal's account is simulated. Continued by the real-money session after it, its peak
+    and its denominator would measure real money — the breaker blocking entries from the first
+    tick, or loosening every limit, depending on which side of the real account the simulated
+    one stood. So a session continues the readings only when a session of its own kind wrote
+    them, and a rehearsal never writes over what real money wrote.
+    """
+
+    @pytest.mark.parametrize('model', ['executor', 'spot_executor'])
+    def test_real_money_after_a_rehearsal_starts_fresh_and_replaces_its_readings(
+            self, model, request, tmp_path):
+        executor = request.getfixturevalue(model)
+        store = ColdStartStateStore(tmp_path, 'btcusd_test', 'BTCUSD', RecordingLogger())
+        rehearsal = _main(executor, store, persist=True, persist_venue_claims=False,
+                          risk_baseline=_fixed_baseline(10_400.0, BaselineKind.HIGH_WATER_MARK))
+        rehearsal._load_carry_over_records(OrdersTo.SIMULATED)
+        rehearsal._persist_cold_start_carry_over(refresh_index=False)
+        assert store.load().readings_orders_to is OrdersTo.SIMULATED
+
+        # The boot write comes before the first tick: no baseline of its own yet
+        real = _main(executor, store, persist=True)
+        real._carried = store.load()
+        assert real._load_carry_over_records(OrdersTo.VENUE) == ColdStartPayload(), (
+            "a real-money session continued a rehearsal's peak and denominator")
+        assert real._readings_verdict is ReadingsVerdict.RUN_KIND_CHANGED
+        assert 'rehearsal' in real._readings_note
+        assert any('start fresh' in line for line in real._session_logger.infos)
+
+        real._persist_cold_start_carry_over(refresh_index=False)
+        stored = store.load()
+        assert stored.risk_baseline is None and stored.account_drawdown is None, (
+            "the rehearsal's readings outlived the boot write under a real-money stamp")
+        assert stored.readings_orders_to is OrdersTo.VENUE
+
+    @pytest.mark.parametrize('model', ['executor', 'spot_executor'])
+    def test_real_money_continues_its_own_readings_across_a_rehearsal(
+            self, model, request, tmp_path):
+        executor = request.getfixturevalue(model)
+        store = ColdStartStateStore(tmp_path, 'btcusd_test', 'BTCUSD', RecordingLogger())
+        first = _main(executor, store, persist=True, risk_baseline=_fixed_baseline(10_000.0))
+        first._load_carry_over_records(OrdersTo.VENUE)
+        first._persist_cold_start_carry_over(refresh_index=False)
+
+        rehearsal = _main(executor, store, persist=True, persist_venue_claims=False,
+                          risk_baseline=_fixed_baseline(7_777.0))
+        rehearsal._carried = store.load()
+        assert rehearsal._load_carry_over_records(OrdersTo.SIMULATED) == ColdStartPayload()
+        rehearsal._persist_cold_start_carry_over(refresh_index=False)
+        assert store.load().risk_baseline.value == 10_000.0, (
+            "a rehearsal wrote over real money's denominator")
+
+        again = _main(executor, store, persist=True)
+        again._carried = store.load()
+        carried = again._load_carry_over_records(OrdersTo.VENUE)
+        assert again._readings_verdict is ReadingsVerdict.CONTINUED
+        assert carried.risk_baseline.value == 10_000.0
+        assert again._readings_note == ''
+
+    def test_a_rehearsal_continues_a_rehearsal(self, executor):
+        """The mechanism stays rehearsable: mock sessions and dry runs carry their own."""
+        main = _main(executor, SpyStore(), persist=True, persist_venue_claims=False)
+        main._carried = _readings(10_400.0, OrdersTo.SIMULATED)
+
+        carried = main._load_carry_over_records(OrdersTo.SIMULATED)
+
+        assert carried.risk_baseline.value == 10_400.0
+        assert main._readings_verdict is ReadingsVerdict.CONTINUED
+
+    def test_a_rehearsal_after_real_money_writes_none_of_its_own(self, executor):
+        store = SpyStore()
+        executor.portfolio.sample_equity()
+        main = _main(executor, store, persist=True, persist_venue_claims=False,
+                     risk_baseline=_fixed_baseline(7_777.0))
+        main._carried = _readings(10_000.0, OrdersTo.VENUE)
+
+        assert main._load_carry_over_records(OrdersTo.SIMULATED) == ColdStartPayload()
+        main._persist_cold_start_carry_over()
+
+        written = store.saves[0]
+        assert written['risk_baseline'] is None and written['account_drawdown'] is None
+        assert written['readings_orders_to'] is None and written['replace_readings'] is False
+        assert 'next session that places real orders' in main._readings_note
+
+    def test_an_unrecorded_carry_over_is_not_continued(self, executor):
+        """Written before the kind was recorded: it may be a rehearsal's, so it is not trusted."""
+        main = _main(executor, SpyStore(), persist=True)
+        main._carried = _readings(10_000.0, None)
+
+        assert main._load_carry_over_records(OrdersTo.VENUE) == ColdStartPayload()
+        assert main._readings_verdict is ReadingsVerdict.NOT_RECORDED
+        assert 'does not say' in main._readings_note
+
+    def test_a_new_deployment_starts_fresh_and_is_only_said(self, executor):
+        store = SpyStore()
+        main = _main(executor, store, persist=True, new_deployment=True)
+        main._carried = _readings(10_000.0, OrdersTo.VENUE)
+
+        assert main._load_carry_over_records(OrdersTo.VENUE) == ColdStartPayload()
+        assert main._readings_verdict is ReadingsVerdict.NEW_DEPLOYMENT
+        assert main._readings_note == '', 'a fresh start the operator asked for is no finding'
+        assert any('new deployment' in line for line in main._session_logger.infos)
+
+        main._persist_cold_start_carry_over()
+        assert store.saves[0]['replace_readings'] is True
+
+    def test_the_final_figures_follow_the_same_rule(self, executor):
+        """The closing write carries the curve on its own, so it needs the rule as well."""
+        store = SpyStore()
+        executor.portfolio.sample_equity()
+        main = _main(executor, store, persist=True, persist_venue_claims=False)
+        main._tick_loop = SimpleNamespace(get_highest_period_no=lambda: 3)
+        main._carried = _readings(10_000.0, OrdersTo.VENUE)
+        main._load_carry_over_records(OrdersTo.SIMULATED)
+
+        main._carry_over_final_figures()
+
+        assert store.saves[0]['account_drawdown'] is None
+        assert store.saves[0]['highest_period_no'] == 3
+
+    def test_a_replacement_still_pending_at_the_close_keeps_the_baseline(self, executor):
+        """No earlier write went through: replacing the readings must not erase the baseline."""
+        store = SpyStore()
+        main = _main(executor, store, persist=True,
+                     risk_baseline=_fixed_baseline(10_000.0))
+        main._tick_loop = SimpleNamespace(get_highest_period_no=lambda: 1)
+        main._carried = _readings(10_400.0, OrdersTo.SIMULATED)
+        main._load_carry_over_records(OrdersTo.VENUE)
+
+        main._carry_over_final_figures()
+
+        written = store.saves[0]
+        assert written['replace_readings'] is True
+        assert written['risk_baseline'].value == 10_000.0
+        assert main._replace_readings_pending is False

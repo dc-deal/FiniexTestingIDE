@@ -30,9 +30,9 @@ from typing import Any, Dict, Optional, Tuple
 import pandas as pd
 
 from python.configuration.app_config_manager import AppConfigManager
+from python.framework.constants.run_layout_constants import IO_SUBDIR, RUN_TYPE_SIMULATION
 from python.framework.reporting.store.run_ledger_index import RunLedgerIndex
 from python.framework.reporting.store.run_results_ledger import LEDGER_COLUMNS
-from python.framework.types.log_layout_types import IO_SUBDIR, RUN_TYPE_SIMULATION
 
 _COLUMNS = ('run_outcome', 'error_count', 'warning_count', 'log_warning_count')
 # The three the artifact's outcome gains; its `run_outcome` has always been there.

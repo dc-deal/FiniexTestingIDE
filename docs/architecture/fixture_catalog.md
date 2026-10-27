@@ -62,8 +62,9 @@ either way the production says so.
 
 The production then finds its runs — those that appeared while it ran and carry the entry's run
 name, or belong to its sweep — and checks every property against them through the readers the API
-serves from: a run's sections from the report store, a deployment and a sweep from the route
-functions that answer for them. A property therefore holds for what a consumer is SERVED.
+serves from: a run's sections from the report store, its latest state frames composed by the
+function the check-in route answers with, a deployment and a sweep from the route functions that
+answer for them. A property therefore holds for what a consumer is SERVED.
 
 Finding runs by name has one gap: a run of the same name that somebody starts elsewhere while a
 production runs looks exactly like one of its own. So produce when nothing else runs — and every

@@ -46,6 +46,7 @@ from python.framework.types.activity_registry_types import (
 from python.framework.types.run_origin_types import RunChannel, RunOrigin
 from python.framework.utils.atomic_file_utils import write_text_atomic
 from python.framework.utils.file_lock import FileLock
+from python.framework.utils.file_utils import create_directory
 from python.framework.utils.git_info_utils import get_framework_root, get_git_commit
 from python.framework.utils.run_origin_builder import build_run_origin
 
@@ -152,7 +153,7 @@ class ActivityRegistry:
                 raise OSError(errno.ENOENT, f'the activity directory {directory} cannot be resolved')
             # The owner alone reads the list: an entry names a command line, and another user of
             # the machine has no business reading it (#598). An existing directory keeps its mode.
-            directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+            create_directory(directory, holds='the list of what runs on this machine', mode=0o700)
             started_at = datetime.now(timezone.utc)
             activity_id = (f"{ACTIVITY_ID_PREFIX}{started_at.strftime('%Y%m%d_%H%M%S')}_"
                            f'{secrets.token_hex(4)}')

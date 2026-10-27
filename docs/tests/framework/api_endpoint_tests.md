@@ -145,6 +145,14 @@ absolute paths throughout — so the tests can see what the route makes of them.
 | `TestTheRunListSaysWhoStartedEachRun` | `origin_channel`, `origin_client`, `origin_principal` and `origin_host` on the run's row, from the header's origin block |
 | `TestAPathFromAnotherSystemIsServedTheSameWay` | a header written on Windows — drive letter, backslashes — has its paths made relative the same way |
 
+## A run's files and their routes (`test_run_entry_member_routes.py`)
+
+The run store declares, for each file a run may hold, the route that serves it (#621). This holds
+the declaration to the routes the application mounts below `/reports/runs/{run_id}/`, in both
+directions: every declared route is served, every route below a run serves a declared file — or
+names the other store it serves from, such as the run's configuration — and no two files claim one
+route.
+
 ## Machine resources (`test_machine_resources.py`)
 
 What the machine the server runs on has and uses (#595) — the route the viewer polls before
@@ -235,6 +243,7 @@ and what the sweep view must:
 | `test_no_sweep_is_not_an_error` | An empty ledger is a legitimate empty list, never a 404 |
 | `test_combinations_are_ranked_by_the_sweeps_own_objective` | `/sweeps/{id}` ranks by the objective the spec declared — ranking by anything else answers a question the sweep did not ask |
 | `test_each_combination_carries_its_run_id` | The hinge into the report routes; without it a sweep view is a dead end |
+| `test_a_combination_without_a_value_for_the_objective_is_counted_not_ranked` | A combination that measured no drawdown is left out of a ranking by drawdown and counted in `unranked` (#476) — a shorter list would otherwise read as the whole sweep |
 | `test_unknown_sweep_is_a_404` | An id with no ledger rows |
 
 ## Deployment routes (`TestDeployments`)

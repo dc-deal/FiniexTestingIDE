@@ -34,6 +34,7 @@ from python.data_management.index.tick_index_manager import TickIndexManager
 from python.framework.factory.broker_config_factory import BrokerConfigFactory
 from python.framework.trading_env.broker_config import BrokerConfig
 from python.framework.types.config_types.data_origin_config_types import OriginClass
+from python.framework.utils.file_utils import create_directory
 
 CONVERSIONS_DIR = 'conversions'
 ARCHIVES_DIR = 'Archives'
@@ -133,7 +134,7 @@ class KrakenHistoryCommands:
 
         if not dry_run:
             path = self._conversions_dir() / f'{converted_at:%Y%m%dT%H%M%SZ}.json'
-            path.parent.mkdir(parents=True, exist_ok=True)
+            create_directory(path.parent, holds='the converted history files')
             path.write_text(json.dumps(record, indent=2), encoding='utf-8')
             print(f'→ conversion record {path}')
             print('→ next: python python/cli/data_index_cli.py import --only ticks')
@@ -195,7 +196,7 @@ class KrakenHistoryCommands:
         print(f'✅ count {len(names)} = {len(names)} · names ✓ · inbox 0 · rewritten {len(names)}')
 
         zip_path = finished_dir / ARCHIVES_DIR / zip_name
-        zip_path.parent.mkdir(parents=True, exist_ok=True)
+        create_directory(zip_path.parent, holds='the zipped history archive')
         with zipfile.ZipFile(zip_path, 'a', compression=zipfile.ZIP_DEFLATED) as archive:
             present = set(archive.namelist())
             for path in loose:

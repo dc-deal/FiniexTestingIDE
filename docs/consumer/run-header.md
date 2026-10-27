@@ -31,7 +31,7 @@ served:
 |---|---|---|
 | the code | `code_identity` on this header | the commits, plus the patch that restores an uncommitted change |
 | the configuration it was given | `config_id` on this header; the content at [config](/api/v1/docs/config) | a frozen copy; a sweep's combinations all name the base set, and what each changed is on its row of the [sweep](/api/v1/docs/sweeps) |
-| the configuration it ran with | `rendered_config_id` on this header — an AutoTrader session only | a frozen copy; no route serves its content yet |
+| the configuration it ran with | `rendered_config_id` on this header — a session's rendered profile, a backtest's rendered scenario set with one section per scenario; every sweep combination names its own | a frozen copy; no route serves its content yet |
 | the broker configuration | `broker_config_id` beside `config_hash` on [broker](/api/v1/docs/broker) | a frozen copy, for a session and a backtest alike |
 | the input data | `data_windows` on this header; for a backtest the data's kind per scenario on [scenario details](/api/v1/docs/scenario-details), and for a sweep's combination also the file counts on its [sweep](/api/v1/docs/sweeps) row | a description, never the files themselves |
 
@@ -59,7 +59,7 @@ and a word invented beside it already means something else somewhere.
 | `parent_kind` | Parent | what kind of parent `parent_id` names | `deployment` · `sweep` | it stands alone — or, with `parent_id` set, the run predates the field and its kind is unknown | `parent_kind` |
 | `config_snapshot` | Configuration file | the NAME of the file the run started from — never a path | | never | `config_snapshot` |
 | `config_id` | Configuration id | the content identity of the configuration the run was given: two runs naming one id were given the same configuration | | empty: the run predates registered configurations, or its registration failed | `config_id` |
-| `rendered_config_id` | Rendered configuration id | what an AutoTrader session ran with, its defaults filled in | | empty on a backtest, on a session that predates the field, and on one whose profile could not be rendered | — |
+| `rendered_config_id` | Rendered configuration id | what the run ran with, every default filled in — a session's rendered profile, a backtest's rendered scenario set | | empty on a run recorded before the field existed — for a backtest, before backtests rendered theirs — and on one whose configuration could not be rendered or frozen | — |
 | `app_version` | App version | the version of the application that ran it | | never | `app_version` |
 | `git_commit` | Commit | the commit the run's code came from | | unknown | `git_commit` |
 | `reporting` | Reporting | whether the run was commissioned to write reports | `expected` · `none` | never | `reporting` |
@@ -87,6 +87,7 @@ sweep combinations (the class of instance that produced a run's data).
 | `origin.host` | Host | the installation the run ran on: its minted identity, `h_` and six characters | | `origin_host` |
 | `origin.allow_dirty` | Uncommitted code allowed | whether real orders were explicitly allowed from code that was not committed | `true` · `false` | — |
 | `origin.first_start` | Declared first start | whether a session trading real money was declared the bot's first start — the one way it starts without a carry-over to continue; `false` on a run recorded before contract 37 | `true` · `false` | — |
+| `origin.accept_composite_change` | Changed configuration accepted | the composite the start was told it may continue what the venue still held under — the key the start was given, recorded as typed; the session's `composite_change_accepted` warning says whether it let anything through; null when the start was given none, and on a run recorded before contract 41 | a key, e.g. `7f3a9c2e` · null | — |
 
 ## Code — which code ran
 

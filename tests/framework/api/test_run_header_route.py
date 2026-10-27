@@ -11,12 +11,12 @@ import pytest
 from fastapi.testclient import TestClient
 
 from python.api.api_app import create_app
-from python.framework.reporting.io.run_header_io import RUN_HEADER_ARTIFACT, write_run_header
+from python.framework.constants.run_layout_constants import RUN_HEADER_ARTIFACT, RUN_TYPE_SIMULATION
+from python.framework.reporting.io.run_header_io import write_run_header
 from python.framework.reporting.store.report_store import ReportStore
 from python.framework.reporting.store.served_run_header import served_run_header
 from python.framework.reporting.store.run_index import RunIndex
 from python.framework.types.api.report_types import RunHeader
-from python.framework.types.log_layout_types import RUN_TYPE_SIMULATION
 from python.framework.types.run_origin_types import (
     CodeIdentity,
     ComponentIdentity,
@@ -88,7 +88,7 @@ class TestTheHeaderIsServedWhole:
         assert (body['run_id'], body['config_snapshot']) == (_RUN, 'my_set.json')
         assert body['origin'] == {'channel': 'cli', 'client': 'console', 'principal': 'operator',
                                   'host': 'h_test01', 'allow_dirty': False,
-                                  'first_start': False}
+                                  'first_start': False, 'accept_composite_change': None}
 
     def test_every_path_is_relative_to_its_repository(self, client):
         identity = client.get(_URL).json()['code_identity']

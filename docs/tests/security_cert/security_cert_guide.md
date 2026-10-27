@@ -105,6 +105,12 @@ failed one only costs. The runner then prints what failed and what to do next.
 A session's exit code is not the verdict: the hard-stop stages end their sessions on purpose, and
 an emergency end is graded as one. The capture says what happened.
 
+A stage's run is found by its identity: the runs of the stage's own profile, with the purpose
+that profile declares, the newest by the start its header records — never the newest file. A mock
+rehearsal's stages (fixtures) are found the same way as a real study's (certificates). A capture
+that is empty, or broken before its last line, stops the study with its name and what is wrong; a
+last line cut off by a stopped session is left out and said in the certificate.
+
 To regenerate the certificate from the latest stage runs without running anything:
 
 ```bash
@@ -177,6 +183,11 @@ It reads the latest run of every stage and judges them together. Three groups of
 
 Every check reads two sources where two exist — the capture says what the study saw, the
 breaker's record says what the breaker did — so a study that only believes itself cannot pass.
+
+A declared release is held to the commit its stages ran on: a certificate generated on another
+commit fails with `EVIDENCE COMMIT`, a clean tree or not, and its `valid_until` counts from the
+first stage's start. The runner writes it right after the last stage, so the two agree unless a
+certificate is generated later by hand. The stage runs it rests on stand in `evidence_runs`.
 
 ---
 

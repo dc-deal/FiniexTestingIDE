@@ -1,5 +1,5 @@
 """
-FiniexTestingIDE - Currency Codes
+FiniexTestingIDE - Currency Constants
 ISO 4217 currency codes with symbol mapping
 
 Contains:
@@ -7,7 +7,7 @@ Contains:
 - Covers major forex currencies, minors, and common exotics
 
 Usage:
-    from python.framework.types.trading_env_types.currency_codes import CURRENCY_SYMBOLS
+    from python.framework.constants.currency_constants import CURRENCY_SYMBOLS
     
     symbol = CURRENCY_SYMBOLS.get("USD", "USD")  # Returns "$"
     symbol = CURRENCY_SYMBOLS.get("ZAR", "ZAR")  # Returns "ZAR" (fallback)

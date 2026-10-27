@@ -8,7 +8,6 @@ compares. So both are asserted here.
 """
 
 import json
-import re
 from pathlib import Path
 
 import pandas as pd
@@ -21,6 +20,7 @@ from python.framework.store.abstract_store_index import (
     AbstractStoreIndex,
     store_index_filename,
 )
+from python.framework.store.entry_members.run_entry_members import RUN_ENTRY_MEMBERS
 from python.framework.store.store_catalog import StoreCatalog
 from python.framework.store.store_descriptor import PURPOSE_MAX_LENGTH, StoreDescriptor
 from python.framework.types.store_types import (
@@ -29,6 +29,7 @@ from python.framework.types.store_types import (
     StoreId,
     StoreKind,
 )
+from tests.shared.markdown_anchor_helpers import heading_anchors
 
 
 class _ToyIndex(AbstractStoreIndex):
@@ -46,27 +47,6 @@ class _ToyIndex(AbstractStoreIndex):
                 for f in sorted(self._source.glob('*.json'))]
         self.write(pd.DataFrame(rows, columns=self.COLUMNS))
         return len(rows)
-
-
-def _heading_anchors(doc: Path) -> set:
-    """
-    The anchors GitHub derives from a document's headings, fenced code excluded.
-
-    Args:
-        doc: The Markdown file
-
-    Returns:
-        One anchor per heading: lower-cased, punctuation dropped, spaces turned into hyphens
-    """
-    anchors, fenced = set(), False
-    for line in doc.read_text(encoding='utf-8').splitlines():
-        if line.lstrip().startswith('```'):
-            fenced = not fenced
-            continue
-        heading = re.match(r'#{1,6}\s+(.+?)\s*$', line)
-        if heading and not fenced:
-            anchors.add(re.sub(r'[^\w\- ]', '', heading.group(1).lower()).replace(' ', '-'))
-    return anchors
 
 
 class TestCatalogCompleteness:
@@ -114,7 +94,7 @@ class TestCatalogCompleteness:
             doc = Path(path)
             assert doc.is_file(), f'{descriptor.store_id}: help link {path!r} is no file'
             if anchor:
-                assert anchor in _heading_anchors(doc), (
+                assert anchor in heading_anchors(doc), (
                     f'{descriptor.store_id}: {doc} has no heading with the anchor #{anchor}')
 
     def test_a_special_store_states_why_it_is_special(self):
@@ -397,6 +377,35 @@ class TestStatus:
         assert rows[StoreId.FINISHED_ARCHIVE].entries == 3, 'the dotfile is no entry'
         assert rows[StoreId.FINISHED_ARCHIVE].size_bytes == 3
         assert rows[StoreId.EXTERNAL_HISTORY].entries == 2, 'a zip matched twice is one entry'
+
+    def test_a_directory_entry_is_measured_whole_and_a_nested_store_counts_only_its_own_files(
+            self, tmp_path, monkeypatch):
+        """
+        A run is a directory whose header marks it: its size was the header's bytes alone. A
+        sweep holds its combinations, which are runs and are measured in the run store.
+        """
+        sweep = tmp_path / 'sweep_1'
+        run = sweep / 'my_set_c000' / '20261023_060000_aaaaaaaa'
+        (run / 'io').mkdir(parents=True)
+        (run / 'header.json').write_text('12345')
+        (run / 'io' / 'portfolio.json').write_text('1234567890')
+        (sweep / 'mount_build.log').write_text('123')
+
+        def _store(store_id: StoreId, glob: str, nested: bool) -> StoreDescriptor:
+            return StoreDescriptor(
+                store_id=store_id, kind=StoreKind.RECORD, purpose='toy record', doc='docs/x.md',
+                root=tmp_path, key='id', form=RetrievalForm.DOCUMENT, backend=StoreBackend.DISK,
+                entry_glob=glob, entry_members=RUN_ENTRY_MEMBERS,
+                contains_entries_of=StoreId.RUNS if nested else None)
+
+        monkeypatch.setattr('python.framework.store.store_catalog.build_registrations', lambda: {
+            StoreId.RUNS: _store(StoreId.RUNS, '**/header.json', nested=False),
+            StoreId.SWEEPS: _store(StoreId.SWEEPS, '*/mount_build.log', nested=True),
+        })
+        rows = {r.store_id: r for r in StoreCatalog().status(with_sizes=True)}
+
+        assert rows[StoreId.RUNS].size_bytes == 15, 'the header and the report, not the header'
+        assert rows[StoreId.SWEEPS].size_bytes == 3, "the sweep's own file, not its runs again"
 
 
 class TestStalenessReason:

@@ -42,6 +42,7 @@ from python.framework.utils.config_fingerprint_utils import (
     generate_config_fingerprint,
     read_cache_metadata,
 )
+from python.framework.utils.file_utils import create_directory
 
 vLog = get_global_logger()
 
@@ -71,7 +72,7 @@ class SpreadEstimateCache:
             data_dir = Path(AppConfigManager().get_data_processed_path())
             cache_dir = data_dir / self.CACHE_PARENT_DIR / self.CACHE_SUB_DIR
         self.cache_dir = Path(cache_dir)
-        self.cache_dir.mkdir(parents=True, exist_ok=True)
+        create_directory(self.cache_dir, holds='the spread estimate cache')
         # The method's identity; the source's identity is computed per symbol
         self._method_fingerprint = generate_config_fingerprint(
             {'estimator_version': ESTIMATOR_VERSION})

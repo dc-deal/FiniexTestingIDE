@@ -28,9 +28,11 @@ from python.framework.acceptance_studies.security_cert_stages import (
     stage_profile_path,
 )
 from python.framework.autotrader.autotrader_main import AutotraderMain
-from python.framework.reporting.io.artifact_specs import SAFETY_ARTIFACT, SECURITY_CERT_CAPTURE
+from python.framework.constants.run_layout_constants import IO_SUBDIR, SECURITY_CERT_CAPTURE
+from python.framework.reporting.io.artifact_specs import SAFETY_ARTIFACT
 from python.framework.types.acceptance_study_types.security_cert_types import SecurityStageId
-from python.framework.types.log_layout_types import IO_SUBDIR
+from python.framework.types.store_member_types import RunEntryMemberId
+from tests.shared.entry_census_helpers import assert_run_dir_declared, members_present
 from tests.shared.fixture_helpers import remove_run_dir
 
 MOCK_DIR = Path('configs/autotrader_profiles/mock/security_cert')
@@ -59,6 +61,7 @@ def stages() -> Dict[SecurityStageId, Dict[str, Any]]:
                        .splitlines() if line.strip()][1:] if capture.exists() else []),
             'safety': (json.loads(safety.read_text(encoding='utf-8'))
                        if safety.exists() else {}),
+            'run_dir': run_dir,
         }
     yield ran
     for run_dir in run_dirs:
@@ -69,6 +72,16 @@ def _result(lines: List[Dict[str, Any]], phase_id: str) -> Dict[str, Any]:
     """The phase's result line."""
     return next(line for line in lines
                 if line['event_type'] == 'phase_result' and line['phase'] == phase_id)
+
+
+class TestEveryStageIsADeclaredRun:
+    """The run entry census counts on this suite for the security study's capture (#621)."""
+
+    @pytest.mark.parametrize('stage_id', list(_S), ids=lambda s: s.value)
+    def test_its_run_directory_holds_only_declared_files(self, stages, stage_id):
+        run_dir = stages[stage_id]['run_dir']
+        assert_run_dir_declared(run_dir)
+        assert RunEntryMemberId.SECURITY_CERT_CAPTURE in members_present(run_dir)
 
 
 class TestEveryStageStarts:

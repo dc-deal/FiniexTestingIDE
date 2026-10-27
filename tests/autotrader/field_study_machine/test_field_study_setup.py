@@ -4,7 +4,7 @@ Field Study — the session wiring and its preflight (#332, #566).
 `open_acceptance_study` opens the capture with the venue's declared fee reporting in its header,
 hangs the projection on the executor's record and refuses to trade beside a resting order;
 `close_acceptance_study` writes what reconciliation did and the REST telemetry before the end
-marker. The study it opens tells it its name and its capture file.
+marker. The study it opens tells it its name and which member its capture is.
 Every refusal and every end leaves a terminated capture behind — a header with no end is a run
 that cannot be told from one still going.
 """
@@ -27,6 +27,7 @@ from python.framework.types.config_types.market_config_types import TradingModel
 from python.framework.types.live_types.api_perf_types import ApiEndpointStats, ApiPerfSnapshot
 from python.framework.types.live_types.live_execution_types import BrokerOrderStatus
 from python.framework.types.live_types.reconciliation_types import BrokerOrder, FlatCheckResult
+from python.framework.types.store_member_types import RunEntryMemberId
 from python.framework.types.trading_env_types.order_types import (
     FeeReport,
     OrderCapabilities,
@@ -68,7 +69,8 @@ class _Executor:
 def _study() -> SimpleNamespace:
     return SimpleNamespace(
         STUDY_LABEL='Field Study', get_phase_ids=lambda: ['p1'],
-        set_recorder=lambda recorder: None, get_capture_name=lambda: 'field_study.jsonl',
+        set_recorder=lambda recorder: None,
+        get_capture_member=lambda: RunEntryMemberId.FIELD_STUDY_CAPTURE,
         get_capture_next_step=lambda: 'generate the acceptance certificate')
 
 

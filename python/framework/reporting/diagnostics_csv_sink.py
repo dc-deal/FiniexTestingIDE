@@ -9,12 +9,19 @@ strategy owns the schema: it declares columns and appends rows.
 Distinct from the trade-domain event_stream_csv_writer (fixed schema, post-loop
 reconstruction). Rows here accumulate in memory during the run (decision moments
 are low-frequency, not per-tick) and are flushed once at run end, so nothing
-touches the hot tick path. A no-op when file logging is disabled (run_dir None).
+touches the hot tick path. A no-op where the run has no writer.
+
+An AutoTrader session also streams every row as it is appended (#476), into a JSONL file beside
+the table: the table is written at the end, and a session killed before it would keep no row.
 """
 
-import csv
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+
+from python.framework.exceptions.data_home_errors import DirectoryCreationDeniedError
+from python.framework.reporting.io.run_stream_appender import RunStreamAppender
+from python.framework.store.entry_members.run_entry_writer import RunEntryWriter
+from python.framework.types.store_member_types import RunEntryMemberId
 
 
 class DiagnosticsCsvSink:
@@ -31,6 +38,8 @@ class DiagnosticsCsvSink:
         self._name = name
         self._columns = list(columns)
         self._rows: List[Dict[str, Any]] = []
+        # Where each row also goes as it is appended — a session's stream; None writes nothing
+        self._stream: Optional[RunStreamAppender] = None
 
     def get_name(self) -> str:
         """
@@ -52,20 +61,64 @@ class DiagnosticsCsvSink:
             row: Column-name → value mapping for this row
         """
         self._rows.append(row)
+        if self._stream is not None:
+            self._stream.write(self._declared(row))
+
+    def get_columns(self) -> List[str]:
+        """
+        The declared columns, in order.
+
+        Returns:
+            The column names
+        """
+        return list(self._columns)
+
+    def attach_stream(self, stream: RunStreamAppender) -> None:
+        """
+        Write every row into a stream as well — the rows so far at once, each later one as it is
+        appended (#476).
+
+        Args:
+            stream: The opened stream
+        """
+        self._stream = stream
+        for row in self._rows:
+            stream.write(self._declared(row))
+
+    def _declared(self, row: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        A row as a stream line holds it: the declared columns, in order, a missing one empty.
+
+        Args:
+            row: The appended row
+
+        Returns:
+            Column → value for the declared columns, every value one a JSON line can hold
+        """
+        return {column: _line_value(row.get(column)) for column in self._columns}
+
+    def get_row_count(self) -> int:
+        """
+        How many rows the strategy has appended.
+
+        Returns:
+            The buffered row count
+        """
+        return len(self._rows)
 
     def flush(
         self,
-        run_dir: Optional[Path],
+        writer: Optional[RunEntryWriter],
         scenario_suffix: Optional[str] = None,
     ) -> Optional[Path]:
         """
-        Write the buffered rows to a CSV in the run directory.
+        Write the buffered rows to a CSV in the run's diagnostics folder.
 
-        No-op when run_dir is None (file logging disabled) or no rows were
+        No-op when there is no writer (a test without a run) or no rows were
         appended — mirrors the EventStreamWriter convention.
 
         Args:
-            run_dir: Directory to write into (next to events.csv)
+            writer: The run's writer
             scenario_suffix: Optional scenario name → <name>_<suffix>.csv
                 (sim writes all scenarios into one run dir; the suffix
                 disambiguates and aligns with events_<scenario>.csv)
@@ -73,32 +126,59 @@ class DiagnosticsCsvSink:
         Returns:
             Path to the written CSV, or None if nothing was written
         """
-        if run_dir is None or not self._rows:
+        if writer is None or not self._rows:
             return None
 
-        run_dir.mkdir(parents=True, exist_ok=True)
-        filename = f'{self._name}_{scenario_suffix}.csv' if scenario_suffix else f'{self._name}.csv'
-        out_path = run_dir / filename
+        if scenario_suffix:
+            member_id, names = RunEntryMemberId.SCENARIO_DIAGNOSTICS, {
+                'sink': self._name, 'scenario': scenario_suffix}
+        else:
+            member_id, names = RunEntryMemberId.SESSION_DIAGNOSTICS, {'sink': self._name}
         try:
-            with open(out_path, 'w', newline='', encoding='utf-8') as f:
-                writer = csv.DictWriter(
-                    f, fieldnames=self._columns, extrasaction='ignore')
-                writer.writeheader()
-                for row in self._rows:
-                    writer.writerow(row)
+            return writer.write_table(member_id, self._columns, self._rows,
+                                      ignore_extra_columns=True, **names)
+        except DirectoryCreationDeniedError:
+            # A directory the IDE may not create is a refusal that stops the run, not a table
+            # that failed to write
+            raise
         except Exception as e:
-            print(f'Warning: Failed to write diagnostics CSV {out_path}: {e}')
+            print(f'Warning: Failed to write diagnostics CSV {self._name}: {e}')
             return None
 
-        return out_path
 
+def _line_value(value: Any) -> Any:
+    """
+    One cell as a stream line holds it: JSON's own types as they are, anything else as the table
+    writes it.
 
-DIAGNOSTICS_SUBDIR = 'diagnostics'
+    The table turns every cell into text, so a strategy may append a datetime, a numpy number or an
+    enum and the backtest's table takes it. The stream keeps numbers and flags typed and writes
+    everything else as the table would — a row the table takes must never end a session through
+    its stream (#476).
+
+    Args:
+        value: The appended cell
+
+    Returns:
+        None, a bool, an int, a float, a str — or the cell's text
+    """
+    if value is None or isinstance(value, (bool, int, float, str)):
+        return value
+    # A numpy scalar holds a Python number or flag; an array of more than one value has none
+    item = getattr(value, 'item', None)
+    if callable(item):
+        try:
+            held = item()
+        except (TypeError, ValueError):
+            held = None
+        if isinstance(held, (bool, int, float, str)):
+            return held
+    return str(value)
 
 
 def flush_decision_diagnostics(
     decision_logic,
-    run_dir: Optional[Path],
+    writer: Optional[RunEntryWriter],
     scenario_suffix: Optional[str] = None,
 ) -> None:
     """
@@ -112,9 +192,8 @@ def flush_decision_diagnostics(
 
     Args:
         decision_logic: The AbstractDecisionLogic instance for the run
-        run_dir: Run directory, or None when file logging is disabled
+        writer: The run's writer, or None when there is no run directory
         scenario_suffix: Optional scenario name for the sim per-scenario filename
     """
-    target = run_dir / DIAGNOSTICS_SUBDIR if run_dir is not None else None
     for sink in decision_logic.get_diagnostics_sinks():
-        sink.flush(target, scenario_suffix)
+        sink.flush(writer, scenario_suffix)

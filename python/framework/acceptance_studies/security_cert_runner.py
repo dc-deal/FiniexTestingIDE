@@ -13,8 +13,9 @@ together, against each other.
 import subprocess
 import sys
 import time
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import List, Optional
 
 from python.configuration.autotrader.autotrader_config_loader import load_autotrader_config
 from python.configuration.autotrader.broker_config_fetcher_factory import BrokerConfigFetcherFactory
@@ -25,6 +26,7 @@ from python.framework.acceptance_studies.security_cert_stages import (
 )
 from python.framework.autotrader.cold_start.cold_start_setup import read_carry_over
 from python.framework.autotrader.dry_run_resolver import resolve_dry_run
+from python.framework.exceptions.acceptance_study_errors import AcceptanceCaptureUnreadableError
 from python.framework.exceptions.connection_errors import ConnectionGaveUpError
 from python.framework.exceptions.live_execution_errors import DryRunConflictError
 from python.framework.factory.broker_config_factory import BrokerConfigFactory
@@ -97,7 +99,11 @@ def run_security_study(
         if capture is None:
             print(f'  ❌ Stage {stage.stage_id.value} wrote no capture — the study stops here.')
             return 1
-        failures = SecurityCertCertificate.stage_failures(stage.stage_id, capture)
+        try:
+            failures = SecurityCertCertificate.stage_failures(stage.stage_id, capture)
+        except AcceptanceCaptureUnreadableError as unreadable:
+            print(f'  ❌ Stage {stage.stage_id.value}: {unreadable} — the study stops here.')
+            return 1
         if failures:
             print(f'  ❌ Stage {stage.stage_id.value} failed — the study stops here:')
             for failure in failures:
@@ -108,8 +114,12 @@ def run_security_study(
         print(f'  ✅ Stage {stage.stage_id.value} passed → {capture}')
 
     captures = SecurityCertCertificate.find_latest_captures(run_root, profile_dir)
-    certificate = SecurityCertCertificate.generate(
-        captures, release_version=release_version, comment=comment, reports_dir=reports_dir)
+    try:
+        certificate = SecurityCertCertificate.generate(
+            captures, release_version=release_version, comment=comment, reports_dir=reports_dir)
+    except AcceptanceCaptureUnreadableError as unreadable:
+        print(f'  ❌ {unreadable} — no certificate is written.')
+        return 1
     print(f'  📜 Certificate → {certificate}')
     return 0
 
@@ -121,7 +131,8 @@ def _capture_since(
     run_root: Optional[str],
 ) -> Optional[Path]:
     """
-    The capture the stage just wrote — its newest, and only if it is newer than the stage's start.
+    The capture of the stage's newest run, and only when that run started after the runner started
+    the stage — by the start its header records, not by the file's modification time.
 
     Args:
         stage_id: The stage
@@ -132,12 +143,10 @@ def _capture_since(
     Returns:
         The capture file, or None when the stage wrote none
     """
-    captures: Dict[SecurityStageId, Path] = SecurityCertCertificate.find_latest_captures(
-        run_root, profile_dir)
-    capture = captures.get(stage_id)
-    if capture is None or capture.stat().st_mtime < started:
+    run = SecurityCertCertificate.find_latest_stage_runs(run_root, profile_dir).get(stage_id)
+    if run is None or run.start_time < datetime.fromtimestamp(started, timezone.utc):
         return None
-    return capture
+    return run.capture_path
 
 
 def starts_without_a_carry_over(profile: Path) -> bool:

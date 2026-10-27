@@ -280,3 +280,30 @@ class TestTheSessionStreamHoldsEverySubmission:
 
     def test_a_complete_stream_says_nothing(self):
         assert _validated(self._result(recorded=5, counted=5), _config(with_settings=False)) == []
+
+
+class TestReadingsThatStartedFresh:
+    """
+    A session that did not continue the drawdown curve and the risk baseline its carry-over held
+    says so on its own record (#626). Decided at the start, where the readings are restored; the
+    figures alone cannot show it, because a fresh curve looks like a first run.
+    """
+
+    _NOTE = ('The drawdown curve and the risk baseline start fresh: the carried ones were written '
+             'by a rehearsal (orders simulated), and this session places real orders. Simulated '
+             'and real results are never linked.')
+
+    def test_the_note_from_the_start_becomes_a_portfolio_warning(self):
+        result = AutoTraderResult()
+        SessionPostRunValidator(result, _config(), readings_note=self._NOTE).validate()
+        findings = [f for vr in result.session_validation_result for f in vr.findings
+                    if f.check == 'carried_readings_not_continued']
+        assert len(findings) == 1
+        assert findings[0].domain is ValidationDomain.PORTFOLIO
+        assert findings[0].message == self._NOTE
+
+    def test_a_session_that_continued_them_says_nothing(self):
+        result = AutoTraderResult()
+        SessionPostRunValidator(result, _config()).validate()
+        assert all(f.check != 'carried_readings_not_continued'
+                   for vr in result.session_validation_result for f in vr.findings)

@@ -175,3 +175,6 @@ this — they compare only the logic-type string / worker count, not the paramet
 Walk-Forward *optimization* (rolling re-tuned IS/OOS windows, the #390 sweep × robustness) is a
 later evolution. This issue ships the honest judge — the distribution + IS/OOS view — that keeps a
 parameter sweep from being self-deception.
+
+Nor does it say how the windows' ledger rows add up into one figure — each window is an account of
+its own, and that is [Reading the Results Ledger](results_ledger_guide.md).

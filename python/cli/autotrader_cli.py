@@ -12,6 +12,7 @@ import traceback
 
 from python.configuration.autotrader.autotrader_config_loader import load_autotrader_config
 from python.framework.autotrader.autotrader_main import AutotraderMain
+from python.framework.exceptions.data_home_errors import DirectoryCreationDeniedError
 from python.framework.exceptions.host_identity_errors import HostIdentityError
 from python.framework.exceptions.live_execution_errors import (
     OneOffInsideDeploymentError,
@@ -61,8 +62,9 @@ def main():
         '--new-deployment', action='store_true',
         help='Begin a NEW deployment instead of continuing the one this bot last named '
              '(#497). For a bot redeployed after a pause or with different parameters, where '
-             'continuing the old history would claim a continuity that does not exist. Safe '
-             'to forget: without it the existing deployment simply continues.')
+             'continuing the old history would claim a continuity that does not exist. The '
+             'drawdown curve and the risk baseline start fresh with it (#626). Safe to forget: '
+             'without it the existing deployment simply continues.')
     run_parser.add_argument(
         '--allow-dirty', action='store_true',
         help='Permit REAL orders from code no commit describes (#551). Without it, a session '
@@ -87,6 +89,23 @@ def main():
              'carry-over refuses too, so the flag left in a service unit switches nothing off. '
              'Recorded in the run header (origin.first_start). A mock or dry-run session is '
              'never affected.')
+    run_parser.add_argument(
+        '--accept-composite-change', metavar='KEY',
+        help="Let THIS start continue what the venue still holds — this bot's position or its "
+             'resting orders — under a configuration that defines another composite than the '
+             'one that opened it (#626). KEY is the composite the refusal printed (its first '
+             'eight characters, or more): the flag accepts exactly that one, so left in a service '
+             'unit it can never accept a later change. Without it such a start is refused, and '
+             'the refusal names every changed value, the part of the key it feeds, where it comes '
+             'from and the ways on. It arises when the strategy or a condition in the profile was '
+             'edited (safety, order guard, heartbeat, tick source, session end), when a release '
+             'moved a default the profile does not set, or when a workspace override changed, '
+             'while a position or an order was open. From then on the deployment is two series: '
+             'figures that need one long unbroken series — Sharpe, profit factor, a backtest of '
+             'the same period — start over. Recorded in the run header '
+             '(origin.accept_composite_change) and reported as a warning; the next start compares '
+             'against this one. With nothing open or nothing changed it is ignored with a note. '
+             'A mock or dry-run session is never affected.')
 
     # ─────────────────────────────────────────────────────────────────────────
     # Parse and execute
@@ -114,7 +133,8 @@ def main():
                 config, attended=args.attended,
                 one_off=args.one_off, new_deployment=args.new_deployment,
                 channel=RunChannel.CLI, allow_dirty=args.allow_dirty,
-                first_start=args.first_start)
+                first_start=args.first_start,
+                accept_composite_change=args.accept_composite_change)
             result = trader.run()
 
             # The result carries the graded outcome; the CLI only maps it (#372)
@@ -139,6 +159,12 @@ def main():
         # trusted, and the message names the file and both ways forward. It is raised before
         # the run header is written, because a header must not state an identity nobody trusts.
         print(f'\n🪪 {refusal}\n')
+        sys.exit(2)
+    except DirectoryCreationDeniedError as refusal:
+        # The operating system refused a directory the session needs — its run directory, which
+        # holds its record (#621). A refusal, not a fault: the message names the path, the cause
+        # and the setting, and the session ends before it sends anything
+        print(f'\n📁 {refusal}\n')
         sys.exit(2)
     except Exception as e:
         print(f'\n❌ Error: {e}')

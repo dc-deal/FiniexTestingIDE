@@ -12,9 +12,11 @@ import re
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from python.configuration.app_config_manager import AppConfigManager
+from python.framework.acceptance_studies.abstract_acceptance_study import AbstractAcceptanceStudy
+from python.framework.constants.run_layout_constants import RUN_TYPE_AUTOTRADER
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.discoveries.signal_coverage.signal_scenario_info import SignalScenarioInfo
 from python.framework.logging.scenario_logger import ScenarioLogger
@@ -56,9 +58,7 @@ from python.framework.reporting.io.artifact_specs import (
     VENUE_ACCOUNT_ARTIFACT,
     WARNINGS_ERRORS_ARTIFACT,
 )
-from python.framework.reporting.io.report_artifact_io import write_artifact
 from python.framework.reporting.shared_report_coordinator import SharedReportCoordinator
-from python.framework.reporting.store.report_store import IO_SUBDIR
 from python.framework.reporting.store.run_provenance_builder import (
     build_run_provenance_from_session,
 )
@@ -67,14 +67,27 @@ from python.framework.reporting.builders.booking_periods_report_builder import (
 )
 from python.framework.reporting.console.booking_periods_summary import BookingPeriodsSummary
 from python.framework.reporting.store.run_results_ledger import append_run_to_ledger
+from python.framework.store.entry_members.run_entry_writer import RunEntryWriter
+from python.framework.store.entry_members.run_entry_members import RUN_ENTRY_MEMBERS
+from python.framework.store.entry_members.run_footprint import (
+    expectation,
+    expectation_after,
+    write_footprint,
+)
 from python.framework.trading_env.broker_config import BrokerConfig
 from python.framework.types.api.report_types import RunSummary
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
 from python.framework.types.autotrader_types.autotrader_result_types import AutoTraderResult
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
 from python.framework.types.log_level import LogLevel
+from python.framework.types.run_footprint_types import MemberExpectation
 from python.framework.types.signal_data_types import SignalObservedSeries
+from python.framework.types.store_member_types import EntryMemberShape, RunEntryMemberId
 from python.framework.utils.console_renderer import ConsoleRenderer
+
+# The day records a session may seal (#476), read from the run store's declaration
+_DAY_RECORD_MEMBERS = tuple(member.member_id for member in RUN_ENTRY_MEMBERS
+                            if member.shape is EntryMemberShape.DAY_RECORD)
 
 
 class AutotraderReportCoordinator:
@@ -154,15 +167,16 @@ class AutotraderReportCoordinator:
             them from here rather than computing its own (#235)
         """
         result = self._result
+        writer = RunEntryWriter(self._run_dir, RUN_TYPE_AUTOTRADER)
 
         # Long-format event-stream CSV (#330) — replaces the previous
         # autotrader_orders.csv + autotrader_trades.csv pair with a single
         # chronological events.csv (FIX ExecutionReport style).
-        EventStreamWriter.from_autotrader_result(
+        events_writer = EventStreamWriter.from_autotrader_result(
             trade_history=result.trade_history or [],
             order_history=result.order_history or [],
-            run_dir=self._run_dir,
-        ).flush('events.csv')
+        )
+        events_writer.flush(writer, RunEntryMemberId.SESSION_EVENTS)
 
         # Unified report artifacts (#391) — the canonical models the console/CSV
         # render and the API serves; same shape as sim, one set per session run.
@@ -186,14 +200,11 @@ class AutotraderReportCoordinator:
                 self._config.scenario_settings.stress_test_config
                 if self._config.scenario_settings else None))
 
-        # Report artifacts (JSON + CSV) go into the session's io/ subfolder (#396 housekeeping).
-        io_dir = self._run_dir / IO_SUBDIR
-
         # DERIVE + PERSIST the 7 units-derived sections shared with sim (#403): trade / order /
         # portfolio (single session = its own currency aggregate) / pending (empty for live) /
         # execution-stats / run-summary / worker-decision. The models feed the unified console.
         unified = SharedReportCoordinator.derive_and_persist(
-            self._run_id, units, io_dir, self._signal_scenario_map, self._observed_feed,
+            self._run_id, units, writer, self._signal_scenario_map, self._observed_feed,
             roster=unit_roster_from_session(result, name))
 
         # Warnings & errors — tiered model (#395). Persisted for API parity with the sim runs;
@@ -201,7 +212,7 @@ class AutotraderReportCoordinator:
         # avoids double-rendering the emergency cause, §35).
         warnings_errors_report = build_warnings_errors_report_from_session(
             self._run_id, result, name, self._config.symbol)
-        write_artifact(warnings_errors_report, io_dir, WARNINGS_ERRORS_ARTIFACT)
+        writer.write_section(WARNINGS_ERRORS_ARTIFACT, warnings_errors_report)
 
         # Broker configuration — the session's single broker + symbol (unified model;
         # same artifact + API shape as the sim runs). Skipped if the session never built
@@ -210,7 +221,7 @@ class AutotraderReportCoordinator:
         if self._broker_config is not None:
             broker_report = build_broker_report_from_session(
                 self._run_id, self._broker_config, self._config.symbol)
-            write_artifact(broker_report, io_dir, BROKER_ARTIFACT)
+            writer.write_section(BROKER_ARTIFACT, broker_report)
 
         # Cold start (#355 / #493) — what the boot step found and what was decided about it.
         # Absent for a simulation, a dry run and a Field Study: the three cases with nothing
@@ -227,7 +238,7 @@ class AutotraderReportCoordinator:
                 result.cold_start_verdict,
                 type(self._decision_logic).__name__ if self._decision_logic else '',
             )
-            write_artifact(cold_start_report, io_dir, COLD_START_ARTIFACT)
+            writer.write_section(COLD_START_ARTIFACT, cold_start_report)
 
         # Safety (#356 / #314) — the risk denominator this session ran against and how far
         # the account moved away from it. Written whenever a baseline was TAKEN, including
@@ -241,7 +252,7 @@ class AutotraderReportCoordinator:
             safety_report = build_safety_report_from_session(
                 self._run_id, result.safety_session, self._config.safety,
                 self._config.symbol)
-            write_artifact(safety_report, io_dir, SAFETY_ARTIFACT)
+            writer.write_section(SAFETY_ARTIFACT, safety_report)
 
         # Venue account (#362) — what the venue held at the session's start and end, and what
         # the reconciliation recorded in between, derived from the broker-truth lines of the
@@ -250,7 +261,7 @@ class AutotraderReportCoordinator:
         venue_account_report = None
         if any(unit.broker_truth for unit in units):
             venue_account_report = build_venue_account_report(self._run_id, units)
-            write_artifact(venue_account_report, io_dir, VENUE_ACCOUNT_ARTIFACT)
+            writer.write_section(VENUE_ACCOUNT_ARTIFACT, venue_account_report)
 
         # The booking periods, derived once and used three times: the artifact, the table below,
         # and — through the periods themselves — the ledger rows. The reconciliation against the
@@ -259,7 +270,7 @@ class AutotraderReportCoordinator:
         # checks against exists only while the run does (#539).
         booking_periods = build_booking_periods_report(
             self._run_id, units, unified.run_summary)
-        write_artifact(booking_periods, io_dir, BOOKING_PERIODS_ARTIFACT)
+        writer.write_section(BOOKING_PERIODS_ARTIFACT, booking_periods)
 
         # Every artifact of this session is on disk now — the index records WHICH, so a consumer
         # knows what it can fetch instead of discovering it by 404 (#475).
@@ -274,7 +285,9 @@ class AutotraderReportCoordinator:
         provenance = build_run_provenance_from_session(
             self._config, self._run_id, self._run_timestamp, warnings_errors_report,
             deployment_id=self._deployment_id, run_dir=self._run_dir,
-            logger=self._summary_logger, replayed_scenario=self._replayed_scenario)
+            logger=self._summary_logger, replayed_scenario=self._replayed_scenario,
+            broker_config_id=(self._broker_config.get_frozen_config_id()
+                              if self._broker_config is not None else ''))
         # The session's ledger entries (#537): its booking periods ARE its ledger rows, and no
         # aggregate row is written beside them — the deployment history sums over rows, and a
         # summary standing next to its own evidence would count the month twice.
@@ -284,7 +297,7 @@ class AutotraderReportCoordinator:
 
         # Diagnostics CSV (#376) — algo-declared sinks, next to events.csv.
         if self._decision_logic:
-            flush_decision_diagnostics(self._decision_logic, self._run_dir)
+            flush_decision_diagnostics(self._decision_logic, writer)
 
         # === PRESENT — the unified end-of-run console (#403 Phase 2): the shared sections in
         # sim order (trade / portfolio / broker / worker performance), then the AutoTrader
@@ -332,4 +345,110 @@ class AutotraderReportCoordinator:
             f'📋 Session summary written — {result.ticks_processed} ticks, '
             f'{result.count_logged(LogLevel.WARNING)} warnings, '
             f'{result.count_logged(LogLevel.ERROR)} errors')
+
+        # === CLOSE (#621): the session's own footprint, written last so a session that has one
+        # got here — after the console and the summary log, which can still fail ===
+        expectations = self._footprint_expectations(
+            # From what the table had to hold, not from the write: a write that fails returns
+            # nothing either, and must not read as a session that placed no order
+            events_written=events_writer.has_events(),
+            broker_written=broker_report is not None,
+            cold_start_written=cold_start_report is not None,
+            safety_written=safety_report is not None,
+            venue_account_written=venue_account_report is not None)
+        try:
+            write_footprint(self._run_dir, self._run_id, RUN_TYPE_AUTOTRADER, expectations)
+        except OSError as error:
+            self._global_logger.error(
+                f"The session's footprint could not be written ({error}) — the session reads as "
+                f'not closed')
         return unified.run_summary
+
+    def _footprint_expectations(self, events_written: bool, broker_written: bool,
+                                cold_start_written: bool, safety_written: bool,
+                                venue_account_written: bool) -> List[MemberExpectation]:
+        """
+        For each file a session writes only sometimes, whether this session expected it — judged
+        from what the session knows at its close, so a writer that failed reads as failed rather
+        than as a file that did not apply. The report sections are judged by the branches above
+        that decided them; the streams by the profile and by how far the session got, since a
+        start that was refused or aborted closes too; the logs by the log switch.
+
+        Args:
+            events_written: Whether the event table was written
+            broker_written: Whether the broker section was written
+            cold_start_written: Whether the cold-start section was written
+            safety_written: Whether the safety section was written
+            venue_account_written: Whether the venue-account section was written
+
+        Returns:
+            One expectation per member the session decides on
+        """
+        logs_on = AppConfigManager().get_file_logging_config_object().scenario_enabled
+        capture = (self._decision_logic.get_capture_member()
+                   if isinstance(self._decision_logic, AbstractAcceptanceStudy) else None)
+        sinks = self._decision_logic.get_diagnostics_sinks() if self._decision_logic else []
+        reach = self._result.session_reach
+        log_members = (RunEntryMemberId.SESSION_GLOBAL_LOG, RunEntryMemberId.SESSION_SUMMARY_LOG,
+                       RunEntryMemberId.SESSION_BOOT_LOG)
+        return [
+            *(expectation(member_id, logs_on, 'log files are switched on',
+                          'log files are switched off') for member_id in log_members),
+            expectation_after(RunEntryMemberId.SESSION_DAY_LOG, logs_on, reach.day_log_opened,
+                              'log files are switched on', 'log files are switched off',
+                              'the session made no pass of its tick loop'),
+            expectation_after(RunEntryMemberId.ORDER_EVENTS, True, reach.order_record_opened,
+                              'the session opened its order record', '',
+                              'the session stopped before it opened its order record'),
+            expectation(RunEntryMemberId.SESSION_EVENTS, events_written,
+                        'the session placed an order', 'the session placed no order'),
+            expectation(RunEntryMemberId.BROKER, broker_written,
+                        'the session built its broker configuration',
+                        'the session built no broker configuration'),
+            expectation(RunEntryMemberId.COLD_START, cold_start_written,
+                        'the boot found something to inherit', 'the boot found nothing to inherit'),
+            expectation(RunEntryMemberId.SAFETY, safety_written,
+                        'a risk baseline was taken', 'no risk baseline was taken'),
+            expectation(RunEntryMemberId.VENUE_ACCOUNT, venue_account_written,
+                        'the session asked its venue', 'the session asked its venue nothing'),
+            expectation(RunEntryMemberId.SESSION_DIAGNOSTICS,
+                        any(sink.get_row_count() for sink in sinks),
+                        'the logic recorded a diagnostics row',
+                        'the logic recorded no diagnostics row'),
+            expectation_after(RunEntryMemberId.DIAGNOSTICS_ROWS, bool(sinks),
+                              reach.tick_loop_entered, 'the logic declared a diagnostics sink',
+                              'the logic declared no diagnostics sink',
+                              'the session stopped before its tick loop'),
+            expectation_after(RunEntryMemberId.STATE_FRAMES, self._config.state_frames.enabled,
+                              reach.tick_loop_entered, 'the profile records state frames',
+                              'the profile records no state frames',
+                              'the session stopped before its tick loop'),
+            expectation_after(RunEntryMemberId.TRADES, True, reach.tick_loop_entered,
+                              'the session reached its tick loop', '',
+                              'the session stopped before its tick loop'),
+            expectation(RunEntryMemberId.ALGO_STATE_RESTORED, reach.algo_state_found,
+                        'a saved algo state was found at the start',
+                        'no saved algo state was found at the start'),
+            expectation_after(RunEntryMemberId.TICK_STREAM_EVENTS,
+                              self._config.tick_source.type != 'mock', reach.tick_source_started,
+                              'the session reads its ticks from a venue',
+                              'the session replays recorded ticks',
+                              'the session stopped before its tick source started'),
+            expectation_after(RunEntryMemberId.FIELD_STUDY_CAPTURE,
+                              capture is RunEntryMemberId.FIELD_STUDY_CAPTURE,
+                              reach.capture_opened,
+                              'the decision logic is the field study',
+                              'the decision logic is no field study',
+                              'the session stopped before the study opened its capture'),
+            expectation_after(RunEntryMemberId.SECURITY_CERT_CAPTURE,
+                              capture is RunEntryMemberId.SECURITY_CERT_CAPTURE,
+                              reach.capture_opened,
+                              'the decision logic is a security-study stage',
+                              'the decision logic is no security-study stage',
+                              'the session stopped before the study opened its capture'),
+            # #476: the day records of every stream that was open when a trading day ended
+            *(expectation(member_id, member_id in reach.sealed_day_records,
+                          'the stream was open when a trading day ended',
+                          'no trading day ended while the stream was open')
+              for member_id in _DAY_RECORD_MEMBERS),
+        ]
