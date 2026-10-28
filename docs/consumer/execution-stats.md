@@ -27,8 +27,8 @@ never folded together; see [run kinds](/api/v1/docs/run-kinds).
 other per-unit sections carry under their own field names, and joining on it is meant rather than
 incidental — [row keys](/api/v1/docs/row-keys) has the four spellings.
 
-`units` declares no key at all, which is not the same as declaring an empty one. The unit name
-separates the rows in practice, but the response does not promise it yet.
+`keys.units` is `["name"]`: the unit's name is what makes a row unique, and the answer declares it
+— see [row keys](/api/v1/docs/row-keys).
 
 Only units that recorded order counts appear. The complete list of units a run declared, the ones
 that produced nothing included, is the roster in
@@ -88,6 +88,42 @@ total is a plain sum of the rows and there is exactly one of it. This is deliber
 EUR and money in USD is not one scale and a sum across them is not a number.
 
 `totals` is present even when `units` is empty. Its fields are then zero.
+
+## How far the fills landed — `fill_slippage`, `fill_slippage_totals`
+
+Every fill is measured against a price set before it could move it — a market order against the mid
+when it was sent, a limit against its limit, a stop against its trigger, a stop-loss or take-profit
+close against the level that fired; each fill's own figure is on the
+[order history](/api/v1/docs/order-history). These two lists summarise them, one row per reference:
+
+| Field | Meaning |
+|---|---|
+| `measured_against` | `submission_mid` · `limit_price` · `trigger_price` · `protective_level` |
+| `fills` | the fills measured against it |
+| `fills_measured` | of those, the ones whose reference price was captured |
+| `adverse_pct_mean` | their mean, in percent of each fill's reference — positive is a cost |
+| `adverse_pct_max` | the costliest of them |
+
+`fill_slippage` has a row per unit and reference (it also carries the unit's `name`);
+`fill_slippage_totals` has a row per reference over every unit's fills, computed from the fills
+themselves — never an average of the units' averages. The answer declares each list's row key in
+`keys`; see [row keys](/api/v1/docs/row-keys).
+
+**Per fill and in percent, so symbols compare; never market and limit fills together.** A limit
+fill can only meet or beat its limit, so averaged in with market fills it would make the market's
+cost look smaller than it was. The mean and the maximum are null where no fill of that reference was
+measured. Every fill counts, also the fills the order history's ceiling has dropped, and the mean is
+unweighted: a fill of a small order counts as much as one of a large order, and an order filled in
+three parts counts three times. A run recorded before these lists existed serves both empty, the
+same as a run without a fill.
+
+```json
+{ "fill_slippage_totals": [
+    {"measured_against": "submission_mid", "fills": 212, "fills_measured": 212,
+     "adverse_pct_mean": 0.0041, "adverse_pct_max": 0.0612},
+    {"measured_against": "protective_level", "fills": 9, "fills_measured": 9,
+     "adverse_pct_mean": 0.0187, "adverse_pct_max": 0.0730}] }
+```
 
 ## Where these rows come from
 

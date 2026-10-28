@@ -205,6 +205,11 @@ omitted.
 - `api_perf` is written once, at the end, where the REST monitor ran: per endpoint its calls, latency
   and errors, with the session's slow calls and errors.
 
+Every session records the same facts in its own report sections now, not only a study (#631): the
+reconciliation's totals in the venue account, the REST monitor per endpoint in the venue API section,
+the fee declaration in the broker section and each fill's slippage in the order history. The capture
+keeps its own lines until the study reads from those sections.
+
 ---
 
 ## Which profile the certificate is about

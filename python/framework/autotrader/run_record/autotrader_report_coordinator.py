@@ -34,7 +34,11 @@ from python.framework.reporting.builders.safety_report_builder import (
     build_safety_report_from_session,
 )
 from python.framework.reporting.builders.venue_account_report_builder import (
+    asked_its_venue,
     build_venue_account_report,
+)
+from python.framework.reporting.builders.venue_api_performance_report_builder import (
+    build_venue_api_performance_report,
 )
 from python.framework.reporting.builders.warnings_errors_report_builder import (
     build_warnings_errors_report_from_session,
@@ -56,6 +60,7 @@ from python.framework.reporting.io.artifact_specs import (
     COLD_START_ARTIFACT,
     SAFETY_ARTIFACT,
     VENUE_ACCOUNT_ARTIFACT,
+    VENUE_API_PERFORMANCE_ARTIFACT,
     WARNINGS_ERRORS_ARTIFACT,
 )
 from python.framework.reporting.shared_report_coordinator import SharedReportCoordinator
@@ -220,7 +225,8 @@ class AutotraderReportCoordinator:
         broker_report = None
         if self._broker_config is not None:
             broker_report = build_broker_report_from_session(
-                self._run_id, self._broker_config, self._config.symbol)
+                self._run_id, self._broker_config, self._config.symbol,
+                result.venue_fee_expected)
             writer.write_section(BROKER_ARTIFACT, broker_report)
 
         # Cold start (#355 / #493) — what the boot step found and what was decided about it.
@@ -256,12 +262,22 @@ class AutotraderReportCoordinator:
 
         # Venue account (#362) — what the venue held at the session's start and end, and what
         # the reconciliation recorded in between, derived from the broker-truth lines of the
-        # order-event stream. Written only when the session asked its venue anything: a dry run
-        # against a real venue asks nothing, and a row would describe an account nobody read.
+        # order-event stream, with the reconciliation's totals (#631). Written only when the
+        # session asked its venue anything — a read, or a reconcile cycle even where it could not
+        # reach the venue: a dry run against a real venue asks nothing, and a row would describe
+        # an account nobody read.
         venue_account_report = None
-        if any(unit.broker_truth for unit in units):
+        if any(asked_its_venue(unit) for unit in units):
             venue_account_report = build_venue_account_report(self._run_id, units)
             writer.write_section(VENUE_ACCOUNT_ARTIFACT, venue_account_report)
+
+        # The venue API's performance (#631) — how the venue's REST API answered the session, per
+        # endpoint, as its monitor measured it. Written whenever the session ran its monitor.
+        venue_api_report = None
+        if result.venue_api_performance is not None:
+            venue_api_report = build_venue_api_performance_report(
+                self._run_id, result.venue_api_performance)
+            writer.write_section(VENUE_API_PERFORMANCE_ARTIFACT, venue_api_report)
 
         # The booking periods, derived once and used three times: the artifact, the table below,
         # and — through the periods themselves — the ledger rows. The reconciliation against the
@@ -355,7 +371,8 @@ class AutotraderReportCoordinator:
             broker_written=broker_report is not None,
             cold_start_written=cold_start_report is not None,
             safety_written=safety_report is not None,
-            venue_account_written=venue_account_report is not None)
+            venue_account_written=venue_account_report is not None,
+            venue_api_written=venue_api_report is not None)
         try:
             write_footprint(self._run_dir, self._run_id, RUN_TYPE_AUTOTRADER, expectations)
         except OSError as error:
@@ -366,7 +383,8 @@ class AutotraderReportCoordinator:
 
     def _footprint_expectations(self, events_written: bool, broker_written: bool,
                                 cold_start_written: bool, safety_written: bool,
-                                venue_account_written: bool) -> List[MemberExpectation]:
+                                venue_account_written: bool,
+                                venue_api_written: bool) -> List[MemberExpectation]:
         """
         For each file a session writes only sometimes, whether this session expected it — judged
         from what the session knows at its close, so a writer that failed reads as failed rather
@@ -380,6 +398,7 @@ class AutotraderReportCoordinator:
             cold_start_written: Whether the cold-start section was written
             safety_written: Whether the safety section was written
             venue_account_written: Whether the venue-account section was written
+            venue_api_written: Whether the venue API performance section was written
 
         Returns:
             One expectation per member the session decides on
@@ -411,6 +430,8 @@ class AutotraderReportCoordinator:
                         'a risk baseline was taken', 'no risk baseline was taken'),
             expectation(RunEntryMemberId.VENUE_ACCOUNT, venue_account_written,
                         'the session asked its venue', 'the session asked its venue nothing'),
+            expectation(RunEntryMemberId.VENUE_API_PERFORMANCE, venue_api_written,
+                        'the session watched its venue API', 'the session watched no venue API'),
             expectation(RunEntryMemberId.SESSION_DIAGNOSTICS,
                         any(sink.get_row_count() for sink in sinks),
                         'the logic recorded a diagnostics row',

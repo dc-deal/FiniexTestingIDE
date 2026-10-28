@@ -17,6 +17,7 @@ from python.framework.types.api.report_types import (
     ExecutionStatsReport,
     ExecutionStatsRow,
     ExecutionStatsTotals,
+    FillSlippageSummary,
     OrderHistoryReport,
     OrderHistoryRow,
     TradeAnalytics,
@@ -24,6 +25,7 @@ from python.framework.types.api.report_types import (
     TradeHistoryRow,
     TradeScenarioTotals,
 )
+from python.framework.types.fill_slippage_types import SlippageReference
 from python.framework.types.trading_env_types.order_types import OrderStatus
 from python.framework.utils.console_renderer import ConsoleRenderer
 
@@ -66,15 +68,17 @@ def _empty_orders() -> OrderHistoryReport:
     return OrderHistoryReport(run_id=_RUN_ID, orders=[], count=0, symbols=[])
 
 
-def _execution(failed: int = 0) -> ExecutionStatsReport:
-    """The scenario's execution counts, `failed` of its rows having failed."""
+def _execution(failed: int = 0, slippage=()) -> ExecutionStatsReport:
+    """The scenario's execution counts, `failed` of its rows having failed, and the fills'
+    slippage per reference kind as the statistics serve it."""
     row = ExecutionStatsRow(
         name='AUDUSD_cont_00', symbol='EURUSD', orders_submitted=failed, orders_adopted=0,
         orders_executed=0, orders_denied=0, orders_rejected=failed, orders_cancelled=0,
         orders_expired=0, orders_undelivered=0, orders_unaccounted=0, sl_tp_triggered=0,
         orders_failed=failed)
     return ExecutionStatsReport(run_id=_RUN_ID, units=[row],
-                                totals=ExecutionStatsTotals(orders_failed=failed))
+                                totals=ExecutionStatsTotals(orders_failed=failed),
+                                fill_slippage_totals=list(slippage))
 
 
 def _rejected_orders(count: int) -> OrderHistoryReport:
@@ -129,47 +133,46 @@ class TestTheFailedOrders:
 
 class TestTheSlippageBlockOnItsOwn:
     """
-    `render_slippage` prints the submission-vs-fill block without the aggregated statistics it
-    otherwise sits in — what a single unit gets after its table.
+    `render_slippage` prints the fills' slippage without the aggregated statistics it otherwise
+    sits in — what a single unit gets after its table. It renders what the execution statistics
+    serve and computes nothing (#631).
     """
 
-    def _summary(self, slipped: bool) -> TradeHistorySummary:
-        """
-        The fixture report, its one trade with or without a measured slippage.
-
-        Args:
-            slipped: Whether the entry carries a slippage sample
-
-        Returns:
-            The presenter
-        """
-        report = _report()
-        if slipped:
-            report.trades[0].entry_slippage = 0.0002
-            report.trades[0].entry_slippage_pct = 0.018
-        return TradeHistorySummary(report, _empty_orders(), _execution())
-
-    def _render_slippage(self, slipped: bool) -> str:
+    def _render_slippage(self, totals) -> str:
         """
         Render the block alone.
 
         Args:
-            slipped: Whether the entry carries a slippage sample
+            totals: The execution statistics' fill_slippage_totals
 
         Returns:
             The printed text
         """
+        summary = TradeHistorySummary(_report(), _empty_orders(), _execution(slippage=totals))
         buf = io.StringIO()
         with redirect_stdout(buf):
-            self._summary(slipped).render_slippage(ConsoleRenderer())
+            summary.render_slippage(ConsoleRenderer())
         return buf.getvalue()
 
-    def test_a_measured_entry_prints_the_block(self):
-        out = self._render_slippage(slipped=True)
+    def test_each_reference_kind_has_its_own_line_as_served(self):
+        out = self._render_slippage([
+            FillSlippageSummary(measured_against=SlippageReference.SUBMISSION_MID, fills=212,
+                                fills_measured=212, adverse_pct_mean=0.0041,
+                                adverse_pct_max=0.0612),
+            FillSlippageSummary(measured_against=SlippageReference.PROTECTIVE_LEVEL, fills=9,
+                                fills_measured=9, adverse_pct_mean=0.0187, adverse_pct_max=0.073),
+        ])
 
-        assert 'SLIPPAGE (submission tick vs fill)' in out
-        assert 'Samples: 1 entry / 0 exit (of 1 trades)' in out
+        assert 'SLIPPAGE (each fill against the price its order named)' in out
+        assert 'submission_mid    212 fills (212 measured)   mean +0.0041%   max +0.0612%' in out
+        assert 'protective_level  9 fills (9 measured)   mean +0.0187%   max +0.0730%' in out
         assert 'TRADE BREAKDOWN' not in out          # the aggregated statistics stay out
 
-    def test_nothing_measured_prints_nothing(self):
-        assert self._render_slippage(slipped=False) == ''
+    def test_a_kind_whose_reference_was_never_captured_says_so(self):
+        out = self._render_slippage([FillSlippageSummary(
+            measured_against=SlippageReference.SUBMISSION_MID, fills=2, fills_measured=0)])
+
+        assert '2 fills (0 measured)   not measured — the reference was not captured' in out
+
+    def test_nothing_recorded_prints_nothing(self):
+        assert self._render_slippage([]) == ''

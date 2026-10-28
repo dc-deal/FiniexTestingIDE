@@ -517,6 +517,7 @@ def execute_tick_loop(
         execution_stats = trade_simulator.get_execution_stats()
         cost_breakdown = trade_simulator.portfolio.get_cost_breakdown()
         trade_history = trade_simulator.get_trade_history()
+        protective_fill_levels = trade_simulator.get_protective_fill_levels()
         order_history = trade_simulator.get_order_history()
         active_orders = trade_simulator.get_active_orders_snapshot()
 
@@ -546,6 +547,7 @@ def execute_tick_loop(
             trade_history=trade_history,
             order_history=order_history,
             order_events=order_events,
+            protective_fill_levels=protective_fill_levels,
             active_orders=active_orders,
             open_positions=open_positions,
             profiling_data=ProcessProfileData(

@@ -20,6 +20,7 @@ from python.framework.types.api.report_types import (
     SafetyReport,
     TradeHistoryReport,
     VenueAccountReport,
+    VenueReconciliation,
     VenueSnapshotRow,
     WarningsErrorsReport,
 )
@@ -228,6 +229,9 @@ class AutotraderSessionSummary:
             print('🏦 Venue (broker truth)')
             print(f'  At start:       {_snapshot_text(row.at_start)}')
             print(f'  At end:         {_snapshot_text(row.at_end)}')
+            cycles = _cycles_text(row.reconciliation, renderer)
+            if cycles is not None:
+                print(f'  Cycles:         {cycles}')
             if not row.reconcile_lines:
                 print('  Reconciliation: no divergence recorded')
                 continue
@@ -358,6 +362,32 @@ def _snapshot_text(snapshot: Optional[VenueSnapshotRow]) -> str:
     elif BrokerTruthPart.VENUE_BALANCES in snapshot.unread_parts:
         parts.append('balances unread')
     return ' · '.join(parts)
+
+
+def _cycles_text(reconciliation: Optional[VenueReconciliation],
+                 renderer: ConsoleRenderer) -> Optional[str]:
+    """
+    What the session's reconciliation did over the whole session (#631), as a console line — in
+    yellow where cycles ran and none reached the venue, the session that only looks clean.
+
+    Args:
+        reconciliation: The row's totals, None on a record from before they were written
+        renderer: Colours the warning
+
+    Returns:
+        The line, or None when the record carries no totals
+    """
+    if reconciliation is None:
+        return None
+    if not reconciliation.enabled:
+        return 'reconciliation switched off'
+    if reconciliation.cycles_compared is None:
+        return 'none run'
+    text = (f'{reconciliation.cycles_compared:,} compared, '
+            f'{reconciliation.cycles_skipped or 0:,} skipped, '
+            f'{reconciliation.divergences_seen or 0:,} divergences seen')
+    never_reached = reconciliation.cycles_compared == 0 and (reconciliation.cycles_skipped or 0) > 0
+    return renderer.yellow(text) if never_reached else text
 
 
 def _divergence_text(divergence: ReconcileDivergenceRow) -> str:

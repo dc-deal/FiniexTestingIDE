@@ -131,6 +131,10 @@ The venue account (#362) is served from its artifact — `TestTheVenueAccount` i
 `test_reports_endpoint.py`: a session's row with its key, a part the venue did not answer for as
 null and named rather than empty, where the last reconcile line left the books and the latest
 divergence by name; a backtest, which has none, answered `artifact_not_produced`.
+`TestTheVenueApiPerformance` serves how the venue's API answered a session (#631): each endpoint
+with its calls, latency, slow calls and failed calls under its key, beside the session's totals and the
+threshold they were judged by; a backtest, which calls no venue API, answered
+`artifact_not_produced`.
 
 ## The run header (`test_run_header_route.py`)
 

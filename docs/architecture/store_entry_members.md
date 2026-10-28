@@ -227,6 +227,7 @@ behind its `write_strategy_files` parameter.
 | [`signal`](reporting_pipeline.md#report-sections--domain--migration-status) | `io/signal.json` | report output | at end | at end | `artifacts` | `…/signal` |
 | [`trade_history`](reporting_pipeline.md#report-sections--domain--migration-status) | `io/trade_history.json` | report output | at end | at end | `artifacts` | `…/trade-history` |
 | [`venue_account`](reporting_pipeline.md#report-sections--domain--migration-status) | `io/venue_account.json` | report output | — | at end — the session asked its venue | `artifacts` | `…/venue-account` |
+| [`venue_api_performance`](reporting_pipeline.md#report-sections--domain--migration-status) | `io/venue_api_performance.json` | report output | — | at end — the session watched its venue API | `artifacts` | `…/venue-api-performance` |
 | [`warnings_errors`](reporting_pipeline.md#report-sections--domain--migration-status) | `io/warnings_errors.json` | report output | at end | at end | `artifacts` | `…/warnings-errors` |
 | [`worker_decision`](reporting_pipeline.md#report-sections--domain--migration-status) | `io/worker_decision.json` | report output | at end | at end | `artifacts` | `…/worker-decision` |
 | [`execution_stats_csv`](reporting_pipeline.md#report-sections--domain--migration-status) | `io/execution_stats.csv` | report output | at end | at end | `artifacts` | — |

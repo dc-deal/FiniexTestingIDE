@@ -45,6 +45,7 @@ from python.framework.types.live_types.reconciliation_types import (
     BrokerPosition,
     FlatCheckResult,
     ReconcileDivergence,
+    ReconcileTotals,
     ReconciliationResult,
 )
 from python.framework.types.portfolio_types.portfolio_types import Position
@@ -788,6 +789,23 @@ class Reconciler:
             'reconcile_attributed': self._attributed_count,
             'reconcile_unaccounted': self._last_unaccounted_count,
         }
+
+    def get_totals(self) -> Optional[ReconcileTotals]:
+        """
+        What this session's reconciliation did, for its record (#631). A skipped cycle counts as
+        a cycle run and as skipped, so the cycles that compared are the difference.
+
+        Returns:
+            The session's totals; None where the adapter answers the account reads itself — a
+            dry run, whose cycles compared the books with an empty answer of our own, never with
+            a venue
+        """
+        if not self._adapter.reads_venue_account():
+            return None
+        return ReconcileTotals(
+            cycles_compared=self._reconcile_count - self._skipped_count,
+            cycles_skipped=self._skipped_count,
+            divergences_seen=self._divergence_count)
 
     def get_skipped_count(self) -> int:
         """

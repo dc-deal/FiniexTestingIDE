@@ -16,6 +16,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from python.framework.logging.global_logger import GlobalLogger
+from python.framework.reporting.builders.fill_slippage import derive_fill_slippage
 from python.framework.reporting.builders.pending_orders_report_builder import pending_orders_row
 from python.framework.testing.mock_broker_adapter import MockExecutionMode
 from python.framework.testing.mock_order_execution import MockOrderExecution
@@ -27,6 +28,7 @@ from python.framework.types.live_types.live_execution_types import (
 )
 from python.framework.types.live_types.live_request_types import QueryResponse
 from python.framework.types.live_types.reconciliation_types import BrokerOrder
+from python.framework.types.fill_slippage_types import SlippageReference
 from python.framework.types.trading_env_types.broker_types import BrokerType
 from python.framework.types.trading_env_types.order_event_types import (
     OrderEventType,
@@ -38,6 +40,7 @@ from python.framework.types.trading_env_types.order_types import (
     OrderDirection,
     OrderEndReason,
     OrderInitiator,
+    OrderStatus,
     OrderType,
 )
 from tests.autotrader.protective_levels.conftest import VenueHoldsProtectionMock
@@ -410,3 +413,46 @@ class TestTheSessionsPendingCounters:
         assert row.in_flight_count == 2, 'the acceptance and the refusal were answers'
         assert [o.event_type for o in row.never_confirmed_orders] == [
             OrderEventType.UNACCOUNTED]
+
+
+class TestEachFillIsFoundAndMeasured:
+    """
+    #631: a booked row names the event it was booked with, so a report finds exactly its fill; a
+    session's market fill is measured against the mid when the order was sent.
+    """
+
+    @ACCOUNT_MODELS
+    def test_a_rows_event_is_its_own_fill_and_the_mid_its_reference(self, spot_mode):
+        mock, executor, events = live_session(spot_mode=spot_mode)
+
+        executor.open_order(market_order())
+        mock.await_submit_confirmation(executor)
+        mock.feed_tick(executor, bid=BID, ask=ASK)
+
+        fill = next(e for e in events if e.event_type is OrderEventType.FILLED)
+        rows = [r for r in executor.get_order_history() if r.status is OrderStatus.EXECUTED]
+        assert [r.order_event_seq for r in rows] == [fill.seq]
+        submitted = next(e for e in events if e.event_type is OrderEventType.SUBMITTED)
+        assert submitted.submission_mid is not None
+        slip = derive_fill_slippage(events, executor.get_protective_fill_levels())[fill.seq]
+        assert (slip.measured_against, slip.reference_price) == (
+            SlippageReference.SUBMISSION_MID, submitted.submission_mid)
+
+    def test_a_stop_loss_exit_reads_how_far_below_its_level_it_sold(self):
+        """The simulation reads 0 here; a session the distance the market gave it — the gap a
+        parity check measures."""
+        mock, executor, events = live_session()
+        executor.open_order(market_order(stop_loss=49000.0))
+        mock.await_submit_confirmation(executor)
+        mock.feed_tick(executor, bid=BID, ask=ASK)                # the entry fills
+        mock.feed_tick(executor, bid=48900.0, ask=48902.0)        # the stop is breached
+        mock.await_submit_confirmation(executor)                  # the close goes out
+        mock.feed_tick(executor, bid=48900.0, ask=48902.0)        # and fills at the bid
+
+        exit_fill = next(e for e in events if e.event_type is OrderEventType.FILLED
+                         and e.action is OrderAction.CLOSE)
+        assert executor.get_protective_fill_levels() == {exit_fill.seq: 49000.0}
+        slip = derive_fill_slippage(events, executor.get_protective_fill_levels())[exit_fill.seq]
+        assert slip.measured_against is SlippageReference.PROTECTIVE_LEVEL
+        assert (slip.reference_price, exit_fill.fill_price) == (49000.0, 48900.0)
+        assert slip.slippage == pytest.approx(100.0)

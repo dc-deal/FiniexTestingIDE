@@ -36,8 +36,9 @@ takes about 18 s (measured 2026-10-23).
   every member that hangs on an order, a sink, the strategy's own folder or the robustness mode is
   written.
 - **A mock session** on [`run_entry_census_test.json`](../../../configs/autotrader_profiles/mock/run_entry_census_test.json)
-  with the same probe and its state frames recorded. It starts ten minutes before a trading day's
-  boundary and runs across it, so it seals a day and writes its streams' day records (#476); the
+  with the same probe, its state frames recorded and its API monitor switched on, so it writes the
+  venue API section — with no endpoint, since the mock adapter calls none (#631). It starts ten
+  minutes before a trading day's boundary and runs across it, so it seals a day and writes its streams' day records (#476); the
   tick stream's day record is covered where that stream is, since only a venue session writes it.
 - **The same session with its log files switched off**, which must still be a declared run with its
   header, reports and streams, and no log.

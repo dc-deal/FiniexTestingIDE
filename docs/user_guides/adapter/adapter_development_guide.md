@@ -656,11 +656,13 @@ def _send_order(self, request):
 - `_timed_call(endpoint, fn)` times `fn()` (including any rate-limit throttle — the
   real call cost), records `(endpoint, ms, success/error)`, and re-raises on
   failure. With no monitor attached it just calls `fn()` (zero overhead).
-- `endpoint` becomes the live-panel row label — use a stable, human-readable id
-  (the REST path tail like `/0/private/OpenOrders`, or the bridge method name).
+- `endpoint` becomes the live-panel row label and the `venue_endpoint` of the session's
+  venue API section — use a stable, human-readable id (the REST path tail like
+  `/0/private/OpenOrders`, or the bridge method name).
 - You do NOT wire the monitor: `AutoTraderMain` builds + injects it for live
   adapters (`config.api_monitor.enabled`, mock auto-disabled). Just call
-  `_timed_call` at your transport boundary and the panel + logging come for free.
+  `_timed_call` at your transport boundary and the panel, the logging and the session's
+  venue API section (#631) come for free.
 
 ---
 

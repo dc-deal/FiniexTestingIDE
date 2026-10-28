@@ -118,6 +118,7 @@ SCENARIO_DETAILS_ARTIFACT_FILE = 'scenario_details.json'
 SIGNAL_ARTIFACT_FILE = 'signal.json'
 TRADE_HISTORY_ARTIFACT_FILE = 'trade_history.json'
 VENUE_ACCOUNT_ARTIFACT_FILE = 'venue_account.json'
+VENUE_API_PERFORMANCE_ARTIFACT_FILE = 'venue_api_performance.json'
 WARNINGS_ERRORS_ARTIFACT_FILE = 'warnings_errors.json'
 WORKER_DECISION_ARTIFACT_FILE = 'worker_decision.json'
 # Three of the sections again as CSV, for a spreadsheet.

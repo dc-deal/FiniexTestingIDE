@@ -31,6 +31,7 @@ class ApiEndpointStats:
         total_ms: Cumulative duration — avg = total_ms / count
         error_count: Failed calls (Kraken `error` responses + transport failures)
         last_error: Message of the most recent failure (None if never failed)
+        slow_count: Calls slower than the configured threshold (#631)
     """
     endpoint: str
     count: int = 0
@@ -41,6 +42,7 @@ class ApiEndpointStats:
     total_ms: float = 0.0
     error_count: int = 0
     last_error: Optional[str] = None
+    slow_count: int = 0
 
     @property
     def avg_ms(self) -> float:
@@ -57,7 +59,10 @@ class ApiPerfSnapshot:
         endpoints: Per-endpoint stats, ordered by call count (busiest first)
         slow_count: Calls slower than the configured threshold this session
         total_errors: Failed calls across all endpoints this session
+        slow_call_threshold_ms: The threshold a call was judged slow against (#631); None for a
+            snapshot built outside a monitor
     """
     endpoints: List[ApiEndpointStats] = field(default_factory=list)
     slow_count: int = 0
     total_errors: int = 0
+    slow_call_threshold_ms: Optional[float] = None

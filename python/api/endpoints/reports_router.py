@@ -53,6 +53,7 @@ from python.framework.reporting.io.artifact_specs import (
     SCENARIO_DETAILS_ARTIFACT,
     SIGNAL_ARTIFACT,
     VENUE_ACCOUNT_ARTIFACT,
+    VENUE_API_PERFORMANCE_ARTIFACT,
     WARNINGS_ERRORS_ARTIFACT,
     WORKER_DECISION_ARTIFACT,
 )
@@ -84,6 +85,7 @@ from python.framework.types.api.report_types import (
     SignalReport,
     TradeHistoryReport,
     VenueAccountReport,
+    VenueApiPerformanceReport,
     WarningsErrorsReport,
     WorkerDecisionReport,
 )
@@ -682,6 +684,30 @@ def get_venue_account(run_id: str) -> VenueAccountReport:
         raise api_error(ARTIFACT_UNREADABLE, reason=str(e)) from e
     if report is None:
         raise _missing_artifact(run_id, 'venue-account')
+    return report
+
+
+@router.get('/reports/runs/{run_id}/venue-api-performance',
+            response_model=VenueApiPerformanceReport,
+            openapi_extra=describes('venue-api-performance'))
+def get_venue_api_performance(run_id: str) -> VenueApiPerformanceReport:
+    """
+    How the venue's REST API answered a live session, per endpoint (#631): its calls, latency,
+    slow calls and failed calls, with the session's totals. AutoTrader only.
+
+    Args:
+        run_id: The run's id (<timestamp>_<hash>), resolved through the run index
+
+    Returns:
+        The VenueApiPerformanceReport (404 if the run has none — every backtest, and every session
+        that ran no API monitor; 409 if it cannot be read)
+    """
+    try:
+        report = ReportStore().get(run_id, VENUE_API_PERFORMANCE_ARTIFACT)
+    except ReportArtifactUnreadableError as e:
+        raise api_error(ARTIFACT_UNREADABLE, reason=str(e)) from e
+    if report is None:
+        raise _missing_artifact(run_id, 'venue-api-performance')
     return report
 
 

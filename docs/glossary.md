@@ -359,8 +359,9 @@ history, brought in by a converter that stamps its own identity. A backtest read
 declares it: `status_answer` — in the answer that reports the order filled, as Kraken does;
 `executions` — only with the order's executions, after the fill; `not_reported` — no fee per fill,
 as at a spread broker. A declaration, not a report of fees: it decides whether a live fill can carry
-the venue's own figure (*fee source*). A field study's capture records it in its header. See
-[Broker Trade Records](architecture/broker_trade_records.md).
+the venue's own figure (*fee source*). The broker section serves it for every run, beside
+`venue_fee_expected` — whether the run's fills carry the venue's own fee — and a field study's
+capture records it in its header. See [Broker Trade Records](architecture/broker_trade_records.md).
 
 **fee source** (`fee_source`, `fill_fees_by_source`) — Where the fee booked for a fill came from:
 `venue` — the figure the venue reported for that fill, in the answer that reported it, which is
@@ -642,6 +643,14 @@ stream, never on a tick. See [AutoTrader Data Intake](autotrader/autotrader_data
 **real-money session** — A live-adapter session with `dry_run` false: its orders are placed at the
 venue and move the account.
 
+**reconciliation** — Two comparisons share the word, told apart by where they stand. A live
+session's *venue reconciliation* compares its own books with what its venue reports, cycle by cycle;
+its lines and its totals (`reconciliation`: `cycles_compared`, `cycles_skipped`,
+`divergences_seen`) are served in the *venue account*. The booking-periods section's `reconciles`
+checks that the periods add up to the figures the run reports — that nothing went missing between
+them — and asks no venue. See [Venue account](consumer/venue-account.md) and
+[Booking periods](consumer/booking-periods.md).
+
 **record_no** (on every record of a unit's recorded-streams window) — A record's position in its
 unit's stream, counted from 1 over the sealed trading days in order and then the running file. It
 identifies the record in every answer — two state frames may share an instant — keeps its value when
@@ -791,6 +800,16 @@ external, pre-collected data such as sentiment. See [Signal Data Source](data_pi
 
 **signal basis** — A signal row's quality grade from the producer (`llm`, `no_data`, `degraded`).
 
+**slippage** (`slippage`, `slippage_pct`) — How far a fill landed from the price it is measured
+against, signed so that a positive figure is a cost. What it is measured against is named beside it
+(`slippage_measured_against` on an order-history row, `measured_against` in the execution
+statistics' `fill_slippage`): `submission_mid`, the mid when a market order was sent;
+`limit_price`, the limit in force at the fill; `trigger_price`, the trigger in force for a stop or a
+stop-limit; `protective_level`, the stop-loss or take-profit level that closed the position. A
+trade's `entry_slippage` and `exit_slippage` (and their `_pct`) measure its entry and exit price
+against the submission mid, except a protective exit, which is measured against its level — where a
+backtest reads 0, because it fills there. See [Order history](consumer/order-history.md).
+
 **snapshot** — Several meanings, each qualified. A *snapshot member* is an *entry member*'s shape:
 a file that says what is true now and is replaced whole, never appended to — a run's header, a
 session's warmup history. A *signal snapshot* is one archived line of a signal source: the
@@ -894,6 +913,12 @@ session's start and at its end — open orders and positions counted, its balanc
 the reconciliation lines between, derived from the *broker truth* and served as the
 `venue-account` section. Not the session's own books, which are its *account*. See
 [Venue account](consumer/venue-account.md).
+
+**venue API performance** (the `venue-api-performance` section) — How the venue's API answered one
+live session, endpoint by endpoint: the calls, how long they took, how many were slower than the
+session's threshold, and how many failed. *Venue*, because the IDE serves an API of its own, which
+this says nothing about. Only a session that watched its venue's API has it. See
+[Venue API performance](consumer/venue-api-performance.md).
 
 **wall clock** — The machine's clock. It stamps when WE did or saw something (`ts_init`, a run's
 `start_time`) and measures durations — on its monotonic form, because the wall clock itself can

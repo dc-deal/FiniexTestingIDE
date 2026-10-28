@@ -63,7 +63,7 @@ class TestTheExtraSearches:
         out = capfd.readouterr().out
         assert exit_code == 0
         assert 'extra got: quokka ledger' in out
-        assert out.index('Documentation') < out.index('extra got')
+        assert out.index('DOCS') < out.index('extra got')
 
     def test_a_command_that_cannot_start_is_reported_not_raised(self, tmp_path: Path, capfd):
         _write(tmp_path, 'top.md', 'The quokka ledger explains itself.')

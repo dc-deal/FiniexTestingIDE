@@ -19,6 +19,7 @@ from python.framework.reporting.builders.trade_history_report_builder import (
 from python.framework.reporting.io.report_filters import filter_trade_history_report
 from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.data_deficiency_types import DataDeficiency
+from python.framework.types.fill_slippage_types import SlippageReference
 from python.framework.types.portfolio_types.portfolio_trade_record_types import (
     CloseReason,
     CloseType,
@@ -29,6 +30,7 @@ from python.framework.types.process_data_types import ProcessResult, ProcessTick
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
 from python.framework.types.trading_env_types.broker_trade_types import BrokerTrade
 from python.framework.types.trading_env_types.order_types import OrderDirection, OrderSide
+from python.framework.types.trading_env_types.submission_metadata_types import SubmissionMetadata
 
 # Every report artifact names its run (#475); the value is opaque to these tests.
 _RUN_ID = '20260830_120000_a1b2c3d4'
@@ -410,3 +412,44 @@ class TestTheUnitKnowsItsDataLackedAQuote:
     def test_other_deficiencies_do_not_count(self):
         units = self._units([[DataDeficiency.NO_ARRIVAL_TIME], [DataDeficiency.SYNTHETIC]])
         assert units[0].input_without_quote is False
+
+
+class TestAProtectiveExitIsMeasuredAgainstItsLevel:
+    """
+    #631: a stop-loss or take-profit exit is measured against the level that fired. The simulation
+    fills it AT the level, so against the mid of the tick that crossed the level a stop-loss read
+    as a gain and a take-profit as a cost — the tick's overshoot, not slippage.
+    """
+
+    def _exit(self, close_reason, exit_price, mid, stop_loss=None, take_profit=None):
+        trade = replace(_trade(close_reason=close_reason), stop_loss=stop_loss,
+                        take_profit=take_profit, exit_price=exit_price,
+                        entry_side=OrderSide.BUY, exit_side=OrderSide.SELL,
+                        exit_submission=SubmissionMetadata(tick_mid_price=mid))
+        return build_trade_history_report(_RUN_ID, _units([trade])).trades[0]
+
+    def test_a_stop_loss_filled_at_its_level_reads_zero(self):
+        row = self._exit(CloseReason.SL_TRIGGERED, exit_price=1.0980, mid=1.0978,
+                         stop_loss=1.0980)
+
+        assert row.exit_slippage_measured_against is SlippageReference.PROTECTIVE_LEVEL
+        assert (row.exit_slippage, row.exit_slippage_pct) == (0.0, 0.0), 'the percent too'
+
+    def test_a_session_reads_the_real_distance_below_its_stop(self):
+        row = self._exit(CloseReason.SL_TRIGGERED, exit_price=1.0975, mid=1.0978,
+                         stop_loss=1.0980)
+
+        assert row.exit_slippage == pytest.approx(0.0005)
+
+    def test_a_take_profit_is_measured_against_its_target(self):
+        row = self._exit(CloseReason.TP_TRIGGERED, exit_price=1.1050, mid=1.1052,
+                         stop_loss=1.0980, take_profit=1.1050)
+
+        assert row.exit_slippage_measured_against is SlippageReference.PROTECTIVE_LEVEL
+        assert row.exit_slippage == 0.0
+
+    def test_an_exit_the_logic_chose_keeps_the_mid_when_it_was_sent(self):
+        row = self._exit(CloseReason.MANUAL, exit_price=1.1020, mid=1.1022, stop_loss=1.0980)
+
+        assert row.exit_slippage_measured_against is SlippageReference.SUBMISSION_MID
+        assert row.exit_slippage == pytest.approx(0.0002), 'sold below the mid'

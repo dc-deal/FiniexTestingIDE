@@ -33,6 +33,44 @@ reads downwards from the version their fixtures hold until they reach the one be
 A test holds the newest heading in this log to the number the server answers with, so a version
 cannot ship without its entry.
 
+## Version 44 — 2026-10-27 (#631)
+
+What every live session knows about its venue is recorded for every session now, and every fill says
+how far it landed from the price it is measured against.
+
+- `GET /api/v1/reports/runs/{run_id}/venue-api-performance`, new: how the venue's REST API answered a
+  live session, one row per endpoint (`key: ["venue_endpoint"]`) — `calls`, `avg_ms`, `min_ms`,
+  `max_ms`, `slow_calls` and `failed_calls` — with the session's `slow_calls` and `failed_calls` and
+  the `slow_call_threshold_ms` a call was judged against. AutoTrader only, written when the session ran
+  its monitor; `venue_endpoint` is the label the session's adapter gives the call. Its document is
+  [venue API performance](/api/v1/docs/venue-api-performance).
+- [Venue account](/api/v1/docs/venue-account): every row carries `reconciliation` — `enabled`, and
+  over the whole session `cycles_compared`, `cycles_skipped` and `divergences_seen`, summed over the
+  cycles, so a divergence that stood for three cycles counts three. The counts are null when the
+  reconciliation was switched off. A session that reconciled without writing a broker-truth line has
+  a row now too.
+- [Broker](/api/v1/docs/broker): every row carries `fee_report` — where the venue reports a fill's
+  fee, as its adapter declares — and `venue_fee_expected`, whether the run's fills carry the venue's
+  own fee: false in a backtest and in a dry run.
+- [Order history](/api/v1/docs/order-history): every row carries `order_event_seq`, its key into the
+  order-event stream, and a fill's slippage — `slippage_measured_against` (`submission_mid` for a
+  market order, `limit_price`, `trigger_price` for a stop or a stop-limit, `protective_level` for a
+  stop-loss or take-profit close), `slippage_reference_price`, `slippage` in price units with a cost
+  positive, and `slippage_pct`.
+- [Execution statistics](/api/v1/docs/execution-stats): `fill_slippage` — per unit and reference kind
+  `fills`, `fills_measured`, `adverse_pct_mean` and `adverse_pct_max` — and `fill_slippage_totals`
+  over every unit's fills, re-derived over the fills themselves; `keys` names the row key of each of
+  the three lists.
+- [Trade history](/api/v1/docs/trade-history), a changed meaning: `exit_slippage` and
+  `exit_slippage_pct` of a stop-loss or take-profit exit are measured against the level that fired —
+  the percent a share of the level — no longer against the submission mid: a backtest fills such an
+  exit at its level, and the mid of the tick that crossed it made the overshoot read as slippage.
+  `exit_slippage_measured_against` says which reference a row used.
+- The run list: `venue_api_performance.json` joins `artifacts`.
+
+Nothing removed or renamed; one meaning changed — `exit_slippage` and `exit_slippage_pct` of a
+protective exit.
+
 ## Version 43 — 2026-10-27 (#580)
 
 A unit's recorded streams can be read over time: a timeline to draw the axis from, and a window to
@@ -139,26 +177,13 @@ while it runs.
 
 No route moved; fields added, some figures nullable, and two meanings changed.
 
-## Version 39 — 2026-10-25 (#547)
-
-A backtest names the configuration it RAN with, as a session does.
-
-- `rendered_config_id` on a run's [header](/api/v1/docs/run-header) is now filled for a backtest
-  too. It names the backtest's rendered scenario set: one section per scenario, holding the strategy
-  with every parameter default filled in, the blocks the scenario ran with, and the broker's market
-  entry and market rules — beside `config_id`, the file the run was given. Every combination of a
-  parameter sweep names its own.
-- Empty on a backtest recorded before this contract, and on a run whose configuration could not be
-  rendered or frozen. No route serves a rendered document's content yet.
-
-No field was added or removed.
-
-## Versions 38 and earlier
+## Versions 39 and earlier
 
 One line each. Every one of these moved a shape or a meaning; what they moved is summarised here
 rather than spelled out, because a consumer this far behind needs the list of steps, not each step's
 reasoning. The full text of a compressed version is in this repository's history.
 
+- **Version 39** — 2026-10-25 (#547): A backtest names the configuration it ran with — `rendered_config_id` on a run's [header](/api/v1/docs/run-header) is filled for a backtest too, naming its rendered scenario set: one section per scenario with every parameter default filled in, beside `config_id`, the file the run was given; empty on an older backtest and where the configuration could not be rendered or frozen.
 - **Version 38** — 2026-10-21 (#611): A running session can be asked how it stands — `GET /api/v1/reports/runs/{run_id}/state-frames/latest`, one row per unit with the latest frame, its age, its cadence (`cadence_timeframe`, `cadence_s`) and `recording`; the codes `state_frames_not_recorded` and `state_frame_not_written_yet`; and `stream_files` and `recording` on the run list. Its document is [state frames](/api/v1/docs/state-frames).
 - **Version 37** — 2026-10-20 (#598): A session trading real money starts without a carry-over only when its start is declared the bot's first — `origin.first_start` on the [run header](/api/v1/docs/run-header), `true` for such a start and `false` on every other run, a backtest and a run recorded before this version.
 - **Version 36** — 2026-10-19 (#547): A backtest keeps the broker configuration it traded with — `broker_config_id` on every row of [broker](/api/v1/docs/broker) is set on a simulation row too, and `config_hash` leaves out when a value was fetched, so on a dynamic broker a hash recorded before this version differs from a later one over the same values.

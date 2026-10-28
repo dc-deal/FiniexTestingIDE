@@ -71,8 +71,9 @@ _SERVED_BY_COLUMN = {
         'cold_start.json', 'execution_stats.json', 'feed_stability.json', 'order_history.json',
         'pending_orders.json', 'portfolio.json', 'profiling.json', 'robustness.json',
         'run_meta.json', 'run_summary.json', 'safety.json', 'scenario_details.json', 'signal.json',
-        'trade_history.json', 'venue_account.json', 'warnings_errors.json',
-        'worker_decision.json', 'execution_stats.csv', 'order_history.csv', 'trade_history.csv',
+        'trade_history.json', 'venue_account.json', 'venue_api_performance.json',
+        'warnings_errors.json', 'worker_decision.json', 'execution_stats.csv', 'order_history.csv',
+        'trade_history.csv',
     },
 }
 

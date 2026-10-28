@@ -4,13 +4,16 @@ builder, for the order-lifecycle list (resting / filled / rejected orders).
 
 Consumes the run's `RunUnit` list (#391 Phase 2): each order row is tagged with its
 run unit name. Pure, off the hot loop, fixture-testable. Optional filters (symbol /
-status) live here so console, CSV, and API share one filter path.
+status) live here so console, CSV, and API share one filter path. A row that records a fill
+carries the fill's slippage (#631), found through the order event the row was booked with.
 """
 
 from typing import List, Optional
 
+from python.framework.reporting.builders.fill_slippage import derive_fill_slippage
 from python.framework.reporting.builders.run_unit import RunUnit
 from python.framework.types.api.report_types import OrderHistoryReport, OrderHistoryRow
+from python.framework.types.fill_slippage_types import FillSlippage
 from python.framework.types.trading_env_types.order_types import OrderResult
 
 
@@ -31,7 +34,11 @@ def build_order_history_report(
     Returns:
         OrderHistoryReport with the filtered, mapped rows + distinct symbols
     """
-    rows = [_to_row(order, unit.name) for unit in units for order in unit.order_history]
+    rows = []
+    for unit in units:
+        slippage = derive_fill_slippage(unit.order_events, unit.protective_fill_levels)
+        rows.extend(_to_row(order, unit.name, slippage.get(order.order_event_seq))
+                    for order in unit.order_history)
     return _assemble(run_id, rows, symbol, status)
 
 
@@ -50,7 +57,8 @@ def _assemble(
     return OrderHistoryReport(run_id=run_id, orders=filtered, count=len(filtered), symbols=symbols)
 
 
-def _to_row(order: OrderResult, scenario_name: str = '') -> OrderHistoryRow:
+def _to_row(order: OrderResult, scenario_name: str = '',
+            slippage: Optional[FillSlippage] = None) -> OrderHistoryRow:
     """
     Map one OrderResult to a renderable row.
 
@@ -61,6 +69,7 @@ def _to_row(order: OrderResult, scenario_name: str = '') -> OrderHistoryRow:
     Args:
         order: The order-lifecycle record
         scenario_name: The run unit it belongs to
+        slippage: The slippage of the fill the row records; None when it records none
 
     Returns:
         The row
@@ -85,4 +94,9 @@ def _to_row(order: OrderResult, scenario_name: str = '') -> OrderHistoryRow:
         rejection_message=order.rejection_message or None,
         initiator=order.initiator,
         end_reason=order.end_reason,
+        order_event_seq=order.order_event_seq,
+        slippage_measured_against=slippage.measured_against if slippage else None,
+        slippage_reference_price=slippage.reference_price if slippage else None,
+        slippage=slippage.slippage if slippage else None,
+        slippage_pct=slippage.slippage_pct if slippage else None,
     )

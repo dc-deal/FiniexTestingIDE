@@ -568,6 +568,10 @@ class ProcessTickLoopResult:
     # The report writes them; the subprocess cannot write a run artifact itself
     order_events: Optional[List[OrderEvent]] = None
 
+    # The level each stop-loss or take-profit close fired at, by its fill event's seq (#631) —
+    # what that fill's slippage is measured against; uncapped, unlike the trade history
+    protective_fill_levels: Optional[Dict[int, float]] = None
+
     # The orders still resting or on their way when the scenario ended
     active_orders: Optional[ActiveOrdersSnapshot] = None
 

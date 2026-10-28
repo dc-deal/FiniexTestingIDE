@@ -61,6 +61,17 @@ placed. The field that answers that is `orders_to` — see [run kinds](/api/v1/d
 **Where `leverage` is 1 there is no margin to calculate.** `margin_mode` then reads `none` and
 both thresholds read `0.0`. That is the configuration being correct, not a figure going missing.
 
+## Whose figure a fill's fee is
+
+| Field | Meaning |
+|---|---|
+| `fee_report` | where the venue reports a fill's fee, as the broker's connection declares it — `status_answer` in the order's status answer, `executions` in a list of its executions, `not_reported` nowhere. A fact of the venue, the same in a backtest and a session |
+| `venue_fee_expected` | whether this run's fills carry the venue's own fee — true for a session whose venue reports it and whose account the session reads; false in a dry run, whose fills are simulated, and in a backtest, which has no venue |
+
+Where `venue_fee_expected` is true, a fill booked with our fee model's estimate instead
+(`fee_source: "estimate"` on the [order history](/api/v1/docs/order-history)) is a fill whose fee
+the venue's answer did not carry. Both are null on a record from before these fields existed.
+
 ## What one symbol row says
 
 | Field | Meaning |

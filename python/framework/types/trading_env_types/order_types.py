@@ -533,6 +533,11 @@ class OrderResult:
     initiator: Optional[OrderInitiator] = None
     end_reason: Optional[OrderEndReason] = None
 
+    # The order event this row was booked with (#631) — the row's key into the order-event
+    # stream, by which a report finds the fill the row records. None where a row has no event:
+    # a pending one.
+    order_event_seq: Optional[int] = None
+
     # Submission slippage audit (#340) — algo's trade-channel mid price at
     # the submission moment, propagated from PendingOrder. Surfaced in the
     # event-stream CSV (ORDER_SUBMIT / CLOSE_SUBMIT rows) so downstream

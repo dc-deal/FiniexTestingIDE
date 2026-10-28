@@ -10,18 +10,28 @@ ProcessResult carries none). The live builder uses a real AutoTraderResult.
 
 from datetime import datetime, timezone
 
+import pytest
+
 from python.framework.reporting.builders.execution_stats_report_builder import (
     build_execution_stats_report,
 )
 from python.framework.reporting.builders.run_unit import (
+    RunUnit,
     run_units_from_batch,
     run_units_from_session,
 )
 from python.framework.types.autotrader_types.autotrader_result_types import AutoTraderResult
 from python.framework.types.batch_execution_types import BatchExecutionSummary
+from python.framework.types.fill_slippage_types import SlippageReference
 from python.framework.types.process_data_types import ProcessResult, ProcessTickLoopResult
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
-from python.framework.types.trading_env_types.order_types import FAILED_ORDER_STATUSES
+from python.framework.types.trading_env_types.order_event_types import OrderEvent, OrderEventType
+from python.framework.types.trading_env_types.order_types import (
+    FAILED_ORDER_STATUSES,
+    OrderAction,
+    OrderDirection,
+    OrderType,
+)
 from python.framework.types.trading_env_types.trading_env_stats_types import (
     EXECUTION_STATS_FIELD_BY_STATUS,
     ExecutionStats,
@@ -139,3 +149,84 @@ class TestTheFailedCount:
         report = build_execution_stats_report(_RUN_ID, run_units_from_batch(_batch()))
 
         assert report.totals.orders_failed == sum(u.orders_failed for u in report.units) == 1
+
+
+def _buys(market_pcts=(), limit_pcts=(), unmeasured=0):
+    """
+    A unit's order events: one buy per figure, each filled that many percent above its reference
+    of 100 — market orders against their mid, limits against their limit.
+
+    Args:
+        market_pcts: The market fills' slippage in percent
+        limit_pcts: The limit fills' slippage in percent
+        unmeasured: Market fills sent without a mid
+
+    Returns:
+        The events
+    """
+    events, seq = [], 0
+    orders = ([(OrderType.MARKET, pct) for pct in market_pcts]
+              + [(OrderType.LIMIT, pct) for pct in limit_pcts]
+              + [(OrderType.MARKET, None)] * unmeasured)
+    for order_type, pct in orders:
+        submitted = seq + 1
+        prices = ({'limit_price': 100.0} if order_type is OrderType.LIMIT
+                  else {'submission_mid': 100.0 if pct is not None else None})
+        common = dict(order_id=f'o{submitted}', submitted_seq=submitted, order_type=order_type,
+                      direction=OrderDirection.LONG, action=OrderAction.OPEN, **prices)
+        events.append(OrderEvent(seq=submitted, event_type=OrderEventType.SUBMITTED, **common))
+        events.append(OrderEvent(seq=submitted + 1, event_type=OrderEventType.FILLED,
+                                 fill_price=100.0 + (pct or 0.0), **common))
+        seq += 2
+    return events
+
+
+class TestFillSlippage:
+    """#631: how far the fills landed, per unit and reference kind, and over the whole run."""
+
+    def _report(self):
+        return build_execution_stats_report(_RUN_ID, [
+            RunUnit(name='scenario_a', symbol='BTCUSD',
+                    order_events=_buys(market_pcts=(0.01, 0.03, 0.05), limit_pcts=(-0.02,))),
+            RunUnit(name='scenario_b', symbol='ETHUSD', order_events=_buys(market_pcts=(0.10,))),
+        ])
+
+    def test_one_row_per_unit_and_reference_kind(self):
+        rows = {(row.name, row.measured_against): row for row in self._report().fill_slippage}
+
+        assert set(rows) == {('scenario_a', SlippageReference.SUBMISSION_MID),
+                             ('scenario_a', SlippageReference.LIMIT_PRICE),
+                             ('scenario_b', SlippageReference.SUBMISSION_MID)}
+        market_a = rows[('scenario_a', SlippageReference.SUBMISSION_MID)]
+        assert (market_a.fills, market_a.fills_measured) == (3, 3)
+        assert market_a.adverse_pct_mean == pytest.approx(0.03)
+        assert market_a.adverse_pct_max == pytest.approx(0.05)
+        assert rows[('scenario_a', SlippageReference.LIMIT_PRICE)].adverse_pct_mean == (
+            pytest.approx(-0.02)), 'a limit fill is never averaged with a market fill'
+
+    def test_the_run_figure_is_derived_over_every_fill_never_a_mean_of_means(self):
+        totals = {row.measured_against: row for row in self._report().fill_slippage_totals}
+
+        market = totals[SlippageReference.SUBMISSION_MID]
+        assert market.fills == 4
+        assert market.adverse_pct_mean == pytest.approx((0.01 + 0.03 + 0.05 + 0.10) / 4)
+        assert market.adverse_pct_mean != pytest.approx((0.03 + 0.10) / 2)
+        assert market.adverse_pct_max == pytest.approx(0.10)
+
+    def test_a_fill_without_its_reference_is_counted_and_not_measured(self):
+        report = build_execution_stats_report(_RUN_ID, [
+            RunUnit(name='btc_session', symbol='BTCUSD', order_events=_buys(unmeasured=2))])
+
+        row = report.fill_slippage[0]
+        assert (row.fills, row.fills_measured) == (2, 0)
+        assert (row.adverse_pct_mean, row.adverse_pct_max) == (None, None)
+
+    def test_a_unit_without_fills_has_no_row(self):
+        report = build_execution_stats_report(_RUN_ID, [RunUnit(name='idle', symbol='BTCUSD')])
+
+        assert report.fill_slippage == [] and report.fill_slippage_totals == []
+
+    def test_the_lists_declare_what_makes_a_row_unique(self):
+        assert self._report().keys == {
+            'units': ['name'], 'fill_slippage': ['name', 'measured_against'],
+            'fill_slippage_totals': ['measured_against']}

@@ -15,6 +15,7 @@ from pydantic import BaseModel, Field, computed_field
 
 from python.framework.types.api.recording_state_types import RecordingState
 from python.framework.types.autotrader_types.safety_session_types import FlattenOutcome
+from python.framework.types.fill_slippage_types import SlippageReference
 from python.framework.types.live_types.broker_truth_types import (
     BrokerTruthPart,
     BrokerTruthReadReason,
@@ -38,6 +39,7 @@ from python.framework.types.trading_env_types.order_event_types import (
 )
 from python.framework.types.trading_env_types.order_types import (
     CloseType,
+    FeeReport,
     OrderAction,
     OrderDirection,
     OrderEndReason,
@@ -144,12 +146,15 @@ class TradeHistoryRow(BaseModel):
     exit_side: str = ''
     entry_executions: list[ExecutionRow] = []   # #330 per-fill sub-lines (entry)
     exit_executions: list[ExecutionRow] = []    # #330 per-fill sub-lines (exit)
-    # Submission-vs-fill slippage (#340) — adverse (>0 = paid worse than submission mid);
-    # None when no submission tick was captured (legacy / cleanup-only close).
+    # Submission-vs-fill slippage (#340) — adverse (>0 = paid worse than its reference); None
+    # when no reference was captured (legacy / cleanup-only close). The entry is measured
+    # against the submission mid; the exit too, except a stop-loss or take-profit exit, which is
+    # measured against the level that fired (#631) — `exit_slippage_measured_against` says which
     entry_slippage: float | None = None
     exit_slippage: float | None = None
     entry_slippage_pct: float | None = None
     exit_slippage_pct: float | None = None
+    exit_slippage_measured_against: SlippageReference | None = None
     # What belongs to the TRADE rather than to one of its fills. `lots` is what this record
     # closed; `entry_lots` is the position's size when it opened, and `position_closes` how
     # many records the position produced in its unit — counted before any filter, so a filter
@@ -291,6 +296,18 @@ class OrderHistoryRow(BaseModel):
     initiator: Optional[OrderInitiator] = None  # who ended it — cancelled, expired and
                                                 # unaccounted rows only
     end_reason: Optional[OrderEndReason] = None  # why it ended — the same rows
+    # The order event this row was booked with (#631) — its key into the order-event stream.
+    # Null on a pending row, which has no event yet, and on a record from before contract 44
+    order_event_seq: Optional[int] = None
+    # A fill's slippage (#631) — against the mid when a market order was sent, a limit's limit,
+    # a stop's trigger, or the level a stop-loss or take-profit fired at; positive is a cost, in
+    # price units and in percent of the reference. Null on a row that records no fill and on a
+    # record from before contract 44; the price and the figures also where the reference was not
+    # captured
+    slippage_measured_against: Optional[SlippageReference] = None
+    slippage_reference_price: Optional[float] = None
+    slippage: Optional[float] = None
+    slippage_pct: Optional[float] = None
 
 
 class OrderHistoryReport(RunScopedReport):
@@ -446,6 +463,23 @@ class VenueSnapshotRow(BaseModel):
     unread_parts: list[BrokerTruthPart] = []
 
 
+class VenueReconciliation(BaseModel):
+    """
+    What a live session's reconciliation did over the whole session (#631): whether its
+    configuration switched it on, the cycles that compared the venue with our books, the cycles
+    that could not reach the venue, and the divergences seen.
+
+    The counts are null when the comparison was switched off; both cycle counts at 0 say it was on
+    and never came due before the session ended. `divergences_seen` is summed over the cycles, so
+    one divergence that stood for three cycles counts three; the row's reconcile lines say what
+    each picture was.
+    """
+    enabled: bool                                   # the session's configuration switched it on
+    cycles_compared: Optional[int] = None           # cycles that read the venue and compared
+    cycles_skipped: Optional[int] = None            # cycles that could not reach the venue
+    divergences_seen: Optional[int] = None          # summed over the cycles that saw them
+
+
 class VenueAccountRow(BaseModel):
     """
     One live session's account as its venue reported it — at the start, at the end, and what
@@ -462,6 +496,7 @@ class VenueAccountRow(BaseModel):
     divergent_lines: int = 0                        # of those, the ones that found a divergence
     last_reconcile_state: Optional[ReconcileState] = None      # the last line's; null: none written
     last_divergence: Optional[ReconcileDivergenceRow] = None   # the latest divergent picture
+    reconciliation: Optional[VenueReconciliation] = None       # null: written before contract 44
 
 
 class VenueAccountReport(RunScopedReport):
@@ -471,6 +506,35 @@ class VenueAccountReport(RunScopedReport):
     """
     units: list[VenueAccountRow]
     key: list[str] = ['name']
+
+
+class VenueEndpointPerformanceRow(BaseModel):
+    """
+    How one endpoint of the venue's REST API answered a live session (#631) — every call the
+    session made to it, timed. The endpoint is the label the session's adapter gives the call,
+    passed through as it is.
+    """
+    venue_endpoint: str     # the adapter's label for the call, such as a path of the venue's API
+    calls: int
+    avg_ms: float
+    min_ms: float
+    max_ms: float
+    slow_calls: int = 0     # slower than the report's slow_call_threshold_ms
+    failed_calls: int = 0   # the venue's error answers and the transport failures
+
+
+class VenueApiPerformanceReport(RunScopedReport):
+    """
+    The venue REST API's performance as a live session's monitor measured it (#631) — per
+    endpoint, busiest first, with the session's totals. AutoTrader only: a backtest calls no
+    venue. Written whenever the session ran its monitor, with no endpoint when its adapter called
+    none.
+    """
+    slow_call_threshold_ms: Optional[float] = None    # a call slower than this counted as slow
+    slow_calls: int = 0                               # over every endpoint
+    failed_calls: int = 0                             # over every endpoint
+    endpoints: list[VenueEndpointPerformanceRow] = []
+    key: list[str] = ['venue_endpoint']
 
 
 class OpenPositionRow(BaseModel):
@@ -723,10 +787,39 @@ class ExecutionStatsTotals(BaseModel):
     orders_failed: int = 0
 
 
+class FillSlippageSummary(BaseModel):
+    """
+    The slippage of a run's fills of one reference kind (#631) — re-derived over the fills
+    themselves, never combined from per-unit figures, since a mean of means is not a mean. Per
+    fill and unweighted, in percent of each fill's reference, so symbols compare; market and
+    limit fills never share a figure, as a limit fill can only meet or beat its limit. The mean
+    and the maximum are null when no fill of the kind was measured.
+    """
+    measured_against: SlippageReference
+    fills: int                                  # the fills of this kind
+    fills_measured: int                         # of those, the ones whose reference was captured
+    adverse_pct_mean: Optional[float] = None
+    adverse_pct_max: Optional[float] = None     # the costliest fill; positive is a cost
+
+
+class FillSlippageRow(FillSlippageSummary):
+    """The slippage of one unit's fills of one reference kind (#631)."""
+    name: str                                   # the unit, as `units` names it
+
+
 class ExecutionStatsReport(RunScopedReport):
     """Order-execution counts as the unified array model: per-unit rows + a summed total."""
     units: list[ExecutionStatsRow]
     totals: ExecutionStatsTotals
+    # The slippage of the fills (#631): per unit and reference kind, and over every unit's fills
+    fill_slippage: list[FillSlippageRow] = []
+    fill_slippage_totals: list[FillSlippageSummary] = []
+    # What makes one row of each list unique — a served list declares it
+    keys: dict[str, list[str]] = {
+        'units': ['name'],
+        'fill_slippage': ['name', 'measured_against'],
+        'fill_slippage_totals': ['measured_against'],
+    }
 
 
 class ActiveOrderRow(BaseModel):
@@ -2248,6 +2341,13 @@ class BrokerInfoRow(BaseModel):
     broker_config_id: str = ''
     scenarios: list[str] = []
     symbols: list[BrokerSymbolRow] = []
+    # Where the venue reports a fill's fee, as the broker's adapter declares it (#631) — a fact
+    # of the venue, the same in a backtest and a session. Null on a record from before contract 44
+    fee_report: Optional[FeeReport] = None
+    # Whether this run's fills should carry the venue's own fee: the executor's answer in a
+    # session — false in a dry run, whose fills are simulated — and false in a backtest, which
+    # has no venue. Null on an older record, and where a session never built its executor
+    venue_fee_expected: Optional[bool] = None
 
 
 class BrokerReport(RunScopedReport):

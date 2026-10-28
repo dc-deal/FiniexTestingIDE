@@ -101,8 +101,15 @@ and a stop moved to the entry price leaves it null.
 ## Slippage, and when it was not measurable
 
 `entry_slippage` and `exit_slippage` compare the fill against the mid price at the moment of
-submission, signed so that **a value above zero means worse than the submission mid**.
+submission, signed so that **a value above zero means worse than that price**.
 `entry_slippage_pct` and `exit_slippage_pct` are the same comparison as a share.
+
+**A stop-loss or take-profit exit is measured against the level that fired instead** — its
+`exit_slippage` and its `exit_slippage_pct`, the percent a share of the level
+(`exit_slippage_measured_against: "protective_level"`, otherwise `"submission_mid"`). A backtest
+fills such an exit at its level, so it reads 0, and a live session reads how far past the level the
+venue filled it; against the mid, the backtest's figure would only say how far the tick that crossed
+the level overshot it. `exit_slippage_measured_against` is null on a row recorded before it existed.
 
 All four are null when no submission tick was captured — a close performed in cleanup has no
 submission moment to measure against, and neither does a record old enough to predate the

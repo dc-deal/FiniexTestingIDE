@@ -14,7 +14,7 @@ startup) before the report is built. Reads the batch/config directly — NOT via
 this is a config snapshot keyed by broker, not per-unit (same pattern as scenario_details).
 """
 
-from typing import List
+from typing import List, Optional
 
 from python.configuration.market_config_manager import MarketConfigManager
 from python.framework.trading_env.broker_config import BrokerConfig
@@ -35,14 +35,18 @@ def build_broker_report_from_batch(run_id: str, batch: BatchExecutionSummary) ->
         BrokerReport with one BrokerInfoRow per broker
     """
     market_config = MarketConfigManager()
+    # A backtest's fills are booked by the simulation, which has no venue to report a fee — the
+    # simulation executor's own answer (`AbstractTradeExecutor.expects_venue_fee_in_fill_answer`)
     units = [
-        _to_broker_row(info.broker_config, list(info.scenarios), sorted(info.symbols), market_config)
+        _to_broker_row(info.broker_config, list(info.scenarios), sorted(info.symbols), market_config,
+                       venue_fee_expected=False)
         for info in batch.broker_scenario_map.values()
     ]
     return BrokerReport(run_id=run_id, units=units)
 
 
-def build_broker_report_from_session(run_id: str, broker_config: BrokerConfig, symbol: str) -> BrokerReport:
+def build_broker_report_from_session(run_id: str, broker_config: BrokerConfig, symbol: str,
+                                     venue_fee_expected: Optional[bool]) -> BrokerReport:
     """
     Build the broker report for an AutoTrader session — the single broker + traded symbol.
 
@@ -50,12 +54,15 @@ def build_broker_report_from_session(run_id: str, broker_config: BrokerConfig, s
         run_id: The run this report belongs to
         broker_config: The resolved live BrokerConfig (the executor's broker)
         symbol: The session's traded symbol
+        venue_fee_expected: Whether the session's fills should carry the venue's own fee, as its
+            executor answered; None when it never built one
 
     Returns:
         BrokerReport with one BrokerInfoRow (no scenario grid for live)
     """
     return BrokerReport(run_id=run_id, units=[
-        _to_broker_row(broker_config, [], [symbol], MarketConfigManager())])
+        _to_broker_row(broker_config, [], [symbol], MarketConfigManager(),
+                       venue_fee_expected=venue_fee_expected)])
 
 
 def _to_broker_row(
@@ -63,8 +70,22 @@ def _to_broker_row(
     scenarios: List[str],
     symbols: List[str],
     market_config: MarketConfigManager,
+    venue_fee_expected: Optional[bool],
 ) -> BrokerInfoRow:
-    """Map a resolved BrokerConfig (+ its scenarios/symbols) to a BrokerInfoRow."""
+    """
+    Map a resolved BrokerConfig (+ its scenarios/symbols) to a BrokerInfoRow.
+
+    Args:
+        broker_config: The resolved BrokerConfig — its adapter declares where the venue reports a
+            fill's fee
+        scenarios: The scenarios that traded with it; empty for a session
+        symbols: The symbols it traded
+        market_config: The market configuration
+        venue_fee_expected: Whether the run's fills should carry the venue's own fee
+
+    Returns:
+        The row
+    """
     spec = broker_config.get_broker_specification()
     broker_type = broker_config.broker_type.value
     return BrokerInfoRow(
@@ -82,6 +103,8 @@ def _to_broker_row(
         broker_config_id=broker_config.get_frozen_config_id(),
         scenarios=scenarios,
         symbols=[_to_symbol_row(broker_config.get_symbol_specification(s)) for s in symbols],
+        fee_report=broker_config.get_order_capabilities().fee_report,
+        venue_fee_expected=venue_fee_expected,
     )
 
 

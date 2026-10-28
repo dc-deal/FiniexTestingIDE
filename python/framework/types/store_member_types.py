@@ -118,6 +118,7 @@ class RunEntryMemberId(StrEnum):
     SIGNAL = 'signal'
     TRADE_HISTORY = 'trade_history'
     VENUE_ACCOUNT = 'venue_account'
+    VENUE_API_PERFORMANCE = 'venue_api_performance'
     WARNINGS_ERRORS = 'warnings_errors'
     WORKER_DECISION = 'worker_decision'
     EXECUTION_STATS_CSV = 'execution_stats_csv'

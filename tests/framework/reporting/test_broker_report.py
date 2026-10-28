@@ -30,6 +30,7 @@ from python.framework.types.trading_env_types.broker_types import (
     SwapMode,
     SymbolSpecification,
 )
+from python.framework.types.trading_env_types.order_types import FeeReport, OrderCapabilities
 from python.framework.utils.console_renderer import ConsoleRenderer
 
 # Every report artifact names its run (#475); the value is opaque to these tests.
@@ -60,7 +61,7 @@ class _FakeBrokerConfig:
     maps are real domain types; only this thin container is a local stand-in). Attribute
     + method names mirror the real BrokerConfig contract the builder uses
     (`broker_type` enum, `config_hash`, `get_broker_specification`, `get_symbol_specification`,
-    `get_frozen_config_id`).
+    `get_frozen_config_id`, `get_order_capabilities`).
     """
 
     def __init__(self, broker_type, broker_spec, symbol_specs, config_hash, frozen_config_id=''):
@@ -69,6 +70,10 @@ class _FakeBrokerConfig:
         self._symbol_specs = symbol_specs
         self.config_hash = config_hash
         self._frozen_config_id = frozen_config_id
+
+    def get_order_capabilities(self) -> OrderCapabilities:
+        # Kraken reports a fill's fee in the answer that says the order filled
+        return OrderCapabilities(fee_report=FeeReport.STATUS_ANSWER)
 
     def get_frozen_config_id(self) -> str:
         return self._frozen_config_id
@@ -128,7 +133,8 @@ class TestBuild:
 class TestBuildFromSession:
     def test_single_broker_single_symbol_no_scenarios(self):
         # AutoTrader session: one broker + one symbol, no scenario grid
-        report = build_broker_report_from_session(_RUN_ID, _fake_config(['BTCUSD']), 'BTCUSD')
+        report = build_broker_report_from_session(
+            _RUN_ID, _fake_config(['BTCUSD']), 'BTCUSD', venue_fee_expected=True)
         assert len(report.units) == 1
         row = report.units[0]
         assert row.broker_type == 'kraken_spot'
@@ -142,8 +148,36 @@ class TestBuildFromSession:
     def test_the_row_names_where_the_session_froze_its_configuration(self):
         # #547: the content `config_hash` only digests, readable again by this id.
         config = _fake_config(['BTCUSD'], frozen_config_id='8d41e0' + '0' * 58)
-        row = build_broker_report_from_session(_RUN_ID, config, 'BTCUSD').units[0]
+        row = build_broker_report_from_session(
+            _RUN_ID, config, 'BTCUSD', venue_fee_expected=True).units[0]
         assert row.broker_config_id == '8d41e0' + '0' * 58
+
+
+class TestWhoseFigureAFillsFeeIs:
+    """
+    #631: the broker row says where the venue reports a fill's fee — a fact of the venue, the same
+    in both pipelines — and whether this run's fills carry the venue's own figure.
+    """
+
+    def test_a_backtest_states_its_venues_declaration_and_expects_no_venue_fee(self):
+        row = build_broker_report_from_batch(_RUN_ID, _batch(['BTCUSD'], ['btc_run'])).units[0]
+        assert row.fee_report is FeeReport.STATUS_ANSWER
+        assert row.venue_fee_expected is False
+
+    def test_a_session_carries_its_executors_answer(self):
+        config = _fake_config(['BTCUSD'])
+        for answer in (True, False, None):
+            row = build_broker_report_from_session(
+                _RUN_ID, config, 'BTCUSD', venue_fee_expected=answer).units[0]
+            assert row.fee_report is FeeReport.STATUS_ANSWER
+            assert row.venue_fee_expected is answer
+
+    def test_the_declaration_is_served_as_its_value(self):
+        row = build_broker_report_from_session(
+            _RUN_ID, _fake_config(['BTCUSD']), 'BTCUSD', venue_fee_expected=False).units[0]
+        served = row.model_dump(mode='json')
+        assert served['fee_report'] == 'status_answer'
+        assert served['venue_fee_expected'] is False
 
 
 class TestRender:

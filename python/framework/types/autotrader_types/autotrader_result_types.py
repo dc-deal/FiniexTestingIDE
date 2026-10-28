@@ -5,7 +5,7 @@ Result data structures for live AutoTrader sessions.
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import FrozenSet, List, Optional
+from typing import Dict, FrozenSet, List, Optional
 
 from python.framework.types.autotrader_types.clipping_monitor_types import ClippingSessionSummary
 from python.framework.types.autotrader_types.cold_start_types import (
@@ -15,7 +15,9 @@ from python.framework.types.autotrader_types.cold_start_types import (
 from python.framework.types.autotrader_types.safety_session_types import SafetySessionRecord
 from python.framework.types.run_results_types import BookingPeriod
 from python.framework.types.disturbance_episode_types import DisturbanceEpisode, MarketDataTickStats
+from python.framework.types.live_types.api_perf_types import ApiPerfSnapshot
 from python.framework.types.live_types.broker_truth_types import BrokerTruthRecord
+from python.framework.types.live_types.reconciliation_types import ReconcileTotals
 from python.framework.types.log_level import LogLevel
 from python.framework.types.log_record_types import LogRecord
 from python.framework.types.performance_types.performance_stats_types import (
@@ -129,6 +131,16 @@ class AutoTraderResult:
             of BatchExecutionSummary.batch_validation_result
         session_reach: How far the session got — what its footprint judges the files that open
             at a later step of the start by
+        reconcile_enabled: Whether the session's configuration switched its reconciliation on
+            (#631)
+        reconcile_totals: What its reconciliation did over the session — None when no
+            reconciler was built, and in a dry run, whose cycles asked no venue
+        venue_api_performance: The venue REST API's performance as the session's monitor
+            measured it — None when no monitor ran
+        venue_fee_expected: Whether the session's fills should carry the venue's own fee, as its
+            executor answers — None when no executor was built
+        protective_fill_levels: The level each stop-loss or take-profit close fired at, by the
+            seq of its fill event (#631) — empty when none fired or no executor was built
     """
     session_duration_s: float = 0.0
     ticks_processed: int = 0
@@ -170,6 +182,12 @@ class AutoTraderResult:
     booking_periods: List[BookingPeriod] = field(default_factory=list)
     session_validation_result: List[ValidationResult] = field(default_factory=list)
     session_reach: SessionReach = field(default_factory=SessionReach)
+    # #631 — what the session's own observers measured, for every session's record
+    reconcile_enabled: Optional[bool] = None
+    reconcile_totals: Optional[ReconcileTotals] = None
+    venue_api_performance: Optional[ApiPerfSnapshot] = None
+    venue_fee_expected: Optional[bool] = None
+    protective_fill_levels: Dict[int, float] = field(default_factory=dict)
 
     def add_session_validation_result(self, result: ValidationResult) -> None:
         """

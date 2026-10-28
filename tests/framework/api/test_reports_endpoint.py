@@ -37,7 +37,11 @@ from python.framework.reporting.io.artifact_specs import (
     SIGNAL_ARTIFACT,
     TRADE_HISTORY_ARTIFACT,
     VENUE_ACCOUNT_ARTIFACT,
+    VENUE_API_PERFORMANCE_ARTIFACT,
     WARNINGS_ERRORS_ARTIFACT,
+)
+from python.framework.reporting.builders.venue_api_performance_report_builder import (
+    build_venue_api_performance_report,
 )
 from python.framework.reporting.io.order_event_stream_io import write_order_event_stream
 from python.framework.reporting.io.report_artifact_io import write_artifact
@@ -90,6 +94,7 @@ from python.framework.types.api.report_types import (
     WarningsErrorsReport,
 )
 from python.framework.types.config_types.file_logging_config_types import RunLogPaths
+from python.framework.types.live_types.api_perf_types import ApiEndpointStats, ApiPerfSnapshot
 from python.framework.types.live_types.broker_truth_types import (
     BrokerTruthPart,
     BrokerTruthReadReason,
@@ -832,6 +837,45 @@ class TestTheVenueAccount:
             None, ['venue_balances']), 'unread, not empty'
         assert (row['last_reconcile_state'], row['last_divergence']['ghost_orders']) == (
             'clean', ['OQ3V2K-ABCDE-FGHIJK'])
+
+    def test_a_backtest_has_none_and_says_why(self, client, tmp_path):
+        RunIndex(_index_path(tmp_path)).record_artifacts(
+            _RUN, _run_logs(tmp_path).simulation / 'my_set' / _RUN)
+
+        response = client.get(self._URL)
+
+        assert response.status_code == 404
+        assert response.json()['error'] == 'artifact_not_produced'
+
+
+class TestTheVenueApiPerformance:
+    """
+    How the venue's API answered one session, endpoint by endpoint (#631), served from its
+    artifact — and a backtest, which calls no venue API, answers with the cause.
+    """
+
+    _URL = f'/api/v1/reports/runs/{_RUN}/venue-api-performance'
+
+    def test_it_serves_each_endpoint_with_its_slow_calls_and_the_threshold(self, client, tmp_path):
+        io_dir = _run_logs(tmp_path).simulation / 'my_set' / _RUN / IO_SUBDIR
+        snapshot = ApiPerfSnapshot(
+            endpoints=[
+                ApiEndpointStats(endpoint='/0/private/QueryOrders', count=3, min_ms=88.0,
+                                 max_ms=3810.0, total_ms=4110.0, error_count=1, slow_count=1),
+                ApiEndpointStats(endpoint='/0/private/Balance', count=1, min_ms=91.0,
+                                 max_ms=91.0, total_ms=91.0)],
+            slow_count=1, total_errors=1, slow_call_threshold_ms=3000.0)
+        write_artifact(build_venue_api_performance_report(_RUN_ID, snapshot), io_dir,
+                       VENUE_API_PERFORMANCE_ARTIFACT)
+
+        body = client.get(self._URL).json()
+
+        assert body['key'] == ['venue_endpoint']
+        assert (body['slow_call_threshold_ms'], body['slow_calls'], body['failed_calls']) == (
+            3000.0, 1, 1)
+        assert body['endpoints'][0] == {
+            'venue_endpoint': '/0/private/QueryOrders', 'calls': 3, 'avg_ms': 1370.0,
+            'min_ms': 88.0, 'max_ms': 3810.0, 'slow_calls': 1, 'failed_calls': 1}
 
     def test_a_backtest_has_none_and_says_why(self, client, tmp_path):
         RunIndex(_index_path(tmp_path)).record_artifacts(

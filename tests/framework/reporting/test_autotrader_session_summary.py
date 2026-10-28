@@ -20,6 +20,7 @@ from python.framework.types.api.report_types import (
     ReconcileDivergenceRow,
     VenueAccountReport,
     VenueAccountRow,
+    VenueReconciliation,
     VenueSnapshotRow,
     WarningsErrorsReport,
 )
@@ -207,3 +208,36 @@ class TestTheVenueBlock:
 
     def test_a_session_that_asked_no_venue_has_no_block(self):
         assert '🏦' not in _render(AutoTraderResult())
+
+    def test_the_totals_say_how_often_the_comparison_ran(self):
+        """#631: the lines are written only when the picture changes; the totals are not."""
+        out = _render(AutoTraderResult(), venue_account_report=_venue_account(
+            reconciliation=VenueReconciliation(enabled=True, cycles_compared=2877,
+                                               cycles_skipped=3, divergences_seen=4)))
+
+        assert '  Cycles:         2,877 compared, 3 skipped, 4 divergences seen\n' in out
+
+    def test_a_session_that_never_reached_its_venue_stands_out(self):
+        out = _render(AutoTraderResult(), venue_account_report=_venue_account(
+            reconciliation=VenueReconciliation(enabled=True, cycles_compared=0,
+                                               cycles_skipped=5, divergences_seen=0)))
+
+        line = ConsoleRenderer().yellow('0 compared, 5 skipped, 0 divergences seen')
+        assert f'  Cycles:         {line}\n' in out
+        assert '  Reconciliation: no divergence recorded\n' in out
+
+    def test_a_comparison_that_never_came_due_is_not_a_warning(self):
+        out = _render(AutoTraderResult(), venue_account_report=_venue_account(
+            reconciliation=VenueReconciliation(enabled=True, cycles_compared=0,
+                                               cycles_skipped=0, divergences_seen=0)))
+
+        assert '  Cycles:         0 compared, 0 skipped, 0 divergences seen\n' in out
+
+    def test_switched_off_says_so(self):
+        out = _render(AutoTraderResult(), venue_account_report=_venue_account(
+            reconciliation=VenueReconciliation(enabled=False)))
+
+        assert '  Cycles:         reconciliation switched off\n' in out
+
+    def test_a_record_without_totals_prints_no_line(self):
+        assert 'Cycles:' not in _render(AutoTraderResult(), venue_account_report=_venue_account())

@@ -23,7 +23,7 @@ from typing import List
 
 # One monotonic integer. Not a date and not the app version: a consumer compares it for
 # equality, and equality is the only question they have.
-API_CONTRACT_VERSION = 43
+API_CONTRACT_VERSION = 44
 
 # Every response carries it, so a saved fixture carries it too.
 CONTRACT_HEADER = 'X-Api-Contract'
@@ -36,14 +36,23 @@ API_PREFIX = '/api/v1'
 # What moved INTO the current version. One line per change, written for someone who cannot
 # read this repository.
 CHANGES: List[str] = [
-    "GET /api/v1/reports/runs/{run_id}/units/{unit_name}/recorded-streams, new: a unit's timeline — "
-    'every stream it records over time (today its state frames) with its record_count and the time '
-    'of its first and latest record, its cadence, and recording; made to be asked every second or two',
-    "GET /api/v1/reports/runs/{run_id}/units/{unit_name}/recorded-streams/window, new: a unit's "
-    'records in [from, to), oldest first, at most limit of them (1 to 2000, refused outside it, never '
-    'clamped) — more only where one millisecond holds more, as a page never ends inside one; a bound '
-    'left out is resolved from the records the window holds, null when it holds none; each state '
-    'frame carries record_no, its position in the stream; matched, returned, truncated, and '
-    'next_from — set only when the page left records out, on a millisecond boundary',
-    'Two new 404 codes: unit_not_found and streams_not_recorded',
+    "GET /api/v1/reports/runs/{run_id}/venue-api-performance, new: how the venue's REST API "
+    'answered a live session, per endpoint (key venue_endpoint) — calls, avg_ms, min_ms, max_ms, '
+    "slow_calls and failed_calls, with the session's totals and the slow_call_threshold_ms a call "
+    'was judged against; AutoTrader only, written when the session ran its monitor',
+    'venue-account: every row carries reconciliation — enabled, cycles_compared, cycles_skipped and '
+    'divergences_seen over the whole session; a session that reconciled without a broker-truth line '
+    'now has a row too',
+    "broker: every row carries fee_report (where the venue reports a fill's fee, as its adapter "
+    "declares) and venue_fee_expected (whether the run's fills carry the venue's own fee — false in "
+    'a backtest and a dry run)',
+    'order-history: every row carries order_event_seq, its key into the order-event stream, and a '
+    "fill's slippage — slippage_measured_against, slippage_reference_price, slippage and "
+    'slippage_pct, positive is a cost',
+    'execution-stats: fill_slippage per unit and reference kind and fill_slippage_totals over every '
+    "unit's fills, with keys for the three lists",
+    'trade-history: exit_slippage and exit_slippage_pct of a stop-loss or take-profit exit are '
+    'measured against the level that fired instead of the submission mid; '
+    'exit_slippage_measured_against says which',
+    'The run list: venue_api_performance.json joins artifacts',
 ]

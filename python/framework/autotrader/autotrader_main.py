@@ -1536,12 +1536,23 @@ class AutotraderMain:
                     # the trade and order history would be lost to a missing price.
                     self._session_logger.info(
                         '📌 No tick arrived — open positions are reported unvalued')
+                # First the executor's own answers, which read nothing that can fail (#631)
+                result.venue_fee_expected = self._executor.expects_venue_fee_in_fill_answer()
+                result.protective_fill_levels = self._executor.get_protective_fill_levels()
                 result.execution_stats = self._executor.get_execution_stats()
                 result.trade_history = self._executor.get_trade_history()
                 result.order_history = self._executor.get_order_history()
                 result.active_orders = self._executor.get_active_orders_snapshot()
             except Exception as e:
                 self._session_logger.error(f'Error collecting executor stats: {e}')
+
+        # #631 — what the session's own observers measured, read while both still hold it, so
+        # every session's record says whether it reconciled and how its venue's API answered
+        result.reconcile_enabled = self._config.reconciliation.enabled
+        if self._reconciler is not None:
+            result.reconcile_totals = self._reconciler.get_totals()
+        if self._api_monitor is not None:
+            result.venue_api_performance = self._api_monitor.get_snapshot()
 
         # #362 — the stream is closed by now; read back once, for the pending-order counters,
         # the check that it holds every submission, and the venue-account section

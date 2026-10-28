@@ -19,17 +19,19 @@ from python.framework.reporting.console.trade_history_summary import TradeHistor
 from python.framework.types.api.report_types import (
     ExecutionStatsReport,
     ExecutionStatsTotals,
+    FillSlippageSummary,
     OrderHistoryReport,
     TradeAnalytics,
     TradeHistoryReport,
     TradeHistoryRow,
     TradeScenarioTotals,
 )
+from python.framework.types.fill_slippage_types import SlippageReference
 from python.framework.utils.console_renderer import ConsoleRenderer
 
 # Every report artifact names its run (#475); the value is opaque to these tests.
 _RUN_ID = '20261011_120000_a1b2c3d4'
-_SLIPPAGE_HEADING = 'SLIPPAGE (submission tick vs fill)'
+_SLIPPAGE_HEADING = 'SLIPPAGE (each fill against the price its order named)'
 
 
 class _SpyRenderer:
@@ -154,7 +156,11 @@ def _trade_console(unit_names: List[str]) -> str:
             total_fees=0.05) for name in unit_names])
     summary = TradeHistorySummary(
         report, OrderHistoryReport(run_id=_RUN_ID, orders=[], count=0, symbols=[]),
-        ExecutionStatsReport(run_id=_RUN_ID, units=[], totals=ExecutionStatsTotals()))
+        ExecutionStatsReport(run_id=_RUN_ID, units=[], totals=ExecutionStatsTotals(),
+                             fill_slippage_totals=[FillSlippageSummary(
+                                 measured_against=SlippageReference.SUBMISSION_MID,
+                                 fills=len(unit_names), fills_measured=len(unit_names),
+                                 adverse_pct_mean=0.01, adverse_pct_max=0.01)]))
     buf = io.StringIO()
     with redirect_stdout(buf):
         RunConsoleRenderer(
@@ -165,7 +171,7 @@ def _trade_console(unit_names: List[str]) -> str:
 
 class TestTheSlippageBlockIsPrintedOnce:
     """
-    The submission-vs-fill slippage block sits in the aggregated trade statistics, which a single
+    The fills' slippage block sits in the aggregated trade statistics, which a single
     unit skips as redundant with its own table. An AutoTrader session is always one unit, so the
     block follows a single unit's table instead, and a run of several prints it once, in the
     aggregate.

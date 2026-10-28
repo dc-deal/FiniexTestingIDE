@@ -60,6 +60,8 @@ class TradeHistorySummary(AbstractBatchSummarySection):
         self._report = report
         self._order_report = order_report
         self._failed_by_unit = {row.name: row.orders_failed for row in execution_report.units}
+        # The fills' slippage per reference kind over the whole run, as the model serves it (#631)
+        self._fill_slippage = execution_report.fill_slippage_totals
         # Per-scenario footer totals from the model (no renderer re-sum)
         self._scenario_totals_by_name = {
             t.scenario_name: t for t in report.scenario_totals}
@@ -93,18 +95,17 @@ class TradeHistorySummary(AbstractBatchSummarySection):
 
     def render_slippage(self, renderer: ConsoleRenderer) -> None:
         """
-        Render the submission-vs-fill slippage block on its own (#340) — for a single-unit run.
+        Render the fills' slippage block on its own — for a single-unit run.
 
-        A run of several units prints it inside the aggregated statistics, once per currency. A
-        single unit skips those as redundant with its own table, and the slippage is the one
-        figure in them that the table does not show — an AutoTrader session, always one unit,
-        would have no slippage line at all without this.
+        A run of several units prints it once inside the aggregated statistics. A single unit
+        skips those as redundant with its own table, and the slippage is the one figure in them
+        that the table does not show — an AutoTrader session, always one unit, would have no
+        slippage line at all without this.
 
         Args:
             renderer: ConsoleRenderer instance
         """
-        if self._report.trades:
-            self._render_slippage_stats(self._report.trades, renderer)
+        self._render_fill_slippage(renderer)
 
     def render_aggregated(self, renderer: ConsoleRenderer) -> None:
         """
@@ -137,6 +138,9 @@ class TradeHistorySummary(AbstractBatchSummarySection):
                 group_rows, analytics_by_ccy.get(currency), renderer)
             if multi:
                 renderer.print_separator(width=120, char='·')
+
+        # The fills' slippage is in percent, so it is currency-agnostic too — render once.
+        self._render_fill_slippage(renderer)
 
         # Rejections are currency-agnostic — render once.
         rejections = [o for o in self._order_report.orders if o.status in FAILED_ORDER_STATUSES]
@@ -371,7 +375,6 @@ class TradeHistorySummary(AbstractBatchSummarySection):
         print(f'      Avg: {avg_duration:.0f} | Min: {min_duration} | Max: {max_duration}')
 
         self._render_analytics(analytics, renderer)
-        self._render_slippage_stats(rows, renderer)
 
     def _render_analytics(self, analytics, renderer: ConsoleRenderer) -> None:
         """Render the #389 trade-analytics block from the (per-currency) TradeAnalytics."""
@@ -391,39 +394,29 @@ class TradeHistorySummary(AbstractBatchSummarySection):
             f'      Avg MFE — losers:  {self._format_value(a.avg_mfe_losers, renderer)} {currency}  '
             f'(left on the table)')
 
-    def _render_slippage_stats(
-        self, rows: List[TradeHistoryRow], renderer: ConsoleRenderer) -> None:
-        """Render submission-tick-vs-fill-price slippage statistics (#340), from the model."""
-        entry = [(r.entry_slippage, r.entry_slippage_pct) for r in rows if r.entry_slippage is not None]
-        exit_ = [(r.exit_slippage, r.exit_slippage_pct) for r in rows if r.exit_slippage is not None]
-        if not entry and not exit_:
-            return  # no submission-tick data captured (legacy / cleanup-only)
+    def _render_fill_slippage(self, renderer: ConsoleRenderer) -> None:
+        """
+        Render the fills' slippage as the execution statistics serve it (#631) — one line per
+        reference kind, over every fill of the run, in percent of each fill's reference. Nothing
+        is computed here, and percent is what lets fills of different symbols share a line.
 
-        print(f"\n   {renderer.bold('📐 SLIPPAGE (submission tick vs fill):')}")
-        print(f'      Samples: {len(entry)} entry / {len(exit_)} exit (of {len(rows)} trades)')
-        if entry:
-            avg, p50, p95, max_v, avg_pct, p95_pct = self._slippage_aggregates(entry)
-            print(f'      Entry:  avg={avg:+.5f} ({avg_pct:+.4f}%)  p50={p50:+.5f}  '
-                  f'p95={p95:+.5f} ({p95_pct:+.4f}%)  max={max_v:+.5f}')
-        if exit_:
-            avg, p50, p95, max_v, avg_pct, p95_pct = self._slippage_aggregates(exit_)
-            print(f'      Exit:   avg={avg:+.5f} ({avg_pct:+.4f}%)  p50={p50:+.5f}  '
-                  f'p95={p95:+.5f} ({p95_pct:+.4f}%)  max={max_v:+.5f}')
-        print('      Sign convention: positive = paid worse than submission mid (adverse).')
+        Args:
+            renderer: ConsoleRenderer instance
+        """
+        if not self._fill_slippage:
+            return  # no fill recorded, or a record from before the figures existed
 
-    @staticmethod
-    def _slippage_aggregates(samples):
-        """avg/p50/p95/max over the price deltas + avg/p95 over the percent values."""
-        prices = sorted(s for s, _ in samples)
-        pcts = sorted(p for _, p in samples)
-        n = len(prices)
-        avg = sum(prices) / n
-        p50 = prices[n // 2]
-        p95 = prices[min(n - 1, int(n * 0.95))]
-        max_v = max(prices, key=abs)
-        avg_pct = sum(pcts) / n
-        p95_pct = pcts[min(n - 1, int(n * 0.95))]
-        return avg, p50, p95, max_v, avg_pct, p95_pct
+        print(f"\n   {renderer.bold('📐 SLIPPAGE (each fill against the price its order named):')}")
+        for summary in self._fill_slippage:
+            if summary.adverse_pct_mean is None:
+                figures = 'not measured — the reference was not captured'
+            else:
+                figures = (f'mean {summary.adverse_pct_mean:+.4f}%   '
+                           f'max {summary.adverse_pct_max:+.4f}%')
+            print(f'      {summary.measured_against.value:<17} {summary.fills} fills '
+                  f'({summary.fills_measured} measured)   {figures}')
+        print('      Positive is a cost. A limit fill can only meet or beat its limit, so the kinds '
+              'are never averaged together.')
 
     def _render_aggregated_rejections(
         self, rejections: List[OrderHistoryRow], renderer: ConsoleRenderer) -> None:

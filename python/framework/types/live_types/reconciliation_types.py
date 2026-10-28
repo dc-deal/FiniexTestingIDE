@@ -229,3 +229,21 @@ class FlatCheckResult:
     open_orders: List[BrokerOrder] = field(default_factory=list)
     asset_balances: Dict[str, float] = field(default_factory=dict)
     reasons: List[str] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class ReconcileTotals:
+    """
+    What a session's reconciliation did over the whole session (#631), for its record: the cycles
+    that compared the venue with our books, the cycles that could not reach the venue and so
+    compared nothing, and the divergences seen.
+
+    Args:
+        cycles_compared: Cycles that read the venue and compared it with our books
+        cycles_skipped: Cycles that could not reach the venue
+        divergences_seen: Divergences summed over the cycles that saw them — one that stood for
+            three cycles counts three
+    """
+    cycles_compared: int
+    cycles_skipped: int
+    divergences_seen: int

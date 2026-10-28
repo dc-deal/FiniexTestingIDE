@@ -79,6 +79,10 @@ matching their contents.
 | `fee_source` | where `commission` came from: `venue` — the figure the venue reported for the fill, what the account was charged; `estimate` — our fee model's, the declared rate times the order's value. A backtest's is always `estimate` |
 | `rejection_reason` · `rejection_message` | why it was refused, as a code and as a sentence |
 | `initiator` · `end_reason` | who ended the order, and why — on a cancelled, expired or unaccounted row |
+| `order_event_seq` | the event this row records, by its `seq` on the [order events](/api/v1/docs/order-events) — the row's key into the stream |
+| `slippage_measured_against` | what the fill is measured against — `submission_mid` for a market order (the mid when it was sent), `limit_price` for a limit (its limit in force at the fill), `trigger_price` for a stop or a stop-limit, `protective_level` for a stop-loss or take-profit close (the level that fired) |
+| `slippage_reference_price` | that price |
+| `slippage` · `slippage_pct` | how far the fill landed from it, in price units and in percent of it — positive is a cost: a buy that paid more, a sell that received less |
 
 `event_time` runs on the run's own clock, so in a backtest it is the replayed market time and not
 the time the backtest was executed. It is the moment of the event this row records — the
@@ -89,7 +93,16 @@ triggered, a close is `market`, and an exit through a protective order the venue
 order's type.
 
 `direction`, `action`, `status`, `fee_source`, `order_type`, `close_type`, `rejection_reason`,
-`initiator` and `end_reason` are closed vocabularies and appear in the schema with their values.
+`initiator`, `end_reason` and `slippage_measured_against` are closed vocabularies and appear in the
+schema with their values.
+
+**A fill's slippage is measured against a price set before the fill could move it.** A market order
+against the mid when it was sent, so every part of a split fill is measured against the same
+price; a limit against its limit, which a fill can only meet or beat; a stop against its trigger. A
+stop-loss or take-profit close against the level that fired: a backtest fills such a close at its
+level and reads 0, a live session reads how far past the level the venue filled it — the difference
+a comparison of the two runs is after. The [execution statistics](/api/v1/docs/execution-stats)
+summarise it per reference.
 
 ## What is null, and the one field that never is
 
@@ -106,6 +119,9 @@ read as a price is a mistake that cannot be undone further down.
 | `rejection_reason` · `rejection_message` | the order was neither denied nor rejected |
 | `initiator` · `end_reason` | the row is not a cancel, an expiry or an order unaccounted for |
 | `direction` · `action` · `order_type` | the record did not carry them |
+| `order_event_seq` | a `pending` row, which has no event yet, or a row recorded before the field existed |
+| `slippage_measured_against` | the row records no fill, or the row was recorded before the field existed |
+| `slippage_reference_price` · `slippage` · `slippage_pct` | the row records no fill, the row was recorded before the field existed, or the price it is measured against was not captured — a market order sent before the session's first quote |
 
 The exception is `commission`: it is a plain number and present on every row. For the cost of a
 *closed trade*, read the itemised fees in [trade history](/api/v1/docs/trade-history) rather than

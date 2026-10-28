@@ -24,6 +24,12 @@ class DocsSearchConsole:
         extra_commands: Further search commands, each run with the term appended
     """
 
+    # One search prints several blocks under each other, and several searches scroll into one
+    # another. Two weights of rule keep them apart: the heavy one opens a search, the light one
+    # separates the corpora within it.
+    _HEAVY = '\u2550' * 78
+    _LIGHT = '\u2500' * 78
+
     def __init__(self, docs_root: Path, extra_commands: List[List[str]]):
         self._docs_root = docs_root
         self._extra_commands = extra_commands
@@ -39,9 +45,16 @@ class DocsSearchConsole:
         Returns:
             Process exit code — 0 also when nothing matched, because an empty answer is an answer
         """
+        print(f'\n{self._HEAVY}')
+        print(f'  SEARCH  {query!r}')
+        print(self._HEAVY)
         self._print_documentation_hits(query, hits)
         for command in self._extra_commands:
             self._run_extra_search(command, query)
+        # Printed once here rather than by each command, which would repeat it per corpus.
+        print(f'\n{self._LIGHT}')
+        print('  open <path>:<line> in the editor \u00b7 a book page in full: '
+              '_books/tools/books_search.py --open <key> <page>')
         return 0
 
     def _print_documentation_hits(self, query: str, hits: int) -> None:
@@ -54,8 +67,8 @@ class DocsSearchConsole:
         """
         index = DocsSearchIndex(self._docs_root, recursive=True)
         found, unknown = index.search(query, hits)
-        print(f'\n🔍 Documentation — {index.get_passage_count()} passages, best {len(found)} '
-              f'for {query!r}\n')
+        print(f'\n{self._LIGHT}')
+        print(f'  DOCS \u2014 {index.get_passage_count()} passages, best {len(found)}\n')
         for score, passage in found:
             # Relative to where the search was started — in the workspace that is the path an
             # editor's terminal turns into a link.
@@ -81,7 +94,9 @@ class DocsSearchConsole:
         """
         # Flushed, because the command writes to the terminal on its own: anything this process
         # still holds in its buffer would otherwise appear AFTER the command's output.
-        print(f'\n🔍 {" ".join(command)}\n', flush=True)
+        corpus = command[command.index('--corpus') + 1] if '--corpus' in command else ' '.join(command)
+        print(f'\n{self._LIGHT}')
+        print(f'  {corpus.upper()}\n', flush=True)
         try:
             subprocess.run([*command, query], check=False)
         except OSError as error:

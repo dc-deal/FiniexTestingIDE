@@ -45,6 +45,7 @@ Each order life in a backtest, read by submission; money-touching flows in both 
 | `TestAPositionsCloses` | a close is an order of its own and states its position and that position's direction; a breached stop-loss exits through an order of its own; a close whose position went on its way still names its side — the side travels on the close, as live |
 | `TestARefusal` | a denial was never submitted; a refused close names its position; a stress-test refusal answers the submission with its delay |
 | `TestTheStreamItself` | `seq` strictly increasing, every step names a recorded submission, no wall clock, and two identical backtests write identical streams |
+| `TestEachFillIsFoundAndMeasured` | #631: a booked row names the event it was booked with, in both account models; over the real stream a stop-limit is measured against its trigger although the simulation rests it as a limit once it fires, and a stop-loss exit against its level, where the simulation fills it — 0 |
 
 ### `test_live_order_events.py`
 
@@ -60,6 +61,7 @@ Each order life in a live session against the mock venue.
 | `TestACloseWhosePositionIsGone` | a close whose position something else took before the answer came still names the position's side and size on its steps, in both account models — both travel on the close from its registration |
 | `TestTheStreamItself` | `seq` strictly increasing across orders; an answer for an order that is gone names how it ended |
 | `TestTheSessionsPendingCounters` | the pending-order counters derived from a session's events — one accepted, one rejected, one never confirmed — add up, and only the answers carry a duration |
+| `TestEachFillIsFoundAndMeasured` | #631: a booked row names its own fill event and a market fill is measured against the mid when the order was sent, in both account models; a stop-loss exit is measured against its level and reads how far below it the mock venue sold — where the simulation reads 0 |
 
 ### `test_live_crossed_answers.py`
 

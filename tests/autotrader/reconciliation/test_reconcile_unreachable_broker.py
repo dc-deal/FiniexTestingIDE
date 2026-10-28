@@ -18,6 +18,7 @@ from python.framework.exceptions.connection_errors import ConnectionAttemptFaile
 from python.framework.types.config_types.autotrader_defaults_config_types import (
     ReconciliationDefaults,
 )
+from python.framework.types.live_types.reconciliation_types import ReconcileTotals
 from tests.autotrader.reconciliation.conftest import make_pending
 
 
@@ -41,6 +42,9 @@ class Unreachable:
 
     def get_broker_balances(self):
         return {}
+
+    def reads_venue_account(self):
+        return True
 
     def fail_next(self, times: int = 1) -> None:
         """Fail the next pulls, the way a venue that goes down mid-session does."""
@@ -159,3 +163,52 @@ def test_unknown_exception_still_propagates(make_reconciler):
 
     with pytest.raises(ValueError):
         rec.reconcile(current_tick=1)
+
+
+def test_the_totals_say_how_often_the_comparison_ran(make_reconciler):
+    # #631: lines are written only when the picture changes, so the record keeps the totals —
+    # the cycles that compared, the ones that could not reach the venue, and the divergences seen
+    # summed over the cycles: one that stands for two cycles counts two
+    adapter = Unreachable(ConnectionAttemptFailedError('HTTP 502'), fail_times=0)
+    rec = make_reconciler(adapter, active_orders=[make_pending('o1', 'O1')])
+    assert rec.get_totals() == ReconcileTotals(
+        cycles_compared=0, cycles_skipped=0, divergences_seen=0)
+
+    rec.reconcile(current_tick=1)      # our resting order is not at the venue
+    rec.reconcile(current_tick=2)      # and still is not
+    adapter.fail_next()
+    rec.reconcile(current_tick=3)      # the venue does not answer
+
+    assert rec.get_totals() == ReconcileTotals(
+        cycles_compared=2, cycles_skipped=1, divergences_seen=2)
+
+
+def test_a_session_that_never_reached_its_venue_compared_nothing(make_reconciler):
+    # The session that only looks clean: every cycle skipped, so no divergence could be seen
+    adapter = Unreachable(ConnectionAttemptFailedError('HTTP 502'))
+    rec = make_reconciler(adapter, active_orders=[make_pending('o1', 'O1')])
+
+    for tick in (1, 2, 3):
+        rec.reconcile(current_tick=tick)
+
+    assert rec.get_totals() == ReconcileTotals(
+        cycles_compared=0, cycles_skipped=3, divergences_seen=0)
+
+
+class _DryRun(Unreachable):
+    """A dry run's adapter: every account read answers itself, empty — no venue is asked."""
+
+    def reads_venue_account(self):
+        return False
+
+
+def test_a_dry_runs_cycles_leave_no_venue_totals(make_reconciler):
+    # The cycles ran, but against an empty answer of our own: a record of venue comparisons would
+    # claim thousands of them over a rehearsal that never asked the venue anything
+    adapter = _DryRun(ConnectionAttemptFailedError('HTTP 502'), fail_times=0)
+    rec = make_reconciler(adapter)
+
+    rec.reconcile(current_tick=1)
+    rec.reconcile(current_tick=2)
+
+    assert rec.get_totals() is None

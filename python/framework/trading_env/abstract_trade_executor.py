@@ -228,6 +228,10 @@ class AbstractTradeExecutor(ABC):
         # The latest endings, so an answer arriving for an order that is gone can say how it
         # ended. Bounded: it explains a late answer, it is not a record
         self._recent_endings: Dict[str, OrderEvent] = {}
+        # The level each stop-loss or take-profit close fired at, by the seq of its fill event
+        # (#631) — what a report measures that fill against. Kept here because the trade history,
+        # which says it too, is capped; one entry per protective fill
+        self._protective_fill_levels: Dict[int, float] = {}
 
         # Active limit orders waiting for price trigger (post-pipeline)
         self._active_limit_orders: List[PendingOrder] = []
@@ -333,7 +337,10 @@ class AbstractTradeExecutor(ABC):
         if (recorded_as is OrderEventType.REJECTED and pending is not None
                 and pending.accepted_seq is None and 'in_flight_ms' not in event_fields):
             event_fields['in_flight_ms'] = self._submission_answer_ms(pending)
-        self._record_order_event(recorded_as, pending=pending, result=result, **event_fields)
+        event = self._record_order_event(recorded_as, pending=pending, result=result,
+                                         **event_fields)
+        # The row's own event (#631): what a report joins the row to its fill by
+        result.order_event_seq = event.seq
         return result
 
     # ============================================
@@ -2133,6 +2140,10 @@ class AbstractTradeExecutor(ABC):
                     **self._unbooked_fee_fields(reported_fee))
             return None
 
+        # The level a stop-loss or take-profit close fired at, read before the close changes the
+        # position — the same levels its trade record takes (#631)
+        fired_level = close_reason.fired_level(position.stop_loss, position.take_profit)
+
         # Get current price (needed for tick_value calculation regardless)
         bid, ask = self.get_current_price(position.symbol)
 
@@ -2332,6 +2343,8 @@ class AbstractTradeExecutor(ABC):
             f'CLOSE_FILL_ORDER: {json.dumps(result.to_dict(), indent=2)}')
 
         self._book_order_result(result, pending_order, event_type=fill_event)
+        if fired_level is not None and result.order_event_seq is not None:
+            self._protective_fill_levels[result.order_event_seq] = fired_level
         self._on_close_fill(pending_order, result)
 
         # Partial-close event (#348) carries the delta; a full close emits
@@ -3192,6 +3205,15 @@ class AbstractTradeExecutor(ABC):
         """Get all completed trades with full audit trail."""
         return self.portfolio.get_trade_history()
 
+    def get_protective_fill_levels(self) -> Dict[int, float]:
+        """
+        The level each stop-loss or take-profit close fired at, by the seq of its fill event (#631).
+
+        Returns:
+            A copy — one entry per protective fill, over the whole run
+        """
+        return dict(self._protective_fill_levels)
+
     # ============================================
     # Broker Information
     # ============================================
@@ -3217,6 +3239,7 @@ class AbstractTradeExecutor(ABC):
         self._execution_counts = ExecutionCounters()
         self._order_event_seq = 0
         self._recent_endings.clear()
+        self._protective_fill_levels.clear()
         self._active_limit_orders.clear()
         self._active_stop_orders.clear()
 

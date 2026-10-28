@@ -10,6 +10,8 @@ orders), the filter path (symbol / status), distinct symbols, and the empty case
 import csv
 from datetime import datetime, timezone
 
+import pytest
+
 from python.framework.constants.run_layout_constants import RUN_TYPE_SIMULATION
 from python.framework.reporting.builders.order_history_report_builder import (
     build_order_history_report,
@@ -17,7 +19,9 @@ from python.framework.reporting.builders.order_history_report_builder import (
 from python.framework.reporting.builders.run_unit import RunUnit
 from python.framework.reporting.io.report_csv_io import write_order_history_csv
 from python.framework.store.entry_members.run_entry_writer import RunEntryWriter
+from python.framework.types.fill_slippage_types import SlippageReference
 from python.framework.types.trading_env_types.broker_types import FeeSource
+from python.framework.types.trading_env_types.order_event_types import OrderEvent, OrderEventType
 from python.framework.types.trading_env_types.order_types import (
     CloseType,
     OrderAction,
@@ -209,3 +213,54 @@ class TestWhereTheCommissionCameFrom:
 
         assert columns.index('fee_source') == columns.index('commission') + 1
         assert cells == ['venue', '']
+
+
+class TestHowFarTheFillLanded:
+    """
+    #631: a row that records a fill carries its slippage, found through the order event it was
+    booked with — not through its order id, which a split fill shares across several rows.
+    """
+
+    def _session(self):
+        first = _order(order_id='o1')
+        first.executed_price, first.order_event_seq = 100.02, 2
+        second = _order(order_id='o1')
+        second.executed_price, second.order_event_seq = 100.08, 3
+        resting = _order(order_id='o2', status=OrderStatus.PENDING)
+        common = dict(order_id='o1', submitted_seq=1, order_type=OrderType.MARKET,
+                      direction=OrderDirection.LONG, action=OrderAction.OPEN)
+        events = [
+            OrderEvent(seq=1, event_type=OrderEventType.SUBMITTED, submission_mid=100.0, **common),
+            OrderEvent(seq=2, event_type=OrderEventType.PARTIALLY_FILLED, fill_price=100.02,
+                       **common),
+            OrderEvent(seq=3, event_type=OrderEventType.FILLED, fill_price=100.08, **common),
+        ]
+        return [RunUnit(name='btc_session', symbol='BTCUSD',
+                        order_history=[first, second, resting], order_events=events)]
+
+    def test_each_row_finds_its_own_fill(self):
+        first, second, _ = build_order_history_report(_RUN_ID, self._session()).orders
+
+        assert (first.order_event_seq, second.order_event_seq) == (2, 3)
+        assert first.slippage_measured_against is SlippageReference.SUBMISSION_MID
+        assert (first.slippage_reference_price, second.slippage_reference_price) == (100.0, 100.0)
+        assert first.slippage == pytest.approx(0.02)
+        assert second.slippage == pytest.approx(0.08)
+        assert second.slippage_pct == pytest.approx(0.08)
+
+    def test_a_row_that_records_no_fill_has_none(self):
+        resting = build_order_history_report(_RUN_ID, self._session()).orders[2]
+
+        assert resting.order_event_seq is None
+        assert (resting.slippage_measured_against, resting.slippage_reference_price,
+                resting.slippage, resting.slippage_pct) == (None, None, None, None)
+
+    def test_the_csv_carries_the_figures_flat(self, tmp_path):
+        report = build_order_history_report(_RUN_ID, self._session())
+
+        written = write_order_history_csv(report, RunEntryWriter(tmp_path, RUN_TYPE_SIMULATION))
+        with written.open(encoding='utf-8') as handle:
+            cells = [(row['slippage_measured_against'], row['slippage_reference_price'])
+                     for row in csv.DictReader(handle)]
+
+        assert cells == [('submission_mid', '100.0'), ('submission_mid', '100.0'), ('', '')]

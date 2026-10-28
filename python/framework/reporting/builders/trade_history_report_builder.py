@@ -25,6 +25,7 @@ from python.framework.types.api.report_types import (
     TradeHistoryReport,
     TradeHistoryRow,
 )
+from python.framework.types.fill_slippage_types import SlippageReference
 from python.framework.types.portfolio_types.portfolio_trade_record_types import TradeRecord
 from python.framework.types.trading_env_types.broker_trade_types import BrokerTrade
 from python.framework.utils.trading_math.slippage_math import adverse_slippage
@@ -175,8 +176,15 @@ def _to_row(trade: TradeRecord, scenario_name: str = '',
     r_multiple = (trade.net_pnl / trade.initial_risk) if trade.initial_risk else None
     entry_slip, entry_slip_pct = adverse_slippage(
         trade.entry_price, trade.entry_submission.tick_mid_price, trade.entry_side)
+    # A stop-loss or take-profit exit is measured against the level that fired (#631): the
+    # simulation fills it AT the level, and the mid of the tick that crossed it would make its
+    # overshoot read as slippage
+    level = trade.close_reason.fired_level(trade.stop_loss, trade.take_profit)
+    exit_measured_against = (SlippageReference.PROTECTIVE_LEVEL if level is not None
+                             else SlippageReference.SUBMISSION_MID)
     exit_slip, exit_slip_pct = adverse_slippage(
-        trade.exit_price, trade.exit_submission.tick_mid_price, trade.exit_side)
+        trade.exit_price, level if level is not None else trade.exit_submission.tick_mid_price,
+        trade.exit_side)
     return TradeHistoryRow(
         position_id=trade.position_id,
         symbol=trade.symbol,
@@ -218,6 +226,7 @@ def _to_row(trade: TradeRecord, scenario_name: str = '',
         exit_slippage=exit_slip,
         entry_slippage_pct=entry_slip_pct,
         exit_slippage_pct=exit_slip_pct,
+        exit_slippage_measured_against=exit_measured_against,
         close_type=trade.close_type,
         position_closes=closes[trade.position_id] if closes is not None else None,
         entry_lots=trade.entry_lots,

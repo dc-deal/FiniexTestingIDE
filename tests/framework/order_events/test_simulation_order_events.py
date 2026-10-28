@@ -15,6 +15,9 @@ from typing import List
 
 import pytest
 
+from python.framework.reporting.builders.fill_slippage import derive_fill_slippage
+from python.framework.types.fill_slippage_types import SlippageReference
+from python.framework.types.portfolio_types.portfolio_trade_record_types import CloseReason
 from python.framework.types.trading_env_types.order_event_types import (
     OrderEvent,
     OrderEventType,
@@ -26,6 +29,7 @@ from python.framework.types.trading_env_types.order_types import (
     OrderDirection,
     OrderEndReason,
     OrderInitiator,
+    OrderStatus,
     OrderType,
 )
 from python.framework.types.trading_env_types.stress_test_types import (
@@ -429,3 +433,82 @@ class TestTheStreamItself:
     def test_two_identical_backtests_write_identical_streams(self):
         first, second = self._session(), self._session()
         assert [asdict(e) for e in first] == [asdict(e) for e in second]
+
+
+class TestEachFillIsFoundAndMeasured:
+    """
+    #631: a booked row names the event it was booked with, and the stream says what each fill is
+    measured against — a stop-limit against its trigger, although the simulation rests it as a
+    limit once it fires; a stop-loss exit against its level, where the simulation fills it.
+    """
+
+    @ACCOUNT_MODELS
+    def test_a_rows_event_is_its_own_fill(self, spot_mode):
+        sim = make_simulator(spot_mode)
+        events = record_events(sim)
+        sim.open_order(market_order())
+        sim_tick(sim, msc=1001)
+
+        fill = next(e for e in events if e.event_type is OrderEventType.FILLED)
+        rows = [r for r in sim.get_order_history() if r.status is OrderStatus.EXECUTED]
+        assert [r.order_event_seq for r in rows] == [fill.seq]
+
+    def test_a_stop_limit_is_measured_against_its_trigger(self):
+        sim = make_simulator(spot_mode=False)
+        events = record_events(sim)
+        sim.open_order(_stop(OrderType.STOP_LIMIT, limit=50200.0))
+        sim_tick(sim, msc=1001)
+        sim_tick(sim, msc=1002, bid=50140.0, ask=50150.0)
+
+        slip, = derive_fill_slippage(events, sim.get_protective_fill_levels()).values()
+        assert (slip.measured_against, slip.reference_price) == (
+            SlippageReference.TRIGGER_PRICE, _BUY_STOP)
+
+    @ACCOUNT_MODELS
+    def test_a_stop_loss_exit_reads_zero_where_the_simulation_fills_it(self, spot_mode):
+        sim = make_simulator(spot_mode)
+        events = record_events(sim)
+        sim.open_order(market_order(stop_loss=49000.0))
+        sim_tick(sim, msc=1001)
+        sim_tick(sim, msc=1002, bid=48900.0, ask=48902.0)
+
+        exit_fill = next(e for e in events if e.event_type is OrderEventType.FILLED
+                         and e.action is OrderAction.CLOSE)
+        assert sim.get_protective_fill_levels() == {exit_fill.seq: 49000.0}
+        slip = derive_fill_slippage(events, sim.get_protective_fill_levels())[exit_fill.seq]
+        assert slip.measured_against is SlippageReference.PROTECTIVE_LEVEL
+        assert (slip.reference_price, slip.slippage) == (49000.0, 0.0)
+
+    def test_a_stop_loss_exit_the_capped_trade_history_dropped_still_finds_its_level(self):
+        """The trade history keeps its newest records only; the level is kept per fill."""
+        sim = make_simulator(spot_mode=False, trade_history_max=1)
+        events = record_events(sim)
+        for start in (1001, 1003):
+            sim.open_order(market_order(stop_loss=49000.0))
+            sim_tick(sim, msc=start)                                     # the entry fills
+            sim_tick(sim, msc=start + 1, bid=48900.0, ask=48902.0)       # the stop fires
+
+        exits = [e for e in events if e.event_type is OrderEventType.FILLED
+                 and e.action is OrderAction.CLOSE]
+        assert len(exits) == 2 and len(sim.get_trade_history()) == 1
+        derived = derive_fill_slippage(events, sim.get_protective_fill_levels())
+        assert [derived[e.seq].measured_against for e in exits] == [
+            SlippageReference.PROTECTIVE_LEVEL] * 2
+
+    def test_every_part_of_a_protective_close_finds_the_level(self):
+        sim = make_simulator(spot_mode=False)
+        events = record_events(sim)
+        sim.open_order(market_order(lots=0.02, stop_loss=49000.0))
+        sim_tick(sim, msc=1001)
+        position_id = sim.get_open_positions()[0].position_id
+
+        sim.close_position(position_id, lots=0.01, close_reason=CloseReason.SL_TRIGGERED)
+        sim_tick(sim, msc=1002)
+        sim.close_position(position_id, close_reason=CloseReason.SL_TRIGGERED)
+        sim_tick(sim, msc=1003)
+
+        parts = [e.seq for e in events if e.event_type in (
+            OrderEventType.FILLED, OrderEventType.PARTIALLY_FILLED)
+            and e.action is OrderAction.CLOSE]
+        assert len(parts) == 2
+        assert sim.get_protective_fill_levels() == {seq: 49000.0 for seq in parts}
