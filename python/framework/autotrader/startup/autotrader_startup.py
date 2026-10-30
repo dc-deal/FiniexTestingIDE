@@ -31,6 +31,7 @@ from python.framework.constants.run_layout_constants import (
     SESSION_LOG_NAME,
 )
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
+from python.framework.exceptions.order_feature_errors import OrderFeatureRefusedError
 from python.framework.factory.decision_logic_factory import DecisionLogicFactory
 from python.framework.factory.live_trade_executor_factory import build_live_executor
 from python.framework.factory.worker_factory import WorkerFactory
@@ -87,7 +88,10 @@ from python.framework.validators.capital_validator import (
 from python.framework.validators.component_metadata_advisory import (
     surface_decision_logic_version,
 )
-from python.framework.validators.decision_logic_hook_validator import check_cold_start_hook
+from python.framework.validators.decision_logic_hook_validator import (
+    check_cold_start_hook,
+    check_order_feature_declaration,
+)
 from python.framework.workers.abstract_signal_worker import AbstractSignalWorker
 from python.framework.workers.worker_orchestrator import WorkerOrchestrator
 
@@ -282,6 +286,8 @@ def create_autotrader_loggers(
             start_time=run_timestamp,
             run_type=RUN_TYPE_AUTOTRADER,
             run_name=session_name,
+            # Only a backtest can declare an exception: a session is what the venue holds
+            features_beyond_venue=[],
             # Which continuous DEPLOYMENT this session belongs to (#497). The same field a
             # sweep's combination uses for its sweep, and the same KIND of parent: an identity
             # that groups runs without being one, defined by the runs that name it. Written
@@ -584,6 +590,11 @@ def _resolve_order_requirements(
     cold_start_hook_error = check_cold_start_hook(decision_logic_class, required_order_types)
     if cold_start_hook_error:
         raise ValueError(cold_start_hook_error)
+    # #625 — a logic has to say which order features it uses; whether its venue holds them is
+    # asked where the trading API is built, against the adapter that really runs.
+    order_feature_declaration_error = check_order_feature_declaration(decision_logic_class)
+    if order_feature_declaration_error:
+        raise OrderFeatureRefusedError(order_feature_declaration_error)
     return decision_logic_factory, required_order_types
 
 
@@ -872,6 +883,9 @@ def _build_decision_layer(
         executor=executor,
         required_order_types=required_order_types,
         order_guard_config=config.order_guard,
+        required_order_features=type(decision_logic).get_required_order_features(
+            config.strategy_config.get('decision_logic_config', {})),
+        logic_name=config.strategy_config.get('decision_logic_type', ''),
     )
     decision_logic.set_trading_api(trading_api)
     logger.debug('✅ DecisionTradingApi injected')

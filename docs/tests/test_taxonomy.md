@@ -118,6 +118,7 @@ tests/
 │   ├── data_coverage/     unit — data format version spans (#453), which file a gap falls in (open times through the server clock, #562), how long a gap reads, which gaps are listed and whose silence each is, the window queries a run asks and the cache load it pays (#599)
 │   ├── market_calendar/  unit — swap-rollover + DST calendar helpers + MarketClock awareness (#365)
 │   ├── test_price_trigger.py  unit — the shared order-vs-quote predicate: limit/stop reached, book side (#505)
+│   ├── test_order_features.py  unit — a logic declares its order features, a run refuses what its venue does not hold: the start, the batch's main process, the four entry points, the recorded exception (#625)
 │   ├── test_own_exit_levels.py  unit — a logic's own stop and target: seeded, only tightened, closed once, restored only for restored positions (#625)
 │   ├── test_order_endings.py  unit — one status per way an order ends, in both pipelines, and the counts declared from them (#362)
 │   ├── order_events/      unit — every order transition as one event in both pipelines: the declared vocabulary held to the source, each order life step by step, the stream file, its run-index listing (#362)

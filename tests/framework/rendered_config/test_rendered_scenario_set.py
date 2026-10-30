@@ -94,7 +94,7 @@ def _render(loaded: LoadedScenarioConfig) -> Dict[str, Any]:
     Returns:
         The rendered document
     """
-    return render_scenario_set(loaded.scenarios, loaded.run_purpose,
+    return render_scenario_set(loaded.scenarios, loaded.run_purpose, loaded.features_beyond_venue,
                                loaded.robustness or RobustnessConfig(), AppConfigManager())
 
 

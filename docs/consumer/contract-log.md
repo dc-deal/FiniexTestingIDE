@@ -33,6 +33,27 @@ reads downwards from the version their fixtures hold until they reach the one be
 A test holds the newest heading in this log to the number the server answers with, so a version
 cannot ship without its entry.
 
+## Version 45 — 2026-10-30 (#625)
+
+A venue's API decides which levels a run can use, and a level a strategy keeps itself is named on
+the trade.
+
+- [Trade history](/api/v1/docs/trade-history): every row carries `exit_level`, the level a stop-loss
+  or take-profit exit fired at. A strategy that keeps its own stop leaves `stop_loss` and
+  `take_profit` null, so this is where that level is read. Null for every other exit, and on a row
+  recorded before this contract.
+- **A change of meaning in a backtest:** such an own exit fills at the next price after the level,
+  as a close the strategy sends does, so its `exit_slippage` is no longer 0. A level the position
+  carries still fills at the level.
+- [Run header](/api/v1/docs/run-header): `features_beyond_venue`,
+  the order features a backtest was allowed beyond what its venue's API holds, as its scenario set
+  declared. Empty for every other run, a session always; null on a run recorded before this contract.
+  Ledger rows carry the same, comma-joined, and empty for every other row.
+- [Order history](/api/v1/docs/order-history): `rejection_reason` gains
+  `order_feature_not_declared`, an order that carries a level its strategy did not declare.
+- [Validation checks](/api/v1/validation-checks): `order_feature_refused`,
+  `order_feature_undeclared`, `feature_beyond_venue_unneeded` and `features_beyond_venue`.
+
 ## Version 44 — 2026-10-27 (#631)
 
 What every live session knows about its venue is recorded for every session now, and every fill says
@@ -133,56 +154,13 @@ start that continues an open position under a changed configuration says so.
 
 One field added; no field removed.
 
-## Version 40 — 2026-10-25 (#476)
-
-A trading day ends at its boundary, every trading day has its row, and a session's days are booked
-while it runs.
-
-- **Where a day ends.** A booking period a trading day's boundary closed has `closed_at` at that
-  boundary — never the later moment the run noticed it — and the next period opens there. The tick
-  that crosses the boundary belongs to the new day: its fills, its trades and its move. So the two
-  periods around a boundary can read differently from a run recorded before; their sum does not.
-- **Every trading day has its row.** A day the run heard nothing from — a gap in the data — still
-  gets its period: `tick_count` 0, nothing traded, the valuation it was left at. A market that
-  closes books no row for a closed day, and the period after a weekend opens where the last
-  trading day ended — a forex row after a weekend opens at the Friday close.
-- `tick_count`, new on every booking-period row: how many ticks the period applied. Null on a
-  period recorded before this contract.
-- `final_equity`, `min_equity`, `max_equity` and `max_drawdown` of a booking period are null where
-  the period could value the account at no point — a spot session sealed before its first tick
-  priced its holdings. `deepest_period_drawdown` is null when no period could.
-- A period's band starts at the value it opened with: a fall between the boundary and the first
-  tick of the day is that day's decline.
-- A session's last period includes its end: a close that fills in the pass that ends the session
-  is booked in it.
-- **A running session is in the ledger.** Each trading day is booked as it closes, so a
-  deployment's booking periods, its history and the run list show the sealed days of a session
-  still running — or of one that died before its end. Until the row of its close exists, such a
-  session's `ended` and `ran_hours` are null, the gap after it is measured between the starts
-  (`gap_between_starts: true`), and its `run_outcome` and counts in the run list are null. A
-  deployment's `unfinished` still counts every session that never reached its close, so it now
-  overlaps with `sessions` — the two are never added.
-- The run summary's `account_max_drawdown`, `max_equity` and `account_max_dd_pct` are typed
-  nullable; a run's own summary always carries numbers.
-- `max_drawdown` and `max_drawdown_pct` of a deployment and of each of its sessions, and
-  `account_max_drawdown` of a sweep combination and of a booking-period unit total, are null where
-  no drawdown was measured: rows written before the column existed, or a session that had not
-  valued its account yet when its days were sealed. A deployment's deepest decline is taken over
-  the sessions that measured one.
-- `unranked`, new on a sweep: how many combinations its ranking left out because they carry no
-  value for its objective. A figure only some runs measured can now be the objective; one that can
-  be undefined for a run is still refused.
-- `rendered_config_id`, `broker_config_id` and `period_tick_count` on every row of a sweep's
-  combinations: what the run ran with, and the ticks its periods applied.
-
-No route moved; fields added, some figures nullable, and two meanings changed.
-
-## Versions 39 and earlier
+## Versions 40 and earlier
 
 One line each. Every one of these moved a shape or a meaning; what they moved is summarised here
 rather than spelled out, because a consumer this far behind needs the list of steps, not each step's
 reasoning. The full text of a compressed version is in this repository's history.
 
+- **Version 40** — 2026-10-25 (#476): A trading day ends at its boundary, every trading day has its row (`tick_count`, new), and a session's days are booked while it runs.
 - **Version 39** — 2026-10-25 (#547): A backtest names the configuration it ran with — `rendered_config_id` on a run's [header](/api/v1/docs/run-header) is filled for a backtest too, naming its rendered scenario set: one section per scenario with every parameter default filled in, beside `config_id`, the file the run was given; empty on an older backtest and where the configuration could not be rendered or frozen.
 - **Version 38** — 2026-10-21 (#611): A running session can be asked how it stands — `GET /api/v1/reports/runs/{run_id}/state-frames/latest`, one row per unit with the latest frame, its age, its cadence (`cadence_timeframe`, `cadence_s`) and `recording`; the codes `state_frames_not_recorded` and `state_frame_not_written_yet`; and `stream_files` and `recording` on the run list. Its document is [state frames](/api/v1/docs/state-frames).
 - **Version 37** — 2026-10-20 (#598): A session trading real money starts without a carry-over only when its start is declared the bot's first — `origin.first_start` on the [run header](/api/v1/docs/run-header), `true` for such a start and `false` on every other run, a backtest and a run recorded before this version.

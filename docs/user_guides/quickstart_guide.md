@@ -291,6 +291,10 @@ class AggressiveTrend(AbstractDecisionLogic):
     def get_required_order_types(cls, decision_logic_config: Dict[str, Any]) -> List[OrderType]:
         return [OrderType.MARKET]  # Only market orders for this example
     
+    @classmethod
+    def get_required_order_features(cls, decision_logic_config: Dict[str, Any]) -> List[OrderFeature]:
+        return []  # No stop or target on an order — see Own Exits below
+    
     def get_required_workers(self) -> Dict[str, WorkerRequirement]:
         """Declare which workers this logic needs, and which of their signals it reads"""
         return {
@@ -425,6 +429,7 @@ class AggressiveTrend(AbstractDecisionLogic):
 |--------|---------|
 | `get_required_workers()` | Declare workers + the signals read: `{"rsi_fast": WorkerRequirement.of("CORE/rsi", "rsi_value")}` |
 | `get_required_order_types()` | Return `[OrderType.MARKET]` |
+| `get_required_order_features()` | The levels your orders carry, `[]` when none; a run refuses one its venue's API does not hold |
 | `get_output_schema()` | Declare typed output fields (optional) |
 | `compute_tick()` | Analyze workers on a market tick, return `Decision(action=..., outputs={...})` — `tick` is never None |
 | `compute_heartbeat()` | Optional: act between ticks on the idle heartbeat (cached worker results, no tick). Override together with `wants_heartbeat()` |
@@ -528,7 +533,11 @@ A stop or a target sent with an order is held by the venue only where its API ta
 Kraken's takes neither for a position — no level attached to an order, no bracket, no
 one-cancels-other (its API team, 2026-10-27) — and the framework does not rebuild what a venue
 lacks. A logic meant to run there keeps its levels itself, checks them on every tick, and closes
-through its own `close_position`. `OwnExitLevels`
+through its own `close_position`. The start checks this: a logic declares what it sends in
+`get_required_order_features()`, a run refuses a declared level its venue's API does not hold, and
+an order carrying an undeclared one is refused with `order_feature_not_declared`. A backtest may
+allow a level beyond its venue with `features_beyond_venue` in its scenario set — recorded with the
+run, warned about in its report, and refused by a certificate. `OwnExitLevels`
 (`python/framework/decision_logic/own_exit_levels.py`) is that check, written once:
 
 ```python
@@ -754,6 +763,7 @@ Current limitations:
 
 | Rule | Description |
 |------|-------------|
+| **Order Features** | Declared in `get_required_order_features()`; a declared stop or target the venue's API does not hold refuses the run (see Own Exits) |
 | **Order Types** | MARKET, LIMIT, STOP, STOP_LIMIT supported. No native OCO, iceberg or trailing-stop order types yet. |
 | **Position Close** | Full or partial: `close_position(position_id, lots=None)` closes all, `lots=` a part; `exit=OwnExit(reason, level)` names the own stop or target that made it (see Own Exits above). A second close while one is in flight joins it rather than sending another — `is_pending_close(position_id)` says whether one is |
 | **Partial Fills** | A broker-reported partial fill at a real venue is not yet surfaced as its own state |

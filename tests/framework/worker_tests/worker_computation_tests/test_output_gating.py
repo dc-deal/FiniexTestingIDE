@@ -99,6 +99,10 @@ class _StubLogic(AbstractDecisionLogic):
         self._workers_decl = workers_decl
 
     @classmethod
+    def get_required_order_features(cls, decision_logic_config) -> list:
+        return []
+
+    @classmethod
     def get_required_order_types(cls, decision_logic_config):
         return []
 

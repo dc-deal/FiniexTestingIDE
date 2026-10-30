@@ -43,6 +43,7 @@ from python.framework.types.trading_env_types.order_types import (
     OrderAction,
     OrderDirection,
     OrderEndReason,
+    OrderFeature,
     OrderInitiator,
     OrderStatus,
     OrderType,
@@ -155,6 +156,9 @@ class TradeHistoryRow(BaseModel):
     entry_slippage_pct: float | None = None
     exit_slippage_pct: float | None = None
     exit_slippage_measured_against: SlippageReference | None = None
+    # The level a stop-loss or take-profit exit fired at (#625) — also the logic's own, which
+    # stop_loss and take_profit above never carry. None for every other exit.
+    exit_level: float | None = None
     # What belongs to the TRADE rather than to one of its fills. `lots` is what this record
     # closed; `entry_lots` is the position's size when it opened, and `position_closes` how
     # many records the position produced in its unit — counted before any filter, so a filter
@@ -1128,6 +1132,9 @@ class RunHeader(BaseModel):
     orders_to: Optional[OrdersTo] = None
     data_windows: Optional[list[DataWindow]] = None
     run_purpose: Optional[RunPurpose] = None
+    # The order features this backtest was allowed beyond what its venue's API holds (#625);
+    # empty for every other run, None on a run recorded before the field existed.
+    features_beyond_venue: Optional[list[OrderFeature]] = None
     report_contract: Optional[int] = None
 
 
@@ -1658,6 +1665,8 @@ class RunResultRow(BaseModel):
     input_files: int | None = None
     unstamped_input_files: int | None = None
     price_bases: str = ''
+    # Order features this backtest was allowed beyond what its venue's API holds (#625)
+    features_beyond_venue: str = ''
     deployment_id: str = ''
     # The bot's DECLARED identity (#538) — live only, and the one identity on this row that does
     # not move. `scenario_set_name` is what the profile is CALLED, `deployment_id` is minted per

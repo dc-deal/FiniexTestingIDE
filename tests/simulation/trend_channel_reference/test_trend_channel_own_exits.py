@@ -13,6 +13,7 @@ that slot, or the logic never trades again; one that is still on its way must no
 """
 
 from datetime import datetime, timezone
+from types import SimpleNamespace
 from typing import List, Optional
 
 from python.framework.decision_logic.core.trend_channel_reference import TrendChannelReference
@@ -23,6 +24,7 @@ from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.portfolio_types.portfolio_trade_record_types import CloseReason
 from python.framework.types.portfolio_types.portfolio_types import Position
 from python.framework.types.trading_env_types.order_types import (
+    ModificationResult,
     OrderAction,
     OrderDirection,
     OrderResult,
@@ -42,6 +44,9 @@ class _FakeTradingApi:
         self.closes: List[tuple] = []
         self.sent: List[OrderType] = []
         self.pipeline_busy = False
+        self.active_order_ids: List[str] = []
+        self.modify_accepted = True
+        self.modifies: List[float] = []
 
     def get_current_time(self) -> datetime:
         return _T0
@@ -70,7 +75,11 @@ class _FakeTradingApi:
         return None
 
     def get_active_orders(self) -> list:
-        return []
+        return [SimpleNamespace(pending_order_id=oid) for oid in self.active_order_ids]
+
+    def modify_limit_order(self, order_id: str, price: float) -> ModificationResult:
+        self.modifies.append(price)
+        return ModificationResult(success=self.modify_accepted)
 
     def is_pending_close(self, position_id: str) -> bool:
         return any(closed == position_id for closed, _ in self.closes)
@@ -189,3 +198,51 @@ def test_an_entry_still_on_its_way_keeps_the_slot(tmp_path):
     logic.execute_decision(_buy(), _tick(100.0))
 
     assert api.sent == [OrderType.LIMIT]
+
+
+def _resting_entry_with_a_moved_band(tmp_path) -> tuple:
+    """
+    A resting LIMIT entry whose band has since moved far enough to re-price it.
+
+    The band reaches the logic the way it always does, through its compute pass, from stand-ins
+    for the two workers.
+
+    Args:
+        tmp_path: Where the log goes
+
+    Returns:
+        (the logic, its trading API)
+    """
+    logic = _logic(tmp_path)
+    api = _FakeTradingApi([])
+    logic.set_trading_api(api)
+    logic.execute_decision(_buy(), _tick(100.0))
+    api.active_order_ids = ['ord_1']
+    signals = {'direction': 'up', 'upper': 110.0, 'lower': 90.0, 'position_raw': 0.5}
+    stand_in = SimpleNamespace(get_signal=signals.get)
+    logic.compute_tick(_tick(100.0), {'h1_trend': stand_in, 'm15_channel': stand_in})
+    return logic, api
+
+
+def test_a_refused_re_price_leaves_the_levels_and_is_not_sent_again(tmp_path):
+    """The order stays where it was, so its levels do; nothing else bounds the call, so the
+    refused price must not go out again on every pass."""
+    logic, api = _resting_entry_with_a_moved_band(tmp_path)
+    api.modify_accepted = False
+    levels_before = logic.get_state_snapshot()['own_exit_levels']['ord_1']
+
+    logic.execute_decision(_flat(100.0), _tick(100.0))
+    logic.execute_decision(_flat(100.0), _tick(100.0))
+
+    assert api.modifies == [90.0]
+    assert logic.get_state_snapshot()['own_exit_levels']['ord_1'] == levels_before
+
+
+def test_an_accepted_re_price_moves_the_levels_with_the_order(tmp_path):
+    logic, api = _resting_entry_with_a_moved_band(tmp_path)
+    levels_before = logic.get_state_snapshot()['own_exit_levels']['ord_1']
+
+    logic.execute_decision(_flat(100.0), _tick(100.0))
+
+    assert api.modifies == [90.0]
+    assert logic.get_state_snapshot()['own_exit_levels']['ord_1'] != levels_before

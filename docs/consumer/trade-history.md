@@ -106,10 +106,14 @@ submission, signed so that **a value above zero means worse than that price**.
 
 **A stop-loss or take-profit exit is measured against the level that fired instead** — its
 `exit_slippage` and its `exit_slippage_pct`, the percent a share of the level
-(`exit_slippage_measured_against: "protective_level"`, otherwise `"submission_mid"`). A backtest
-fills such an exit at its level, so it reads 0, and a live session reads how far past the level the
-venue filled it; against the mid, the backtest's figure would only say how far the tick that crossed
-the level overshot it. `exit_slippage_measured_against` is null on a row recorded before it existed.
+(`exit_slippage_measured_against: "protective_level"`, otherwise `"submission_mid"`), and
+`exit_level` names it. A backtest fills a level the position carries AT the level, so it reads 0; a
+level the strategy keeps itself is a close it sends once the market has reached the level, so it
+fills at the next price and reads what that cost, as a live session does. That level is on no
+position, so `stop_loss` and `take_profit` are null and `exit_level` is the only place it is read.
+Against the mid, the backtest's figure would only say how far the tick that crossed the level
+overshot it. `exit_slippage_measured_against` is null on a row recorded before it existed, and
+`exit_level` on every other exit too.
 
 All four are null when no submission tick was captured — a close performed in cleanup has no
 submission moment to measure against, and neither does a record old enough to predate the

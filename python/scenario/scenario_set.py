@@ -132,6 +132,7 @@ class ScenarioSet:
         self._robustness = scenario_config.robustness or RobustnessConfig()
         self._disabled_count = scenario_config.disabled_count
         self._run_purpose = scenario_config.run_purpose
+        self._features_beyond_venue = scenario_config.features_beyond_venue
         # Where this run's logs land, from config (file_logging.run_logs) — the same paths the
         # API reads. A sweep's combinations nest under their sweep id, a standalone run does
         # not: a directory level, while the run TYPE stays `simulation` for both.
@@ -213,6 +214,7 @@ class ScenarioSet:
                 # What the run is FOR, as the set declares it (#576) — a sweep's combinations
                 # inherit it with the rest of their base set.
                 run_purpose=self._run_purpose,
+                features_beyond_venue=self._features_beyond_venue,
                 report_contract=API_CONTRACT_VERSION,
             )
             RunIndex(app_config.get_file_logging_config_object().run_index).register_run(
@@ -244,7 +246,8 @@ class ScenarioSet:
         """
         try:
             document = render_scenario_set(
-                self._scenarios, self._run_purpose, self._robustness, self.app_config)
+                self._scenarios, self._run_purpose, self._features_beyond_venue,
+                self._robustness, self.app_config)
         except Exception as error:
             self.logger.warning(
                 f"⚠️ Rendered configuration not frozen — this run's header names no record of what "

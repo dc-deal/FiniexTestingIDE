@@ -10,7 +10,7 @@ Two-Tier Order System:
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum, StrEnum
-from typing import Any, Dict, Optional
+from typing import Any, Dict, FrozenSet, Optional
 
 from python.framework.types.trading_env_types.broker_types import FeeSource
 from python.framework.types.trading_env_types.submission_metadata_types import SubmissionMetadata
@@ -52,6 +52,21 @@ class OrderType(Enum):
     TRAILING_STOP = 'trailing_stop'
     ICEBERG = 'iceberg'
     UNKNOWN = 'unknown'
+
+
+class OrderFeature(Enum):
+    """
+    What an order or a position carries beyond its type, and a venue's API holds or does not.
+
+    A decision logic declares the ones it uses (`get_required_order_features`), an adapter states
+    the ones its API takes (`OrderCapabilities.offered_order_features`), and a run refuses a
+    declared one the venue lacks (#625). OCO, bracket and reduce-only join with #164.
+
+    STOP_LOSS: A stop level the venue holds for the position
+    TAKE_PROFIT: A target level the venue holds for the position
+    """
+    STOP_LOSS = 'stop_loss'
+    TAKE_PROFIT = 'take_profit'
 
 
 # Order types that actually REST at a venue — a placed order waiting for a price rather
@@ -249,6 +264,10 @@ class RejectionReason(Enum):
     # reason rather than INVALID_LOT_SIZE, because the lots asked for are valid and a caller
     # reading that name would look in the wrong place.
     REMAINDER_BELOW_MINIMUM = 'remainder_below_minimum'
+    # #625 — the order carries a stop or a target its logic did not declare in
+    # get_required_order_features(), so the start never checked whether anything holds it.
+    # A decision bug, like an invalid lot size, and so it feeds no cooldown.
+    ORDER_FEATURE_NOT_DECLARED = 'order_feature_not_declared'
 
 
 
@@ -357,6 +376,24 @@ class OrderCapabilities:
     # two venues that exist the two answers point in opposite directions, and reading one
     # for the other reinstates #500's original defect one level up.
     venue_held_protective_orders: bool = False
+
+    # Order features (#625)
+    # offered_order_features: what the venue's API holds for a position. Every adapter states
+    # it. Not native_position_sl_tp, which says who performs a modify, and not
+    # venue_held_protective_orders, which says a standalone order can rest over a holding.
+    offered_order_features: FrozenSet[OrderFeature] = frozenset()
+
+    def offers_order_feature(self, feature: OrderFeature) -> bool:
+        """
+        Whether the venue's API holds this feature.
+
+        Args:
+            feature: The feature
+
+        Returns:
+            True when the adapter states it
+        """
+        return feature in self.offered_order_features
 
     def supports_order_type(self, order_type: OrderType) -> bool:
         """Check if broker supports specific order type"""
@@ -714,6 +751,7 @@ class ModificationRejectionReason(Enum):
     # #318 — Async modify/cancel reject cases
     ORDER_NOT_CONFIRMED = 'order_not_confirmed'   # broker_ref still None (Option A)
     OPERATION_BUSY = 'operation_busy'             # another in_flight_operation already
+    ORDER_FEATURE_NOT_DECLARED = 'order_feature_not_declared'   # #625, see RejectionReason
     ORDER_TYPE_NOT_SUPPORTED = 'order_type_not_supported'   # capability gate (e.g. stop_orders=False)
 
 

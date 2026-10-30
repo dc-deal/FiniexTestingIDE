@@ -16,6 +16,7 @@ from python.framework.types.config_types.backtesting_config_types import TradeSi
 from python.framework.types.data_deficiency_types import DataDeficiency
 from python.framework.types.run_purpose_types import RunPurpose
 from python.framework.types.trading_env_types.broker_types import BrokerType
+from python.framework.types.trading_env_types.order_types import OrderFeature
 from python.framework.types.config_types.robustness_config_types import (
     RobustnessConfig,
     RobustnessRole,
@@ -75,6 +76,10 @@ class SingleScenario:
     # OrderGuard configuration (per scenario, cascaded from global)
     # None = OrderGuardDefaults (60s cooldown, 2 rejections)
     order_guard_config: Optional[Dict[str, Any]] = None
+
+    # Order features the set declares its venue need not hold (#625) — set-wide, a recorded
+    # exception. Empty for every set that declares none.
+    features_beyond_venue: List[OrderFeature] = field(default_factory=list)
 
     account_currency: str = ''
 
@@ -223,6 +228,8 @@ class LoadedScenarioConfig:
     disabled_count: int = 0
     # What the set's runs are FOR (#576) — the top-level `run_purpose`, absent meaning REGULAR.
     run_purpose: RunPurpose = RunPurpose.REGULAR
+    # The order features the set declares its venue need not hold (#625).
+    features_beyond_venue: List[OrderFeature] = field(default_factory=list)
 
 
 @dataclass

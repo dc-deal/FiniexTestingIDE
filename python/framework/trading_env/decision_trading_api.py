@@ -31,7 +31,7 @@ FUTURE NOTES:
 """
 
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Union
+from typing import Any, Collection, Dict, FrozenSet, List, Optional, Sequence, Union
 
 from python.framework.types.config_types.autotrader_defaults_config_types import OrderGuardDefaults
 from python.framework.types.decision_event_types import SessionEndSeverity
@@ -42,7 +42,10 @@ from python.framework.types.trading_env_types.order_types import (
     ModificationResult,
     OpenOrderRequest,
     OrderCapabilities,
+    ModificationRejectionReason,
+    ModificationStatus,
     OrderDirection,
+    OrderFeature,
     OrderResult,
     OrderSide,
     OrderStatus,
@@ -51,6 +54,12 @@ from python.framework.types.trading_env_types.order_types import (
 )
 from python.framework.types.trading_env_types.own_exit_types import OwnExit
 from python.framework.types.trading_env_types.trading_env_stats_types import CostBreakdown
+
+from python.framework.exceptions.order_feature_errors import OrderFeatureRefusedError
+from python.framework.validators.order_feature_validator import (
+    features_the_venue_lacks,
+    order_feature_refusal,
+)
 
 from .abstract_trade_executor import AbstractTradeExecutor
 from .order_guard import OrderGuard
@@ -92,6 +101,9 @@ class DecisionTradingApi:
         executor: AbstractTradeExecutor,
         required_order_types: List[OrderType],
         order_guard_config: Optional[OrderGuardDefaults] = None,
+        required_order_features: Sequence[OrderFeature] = (),
+        features_beyond_venue: Collection[OrderFeature] = (),
+        logic_name: str = 'This decision logic',
     ):
         """
         Initialize Decision Trading API with order-type validation.
@@ -100,9 +112,15 @@ class DecisionTradingApi:
             executor: AbstractTradeExecutor instance (TradeSimulator or LiveTradeExecutor)
             required_order_types: Order types that Decision Logic will use
             order_guard_config: Spam-protection guard configuration (defaults if None)
+            required_order_features: Order features that Decision Logic declared (#625); a level
+                outside them is refused at order time
+            features_beyond_venue: Features a backtest declared as a recorded exception, which
+                its venue's API need not hold (#625)
+            logic_name: The Decision Logic as its configuration names it, for the refusal
 
         Raises:
             ValueError: If any required order type is not supported by broker
+            OrderFeatureRefusedError: If a declared feature cannot be held on this run
         """
         self._executor = executor
         self._capabilities = executor.broker.get_order_capabilities()
@@ -114,6 +132,9 @@ class DecisionTradingApi:
 
         # CRITICAL: Validate order types BEFORE scenario starts!
         self._validate_order_types(required_order_types)
+
+        self._declared_features: FrozenSet[OrderFeature] = frozenset(required_order_features)
+        self._validate_order_features(required_order_features, features_beyond_venue, logic_name)
 
         # Pre-trade guard — rejection cooldown + stale-market-data block (#436).
         # Business rules (market type, balance, etc.) live in the executor.
@@ -170,6 +191,84 @@ class DecisionTradingApi:
                 f"Usable here (venue AND pipeline): {[t.value for t in supported_types]}\n"
                 f"→ Change the Decision Logic, or a broker config / pipeline that carries them."
             )
+
+    def _validate_order_features(
+        self,
+        required_features: Sequence[OrderFeature],
+        features_beyond_venue: Collection[OrderFeature],
+        logic_name: str,
+    ) -> None:
+        """
+        Refuse a declared feature the venue does not hold or this pipeline does not carry (#625).
+
+        A backtest is refused earlier, in the batch's main process, with the same sentence. This
+        is the one check a session has, and a backtest's second line.
+
+        Args:
+            required_features: What the logic declared
+            features_beyond_venue: What a backtest declared as a recorded exception
+            logic_name: The logic as its configuration names it
+
+        Raises:
+            OrderFeatureRefusedError: If a declared feature cannot be held on this run
+        """
+        venue_lacks = [feature for feature in features_the_venue_lacks(required_features, self._capabilities)
+                       if feature not in features_beyond_venue]
+        carried = self._executor.get_supported_order_features()
+        pipeline_lacks = [feature for feature in required_features
+                          if feature not in carried and feature not in venue_lacks]
+        if venue_lacks or pipeline_lacks:
+            raise OrderFeatureRefusedError(order_feature_refusal(
+                logic_name, self._executor.broker.adapter.get_capability_label(),
+                venue_lacks, pipeline_lacks))
+
+    def _undeclared_features(self, stop_loss: Any, take_profit: Any) -> List[OrderFeature]:
+        """
+        Which levels an order or a modify sets without its logic having declared them (#625).
+
+        Removing a level (None) or leaving it alone (UNSET) sets nothing, so it always passes.
+
+        Args:
+            stop_loss: The stop it sets, None or UNSET
+            take_profit: The target it sets, None or UNSET
+
+        Returns:
+            The features it carries undeclared
+        """
+        undeclared: List[OrderFeature] = []
+        if (stop_loss is not None and stop_loss is not UNSET
+                and OrderFeature.STOP_LOSS not in self._declared_features):
+            undeclared.append(OrderFeature.STOP_LOSS)
+        if (take_profit is not None and take_profit is not UNSET
+                and OrderFeature.TAKE_PROFIT not in self._declared_features):
+            undeclared.append(OrderFeature.TAKE_PROFIT)
+        return undeclared
+
+    def _refused_modification(
+        self,
+        order_id: str,
+        stop_loss: Any,
+        take_profit: Any,
+    ) -> Optional[ModificationResult]:
+        """
+        The refusal of a modify that sets a level its logic did not declare (#625).
+
+        Args:
+            order_id: The position or order it targets
+            stop_loss: The stop it sets, None or UNSET
+            take_profit: The target it sets, None or UNSET
+
+        Returns:
+            The refusal, or None when the modify may go on
+        """
+        if not self._undeclared_features(stop_loss, take_profit):
+            return None
+        return ModificationResult(
+            success=False,
+            rejection_reason=ModificationRejectionReason.ORDER_FEATURE_NOT_DECLARED,
+            status=ModificationStatus.REJECTED,
+            order_id=order_id,
+        )
 
     def _get_supported_order_types(self) -> List[OrderType]:
         """Get list of order types supported by broker"""
@@ -242,6 +341,13 @@ class DecisionTradingApi:
             comment=comment,
             venue_held_protection=venue_held_protection,
         )
+
+        undeclared = self._undeclared_features(stop_loss, take_profit)
+        if undeclared:
+            refusal = self._order_guard.refuse_undeclared_features(
+                request, self._executor.get_current_time(), undeclared)
+            self._executor.record_guard_rejection(refusal)
+            return refusal
 
         # Pre-trade guard — rejection cooldown + stale-market-data block (#436) +
         # unresolved-write block (#487). Time source is the executor's current tick
@@ -729,6 +835,9 @@ class DecisionTradingApi:
         Returns:
             ModificationResult with success status and rejection reason
         """
+        refusal = self._refused_modification(position_id, stop_loss, take_profit)
+        if refusal:
+            return refusal
         return self._executor.modify_position(
             position_id=position_id,
             new_stop_loss=stop_loss,
@@ -756,6 +865,9 @@ class DecisionTradingApi:
         Returns:
             ModificationResult with success status and rejection reason
         """
+        refusal = self._refused_modification(order_id, stop_loss, take_profit)
+        if refusal:
+            return refusal
         return self._executor.modify_limit_order(
             order_id=order_id,
             new_price=price,
@@ -786,6 +898,9 @@ class DecisionTradingApi:
         Returns:
             ModificationResult with success status and rejection reason
         """
+        refusal = self._refused_modification(order_id, stop_loss, take_profit)
+        if refusal:
+            return refusal
         return self._executor.modify_stop_order(
             order_id=order_id,
             new_stop_price=stop_price,

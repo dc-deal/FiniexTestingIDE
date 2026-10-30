@@ -57,6 +57,7 @@ from python.framework.types.parameter_types import InputParamDef, OutputParamDef
 from python.framework.types.trading_env_types.market_data_status_types import MarketDataStatus
 from python.framework.types.trading_env_types.order_types import (
     OrderDirection,
+    OrderFeature,
     OrderResult,
     OrderSide,
     OrderType,
@@ -400,6 +401,19 @@ class TrendChannelReference(AbstractDecisionLogic):
             position_id for position_id in snapshot.get('partial_done', [])
             if open_ids is None or position_id in open_ids)
         self.logger.info(f'💾 Own exit levels restored for {restored} position(s)')
+
+    @classmethod
+    def get_required_order_features(cls, decision_logic_config: Dict[str, Any]) -> List[OrderFeature]:
+        """
+        None: it keeps its stop and target itself (OwnExitLevels).
+
+        Args:
+            decision_logic_config: Decision logic configuration dict
+
+        Returns:
+            An empty list
+        """
+        return []
 
     @classmethod
     def get_required_order_types(cls, decision_logic_config: Dict[str, Any]) -> List[OrderType]:
@@ -973,11 +987,15 @@ class TrendChannelReference(AbstractDecisionLogic):
                (side == OrderSide.SELL and new_price <= price):
                 return
             result = self.trading_api.modify_limit_order(oid, price=new_price)
-        # The levels move with the order only when the venue took the new price — a refused
-        # re-price leaves the order, and the position it may still open, where they were
-        if result.success:
-            self._exits.set_levels(oid, stop=new_sl, target=new_tp)
-        info['price'], info['sl'], info['tp'] = new_price, new_sl, new_tp
+        # The price is noted either way: nothing else bounds this call, so a price the venue
+        # refused would otherwise be sent again on every pass
+        info['price'] = new_price
+        # A refused re-price leaves the order where it was, and with it the levels and the
+        # initial risk its fill will take
+        if not result.success:
+            return
+        self._exits.set_levels(oid, stop=new_sl, target=new_tp)
+        info['sl'], info['tp'] = new_sl, new_tp
         self.emit_event(
             f'Re-price resting entry {oid} → {new_price:.5f}',
             AwarenessLevel.INFO, 'entry_repriced',

@@ -102,6 +102,7 @@ from python.framework.types.trading_env_types.order_types import (
     OrderAction,
     OrderDirection,
     OrderEndReason,
+    OrderFeature,
     OrderInitiator,
     OrderResult,
     OrderStatus,
@@ -4825,6 +4826,16 @@ class LiveTradeExecutor(AbstractTradeExecutor):
     def has_pipeline_orders(self) -> bool:
         """Check if any orders are in the broker tracker (MARKET orders in transit)."""
         return self._request_processor.has_pending_orders()
+
+    def get_supported_order_features(self) -> FrozenSet[OrderFeature]:
+        """
+        None: no live adapter passes a level to its venue (#625). MT5's holds both on the position
+        once #209 builds its live path, and this set widens with it.
+
+        Returns:
+            The empty set
+        """
+        return frozenset()
 
     def get_supported_order_types(self) -> FrozenSet[OrderType]:
         """

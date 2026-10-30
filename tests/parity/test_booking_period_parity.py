@@ -197,7 +197,8 @@ def test_a_stop_the_boundary_tick_breaches_closes_in_the_new_day(spot_mode):
     The boundary tick's gap breaches the position's stop, and the stop is what closes it. The
     close is the new day's in both pipelines — the simulation fills it on that tick, the
     AutoTrader a round trip later — and the day that ended books no trade. Where it fills is not
-    compared: the simulation fills a breached level AT the level, the AutoTrader at the market.
+    compared: the simulation fills a breached level AT the level, the AutoTrader's own stop at
+    the market.
     """
     ticks = ticks_across_midnight()
     before = [tick for tick in ticks if tick.timestamp < MIDNIGHT][-1]

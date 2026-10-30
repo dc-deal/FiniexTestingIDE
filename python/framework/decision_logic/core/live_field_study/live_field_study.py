@@ -39,7 +39,7 @@ from python.framework.types.autotrader_types.cold_start_types import (
 from python.framework.types.market_types.market_types import TradingContext
 from python.framework.types.parameter_types import InputParamDef
 from python.framework.types.store_member_types import RunEntryMemberId
-from python.framework.types.trading_env_types.order_types import OrderType
+from python.framework.types.trading_env_types.order_types import OrderFeature, OrderType
 
 # Limit-family phases require broker LIMIT support — auto-skipped on adapters without it.
 _LIMIT_FAMILY = frozenset({
@@ -144,6 +144,22 @@ class LiveFieldStudy(AbstractAcceptanceStudy):
             'the Field Study asserts a flat book at boot (#332) — adoption is skipped for it, '
             'so this answer should never be read',
         )
+
+    @classmethod
+    def get_required_order_features(cls, decision_logic_config: Dict[str, Any]) -> List[OrderFeature]:
+        """
+        The stop its protective-level phase sends, when the configured sequence has that phase.
+
+        Args:
+            decision_logic_config: Decision logic configuration dict
+
+        Returns:
+            STOP_LOSS for a sequence with the phase, else an empty list
+        """
+        for raw in decision_logic_config.get('phase_sequence', []):
+            if raw.get('phase_type') == PhaseType.PROTECTIVE_LEVEL.value:
+                return [OrderFeature.STOP_LOSS]
+        return []
 
     @classmethod
     def get_required_order_types(cls, decision_logic_config: Dict[str, Any]) -> List[OrderType]:

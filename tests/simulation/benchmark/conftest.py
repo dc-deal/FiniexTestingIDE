@@ -537,6 +537,16 @@ def benchmark_report(
             f'and config isolation does not gate that path — this run measured a different '
             f'workload than the reference.')
 
+    features_beyond_venue = json.loads(
+        Path(benchmark_execution_runs[0].scenario_config_path).read_text(encoding='utf-8')
+    ).get('features_beyond_venue', [])
+    if features_beyond_venue:
+        overall_status = 'FAILED'
+        warnings.append(
+            f'FEATURES BEYOND THE VENUE: the scenario set declares {features_beyond_venue} as an '
+            f"exception, so this run measured something its venue's API cannot hold and a "
+            f'certificate does not accept it.')
+
     if identity.workspace_overrides.applied:
         overrides = identity.workspace_overrides
         warnings.append(
@@ -690,6 +700,7 @@ def benchmark_report(
             'scenario_set_path': _repo_relative(
                 benchmark_execution_runs[0].scenario_config_path),
             'required_effective': required_effective,
+            'features_beyond_venue': features_beyond_venue,
         },
         # What this certificate READ, as opposed to what it was configured to run. Until this
         # existed a certificate said which CODE produced it and nothing about the DATA, so one

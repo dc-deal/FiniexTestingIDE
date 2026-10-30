@@ -89,6 +89,9 @@ class RunProvenance:
     # expose rather than to smooth over. On the LIVE side it is a DECLARATION and not a stamp;
     # `input_plane` is what tells the two apart.
     price_bases: str = ''                   # distinct, sorted, comma-joined
+    # The order features this backtest was allowed beyond what its venue's API holds (#625):
+    # a row produced under an exception must say so wherever it is ranked or compared.
+    features_beyond_venue: str = ''         # distinct, sorted, comma-joined
     # WAS this run declared part of a continuous deployment, and WHICH one (#497). The
     # RESOLVED answer: a profile declaring continuous under `--one-off` records ''. Without
     # it a reader cannot tell a session that belongs to no deployment from one whose

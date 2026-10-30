@@ -93,7 +93,7 @@ LEDGER_COLUMNS: List[str] = [
     # sim row that recorded nothing.
     # Appended, so older fragments stay readable and read back as None.
     'input_plane', 'data_format_versions', 'origin_classes', 'origin_evidence_grades',
-    'input_files', 'unstamped_input_files', 'price_bases',
+    'input_files', 'unstamped_input_files', 'price_bases', 'features_beyond_venue',
     # WHICH deployment this row belongs to and what the OPERATIONAL half of the
     # profile looked like (#497). The pair is what lets a reader attribute a change:
     # the rows of one deployment, and the hash that says where the parameters moved.
@@ -257,6 +257,7 @@ COLUMN_REDUCTION: Dict[str, Reduction] = {
     'origin_classes': Reduction.UNION,
     'origin_evidence_grades': Reduction.UNION,
     'price_bases': Reduction.UNION,
+    'features_beyond_venue': Reduction.UNION,
 
     # --- flows and counters: the rows partition them, so adding is correct
     'net_pnl': Reduction.SUM,
@@ -717,6 +718,7 @@ class RunResultsLedger:
             'input_files': p.input_files,
             'unstamped_input_files': p.unstamped_input_files,
             'price_bases': p.price_bases,
+            'features_beyond_venue': p.features_beyond_venue,
             'deployment_id': p.deployment_id,
             'bot_id': p.bot_id,
             'profile_hash': p.profile_hash,

@@ -54,7 +54,7 @@ from python.framework.types.parameter_types import (
 from python.framework.types.performance_types.performance_stats_types import DecisionLogicStats
 from python.framework.types.persistence_types import RestoreContext
 from python.framework.types.trading_env_types.market_data_status_types import MarketDataStatus
-from python.framework.types.trading_env_types.order_types import OrderResult, OrderType
+from python.framework.types.trading_env_types.order_types import OrderFeature, OrderResult, OrderType
 from python.framework.types.worker_types import WorkerRequirement, WorkerResult
 from python.framework.validators.parameter_validator import validate_parameters
 
@@ -180,6 +180,25 @@ class AbstractDecisionLogic(ABC):
                     return [OrderType.MARKET]
             """
         pass
+
+    @classmethod
+    def get_required_order_features(cls, decision_logic_config: Dict[str, Any]) -> List[OrderFeature]:
+        """
+        Declare the order features this logic uses, WITHOUT creating an instance (#625).
+
+        A run refuses a declared feature its venue's API does not hold, and refuses at order time
+        a level that was not declared. Every logic answers, because the start cannot tell a logic
+        that uses none from one that was never asked: `check_order_feature_declaration` fails on
+        a class that does not override this. Return an empty list when the logic sets no level;
+        one that keeps its stops itself (OwnExitLevels) sets none.
+
+        Args:
+            decision_logic_config: Decision logic configuration dict
+
+        Returns:
+            The features this logic's orders and positions carry
+        """
+        return []
 
     # ============================================
     # Parameter Schema

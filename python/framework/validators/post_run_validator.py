@@ -85,6 +85,7 @@ class PostRunValidator:
         self._check_debug_mode()
         self._check_stress_test()
         self._check_unversioned_code()
+        self._check_features_beyond_venue()
         self._check_data_version()
         self._check_data_origin()
         self._check_data_deficiencies()
@@ -146,6 +147,23 @@ class PostRunValidator:
         finding = check_unversioned_code(self._code_identity)
         if finding is not None:
             self._add_finding(finding)
+
+    def _check_features_beyond_venue(self) -> None:
+        """
+        Warn when the run used order features its venue's API does not hold (#625).
+
+        The set declared them, so this is not a fault — but the run is not what a session on
+        that venue would do, and a reader of its report has to be told every time.
+        """
+        names = sorted({feature.value for scenario in self._batch.single_scenario_list
+                        for feature in scenario.features_beyond_venue})
+        if not names:
+            return
+        self._add('features_beyond_venue', ValidationDomain.SETUP, (
+            f"BEYOND THE VENUE — this run used {', '.join(names)}, which its scenario set "
+            f'declared as an exception\n'
+            f"  → A session on a venue whose API does not hold them cannot do this, so the "
+            f"run's result does not predict one, and a certificate refuses it."))
 
     def _check_data_version(self) -> None:
         """

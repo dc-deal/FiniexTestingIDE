@@ -241,6 +241,9 @@ class KrakenAdapter(AbstractAdapter):
             # describes the venue, and a session caches it before it knows whether it is a
             # dry run. The executor tells a dry run's answers apart by where they come from.
             fee_report=FeeReport.STATUS_ANSWER,
+            # Its API takes no stop or target for a position: no level on an order, no bracket,
+            # no one-cancels-other, on REST, WebSocket or FIX (its API team, 2026-10-27, #625).
+            offered_order_features=frozenset(),
         )
 
     # ============================================

@@ -46,6 +46,7 @@ from python.framework.types.trading_env_types.order_types import (
     OrderAction,
     OrderDirection,
     OrderEndReason,
+    OrderFeature,
     OrderInitiator,
     OrderResult,
     OrderStatus,
@@ -1318,6 +1319,15 @@ class TradeSimulator(AbstractTradeExecutor):
         return frozenset({
             OrderType.MARKET, OrderType.LIMIT, OrderType.STOP, OrderType.STOP_LIMIT,
         })
+
+    def get_supported_order_features(self) -> FrozenSet[OrderFeature]:
+        """
+        The levels this simulation's own check enforces against the tick stream (#625).
+
+        Returns:
+            STOP_LOSS, TAKE_PROFIT
+        """
+        return frozenset({OrderFeature.STOP_LOSS, OrderFeature.TAKE_PROFIT})
 
     def get_pipeline_orders(self) -> List[PendingOrder]:
         """

@@ -105,25 +105,25 @@ class TestTheLevelsWaitUnderTheEntryOrder:
         exits = OwnExitLevels()
         exits.set_levels('pos_1', stop=95.0, target=110.0)
 
-        assert exits.due([_position('pos_1')], bid=94.9, ask=95.1) == [
+        assert exits.due('BTCUSD', [_position('pos_1')], bid=94.9, ask=95.1) == [
             ('pos_1', OwnExit(CloseReason.SL_TRIGGERED, 95.0))]
 
     def test_without_levels_and_without_distances_nothing_is_checked(self):
-        assert OwnExitLevels().due([_position()], bid=1.0, ask=1.1) == []
+        assert OwnExitLevels().due('BTCUSD', [_position()], bid=1.0, ask=1.1) == []
 
 
 class TestAPositionWithoutLevelsIsSeeded:
 
     def test_a_long_gets_its_stop_below_and_its_target_above_the_entry(self):
         exits = OwnExitLevels(stop_distance=5.0, target_distance=10.0)
-        exits.due([_position(entry_price=100.0)], bid=100.0, ask=100.1)
+        exits.due('BTCUSD', [_position(entry_price=100.0)], bid=100.0, ask=100.1)
 
         levels = exits.get_levels('pos_1')
         assert (levels.stop, levels.target) == (95.0, 110.0)
 
     def test_a_short_the_mirror(self):
         exits = OwnExitLevels(stop_distance=5.0, target_distance=10.0)
-        exits.due([_position(direction=OrderDirection.SHORT)], bid=100.0, ask=100.1)
+        exits.due('BTCUSD', [_position(direction=OrderDirection.SHORT)], bid=100.0, ask=100.1)
 
         levels = exits.get_levels('pos_1')
         assert (levels.stop, levels.target) == (105.0, 90.0)
@@ -132,14 +132,14 @@ class TestAPositionWithoutLevelsIsSeeded:
     def test_a_distance_that_is_no_distance_gives_no_level(self, distance):
         """A band of zero width must not put the stop AT the entry, where it fires at once."""
         exits = OwnExitLevels(stop_distance=distance, target_distance=10.0)
-        exits.due([_position()], bid=100.0, ask=100.1)
+        exits.due('BTCUSD', [_position()], bid=100.0, ask=100.1)
 
         assert exits.get_levels('pos_1').stop is None
 
     def test_set_levels_wins_over_the_seed(self):
         exits = OwnExitLevels(stop_distance=5.0)
         exits.set_levels('pos_1', stop=99.0)
-        exits.due([_position()], bid=100.0, ask=100.1)
+        exits.due('BTCUSD', [_position()], bid=100.0, ask=100.1)
 
         assert exits.get_levels('pos_1').stop == 99.0
 
@@ -173,30 +173,30 @@ class TestTheClosingSideOfTheBookDecides:
         exits = OwnExitLevels()
         exits.set_levels('pos_1', stop=95.0)
 
-        assert exits.due([_position()], bid=95.01, ask=94.0) == []
-        assert exits.due([_position()], bid=95.0, ask=95.2) != []
+        assert exits.due('BTCUSD', [_position()], bid=95.01, ask=94.0) == []
+        assert exits.due('BTCUSD', [_position()], bid=95.0, ask=95.2) != []
 
     def test_a_short_s_stop_reads_the_ask(self):
         exits = OwnExitLevels()
         exits.set_levels('pos_1', stop=105.0)
         short = _position(direction=OrderDirection.SHORT)
 
-        assert exits.due([short], bid=106.0, ask=104.99) == []
-        assert exits.due([short], bid=104.8, ask=105.0) == [
+        assert exits.due('BTCUSD', [short], bid=106.0, ask=104.99) == []
+        assert exits.due('BTCUSD', [short], bid=104.8, ask=105.0) == [
             ('pos_1', OwnExit(CloseReason.SL_TRIGGERED, 105.0))]
 
     def test_a_long_s_target_reads_the_bid(self):
         exits = OwnExitLevels()
         exits.set_levels('pos_1', target=110.0)
 
-        assert exits.due([_position()], bid=110.0, ask=110.2) == [
+        assert exits.due('BTCUSD', [_position()], bid=110.0, ask=110.2) == [
             ('pos_1', OwnExit(CloseReason.TP_TRIGGERED, 110.0))]
 
     def test_the_stop_first_when_one_quote_reaches_both(self):
         exits = OwnExitLevels()
         exits.set_levels('pos_1', stop=100.0, target=100.0)
 
-        assert exits.due([_position()], bid=100.0, ask=100.1)[0][1].reason == (
+        assert exits.due('BTCUSD', [_position()], bid=100.0, ask=100.1)[0][1].reason == (
             CloseReason.SL_TRIGGERED)
 
 
@@ -233,6 +233,15 @@ class TestAPositionIsClosedOnce:
 
         assert len(api.closes) == 2
 
+    def test_a_ghost_pass_has_no_quote_to_check(self):
+        """A logic that opts into the idle heartbeat is called with no tick at all."""
+        exits = OwnExitLevels()
+        exits.set_levels('pos_1', stop=95.0)
+        api = _FakeTradingApi([_position()])
+
+        assert exits.enforce(api, None) == []
+        assert api.closes == []
+
     def test_only_the_tick_s_symbol(self):
         exits = OwnExitLevels()
         exits.set_levels('pos_1', stop=95.0)
@@ -248,9 +257,9 @@ class TestTheLevelsGoWithTheirPosition:
     def test_a_position_seen_and_gone_takes_its_levels(self):
         exits = OwnExitLevels()
         exits.set_levels('pos_1', stop=95.0)
-        exits.due([_position()], bid=100.0, ask=100.1)
+        exits.due('BTCUSD', [_position()], bid=100.0, ask=100.1)
 
-        exits.due([], bid=100.0, ask=100.1)
+        exits.due('BTCUSD', [], bid=100.0, ask=100.1)
 
         assert exits.get_levels('pos_1') is None
 
@@ -258,9 +267,20 @@ class TestTheLevelsGoWithTheirPosition:
         exits = OwnExitLevels()
         exits.set_levels('pos_2', stop=95.0)
 
-        exits.due([_position('pos_1')], bid=100.0, ask=100.1)
+        exits.due('BTCUSD', [_position('pos_1')], bid=100.0, ask=100.1)
 
         assert exits.get_levels('pos_2').stop == 95.0
+
+    def test_a_tick_of_another_symbol_leaves_them(self):
+        """Levels of a position of one symbol survive a quote of another; its stop still fires."""
+        exits = OwnExitLevels()
+        exits.set_levels('pos_1', stop=95.0)
+        exits.due('BTCUSD', [_position()], bid=100.0, ask=100.1)
+
+        exits.due('ETHUSD', [], bid=2000.0, ask=2000.1)
+
+        assert exits.get_levels('pos_1').stop == 95.0
+        assert exits.due('BTCUSD', [_position()], bid=90.0, ask=90.1) != []
 
     def test_forget_drops_an_entry_that_will_not_fill(self):
         exits = OwnExitLevels()
@@ -302,7 +322,7 @@ class TestASnapshotComesBackOnlyForRestoredPositions:
 
         restored = OwnExitLevels(stop_distance=5.0)
         restored.restore(exits.snapshot(), {'pos_1'})
-        restored.due([_position()], bid=101.0, ask=101.1)
+        restored.due('BTCUSD', [_position()], bid=101.0, ask=101.1)
 
         assert restored.get_levels('pos_1').stop == 100.0
 
@@ -330,6 +350,9 @@ class _FakeExecutor:
         self._result = result
 
     def get_supported_order_types(self) -> frozenset:
+        return frozenset()
+
+    def get_supported_order_features(self) -> frozenset:
         return frozenset()
 
     def add_order_outcome_listener(self, listener) -> None:

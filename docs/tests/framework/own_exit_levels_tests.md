@@ -21,8 +21,8 @@ happens to reach.
 | `TestAPositionWithoutLevelsIsSeeded` | a long's stop below and target above its entry, a short the mirror; a distance of none, zero or less gives no level (a zero-width band must not put the stop AT the entry); levels set explicitly win over the seed |
 | `TestTheStopOnlyTightens` | toward the market moves, away does not — both directions; a position without a stop takes the first |
 | `TestTheClosingSideOfTheBookDecides` | a long's stop and target read the bid, a short's the ask, through the shared price-trigger predicates; the stop first when one quote reaches both |
-| `TestAPositionIsClosedOnce` | the close carries the `OwnExit`; never a second while the first is on its way; a refused close is sent again on the next tick; only the tick's symbol |
-| `TestTheLevelsGoWithTheirPosition` | a position seen and gone takes its levels; an entry not filled yet keeps them; `forget` drops an entry that will not fill |
+| `TestAPositionIsClosedOnce` | the close carries the `OwnExit`; never a second while the first is on its way; a refused close is sent again on the next tick; a ghost pass, which has no tick, closes nothing; only the tick's symbol |
+| `TestTheLevelsGoWithTheirPosition` | a position seen and gone takes its levels; an entry not filled yet keeps them; a tick of another symbol leaves them; `forget` drops an entry that will not fill |
 | `TestASnapshotComesBackOnlyForRestoredPositions` | the round trip; a position that did not come back is dropped; a break-even stop survives where a re-seed would have loosened it |
 | `TestAnOwnExitNamesALevel` | `OwnExit` refuses a reason no level makes (`MANUAL`, `SCENARIO_END`) and a level that is no price |
 | `TestAnOwnExitCountsAsATriggeredClose` | through the real `DecisionTradingApi`: a close sent with an `OwnExit` carries its reason and level to the executor and counts once in `sl_tp_triggered`; a refused close and a request that joins a close already on its way do not count; a close without an `OwnExit` is not counted there |

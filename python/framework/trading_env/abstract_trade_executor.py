@@ -109,6 +109,7 @@ from python.framework.types.trading_env_types.order_types import (
     OrderAction,
     OrderDirection,
     OrderEndReason,
+    OrderFeature,
     OrderInitiator,
     OrderResult,
     OrderSide,
@@ -2845,6 +2846,19 @@ class AbstractTradeExecutor(ABC):
 
         Returns:
             The types `open_order()` will route rather than reject
+        """
+        pass
+
+    @abstractmethod
+    def get_supported_order_features(self) -> FrozenSet[OrderFeature]:
+        """
+        The order features THIS executor carries — distinct from what the venue offers (#625).
+
+        The same two axes as `get_supported_order_types`: the adapter states what the venue's API
+        holds, this states what the pipeline does with it.
+
+        Returns:
+            The features a logic may declare on this pipeline
         """
         pass
 

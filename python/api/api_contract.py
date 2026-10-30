@@ -23,7 +23,7 @@ from typing import List
 
 # One monotonic integer. Not a date and not the app version: a consumer compares it for
 # equality, and equality is the only question they have.
-API_CONTRACT_VERSION = 44
+API_CONTRACT_VERSION = 45
 
 # Every response carries it, so a saved fixture carries it too.
 CONTRACT_HEADER = 'X-Api-Contract'
@@ -36,23 +36,14 @@ API_PREFIX = '/api/v1'
 # What moved INTO the current version. One line per change, written for someone who cannot
 # read this repository.
 CHANGES: List[str] = [
-    "GET /api/v1/reports/runs/{run_id}/venue-api-performance, new: how the venue's REST API "
-    'answered a live session, per endpoint (key venue_endpoint) — calls, avg_ms, min_ms, max_ms, '
-    "slow_calls and failed_calls, with the session's totals and the slow_call_threshold_ms a call "
-    'was judged against; AutoTrader only, written when the session ran its monitor',
-    'venue-account: every row carries reconciliation — enabled, cycles_compared, cycles_skipped and '
-    'divergences_seen over the whole session; a session that reconciled without a broker-truth line '
-    'now has a row too',
-    "broker: every row carries fee_report (where the venue reports a fill's fee, as its adapter "
-    "declares) and venue_fee_expected (whether the run's fills carry the venue's own fee — false in "
-    'a backtest and a dry run)',
-    'order-history: every row carries order_event_seq, its key into the order-event stream, and a '
-    "fill's slippage — slippage_measured_against, slippage_reference_price, slippage and "
-    'slippage_pct, positive is a cost',
-    'execution-stats: fill_slippage per unit and reference kind and fill_slippage_totals over every '
-    "unit's fills, with keys for the three lists",
-    'trade-history: exit_slippage and exit_slippage_pct of a stop-loss or take-profit exit are '
-    'measured against the level that fired instead of the submission mid; '
-    'exit_slippage_measured_against says which',
-    'The run list: venue_api_performance.json joins artifacts',
+    'trade-history: every row carries exit_level, the level a stop-loss or take-profit exit fired '
+    "at, which a logic's own stop never puts in stop_loss or take_profit; null for every other "
+    'exit. A backtest of such a logic fills after the level, so its exit_slippage is no longer 0',
+    'Run header: features_beyond_venue, the order features a backtest was allowed '
+    "beyond what its venue's API holds; empty for every other run, null on one recorded before it",
+    'Ledger rows: features_beyond_venue, the same, comma-joined; empty for every other row',
+    'order-history: rejection_reason order_feature_not_declared, an order carrying a level its '
+    'logic did not declare',
+    "Validation checks: order_feature_refused, order_feature_undeclared, "
+    'feature_beyond_venue_unneeded, features_beyond_venue',
 ]

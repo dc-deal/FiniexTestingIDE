@@ -36,6 +36,10 @@ class _DummyDecision(AbstractDecisionLogic):
     """Minimal concrete decision logic for exercising the sink API."""
 
     @classmethod
+    def get_required_order_features(cls, decision_logic_config) -> list:
+        return []
+
+    @classmethod
     def get_required_order_types(cls, decision_logic_config):
         return []
 

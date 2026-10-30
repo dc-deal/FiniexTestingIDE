@@ -69,6 +69,7 @@ and a word invented beside it already means something else somewhere.
 | `orders_to` | Orders to | where the run's orders went | `simulated` · `venue` | the run predates the field, or a session whose dry-run setting was refused — it never traded | `orders_to` |
 | `data_windows` | Data windows | the market window each unit was declared to cover | | the run predates the field | `data_windows` |
 | `run_purpose` | Purpose | what the run is for | `regular` · `fixture` · `certificate` | the run predates the field | `run_purpose` |
+| `features_beyond_venue` | Beyond the venue | the order features a backtest was allowed beyond what its venue's API holds, as its scenario set declared; empty for every other run | `stop_loss` · `take_profit` | the run predates the field | `features_beyond_venue` |
 | `report_contract` | Report contract | the API contract the run's reports were written under | | the run predates the field | `report_contract` |
 
 ## Origin — who started the run

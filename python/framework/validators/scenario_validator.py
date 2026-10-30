@@ -13,7 +13,7 @@ Usage:
     ScenarioValidator.validate_account_currencies(scenarios, logger, broker_scenario_map)
 """
 
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Set, Tuple
 
 from python.configuration.market_config_manager import MarketConfigManager
 from python.framework.data_preparation.broker_scenario_info import BrokerScenarioInfo
@@ -22,7 +22,13 @@ from python.framework.factory.worker_factory import WorkerFactory
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.trading_env.broker_config import BrokerType
+from python.framework.types.trading_env_types.order_types import OrderFeature
 from python.framework.validators.component_metadata_advisory import check_market_fit
+from python.framework.validators.decision_logic_hook_validator import check_order_feature_declaration
+from python.framework.validators.order_feature_validator import (
+    features_the_venue_lacks,
+    order_feature_refusal,
+)
 from python.framework.types.scenario_types.scenario_set_types import (
     SingleScenario,
 )
@@ -213,6 +219,94 @@ class ScenarioValidator:
                 f"❌ {scenario.name}: swap_mode '{spec.swap_mode.value}' not modeled "
                 f"(supported: points, none)"
             )
+
+    @staticmethod
+    def validate_order_features(
+        scenarios: List[SingleScenario],
+        logger: AbstractLogger,
+        broker_scenario_map: Dict[BrokerType, BrokerScenarioInfo],
+        exception_possible: bool = True,
+    ) -> None:
+        """
+        Refuse a scenario whose logic declares an order feature its venue's API does not hold (#625).
+
+        A declared exception (`features_beyond_venue`) lets it through. The exception is held
+        narrow: one that no scenario of the set needs, or that its venue holds anyway, is refused,
+        because a broad one would record a deviation that never happened.
+
+        Side Effects:
+        - Appends an ERROR finding to scenario.validation_result, which excludes that scenario
+
+        Args:
+            scenarios: List of scenarios to validate
+            logger: Logger for the factory and the errors
+            broker_scenario_map: Map from BrokerType to BrokerScenarioInfo
+            exception_possible: Whether the refusal may point at the exception: a mock session
+                comes through here too, and it cannot declare one
+        """
+        decision_factory = DecisionLogicFactory(logger)
+        needed: Set[OrderFeature] = set()
+        for scenario in scenarios:
+            broker_info = broker_scenario_map.get(scenario.broker_type)
+            logic_type = (scenario.strategy_config or {}).get('decision_logic_type', '')
+            if not broker_info or not logic_type:
+                continue
+            try:
+                logic_class, _ = decision_factory.resolve_logic_class(logic_type)
+            except Exception:
+                continue  # resolution failures reported by requirements/factory
+
+            declaration_error = check_order_feature_declaration(logic_class)
+            if declaration_error:
+                ScenarioValidator._refuse_scenario(
+                    scenario, logger, declaration_error, check='order_feature_undeclared')
+                continue
+            venue_lacks = features_the_venue_lacks(
+                logic_class.get_required_order_features(
+                    (scenario.strategy_config or {}).get('decision_logic_config', {})),
+                broker_info.broker_config.get_order_capabilities())
+            needed.update(venue_lacks)
+            refusal = order_feature_refusal(
+                logic_type, broker_info.broker_config.adapter.get_capability_label(),
+                [feature for feature in venue_lacks
+                 if feature not in scenario.features_beyond_venue],
+                exception_possible=exception_possible)
+            if refusal:
+                ScenarioValidator._refuse_scenario(
+                    scenario, logger, refusal, check='order_feature_refused')
+
+        for scenario in scenarios:
+            unneeded = [feature.value for feature in scenario.features_beyond_venue
+                        if feature not in needed]
+            if unneeded:
+                ScenarioValidator._refuse_scenario(
+                    scenario, logger,
+                    f'features_beyond_venue names {unneeded}, which no scenario of this set '
+                    f'needs: no logic declares it, or its venue holds it anyway. The exception '
+                    f'is recorded with the run, so it says only what really happened.',
+                    check='feature_beyond_venue_unneeded')
+
+    @staticmethod
+    def _refuse_scenario(
+        scenario: SingleScenario,
+        logger: AbstractLogger,
+        message: str,
+        check: str,
+    ) -> None:
+        """
+        Exclude one scenario with an ERROR finding on its configuration.
+
+        Args:
+            scenario: The scenario
+            logger: Where the error is logged
+            message: The sentence it is refused with
+            check: The finding's check id
+        """
+        scenario.validation_result.append(ValidationResult(scenario.name, [
+            ValidationFinding(severity=Severity.ERROR, check=check,
+                              domain=ValidationDomain.BROKER, message=message,
+                              scope=scenario.name)]))
+        logger.error(f'{scenario.name}: {message}')
 
     @staticmethod
     def set_scenario_account_currency(

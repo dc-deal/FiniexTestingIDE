@@ -48,6 +48,7 @@ class MountPreparer:
         app_config: AppConfigManager,
         requirements_collector: RequirementsCollector,
         live_stats: Optional[StatusBroadcaster] = None,
+        feature_exception_possible: bool = True,
     ):
         """
         Initialize mount preparer.
@@ -57,10 +58,13 @@ class MountPreparer:
             app_config: Application configuration manager
             requirements_collector: Collector for data requirements (Phase 3)
             live_stats: Optional status broadcaster (None → no live-stats broadcasts, e.g. AutoTrader)
+            feature_exception_possible: Whether a refused order feature can be answered with a
+                declared exception — a backtest can, a mock session this preparer also serves cannot
         """
         self._logger = logger
         self._app_config = app_config
         self._requirements_collector = requirements_collector
+        self._feature_exception_possible = feature_exception_possible
         self._live_stats = live_stats
 
     @staticmethod
@@ -146,6 +150,15 @@ class MountPreparer:
         ScenarioValidator.validate_market_fit(
             scenarios=self._valid(scenarios),
             logger=self._logger,
+        )
+
+        # 6. Order features (#625): refused here, before any data is loaded, for every sweep
+        # combination too — broker_type is assigned above, as for the market-fit advice.
+        ScenarioValidator.validate_order_features(
+            scenarios=self._valid(scenarios),
+            logger=self._logger,
+            broker_scenario_map=_broker_scenario_map,
+            exception_possible=self._feature_exception_possible,
         )
 
         # set scenario final currencies.

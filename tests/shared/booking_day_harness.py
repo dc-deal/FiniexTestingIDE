@@ -40,6 +40,7 @@ from python.framework.types.process_data_types import (
 )
 from python.framework.types.run_results_types import BookingPeriod
 from python.framework.types.trading_env_types.broker_types import BrokerType
+from python.framework.types.trading_env_types.order_types import OrderFeature
 from python.framework.utils.run_id_utils import mint_run_id
 from tests.shared.parity_fixtures import make_flat_btcusd_ticks
 
@@ -119,7 +120,8 @@ def _logger(name: str) -> ScenarioLogger:
 
 
 def _probe(executor, logger: ScenarioLogger, stop_loss: Optional[float],
-           hold_ticks: Optional[int] = None) -> DeterministicProbe:
+           hold_ticks: Optional[int] = None,
+           stop_beyond_venue: bool = False) -> DeterministicProbe:
     """
     The decision logic that opens before midnight and closes after it.
 
@@ -130,6 +132,8 @@ def _probe(executor, logger: ScenarioLogger, stop_loss: Optional[float],
             to the end of the feed, so the stop is what closes it
         hold_ticks: How many ticks the position is held; None keeps the fixture's, which close
             it after midnight
+        stop_beyond_venue: Send the stop with the order, as the declared exception a backtest
+            may make: the fixture's venue holds no stop, so a session keeps it as the probe's own
 
     Returns:
         The probe, wired to the executor
@@ -140,13 +144,17 @@ def _probe(executor, logger: ScenarioLogger, stop_loss: Optional[float],
     if stop_loss is not None:
         config['trade_sequence'][0]['stop_loss'] = stop_loss
         config['trade_sequence'][0]['hold_ticks'] = _TICK_COUNT
+        if not stop_beyond_venue:
+            config['exit_mode'] = 'own'
     logic = DeterministicProbe(
         name='booking_parity_logic', logger=logger, config=config,
         trading_context=None)
     logic.set_trading_api(DecisionTradingApi(
         executor=executor,
         required_order_types=logic.get_required_order_types(config),
-        order_guard_config=None))
+        order_guard_config=None,
+        required_order_features=logic.get_required_order_features(config),
+        features_beyond_venue=[OrderFeature.STOP_LOSS] if stop_beyond_venue else []))
     return logic
 
 
@@ -198,7 +206,7 @@ def simulation_result(ticks: List[TickData], spot_mode: bool,
         seeds={'inbound_latency_seed': 42},
         inbound_latency_min_ms=0, inbound_latency_max_ms=0,
         spot_mode=spot_mode, initial_balances=_balances(spot_mode))
-    logic = _probe(simulator, logger, stop_loss)
+    logic = _probe(simulator, logger, stop_loss, stop_beyond_venue=True)
     result = execute_tick_loop(
         config=ProcessScenarioConfig(
             name='booking_parity', symbol=SYMBOL, scenario_index=0,

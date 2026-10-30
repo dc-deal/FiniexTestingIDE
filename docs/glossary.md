@@ -355,6 +355,11 @@ history, brought in by a converter that stamps its own identity. A backtest read
 `admitted_origin_classes` admits it, and it is never admissible for a parity measurement. Not
 *unknown*, which means nobody could be named. See [Data Provenance](architecture/data_provenance.md).
 
+**features beyond venue** (`features_beyond_venue`) — The order features a scenario set allows its
+backtest although the venue's API does not hold them: a declared exception, recorded in the run's
+header and ledger row, warned about in its report and refused by a certificate. A session cannot
+declare one. See [Config Cascade Guide](config_cascade_guide.md).
+
 **fee report** (`fee_report`) — Where a venue reports the fee it charged for a fill, as its adapter
 declares it: `status_answer` — in the answer that reports the order filled, as Kraken does;
 `executions` — only with the order's executions, after the fill; `not_reported` — no fee per fill,
@@ -541,6 +546,13 @@ asking that settled it, the fill or the ending — and the run's file that holds
 `io/order_events.jsonl`: written as the steps happen in a live session, with the report in a
 backtest. The *order history* keeps a row for each submission and for each way an order ended;
 the stream keeps every step. See [Order-Event Stream](architecture/order_event_stream.md).
+
+**order feature** (`OrderFeature`, `get_required_order_features`, `offered_order_features`) — What an
+order or a position carries beyond its type and a venue's API holds or does not: today a stop-loss
+and a take-profit level held for the position. A decision logic declares the ones it uses, an
+adapter states the ones its API takes, and a run refuses a declared one its venue lacks. Not an
+*own exit*, which no venue holds. See
+[Quickstart — Own Exits](user_guides/quickstart_guide.md).
 
 **order history** — The run's order-lifecycle records: one row per EVENT of an order, not one per
 order. An order appears as `pending` when it enters the pipeline and once more for the way it ended

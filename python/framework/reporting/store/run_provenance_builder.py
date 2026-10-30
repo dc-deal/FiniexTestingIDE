@@ -349,6 +349,9 @@ def consumption_record(scenarios: List[SingleScenario]) -> Dict[str, Any]:
         # files and the file count from ticks plus signals, so one is not a subset of the
         # other and a shared count would describe neither.
         'price_bases': joined_distinct(bases),
+        'features_beyond_venue': joined_distinct(
+            [feature.value for scenario in scenarios
+             for feature in scenario.features_beyond_venue]),
     }
 
 

@@ -90,7 +90,7 @@ The STOP fixture runs with `write_strategy_files` on, the LIMIT fixture with it 
 The logic driven tick by tick through its public surface — levels and initial risk handed in
 through `restore_state`, three ticks through `execute_decision`, the stop read back through
 `get_state_snapshot` — against a stand-in trading API. No batch, no data. The same pass tracks the
-one entry the logic allows at a time, and two tests pin when it lets go of that slot.
+one entry the logic allows at a time, and two tests pin when it lets go of that slot; two more pin what a re-price does to the levels.
 
 | Test | Description |
 |---|---|
@@ -98,6 +98,8 @@ one entry the logic allows at a time, and two tests pin when it lets go of that 
 | `test_a_restore_takes_back_only_the_positions_the_framework_restored` | a snapshot naming a position that did not come back gives back levels, initial risk and the taken rung only for the one that did |
 | `test_an_entry_that_ended_without_a_position_frees_the_slot` | an entry that is neither a position nor resting nor in the submission pipeline has ended (refused, cancelled, or filled and closed before the pass saw it); the next armed setup is sent. Kept tracked, it blocked every later entry |
 | `test_an_entry_still_on_its_way_keeps_the_slot` | while orders are in the submission pipeline an entry is neither resting nor a position yet, and no second entry goes out |
+| `test_a_refused_re_price_leaves_the_levels_and_is_not_sent_again` | a re-price the venue refuses leaves the own levels where they were and goes out once, not on every pass |
+| `test_an_accepted_re_price_moves_the_levels_with_the_order` | an accepted re-price moves the own levels with the order |
 
 ## Running the Tests
 

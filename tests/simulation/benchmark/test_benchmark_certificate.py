@@ -477,6 +477,15 @@ class TestConfigProvenance:
             f'Re-run with the committed configuration, or re-measure the baseline '
             f'deliberately and update benchmark_config.json::config_contract.')
 
+    def test_the_certified_run_used_nothing_beyond_its_venue(self):
+        """A backtest with a declared exception measured what its venue cannot hold (#625).
+        A report older than the field states nothing, which reads as nothing declared."""
+        declared = self._provenance().get('features_beyond_venue', [])
+
+        assert not declared, (
+            f'The certified run declared {declared} beyond its venue. Remove the exception from '
+            f'the benchmark scenario set and re-run.')
+
     def test_the_measured_workload_is_the_committed_one(self):
         """
         The scenario set came from configs/, not from the private workspace.

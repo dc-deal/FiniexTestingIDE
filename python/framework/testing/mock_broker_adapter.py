@@ -268,6 +268,8 @@ class MockBrokerAdapter(AbstractAdapter):
             # fee model charges one per fill at all; a spread broker's does not (#508).
             fee_report=(FeeReport.STATUS_ANSWER if self._charges_fee_per_fill()
                         else FeeReport.NOT_REPORTED),
+            # It stands in for Kraken, whose API holds no level for a position (#625).
+            offered_order_features=frozenset(),
         )
 
     # ============================================

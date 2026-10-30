@@ -18,6 +18,20 @@ from python.framework.types.validation_types import ValidationCheckInfo
 VALIDATION_CHECKS: Tuple[ValidationCheckInfo, ...] = (
     # --- Configuration of a scenario ---------------------------------------------------------
     ValidationCheckInfo(
+        'order_feature_refused', 'Order feature the venue does not hold',
+        "The scenario's decision logic declares an order feature its venue's API does not hold, "
+        'and its scenario set declares no exception for it.'),
+    ValidationCheckInfo(
+        'order_feature_undeclared', 'Order features not declared',
+        "The scenario's decision logic does not say which order features it uses."),
+    ValidationCheckInfo(
+        'feature_beyond_venue_unneeded', 'Exception nothing needs',
+        'The scenario set declares an order feature as beyond its venue that no scenario needs, '
+        'or that the venue holds anyway.'),
+    ValidationCheckInfo(
+        'features_beyond_venue', 'Order features beyond the venue',
+        "The run used order features its venue's API does not hold, as its scenario set declared."),
+    ValidationCheckInfo(
         'scenario_name_missing', 'Scenario without a name',
         'A scenario in the set has no name.'),
     ValidationCheckInfo(

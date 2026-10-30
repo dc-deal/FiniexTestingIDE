@@ -54,7 +54,8 @@ class OwnExitLevels:
             logger: Where reached levels and refused closes are logged; None logs nothing
         """
         self._levels: Dict[str, PositionExitLevels] = {}
-        self._seen_open: Set[str] = set()
+        # Position id → its symbol: a tick only says something about its own symbol's positions
+        self._seen_open: Dict[str, str] = {}
         self._stop_distance = stop_distance
         self._target_distance = target_distance
         self._logger = logger
@@ -133,17 +134,24 @@ class OwnExitLevels:
             position_id: The position or entry order
         """
         self._levels.pop(position_id, None)
-        self._seen_open.discard(position_id)
+        self._seen_open.pop(position_id, None)
 
-    def due(self, positions: List[Position], bid: float, ask: float) -> List[Tuple[str, OwnExit]]:
+    def due(
+        self,
+        symbol: str,
+        positions: List[Position],
+        bid: float,
+        ask: float,
+    ) -> List[Tuple[str, OwnExit]]:
         """
         Which positions the quote has taken to their stop or target.
 
         Gives a position without levels its seed levels first, and drops the levels of a
-        position seen before and gone now.
+        position of this symbol seen before and gone now.
 
         Args:
-            positions: The open positions of the quote's symbol
+            symbol: The quote's symbol
+            positions: The open positions of that symbol
             bid: Current bid
             ask: Current ask
 
@@ -155,6 +163,7 @@ class OwnExitLevels:
         for position in positions:
             position_id = position.position_id
             open_ids.add(position_id)
+            self._seen_open[position_id] = symbol
             levels = self._levels.get(position_id) or self._seed(position)
             if levels is None:
                 continue
@@ -165,12 +174,17 @@ class OwnExitLevels:
                 exits.append((position_id, OwnExit(CloseReason.SL_TRIGGERED, levels.stop)))
             elif levels.target is not None and is_limit_reached(closing, levels.target, bid, ask):
                 exits.append((position_id, OwnExit(CloseReason.TP_TRIGGERED, levels.target)))
-        for closed_id in self._seen_open - open_ids:
-            self._levels.pop(closed_id, None)
-        self._seen_open = open_ids
+        for seen_id, seen_symbol in list(self._seen_open.items()):
+            if seen_symbol == symbol and seen_id not in open_ids:
+                self._levels.pop(seen_id, None)
+                del self._seen_open[seen_id]
         return exits
 
-    def enforce(self, trading_api: DecisionTradingApi, tick: TickData) -> List[OrderResult]:
+    def enforce(
+        self,
+        trading_api: DecisionTradingApi,
+        tick: Optional[TickData],
+    ) -> List[OrderResult]:
         """
         Close every position of the tick's symbol whose stop or target the tick reached.
 
@@ -179,14 +193,16 @@ class OwnExitLevels:
 
         Args:
             trading_api: The logic's trading API
-            tick: The tick to check against
+            tick: The tick to check against; None on a ghost pass, which has no quote to check
 
         Returns:
             The answer to each close sent
         """
+        if tick is None:
+            return []
         results: List[OrderResult] = []
         positions = trading_api.get_open_positions(tick.symbol)
-        for position_id, own_exit in self.due(positions, tick.bid, tick.ask):
+        for position_id, own_exit in self.due(tick.symbol, positions, tick.bid, tick.ask):
             if trading_api.is_pending_close(position_id):
                 continue
             if self._logger is not None:

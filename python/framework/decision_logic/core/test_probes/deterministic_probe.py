@@ -101,7 +101,7 @@ from python.framework.types.market_types.market_types import TradingContext
 from python.framework.types.parameter_types import InputParamDef, OutputParamDef
 from python.framework.types.performance_types.performance_stats_types import DecisionLogicStats
 from python.framework.types.trading_env_types.market_data_status_types import MarketDataStatus
-from python.framework.types.trading_env_types.order_types import OrderResult, OrderSide, OrderType
+from python.framework.types.trading_env_types.order_types import OrderFeature, OrderResult, OrderSide, OrderType
 from python.framework.types.trading_env_types.own_exit_types import PositionExitLevels
 from python.framework.types.worker_types import WorkerRequirement, WorkerResult
 
@@ -335,6 +335,25 @@ class DeterministicProbe(AbstractDecisionLogic):
             A declining verdict with the reason
         """
         return ColdStartVerdict(False, 'determinism probe — no live venue to account for')
+
+    @classmethod
+    def get_required_order_features(cls, decision_logic_config: Dict[str, Any]) -> List[OrderFeature]:
+        """
+        The levels its sequences send — none in 'own' exit mode, where it keeps them itself.
+
+        Args:
+            decision_logic_config: Decision logic configuration dict
+
+        Returns:
+            The features this config's orders and modifies carry
+        """
+        if decision_logic_config.get('exit_mode') == 'own':
+            return []
+        specs = [spec for key in ('trade_sequence', 'modify_sequence', 'modify_limit_sequence',
+                                  'modify_stop_sequence')
+                 for spec in decision_logic_config.get(key, [])]
+        return [feature for feature in OrderFeature
+                if any(spec.get(feature.value) is not None for spec in specs)]
 
     @classmethod
     def get_required_order_types(cls, decision_logic_config: Dict[str, Any]) -> List[OrderType]:

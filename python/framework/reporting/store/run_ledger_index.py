@@ -143,7 +143,10 @@ class RunLedgerIndex(AbstractStoreIndex):
     # gets its row. `rendered_config_id`, `broker_config_id` and `period_tick_count` appended —
     # what the run ran with, and how many ticks a period applied (zero: a trading day the run
     # never heard from). An older fragment answers '' or None.
-    LOGIC_VERSION: int = 19
+    # 19 → 20 (#625): `features_beyond_venue` appended — the order features a backtest was
+    # allowed beyond what its venue's API holds. Appended, no existing value changes; an older
+    # fragment reads back None, which is honest: no run before this version could declare one.
+    LOGIC_VERSION: int = 20
 
     def __init__(self, ledger_dir: Path, columns: List[str]):
         super().__init__(Path(ledger_dir) / LEDGER_INDEX_FILE)

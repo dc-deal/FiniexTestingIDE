@@ -50,6 +50,7 @@ from python.framework.types.parameter_types import InputParamDef, OutputParamDef
 from python.framework.types.trading_env_types.market_data_status_types import MarketDataStatus
 from python.framework.types.trading_env_types.order_types import (
     OrderDirection,
+    OrderFeature,
     OrderResult,
     OrderSide,
     OrderStatus,
@@ -338,6 +339,19 @@ class CautiousMacd(AbstractDecisionLogic):
                     if self.trading_api else None)
         restored = self._exits.restore(snapshot.get('own_exit_levels', {}), open_ids)
         self.logger.info(f'💾 Own exit levels restored for {restored} position(s)')
+
+    @classmethod
+    def get_required_order_features(cls, decision_logic_config: Dict[str, Any]) -> List[OrderFeature]:
+        """
+        None: it keeps its stop and target itself (OwnExitLevels).
+
+        Args:
+            decision_logic_config: Decision logic configuration dict
+
+        Returns:
+            An empty list
+        """
+        return []
 
     @classmethod
     def get_required_order_types(cls, decision_logic_config: Dict[str, Any]) -> List[OrderType]:

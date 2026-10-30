@@ -178,7 +178,7 @@ set on a `denied` and on a `rejected` row. The vocabulary:
 insufficient_margin · insufficient_funds · invalid_lot_size · symbol_not_tradeable
 market_closed · invalid_price · order_type_not_supported · broker_error
 rejection_cooldown · stale_market_data · unaccounted_order · position_not_found
-close_withheld · remainder_below_minimum
+close_withheld · remainder_below_minimum · order_feature_not_declared
 ```
 
 Four of them are worth spelling out, because their names do not carry their meaning:

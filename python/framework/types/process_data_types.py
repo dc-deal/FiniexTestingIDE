@@ -42,7 +42,7 @@ from python.framework.types.trading_env_types.active_orders_snapshot_types impor
 )
 from python.framework.types.trading_env_types.broker_types import BrokerType
 from python.framework.types.trading_env_types.order_event_types import OrderEvent
-from python.framework.types.trading_env_types.order_types import OrderResult
+from python.framework.types.trading_env_types.order_types import OrderFeature, OrderResult
 from python.framework.types.trading_env_types.stress_test_types import StressTestConfig
 from python.framework.types.trading_env_types.trading_env_stats_types import (
     CostBreakdown,
@@ -282,6 +282,9 @@ class ProcessScenarioConfig:
     # === ORDER GUARD CONFIG ===
     order_guard_config: OrderGuardDefaults = field(default_factory=OrderGuardDefaults)
 
+    # === ORDER FEATURES BEYOND THE VENUE (#625) ===
+    features_beyond_venue: List[OrderFeature] = field(default_factory=list)
+
     # === HISTORY LIMITS ===
     bar_max_history: int = 1000
     order_history_max: int = 10000
@@ -443,6 +446,7 @@ class ProcessScenarioConfig:
             seeds=seeds,
             stress_test_config=stress_test_config,
             order_guard_config=order_guard_config,
+            features_beyond_venue=scenario.features_beyond_venue,
             bar_max_history=app_config_loader.get_bar_max_history(),
             order_history_max=app_config_loader.get_order_history_max(),
             trade_history_max=app_config_loader.get_trade_history_max(),

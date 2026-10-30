@@ -105,6 +105,7 @@ from python.framework.types.performance_types.performance_stats_types import Dec
 from python.framework.types.trading_env_types.market_data_status_types import MarketDataStatus
 from python.framework.types.trading_env_types.order_types import (
     OrderDirection,
+    OrderFeature,
     OrderResult,
     OrderSide,
     OrderType,
@@ -299,6 +300,19 @@ class MarginStressProbe(AbstractDecisionLogic):
                 category='INFO',
             ),
         }
+
+    @classmethod
+    def get_required_order_features(cls, decision_logic_config: Dict[str, Any]) -> List[OrderFeature]:
+        """
+        None: the probe sets no level on an order or a position.
+
+        Args:
+            decision_logic_config: Decision logic configuration dict
+
+        Returns:
+            An empty list
+        """
+        return []
 
     @classmethod
     def get_required_order_types(cls, decision_logic_config: Dict[str, Any]) -> List[OrderType]:
