@@ -38,7 +38,7 @@
 | [AutoTrader Runtime Model](autotrader/autotrader_runtime_model.md) | Threading, tick source vs broker adapter, session lifecycle, what survives a restart |
 | [AutoTrader Configuration](autotrader/autotrader_configuration.md) | The profile cascade, the deployment declaration, the two fingerprints |
 | [AutoTrader Data Intake](autotrader/autotrader_data_intake.md) | Tick sources, sentiment feed, the staleness contract, warmup from the venue |
-| [AutoTrader Capital and Safety](autotrader/autotrader_capital_and_safety.md) | What the bot may spend, committed funds, whose account it is, protective levels, the circuit breaker |
+| [AutoTrader Capital and Safety](autotrader/autotrader_capital_and_safety.md) | What the bot may spend, committed funds, whose account it is, stops and targets, the circuit breaker |
 | [AutoTrader Venue Integration](autotrader/autotrader_venue_integration.md) | Broker config acquisition, the Kraken execution tier, polling, drift audit, the connection ladder |
 | [AutoTrader Observability](autotrader/autotrader_observability.md) | The live console, the clipping monitor, the three log channels |
 | [Unattended Operation](autotrader/unattended_operation.md) | What reaches the operator when nobody watches: Telegram alerts, the liveness ping a monitor turns into an alarm, the supervisor (#235) |
@@ -83,7 +83,7 @@
 | [Mock Adapter Guide](architecture/mock_adapter_guide.md) | MockBrokerAdapter for deterministic pipeline testing |
 | [Order Guard](architecture/order_guard_architecture.md) | Pre-validation guard (SHORT+SPOT, rejection cooldown, async callback) |
 | [Performance Tracking Layers](architecture/performance_tracking_layers.md) | Two-layer model (per-component + tick-loop profiler), defaults, graceful degradation, why no context-manager wrappers in the tick loop |
-| [Protective Levels](architecture/protective_levels.md) | Who enforces a declared stop_loss / take_profit — the local tick check, the opt-in venue-held STOP (#503), the order's life at the venue (amend · cancel-before-close · partial · session end · orphan), and what the boot asks about a carried reference |
+| [What a Venue Holds](architecture/venue_order_features.md) | An adapter offers what its venue's API offers: what a run refuses, what a logic does instead (own exits) and what that costs |
 | [Safety Circuit Breaker](architecture/safety_circuit_breaker_architecture.md) | Account-level protection (account-value floor, drawdown and daily limits, the risk baseline that survives a restart, the hard flatten, and the end-of-session record — AutoTrader only) |
 | [Design Decisions](architecture/execution_design_decisions.md) | Historical reasoning behind architectural choices |
 | [Batch Data Flow](architecture/batch_data_flow.md) | Subprocess data channels, serialization boundaries |
@@ -164,7 +164,6 @@ Each test suite has its own documentation in [`tests/`](tests/).
 | [Order Guard](tests/autotrader/order_guard_tests.md) | Rejection cooldown, async callback |
 | [Cold Start](tests/autotrader/cold_start_tests.md) | Boot-time adoption of our own resting orders + the framework carry-over (#355) |
 | [Capital](tests/autotrader/capital_tests.md) | What the bot may actually spend (#489): committed funds on both check sites, the minimum-order boot refusal |
-| [Protective Levels](tests/autotrader/protective_level_tests.md) | Who enforces a declared stop or target (#500): the AutoTrader check that did not exist, the in-flight guard, and the deliberate sim/AutoTrader difference |
 | [Reconciliation](tests/autotrader/reconciliation_tests.md) | Broker truth-pull + Reconciler ALERT_ONLY (#151) |
 | [Session End](tests/autotrader/session_end_tests.md) | What a session leaves standing and how it is reported (#492): the two axes, the incoherent pair, realised vs valued, the phantom-drawdown guard |
 | [Session Validation](tests/autotrader/session_validation_tests.md) | The AutoTrader Tier-1 channel: SessionPostRunValidator + the checks shared with the sim batch |

@@ -42,7 +42,7 @@ whose ending in the [order history](/api/v1/docs/order-history) has that status.
 
 | Field | Counts |
 |---|---|
-| `orders_submitted` | orders handed to the venue — opens, closes and protective orders |
+| `orders_submitted` | orders handed to the venue — opens and closes |
 | `orders_adopted` | orders a previous session sent and this one took over at its start — a live session only; a backtest starts with none |
 | `orders_executed` | orders that executed — closing orders as well as opening ones |
 | `orders_denied` | orders refused before anything was sent — lot size, funds, the run's own pre-trade checks |

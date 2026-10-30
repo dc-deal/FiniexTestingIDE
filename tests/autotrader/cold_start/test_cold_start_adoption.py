@@ -376,9 +376,9 @@ class TestADeclaredExclusiveAccount:
         """
         The loudest case, and it still STARTS — refusing is not the safe outcome.
 
-        A refusal would abandon this bot's own position and its protective resting order at
-        the venue with nothing reconciling them, and on spot the SL/TP level lives in the
-        very process that declined to start. It would also deadlock two sibling bots and
+        A refusal would abandon this bot's own position and its resting order at the venue
+        with nothing reconciling them, and its stop and target live in the very process that
+        declined to start. It would also deadlock two sibling bots and
         loop against a supervisor. #499 turns this into a HALT that keeps managing what is
         ours while placing nothing new; until that state exists, the honest answer is an
         ERROR the operator cannot miss.

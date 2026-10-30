@@ -64,13 +64,6 @@ class AutotraderExecutionDefaults(StrictConfigModel):
     # (sim replay gaps are data). 0 disables the contract. Per-profile
     # overridable; matches the sim inter_tick_gap_threshold_s magnitude.
     market_data_stale_after_s: float = 300.0
-    # Venue-held protective orders (#503): a declared stop_loss additionally becomes a
-    # real STOP order at the venue, so it survives this process dying — which a 30-day
-    # unattended run guarantees will happen. Default OFF: opting in changes what the bot
-    # does with real money, so it is a decision and not a convenience. Overridable per
-    # order via send_order(venue_held_protection=...). Refused where the adapter cannot
-    # carry it; the simulation accepts it and enforces the level itself, unchanged.
-    venue_held_protection: bool = False
     # How long the broker waits for a fill or a refusal before the order is given up on
     # (#487). It lived as a runtime dataclass default reachable from no config file at all,
     # which meant its relation to the resolution window below could not be tuned — and the

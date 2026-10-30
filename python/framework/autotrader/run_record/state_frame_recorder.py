@@ -363,9 +363,7 @@ class StateFrameRecorder:
             balances=dict(portfolio.get_balances()) if self._spot else None,
             equity=portfolio.get_account_value(),
             unrealized_pnl=sum(position.unrealized_pnl for position in positions),
-            open_positions=open_position_rows(
-                positions, last_price or 0.0,
-                self._executor.get_protective_level_enforcement().value),
+            open_positions=open_position_rows(positions, last_price or 0.0),
             active_orders=active_order_rows(
                 list(orders.active_limit_orders) + list(orders.active_stop_orders)),
             safety_blocked=safety.blocked,

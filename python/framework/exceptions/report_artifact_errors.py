@@ -29,5 +29,6 @@ class ReportArtifactUnreadableError(FiniexError):
         self.reason = reason
         super().__init__(
             f"Run artifact '{artifact}' at {path} cannot be read with the current model — "
-            f'it was most likely written by an older schema. Re-run to regenerate it. '
+            f'it was most likely written by an older schema. A backtest can be run again; a '
+            f"session's record cannot, and stays as it was written. "
             f'Cause: {reason}')

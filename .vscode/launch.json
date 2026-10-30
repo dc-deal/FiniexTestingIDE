@@ -2991,23 +2991,6 @@
             }
         },
         {
-            "name": "🧩 Pytest: Protective Levels (#500)",
-            "type": "debugpy",
-            "request": "launch",
-            "module": "pytest",
-            "args": [
-                "tests/autotrader/protective_levels",
-                "-v",
-                "--tb=short"
-            ],
-            "console": "integratedTerminal",
-            "justMyCode": false,
-            "presentation": {
-                "group": "13_pytest_validation",
-                "order": 53
-            }
-        },
-        {
             "name": "🧩 Pytest: Raw Archive Re-import (All)",
             "type": "debugpy",
             "request": "launch",

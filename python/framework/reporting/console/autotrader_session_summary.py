@@ -301,9 +301,10 @@ class AutotraderSessionSummary:
 
         # Trade analytics (#389/#393) — model-sourced, one line per account currency.
         for a in (self._trade_report.analytics if self._trade_report else []):
+            expectancy = f'{a.expectancy:+.3f}R' if a.expectancy is not None else 'n/a'
             win_r = f'{a.avg_win_r:+.2f}' if a.avg_win_r is not None else 'n/a'
             loss_r = f'{a.avg_loss_r:+.2f}' if a.avg_loss_r is not None else 'n/a'
-            print(f'  Analytics:      expectancy {a.expectancy:+.3f}R | '
+            print(f'  Analytics:      expectancy {expectancy} | '
                   f'win-R {win_r} / loss-R {loss_r} | '
                   f'R-trades {a.r_trade_count}/{a.trade_count} ({a.currency})')
 

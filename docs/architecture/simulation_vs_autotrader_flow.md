@@ -20,10 +20,10 @@ execute_tick_loop(config, worker_coordinator, trade_simulator, bar_rendering_con
         │
         │   ═══ BROKER PATH (all ticks) ═══
         │
-        ├── 1. trade_simulator.on_tick(tick)         # AbstractTradeExecutor
+        ├── 1. trade_simulator.on_tick(tick)         # TradeSimulator, over AbstractTradeExecutor
         │       ├── Update prices (bid/ask)
         │       ├── _process_pending_orders()         # LatencySimulator: drain tick-based queue
-        │       └── _check_sl_tp_triggers(tick)       # Local price check on open positions
+        │       └── _check_sl_tp_triggers(tick)       # The simulation's own: local check of a position's levels
         │
         ├── 2. render_bars_for_tick(tick, ...)        # SHARED CORE (#303) — all ticks, BEFORE the gate
         │       └── Aggregate tick into OHLC bars     # (#293: bars reflect the full stream)
@@ -57,7 +57,7 @@ execute_tick_loop(config, worker_coordinator, trade_simulator, bar_rendering_con
 **Key characteristics:**
 - Ticks are pre-loaded (finite list from historical data)
 - Synchronous: each step completes before the next starts
-- SL/TP triggers checked locally (`_check_sl_tp_triggers`)
+- SL/TP triggers checked locally (`_check_sl_tp_triggers`), in this pipeline only: a session holds no level (#625)
 - Pending orders resolved by ms-timestamp comparison (deterministic, seeded delay)
 - `compute_tick()` and `execute_decision()` are **two separate phases** — compute produces a Decision object, execute_decision acts on it
 - **Tick processing budget:** When active, ticks are flagged as `is_clipped` during data
@@ -104,8 +104,7 @@ AutotraderTickLoop.run()
         │
         ├── 1. executor.on_tick(tick)                # AbstractTradeExecutor (sets clock from tick)
         │       ├── Update prices (bid/ask)
-        │       ├── _process_pending_orders()         # LiveRequestProcessor: poll broker for fills
-        │       └── _check_sl_tp_triggers(tick)       # AutoTrader: runs too (#500) — closes via close_position()
+        │       └── _process_pending_orders()         # LiveRequestProcessor: poll broker for fills
         │
         ├── 2. render_bars_for_tick(tick, ...)        # SHARED CORE (#303)
         │
@@ -132,13 +131,9 @@ AutotraderTickLoop.run()
 
 **Key characteristics:**
 - Ticks arrive in real-time via WebSocket, buffered through a thread-safe queue
-- SL/TP is enforced by THIS process unless the venue was asked to hold it (#500, #503) —
-  `_check_sl_tp_triggers` runs in the AutoTrader too, and `get_protective_level_enforcement()` names
-  who holds the level. A submit still carries no level to the venue; what #503 adds is a standalone
-  STOP order placed after the entry fills, opt-in via `execution.venue_held_protection` and OFF by
-  default. So `LOCAL` remains the answer unless that switch is on, and even then it covers the STOP
-  only — the take profit has no second order to rest in. Contract:
-  `docs/architecture/protective_levels.md`
+- A session holds no stop or target (#625): the start refuses a declared one its venue's API does not
+  hold, and a logic keeps its own (`OwnExitLevels`). The level check on a position is the simulation's
+  alone. Contract: `docs/architecture/venue_order_features.md`
 - Pending orders resolved by broker polling today (#320 cadence); WebSocket push is the V1.4 primary (#331)
 - Fills on the fast path reach the algo immediately via the #348 Decision Event Channel — drained each tick AND during idle heartbeats
 - The Reconciler (#151) runs as a separate trust layer (ALERT_ONLY) — it verifies broker truth, it does not learn fills
@@ -177,7 +172,7 @@ monitor, step 5 `execute_decision` with its per-runner error handling, the
 | **Loop type** | `for tick in ticks` | `while running` / event-driven |
 | **Runner** | `execute_tick_loop()` | `AutotraderTickLoop.run()` |
 | **Pending orders** | OrderLatencySimulator (ms-timestamp, seeded delay) | LiveRequestProcessor → broker polling |
-| **SL/TP check** | `_check_sl_tp_triggers()` local price check | The same check (#500) — but the close is asynchronous, so the exit lands at the broker's next price instead of at the level |
+| **SL/TP check** | `_check_sl_tp_triggers()` local price check of the levels a position carries | None: a session holds no level (#625). A logic's own exit (`OwnExitLevels`) closes through `close_position()`, so it lands at the broker's next price instead of at the level |
 | **Fill detection** | Tick timestamp `collected_msc` >= `broker_fill_msc` | Broker response via polling (#320); WebSocket push primary in V1.4 (#331) |
 | **Fill price** | Current tick bid/ask at fill time | Broker's actual execution price |
 | **Latency model** | Seeded random (deterministic, reproducible) | Real network latency |

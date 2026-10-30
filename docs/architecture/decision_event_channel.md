@@ -43,7 +43,7 @@ No guessing: each event delivers one typed payload to one hook.
 | `ORDER_UNACCOUNTED` | `OrderUnaccountedEvent` — order_id, direction, end_reason, result. Live only: the framework stopped asking about an order the venue may still hold. Not called at the session's end | `on_order_unaccounted` |
 | `ORDER_CANCELLED` | `OrderCancelledEvent` — order_id, direction, result: the order's booked row, saying who ended it (`initiator`) and why (`end_reason`); `result.status` is `expired` where the venue let it run out | `on_order_cancelled` |
 | `PARTIAL_CLOSE` | `PartialCloseEvent` — position_id, direction, closed_lots, remaining_lots, fill_price, result | `on_partial_close` |
-| `POSITION_CLOSED` | `PositionClosedEvent` — position_id, direction, close_reason, requested_locally, fill_price, lots | `on_position_closed` |
+| `POSITION_CLOSED` | `PositionClosedEvent` — position_id, direction, close_reason, fill_price, lots | `on_position_closed` |
 | `SESSION_END` | `SessionEndEvent` — reason, severity | `on_session_end` |
 
 Every payload also carries `tick_time` — the canonical clock: sim time in backtests; in an
@@ -56,9 +56,8 @@ signal after a hard stop does not soften its EMERGENCY. Only a session that simp
 input hears `tick source exhausted`. An end asked for before the loop's first pass — a signal
 during the start — lets the loop make no pass at all, so no decision runs after the stop.
 
-`direction` is the POSITION's on every payload. For a close — a protective order included,
-whose own trading side is the opposite — that is the direction of the position it closes, and
-on a rejected or unaccounted close it is None once that position is gone.
+`direction` is the POSITION's on every payload. For a close that is the direction of the position
+it closes, and on a rejected or unaccounted close it is None once that position is gone.
 
 ## Architecture
 
@@ -87,11 +86,11 @@ on a rejected or unaccounted close it is None once that position is gone.
 - `ORDER_CANCELLED` / `PARTIAL_CLOSE` / `POSITION_CLOSED` are emitted through a
   **dedicated sink** (`set_decision_event_sink`) — kept separate from `_notify_outcome`
   so existing outcome consumers are untouched.
-- `POSITION_CLOSED` fires on EVERY full close in BOTH pipelines, not only on the
-  venue-initiated one #503 introduced. Narrowing it to the AutoTrader case would be a parity
-  break of the same family the external-data contract forbids, and a strategy reacting to
-  "my position is gone" needs it whichever route closed it. `requested_locally=False`
-  is what marks the close nobody here asked for.
+- `POSITION_CLOSED` fires on EVERY full close in BOTH pipelines. Narrowing it to one would be a
+  parity break of the same family the external-data contract forbids, and a strategy reacting to
+  "my position is gone" needs it whichever route closed it. That includes a spot close the venue
+  ended with only dust left: `PARTIAL_CLOSE` for what it executed, then `POSITION_CLOSED`, because
+  the record leaves the book.
 - `SESSION_END` is built by the tick loop at session end (request, exhaustion,
   Ctrl+C, or safety halt).
 
@@ -147,7 +146,7 @@ subscribes to an event the current executor can't emit simply never receives it
 | `ORDER_FILLED` / `ORDER_REJECTED` | ✓ | ✓ |
 | `ORDER_CANCELLED` | ✓ | ✓ |
 | `PARTIAL_CLOSE` | ✓ | ✓ |
-| `POSITION_CLOSED` | ✓ | ✓ (incl. venue-initiated, #503) |
+| `POSITION_CLOSED` | ✓ | ✓ |
 | `SESSION_END` | ✓ (ticks exhausted / request) | ✓ (request / Ctrl+C / safety) |
 | `PARTIAL_FILL` (broker multi-execution) | — (order-book topic #143) | from #342 |
 | `RECONCILE_ALERT` | — (AutoTrader only) | from #151 Phase 2 |

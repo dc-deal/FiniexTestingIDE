@@ -9,7 +9,6 @@ from python.framework.types.trading_env_types.broker_trade_types import BrokerTr
 from python.framework.types.trading_env_types.broker_types import FeeType
 from python.framework.types.trading_env_types.order_types import (
     OrderDirection,
-    ProtectiveLevelEnforcement,
 )
 from python.framework.types.trading_env_types.submission_metadata_types import SubmissionMetadata
 from python.framework.utils.trading_math.pnl_math import gross_pnl_from_price_diff
@@ -125,29 +124,6 @@ class Position:
     mfe_pnl: float = 0.0    # best (most positive) gross unrealized P&L
     mae_price: float = 0.0  # current_price at the worst excursion (seeded to entry)
     mfe_price: float = 0.0  # current_price at the best excursion (seeded to entry)
-
-    # === Venue-held protection (#503) — the order the venue holds for this position ===
-    # Set from the CONFIRMATION of the protective order, never from the declaration:
-    # between submitting one and hearing back, nobody at the venue holds anything, so the
-    # local check has to stay awake. Both fields travel into the cold-start carry-over —
-    # the projection sees the position, not the PendingOrder, and the broker reference is
-    # the only key that can still ask "did it fill?" after a restart.
-    protective_order_id: Optional[str] = None
-    protective_broker_ref: Optional[str] = None
-    # The WIRE key that order was sent under (#487). The reference above is what asks the
-    # venue "did it fill?"; this is what asks "is it still there?" on the route that needs
-    # no reference — and after a restart it cannot be recomputed, because it was minted by
-    # a session whose discriminator is gone. Re-deriving one from THIS session would stamp
-    # our name on a predecessor's order.
-    protective_client_order_id: Optional[str] = None
-    # How much of that order is already written into the books: its volume, the fee booked
-    # for it, and lots times price (#508). The order's own counters are the resolver's key
-    # (`venue_close_applied_*` on its execution state); these are their copy for the
-    # carry-over, written wherever a step of it is booked. The venue reports the order as
-    # totals, so a session that restarted without them would book an executed step again.
-    protective_applied_lots: float = 0.0
-    protective_applied_fee: float = 0.0
-    protective_applied_value: float = 0.0
 
     # === Swap accrual (#365) — last rollover instant already charged ===
     # Seeded to entry_time in __post_init__; advanced as overnight swap accrues.
@@ -379,85 +355,6 @@ class Position:
     # ============================================
     # SL/TP Trigger Detection
     # ============================================
-
-    def protective_enforcement(
-        self,
-        run_default: ProtectiveLevelEnforcement
-    ) -> ProtectiveLevelEnforcement:
-        """
-        Who holds THIS position's protective level (#503).
-
-        Derived from the broker reference rather than stored beside it: a fourth carrier
-        of the same truth is how the console came to print a stop nobody held (#500). A
-        run is mixed from now on — one position's level can rest at the venue while the
-        next one's does not — so the run-wide answer is only the fallback.
-
-        MARGIN ANCHOR (2026-09-10, #209): this derivation assumes the venue holds the
-        level as a STANDALONE ORDER, which is Kraken spot's shape. MT5 holds it ON the
-        position — there is no separate order and therefore no broker reference to derive
-        from, so a margin venue that genuinely enforces a level would still read LOCAL
-        here. Not a defect today (MT5 declares venue_held_protective_orders=False, so the
-        case cannot arise), and deliberately not modelled ahead of the account model that
-        needs it. #209 decides whether the answer becomes a three-way one.
-
-        Args:
-            run_default: What the executor answers for the run as a whole
-
-        Returns:
-            VENUE once the venue has confirmed an order for this position, else the default
-        """
-        if self.protective_broker_ref:
-            return ProtectiveLevelEnforcement.VENUE
-        return run_default
-
-    def forget_protective_order(self) -> None:
-        """
-        Drop the protective order this position carried: its identity and what it booked.
-
-        Called wherever that order no longer exists at the venue. What it booked stays in the
-        books; only the record of how much of THIS order was booked goes, because the next
-        protective order for the position starts from nothing (#508).
-        """
-        self.protective_broker_ref = None
-        self.protective_order_id = None
-        self.protective_client_order_id = None
-        self.protective_applied_lots = 0.0
-        self.protective_applied_fee = 0.0
-        self.protective_applied_value = 0.0
-
-    def is_sl_triggered(self, bid: float, ask: float) -> bool:
-        """
-        Check if stop loss is triggered at current prices.
-
-        Args:
-            bid: Current bid price
-            ask: Current ask price
-
-        Returns:
-            True if SL level is breached
-        """
-        if self.stop_loss is None:
-            return False
-        if self.direction == OrderDirection.LONG:
-            return bid <= self.stop_loss  # LONG closes at bid
-        return ask >= self.stop_loss  # SHORT closes at ask
-
-    def is_tp_triggered(self, bid: float, ask: float) -> bool:
-        """
-        Check if take profit is triggered at current prices.
-
-        Args:
-            bid: Current bid price
-            ask: Current ask price
-
-        Returns:
-            True if TP level is breached
-        """
-        if self.take_profit is None:
-            return False
-        if self.direction == OrderDirection.LONG:
-            return bid >= self.take_profit  # LONG closes at bid
-        return ask <= self.take_profit  # SHORT closes at ask
 
     @property
     def is_open(self) -> bool:

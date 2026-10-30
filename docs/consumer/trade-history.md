@@ -91,8 +91,10 @@ two distances in the instrument's own price unit, and `price_unit` labels which 
 forex, `tick` on crypto.
 
 `r_multiple` is the result in units of what the trade risked: `net_pnl` over the loss the stop
-would have taken. It is **null when the trade had no stop loss** — there is nothing to divide by,
-so R is undefined rather than zero. See [nulls](/api/v1/docs/nulls).
+would have taken. It is **null when the position carried no stop loss** — there is nothing to divide
+by, so R is undefined rather than zero. That includes a strategy keeping its stop itself: such a
+trade may name the level it closed at in `exit_level`, but the position carried none. See
+[nulls](/api/v1/docs/nulls).
 
 The stop it divides by is the one standing when the row was closed. Where a strategy moved its
 stop while the position was open, `r_multiple` is therefore not the R the trade was entered with,
@@ -186,7 +188,7 @@ entry names its `currency` and the `trade_count` it covers.
 
 | Field | Meaning |
 |---|---|
-| `expectancy` | mean R over the trades that have a defined R |
+| `expectancy` | mean R over the trades that have a defined R; null when none has |
 | `r_trade_count` | trades that had a stop loss, so R is defined |
 | `avg_win_r` · `avg_loss_r` | mean R of winners and of losers |
 | `r_win_count` · `r_loss_count` | how many of the R-defined trades won and lost |

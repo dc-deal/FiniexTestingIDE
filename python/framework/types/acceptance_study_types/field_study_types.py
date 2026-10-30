@@ -22,9 +22,6 @@ class PhaseType(StrEnum):
     LIMIT_MODIFY = 'limit_modify'
     LIMIT_CANCEL = 'limit_cancel'
     STOP_CANCEL = 'stop_cancel'
-    # #503 — open a position WITH a declared level, confirm the venue is holding the
-    # protective order the framework placed for it, then close and confirm it is gone.
-    PROTECTIVE_LEVEL = 'protective_level'
     MULTI_LIMIT = 'multi_limit'
     MULTI_CANCEL = 'multi_cancel'
     PARTIAL_CLOSE = 'partial_close'
@@ -47,10 +44,6 @@ class FieldStudyPhase(StudyPhase):
         expect_rejection: The submit is expected to be rejected (spot SHORT, sub-min lot)
         lots: Order size (None → use the decision logic's default lot_size)
         limit_offset_pct: How far the resting limit sits from the market (fraction, e.g. 0.002)
-        stop_loss_offset_pct: How far below the market the PROTECTIVE_LEVEL phase's
-            declared stop sits (fraction, e.g. 0.05). Wide on purpose: the phase proves
-            the order RESTS at the venue, and a stop that triggers inside it would prove
-            the offset was too tight rather than anything about the feature (#503)
         order_count: Number of orders for MULTI_LIMIT
         post_wait_s: Settle window after a fill / close before advancing
         idle_seconds: Quiet-period duration for IDLE phases
@@ -60,7 +53,6 @@ class FieldStudyPhase(StudyPhase):
     expect_rejection: bool = False
     lots: Optional[float] = None
     limit_offset_pct: Optional[float] = None
-    stop_loss_offset_pct: Optional[float] = None
     order_count: int = 1
     post_wait_s: float = 2.0
     idle_seconds: float = 20.0
@@ -85,7 +77,6 @@ class FieldStudyPhase(StudyPhase):
             expect_rejection=bool(raw.get('expect_rejection', False)),
             lots=raw.get('lots'),
             limit_offset_pct=raw.get('limit_offset_pct'),
-            stop_loss_offset_pct=raw.get('stop_loss_offset_pct'),
             order_count=int(raw.get('order_count', 1)),
             fill_timeout_s=float(raw.get('fill_timeout_s', 30.0)),
             post_wait_s=float(raw.get('post_wait_s', 2.0)),

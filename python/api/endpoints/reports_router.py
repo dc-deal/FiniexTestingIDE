@@ -13,7 +13,6 @@ from fastapi import APIRouter, Query, Request
 
 from python.api.api_error_catalog import (
     ARTIFACT_NOT_PRODUCED,
-    ARTIFACT_UNREADABLE,
     CONFIG_SNAPSHOT_MISSING,
     INVALID_LIMIT,
     INVALID_RANGE,
@@ -259,8 +258,7 @@ def get_order_events(
     scenario_name: Optional[str] = Query(None, description='Keep only this unit'),
     order_id: Optional[str] = Query(
         None, description="Keep only events with this order id — a position's open and its "
-                          'market closes share one; a protective order has its own and names '
-                          'the position in position_id'),
+                          'closes share one'),
 ) -> OrderEventsReport:
     """
     The run's order-event stream — every order transition, optionally narrowed (#362).
@@ -274,11 +272,8 @@ def get_order_events(
     Returns:
         The OrderEventsReport (404 if the run has no stream, 409 if it cannot be read)
     """
-    try:
-        report = ReportStore().get_order_events(
-            run_id, scenario_name=scenario_name, order_id=order_id)
-    except ReportArtifactUnreadableError as e:
-        raise api_error(ARTIFACT_UNREADABLE, reason=str(e)) from e
+    report = ReportStore().get_order_events(
+        run_id, scenario_name=scenario_name, order_id=order_id)
     if report is None:
         raise _missing_artifact(run_id, 'order-events')
     return report
@@ -303,19 +298,16 @@ def get_latest_state_frames(run_id: str, request: Request) -> LatestStateFramesR
     run = next((info for info in store.list_runs() if info.run_id == run_id), None)
     if run is None:
         raise api_error(RUN_NOT_FOUND, run_id=run_id)
-    try:
-        ends = store.get_state_frame_ends(run_id)
-        if ends is None:
-            raise api_error(STATE_FRAMES_NOT_RECORDED, run_id=run_id)
-        if ends.last is None:
-            raise api_error(STATE_FRAME_NOT_WRITTEN_YET, run_id=run_id)
-        outcome = None
-        if ends.last.written_for == StateFrameCause.SHUTDOWN:
-            # The end classification is written by the report phase, seconds after the last frame
-            report = store.get(run_id, WARNINGS_ERRORS_ARTIFACT)
-            outcome = report.outcome if report is not None else None
-    except ReportArtifactUnreadableError as e:
-        raise api_error(ARTIFACT_UNREADABLE, reason=str(e)) from e
+    ends = store.get_state_frame_ends(run_id)
+    if ends is None:
+        raise api_error(STATE_FRAMES_NOT_RECORDED, run_id=run_id)
+    if ends.last is None:
+        raise api_error(STATE_FRAME_NOT_WRITTEN_YET, run_id=run_id)
+    outcome = None
+    if ends.last.written_for == StateFrameCause.SHUTDOWN:
+        # The end classification is written by the report phase, seconds after the last frame
+        report = store.get(run_id, WARNINGS_ERRORS_ARTIFACT)
+        outcome = report.outcome if report is not None else None
     return describe_latest_state_frames(
         ends, run, outcome, request.app.state.state_frames_thresholds, datetime.now(timezone.utc))
 
@@ -341,10 +333,7 @@ def get_unit_recorded_streams(run_id: str, unit_name: str,
     run = next((info for info in store.list_runs() if info.run_id == run_id), None)
     if run is None:
         raise api_error(RUN_NOT_FOUND, run_id=run_id)
-    try:
-        overview = store.get_state_frame_overview(run_id)
-    except ReportArtifactUnreadableError as e:
-        raise api_error(ARTIFACT_UNREADABLE, reason=str(e)) from e
+    overview = store.get_state_frame_overview(run_id)
     if overview is None:
         raise api_error(STREAMS_NOT_RECORDED, run_id=run_id)
     _require_unit(run_id, unit_name, overview.ends.unit_name)
@@ -389,10 +378,7 @@ def get_unit_recorded_streams_window(
     store = ReportStore()
     if not any(info.run_id == run_id for info in store.list_runs()):
         raise api_error(RUN_NOT_FOUND, run_id=run_id)
-    try:
-        page = store.get_state_frame_page(run_id, StreamTimeWindow(since=since, until=until), limit)
-    except ReportArtifactUnreadableError as e:
-        raise api_error(ARTIFACT_UNREADABLE, reason=str(e)) from e
+    page = store.get_state_frame_page(run_id, StreamTimeWindow(since=since, until=until), limit)
     if page is None:
         raise api_error(STREAMS_NOT_RECORDED, run_id=run_id)
     _require_unit(run_id, unit_name, page.unit_name)
@@ -574,10 +560,7 @@ def get_warnings_errors(run_id: str) -> WarningsErrorsReport:
     Returns:
         The WarningsErrorsReport (404 if the run has no warnings-errors artifact)
     """
-    try:
-        report = ReportStore().get(run_id, WARNINGS_ERRORS_ARTIFACT)
-    except ReportArtifactUnreadableError as e:
-        raise api_error(ARTIFACT_UNREADABLE, reason=str(e)) from e
+    report = ReportStore().get(run_id, WARNINGS_ERRORS_ARTIFACT)
     if report is None:
         raise _missing_artifact(run_id, 'warnings-errors')
     return report
@@ -678,10 +661,7 @@ def get_venue_account(run_id: str) -> VenueAccountReport:
         The VenueAccountReport (404 if the run has no venue-account artifact — every backtest,
         and every session that asked its venue nothing; 409 if it cannot be read)
     """
-    try:
-        report = ReportStore().get(run_id, VENUE_ACCOUNT_ARTIFACT)
-    except ReportArtifactUnreadableError as e:
-        raise api_error(ARTIFACT_UNREADABLE, reason=str(e)) from e
+    report = ReportStore().get(run_id, VENUE_ACCOUNT_ARTIFACT)
     if report is None:
         raise _missing_artifact(run_id, 'venue-account')
     return report
@@ -702,10 +682,7 @@ def get_venue_api_performance(run_id: str) -> VenueApiPerformanceReport:
         The VenueApiPerformanceReport (404 if the run has none — every backtest, and every session
         that ran no API monitor; 409 if it cannot be read)
     """
-    try:
-        report = ReportStore().get(run_id, VENUE_API_PERFORMANCE_ARTIFACT)
-    except ReportArtifactUnreadableError as e:
-        raise api_error(ARTIFACT_UNREADABLE, reason=str(e)) from e
+    report = ReportStore().get(run_id, VENUE_API_PERFORMANCE_ARTIFACT)
     if report is None:
         raise _missing_artifact(run_id, 'venue-api-performance')
     return report
@@ -763,8 +740,6 @@ def get_run_header(run_id: str) -> RunHeader:
     """
     try:
         header = ReportStore().get_run_header(run_id)
-    except ReportArtifactUnreadableError as e:
-        raise api_error(ARTIFACT_UNREADABLE, reason=str(e)) from e
     except FileNotFoundError as e:
         raise api_error(RUN_HEADER_MISSING, run_id=run_id) from e
     if header is None:

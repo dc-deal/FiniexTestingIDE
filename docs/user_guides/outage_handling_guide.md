@@ -185,9 +185,10 @@ There is no correct default — every answer is wrong for SOME strategy:
   Pair waiting with a timeout (the ladder above).
 - **"I have no positions, I don't care."** Almost — you still must not OPEN
   anything while blind. The guard floor covers exactly this one.
-- **Cancel resting orders?** Broker-side orders execute without your feed.
-  Whether that is protection (SL still fires) or risk (entry fills you cannot
-  see) is strategy-specific.
+- **Cancel resting orders?** Broker-side orders execute without your feed, so an
+  entry can fill while you cannot see it. Nothing else stops a position during an
+  outage: no stop rests at a venue whose API holds none, and an own exit needs a
+  price, so only the ladder above can close it, by elapsed time.
 - **Deliberately ignore?** Legal — write `pass` and own it.
 
 ## Configuration

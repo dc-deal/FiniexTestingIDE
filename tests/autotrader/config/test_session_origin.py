@@ -15,6 +15,7 @@ The capture itself is replaced — its git reads are pinned against temporary re
 `tests/framework/reporting/test_code_identity.py`; what is under test here is the wiring.
 """
 
+import json
 import sys
 from datetime import datetime, timezone
 from types import SimpleNamespace
@@ -32,6 +33,7 @@ from python.framework.constants.run_layout_constants import RUN_HEADER_ARTIFACT
 from python.framework.exceptions.data_home_errors import DirectoryCreationDeniedError
 from python.framework.exceptions.host_identity_errors import HostIdentityError
 from python.framework.exceptions.persistence_errors import BotAlreadyRunningError
+from python.framework.persistence.carry_over_identity import carry_over_key
 from python.framework.reporting.io.run_header_io import read_run_header
 from python.framework.types.config_types.host_identity_config_types import TEST_HOST_ID
 from python.framework.types.run_origin_types import (
@@ -271,6 +273,41 @@ class TestARefusedStartThroughTheRealSession:
         HostIdentityManager.clear_cache()
         yield
         HostIdentityManager.clear_cache()
+
+    def test_a_stored_level_refuses_the_start_and_leaves_the_book_alone(
+            self, monkeypatch, capsys, tmp_path):
+        """
+        Exit 2, which a supervisor does not restart, because the refusal would only repeat. It reads
+        as STARTUP FAILED and never as a stack trace, and the book is still there for the operator.
+        """
+        config = load_autotrader_config(PROFILE)
+        assert config.cold_start.enabled, 'fixture: the carry-over is read at all'
+        config.cold_start.path = str(tmp_path)
+        book = tmp_path / f'{carry_over_key(config.profile_name, config.symbol, config.bot_id)}.json'
+        book.write_text(json.dumps({
+            'schema_version': 1, 'store_id': 'cold_start_state',
+            'saved_at_utc': '2026-10-01T00:00:00+00:00', 'written_by_run_id': 'my_run',
+            'profile': config.profile_name, 'symbol': config.symbol, 'bot_id': config.bot_id,
+            'carry_over_from': '',
+            'snapshot': {'open_positions': [{
+                'position_id': 'pos_1', 'symbol': config.symbol, 'direction': 'long', 'lots': 0.01,
+                'original_lots': 0.01, 'entry_price': 50000.0,
+                'entry_time': '2026-10-01T00:00:00+00:00', 'entry_type': 'market',
+                'entry_tick_value': 1.0, 'entry_bid': 49999.0, 'entry_ask': 50001.0,
+                'stop_loss': 49000.0, 'take_profit': None, 'broker_ref': 'OABC-123', 'comment': '',
+                'status': 'open', 'digits': 1, 'contract_size': 1.0, 'pip_size': 0.1,
+                'price_unit': 'USD', 'entry_tick_index': 0, 'mae_pnl': 0.0, 'mfe_pnl': 0.0,
+                'mae_price': 0.0, 'mfe_price': 0.0}]},
+        }), encoding='utf-8')
+        before = book.read_bytes()
+        monkeypatch.setattr(autotrader_cli, 'load_autotrader_config', lambda _path: config)
+
+        assert _run_real_cli(monkeypatch) == 2
+
+        output = capsys.readouterr().out
+        assert 'STARTUP FAILED' in output and 'stop_loss on the position' in output
+        assert 'Traceback' not in output
+        assert book.read_bytes() == before
 
     def test_an_untrusted_host_identity_file_refuses_before_any_capture(
             self, monkeypatch, capsys, tmp_path):

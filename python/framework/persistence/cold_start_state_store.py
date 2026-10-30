@@ -21,7 +21,7 @@ import json
 import os
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 from pydantic import ValidationError
 
@@ -50,6 +50,41 @@ _SCHEMA_VERSION = 1
 # rather than for automatic adoption. Unbounded growth over a thirty-day run is the thing this
 # avoids; the number itself is a judgement, and it is stated here rather than hidden.
 _MAX_SESSION_KEYS = 10
+
+
+def carried_level_refusal(snapshot: Dict[str, Any], path: Path) -> Optional[str]:
+    """
+    Refuse a stored position book that still carries a level or a venue-held stop (#625).
+
+    Read from the raw document, because the fields of the rebuilt venue stop have left the model
+    and would otherwise be dropped without a word. A session holds no level any more: a stored
+    one would be enforced by nobody, and a stop still resting at the venue would read as an order
+    of unknown origin, or fill beside the bot's own close.
+
+    Args:
+        snapshot: The carry-over's raw payload
+        path: The file it came from, named in the refusal
+
+    Returns:
+        The refusal naming each position and what to do, or None when the book is clean
+    """
+    lines: List[str] = []
+    for record in snapshot.get('open_positions') or []:
+        position_id = record.get('position_id')
+        reference = record.get('protective_broker_ref') or record.get('protective_order_id')
+        if reference:
+            lines.append(f'   {position_id}: a stop resting at the venue, {reference} — cancel '
+                         f'it there, then remove its protective_ fields from the book')
+        levels = [name for name in ('stop_loss', 'take_profit') if record.get(name) is not None]
+        if levels:
+            names = ' and '.join(levels)
+            lines.append(f'   {position_id}: {names} on the position — set it to null in the book')
+    if not lines:
+        return None
+    return ('A session no longer holds a stop or a target for a position, and this carry-over '
+            'still does. Nobody would enforce them, so the session does not start:\n'
+            + '\n'.join(lines)
+            + f'\n   File: {path}. A logic keeps its levels itself now (OwnExitLevels).')
 
 
 class ColdStartStateStore:
@@ -198,7 +233,8 @@ class ColdStartStateStore:
         self._last_load = CarryOverLoad(
             path, CarryOverLoadOutcome.ACCEPTED, envelope.profile, envelope.written_by_run_id,
             len(payload.open_positions), len(payload.session_keys),
-            saved_at_utc=envelope.saved_at_utc)
+            saved_at_utc=envelope.saved_at_utc,
+            level_refusal=carried_level_refusal(envelope.snapshot, self._path))
         return payload
 
     # ============================================

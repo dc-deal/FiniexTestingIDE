@@ -381,6 +381,10 @@ COLUMN_COMPANION_OF: Dict[str, str] = {
 # Where a null can mean both — a set that can be empty, or a row from before the column — it is
 # declared UNDEFINED, because leaving out the runs that never lost is the worse mistake.
 COLUMN_NULL_MEANING: Dict[str, NullMeaning] = {
+    # The trades had no R on record: a logic keeps its stop itself, so the position carries none. A
+    # ranking leaves such a run out and counts it. A row from before this column could be empty
+    # reads 0.0 with `r_trade_count` 0, and a fold of it reads empty like this one
+    'expectancy': NullMeaning.UNMEASURED,
     # The period's own band, ticks and costs: a row that books no period, a period that could value
     # nothing, a row written before the column existed
     'period_max_equity': NullMeaning.UNMEASURED,

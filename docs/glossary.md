@@ -71,8 +71,7 @@ of the framework uses. Chosen by `adapter_type`: `mock` for the broker-neutral `
 `live` for a real venue's adapter. See [Adapter Development](user_guides/adapter/adapter_development_guide.md).
 
 **adopted** (`adopted` order event, `orders_adopted`) — An order a previous session sent and this
-one took over at its start: a resting order found at the venue under this bot's key, or a protective
-order carried over with its position. Counted apart from `orders_submitted`, which is what this
+one took over at its start: a resting order found at the venue under this bot's key. Counted apart from `orders_submitted`, which is what this
 session sent; an execution rate divides by both. See *carry-over*.
 
 **alert episode** — One symptom as the operator hears it: an *operator alert* when it starts, the
@@ -316,8 +315,8 @@ every order validated by the venue and never placed, fills simulated locally. A 
 called a dry run, although the `dry_run` flag reads true for it too. To be renamed *paper* (#304).
 See [AutoTrader Configuration](autotrader/autotrader_configuration.md).
 
-**end reason** (`end_reason`) — Why an order ended without filling: the strategy's cancel, a
-protective order released, the order timeout, the resolution ceiling, the end of the session or of
+**end reason** (`end_reason`) — Why an order ended without filling: the strategy's cancel, the
+order timeout, the resolution ceiling, the end of the session or of
 the backtest's data, or the venue's own cancel or expiry. Stands beside *initiator* on the same row
 or event.
 
@@ -349,6 +348,10 @@ start. Not the *evidence grade* of a run's data (see *data origin*). See
 `execution_time_ms` for a scenario, `execution_time_s` for a whole backtest run. It says nothing
 about how much market time was processed — that is the *tick timespan* — and it is never a point
 in time: when an order's event happened is its *event time*.
+
+**exit level** (`exit_level` on a trade row) — The stop or target a close fired at: the level a
+backtest's position carried, or the one a logic named for its own exit. Empty on every other close.
+A trade's exit slippage is measured against it. See *own exit*.
 
 **external** (`origin_class: external`) — Data no instance of ours recorded: a venue's published
 history, brought in by a converter that stamps its own identity. A backtest reads it only where
@@ -593,7 +596,7 @@ or a target a decision logic keeps itself and checks on every tick, closing thro
 position, as Kraken's does not. No order carries it and the position does not either: the trade
 keeps its `sl_triggered` / `tp_triggered` reason and names the level that fired (its exit slippage
 is measured against it), while `stop_loss` / `take_profit` on the position and the trade stay
-empty, and so does the R-multiple. Counted in `sl_tp_triggered` like a close the framework's own
+empty, and so do the R-multiple and, where no trade has one, `expectancy`. Counted in `sl_tp_triggered` like a close the framework's own
 level check made, once when the close goes out. See [Quickstart — Own Exits](user_guides/quickstart_guide.md).
 
 **paper** — The planned name for a dry run, not yet a configuration value (#304).
@@ -698,8 +701,8 @@ the session's INPUTS and travels inside the frame. See [state frames](consumer/s
 first tick because its *warmup history* could not be completed there: the venue had not yet
 committed the period that ended since the boot read, or could not be read again. A refusal of the
 SESSION, never of an order — no order is *denied* or *rejected* by it. Graded `failed` like any
-emergency. The tick's workers and decision did not run, but the executor's stop and take-profit
-check of that tick may have sent a close. Not a start refused before the loop — by the cold start
+emergency. The tick's workers and decision did not run, but a heartbeat pass before it may have
+sent an order. Not a start refused before the loop — by the cold start
 or the Field Study's preflight: that one is graded by what it logged, and its operator alert reads
 STARTUP REFUSED. See [Warmup History](architecture/warmup_history.md).
 

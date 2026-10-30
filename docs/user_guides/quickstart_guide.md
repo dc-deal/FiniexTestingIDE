@@ -535,7 +535,8 @@ one-cancels-other (its API team, 2026-10-27) — and the framework does not rebu
 lacks. A logic meant to run there keeps its levels itself, checks them on every tick, and closes
 through its own `close_position`. The start checks this: a logic declares what it sends in
 `get_required_order_features()`, a run refuses a declared level its venue's API does not hold, and
-an order carrying an undeclared one is refused with `order_feature_not_declared`. A backtest may
+an order or a modify carrying an undeclared one is refused with `order_feature_not_declared`: an order
+books a denied row, a modify returns the refusal and logs a warning once per feature. A backtest may
 allow a level beyond its venue with `features_beyond_venue` in its scenario set — recorded with the
 run, warned about in its report, and refused by a certificate. `OwnExitLevels`
 (`python/framework/decision_logic/own_exit_levels.py`) is that check, written once:
@@ -563,7 +564,8 @@ The close names its reason and level — `close_position(position_id, exit=OwnEx
 level))`, which `enforce` does for you — so the trade keeps `sl_triggered` / `tp_triggered`, the
 close counts in the run's `sl_tp_triggered`, and its fill's slippage is measured against the
 level, as it would be for a level the venue held.
-The position itself carries no level, so the trade's R-multiple stays empty. A moved stop exists
+The position itself carries no level, so the trade's R-multiple stays empty, and so does the run's
+`expectancy`: rank a sweep over such a logic by `net_pnl`. A moved stop exists
 only in the logic's memory: carry it over with `snapshot()` / `restore()` through
 [algo state persistence](algo_state_persistence_guide.md), or a restart re-derives it from the
 entry. Nothing rests at the venue, so a position is unprotected while the process is not running
@@ -768,7 +770,7 @@ Current limitations:
 | **Position Close** | Full or partial: `close_position(position_id, lots=None)` closes all, `lots=` a part; `exit=OwnExit(reason, level)` names the own stop or target that made it (see Own Exits above). A second close while one is in flight joins it rather than sending another — `is_pending_close(position_id)` says whether one is |
 | **Partial Fills** | A broker-reported partial fill at a real venue is not yet surfaced as its own state |
 | **Margin Check** | Orders rejected if insufficient margin |
-| **Resting Order Mgmt** | `modify_limit_order`, `modify_stop_order`, `cancel_limit_order`, `cancel_stop_order`, `modify_position` (SL/TP) available |
+| **Resting Order Mgmt** | `modify_limit_order`, `modify_stop_order`, `cancel_limit_order`, `cancel_stop_order`, `modify_position` (a stop or target only where the venue's API holds one, or in a backtest that declares the exception) available |
 
 > **Multiple Positions:** Multiple simultaneous positions on one symbol are supported and validated
 > by integration tests; the reference strategy (`CORE/trend_channel_reference`) stacks several.

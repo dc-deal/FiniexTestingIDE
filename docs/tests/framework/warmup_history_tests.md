@@ -133,10 +133,10 @@ once the seam has closed.
 ### `test_first_tick_refusal.py`
 
 A session that cannot close its warmup seam says it refused, not that it crashed — console, session
-log and result — while its grading stays `FAILED` (exit 2), so whoever relaunches sessions
-relaunches it. It says what did not run on the tick, never that nothing reached the venue: the
-executor's stop and take-profit check of that tick runs first, so the block names what the session
-had sent by then.
+log and result — while its grading stays `FAILED` (exit 75), so whoever relaunches sessions
+relaunches it. It says what did not run on the tick, never that nothing reached the venue: a
+heartbeat pass before that tick may have run the decision, so the block names what the session had
+sent by then.
 
 | Test | Description |
 |------|-------------|
@@ -144,9 +144,9 @@ had sent by then.
 | `test_the_refusal_reaches_the_session_log` | the reason as an error and what was sent in the session log, nothing in the global log |
 | `test_a_crash_in_the_tick_loop_still_reads_as_one` | any other exception keeps `RUNTIME ERROR — SESSION ABORTED` |
 | `test_the_same_refusal_before_the_tick_loop_is_a_startup_failure` | the boot refusals keep `STARTUP FAILED` |
-| `test_a_refused_session_is_still_failed_and_exits_2` | the grading is unchanged |
+| `test_a_refused_session_is_still_failed_and_exits_75` | the grading is unchanged, and the exit code lets a supervisor start it again |
 | `test_the_result_carries_the_refusal` | the flag reaches `AutoTraderResult`, where the summary reads it |
-| `test_a_take_profit_crossed_by_the_first_tick_is_named` | a carried LONG whose take profit the first tick crosses, on a real executor in the loop's order: the close the executor sent before the seam refused is named in the block and as a warning |
+| `test_an_order_sent_before_the_first_tick_is_named` | an order sent before the first tick, on a real executor in the loop's order: the block names it and asks to check the venue |
 
 ### `test_warmup_outcomes.py`
 

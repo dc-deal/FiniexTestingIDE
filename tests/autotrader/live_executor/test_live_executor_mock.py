@@ -283,8 +283,7 @@ class TestCancellingDuringTheSubmitWindow:
     #361 built this for limit orders and calls the missing version a proven live-certificate
     blocker: dropping the intent orphans the order, because the submit lands afterwards and
     nobody asks for the cancel again. The stop twin was a shorter copy that returned a bare
-    False in exactly this situation — and every cancel-then-close and cancel-resize-replace
-    sequence a venue-held protective stop needs begins here.
+    False in exactly this situation.
 
     TIMEOUT mode is the fixture: the submit never confirms, so `broker_ref` stays None and the
     window stays open for the whole test.

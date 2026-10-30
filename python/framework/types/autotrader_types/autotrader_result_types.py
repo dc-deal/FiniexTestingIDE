@@ -112,9 +112,9 @@ class AutoTraderResult:
         refused_at_first_tick: The session stopped at its first tick, before that tick's workers
             and decision ran, because the venue's warmup history could not be completed there
             (#588). A refusal rather than a crash, and shown as one; still graded FAILED, and its
-            cause is passing, so the process exits 75 and a supervisor relaunches it (#598). The
-            executor's stop and take-profit check of that tick runs before the refusal, so a
-            close may have been sent
+            cause is passing, so the process exits 75 and a supervisor relaunches it (#598). A
+            heartbeat pass before that tick may have run the decision, so an order may have been
+            sent
         start_failure_transient: The start failed for a passing cause — an external system that
             did not answer within its budget, or the refusal at the first tick — so the process
             exits 75, which a supervisor restarts after its pause, instead of 2 (#598)

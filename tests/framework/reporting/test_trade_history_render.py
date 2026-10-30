@@ -107,6 +107,17 @@ def test_per_scenario_table_from_model():
     assert 'e1' in out                       # execution trade_id
 
 
+def test_an_expectancy_nobody_measured_prints_no_number(monkeypatch):
+    report = _report()
+    report.analytics[0].expectancy = None
+    report.analytics[0].r_trade_count = 0
+    monkeypatch.setattr('tests.framework.reporting.test_trade_history_render._report', lambda: report)
+
+    out = _render('render_aggregated')
+
+    assert 'Expectancy: n/a' in out
+
+
 def test_aggregated_analytics_from_model():
     out = _render('render_aggregated')
     assert 'TRADE ANALYTICS' in out          # #389 block

@@ -163,12 +163,7 @@ omitted.
   carries no `order_id`, so the planes do not join on one.
 - **An order line names the phase that SUBMITTED its order**, not the phase that was running when
   the answer came. A fill that arrives after its phase passed still carries its own phase.
-  An order the framework places on the study's behalf — a protective order once an entry fills, or a
-  close held back until the venue confirms the protective order is gone — names the phase that
-  submitted IT, which can be a later one than its entry's. A close shares its position's `order_id`;
-  a protective order takes a fresh number from the order counter (`protect_pos_ethusd_41` protects
-  `pos_ethusd_40`), so its entry is found through the stream row its `extra.stream_seq` points at,
-  which carries the `position_id`.
+  A close shares its position's `order_id`.
 - `event_type` includes: `phase_start`, `order_filled`, `order_rejected`, `order_unaccounted`,
   `order_cancelled`, `partial_close`, `phase_result`, `broker_snapshot`, `reconcile_alert`,
   `api_perf`, `session_end`.

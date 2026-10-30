@@ -3,7 +3,7 @@ FiniexTestingIDE - Active Order Snapshot (#586)
 
 The ORDERS panel's partial-fill row reads what an order asked for and what has executed of
 it. Both fields were declared on the snapshot and set by nothing, so the row could never
-appear. A venue-held protective order carries no lots of its own — its size is close_lots.
+appear.
 """
 
 from datetime import datetime, timezone
@@ -59,15 +59,3 @@ def test_an_order_nothing_has_executed_of():
     row = AbstractTradeExecutor._order_snapshot(order)
 
     assert (row.requested_lots, row.cumulative_filled_lots) == (0.10, 0.0)
-
-
-def test_a_protective_order_reads_nothing_requested_rather_than_none():
-    """Its size lives in close_lots; None here would make the panel's comparison raise."""
-    protective = PendingOrder(
-        pending_order_id='ord_protect_1', order_action=PendingOrderAction.CLOSE,
-        order_type=OrderType.STOP, broker_ref='OABCDE-1234-XYZ', symbol='BTCUSD',
-        direction=OrderDirection.SHORT, entry_price=48000.0, close_lots=0.10)
-
-    row = AbstractTradeExecutor._order_snapshot(protective)
-
-    assert row.requested_lots == 0.0

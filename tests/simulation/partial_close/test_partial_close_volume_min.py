@@ -239,3 +239,13 @@ class TestAValidPartialStillGoesThrough:
 
         assert result.status == OrderStatus.PENDING
         assert simulator.portfolio.get_position('p1') is None
+
+    def test_closing_a_few_ulps_short_of_the_whole_position_is_a_full_close(self):
+        """Summed volumes land one ULP short routinely, and a zero-lot position is never swept."""
+        simulator = _simulator()
+
+        result = simulator.close_position('p1', lots=_HELD * (1 - 1e-16))
+        _pump(simulator)
+
+        assert result.status == OrderStatus.PENDING
+        assert simulator.portfolio.get_position('p1') is None

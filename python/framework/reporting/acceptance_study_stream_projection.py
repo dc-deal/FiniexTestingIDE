@@ -104,8 +104,8 @@ class AcceptanceStudyStreamProjection:
         line = CAPTURE_LINE_BY_EVENT[event.event_type]
         if line is None:
             return
-        # The phase that submitted THIS order: one the framework places later (a protective
-        # order, a held-back close) keeps its own, and its stream row names the position
+        # The phase that submitted THIS order: one that ends in a later phase keeps its own, and
+        # its stream row names the position
         submitted_in = (self._phase_of.get(event.submitted_seq)
                         if event.submitted_seq is not None else None)
         phase, phase_index = submitted_in or self._recorder.get_phase()

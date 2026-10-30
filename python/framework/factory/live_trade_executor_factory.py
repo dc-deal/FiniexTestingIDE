@@ -33,7 +33,6 @@ def build_live_executor(
     poll_interval_ms: int = 5000,
     connection_policy: Optional[ConnectionPolicy] = None,
     session_key: str = '',
-    venue_held_protection: bool = False,
     resolution_config: Optional[UnresolvedResolutionDefaults] = None,
     venue_read_settle_seconds: float = 5.0,
 ) -> LiveTradeExecutor:
@@ -59,9 +58,6 @@ def build_live_executor(
             (#473). Sourced from BrokerTransportConfig.connection.
         session_key: Discriminator for the client order ids this session sends (#473).
             Empty on paths that never reach a venue.
-        venue_held_protection: Profile default for #503 — whether a declared stop_loss
-            additionally rests at the venue as an order of its own. Sourced from
-            AutotraderExecutionDefaults.venue_held_protection.
         resolution_config: How a write whose answer was lost is asked about (#487).
             Sourced from AutotraderExecutionDefaults.unresolved_resolution.
         venue_read_settle_seconds: How long the venue's read plane may lag its write plane
@@ -103,7 +99,6 @@ def build_live_executor(
         resolution_config=resolution_config or UnresolvedResolutionDefaults(),
         venue_read_settle_seconds=venue_read_settle_seconds,
         session_key=session_key,
-        venue_held_protection=venue_held_protection,
         order_history_max=order_history_max,
         trade_history_max=trade_history_max,
     )

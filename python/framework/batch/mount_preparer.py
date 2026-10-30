@@ -49,6 +49,7 @@ class MountPreparer:
         requirements_collector: RequirementsCollector,
         live_stats: Optional[StatusBroadcaster] = None,
         feature_exception_possible: bool = True,
+        feature_exception_held_narrow: bool = True,
     ):
         """
         Initialize mount preparer.
@@ -60,11 +61,14 @@ class MountPreparer:
             live_stats: Optional status broadcaster (None → no live-stats broadcasts, e.g. AutoTrader)
             feature_exception_possible: Whether a refused order feature can be answered with a
                 declared exception — a backtest can, a mock session this preparer also serves cannot
+            feature_exception_held_narrow: Whether an exception nothing needs is refused — not for
+                a sweep's sets, where one arm of the grid may need what another does not
         """
         self._logger = logger
         self._app_config = app_config
         self._requirements_collector = requirements_collector
         self._feature_exception_possible = feature_exception_possible
+        self._feature_exception_held_narrow = feature_exception_held_narrow
         self._live_stats = live_stats
 
     @staticmethod
@@ -153,12 +157,14 @@ class MountPreparer:
         )
 
         # 6. Order features (#625): refused here, before any data is loaded, for every sweep
-        # combination too — broker_type is assigned above, as for the market-fit advice.
+        # combination too — broker_type is assigned above, as for the market-fit advice. Handed the
+        # whole set: what an excluded scenario needs still decides whether an exception is needed.
         ScenarioValidator.validate_order_features(
-            scenarios=self._valid(scenarios),
+            scenarios=scenarios,
             logger=self._logger,
             broker_scenario_map=_broker_scenario_map,
             exception_possible=self._feature_exception_possible,
+            exception_held_narrow=self._feature_exception_held_narrow,
         )
 
         # set scenario final currencies.

@@ -30,8 +30,12 @@ class OptimizationCli:
         Args:
             spec_file: Sweep spec filename or path
         """
-        sweep_id = OptimizationRunner().run(spec_file, channel=RunChannel.CLI)
+        runner = OptimizationRunner()
+        sweep_id = runner.run(spec_file, channel=RunChannel.CLI)
         print(f'\nSweep id: {sweep_id}')
+        if runner.get_nothing_ran():
+            # The exit code a batch ends with when it refused its set: there is no report to read
+            sys.exit(2)
         print(f'Report:   python python/cli/optimization_cli.py report {sweep_id}')
 
     def cmd_report(

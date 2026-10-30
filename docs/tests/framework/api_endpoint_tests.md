@@ -119,7 +119,9 @@ declared for both lists, the served names a consumer keys on (`record_plane`, `l
 live session's broker-truth lines in their own list on the same counter and left out when the
 stream is narrowed to one order, the unit and order filters, a line cut off mid-write left out and
 reported, a damaged stream answered `artifact_unreadable` rather than a server error, and a run
-without one naming why.
+without one naming why. The answer stands behind every route that reads a stored artifact, which
+`test_a_route_with_no_guard_of_its_own_answers_409_for_an_unreadable_artifact` pins on one that has
+no handling of its own.
 
 Where a fill's fee came from (#508, contract 28) reaches three routes in `test_reports_endpoint.py`:
 `test_portfolio_serves_the_fills_by_fee_source` — `fill_fees_by_source` on the unit and the

@@ -39,8 +39,7 @@ class ActiveOrderSnapshot:
             record. Non-zero today only for an order taken over at a cold start partly
             filled: a live executor does not yet mirror a partial execution of an ordinary
             resting order (#342), and a simulation fills a resting order whole.
-        requested_lots: The lots the order asked for (#330); 0.0 for a venue-held protective
-            order, which carries its size as close_lots. Pairs with cumulative_filled_lots
+        requested_lots: The lots the order asked for (#330). Pairs with cumulative_filled_lots
             for the ORDERS panel's "filled / requested" row.
         submitted_at: When the order entered pending (live) — for resting-age display.
     """
@@ -65,7 +64,7 @@ class ActiveOrdersSnapshot:
 
     Args:
         active_limit_orders: Resting LIMIT orders
-        active_stop_orders: Resting STOP and STOP_LIMIT orders, protective orders included
+        active_stop_orders: Resting STOP and STOP_LIMIT orders
         latency_queue_count: Orders still on their way to the venue
     """
     active_limit_orders: List[ActiveOrderSnapshot] = field(default_factory=list)

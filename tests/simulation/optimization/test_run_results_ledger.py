@@ -52,6 +52,14 @@ def test_append_then_read_roundtrip(tmp_ledger, make_run_summary, make_provenanc
     assert list(df.columns) == LEDGER_COLUMNS
 
 
+def test_an_empty_expectancy_reads_back_empty(tmp_ledger, make_run_summary, make_provenance):
+    """No trade of the run has an R: the row says so instead of claiming a zero."""
+    tmp_ledger.append(make_run_summary(expectancy=None, total_trades=2),
+                      make_provenance(param_hash='abc', run_id='20260101_000001'))
+
+    assert tmp_ledger.read_rows()[0].expectancy is None
+
+
 def test_one_fragment_per_run(tmp_ledger, make_run_summary, make_provenance):
     """Distinct runs write distinct fragments; read unions them into one table."""
     tmp_ledger.append(make_run_summary(net_pnl=1.0),

@@ -57,7 +57,6 @@ Each order life in a live session against the mock venue.
 | `TestARestingOrder` | a cancel asked for then carried out; a cancel before the reference is `cancel_deferred` and sent on the answer; a modification; a local refusal of a modification writes nothing; a venue ending after a partial fill is `partially_filled` then the ending without a row; the session end cancels and says so |
 | `TestALostAnswer` | `unresolved` then `resolved` and a late acceptance without latency when the venue names it; `undelivered` when it never had it; the truth pull naming it is a resolution too |
 | `TestAnAdoptedOrder` | adopted, and its fill follows without a second acceptance — counted adopted, not submitted |
-| `TestAProtectiveOrder` | the entry, the protective stop and the close as three lives: the stop is cancelled first, with its position, its position's side and `protection_released` |
 | `TestACloseWhosePositionIsGone` | a close whose position something else took before the answer came still names the position's side and size on its steps, in both account models — both travel on the close from its registration |
 | `TestTheStreamItself` | `seq` strictly increasing across orders; an answer for an order that is gone names how it ended |
 | `TestTheSessionsPendingCounters` | the pending-order counters derived from a session's events — one accepted, one rejected, one never confirmed — add up, and only the answers carry a duration |
@@ -74,7 +73,6 @@ What the stream records where answers cross, time out or come back late.
 | `TestACancelBeforeTheReference` | a cancel asked for twice before the reference arrived is parked once and sent once |
 | `TestACancelTheVenueDidNotCarryOut` | a lost cancel the venue did not carry out explains no later ending: a later expiry is the venue's |
 | `TestTheFillTimeoutsOwnCancel` | the timeout's cancel after a partial fill ends the order as the framework's; a lost cancel answer is the cancel's question, not the read's; the give-up keeps the venue's refusal of its cancel |
-| `TestAProtectiveOrderPartlyFilled` | what executed while it worked is its ending: the cancel answer adds the step, no second row |
 | `TestTheSessionEnd` | a session-end cancel whose answer was lost is `unresolved` before the order is `unaccounted` |
 
 ### `test_order_event_stream_io.py`

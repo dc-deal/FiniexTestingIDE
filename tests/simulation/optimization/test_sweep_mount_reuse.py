@@ -12,6 +12,9 @@ parameter-validation tests).
 
 from pathlib import Path
 
+import pytest
+
+from python.cli.optimization_cli import OptimizationCli
 from python.configuration.app_config_manager import AppConfigManager
 from python.framework.batch.batch_orchestrator import BatchOrchestrator
 from python.framework.optimization.optimization_runner import OptimizationRunner
@@ -21,6 +24,8 @@ from python.framework.types.process_data_types import ProcessResult
 from python.scenario.scenario_set import ScenarioSet
 
 MINI_GRID = 'tests/fixtures/optimization/btcusd_mini_grid.json'
+EXCEPTION_GRID = 'tests/fixtures/optimization/order_features_grid_decides.json'
+REFUSED_GRID = 'tests/fixtures/optimization/order_features_base_refused.json'
 WARMUP_GRID = 'tests/fixtures/optimization/btcusd_mini_grid_warmup.json'
 
 
@@ -81,9 +86,34 @@ def test_data_level_abort_records_nothing(monkeypatch):
     monkeypatch.setattr(BatchOrchestrator, 'build_mount', lambda self: empty_mount)
 
     ledger = RunResultsLedger(Path(AppConfigManager().get_run_ledger_path()))
-    sweep_id = OptimizationRunner().run(MINI_GRID)
+    runner = OptimizationRunner()
+    sweep_id = runner.run(MINI_GRID)
 
     assert ledger.read_rows(sweep_id=sweep_id) == [], 'aborted sweep must record no runs'
+    assert runner.get_nothing_ran()
+
+
+def test_a_grid_that_decides_the_need_runs_both_arms():
+    """One arm declares the stop and the other keeps it itself: no combination answers for both."""
+    ledger = RunResultsLedger(Path(AppConfigManager().get_run_ledger_path()))
+    runner = OptimizationRunner()
+
+    rows = ledger.read_rows(sweep_id=runner.run(EXCEPTION_GRID))
+
+    assert not runner.get_nothing_ran()
+    assert len(rows) == 2
+    assert all(row.status == 'ok' and row.features_beyond_venue == 'stop_loss' for row in rows), (
+        [(row.status, row.features_beyond_venue) for row in rows])
+
+
+def test_a_refused_base_names_the_refusal_and_ends_the_cli_with_2(capfd):
+    """Not a data problem, and not a success: the operator reads why, and a script sees it failed."""
+    with pytest.raises(SystemExit) as ended:
+        OptimizationCli().cmd_run(REFUSED_GRID)
+
+    output = capfd.readouterr().out
+    assert ended.value.code == 2
+    assert 'aborted' in output and 'stop_loss' in output
 
 
 def test_the_mount_build_closes_its_log(monkeypatch):

@@ -150,7 +150,7 @@ latency has elapsed. See
 `_active_limit_orders` as **shadow state** — when the broker accepts a LIMIT order (status=PENDING),
 it is tracked locally as resting. Each tick, `_process_active_orders()` polls the broker for fills.
 After a successful `modify_limit_order()`, the local shadow state is updated to reflect the new
-price/SL/TP. Shadow state correctness depends on #151 (Reconciliation).
+price. Shadow state correctness depends on #151 (Reconciliation).
 
 ---
 

@@ -244,7 +244,7 @@ class TestAStopLimitWithARequestOnItsWay:
         """A simulator whose venue declares stop orders, as the Kraken and MT5 adapters do."""
         sim = make_simulator(spot_mode=False)
         monkeypatch.setattr(sim.broker.adapter, 'get_order_capabilities', lambda: OrderCapabilities(
-            stop_orders=True, stop_limit_orders=True))
+            stop_orders=True, stop_limit_orders=True, offered_order_features=frozenset()))
         return sim
 
     def _resting_stop_limit(self, sim, limit: float = 50050.0) -> str:

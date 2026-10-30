@@ -613,6 +613,21 @@ def test_warnings_errors_from_an_older_schema_is_named_not_a_server_error(tmp_pa
     assert 'older schema' in response.json()['detail']
 
 
+def test_a_route_with_no_guard_of_its_own_answers_409_for_an_unreadable_artifact(tmp_path):
+    """The handler stands behind every route that reads a stored artifact: never a 500."""
+    io_dir = _plant_run(tmp_path)
+    (io_dir / 'order_history.json').write_text('{"orders": "not a list"}', encoding='utf-8')
+
+    with patch('python.api.endpoints.reports_router.ReportStore',
+               lambda: ReportStore(_index_path(tmp_path))):
+        response = TestClient(create_app()).get(
+            _WARNINGS_URL.replace('warnings-errors', 'order-history'))
+
+    assert response.status_code == 409
+    assert response.json()['error'] == 'artifact_unreadable'
+    assert 'cannot be read' in response.json()['detail']
+
+
 def test_aggregated_portfolio_returns(client):
     response = client.get(_AGG_URL)
     assert response.status_code == 200

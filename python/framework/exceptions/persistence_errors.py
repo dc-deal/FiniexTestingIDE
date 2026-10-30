@@ -17,6 +17,11 @@ class StatePersistenceError(FiniexError):
     pass
 
 
+class CarriedLevelError(FiniexError):
+    """A stored position book still carries a level or a venue-held stop (#625)."""
+    pass
+
+
 class BotIdRequiredError(FiniexError):
     """
     An AutoTrader profile does not declare the identity its state is filed under.

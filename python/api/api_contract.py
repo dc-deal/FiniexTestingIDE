@@ -23,7 +23,7 @@ from typing import List
 
 # One monotonic integer. Not a date and not the app version: a consumer compares it for
 # equality, and equality is the only question they have.
-API_CONTRACT_VERSION = 45
+API_CONTRACT_VERSION = 46
 
 # Every response carries it, so a saved fixture carries it too.
 CONTRACT_HEADER = 'X-Api-Contract'
@@ -36,14 +36,16 @@ API_PREFIX = '/api/v1'
 # What moved INTO the current version. One line per change, written for someone who cannot
 # read this repository.
 CHANGES: List[str] = [
-    'trade-history: every row carries exit_level, the level a stop-loss or take-profit exit fired '
-    "at, which a logic's own stop never puts in stop_loss or take_profit; null for every other "
-    'exit. A backtest of such a logic fills after the level, so its exit_slippage is no longer 0',
-    'Run header: features_beyond_venue, the order features a backtest was allowed '
-    "beyond what its venue's API holds; empty for every other run, null on one recorded before it",
-    'Ledger rows: features_beyond_venue, the same, comma-joined; empty for every other row',
-    'order-history: rejection_reason order_feature_not_declared, an order carrying a level its '
-    'logic did not declare',
-    "Validation checks: order_feature_refused, order_feature_undeclared, "
-    'feature_beyond_venue_unneeded, features_beyond_venue',
+    'portfolio and state frames: protective_level_enforcement and take_profit_enforcement removed '
+    "from the open-position rows; a session holds no level any more, and a backtest's level is the "
+    "simulation's own",
+    'order-history and order-events: end_reason protection_released is no longer produced and '
+    'stays served for a run recorded before this contract; rejection_reason close_withheld removed',
+    'every report route answers 409 artifact_unreadable for a stored artifact that no longer matches '
+    'its model; some answered 500 before',
+    "A close's order_id is its position's on every row; a rebuilt stop's own id is no longer produced",
+    'expectancy can be null where no trade has an R, on run summaries, trade analytics, booking '
+    'periods, ledger rows and robustness windows; it read 0.0',
+    'sweeps: a ranking by expectancy leaves such a run out and counts it in unranked; a sweep that '
+    'recorded no objective ranks by net_pnl; the sweep list carries features_beyond_venue',
 ]

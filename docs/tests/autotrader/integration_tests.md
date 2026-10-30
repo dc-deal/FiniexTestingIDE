@@ -71,10 +71,11 @@ ended, into the next session's ledger row.
 | `test_both_ledger_rows_name_it` | It reached the RECORD, not only the running process |
 | `test_the_rows_read_back_as_one_history` | `build_deployment_histories` groups them, in order, with the gap |
 | `test_the_two_fingerprints_hold_across_a_restart` | Nothing changed, so `param_hash` and `profile_hash` must not move — a fingerprint that drifts would mark every restart |
-| `test_a_one_off_start_records_no_deployment` | `--one-off` writes `''` and joins no history |
-| `test_a_one_off_start_does_not_end_the_deployment` | It stays out of the history without destroying it |
+| `test_the_probe_records_no_deployment` | `--one-off` writes `''` and joins no history |
+| `test_the_probe_does_not_become_the_deployment` | It stays out of the history without destroying it |
+| `test_one_off_is_refused_once_the_deployment_exists` | Past the deployment's first start the flag is refused, with the ways out named |
 | `test_new_deployment_begins_a_second_history` | Two deployments over the same three rows |
-| `test_a_dry_run_session_leaves_no_carry_over` | The LIMIT of the mechanism, pinned rather than discovered at a venue |
+| `test_the_document_carries_the_identity_but_no_venue_claim` | A dry run hands on the identity and no venue claim: the limit of the mechanism, pinned rather than discovered at a venue |
 | `test_an_ordinary_restart_continues_them` · `test_a_new_deployment_starts_them_fresh` | #626 — the drawdown curve and the risk baseline follow the deployment: `second` continues `first`'s, and `--new-deployment` begins its own curve (`restarts` 0) instead of inheriting the first deployment's; the document stamps them as a rehearsal's |
 
 **No arming, no patching.** These are ordinary mock sessions, which is possible because the
@@ -180,18 +181,15 @@ One session is shared across all test classes (`scope='module'`) to avoid runnin
 
 ### test_autotrader_trade_scenarios.py
 
-Targeted scenario tests for specific AutoTrader pipeline behaviors: SL/TP level propagation, duplicate signal suppression, and resilience under minimal warmup data.
+Targeted scenario tests for specific AutoTrader pipeline behaviors: a logic's own exits at a stop and a target, duplicate signal suppression, and resilience under minimal warmup data.
 
 Each class runs an independent session from its own profile. Sessions are module-scoped.
 
-> **Architectural note:** SL/TP is enforced by THIS process in both pipelines since #500 —
-> `_check_sl_tp_triggers` used to return immediately outside `ExecutorMode.SIMULATION`, on the
-> assumption that the broker held the level, and nothing ever sent one. So these two profiles are
-> named after a trigger that had never happened, and the tests asserted that the level was STORED.
-> They now assert that it ACTED. Since #625 the probe keeps the two levels as its own
-> (`exit_mode: own`, `OwnExitLevels`) — Kraken's API holds no level for a position — so the stop
-> and the target act through the probe's own `close_position`, and the trade names the level that
-> fired (`exit_level`) while carrying no `stop_loss` of its own.
+> **Architectural note:** A session holds no level since #625, because Kraken's API holds none for
+> a position. The probe keeps the two levels as its own (`exit_mode: own`, `OwnExitLevels`), so the
+> stop and the target act through the probe's own `close_position`, and the trade names the level
+> that fired (`exit_level`) while carrying no `stop_loss` of its own. The tests assert that the
+> level ACTED, not that it was stored.
 >
 > Two properties of the AutoTrader close shape what they may assert. The exit goes through the
 > asynchronous `close_position()`, so it lands at the broker's next price and **never at the level**
@@ -199,8 +197,7 @@ Each class runs an independent session from its own profile. Sessions are module
 > flight at session end is recorded as an anomaly and cleared rather than filled (`clear_pending`),
 > and a partially filled close leaves lots that trigger again. The tests therefore assert the
 > OUTCOME — something closed for the right reason and nothing is left open — not a count. See
-> [session_end_policy.md](../../architecture/session_end_policy.md) and
-> [protective_level_tests.md](protective_level_tests.md).
+> [session_end_policy.md](../../architecture/session_end_policy.md).
 
 | Class | Tests | What it validates |
 |-------|-------|-------------------|

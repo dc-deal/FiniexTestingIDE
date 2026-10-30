@@ -55,6 +55,7 @@ from python.framework.types.trading_env_types.order_types import (
     RejectionReason,
     create_refusal_result,
 )
+from python.framework.validators.order_feature_validator import undeclared_feature_sentence
 
 
 class OrderGuard:
@@ -176,15 +177,10 @@ class OrderGuard:
         Returns:
             The DENIED OrderResult — the order never left this process
         """
-        names = ', '.join(feature.value for feature in undeclared)
         return self._refuse(
             request, now,
             reason=RejectionReason.ORDER_FEATURE_NOT_DECLARED,
-            message=(
-                f'{names} sent but not declared in get_required_order_features() — the start '
-                f'checks only what a logic declares, so nothing has confirmed that the venue '
-                f'holds it. Declare it, or keep the level in the logic (OwnExitLevels)'
-            ),
+            message=undeclared_feature_sentence(undeclared),
         )
 
     def _refuse(

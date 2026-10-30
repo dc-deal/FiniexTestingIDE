@@ -53,7 +53,7 @@ job.
 | `submit` | Place a new order at the broker | `open_order(MARKET)`, `open_order(LIMIT)`, `close_position` |
 | `query` | Poll an existing order's status | `_process_pending_orders` Phase-1 / Phase-2 polling |
 | `cancel` | Withdraw a resting order | `cancel_limit_order` |
-| `modify` | Change a resting order's price / SL / TP | `modify_limit_order` |
+| `modify` | Change a resting order's price | `modify_limit_order` |
 
 ### Transport-Neutral Naming
 
@@ -85,8 +85,13 @@ def get_order_capabilities(self) -> OrderCapabilities:
         iceberg_orders=True,           # venue-true; no executor branch places one
         hedging_allowed=self._hedging_allowed,
         partial_fills_supported=True,
+        offered_order_features=frozenset(),   # what the venue's API holds for a position
     )
 ```
+
+`offered_order_features` has no default: it says which stop and target the venue's API holds for a
+position, and a run refuses a logic that declares one the venue lacks. A venue that holds neither
+states an empty set. See [Venue Order Features](../../architecture/venue_order_features.md).
 
 **Declare the venue, not your progress.** `stop_orders` said `False` here for a long time with the
 comment *"Kraken uses StopLimit instead"*, which is not true — Kraken offers a plain `stop-loss`
@@ -100,11 +105,9 @@ If a Tier-3 operation is declared but not implementable for some order type, the
 
 **Not declared, deliberately: a venue dead man's timer.** Kraken offers one (`CancelAllOrdersAfter`
 cancels every order of the account once the client stops refreshing it), and this project does not
-arm it — it would cancel a stop the venue holds exactly when the stop is needed
-([Protective Levels](../../architecture/protective_levels.md), section 7). So there is no
-capability, no config key and no adapter method for it. If a venue's timer is ever to be armed, it
-arrives as a declared capability with a reader, and its collision with a venue-held stop is part of
-its contract — not as a call one adapter makes on its own.
+arm it ([What a Venue Holds](../../architecture/venue_order_features.md)). So there is no capability,
+no config key and no adapter method for it. If a venue's timer is ever to be armed, it arrives as a
+declared capability with a reader — not as a call one adapter makes on its own.
 
 ### What a Fill Costs — Declared, Not Assumed
 
@@ -162,7 +165,7 @@ docs/tests/live_adapters/example_adapter_integration_tests.md
 | `_validate_config()` | Validate broker-specific config fields after common validation |
 | `get_broker_name()` | Return company name string |
 | `get_broker_type()` | Return `BrokerType` enum value |
-| `get_order_capabilities()` | Return `OrderCapabilities` declaring supported order types |
+| `get_order_capabilities()` | Return `OrderCapabilities` declaring supported order types and order features |
 | `create_market_order(symbol, direction, lots, **kwargs)` | Build and return a `MarketOrder` |
 | `create_limit_order(symbol, direction, lots, price, **kwargs)` | Build and return a `LimitOrder` |
 | `validate_order(symbol, lots)` | Return `(is_valid, error_message)` — use `_validate_lot_size()` from base |
@@ -423,8 +426,9 @@ If your broker keeps the same ref on modify, return it unchanged. Either works �
 
 `build_modify_payload(broker_ref, symbol, new_price, new_stop_loss, new_take_profit)` — the SL/TP
 parameters are part of the contract even if your broker doesn't support modifying them (Kraken
-`AmendOrder` changes limit price / quantity, not SL/TP). In that case accept them and silently
-ignore — keeps the contract uniform across adapters.
+`AmendOrder` changes limit price / quantity, not SL/TP). A live executor refuses a level before it
+reaches an adapter, so on that path they arrive as None. The parameters keep the contract uniform
+across adapters.
 
 `symbol` is in the contract because some brokers need the trading pair alongside the broker_ref.
 Kraken's `AmendOrder` targets by txid and needs **no** pair, so its build layer ignores `symbol`;

@@ -22,10 +22,12 @@ from python.framework.trading_env.abstract_trade_executor import AbstractTradeEx
 from python.framework.trading_env.broker_config import BrokerConfig
 from python.framework.trading_env.portfolio_manager import UNSET, _UnsetType
 from python.framework.trading_env.simulation.order_latency_simulator import OrderLatencySimulator
+from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.portfolio_types.portfolio_trade_record_types import (
     CloseReason,
     EntryType,
 )
+from python.framework.types.portfolio_types.portfolio_types import Position
 from python.framework.types.trading_env_types.active_orders_snapshot_types import (
     ActiveOrdersSnapshot,
 )
@@ -180,6 +182,82 @@ class TradeSimulator(AbstractTradeExecutor):
     # ============================================
     # Pending Order Processing (simulation-specific)
     # ============================================
+
+    def on_tick(self, tick: TickData) -> None:
+        """
+        Run the shared tick pass, then check the levels positions carry.
+
+        Args:
+            tick: The tick that is arriving
+        """
+        super().on_tick(tick)
+        self._check_sl_tp_triggers(tick)
+
+    def _check_sl_tp_triggers(self, tick: TickData) -> None:
+        """
+        Close a position whose stop-loss or take-profit level the tick reached.
+
+        The simulation's alone since #625. A session carries no level: its venue's API holds
+        none, and a logic keeps its own (OwnExitLevels). Only a backtest on a venue that holds
+        them, or one that declares the exception, gets here with a level.
+
+        Args:
+            tick: Current tick data with bid/ask prices
+        """
+        for position in self.get_open_positions():
+            if position.symbol != tick.symbol:
+                continue
+            # The levels are the closing order's: closing a long sells, closing a short buys
+            closing = (OrderDirection.SHORT if position.direction == OrderDirection.LONG
+                       else OrderDirection.LONG)
+            if (position.stop_loss is not None
+                    and is_stop_reached(closing, position.stop_loss, tick.bid, tick.ask)):
+                self.logger.info(
+                    f'🛑 SL triggered: {position.position_id} '
+                    f'{position.direction.value} @ SL={position.stop_loss:.5f} '
+                    f'(bid={tick.bid:.5f}, ask={tick.ask:.5f})'
+                )
+                self._close_at_level(position, position.stop_loss, CloseReason.SL_TRIGGERED)
+            elif (position.take_profit is not None
+                    and is_limit_reached(closing, position.take_profit, tick.bid, tick.ask)):
+                self.logger.info(
+                    f'🎯 TP triggered: {position.position_id} '
+                    f'{position.direction.value} @ TP={position.take_profit:.5f} '
+                    f'(bid={tick.bid:.5f}, ask={tick.ask:.5f})'
+                )
+                self._close_at_level(position, position.take_profit, CloseReason.TP_TRIGGERED)
+
+    def _close_at_level(self, position: Position, level: float, close_reason: CloseReason) -> None:
+        """
+        Fill a synthetic close AT the breached level, in the tick and deterministically.
+
+        A close the strategy already has in the latency queue goes first: filling the level
+        under it made the position vanish beneath it, and the close then arrived to find
+        nothing — an exit and a refusal a session can never produce (#362).
+
+        Args:
+            position: The position whose level was breached
+            level: The level, which is the fill price
+            close_reason: SL_TRIGGERED or TP_TRIGGERED, recorded on the trade
+        """
+        if self.is_pending_close(position.position_id):
+            return
+
+        # The position's own symbol and market moment travel on the order, so its events
+        # name what they close even once the position is gone
+        synthetic = PendingOrder(
+            pending_order_id=position.position_id,
+            order_action=PendingOrderAction.CLOSE,
+            order_type=OrderType.MARKET,
+            symbol=position.symbol,
+            closed_position_direction=position.direction,
+            submission=self._current_submission(),
+        )
+        # Counted as submitted, or a backtest whose exits are stops reported more orders
+        # executed than submitted
+        self._record_submission(synthetic)
+        self._fill_close_order(synthetic, fill_price=level, close_reason=close_reason)
+        self._execution_counts.count_protective_close()
 
     def _process_pending_orders(self) -> None:
         """

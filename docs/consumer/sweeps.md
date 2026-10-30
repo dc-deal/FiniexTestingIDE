@@ -37,6 +37,7 @@ Newest first, one row per sweep:
 | `duration_s` | the last run's start minus the first run's start |
 | `run_count` | how many distinct combinations it holds |
 | `ok_count` · `error_count` | how many produced usable data, and how many did not |
+| `features_beyond_venue` | the order features its scenario set allowed beyond what the venue's API holds, comma-joined; empty for every other sweep |
 | `decision_logic_type` · `decision_version` | the strategy that was swept |
 | `base_config` | the scenario set that was swept, with the sweep's own tag stripped off |
 | `symbols` | the symbols its runs read |
@@ -52,14 +53,14 @@ nothing to span — a sweep of one run.
 
 ```json
 { "key": ["run_id", "currency"], "sweep_id": "...",
-  "objective": "expectancy", "maximize": true, "combinations": [ ... ], "count": 12,
+  "objective": "net_pnl", "maximize": true, "combinations": [ ... ], "count": 12,
   "unranked": 0 }
 ```
 
 Ranked, not alphabetical: the question a sweep asks is which combination won. The ranking uses the
 objective and the direction **the sweep declared**, because ranking by anything else would answer
 a question the sweep never asked. Where a sweep recorded neither, the response says what was used
-instead — `expectancy`, maximized — in its own `objective` and `maximize` fields, so you are
+instead — `net_pnl`, maximized — in its own `objective` and `maximize` fields, so you are
 never left to assume.
 
 **Combinations are ranked within each account currency, currencies in order.** A money objective
@@ -70,9 +71,12 @@ compares nothing.
 
 `unranked` counts the combinations the ranking left out because they carry no value for the
 objective. That happens only with a figure some runs did not measure — `account_max_drawdown` of
-a session whose days were all sealed before its first valuation, or a column a row was written
-before. A figure that can be undefined for a run — `profit_factor` without a losing trade, the R
-and excursion means, a reading of one account — is refused as an objective instead: leaving out
+a session whose days were all sealed before its first valuation, `expectancy` of a run none of whose
+trades has an R, or a column a row was written before. So a sweep that declares `expectancy` over a
+strategy keeping its own stop serves `combinations: []`, `count: 0` and every combination in
+`unranked`: it ran, and the figure it asked to rank by was not measured. A figure that can be
+undefined for a run — `profit_factor` without a losing trade, `avg_win_r` and `avg_loss_r`, the
+excursion means, a reading of one account — is refused as an objective instead: leaving out
 the runs without a profit factor would drop the runs that never lost. Without `unranked`, a
 shorter list would read as the whole sweep.
 

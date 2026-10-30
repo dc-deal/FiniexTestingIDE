@@ -176,7 +176,7 @@ tick.
 
 | Test | Description |
 |------|-------------|
-| `test_close_position_returns_executed` | `close_position()` returns PENDING; FILLED after drain |
+| `test_close_position_returns_pending` | `close_position()` returns PENDING; FILLED after drain |
 | `test_close_removes_from_open_positions` | Closed position no longer in open positions |
 
 #### TestDelayedFill
@@ -191,8 +191,7 @@ tick.
 
 | Test | Description |
 |------|-------------|
-| `test_rejected_order_status` | Async REJECTED routed via drain — orders_rejected counter increments |
-| `test_rejected_order_in_history` | Rejected order recorded in order history |
+| `test_rejected_outcome_in_history` | Async REJECTED routed via drain, recorded in order history |
 | `test_no_position_created_on_rejection` | No position created for rejected order |
 
 #### TestFeatureGating
@@ -281,7 +280,7 @@ LIMIT submit is async post-#319 step 7 (`broker_ref=None` immediately after `ope
 | Test | Description |
 |------|-------------|
 | `test_modify_pending_order_price` | `modify_limit_order()` succeeds for LIMIT order in `_active_limit_orders` |
-| `test_modify_pending_order_sl_tp` | Modify SL and TP on a resting LIMIT order |
+| `test_a_level_on_a_resting_order_is_refused` | A stop or target on a resting LIMIT order is refused: the live path holds no level |
 | `test_modify_with_unset_keeps_current` | UNSET parameters translated to None (no change) |
 
 #### TestModifyLimitOrderNotFound
@@ -455,7 +454,7 @@ Locks down the shape of the async cancel lifecycle:
 
 | Test | Description |
 |------|-------------|
-| `test_cancel_before_broker_ref_confirmed` | Cancel on order with broker_ref=None → False (Option A) |
+| `test_cancel_before_broker_ref_is_deferred` | Cancel on order with broker_ref=None → True, the intent is parked (no CancelJob yet) |
 
 #### TestCancelLimitOrderNotFound
 
@@ -637,8 +636,7 @@ of scope).
 
 An UNKNOWN query answer means the venue replied and described no such order. It is an ABSENCE, not
 a state, and the executor must not turn it into one — measured 2026-09-08, Kraken answers a
-QueryOrders for a txid it never minted with an empty result. Prework for #503, whose boot resolver
-asks about a protective order that may have fired while the process was down.
+QueryOrders for a txid it never minted with an empty result.
 
 | Test | Description |
 |---|---|
@@ -741,13 +739,6 @@ gracefully.
 | `test_a_close_is_queried_and_compared` | A booked close triggers its own trades query, by its own reference, and is compared with what was booked |
 | `test_an_entry_and_its_close_in_flight_together_keep_their_own_snapshots` | An entry and its position's close share one `order_id`; both in flight at once, each keeps its own snapshot and is compared with its own executions |
 
-#### TestAProtectiveOrderIsAuditedOnceItCloses — #508
-
-| Test | Description |
-|---|---|
-| `test_a_step_that_leaves_the_position_open_asks_nothing` | A protective order's booking that leaves the position open starts no audit |
-| `test_the_closing_step_is_compared_with_everything_booked` | The closing booking is compared with all that was booked for the order — no drift, and no SLIPPAGE against its placement mid |
-
 #### TestTheExecutorAuditsBothLegs — #508
 
 | Test | Description |
@@ -778,18 +769,6 @@ Money paths run in both account models.
 | `test_an_answer_without_the_fee_is_booked_from_the_estimate_and_warned` [margin, spot] | The venue declares the fee in its answer and sends one without → the estimate is booked, `fee_source=estimate`, and the session's log warns |
 | `test_a_venue_that_charges_nothing_per_fill_is_not_warned_about` | A spread model: no fee, `fee_source=estimate`, no warning |
 | `test_a_fee_the_model_does_not_charge_is_warned_about_and_not_booked` | A spread model whose venue reports a fee anyway → warned about, NOT booked |
-| `test_two_steps_book_the_growth_of_each_total` [margin, spot] | A protective order the venue holds reports totals; booked in two steps, each books what the fee total grew by, the second step at its own price rather than the average over both — the records' fees, the exit prices and the balance agree |
-| `test_a_step_booked_from_the_estimate_is_settled_by_the_next_total` [margin, spot] | A step whose answer had no fee is booked from the estimate; the next total books only what it exceeds the books by, so the order costs the venue's figure once |
-| `test_the_step_that_settles_an_estimate_says_so` [margin, spot] | The settling step's event carries the sentence — the venue's total less what is already booked, and how much of that was the estimate; the step after it books what the total grew by and says nothing |
-| `test_a_settling_step_with_an_excess_names_the_share_it_books` [margin, spot] | A settling step that also reports more than the position holds books the position's share of what the total grew by, and its sentence names that share rather than the whole difference |
-| `test_an_estimate_above_the_venues_later_total_stays_booked_at_that_step` [margin, spot] | The venue's total comes in below the estimate already booked: the step books a fee of `0.0`, the excess stays booked — the records' fees and the balance agree — and the session log warns in the words the step's event carries |
-| `test_a_later_total_above_the_books_absorbs_the_excess` [margin, spot] | After such a step, the next total above what is booked books only its growth beyond the books: the order ends at the venue's figure |
-| `test_steps_that_all_carry_the_venues_fee_say_nothing_more` [margin, spot] | Two steps that each carry the venue's figure: no sentence on either event, no warning |
-| `test_an_excess_books_only_the_positions_share_of_the_fee` [margin, spot] | The venue reports more than the position holds: the excess is not booked, and neither is its share of the fee |
-| `test_the_same_total_arriving_again_books_nothing` | The same total reported twice is booked once |
-| `test_a_filled_answer_without_volume_after_a_step_closes_the_rest` [margin, spot] | FILLED with no volume after a booked step closes what the position still holds — read as the last step's size, it booked nothing |
-| `test_a_fill_for_a_position_already_gone_still_carries_the_venues_fee` | Nothing can be booked, and the event still carries the venue's fee, `fee_source=venue` |
-| `test_what_was_booked_travels_with_the_position_into_the_carry_over` | The booked lots, fee and value reach the carry-over note, so a restart does not book a step again |
 | `test_a_fill_without_a_fee_is_booked_from_the_estimate_silently` | A dry run declares the venue's capability; its fill without a fee is the estimate, with no warning |
 | `test_a_venue_that_reports_it_in_the_answer` | `expects_venue_fee_in_fill_answer()` — the one answer the session's warning and the field study's certificate both read — is true against a venue that reports the fee in its answer |
 | `test_not_in_a_dry_run` | …false in a dry run, whose answers are our simulator's |
@@ -1046,9 +1025,30 @@ insufficient funds.
 | `TestTheTimeoutAsksBeforeItBooks` | a timed-out order is read first: filled is booked as executed; no answer hands it to the #487 resolution, which then books the fill; a second unanswerable timeout gives it up as `unaccounted`; an order still working is cancelled and booked `cancelled` by the framework, with exactly one cancel; a cancel refused because the order filled meanwhile is followed by a read that books the fill; a part that executed while the cancel travelled is booked as its fill rather than as a clean cancel — the read before the cancel is older than the cancel |
 | `TestAFailedReadIsNotARejection` | a status read refused with `EAPI:Invalid nonce` keeps the market order and the resting order alike; the failure is an error, reported once per order |
 | `TestTheTimeoutRunsOnTheMonotonicClock` | a timeout re-armed by the resolution survives a canonical clock months in the past — the shape of a mock session's tick |
+| `TestACloseTheVenueEndedPartWay` | what a close the venue ended leaves behind, through its status answer: margin keeps the dust as a position, spot retires the record, keeps the coins and tells the logic its position closed, float drift is a full close in both, and a request a few ULPs short is one too |
 | `TestAnOrderTheVenueEnded` | a market order the venue cancels without executing is dropped and reported cancelled, never rejected; what an expired order executed is booked as its fill |
 
 ---
+
+## test_unresolved_resting_order_writes.py — a cancel or an amend whose answer was lost (#487)
+
+The same rule as for a submit, on an ordinary resting order and in both account models: it books
+nothing, its operation stays in flight, and the resolution decides.
+
+| Class | Description |
+|---|---|
+| `TestAnUnresolvedAmendWritesNoProvisionalValue` | the price does not move on an answer that never came, and what was asked stays parked with the guard closed |
+| `TestACancelAnswerNamingNothingBooksNothing` | the venue answered and named nothing: the order stays, and the resolution asks |
+| `TestTheCeilingEndsTheWait` | at the ceiling the order is operable again and is still not dropped |
+| `TestTheReadThatFindsTheOrderCancelled` | a poll books it as cancelled and never as a rejection, the strategy hears it, the resolution stops asking, and the entry block lifts even after the ceiling |
+| `TestTheCancelNeverArrived` | the resolution naming it resting releases the operation; an ordinary poll answering resting releases nothing |
+| `TestACancelStampsItsOwnWrite` | the settle window runs from the cancel, not from the submission |
+
+## test_position_closed_event.py — the hook a logic learns of a full close by
+
+| Class | Description |
+|---|---|
+| `TestAFullCloseReachesTheLogic` | a full close emits `PositionClosedEvent` once, a partial close only `PartialCloseEvent`, and the simulation emits it too |
 
 ## test_active_order_snapshot.py — what the ORDERS panel's partial-fill row reads (#586)
 
@@ -1060,5 +1060,4 @@ share one snapshot helper that sets them.
 |---|---|
 | `test_an_order_partly_filled_says_how_far_it_got` | requested lots from the order, executed lots from its fill record |
 | `test_an_order_nothing_has_executed_of` | executed reads 0.0 — the row stays off |
-| `test_a_protective_order_reads_nothing_requested_rather_than_none` | a venue-held protective order carries its size as `close_lots`; requested reads 0.0, never None, so the panel's comparison cannot raise |
 

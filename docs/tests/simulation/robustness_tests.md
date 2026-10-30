@@ -35,7 +35,7 @@ See the feature: [Robustness Validation guide](../../user_guides/robustness_vali
 ### `TestRobustnessConfig` — the schema
 | Test | Description |
 |------|-------------|
-| `test_defaults` | disabled, `expectancy`, 0.3 split, 3 min-windows |
+| `test_defaults` | disabled, `net_pnl`, 0.3 split, 3 min-windows |
 | `test_rejects_unknown_key` | `extra='forbid'` rejects a typo |
 | `test_metric_enum_coercion` | `'net_pnl'` string → enum |
 | `test_rejects_invalid_metric` | an unknown metric is rejected |

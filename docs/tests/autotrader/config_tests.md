@@ -91,10 +91,6 @@ assert what it REFUSES, which is reachable before the heavy construction.
 
 | Test | What it verifies |
 |---|---|
-| `test_a_live_session_refuses_to_start` | A live-adapter session: a profile-wide `venue_held_protection` opt-in against a venue that cannot carry one aborts the session. Left to the submit path it would reject every protected entry one at a time, and each would read as an isolated incident rather than one wrong line in the profile |
-| `test_the_refusal_names_both_sides` | The message names the profile switch AND the broker, and says the per-order route is refused the same way |
-| `test_a_mock_rehearsal_is_not_stopped` | The refusal is for live-adapter sessions only. A mock session builds a `MockBrokerAdapter` whatever its `broker_type` says, so it can never carry a protective order — refusing there would make an opted-in profile unrehearsable, the same mistake the simulation avoids by accepting the flag and changing nothing. It warns once and ignores the switch for the run |
-| `test_the_switch_is_off_by_default` | A profile that never mentions it starts against any venue. Opting in changes what the bot does with real money, so a session must never acquire the behaviour by accident |
 | `TestARestLadderThatNeverGivesUp` | A live session whose broker REST ladder has `attempt_budget` 0 — retry for ever — refuses to start and names the `market_config.json` setting: the session's start and end reads of the venue wait on that ladder, and an outage would hold them indefinitely. A mock session reaches no venue and is not stopped; the shipped Kraken entry declares a finite budget and passes |
 | `test_a_profile_that_resolves_no_balances_refuses` | One of the older guards, covered for the first time |
 | `test_a_resting_logic_without_a_cold_start_hook_refuses` · `test_and_the_same_profile_passes_the_cold_start_guard` | #493's guard, proven at its WIRING rather than at its rule — the rule has its own suite in `tests/autotrader/cold_start/`; what was never executed is that `setup_pipeline` asks it at all. A bot whose logic can leave an order resting must answer for finding one there after a 03:00 restart, and the boot is the only place that refusal is still cheap. The second test names the refusal that follows the guard today — the mock adapter carries market orders only, so the profile does not start in a mock session until the mock rests orders |
@@ -118,6 +114,7 @@ the session's loggers exist.
 | `test_the_cli_declares_its_channel_and_allows_nothing_by_default` · `test_allow_dirty_is_carried_through` | The CLI declares `cli`; `--allow-dirty` reaches the session and is off unless typed |
 | `test_an_accepted_composite_change_reaches_the_header` · `test_accept_composite_change_is_carried_through` | #626 — the key given with `--accept-composite-change` reaches the session from the CLI and the header's `origin.accept_composite_change`, and is null unless typed |
 | `test_a_refused_run_directory_is_a_refusal_not_a_crash` | A run directory the operating system refuses ends the CLI with exit code 2 and the message that names the path and the cause, without a stack trace (#621) |
+| `test_a_stored_level_refuses_the_start_and_leaves_the_book_alone` | A carry-over still holding a stop or a target ends the real session as `STARTUP FAILED` with exit 2, no stack trace, and the book byte for byte as it was |
 | `test_an_untrusted_host_identity_is_a_refusal_not_a_crash` | A host identity file that cannot be trusted ends the CLI with exit code 2 and its own message, without a stack trace — the same shape as the other refusals |
 | `test_an_untrusted_host_identity_file_refuses_before_any_capture` | The same through the real `AutotraderMain.run()`, with a broken identity file and isolation lifted for the host identity alone: exit code 2, the file named, no stack trace — and neither the capture nor the header is reached, so no git work is paid and no patch stored for a session that never starts |
 | `test_a_capture_that_fails_ends_as_startup_failed_with_a_record` | A capture raising before the loggers exist ends as `STARTUP FAILED`, exit code 2, no stack trace on the console; the header is written with its origin and no code identity, and the global log holds the stack trace |
@@ -134,7 +131,7 @@ anything, and these tests hold it to what construction then produces.
 |---|---|
 | `test_a_default_no_file_sets_is_in_the_document` | A decision-logic parameter the profile leaves out appears with its schema default |
 | `test_the_app_config_layer_is_merged_into_the_blocks` | A block the profile sets in part and one it leaves out entirely both appear complete — the rest can only have come from `app_config`; the file location and the raw strategy are not blocks |
-| `test_every_type_key_is_the_one_the_factory_injects` | `decision_logic_type` and each worker's `worker_type` are the resolved keys the factories inject |
+| `test_every_type_key_is_the_one_the_configuration_names` | `decision_logic_type` and each worker's `worker_type` are the keys the configuration names |
 | `test_the_broker_entry_is_recorded_with_its_resolved_values` | The broker's `market_config.json` entry is in the document, `dry_run` and `config_mode` included |
 | `test_the_operational_hash_can_be_recomputed_from_the_document` | The ledger's `profile_hash` comes out of the document's blocks: one projection (`to_plain`) for the hash and the record, so the two cannot drift apart |
 | `test_the_same_profile_renders_the_same_document` | Rendering is deterministic and JSON-serialisable — the precondition for a content id |

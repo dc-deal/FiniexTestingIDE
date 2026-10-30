@@ -43,26 +43,10 @@ position it protected was closed by another route is a naked order at the venue.
 
 | | resting orders | open positions |
 |---|---|---|
-| **Live adapter, `orders: cancel`** (default) | cancelled AT the venue (in a dry run: in the `DryRunOrderSimulator`, which stands where the venue would) + `EXPIRED` record **only where the venue CONFIRMED the cancel** — an unconfirmed one is reported into the session error pot and deliberately left unrecorded, because `EXPIRED` is a claim about the VENUE and we did not obtain one (#505). **A protective order (#503) is exempt entirely** | **left open**, reported and valued |
+| **Live adapter, `orders: cancel`** (default) | cancelled AT the venue (in a dry run: in the `DryRunOrderSimulator`, which stands where the venue would) + `EXPIRED` record **only where the venue CONFIRMED the cancel** — an unconfirmed one is reported into the session error pot and deliberately left unrecorded, because `EXPIRED` is a claim about the VENUE and we did not obtain one (#505). | **left open**, reported and valued |
 | **Live adapter, `orders: leave`** | left at the venue, and **not** expired locally — an order that can still fill is not finished | left open |
 | **Mock** | same code path, with nothing to cancel — no resting type passes pre-flight | left open |
 | **Simulation** | always expired — there is no venue to leave them at, so `cancel_orders` is accepted only for the shared contract | left open |
-
-### 2b · The one order the policy does not govern (#503)
-
-A **protective order** — the STOP the framework places at the venue for a declared `stop_loss` —
-is **left standing at session end whatever `session_end.orders` says**, and logged as such.
-
-The reason is the pair a session can actually start with. `orders: cancel` is the default and
-`positions: leave` is the only position policy, so the shipped combination cancels every resting
-order and keeps every position. Applied to a protective order that is the exact inversion of its
-purpose: the protection would be withdrawn at precisely the moment the bot stops looking, leaving
-an open position with a level enforced by a process that has ended.
-
-The warning above still holds and is the other half of it: a stop left standing after its position
-is gone is a naked order at the venue. That is why a close by any other route cancels the
-protective order FIRST and waits for the confirmation before closing — the orphan is prevented
-where it would be created, not cleaned up at the end.
 
 ### 3 · What a position IS
 

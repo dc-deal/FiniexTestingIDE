@@ -462,9 +462,8 @@ new deployment the operator asked for is only said.
 ## What the venue could do, and why it does not here
 
 Kraken offers the mirror of the ping: a dead man's timer that cancels the account's orders when
-the client stops refreshing it. It is not armed, deliberately — it would cancel a stop the venue
-holds exactly when the stop is needed. The reasoning is in
-[Protective Levels](../architecture/protective_levels.md), section 7.
+the client stops refreshing it. It is not armed; see
+[What a Venue Holds](../architecture/venue_order_features.md), *The venue's dead man's timer*.
 
 ## Related
 

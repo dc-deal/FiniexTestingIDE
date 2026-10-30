@@ -236,6 +236,7 @@ class BatchOrchestrator:
             app_config=self._app_config_manager,
             requirements_collector=self._requirements_collector,
             live_stats=self._live_stats_coordinator,
+            feature_exception_held_narrow=not scenario_set.is_in_sweep(),
         )
 
         # Create display (if monitoring enabled)

@@ -29,10 +29,6 @@ class PhaseState(StrEnum):
     SUBMIT = 'submit'                # ready to submit the (next) order
     AWAIT_FILL = 'await_fill'        # order submitted, waiting for fill/reject/timeout
     POST_FILL_WAIT = 'post_fill_wait'  # settle window after a fill
-    # #503 — the entry filled; waiting for the venue to confirm the protective order the
-    # framework placed for it. A distinct state because a position that is open but not
-    # yet protected is exactly the window the feature exists to close.
-    AWAIT_PROTECTION = 'await_protection'
     CLOSE = 'close'                  # ready to close / cancel
     POST_CLOSE_WAIT = 'post_close_wait'  # settle window after a close/cancel
     DONE = 'done'                    # finished (see outcome)
@@ -95,9 +91,6 @@ class PhaseAction:
         price: Limit price for SUBMIT_LIMIT / MODIFY_LIMIT
         order_id: Target order id for CANCEL / MODIFY_LIMIT
         close_fraction: Fraction of a position to close for CLOSE_PARTIAL (0..1)
-        stop_loss: Protective level to DECLARE on the resulting position (#503). The
-            framework turns it into an order at the venue where the profile opts in —
-            which is the only way a declared level ever leaves this process
         reason: Human-readable narration for logs and the recorder
     """
     kind: PhaseActionKind
@@ -107,7 +100,6 @@ class PhaseAction:
     price: Optional[float] = None
     order_id: Optional[str] = None
     close_fraction: Optional[float] = None
-    stop_loss: Optional[float] = None
     reason: str = ''
 
 

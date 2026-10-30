@@ -8,7 +8,7 @@ executor and the broker, no data and no run.
 
 A venue's API holds a stop or a target for a position or it does not, and the framework does not
 rebuild what it lacks. A level nothing holds reads like protection nobody provides, so the answer
-comes before the run. The check sits in three places that must give one answer in one sentence,
+comes before the run. The check sits in several places that must give one answer in one sentence,
 and whatever gets past them is refused at order time.
 
 What this file does not cover: a logic's own exits, which
@@ -23,9 +23,14 @@ which its own suite holds.
 | `TestALogicHasToAnswer` | a logic that does not override is refused; one keeping its own exits declares none; the probe declares what its sequences send, none in its own-exit mode; the field study declares its stop only with the protective phase |
 | `TestTheSentence` | it names the logic, the venue and the way out; only a backtest is told of the exception |
 | `TestTheStartRefuses` | a declared feature the venue lacks; a pipeline that does not carry it; an exception lets a backtest through, but only for the feature it names |
-| `TestAnUndeclaredLevelIsRefusedAtOrderTime` | an order and all three modifies are refused with `order_feature_not_declared`; removing a level or leaving it alone passes; no cooldown follows |
-| `TestTheBatchRefusesInItsMainProcess` | the scenario is excluded, the others run; the exception lets it through; an exception nothing needs, or that the venue holds anyway, is refused; one scenario needing it is enough for the set |
+| `TestAnUndeclaredLevelIsRefusedAtOrderTime` | an order and every modify are refused with `order_feature_not_declared`; removing a level or leaving it alone passes; no cooldown follows |
+| `TestTheBatchRefusesInItsMainProcess` | the scenario is excluded, the others run; the exception lets it through; an exception nothing needs, or that the venue holds anyway, is refused; one scenario needing it is enough for the set, even one excluded for its own reason; it is warned about before the run; a need that cannot be told leaves the exception unjudged; a sweep does not judge it per combination and still refuses what a venue lacks |
+| `TestTheExceptionThroughARealBatch` | a real batch on a set declaring it: the scenario runs, and the header, the report's warning and the ledger row record it |
 | `TestTheSetDeclaresTheException` | it reaches every scenario; an unknown name and a misspelt key are refused |
+| `TestARefusedModifyLeavesATrace` | a refused modify reaches the executor, is logged once per feature in both account models, and removing a level is not reported |
+| `TestALiveExecutorHoldsNoLevel` | the backstop: a level on an order, a position or a stop order is refused, both account models, and removing one is not; a breached price closes nothing on its own |
+| `TestASimulationEnforcesTheLevelsPositionsCarry` | a stop and a target fill AT the level, and count |
+| `TestAStoredBookWithALevelIsRefused` | a stop resting at the venue and a level on a position are named with what to do; a clean book passes, and one written before the rebuilt stop went still loads; the load carries the refusal and keeps the book readable; a malformed book reads as unreadable instead of crashing |
 | `TestItIsRecorded` | the run header serves the values; the ledger row says it over all scenarios, and is empty without one; the column is declared with how it combines |
 | `TestASessionCannotDeclareIt` | the key in an AutoTrader profile is refused |
 

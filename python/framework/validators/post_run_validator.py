@@ -22,6 +22,7 @@ from python.framework.reporting.builders.robustness_report_builder import (
 )
 from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.config_types.data_origin_config_types import OriginClass
+from python.framework.types.config_types.robustness_config_types import RobustnessMetric
 from python.framework.types.data_deficiency_types import (
     DEFICIENCY_DECLARATIONS,
     DataDeficiency,
@@ -150,19 +151,20 @@ class PostRunValidator:
 
     def _check_features_beyond_venue(self) -> None:
         """
-        Warn when the run used order features its venue's API does not hold (#625).
+        Warn when the run allowed order features its venue's API does not hold (#625).
 
         The set declared them, so this is not a fault — but the run is not what a session on
         that venue would do, and a reader of its report has to be told every time.
         """
         names = sorted({feature.value for scenario in self._batch.single_scenario_list
+                        if scenario.is_valid()
                         for feature in scenario.features_beyond_venue})
         if not names:
             return
         self._add('features_beyond_venue', ValidationDomain.SETUP, (
-            f"BEYOND THE VENUE — this run used {', '.join(names)}, which its scenario set "
+            f"BEYOND THE VENUE — this run allowed {', '.join(names)}, which its scenario set "
             f'declared as an exception\n'
-            f"  → A session on a venue whose API does not hold them cannot do this, so the "
+            f'  → A session on a venue whose API does not hold them cannot do this, so the '
             f"run's result does not predict one, and a certificate refuses it."))
 
     def _check_data_version(self) -> None:
@@ -569,6 +571,18 @@ class PostRunValidator:
                 f'ROBUSTNESS: only {report.distribution.window_count} window(s) '
                 f'(< {config.min_windows}) — the distribution is statistically weak; add more '
                 f'windows before trusting it.'))
+
+        # A window with no R counts as 0.0 for this metric, so a verdict would rest on a number
+        # nobody measured.
+        if report.metric == RobustnessMetric.EXPECTANCY.value:
+            unmeasured = [window.name for window in report.windows if window.expectancy is None]
+            if unmeasured:
+                self._add('robustness_metric_unmeasured', ValidationDomain.ROBUSTNESS, (
+                    f'ROBUSTNESS: verdict suppressed — {len(unmeasured)} of '
+                    f'{len(report.windows)} window(s) have no R, so expectancy was not measured '
+                    f'there and they count as 0.0. A logic keeping its own exits has none; use '
+                    f'the metric net_pnl or equity_return_pct.'))
+                return
 
         # Trust gate: block-splitting distortion makes the per-window numbers artifacts — of a
         # closed-trade metric. A metric that values what is still open misses nothing at the edge.

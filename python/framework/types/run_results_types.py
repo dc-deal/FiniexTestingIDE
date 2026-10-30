@@ -24,7 +24,7 @@ class SweepContext:
     """Sweep tagging threaded into a single combination's batch run."""
     sweep_id: str
     sweep_params: Dict[str, Any]    # the combination's concrete grid point {path: value}
-    objective: str = 'expectancy'   # the spec's ranking objective (recorded so report defaults to it)
+    objective: str = 'net_pnl'      # the spec's ranking objective (recorded so report defaults to it)
     maximize: bool = True           # the spec's ranking direction
     # How many combinations the SEARCH spans (#32). A property of the search rather than of any
     # run in it, which is why it has to travel with the tagging: no run can count its siblings.

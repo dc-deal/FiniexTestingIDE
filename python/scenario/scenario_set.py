@@ -133,6 +133,8 @@ class ScenarioSet:
         self._disabled_count = scenario_config.disabled_count
         self._run_purpose = scenario_config.run_purpose
         self._features_beyond_venue = scenario_config.features_beyond_venue
+        self._sweep_id = sweep_id
+
         # Where this run's logs land, from config (file_logging.run_logs) — the same paths the
         # API reads. A sweep's combinations nest under their sweep id, a standalone run does
         # not: a directory level, while the run TYPE stays `simulation` for both.
@@ -324,6 +326,15 @@ class ScenarioSet:
     def get_failed_scenarios(self) -> List[SingleScenario]:
         """Get all scenarios that passed validation."""
         return [scenario for scenario in self._scenarios if not scenario.is_valid()]
+
+    def is_in_sweep(self) -> bool:
+        """
+        Whether this set is one of a sweep's: its base or one of its combinations.
+
+        Returns:
+            True when it was built with a sweep id
+        """
+        return self._sweep_id is not None
 
     def get_all_scenarios(self) -> List[SingleScenario]:
         """Get all scenarios that passed validation."""

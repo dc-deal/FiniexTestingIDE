@@ -67,7 +67,7 @@ def get_sweep(sweep_id: str) -> SweepDetailResponse:
     # The spec's own objective and direction were recorded with the runs — ranking by anything
     # else here would answer a question the sweep did not ask.
     head = rows[0]
-    objective = head.sweep_objective or 'expectancy'
+    objective = head.sweep_objective or 'net_pnl'
     maximize = head.sweep_maximize if head.sweep_maximize is not None else True
     combinations = rank_per_currency(rows, objective, maximize=maximize)
     return SweepDetailResponse(

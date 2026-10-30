@@ -15,12 +15,10 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from python.framework.logging.global_logger import GlobalLogger
 from python.framework.reporting.builders.fill_slippage import derive_fill_slippage
 from python.framework.reporting.builders.pending_orders_report_builder import pending_orders_row
 from python.framework.testing.mock_broker_adapter import MockExecutionMode
 from python.framework.testing.mock_order_execution import MockOrderExecution
-from python.framework.trading_env.broker_config import BrokerConfig
 from python.framework.trading_env.live.live_trade_executor import LiveTradeExecutor
 from python.framework.types.live_types.live_execution_types import (
     BrokerOrderStatus,
@@ -29,13 +27,12 @@ from python.framework.types.live_types.live_execution_types import (
 from python.framework.types.live_types.live_request_types import QueryResponse
 from python.framework.types.live_types.reconciliation_types import BrokerOrder
 from python.framework.types.fill_slippage_types import SlippageReference
-from python.framework.types.trading_env_types.broker_types import BrokerType
+from python.framework.types.portfolio_types.portfolio_trade_record_types import CloseReason
 from python.framework.types.trading_env_types.order_event_types import (
     OrderEventType,
     OrderOperation,
 )
 from python.framework.types.trading_env_types.order_types import (
-    OpenOrderRequest,
     OrderAction,
     OrderDirection,
     OrderEndReason,
@@ -43,7 +40,6 @@ from python.framework.types.trading_env_types.order_types import (
     OrderStatus,
     OrderType,
 )
-from tests.autotrader.protective_levels.conftest import VenueHoldsProtectionMock
 from tests.framework.order_events.conftest import (
     ASK,
     BID,
@@ -51,7 +47,6 @@ from tests.framework.order_events.conftest import (
     live_session,
     market_order,
     order_steps,
-    record_events,
 )
 
 ACCOUNT_MODELS = pytest.mark.parametrize('spot_mode', [False, True], ids=['margin', 'spot'])
@@ -278,45 +273,6 @@ class TestAnAdoptedOrder:
         assert (stats.orders_submitted, stats.orders_adopted, stats.orders_executed) == (0, 1, 1)
 
 
-class TestAProtectiveOrder:
-    """Placed after the entry fills, cancelled before the close is sent — steps of its own."""
-
-    def test_a_close_cancels_the_protection_first_and_then_goes_out(self):
-        mock = MockOrderExecution(mode=MockExecutionMode.INSTANT_FILL)
-        executor = LiveTradeExecutor(
-            broker_config=BrokerConfig(
-                BrokerType.KRAKEN_SPOT,
-                VenueHoldsProtectionMock(mode=MockExecutionMode.INSTANT_FILL)),
-            initial_balance=100000.0,
-            account_currency='USD',
-            logger=GlobalLogger('OrderEventsProtective'),
-            venue_held_protection=True,
-        )
-        mock.feed_tick(executor, bid=50000.0, ask=50001.0)
-        events = record_events(executor)
-        executor.open_order(OpenOrderRequest(
-            symbol='BTCUSD', order_type=OrderType.MARKET, direction=OrderDirection.LONG,
-            lots=0.1, stop_loss=49000.0))
-        mock.await_submit_confirmation(executor)              # the entry fills
-        mock.await_submit_confirmation(executor)              # the venue takes the stop
-        position = executor.get_open_positions()[0]
-
-        executor.close_position(position.position_id)
-        mock.await_submit_confirmation(executor)              # the stop's cancel
-        mock.await_submit_confirmation(executor)              # the close
-
-        entry, protective, close = order_steps(events)
-        assert entry == ['submitted', 'accepted', 'filled']
-        assert protective == ['submitted', 'accepted', 'cancel_requested', 'cancelled']
-        assert close == ['submitted', 'accepted', 'filled']
-        protective_events = [e for e in events if e.order_type is OrderType.STOP]
-        assert {(e.action, e.position_id, e.direction) for e in protective_events} == {
-            (OrderAction.CLOSE, position.position_id, OrderDirection.LONG)}, (
-            'a protective order states the position it protects, and that position\'s side')
-        assert {e.end_reason for e in protective_events if e.end_reason} == {
-            OrderEndReason.PROTECTION_RELEASED}
-
-
 class TestACloseWhosePositionIsGone:
     """
     A close's answer can arrive after something else took its position — another close, a stop
@@ -438,14 +394,15 @@ class TestEachFillIsFoundAndMeasured:
         assert (slip.measured_against, slip.reference_price) == (
             SlippageReference.SUBMISSION_MID, submitted.submission_mid)
 
-    def test_a_stop_loss_exit_reads_how_far_below_its_level_it_sold(self):
-        """The simulation reads 0 here; a session the distance the market gave it — the gap a
-        parity check measures."""
+    def test_an_own_stop_exit_reads_how_far_below_its_level_it_sold(self):
+        """The distance the market gave it, against the level the logic kept itself."""
         mock, executor, events = live_session()
-        executor.open_order(market_order(stop_loss=49000.0))
+        executor.open_order(market_order())
         mock.await_submit_confirmation(executor)
         mock.feed_tick(executor, bid=BID, ask=ASK)                # the entry fills
-        mock.feed_tick(executor, bid=48900.0, ask=48902.0)        # the stop is breached
+        mock.feed_tick(executor, bid=48900.0, ask=48902.0)        # the logic's stop is breached
+        executor.close_position(executor.get_open_positions()[0].position_id,
+                                close_reason=CloseReason.SL_TRIGGERED, exit_level=49000.0)
         mock.await_submit_confirmation(executor)                  # the close goes out
         mock.feed_tick(executor, bid=48900.0, ask=48902.0)        # and fills at the bid
 

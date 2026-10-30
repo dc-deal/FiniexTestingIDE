@@ -66,7 +66,7 @@ def _trade_analytics(rows: List[TradeHistoryRow]) -> TradeAnalytics:
     return TradeAnalytics(
         currency=rows[0].currency if rows else '',
         trade_count=len(rows),
-        expectancy=_mean([r.r_multiple for r in r_rows]),
+        expectancy=_mean([r.r_multiple for r in r_rows]) if r_rows else None,
         avg_win_r=_mean(r_winners) if r_winners else None,
         avg_loss_r=_mean(r_losers) if r_losers else None,
         r_trade_count=len(r_rows),

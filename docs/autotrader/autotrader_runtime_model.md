@@ -241,12 +241,10 @@ instead of `RUNTIME ERROR — SESSION ABORTED`, the session log carries the reas
 summary reads `Shutdown: emergency (refused at the first tick)`, and the served warnings-errors
 outcome carries `refused_at_first_tick: true`. A restart a few seconds later closes it.
 
-It is not a promise that nothing reached the venue. The tick's bars are rendered after the
-executor's part of the tick, so the stop and take-profit check of that first tick has already run —
-a carried position whose level the tick crossed has a close on its way — and a heartbeat pass
-before the first tick may have run the decision. The block therefore names what the session had
-sent: `No order was submitted in this session and no stop or take-profit fired.`, or the orders and
-triggered closes with `check what the venue holds before a restart`.
+It is not a promise that nothing reached the venue: a heartbeat pass before the first tick may
+have run the decision. The block therefore names what the session had sent:
+`No order was submitted in this session.`, or the orders with `check what the venue holds before a
+restart`.
 Why it can happen at all: [Warmup History](../architecture/warmup_history.md), *The seam at the
 first tick*.
 

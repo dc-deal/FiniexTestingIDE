@@ -107,9 +107,6 @@ class Mt5Adapter(AbstractAdapter):
             iceberg_orders=False,  # Not supported by MT5
             hedging_allowed=self._hedging_allowed,
             partial_fills_supported=False,  # MT5 fills orders atomically
-            # False is not a gap: MT5 holds the level ON the position rather than as a
-            # separate order, which is a different mechanism and belongs to #209 (#503).
-            venue_held_protective_orders=False,
             # No trades query is built yet: HistoryDealsGetByOrder is #209's deal layer, and
             # declaring True before it exists sends the drift auditor to a method that raises.
             trade_level_reporting=False,

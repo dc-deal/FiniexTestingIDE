@@ -234,7 +234,7 @@ def _figures(rows: List[TradeHistoryRow], snapshot: PeriodSnapshot) -> RunSummar
         final_equity=snapshot.final_equity,
         open_position_count=snapshot.open_position_count,
         # --- risk-normalised and excursion figures, from the same single pass
-        expectancy=stats.expectancy if stats else 0.0,
+        expectancy=stats.expectancy if stats else None,
         avg_win_r=stats.avg_win_r if stats else None,
         avg_loss_r=stats.avg_loss_r if stats else None,
         r_trade_count=stats.r_trade_count if stats else 0,

@@ -194,19 +194,14 @@ class PositionClosedEvent:
     """
     A position closed completely. Delivered to on_position_closed().
 
-    Fires in BOTH pipelines on EVERY full close, not only on a venue-initiated one. Two
-    reasons it is not narrowed to #503's case: a live-only event is a parity break of the
-    same family the external-data contract forbids, and a strategy reacting to "my
-    position is gone" needs it whichever route closed it. Until now a full close emitted
-    nothing at all — the algo learned of it by noticing the position missing from
-    get_open_positions().
+    Fires in BOTH pipelines on EVERY full close: a live-only event is a parity break of the
+    same family the external-data contract forbids, and a strategy reacting to "my position
+    is gone" needs it whichever route closed it.
 
     Args:
         position_id: The position that closed
         direction: Position direction (LONG/SHORT)
         close_reason: Why it closed (SL_TRIGGERED, TP_TRIGGERED, MANUAL, ...)
-        requested_locally: False when the VENUE initiated it — a protective order the
-            venue held fired while nobody here asked for a close (#503)
         fill_price: Executed close price
         lots: Lots closed
         realized_pnl: Realised P&L of the close
@@ -216,7 +211,6 @@ class PositionClosedEvent:
     position_id: str
     direction: OrderDirection
     close_reason: CloseReason
-    requested_locally: bool
     fill_price: Optional[float]
     lots: Optional[float]
     realized_pnl: float

@@ -160,30 +160,6 @@ class PendingOrderExecutionState:
     cancel_end_reason: Optional[OrderEndReason] = None
     in_flight_query: bool = False
     last_polled_at_ms: float = 0.0
-    # How much of a VENUE-HELD protective order is already written into the position book
-    # (#503). It is the resolver's idempotency key: the venue reports the order's volume,
-    # value and fee as TOTALS for everything it executed so far — through several routes,
-    # and after a restart once more — and each step books what a total has grown by since
-    # the last one. Deliberately NOT fills.cumulative_filled_lots: that holds the executions
-    # booked, and the key also has to advance where nothing could be booked (the position
-    # already gone), or the same report would raise its error again on every poll. All three
-    # follow the BOOKING, and the position keeps a copy for the cold-start carry-over —
-    # a restart that forgot them would book a step a second time (#508).
-    venue_close_applied_lots: float = 0.0
-    # The fee booked for that volume, in the symbol's quote currency: the venue's figure, or
-    # the estimate where its answer carried none (#508)
-    venue_close_applied_fee: float = 0.0
-    # The part of it booked from the estimate that no total of the venue's has covered yet. The
-    # next total settles it — or finds it exceeded, the excess then staying booked until a later
-    # total above the books absorbs it — and that step's
-    # event says so: its fee is not what the total grew by (#508). In-session only, unlike the
-    # other three: a restart between an estimated step and the next total is rare, and the
-    # booking does not depend on this — the next total still books what it exceeds the books
-    # by. Only the sentence on that step's event is lost.
-    venue_close_estimated_fee: float = 0.0
-    # Lots times price booked for that volume. The venue reports one average price over all
-    # the order executed, and the next step's own price follows from it and this (#508).
-    venue_close_applied_value: float = 0.0
     # === Resolution of a lost write answer (#487) ===
     # `resolution_deadline is not None` IS the selector: the unresolved handler ARMS the
     # resolution and the scheduler drives it, so nothing has to scan for orders that "look
@@ -287,22 +263,10 @@ class PendingOrder:
     # The level an own exit fired at (#625): the logic's own stop or target, which the position
     # does not carry, so it travels with the close to the fill like the reason does
     exit_level: Optional[float] = None
-    # Which position this close order settles (#503). Empty on every close the strategy
-    # or the engine requests, where the order id IS the position id. Set on a protective
-    # order the VENUE holds: that one is minted from the order counter like any other
-    # order, because the wire key is derived from it and overloading the position id
-    # would collide with a restart's counter. So the position has to be named separately.
-    closes_position_id: Optional[str] = None
     # A close's POSITION direction, stamped when the close is registered, so its events still
     # name it once the position is gone — a close's fill can arrive after another close took
-    # the position (#362). Not `direction`: on a protective order that is its own trading side
+    # the position (#362)
     closed_position_direction: Optional[OrderDirection] = None
-    # Whether the position this ENTRY produces should get a protective order at the venue
-    # (#503). Resolved once at submit — profile default ⊕ per-order override — and carried
-    # here because the fill site sees the order, not the request that made it. An explicit
-    # field rather than a passenger in `order_kwargs`: that dict is splatted onto the
-    # adapter call, so anything added to it goes on the wire.
-    venue_held_protection: bool = False
     # The order-event stream's join key (#362): the `seq` of this order's submission — or
     # of its adoption, for an order a previous session sent. Every later event about the
     # order carries it, because `order_id` repeats across the closes of one position.
@@ -337,13 +301,10 @@ class PendingOrder:
             'lots': self.lots,
             'order_kwargs': serialize_value(self.order_kwargs),
             'close_lots': self.close_lots,
-            'closes_position_id': self.closes_position_id,
             'closed_position_direction': (
                 self.closed_position_direction.value if self.closed_position_direction else None),
-            'venue_held_protection': self.venue_held_protection,
             # Async operation state (#318)
             'in_flight_operation': self.execution_state.in_flight_operation.value if self.execution_state.in_flight_operation else None,
-            'venue_close_applied_lots': self.execution_state.venue_close_applied_lots,
             # Trade records (#326)
             'trades': [t.to_dict() for t in self.fills.trades],
             'cumulative_filled_lots': self.fills.cumulative_filled_lots,

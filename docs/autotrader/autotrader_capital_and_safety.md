@@ -8,7 +8,7 @@ The one sentence that organises all of it: **a venue reserves at PLACEMENT, our 
 FILL.** Everything below follows from the gap between those two instants.
 
 **Not here:** how an order reaches the venue — `docs/architecture/live_execution_architecture.md`.
-The protective-level contract itself — `docs/architecture/protective_levels.md`. The session-end
+What a venue holds for a position — `docs/architecture/venue_order_features.md`. The session-end
 policy — `docs/architecture/session_end_policy.md`.
 
 ## Capital — what the bot may spend (#489)
@@ -52,7 +52,7 @@ It mirrors the fill's OUTFLOW exactly, because an inflow needs no reserve:
 Fee and tick value come from the same helpers the fill uses (`_create_entry_fee` /
 `_create_exit_fee`, `_calculate_tick_value`), so a reserve and the eventual charge cannot
 drift apart. That holds because a close is a MARKET order today and therefore always a taker;
-a venue-held LIMIT exit (#503) would be reserved at one rate and charged at another unless the
+an exit resting as a LIMIT would be reserved at one rate and charged at another unless the
 value comes from the closing order. The price is
 the one the order will actually pay — a LIMIT its own, a STOP its trigger, a MARKET in transit
 the current ask — and an order nothing can price yet reserves **nothing** rather than a guessed
@@ -146,9 +146,8 @@ What the check does is graded by **consequence**, not by category:
 **Nothing here refuses the boot, and that is deliberate.** A refusal is not the safe outcome:
 
 - It leaves a state that is not "flat and safe" but **exposed and unmanaged**. This bot may hold
-  a spot position and a protective resting order, and a refusal abandons both at the venue with
-  nothing reconciling them — and on spot the SL/TP level lives in the very process that declined
-  to start.
+  a spot position and a resting order, and a refusal abandons both at the venue with nothing
+  reconciling them — and its stop and target live in the very process that declined to start.
 - It can **deadlock**: two sibling bots on one account each see the other's order, both refuse,
   neither runs. The condition is symmetric and nothing outside resolves it.
 - It can **loop**: a refused boot leaves the carry-over untouched and exits non-zero, so a
@@ -189,30 +188,22 @@ single-process bot on one spot account has none of those four escapes, which is 
 declared precondition defensible here — and why the semantics are argued on their own terms
 rather than borrowed.
 
-## Protective levels — who enforces a stop
+## Stops and targets — the logic's own
 
-A `stop_loss` or `take_profit` declared on an order is evaluated by **this process**, against the
-tick stream, in both pipelines. Since #503 the **stop** can additionally rest at the venue as an
-order of its own, so it survives this process dying — opt-in, default OFF
-(`autotrader.execution.venue_held_protection`).
-
-Only the stop, and only one of a declared pair: Kraken has no OCO, so the take profit stays with
-the local check — which is why the tick check stands down **per level**, never per position.
-
-**Full contract:** [protective_levels.md](../architecture/protective_levels.md) — the switch and
-its refusal, the order's whole life at the venue (amend, cancel-before-close, partial, session
-end, orphan), what the boot asks about a carried reference, and what has and has not been measured
-against a real account.
+A session holds no stop or target: Kraken's API takes none for a position, and the framework does not
+rebuild what a venue lacks. A logic keeps its levels itself and closes when the market reaches one, so
+a position is unprotected while the process is not running. The contract, and what a run refuses, are
+in [venue_order_features.md](../architecture/venue_order_features.md).
 
 ## Safety Circuit Breaker
 
-A soft-stop mechanism: while a configured risk threshold is exceeded, the tick loop replaces the decision's ACTION with FLAT. Whatever a strategy sends only on a BUY or SELL action is suppressed — an entry, and also a close or a reduction it expresses as an action. What a strategy sends from its own position management whatever the action — a close, a stop amend, a cancel, a re-price — still goes out, an order already resting can still fill, and the protective levels (SL, TP) keep working. The breaker closes nothing itself. A strategy that reduces by deciding SELL therefore keeps its full exposure for as long as the block holds.
+A soft-stop mechanism: while a configured risk threshold is exceeded, the tick loop replaces the decision's ACTION with FLAT. Whatever a strategy sends only on a BUY or SELL action is suppressed — an entry, and also a close or a reduction it expresses as an action. What a strategy sends from its own position management whatever the action — a close, a stop amend, a cancel, a re-price — still goes out, an order already resting can still fill, and the a logic's own exits keep working. The breaker closes nothing itself. A strategy that reduces by deciding SELL therefore keeps its full exposure for as long as the block holds.
 
 ### Behavior
 
 ```
 Tick rein
-  → executor.on_tick()    ← SL/TP checks run against the tick (see below)
+  → executor.on_tick()    ← prices, and the answers of the orders in flight
   → Workers → Decision    ← produces BUY / SELL / FLAT
   → [SAFETY CHECK]        ← evaluates thresholds against the account value (spot: the balances, holdings at mid; margin: balance + unrealised P&L)
   → if blocked: decision.action = FLAT  ← override: no order from the action, an action-driven close included

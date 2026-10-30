@@ -1,6 +1,6 @@
 {
   "base_scenario_set": "backtesting/trend_channel_reference_sweep_base.json",
-  "objective": "expectancy",
+  "objective": "net_pnl",
   "maximize": true,
   "grid": {
     "decision_logic_config.sl_mult": [

@@ -43,7 +43,6 @@ class _Session:
                 get_account_value=lambda: 489.35),
             get_current_price=self._price,
             get_open_positions=lambda: [],
-            get_protective_level_enforcement=lambda: SimpleNamespace(value='local'),
             get_active_orders_snapshot=lambda: ActiveOrdersSnapshot(),
             account_currency='USD',
             get_market_data_status=lambda: SimpleNamespace(is_stale=False),

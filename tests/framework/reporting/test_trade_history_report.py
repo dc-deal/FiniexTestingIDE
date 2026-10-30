@@ -154,6 +154,12 @@ class TestMetadata:
 
 
 class TestAnalytics:
+
+    def test_no_trade_with_an_r_leaves_expectancy_empty(self):
+        """A logic keeping its own stop: the position carried none, so nothing was measured."""
+        a = build_trade_history_report(_RUN_ID, _units([_trade(initial_risk=None)])).analytics[0]
+
+        assert a.expectancy is None and a.r_trade_count == 0 and a.trade_count == 1
     """#389 — R-multiple + pips per row, and the aggregate analytics block."""
 
     def test_r_multiple(self):

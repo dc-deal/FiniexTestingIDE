@@ -148,17 +148,14 @@ class LiveFieldStudy(AbstractAcceptanceStudy):
     @classmethod
     def get_required_order_features(cls, decision_logic_config: Dict[str, Any]) -> List[OrderFeature]:
         """
-        The stop its protective-level phase sends, when the configured sequence has that phase.
+        None: the study sets no level on an order or a position.
 
         Args:
             decision_logic_config: Decision logic configuration dict
 
         Returns:
-            STOP_LOSS for a sequence with the phase, else an empty list
+            An empty list
         """
-        for raw in decision_logic_config.get('phase_sequence', []):
-            if raw.get('phase_type') == PhaseType.PROTECTIVE_LEVEL.value:
-                return [OrderFeature.STOP_LOSS]
         return []
 
     @classmethod

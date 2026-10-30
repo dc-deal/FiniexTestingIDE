@@ -23,7 +23,7 @@ from fastapi.routing import APIRoute
 
 from python.api.api_auth_setup import setup_api_auth
 from python.api.api_contract import API_CONTRACT_VERSION, API_PREFIX, CHANGES, CONTRACT_HEADER
-from python.api.api_error_catalog import IDENTITY_UNBOUND, api_error
+from python.api.api_error_catalog import ARTIFACT_UNREADABLE, IDENTITY_UNBOUND, api_error
 from python.api.api_route_documents import describes
 from python.api.head_request_middleware import HeadRequestMiddleware
 from python.api.link_header_middleware import LinkHeaderMiddleware
@@ -45,6 +45,7 @@ from python.framework.constants.recorded_stream_constants import UNIT_RECORDED_S
 from python.framework.docs_search.docs_corpus import DOCS_ROOT
 from python.framework.docs_search.docs_search_index import docs_search_index
 from python.framework.exceptions.api_errors import ApiException
+from python.framework.exceptions.report_artifact_errors import ReportArtifactUnreadableError
 from python.framework.types.api.api_identity_types import ApiConsumerIdentity
 from python.framework.types.api.api_types import (
     ApiContractResponse,
@@ -278,6 +279,14 @@ def create_app() -> FastAPI:
             content={'error': exc.error, 'detail': exc.detail},
             headers=exc.headers,
         )
+
+    @app.exception_handler(ReportArtifactUnreadableError)
+    async def artifact_unreadable_handler(
+        request: Request, exc: ReportArtifactUnreadableError,
+    ) -> JSONResponse:
+        # One answer for every route that reads a stored artifact: a record that no longer matches
+        # its model is a known condition, never an unexplained server error
+        return await api_exception_handler(request, api_error(ARTIFACT_UNREADABLE, reason=str(exc)))
 
     @app.get('/api/v1/health', response_model=HealthResponse,
              openapi_extra=describes('server'))

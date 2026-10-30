@@ -108,14 +108,14 @@ def _window_row(
     summary = build_run_summary(run_id, portfolio, trade, execution)
     ccy = summary.currencies[0] if summary.currencies else None
 
-    expectancy = ccy.expectancy if ccy else 0.0
+    expectancy = ccy.expectancy if ccy else None
     net_pnl = ccy.net_pnl if ccy else 0.0
     equity_return = equity_return_pct(portfolio.units[0]) if portfolio.units else None
     # One entry per member, so a metric added without its value fails here rather than
-    # silently ranking by another one. A window with no starting value to measure against
-    # ranks as 0.0; its row keeps the None.
+    # silently ranking by another one. A window with nothing to measure the metric over ranks as
+    # 0.0; its row keeps the None, and the validator refuses a verdict resting on such a window.
     metric_value = {
-        RobustnessMetric.EXPECTANCY: expectancy,
+        RobustnessMetric.EXPECTANCY: expectancy if expectancy is not None else 0.0,
         RobustnessMetric.NET_PNL: net_pnl,
         RobustnessMetric.EQUITY_RETURN_PCT: equity_return if equity_return is not None else 0.0,
     }[metric]

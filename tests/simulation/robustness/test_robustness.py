@@ -221,7 +221,7 @@ class TestParameterConstancy:
 class TestRobustnessConfig:
     def test_defaults(self):
         c = RobustnessConfig()
-        assert c.enabled is False and c.metric == RobustnessMetric.EXPECTANCY
+        assert c.enabled is False and c.metric == RobustnessMetric.NET_PNL
         assert c.oos_split == 0.3 and c.min_windows == 3
 
     def test_rejects_unknown_key(self):
@@ -313,6 +313,21 @@ class TestPostRunVerdict:
         b = _batch([10.0, 10.0, 10.0, 1.0, 1.0, 1.0], roles=self._ROLES_6)
         out = _verdicts(b)
         assert 'robustness_overfit' in out and 'OVERFIT' in out['robustness_overfit']
+
+    def test_a_window_with_no_r_gives_no_verdict_on_expectancy(self):
+        """It counts as 0.0 there, and a verdict would rest on a number nobody measured."""
+        b = _batch([10.0, 10.0, 10.0, 1.0, 1.0, 1.0], roles=self._ROLES_6,
+                   metric=RobustnessMetric.EXPECTANCY)
+
+        out = _verdicts(b)
+
+        assert 'robustness_metric_unmeasured' in out and '6 of 6' in out['robustness_metric_unmeasured']
+        assert 'robustness_overfit' not in out
+
+    def test_the_same_windows_on_net_pnl_are_judged(self):
+        b = _batch([10.0, 10.0, 10.0, 1.0, 1.0, 1.0], roles=self._ROLES_6)
+
+        assert 'robustness_metric_unmeasured' not in _verdicts(b)
 
     def test_robust_emits_no_overfit(self):
         b = _batch([10.0, 10.0, 10.0, 9.0, 9.0, 9.0], roles=self._ROLES_6)

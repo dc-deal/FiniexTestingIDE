@@ -285,7 +285,7 @@ class CautiousMacd(AbstractDecisionLogic):
         """
         Programmed boot reaction (#493): decline, deliberately.
 
-        This logic places protective STOP orders whose level follows the MACD state it was in
+        This logic places STOP entries whose level follows the MACD state it was in
         when it armed them — and that state is not persisted. A stop it finds resting after a
         restart therefore sits at a level this session cannot justify, so claiming to have
         accounted for it would be a claim about a decision that is gone.

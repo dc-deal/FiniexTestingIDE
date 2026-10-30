@@ -2,12 +2,12 @@
 FiniexTestingIDE - Order Feature Validation (#625)
 
 A decision logic declares the order features it uses, and a run refuses what its venue's API does
-not hold. The same answer and the same sentence are needed in three places — the batch's main
+not hold. The same answer and the same sentence are needed wherever a run starts — the batch's main
 process, the scenario's own start and the session's — so they are written once here. Each returns
 what is short or a message; raising stays with the caller, as in the hook validators.
 """
 
-from typing import Collection, Iterable, List, Optional
+from typing import Collection, Iterable, List, Optional, Sequence
 
 from python.framework.types.trading_env_types.order_types import OrderCapabilities, OrderFeature
 
@@ -66,3 +66,19 @@ def order_feature_refusal(
         remedy += (', or declare them under features_beyond_venue in the scenario set — recorded '
                    'with the run, and refused by a certificate')
     return f'❌ {logic_name} declares {declared} — {what}.\n   → {remedy}.'
+
+
+def undeclared_feature_sentence(undeclared: Sequence[OrderFeature]) -> str:
+    """
+    Say why a level its logic did not declare is refused at order time.
+
+    Args:
+        undeclared: The features it carries undeclared
+
+    Returns:
+        The sentence, naming each feature and the way out
+    """
+    names = ', '.join(feature.value for feature in undeclared)
+    return (f'{names} sent but not declared in get_required_order_features() — the start '
+            f'checks only what a logic declares, so nothing has confirmed that the venue '
+            f'holds it. Declare it, or keep the level in the logic (OwnExitLevels)')

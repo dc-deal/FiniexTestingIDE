@@ -306,7 +306,6 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         broker_ref: Optional[str],
         order_kwargs: Optional[Dict] = None,
         submission: Optional[SubmissionMetadata] = None,
-        venue_held_protection: bool = False,
         client_order_id: Optional[str] = None,
         entry_time: Optional[datetime] = None,
     ) -> str:
@@ -330,8 +329,6 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
             submission: Submission-moment snapshot for the SLIPPAGE audit
                         channel (#340/#345). None when no tick is in scope
                         (cold-start, heartbeat-only path).
-            venue_held_protection: Whether the resulting position should get a protective
-                        order at the venue (#503) — resolved at submit, read at fill
             client_order_id: The wire key this order is sent under (#487). Recorded so the
                         reconciler and the resolution path read it instead of re-deriving it
             entry_time: The submission on the canonical clock, which only the executor holds.
@@ -360,7 +357,6 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
             entry_time=entry_time,
             order_kwargs=order_kwargs or {},
             submission=submission if submission else SubmissionMetadata(),
-            venue_held_protection=venue_held_protection,
         )
 
         self.store_order(pending)
@@ -1190,7 +1186,7 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
             if len(matches) > 1:
                 # Several orders carry our key. Picking one would be a guess about which, and
                 # answering "none" would read as "the venue never took it" — a verdict that
-                # books the order undelivered and sends a close parked behind it. A FAILED read
+                # books the order undelivered. A FAILED read
                 # is what this is: the resolution asks again, and its ceiling ends the question.
                 self._http_inbox.put(OrderResolveResponse(
                     order_id=job.order_id,

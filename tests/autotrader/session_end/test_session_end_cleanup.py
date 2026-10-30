@@ -29,10 +29,8 @@ from python.framework.types.trading_env_types.order_types import (
     OrderInitiator,
     OrderStatus,
     OrderType,
-    RejectionReason,
 )
 from tests.autotrader.live_executor.conftest import AcknowledgingVenueMock
-from tests.autotrader.protective_levels.conftest import VenueHoldsProtectionMock
 
 ACCOUNT_MODELS = pytest.mark.parametrize('spot_mode', [False, True], ids=['margin', 'spot'])
 
@@ -383,7 +381,6 @@ def _live_executor(venue, spot_mode: bool) -> LiveTradeExecutor:
         initial_balance=100000.0,
         account_currency='USD',
         logger=GlobalLogger('SessionEndCancel'),
-        venue_held_protection=True,
         session_key='test',
         spot_mode=spot_mode,
         initial_balances={'USD': 100000.0, 'BTC': 0.0} if spot_mode else None,
@@ -471,40 +468,6 @@ class TestACancelAlreadyOnItsWay:
         assert [o.status for o in _endings(executor)] == [OrderStatus.EXECUTED], (
             'the venue bought the coin — an unaccounted record would leave it off the books')
         assert len(executor.get_open_positions()) == 1
-
-    @ACCOUNT_MODELS
-    def test_a_close_waiting_for_its_protective_cancel_is_abandoned(self, spot_mode):
-        """
-        Positions are left to the next session, and nothing would read a close sent now.
-
-        The protective order's cancel was carried out and its answer is read at the end — it
-        must not release the close that waited for it.
-        """
-        venue = VenueHoldsProtectionMock(mode=MockExecutionMode.INSTANT_FILL)
-        executor = _live_executor(venue, spot_mode)
-        executor.open_order(OpenOrderRequest(
-            symbol='BTCUSD', order_type=OrderType.MARKET, direction=OrderDirection.LONG,
-            lots=0.01, stop_loss=55000.0))
-        mock = MockOrderExecution()
-        mock.feed_tick(executor, bid=59999.0, ask=60001.0)
-        mock.await_submit_confirmation(executor)
-        position = executor.get_open_positions()[0]
-        assert position.protective_broker_ref, 'fixture: the venue holds the stop'
-        executor.close_position(position.position_id)
-        executor.get_request_processor().flush_outbox()   # carried out; the answer is unread
-        submitted = executor.get_execution_stats().orders_submitted
-
-        executor.finish_remaining_orders(cancel_orders=True)
-
-        assert executor.get_execution_stats().orders_submitted == submitted, (
-            'a close was sent while the session ended')
-        assert len(executor.get_open_positions()) == 1
-        withheld = [o for o in executor.get_order_history()
-                    if o.rejection_reason is RejectionReason.CLOSE_WITHHELD]
-        assert len(withheld) == 1, 'the close that was asked for ends with a row'
-        protective = [o for o in _endings(executor) if o.status is OrderStatus.CANCELLED]
-        assert len(protective) == 1, 'the protective order ended at the venue, and says so'
-
 
 class TestTheEmergencyIsNotFoldedIn:
     """

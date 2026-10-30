@@ -1,0 +1,53 @@
+{
+  "scenario_set_name": "order_features_no_exception",
+  "run_purpose": "fixture",
+  "description": "The same logic with no exception: refused before any data is loaded.",
+  "global": {
+    "strategy_config": {
+      "decision_logic_type": "CORE/test_probes/deterministic_probe",
+      "worker_instances": {
+        "probe_worker": "CORE/test_probes/sample_probe_worker"
+      },
+      "workers": {
+        "probe_worker": {
+          "periods": {
+            "M5": 1
+          }
+        }
+      },
+      "decision_logic_config": {
+        "lot_size": 0.001,
+        "trade_sequence": [
+          {
+            "tick_number": 10,
+            "direction": "LONG",
+            "hold_ticks": 10000,
+            "lot_size": 0.001,
+            "stop_loss": 88964.0
+          }
+        ]
+      }
+    },
+    "execution_config": {},
+    "trade_simulator_config": {},
+    "stress_test_config": {}
+  },
+  "scenarios": [
+    {
+      "scenario_name": "declared_stop",
+      "symbol": "BTCUSD",
+      "data_broker_type": "kraken_spot",
+      "start_date": "2026-01-25T02:19:46+00:00",
+      "max_ticks": 3000,
+      "enabled": true,
+      "strategy_config": {},
+      "execution_config": {},
+      "trade_simulator_config": {
+        "balances": {
+          "USD": 10000.0,
+          "BTC": 0.0
+        }
+      }
+    }
+  ]
+}

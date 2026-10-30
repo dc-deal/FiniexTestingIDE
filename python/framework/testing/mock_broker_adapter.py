@@ -262,8 +262,6 @@ class MockBrokerAdapter(AbstractAdapter):
             hedging_allowed=False,
             partial_fills_supported=False,
             trade_level_reporting=True,
-            # No venue at all, so nothing can rest at one (#503).
-            venue_held_protective_orders=False,
             # Like Kraken, the answer that reports a fill carries its fee — where the broker's
             # fee model charges one per fill at all; a spread broker's does not (#508).
             fee_report=(FeeReport.STATUS_ANSWER if self._charges_fee_per_fill()

@@ -88,6 +88,7 @@ from python.framework.decision_logic.abstract_decision_logic import AbstractDeci
 from python.framework.discoveries.signal_coverage.signal_scenario_info import SignalScenarioInfo
 from python.framework.exceptions.code_identity_errors import CodeIdentityCaptureError
 from python.framework.exceptions.live_execution_errors import StartupRefusedError
+from python.framework.exceptions.persistence_errors import CarriedLevelError
 from python.framework.exceptions.swap_errors import SwapModeNotImplementedError
 from python.framework.exceptions.warmup_history_errors import WarmupHistoryRefusedError
 from python.framework.logging.scenario_logger import ScenarioLogger
@@ -529,6 +530,13 @@ class AutotraderMain:
                     f'trace is in autotrader_global.log; fix the cause, then start again.'
                 ) from capture_failure
 
+            # === A STORED LEVEL (#625) ===
+            # Nobody would enforce it. Read with the carry-over, refused here for the same reason as
+            # the code identity above: it ends as STARTUP FAILED with a ledger row and an alert, and
+            # exits 2, which a supervisor does not restart. A refused boot leaves the book as it is.
+            if self._carried_load is not None and self._carried_load.level_refusal:
+                raise CarriedLevelError(self._carried_load.level_refusal)
+
             self._setup_signal_handlers()
 
             # === DATA PACKAGE (mock replay, #438) ===
@@ -818,18 +826,16 @@ class AutotraderMain:
         if self._tick_loop_started and isinstance(error, WarmupHistoryRefusedError):
             # #588: the warmup seam could not be closed at the first tick. That is a refusal
             # rather than a crash, and the console, the session log and the summary say so.
-            # The seam closes where the tick's bars are rendered — after the executor's part
-            # of that tick, whose stop and take-profit check can send a close, and after any
-            # heartbeat pass before it, which can run the decision. So the block says what did
-            # not run on the tick and names what the session had sent by then.
+            # The seam closes where the tick's bars are rendered, after any heartbeat pass before
+            # it, which can run the decision. So the block says what did not run on the tick and
+            # names what the session had sent by then.
             self._refused_at_first_tick = True
             # #598: a restart a few seconds later closes it, so the supervisor may try again
             self._start_failure_transient = True
             stats = self._executor.get_execution_stats()
-            sent = self._describe_orders_before_refusal(
-                stats.orders_submitted, stats.sl_tp_triggered)
+            sent = self._describe_orders_before_refusal(stats.orders_submitted)
             self._session_logger.error(f'⛔ Refused at the first tick: {error}')
-            if stats.orders_submitted or stats.sl_tp_triggered:
+            if stats.orders_submitted:
                 self._session_logger.warning(sent)
             else:
                 self._session_logger.info(sent)
@@ -1278,28 +1284,21 @@ class AutotraderMain:
         print(f"{'=' * 60}\n")
 
     @staticmethod
-    def _describe_orders_before_refusal(orders_submitted: int, protective_closes: int) -> str:
+    def _describe_orders_before_refusal(orders_submitted: int) -> str:
         """
         Say what a session refused at its first tick had sent to the venue by then.
 
         Args:
-            orders_submitted: Orders this session submitted — adopted ones are not counted
-            protective_closes: Closes the stop and take-profit check triggered. It runs only on
-                a tick, so at a first-tick refusal every one of them is that tick's
+            orders_submitted: Orders this session submitted, a close among them — adopted ones
+                are not counted
 
         Returns:
             One sentence: nothing sent, or what was sent and what to check before a restart
         """
-        if not orders_submitted and not protective_closes:
-            return 'No order was submitted in this session and no stop or take-profit fired.'
-        sent = []
-        if orders_submitted:
-            sent.append(f'{orders_submitted} order(s) submitted in this session')
-        if protective_closes:
-            sent.append(f'{protective_closes} close(s) triggered by a stop or take-profit '
-                        f'on this tick')
-        return (f'⚠️ Before the refusal: {" · ".join(sent)} — check what the venue holds '
-                f'before a restart.')
+        if not orders_submitted:
+            return 'No order was submitted in this session.'
+        return (f'⚠️ Before the refusal: {orders_submitted} order(s) submitted in this session — '
+                f'check what the venue holds before a restart.')
 
     def _print_runtime_error(self, message: str) -> None:
         """Print a tick-loop runtime error to console. Aborts via emergency shutdown."""
@@ -1524,8 +1523,6 @@ class AutotraderMain:
                     spec.base_currency: self._executor.get_committed_funds(
                         spec.base_currency),
                 }
-                stats.protective_level_enforcement = (
-                    self._executor.get_protective_level_enforcement().value)
                 try:
                     bid, ask = self._executor.get_current_price(self._config.symbol)
                     stats.last_price = mid_price(bid, ask)

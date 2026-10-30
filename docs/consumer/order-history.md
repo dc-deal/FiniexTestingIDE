@@ -34,11 +34,6 @@ An order that ends without filling has a row for that ending too: its `status` s
 ended, and on a cancelled, expired or unaccounted row `initiator` and `end_reason` say who ended it
 and why.
 
-**A protective order is the exception, twice.** The stop or target this side places at the venue
-for a position carries an `order_id` of its own — `protect_` and the position's id — and it is not
-recorded `pending` when it is placed: its placement is in the
-[order-event stream](/api/v1/docs/order-events), and the history records only how it ended.
-
 **The last row under an `order_id` is not what became of the position.** It says how the latest of
 the orders under that id ended. What the position became is in
 [trade history](/api/v1/docs/trade-history) — each closed part, with `close_type` and
@@ -48,8 +43,8 @@ appears in neither.
 
 ## `order_id` is the position's id, so it repeats
 
-It is minted when the position opens and carried by every later order belonging to that position,
-a protective order excepted (above). It does not identify a row and it does not identify an order.
+It is minted when the position opens and carried by every later order belonging to that position.
+It does not identify a row and it does not identify an order.
 
 An executed row's `scenario_name` and `position_id` together name the same position as a trade
 row does. One counter per unit mints it and no id is used twice, so that pair is a reliable join
@@ -89,8 +84,7 @@ the time the backtest was executed. It is the moment of the event this row recor
 submission on a `pending` row, else the fill, the refusal, the cancel, the expiry.
 
 `order_type` is the type that was REQUESTED: a stop-limit order stays `stop_limit` after its stop
-triggered, a close is `market`, and an exit through a protective order the venue held carries that
-order's type.
+triggered, and a close is `market`.
 
 `direction`, `action`, `status`, `fee_source`, `order_type`, `close_type`, `rejection_reason`,
 `initiator`, `end_reason` and `slippage_measured_against` are closed vocabularies and appear in the
@@ -152,13 +146,13 @@ The `status` query parameter takes one of these values and matches it exactly.
 ## Who ended it, and why — `initiator` and `end_reason`
 
 On a cancelled, expired or unaccounted row, `initiator` says who ended the order — `strategy`,
-`framework` (this side: a timeout, the end of the run, a protective order no longer needed) or
+`framework` (this side: a timeout, the end of the run) or
 `venue` — and `end_reason` says why:
 
 | `end_reason` | The order ended because |
 |---|---|
 | `cancel_requested` | the strategy asked for the cancel |
-| `protection_released` | it was a protective order its position no longer needed at the venue: the position's close was going out, or its stop was withdrawn |
+| `protection_released` | only in a run recorded before contract 46: a stop the framework held at the venue was no longer needed |
 | `order_timeout` | it did not fill within the order timeout |
 | `resolution_ceiling` | its answer was lost, and the venue never named it however long it was asked |
 | `session_end` | the live session ended with the order still out |
@@ -178,7 +172,7 @@ set on a `denied` and on a `rejected` row. The vocabulary:
 insufficient_margin · insufficient_funds · invalid_lot_size · symbol_not_tradeable
 market_closed · invalid_price · order_type_not_supported · broker_error
 rejection_cooldown · stale_market_data · unaccounted_order · position_not_found
-close_withheld · remainder_below_minimum · order_feature_not_declared
+remainder_below_minimum · order_feature_not_declared
 ```
 
 Four of them are worth spelling out, because their names do not carry their meaning:
@@ -193,8 +187,6 @@ Four of them are worth spelling out, because their names do not carry their mean
   continue; only new entries stop.
 - **`position_not_found`** — a close for a position that is not held. In a backtest the simulated
   venue also refuses a close whose position was closed while the close was on its way.
-- **`close_withheld`** — the close was held back because the protective order resting over the
-  position could not be cancelled first, and a close beside a working stop can fill twice.
 
 An answer that never came is not a refusal: the [order events](/api/v1/docs/order-events) follow it
 as `unresolved` and `resolved`, and an order whose answer was never found ends `unaccounted`. Which

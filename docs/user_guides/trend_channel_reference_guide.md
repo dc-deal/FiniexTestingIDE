@@ -100,7 +100,7 @@ VS Code: the `🧪 Simulation: Trend Channel Reference (Robustness)` / `(Stop Br
 ## Parameter sweep
 
 A reference grid sweep ships alongside the bot — a worked example of the parameter-optimization
-harness ranking the risk geometry by expectancy:
+harness ranking the risk geometry by net P&L:
 
 ```bash
 # run the grid (sl_mult × tp_mult over a small EURUSD base set), then rank it
@@ -109,7 +109,8 @@ python python/cli/optimization_cli.py report <sweep_id>   # the run prints the s
 ```
 
 - Spec: `configs/sweeps/trend_channel_reference_grid.json` — varies
-  `decision_logic_config.sl_mult` × `decision_logic_config.tp_mult`, objective `expectancy`.
+  `decision_logic_config.sl_mult` × `decision_logic_config.tp_mult`, objective `net_pnl`. This logic
+  keeps its own exits, so its trades have no R-multiple and `expectancy` stays empty.
 - Base set: `configs/scenario_sets/backtesting/trend_channel_reference_sweep_base.json` (two
   EURUSD windows, kept small so the sweep runs quickly).
 - VS Code: `✨ Optimization: Trend Channel Reference Grid`.

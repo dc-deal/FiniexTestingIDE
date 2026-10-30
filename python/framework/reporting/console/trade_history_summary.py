@@ -381,8 +381,9 @@ class TradeHistorySummary(AbstractBatchSummarySection):
         a = analytics
         currency = a.currency
         print(f"\n   {renderer.bold('📐 TRADE ANALYTICS (#389):')}")
+        expectancy = f'{a.expectancy:+.3f} R' if a.expectancy is not None else 'n/a'
         print(
-            f'      Expectancy: {a.expectancy:+.3f} R  |  '
+            f'      Expectancy: {expectancy}  |  '
             f'R-trades: {a.r_trade_count}/{a.trade_count} (with a stop loss)')
         win_r = f'{a.avg_win_r:+.3f}' if a.avg_win_r is not None else 'n/a'
         loss_r = f'{a.avg_loss_r:+.3f}' if a.avg_loss_r is not None else 'n/a'

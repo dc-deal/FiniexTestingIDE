@@ -210,20 +210,22 @@ Used by `MockOrderExecution` utility (`python/framework/testing/mock_order_execu
 ### Flow
 
 ```
-modify_limit_order(order_id, new_price, new_sl, new_tp)
+modify_limit_order(order_id, new_price)
+    │
+    ├── 0. A level on the request? → ORDER_FEATURE_NOT_DECLARED, no broker call (#625)
     │
     ├── 1. Scan _active_limit_orders for order_id → broker_ref
     │      → Not found? → LIMIT_ORDER_NOT_FOUND
     │
     ├── 2. UNSET → None translation (adapter uses None=no change)
     │
-    ├── 3. adapter.modify_order(broker_ref, new_price, new_sl, new_tp)
+    ├── 3. adapter.modify_order(broker_ref, new_price)
     │      → Exception? → INVALID_PRICE
     │
     ├── 4. BrokerResponse.is_rejected?
     │      → Yes: INVALID_PRICE
     │
-    ├── 5. Update local shadow state (entry_price, order_kwargs SL/TP)
+    ├── 5. Update local shadow state (entry_price)
     │
     ├── 6. Update broker_ref if broker returns new ref (defensive; Kraken AmendOrder keeps it)
     │
@@ -232,9 +234,10 @@ modify_limit_order(order_id, new_price, new_sl, new_tp)
 
 ### Design Notes
 
-- **No local SL/TP validation** — broker handles validation server-side. Simulation validates locally against limit price; live delegates to broker.
+- **No SL/TP on a live order** — the executor refuses a level before any broker call, so there is
+  nothing to validate. A simulation validates a level locally against the limit price.
 - **Local shadow state update** — after successful broker modify, the `PendingOrder` in
-  `_active_limit_orders` is updated with new price/SL/TP values. This keeps the local state
+  `_active_limit_orders` is updated with the new price. This keeps the local state
   consistent for `get_active_orders_snapshot()` and `get_active_order_counts()`.
 - **Broker ref update** — Kraken uses `AmendOrder` (in-place), so the `broker_ref` stays the same across a modify. The swap path remains defensive for brokers that return a new ref on modify.
 - **UNSET sentinel** — The `_UnsetType`/`UNSET` pattern from `PortfolioManager` is translated to `None` at the adapter boundary. Adapters don't know about UNSET.
@@ -485,7 +488,7 @@ the submit response — so during submit-in-flight the order is locally visible 
 | **Submit** | | | | |
 | 1 | Submit in-flight | in list, `broker_ref=None`, `PENDING_SUBMIT` | maybe not received yet | counts as active; **not cancellable**; a cancel here → **deferred** (parked, fired on confirm) ✓ |
 | 2 | Submit resp = PENDING + txid | `broker_ref` set, RESTING; a parked cancel **fires now** | order resting (open) | normal; poll for fills |
-| 3 | Submit resp = REJECTED | removed, rejection recorded, `_rejected_flag` | never created | algo sees reject (sync / #348); parked cancel = no-op (order gone); a close parked behind a protective order's cancel goes out — nothing rests to race it |
+| 3 | Submit resp = REJECTED | removed, rejection recorded, `_rejected_flag` | never created | algo sees reject (sync / #348); parked cancel = no-op (order gone) |
 | 4a | Submit unanswered — **MARKET/CLOSE** (latency queue) | in the processor's dict, `broker_ref=None`, `PENDING_SUBMIT` | **UNKNOWN** — may exist | handed to the **#487** resolution, which asks the venue for it: named → the reference is restored and polling resumes; never taken → booked **`undelivered`**; still unknown at the ceiling → booked **`unaccounted`**, removed from the tracker, and new entries are blocked for the session. Nothing blames the venue for a lost answer (#362). The truth pull can never attribute it: `get_active_orders()` does not carry it |
 | 4b | Submit unanswered — **resting LIMIT** (World 2) | in `_active_limit_orders`, `broker_ref=None`, `PENDING_SUBMIT` | **UNKNOWN** — may exist | **no fill timeout** — it stays, deliberately (#473: a lost answer is not a refusal). It is not silent either: after `unresolved_report_after_s` it is reported ONCE into the session error pot as a standing condition (#505). The truth pull either ATTRIBUTES it by `cl_ord_id` (reference restored, polling resumes, a parked cancel is issued) or reports it as `unconfirmed` (**#355**); the #487 resolution may name it first, with the same consequences. Since the reconciler also counts it as in-flight while its reference is missing, an ordinary submit round trip no longer reads as "placed and forgotten" |
 | **Resting** | | | | |

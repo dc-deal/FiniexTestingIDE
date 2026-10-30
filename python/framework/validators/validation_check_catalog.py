@@ -263,6 +263,10 @@ VALIDATION_CHECKS: Tuple[ValidationCheckInfo, ...] = (
         'robustness_low_windows', 'Too few windows',
         'The robustness figures rest on fewer windows than the configured minimum.'),
     ValidationCheckInfo(
+        'robustness_metric_unmeasured', 'Expectancy not measured in some windows',
+        'Some windows have no trade with an R, so the metric has no value there and no verdict is '
+        'given. A logic keeping its own exits has none; use another metric.'),
+    ValidationCheckInfo(
         'robustness_low_trust', 'Block splitting distorts the windows',
         'Splitting the data into blocks distorted the windows beyond the trust limit, so no '
         'verdict is given.'),

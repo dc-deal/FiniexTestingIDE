@@ -73,7 +73,7 @@ class _FakeBrokerConfig:
 
     def get_order_capabilities(self) -> OrderCapabilities:
         # Kraken reports a fill's fee in the answer that says the order filled
-        return OrderCapabilities(fee_report=FeeReport.STATUS_ANSWER)
+        return OrderCapabilities(fee_report=FeeReport.STATUS_ANSWER, offered_order_features=frozenset())
 
     def get_frozen_config_id(self) -> str:
         return self._frozen_config_id

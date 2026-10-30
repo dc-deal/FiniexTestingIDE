@@ -220,9 +220,8 @@ session holds no list — each event goes to disk as it is recorded.
 - `ts_init` is the moment the main thread records the step — up to one heartbeat after the worker
   received the venue's answer. The exact receipt stamp belongs to the event-loop rebuild (#457).
   Live `in_flight_ms` is measured at the same moment, so it includes that wait too.
-- Live `partially_filled` is recorded only where a partial is booked: a protective order filled in
-  steps, and a venue ending after partial execution. A resting entry that fills in parts is observed
-  only when it fills (#342).
+- Live `partially_filled` is recorded only where a partial is booked: a venue ending an order after
+  partial execution. A resting entry that fills in parts is observed only when it fills (#342).
 - The mock venue reports the orders and balances a test seeded into it, not the ones a mock
   session placed or holds, so a mock session's broker-truth lines show what the test arranged —
   usually `[]` and `{}`.

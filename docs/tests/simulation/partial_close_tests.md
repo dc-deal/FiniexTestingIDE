@@ -107,7 +107,7 @@ ADAUSD 20.0) where MT5's round 0.01 barely can.
 | Class | What it holds |
 |---|---|
 | `TestTheRequestIsRefusedBeforeItReachesTheVenue` | the refusal fires, names its reason, carries the arithmetic, leaves the position untouched and sends nothing |
-| `TestAValidPartialStillGoesThrough` | the guard against overcorrecting — a valid partial, a full close and a close of exactly the position size all still work |
+| `TestAValidPartialStillGoesThrough` | the guard against overcorrecting — a close a few ULPs short of the whole position is a full close, as are a valid partial, a full close and a close of exactly the position size all still work |
 
 **The arithmetic worth knowing before reading them:** a valid partial needs BOTH the size sold and
 the size left behind to clear `volume_min`, so below `2 * volume_min` of position size no valid

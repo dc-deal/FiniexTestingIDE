@@ -123,10 +123,8 @@ while.
 
 **All four writes are covered, and three of them used to collapse.** `is_unresolved` was
 read in two places in the whole live layer; everything else treated "not rejected" as
-"accepted", so an unresolved cancel ran the entire success path — dropping an order the
-venue may still hold, clearing the protective stamp, and releasing the deferred close
-beside a stop that may still be resting. That is the double-fill the cancel-before-close
-ordering exists to prevent, reached through a transport fault instead of a race.
+"accepted", so an unresolved cancel ran the entire success path, dropping an order the
+venue may still hold.
 
 The rule is one sentence: **an unresolved write books NOTHING.** The local state stays as it
 was, `in_flight_operation` stays set so no second write races the first, and the resolution

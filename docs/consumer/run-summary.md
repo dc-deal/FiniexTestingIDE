@@ -111,9 +111,12 @@ See [nulls](/api/v1/docs/nulls) for how to render the absence, and
 
 ## The R figures, and when they are null
 
-`expectancy` is the mean R — the figure a sweep ranks on. `avg_win_r` and `avg_loss_r` are the
-mean winning and losing trade in R, and each is **null when there was no R-defined trade of that
-kind**: a run with no R-defined loser has no average loss in R, and `0.0` would claim one.
+`expectancy` is the mean R. It is **null when no trade of the run has an R**, as with a logic that
+keeps its own stop: the position carries none, so there is nothing to divide by. A run recorded
+before contract 46 may read `0.0` there with `r_trade_count` at 0, which means the same. `avg_win_r`
+and `avg_loss_r` are the mean winning and losing trade in R, and each is **null when there was no
+R-defined trade of that kind**: a run with no R-defined loser has no average loss in R, and `0.0`
+would claim one.
 
 `r_trade_count`, `r_win_count` and `r_loss_count` say how many trades the R figures rest on. A
 small count beside a striking expectancy is the thing to show your reader.

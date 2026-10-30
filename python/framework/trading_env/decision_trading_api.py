@@ -117,10 +117,6 @@ class DecisionTradingApi:
             features_beyond_venue: Features a backtest declared as a recorded exception, which
                 its venue's API need not hold (#625)
             logic_name: The Decision Logic as its configuration names it, for the refusal
-
-        Raises:
-            ValueError: If any required order type is not supported by broker
-            OrderFeatureRefusedError: If a declared feature cannot be held on this run
         """
         self._executor = executor
         self._capabilities = executor.broker.get_order_capabilities()
@@ -208,9 +204,6 @@ class DecisionTradingApi:
             required_features: What the logic declared
             features_beyond_venue: What a backtest declared as a recorded exception
             logic_name: The logic as its configuration names it
-
-        Raises:
-            OrderFeatureRefusedError: If a declared feature cannot be held on this run
         """
         venue_lacks = [feature for feature in features_the_venue_lacks(required_features, self._capabilities)
                        if feature not in features_beyond_venue]
@@ -261,8 +254,10 @@ class DecisionTradingApi:
         Returns:
             The refusal, or None when the modify may go on
         """
-        if not self._undeclared_features(stop_loss, take_profit):
+        undeclared = self._undeclared_features(stop_loss, take_profit)
+        if not undeclared:
             return None
+        self._executor.warn_undeclared_level(undeclared)
         return ModificationResult(
             success=False,
             rejection_reason=ModificationRejectionReason.ORDER_FEATURE_NOT_DECLARED,
@@ -295,7 +290,6 @@ class DecisionTradingApi:
         stop_loss: Optional[float] = None,
         take_profit: Optional[float] = None,
         comment: str = '',
-        venue_held_protection: Optional[bool] = None,
     ) -> OrderResult:
         """
         Send order to trading environment.
@@ -316,11 +310,6 @@ class DecisionTradingApi:
             stop_loss: Optional stop loss price level on resulting position
             take_profit: Optional take profit price level on resulting position
             comment: Order comment (e.g., strategy name)
-            venue_held_protection: Let the resulting position's stop_loss rest at the
-                venue as an order of its own, so it survives this process dying (#503).
-                None follows the profile; True/False overrides it for this order. Live
-                refuses it where the adapter cannot carry it; a backtest accepts it and
-                enforces the level itself, so an opted-in strategy stays runnable
 
         Returns:
             OrderResult with execution details
@@ -339,7 +328,6 @@ class DecisionTradingApi:
             stop_loss=stop_loss,
             take_profit=take_profit,
             comment=comment,
-            venue_held_protection=venue_held_protection,
         )
 
         undeclared = self._undeclared_features(stop_loss, take_profit)
@@ -639,9 +627,7 @@ class DecisionTradingApi:
             position_id: Position to check
 
         Returns:
-            True if a close order is in flight for this position — in a live
-            session also while it waits for the venue to cancel the position's
-            protective order
+            True if a close order is in flight for this position
         """
         return self._executor.is_pending_close(position_id)
 

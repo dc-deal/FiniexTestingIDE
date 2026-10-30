@@ -33,6 +33,29 @@ reads downwards from the version their fixtures hold until they reach the one be
 A test holds the newest heading in this log to the number the server answers with, so a version
 cannot ship without its entry.
 
+## Version 46 — 2026-10-30 (#625)
+
+A session holds no stop or target for a position any more, so the fields and values that said who held
+one are gone.
+
+- [Portfolio](/api/v1/docs/portfolio) and the state frames: `protective_level_enforcement` and
+  `take_profit_enforcement` are removed from the open-position rows. `stop_loss` and `take_profit`
+  stay: a backtest's position may carry one.
+- [Order history](/api/v1/docs/order-history) and [order events](/api/v1/docs/order-events): the
+  `end_reason` `protection_released` is no longer produced. A run recorded before this contract may
+  still hold it, and it stays served. The `rejection_reason` `close_withheld` is removed; no recorded
+  run holds it.
+- Every report route answers `409 artifact_unreadable` for a stored artifact that no longer matches
+  its model. Some answered 500 before. See [errors](/api/v1/docs/errors).
+- A close's `order_id` is its position's on every row. A rebuilt stop's own id, `protect_` and the
+  position's id, is no longer produced.
+- `expectancy` can be null, on [run summaries](/api/v1/docs/run-summary), [trade analytics](/api/v1/docs/trade-history),
+  booking periods, ledger rows and robustness windows, where no trade has an R. It used to read `0.0`.
+  A run recorded before this contract keeps its `0.0` beside `r_trade_count` 0.
+- [Sweeps](/api/v1/docs/sweeps): a sweep ranked by `expectancy` leaves such a run out and counts it in
+  `unranked`, and a sweep that recorded no objective ranks by `net_pnl`. The sweep list carries
+  `features_beyond_venue`. It is not on the run list: the run header holds it.
+
 ## Version 45 — 2026-10-30 (#625)
 
 A venue's API decides which levels a run can use, and a level a strategy keeps itself is named on
@@ -132,34 +155,13 @@ again.
 
 No field added; no field removed.
 
-## Version 41 — 2026-10-26 (#626)
-
-What a carry-over may carry across a change: a rehearsal's readings never reach real money, and a
-start that continues an open position under a changed configuration says so.
-
-- `GET /api/v1/reports/runs/{run_id}/header`: `origin.accept_composite_change` — the key the start
-  was given with `--accept-composite-change`: the composite it may continue what the venue still
-  holds — a position, resting orders — under, though it is not the one that opened them. Recorded as
-  typed; whether it let anything through is the session's `composite_change_accepted` warning. Null
-  on every other run, on a backtest, and on a run recorded before this version.
-- Three checks a session may report in its [warnings](/api/v1/docs/warnings-errors), described by
-  `GET /api/v1/validation-checks`: `composite_change_accepted`, `carried_configuration_not_compared`
-  and `carried_readings_not_continued`.
-- A change of meaning: a session's drawdown no longer continues across a change of run kind. A
-  session placing real orders never inherits a rehearsal's curve, a rehearsal never inherits real
-  money's, a curve that does not say which kind of run wrote it is not inherited, and a start told
-  `--new-deployment` begins its own. Such a session reads `drawdown_carried_from` empty on its
-  [portfolio](/api/v1/docs/portfolio), and its [deployment](/api/v1/docs/deployments) row's
-  `max_drawdown` starts there.
-
-One field added; no field removed.
-
-## Versions 40 and earlier
+## Versions 41 and earlier
 
 One line each. Every one of these moved a shape or a meaning; what they moved is summarised here
 rather than spelled out, because a consumer this far behind needs the list of steps, not each step's
 reasoning. The full text of a compressed version is in this repository's history.
 
+- **Version 41** — 2026-10-26 (#626): What a carry-over may carry across a change: a rehearsal's readings never reach real money, and a start that continues an open position under a changed configuration says so.
 - **Version 40** — 2026-10-25 (#476): A trading day ends at its boundary, every trading day has its row (`tick_count`, new), and a session's days are booked while it runs.
 - **Version 39** — 2026-10-25 (#547): A backtest names the configuration it ran with — `rendered_config_id` on a run's [header](/api/v1/docs/run-header) is filled for a backtest too, naming its rendered scenario set: one section per scenario with every parameter default filled in, beside `config_id`, the file the run was given; empty on an older backtest and where the configuration could not be rendered or frozen.
 - **Version 38** — 2026-10-21 (#611): A running session can be asked how it stands — `GET /api/v1/reports/runs/{run_id}/state-frames/latest`, one row per unit with the latest frame, its age, its cadence (`cadence_timeframe`, `cadence_s`) and `recording`; the codes `state_frames_not_recorded` and `state_frame_not_written_yet`; and `stream_files` and `recording` on the run list. Its document is [state frames](/api/v1/docs/state-frames).

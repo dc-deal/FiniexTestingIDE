@@ -579,10 +579,8 @@ The **modify paths carry prices too** and use the same `_round_price` helper at 
 is prepared for the broker: `modify_limit_order` (new limit price), `modify_stop_order` (new trigger
 + limit price), and the native-SL/TP `modify_position`. Both executors round identically (sim/live
 parity). The Kraken-style local-only position SL/TP (capability `native_position_sl_tp=False`) is
-left unrounded — it is a local trigger threshold, never submitted to the broker. That threshold is
-now genuinely acted upon: since #500 the executor evaluates a declared level against its own tick
-stream in live as well as in simulation, where it used to skip the check on the assumption that the
-venue held the level.
+left unrounded — it is a local trigger threshold, never submitted to the broker. Only the simulation
+acts on it: a live executor refuses a level (#625).
 
 `round(price, digits)` is correct for **decimal-priced** markets, where `tick_size == 10^(-digits)`
 — true for every Kraken spot pair (BTCUSD `digits=1`, ETHUSD `2`, ADAUSD `6`, …) and MT5 forex/CFD
@@ -738,8 +736,8 @@ spread a second time — exactly, since its formula is `gross_pnl_from_price_dif
 quantity rather than as a fee (#244), because everything in the fee hierarchy is subtracted.
 
 A close is a MARKET order today, so its exit fee is always the **taker** rate
-(`is_maker=False`). That stops being a constant when a venue-held exit order can fill as a maker
-(#503) — the value then has to come from the closing order rather than from this assumption.
+(`is_maker=False`). That stops being a constant when an exit can rest as a limit order — the value
+then has to come from the closing order rather than from this assumption.
 
 ### Live Execution Stack
 

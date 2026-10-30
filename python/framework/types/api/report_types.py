@@ -176,7 +176,8 @@ class TradeAnalytics(BaseModel):
     """
     currency: str = ''      # account currency this aggregate is over
     trade_count: int = 0    # trades in this currency group
-    expectancy: float       # mean R over trades with a defined R
+    # None = not measured: no trade has a defined R, as with a logic that keeps its own exits
+    expectancy: float | None    # mean R over trades with a defined R
     # None = not measured (no R-defined winner / loser) — never 0.0, which a reader cannot
     # tell from a measured zero. Gate on the counts, not on r_trade_count: a run can have
     # R-defined trades and still no winner among them.
@@ -570,18 +571,6 @@ class OpenPositionRow(BaseModel):
     valued: bool = False
     stop_loss: float | None = None
     take_profit: float | None = None
-    # Who enforces the STOP (#500). 'local' — our own process watches the tick stream and
-    # closes on a breach, so a process that dies leaves the position unprotected. 'venue' —
-    # the level rests at the broker and outlives us. Empty where no level is set. A level
-    # was reported for a long time with nobody behind it; this is what makes the difference
-    # readable instead of assumed.
-    protective_level_enforcement: str = ''
-    # And who enforces the TARGET, which is not the same answer (#503). Only ONE order can
-    # rest at the venue — Kraken has neither OCO nor a bracket — and it holds the stop,
-    # because a bounded loss is worth more than a captured opportunity. So a position whose
-    # stop the venue holds still has a take profit watched by this process alone. One answer
-    # across both levels told an operator the target survives a restart, and it does not.
-    take_profit_enforcement: str = ''
 
 
 class FeeSourceFills(BaseModel):
@@ -751,7 +740,7 @@ class ExecutionStatsRow(BaseModel):
     Order-execution counts of one run unit (sim: a scenario; live: the session).
 
     Each count carries the name of what it counts (#362): `orders_submitted` the orders handed
-    to the venue — opens, closes and protective orders; `orders_adopted` the orders a previous
+    to the venue — opens and closes; `orders_adopted` the orders a previous
     session sent and this one took over at boot; every other `orders_<status>` the
     order-history rows that ended with that status. A refusal made here never reached the
     venue, so it is denied and not submitted.
@@ -1372,7 +1361,7 @@ class RunSummaryCurrency(BaseModel):
     total_initial_balance: float | None = None
     unit_count: int | None = None
     open_position_count: int = 0
-    expectancy: float       # ← TradeAnalytics.expectancy (mean R) — the sweep objective
+    expectancy: float | None    # ← TradeAnalytics.expectancy (None = no R-defined trade)
     avg_win_r: float | None     # ← TradeAnalytics (None = no R-defined winner)
     avg_loss_r: float | None    # ← TradeAnalytics (None = no R-defined loser)
     r_trade_count: int      # ← TradeAnalytics.r_trade_count
@@ -1737,7 +1726,7 @@ class RunResultRow(BaseModel):
     currency: str = ''
     # KPIs (the rankable objective fields)
     net_pnl: float = 0.0
-    expectancy: float = 0.0
+    expectancy: float | None = None     # None = not measured (no R-defined trade)
     profit_factor: float | None = None  # None = undefined (no losing trade)
     win_rate: float = 0.0
     # None where no drawdown was measured — a session whose every sealed day came before its
@@ -1829,6 +1818,7 @@ class SweepSummary(BaseModel):
     symbols: list[str] = []
     objective: str = ''
     maximize: bool = True
+    features_beyond_venue: str = ''      # what its set allowed beyond the venue (comma-joined)
 
 
 class SweepListResponse(BaseModel):
@@ -2998,7 +2988,7 @@ class RobustnessWindowRow(BaseModel):
     currency: str = ''
     metric_value: float = 0.0   # the configured primary metric (a RobustnessMetric value)
     net_pnl: float = 0.0        # secondary, non-aggregated reference
-    expectancy: float = 0.0
+    expectancy: float | None = None     # None = not measured (no R-defined trade)
     # Final equity against the starting value, in percent, open positions marked; None when
     # the window had no starting value to measure against.
     equity_return_pct: float | None = None
@@ -3045,7 +3035,7 @@ class RobustnessReport(RunScopedReport):
     The renderer applies only a display class; the verdict warning fires from the validator.
     """
     enabled: bool = False
-    metric: str = 'expectancy'              # the primary metric name
+    metric: str = 'net_pnl'                 # the primary metric name
     windows: list[RobustnessWindowRow] = []
     distribution: RobustnessDistribution | None = None
     in_sample: RobustnessRoleAggregate | None = None

@@ -43,6 +43,16 @@ class OptimizationRunner:
         self._spec_loader = OptimizationConfigLoader()
         self._scenario_loader = ScenarioConfigLoader()
         self._app_config = AppConfigManager()
+        self._nothing_ran = False
+
+    def get_nothing_ran(self) -> bool:
+        """
+        Whether the last sweep aborted before any combination ran.
+
+        Returns:
+            True when its base set had no scenario left to run
+        """
+        return self._nothing_ran
 
     def run(self, spec_file: str, channel: RunChannel = RunChannel.DIRECT) -> str:
         """
@@ -109,12 +119,16 @@ class OptimizationRunner:
                 # The build is the base set's only work: nothing writes to its log after it.
                 base_set.close_loggers()
             if not mount.scenario_packages:
-                # Data-level failure (invalid window / missing data) — invariant across every
-                # combination → abort the whole sweep, nothing ran (§35).
+                # Every scenario of the base set was refused or has no data, and every combination
+                # shares them → abort the whole sweep, nothing ran.
+                self._nothing_ran = True
+                reasons = [error for scenario in base_set.get_failed_scenarios()
+                           for result in scenario.validation_result for error in result.errors]
                 vLog.error(
-                    f'🛑 Sweep {sweep_id} aborted: the base data could not be loaded for any '
-                    f'scenario (invalid window / missing data). Every combination shares this '
-                    f'data — nothing was run.')
+                    f'🛑 Sweep {sweep_id} aborted: no scenario of its base set could be prepared '
+                    f'(invalid window, missing data or a refused configuration), and every '
+                    f'combination shares them — nothing was run.'
+                    + ''.join(f'\n  {reason}' for reason in reasons))
                 return sweep_id
 
         villain_abort = self._app_config.get_optimization_villain_abort_enabled()

@@ -14,9 +14,6 @@ its size, its reason and — in the simulation — its due time.
 
 **Location:** `tests/parity/test_close_in_flight_parity.py`
 
-Not covered here: the close parked behind a protective order's cancel, which joins through its
-own deferral and is pinned in `docs/tests/autotrader/protective_level_tests.md`.
-
 ## What It Validates
 
 | Class | Focus |

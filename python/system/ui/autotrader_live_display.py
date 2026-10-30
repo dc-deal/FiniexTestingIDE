@@ -902,7 +902,7 @@ class AutoTraderLiveDisplay:
 
             # Partial-fill sub-row (#330) — shown for an order taken over at a cold start
             # partly filled; an ordinary resting order's partial execution is mirrored only
-            # once #342 lands. A protective order reads requested_lots 0.0 and never shows it.
+            # once #342 lands.
             # The figures stand in the ID column: the 10-wide Status column cut them off.
             if order.cumulative_filled_lots > 0 and order.cumulative_filled_lots < order.requested_lots:
                 progress = (f'[dim]└─ {order.cumulative_filled_lots:.4f}/'

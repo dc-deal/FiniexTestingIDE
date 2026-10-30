@@ -682,9 +682,7 @@ class AbstractDecisionLogic(ABC):
         """
         React to a position closing completely. No-op unless overridden.
 
-        Fires on EVERY full close in both pipelines — including one the VENUE initiated,
-        where a protective order it held fired and nobody here asked for a close (#503).
-        `event.requested_locally` tells the two apart.
+        Fires on EVERY full close in both pipelines.
 
         Args:
             event: Close detail (position id, reason, price, lots, realised P&L)
