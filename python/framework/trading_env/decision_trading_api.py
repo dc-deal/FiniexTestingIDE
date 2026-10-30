@@ -49,6 +49,7 @@ from python.framework.types.trading_env_types.order_types import (
     OrderType,
     RejectionReason,
 )
+from python.framework.types.trading_env_types.own_exit_types import OwnExit
 from python.framework.types.trading_env_types.trading_env_stats_types import CostBreakdown
 
 from .abstract_trade_executor import AbstractTradeExecutor
@@ -541,7 +542,8 @@ class DecisionTradingApi:
     def close_position(
         self,
         position_id: str,
-        lots: Optional[float] = None
+        lots: Optional[float] = None,
+        exit: Optional[OwnExit] = None,
     ) -> OrderResult:
         """
         Close position (full or partial).
@@ -549,13 +551,24 @@ class DecisionTradingApi:
         Args:
             position_id: Position to close
             lots: Lots to close (None = close all)
+            exit: Set when the logic closes at its own stop or target (#625): the trade keeps
+                that reason and its fill is measured against the level. Nothing is placed
+                anywhere — it describes the close, it does not make one
 
         Returns:
             OrderResult with close execution details. While a close for this position
             is already in flight, the request joins it: PENDING, describing that close,
             with `joined_in_flight_close` in its metadata
         """
-        return self._executor.close_position(position_id, lots)
+        if exit is None:
+            return self._executor.close_position(position_id, lots)
+        result = self._executor.close_position(
+            position_id, lots, close_reason=exit.reason, exit_level=exit.level)
+        # Counted as the level check counts its own closes: once, when the close goes out —
+        # not a refused one, and not a request that joined a close already on its way
+        if not result.is_refused and not result.metadata.get('joined_in_flight_close'):
+            self._executor.record_own_exit()
+        return result
     # ============================================
     # Public API: Broker Capabilities
     # ============================================

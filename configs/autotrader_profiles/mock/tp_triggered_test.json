@@ -31,7 +31,8 @@
           "take_profit": 88865.0
         }
       ],
-      "lot_size": 0.001
+      "lot_size": 0.001,
+      "exit_mode": "own"
     }
   },
   "tick_source": {

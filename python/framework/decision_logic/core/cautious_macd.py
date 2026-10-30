@@ -8,8 +8,9 @@ Strategy:
 - MACD histogram crossover (zero-line cross) as directional signal
 - RSI as AND-filter (no entry against extremes)
 - Entry via STOP order (breakout confirmation, not market fill)
-- SL/TP set directly at send_order time
-- Break-even via modify_position after configurable profit move
+- SL/TP kept by the logic itself (OwnExitLevels, #625), set from the entry order's levels:
+  no venue holds them, so they work on every venue and fire only while the logic runs
+- Break-even moves its own stop after a configurable profit move
 - Cancel resting STOP order on counter-direction crossover only
 - Exit open position on MACD counter-crossover
 
@@ -17,20 +18,21 @@ State Machine:
   FLAT → (crossover + RSI ok + confidence ok) → PENDING_ENTRY (STOP placed)
   PENDING_ENTRY → (STOP triggered) → IN_POSITION
   PENDING_ENTRY → (counter-direction crossover only) → FLAT (cancel_stop_order)
-  IN_POSITION → (break-even threshold) → modify_position SL=entry
+  IN_POSITION → (break-even threshold) → own stop moved to entry
+  IN_POSITION → (own stop or target reached) → FLAT (close_position)
   IN_POSITION → (counter-crossover) → FLAT (close_position)
 
 Order types used:
 - STOP (entry with breakout confirmation)
-- modify_position (break-even)
 - cancel_stop_order (signal reversal before trigger)
-- close_position (MACD counter-signal while in position)
+- close_position (own stop/target reached, or MACD counter-signal while in position)
 """
 
 import traceback
 from typing import Any, Dict, List, Optional
 
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
+from python.framework.decision_logic.own_exit_levels import OwnExitLevels
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.types.autotrader_types.cold_start_types import (
     ColdStartSituation,
@@ -63,7 +65,7 @@ class CautiousMacd(AbstractDecisionLogic):
     Unlike AggressiveTrend (market orders, OR-logic):
     - AND-logic (both MACD crossover + RSI filter required)
     - STOP orders only (no immediate market fill)
-    - Integrated SL/TP from order submission
+    - Its own SL/TP from order submission, checked by the logic on every tick
     - Active pending order management (cancel on counter-signal)
     - Break-even modification after configurable profit move
 
@@ -135,6 +137,14 @@ class CautiousMacd(AbstractDecisionLogic):
         self._pending_direction: Optional[OrderDirection] = None
         self._break_even_applied: bool = False
         self._current_position_id: Optional[str] = None
+        # Own stop and target per position (#625). Set from the entry order's levels at
+        # submission; the distances re-derive them from the entry price for a position that
+        # arrives without them — read back after a restart that kept no state
+        self._exits = OwnExitLevels(
+            stop_distance=self.sl_pips * self.pip_size,
+            target_distance=self.tp_pips * self.pip_size,
+            logger=self.logger,
+        )
 
         _order_mode = 'STOP_LIMIT' if self.use_stop_limit else 'STOP'
         _conf_str = f'minConf={self.min_confidence}' if self.min_confidence > 0.0 else 'minConf=off'
@@ -246,7 +256,7 @@ class CautiousMacd(AbstractDecisionLogic):
     def get_metadata(cls) -> ComponentMetadata:
         """CORE showcase decision logic metadata (MACD → price-based, any market)."""
         return ComponentMetadata(
-            version='1.1.0',
+            version='1.2.0',
             doc_link='docs/user_guides/quickstart_guide.md',
             recommended_markets=('forex', 'crypto'),
         )
@@ -295,6 +305,39 @@ class CautiousMacd(AbstractDecisionLogic):
             f'{len(situation.adopted)} resting stop(s) adopted, but the MACD state that set '
             f'their level is not persisted — the framework decides',
         )
+
+    def uses_state_persistence(self) -> bool:
+        """
+        Keep its own exit levels across a restart (#625).
+
+        A break-even move exists only in this logic's memory — no venue holds the stop — so
+        without it a restart would put the stop back at its initial distance.
+
+        Returns:
+            True
+        """
+        return True
+
+    def get_state_snapshot(self) -> Dict[str, Any]:
+        """
+        The own exit levels per position — the one memory this logic carries over.
+
+        Returns:
+            {'own_exit_levels': position id → {'stop', 'target'}}
+        """
+        return {'own_exit_levels': self._exits.snapshot()}
+
+    def restore_state(self, snapshot: Dict[str, Any]) -> None:
+        """
+        Take back the own exit levels of the positions the framework restored.
+
+        Args:
+            snapshot: What get_state_snapshot returned before the restart
+        """
+        open_ids = ({position.position_id for position in self.trading_api.get_open_positions()}
+                    if self.trading_api else None)
+        restored = self._exits.restore(snapshot.get('own_exit_levels', {}), open_ids)
+        self.logger.info(f'💾 Own exit levels restored for {restored} position(s)')
 
     @classmethod
     def get_required_order_types(cls, decision_logic_config: Dict[str, Any]) -> List[OrderType]:
@@ -510,9 +553,12 @@ class CautiousMacd(AbstractDecisionLogic):
           - Active STOP + counter-direction crossover → cancel_stop_order
           - Active STOP + FLAT → keep waiting (stop may still trigger)
 
+        Before any of it, the own stop and target are checked against the tick (#625).
+
         IN_POSITION:
+          - Its close already on its way → wait
           - New position detected → reset break-even flag
-          - Break-even threshold reached → modify_position SL=entry_price
+          - Break-even threshold reached → own stop moved to entry_price
           - Counter-crossover signal → close_position
 
         Args:
@@ -525,6 +571,9 @@ class CautiousMacd(AbstractDecisionLogic):
         if not self.trading_api:
             self.logger.warning('Trading API not available - cannot execute')
             return None
+
+        # Own stop and target first, where a venue would check a level it held
+        self._exits.enforce(self.trading_api, tick)
 
         open_positions = self.trading_api.get_open_positions()
         active_counts = self.trading_api.get_active_order_counts()
@@ -542,6 +591,11 @@ class CautiousMacd(AbstractDecisionLogic):
         # ============================================
         if open_positions:
             position = open_positions[0]
+
+            # A close on its way is the exit already — managing the position under it would
+            # only send a second close that joins the first
+            if self.trading_api.is_pending_close(position.position_id):
+                return None
 
             # New position appeared (STOP was triggered)
             if position.position_id != self._current_position_id:
@@ -600,6 +654,7 @@ class CautiousMacd(AbstractDecisionLogic):
                         self._pending_stop_order_id
                     )
                     if cancelled:
+                        self._exits.forget(self._pending_stop_order_id)
                         self.emit_event(
                             'STOP order cancelled (counter/flat signal)',
                             AwarenessLevel.NOTICE,
@@ -671,8 +726,6 @@ class CautiousMacd(AbstractDecisionLogic):
                     lots=self.lot_size,
                     stop_price=stop_price,
                     price=limit_price,
-                    stop_loss=sl_price,
-                    take_profit=tp_price,
                     comment=f"CautiousMacd: {decision.get_signal('reason')[:50]}"
                 )
             else:
@@ -682,10 +735,15 @@ class CautiousMacd(AbstractDecisionLogic):
                     side=new_side,
                     lots=self.lot_size,
                     stop_price=stop_price,
-                    stop_loss=sl_price,
-                    take_profit=tp_price,
                     comment=f"CautiousMacd: {decision.get_signal('reason')[:50]}"
                 )
+
+            # The levels belong to the position this order opens, and its order id becomes
+            # that position's id. An earlier entry that never filled leaves its levels behind
+            if not order_result.is_refused:
+                if self._pending_stop_order_id:
+                    self._exits.forget(self._pending_stop_order_id)
+                self._exits.set_levels(order_result.order_id, stop=sl_price, target=tp_price)
 
             _mode = 'STOP_LIMIT' if self.use_stop_limit else 'STOP'
             if order_result.status == OrderStatus.PENDING:
@@ -717,7 +775,7 @@ class CautiousMacd(AbstractDecisionLogic):
 
     def _check_and_apply_break_even(self, position, tick: TickData) -> None:
         """
-        Move SL to entry_price once profit exceeds break_even_trigger_pips.
+        Move the own stop to entry_price once profit exceeds break_even_trigger_pips.
 
         Args:
             position: Current open Position
@@ -733,21 +791,13 @@ class CautiousMacd(AbstractDecisionLogic):
         if profit_move < trigger:
             return
 
-        result = self.trading_api.modify_position(
-            position_id=position.position_id,
-            stop_loss=position.entry_price,
-        )
-
-        if result.success:
-            self._break_even_applied = True
+        # Applied either way: a stop that is already tighter than the entry stays where it is
+        self._break_even_applied = True
+        if self._exits.move_stop(position.position_id, position.direction, position.entry_price):
             self.emit_event(
                 f'Break-even set: SL → {position.entry_price:.5f} ({profit_move / self.pip_size:.1f} pips)',
                 AwarenessLevel.INFO,
                 'break_even_set',
-            )
-        else:
-            self.logger.debug(
-                f'Break-even modify rejected: {result.rejection_reason}'
             )
 
     def _calculate_confidence(

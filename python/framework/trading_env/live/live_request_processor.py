@@ -385,6 +385,7 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         client_order_id: Optional[str] = None,
         symbol: Optional[str] = None,
         position_direction: Optional[OrderDirection] = None,
+        exit_level: Optional[float] = None,
     ) -> str:
         """
         Track a submitted CLOSE order with broker reference.
@@ -409,6 +410,8 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
             symbol: The position's symbol — so an ending recorded after the position is
                           gone still names it (#362)
             position_direction: The position's direction, for the same reason
+            exit_level: The level an own exit fired at (#625), stored for the same reason as
+                          the close reason
 
         Returns:
             position_id for chaining
@@ -430,6 +433,7 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
             symbol=symbol,
             close_lots=close_lots,
             close_reason=close_reason,
+            exit_level=exit_level,
             submission=submission if submission else SubmissionMetadata(),
         )
 

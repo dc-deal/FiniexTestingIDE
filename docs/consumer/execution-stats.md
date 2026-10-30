@@ -65,7 +65,9 @@ two orders.
 history may hold fewer rows than a long run produced; this count holds them all.
 
 **`sl_tp_triggered` counts closes, not submissions.** It is a different population from the
-counts beside it. Read it alongside them, never added into them.
+counts beside it. Read it alongside them, never added into them. A close counts whether the level
+was one the position carried or one the strategy kept itself and closed at — on a venue that holds
+no level for a position, the second is the only kind there is.
 
 **None of them is ever null on this route.** They are whole numbers, and a zero is a real zero
 rather than something nobody measured. The same names on a sweep combination are the sum of its

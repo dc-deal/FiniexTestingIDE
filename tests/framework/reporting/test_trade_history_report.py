@@ -421,9 +421,14 @@ class TestAProtectiveExitIsMeasuredAgainstItsLevel:
     as a gain and a take-profit as a cost — the tick's overshoot, not slippage.
     """
 
-    def _exit(self, close_reason, exit_price, mid, stop_loss=None, take_profit=None):
+    def _exit(self, close_reason, exit_price, mid, stop_loss=None, take_profit=None,
+              exit_level=None):
+        """The executor stamps the level that fired on the record — the position's own here,
+        unless an own exit's level is given (#625)."""
+        if exit_level is None:
+            exit_level = close_reason.fired_level(stop_loss, take_profit)
         trade = replace(_trade(close_reason=close_reason), stop_loss=stop_loss,
-                        take_profit=take_profit, exit_price=exit_price,
+                        take_profit=take_profit, exit_price=exit_price, exit_level=exit_level,
                         entry_side=OrderSide.BUY, exit_side=OrderSide.SELL,
                         exit_submission=SubmissionMetadata(tick_mid_price=mid))
         return build_trade_history_report(_RUN_ID, _units([trade])).trades[0]
@@ -447,6 +452,15 @@ class TestAProtectiveExitIsMeasuredAgainstItsLevel:
 
         assert row.exit_slippage_measured_against is SlippageReference.PROTECTIVE_LEVEL
         assert row.exit_slippage == 0.0
+
+    def test_an_own_stop_is_measured_against_the_logic_s_level(self):
+        """#625: the position carries no stop — the level travels on the record."""
+        row = self._exit(CloseReason.SL_TRIGGERED, exit_price=1.0975, mid=1.0978,
+                         exit_level=1.0980)
+
+        assert row.stop_loss is None
+        assert row.exit_slippage_measured_against is SlippageReference.PROTECTIVE_LEVEL
+        assert row.exit_slippage == pytest.approx(0.0005)
 
     def test_an_exit_the_logic_chose_keeps_the_mid_when_it_was_sent(self):
         row = self._exit(CloseReason.MANUAL, exit_price=1.1020, mid=1.1022, stop_loss=1.0980)

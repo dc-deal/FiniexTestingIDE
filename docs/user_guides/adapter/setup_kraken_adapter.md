@@ -10,19 +10,41 @@ How to configure the KrakenAdapter for a live connection — dry run or real ord
 
 ## 1. Create API Key
 
-Go to **kraken.com/u/security/api** and create a new key:
+A key decides what a stolen copy of it could do, so it gets what the adapter calls and nothing more. Go to
+**pro.kraken.com/app/settings/api** (Kraken Pro: Settings → API, *Spot Trading API*) and create a new key. Kraken
+shows the labels in your language; the English ones are used here.
 
-**Required permissions:**
-- Query Funds
-- Query Open Orders & Trades
-- Query Closed Orders & Trades — a market order is closed the moment it fills, so reading it back
-  (`QueryOrders`, `QueryTrades`) and the look at recently closed orders (`ClosedOrders`) need it; without it
-  Kraken answers `EGeneral:Permission denied`
-- Create & Modify Orders
+**Name:** one that says which bot and which machine it belongs to.
 
-**Do NOT enable:** Withdraw Funds
+**Enable these permissions:**
 
-Copy the **API Key** and **Private Key** (shown once at creation).
+| Group | Permission | Why the adapter needs it |
+|---|---|---|
+| Funds | Query Funds | the balances (`Balance`) and the fee tier (`TradeVolume`) |
+| Orders and trades | Query Open Orders & Trades | what rests at the venue (`OpenOrders`) |
+| Orders and trades | Query Closed Orders & Trades | a market order is closed the moment it fills, so reading it back (`QueryOrders`, `QueryTrades`) and the look at recently closed orders (`ClosedOrders`) need it; without it Kraken answers `EGeneral:Permission denied` |
+| Orders and trades | Create & Modify Orders | placing and amending orders (`AddOrder`, `AmendOrder`) |
+| Orders and trades | Cancel & Close Orders | cancelling an order (`CancelOrder`) |
+
+**Leave everything else off:**
+
+- **Withdraw Funds and Add Withdrawal Addresses — never.** Without them a stolen key can trade the account, but it
+  cannot take the money out.
+- Deposit Funds and Earn: nothing here uses them.
+- The *Data* group (ledger entries, affiliates, exports): the session does not read it.
+
+**The switches below the permissions:**
+
+| Switch | Setting | Why |
+|---|---|---|
+| WebSocket Interface | off | private calls go over REST; the public market data feed needs no key |
+| IP Address Restriction | **on**, the address of the machine the session runs on | the key is useless from anywhere else. It also means the key does not work from your development machine |
+| Key Expiration | off | an expiry stops the session on that date, whatever it is doing |
+| Query Start Date and Query End Date | off | a session reads its own recent orders |
+| Custom Nonce Window | off | the adapter keeps its nonce strictly increasing; turn it on only when Kraken reports nonce errors from network trouble |
+
+**Generate the key** and copy the **API Key** and the **Private Key**: both are shown once, at creation. Put them into the
+credentials file below; never into a chat, a ticket or a document.
 
 ## 2. Credentials File
 
@@ -229,6 +251,7 @@ minimum volume refuses at boot rather than at its first signal.
 |-------|-------|-----|
 | `EAPI:Invalid key` | Wrong API key, wrong portal (Futures vs Spot), expired key | Verify at kraken.com/u/security/api — must be Spot, not Futures |
 | Balance fetch failed | API key missing "Query Funds" permission | Edit API key permissions at kraken.com |
+| `EAPI:Invalid nonce` at every start | Kraken only accepts a rising nonce per key, and something signed with this key using a larger one: the adapter counts in milliseconds, so a script counting in microseconds lifts the key's mark about a thousand times above it, for good | Create a new key. Never sign by hand with a key a session uses |
 | Symbol not found | Wrong pair name format | Use `BTCUSD`, not `BTC/USD` or `XBT/USD` |
 | `Kraken API error: ['EOrder:Insufficient funds']` | Account balance too low for order size | Reduce `lot_size` in strategy config or fund account |
 | Credentials file not found | File not in expected cascade path | Check `user_configs/credentials/` and `configs/credentials/` |

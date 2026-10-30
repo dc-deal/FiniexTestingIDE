@@ -44,7 +44,7 @@ warmup_session = _make_session_fixture(_PROFILE_WARMUP)
 
 class TestStopLossConfiguration:
     """
-    A stop loss declared in live is enforced, and by us (#500).
+    A stop the logic keeps as its own level is enforced, by the logic (#500, #625).
 
     These tests used to assert the opposite state and say why: "SL/TP triggering is
     broker-side (Kraken handles it in live mode)". Nothing ever made that true — the submit
@@ -52,13 +52,13 @@ class TestStopLossConfiguration:
     executor, so the level sat on the position, was displayed, and was enforced by nobody.
     The profile is named `sl_triggered_test` and nothing had ever triggered in it.
 
-    Now the live executor evaluates the level against its own tick stream and closes through
-    the real asynchronous close path. So the observable moved from "the level is stored" to
-    "the level acted", which is the only version that can tell a working stop from a
-    decorative one.
+    Since #625 the venue this profile stands for — Kraken — holds no level for a position, so
+    the probe keeps the stop as its own level (`exit_mode: own`) and closes through the real
+    asynchronous close path when the tick stream reaches it. The observable is still "the
+    level acted", the only version that can tell a working stop from a decorative one.
 
     Profile: LONG at tick 10 with `hold_ticks` far beyond `max_ticks`, so the strategy never
-    closes it itself. Whatever closed the position was the stop.
+    closes it on time. Whatever closed the position was the stop.
     """
 
     def test_the_stop_closed_the_position(self, sl_session):
@@ -98,6 +98,14 @@ class TestStopLossConfiguration:
         assert trade.exit_price > 0, 'A live exit carries the price it actually filled at'
         assert trade.exit_price <= 88964.0, (
             f'A LONG stop at 88964.0 cannot fill above itself, got {trade.exit_price}')
+        assert trade.exit_level == 88964.0, (
+            f'The own exit carries the level that fired onto its trade, got {trade.exit_level}')
+        assert trade.stop_loss is None, 'An own stop is never the position\'s level'
+
+    def test_the_own_stop_counts_as_a_triggered_stop(self, sl_session):
+        """At least one, for the reason the count above is not pinned to exactly one."""
+        assert sl_session.execution_stats.sl_tp_triggered >= 1, (
+            'A close at the logic\'s own stop is a close a stop triggered')
 
     def test_no_session_errors(self, sl_session):
         assert len(logged_messages(sl_session, LogLevel.ERROR)) == 0, (
@@ -107,7 +115,8 @@ class TestStopLossConfiguration:
 
 class TestTakeProfitConfiguration:
     """
-    A take profit declared in live is enforced too — the same change, the other direction.
+    A target the logic keeps as its own level is enforced too — the same change, the other
+    direction.
 
     Same architectural note as TestStopLossConfiguration: until #500 the level was recorded
     and never acted on, and this profile's name promised a trigger that could not happen.
@@ -141,6 +150,8 @@ class TestTakeProfitConfiguration:
             f'Position {trade.position_id}: entry_price is 0 — fill path broken')
         assert trade.exit_price >= 88865.0, (
             f'A LONG target at 88865.0 cannot fill below itself, got {trade.exit_price}')
+        assert trade.exit_level == 88865.0, (
+            f'The own exit carries the level that fired onto its trade, got {trade.exit_level}')
 
     def test_no_session_errors(self, tp_session):
         assert len(logged_messages(tp_session, LogLevel.ERROR)) == 0, (

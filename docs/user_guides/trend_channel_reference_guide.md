@@ -16,8 +16,8 @@ surface**:
 |---|---|
 | Resting **LIMIT** entry | `limit_pullback` mode — buy a pullback to the lower band (maker fill) |
 | Resting **STOP** entry | `stop_breakout` mode — buy a breakout above the band |
-| **SL/TP** at submission | every entry carries a stop-loss and take-profit |
-| **Trailing stop** (always-on) | the SL ratchets toward price in the profit direction, never back |
+| **Own SL/TP** from submission | every entry gets a stop-loss and take-profit the logic keeps itself (`OwnExitLevels`) |
+| **Trailing stop** (always-on) | the own SL ratchets toward price in the profit direction, never back |
 | **Partial close** ladder | a fraction of the position is closed at an R-multiple rung |
 | **Multi-position** stacking | several concurrent positions on the symbol, each managed independently |
 | Resting-order **re-price / cancel** | the resting entry follows the band, and is cancelled if the trend gate flips |
@@ -26,16 +26,14 @@ surface**:
 > **Who enforces what, if you run this on a live adapter.** The two RESTING ENTRIES are real orders at the
 > venue: `stop_breakout` places a Kraken `stop-loss` and `limit_pullback` a `limit`, so both
 > survive this process dying and both are cancelled or left standing by the session-end policy.
-> The **SL/TP and the trailing stop are levels on the position**, enforced by this framework
-> against the tick stream — in an AutoTrader session exactly as in a backtest (#500). **Since #503 the stop can
-> also rest at the venue**: switch `autotrader.execution.venue_held_protection` on in the profile
-> (default OFF) and the framework places a real STOP for the declared `stop_loss` once the entry
-> fills, so it survives this process dying. Only the stop — Kraken has no OCO, so the take profit
-> stays with the local check either way, and with the switch OFF a position is unprotected while
-> the process is not running. Worth knowing for THIS bot in particular: its trailing stop moves
-> the level often, and each move becomes an amend at the venue.
-> The run report names the enforcer beside every
-> level, and one more asymmetry is worth knowing before reading a backtest of `stop_breakout`: the
+> The **SL/TP and the trailing stop are the logic's own levels** (`OwnExitLevels`, #625): it
+> checks them against every tick and closes through `close_position` — in an AutoTrader session
+> exactly as in a backtest. No order carries them, because Kraken's API holds no stop or target
+> for a position (its API team, 2026-10-27), so a position is unprotected while the process is
+> not running. The close keeps its `sl_triggered` / `tp_triggered` reason and is measured against
+> the level that fired; the trailed stop, the initial risk and the taken partial-close rung are
+> carried across a restart through the algo state persistence.
+> One more asymmetry is worth knowing before reading a backtest of `stop_breakout`: the
 > simulation triggers a stop on ask/bid while Kraken triggers on the last traded price, and it
 > fills at the triggering tick with no slippage model, so a **stop ENTRY is the one order type
 > whose backtest is optimistic by construction.**

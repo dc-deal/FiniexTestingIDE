@@ -161,7 +161,9 @@ class DeferredClose:
         close_reason: Why the close was requested — carried across the wait
         reinstate: Whether a surviving position should get a fresh protective order at
             its remaining size once the close resolves (a PARTIAL close)
+        exit_level: The level an own exit fired at (#625), carried across the wait
     """
     lots: Optional[float]
     close_reason: CloseReason
     reinstate: bool
+    exit_level: Optional[float] = None

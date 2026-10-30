@@ -522,6 +522,45 @@ ones silently.
 `configs/app_config.json` (default: 5). When more events have been emitted
 than fit in the buffer, the display shows `… (+N older events)`.
 
+### Own Exits — a Stop and a Target the Logic Keeps Itself
+
+A stop or a target sent with an order is held by the venue only where its API takes one.
+Kraken's takes neither for a position — no level attached to an order, no bracket, no
+one-cancels-other (its API team, 2026-10-27) — and the framework does not rebuild what a venue
+lacks. A logic meant to run there keeps its levels itself, checks them on every tick, and closes
+through its own `close_position`. `OwnExitLevels`
+(`python/framework/decision_logic/own_exit_levels.py`) is that check, written once:
+
+```python
+from python.framework.decision_logic.own_exit_levels import OwnExitLevels
+
+# In __init__ — the distances re-derive levels for a position that arrives without them,
+# such as one read back after a restart
+self._exits = OwnExitLevels(stop_distance=sl_dist, target_distance=tp_dist, logger=self.logger)
+
+# In _execute_decision_impl(), first — closes what this tick reached, once
+self._exits.enforce(self.trading_api, tick)
+
+# At submission: the levels wait under the entry's order id, which becomes the position's id
+result = self.trading_api.send_order(symbol=tick.symbol, order_type=OrderType.STOP, ...)
+if not result.is_refused:
+    self._exits.set_levels(result.order_id, stop=sl_price, target=tp_price)
+
+# A break-even or a trail: the stop only ever tightens
+self._exits.move_stop(position.position_id, position.direction, position.entry_price)
+```
+
+The close names its reason and level — `close_position(position_id, exit=OwnExit(reason,
+level))`, which `enforce` does for you — so the trade keeps `sl_triggered` / `tp_triggered`, the
+close counts in the run's `sl_tp_triggered`, and its fill's slippage is measured against the
+level, as it would be for a level the venue held.
+The position itself carries no level, so the trade's R-multiple stays empty. A moved stop exists
+only in the logic's memory: carry it over with `snapshot()` / `restore()` through
+[algo state persistence](algo_state_persistence_guide.md), or a restart re-derives it from the
+entry. Nothing rests at the venue, so a position is unprotected while the process is not running
+— the same as every exit a strategy decides for itself. `CORE/cautious_macd` and
+`CORE/trend_channel_reference` show it.
+
 ---
 
 ## Step 3: Create the Config
@@ -716,7 +755,7 @@ Current limitations:
 | Rule | Description |
 |------|-------------|
 | **Order Types** | MARKET, LIMIT, STOP, STOP_LIMIT supported. No native OCO, iceberg or trailing-stop order types yet. |
-| **Position Close** | Full or partial: `close_position(position_id, lots=None)` closes all, `lots=` a part. A second close while one is in flight joins it rather than sending another — `is_pending_close(position_id)` says whether one is |
+| **Position Close** | Full or partial: `close_position(position_id, lots=None)` closes all, `lots=` a part; `exit=OwnExit(reason, level)` names the own stop or target that made it (see Own Exits above). A second close while one is in flight joins it rather than sending another — `is_pending_close(position_id)` says whether one is |
 | **Partial Fills** | A broker-reported partial fill at a real venue is not yet surfaced as its own state |
 | **Margin Check** | Orders rejected if insufficient margin |
 | **Resting Order Mgmt** | `modify_limit_order`, `modify_stop_order`, `cancel_limit_order`, `cancel_stop_order`, `modify_position` (SL/TP) available |

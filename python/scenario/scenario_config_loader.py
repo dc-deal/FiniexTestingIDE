@@ -62,6 +62,13 @@ _KNOWN_SCENARIO_SET_TOP_KEYS: frozenset = frozenset({
     'scenario_set_name', 'version', 'created', 'description', 'run_purpose',
     'global', 'robustness', 'scenarios',
 })
+# The sections `global` cascades into every scenario. Each section's own keys are checked
+# against its schema; without this, a misspelt SECTION read as absent and its whole block was
+# silently not applied.
+_KNOWN_GLOBAL_KEYS: frozenset = frozenset({
+    'strategy_config', 'execution_config', 'trade_simulator_config', 'stress_test_config',
+    'order_guard',
+})
 
 
 def _declared_purpose(config: Dict[str, Any], config_path: Path) -> RunPurpose:
@@ -158,6 +165,7 @@ class ScenarioConfigLoader:
         global_order_guard = global_config.get('order_guard', {})
 
         # Structural key validation — global level (pre-merge, full provenance)
+        check_unknown_keys('global',                         global_config,         _KNOWN_GLOBAL_KEYS)
         check_unknown_keys('global.execution_config',        global_execution,      _KNOWN_EXECUTION_KEYS)
         check_unknown_keys('global.trade_simulator_config',  global_trade_simulator, _KNOWN_TRADE_SIM_KEYS)
         check_unknown_keys('global.order_guard',             global_order_guard,    _KNOWN_ORDER_GUARD_KEYS)
@@ -356,6 +364,7 @@ class ScenarioConfigLoader:
         global_order_guard = global_config.get('order_guard', {})
 
         # Structural key validation — global level (pre-merge, full provenance)
+        check_unknown_keys('global',                         global_config,         _KNOWN_GLOBAL_KEYS)
         check_unknown_keys('global.execution_config',        global_execution,      _KNOWN_EXECUTION_KEYS)
         check_unknown_keys('global.trade_simulator_config',  global_trade_simulator, _KNOWN_TRADE_SIM_KEYS)
         check_unknown_keys('global.order_guard',             global_order_guard,    _KNOWN_ORDER_GUARD_KEYS)

@@ -69,7 +69,7 @@ tests/
 │   ├── optimization/      unit — parameter optimization: grid expand, override, ledger, ranking, sensitivity, grid validation (#390)
 │   ├── swap_cost/         unit — overnight swap accrual: debit/credit/triple, spot=0, determinism (#365)
 │   ├── robustness/        unit — multi-window + IS/OOS validation: roles, distribution, WFE, constancy, verdict (#367)
-│   ├── trend_channel_reference/ integration — didactic full-order-surface reference: LIMIT/STOP entries, SL/TP, trailing, partial, multi-position (#118)
+│   ├── trend_channel_reference/ integration + unit — didactic full-order-surface reference: LIMIT/STOP entries, its own SL/TP and trail (#625), partial, multi-position (#118)
 │   ├── stale_stress/      integration — planned stale-data windows drive both staleness contracts + overlap guard (#436)
 │   └── benchmark/         benchmark — throughput regression (excluded from runner)
 │
@@ -118,6 +118,7 @@ tests/
 │   ├── data_coverage/     unit — data format version spans (#453), which file a gap falls in (open times through the server clock, #562), how long a gap reads, which gaps are listed and whose silence each is, the window queries a run asks and the cache load it pays (#599)
 │   ├── market_calendar/  unit — swap-rollover + DST calendar helpers + MarketClock awareness (#365)
 │   ├── test_price_trigger.py  unit — the shared order-vs-quote predicate: limit/stop reached, book side (#505)
+│   ├── test_own_exit_levels.py  unit — a logic's own stop and target: seeded, only tightened, closed once, restored only for restored positions (#625)
 │   ├── test_order_endings.py  unit — one status per way an order ends, in both pipelines, and the counts declared from them (#362)
 │   ├── order_events/      unit — every order transition as one event in both pipelines: the declared vocabulary held to the source, each order life step by step, the stream file, its run-index listing (#362)
 │   ├── test_atomic_file_utils.py  unit — an atomic write is old or new; a durable one is synced before and after its rename

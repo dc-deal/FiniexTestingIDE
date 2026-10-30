@@ -178,8 +178,9 @@ def _to_row(trade: TradeRecord, scenario_name: str = '',
         trade.entry_price, trade.entry_submission.tick_mid_price, trade.entry_side)
     # A stop-loss or take-profit exit is measured against the level that fired (#631): the
     # simulation fills it AT the level, and the mid of the tick that crossed it would make its
-    # overshoot read as slippage
-    level = trade.close_reason.fired_level(trade.stop_loss, trade.take_profit)
+    # overshoot read as slippage. The executor stamps the level on the record — the position's,
+    # or for an own exit the logic's, which the position never carried (#625)
+    level = trade.exit_level
     exit_measured_against = (SlippageReference.PROTECTIVE_LEVEL if level is not None
                              else SlippageReference.SUBMISSION_MID)
     exit_slip, exit_slip_pct = adverse_slippage(

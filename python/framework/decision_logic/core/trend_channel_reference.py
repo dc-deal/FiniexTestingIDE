@@ -3,7 +3,7 @@ FiniexTestingIDE - Trend Channel Reference Decision Logic (didactic)
 
 TEACHING EXAMPLE — NOT A PROFITABLE STRATEGY. This CORE decision logic exists to
 demonstrate and validate the framework's full order surface end-to-end: resting
-LIMIT and STOP entries, SL/TP set at submission, an always-on trailing stop, a
+LIMIT and STOP entries, its own SL/TP set at submission, an always-on trailing stop, a
 partial-close ladder, and multi-position stacking. It is a deliberately mechanical
 multi-timeframe channel reference (an H1 trend gate + an M15 Bollinger channel) —
 the standard textbook pattern, NOT the framework's alpha, and it makes no
@@ -23,9 +23,11 @@ Strategy in one paragraph:
   ATR worker needed): SL/TP at submission, an always-on trailing stop that only
   ratchets in the profit direction, and a one-rung partial close at a configured
   R-multiple. Up to `max_positions` concurrent positions stack on the symbol.
-  The levels and the trail are enforced by the FRAMEWORK against the tick stream,
-  in live as well as in a backtest (#500) — they are not held at the venue, so a
-  position is unprotected while this process is not running.
+  The levels and the trail are the LOGIC's own (OwnExitLevels, #625): it checks them
+  against every tick and closes through close_position, in live as well as in a
+  backtest. No venue holds them — which is what makes the logic run on a venue whose
+  API takes no stop for a position — so a position is unprotected while this process
+  is not running.
 
 Multi-position note: the backtest engine runs ONE symbol per scenario today
 (portfolio multi-symbol is #369 / V1.5), so multi-position here means several
@@ -37,6 +39,7 @@ import traceback
 from typing import Any, Dict, List, Optional
 
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
+from python.framework.decision_logic.own_exit_levels import OwnExitLevels
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.types.autotrader_types.cold_start_types import (
     ColdStartSituation,
@@ -68,7 +71,7 @@ class TrendChannelReference(AbstractDecisionLogic):
 
     An H1 trend gate (CORE/ma_trend) plus an M15 Bollinger channel (CORE/bollinger).
     Two entry modes (limit_pullback / stop_breakout) place resting LIMIT or STOP
-    entries with SL/TP; positions are managed with an always-on trailing stop, a
+    entries with their own SL/TP; positions are managed with an always-on trailing stop, a
     one-rung partial close, and capped multi-position stacking. Reference / teaching
     example only — no profitability claim.
 
@@ -133,6 +136,10 @@ class TrendChannelReference(AbstractDecisionLogic):
         self._initial_risk: Dict[str, float] = {}
         # position_ids that already had their partial-close rung executed
         self._partial_done: set = set()
+        # Own stop and target per position (#625) — set under the entry order's id at
+        # submission, trailed by `_maybe_trail`; the seed distances follow the band, for a
+        # position that arrives without levels (read back after a restart that kept no state)
+        self._exits = OwnExitLevels(logger=self.logger)
 
         self.logger.debug(
             f'TrendChannelReference initialized: mode={self.entry_mode}, '
@@ -266,7 +273,7 @@ class TrendChannelReference(AbstractDecisionLogic):
     def get_metadata(cls) -> ComponentMetadata:
         """Didactic CORE reference logic — teaching example, no profitability claim."""
         return ComponentMetadata(
-            version='1.5.0',
+            version='1.6.0',
             doc_link='docs/user_guides/trend_channel_reference_guide.md',
             recommended_markets=('forex',),
         )
@@ -345,6 +352,55 @@ class TrendChannelReference(AbstractDecisionLogic):
             f'logic can have left behind, so the framework decides',
         )
 
+    def uses_state_persistence(self) -> bool:
+        """
+        Keep what it knows about its positions across a restart (#625).
+
+        Its trailed stop exists only in this logic's memory — no venue holds it — so without
+        it a restart would put the stop back at its initial distance. The initial risk and the
+        taken partial-close rung travel with it: lost, the R would be measured off the trailed
+        stop and the rung would be taken a second time.
+
+        Returns:
+            True
+        """
+        return True
+
+    def get_state_snapshot(self) -> Dict[str, Any]:
+        """
+        The own exit levels, initial risks and taken rungs of the open positions.
+
+        Returns:
+            JSON primitives keyed by position id
+        """
+        # No trading API yet (the batch's snapshot pre-flight builds a bare instance): no positions
+        open_ids = ({position.position_id for position in self.trading_api.get_open_positions()}
+                    if self.trading_api else set())
+        return {
+            'own_exit_levels': self._exits.snapshot(),
+            'initial_risk': {position_id: risk for position_id, risk in self._initial_risk.items()
+                             if position_id in open_ids},
+            'partial_done': sorted(self._partial_done & open_ids),
+        }
+
+    def restore_state(self, snapshot: Dict[str, Any]) -> None:
+        """
+        Take back what it knew about the positions the framework restored — nothing else.
+
+        Args:
+            snapshot: What get_state_snapshot returned before the restart
+        """
+        open_ids = ({position.position_id for position in self.trading_api.get_open_positions()}
+                    if self.trading_api else None)
+        restored = self._exits.restore(snapshot.get('own_exit_levels', {}), open_ids)
+        for position_id, risk in snapshot.get('initial_risk', {}).items():
+            if open_ids is None or position_id in open_ids:
+                self._initial_risk[position_id] = risk
+        self._partial_done.update(
+            position_id for position_id in snapshot.get('partial_done', [])
+            if open_ids is None or position_id in open_ids)
+        self.logger.info(f'💾 Own exit levels restored for {restored} position(s)')
+
     @classmethod
     def get_required_order_types(cls, decision_logic_config: Dict[str, Any]) -> List[OrderType]:
         """
@@ -420,6 +476,7 @@ class TrendChannelReference(AbstractDecisionLogic):
         self._upper = upper
         self._lower = lower
         self._band_half = band_half
+        self._exits.set_seed_distances(self.sl_mult * band_half, self.tp_mult * band_half)
 
         # Degenerate band (flat market) — no risk unit, no entry
         if band_half <= 0.0:
@@ -471,6 +528,7 @@ class TrendChannelReference(AbstractDecisionLogic):
         Manage open positions + resting entries, then place a new entry if armed.
 
         Called every tick. Order of operations:
+        0. Own stop and target → close what the tick reached (#625).
         1. Open positions → partial close at the R rung, then trail the stop.
         2. Resting entries → fill detection, cancel on gate-flip, re-price.
         3. New entry → place a resting LIMIT/STOP if armed and capacity allows.
@@ -486,6 +544,7 @@ class TrendChannelReference(AbstractDecisionLogic):
             self.logger.warning('Trading API not available - cannot execute')
             return None
 
+        self._exits.enforce(self.trading_api, tick)
         self._manage_open_positions(tick)
         self._manage_resting_entries(tick)
 
@@ -614,8 +673,6 @@ class TrendChannelReference(AbstractDecisionLogic):
                 lots=self.lot_size,
                 price=limit_price,
                 stop_price=stop_price,
-                stop_loss=stop_loss,
-                take_profit=take_profit,
                 comment=f'TrendChannelRef {self.entry_mode} {side.value}',
             )
         except Exception:
@@ -623,6 +680,8 @@ class TrendChannelReference(AbstractDecisionLogic):
             return None
 
         if result and not result.is_refused:
+            # The order id becomes the position's id, so the levels wait under it
+            self._exits.set_levels(result.order_id, stop=stop_loss, target=take_profit)
             self._resting_entries[result.order_id] = {
                 'symbol': symbol,
                 'direction': direction,
@@ -662,8 +721,9 @@ class TrendChannelReference(AbstractDecisionLogic):
             pid = pos.position_id
 
             # Seed the initial risk if the fill was not seen via the resting reconcile
-            if pid not in self._initial_risk and pos.stop_loss is not None:
-                self._initial_risk[pid] = abs(pos.entry_price - pos.stop_loss)
+            levels = self._exits.get_levels(pid)
+            if pid not in self._initial_risk and levels is not None and levels.stop is not None:
+                self._initial_risk[pid] = abs(pos.entry_price - levels.stop)
 
             if self.trading_api.is_pending_close(pid):
                 continue
@@ -735,14 +795,16 @@ class TrendChannelReference(AbstractDecisionLogic):
         epsilon = risk * 0.1   # ignore sub-noise moves (no modify spam)
         price = self._mark_price(pos, tick)
 
+        levels = self._exits.get_levels(pid)
+        stop = levels.stop if levels is not None else None
         if pos.direction == OrderDirection.LONG:
             new_sl = price - offset
-            if pos.stop_loss is None or new_sl > pos.stop_loss + epsilon:
-                self.trading_api.modify_position(pid, stop_loss=new_sl)
+            if stop is None or new_sl > stop + epsilon:
+                self._exits.move_stop(pid, pos.direction, new_sl)
         else:
             new_sl = price + offset
-            if pos.stop_loss is None or new_sl < pos.stop_loss - epsilon:
-                self.trading_api.modify_position(pid, stop_loss=new_sl)
+            if stop is None or new_sl < stop - epsilon:
+                self._exits.move_stop(pid, pos.direction, new_sl)
 
     def _mark_price(self, pos, tick: TickData) -> float:
         """
@@ -798,12 +860,13 @@ class TrendChannelReference(AbstractDecisionLogic):
 
     def _manage_resting_entries(self, tick: TickData) -> None:
         """
-        Promote filled entries, cancel on gate-flip, re-price on band drift.
+        Promote filled entries, drop ended ones, cancel on gate-flip, re-price on band drift.
 
         Args:
             tick: Current tick data
         """
         active_ids = {o.pending_order_id for o in self.trading_api.get_active_orders()}
+        pipeline_busy = self.trading_api.has_pipeline_orders()
 
         for oid in list(self._resting_entries.keys()):
             info = self._resting_entries[oid]
@@ -816,6 +879,20 @@ class TrendChannelReference(AbstractDecisionLogic):
                 self.emit_event(
                     f'Entry filled {oid} @ {pos.entry_price:.5f}',
                     AwarenessLevel.INFO, 'entry_filled',
+                )
+                continue
+
+            # Neither a position nor resting, and nothing on its way: the entry ended without
+            # leaving an open position — refused, cancelled, or filled and closed before this
+            # pass saw it. Kept tracked, it would block every later entry. Both executors move
+            # an order from resting to a position in one step, and a live order rests from the
+            # moment it is sent, so this does not drop an entry that is still alive.
+            if oid not in active_ids and not pipeline_busy:
+                del self._resting_entries[oid]
+                self._exits.forget(oid)
+                self.emit_event(
+                    f'Entry {oid} ended without an open position',
+                    AwarenessLevel.NOTICE, 'entry_ended',
                 )
                 continue
 
@@ -858,6 +935,7 @@ class TrendChannelReference(AbstractDecisionLogic):
             cancelled = self.trading_api.cancel_limit_order(oid)
         if cancelled:
             del self._resting_entries[oid]
+            self._exits.forget(oid)
             self.emit_event(
                 f'Cancel resting entry {oid} (gate flip)',
                 AwarenessLevel.NOTICE, 'entry_cancelled',
@@ -865,7 +943,7 @@ class TrendChannelReference(AbstractDecisionLogic):
 
     def _maybe_reprice(self, oid: str, info: Dict[str, Any], price: float) -> None:
         """
-        Re-price a resting entry (and its SL/TP) toward the current band edge.
+        Re-price a resting entry (and its own SL/TP) toward the current band edge.
 
         Bounded by the M15 bar-close cadence (the band only moves on a close) and guarded
         against an in-flight modify; the re-priced order must stay valid relative to price
@@ -889,14 +967,16 @@ class TrendChannelReference(AbstractDecisionLogic):
             if (side == OrderSide.BUY and new_price <= price) or \
                (side == OrderSide.SELL and new_price >= price):
                 return
-            self.trading_api.modify_stop_order(
-                oid, stop_price=new_price, stop_loss=new_sl, take_profit=new_tp)
+            result = self.trading_api.modify_stop_order(oid, stop_price=new_price)
         else:
             if (side == OrderSide.BUY and new_price >= price) or \
                (side == OrderSide.SELL and new_price <= price):
                 return
-            self.trading_api.modify_limit_order(
-                oid, price=new_price, stop_loss=new_sl, take_profit=new_tp)
+            result = self.trading_api.modify_limit_order(oid, price=new_price)
+        # The levels move with the order only when the venue took the new price — a refused
+        # re-price leaves the order, and the position it may still open, where they were
+        if result.success:
+            self._exits.set_levels(oid, stop=new_sl, target=new_tp)
         info['price'], info['sl'], info['tp'] = new_price, new_sl, new_tp
         self.emit_event(
             f'Re-price resting entry {oid} → {new_price:.5f}',

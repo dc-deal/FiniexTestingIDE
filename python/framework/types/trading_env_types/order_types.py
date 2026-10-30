@@ -327,7 +327,8 @@ class OrderCapabilities:
 
     # Position-level features (#318)
     # native_position_sl_tp: broker supports server-side attached SL/TP on
-    # open positions (MT5: True, Kraken Spot: False). When True, the executor
+    # open positions (MT5 declares True once #209 builds its live adapter — today no
+    # adapter does; Kraken Spot: False). When True, the executor
     # routes modify_position through the async pattern (processor.submit_
     # modify_position_async / sim _pending_position_modifications). When
     # False, modify_position falls back to instant local portfolio update.

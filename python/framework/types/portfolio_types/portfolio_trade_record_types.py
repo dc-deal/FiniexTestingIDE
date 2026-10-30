@@ -151,6 +151,10 @@ class TradeRecord:
 
     # === Close Reason ===
     close_reason: CloseReason = CloseReason.MANUAL
+    # The level a stop-loss or take-profit close fired at — the position's own or, for an own
+    # exit, the logic's (#625), which the position does not carry. None for every other close.
+    # The exit's slippage is measured against it (#631).
+    exit_level: Optional[float] = None
 
     # === Entry Type ===
     entry_type: EntryType = EntryType.MARKET

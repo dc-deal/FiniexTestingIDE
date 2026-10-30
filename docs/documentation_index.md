@@ -189,7 +189,7 @@ Each test suite has its own documentation in [`tests/`](tests/).
 | [Parameter Optimization](tests/simulation/parameter_optimization_tests.md) | Grid expand, override, ledger, ranking, sensitivity, grid validation (#390) |
 | [Swap Cost Accrual](tests/simulation/swap_cost_tests.md) | Overnight swap accrual: debit/credit/triple, spot=0, determinism (#365) |
 | [Robustness Validation](tests/simulation/robustness_tests.md) | Multi-window + IS/OOS: roles, distribution, WFE, constancy guard, verdict (#367) |
-| [Trend Channel Reference](tests/simulation/trend_channel_reference_tests.md) | Didactic full-order-surface reference: LIMIT/STOP entries, SL/TP, trailing, partial close, multi-position (#118) |
+| [Trend Channel Reference](tests/simulation/trend_channel_reference_tests.md) | Didactic full-order-surface reference: LIMIT/STOP entries, its own SL/TP and trail, partial close, multi-position (#118) |
 | [Stale-Data Stress](tests/simulation/stale_stress_tests.md) | Planned stale windows drive both staleness contracts (#436) + per-tick signal resolution counters (#433) |
 | [Benchmark](tests/simulation/benchmark_tests.md) | Performance regression (environment-specific) |
 | [Import Pipeline](tests/data/import_pipeline_tests.md) | Tick/bar import pipeline |
@@ -216,6 +216,7 @@ Each test suite has its own documentation in [`tests/`](tests/).
 | [Spot Entry Capital Tests](tests/framework/spot_entry_capital_tests.md) | How much capital a new entry may commit, per account model — why `free_margin` is not that number at spot, and that the margin answer is unchanged |
 | [Indicator Tests](tests/framework/indicator_tests.md) | The shared indicator library: what each name means, that the per-tick and bulk forms of one indicator agree, and how much history each average needs |
 | [Price Trigger Tests](tests/framework/price_trigger_tests.md) | The shared order-vs-quote predicate: has the market reached this price, and which side of the book does this direction trade at |
+| [Own Exit Levels Tests](tests/framework/own_exit_levels_tests.md) | A logic's own stop and target per position: seeded, only tightened, closed once, gone with their position, restored only for restored positions (#625) |
 | [Order Endings Tests](tests/framework/order_endings_tests.md) | One status per way an order ends, in both pipelines — who refused it, who cancelled it, what the end of a run leaves — and the counts declared from them |
 | [Order Events Tests](tests/framework/order_events_tests.md) | Every order transition as one event in both pipelines — the declared vocabulary held to the source, each order life step by step, the stream file, the run index and the route |
 | [Field Study Recorder Tests](tests/framework/field_study_recorder_tests.md) | The field study's capture as a copy of the order-event stream, and the certificate that reads it — offline, no order placed |

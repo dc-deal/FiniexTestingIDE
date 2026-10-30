@@ -1534,7 +1534,8 @@ class AbstractTradeExecutor(ABC):
         self,
         position_id: str,
         lots: Optional[float] = None,
-        close_reason: CloseReason = CloseReason.MANUAL
+        close_reason: CloseReason = CloseReason.MANUAL,
+        exit_level: Optional[float] = None,
     ) -> OrderResult:
         """
         Close a position (full or partial).
@@ -1547,6 +1548,8 @@ class AbstractTradeExecutor(ABC):
             lots: Lots to close (None = close all)
             close_reason: Why — recorded on the trade. Carried on the PendingOrder so it
                 survives the round trip a live close takes (#500)
+            exit_level: The level an own exit fired at (#625), carried the same way; None for
+                every other close
         """
         pass
 
@@ -2141,8 +2144,10 @@ class AbstractTradeExecutor(ABC):
             return None
 
         # The level a stop-loss or take-profit close fired at, read before the close changes the
-        # position — the same levels its trade record takes (#631)
-        fired_level = close_reason.fired_level(position.stop_loss, position.take_profit)
+        # position (#631) — an own exit's travels on its order, because the position carries no
+        # level for it (#625)
+        fired_level = (pending_order.exit_level if pending_order.exit_level is not None
+                       else close_reason.fired_level(position.stop_loss, position.take_profit))
 
         # Get current price (needed for tick_value calculation regardless)
         bid, ask = self.get_current_price(position.symbol)
@@ -2269,6 +2274,7 @@ class AbstractTradeExecutor(ABC):
                 exit_bid=bid,
                 exit_ask=ask,
                 exit_quote_modelled=self._current_quote_modelled(),
+                exit_level=fired_level,
             )
             self.logger.debug(
                 f'📊 Partial close: {position_id} '
@@ -2298,6 +2304,7 @@ class AbstractTradeExecutor(ABC):
                 exit_bid=bid,
                 exit_ask=ask,
                 exit_quote_modelled=self._current_quote_modelled(),
+                exit_level=fired_level,
             )
             self.logger.debug(
                 f'💰 Position closed: {position_id} '
@@ -3200,6 +3207,16 @@ class AbstractTradeExecutor(ABC):
             result: The DENIED OrderResult from OrderGuard.validate()
         """
         self._book_order_result(result)
+
+    def record_own_exit(self) -> None:
+        """
+        Count one close a logic sent at its own stop or target (#625).
+
+        The same population `sl_tp_triggered` counts for the level check — a close a stop or a
+        target triggered — so a logic that keeps its levels itself is not reported as one whose
+        stops never fired.
+        """
+        self._execution_counts.count_protective_close()
 
     def get_trade_history(self) -> List[TradeRecord]:
         """Get all completed trades with full audit trail."""

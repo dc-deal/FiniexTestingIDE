@@ -26,11 +26,17 @@ Restart recovery splits into three categories with three owners. This layer is *
 | **B — Algo memory** | counters, regime flags, daily flags, risk HWM | **Bot (this layer)** |
 | C — Framework op-state | safety baseline / high-water-mark | Framework (safety layer) |
 
-**Hard boundary:** persist only **position-independent** memory. Positions are the framework's: a
-real-money spot session restores the open position book from its own carry-over (Cold-Start
-Recovery), while a dry run and a margin session start without one. So an algo never stores "I hold
-position #42" and assumes it after a restart — it reads the positions the framework restored.
-Persist counters, flags and regime.
+**Hard boundary:** never persist a **position**. Positions are the framework's: a real-money spot
+session restores the open position book from its own carry-over (Cold-Start Recovery), while a dry
+run and a margin session start without one. So an algo never stores "I hold position #42" and
+assumes it after a restart — it reads the positions the framework restored. Persist counters, flags
+and regime.
+
+What an algo knows **about** a position it may keep, keyed by the position's id: its own stop and
+target (`OwnExitLevels`, #625), a trailed or break-even stop, the initial risk, a rung already
+taken. On restore it applies that memory **only to the positions the framework restored** and drops
+the rest — `OwnExitLevels.restore(snapshot, open_position_ids)` does exactly that. A position's id
+survives the restart with the carried book, so the key still names it.
 
 ## The hooks
 

@@ -88,6 +88,7 @@ Data Flow:
 from typing import Any, Dict, List, Optional
 
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
+from python.framework.decision_logic.own_exit_levels import OwnExitLevels
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.types.autotrader_types.cold_start_types import (
     ColdStartSituation,
@@ -101,6 +102,7 @@ from python.framework.types.parameter_types import InputParamDef, OutputParamDef
 from python.framework.types.performance_types.performance_stats_types import DecisionLogicStats
 from python.framework.types.trading_env_types.market_data_status_types import MarketDataStatus
 from python.framework.types.trading_env_types.order_types import OrderResult, OrderSide, OrderType
+from python.framework.types.trading_env_types.own_exit_types import PositionExitLevels
 from python.framework.types.worker_types import WorkerRequirement, WorkerResult
 
 
@@ -147,6 +149,10 @@ class DeterministicProbe(AbstractDecisionLogic):
         cancel_stop_sequence: List of stop order cancellation specs (optional)
             - tick_number: When to cancel the tracked stop order
         lot_size: Default lot size for trades (default: 0.1)
+        exit_mode: 'declared' (default) sends each stop_loss / take_profit with the order and
+            the modifies, for a venue that holds them; 'own' keeps them as the probe's own
+            levels (OwnExitLevels, #625) and closes when the market reaches one — the way a
+            logic exits on a venue whose API holds no level
     """
 
     def __init__(
@@ -174,6 +180,10 @@ class DeterministicProbe(AbstractDecisionLogic):
         self.modify_stop_sequence = self.params.get('modify_stop_sequence')
         self.cancel_limit_sequence = self.params.get('cancel_limit_sequence')
         self.cancel_stop_sequence = self.params.get('cancel_stop_sequence')
+        self.exit_mode = self.params.get('exit_mode')
+        # The probe's own stop and target, in 'own' exit mode only (#625)
+        self._exits: Optional[OwnExitLevels] = (
+            OwnExitLevels(logger=self.logger) if self.exit_mode == 'own' else None)
 
         # Internal state
         self.tick_count = 0
@@ -238,6 +248,14 @@ class DeterministicProbe(AbstractDecisionLogic):
                 param_type=list,
                 default=[],
                 description='List of stop order cancellation specs: tick_number'
+            ),
+            'exit_mode': InputParamDef(
+                param_type=str,
+                default='declared',
+                choices=('declared', 'own'),
+                description="Where stop_loss / take_profit live: 'declared' sends them with the "
+                            "order for a venue that holds them, 'own' keeps them as the probe's "
+                            "own levels and closes when one is reached"
             ),
         }
 
@@ -509,6 +527,10 @@ class DeterministicProbe(AbstractDecisionLogic):
                 'No trading_api available - skipping execution')
             return None
 
+        # Own stop and target first, where a venue would check a level it held
+        if self._exits is not None:
+            self._exits.enforce(self.trading_api, tick)
+
         # Process any pending modifications (positions + limit/stop orders)
         self._process_modify_sequence()
         self._process_modify_limit_sequence()
@@ -520,6 +542,9 @@ class DeterministicProbe(AbstractDecisionLogic):
         lot_size = decision.outputs.get('lot_size', self.default_lot_size)
         stop_loss = decision.outputs.get('stop_loss')
         take_profit = decision.outputs.get('take_profit')
+        # In 'own' exit mode the levels stay with the probe and the order carries none
+        sent_stop_loss = stop_loss if self._exits is None else None
+        sent_take_profit = take_profit if self._exits is None else None
         order_type = OrderType[decision.outputs.get('order_type', 'MARKET')]
         limit_price = decision.outputs.get('limit_price')
         stop_price = decision.outputs.get('stop_price')
@@ -544,12 +569,13 @@ class DeterministicProbe(AbstractDecisionLogic):
                     lots=lot_size,
                     price=limit_price,
                     stop_price=stop_price,
-                    stop_loss=stop_loss,
-                    take_profit=take_profit,
+                    stop_loss=sent_stop_loss,
+                    take_profit=sent_take_profit,
                     comment=f'Backtest LONG at tick {self.tick_count}'
                 )
                 if (order_response.is_refused == True):
                     self.logger.error(order_response.rejection_message)
+                self._arm_own_levels(order_response, stop_loss, take_profit)
                 # Track pending order ID for modify sequences
                 if order_type == OrderType.LIMIT and order_response.order_id:
                     self._pending_limit_order_id = order_response.order_id
@@ -570,12 +596,13 @@ class DeterministicProbe(AbstractDecisionLogic):
                     lots=lot_size,
                     price=limit_price,
                     stop_price=stop_price,
-                    stop_loss=stop_loss,
-                    take_profit=take_profit,
+                    stop_loss=sent_stop_loss,
+                    take_profit=sent_take_profit,
                     comment=f'Backtest SHORT at tick {self.tick_count}'
                 )
                 if (order_response.is_refused == True):
                     self.logger.error(order_response.rejection_message)
+                self._arm_own_levels(order_response, stop_loss, take_profit)
                 # Track pending order ID for modify sequences
                 if order_type == OrderType.LIMIT and order_response.order_id:
                     self._pending_limit_order_id = order_response.order_id
@@ -594,6 +621,43 @@ class DeterministicProbe(AbstractDecisionLogic):
             return None
 
         return None
+
+    def _arm_own_levels(
+        self,
+        order_response: OrderResult,
+        stop_loss: Optional[float],
+        take_profit: Optional[float],
+    ) -> None:
+        """
+        In 'own' exit mode, keep an entry's levels under its order id — the id its position takes.
+
+        Args:
+            order_response: The entry's answer
+            stop_loss: The configured stop, or None
+            take_profit: The configured target, or None
+        """
+        if self._exits is None or order_response.is_refused:
+            return
+        if stop_loss is None and take_profit is None:
+            return
+        self._exits.set_levels(order_response.order_id, stop=stop_loss, target=take_profit)
+
+    def _move_own_levels(self, position_id: str, kwargs: Dict[str, Any]) -> None:
+        """
+        In 'own' exit mode, apply a modify's stop_loss / take_profit to the own levels instead.
+
+        Takes the two keys out of `kwargs`, so what is left is what the order itself changes.
+
+        Args:
+            position_id: The position, or the resting entry whose fill opens it
+            kwargs: The modify's keys; stop_loss and take_profit are removed
+        """
+        levels = self._exits.get_levels(position_id) or PositionExitLevels()
+        stop = kwargs.pop('stop_loss', levels.stop)
+        target = kwargs.pop('take_profit', levels.target)
+        self._exits.set_levels(position_id, stop=stop, target=target)
+        self.logger.info(
+            f'🔧 Own levels at tick {self.tick_count}: {position_id} stop={stop} target={target}')
 
     def _process_modify_sequence(self) -> None:
         """
@@ -619,6 +683,10 @@ class DeterministicProbe(AbstractDecisionLogic):
                     kwargs['stop_loss'] = spec['stop_loss']
                 if 'take_profit' in spec:
                     kwargs['take_profit'] = spec['take_profit']
+
+                if self._exits is not None:
+                    self._move_own_levels(position.position_id, kwargs)
+                    return
 
                 result = self.trading_api.modify_position(
                     position_id=position.position_id,
@@ -655,6 +723,10 @@ class DeterministicProbe(AbstractDecisionLogic):
                 if 'take_profit' in spec:
                     kwargs['take_profit'] = spec['take_profit']
 
+                if self._exits is not None:
+                    self._move_own_levels(self._pending_limit_order_id, kwargs)
+                    if not kwargs:
+                        return
                 result = self.trading_api.modify_limit_order(
                     order_id=self._pending_limit_order_id,
                     **kwargs
@@ -692,6 +764,10 @@ class DeterministicProbe(AbstractDecisionLogic):
                 if 'take_profit' in spec:
                     kwargs['take_profit'] = spec['take_profit']
 
+                if self._exits is not None:
+                    self._move_own_levels(self._pending_stop_order_id, kwargs)
+                    if not kwargs:
+                        return
                 result = self.trading_api.modify_stop_order(
                     order_id=self._pending_stop_order_id,
                     **kwargs

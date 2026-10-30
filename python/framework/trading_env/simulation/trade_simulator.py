@@ -567,7 +567,8 @@ class TradeSimulator(AbstractTradeExecutor):
         self,
         position_id: str,
         lots: Optional[float] = None,
-        close_reason: CloseReason = CloseReason.MANUAL
+        close_reason: CloseReason = CloseReason.MANUAL,
+        exit_level: Optional[float] = None,
     ) -> OrderResult:
         """
         Submit close position order with delay.
@@ -578,6 +579,7 @@ class TradeSimulator(AbstractTradeExecutor):
             position_id: Position to close
             lots: Lots to close (None = close all)
             close_reason: Why — recorded on the trade when the close fills
+            exit_level: The level an own exit fired at (#625), None for every other close
 
         Returns:
             OrderResult with PENDING status
@@ -613,7 +615,8 @@ class TradeSimulator(AbstractTradeExecutor):
             symbol=position.symbol,
             close_lots=lots,
             close_reason=close_reason,
-            position_direction=position.direction
+            position_direction=position.direction,
+            exit_level=exit_level,
         )
         self._record_submission(self.latency_simulator.get_order(order_id))
 

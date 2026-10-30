@@ -4068,6 +4068,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         position_id: str,
         lots: Optional[float] = None,
         close_reason: CloseReason = CloseReason.MANUAL,
+        exit_level: Optional[float] = None,
     ) -> OrderResult:
         """
         Send close order to broker.
@@ -4077,6 +4078,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             lots: Lots to close (None = close all)
             close_reason: Why — stored on the pending close and read back at the
                 fill, since the two are a round trip apart (#500)
+            exit_level: The level an own exit fired at (#625), stored the same way
 
         Returns:
             OrderResult with PENDING status, or DENIED when a check here refused it
@@ -4133,7 +4135,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         if in_flight is not None and in_flight.order_action == PendingOrderAction.CLOSE:
             return self._joined_close_result(position, in_flight, lots, close_reason)
         if position.protective_order_id:
-            return self._defer_close_behind_cancel(position, lots, close_reason)
+            return self._defer_close_behind_cancel(position, lots, close_reason, exit_level)
 
         # Send close to broker — close = reverse direction order
         close_direction = (
@@ -4165,6 +4167,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             client_order_id=client_key,
             symbol=position.symbol,
             position_direction=position.direction,
+            exit_level=exit_level,
         )
         self._stamp_write_moment(self._request_processor.get_order(position_id))
         self._request_processor.submit_close_order_async(
@@ -4201,6 +4204,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         position: Position,
         lots: Optional[float],
         close_reason: CloseReason,
+        exit_level: Optional[float] = None,
     ) -> OrderResult:
         """
         Cancel the venue's protective order first and hold the close until it is gone.
@@ -4213,6 +4217,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             position: The position being closed
             lots: Lots to close, or None for all
             close_reason: Why the close was requested
+            exit_level: The level an own exit fired at (#625), None for every other close
 
         Returns:
             PENDING while the cancel is in flight, or a rejection when it cannot be sent
@@ -4241,7 +4246,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         # the honest route is a fresh order once the close has resolved.
         is_partial = lots is not None and lots < position.lots
         self._deferred_closes[position.position_id] = DeferredClose(
-            lots=lots, close_reason=close_reason, reinstate=is_partial)
+            lots=lots, close_reason=close_reason, reinstate=is_partial, exit_level=exit_level)
         self.logger.info(
             f'🛡️ Close of {position.position_id} is waiting for the venue to confirm the '
             f'protective order is cancelled — it will be sent then')
@@ -4284,7 +4289,8 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             f'🛡️ The venue confirmed the protective order for {position_id} is gone — '
             f'sending the close now')
         result = self.close_position(
-            position_id, lots=deferred.lots, close_reason=deferred.close_reason)
+            position_id, lots=deferred.lots, close_reason=deferred.close_reason,
+            exit_level=deferred.exit_level)
         # The answer is READ, because by now the protective order is already gone. Before
         # #507 the re-entry could only be refused for 'position not found', which is
         # harmless — there is nothing left to protect. A SIZE refusal is not: the position

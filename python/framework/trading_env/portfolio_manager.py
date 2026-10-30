@@ -460,6 +460,7 @@ class PortfolioManager:
         exit_bid: float = 0.0,
         exit_ask: float = 0.0,
         exit_quote_modelled: bool = False,
+        exit_level: Optional[float] = None,
     ) -> float:
         """
         Close position and realize P&L.
@@ -479,6 +480,8 @@ class PortfolioManager:
             exit_ask: Ask at the closing fill
             exit_quote_modelled: Whether exit_bid/exit_ask were modelled for a tick without a
                 quote (#602)
+            exit_level: The level a stop-loss or take-profit close fired at, None for every
+                other close (#625)
 
         Returns:
             Realized P&L amount
@@ -556,6 +559,7 @@ class PortfolioManager:
             position, CloseType.FULL, close_reason,
             exit_trades=exit_trades,
             exit_submission=exit_submission,
+            exit_level=exit_level,
         )
         self._record_spread_attribution(trade_record)
         self._file_trade_record(trade_record)
@@ -580,6 +584,7 @@ class PortfolioManager:
         exit_bid: float = 0.0,
         exit_ask: float = 0.0,
         exit_quote_modelled: bool = False,
+        exit_level: Optional[float] = None,
     ) -> float:
         """
         Partially close a position: realize P&L on closed lots, keep remainder open.
@@ -600,6 +605,8 @@ class PortfolioManager:
             exit_ask: Ask at the closing fill
             exit_quote_modelled: Whether exit_bid/exit_ask were modelled for a tick without a
                 quote (#602)
+            exit_level: The level a stop-loss or take-profit close fired at, None for every
+                other close (#625)
 
         Returns:
             Realized P&L for the closed portion
@@ -695,6 +702,7 @@ class PortfolioManager:
             mfe_pnl=position.mfe_pnl,
             initial_risk=self._initial_risk(position, close_lots),
             close_reason=close_reason,
+            exit_level=exit_level,
             entry_type=position.entry_type,
             comment=position.comment,
             account_currency=self.account_currency,
@@ -802,6 +810,7 @@ class PortfolioManager:
         close_reason: CloseReason = CloseReason.MANUAL,
         exit_trades: Optional[List[BrokerTrade]] = None,
         exit_submission: Optional[SubmissionMetadata] = None,
+        exit_level: Optional[float] = None,
     ) -> TradeRecord:
         """
         Convert closed Position to TradeRecord.
@@ -812,6 +821,8 @@ class PortfolioManager:
             close_reason: Why the position was closed
             exit_trades: Per-execution BrokerTrade list from close PendingOrder (#330)
             exit_submission: Submission-moment snapshot from close PendingOrder (#340/#345)
+            exit_level: The level a stop-loss or take-profit close fired at, None for every
+                other close (#625)
 
         Returns:
             TradeRecord with all fields for P&L verification
@@ -849,6 +860,7 @@ class PortfolioManager:
             mfe_pnl=position.mfe_pnl,
             initial_risk=self._initial_risk(position, position.lots),
             close_reason=close_reason,
+            exit_level=exit_level,
             entry_type=position.entry_type,
             comment=position.comment,
             account_currency=self.account_currency,

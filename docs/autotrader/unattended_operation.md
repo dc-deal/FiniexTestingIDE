@@ -293,14 +293,16 @@ about the venue.
    read counts as uncommitted, and real orders refuse to start from it
 4  the unit points at the new tree; the home and the profile path stay
      WorkingDirectory=/srv/finiex/releases/v1.5.1
-     Environment=PYTHONPATH=/srv/finiex/releases/v1.5.1
+     Environment=PYTHONPATH=/srv/finiex/releases/v1.5.1:/srv/finiex/home
      Environment=FINIEX_DATA_HOME=/srv/finiex/home
 5  systemctl start <unit>         the boot names the home and the carry-over it continued
 6  GET /api/v1/reports/runs       the new tag's commit, the same installation, the same deployment
 ```
 
 The code is imported from `PYTHONPATH`, not from the working directory: left on the old tree, the
-new command runs the old code, and step 6 shows the old commit. The API server's unit moves to
+new command runs the old code, and step 6 shows the old commit. The home stands there as well because
+strategy files that import each other (`from user_algos.my_bot.my_math import ...`) find their package
+there; without it the session fails with `No module named 'user_algos'`. The API server's unit moves to
 the new tree in the same step and names the same home, so a store's reader and its writer never
 run two versions. Going back is the same steps with the old tree. The stop must finish inside
 systemd's stop timeout (`TimeoutStopSec`, 90 s by default); a kill after that costs the session

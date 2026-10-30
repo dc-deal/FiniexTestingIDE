@@ -58,6 +58,7 @@ still hold as long as the merged result is correct.
 | `test_scenario_overrides_global_and_app` | Level 3 — `scenarios[i].execution_config` overrides global which already overrode app — 3 levels deep |
 | `test_sub_group_per_key_merge` | #137 — nested `performance_tracking` sub-group merges per-key: scenario overrides `worker_decision_tracking`, `tick_loop_profiling` is inherited from global |
 | `test_unknown_key_hard_fails_with_provenance` | Safety net — typo in `global.execution_config` raises `ValueError` with full provenance string, before any merge happens |
+| `test_a_misspelt_global_section_hard_fails_rather_than_read_as_absent` | The section names under `global` are checked too: `execution_confg` raises `Unknown keys in global`, where it used to load with its whole block silently not applied |
 
 ## Fixtures (conftest.py)
 

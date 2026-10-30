@@ -188,7 +188,10 @@ Each class runs an independent session from its own profile. Sessions are module
 > `_check_sl_tp_triggers` used to return immediately outside `ExecutorMode.SIMULATION`, on the
 > assumption that the broker held the level, and nothing ever sent one. So these two profiles are
 > named after a trigger that had never happened, and the tests asserted that the level was STORED.
-> They now assert that it ACTED.
+> They now assert that it ACTED. Since #625 the probe keeps the two levels as its own
+> (`exit_mode: own`, `OwnExitLevels`) — Kraken's API holds no level for a position — so the stop
+> and the target act through the probe's own `close_position`, and the trade names the level that
+> fired (`exit_level`) while carrying no `stop_loss` of its own.
 >
 > Two properties of the AutoTrader close shape what they may assert. The exit goes through the
 > asynchronous `close_position()`, so it lands at the broker's next price and **never at the level**
@@ -201,8 +204,8 @@ Each class runs an independent session from its own profile. Sessions are module
 
 | Class | Tests | What it validates |
 |-------|-------|-------------------|
-| `TestStopLossConfiguration` | 3 | The stop ACTED: an exit carries `SL_TRIGGERED` and nothing is left open; the exit price is a real fill at or below the 89200.0 level, never the level itself; no session errors |
-| `TestTakeProfitConfiguration` | 3 | The target ACTED: an exit carries `TP_TRIGGERED` and nothing is left open; the exit price is a real fill at or above the 89350.0 level; no session errors |
+| `TestStopLossConfiguration` | 4 | The stop ACTED: an exit carries `SL_TRIGGERED` and nothing is left open; the exit price is a real fill at or below the 88964.0 level, never the level itself, and the trade names that level as `exit_level` with no `stop_loss` of its own; the close counts in `sl_tp_triggered`; no session errors |
+| `TestTakeProfitConfiguration` | 3 | The target ACTED: an exit carries `TP_TRIGGERED` and nothing is left open; the exit price is a real fill at or above the 88865.0 level, named as `exit_level`; no session errors |
 | `TestDuplicateSignalGuard` | 3 | Exactly 1 position opened despite 490 repeated BUY signals (hold_ticks=5000 > max_ticks=500); the session end fabricates no exit; no errors |
 | `TestMinimalWarmup` | 2 | A warmup the bar history cannot hold is REFUSED at startup: bar_max_history=30 against the RSI's 71 M5 bars ends the session before its first tick, naming `M5: 30/71` and the setting |
 

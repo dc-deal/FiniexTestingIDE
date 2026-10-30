@@ -575,6 +575,15 @@ feed-health episode's `origin` (real or stress-injected) and the `origin_classes
 `origin_evidence_grades` of a run's data (see *data origin*) are being renamed (#581, #582). See
 [Run Origin & Code Identity](architecture/run_origin_and_code_identity.md).
 
+**own exit** · **own level** (`OwnExitLevels`, `close_position(..., exit=OwnExit(...))`) — A stop
+or a target a decision logic keeps itself and checks on every tick, closing through its own
+`close_position` when the market reaches it — the exit on a venue whose API holds no level for a
+position, as Kraken's does not. No order carries it and the position does not either: the trade
+keeps its `sl_triggered` / `tp_triggered` reason and names the level that fired (its exit slippage
+is measured against it), while `stop_loss` / `take_profit` on the position and the trade stay
+empty, and so does the R-multiple. Counted in `sl_tp_triggered` like a close the framework's own
+level check made, once when the close goes out. See [Quickstart — Own Exits](user_guides/quickstart_guide.md).
+
 **paper** — The planned name for a dry run, not yet a configuration value (#304).
 
 **partial** — Never used alone. *Partial close*: part of a position was closed. *Partial fill*: part

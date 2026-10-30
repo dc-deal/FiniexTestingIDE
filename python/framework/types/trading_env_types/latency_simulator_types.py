@@ -284,6 +284,9 @@ class PendingOrder:
     # a live close is asynchronous: the trigger and the fill are separated by a broker
     # round trip, and the reason is only known at the trigger (#500).
     close_reason: Optional[CloseReason] = None
+    # The level an own exit fired at (#625): the logic's own stop or target, which the position
+    # does not carry, so it travels with the close to the fill like the reason does
+    exit_level: Optional[float] = None
     # Which position this close order settles (#503). Empty on every close the strategy
     # or the engine requests, where the order id IS the position id. Set on a protective
     # order the VENUE holds: that one is minted from the order counter like any other

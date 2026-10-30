@@ -798,9 +798,11 @@ class AbstractDecisionLogic(ABC):
         Return the algo's internal state for persistence (#354).
 
         Must be JSON-serializable — use only primitives (str/int/float/bool/
-        list/dict/None); store timestamps as ISO strings. Category B only: persist
-        position-independent memory (counters, regime, risk HWM, daily flags), NOT
-        live-position references (those return on boot via Cold-Start Recovery, #355).
+        list/dict/None); store timestamps as ISO strings. Category B only: persist the
+        algo's memory (counters, regime, risk HWM, daily flags), NEVER a position — positions
+        return on boot via Cold-Start Recovery (#355). What the algo knows ABOUT a position,
+        such as its own exit levels (#625), may be kept by the position's id and applied on
+        restore only to the positions the framework restored.
 
         Returns:
             JSON-serializable state dict (empty default → nothing persisted)
