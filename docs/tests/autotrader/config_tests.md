@@ -175,6 +175,16 @@ caches cleared before and after — never this working tree, whose state would d
 | `test_a_checkout_git_refuses_is_unknown_and_named_for_safe_directory` | A real "dubious ownership" — an algo checkout chowned to another user (root only, skipped otherwise): unknown rather than unversioned, recorded under the checkout holding the `.git`, and named in the `safe.directory` command |
 | `test_real_orders_are_refused_even_with_allow_dirty` · `test_a_dry_run_keeps_running_and_warns_in_the_session_channel` · `test_an_unchanged_tree_says_nothing` · `test_the_refusal_renders_inside_the_startup_failed_block` | A package edited between the capture and the guard: real orders refuse with the moved file named, `--allow-dirty` included; a dry run starts with one WARNING in the session channel; an unchanged package says nothing |
 
+### `test_session_in_a_data_home.py` (#598)
+
+A whole mock session with the code tree and the data home apart, the way a deploy runs one. The
+strategy, its stores and its broker cache live in the home; the process runs from the tree, with
+both on `PYTHONPATH`. A unit test of the home cannot show this, because the question is whether
+every step of a boot looks a strategy up in the same place: a worker named relative to its strategy
+file once failed the type check here, while the suite, whose working directory is the home, stayed
+green. The fixture strategy under `tests/fixtures/data_home_session/my_algo/` names its worker
+relative to its own file and imports a sibling by its package path.
+
 ## Why This Matters
 
 These files cover the two questions asked before any money moves: *will this session send
