@@ -10,6 +10,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
 
+from python.configuration.data_home import resolve_strategy_file
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.decision_logic.decision_logic_performance_tracker import (
     DecisionLogicPerformanceTracker,
@@ -235,8 +236,9 @@ class WorkerOrchestrator:
         Normalize a worker reference to a canonical string for comparison.
 
         CORE references are returned as-is. File paths are resolved to
-        absolute strings so project-root-relative and file-relative paths
-        pointing to the same file compare equal.
+        absolute strings so configured and file-relative paths pointing to
+        the same file compare equal. A configured path resolves the way the
+        factories load it: in the data home first, then in the code tree.
 
         Args:
             type_str: Worker reference (CORE/name or file path)
@@ -252,7 +254,7 @@ class WorkerOrchestrator:
             return str(p)
         if base_path:
             return str((base_path / p).resolve())
-        return str((Path.cwd() / p).resolve())
+        return str(resolve_strategy_file(type_str))
 
     def _validate_decision_logic_requirements(self):
         """

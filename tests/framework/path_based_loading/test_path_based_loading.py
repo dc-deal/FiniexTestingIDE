@@ -333,6 +333,17 @@ class TestWorkerOrchestratorNormalization:
         expected = str((Path.cwd() / 'user_algos/x/worker.py').resolve())
         assert result == expected
 
+    def test_a_configured_path_and_a_file_relative_one_agree_in_a_data_home(self, tmp_path, monkeypatch):
+        # A deployed strategy lives in the home, the process runs in the code tree
+        worker = tmp_path / 'user_algos' / 'my_algo' / 'my_worker.py'
+        worker.parent.mkdir(parents=True)
+        worker.write_text('')
+        monkeypatch.setenv('FINIEX_DATA_HOME', str(tmp_path))
+        orch = self._make_orchestrator()
+        from_decision_logic = orch._normalize_worker_ref('my_worker.py', base_path=worker.parent)
+        from_config = orch._normalize_worker_ref('user_algos/my_algo/my_worker.py')
+        assert from_config == from_decision_logic
+
     def test_matching_refs_compare_equal(self, tmp_path):
         """
         Refs from decision logic (relative, base=algo_dir) and config
