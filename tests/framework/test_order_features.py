@@ -60,6 +60,7 @@ from python.framework.types.validation_types import (
 from python.framework.types.trading_env_types.order_types import (
     ModificationRejectionReason,
     ModificationResult,
+    ModificationStatus,
     OpenOrderRequest,
     OrderAction,
     OrderCapabilities,
@@ -905,6 +906,21 @@ class TestARefusedModifyLeavesATrace:
         assert len(warned) == 2
         assert 'stop_loss' in warned[0] and 'take_profit' not in warned[0]
         assert 'take_profit' in warned[1] and 'stop_loss' not in warned[1]
+
+
+class TestARefusedModifyReadsAsOne:
+    """Success and status never disagree, whichever of the two a refusal's builder stated."""
+
+    def test_a_refusal_that_states_no_status_reads_rejected(self):
+        result = ModificationResult(
+            success=False, rejection_reason=ModificationRejectionReason.INVALID_SL_LEVEL)
+
+        assert result.status is ModificationStatus.REJECTED
+
+    def test_an_accepted_one_keeps_its_status(self):
+        assert ModificationResult(success=True).status is ModificationStatus.SUCCESS
+        assert ModificationResult(
+            success=True, status=ModificationStatus.PENDING).status is ModificationStatus.PENDING
 
 
 class TestASessionCannotDeclareIt:

@@ -168,7 +168,7 @@ class EventProbe(AbstractDecisionLogic):
 
     @classmethod
     def get_subscribed_events(cls) -> Set[DecisionEventType]:
-        """Subscribe to every event so the probe records the full channel."""
+        """Subscribe to every event. POSITION_CLOSED has no hook here, so it is not recorded."""
         return {
             DecisionEventType.ORDER_FILLED,
             DecisionEventType.ORDER_REJECTED,

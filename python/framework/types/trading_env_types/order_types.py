@@ -744,9 +744,8 @@ class ModificationResult:
                  keep working under the post-#318 async path where the
                  modification is queued and resolves on the next tick / drain.
         status: Lifecycle status (PENDING for async-queued, SUCCESS for
-                synchronous fallback or post-resolve, REJECTED on reject).
-                Defaults to SUCCESS so legacy callers that don't set status
-                explicitly behave unchanged.
+                synchronous fallback or post-resolve, REJECTED on reject). A refusal
+                that states none reads REJECTED: success and status never disagree.
         rejection_reason: Reason for rejection (None if successful or pending)
         order_id: Order/position id this modification targets — populated for
                   PENDING returns so the caller can use has_in_flight_operation()
@@ -756,3 +755,8 @@ class ModificationResult:
     rejection_reason: Optional[ModificationRejectionReason] = None
     status: ModificationStatus = ModificationStatus.SUCCESS
     order_id: Optional[str] = None
+
+    def __post_init__(self) -> None:
+        """A refusal is never a success, whichever of the two its builder stated."""
+        if not self.success and self.status is ModificationStatus.SUCCESS:
+            self.status = ModificationStatus.REJECTED

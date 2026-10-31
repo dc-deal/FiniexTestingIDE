@@ -15,6 +15,9 @@
 #    framework method that only a private algo calls therefore reads as dead here. Check
 #    that workspace before deleting anything the framework exposes outward.
 #
+# ⚠️ A variable with a leading underscore is never reported, so a private module constant can go
+#    dead unseen. Count its references yourself when the code that read it goes.
+#
 # ⚠️ Serialization hides reads. A dataclass or Pydantic field written once and then dumped
 #    to JSON/CSV is never referenced by name, so most findings under
 #    `python/framework/types/` are fields, not dead code — but not all of them, and §19
