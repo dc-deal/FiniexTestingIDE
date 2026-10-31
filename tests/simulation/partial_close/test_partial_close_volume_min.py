@@ -26,6 +26,7 @@ import pytest
 from python.framework.factory.broker_config_factory import BrokerConfigFactory
 from python.framework.trading_env.simulation.trade_simulator import TradeSimulator
 from python.framework.types.market_types.market_data_types import TickData
+from python.framework.types.portfolio_types.portfolio_types import Position
 from python.framework.types.trading_env_types.order_types import (
     OrderDirection,
     OrderStatus,
@@ -78,7 +79,6 @@ def _simulator(held: float = _HELD) -> TradeSimulator:
 
 def _position(lots: float):
     """A plain LONG of `lots` at the working price. Returns: the Position."""
-    from python.framework.types.portfolio_types.portfolio_types import Position
     return Position(
         position_id='p1', symbol=_SYMBOL, direction=OrderDirection.LONG, lots=lots,
         original_lots=lots, entry_price=_PRICE, entry_time=_CLOCK,

@@ -161,7 +161,7 @@ Validates profit/loss calculations through internal consistency checks using Tra
 | `test_total_pnl_matches_portfolio` | Sum of trade net_pnl equals portfolio total_profit - total_loss |
 | `test_total_spread_cost_matches` | Sum of trade spread_cost equals portfolio total_spread_cost |
 | `test_net_pnl_formula` | For each trade: net_pnl = gross_pnl - total_fees |
-| `test_total_fees_breakdown` | For each trade: total_fees = spread_cost + commission_cost + swap_cost |
+| `test_total_fees_is_the_sum_of_the_CHARGED_components` | total_fees is what was charged: `spread_cost` is not in the sum |
 | `test_gross_pnl_formula` | Validates gross P&L formula: `points × tick_value × lots` where points = price_diff × 10^digits. This test caught a critical bug where SHORT positions used bid instead of ask for entry price |
 | `test_exit_after_entry` | Exit tick index must be greater than entry tick index |
 | `test_positive_lots` | Lot size must be positive for all trades |

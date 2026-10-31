@@ -194,7 +194,7 @@ class TestOBVEdgeCases:
 
 
 class TestOBVOutputFields:
-    """Test OBV output fields and Forex market warning."""
+    """Test OBV output fields."""
 
     def test_obv_output_fields(self, mock_logger):
         """Output must contain obv_value, bars_used, total_volume, trend, has_volume."""

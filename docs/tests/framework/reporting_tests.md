@@ -342,7 +342,8 @@ compared byte for byte across the move.
 | `test_sessions_of_one_deployment_become_one_history` | the grouping itself |
 | `test_a_one_off_row_joins_nothing` | not even a placeholder group — inventing one asserts a continuity nobody declared |
 | `test_sessions_are_ordered_by_start_not_by_arrival` | the ledger is a set of fragments; nothing about a read returns them in order |
-| `test_a_multi_currency_session_appears_once` | one run writes one row PER CURRENCY — counting rows would report a two-currency bot as twice-restarted |
+| `test_both_currencies_of_a_session_survive` | one run writes one row PER CURRENCY, and both are a real result |
+| `test_the_overview_reports_one_line_per_currency` | counting the rows as sessions would report a two-currency bot as twice-restarted |
 | `test_each_currency_is_its_own_series` | the first session of the second currency has no predecessor in ITS currency: index, gap and change marks restart per currency instead of measuring against the other one |
 | `test_a_changed_operation_is_marked_separately` | a raised stop level is not a different strategy; that separation is why there are two hashes |
 | `test_an_unreadable_timestamp_yields_no_gap_rather_than_a_wrong_one` | an unmeasurable duration reported as unmeasured costs a blank; reported as a figure it costs an investigation |

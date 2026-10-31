@@ -185,12 +185,12 @@ Partial-close specific tests organized in 7 groups.
 | `test_partial_records_have_same_entry_price` | All records share identical entry price |
 | `test_partial_records_have_different_exit_ticks` | Each partial at a different tick |
 
-#### TestPartialCloseFeeSplitting
+#### TestASpreadBrokerSplitsNoFee
 
 | Test | Description |
 |------|-------------|
-| `test_each_partial_has_positive_fees` | Spread and total fees > 0 per partial |
-| `test_fee_sum_across_partials_is_consistent` | Total spread for position is positive and non-negative per record |
+| `test_a_spread_broker_charges_neither_leg` | no fee on any leg of a quote-driven venue, the double charge pinned at the record |
+| `test_net_pnl_equals_gross_pnl_when_nothing_is_charged` | with no fee, net and gross P&L agree |
 
 #### TestPositionIsolation
 

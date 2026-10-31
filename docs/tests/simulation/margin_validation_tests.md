@@ -247,7 +247,7 @@ Imported from `tests/shared/shared_pnl.py`. Validates P&L calculations for succe
 | `test_total_pnl_matches_portfolio` | Sum of trade net_pnl equals portfolio P&L |
 | `test_total_spread_cost_matches` | Sum of spread costs matches portfolio total |
 | `test_net_pnl_formula` | net_pnl = gross_pnl - total_fees |
-| `test_total_fees_breakdown` | total_fees = spread + commission + swap |
+| `test_total_fees_is_the_sum_of_the_CHARGED_components` | total_fees is what was charged: `spread_cost` is not in the sum |
 | `test_gross_pnl_formula` | Gross P&L follows points × tick_value × lots formula |
 | `test_exit_after_entry` | Exit tick after entry tick |
 | `test_positive_lots` | Lot size positive |
