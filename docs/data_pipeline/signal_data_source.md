@@ -139,7 +139,7 @@ fallback to the previous one. The session log states which endpoint answered, ne
 credential's source file:
 
 ```
-📡 Producer endpoint ← production (https://finiex-rag.duckdns.org) · credential user_configs/credentials/rag_credentials.json
+📡 Producer endpoint ← production (https://finiex-rag.duckdns.org) · credential user_configs/credentials/peers/rag_credentials.json
 ```
 
 ### The producer's routes
@@ -177,7 +177,7 @@ failure modes: health failing is the *address*, `/latest` failing alone is the *
 📡 PRODUCER CONNECT CHECK
    Endpoint:   production
    Address:    https://finiex-rag.duckdns.org
-   Credential: user_configs/credentials/rag_credentials.json
+   Credential: user_configs/credentials/peers/rag_credentials.json
    ✅ GET /v1/health                              journal 138c68e48b15 (production) · engine 0.3.3
    ✅ GET /v1/pipelines                           crypto_sentiment (600s) · keep-alive 20s · replay window 24h
    ✅ GET /v1/pipelines/crypto_sentiment/latest   seq 331 · epoch 1 · schema 2.0 · origin live

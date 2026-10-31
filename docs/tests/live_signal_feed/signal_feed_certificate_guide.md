@@ -53,7 +53,7 @@ gains a transport section instead of being rewritten.
 
 1. **The PRODUCTION producer must answer**, not the development instance. Check first:
    `python python/cli/signal_index_cli.py connect-check`
-2. A real token in `user_configs/credentials/rag_credentials.json`.
+2. A real token in `user_configs/credentials/peers/rag_credentials.json`.
 3. `user_configs/sentiment_config.json` sets `producer.active: production`,
    `stream.enabled: true` and `stream.pipeline_id`.
 4. `FINIEX_CONFIG_ISOLATION=0` — see the warning below. The launch entry sets it.
