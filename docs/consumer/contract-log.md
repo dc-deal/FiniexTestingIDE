@@ -33,6 +33,29 @@ reads downwards from the version their fixtures hold until they reach the one be
 A test holds the newest heading in this log to the number the server answers with, so a version
 cannot ship without its entry.
 
+## Version 47 — 2026-10-30 (#559)
+
+A deployment notices when its sessions ran different code, in a strategy's repository as much as in
+this application's.
+
+- [Deployments](/api/v1/docs/deployments), a changed meaning: `changed` on a list row is also true
+  when only the code moved. **`changed: true` with `advisory: null` is a new state:** the advisory
+  still speaks of the profile alone and stays null for a code change. `configuration_changed`, new
+  on the list row, says what `changed` said so far.
+- Deployments, the session rows: `code_changes`, one entry per repository whose code differs from the
+  previous session's: `repository_label`, `old_commit`, `new_commit`, `commits_between`,
+  `change_direction` (`forward`, `back`, `unknown`, `uncommitted`, `added`, `removed`) and `subject`.
+  Empty when nothing moved, and on a session recorded before this contract. `code_changes_key` on
+  the detail is empty: an entry's identity is its place in the list, and `repository_label` can repeat.
+- Deployments, the list rows and the detail: `code_summary`, with `code_stands`, `sessions`,
+  `last_change_at` and `age_days`; null under two code stands.
+- [Run header](/api/v1/docs/run-header): a repository in `code_identity` carries `commit_subject` and
+  `recent_commits`, filled for a session of a deployment and null on every other run.
+- [Sweeps](/api/v1/docs/sweeps): a combination carries `code_stand`, null on every one, because only
+  a session records it.
+
+Nothing removed or renamed; one meaning changed: `changed`.
+
 ## Version 46 — 2026-10-30 (#625)
 
 A session holds no stop or target for a position any more, so the fields and values that said who held
@@ -141,26 +164,13 @@ read them a page at a time — a finished run's and a running session's alike.
 Two routes and two codes added; nothing removed or renamed. Its document is
 [recorded streams](/api/v1/docs/recorded-streams).
 
-## Version 42 — 2026-10-27 (#476)
-
-A booking period counts the orders it handled, so a run's order counts can be read from its periods
-again.
-
-- A change of meaning: on a [sweep](/api/v1/docs/sweeps) combination folded from a run's booking
-  periods, every `orders_*` field and `sl_tp_triggered` is the sum of those periods' own counts. They
-  read null there before, because a booking period carried none. Null now only on a row written
-  before this version.
-- The counts are taken inside each period, where the run's [execution stats](/api/v1/docs/execution-stats)
-  count them, so a run's periods add up to its execution stats.
-
-No field added; no field removed.
-
-## Versions 41 and earlier
+## Versions 42 and earlier
 
 One line each. Every one of these moved a shape or a meaning; what they moved is summarised here
 rather than spelled out, because a consumer this far behind needs the list of steps, not each step's
 reasoning. The full text of a compressed version is in this repository's history.
 
+- **Version 42** — 2026-10-27 (#476): A booking period counts the orders it handled, so a run's order counts can be read from its periods again — on a [sweep](/api/v1/docs/sweeps) combination, a changed meaning: every `orders_*` field and `sl_tp_triggered` is the sum of its periods' own counts, null before.
 - **Version 41** — 2026-10-26 (#626): What a carry-over may carry across a change: a rehearsal's readings never reach real money, and a start that continues an open position under a changed configuration says so.
 - **Version 40** — 2026-10-25 (#476): A trading day ends at its boundary, every trading day has its row (`tick_count`, new), and a session's days are booked while it runs.
 - **Version 39** — 2026-10-25 (#547): A backtest names the configuration it ran with — `rendered_config_id` on a run's [header](/api/v1/docs/run-header) is filled for a backtest too, naming its rendered scenario set: one section per scenario with every parameter default filled in, beside `config_id`, the file the run was given; empty on an older backtest and where the configuration could not be rendered or frozen.

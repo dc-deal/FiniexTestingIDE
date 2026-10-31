@@ -71,7 +71,7 @@ def session_label(config: AutoTraderConfig) -> str:
 
 
 def session_started_text(config: AutoTraderConfig, dry_run: bool, run_id: str,
-                         commit: str) -> Tuple[str, str]:
+                         commits: List[Tuple[str, Optional[str]]]) -> Tuple[str, str]:
     """
     The message a session sends when its tick loop starts.
 
@@ -79,7 +79,8 @@ def session_started_text(config: AutoTraderConfig, dry_run: bool, run_id: str,
         config: The session's resolved profile
         dry_run: Whether orders are only simulated
         run_id: The run's id
-        commit: The commit the session runs, '' when unknown
+        commits: Each repository's label and the commit the session runs, the commit None when
+            unknown; empty when nothing was recorded
 
     Returns:
         Title and detail
@@ -90,7 +91,8 @@ def session_started_text(config: AutoTraderConfig, dry_run: bool, run_id: str,
         mode = 'dry run — nothing is placed at the venue'
     else:
         mode = 'LIVE — real orders'
-    code = f'\nCommit: {commit[:8]}' if commit else ''
+    named = ' · '.join(f'{label} {commit[:8] if commit else "unknown"}' for label, commit in commits)
+    code = f'\nCommit: {named}' if named else ''
     return 'Session started', f'{mode}\nRun: {run_id}{code}'
 
 

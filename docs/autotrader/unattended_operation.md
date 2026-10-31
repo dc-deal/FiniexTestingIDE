@@ -84,7 +84,7 @@ true — a recurrence before the all-clear keeps the episode open.
 
 | Moment | Mark |
 |---|---|
-| The session started — live, dry run or mock replay, run id, commit | ✅ |
+| The session started — live, dry run or mock replay, run id, the commit of every repository | ✅ |
 | STARTUP FAILED — a step of the start broke | ⛔ |
 | STARTUP REFUSED — a step of the start declined, quoting why: a restart that may not adopt under `operator_confirm`, a Field Study account that holds a resting order | ⛔ |
 | REFUSED AT THE FIRST TICK, and what had been sent before it | ⛔ |
@@ -254,12 +254,15 @@ nothing — market orders only — restarts the same way in both modes.
 **A restart runs what is on disk.** The supervisor starts the same command again, so the restarted
 session runs the code and the profile it finds at that moment, and records both in its own header.
 A real-money start refuses uncommitted code, but a clean new commit — a `git pull` between two
-restarts — passes, and the deployment history draws no line for it: it compares the strategy
-parameters, the operational settings and where the orders went, never the code. A backtest of the
-whole period runs at one commit. For a run you mean to compare, leave the checkout, your strategy's
-repository and the profile alone until it ends, or read each session's `code_identity` from its run
-header before you compare: it names the commit of every repository a component came from, while the
-ledger row names only this repository's commit and the component versions — see
+restarts — passes. It does not pass unseen: the started alert names the commit of every repository,
+and the deployment history draws the change between the two sessions, one row per repository, with
+a dated warning above the table
+([Deployment & Ledger](../user_guides/deployment_ledger_guide.md#a-code-change-draws-one-row-per-repository-and-one-dated-warning)).
+That reports the change and stops nothing. A backtest of the whole period runs at one commit. For a
+run you mean to compare, leave the checkout, your strategy's repository and the profile alone until
+it ends, or compare each stretch between two such rows on its own: each session's ledger row names
+the commit of every repository a component came from, and its run header's `code_identity` holds the
+whole record — see
 [A run is a record, and an old one stays true](../introduction_to_the_ide.md#a-run-is-a-record-and-an-old-one-stays-true).
 
 ## A deploy — a restart into a new code tree
@@ -290,7 +293,8 @@ about the venue.
 2  run_index_cli.py status        the stopped session completed — run with FINIEX_DATA_HOME set
 3  git checkout of the new tag beside the old tree (a clone or a worktree), its requirements
    installed in an environment of its own — a checkout, never an export: a tree git cannot
-   read counts as uncommitted, and real orders refuse to start from it
+   read counts as uncommitted, and real orders refuse to start from it; a shallow clone takes
+   --depth N+1, N the commits since the old tag, counted where the history lies
 4  the unit points at the new tree; the home and the profile path stay
      WorkingDirectory=/srv/finiex/releases/v1.5.1
      Environment=PYTHONPATH=/srv/finiex/releases/v1.5.1:/srv/finiex/home
@@ -298,6 +302,22 @@ about the venue.
 5  systemctl start <unit>         the boot names the home and the carry-over it continued
 6  GET /api/v1/reports/runs       the new tag's commit, the same installation, the same deployment
 ```
+
+**A shallow clone has to reach the commit it replaces.** The deployment history says how far the
+code moved from where the older session's commit stands in the commits the newer session recorded,
+and a shallow clone records only what it holds. A full clone or a worktree holds everything; a
+shallow clone takes `--depth N+1`, with N counted on a machine that holds the history:
+
+```
+git rev-list --count --first-parent v1.5.0..v1.5.1        on the machine with the history: 3
+git clone --depth 4 --branch v1.5.1 <url> /srv/finiex/releases/v1.5.1
+```
+
+At `--depth 1` the line still shows both hashes and the message, with `+?` for the distance. Going
+back to the old tree reads `back N` from the same list. Never count on the shallow clone itself:
+measured 2026-10-30 on a throwaway repository, a clone that re-fetched itself with `--depth 1`
+answers 1 with exit 0 where the truth is 3, which is why the history never asks git for that count.
+The same holds for your strategy's repository.
 
 The code is imported from `PYTHONPATH`, not from the working directory: left on the old tree, the
 new command runs the old code, and step 6 shows the old commit. The home stands there as well because

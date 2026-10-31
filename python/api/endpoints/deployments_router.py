@@ -16,6 +16,7 @@ check a check does not exist. It is stated rather than left out: a missing check
 passed one is the more expensive mistake.
 """
 
+from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import APIRouter
@@ -28,6 +29,7 @@ from python.framework.reporting.builders.booking_periods_report_builder import (
 )
 from python.framework.reporting.builders.deployment_history_builder import (
     build_deployment_histories,
+    deployment_code_summary,
     deployment_comparability_advisory,
     summarize_deployments,
 )
@@ -66,7 +68,12 @@ def list_deployments() -> DeploymentListResponse:
             [r for r in rows if r.deployment_id == name])
         for name in histories
     }
-    summaries = summarize_deployments(histories, advisories)
+    now = datetime.now(timezone.utc)
+    code_summaries = {
+        name: deployment_code_summary([r for r in rows if r.deployment_id == name], now)
+        for name in histories
+    }
+    summaries = summarize_deployments(histories, advisories, code_summaries)
     return DeploymentListResponse(deployments=summaries, count=len(summaries))
 
 
@@ -80,8 +87,9 @@ def get_deployment(deployment_id: str) -> DeploymentDetailResponse:
         deployment_id: The identity the sessions name
 
     Returns:
-        The sessions, the comparability advisory when the configuration moved, and how many of
-        this deployment's runs never reached their close (404 when no row names this identity)
+        The sessions, the comparability advisory when the configuration moved, the code summary
+        when the code did, and how many of this deployment's runs never reached their close (404
+        when no row names this identity)
     """
     # Filtered in the STORE, not after reading: `deployment_id` is the live counterpart of the
     # sweep filter, and its absence is why a live row was written and unreachable (§44).
@@ -109,6 +117,7 @@ def get_deployment(deployment_id: str) -> DeploymentDetailResponse:
         count=len(sessions),
         unfinished=sum(len(group) for group in missing.values()),
         advisory=deployment_comparability_advisory(rows),
+        code_summary=deployment_code_summary(rows, datetime.now(timezone.utc)),
     )
 
 

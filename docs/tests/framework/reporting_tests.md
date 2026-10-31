@@ -69,9 +69,10 @@ index (`tests/conftest.py`, *Every run a test starts is a fixture* in the runner
 
 ## `test_git_repo_identity.py` — the git reads behind a code identity (#551)
 
-`git_info_utils` answers three questions per repository — which commit, is the working tree different
-from it, and what patch puts the difference back — and none of the answers may depend on how the
-developer configured git. Measured in review before these tests existed: `status.showUntrackedFiles=no`
+`git_info_utils` answers what a code identity asks per repository — which commit, is the working tree
+different from it, what patch puts the difference back and, for a session of a deployment, which
+commits led there — and none of the answers may depend on how the developer configured git.
+Measured in review before these tests existed: `status.showUntrackedFiles=no`
 hid an untracked strategy, an assume-unchanged file was invisible to `git status`, and
 `diff.noprefix=true` made a stored patch unappliable. Each case builds the repository that produced
 one of those answers in `tmp_path`, never this working tree; only the two framework-root cases read
@@ -90,6 +91,8 @@ because that it answers the same anyway is the subject.
 | `TestTheTemporaryIndexKeepsGitsRacyCheck` | the copy keeps the index's mtime, so an entry git can only judge by content (same size, same second) still reaches the patch — built deterministically with a held `index.lock` |
 | `TestAPatchWithoutAnOrdinaryHead` | an unborn HEAD with staged and untracked files yields a patch against the empty tree; a SHA-256 repository restores from its patch, and an unborn one diffs against ITS OWN empty tree (skipped where git cannot create one) |
 | `TestIgnoredFilesAreListed` | every file of an ignored directory is listed; a directory nothing ignores lists nothing |
+| `TestTheCommitHistoryOfARepository` (#559) | the commits are listed newest first as prefixes of one length, a merged branch stays off the first-parent line and the list stops at its limit; a fresh clone of depth N+1 reaches the older commit and one of depth 1 does not; a clone that re-fetched itself shallowly lists what it holds, beside a `rev-list --count` that answers a wrong number with exit 0; a repository without a commit answers unknown; one read failing leaves the other standing; a subject that is no UTF-8 is still a subject; neither a configured output encoding nor a signature setting changes what a read answers |
+| `TestTwoAbbreviationsOfOneCommitAgree` (#559) | a shared prefix is one commit, another commit does not agree, and an unknown commit agrees with nothing, not even with another unknown one |
 | `TestTheReadsAreRunAtMostOncePerProcess` | a second read answers the first state; `clear_git_caches()` reaches every cache — each read goes back to git after one clear |
 
 ## `test_code_identity.py` — which code ran, read from real temporary repositories (#551)
@@ -113,6 +116,8 @@ other holding the previous case.
 | `TestTheComponentIsIdentifiedByItsPackage` | a strategy loaded from a path names its file, its repository and its declared version; the package digest is **equal for the same code committed or not**, moves when a SIBLING module changes while the version string does not, and ignores a bytecode cache; a file at a repository's root is its own package — a sibling file does not move it; a component in no repository is identified by digest but never clean; one named by several scenarios is recorded once |
 | `TestEveryComponentOfARunIsRecorded` | a CORE decision, a CORE worker and a path worker each carry their declared version, their file and their repository; the framework is not listed a second time among the other repositories |
 | `TestAComponentThatCannotLoadIsRecordedWithoutASource` | a decision or worker module raising `NameError` at import, and a `get_metadata()` that raises, degrade to an entry without a source plus a warning naming it — the components beside it are still recorded; a missing file likewise |
+| `TestTheCommitHistoryIsReadOnlyOnRequest` (#559) | nothing is read unless asked; a request fills every repository; an uncommitted tree keeps the history of its commit |
+| `TestAnUnreadableHistoryStaysUnknown` (#559) | a history that does not answer stays null and moves nothing else in the state; a repository git could not read and a package nobody can vouch for get no history; a list that does not start at the recorded commit is left out |
 | `TestTheCaptureDescribesTheTreeItStartedFrom` | a second capture in one process repeats the first after an edit (cached); `verify_component_digests` is quiet while nothing moved and names the component whose package was edited, gained a file, or lies in no repository; a new process sees the edit |
 
 ## `test_certificate_tree_state.py` — a certificate is not dirtied by its own artifact (#466)
@@ -144,7 +149,7 @@ ledger's versions depend on the component resolution alone and nothing else woul
 | `TestTheEntryPointsDeclareTheirChannel` | the strategy runner CLI declares `cli`; the optimization runner declares `sweep` for every combination |
 | `TestTheIndexProjectsBothBlocks` | the flat columns say what the header says, None where it says nothing; a rebuild reproduces the append exactly; an unreadable framework is unknown in `framework_dirty` and dirty in `code_dirty`; the run list serves the origin (contract 26) and never the dirty flags |
 | `TestTheLedgerReadsItsProvenanceFromTheHeader` | an AutoTrader row takes its versions and `git_dirty` from the header — dirty when only the ALGO repository is, an unresolved worker left out; the header is read from the run directory the caller holds, **never through the derived run index** — a session no index row names still finds it; a clean run is clean everywhere; no recorded identity, an unreadable header and a missing run directory read as unknown and dirty, never clean, and each says so in the run's OWN log; the row's `git_commit` is the header's framework commit, and a branch read for another commit is left out; a simulation row reads the header in its own run directory, reports the versions of the snapshot's strategy, not the union, and reports an unknown identity in its summary log |
-| `TestARealCaptureReachesTheLedger` | a real capture of a CORE decision, a CORE worker and a worker loaded from a path in a committed algo repository, written into a real live header and read back through the ledger: every component has a source, the decision and worker versions are the ones the classes declare (the path worker's distinct on purpose), `git_dirty` is False — and the header's `git_commit`, its code identity and the ledger's commit and branch all name the framework repository although the first git reads ran with the cwd in ANOTHER checkout (the worktree trap) |
+| `TestARealCaptureReachesTheLedger` | a real capture of a CORE decision, a CORE worker and a worker loaded from a path in a committed algo repository, written into a real live header and read back through the ledger: every component has a source, the decision and worker versions are the ones the classes declare (the path worker's distinct on purpose), `git_dirty` is False — and the header's `git_commit`, its code identity and the ledger's commit and branch all name the framework repository although the first git reads ran with the cwd in ANOTHER checkout (the worktree trap); a capture that asks for the commit history carries it through the header to the row's `code_stand`, and one that does not ask records none (#559) |
 | `TestEachPatchStaysWithItsRepository` | a real capture over two dirty throwaway repositories: the strategy repository's patch is kept INSIDE it (`.finiex_run_patches/`, referenced relative to its root) and never copied into the run-patch store, this repository's goes to the run-patch store and leaves no patch directory behind, and a strategy repository whose patch home cannot be written costs that patch — `restorable` false, the diff hash still recorded — and nothing else. The one test class that puts the real foreign patch home back (`real_foreign_patch_homes`) |
 
 ## `test_run_tree_pruning.py` — what may never be deleted, and what each selector selects (#482)
@@ -335,7 +340,10 @@ grouping and, just as deliberately, what it refuses to do.
 The grouping lives in `builders/deployment_history_builder.py` since #539, because the API serves
 the same history and two derivations of one deployment are two chances to disagree about what its
 drawdown is. The console module kept its two renderers and nothing else; the CLI's output was
-compared byte for byte across the move.
+compared byte for byte across the move. Comparing two code stands (#559) lives beside it in
+`builders/code_stand_comparison.py`: it reads what the rows hold and asks git nothing, so these
+tests feed it rows; the real repositories behind a stand are in `test_git_repo_identity.py` and
+`test_code_identity.py`.
 
 | Test | What it pins |
 |------|-------------|
@@ -352,6 +360,12 @@ compared byte for byte across the move.
 | `TestASessionEndsWithTheRowOfItsClose` | a session books its days while it runs (#476): with only sealed days it has no `ended` and no length, the row of its close ends it, and the gap after a session that never closed is measured between the starts and marked; the heading names the sessions the ledger holds and the never-completed ones without adding the two |
 | `TestADeclineIsShownNegativeAndZeroAsZero` | a decline is stored either way round and printed negative either way; a measured zero prints `0.00` in the list and the detail, never `-0.00` |
 | `TestADrawdownShareNobodyMeasuredStaysUnknown` · `TestADrawdownNobodyMeasuredStaysUnknown` | a session whose rows carry no drawdown — every day sealed before its account's first valuation — reads as null, never as a decline of zero: its share and its decline are null on the session and the console prints dashes; a deployment's deepest decline is taken over the sessions that measured one, and is null when none did (#476) |
+| `TestTwoSessionsOnDifferentCode` (#559) | two sessions that differ only in the strategy repository's commit draw the line and the warning, and identical stands draw neither; the rows read exactly as drawn, and only the console cuts a hash; the line stands after the configuration's separator; each currency compares within itself, and a session of several booking periods is compared once |
+| `TestHowFarTheCodeMoved` (#559) | `back N` with the message the rollback went back from; a commit missing from the list and a history nobody read both read unknown; the count reads a longer prefix against a short hash, and two abbreviation lengths of one commit are no change; an uncommitted tree is a change with no count, the same uncommitted changes are the same code, other ones on one commit are a change, and a dirty tree with no digest is never the same; an unreadable commit is its own stand, also against another, is not read as a new repository, and is said; a repository only one of the two sessions used is a change; several other repositories are told apart by their directory; a framework moved to a new tree is the same repository; a row that predates the column draws nothing and hides no change across it |
+| `TestEveryDirectionHasItsWords` (#559) | the cases are held to the enum, so a new direction cannot arrive without its form; one commit reads singular, and each direction prints its own form |
+| `TestTheCodeSummary` (#559) | it counts the stands and dates the last change; the warning reads as drawn; one stand raises nothing; a rollback adds a change and no stand; a two-currency session is one session; a start nobody can read dates nothing; a stored start with no zone reads as UTC; a start ahead of the reader is no negative age; a change half a year old prints one line and not the block, and the warning stands above the block and the table |
+| `TestTheListSaysWhichMoved` (#559) | each form of the mark; a code change alone is `changed` with no advisory, a configuration change alone carries no code summary, and nothing moved is not `changed`; the legend names only the marks on the page; a change nobody can date still says `code` |
+| `TestTheCommandCarriesIt` (#559) | the real command hands the summaries to both views, so the list and the detail print what the builder derived |
 
 No threshold anywhere decides what counts as too long a gap: that is a judgement about the
 market and the operator's night, not about the data.

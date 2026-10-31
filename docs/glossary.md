@@ -187,6 +187,14 @@ before. See [Store Entry Members](architecture/store_entry_members.md#the-footpr
 **close type** (`close_type` on an order-history row and a trade) — Whether a close took the whole
 position (`full`) or part of it (`partial`). Set once the close fills; empty on every other row.
 
+**code stand** (`code_stand` on a session's ledger row, `code_stands` on a deployment) — Which code
+a session started on, per repository: the commit, any uncommitted changes on it, the commit's message
+and the commits before it. The ledger's short form of the run header's code identity. Two sessions
+stand on the same code when every repository shows the same commit and the same uncommitted changes;
+a commit nobody could read is a stand of its own. The deployment view compares each session's
+with the previous session's. See
+[Deployment Ledger](user_guides/deployment_ledger_guide.md#a-code-change-draws-one-row-per-repository-and-one-dated-warning).
+
 **combination** — One point of a sweep's parameter grid, run as one ordinary backtest. See
 [Parameter Optimization](architecture/parameter_optimization_system.md).
 

@@ -126,6 +126,12 @@ LEDGER_COLUMNS: List[str] = [
     # while it runs (#476): a session killed on day 29 names its configuration in the rows it
     # left, not only in its header and a log line. Appended, so older fragments read back ''.
     'rendered_config_id', 'broker_config_id',
+    # WHICH CODE a session started on, per repository (#559): the commit, whether the tree was
+    # clean, and what the history said, read from the run header's code identity like
+    # `git_commit` and never from git. JSON like `worker_versions`. It says what `git_commit`
+    # cannot: a strategy from another repository moves neither that nor `git_dirty`. None on a
+    # backtest and on a fragment written before the column existed: no stand, never a change.
+    'code_stand',
     # WHEN this row was written, which is within seconds of when the run ENDED — the reports
     # are persisted at its close and the append is the last step. The ledger had no end of any
     # kind, and `SweepSummary.duration_s` says so in its own comment ("last - first run start,
@@ -227,6 +233,9 @@ COLUMN_REDUCTION: Dict[str, Reduction] = {
     # disagreement says the configuration moved between them — reported, as `profile_hash` is.
     'rendered_config_id': Reduction.IDENTITY,
     'broker_config_id': Reduction.IDENTITY,
+    # One stand per session, on each of its rows. Across a deployment's sessions a disagreement
+    # says the code moved between them.
+    'code_stand': Reduction.IDENTITY,
     # One run's outcome and counts, repeated on each of its rows — so they agree within a run.
     # Across runs a combined row has no single outcome, and summing counts that every period row
     # repeats would multiply them.
@@ -692,6 +701,7 @@ class RunResultsLedger:
         sweep_params = _json_or(record.get('sweep_params'), None, run_id, 'sweep_params')
         if sweep_params is not None:
             data['sweep_params'] = sweep_params
+        data['code_stand'] = _json_or(record.get('code_stand'), None, run_id, 'code_stand')
         return RunResultRow(**data)
 
     def _provenance_fields(self, p: RunProvenance) -> Dict[str, Any]:
@@ -737,6 +747,8 @@ class RunResultsLedger:
             'log_warning_count': p.log_warning_count,
             'rendered_config_id': p.rendered_config_id,
             'broker_config_id': p.broker_config_id,
+            'code_stand': (json.dumps(p.code_stand.model_dump(), sort_keys=True)
+                           if p.code_stand is not None else None),
             # Empty at birth: the records exist, because the run that wrote this row just
             # produced them. Only `mark_records_pruned` ever fills it.
             'records_pruned_at': '',

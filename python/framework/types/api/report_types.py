@@ -28,7 +28,7 @@ from python.framework.types.live_types.reconciliation_types import ReconcileStat
 # row type would be a hand-maintained copy of it, and a copy is what silently drops a field.
 from python.framework.types.persistence_types import RiskBaseline
 from python.framework.types.run_kind_types import OrdersTo, TicksFrom
-from python.framework.types.run_origin_types import CodeIdentity, RunChannel, RunOrigin
+from python.framework.types.run_origin_types import CodeIdentity, CodeStand, RunChannel, RunOrigin
 from python.framework.types.run_outcome_types import RunOutcome
 from python.framework.types.run_purpose_types import RunPurpose
 from python.framework.types.trading_env_types.broker_types import FeeSource
@@ -1613,7 +1613,7 @@ class RunSummary(RunScopedReport):
 class RunResultRow(BaseModel):
     """
     One run-results ledger row (#390), typed. The parsed projection of the parquet `LEDGER_COLUMNS`:
-    the JSON columns (`worker_versions`, `symbols`, `sweep_params`) are parsed back to structured types
+    the JSON columns (`worker_versions`, `symbols`, `sweep_params`, `code_stand`) are parsed back to structured types
     so the optimization analysis + the (future) API read typed objects, not string-keyed DataFrame cells.
     """
     # Identity + provenance
@@ -1674,6 +1674,9 @@ class RunResultRow(BaseModel):
     # where the run froze none.
     rendered_config_id: str = ''
     broker_config_id: str = ''
+    # WHICH CODE a session started on, per repository (#559). None on a backtest and on a
+    # fragment written before the column existed: no stand, never a change.
+    code_stand: CodeStand | None = None
     # When this row was written — within seconds of the run's end. '' on an older fragment,
     # which is what makes a gap measured from it fall back to start-to-start and SAY so.
     recorded_at_utc: str = ''
@@ -1850,6 +1853,51 @@ class SweepDetailResponse(BaseModel):
     unranked: int = 0
 
 
+class CodeChangeDirection(StrEnum):
+    """
+    How one repository's code differs from the previous session's (#559).
+
+    FORWARD and BACK carry a distance: the older commit stands in the newer session's recorded
+    history, or the newer one in the older session's. UNKNOWN is every other commit that moved: a
+    clone too shallow to hold the other one, or a commit nobody could read. UNCOMMITTED is one
+    commit with other uncommitted changes on it. ADDED and REMOVED are a repository only the newer
+    or only the older session used, which is what tells them from an old or a new commit that is
+    merely unreadable.
+    """
+    FORWARD = 'forward'
+    BACK = 'back'
+    UNKNOWN = 'unknown'
+    UNCOMMITTED = 'uncommitted'
+    ADDED = 'added'
+    REMOVED = 'removed'
+
+
+class DeploymentCodeChange(BaseModel):
+    """
+    One repository whose code differs from the previous session's (#559).
+
+    Args:
+        repository_label: Which repository: `framework`; `strategy` when the two sessions used one
+            other; `strategy` and its directory's name when they used several
+        old_commit: The previous session's commit, as long as its stand recorded it, so one commit
+            may read at two lengths. None when nobody could read it, and on `added`
+        new_commit: This session's commit on the same terms, None on `removed` as well
+        commits_between: How many commits apart the two stand on the first-parent line, in the
+            direction `change_direction` names. None where no distance exists
+        change_direction: How the code moved. Not the bare word: on a trade or an order row
+            `direction` is long or short
+        subject: The message of the commit that made the difference: the newer commit's, on `back`
+            the commit it went back from. None where it was not read, on `uncommitted` and on
+            `removed`
+    """
+    repository_label: str
+    old_commit: Optional[str] = None
+    new_commit: Optional[str] = None
+    commits_between: Optional[int] = None
+    change_direction: CodeChangeDirection
+    subject: Optional[str] = None
+
+
 class DeploymentSessionRow(BaseModel):
     """
     One session of a deployment, as the history reads it (#497).
@@ -1894,6 +1942,10 @@ class DeploymentSessionRow(BaseModel):
             rehearsal; None on a session recorded before the field existed
         orders_to_changed: True when `orders_to` differs from the previous session's — a
             deployment that went from a rehearsal to real money, or back
+        code_changes: What moved in the code since the previous session, one entry per repository
+            that did. Empty when nothing moved, on the first session of a series, and on a session
+            recorded before the field existed, which is no change: the sessions on either side of
+            it are compared with each other
     """
     index: int
     run_id: str
@@ -1912,13 +1964,29 @@ class DeploymentSessionRow(BaseModel):
     operation_changed: bool = False
     orders_to: Optional[OrdersTo] = None
     orders_to_changed: bool = False
+    code_changes: list[DeploymentCodeChange] = []
+
+
+class DeploymentCaption(BaseModel):
+    """
+    What the detail view's heading and footer say about a whole deployment. Not served.
+
+    Args:
+        session_count: How many sessions it holds: distinct runs, not rows
+        first_started: The earliest start any row can name, None when none can
+        currencies: The account currencies of its rows, sorted; empty when no row produced a figure
+    """
+    session_count: int
+    first_started: Optional[datetime] = None
+    currencies: list[str] = []
 
 
 class DeploymentComparabilityAdvisory(BaseModel):
     """
     A deployment whose sessions were not all produced by the same profile — the same strategy
     parameters, the same operational settings, the same place the orders went. The code each
-    session ran and the broker configuration it traded with are not compared (#559).
+    session ran is counted apart, on `DeploymentCodeSummary`, and the broker configuration it traded
+    with is not compared (#559).
 
     The per-session marks say WHERE something changed; this says WHETHER the history can be
     read as one series at all, and it says it BEFORE the table rather than inside it. The
@@ -1948,6 +2016,28 @@ class DeploymentComparabilityAdvisory(BaseModel):
     orders_to: list[OrdersTo] = []
 
 
+class DeploymentCodeSummary(BaseModel):
+    """
+    How often a deployment's code moved, and when it last did (#559).
+
+    One dated line and not the advisory's block, because the advisory reads a deployment's whole
+    history and never ages: a change half a year old would print the block on every view, and every
+    maintained deployment would end up under the same sign as a real strategy change.
+
+    Args:
+        code_stands: Distinct code stands over the sessions that recorded one. A rollback to an
+            earlier stand adds none; an unreadable commit is a stand of its own every time
+        sessions: How many sessions the deployment holds: distinct runs, not rows
+        last_change_at: When the latest session whose code differs from the one before it started.
+            None when that session's start cannot be read
+        age_days: Whole days from then to the moment of the answer, None with it
+    """
+    code_stands: int
+    sessions: int
+    last_change_at: Optional[datetime] = None
+    age_days: Optional[int] = None
+
+
 class DeploymentSummary(BaseModel):
     """
     One deployment's at-a-glance line, for the list view.
@@ -1971,7 +2061,11 @@ class DeploymentSummary(BaseModel):
             sharing one `bot_id` are one bot restarted with `--new-deployment`
         currency: The account currency the figures are in
         longest_gap_hours: The longest stretch the bot was not running
-        changed: True when the sessions were not all produced by the same configuration
+        changed: True when the sessions did not all run alike: the configuration moved, the code
+            moved, or both
+        configuration_changed: True when the configuration moved, the advisory's question alone.
+            False with `changed` true means only the code moved, and the advisory is null
+        code_summary: How often the code moved and when it last did, None under two code stands
         orders_to: Where its sessions' orders went, each value once — `["venue"]` is a
             real-money deployment, `["simulated"]` a rehearsal, both a deployment that mixes the
             two (then `changed` is true as well). Empty when no session recorded it
@@ -1988,6 +2082,8 @@ class DeploymentSummary(BaseModel):
     bot_id: str = ''
     longest_gap_hours: Optional[float] = None
     changed: bool = False
+    configuration_changed: bool = False
+    code_summary: Optional[DeploymentCodeSummary] = None
     orders_to: list[OrdersTo] = []
 
 
@@ -2021,11 +2117,15 @@ class DeploymentDetailResponse(BaseModel):
     passed one is the more expensive mistake.
     """
     key: list[str] = list(SESSION_KEY)
+    # The key of `code_changes` on each session row: none. An entry's identity is its place in the
+    # list, because a repository's root is not served and its label can repeat.
+    code_changes_key: list[str] = []
     deployment_id: str
     sessions: list[DeploymentSessionRow]
     count: int
     unfinished: int = 0
     advisory: Optional[DeploymentComparabilityAdvisory] = None
+    code_summary: Optional[DeploymentCodeSummary] = None
 
 
 class DeploymentBookingPeriodRow(BookingPeriodRow):

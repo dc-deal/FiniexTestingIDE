@@ -43,7 +43,14 @@ from python.framework.types.data_origin_types import (
 )
 from python.framework.types.git_info_types import GitInfo
 from python.framework.types.run_kind_types import OrdersTo
-from python.framework.types.run_origin_types import CodeIdentity, ComponentRole
+from python.framework.types.run_origin_types import (
+    FRAMEWORK_REPOSITORY,
+    CodeIdentity,
+    CodeStand,
+    ComponentRole,
+    RepositoryStand,
+    RepositoryState,
+)
 from python.framework.types.run_results_types import RunProvenance, SweepContext
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
 from python.scenario.scenario_set import ScenarioSet
@@ -254,6 +261,9 @@ def build_run_provenance_from_session(
         # every row, so a session killed on day 29 still names both in the rows it left (#476)
         rendered_config_id=rendered_config_id,
         broker_config_id=broker_config_id,
+        # Which code the session started on, so that its deployment can compare two sessions; a
+        # backtest leaves it None, because it has no sessions to compare
+        code_stand=_code_stand(code_identity),
         **_run_counts(warnings_errors_report),
     )
 
@@ -430,8 +440,9 @@ def _read_header_identity(run_id: str, run_dir: Optional[Path],
         another run, or carries none — and the rendered configuration's id, '' on the same
         terms or where the header names none
     """
-    consequence = ('— the ledger row records it as UNKNOWN: git_dirty True and no component '
-                   'versions, which here mean "not recorded", not "dirty" or "undeclared"')
+    consequence = ('— the ledger row records it as UNKNOWN: git_dirty True, no component versions '
+                   'and a code stand without a commit, which here mean "not recorded", not "dirty" '
+                   'or "undeclared"')
     if run_dir is None:
         logger.warning(f'⚠️ Ledger provenance: run {run_id} has no run directory, so no header '
                        f'names its code {consequence}')
@@ -554,3 +565,50 @@ def _is_dirty(code_identity: Optional[CodeIdentity]) -> bool:
     if code_identity is None:
         return True
     return code_identity.is_dirty()
+
+
+def _code_stand(code_identity: Optional[CodeIdentity]) -> CodeStand:
+    """
+    The ledger's `code_stand`: which code a session started on, from its header's code identity.
+
+    Never from git, not even as the fallback `git_commit` has: this row is written long after the
+    start, and what is checked out by then is not what ran. A session whose identity nobody can
+    read still gets a stand, this repository with no commit: an EMPTY column means the row
+    predates it, and a session whose code nobody can name must not read as no change.
+
+    Args:
+        code_identity: The run's recorded code identity, or None when unknown
+
+    Returns:
+        This repository's stand first, then every other repository's
+    """
+    if code_identity is None:
+        return CodeStand(repositories=[_repository_stand(FRAMEWORK_REPOSITORY, None)])
+    return CodeStand(repositories=[
+        _repository_stand(FRAMEWORK_REPOSITORY, code_identity.framework),
+        *(_repository_stand(state.root, state) for state in code_identity.repositories),
+    ])
+
+
+def _repository_stand(repository: str, state: Optional[RepositoryState]) -> RepositoryStand:
+    """
+    One repository's entry in a code stand.
+
+    Args:
+        repository: How the stand names it
+        state: Its recorded state, None when nothing was recorded
+
+    Returns:
+        The entry; its commit is the history's prefix where the history was read, the recorded
+        short hash otherwise, None when unreadable. Dirty unless it is exactly one known commit
+    """
+    if state is None:
+        return RepositoryStand(repository=repository, dirty=True)
+    return RepositoryStand(
+        repository=repository,
+        commit=state.recent_commits[0] if state.recent_commits else state.commit,
+        dirty=not state.is_committed(),
+        diff_hash=state.diff_hash,
+        subject=state.commit_subject,
+        recent_commits=state.recent_commits,
+    )

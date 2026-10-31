@@ -1,10 +1,10 @@
 """
 The git reads behind a run's code identity, against real temporary repositories (#551).
 
-`git_info_utils` answers three questions per repository: which commit, is the working tree
-different from it, and what patch puts that difference back. A run header records the answers,
-and the parity backtest after a live run relies on them — so none of them may depend on how the
-developer configured git, and none may read "clean" where something changed.
+`git_info_utils` answers per repository: which commit, is the working tree different from it, what
+patch puts that difference back, and what the history says about that commit. A run header records
+the answers, and the parity backtest after a live run relies on them — so none of them may depend
+on how the developer configured git, and none may read "clean" where something changed.
 
 Measured in review before these tests existed: `status.showUntrackedFiles=no` hid an untracked
 strategy, an assume-unchanged file was invisible to `git status`, and `diff.noprefix=true` made a
@@ -19,17 +19,22 @@ framework root is found from the CODE's location rather than from the cwd.
 
 import functools
 import os
+import shutil
 import subprocess
 from pathlib import Path
+from typing import Callable, List, Optional
 
 import pytest
 
+from python.framework.types.git_info_types import RepoCommitHistory
 from python.framework.utils import git_info_utils
 from python.framework.utils.git_info_utils import (
     clear_git_caches,
+    commits_agree,
     get_framework_root,
     get_git_commit,
     get_git_info,
+    get_repo_commit_history,
     get_repo_patch,
     get_repo_status,
     get_repo_toplevel,
@@ -38,6 +43,7 @@ from python.framework.utils.git_info_utils import (
     list_repo_files,
 )
 from tests.shared.git_test_repos import (
+    commit_all,
     make_repo,
     restore_on_fresh_clone,
     run_git,
@@ -216,6 +222,7 @@ class TestNoGitIsUnknownNeverAnError:
         assert get_repo_status(str(repo)) is None
         assert get_repo_patch(str(repo)) is None
         assert list_ignored_files(str(repo), '.') is None
+        assert get_repo_commit_history(str(repo)) == RepoCommitHistory()
 
 
 class TestAUserConfigurationCannotHideAChange:
@@ -471,6 +478,7 @@ class TestTheReadsAreRunAtMostOncePerProcess:
             'get_repo_patch': lambda: get_repo_patch(str(repo)),
             'list_ignored_files': lambda: list_ignored_files(str(repo), '.'),
             'list_repo_files': lambda: list_repo_files(str(repo), '.'),
+            'get_repo_commit_history': lambda: get_repo_commit_history(str(repo)),
             'get_git_commit': get_git_commit,
             'get_git_info': get_git_info,
         }
@@ -551,3 +559,270 @@ class TestTheBranchIsReadWithTheCommit:
 
         assert (status.branch, status.commit) == ('feature-x',
                                                   run_git(repo, 'rev-parse', '--short', 'HEAD'))
+
+
+def _commit_changes(repo: Path, subjects: List[str]) -> None:
+    """
+    Add one commit per subject on top of a repository, each changing the same file.
+
+    Args:
+        repo: The repository
+        subjects: The subjects, oldest first and all different
+    """
+    for subject in subjects:
+        write_files(repo, {'a.py': f'A = {subject!r}\n'})
+        commit_all(repo, subject)
+
+
+def _prefix(repo: Path, revision: str = 'HEAD') -> str:
+    """
+    The prefix a recorded history keeps of a commit.
+
+    Args:
+        repo: The repository
+        revision: The revision
+
+    Returns:
+        The first twelve characters of its full hash
+    """
+    return run_git(repo, 'rev-parse', revision)[:12]
+
+
+def _shallow_clone(source: Path, target: Path, depth: int) -> Path:
+    """
+    A clone holding only the newest commits. Over `file://`, because a clone of a plain path
+    ignores `--depth`.
+
+    Args:
+        source: The repository cloned from
+        target: Where the clone is created
+        depth: How many commits it fetches
+
+    Returns:
+        The clone
+    """
+    run_git(target.parent, 'clone', '-q', f'--depth={depth}', f'file://{source}', str(target))
+    return target
+
+
+def _fast_import(repo: Path, messages: List[bytes]) -> None:
+    """
+    Add commits to the checked-out branch in one git call. Unlike `git commit`, which converts a
+    message that is no UTF-8, it keeps the bytes as given.
+
+    Args:
+        repo: The repository
+        messages: One message per commit, oldest first
+    """
+    branch = run_git(repo, 'rev-parse', '--abbrev-ref', 'HEAD')
+    stream = b''
+    for number, message in enumerate(messages):
+        stream += (f'commit refs/heads/{branch}\n'
+                   f'committer t <t@t> {1_700_000_000 + number} +0000\n'
+                   f'data {len(message)}\n').encode() + message + b'\n'
+        if number == 0:
+            stream += f'from refs/heads/{branch}^0\n'.encode()
+    subprocess.run(['git', '-C', str(repo), 'fast-import', '--quiet'], input=stream, check=True,
+                   capture_output=True)
+
+
+def _git_failing_on(subcommand: str, failure: Optional[Exception]) -> Callable:
+    """
+    A stand-in for the module's git call that fails one subcommand and runs every other.
+
+    Args:
+        subcommand: The git subcommand that fails
+        failure: What it raises, None for an exit that is not zero
+
+    Returns:
+        The stand-in
+    """
+    real_git = git_info_utils._git
+
+    def scripted(root: str, args: List[str], **kwargs) -> subprocess.CompletedProcess:
+        """
+        Answer one git call.
+
+        Args:
+            root: The repository
+            args: The git arguments
+            kwargs: The real call's options
+
+        Returns:
+            The real answer, or a failed process for the failing subcommand
+        """
+        if args[0] != subcommand:
+            return real_git(root, args, **kwargs)
+        if failure is not None:
+            raise failure
+        return subprocess.CompletedProcess(args, 128, stdout='', stderr='')
+
+    return scripted
+
+
+class TestTheCommitHistoryOfARepository:
+    """
+    What a session records so that a later view can count commits without asking git again (#559):
+    the HEAD's subject and the last commits on its first-parent line, as prefixes of one length.
+    """
+
+    def test_the_commits_are_listed_newest_first_as_prefixes_of_one_length(self, tmp_path):
+        repo = make_repo(tmp_path / 'r', {'a.py': 'A = 0\n'})
+        _commit_changes(repo, ['second', 'third'])
+
+        history = get_repo_commit_history(str(repo))
+
+        assert history.subject == 'third'
+        assert history.recent_commits == tuple(
+            _prefix(repo, revision) for revision in ('HEAD', 'HEAD~1', 'HEAD~2'))
+        assert {len(commit) for commit in history.recent_commits} == {12}
+
+    def test_a_merged_branch_stays_off_the_first_parent_line(self, tmp_path):
+        repo = make_repo(tmp_path / 'r', {'a.py': 'A = 0\n'})
+        line = run_git(repo, 'rev-parse', '--abbrev-ref', 'HEAD')
+        run_git(repo, 'checkout', '-q', '-b', 'side')
+        write_files(repo, {'side.py': 'S = 1\n'})
+        commit_all(repo, 'on the side')
+        side = _prefix(repo)
+        run_git(repo, 'checkout', '-q', line)
+        write_files(repo, {'line.py': 'L = 1\n'})
+        commit_all(repo, 'on the line')
+        run_git(repo, 'merge', '-q', '--no-ff', '-m', 'merge the side', 'side')
+
+        history = get_repo_commit_history(str(repo))
+
+        assert history.subject == 'merge the side'
+        assert history.recent_commits == tuple(
+            _prefix(repo, revision) for revision in ('HEAD', 'HEAD~1', 'HEAD~2'))
+        assert side not in history.recent_commits
+
+    def test_the_list_stops_at_fifty(self, tmp_path):
+        repo = make_repo(tmp_path / 'r', {'a.py': 'A = 0\n'})
+        _fast_import(repo, [b'a commit'] * 60)
+
+        commits = get_repo_commit_history(str(repo)).recent_commits
+
+        assert len(commits) == 50
+        assert commits[0] == _prefix(repo)
+
+    def test_a_fresh_clone_of_depth_n_plus_one_reaches_the_older_commit(self, tmp_path):
+        origin = make_repo(tmp_path / 'origin', {'a.py': 'A = 0\n'})
+        _commit_changes(origin, ['c1', 'c2', 'c3', 'c4', 'c5'])
+        older = _prefix(origin, 'HEAD~3')
+
+        clone = _shallow_clone(origin, tmp_path / 'clone', depth=4)
+
+        commits = get_repo_commit_history(str(clone)).recent_commits
+        assert len(commits) == 4
+        assert commits.index(older) == 3
+
+    def test_a_fresh_clone_of_depth_one_cannot_reach_it(self, tmp_path):
+        origin = make_repo(tmp_path / 'origin', {'a.py': 'A = 0\n'})
+        _commit_changes(origin, ['c1', 'c2', 'c3'])
+        older = _prefix(origin, 'HEAD~3')
+
+        clone = _shallow_clone(origin, tmp_path / 'clone', depth=1)
+
+        commits = get_repo_commit_history(str(clone)).recent_commits
+        assert commits == (_prefix(origin),)
+        assert older not in commits
+
+    def test_an_in_place_refetch_lists_what_it_holds_where_a_count_would_lie(self, tmp_path):
+        origin = make_repo(tmp_path / 'origin', {'a.py': 'A = 0\n'})
+        clone = _shallow_clone(origin, tmp_path / 'clone', depth=1)
+        older = _prefix(clone)
+        _commit_changes(origin, ['c1', 'c2', 'c3'])
+        branch = run_git(origin, 'rev-parse', '--abbrev-ref', 'HEAD')
+
+        run_git(clone, 'fetch', '-q', '--depth=1', 'origin', branch)
+        run_git(clone, 'reset', '-q', '--hard', 'FETCH_HEAD')
+
+        # The trap the list exists for: the old object is still there, so a count answers, and it
+        # answers 1 where the truth is 3.
+        assert run_git(clone, 'rev-list', '--count', f'{older}..HEAD') == '1'
+        commits = get_repo_commit_history(str(clone)).recent_commits
+        assert commits == (_prefix(origin),)
+        assert older not in commits
+
+    def test_a_repository_without_a_commit_answers_unknown(self, tmp_path):
+        repo = tmp_path / 'r'
+        repo.mkdir()
+        run_git(repo, 'init', '-q')
+
+        assert get_repo_commit_history(str(repo)) == RepoCommitHistory()
+
+    @pytest.mark.parametrize('failure', [subprocess.TimeoutExpired('git', 30), PermissionError('git'),
+                                         None], ids=['timeout', 'no_permission', 'non_zero_exit'])
+    @pytest.mark.parametrize('failing, unknown, known', [
+        ('log', 'subject', 'recent_commits'),
+        ('rev-list', 'recent_commits', 'subject'),
+    ])
+    def test_one_read_failing_leaves_the_other_standing(self, tmp_path, monkeypatch, failure,
+                                                        failing, unknown, known):
+        repo = make_repo(tmp_path / 'r', {'a.py': 'A = 0\n'})
+        monkeypatch.setattr(git_info_utils, '_git', _git_failing_on(failing, failure))
+
+        history = get_repo_commit_history(str(repo))
+
+        assert getattr(history, unknown) is None
+        assert getattr(history, known) is not None
+
+    def test_a_subject_that_is_no_utf8_is_still_a_subject(self, tmp_path):
+        """Decoded strictly, this byte would raise inside the capture and refuse the session."""
+        repo = make_repo(tmp_path / 'r', {'a.py': 'A = 0\n'})
+        _fast_import(repo, [b'caf\xe9 fix'])
+
+        assert get_repo_commit_history(str(repo)).subject == 'caf\ufffd fix'
+
+    def test_a_configured_output_encoding_does_not_change_the_subject(self, tmp_path):
+        repo = make_repo(tmp_path / 'r', {'a.py': 'A = 0\n'})
+        _commit_changes(repo, ['Größe angepasst'])
+        run_git(repo, 'config', 'i18n.logOutputEncoding', 'ISO-8859-1')
+
+        assert get_repo_commit_history(str(repo)).subject == 'Größe angepasst'
+
+    @pytest.mark.skipif(shutil.which('ssh-keygen') is None, reason='signs a commit with ssh-keygen')
+    def test_a_signature_setting_does_not_change_a_log_read(self, tmp_path, monkeypatch):
+        """
+        Measured: `log.showSignature=true` prints its verdict on stdout, above what was asked for.
+        The full read parses the date of such a line, and a ValueError is not what it catches.
+        """
+        repo = make_repo(tmp_path / 'r', {'a.py': 'A = 0\n'})
+        key = tmp_path / 'key'
+        subprocess.run(['ssh-keygen', '-q', '-t', 'ed25519', '-N', '', '-f', str(key)],
+                       check=True, capture_output=True)
+        write_files(repo, {'a.py': 'A = 1\n'})
+        run_git(repo, 'add', '-A')
+        run_git(repo, '-c', 'gpg.format=ssh', '-c', f'user.signingkey={key}.pub', 'commit', '-q',
+                '-S', '-m', 'signed subject')
+        run_git(repo, 'config', 'log.showSignature', 'true')
+
+        assert get_repo_commit_history(str(repo)).subject == 'signed subject'
+        monkeypatch.setattr(git_info_utils, 'get_framework_root',
+                            functools.lru_cache(maxsize=1)(lambda: str(repo)))
+        assert get_git_info().message == 'signed subject'
+
+
+class TestTwoAbbreviationsOfOneCommitAgree:
+    """`rev-parse --short` reads one commit as `5d9b4017` in one clone and `5d9b401` in another."""
+
+    @pytest.mark.parametrize('first, second', [
+        ('5d9b4017', '5d9b401'),
+        ('5d9b401', '5d9b4017'),
+        ('5d9b4017a2c3', '5d9b401'),
+        ('5d9b4017', '5d9b4017'),
+    ])
+    def test_a_shared_prefix_is_one_commit(self, first, second):
+        assert commits_agree(first, second) is True
+
+    def test_another_commit_does_not_agree(self):
+        assert commits_agree('5d9b4017', '7c1e9a0') is False
+
+    @pytest.mark.parametrize('first, second', [
+        (None, None),
+        (None, '5d9b401'),
+        ('5d9b401', None),
+        ('', '5d9b401'),
+    ])
+    def test_an_unknown_commit_agrees_with_nothing(self, first, second):
+        assert commits_agree(first, second) is False

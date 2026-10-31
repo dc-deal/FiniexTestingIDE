@@ -24,6 +24,7 @@ from python.framework.types.api.report_types import RunSummary, RunSummaryCurren
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
 from python.framework.types.autotrader_types.autotrader_result_types import AutoTraderResult
 from python.framework.types.autotrader_types.operator_alert_types import OperatorAlertLevel
+from python.framework.types.run_origin_types import CodeIdentity, RepositoryState
 from python.framework.types.run_outcome_types import RunOutcome
 from python.framework.types.run_results_types import BookingPeriod, PeriodCloseReason
 
@@ -115,10 +116,46 @@ class TestTheStartMessage:
     def test_it_says_whether_real_orders_go_out(self, adapter, dry_run, mode):
         title, detail = session_started_text(
             AutoTraderConfig(profile_name='eth_daily', adapter_type=adapter), dry_run,
-            '20261020_070000_a1b2c3d4', '4c61dc93deadbeef')
+            '20261020_070000_a1b2c3d4', [('framework', '4c61dc93deadbeef')])
         assert title == 'Session started'
         assert detail.startswith(mode)
-        assert 'Commit: 4c61dc93' in detail and 'deadbeef' not in detail
+        assert 'Commit: framework 4c61dc93' in detail and 'deadbeef' not in detail
+
+    @staticmethod
+    def _detail(code_identity: CodeIdentity) -> str:
+        _, detail = session_started_text(
+            AutoTraderConfig(profile_name='eth_daily', adapter_type='mock'), True,
+            '20261020_070000_a1b2c3d4', code_identity.labelled_commits())
+        return detail
+
+    def test_it_names_the_commits_of_both_repositories(self):
+        detail = self._detail(CodeIdentity(
+            framework=RepositoryState(root='/srv/release', commit='4c61dc93'),
+            repositories=[RepositoryState(root='/srv/home/my_strategy', commit='2f054f5')]))
+        assert detail.endswith('Commit: framework 4c61dc93 · strategy 2f054f5')
+
+    def test_several_other_repositories_are_told_apart_by_their_directory(self):
+        detail = self._detail(CodeIdentity(
+            framework=RepositoryState(root='/srv/release', commit='4c61dc93'),
+            repositories=[RepositoryState(root='/srv/home/my_strategy', commit='2f054f5'),
+                          RepositoryState(root='/srv/home/my_helpers', commit='7c1e9a0')]))
+        assert detail.endswith(
+            'Commit: framework 4c61dc93 · strategy my_strategy 2f054f5 · strategy my_helpers 7c1e9a0')
+
+    def test_a_commit_nobody_could_read_is_said(self):
+        detail = self._detail(CodeIdentity(
+            framework=RepositoryState(root='/srv/release', commit=None),
+            repositories=[RepositoryState(root='/srv/home/my_strategy', in_repository=False)]))
+        assert detail.endswith('Commit: framework unknown · strategy unknown')
+
+    def test_an_identity_without_this_repository_still_formats(self):
+        assert self._detail(CodeIdentity()).endswith('Commit: framework unknown')
+
+    def test_nothing_recorded_prints_no_commit_line(self):
+        _, detail = session_started_text(
+            AutoTraderConfig(profile_name='eth_daily', adapter_type='mock'), True,
+            '20261020_070000_a1b2c3d4', [])
+        assert 'Commit' not in detail
 
 
 @pytest.mark.parametrize('seconds, text', [

@@ -110,6 +110,7 @@ the session's loggers exist.
 | `test_a_session_constructed_in_code_is_direct` | A session nobody declared a channel for states `direct`, with `console` / `operator` / the test host and no override |
 | `test_the_declared_channel_and_override_reach_the_header` | `channel` and `allow_dirty` given to `AutotraderMain` are what the header receives |
 | `test_the_identity_is_captured_over_the_profile_before_the_header` | The capture runs over the profile's own strategy, before the loggers, and the same object reaches the header |
+| `TestOnlyASessionOfADeploymentReadsItsCommitHistory` (#559) | The capture asks for the commit history exactly when the session has a deployment: a session standing alone and a one-off of such a profile do not read it, a session of the deployment does |
 | `test_the_header_written_at_the_start_holds_origin_and_identity` | `create_autotrader_loggers` writes both blocks into the header at the start, so a session killed before its close still says who started it and which code it ran |
 | `test_the_cli_declares_its_channel_and_allows_nothing_by_default` · `test_allow_dirty_is_carried_through` | The CLI declares `cli`; `--allow-dirty` reaches the session and is off unless typed |
 | `test_an_accepted_composite_change_reaches_the_header` · `test_accept_composite_change_is_carried_through` | #626 — the key given with `--accept-composite-change` reaches the session from the CLI and the header's `origin.accept_composite_change`, and is null unless typed |

@@ -15,6 +15,7 @@ from typing import Any, Dict, List, Optional
 
 from python.framework.types.api.report_types import RunSummaryCurrency
 from python.framework.types.run_kind_types import OrdersTo
+from python.framework.types.run_origin_types import CodeStand
 from python.framework.types.run_outcome_types import RunOutcome
 from python.framework.types.trading_env_types.trading_env_stats_types import ExecutionStats
 
@@ -151,6 +152,11 @@ class RunProvenance:
     # a log line. '' where the run froze none.
     rendered_config_id: str = ''
     broker_config_id: str = ''
+    # WHICH CODE a session started on, per repository (#559), as its header's code identity
+    # recorded it and never as git answers at the end. A strategy from another repository moves
+    # neither `git_commit` nor `git_dirty`, so those two cannot say that the code moved under a
+    # deployment. None on a backtest, which has no sessions to compare.
+    code_stand: Optional[CodeStand] = None
 
 
 class PeriodCloseReason(Enum):

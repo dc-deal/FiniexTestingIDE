@@ -438,7 +438,7 @@ class AutotraderMain:
         # it, and held here, because the startup guard asks it — which must not depend on a header
         # having been written. A capture that FAILS is held too, and refused inside the startup
         # handling below, once the header exists to record the session.
-        capture_failure = self._capture_code_identity()
+        capture_failure = self._capture_code_identity(with_commit_history=bool(deployment_id))
 
         # === RENDERED CONFIGURATION (#547) ===
         # What this session RUNS with, not only what it was given: the app_config layer merged
@@ -775,7 +775,7 @@ class AutotraderMain:
             self._operator_alerts.start_liveness()
             title, detail = session_started_text(
                 self._config, dry_run, self._run_id,
-                self._code_identity.framework.commit or '' if self._code_identity else '')
+                self._code_identity.labelled_commits() if self._code_identity else [])
             self._operator_alerts.send(
                 OperatorAlertKind.SESSION_STARTED, OperatorAlertLevel.INFO, title, detail)
             ticks_processed, ticks_clipped = self._tick_loop.run()
@@ -1046,7 +1046,7 @@ class AutotraderMain:
             return error
         return None
 
-    def _capture_code_identity(self) -> Optional[Exception]:
+    def _capture_code_identity(self, with_commit_history: bool) -> Optional[Exception]:
         """
         Capture which code this session runs, and hold a failure instead of raising it (#551).
 
@@ -1054,12 +1054,17 @@ class AutotraderMain:
         stack trace with no header, no STARTUP FAILED and no ledger row. The component resolution
         degrades by itself; what can still fail is the storage and filesystem around it.
 
+        Args:
+            with_commit_history: Whether this session has a deployment, whose view compares the
+                code of its sessions; a session standing alone does not pay for the reads
+
         Returns:
             None when the identity was captured; otherwise the exception, which `run()` refuses
             once the header exists (it keeps its traceback for the global log)
         """
         try:
-            self._code_identity = capture_code_identity([self._config.strategy_config])
+            self._code_identity = capture_code_identity(
+                [self._config.strategy_config], with_commit_history=with_commit_history)
         except Exception as error:
             self._code_identity = None
             return error

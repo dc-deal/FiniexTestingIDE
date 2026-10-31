@@ -108,6 +108,22 @@ class TestTheHeaderIsServedWhole:
         text = client.get(_URL).text
         assert str(tmp_path) not in text and '/elsewhere' not in text
 
+    def test_the_commit_history_is_served_as_recorded(self):
+        """Hashes and a subject hold no path, so nothing about them is made relative (#559)."""
+        recent = ['a1b2c3d4e5f6', '0f1e2d3c4b5a']
+        header = RunHeader(
+            run_id=_RUN, start_time=datetime(2026, 10, 9, 12, 0, tzinfo=timezone.utc),
+            run_type=RUN_TYPE_SIMULATION, run_name='my_set',
+            code_identity=CodeIdentity(framework=RepositoryState(
+                root='/srv/releases/v1', commit_subject='Fix the fee rounding',
+                recent_commits=recent)))
+
+        served = served_run_header(header).code_identity.framework
+
+        assert served.root == '.'
+        assert served.commit_subject == 'Fix the fee rounding'
+        assert served.recent_commits == recent
+
 
 class TestAHeaderThatCannotBeServedSaysWhy:
 

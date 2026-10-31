@@ -23,12 +23,16 @@ from typing import Any, List
 
 import pytest
 
-from python.framework.reporting.store.ledger_aggregation import aggregate_ledger_rows
+from python.framework.reporting.store.ledger_aggregation import (
+    aggregate_ledger_rows,
+    identity_conflicts,
+)
 from python.framework.reporting.store.run_results_ledger import (
     COLUMN_COMPANION_OF,
     COLUMN_REDUCTION,
 )
 from python.framework.types.api.report_types import RunResultRow
+from python.framework.types.run_origin_types import CodeStand, RepositoryStand
 from python.framework.types.run_results_types import FigureKind, Reduction
 
 _RUN = '20260922_000000_deadbeef'
@@ -221,3 +225,29 @@ class TestEveryReductionNamesItsKindOfFigure:
         kinds = {COLUMN_REDUCTION[column].figure_kind() for column in COLUMN_REDUCTION}
         assert FigureKind.FLOW in kinds and FigureKind.DESCRIPTION in kinds
 
+
+class TestTheCodeStandFoldsAsAnIdentity:
+    """
+    No number, so the sweep over the numeric columns does not reach it (#559): a session's rows
+    repeat one stand, and two different stands in one group are a disagreement worth reporting.
+    """
+
+    _STAND = CodeStand(repositories=[
+        RepositoryStand(repository='framework', commit='a1b2c3d4e5f6', dirty=False)])
+    _OTHER_STAND = CodeStand(repositories=[
+        RepositoryStand(repository='framework', commit='0f1e2d3c4b5a', dirty=False)])
+
+    def test_a_fold_keeps_it_typed(self):
+        assert _fold('code_stand', [self._STAND, self._STAND]) == self._STAND
+
+    def test_a_row_without_one_does_not_erase_it(self):
+        assert _fold('code_stand', [None, self._STAND]) == self._STAND
+
+    def test_two_stands_are_a_reported_conflict(self):
+        conflicts = identity_conflicts(_rows('code_stand', [self._STAND, self._OTHER_STAND]))
+
+        assert self._STAND in conflicts['code_stand']
+        assert self._OTHER_STAND in conflicts['code_stand']
+
+    def test_rows_that_agree_are_no_conflict(self):
+        assert 'code_stand' not in identity_conflicts(_rows('code_stand', [self._STAND, self._STAND]))

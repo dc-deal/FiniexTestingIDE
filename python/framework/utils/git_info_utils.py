@@ -24,11 +24,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional, Tuple
 
-from python.framework.types.git_info_types import GitInfo, RepoStatus
+from python.framework.types.git_info_types import GitInfo, RepoCommitHistory, RepoStatus
 
 # Settings pinned on EVERY call, so a developer's git configuration cannot change what a read
 # answers (#551). Measured in review: `status.showUntrackedFiles=no` hides an untracked strategy,
-# and `diff.noprefix=true` makes a stored patch unappliable. A pin is cheaper than a check.
+# `diff.noprefix=true` makes a stored patch unappliable, and `log.showSignature=true` prints its
+# verdict on stdout, above what a `log` read asked for. A pin is cheaper than a check.
 _PINNED_CONFIG = (
     '-c', 'core.quotePath=true',
     '-c', 'core.fsmonitor=false',
@@ -39,6 +40,7 @@ _PINNED_CONFIG = (
     '-c', 'diff.relative=false',
     '-c', 'diff.interHunkContext=0',
     '-c', 'diff.suppressBlankEmpty=false',
+    '-c', 'log.showSignature=false',
 )
 
 # Every path handed to git is a NAME, never a pattern (#551). Measured in review: an untracked file
@@ -68,6 +70,12 @@ _PATCH_FORMAT = (
     '--src-prefix=a/', '--dst-prefix=b/', '--diff-algorithm=myers', '-U3',
     '--ignore-submodules=none', '--inter-hunk-context=0', '-O/dev/null',
 )
+
+# What a session records of a repository's history (#559): the last commits on the first-parent
+# line, each cut to a prefix of fixed length. `rev-parse --short` reads one commit as `5d9b4017` in
+# one clone and `5d9b401` in another; a fixed prefix of the full hash reads it alike in both.
+_RECENT_COMMITS_LIMIT = 50
+_COMMIT_PREFIX_LENGTH = 12
 
 
 @lru_cache(maxsize=1)
@@ -539,6 +547,94 @@ def list_ignored_files(root: str, relative_dir: str) -> Optional[Tuple[str, ...]
     return tuple(sorted({entry for entry in result.stdout.split('\0') if entry}))
 
 
+@lru_cache(maxsize=None)
+def get_repo_commit_history(root: str) -> RepoCommitHistory:
+    """
+    What one repository's history says about its HEAD: the subject and the recent commits (#559).
+
+    Two reads, and each fails on its own: `get_git_info` loses its whole answer to any one read
+    behind its shared `try`, and a missing subject is no reason to lose the list. CACHED per root
+    like every read here, so a process pays two git calls per repository.
+
+    The list is what a later reader counts commits from, because no git command run later can
+    answer it. Measured on throwaway repositories: `rev-list --count old..HEAD` answers 1 with exit
+    0 where the truth is 3, on a clone that re-fetched itself with `--depth 1` and still holds the
+    old object, and 0 after a rollback. A clone lists only the commits it holds, so one too shallow
+    to reach an older commit does not name it, and no wrong position can come out.
+
+    Args:
+        root: The repository's top-level directory
+
+    Returns:
+        The history; each field None where its own read could not answer
+    """
+    return RepoCommitHistory(subject=_read_commit_subject(root),
+                             recent_commits=_read_recent_commits(root))
+
+
+def _read_commit_subject(root: str) -> Optional[str]:
+    """
+    The HEAD commit's subject line.
+
+    Read as bytes and decoded leniently: git hands out a message as it was written, and a byte that
+    is no UTF-8 would otherwise raise inside a session's capture, which refuses the session.
+
+    Args:
+        root: The repository's top-level directory
+
+    Returns:
+        The subject, or None when git could not answer or HEAD has no commit yet
+    """
+    try:
+        result = _git(root, ['log', '-1', '--encoding=UTF-8', '--format=%s'], text=False)
+    except (subprocess.TimeoutExpired, OSError):
+        return None
+    if result.returncode != 0:
+        return None
+    return result.stdout.decode('utf-8', errors='replace').strip()
+
+
+def _read_recent_commits(root: str) -> Optional[Tuple[str, ...]]:
+    """
+    The last commits on HEAD's first-parent line, newest first.
+
+    Args:
+        root: The repository's top-level directory
+
+    Returns:
+        A fixed-length prefix of each full hash, or None when git could not answer or HEAD has no
+        commit yet
+    """
+    try:
+        result = _git(root, ['rev-list', '--first-parent',
+                             f'--max-count={_RECENT_COMMITS_LIMIT}', 'HEAD'])
+    except (subprocess.TimeoutExpired, OSError):
+        return None
+    if result.returncode != 0:
+        return None
+    return tuple(line[:_COMMIT_PREFIX_LENGTH] for line in result.stdout.split()) or None
+
+
+def commits_agree(first: Optional[str], second: Optional[str]) -> bool:
+    """
+    Whether two abbreviations name one commit: one is a prefix of the other. Pure, no git read.
+
+    `rev-parse --short` reads one commit as `5d9b4017` in one clone and `5d9b401` in another, and a
+    recorded history holds a longer prefix of the same hash.
+
+    Args:
+        first: One abbreviation, None when the commit is unknown
+        second: The other one
+
+    Returns:
+        True when they agree; never for an unknown commit, also not against another unknown one,
+        because unknown is not clean
+    """
+    if not first or not second:
+        return False
+    return first.startswith(second) or second.startswith(first)
+
+
 def clear_git_caches() -> None:
     """
     Empty every per-process git cache in this module at once.
@@ -557,3 +653,4 @@ def clear_git_caches() -> None:
     get_repo_patch.cache_clear()
     list_repo_files.cache_clear()
     list_ignored_files.cache_clear()
+    get_repo_commit_history.cache_clear()

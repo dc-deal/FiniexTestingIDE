@@ -146,7 +146,11 @@ class RunLedgerIndex(AbstractStoreIndex):
     # 19 → 20 (#625): `features_beyond_venue` appended — the order features a backtest was
     # allowed beyond what its venue's API holds. Appended, no existing value changes; an older
     # fragment reads back None, which is honest: no run before this version could declare one.
-    LOGIC_VERSION: int = 20
+    # 20 → 21 (#559): `code_stand` appended — per repository, the code a session started on, read
+    # from its header's code identity. Appended, no existing value changes; an older fragment
+    # reads back None: no stand, never a change. Nothing is back-filled, because nothing needs the
+    # old rows to say more.
+    LOGIC_VERSION: int = 21
 
     def __init__(self, ledger_dir: Path, columns: List[str]):
         super().__init__(Path(ledger_dir) / LEDGER_INDEX_FILE)

@@ -149,7 +149,7 @@ absolute paths throughout — so the tests can see what the route makes of them.
 | `TestTheHeaderIsServedWhole` | the run and its origin come back as written; every path is relative to a repository the run recorded — `.` for this repository, `user_algos` for one inside it, the patch reference too, a decision's name (its type, a path) relative to this repository, a component's file relative to its own repository, a path in no repository reduced to its name; and no path of the planting machine appears anywhere in the answer |
 | `TestAHeaderThatCannotBeServedSaysWhy` | an unknown run is `run_not_found`; a missing header file of a run the index lists is `run_header_missing`, naming the rebuild; a header that no longer matches its model is `artifact_unreadable` and names the failing fields, never a value — Pydantic's own text would quote the input, and a header's input holds paths |
 | `TestTheRunListSaysWhoStartedEachRun` | `origin_channel`, `origin_client`, `origin_principal` and `origin_host` on the run's row, from the header's origin block |
-| `TestAPathFromAnotherSystemIsServedTheSameWay` | a header written on Windows — drive letter, backslashes — has its paths made relative the same way |
+| `TestAPathFromAnotherSystemIsServedTheSameWay` | a header written on Windows — drive letter, backslashes — has its paths made relative the same way; the commit's subject and its recent commits hold no path and are served as recorded (#559) |
 
 ## A run's files and their routes (`test_run_entry_member_routes.py`)
 
@@ -284,6 +284,8 @@ read the ledger and only the ledger.
 | `test_no_deployment_is_not_an_error` | Nothing declared yet is a state, not a failure |
 | `test_sessions_read_forwards` | Oldest first — the opposite order to the console, deliberately |
 | `test_a_configuration_change_is_reported_before_the_table` | The advisory rides on the response rather than inside a row, so a client cannot render the table and drop the sentence that says whether the strategy parameters, the operational configuration or the orders' destination changed across the rows |
+| `test_a_code_change_alone_is_changed_with_no_advisory` | #559 — the state the contract log names: `changed` true with `advisory` null, `configuration_changed` false, the reason in `code_summary` and `code_changes`, and no path of the machine in any of them |
+| `test_a_configuration_change_alone_keeps_its_old_answer` | The same answer as before the code stands, with `code_summary` null |
 | `test_a_session_that_never_reached_its_close_is_counted` | The ledger row is written last, so a killed session is absent from the list by construction |
 | `test_unknown_deployment_is_a_404_and_not_an_empty_history` | An empty list would read as a deployment that ran and did nothing |
 | `test_the_detail_route_filters_in_the_store` | `read_rows(deployment_id=...)`, not a full read followed by a filter |

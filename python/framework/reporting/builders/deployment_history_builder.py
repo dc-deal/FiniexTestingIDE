@@ -10,28 +10,37 @@ HTTP; two derivations of one deployment are two chances to disagree about what i
 so the grouping, the marks and the roll-up moved here and the renderers kept only their columns.
 
 What it does NOT do is judge. A deployment is a DECLARATION that these sessions belong
-together; whether they are COMPARABLE is what the two fingerprints answer, and whether a gap
-was acceptable is a judgement a person makes. All three are reported, none is collapsed into a
-verdict (#527 owns the richer surface; the console is the floor beneath it).
+together; whether they are COMPARABLE is what the two fingerprints and the code stands answer,
+and whether a gap was acceptable is a judgement a person makes. All three are reported, none is
+collapsed into a verdict (#527 owns the richer surface; the console is the floor beneath it).
 """
 
 from datetime import datetime
 from typing import Dict, List, Optional
 
+from python.framework.reporting.builders.code_stand_comparison import (
+    code_changes_between,
+    stands_agree,
+)
 from python.framework.reporting.store.ledger_aggregation import aggregate_ledger_rows
 from python.framework.reporting.store.run_completion_audit import closes_its_run
 from python.framework.types.api.report_types import (
     SESSION_KEY,
+    DeploymentCodeSummary,
+    DeploymentCaption,
     DeploymentComparabilityAdvisory,
     DeploymentSessionRow,
     DeploymentSummary,
     RunResultRow,
 )
+from python.framework.types.run_origin_types import CodeStand
+from python.framework.utils.time_utils import ensure_utc_aware
 
 
 def summarize_deployments(
     histories: Dict[str, List[DeploymentSessionRow]],
     advisories: Dict[str, Optional[DeploymentComparabilityAdvisory]],
+    code_summaries: Dict[str, Optional[DeploymentCodeSummary]],
 ) -> List[DeploymentSummary]:
     """
     Reduce each deployment to one line, newest first.
@@ -43,6 +52,7 @@ def summarize_deployments(
     Args:
         histories: Deployment identity → its sessions, ordered
         advisories: Deployment identity → its comparability advisory, or None
+        code_summaries: Deployment identity → its code summary, or None
 
     Returns:
         One summary per (deployment × account currency), most recent first. Per currency and
@@ -57,7 +67,7 @@ def summarize_deployments(
         for sessions in by_currency.values():
             if not sessions:
                 continue
-            summaries.append(_summarize_one(deployment, sessions, advisories))
+            summaries.append(_summarize_one(deployment, sessions, advisories, code_summaries))
     return sorted(summaries, key=lambda s: (s.deployment_id, s.currency), reverse=True)
 
 
@@ -65,6 +75,7 @@ def _summarize_one(
     deployment: str,
     sessions: List[DeploymentSessionRow],
     advisories: Dict[str, Optional[DeploymentComparabilityAdvisory]],
+    code_summaries: Dict[str, Optional[DeploymentCodeSummary]],
 ) -> DeploymentSummary:
     """
     One deployment's sessions in ONE currency, as a single line.
@@ -73,6 +84,7 @@ def _summarize_one(
         deployment: The deployment identity
         sessions: Its sessions in one currency, ordered
         advisories: Deployment identity → its comparability advisory, or None
+        code_summaries: Deployment identity → its code summary, or None
 
     Returns:
         The summary line
@@ -83,6 +95,8 @@ def _summarize_one(
     measured = [s for s in sessions if s.max_drawdown is not None]
     deepest = max(measured, key=lambda s: abs(s.max_drawdown)) if measured else None
     gaps = [s.gap_hours for s in sessions if s.gap_hours is not None]
+    advisory = advisories.get(deployment)
+    code_summary = code_summaries.get(deployment)
     return DeploymentSummary(
         deployment_id=deployment,
         sessions=len(sessions),
@@ -95,8 +109,32 @@ def _summarize_one(
         bot=sessions[0].bot,
         bot_id=sessions[0].bot_id,
         longest_gap_hours=max(gaps) if gaps else None,
-        changed=advisories.get(deployment) is not None,
+        changed=advisory is not None or code_summary is not None,
+        configuration_changed=advisory is not None,
+        code_summary=code_summary,
         orders_to=sorted({s.orders_to for s in sessions if s.orders_to is not None}),
+    )
+
+
+def deployment_caption(sessions: List[DeploymentSessionRow]) -> DeploymentCaption:
+    """
+    What the detail view's heading and footer say about a whole deployment.
+
+    Read off no single row: a session with two currencies is two rows, and a start that failed has
+    no currency and sorts first, so the first row says neither when the deployment began nor what
+    its amounts are in.
+
+    Args:
+        sessions: The deployment's sessions
+
+    Returns:
+        The caption
+    """
+    starts = [s.started for s in sessions if s.started is not None]
+    return DeploymentCaption(
+        session_count=len({s.run_id for s in sessions}),
+        first_started=min(starts, key=ensure_utc_aware) if starts else None,
+        currencies=sorted({s.currency for s in sessions if s.currency}),
     )
 
 
@@ -133,6 +171,59 @@ def deployment_comparability_advisory(
         strategy_stands=max(1, len(strategy)),
         operation_stands=max(1, len(operation)),
         orders_to=sorted(orders_to),
+    )
+
+
+def deployment_code_summary(
+    rows: List[RunResultRow], now: datetime,
+) -> Optional[DeploymentCodeSummary]:
+    """
+    How many code stands one deployment's sessions started on, and when the code last moved.
+
+    Returns None under two stands, for the reason the advisory does: a warning that fires on the
+    normal case is a warning that gets skipped. A row that predates the column has no stand and
+    takes no part, so the sessions on either side of it are compared with each other. It walks the
+    series the history draws, one per currency, so it never reports a move no line shows; a start
+    that failed has no currency and takes no part either.
+
+    Args:
+        rows: The ledger rows of ONE deployment
+        now: The moment the age is measured to; a parameter, so a reader names its own clock
+
+    Returns:
+        The summary, or None under two stands
+    """
+    # One stand per RUN and currency: a run writes one row per booking period and account currency,
+    # and all of them read one header.
+    by_series: Dict[str, Dict[str, RunResultRow]] = {}
+    for row in sorted(rows, key=lambda r: r.run_timestamp):
+        if row.code_stand is not None and row.currency:
+            by_series.setdefault(row.currency, {}).setdefault(row.run_id, row)
+
+    distinct: List[CodeStand] = []
+    last_change: Optional[RunResultRow] = None
+    for by_session in by_series.values():
+        previous: Optional[CodeStand] = None
+        for row in by_session.values():
+            stand = row.code_stand
+            if not any(stands_agree(known, stand) for known in distinct):
+                distinct.append(stand)
+            if (previous is not None and not stands_agree(previous, stand)
+                    and (last_change is None or row.run_timestamp > last_change.run_timestamp)):
+                last_change = row
+            previous = stand
+    if len(distinct) < 2 or last_change is None:
+        return None
+
+    started = _parse(last_change.run_timestamp)
+    last_change_at = ensure_utc_aware(started) if started is not None else None
+    return DeploymentCodeSummary(
+        code_stands=len(distinct),
+        # Distinct RUNS, not rows, as on the advisory: it is the denominator of a sentence.
+        sessions=len({r.run_id for r in rows}),
+        last_change_at=last_change_at,
+        # A start ahead of the reader's clock is a clock apart, not a change in the future.
+        age_days=max(0, (now - last_change_at).days) if last_change_at is not None else None,
     )
 
 
@@ -173,12 +264,13 @@ def build_deployment_histories(rows: List[RunResultRow]) -> Dict[str, List[Deplo
 
         sessions: List[DeploymentSessionRow] = []
         previous: Optional[RunResultRow] = None
+        previous_stand: Optional[CodeStand] = None
         position = 0
         for row in sorted(by_session, key=lambda r: (r.currency, r.run_timestamp)):
             # Each currency is its own series: the first session of the next one has no
             # predecessor, so no gap and no change mark is measured against the other currency.
             if previous is not None and previous.currency != row.currency:
-                previous, position = None, 0
+                previous, previous_stand, position = None, None, 0
             position += 1
             started = _parse(row.run_timestamp)
             # The gap runs from when the PREDECESSOR'S ROW WAS WRITTEN — i.e. from the end of
@@ -216,8 +308,17 @@ def build_deployment_histories(rows: List[RunResultRow]) -> Dict[str, List[Deplo
                 orders_to_changed=bool(
                     previous and previous.orders_to is not None and row.orders_to is not None
                     and previous.orders_to != row.orders_to),
+                # Only between two sessions that both recorded it: an older row has no stand, no
+                # line and is never a change, and it does not hide what moved across it. A start
+                # that failed has no currency, and its series adds nothing up a line could split.
+                code_changes=(
+                    code_changes_between(previous_stand, row.code_stand)
+                    if previous_stand is not None and row.code_stand is not None and row.currency
+                    else []),
             ))
             previous = row
+            if row.code_stand is not None:
+                previous_stand = row.code_stand
         histories[deployment] = sessions
     return histories
 

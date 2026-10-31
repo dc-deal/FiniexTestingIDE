@@ -33,8 +33,10 @@ from python.framework.types.run_origin_types import (
 )
 from python.framework.utils.git_info_utils import (
     clear_git_caches,
+    commits_agree,
     drop_untracked_under,
     get_framework_root,
+    get_repo_commit_history,
     get_repo_patch,
     get_repo_status,
     get_repo_toplevel,
@@ -80,6 +82,7 @@ def build_code_identity(
     strategy_configs: List[Dict],
     patch_sink: Optional[PatchSink] = None,
     ignore_untracked_under: Optional[str] = None,
+    with_commit_history: bool = False,
 ) -> CodeIdentity:
     """
     Capture which code a run is about to run.
@@ -93,6 +96,9 @@ def build_code_identity(
             code — a certificate's own reports directory, which every earlier certificate run
             left an artifact in. Those files are neither a change, nor in the digest, nor in
             the patch; a modified tracked file there still is
+        with_commit_history: Also read every repository's commit subject and recent commits, two
+            git calls per repository; a session with a deployment asks for it, so that its
+            sessions can be compared, and nothing else pays for it
 
     Returns:
         The run's code identity
@@ -133,11 +139,13 @@ def build_code_identity(
         elif component.repository != framework_root and component.repository not in other_roots:
             other_roots.append(component.repository)
 
-    repositories = [_repository_state(root, patch_sink) for root in other_roots]
+    repositories = [_repository_state(root, patch_sink, with_commit_history=with_commit_history)
+                    for root in other_roots]
     repositories += [RepositoryState(root=directory, in_repository=membership)
                      for directory, membership in outside.items()]
     return CodeIdentity(
-        framework=_framework_state(framework_root, have_git, patch_sink, ignore_untracked_under),
+        framework=_framework_state(framework_root, have_git, patch_sink, ignore_untracked_under,
+                                   with_commit_history),
         repositories=repositories,
         components=components,
     )
@@ -177,7 +185,8 @@ def verify_component_digests(identity: CodeIdentity) -> List[ComponentIdentity]:
 
 def _framework_state(framework_root: Optional[str], have_git: bool,
                      patch_sink: Optional[PatchSink],
-                     ignore_untracked_under: Optional[str] = None) -> RepositoryState:
+                     ignore_untracked_under: Optional[str] = None,
+                     with_commit_history: bool = False) -> RepositoryState:
     """
     This repository's state — never None, so a refusal can always name where the code came from.
 
@@ -186,13 +195,15 @@ def _framework_state(framework_root: Optional[str], have_git: bool,
         have_git: Whether a git binary runs at all
         patch_sink: Stores the patch, or None
         ignore_untracked_under: Directory whose untracked files are not code, or None
+        with_commit_history: Also read the commit's subject and the recent commits
 
     Returns:
         The state; unknown (in_repository None) where git does not run or refuses the checkout,
         unversioned outside any repository
     """
     if framework_root is not None:
-        return _repository_state(framework_root, patch_sink, ignore_untracked_under)
+        return _repository_state(framework_root, patch_sink, ignore_untracked_under,
+                                 with_commit_history)
     root, membership = _membership(str(_MODULE_CHECKOUT), have_git)
     return RepositoryState(root=root, in_repository=membership)
 
@@ -228,7 +239,8 @@ def _membership(directory: str, have_git: bool) -> Tuple[str, Optional[bool]]:
 
 
 def _repository_state(root: str, patch_sink: Optional[PatchSink],
-                      ignore_untracked_under: Optional[str] = None) -> RepositoryState:
+                      ignore_untracked_under: Optional[str] = None,
+                      with_commit_history: bool = False) -> RepositoryState:
     """
     One repository's state; when it is dirty, its delta digested and its patch stored.
 
@@ -236,6 +248,7 @@ def _repository_state(root: str, patch_sink: Optional[PatchSink],
         root: The repository's top-level directory
         patch_sink: Stores the patch, or None
         ignore_untracked_under: Directory whose untracked files are not code, or None
+        with_commit_history: Also read the commit's subject and the recent commits
 
     Returns:
         The repository's state; `commit` None when git could not read it
@@ -261,6 +274,8 @@ def _repository_state(root: str, patch_sink: Optional[PatchSink],
         changes=lines[:_MAX_CHANGES],
         restorable=not dirty and status.commit is not None,
     )
+    if with_commit_history:
+        _fill_commit_history(state)
     if not dirty:
         return state
 
@@ -279,6 +294,25 @@ def _repository_state(root: str, patch_sink: Optional[PatchSink],
                  for path in changed)
     state.restorable = state.patch_ref is not None and not nested
     return state
+
+
+def _fill_commit_history(state: RepositoryState) -> None:
+    """
+    Add what the repository's history says about the commit this state recorded.
+
+    A list whose newest commit is not the recorded one is left out, and the subject with it: HEAD
+    moved between the reads, and a count derived from that list would describe a commit this run
+    does not name. The subject alone stands where only the list could not be read.
+
+    Args:
+        state: The state, already holding the commit it read
+    """
+    history = get_repo_commit_history(state.root)
+    commits = history.recent_commits
+    if commits is not None and not commits_agree(state.commit, commits[0]):
+        return
+    state.commit_subject = history.subject
+    state.recent_commits = list(commits) if commits is not None else None
 
 
 def _delta_digest(root: str, changed_paths: List[str], excluded: set) -> str:

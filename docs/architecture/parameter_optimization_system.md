@@ -201,6 +201,7 @@ from what it summarises.
 
 **Columns:** `param_hash` (leading) · `status` (`ok`/`error`) · `error` · `run_id` · `run_timestamp` ·
 `sweep_id` · `sweep_params` · `scenario_set_name` · `git_commit` / `git_branch` / `git_dirty` ·
+`code_stand` (a session's code per repository, empty on a backtest) ·
 `decision_logic_type` · `decision_version` · `worker_versions` · `strategy_config_json` (full resolved
 strategy_config) · `symbols` · `data_broker_type` · `currency` · the `RunSummary` KPIs (`net_pnl`,
 `expectancy`, `profit_factor`, `win_rate`, `max_drawdown`, trade / order counts …) · `signal_fresh_ratio` ·

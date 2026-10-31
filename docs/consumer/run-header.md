@@ -108,6 +108,7 @@ served.
 | `root` | Repository | which repository, as above |
 | `in_repository` | Versioned | whether that directory is under version control at all: false also for a directory the repository around it ignores; null when version control could not be asked |
 | `commit` · `branch` | Repository commit · Branch | as checked out when the run started; null when unknown |
+| `commit_subject` · `recent_commits` | Commit message · Recent commits | the commit's message line, and the last commits on its first-parent line, newest first, each the first 12 characters of its hash. Null on every run but a session of a deployment, and where they could not be read; a shallow clone lists only the commits it holds. A commit message is free text, so it can say what a strategy does, and whoever may read this run's header reads it |
 | `dirty` | Uncommitted changes | whether the working tree differed from its commit |
 | `uncommitted_count` · `changes` | Uncommitted count · Changes | how many changes there were, and the first of them |
 | `diff_hash` | Change hash | a hash over the content of every changed path |

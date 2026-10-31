@@ -23,7 +23,7 @@ from typing import List
 
 # One monotonic integer. Not a date and not the app version: a consumer compares it for
 # equality, and equality is the only question they have.
-API_CONTRACT_VERSION = 46
+API_CONTRACT_VERSION = 47
 
 # Every response carries it, so a saved fixture carries it too.
 CONTRACT_HEADER = 'X-Api-Contract'
@@ -36,16 +36,15 @@ API_PREFIX = '/api/v1'
 # What moved INTO the current version. One line per change, written for someone who cannot
 # read this repository.
 CHANGES: List[str] = [
-    'portfolio and state frames: protective_level_enforcement and take_profit_enforcement removed '
-    "from the open-position rows; a session holds no level any more, and a backtest's level is the "
-    "simulation's own",
-    'order-history and order-events: end_reason protection_released is no longer produced and '
-    'stays served for a run recorded before this contract; rejection_reason close_withheld removed',
-    'every report route answers 409 artifact_unreadable for a stored artifact that no longer matches '
-    'its model; some answered 500 before',
-    "A close's order_id is its position's on every row; a rebuilt stop's own id is no longer produced",
-    'expectancy can be null where no trade has an R, on run summaries, trade analytics, booking '
-    'periods, ledger rows and robustness windows; it read 0.0',
-    'sweeps: a ranking by expectancy leaves such a run out and counts it in unranked; a sweep that '
-    'recorded no objective ranks by net_pnl; the sweep list carries features_beyond_venue',
+    'deployments, a changed meaning: changed is also true when only the code moved, so changed true '
+    'with advisory null is a new state; configuration_changed, new, says what changed said so far',
+    'deployments: code_changes on a session row, one entry per repository whose code differs from the '
+    "previous session's (repository_label, old_commit, new_commit, commits_between, change_direction, subject)",
+    'deployments: code_changes_key on the detail is empty, because an entry of code_changes is identified '
+    'by its place in the list; its repository_label can repeat',
+    'deployments: code_summary on a list row and on the detail (code_stands, sessions, last_change_at, '
+    'age_days), null under two code stands',
+    'run header: a repository in code_identity carries commit_subject and recent_commits, filled for a '
+    'session of a deployment and null on every other run',
+    'sweeps: code_stand on a combination, null on every one because only a session records it',
 ]

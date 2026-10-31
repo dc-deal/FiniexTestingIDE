@@ -80,3 +80,23 @@ session simulates, a session whose broker posture is real money goes to the venu
 simulates by construction. The session's value comes from the one dry-run rule its header was
 stamped with (`resolve_orders_to`), so the header and the row cannot disagree about whether real
 money moved — and a deployment can say which of its sessions did.
+
+## Which code a session started on (#559)
+
+`test_run_provenance.py::TestTheCodeStandReadsTheHeader` pins `code_stand` on the ledger row. It
+states what the header recorded and not what git answers. This repository is named `framework`, never
+by its root, which would move with every deploy. A session that did not read the history keeps the
+recorded short hash, and an unknown commit stays unknown and is never clean. A header without an
+identity, a missing run directory and an identity with no framework entry are each an unknown stand
+and never a missing one, because an empty column means the row predates the column. A backtest leaves
+it empty.
+
+`test_run_results_ledger.py` reads it back typed, beside a row without one, from an older fragment and
+from a sealed day; a malformed stand names its run; and two sessions read back as a code change
+through the real files and the real fold.
+`test_reduction_invariants.py::TestTheCodeStandFoldsAsAnIdentity` holds the declared reduction: a fold keeps it typed, a row without one does not erase it, two stands
+are a reported conflict and rows that agree are none. `test_ranked_csv_export.py` writes it as JSON in
+the export and leaves the cell empty where there is none.
+
+`RunLedgerIndex.LOGIC_VERSION` moved with the column. The append changes no existing value, so an
+older fragment reads back None: no stand, never a change.

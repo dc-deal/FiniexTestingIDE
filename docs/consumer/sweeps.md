@@ -128,6 +128,8 @@ that before trusting the order:
   component of the run came from, not only the main one, and it reads `true` where the code
   state could not be determined. It never says the code was clean; it has meant this since
   contract 4.
+- `code_stand` — which code a session started on, per repository. Null on every combination, because
+  only a session records one; [deployments](/api/v1/docs/deployments) is where it is read.
 - `trial_count` — how many candidates this run was selected **from**. Null is unknown; `1` is a
   statement, that this run was the only candidate. A result picked as the best of 500 and a result
   nobody compared cannot be discounted alike.

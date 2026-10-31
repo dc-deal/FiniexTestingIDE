@@ -46,6 +46,7 @@ from python.framework.types.run_origin_types import (
 )
 
 PROFILE = 'configs/autotrader_profiles/mock/mock_session_test.json'
+DEPLOYMENT_PROFILE = 'configs/autotrader_profiles/mock/deployment_continuity_test.json'
 
 _IDENTITY = CodeIdentity(framework=RepositoryState(root='/app', commit='abc1234'))
 
@@ -65,8 +66,9 @@ def stopped_session(monkeypatch):
     captures = []
     received = {}
 
-    def fake_capture(strategy_configs):
+    def fake_capture(strategy_configs, with_commit_history=False):
         captures.append(strategy_configs)
+        received['with_commit_history'] = with_commit_history
         return _IDENTITY
 
     def fake_loggers(config, run_timestamp, **kwargs):
@@ -138,6 +140,44 @@ class TestTheSessionStatesItsOrigin:
 
         assert captures == [[config.strategy_config]]
         assert received['code_identity'] is _IDENTITY
+
+
+class TestOnlyASessionOfADeploymentReadsItsCommitHistory:
+    """
+    The view that compares a deployment's sessions counts commits from what each session
+    recorded (#559). A session standing alone has nothing to compare and pays nothing.
+    """
+
+    def test_a_session_standing_alone_does_not_read_it(self, stopped_session):
+        _, received = stopped_session
+
+        with pytest.raises(_StopAtLoggers):
+            AutotraderMain(load_autotrader_config(PROFILE)).run()
+
+        assert received['deployment_id'] == ''
+        assert received['with_commit_history'] is False
+
+    def test_a_session_of_a_deployment_reads_it(self, stopped_session, tmp_path):
+        _, received = stopped_session
+        config = load_autotrader_config(DEPLOYMENT_PROFILE)
+        config.cold_start.path = str(tmp_path)
+
+        with pytest.raises(_StopAtLoggers):
+            AutotraderMain(config).run()
+
+        assert received['deployment_id'] != ''
+        assert received['with_commit_history'] is True
+
+    def test_a_one_off_of_that_profile_does_not_read_it(self, stopped_session, tmp_path):
+        _, received = stopped_session
+        config = load_autotrader_config(DEPLOYMENT_PROFILE)
+        config.cold_start.path = str(tmp_path)
+
+        with pytest.raises(_StopAtLoggers):
+            AutotraderMain(config, one_off=True).run()
+
+        assert received['deployment_id'] == ''
+        assert received['with_commit_history'] is False
 
 
 class TestTheLiveHeaderCarriesBoth:
@@ -322,7 +362,7 @@ class TestARefusedStartThroughTheRealSession:
         monkeypatch.setattr(host_identity_manager, '_HOST_IDENTITY_PATH', str(broken))
         captured, headers = [], []
         monkeypatch.setattr(autotrader_main_module, 'capture_code_identity',
-                            lambda configs: captured.append(configs) or _IDENTITY)
+                            lambda configs, **_: captured.append(configs) or _IDENTITY)
         monkeypatch.setattr(autotrader_main_module, 'create_autotrader_loggers',
                             lambda *args, **kwargs: headers.append(kwargs))
 
@@ -340,7 +380,7 @@ class TestARefusedStartThroughTheRealSession:
         exit 1, a stack trace, no STARTUP FAILED and no header. It is held, the header is written
         without a code identity, and the startup handling refuses the session.
         """
-        def disk_full(configs):
+        def disk_full(configs, **_):
             raise OSError(28, 'No space left on device')
 
         bundles = []

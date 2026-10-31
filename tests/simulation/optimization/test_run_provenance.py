@@ -15,19 +15,29 @@ from types import SimpleNamespace
 from typing import Optional
 from unittest.mock import patch
 
+import pytest
+
+from python.framework.constants.run_layout_constants import RUN_TYPE_AUTOTRADER
 from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.reporting.builders.warnings_errors_report_builder import (
     build_warnings_errors_report_from_session,
 )
+from python.framework.reporting.io.run_header_io import write_run_header
 from python.framework.reporting.store.run_provenance_builder import (
     build_run_provenance,
     consumption_record,
     build_run_provenance_from_session,
 )
-from python.framework.types.api.report_types import WarningsErrorsReport
+from python.framework.types.api.report_types import RunHeader, WarningsErrorsReport
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
 from python.framework.types.autotrader_types.autotrader_result_types import AutoTraderResult
+from python.framework.types.git_info_types import GitInfo
 from python.framework.types.run_kind_types import OrdersTo
+from python.framework.types.run_origin_types import (
+    CodeIdentity,
+    RepositoryStand,
+    RepositoryState,
+)
 from python.framework.types.run_results_types import RunProvenance
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
 from python.framework.utils.config_fingerprint_utils import generate_config_fingerprint
@@ -295,3 +305,116 @@ class TestWhatARunConsumed:
         assert record['input_plane'] == 'archive'
         assert record['input_files'] == 0
         assert record['origin_classes'] == ''
+
+
+# What git would answer by the time a session writes its row: another commit than it started on.
+_GIT_AT_THE_END = GitInfo(branch='later', commit='fffffff', date=_TS, message='checked out later',
+                          dirty=False, uncommitted_count=0)
+_GET_GIT_INFO = 'python.framework.reporting.store.run_provenance_builder.get_git_info'
+
+
+def _session_from_header(tmp_path, identity: Optional[CodeIdentity]) -> RunProvenance:
+    """
+    The provenance of a session whose header recorded the given code identity.
+
+    Args:
+        tmp_path: The session's run directory
+        identity: What the header recorded, None for a header that carries none
+
+    Returns:
+        The provenance, built while git answers something else than the header
+    """
+    write_run_header(RunHeader(run_id=_RUN_ID, start_time=_TS, run_type=RUN_TYPE_AUTOTRADER,
+                               run_name='my_profile', app_version='1.4.0', git_commit='abc1234',
+                               code_identity=identity), tmp_path)
+    with patch(_GET_GIT_INFO, return_value=_GIT_AT_THE_END):
+        return build_run_provenance_from_session(
+            _config(), _RUN_ID, _TS, run_dir=tmp_path, logger=get_global_logger())
+
+
+class TestTheCodeStandReadsTheHeader:
+    """
+    The ledger's `code_stand` says which code a session started on (#559). The row is written long
+    after the start, so it comes from the header, never from what git answers then.
+    """
+
+    def test_it_states_what_the_header_recorded_and_not_what_git_answers(self, tmp_path):
+        identity = CodeIdentity(
+            framework=RepositoryState(root='/srv/releases/v1', commit='a1b2c3d',
+                                      commit_subject='Fix the fee rounding',
+                                      recent_commits=['a1b2c3d4e5f6', '0f1e2d3c4b5a']),
+            repositories=[RepositoryState(root='/srv/home/my_strategy', commit='2f054f5',
+                                          dirty=True, diff_hash='9f2c' * 16)])
+
+        stand = _session_from_header(tmp_path, identity).code_stand
+
+        assert stand.repositories == [
+            RepositoryStand(repository='framework', commit='a1b2c3d4e5f6', dirty=False,
+                            subject='Fix the fee rounding',
+                            recent_commits=['a1b2c3d4e5f6', '0f1e2d3c4b5a']),
+            RepositoryStand(repository='/srv/home/my_strategy', commit='2f054f5', dirty=True,
+                            diff_hash='9f2c' * 16)]
+
+    def test_a_framework_named_by_its_root_would_move_with_every_deploy(self, tmp_path):
+        """A deploy starts the next session from a new code tree: the same repository."""
+        identity = CodeIdentity(framework=RepositoryState(root='/srv/releases/v2', commit='a1b2c3d'))
+
+        stand = _session_from_header(tmp_path, identity).code_stand
+
+        assert [entry.repository for entry in stand.repositories] == ['framework']
+
+    def test_a_session_that_did_not_read_the_history_keeps_the_recorded_short_hash(self, tmp_path):
+        identity = CodeIdentity(framework=RepositoryState(root='/app', commit='a1b2c3d'))
+
+        [framework] = _session_from_header(tmp_path, identity).code_stand.repositories
+
+        assert framework.commit == 'a1b2c3d'
+        assert framework.subject is None and framework.recent_commits is None
+
+    @pytest.mark.parametrize('state', [
+        RepositoryState(root='/srv/home/my_strategy', commit=None),
+        RepositoryState(root='/srv/home/my_strategy', in_repository=False),
+        RepositoryState(root='/srv/home/my_strategy', in_repository=None),
+    ], ids=['unreadable', 'no_repository', 'git_refused'])
+    def test_an_unknown_commit_stays_unknown_and_is_never_clean(self, tmp_path, state):
+        identity = CodeIdentity(framework=RepositoryState(root='/app', commit='a1b2c3d'),
+                                repositories=[state])
+
+        [_, entry] = _session_from_header(tmp_path, identity).code_stand.repositories
+
+        assert entry.commit is None and entry.dirty is True
+
+    def test_a_header_without_an_identity_is_an_unknown_stand_never_a_missing_one(self, tmp_path):
+        """An empty column reads as a row that predates it, and so as no change: fail-open."""
+        stand = _session_from_header(tmp_path, None).code_stand
+
+        assert stand.repositories == [RepositoryStand(repository='framework', dirty=True)]
+
+    def test_no_run_directory_is_an_unknown_stand_too(self):
+        with patch(_GET_GIT_INFO, return_value=_GIT_AT_THE_END):
+            stand = _session_provenance(_config()).code_stand
+
+        assert stand.repositories == [RepositoryStand(repository='framework', dirty=True)]
+
+    def test_an_identity_with_no_framework_entry_names_it_as_unknown(self, tmp_path):
+        stand = _session_from_header(tmp_path, CodeIdentity(framework=None)).code_stand
+
+        assert stand.repositories == [RepositoryStand(repository='framework', dirty=True)]
+
+    def test_a_backtest_leaves_it_none(self, tmp_path):
+        """A backtest runs at one commit and has no sessions to compare, so it pays nothing."""
+        scenario = SingleScenario(
+            name='s0', scenario_index=0, symbol='BTCUSD', data_broker_type='kraken_spot',
+            start_date='2026-01-01',
+            strategy_config={'decision_logic_type': 'CORE/aggressive_trend',
+                             'worker_instances': {}})
+        scenario_set = SimpleNamespace(
+            logger=SimpleNamespace(get_log_dir=lambda: tmp_path),
+            printed_summary_logger=get_global_logger(), run_timestamp=_TS,
+            scenario_set_name='my_set')
+
+        provenance = build_run_provenance(
+            SimpleNamespace(single_scenario_list=[scenario], broker_scenario_map={}),
+            scenario_set, _RUN_ID)
+
+        assert provenance.code_stand is None

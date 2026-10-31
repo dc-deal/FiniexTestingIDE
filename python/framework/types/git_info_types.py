@@ -7,7 +7,7 @@ certificates and performance snapshots.
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 
 @dataclass
@@ -51,3 +51,19 @@ class RepoStatus:
     changed_paths: List[str] = field(default_factory=list)
     untracked_paths: List[str] = field(default_factory=list)
     hidden_paths: List[str] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class RepoCommitHistory:
+    """
+    What one repository's history says about its HEAD (#559). Two reads that fail apart, so one
+    field can be unknown while the other is known.
+
+    Args:
+        subject: The HEAD commit's subject line, None when it could not be read
+        recent_commits: The commits on HEAD's first-parent line, newest first, each as a
+            fixed-length prefix of its full hash; None when they could not be read. A shallow
+            clone lists only the commits it holds
+    """
+    subject: Optional[str] = None
+    recent_commits: Optional[Tuple[str, ...]] = None

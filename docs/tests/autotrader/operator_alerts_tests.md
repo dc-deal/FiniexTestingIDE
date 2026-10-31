@@ -118,6 +118,7 @@ Also pinned in the suites whose code raises the alerts:
 | `test_missing_figures_are_said_rather_than_shown_as_zero` | no summary, no invented zeros |
 | `test_it_says_whether_real_orders_go_out` | mock, dry run or LIVE |
 | `test_a_duration_reads_the_way_a_person_says_it` | `2d 4h 12m` |
+| `test_it_names_the_commits_of_both_repositories` · `test_several_other_repositories_are_told_apart_by_their_directory` · `test_a_commit_nobody_could_read_is_said` · `test_an_identity_without_this_repository_still_formats` · `test_nothing_recorded_prints_no_commit_line` | the started message names every repository's commit (#559): `framework` and `strategy`, a directory's name where there are several others, `unknown` for a commit nobody could read, and no line where nothing was recorded |
 | `TestTheDaysClosedUnheard` | the trading days one late check sealed after the first — a machine that slept, a clock that jumped — are one message, titled with their span (or the one day), counting the days and their trades and closing with the equity line |
 | `TestTheDayClose` | the sealed booking period rendered one figure per line — its own figures, an open holding beside the realised one, an unobserved value said rather than shown as zero (both ends, or which one), a day that never fell reading `0.00`, and a day the session started in saying it covers only the rest |
 
@@ -178,7 +179,7 @@ A 100-tick mock replay with the channel builder swapped for one wired to the sta
 
 | Test | What it verifies |
 |---|---|
-| `test_a_session_says_it_started_and_how_it_ended` | two messages; the loop stamped the very progress the pinger reads; an ordinary last ping |
+| `test_a_session_says_it_started_and_how_it_ended` | two messages; the started one names the framework's commit; the loop stamped the very progress the pinger reads; an ordinary last ping |
 | `test_an_abort_is_one_message_and_a_fail_ping` | STARTUP FAILED once, no second message at the end, the fail URL at once |
 | `test_a_crash_while_shutting_down_is_said_and_fails_the_ping` | a crash in the report phase is alerted, pings the fail URL, and still raises |
 | `test_a_refused_start_is_one_message_quoting_why_and_no_ping` | a cold start refusing an unattended restart: STARTUP REFUSED with its reason, graded by what it logged, and no ping for a loop that never ran |

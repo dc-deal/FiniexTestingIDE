@@ -5,11 +5,17 @@ from pathlib import Path
 from typing import Optional, get_args
 
 import pandas as pd
+import pytest
 
 from python.framework.constants.run_layout_constants import RUN_TYPE_AUTOTRADER, RUN_TYPE_SIMULATION
 from python.framework.reporting.builders.booking_period_builder import (
     PeriodSnapshot,
     derive_booking_period,
+)
+from python.framework.exceptions.store_errors import LedgerRowUnreadableError
+from python.framework.reporting.builders.deployment_history_builder import (
+    build_deployment_histories,
+    deployment_code_summary,
 )
 from python.framework.reporting.store.ledger_aggregation import aggregate_ledger_rows
 from python.framework.reporting.store.run_results_ledger import (
@@ -21,6 +27,7 @@ from python.framework.reporting.store.run_results_ledger import (
 )
 from python.framework.types.api.report_types import RunResultRow, RunSummary
 from python.framework.types.run_kind_types import OrdersTo
+from python.framework.types.run_origin_types import CodeStand, RepositoryStand
 from python.framework.types.run_outcome_types import RunOutcome
 from python.framework.types.run_results_types import (
     FigureKind,
@@ -34,6 +41,15 @@ from python.framework.types.trading_env_types.trading_env_stats_types import (
 
 # Every report artifact names its run (#475); the value is opaque to these tests.
 _RUN_ID = '20260830_120000_a1b2c3d4'
+
+# A session's code as two repositories recorded it: one with its history, one uncommitted.
+_CODE_STAND = CodeStand(repositories=[
+    RepositoryStand(repository='framework', commit='a1b2c3d4e5f6', dirty=False,
+                    subject='Fix the fee rounding',
+                    recent_commits=['a1b2c3d4e5f6', '0f1e2d3c4b5a']),
+    RepositoryStand(repository='/srv/home/my_strategy', commit='2f054f5', dirty=True,
+                    diff_hash='9f2c' * 16),
+])
 
 
 def test_append_then_read_roundtrip(tmp_ledger, make_run_summary, make_provenance):
@@ -735,3 +751,79 @@ def test_every_nullable_figure_declares_what_its_null_means():
     stale = sorted(set(COLUMN_NULL_MEANING) - nullable_figures)
     assert undeclared == [], f'{undeclared} can be null and do not say what their null means'
     assert stale == [], f'{stale} declare a null meaning and are no nullable figure'
+
+
+def test_a_code_stand_reads_back_typed(tmp_ledger, make_run_summary, make_provenance):
+    """#559: a JSON column like `worker_versions`, parsed back to its model on the typed row."""
+    tmp_ledger.append(make_run_summary(),
+                      make_provenance(run_id='r_stand', code_stand=_CODE_STAND))
+
+    assert tmp_ledger.read_rows()[0].code_stand == _CODE_STAND
+
+
+def test_a_row_without_a_stand_reads_back_beside_one_with_it(tmp_ledger, make_run_summary,
+                                                             make_provenance):
+    """A backtest and a session in one store: the column is empty on one, never a guess."""
+    tmp_ledger.append(make_run_summary(),
+                      make_provenance(run_id='r_stand', code_stand=_CODE_STAND))
+    tmp_ledger.append(make_run_summary(), make_provenance(run_id='r_backtest'))
+
+    stands = {row.run_id: row.code_stand for row in tmp_ledger.read_rows()}
+
+    assert stands == {'r_stand': _CODE_STAND, 'r_backtest': None}
+
+
+def test_two_sessions_read_back_as_a_code_change(tmp_ledger, make_run_summary, make_provenance):
+    """From the column to the deployment view, through the real files and the real fold."""
+    older = CodeStand(repositories=[
+        RepositoryStand(repository='framework', commit='a1b2c3d4e5f6', dirty=False)])
+    newer = CodeStand(repositories=[
+        RepositoryStand(repository='framework', commit='e5f6a7b8c9d0', dirty=False,
+                        subject='Fix the fee rounding',
+                        recent_commits=['e5f6a7b8c9d0', 'a1b2c3d4e5f6'])])
+    for run_id, day, stand in (('r1', 1, older), ('r2', 2, newer)):
+        tmp_ledger.append(make_run_summary(), make_provenance(
+            run_id=run_id, deployment_id='deploy_x', code_stand=stand,
+            run_timestamp=datetime(2026, 10, day, tzinfo=timezone.utc)))
+
+    rows = tmp_ledger.read_rows(deployment_id='deploy_x')
+    (first, second) = build_deployment_histories(rows)['deploy_x']
+    assert first.code_changes == []
+    assert [(c.commits_between, c.subject) for c in second.code_changes] == [
+        (1, 'Fix the fee rounding')]
+    summary = deployment_code_summary(rows, datetime(2026, 10, 12, tzinfo=timezone.utc))
+    assert (summary.code_stands, summary.sessions, summary.age_days) == (2, 2, 10)
+
+
+def test_an_older_fragment_names_no_code_stand(tmp_path, tmp_ledger, make_run_summary,
+                                               make_provenance):
+    """A row written before the column existed: no stand, and so never a change."""
+    tmp_ledger.append(make_run_summary(), make_provenance(run_id='old', code_stand=_CODE_STAND))
+    fragment = next(Path(tmp_path / 'run_results').glob('*_old.parquet'))
+    frame = pd.read_parquet(fragment).drop(columns=['code_stand'])
+    frame.to_parquet(fragment, index=False)
+    tmp_ledger._index.rebuild()
+
+    assert tmp_ledger.read_rows()[0].code_stand is None
+
+
+def test_a_malformed_code_stand_names_its_run(tmp_path, tmp_ledger, make_run_summary,
+                                              make_provenance):
+    tmp_ledger.append(make_run_summary(), make_provenance(run_id='broken', code_stand=_CODE_STAND))
+    fragment = next(Path(tmp_path / 'run_results').glob('*_broken.parquet'))
+    frame = pd.read_parquet(fragment)
+    frame['code_stand'] = '{not json'
+    frame.to_parquet(fragment, index=False)
+    tmp_ledger._index.rebuild()
+
+    with pytest.raises(LedgerRowUnreadableError, match='broken'):
+        tmp_ledger.read_rows()
+
+
+def test_a_sealed_day_carries_the_code_stand(tmp_path, make_provenance):
+    """A session killed on day 29 still names its code in the rows it left."""
+    ledger = RunResultsLedger(tmp_path / 'sealed')
+
+    ledger.write_sealed_periods(make_provenance(run_id='live', code_stand=_CODE_STAND), [_day(1)])
+
+    assert ledger.read_rows()[0].code_stand == _CODE_STAND

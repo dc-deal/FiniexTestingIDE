@@ -165,7 +165,7 @@ class TestASessionHoldsIt:
         config = load_autotrader_config(MOCK_PROFILE)
         held_during_the_start = []
 
-        def failing_capture(strategy_configs):
+        def failing_capture(strategy_configs, **_):
             # Refused at its start — cheap, and a path that must still give the lock back
             held_during_the_start.append(is_lock_held(bot_lock_path(config)))
             raise OSError(28, 'No space left on device')

@@ -310,4 +310,5 @@ def _flat(row: RunResultRow) -> Dict[str, Any]:
     data['worker_versions'] = json.dumps(data['worker_versions'])
     data['symbols'] = json.dumps(data['symbols'])
     data['sweep_params'] = json.dumps(data['sweep_params']) if data['sweep_params'] is not None else ''
+    data['code_stand'] = json.dumps(data['code_stand'], sort_keys=True) if data['code_stand'] is not None else ''
     return data

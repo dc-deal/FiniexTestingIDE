@@ -60,7 +60,7 @@ def identity_conflicts(rows: List[RunResultRow]) -> Dict[str, List[Any]]:
     """
     The IDENTITY columns whose values do NOT agree across these rows.
 
-    `COLUMN_REDUCTION` declares twenty-eight columns as "must agree across the rows, or they
+    `COLUMN_REDUCTION` declares its IDENTITY columns as "must agree across the rows, or they
     were never comparable", and until this function nothing checked it. That mattered little
     while the map was read by nobody; it matters now, because `aggregate_ledger_rows` RELIES on
     the claim — it keeps one value and discards the rest.
@@ -79,8 +79,8 @@ def identity_conflicts(rows: List[RunResultRow]) -> Dict[str, List[Any]]:
     for column, reduction in COLUMN_REDUCTION.items():
         if reduction is not Reduction.IDENTITY:
             continue
-        # Compared by their STRING form, because two IDENTITY columns parse back into dicts
-        # (`worker_versions`, `sweep_params`) and a dict cannot go in a set. The string form is
+        # Compared by their STRING form, because some IDENTITY columns parse back into structures
+        # (`worker_versions` is one) and a structure cannot go in a set. The string form is
         # what the comparison needs anyway — the question is whether the rows agree, not what
         # the value is.
         seen: Dict[str, Any] = {}
