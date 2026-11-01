@@ -14,6 +14,7 @@ produce and therefore never exercises.
 |---|---|
 | `test_state_machine.py` | one case per phase type, plus the outcomes each one can end in |
 | `test_cancel_orchestration.py` | the cancel bookkeeping across a re-arm |
+| `test_close_and_end.py` | the pass that sends a close and asks for the session's end (#630): the close goes out first, the event flags start afresh with it, and every field study profile has the phase after the force close and before the final summary |
 | `test_field_study_setup.py` | the session wiring (#566): a non-spot account opens no capture, a resting order stops the run before it trades, a preflight that raises still leaves a terminated capture, the header records where the session's adapter declares the venue reports a fill's fee and what the executor expects of it (#508), and the end writes the reconciliation totals and the REST telemetry before the end marker |
 | `test_order_hooks.py` | what the study's order hooks tell the machine — they record nothing, the capture's order lines are the session's own stream (#566): a close ending with no direction — its position is gone — is observed rather than raised on, and an unaccounted order raises its own flag, never the rejection flag |
 
@@ -53,6 +54,23 @@ The phase also reads `PhaseContext.active_stop_count`, never `active_limit_count
 in its own resting world with its own cancel and modify paths, and
 `test_stop_cancel_rests_then_cancels_pass` asserts that a limit count of 1 moves nothing — that
 order belongs to another phase.
+
+## The close on its way at the stop (#630)
+
+`close_and_end` is the one phase a pass cannot finish. It opens a position, then sends its close and
+asks for the session's end in one pass, so the close is still on its way when the loop ends: the stop
+has to wait for it. The machine concludes the phase at the session's end
+(`conclude_at_session_end`), from the last observation. A close's fill reaches the study as a closed
+position, which it does not subscribe to, so the book is the proof: flat only where the stop booked
+the fill before the session-end event. The final summary that end overtook is concluded as skipped.
+
+The tests hold each way the phase can end: a pass on a flat book; a fail naming what the stop left
+(a position still in the book, a close given up unaccounted, a close rejected, an order still
+pending), with the severity named where the end was not a normal one; an open that is rejected,
+unaccounted or never fills, after which the final summary ends the session as before; a position at
+entry, which sends nothing; and a pass that still comes after the close. An end in another phase, or
+before the close, concludes nothing, so a run that aborted still reads its unreached phases as
+missing.
 
 ## Run
 

@@ -523,9 +523,15 @@ class AbstractAcceptanceStudy(AbstractDecisionLogic):
             return None
 
         if action.kind == PhaseActionKind.END_SESSION:
-            self.trading_api.request_session_end(
-                f'{self.STUDY_LABEL.lower()} complete', SessionEndSeverity.NORMAL
-            )
+            self._request_study_end()
+            return None
+
+        if action.kind == PhaseActionKind.CLOSE_ALL_AND_END_SESSION:
+            # In one pass, so the close is still on its way when the loop ends and the stop has to
+            # wait for it (#630). The flags reset first, so at the end they speak of the close alone.
+            self._reset_flags()
+            self._close_all()
+            self._request_study_end()
             return None
 
         if action.kind != PhaseActionKind.NONE:
@@ -576,6 +582,12 @@ class AbstractAcceptanceStudy(AbstractDecisionLogic):
         for pos in self.trading_api.get_open_positions(self._symbol):
             if not self.trading_api.is_pending_close(pos.position_id):
                 self.trading_api.close_position(pos.position_id)
+
+    def _request_study_end(self) -> None:
+        """Ask for an ordinary end of the session: the study has run its sequence."""
+        self.trading_api.request_session_end(
+            f'{self.STUDY_LABEL.lower()} complete', SessionEndSeverity.NORMAL
+        )
 
     def _cancel_resting(self) -> None:
         # Cancel the orders ACTUALLY resting at the broker, not a per-phase id list. This

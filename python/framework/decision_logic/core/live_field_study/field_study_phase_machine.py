@@ -32,6 +32,7 @@ from python.framework.types.acceptance_study_types.study_phase_types import (
     PhaseSide,
     PhaseState,
 )
+from python.framework.types.decision_event_types import SessionEndSeverity
 
 # Lots-comparison epsilon for partial-close detection.
 _LOTS_EPS = 1e-9
@@ -82,6 +83,7 @@ class FieldStudyPhaseMachine(AbstractStudyPhaseMachine):
             PhaseType.MULTI_CANCEL: self._handle_multi_cancel,
             PhaseType.PARTIAL_CLOSE: self._handle_partial_close,
             PhaseType.IDLE: self._handle_idle,
+            PhaseType.CLOSE_AND_END: self._handle_close_and_end,
             PhaseType.FINAL_SUMMARY: self._handle_final,
         }
 
@@ -420,5 +422,122 @@ class FieldStudyPhaseMachine(AbstractStudyPhaseMachine):
             return self._finish(phase, PhaseOutcome.PASS, 'idle complete', ctx.now)
         return PhaseAction(PhaseActionKind.NONE, phase.phase_id)
 
+    def _handle_close_and_end(self, phase: FieldStudyPhase, ctx: PhaseContext) -> PhaseAction:
+        """
+        Open a position, then send its close and ask for the session's end in one pass (#630).
+
+        The close is still on its way when the loop ends, so the stop has to wait for it before the
+        session ends. Whether it did is read at that end (`conclude_at_session_end`); a pass that
+        still comes after the close means the session did not end.
+
+        Args:
+            phase: The phase being driven
+            ctx: This pass's observation
+
+        Returns:
+            The action to perform
+        """
+        if self._state == PhaseState.PENDING:
+            if ctx.open_position_count > 0:
+                return self._finish(phase, PhaseOutcome.FAIL, 'not flat at entry, nothing sent', ctx.now)
+            self._state = PhaseState.AWAIT_FILL
+            return self._act(ctx, PhaseAction(
+                PhaseActionKind.SUBMIT_MARKET, phase.phase_id,
+                side=phase.side, lots=self._lots(phase),
+                reason='open, to close as the session ends',
+            ))
+
+        if self._state == PhaseState.AWAIT_FILL:
+            if ctx.unaccounted_since_submit:
+                return self._finish_unaccounted(phase, ctx)
+            if ctx.rejected_since_submit:
+                return self._finish(phase, PhaseOutcome.FAIL, 'open rejected', ctx.now)
+            if ctx.filled_since_submit or ctx.open_position_count > 0:
+                self._state = PhaseState.CLOSE
+                return self._act(ctx, PhaseAction(
+                    PhaseActionKind.CLOSE_ALL_AND_END_SESSION, phase.phase_id,
+                    reason='close and end the session in one pass',
+                ))
+            if self._timed_out(phase, ctx):
+                return self._finish(phase, PhaseOutcome.FAIL, 'open not filled', ctx.now)
+            return PhaseAction(PhaseActionKind.NONE, phase.phase_id)
+
+        # CLOSE — the session's end concludes the phase
+        if self._timed_out(phase, ctx):
+            return self._finish(phase, PhaseOutcome.FAIL, 'the session did not end', ctx.now)
+        return PhaseAction(PhaseActionKind.NONE, phase.phase_id)
+
     def _handle_final(self, phase: FieldStudyPhase, ctx: PhaseContext) -> PhaseAction:
         return self._end_sequence(phase, ctx, 'field study complete')
+
+    # ============================================
+    # The session's end
+    # ============================================
+
+    def conclude_at_session_end(
+        self,
+        ctx: PhaseContext,
+        reason: str,
+        severity: SessionEndSeverity,
+    ) -> None:
+        """
+        Conclude the phase whose close was on its way when the session ended (#630).
+
+        Its close was sent in the pass that asked for the end, while its position was open. A
+        close's fill reaches the study as a closed position, which it does not hear, so the book is
+        the proof: flat only where the stop waited for the fill and booked it before this event.
+        The phases after it were overtaken by that end and are concluded as skipped. Any other end
+        concludes nothing, so a phase the run never reached stays missing.
+
+        Args:
+            ctx: The last observation, taken as the session ended
+            reason: Why the session ended
+            severity: How it ended
+        """
+        if self.is_complete():
+            return
+        phase = self._phases[self._idx]
+        if phase.phase_type != PhaseType.CLOSE_AND_END or self._state != PhaseState.CLOSE:
+            return
+        problem = self._unsettled_close(ctx, reason, severity)
+        if problem is None:
+            self._finish(phase, PhaseOutcome.PASS,
+                         'the stop waited for the close and booked its fill', ctx.now)
+        else:
+            self._finish(phase, PhaseOutcome.FAIL, problem, ctx.now)
+        while not self.is_complete():
+            self._phase_start = ctx.now
+            self._finish(self._phases[self._idx], PhaseOutcome.SKIPPED,
+                         f'the session ended in {phase.phase_id}', ctx.now)
+
+    @staticmethod
+    def _unsettled_close(
+        ctx: PhaseContext,
+        reason: str,
+        severity: SessionEndSeverity,
+    ) -> Optional[str]:
+        """
+        What the session's end shows of a close the stop did not settle.
+
+        Args:
+            ctx: The last observation, taken as the session ended
+            reason: Why the session ended
+            severity: How it ended
+
+        Returns:
+            Why the phase fails, or None when the close was booked before the end
+        """
+        if ctx.unaccounted_since_submit:
+            problem = 'the close was given up unaccounted at the stop'
+        elif ctx.rejected_since_submit:
+            problem = 'the close was rejected'
+        elif ctx.open_position_count > 0:
+            problem = (f'the session ended before the close was booked: '
+                       f'{ctx.open_position_count} position(s) open in the book')
+        elif ctx.has_pending:
+            problem = 'an order was still pending as the session ended'
+        else:
+            return None
+        if severity is not SessionEndSeverity.NORMAL:
+            problem += f' ({severity.value} end: {reason})'
+        return problem

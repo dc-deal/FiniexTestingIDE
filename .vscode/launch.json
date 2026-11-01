@@ -4528,6 +4528,26 @@
             }
         },
         {
+            "name": "🧪 AutoTrader: Field Study (mock, stop waits for close)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/autotrader_cli.py",
+            "args": [
+                "run",
+                "--config",
+                "configs/autotrader_profiles/mock/field_study_stop_waits_mock.json",
+                "--display",
+                "--delay",
+                "1"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "14_release_gate",
+                "order": 12
+            }
+        },
+        {
             "name": "🧪 AutoTrader: Field Study Certificate (latest run)",
             "type": "debugpy",
             "request": "launch",
@@ -4540,7 +4560,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "14_release_gate",
-                "order": 12
+                "order": 13
             }
         },
         // #358 — the security study runs every stage as a session of its own and writes its
@@ -4560,7 +4580,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "14_release_gate",
-                "order": 13
+                "order": 14
             }
         },
         {
@@ -4577,7 +4597,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "14_release_gate",
-                "order": 14
+                "order": 15
             }
         },
         {
@@ -4593,7 +4613,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "14_release_gate",
-                "order": 15
+                "order": 16
             }
         },
         {
@@ -4610,7 +4630,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "14_release_gate",
-                "order": 16
+                "order": 17
             }
         },
         {
@@ -4626,7 +4646,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "14_release_gate",
-                "order": 17
+                "order": 18
             }
         }
     ],

@@ -54,6 +54,7 @@
          "phase_id": "partial_close_test", "phase_type": "partial_close", "side": "long", "lots": 0.005, "fill_timeout_s": 30},
         {"phase_id": "idle_heartbeat_test", "phase_type": "idle", "idle_seconds": 20},
         {"phase_id": "force_close_all", "phase_type": "force_close", "fill_timeout_s": 30},
+        {"_comment": "The close on its way at the stop (#630). Opens the default lot, then sends its close and asks for the session's end in one pass, so the stop has to wait for the close before the session ends. Concluded at that end; final_summary is then skipped.", "phase_id": "stop_waits_for_close", "phase_type": "close_and_end", "side": "long", "fill_timeout_s": 30},
         {"phase_id": "final_summary", "phase_type": "final_summary"}
       ]
     }

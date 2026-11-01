@@ -57,6 +57,7 @@ class PhaseActionKind(StrEnum):
     CANCEL_ALL = 'cancel_all'
     MODIFY_LIMIT = 'modify_limit'
     END_SESSION = 'end_session'
+    CLOSE_ALL_AND_END_SESSION = 'close_all_and_end_session'
 
 
 @dataclass

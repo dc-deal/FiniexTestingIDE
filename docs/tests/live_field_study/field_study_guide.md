@@ -57,8 +57,10 @@ realism subset (real timing, fills, fees, slippage, broker_ref) that mocks canno
    reconcile status line (#151), API performance panel (#351).
 3. Phases run sequentially (see the Phase Sequence table below). LIMIT phases re-arm
    toward the market until filled (bounded by `max_rearm_attempts` + `max_session_cost_usd`).
-4. Phase 17 idle: verify the `💓 Ns since last tick` heartbeat pulse.
-5. Phase 18 force-close-all; phase 19 ends the session cleanly via `request_session_end`.
+4. Phase 18 idle: verify the `💓 Ns since last tick` heartbeat pulse.
+5. Phase 19 force-close-all. Phase 20 opens a position and ends the session with its close on its
+   way, so the stop has to wait for the close before the session ends; phase 21, the final summary,
+   is then concluded as skipped.
 6. **Post-run**: generate the certificate from the JSONL (below).
 
 The run **self-aborts** (cancel + close-all + graceful session end) if the realized
@@ -92,7 +94,8 @@ Phases are config (`phase_sequence` in the profile) — the engine is generic. E
 | 17 | `partial_close_test` | MARKET → 50% → rest | LONG | partial-close path end-to-end at the venue | half, then flat | multi-step; lots-polling detects the partial |
 | 18 | `idle_heartbeat_test` | IDLE | — | display pulse + heartbeat drain during a quiet period | pulse frame | no orders — wall-clock wait only |
 | 19 | `force_close_all` | force-close | — | kill-switch / safety cleanup | account flat | cancels resting + closes positions |
-| 20 | `final_summary` | session end | — | clean exit via `request_session_end` (#348) | session ends | no operator Ctrl+C needed |
+| 20 | `stop_waits_for_close` | MARKET → close + session end | LONG | the stop waits for an order on its way (#630): the close is sent in the pass that asks for the end | flat in the book at the session-end event | concluded at that event; a book still holding the position **fails** |
+| 21 | `final_summary` | session end | — | clean exit via `request_session_end` (#348) | session ends | skipped when phase 20 ended the session |
 
 ### Why phase 14 exists, and why it costs nothing
 

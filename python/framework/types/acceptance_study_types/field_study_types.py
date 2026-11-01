@@ -27,6 +27,7 @@ class PhaseType(StrEnum):
     PARTIAL_CLOSE = 'partial_close'
     IDLE = 'idle'
     FORCE_CLOSE = 'force_close'
+    CLOSE_AND_END = 'close_and_end'
     FINAL_SUMMARY = 'final_summary'
 
 
