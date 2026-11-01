@@ -160,6 +160,12 @@ final stats, clean exit); `EMERGENCY` exits immediately. Works in both pipelines
 in backtesting it ends the scenario early; in an AutoTrader session it shuts the AutoTrader down. A
 `SESSION_END` event is delivered before teardown.
 
+An order a logic sends from `on_session_end` ends differently in the two pipelines today. An
+AutoTrader session waits for it once more and books its fill, without telling the logic, because the
+session-end event stays the last one it hears. A backtest has no tick left and expires it. So a logic
+closes before it requests the end, the way the field study's `stop_waits_for_close` phase does,
+until #642 gives both pipelines one outcome and a hook that reports it.
+
 ## Wiring & Drain Points
 
 - Built in the runner mains via `DecisionEventDispatcher.create_if_subscribed(...)`

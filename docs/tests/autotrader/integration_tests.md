@@ -296,7 +296,7 @@ Runs the field study's phase `stop_waits_for_close` alone, as a whole mock sessi
 close and asks for the session's end in one pass, so the close is still awaited when the loop ends.
 On today's stop the close is booked before the session-end event and the phase passes; the control
 runs the stop as it was before #630, with the session-end event right after the loop, and the phase
-fails. A wait of no length would not serve as the control: the stop's last read books an answer that
+fails; the control patches out both of the stop's waits. A wait of no length would not serve as the control: the stop's last read books an answer that
 has already arrived, and this mock venue answers at once. The open gets an hour of replayed time, so
 its fill never races the replay (#494). Spot only: the acceptance studies refuse a margin account until
 #209; the stop's wait is held in both account models by the session-end suite.
@@ -306,6 +306,7 @@ its fill never races the replay (#494). Spot only: the acceptance studies refuse
 | `test_the_phase_passes_and_the_summary_is_overtaken` | The certificate's analysis reads the phase as `pass` and the final summary as `skipped`, nothing failed or missing |
 | `test_the_close_is_booked_under_the_phase` | The capture holds the close's fill, filed under the phase |
 | `test_the_phase_fails_and_names_the_position_still_in_the_book` | On the stop before #630 the phase fails, naming the position the book still held at the session-end event |
+| `test_the_session_ended_normally` (in both classes) | Each session ends `normal` with no emergency reason, so a crash cannot pass for either result: one after the session-end event would leave the pass standing, and one in the control's stop would fail the phase for the wrong reason |
 
 **Runtime:** ~20 seconds.
 

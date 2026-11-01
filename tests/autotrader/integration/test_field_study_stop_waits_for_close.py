@@ -37,22 +37,23 @@ def _session(config):
         config: The session's configuration
 
     Returns:
-        The run directory, the capture's lines after its header, and the certificate's analysis
+        The run directory, the capture's lines after its header, the certificate's analysis and
+        the session's result
     """
     trader = AutotraderMain(config)
-    trader.run()
+    result = trader.run()
     run_dir = Path(trader._run_dir)
     capture = run_dir / 'field_study.jsonl'
     lines = [json.loads(line) for line in capture.read_text(encoding='utf-8').splitlines()
              if line.strip()]
-    return run_dir, lines[1:], FieldStudyCertificate.analyze(str(capture))
+    return run_dir, lines[1:], FieldStudyCertificate.analyze(str(capture)), result
 
 
 @pytest.fixture(scope='module')
 def waited():
     """The session on today's stop."""
-    run_dir, lines, analysis = _session(load_autotrader_config(_PROFILE))
-    yield lines, analysis
+    run_dir, lines, analysis, result = _session(load_autotrader_config(_PROFILE))
+    yield lines, analysis, result
     remove_run_dir(run_dir)
 
 
@@ -61,10 +62,10 @@ def not_waited():
     """The same session on the stop before #630; a bot of its own, so no carry-over joins the two."""
     config = replace(load_autotrader_config(_PROFILE), bot_id='fldstop02')
     with pytest.MonkeyPatch.context() as patch:
-        # Both waits go: the stop before #630 had neither
+        # Both of the stop's waits go, as before #630
         patch.setattr(AutotraderTickLoop, '_wait_for_orders', lambda self, *args, **kwargs: None)
-        run_dir, lines, analysis = _session(config)
-    yield lines, analysis
+        run_dir, lines, analysis, result = _session(config)
+    yield lines, analysis, result
     remove_run_dir(run_dir)
 
 
@@ -80,7 +81,7 @@ def _close_fills(lines):
 class TestAStopThatWaits:
 
     def test_the_phase_passes_and_the_summary_is_overtaken(self, waited):
-        _, analysis = waited
+        _, analysis, _ = waited
         assert _outcomes(analysis) == {
             _PHASE: ('pass', 'the stop waited for the close and booked its fill'),
             'final_summary': ('skipped', f'the session ended in {_PHASE}'),
@@ -89,16 +90,28 @@ class TestAStopThatWaits:
         assert analysis['missing_phases'] == []
 
     def test_the_close_is_booked_under_the_phase(self, waited):
-        lines, _ = waited
+        lines, _, _ = waited
         assert _close_fills(lines)
+
+    def test_the_session_ended_normally(self, waited):
+        """A crash after the session-end event would leave the phase's pass standing."""
+        _, _, result = waited
+        assert result.shutdown_mode == 'normal'
+        assert not result.emergency_reason
 
 
 class TestAStopThatDoesNotWait:
     """The control: the stop before #630, whose session-end event comes before the close is booked."""
 
     def test_the_phase_fails_and_names_the_position_still_in_the_book(self, not_waited):
-        _, analysis = not_waited
+        _, analysis, _ = not_waited
         outcome, reason = _outcomes(analysis)[_PHASE]
         assert outcome == 'fail'
         assert 'before the close was booked: 1 position(s) open in the book' in reason
         assert analysis['failed_phases'] == [_PHASE]
+
+    def test_the_session_ended_normally(self, not_waited):
+        """A crash in the stop would also fail the phase; the control must fail for its own reason."""
+        _, _, result = not_waited
+        assert result.shutdown_mode == 'normal'
+        assert not result.emergency_reason
