@@ -6,9 +6,9 @@ it no longer *claims* to have done.
 | Item | Value |
 |---|---|
 | Suite path | [tests/autotrader/session_end/](../../../tests/autotrader/session_end/) |
-| Profile | [configs/autotrader_profiles/mock/session_end_test.json](../../../configs/autotrader_profiles/mock/session_end_test.json) |
+| Profile | [configs/autotrader_profiles/mock/session_end_test.json](../../../configs/autotrader_profiles/mock/session_end_test.json) · the stop's wait: [session_stop_awaited_order.json](../../../configs/autotrader_profiles/mock/session_stop_awaited_order.json) (spot) · [session_stop_awaited_order_margin.json](../../../configs/autotrader_profiles/mock/session_stop_awaited_order_margin.json) |
 | Pytest mark | `autotrader` (auto-applied via path) |
-| Launch entries | `🧩 Pytest: Session End (#492)` · `🤖 AutoTrader: BTCUSD Mock - Session End (#492)` |
+| Launch entries | `🧩 Pytest: Session End (#492)` · `🤖 AutoTrader: BTCUSD Mock - Session End (#492)` · `🧪 AutoTrader: Session End, Awaited Order (spot)` · `🧪 AutoTrader: Session End, Awaited Order (margin)` |
 | Architecture doc | [session_end_policy.md](../../architecture/session_end_policy.md) — the full treatment, with the order-type map |
 | Accounting rule | [reporting_pipeline.md](../../architecture/reporting_pipeline.md) — *Realised vs valued* |
 
@@ -133,6 +133,36 @@ closing message read "tick source exhausted" — the answer for a replay that ra
 | `test_an_earlier_request_is_kept` | A hard stop's EMERGENCY request is not overwritten — it decides the shutdown mode |
 | `test_a_signal_before_the_executor_reaches_it_once_it_exists` | A Ctrl+C during the start is remembered and handed over |
 | `test_an_end_asked_for_before_the_first_pass_lets_no_decision_run` | The loop makes no pass at all, so no order follows a stop |
+
+### `test_stop_waits_for_orders.py` — a normal stop waits for the orders on their way (#630)
+
+Everything is provoked from outside, on a mock venue: the answer to a submit is held back after the
+venue acted, so the order is executed while its answer is on the wire. The answer comes in the shape
+of a venue like Kraken (a reference, and the fill on a later read) and of the stock mock (the fill in
+the answer). Where money moves, both account models run too. The whole-session classes use a probe logic
+that sends an order and asks for the end on one tick.
+
+| Class | What it verifies |
+|---|---|
+| `TestAnAwaitedOpenIsBookedByTheWait` | the fill reaches the book, the balances and the logic before the session-end event, whether the answer arrives during the wait or already lay unread |
+| `TestAnAwaitedMarketClose` | the close's fill ends the position and books the trade; a close with no answer leaves the position open, unaccounted and named |
+| `TestARestingOrderWithNoReferenceYet` | the wait lasts until the reference came, and the cleanup then cancels with it |
+| `TestNothingAwaitedCostsNothing` | no pass and no line, also with a resting order the venue confirmed; a pass stamps the liveness and touches no decision, no worker, no reconcile, no state frame and no signal inbox |
+| `TestTheBoundRunsOut` | unaccounted with `session_end`, one ERROR per order, no fill invented, the logic hears it before the session-end event, one alert naming the order, nothing queued goes out, a late answer changes nothing booked. The fill timeout's road still applies: a last read books a fill, a confirmed cancel books a cancel, an executed part is booked, and a venue that stopped answering leaves the outcome unknown and never a refusal |
+| `TestAFillTimeoutInsideTheWait` | an order whose fill timeout falls inside the wait goes the wait's road, in both account models: unaccounted with `session_end`, an ERROR per order, the alert, and a submit still queued never goes out |
+| `TestTheEndsThatDoNotWait` | a hard stop's EMERGENCY and an input that ran out go straight on; a hook that turns the end into an emergency ends the wait; what these ends leave is an ERROR, no longer a warning and exit 0 |
+| `TestABoundaryCrossedDuringTheWait` | the wait's clock crosses midnight from the last event, and the fill is booked into the day it opened |
+| `TestAHookThatSendsAnOrderDuringTheWait` | the same bound covers the new order |
+| `TestTheRowsTheStopReads` | what each row says about an open, a close, an acknowledged order and a resting one |
+| `TestAWholeSessionWithAnAwaitedOrder` | through a session's records: the order booked, its position valued though no tick follows the fill, one booking period and no phantom ones up to today, the fill stamped near the last event, the hooks in order, exit 0 |
+| `TestAWholeSessionWhoseBoundRunsOut` | through a session's records: exit 3 on the ERROR, the order unaccounted, no position, the hooks in order |
+| `TestTheCleanup` | the worker stops first and a queued submit does not go out, an answer that came is read before anything is booked, a read that fails still cancels the resting orders |
+| `TestTheNoteAfterTheCleanup` | a fill the cleanup found reaches the note at spot. At margin the note carries no book, which this pins as well (#209) |
+| `TestTheBudget` | a declared kill shortens the wait or leaves no pass at all; with no time left no read and no cancel goes out, and each such order takes the unconfirmed route with a sentence saying why; a stop counts from the first signal, or from its first step where nobody signalled |
+| `TestTheEndReadUnderTheBudget` | with no time left each part stays unread and is named, with time for one attempt each part gets one, with time for the ladder a healthy venue answers, and the read at the start is untouched |
+| `TestAWholeSessionWithAVenueThatStoppedAnswering` | the parts stay unread and named, exit 3, and the ledger row is written |
+| `TestWhatTheStatusAsksTheSession` | how many orders the cleanup will cancel, by the session-end policy, and what asked for a stop no signal asked for; a signal keeps its word |
+| `TestWhatTheWaitCameTo` | what the closing alert's line reads off the order records of a real executor: an open and a close that filled and a bound that ran out in both account models, a resting order the venue took, and no status at all with nothing in flight |
 
 ## The two guards worth knowing about
 

@@ -153,7 +153,7 @@ def running(server: MockStreamServer, inbox: SignalInbox, **kwargs):
             return self.source
 
         def __exit__(self, *exc):
-            self.source.stop()
+            self.source.stop(join_timeout_s=2.0)
             server.stop()
 
     return _Running()
@@ -693,7 +693,7 @@ class TestStoppingWhileTheProducerHangs:
         try:
             assert wait_until(lambda: server.get_connection_count() >= 1, timeout_s=4.0)
             started = time.monotonic()
-            source.stop()
+            source.stop(join_timeout_s=2.0)
             elapsed = time.monotonic() - started
         finally:
             server.stop()

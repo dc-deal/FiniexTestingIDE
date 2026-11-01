@@ -293,6 +293,11 @@ file holds the running day. A backtest writes none. See
 **decision logic** — The one class that turns worker outputs into decisions. See
 [Quickstart](user_guides/quickstart_guide.md).
 
+**decisions stopped** — What a *session's stop* says once it began: no tick reaches the decision
+logic any more. Not "no new orders": a hook can still send one during the wait for the orders on
+their way, under the same bound. See
+[Unattended operation](autotrader/unattended_operation.md#a-stop--what-it-says-while-it-runs).
+
 **declared continuation** (`carry_over_from` in an AutoTrader profile) — A later stage of one bot
 that starts from what an earlier stage left: the later profile names the earlier one, and the two
 share the bot's carry-over in both directions. Allowed only between a release study's stages or a
@@ -460,6 +465,12 @@ the figures over many periods, such as a deployment's total or a month's drawdow
 booking period is *closing a period*. See [Accounting Periods](architecture/accounting_periods.md)
 and [Reading the Results Ledger](user_guides/results_ledger_guide.md).
 
+**kill** (`supervisor_kill_after_s`, `Kill` on a stop's panel) — The supervisor's end of a session's
+stop: what it sends once the period after its signal is over, which the process cannot catch and is
+never told in advance. Not the session's own act, and not a venue's kill switch, which cancels
+orders and blocks new ones. See
+[Unattended operation](autotrader/unattended_operation.md#a-stop--what-it-waits-for-and-the-kill-it-has-to-fit-under).
+
 **layer** — Never used alone. A configuration value is *layered* by its cascade (see *cascade*);
 the *execution layer* is the code that turns an order into a fill — the executors, the portfolio and
 the pending orders; and a *drawing layer* is one switchable set of drawings on a run's chart — the
@@ -541,6 +552,13 @@ record is repeated or skipped. See [recorded streams](consumer/recorded-streams.
 **observation** — A dry run whose profile pins `dry_run: true`, kept in
 `configs/autotrader_profiles/observation/`.
 
+**on its way** (`Waiting for` on a stop's panel, `on their way` in its lines) — What a *session's
+stop* waits for: an order in the request processor's pipeline, or a resting order with an operation
+in flight or no reference yet. Wider than *in flight*, which ends with the venue's first answer: an
+order the venue took and has not filled is still on its way. In the code it is an `AwaitedOrder`,
+and `get_awaited_orders` lists them. See [Session
+End](architecture/session_end_policy.md#what-waits-and-for-what).
+
 **one-off** — A session that belongs to no deployment.
 
 **opening equity** (`opening_equity`) — The account value a booking period opened with: the
@@ -588,6 +606,11 @@ a guard refusal `guard_…`. With its `scenario_name` it names the same position
 `trailing_stop`, `iceberg` — the type it was ASKED as, kept after a stop triggered. `unknown` is a
 resting order the venue reports under a type this project cannot name: reported, with no prices,
 and never acted on. What a venue offers of the types is its order capabilities.
+
+**order wait** (`order_wait_s`, `Order wait` on a stop's panel) — How long a *session's stop* waits
+for the orders *on their way* before it books them unaccounted. Shorter under a declared *kill*. Not
+the fill timeout, which keeps running inside it. See
+[Unattended operation](autotrader/unattended_operation.md#a-stop--what-it-waits-for-and-the-kill-it-has-to-fit-under).
 
 **orders to** (`orders_to`) — Where a run's orders went: `simulated` or `venue` — and `venue` is
 the only value that means real money. Recorded on every run header and every ledger row; a
@@ -862,6 +885,20 @@ a backtest, which unlike the backtest cannot be run again. Its latest frame is s
 age while the session runs (#611, see *recording*). Not the dashboard's *frame*, which is built only
 while a display runs and keeps only the latest. See
 [Live Telemetry](architecture/live_telemetry_architecture.md#the-recorded-state-frame--not-this-stream).
+
+**stop** — Never used alone where its meanings could meet. A *stop order* rests until the price
+crosses its *stop trigger*. A *session's stop* is how an AutoTrader session ends on a signal or on
+its strategy's request; its settings are a profile's `shutdown` block, and the findings about them
+carry that word (`shutdown_…`) so that they cannot be read as a stop order's. A *hard stop* is the
+circuit breaker ending a session at EMERGENCY severity, which does not wait for the orders *on their
+way*.
+
+**stop budget** (`supervisor_kill_after_s`, `reserve_for_records_s` in a profile's `shutdown`) — The
+time a *session's stop* has before its supervisor kills the process. No supervisor tells a process
+that time, so the operator declares it; the wait for the orders on their way, the cancels and the
+venue's last read then take what is left after a reserve for the records, which is time and not
+funds. Undeclared, no budget applies. See
+[Unattended operation](autotrader/unattended_operation.md#a-stop--what-it-waits-for-and-the-kill-it-has-to-fit-under).
 
 **stop trigger** (`trigger_price` on an order event, `stop_price` on a venue order) — The price at
 which a stop order activates. A triggered stop fills at the market, not at its trigger — the

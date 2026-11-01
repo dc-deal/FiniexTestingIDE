@@ -838,7 +838,7 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         self._worker_thread.start()
         self.logger.info(f'Worker thread started: {self._worker_thread.name}')
 
-    def stop_worker(self, timeout: float = 2.0) -> None:
+    def stop_worker(self, timeout: float) -> None:
         """
         Stop the worker thread cleanly. Safe to call when not running.
 

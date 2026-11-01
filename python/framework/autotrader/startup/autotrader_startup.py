@@ -715,6 +715,7 @@ def _build_executor(
             order_timeout_seconds=config.execution.order_timeout_seconds),
         resolution_config=config.execution.unresolved_resolution,
         venue_read_settle_seconds=config.execution.venue_read_settle_seconds,
+        shutdown_config=config.shutdown,
         # The history caps are the app's, not the profile's — the simulation reads the same
         # block, and a live session that silently kept its constructor defaults would cap
         # at a number no file states.

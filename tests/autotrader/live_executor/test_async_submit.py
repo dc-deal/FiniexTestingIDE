@@ -209,10 +209,10 @@ class TestAsyncSubmitClose:
 
 
 class TestAsyncSubmitShutdown:
-    """Worker shutdown during in-flight pending records FORCE_CLOSED cleanly."""
+    """Worker shutdown during in-flight pending books it unaccounted, and cleanly."""
 
     def test_async_worker_shutdown_during_pending(self):
-        """Submit, then finish_remaining_orders before drain: clean shutdown, FORCE_CLOSED recorded.
+        """Submit, then finish_remaining_orders before drain: clean shutdown, booked unaccounted.
 
         Uses DELAYED_FILL so the order stays pending (Phase-1 poll would fill
         in INSTANT mode and the shutdown path wouldn't see a stuck pending).

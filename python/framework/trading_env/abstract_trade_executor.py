@@ -100,6 +100,7 @@ from python.framework.types.trading_env_types.order_event_types import (
     OrderEvent,
     OrderEventType,
 )
+from python.framework.types.trading_env_types.awaited_order_types import AwaitedOrder
 from python.framework.types.trading_env_types.order_types import (
     RESTING_ORDER_TYPES,
     CloseType,
@@ -2591,6 +2592,32 @@ class AbstractTradeExecutor(ABC):
                 or len(self._active_limit_orders) > 0
                 or len(self._active_stop_orders) > 0)
 
+    def get_awaited_orders(self) -> List[AwaitedOrder]:
+        """
+        The orders a stop waits for: sent, and their outcome not known yet (#630).
+
+        Default: none. A simulation has no venue to wait for; what its data did not reach by the
+        end of the scenario expires in `finish_remaining_orders`.
+
+        Returns:
+            One row per such order
+        """
+        return []
+
+    def give_up_on_awaited_orders(self, waited_s: float) -> List[AwaitedOrder]:
+        """
+        Book what a stop's wait did not hear about, while the logic can still hear it (#630).
+
+        Default: nothing, for the reason `get_awaited_orders` gives.
+
+        Args:
+            waited_s: How long the stop waited
+
+        Returns:
+            The orders booked unaccounted
+        """
+        return []
+
     def has_in_flight_operation(self, order_id: str) -> bool:
         """
         Is there a modify or cancel operation in flight on this order? (#318)
@@ -2857,9 +2884,9 @@ class AbstractTradeExecutor(ABC):
         reported a realised exit nobody executed. A position now stays open and is reported
         as open and valued, which is what the account actually holds.
 
-        What still happens here: resting orders are cancelled (live: at the venue) or left
-        standing, genuinely stuck pipeline orders are cleared as the anomalies they are, and
-        the live request worker is stopped.
+        What still happens here: the live request worker is stopped and its answers read, resting
+        orders are cancelled (live: at the venue) or left standing, and genuinely stuck pipeline
+        orders are cleared as the anomalies they are.
 
         Args:
             cancel_orders: False leaves resting orders where they are — live: at the venue,

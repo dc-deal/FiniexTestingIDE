@@ -165,7 +165,8 @@ Each test suite has its own documentation in [`tests/`](tests/).
 | [Cold Start](tests/autotrader/cold_start_tests.md) | Boot-time adoption of our own resting orders + the framework carry-over (#355) |
 | [Capital](tests/autotrader/capital_tests.md) | What the bot may actually spend (#489): committed funds on both check sites, the minimum-order boot refusal |
 | [Reconciliation](tests/autotrader/reconciliation_tests.md) | Broker truth-pull + Reconciler ALERT_ONLY (#151) |
-| [Session End](tests/autotrader/session_end_tests.md) | What a session leaves standing and how it is reported (#492): the two axes, the incoherent pair, realised vs valued, the phantom-drawdown guard |
+| [Session End](tests/autotrader/session_end_tests.md) | What a session leaves standing and how it is reported (#492): the two axes, the incoherent pair, realised vs valued, the phantom-drawdown guard, and the stop's wait for the orders on their way (#630) |
+| [Session Stop](tests/autotrader/session_stop_tests.md) | A session's stop (#630): its settings, the budget under a declared supervisor kill, the check at the start |
 | [Session Validation](tests/autotrader/session_validation_tests.md) | The AutoTrader Tier-1 channel: SessionPostRunValidator + the checks shared with the sim batch |
 | [API Monitor](tests/autotrader/api_monitor_tests.md) | Per-endpoint broker REST latency/error telemetry (#351) |
 | [Operator Alerts](tests/autotrader/operator_alerts_tests.md) | The alert channel, its dispatcher and the liveness ping (#235): the loop never waits, an outage costs one message, a refusal closes the channel, the ping follows the loop, no secret in a log line |

@@ -14,6 +14,7 @@ from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.trading_env.broker_config import BrokerConfig
 from python.framework.trading_env.live.live_trade_executor import LiveTradeExecutor
 from python.framework.types.config_types.autotrader_defaults_config_types import (
+    ShutdownDefaults,
     UnresolvedResolutionDefaults,
 )
 from python.framework.types.config_types.connection_policy_config_types import ConnectionPolicy
@@ -35,6 +36,7 @@ def build_live_executor(
     session_key: str = '',
     resolution_config: Optional[UnresolvedResolutionDefaults] = None,
     venue_read_settle_seconds: float = 5.0,
+    shutdown_config: Optional[ShutdownDefaults] = None,
 ) -> LiveTradeExecutor:
     """
     Create a fully configured LiveTradeExecutor.
@@ -62,6 +64,8 @@ def build_live_executor(
             Sourced from AutotraderExecutionDefaults.unresolved_resolution.
         venue_read_settle_seconds: How long the venue's read plane may lag its write plane
             before an answer that names nothing counts as evidence (#487).
+        shutdown_config: The waits of the session's stop (#630). Sourced from
+            AutoTraderConfig.shutdown.
 
     Returns:
         LiveTradeExecutor ready for an AutoTrader session
@@ -98,6 +102,7 @@ def build_live_executor(
         rest_ladder=rest_ladder,
         resolution_config=resolution_config or UnresolvedResolutionDefaults(),
         venue_read_settle_seconds=venue_read_settle_seconds,
+        shutdown_config=shutdown_config,
         session_key=session_key,
         order_history_max=order_history_max,
         trade_history_max=trade_history_max,

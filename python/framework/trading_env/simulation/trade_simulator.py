@@ -1446,8 +1446,8 @@ class TradeSimulator(AbstractTradeExecutor):
            data has ended, so they can never fill; this is bookkeeping, not a venue action.
         2. clear_pending() catches genuine stuck-in-pipeline orders
            (e.g. algo submitted an order right before scenario ended,
-           still waiting for latency delay). These ARE real anomalies
-           and correctly recorded as FORCE_CLOSED with reason="scenario_end".
+           still waiting for latency delay). These ARE real anomalies, and each is
+           booked EXPIRED by the framework, with end reason SCENARIO_END.
 
         Open POSITIONS are deliberately left open (#492). Force-closing them produced a
         "trade" whose exit the strategy never chose, and it counted in the trade count, the

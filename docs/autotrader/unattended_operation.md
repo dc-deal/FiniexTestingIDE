@@ -7,9 +7,10 @@ three pieces that turn that silence into a message (#235): **operator alerts** t
 about itself, a **liveness ping** whose absence an outside monitor turns into an alarm, and a
 **supervisor** that brings a dead process back.
 
-It also covers what a restart must survive: a second start of a bot that is still running, a
-deploy into a new code tree, and a configuration that changed while a position was open — and the
-daily check-in, which reads the session from outside without touching it.
+It also covers what a stop has to finish before its supervisor kills it, and what a restart must
+survive: a second start of a bot that is still running, a deploy into a new code tree, and a
+configuration that changed while a position was open — and the daily check-in, which reads the
+session from outside without touching it.
 
 Not here: what the session does when it runs — that is
 [AutoTrader Runtime Model](autotrader_runtime_model.md); how a restart picks up the open book —
@@ -25,8 +26,11 @@ full configuration reference — [AutoTrader Configuration](autotrader_configura
    `python python/cli/operator_alerts_cli.py chat-id`, which reads the token from that file and
    never prints it.
 3. **Create a check at a monitoring service, one per bot** — healthchecks.io works out of the
-   box (free for 20 checks, open source, self-hostable): period 1 minute, grace 5 minutes. Write
-   its URLs to `user_configs/credentials/services/liveness_<bot_id>.json`:
+   box (free for 20 checks, open source, self-hostable): period 10 minutes, grace 30 minutes, with
+   e-mail on down. The mail then comes about 40 minutes after the last ping, so a restart or a
+   deploy stays quiet; a session that ends FAILED, a crash included, still pings its fail URL, and
+   that alarm comes at once. Write its URLs to
+   `user_configs/credentials/services/liveness_<bot_id>.json`:
    `{"ping_url": "https://hc-ping.com/<uuid>", "fail_url": "https://hc-ping.com/<uuid>/fail"}`.
    One check per bot, because two sessions pinging one check would each vouch for the other's
    hung loop; `operator_alerts.liveness.credentials_file` names another file where needed.
@@ -97,7 +101,8 @@ true — a recurrence before the all-clear keeps the episode open.
 | Market data stale / fresh again — including no first tick within `market_data_stale_after_s` of the loop's start, a feed that never connected | ⚠️ / ✅ |
 | A signal input stale / fresh again | ⚠️ / ✅ |
 | A trading day closed — its booking period: trades, net P&L and the open part, fees, equity at the close and at the open, the deepest dip; `daily_digest` switches it off. Days one late check closes together — a machine that slept, a clock that jumped — are the first day in full and one message for the rest, naming their span | ✅ |
-| The session ended — its grade, exit code, why it was asked to end, duration, ticks, trades, net P&L and the open part, errors logged | by grade |
+| A stop's wait ran out — no answer for an order: recorded unaccounted, it may still fill at the venue, and the session keeps stopping | ⚠️ |
+| The session ended — its grade, exit code, why it was asked to end, what its stop waited for, duration, ticks, trades, net P&L and the open part, errors logged | by grade |
 
 An abort or a refused start is one message, sent at once, before the shutdown — not a second one
 at the end. A single reconnect is not on the list: when it matters, the market data goes stale,
@@ -155,6 +160,177 @@ The figures are not repeated there: a message is rendered from the run's records
 close from its booking period, the end from the run's report — and those records are what to
 open when a number needs checking. A message that never went out leaves no such line.
 
+## A stop — what it waits for, and the kill it has to fit under
+
+A supervisor stops a session with a signal and kills it after a period it never tells the process.
+An order sent a moment ago has no answer yet at that signal: booked at once, it reads as lost while
+the venue fills it, and at spot the next session starts from a carry-over that says flat, beside a
+coin, and can buy again. And a stop that runs longer than the supervisor allows dies before its
+ledger row: with the venue unreachable it takes about 105 s at spot and 153 s at margin, with no
+order at all (2026-10-30, arithmetic from the configured timeouts, not measured).
+
+So a normal stop waits for what is on its way, and a declared kill bounds what it spends. SIGTERM, a
+first Ctrl+C and a strategy's normal end wait. A hard stop, a crash, a second Ctrl+C and a tick
+source that ran out do not. This section is what you set and what you read; what happens to each
+order, and why in this order, is [Session
+End](../architecture/session_end_policy.md#orders-on-their-way--a-normal-stop-waits-for-them-630).
+
+```
+signal, or the strategy's own end
+  the loop's last pass
+  wait for the orders on their way      order_wait_s, shorter under a declared kill
+  session-end event                     the logic has heard what the wait booked
+  feeds stopped                         signal_transport_join_s · tick_thread_join_s
+  carry-over written
+  orders: worker stopped, last answers
+    read, resting orders cancelled      request_worker_join_s · each venue call asks the budget
+  carry-over written again
+  venue's last read                     each part asks the budget
+  display stopped                       display_join_s
+  reports and the ledger row            what reserve_for_records_s keeps free
+  closing message, last ping            alert_flush_s
+```
+
+### Declare the kill beside the unit that sets it
+
+No supervisor tells a process how long it has, so the number stands in two files, and whoever
+changes one changes the other:
+
+```json
+"shutdown": { "supervisor_kill_after_s": 80.0 }
+```
+
+It is the time from the signal to the kill that reaches the process first: 80 for `docker stop -t
+80` inside a unit with `TimeoutStopSec=90`, the unit's `TimeoutStopSec` where the unit runs the
+session directly. The whole block, `autotrader.shutdown`, is listed in [AutoTrader
+Configuration](autotrader_configuration.md#configuration); it is neutral in the composite
+definition, so changing a timeout changes nothing the run is compared as.
+
+Undeclared, no budget applies and each wait keeps its own bound. Declared, a reserve stays free for
+the reports and the ledger row, and every step ahead of it asks what is left:
+
+| Step | With too little time left |
+|---|---|
+| The wait for orders on their way | ends sooner: it leaves what the joins and the alert flush can still spend, and the reserve |
+| A cancel, and the read after a refused one | is not made; the order takes the route of an unconfirmed cancel, unaccounted, with an ERROR that says why |
+| Each part of the venue's last read | gets one attempt where one fits and the whole ladder does not; where not even one fits it stays unread, named by an ERROR |
+
+What the reserve has to cover is small on a healthy disk. The reports and the ledger row of a whole
+mock session took 0.08 s for a single day, 0.14 s for 31 sealed days with the same 3 trades, 0.23 to
+0.29 s with 93 trades and 0.71 s with 619: they follow the trades more than the days (measured
+2026-10-31 on the development container, 16 cores under load, its own ext4; a state frame per minute
+included, a live feed's tick stream not). The default reserve is far above that, which leaves room
+for a slower disk.
+
+The start adds the settings up. It warns on the session's record and on the console, and never
+refuses: a stop that may run out of time is no reason not to trade. Its findings are
+`shutdown_waits_beyond_kill`, `shutdown_kill_undeclared` for an unattended live session that
+declares nothing, and `shutdown_order_wait_below_poll` for an `order_wait_s` below the broker's
+`poll_interval_ms` plus a second, which can miss an order's second status read ([Warnings and
+errors](../architecture/warnings_errors_tiers.md#what-the-autotrader-validator-checks-and-what-it-deliberately-does-not)):
+
+```
+⚠️  The waits of this session's stop do not fit its declared kill: joins and alert flush 26 s + order wait 30 s + reserve for the records 15 s = 71 s, supervisor_kill_after_s 45 s. The wait for orders on their way is cut short to fit, and what still overruns dies with the process. Shorten autotrader.shutdown or give the supervisor more time.
+```
+
+### A wait that runs out
+
+`order_wait_s` covers a normal fill, about 2 s measured in May 2026 and up to 8 s estimated, and
+most of a lost answer, 21 to 41 s estimated (2026-10-30). What is still unanswered after it looks
+like this in the journal, here under a kill that shortened the wait (real lines from a mock session,
+2026-10-31):
+
+```
+🛑 SHUTTING DOWN · SIGTERM 17:30:49 UTC · decisions stopped · kill in 45.0 s (supervisor)
+⏳ Stop: 1 order(s) on their way, waiting up to 5.9 s
+⏳ Stop: waited 5.0 s of 6 s · market BUY 0.01 BTCUSD · on its way 5.0 s · venue has not answered
+⏳ Stop: the wait ran out after 5.9 s with 1 order(s) on their way
+⏳ Stop: 1 order(s) recorded unaccounted, 0 left to the cleanup
+```
+
+and like this in the alert it sends at that moment:
+
+```
+Stop is not clean — no answer for an order after 6 s
+market BUY 0.01 BTCUSD · pos_btcusd_1 · venue has not answered
+Recorded UNACCOUNTED; it may still fill at the venue.
+The session keeps stopping, kill in about 39 s.
+Check the account after the stop.
+```
+
+- **The record:** the order is `unaccounted` with end reason `session_end`, with one ERROR per order
+  on the session channel, and the logic hears it before the session-end event. Whatever the venue
+  can still say is asked first, so an order with a reference gets its read. An unknown outcome stays
+  unknown, never `rejected`, and the write is not repeated.
+- **The grade:** `FINISHED_WITH_ERRORS`, exit 3, so a unit with `RestartPreventExitStatus=2 3` does
+  not restart it: a person looks first. It is no failure of the session, so the monitor gets its
+  ordinary last ping and no fail ping.
+- **What you do:** read the account at the venue before the next start. At spot a fill found there
+  is in no carry-over: the next session starts flat beside the coin, reads no balance, alerts
+  nothing and may buy again. Finding such a fill at the next boot by its client key is not built. At
+  margin the next session reads its positions from the venue.
+
+The ends that do not wait reach the same record without the alert: what they leave on its way is
+booked unaccounted in the cleanup, with an ERROR per order. A kill leaves it with no record at all,
+and so does a second Ctrl+C, which ends the process at once.
+
+A declared kill needs room for one venue call on top of its reserve: with less than
+`reserve_for_records_s` plus one socket timeout left, 30 s at the defaults, no cancel and no end
+read goes out, so resting orders stay at the venue and the stop exits 3. The start's warning says so.
+
+## A stop — what it says while it runs
+
+A stop can take as long as its supervisor allows, and with an order on its way or a venue gone quiet
+that can be a minute. A session that says nothing in that minute reads like one that hangs, and a
+dashboard saying RUNNING beside a dead stream reads like a fault. So every surface reads one status:
+what asked for the stop and when, what it waits for, what it still has to do, and until when.
+
+The live display stays on through every wait, up to the venue's last read. The panel stands on top of
+each layout, where a frame cropped by a short terminal does not reach it, the status line says
+`SHUTTING DOWN`, and the CONNECTION panel calls a source the session stopped `stopped on purpose`:
+
+```
+🛑 SHUTTING DOWN · SIGTERM 14:22:42 UTC · decisions stopped
+   Waiting for   market BUY 0.12 ETHUSD · on its way 4.2 s · venue has not answered
+   Still to do   carry-over · 0 orders to cancel · venue read · reports · alerts
+   Order wait    4.2 s of 30 s, then: booked unaccounted, reported, session ends itself
+   Kill          in 75.8 s (supervisor)
+```
+
+`Kill` stands only where `supervisor_kill_after_s` declares one. With nothing on its way, `Waiting for`
+and `Order wait` are gone and a `Now` line names the step in progress.
+
+Under a supervisor there is no terminal, and the session's loggers buffer their console until the end.
+So the same status goes out line by line, flushed, wherever no display holds a terminal, and always to
+the session log. A display with no terminal, which is what a supervised session with the default
+`display.enabled` has, shows only its last frame and does not count. A signal handler writes none of it,
+because a print there can raise on the very write it interrupted; the first step says what asked:
+
+```
+🛑 SHUTTING DOWN · SIGTERM 14:22:42 UTC · decisions stopped · kill in 79.8 s (supervisor)
+⏳ Stop: 1 order(s) on their way, waiting up to 30.0 s
+⏳ Stop: waited 5.1 s of 30 s · market BUY 0.12 ETHUSD · on its way 5.1 s · venue has not answered
+⏳ Stop: market BUY 0.12 ETHUSD settled after 7.2 s: executed
+⏳ Stop: nothing on its way any more after 7.2 s
+🛑 Stop: stopping the feeds
+🛑 Stop: carry-over · still to do: 0 orders to cancel · venue read · reports · alerts
+🛑 Stop: 0 orders to cancel · still to do: venue read · reports · alerts
+🛑 Stop: venue read · still to do: reports · alerts
+🛑 Stop: reports · still to do: alerts
+🛑 Stop: alerts
+```
+
+A stop that begins sends no message: a deploy must not page the operator each time. Only a wait that
+runs out does, and the closing message then carries one line on what the wait came to:
+
+```
+Stop: waited 5.2 s for 1 order, filled and booked
+Stop: waited 30.0 s for 1 order, no answer for 1, recorded unaccounted
+```
+
+The state frames stay out of it. A frame is the running algo's record and a served shape, and the
+verdict `stopped` comes after `stopped_after_cadences` cadences, long after a supervisor's kill.
+
 ## The liveness ping — the alarm the session cannot send
 
 Every alert above is sent by the session about itself, which covers one class of failure: the
@@ -175,13 +351,15 @@ minute — but only while the **tick loop** has come round within `loop_stall_af
 
 A ping sent because the PROCESS is alive would report a hung loop as healthy — the one failure no
 supervisor sees, because nothing crashes and nothing exits. The watch ends with the loop: a
-shutdown that takes longer than `loop_stall_after_s` is a shutdown, not a stall. A session that
-ends in an emergency pings the fail URL, so the alarm comes at once; any other end of a loop that
-passed sends one last ping, and the silence after it is the monitor's to read; a session refused
-before its loop vouches for nothing and sends none, so the monitor raises its alarm after the
-grace period; a crash while shutting down pings the fail URL too.
-**Stopping a session on purpose: pause the check at the monitor**, or it will raise its alarm once
-the grace period runs out. A refused ping URL stops the pings — the monitor then reports the
+shutdown that takes longer than `loop_stall_after_s` is a shutdown, not a stall, and a stop's wait for
+its orders stamps the loop as it goes. A session that ends FAILED pings the fail URL, so the alarm
+comes at once; any other end of a loop that passed, a stop whose wait ran out among them, sends one
+last ping, and the silence after it is the monitor's to read; a session refused before its loop
+vouches for nothing and sends none, so the monitor raises its alarm after the grace period; a crash
+while shutting down pings the fail URL too. A kill sends nothing and waits for period and grace.
+**Stopping a session on purpose for longer than period and grace: pause the check at the monitor**,
+or it will raise its alarm once they ran out. A restart inside them sends no mail, so a gap that
+short shows only in the data. A refused ping URL stops the pings — the monitor then reports the
 session silent, which is the right answer to a check that no longer exists; a refused fail URL
 stops only the fail pings, and the ordinary pings go on.
 
@@ -201,7 +379,7 @@ decision** — and the exit code says which one it was:
 | 0 | ended because it was asked to | no |
 | 1 | did not complete — an uncaught exception | yes |
 | 2 | ended in an emergency — a hard stop, a runtime error, a start that failed for good, a second start of a bot that already runs | no |
-| 3 | finished but logged errors — a start the cold start refused among them | no |
+| 3 | finished but logged errors — a start the cold start refused among them, and a stop that got no answer for an order | no |
 | 75 | a start that failed for a passing cause — the venue did not answer within its budget, or the first tick came before it had committed its bar | yes, after a pause |
 | killed — `kill -9`, an OOM kill | ended by the operating system | yes |
 
@@ -487,8 +665,11 @@ the client stops refreshing it. It is not armed; see
 
 ## Related
 
-- [AutoTrader Configuration](autotrader_configuration.md) — the `operator_alerts` block
+- [AutoTrader Configuration](autotrader_configuration.md) — the `operator_alerts` and `shutdown` blocks
+- [Session End](../architecture/session_end_policy.md) — what a stop does with the orders it still has
 - [Credentials Layout](../architecture/credentials_layout.md) — the `services/` directory
 - [External Connection Policy](../architecture/external_connection_policy.md) — the alert
   channel's ladder and the ping's cadence
 - [Operator Alerts Tests](../tests/autotrader/operator_alerts_tests.md) — the suite
+- [Session Stop Tests](../tests/autotrader/session_stop_tests.md) — the settings, the budget and the
+  status of a stop

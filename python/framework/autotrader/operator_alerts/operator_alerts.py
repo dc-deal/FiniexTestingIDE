@@ -19,11 +19,6 @@ from python.framework.types.autotrader_types.operator_alert_types import (
     OperatorAlertLevel,
 )
 
-# How long the queued alerts may take to go out when the session ends. Long enough for a
-# handful of messages at the configured pace; short enough that a dead channel does not hold a
-# supervised restart.
-FLUSH_TIMEOUT_S = 15.0
-
 
 class OperatorAlerts:
     """
@@ -96,7 +91,7 @@ class OperatorAlerts:
         if self._pinger is not None:
             self._pinger.stop()
 
-    def finish(self, emergency: bool, flush_timeout_s: float = FLUSH_TIMEOUT_S) -> None:
+    def finish(self, emergency: bool, flush_timeout_s: float) -> None:
         """
         The session's last word: the final ping or the fail ping, then the queued alerts.
 

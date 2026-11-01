@@ -61,7 +61,7 @@ class TestOffByDefault:
         alerts = build_operator_alerts(AutoTraderConfig(), RecordingLogger())
         assert alerts.describe() == 'telegram off · liveness ping off'
         alerts.send(OperatorAlertKind.SESSION_STARTED, OperatorAlertLevel.INFO, 'nobody hears')
-        alerts.finish(emergency=True)
+        alerts.finish(emergency=True, flush_timeout_s=5.0)
 
     def test_the_handle_before_startup_is_silent_too(self):
         assert disabled_operator_alerts().describe() == 'telegram off · liveness ping off'
@@ -73,7 +73,7 @@ class TestTheBootCheck:
         channel = ScriptedChannel()
         alerts = build_operator_alerts(_config(telegram=True), RecordingLogger(), channel=channel)
         alerts.send(OperatorAlertKind.SESSION_STARTED, OperatorAlertLevel.INFO, 'Session started')
-        alerts.finish(emergency=False)
+        alerts.finish(emergency=False, flush_timeout_s=5.0)
 
         assert channel.verified == 1
         assert alerts.describe() == 'telegram on · liveness ping off'
@@ -91,7 +91,7 @@ class TestTheBootCheck:
         channel = ScriptedChannel(verify_error=ConnectionAttemptFailedError(
             'Telegram unreachable (ConnectionError)'))
         alerts = build_operator_alerts(_config(telegram=True), logger, channel=channel)
-        alerts.finish(emergency=False)
+        alerts.finish(emergency=False, flush_timeout_s=5.0)
 
         assert channel.verified == 2                    # the whole budget, then on
         assert alerts.describe() == 'telegram on · liveness ping off'
@@ -114,7 +114,7 @@ class TestTheBootCheck:
         while '⛔ TICK LOOP STALLED' not in channel.titles() and time.monotonic() < deadline:
             time.sleep(0.01)
         alerts.loop_ended()
-        alerts.finish(emergency=False)
+        alerts.finish(emergency=False, flush_timeout_s=5.0)
 
         assert alerts.describe() == 'telegram on · liveness ping off'
         assert channel.titles() == ['⛔ TICK LOOP STALLED']

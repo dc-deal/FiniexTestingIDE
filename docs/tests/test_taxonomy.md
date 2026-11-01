@@ -84,7 +84,10 @@ tests/
 │   ├── cold_start/        unit — boot adoption of our own resting orders + carry-over (#355)
 │   ├── reconciliation/    unit — broker truth-pull + Reconciler ALERT_ONLY (#151)
 │   ├── session_end/       unit — what a session leaves standing and how it is reported (#492):
-│   │                      the policy, the cleanup, realised-vs-valued, the phantom-drawdown guard
+│   │                      the policy, the cleanup, realised-vs-valued, the phantom-drawdown guard, and
+│   │                      that a normal stop waits for the orders on their way (#630)
+│   ├── session_stop/      unit + integration — a session's stop (#630): its settings, the budget under a
+│   │                      declared supervisor kill, the check at the start
 │   ├── session_validation/ unit — SessionPostRunValidator: the AutoTrader Tier-1 channel, shared stress/slow-component checks
 │   ├── state_frames/      unit + integration — what a session records of its own state, moment by moment (#579):
 │   │                      the cadence, a closed bar, an order, the last frame against the report

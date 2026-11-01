@@ -20,6 +20,7 @@ flag it. The failure family it exists to prevent is a transient fault reported a
 terminal fact.
 """
 
+import math
 import random
 import time
 from typing import Callable, Optional, Tuple, TypeVar
@@ -128,11 +129,57 @@ class ConnectionLadder:
             Seconds to wait: the initial delay doubled once per previous attempt, capped,
             and spread over [0.5, 1.0) of that value when the policy asks for jitter
         """
-        step = min(max(attempt - 1, 0), _MAX_STEP)
-        delay = min(self._policy.initial_delay_s * (2.0 ** step), self._policy.max_delay_s)
+        delay = self._capped_delay_s(attempt)
         if not self._policy.jitter:
             return delay
         return delay * random.uniform(_JITTER_FLOOR, 1.0)
+
+    def _capped_delay_s(self, attempt: int) -> float:
+        """
+        The delay before the next attempt, before any jitter.
+
+        Args:
+            attempt: Attempts already made
+
+        Returns:
+            The initial delay doubled once per previous attempt, capped
+        """
+        step = min(max(attempt - 1, 0), _MAX_STEP)
+        return min(self._policy.initial_delay_s * (2.0 ** step), self._policy.max_delay_s)
+
+    def worst_case_s(self) -> float:
+        """
+        How long one blocking run of this ladder can take against a far side that never answers.
+
+        Arithmetic from the policy: every attempt runs into its socket timeout, and the waits
+        between them take their full length, without their jitter.
+
+        Returns:
+            Seconds; infinity for a ladder that never gives up
+        """
+        budget = self._policy.attempt_budget
+        if budget <= 0:
+            return math.inf
+        waits_s = sum(self._capped_delay_s(attempt) for attempt in range(1, budget))
+        return budget * self._policy.request_timeout_s + waits_s
+
+    def with_one_attempt(self) -> 'ConnectionLadder':
+        """
+        The same connection for a caller with time for one attempt only.
+
+        It classifies a failure and gives up exactly as this ladder does, so a read that cannot
+        afford its retries still ends the way every other give-up ends.
+
+        Returns:
+            A ladder under this one's name, rules and logger, whose budget is one attempt
+        """
+        return ConnectionLadder(
+            name=self._name,
+            policy=self._policy.model_copy(update={'attempt_budget': 1}),
+            logger=self._logger,
+            transient=self._transient,
+            terminal=self._terminal,
+        )
 
     def attempt_after_loss(self, attempt: int, delivered_for_s: float,
                            stable_after_s: float) -> int:

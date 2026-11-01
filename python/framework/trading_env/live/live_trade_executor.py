@@ -32,6 +32,7 @@ import time
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Dict, FrozenSet, List, Optional, Set, Tuple, Union
 
+from python.framework.autotrader.stop_budget import StopBudget
 from python.framework.exceptions.connection_errors import ConnectionGaveUpError
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.trading_env.abstract_trade_executor import AbstractTradeExecutor
@@ -40,6 +41,7 @@ from python.framework.trading_env.broker_config import BrokerConfig
 from python.framework.trading_env.live.live_request_processor import LiveRequestProcessor
 from python.framework.trading_env.portfolio_manager import UNSET, _UnsetType
 from python.framework.types.config_types.autotrader_defaults_config_types import (
+    ShutdownDefaults,
     UnresolvedResolutionDefaults,
 )
 from python.framework.types.config_types.connection_policy_config_types import ConnectionPolicy
@@ -104,6 +106,7 @@ from python.framework.types.trading_env_types.order_types import (
     OrderType,
     RejectionReason,
 )
+from python.framework.types.trading_env_types.awaited_order_types import AwaitedOrder
 from python.framework.types.trading_env_types.submission_metadata_types import SubmissionMetadata
 from python.framework.utils.connection_ladder import ConnectionLadder, run_with_ladder
 from python.framework.utils.run_id_utils import build_client_order_id
@@ -113,6 +116,9 @@ from python.framework.utils.run_id_utils import build_client_order_id
 # and a window that misses by a few seconds of skew answers "no such order" for an order
 # that is sitting right there — which is the one answer that may become a rejection.
 _RESOLUTION_RANGE_MARGIN_S = 300.0
+
+# Why a stop made no further call to the venue (#630): the time left belongs to the records
+_NO_STOP_TIME = 'the stop has no time left for a call to the venue before its kill'
 
 # Which request a resolution settled, by the operation the order was waiting on (#362). An order
 # waiting on none was handed over by its fill timeout, which asks with a status read.
@@ -161,6 +167,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         session_key: str = '',
         resolution_config: Optional[UnresolvedResolutionDefaults] = None,
         venue_read_settle_seconds: float = 5.0,
+        shutdown_config: Optional[ShutdownDefaults] = None,
     ):
         """
         Initialize live trade executor.
@@ -183,6 +190,8 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             session_key: Short discriminator this session stamps onto every client order
                 id it sends (#473). Empty disables the wire key — mock and dry-run paths
                 that never reach a venue do not need one.
+            shutdown_config: The waits of the session's stop (#630), of which the executor
+                spends the request worker's join.
         """
         super().__init__(
             broker_config=broker_config,
@@ -246,6 +255,10 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         # venue's read plane may lag its write plane before an empty answer counts as
         # evidence. Both are config (§28); neither is a constant at a use site.
         self._resolution_config = resolution_config or UnresolvedResolutionDefaults()
+        self._shutdown_config = shutdown_config or ShutdownDefaults()
+        # What the stop may still spend (#630), handed over when the stop begins. None before that
+        # and in a session that never reached it: every answer then says there is time.
+        self._stop_budget: Optional[StopBudget] = None
         self._venue_read_settle_s = venue_read_settle_seconds
         # #487 — orders that reached the resolution ceiling without the venue ever naming
         # them. A LATCH, not a cooldown: the condition does not expire with time, it ends
@@ -332,7 +345,31 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         return run_with_ladder(
             self.broker.adapter.get_broker_balances, self.get_rest_ladder())
 
-    def read_broker_truth(self) -> BrokerTruthSnapshot:
+    def set_stop_budget(self, stop_budget: StopBudget) -> None:
+        """
+        Hand over what the session's stop may still spend (#630).
+
+        Args:
+            stop_budget: Asked before each call to the venue the stop makes
+        """
+        self._stop_budget = stop_budget
+
+    def _has_stop_time_for_venue_call(self) -> bool:
+        """
+        Whether the stop can still afford one call to the venue (#630).
+
+        Returns:
+            True with no budget, and while one attempt's socket timeout still fits in front of
+            the reserve for the records
+        """
+        if self._stop_budget is None:
+            return True
+        return self._stop_budget.has_time_for(self.get_rest_ladder().get_policy().request_timeout_s)
+
+    def read_broker_truth(
+        self,
+        stop_budget: Optional[StopBudget] = None,
+    ) -> BrokerTruthSnapshot:
         """
         Everything the venue holds for this account, each part under the shared REST ladder (§43).
 
@@ -345,8 +382,12 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         ends neither the session nor its shutdown — the ladder has already said so on the
         session channel. A refused credential still propagates.
 
+        Args:
+            stop_budget: What a session's stop may still spend (#630), which then decides how far
+                each part is asked; None asks every part under its whole ladder
+
         Returns:
-            The answer; a part the ladder gave up on is None and listed in `unread_parts`
+            The answer; a part given up on is None and listed in `unread_parts`
         """
         adapter = self.broker.adapter
         reads = [
@@ -359,10 +400,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         answers: Dict[BrokerTruthPart, Any] = {}
         unread: List[BrokerTruthPart] = []
         for part, read in reads:
-            try:
-                answers[part] = run_with_ladder(read, self.get_rest_ladder())
-            except ConnectionGaveUpError:
-                answers[part] = None
+            answers[part] = self._read_truth_part(part, read, stop_budget)
             if answers[part] is None:
                 unread.append(part)
         return BrokerTruthSnapshot(
@@ -371,6 +409,42 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             venue_positions=answers.get(BrokerTruthPart.VENUE_POSITIONS),
             unread_parts=unread,
         )
+
+    def _read_truth_part(
+        self,
+        part: BrokerTruthPart,
+        read: Callable[[], Any],
+        stop_budget: Optional[StopBudget],
+    ) -> Any:
+        """
+        Read one part of the venue's truth, as far as the stop can afford it (#630).
+
+        The whole ladder where it fits; one attempt where only that fits, which gives up the way
+        the ladder does and says so itself; otherwise nothing is asked and the part is named,
+        because a part left out silently reads like a venue with nothing to report.
+
+        Args:
+            part: Which part this is
+            read: The adapter's read
+            stop_budget: What the stop may still spend, or None for no limit
+
+        Returns:
+            The venue's answer, or None when the part stays unread
+        """
+        ladder = self.get_rest_ladder()
+        if stop_budget is not None and not stop_budget.has_time_for(ladder.worst_case_s()):
+            if not stop_budget.has_time_for(ladder.get_policy().request_timeout_s):
+                self.logger.error(
+                    f'❌ Session end: {part.value} left unread — the stop has no time left for '
+                    f'one call to the venue before its kill ({stop_budget.until_kill_s():.1f} s '
+                    f'away, the records need what is left). What the venue holds there is not on '
+                    f'this session\'s record.')
+                return None
+            ladder = ladder.with_one_attempt()
+        try:
+            return run_with_ladder(read, ladder)
+        except ConnectionGaveUpError:
+            return None
 
     def record_session_truth(
         self,
@@ -390,7 +464,9 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         """
         if not self.broker.adapter.reads_venue_account():
             return None
-        return self._record_broker_truth(read_reason, self.read_broker_truth())
+        stop_budget = (self._stop_budget if read_reason is BrokerTruthReadReason.SESSION_END
+                       else None)
+        return self._record_broker_truth(read_reason, self.read_broker_truth(stop_budget))
 
     def record_reconcile_truth(
         self,
@@ -960,9 +1036,16 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         discarded — the book then held a position the venue had closed, or none where it
         had opened one. A write is never retried, it is resolved by asking.
 
+        A stop under way has its own bound and its own road (#630): the worker stops first, so
+        nothing queued goes out after its order was booked, and an order nobody answered for ends
+        with an ERROR and an alert. The fill timeout counts from the send, so it would come first
+        and book the same order with a warning, exit 0 and the worker still running.
+
         Args:
             pending: The timed-out pending order
         """
+        if self._stop_budget is not None:
+            return
         resolution_can_run = (self._resolution_config.enabled
                               and self.get_current_time_if_set() is not None)
         if (pending.execution_state.resolution_deadline is not None
@@ -990,7 +1073,11 @@ class LiveTradeExecutor(AbstractTradeExecutor):
 
         self._ask_before_giving_up(pending)
 
-    def _ask_before_giving_up(self, pending: PendingOrder) -> None:
+    def _ask_before_giving_up(
+        self,
+        pending: PendingOrder,
+        stop_waited_s: Optional[float] = None,
+    ) -> None:
         """
         Learn what became of a timed-out order, and book that — or hand it on.
 
@@ -1002,16 +1089,27 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         time it is given up as unreachable. Synchronous, because a timeout is rare and the
         give-up has always waited for its cancel the same way.
 
+        A stop whose wait ran out (#630) walks the same road with its own end reason. Nobody
+        is left to resolve anything then, so no answer ends in the give-up at once, and each
+        call to the venue first asks whether the stop can still afford it.
+
         Args:
             pending: The timed-out order, which has a broker reference
+            stop_waited_s: How long a stop waited for this order before its wait ran out; None
+                for the fill timeout
         """
+        at_stop = stop_waited_s is not None
+        end_reason = OrderEndReason.SESSION_END if at_stop else OrderEndReason.ORDER_TIMEOUT
+        if at_stop and not self._has_stop_time_for_venue_call():
+            self._book_order_given_up(pending, stop_waited_s=stop_waited_s)
+            return
         adapter = self.broker.adapter
         answer = self._request_processor.query_order_sync(
             pending.broker_ref, adapter, market=self._current_tick)
         if answer.undecided_reason:
             # Dry-run: the simulator cannot decide this order, and a rehearsal never invents
             # a fill. The give-up is what this path always did; the poll said why, once.
-            self._book_order_given_up(pending)
+            self._book_order_given_up(pending, stop_waited_s=stop_waited_s)
             return
         if answer.is_terminal:
             self._handle_broker_response(pending, answer)
@@ -1022,14 +1120,14 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         why = ("the venue answered the fill timeout's status read and named nothing"
                if answer.is_unknown else
                'the fill timeout ran out and the venue could not be asked')
-        if answer.status in (BrokerOrderStatus.PENDING, BrokerOrderStatus.PARTIALLY_FILLED):
+        if (answer.status in (BrokerOrderStatus.PENDING, BrokerOrderStatus.PARTIALLY_FILLED)
+                and (not at_stop or self._has_stop_time_for_venue_call())):
             # Recorded on the order like any cancel, so the ending says who asked — the venue
             # reports it cancelled, and that cancel is ours
-            self._note_cancel_origin(
-                pending, OrderInitiator.FRAMEWORK, OrderEndReason.ORDER_TIMEOUT)
+            self._note_cancel_origin(pending, OrderInitiator.FRAMEWORK, end_reason)
             self._record_order_event(
                 OrderEventType.CANCEL_REQUESTED, pending=pending,
-                initiator=OrderInitiator.FRAMEWORK, end_reason=OrderEndReason.ORDER_TIMEOUT)
+                initiator=OrderInitiator.FRAMEWORK, end_reason=end_reason)
             cancel = self._request_processor.cancel_order_sync(
                 broker_ref=pending.broker_ref, adapter=adapter)
             self._stamp_write_moment(pending)
@@ -1055,12 +1153,16 @@ class LiveTradeExecutor(AbstractTradeExecutor):
                 # older read, a part that executed in the cancel's round trip was booked as a
                 # clean cancel and was missing from the book.
                 confirmed = cancel.status == BrokerOrderStatus.CANCELLED
+                if at_stop and not self._has_stop_time_for_venue_call():
+                    self._book_order_given_up(pending, stop_waited_s=stop_waited_s)
+                    return
                 answer = self._request_processor.query_order_sync(
                     pending.broker_ref, adapter, market=self._current_tick)
                 if confirmed and (answer.undecided_reason or (
                         answer.status == BrokerOrderStatus.CANCELLED
                         and not (answer.filled_lots or 0.0) > 0)):
-                    self._book_order_given_up(pending, cancel_answered=True)
+                    self._book_order_given_up(
+                        pending, cancel_answered=True, stop_waited_s=stop_waited_s)
                     return
                 if answer.is_terminal:
                     self._handle_broker_response(pending, answer)
@@ -1070,9 +1172,9 @@ class LiveTradeExecutor(AbstractTradeExecutor):
                        "the venue refused the fill timeout's cancel, and the read after it "
                        "does not show the order ended")
 
-        if self._hand_timeout_to_resolution(pending, operation, why):
+        if not at_stop and self._hand_timeout_to_resolution(pending, operation, why):
             return
-        self._book_order_given_up(pending, venue_unreachable=True)
+        self._book_order_given_up(pending, venue_unreachable=True, stop_waited_s=stop_waited_s)
 
     def _hand_timeout_to_resolution(
         self,
@@ -1115,15 +1217,16 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         cancel_answered: bool = False,
         venue_unreachable: bool = False,
         at_ceiling: bool = False,
+        stop_waited_s: Optional[float] = None,
     ) -> None:
         """
         Remove a pending nobody will answer for, and record how it ended — never as a venue refusal.
 
-        Two callers reach this and both mean the same thing: we stopped waiting. The fill
-        timeout reaches it for an order that is merely unanswered, and #487's resolution
-        ceiling for one we ASKED about until the budget ran out. One rule in one place,
-        because the two disagreeing about how a give-up is recorded is how a report and a
-        record come to describe different sessions.
+        Three callers reach this and all mean the same thing: we stopped waiting. The fill
+        timeout reaches it for an order that is merely unanswered, #487's resolution ceiling for
+        one we ASKED about until the budget ran out, and a stop (#630) whose wait for the orders
+        on their way ran out. One rule in one place, because the callers disagreeing about how a
+        give-up is recorded is how a report and a record come to describe different sessions.
 
         Two endings (#362). CANCELLED when the venue confirmed our cancel of an order a status
         read had just shown working and unexecuted — then we know it ended, and how. Every
@@ -1139,15 +1242,22 @@ class LiveTradeExecutor(AbstractTradeExecutor):
                 asked what became of it
             at_ceiling: True when the resolution ran out of attempts (#487), rather than
                 the fill timeout
+            stop_waited_s: How long a stop waited for this order before its wait ran out (#630);
+                None on the other two roads. Such an order ends with the session, and its give-up
+                is an ERROR: nobody asks about it any more. It sends no cancel of its own, because
+                the road here sent one where the venue could be asked and the stop could afford it
         """
+        at_stop = stop_waited_s is not None
+        end_reason = (OrderEndReason.SESSION_END if at_stop
+                      else OrderEndReason.RESOLUTION_CEILING if at_ceiling
+                      else OrderEndReason.ORDER_TIMEOUT)
         # Try to cancel at broker via Tier-3-decoupled sync orchestrator
-        if pending.broker_ref and not cancel_answered:
+        if pending.broker_ref and not cancel_answered and not at_stop:
             # Its answer is not waited for: the order is recorded unaccounted either way
             self._record_order_event(
                 OrderEventType.CANCEL_REQUESTED, pending=pending,
                 initiator=OrderInitiator.FRAMEWORK,
-                end_reason=(OrderEndReason.RESOLUTION_CEILING if at_ceiling
-                            else OrderEndReason.ORDER_TIMEOUT))
+                end_reason=end_reason)
             cancel = None
             try:
                 cancel = self._request_processor.cancel_order_sync(
@@ -1173,7 +1283,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         # can never be closed again.
         self._request_processor.discard_order(
             order_id=pending.pending_order_id,
-            reason='order_timeout',
+            reason=('session_end' if stop_waited_s is not None else 'order_timeout'),
         )
 
         if cancel_answered:
@@ -1182,10 +1292,12 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             cancelled = self._book_order_result(self._ending_for_pending(
                 pending, OrderStatus.CANCELLED,
                 initiator=OrderInitiator.FRAMEWORK,
-                end_reason=OrderEndReason.ORDER_TIMEOUT), pending)
+                end_reason=end_reason), pending)
+            waited = (f'had no fill after the stop waited {stop_waited_s:.1f} s' if at_stop else
+                      f'timed out after {self._timeout_config.order_timeout_seconds}s '
+                      f'without a fill')
             self.logger.warning(
-                f'Order {pending.pending_order_id} timed out after '
-                f'{self._timeout_config.order_timeout_seconds}s without a fill and was '
+                f'Order {pending.pending_order_id} {waited} and was '
                 f'cancelled at the venue (broker_ref={pending.broker_ref})')
             self._emit_order_cancelled(pending, cancelled)
             return
@@ -1199,7 +1311,12 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         # after the resolution it handed the order to. It may have filled.
         unanswerable = (venue_unreachable
                         or pending.execution_state.timeout_handed_to_resolution)
-        if unresolved:
+        if at_stop:
+            why = (f'the stop waited {stop_waited_s:.1f} s and the venue has not said what became '
+                   f'of it (broker_ref={pending.broker_ref or "never answered"}). It may still '
+                   f'fill at the venue, so check the account after the stop.'
+                   f'{"" if self._has_stop_time_for_venue_call() else " " + _NO_STOP_TIME + "."}')
+        elif unresolved:
             why = (f'unresolved for {self._timeout_config.order_timeout_seconds}s — the broker '
                    f'never answered. It may hold this order; reconciliation matches it by '
                    f'client order id.')
@@ -1213,10 +1330,13 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         unaccounted = self._book_order_result(self._ending_for_pending(
             pending, OrderStatus.UNACCOUNTED,
             initiator=OrderInitiator.FRAMEWORK,
-            end_reason=(OrderEndReason.RESOLUTION_CEILING if at_ceiling
-                        else OrderEndReason.ORDER_TIMEOUT)), pending)
+            end_reason=end_reason), pending)
         self._notify_outcome(pending.direction, unaccounted, pending)
 
+        if at_stop:
+            self.logger.error(f'❌ Session end: order {pending.pending_order_id} is UNACCOUNTED '
+                              f'for — {why}')
+            return
         self.logger.warning(
             f'Order {pending.pending_order_id} is UNACCOUNTED for — {why}'
         )
@@ -3599,6 +3719,123 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             OrderType.MARKET, OrderType.LIMIT, OrderType.STOP, OrderType.STOP_LIMIT,
         })
 
+    def get_awaited_orders(self) -> List[AwaitedOrder]:
+        """
+        The orders a stop waits for (#630): every order in the request processor's pipeline, a
+        market open and a market close alike, and every resting order with an operation in flight
+        or no reference yet. A resting order the venue confirmed is not on its way anywhere: it
+        waits for the market, and the cleanup decides about it.
+
+        Returns:
+            One row per such order, the pipeline first
+        """
+        awaited = [self._awaited_order(pending)
+                   for pending in self._request_processor.get_pending_orders()]
+        for pending in self._active_limit_orders + self._active_stop_orders:
+            if (not pending.broker_ref or pending.execution_state.in_flight_operation
+                    is not PendingOperation.NONE):
+                awaited.append(self._awaited_order(pending))
+        return awaited
+
+    def _awaited_order(self, pending: PendingOrder) -> AwaitedOrder:
+        """
+        The row of one order on its way.
+
+        Args:
+            pending: The order
+
+        Returns:
+            What it is, since when it travels and what it waits for
+        """
+        closes = self._closed_position_id(pending)
+        if closes is None:
+            action, direction, lots, symbol = (
+                OrderAction.OPEN, pending.direction, pending.lots, pending.symbol)
+        else:
+            # A market close carries neither its symbol nor the size of a full close; the
+            # position it closes does, while it is still held
+            closed = self.portfolio.get_position(closes)
+            action = OrderAction.CLOSE
+            direction = pending.closed_position_direction or (
+                closed.direction if closed is not None else None)
+            lots = pending.close_lots or (closed.lots if closed is not None else None)
+            symbol = pending.symbol or (closed.symbol if closed is not None else None)
+        return AwaitedOrder(
+            order_id=pending.pending_order_id,
+            action=action,
+            order_type=self._requested_order_type(pending),
+            direction=direction,
+            lots=lots,
+            symbol=symbol,
+            sent_at_monotonic_s=pending.timing.submitted_monotonic,
+            waits_for=self._what_order_waits_for(pending),
+        )
+
+    @staticmethod
+    def _what_order_waits_for(pending: PendingOrder) -> str:
+        """
+        Say what an order on its way waits for.
+
+        Args:
+            pending: The order
+
+        Returns:
+            A few words a person reads
+        """
+        state = pending.execution_state
+        if state.in_flight_operation is PendingOperation.PENDING_CANCEL:
+            return 'its cancel has not been answered'
+        if state.in_flight_operation is PendingOperation.PENDING_MODIFY:
+            return 'its amend has not been answered'
+        if (state.resolution_deadline is not None
+                or state.in_flight_operation is PendingOperation.PENDING_SUBMIT):
+            return 'its answer was lost, the venue is being asked'
+        if not pending.broker_ref:
+            return 'venue has not answered'
+        return 'the venue took it, no fill has shown yet'
+
+    def give_up_on_awaited_orders(self, waited_s: float) -> List[AwaitedOrder]:
+        """
+        Book what a stop's wait did not hear about, while the logic can still hear it (#630).
+
+        The worker stops first, so nothing queued goes out after its order was booked, and what
+        it delivered is read once more. Then the road the fill timeout takes: an order with a
+        reference is asked about, because a final answer settles it, an executed part included,
+        and one still working is cancelled. What stays open ends unaccounted with an ERROR on the
+        session channel: the write is not repeated, and an outcome nobody knows stays unknown,
+        never a refusal. A resting order on its way stays for the cleanup, which cancels or leaves
+        it by the session-end policy.
+
+        Args:
+            waited_s: How long the stop waited
+
+        Returns:
+            The orders booked unaccounted
+        """
+        self._stop_worker_and_read_answers()
+        given_up = []
+        for pending in self._request_processor.get_pending_orders():
+            row = self._awaited_order(pending)
+            unaccounted_before = self.get_execution_stats().orders_unaccounted
+            if pending.broker_ref:
+                self._ask_before_giving_up(pending, stop_waited_s=waited_s)
+            else:
+                self._book_order_given_up(pending, stop_waited_s=waited_s)
+            if self.get_execution_stats().orders_unaccounted > unaccounted_before:
+                given_up.append(row)
+        return given_up
+
+    def _stop_worker_and_read_answers(self) -> None:
+        """
+        Stop the request worker, then read what it delivered until then (#630).
+
+        In this order, so that no job still queued reaches the venue afterwards. A call that
+        outlasts the join keeps its thread, and its answer is read by nobody once the process
+        ends. Safe to call twice: the worker stops once, and a second read finds what came since.
+        """
+        self._request_processor.stop_worker(self._shutdown_config.request_worker_join_s)
+        self._request_processor.drain_inbox()
+
     def get_pipeline_orders(self) -> List[PendingOrder]:
         """
         The request processor's unconfirmed orders — in transit, not yet resting or filled.
@@ -3646,17 +3883,21 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         """
         Finish the session's orders — the venue keeps whatever it still holds (#492).
 
-        First, an order whose cancel is already on its way is read rather than cancelled a
-        second time. Then three phases:
+        First the request worker is stopped and its answers read, so that a queued submit cannot
+        go out after its order was booked (#630). Then an order whose cancel is already on its way
+        is read rather than cancelled a second time. Then two phases:
         1. Resting orders: cancelled AT THE BROKER and booked cancelled — or unaccounted
            where the venue did not confirm the cancel, unless a read after a refused cancel
            says how the order ended — or left standing when the policy says so. Left
            standing means left in both places — a live order must not be recorded as ended
            while it can still fill.
-        2. clear_pending() catches genuine stuck-in-pipeline orders (e.g. the broker has
-           not confirmed a fill yet when the session ends). These ARE real anomalies,
-           recorded as FORCE_CLOSED with reason="scenario_end" and booked unaccounted.
-        3. The request worker is stopped.
+        2. clear_pending() catches what is left in the pipeline. A normal stop waited for these
+           and gave up on what stayed unanswered, so they come from the ends that do not wait: a
+           crash, a hard stop, a tick source that ran out. Each is booked unaccounted, with
+           reason SESSION_END, and an ERROR: the venue may hold it, filled or not.
+
+        A stop with a declared kill (#630) asks its budget before every call to the venue here: with
+        no time left, a read is not made, and a cancel not sent stays unconfirmed.
 
         Open POSITIONS are deliberately untouched. This method used to direct-fill them
         through a synthetic close order that never reached the venue, which reported a
@@ -3666,6 +3907,12 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             cancel_orders: False leaves resting orders at the venue for a later session to
                 adopt (#355)
         """
+        # A failed read must not keep the resting orders below from being cancelled
+        try:
+            self._stop_worker_and_read_answers()
+        except Exception as e:                               # noqa: BLE001 — reported, then on
+            self.logger.error(f'❌ Session end: reading the last answers failed: {e}')
+
         # A cancel of ours already on its way is not sent a second time. The venue refuses the
         # second one for an order it has just cancelled, and the session then recorded as
         # unaccounted — or as its own — an order whose end the strategy had asked for. Its
@@ -3714,6 +3961,9 @@ class LiveTradeExecutor(AbstractTradeExecutor):
                          'the submit answer never arrived, so there is no reference to '
                          'cancel with'))
                     continue
+                if not self._has_stop_time_for_venue_call():
+                    unconfirmed.append((pending, label, f'no cancel was sent: {_NO_STOP_TIME}'))
+                    continue
                 self._record_order_event(
                     OrderEventType.CANCEL_REQUESTED, pending=pending,
                     initiator=OrderInitiator.FRAMEWORK, end_reason=OrderEndReason.SESSION_END)
@@ -3740,8 +3990,10 @@ class LiveTradeExecutor(AbstractTradeExecutor):
                         'UNKNOWN — the venue answered and named nothing it carried out'
                         if response.is_unknown else 'UNRESOLVED — the broker did not answer')
                 if response.status != BrokerOrderStatus.CANCELLED:
-                    unconfirmed.append(
-                        (pending, label, response.rejection_reason or response.status.value))
+                    reason = response.rejection_reason or response.status.value
+                    if not self._has_stop_time_for_venue_call():
+                        reason = f'{reason}; no read followed: {_NO_STOP_TIME}'
+                    unconfirmed.append((pending, label, reason))
 
             if unconfirmed:
                 # §35: the session channel, not the global log — this has to reach the summary.
@@ -3779,6 +4031,12 @@ class LiveTradeExecutor(AbstractTradeExecutor):
                 pending, OrderStatus.UNACCOUNTED,
                 initiator=OrderInitiator.FRAMEWORK,
                 end_reason=OrderEndReason.SESSION_END), pending)
+            # The session channel, not the global log: it has to reach the summary and the grade
+            self.logger.error(
+                f'❌ Session end: order {pending.pending_order_id} was still on its way '
+                f'(broker_ref={pending.broker_ref or "never answered"}) and this end does not '
+                f'wait for it. It is recorded as unaccounted: the venue may hold it, filled or '
+                f'not, so check the account.')
 
         # #318 — clear pending position modifications (live tracker)
         if self._pending_position_modifications:
@@ -3788,9 +4046,6 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             )
             self._pending_position_modifications.clear()
 
-        # Phase 3: Stop the worker thread cleanly
-        self._request_processor.stop_worker()
-
     def _read_status_at_session_end(self, pending: PendingOrder) -> bool:
         """
         Ask the venue what became of a resting order, and book a final answer as the poll does.
@@ -3799,9 +4054,11 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             pending: A resting order with a broker reference
 
         Returns:
-            True when the order has ended and is booked; False when it is still working or
-            the venue could not say
+            True when the order has ended and is booked; False when it is still working, the
+            venue could not say, or the stop has no time left to ask
         """
+        if not self._has_stop_time_for_venue_call():
+            return False
         answer = self._request_processor.query_order_sync(
             pending.broker_ref, self.broker.adapter, market=self._current_tick)
         self._handle_query_response(QueryResponse(

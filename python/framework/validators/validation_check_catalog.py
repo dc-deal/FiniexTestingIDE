@@ -189,6 +189,19 @@ VALIDATION_CHECKS: Tuple[ValidationCheckInfo, ...] = (
         "Some data files the run read, or the bars a warmup history started from, are a "
         "venue's published history rather than our own collection; such ticks are never "
         'admissible for a parity comparison.'),
+    ValidationCheckInfo(
+        'shutdown_waits_beyond_kill', 'Waits of a stop longer than the supervisor allows',
+        "A session's stop can spend more on its waits, on the orders on their way and on its "
+        'records than the time the session declares its supervisor gives it; the end of the stop '
+        'would be lost to the kill.'),
+    ValidationCheckInfo(
+        'shutdown_kill_undeclared', 'Unattended session declares no supervisor kill',
+        'A live session runs unattended without declaring when its supervisor kills it after a '
+        'stop signal, so its stop has no budget to keep the session records out of the kill.'),
+    ValidationCheckInfo(
+        'shutdown_order_wait_below_poll', 'Wait for orders shorter than two status reads',
+        "The time a session's stop waits for the orders on their way is below the broker's poll "
+        "interval plus a second, so it can end before an order's second status read."),
     # --- What the data LACKS (#561) — one per DataDeficiency, worded from its declaration ------
     ValidationCheckInfo(
         'data_no_quote', 'Ticks without a quote',

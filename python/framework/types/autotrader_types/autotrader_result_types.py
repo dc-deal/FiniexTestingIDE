@@ -13,6 +13,7 @@ from python.framework.types.autotrader_types.cold_start_types import (
     ColdStartVerdict,
 )
 from python.framework.types.autotrader_types.safety_session_types import SafetySessionRecord
+from python.framework.types.autotrader_types.shutdown_status_types import StopWaitOutcome
 from python.framework.types.run_results_types import BookingPeriod
 from python.framework.types.disturbance_episode_types import DisturbanceEpisode, MarketDataTickStats
 from python.framework.types.live_types.api_perf_types import ApiPerfSnapshot
@@ -141,6 +142,8 @@ class AutoTraderResult:
             executor answers — None when no executor was built
         protective_fill_levels: The level each stop-loss or take-profit close fired at, by the
             seq of its fill event (#631) — empty when none fired or no executor was built
+        stop_wait: What the stop's wait for the orders on their way came to (#630) — None when
+            nothing waited
     """
     session_duration_s: float = 0.0
     ticks_processed: int = 0
@@ -188,6 +191,7 @@ class AutoTraderResult:
     venue_api_performance: Optional[ApiPerfSnapshot] = None
     venue_fee_expected: Optional[bool] = None
     protective_fill_levels: Dict[int, float] = field(default_factory=dict)
+    stop_wait: Optional[StopWaitOutcome] = None
 
     def add_session_validation_result(self, result: ValidationResult) -> None:
         """

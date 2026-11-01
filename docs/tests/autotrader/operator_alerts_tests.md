@@ -119,6 +119,8 @@ Also pinned in the suites whose code raises the alerts:
 | `test_it_says_whether_real_orders_go_out` | mock, dry run or LIVE |
 | `test_a_duration_reads_the_way_a_person_says_it` | `2d 4h 12m` |
 | `test_it_names_the_commits_of_both_repositories` · `test_several_other_repositories_are_told_apart_by_their_directory` · `test_a_commit_nobody_could_read_is_said` · `test_an_identity_without_this_repository_still_formats` · `test_nothing_recorded_prints_no_commit_line` | the started message names every repository's commit (#559): `framework` and `strategy`, a directory's name where there are several others, `unknown` for a commit nobody could read, and no line where nothing was recorded |
+| `TestTheStopLineOfTheClosingMessage` | one line, read from the result (#630): none where nothing waited, one per way the wait can end, each ending counted where there are several, the unanswered count on a run-out |
+| `TestOrdersUnansweredAtStop` | a stop whose wait ran out (#630): one order, the kill named only where one is declared, and what stays for the cleanup told apart from what was booked unaccounted |
 | `TestTheDaysClosedUnheard` | the trading days one late check sealed after the first — a machine that slept, a clock that jumped — are one message, titled with their span (or the one day), counting the days and their trades and closing with the equity line |
 | `TestTheDayClose` | the sealed booking period rendered one figure per line — its own figures, an open holding beside the realised one, an unobserved value said rather than shown as zero (both ends, or which one), a day that never fell reading `0.00`, and a day the session started in saying it covers only the rest |
 

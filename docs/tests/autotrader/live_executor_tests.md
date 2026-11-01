@@ -529,7 +529,7 @@ MockOrderExecution
               Phase 0: processor.drain_inbox()    (worker responses)
               Phase 1: query_order_sync per pending  (MARKET in processor)
               Phase 2: query_order_sync per active   (LIMIT in _active_limit_orders)
-        +-- finish_remaining_orders → cancels active LIMIT (or leaves them, per policy), clear_pending, processor.stop_worker
+        +-- finish_remaining_orders → processor.stop_worker, drain_inbox, cancels active LIMIT (or leaves them, per policy), clear_pending
                                        open positions are NOT touched (#492)
 ```
 

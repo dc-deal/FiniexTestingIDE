@@ -193,6 +193,12 @@ Two modes:
 
 Signal handling: first Ctrl+C requests shutdown; a second within 3s forces exit.
 
+A stop of normal severity first waits for the orders on their way, and a declared kill bounds what it
+spends. It reads the request's severity and not the mode, so a first Ctrl+C waits too:
+[Unattended operation](unattended_operation.md#a-stop--what-it-waits-for-and-the-kill-it-has-to-fit-under).
+What a stop shows while it runs — the panel, the journal's lines, the closing message's line — is
+[its next section](unattended_operation.md#a-stop--what-it-says-while-it-runs).
+
 The mode is a **label**, not a behaviour: both run the same cleanup. Emergency flattening —
 the case where liquidating IS right — belongs to the safety baseline (#356) and is
 deliberately not folded in here, because one code path answering both "the session is over"

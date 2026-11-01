@@ -24,6 +24,9 @@ from python.framework.signal_data.producer.signal_pipelines_reader import (
 )
 from python.framework.signal_data.transport.signal_inbox import SignalInbox
 from python.framework.signal_data.transport.signal_stream_source import SignalStreamSource
+from python.framework.types.config_types.autotrader_defaults_config_types import (
+    ShutdownDefaults,
+)
 from python.framework.types.config_types.sentiment_config_types import (
     ActiveProducer,
     SentimentStreamConfig,
@@ -85,7 +88,7 @@ def run_stream_probe(
     try:
         time.sleep(seconds)
     finally:
-        source.stop()
+        source.stop(ShutdownDefaults().signal_transport_join_s)
 
     stats = source.get_transport_stats()
     arrivals = inbox.drain().get(signal_kind, [])

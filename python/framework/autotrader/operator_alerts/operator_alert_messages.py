@@ -17,9 +17,11 @@ from python.framework.types.autotrader_types.operator_alert_types import (
     OperatorAlert,
     OperatorAlertLevel,
 )
+from python.framework.types.autotrader_types.shutdown_status_types import StopWaitOutcome
 from python.framework.types.log_level import LogLevel
 from python.framework.types.run_outcome_types import RunOutcome
 from python.framework.types.run_results_types import BookingPeriod
+from python.framework.types.trading_env_types.awaited_order_types import AwaitedOrder
 
 # The mark opening every message — the one thing a notification list shows besides the title.
 LEVEL_MARK: Dict[OperatorAlertLevel, str] = {
@@ -125,6 +127,8 @@ def session_ended_text(result: AutoTraderResult, run_summary: Optional[RunSummar
         lines.append(f'Reason: {result.emergency_reason}')
     elif end_reason:
         lines.append(f'Reason: {end_reason}')
+    if result.stop_wait is not None:
+        lines.append(_stop_wait_line(result.stop_wait))
     lines.append(f'Duration: {format_duration(result.session_duration_s)}')
     lines.append(f'Ticks: {result.ticks_processed:,}')
     if run_summary is None:
@@ -136,6 +140,62 @@ def session_ended_text(result: AutoTraderResult, run_summary: Optional[RunSummar
     if errors:
         lines.append(f'Errors logged: {errors}')
     return level, title, '\n'.join(lines)
+
+
+def _stop_wait_line(outcome: StopWaitOutcome) -> str:
+    """
+    The closing message's line on a stop that waited for orders on their way (#630).
+
+    Args:
+        outcome: What the wait came to
+
+    Returns:
+        For instance `Stop: waited 5.2 s for 1 order, filled and booked`
+    """
+    total = outcome.orders_waited_for()
+    parts = []
+    if outcome.orders_executed:
+        count = '' if total == 1 else f'{outcome.orders_executed} '
+        parts.append(f'{count}filled and booked')
+    if outcome.orders_unaccounted:
+        parts.append(f'no answer for {outcome.orders_unaccounted}, recorded unaccounted')
+    if outcome.orders_ended_unfilled:
+        count = '' if total == 1 else f'{outcome.orders_ended_unfilled} '
+        parts.append(f'{count}ended without a fill')
+    if outcome.orders_still_open:
+        count = '' if total == 1 else f'{outcome.orders_still_open} '
+        parts.append(f'{count}still open at the venue')
+    orders = '1 order' if total == 1 else f'{total} orders'
+    return f'Stop: waited {outcome.waited_s:.1f} s for {orders}, {", ".join(parts)}'
+
+
+def orders_unanswered_at_stop_text(given_up: List[AwaitedOrder], left: List[AwaitedOrder],
+                                   waited_s: float,
+                                   until_kill_s: Optional[float]) -> Tuple[str, str]:
+    """
+    The message of a stop whose wait for the orders on their way ran out (#630).
+
+    Args:
+        given_up: The orders the stop booked unaccounted
+        left: What is still on its way, a resting order above all, which the cleanup takes
+        waited_s: How long the stop waited
+        until_kill_s: How long until the declared kill; None when none is declared
+
+    Returns:
+        Title and detail
+    """
+    count = len(given_up) + len(left)
+    orders = 'an order' if count == 1 else f'{count} orders'
+    lines = [f'{row.describe()} · {row.order_id} · {row.waits_for}' for row in given_up]
+    if given_up:
+        lines.append('Recorded UNACCOUNTED; it may still fill at the venue.')
+    lines.extend(f'{row.describe()} · {row.order_id} · {row.waits_for}' for row in left)
+    if left:
+        lines.append('Left to the cleanup, which cancels, leaves or books it.')
+    kill = f', kill in about {until_kill_s:.0f} s' if until_kill_s is not None else ''
+    lines.append(f'The session keeps stopping{kill}.')
+    lines.append('Check the account after the stop.')
+    return f'Stop is not clean — no answer for {orders} after {waited_s:.0f} s', '\n'.join(lines)
 
 
 # How late a period may open after its trading day did and still count as the whole day. A day

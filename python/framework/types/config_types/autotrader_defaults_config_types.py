@@ -6,10 +6,10 @@ Note: This covers only the app_config defaults section — not the full
 AutoTraderConfig profile type defined in autotrader_config_types.py.
 """
 from enum import StrEnum
-from typing import Literal
+from typing import Literal, Optional
 from urllib.parse import urlparse
 
-from pydantic import field_validator
+from pydantic import Field, field_validator
 
 from python.framework.types.config_types.operator_alerts_config_types import OperatorAlertsConfig
 from python.framework.types.config_types.strict_config_model import StrictConfigModel
@@ -307,6 +307,61 @@ class SessionEndDefaults(StrictConfigModel):
     positions: Literal['close', 'leave'] = 'leave'
 
 
+class ShutdownDefaults(StrictConfigModel):
+    """
+    The waits of a session's stop, and the kill they have to fit under (#630).
+
+    A supervisor sends a signal and kills after a period it never tells the process — `docker
+    stop -t`, `TimeoutStopSec` — so every wait between the signal and the last record is a
+    setting here, and the period itself is a declaration. All of it says how a session ends,
+    not what it is compared as: the block is neutral in the composite definition, and it is no
+    part of `session_end`, which is defining, because a changed timeout would then be a changed
+    composite. Calls to the venue are not here: they keep `broker_transport` and the ladder.
+
+    `order_wait_s`
+        How long a stop waits for the orders on their way before it books them unaccounted. A
+        fill shows on a read after about 2 s (May 2026) to 8 s (estimate), a lost submit answer
+        resolves in 21 to 41 s (estimate). Below the broker's `poll_interval_ms` plus a second
+        it can miss an order's second status read.
+
+    `tick_thread_join_s`, `signal_transport_join_s`, `display_join_s`, `request_worker_join_s`
+        How long the stop waits for one thread before it goes on without it.
+
+    `alert_flush_s`
+        How long the queued alerts may take to go out when the session ends. Long enough for a
+        handful of messages at the configured pace; short enough that a dead channel does not
+        hold a supervised restart.
+
+    `supervisor_kill_after_s`
+        The time the supervisor gives the process after its signal. None when it is not
+        declared: then no budget applies and each wait keeps its own bound.
+
+    `reserve_for_records_s`
+        What a declared kill keeps free for the reports and the ledger row: no wait and no
+        venue call of the stop may spend it.
+    """
+    order_wait_s: float = Field(30.0, ge=0.0)
+    tick_thread_join_s: float = Field(5.0, ge=0.0)
+    signal_transport_join_s: float = Field(2.0, ge=0.0)
+    display_join_s: float = Field(2.0, ge=0.0)
+    request_worker_join_s: float = Field(2.0, ge=0.0)
+    alert_flush_s: float = Field(15.0, ge=0.0)
+    supervisor_kill_after_s: Optional[float] = Field(None, gt=0.0)
+    reserve_for_records_s: float = Field(15.0, ge=0.0)
+
+    def bounded_waits_s(self) -> float:
+        """
+        What the joins and the alert flush can spend at most, one after another.
+
+        One sum, so the check at the start and the order wait's bound count the same waits.
+
+        Returns:
+            The sum in seconds
+        """
+        return (self.tick_thread_join_s + self.signal_transport_join_s + self.display_join_s
+                + self.request_worker_join_s + self.alert_flush_s)
+
+
 class TickSourceConfig(StrictConfigModel):
     """
     Configuration for the tick TRANSPORT (how ticks are delivered).
@@ -466,5 +521,6 @@ class AutotraderDefaultsConfig(StrictConfigModel):
     state_frames: StateFramesDefaults = StateFramesDefaults()
     cold_start: ColdStartDefaults = ColdStartDefaults()
     session_end: SessionEndDefaults = SessionEndDefaults()
+    shutdown: ShutdownDefaults = ShutdownDefaults()
     tick_source: TickSourceConfig = TickSourceConfig()
     operator_alerts: OperatorAlertsConfig = OperatorAlertsConfig()

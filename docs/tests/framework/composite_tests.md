@@ -54,6 +54,8 @@ which later steps of #615 add with their own tests.
 - **The changed values:** every differing value is named in path order with its tier and part, a
   neutral one with no part; a value only one side holds is a change
 - **A session document:** its blocks are lifted, and its kind is no value
+- **A stop's settings:** the `shutdown` block moves no part of the key, so a changed timeout is no
+  changed composite
 
 `test_composite_catalog_completeness.py` — both directions over what the shipped configurations
 render: every scenario of every scenario set the loader accepts, and every AutoTrader profile.

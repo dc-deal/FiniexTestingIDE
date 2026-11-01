@@ -85,8 +85,11 @@ in-thread `queue.Queue` passes the dataclass by reference (no pickling — same 
 ### Rendering, and what a failure does
 
 The dashboard renders through one public entry, `AutoTraderLiveDisplay.render(stats, connection,
-now, width)`. Everything a frame shows arrives there: the snapshot, the tick source's readings
-(polled once per frame into a `TickSourceSnapshot`), the wall clock and the terminal width.
+now, width, shutdown)`. Everything a frame shows arrives there: the snapshot, the tick source's
+readings (polled once per frame into a `TickSourceSnapshot`), the wall clock, the terminal width
+and what a session's stop is doing (polled the same way, because a stop writes it on the main thread
+and never waits on the queue; see
+[Unattended operation](../autotrader/unattended_operation.md#a-stop--what-it-says-while-it-runs)).
 Nothing in the render path reads a live object, so every panel is rendered by a test from a
 fully populated frame — at each layout, and with every way a trade can close — without a
 session, a thread or a terminal.

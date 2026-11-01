@@ -96,14 +96,6 @@ CONNECT_TIMEOUT_S = 10.0
 # arithmetic rather than the producer: settimeout(0) puts the socket in NON-BLOCKING mode.
 MINIMUM_WATCHDOG_S = 1.0
 
-# How long a session end waits for the reader thread before abandoning it. Short on
-# purpose: after the socket is shut down a blocked read returns at once, so the only phase
-# that can outlast this is a connect nothing can interrupt — and a session end must not
-# wait that out. In a live-adapter session `stop()` runs BEFORE open positions are closed, so a
-# patient shutdown here is a patient shutdown in front of the thing that actually matters.
-# The thread is a daemon; abandoning it costs a reported error, not a leak.
-SHUTDOWN_JOIN_BUDGET_S = 2.0
-
 # Statuses that mean the request itself was wrong, not the connection. Retrying a typo
 # forever and calling it the producer's outage is the same misdiagnosis the credential
 # rule exists to prevent — 404 is an unknown pipeline_id, 400 a parameter combination
@@ -261,15 +253,26 @@ class SignalStreamSource(AbstractSignalTransport):
         self._record(f'connecting — {resume}')
         self._logger.info(f'📡 Signal stream starting: {self._route} ({resume})')
 
-    def stop(self) -> None:
-        """Close the connection and wait for the thread to finish."""
+    def stop(self, join_timeout_s: float) -> None:
+        """
+        Close the connection and wait for the thread to finish.
+
+        The wait is short on purpose: after the socket is shut down a blocked read returns at
+        once, so the only phase that can outlast it is a connect nothing can interrupt — and a
+        session end must not wait that out, with the order cleanup and the venue's last read
+        still behind this call. The thread is a daemon; abandoning it costs a reported error,
+        not a leak.
+
+        Args:
+            join_timeout_s: How long to wait for the reader thread before abandoning it
+        """
         self._stop.set()
         self._close_open()
         if self._health_probe is not None:
             self._health_probe.stop()
         stranded = False
         if self._thread is not None:
-            self._thread.join(timeout=SHUTDOWN_JOIN_BUDGET_S)
+            self._thread.join(timeout=join_timeout_s)
             stranded = self._thread.is_alive()
             self._thread = None
         self._logger.info(
@@ -277,15 +280,15 @@ class SignalStreamSource(AbstractSignalTransport):
             f'{self._enqueued} envelopes, {self._replays} replays requested')
         if stranded:
             # Abandoned deliberately, and REPORTED rather than assumed away. Waiting longer
-            # would hold the session end — which in a live run sits in front of closing open
-            # positions — for a connect that cannot be interrupted. So the thread is left to
-            # die with the process and the operator is told, because it can still deposit
-            # into an inbox nobody drains and still write to a logger whose buffer the
-            # summary has already collected (§35). Saying "stopped" alone would be a claim
-            # this code did not establish.
+            # would hold the session end — which in a live run sits in front of the order
+            # cleanup and the venue's last read — for a connect that cannot be interrupted. So
+            # the thread is left to die with the process and the operator is told, because it
+            # can still deposit into an inbox nobody drains and still write to a logger whose
+            # buffer the summary has already collected (§35). Saying "stopped" alone would be a
+            # claim this code did not establish.
             self._logger.error(
                 f'📡 The signal stream thread did not finish within '
-                f'{SHUTDOWN_JOIN_BUDGET_S:.0f}s and was ABANDONED — almost certainly inside '
+                f'{join_timeout_s:g}s and was ABANDONED — almost certainly inside '
                 f'a connect, which nothing can interrupt. The session end continues rather '
                 f'than waiting it out. The thread dies with the process; anything it logs '
                 f'from here on arrives after this session summary was collected.')

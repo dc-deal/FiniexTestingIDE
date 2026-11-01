@@ -427,6 +427,9 @@ class PortfolioManager:
 
         # Add to open positions
         self.open_positions[position_id] = position
+        # No tick has to follow it: a fill booked in a stop's wait is read as it stands, and an
+        # unmarked position reads as worth nothing at margin
+        self._positions_dirty = True
 
         # Spot mode: asset transfer on open
         if self._spot_mode:

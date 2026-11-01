@@ -183,6 +183,16 @@
       "orders": "cancel",
       "positions": "leave"
     },
+    "shutdown": {
+      "order_wait_s": 30.0,
+      "tick_thread_join_s": 5.0,
+      "signal_transport_join_s": 2.0,
+      "display_join_s": 2.0,
+      "request_worker_join_s": 2.0,
+      "alert_flush_s": 15.0,
+      "supervisor_kill_after_s": null,
+      "reserve_for_records_s": 15.0
+    },
     "capital": {
       "exclusive_account": false
     },

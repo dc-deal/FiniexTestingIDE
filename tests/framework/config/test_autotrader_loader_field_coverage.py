@@ -100,6 +100,11 @@ def _probe_value(annotation, default):
     Returns:
         The probe value, or None when the type offers no second value to choose
     """
+    if typing.get_origin(annotation) is typing.Union and type(None) in typing.get_args(annotation):
+        # An optional value is probed by what it holds when set. A default of None differs from
+        # every value of that type, so the type's own zero is base enough.
+        inner = next(arg for arg in typing.get_args(annotation) if arg is not type(None))
+        return _probe_value(inner, inner() if default is None else default)
     if typing.get_origin(annotation) is typing.Literal:
         alternatives = [a for a in typing.get_args(annotation) if a != default]
         return alternatives[0] if alternatives else None
