@@ -161,7 +161,39 @@ pytest tests/security_cert/test_security_cert_certificate.py -v
 ```
 
 Each suite writes its artifact into its own `reports/` directory, which is where it is committed
-from.
+from. They run on the development machine; running one on the server a bot runs on is possible and
+proves that it holds on another system, but it is no step of a release.
+
+## Before the tag: one check
+
+Each family's own check judges its newest report alone: passed, not expired, complete. None asks
+whether that report names this version or came from this code, so a report from weeks ago stays
+green, and a run that certified nothing leaves the previous one standing. This asks both, over all
+four, and exits non-zero unless they hold:
+
+```bash
+python python/cli/release_certificates_cli.py check --release-version X.Y.Z
+```
+
+```
+  ✅ live_adapters      1.5.0    a1b2c3d4   PASSED
+  ✅ live_field_study   1.5.0    a1b2c3d4   PASSED
+  ❌ security_cert      dev      e4f5a6b7   PASSED
+       → It names dev, not 1.5.0.
+       → 12 file(s) outside the reports changed since e4f5a6b7, such as python/cli/my_tool.py.
+  ✅ live_signal_feed   1.5.0    a1b2c3d4   PASSED
+  ❌ REFUSED: do not tag this.
+```
+
+It holds the code, not one commit. A report is committed after it is taken, so the tag can never be
+the commit a certificate names, and taking them one after the other with each artifact committed
+between them is fine. What has to hold is that only files in a family's `reports/` directory changed
+since each certificate's commit.
+
+A certificate is refused when it names another release, did not pass, has expired, was not taken
+from a clean tree, names a commit the history no longer holds (an amend does that), or, for the live
+adapter, saw no real order. The tree itself must be clean. The benchmark is not asked: it describes
+the machine's throughput and is taken before the others.
 
 **Changing the identity invalidates every certificate**, because every artifact carries it. That
 is the cost of the shared shape, and it is the right cost: certificates that disagree about what

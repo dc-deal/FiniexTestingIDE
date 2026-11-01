@@ -164,3 +164,53 @@ class CertificateIdentity:
             'code_identity': (self.code_identity.model_dump(mode='json')
                               if self.code_identity is not None else None),
         }
+
+
+@dataclass
+class ReleaseCertificateVerdict:
+    """
+    What one family's newest certificate says about a release.
+
+    Args:
+        family: The family's directory name
+        file: The newest certificate's file name; None when the family has none
+        release_version: The release it names; None when it could not be read
+        git_commit: The commit it was taken on; None when it could not be read
+        status: Its verdict; None when it could not be read
+        changed_outside_reports: Paths outside the reports changed since its commit; None when that
+            could not be determined
+        problems: One sentence per reason it does not stand; empty when it stands
+    """
+    family: str
+    file: Optional[str] = None
+    release_version: Optional[str] = None
+    git_commit: Optional[str] = None
+    status: Optional[CertificateStatus] = None
+    changed_outside_reports: Optional[List[str]] = None
+    problems: List[str] = field(default_factory=list)
+
+
+@dataclass
+class ReleaseCheckResult:
+    """
+    Whether the certificates a release rests on describe this release and this code.
+
+    Args:
+        release_version: The release asked about
+        head_commit: The commit the tree stands on; None when git did not answer
+        tree_problem: Why the tree itself cannot be tagged; None when it can
+        verdicts: One verdict per family
+    """
+    release_version: str
+    head_commit: Optional[str]
+    tree_problem: Optional[str]
+    verdicts: List[ReleaseCertificateVerdict]
+
+    def passed(self) -> bool:
+        """
+        Whether the release may be tagged.
+
+        Returns:
+            True when the tree is clean and no verdict names a problem
+        """
+        return self.tree_problem is None and not any(v.problems for v in self.verdicts)

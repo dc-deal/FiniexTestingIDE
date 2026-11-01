@@ -4520,6 +4520,23 @@
             }
         },
         {
+            "name": "🧪 Release Certificates: check before the tag",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/release_certificates_cli.py",
+            "args": [
+                "check",
+                "--release-version",
+                "${input:releaseCheckVersion}"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "14_release_gate",
+                "order": 16
+            }
+        },
+        {
             "name": "🧪 Simulation: Benchmark",
             "type": "debugpy",
             "request": "launch",
@@ -4532,11 +4549,16 @@
             "justMyCode": false,
             "presentation": {
                 "group": "14_release_gate",
-                "order": 16
+                "order": 17
             }
         }
     ],
     "inputs": [
+        {
+            "id": "releaseCheckVersion",
+            "type": "promptString",
+            "description": "The release about to be tagged, e.g. 1.5.0"
+        },
         {
             "id": "footprintRunId",
             "type": "promptString",

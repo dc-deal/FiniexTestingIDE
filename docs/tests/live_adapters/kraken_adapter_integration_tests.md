@@ -76,8 +76,11 @@ require a real order reference and therefore real funds (Phase 2).
 - Enough USD for one buy of ETHUSD's minimum size (~$5 at ~$2,500/ETH, sold straight back) plus
   about $0.08 in taker fees
 
-Without credentials the tests skip gracefully. The standard test suite runs
-unchanged — no Kraken access required.
+Without credentials a bare run skips, so the standard test suite runs unchanged with no Kraken
+access. A run that declared its intent, with `--place-real-orders` or a named release, fails
+instead: it set out to prove something, and a skip would exit 0 with nothing proven. And a run with
+`--place-real-orders` in which no real-order phase ran ends with a failing exit code, whatever made
+those phases skip.
 
 ## How to Run
 

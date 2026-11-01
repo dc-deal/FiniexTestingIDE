@@ -229,6 +229,27 @@ def get_git_info(ignore_untracked_under: Optional[str] = None) -> Optional[GitIn
         return None
 
 
+def changed_paths_since(commit: str) -> Optional[List[str]]:
+    """
+    The paths that differ between a commit and the current one of THIS repository.
+
+    Args:
+        commit: The commit to compare from, as a certificate names it
+
+    Returns:
+        The repository-relative paths, empty when nothing differs; None when git is unavailable or
+        the commit is not in this repository's history, as after an amend
+    """
+    root = get_framework_root()
+    if root is None:
+        return None
+    try:
+        output = _checked(root, ['diff', '--name-only', commit, 'HEAD'])
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError):
+        return None
+    return [line for line in output.splitlines() if line]
+
+
 def _git(root: str, args: List[str], text: bool = True,
          env: Optional[dict] = None) -> subprocess.CompletedProcess:
     """
