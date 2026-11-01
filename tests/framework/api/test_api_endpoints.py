@@ -22,6 +22,7 @@ from fastapi.testclient import TestClient
 from python.api.api_app import create_app
 from python.api.api_contract import API_CONTRACT_VERSION, CHANGES
 from python.configuration.app_config_manager import AppConfigManager
+from python.configuration.host_identity_manager import HostIdentityManager
 from python.data_management.index.bars_index_manager import BarsIndexManager
 from python.framework.discoveries.data_coverage.data_coverage_report import DataCoverageReport
 from python.framework.types.api.report_types import (
@@ -163,9 +164,26 @@ class TestHealth:
         r = client.get('/api/v1/health')
         assert r.status_code == 200
         body = r.json()
-        assert set(body) == {'status', 'version', 'started_at', 'uptime_s'}
+        assert set(body) == {'status', 'version', 'started_at', 'uptime_s', 'host_id', 'host_name'}
         assert body['status'] == 'ok'
         assert body['version'] == AppConfigManager().get_version()
+
+    def test_it_says_which_installation_answers(self, client):
+        """The identity a run's rows state, under isolation the declared test identity."""
+        body = client.get('/api/v1/health').json()
+        assert body['host_id'] == HostIdentityManager().get_host_id()
+        assert body['host_name'] is None
+
+    def test_a_configured_name_is_served(self):
+        with patch.object(AppConfigManager, 'get_api_host_name', return_value='my server'):
+            server = TestClient(create_app())
+        assert server.get('/api/v1/health').json()['host_name'] == 'my server'
+
+    def test_it_keeps_answering_where_the_identity_cannot_be_read(self, client):
+        with patch.object(HostIdentityManager, 'read_host_id', return_value=None):
+            r = client.get('/api/v1/health')
+        assert r.status_code == 200
+        assert r.json()['host_id'] is None
 
     def test_it_says_when_the_server_started_in_utc(self, client):
         started = datetime.fromisoformat(client.get('/api/v1/health').json()['started_at'])

@@ -41,10 +41,11 @@ what you hold would be circular.
 loaded the machine is and what runs on it say what this installation does. Neither route has a path
 parameter, so any grant on the surface reaches both — `machine:*` is the one to issue.
 
-## `/health` — whether it answers, and since when
+## `/health` — whether it answers, since when, and which installation
 
 ```json
-{"status": "ok", "version": "1.4.0", "started_at": "2026-10-06T07:11:02+00:00", "uptime_s": 1283.4}
+{"status": "ok", "version": "1.4.0", "started_at": "2026-10-06T07:11:02+00:00", "uptime_s": 1283.4,
+ "host_id": "h_7k2m9q", "host_name": "my server"}
 ```
 
 `status` is `ok` whenever it answers at all. `version` is the application version.
@@ -56,9 +57,18 @@ a consumer that remembers it *sees* a restart instead of inferring one from a fa
 no clock of your own to tell a fresh server from a long-running one, and no agreement about whose
 clock is right.
 
-It is open, so it deliberately carries nothing a stranger could use — no commit, no host, no
-authentication state. In particular it will not tell you whether your token works. That is
-`/caller`.
+`host_id` says **which installation** answers: the same value as `origin_host` on
+[activities](/api/v1/docs/activities) and [runs](/api/v1/docs/runs), so a row can be compared with the
+server it came from. It is minted once per installation and stays when the process restarts, the code
+is redeployed or the address changes, so key a server by it, never by its address. It is null where
+this server cannot read its identity; `/health` keeps answering.
+
+`host_name` is a name for people to read, from the installation's own configuration, and null where
+none is set. Two installations may carry the same one, so it is for display and never a key.
+
+It is open, so it deliberately carries nothing a stranger could use — no commit, no address, no
+authentication state; an identity and a name say which installation answers, not what it holds. In
+particular it will not tell you whether your token works. That is `/caller`.
 
 ## `/caller` — who the server takes you to be
 
@@ -207,6 +217,7 @@ current.
 ## What to cache, and what tells you to drop it
 
 `/timeframes` and `/validation-checks` change only when the server does. Fetch each once and keep
-it; re-fetch when `/health` answers with a `version` or a `started_at` you have not seen before.
+it; re-fetch when `/health` answers with a `version` or a `started_at` you have not seen before. A
+`host_id` you have not seen is another installation: nothing you cached from the last one holds.
 `/caller` changes when your token or its account changes, which is also a restart. `/health`,
 `/machine-resources` and `/activities` are the ones meant to be asked repeatedly.

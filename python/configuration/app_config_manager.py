@@ -4,7 +4,7 @@ Centralized app config management
 """
 
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from python.configuration.config_file_loader import ConfigFileLoader
 from python.configuration.data_home import get_data_home, resolve_in_data_home, workspace_path
@@ -272,6 +272,15 @@ class AppConfigManager:
             The `api.state_frames` block
         """
         return self._app_config.api.state_frames
+
+    def get_api_host_name(self) -> Optional[str]:
+        """
+        The name this installation shows on the health route.
+
+        Returns:
+            The `api.host_name` value, None where none is set
+        """
+        return self._app_config.api.host_name
 
     # ============================================
     # Documentation Search Config

@@ -423,6 +423,11 @@ content: the configuration it was given (`config_id`), the one an AutoTrader ses
 rewritten, so an old run keeps saying what it used. Not the fee seed's `_fee_structure_frozen`,
 which records when a declared fee rate was set. See [Introduction](introduction_to_the_ide.md).
 
+**host id** (`host_id` on `/health`, `origin_host` on a row) — Which installation an answer or a row
+comes from: an identity minted once per installation and kept in its data home, so it stays across a
+restart, a redeploy and a new address. Neither a machine's name nor its address. `host_name`, beside
+it on `/health`, is a name for people to read, from the installation's configuration, and never a key.
+
 **in flight** — A pending order that was sent and not yet acknowledged: in a backtest the latency
 simulator still holds it, in a session the venue has not yet answered. `in_flight_ms` on an order
 event is how long that took, on the acceptance or refusal that answers the submission — the modelled

@@ -23,7 +23,7 @@ from typing import List
 
 # One monotonic integer. Not a date and not the app version: a consumer compares it for
 # equality, and equality is the only question they have.
-API_CONTRACT_VERSION = 47
+API_CONTRACT_VERSION = 48
 
 # Every response carries it, so a saved fixture carries it too.
 CONTRACT_HEADER = 'X-Api-Contract'
@@ -36,15 +36,8 @@ API_PREFIX = '/api/v1'
 # What moved INTO the current version. One line per change, written for someone who cannot
 # read this repository.
 CHANGES: List[str] = [
-    'deployments, a changed meaning: changed is also true when only the code moved, so changed true '
-    'with advisory null is a new state; configuration_changed, new, says what changed said so far',
-    'deployments: code_changes on a session row, one entry per repository whose code differs from the '
-    "previous session's (repository_label, old_commit, new_commit, commits_between, change_direction, subject)",
-    'deployments: code_changes_key on the detail is empty, because an entry of code_changes is identified '
-    'by its place in the list; its repository_label can repeat',
-    'deployments: code_summary on a list row and on the detail (code_stands, sessions, last_change_at, '
-    'age_days), null under two code stands',
-    'run header: a repository in code_identity carries commit_subject and recent_commits, filled for a '
-    'session of a deployment and null on every other run',
-    'sweeps: code_stand on a combination, null on every one because only a session records it',
+    'health: host_id, the identity of the installation answering, the same value as origin_host on the '
+    'rows; null where the server cannot read it',
+    "health: host_name, a name for people to read from the installation's configuration; null where none "
+    'is set',
 ]

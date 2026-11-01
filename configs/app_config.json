@@ -59,8 +59,9 @@
     "trade_history_max": 5000
   },
   "api": {
-    "_comment": "require_auth false is the rollout state in which tokens may exist while nothing is gated yet - a consumer needs its token before it can start sending the header. Set true once every consumer confirms it sends one.",
+    "_comment": "require_auth false is the rollout state in which tokens may exist while nothing is gated yet - a consumer needs its token before it can start sending the header. Set true once every consumer confirms it sends one. host_name is a name for people to read on GET /api/v1/health, null when none is set; that route is open, so the name shows to anyone who reaches the server. An installation sets it in its own user override.",
     "require_auth": false,
+    "host_name": null,
     "machine_resources": {
       "_comment": "The thresholds GET /api/v1/machine-resources grades memory against: the share of the binding memory limit in use from which the pressure level is warn, and from which it is critical. Memory alone - a busy processor is the machine doing its work, memory that runs out is the moment the kernel ends a process.",
       "memory_warn_pct": 80.0,

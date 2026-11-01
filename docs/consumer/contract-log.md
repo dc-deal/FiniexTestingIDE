@@ -33,6 +33,19 @@ reads downwards from the version their fixtures hold until they reach the one be
 A test holds the newest heading in this log to the number the server answers with, so a version
 cannot ship without its entry.
 
+## Version 48 — 2026-11-01
+
+A consumer can tell which installation answers, now that this API exists on more than one system.
+
+- [Server](/api/v1/docs/server), `/health`: `host_id`, the identity of the installation answering, the
+  same value as `origin_host` on [activities](/api/v1/docs/activities) and [runs](/api/v1/docs/runs). It
+  stays when an address changes, so key a system by it. Null where the server cannot read it; `/health`
+  keeps answering.
+- `/health`: `host_name`, a name for people to read, from the installation's configuration; null where
+  none is set. Two installations may carry the same one, so it is no key.
+
+Two fields added on an open route; nothing removed or renamed.
+
 ## Version 47 — 2026-10-30 (#559)
 
 A deployment notices when its sessions ran different code, in a strategy's repository as much as in
@@ -138,38 +151,13 @@ how far it landed from the price it is measured against.
 Nothing removed or renamed; one meaning changed — `exit_slippage` and `exit_slippage_pct` of a
 protective exit.
 
-## Version 43 — 2026-10-27 (#580)
-
-A unit's recorded streams can be read over time: a timeline to draw the axis from, and a window to
-read them a page at a time — a finished run's and a running session's alike.
-
-- `GET /api/v1/reports/runs/{run_id}/units/{unit_name}/recorded-streams`, new: one row per stream
-  the unit records (`key: ["stream_kind", "stream_name"]`) — today its state frames — with
-  `record_count`, `first_record_time` and `last_record_time` on the stream's own
-  `record_time_field`, its cadence (`cadence_timeframe`, `cadence_s`) and `truncated_tail`; beside
-  them the unit's `recording`, the verdict the latest-state-frame route gives. Made to be asked
-  every second or two.
-- `GET /api/v1/reports/runs/{run_id}/units/{unit_name}/recorded-streams/window?from=&to=&limit=`,
-  new: the unit's records in `[from, to)`, oldest first, at most `limit` of them (1 to 2000,
-  omitted 2000; outside it refused with `invalid_limit`, never clamped) — more only where one
-  millisecond holds more, as a page never ends inside one. `from` left out starts with the stream,
-  `to` left out ends after its newest record, and `window` says which instants the answer covers: a
-  bound left out is resolved from the records the window holds, and stays null when it holds none.
-  `matched`, `returned`, `limit`, `truncated`, and `next_from` — set only when the page left records
-  out, always on a millisecond boundary: ask the next page from there. Each state frame carries
-  `record_no`, its position in the stream (`keys: {"state_frames": ["record_no"]}`).
-- Two new 404 codes: `unit_not_found` — the run records no unit of that name; and
-  `streams_not_recorded` — the run records no stream over time.
-
-Two routes and two codes added; nothing removed or renamed. Its document is
-[recorded streams](/api/v1/docs/recorded-streams).
-
-## Versions 42 and earlier
+## Versions 43 and earlier
 
 One line each. Every one of these moved a shape or a meaning; what they moved is summarised here
 rather than spelled out, because a consumer this far behind needs the list of steps, not each step's
 reasoning. The full text of a compressed version is in this repository's history.
 
+- **Version 43** — 2026-10-27 (#580): A unit's recorded streams can be read over time: a timeline to draw the axis from, and a window to read them a page at a time — a finished run's and a running session's alike. Its document is [recorded streams](/api/v1/docs/recorded-streams).
 - **Version 42** — 2026-10-27 (#476): A booking period counts the orders it handled, so a run's order counts can be read from its periods again — on a [sweep](/api/v1/docs/sweeps) combination, a changed meaning: every `orders_*` field and `sl_tp_triggered` is the sum of its periods' own counts, null before.
 - **Version 41** — 2026-10-26 (#626): What a carry-over may carry across a change: a rehearsal's readings never reach real money, and a start that continues an open position under a changed configuration says so.
 - **Version 40** — 2026-10-25 (#476): A trading day ends at its boundary, every trading day has its row (`tick_count`, new), and a session's days are booked while it runs.

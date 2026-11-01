@@ -14,6 +14,9 @@ Tests for all FiniexTestingIDE HTTP API endpoints. Uses `FastAPI TestClient` wit
 | `TestTimeframes` | `test_timeframes_sorted_ascending_by_minutes` | List is sorted from shortest to longest bar duration |
 | `TestTimeframes` | `test_the_validation_checks_are_the_catalog` | `/validation-checks` serves exactly the check catalog, keyed on `check` |
 | `TestHealth` | `test_health_ok` | Status + version in response |
+| `TestHealth` | `test_it_says_which_installation_answers` | `host_id` is the identity a run's rows state, `host_name` null by default |
+| `TestHealth` | `test_a_configured_name_is_served` | `host_name` comes from the installation's configuration |
+| `TestHealth` | `test_it_keeps_answering_where_the_identity_cannot_be_read` | 200 with `host_id` null |
 | `TestBrokers` | `test_list_brokers` | Broker list from mocked index |
 | `TestSymbols` | `test_list_symbols` | Symbols with correct `market_type`, and `tick_size` from the broker configuration — null for a symbol it does not name |
 | `TestSymbols` | `test_list_symbols_when_the_broker_configuration_cannot_be_read` | 200, every `tick_size` null — the list does not depend on the configuration |

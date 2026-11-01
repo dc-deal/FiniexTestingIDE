@@ -7,7 +7,7 @@ calling, an account says on whose BEHALF.
 """
 
 from enum import StrEnum
-from typing import ClassVar, Tuple
+from typing import ClassVar, Optional, Tuple
 
 from finiex_auth.consumer_token_base import ConsumerTokenBase
 from pydantic import field_validator
@@ -40,11 +40,13 @@ class ApiConfig(StrictConfigModel):
     has not been told yet. It is a state to pass THROUGH, not to stay in: once every consumer
     confirms, this goes to true and the boot line stops saying routes are ungated.
 
-    The `api` block also carries the thresholds of the machine-resources route (#595) and when the
-    latest-frame route reads a session's recording as stopped (#611).
+    The `api` block also carries the thresholds of the machine-resources route (#595), when the
+    latest-frame route reads a session's recording as stopped (#611), and the name this installation
+    shows on the health route.
     """
 
     require_auth: bool = False
+    host_name: Optional[str] = None
     machine_resources: MachineResourcesConfig = MachineResourcesConfig()
     state_frames: StateFramesApiConfig = StateFramesApiConfig()
 
