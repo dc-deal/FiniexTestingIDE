@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import List
 
 import pytest
+from pydantic import ValidationError
 
 from python.configuration.autotrader.autotrader_config_loader import load_autotrader_config
 from python.configuration.composite_definition_manager import CompositeDefinitionManager
@@ -186,3 +187,17 @@ class TestTheSettings:
             return build_composite_key(
                 document, CompositeDocument.SESSION, rules, 'definition', 'USD', axes)
         assert key(retimed) == key(shipped)
+
+
+class TestTheSignalStreamJoin:
+
+    def test_zero_is_refused_at_load(self):
+        """Not waited for at all, the stream's thread would be reported abandoned on every stop."""
+        with pytest.raises(ValidationError, match='signal_transport_join_s'):
+            ShutdownDefaults(signal_transport_join_s=0.0)
+
+    def test_the_other_joins_may_be_zero(self):
+        settings = ShutdownDefaults(
+            tick_thread_join_s=0.0, display_join_s=0.0, request_worker_join_s=0.0)
+        assert settings.bounded_waits_s() == pytest.approx(
+            settings.signal_transport_join_s + settings.alert_flush_s)

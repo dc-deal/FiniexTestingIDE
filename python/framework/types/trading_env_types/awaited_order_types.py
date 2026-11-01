@@ -7,7 +7,7 @@ words.
 """
 
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, Tuple
 
 from python.framework.types.trading_env_types.order_types import (
     OrderAction,
@@ -29,8 +29,9 @@ class AwaitedOrder:
             position is gone
         lots: Its size; None for a whole close whose position is gone
         symbol: Its instrument; None for a close whose position is gone
-        sent_at_monotonic_s: `time.monotonic()` when it was sent; None for an order a previous
-            session sent, which this one adopted
+        sent_at_monotonic_s: `time.monotonic()` when the write it waits for was sent: its submit,
+            or a cancel or an amend in flight; None for an order a previous session sent, which
+            this one adopted
         waits_for: What it waits for, in words a person reads
     """
     order_id: str
@@ -41,6 +42,16 @@ class AwaitedOrder:
     symbol: Optional[str]
     sent_at_monotonic_s: Optional[float]
     waits_for: str
+
+    def key(self) -> Tuple[str, OrderAction]:
+        """
+        What tells this order apart from every other: its id and its action, because a market close
+        carries the id of the position it closes, and that position's open the same.
+
+        Returns:
+            (order id, action)
+        """
+        return self.order_id, self.action
 
     def describe(self) -> str:
         """

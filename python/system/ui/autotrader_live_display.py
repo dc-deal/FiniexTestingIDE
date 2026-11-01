@@ -135,12 +135,21 @@ class AutoTraderLiveDisplay:
         )
         self._thread.start()
 
-    def stop(self) -> None:
-        """Stop the display thread. Final drain + render happens inside the
-        display thread to avoid cross-thread ``live.update()`` calls."""
+    def stop(self) -> bool:
+        """
+        Stop the display thread. Final drain + render happens inside the
+        display thread to avoid cross-thread ``live.update()`` calls.
+
+        Returns:
+            True when the thread finished within display_join_s, or none ran
+        """
         self._running = False
         if self._thread:
             self._thread.join(timeout=self._config.shutdown.display_join_s)
+            if self._thread.is_alive():
+                return False
+            self._thread = None
+        return True
 
     def holds_a_terminal(self) -> bool:
         """
@@ -183,6 +192,9 @@ class AutoTraderLiveDisplay:
                 self._show(live)
         except Exception as error:
             self._running = False
+            # The terminal is free again, so a stop's lines go to it from here on
+            if self._shutdown_status is not None:
+                self._shutdown_status.set_lines_on_console(True)
             self._failure_reporter.report(
                 'The dashboard', error, 'The dashboard has stopped; trading is unaffected.')
 

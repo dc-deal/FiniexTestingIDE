@@ -142,6 +142,9 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         self._http_inbox: queue.Queue = queue.Queue()
         self._worker_thread: Optional[threading.Thread] = None
         self._worker_running: bool = False
+        # A worker whose stop timed out, still inside a call: the adapter's lock is held until
+        # that call returns, so a synchronous call meanwhile waits behind it
+        self._lingering_worker: Optional[threading.Thread] = None
 
         # Executor hooks invoked from drain_inbox() on the main thread.
         # Registered by LiveTradeExecutor in its __init__ via
@@ -851,6 +854,7 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         if self._worker_thread is not None:
             self._worker_thread.join(timeout=timeout)
             if self._worker_thread.is_alive():
+                self._lingering_worker = self._worker_thread
                 self.logger.warning(
                     f'Worker thread did not shut down within {timeout}s — '
                     f'continuing (daemon)'
@@ -858,6 +862,47 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
             else:
                 self.logger.info('Worker thread stopped cleanly')
         self._worker_thread = None
+
+    def is_worker_running(self) -> bool:
+        """
+        Whether the worker still takes jobs off the outbox.
+
+        Returns:
+            False once it was told to stop, whether or not its thread has ended
+        """
+        return self._worker_running
+
+    def is_worker_call_lingering(self) -> bool:
+        """
+        Whether a stopped worker is still inside a call to the venue, because its stop timed out.
+
+        Returns:
+            True while that thread is alive
+        """
+        return self._lingering_worker is not None and self._lingering_worker.is_alive()
+
+    def take_unsent_submits(self) -> List[SubmitJob]:
+        """
+        Take every job off the outbox that a stopped worker never took, and hand back the submits.
+
+        Such a job never left this process, and once taken here no worker can send it. The other
+        jobs are dropped: a stopped worker would never send them either, and the session's cleanup
+        reads and cancels by itself. Only for a stopped worker: a running one would lose what it
+        was about to send.
+
+        Returns:
+            The submits among them, oldest first; empty while the worker still runs
+        """
+        if self._worker_running:
+            return []
+        submits: List[SubmitJob] = []
+        while True:
+            try:
+                job = self._http_outbox.get_nowait()
+            except queue.Empty:
+                return submits
+            if isinstance(job, SubmitJob):
+                submits.append(job)
 
     def _worker_loop(self) -> None:
         """

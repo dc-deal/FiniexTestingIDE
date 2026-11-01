@@ -106,11 +106,18 @@ class SignalHealthProbe:
             target=self._run, name='signal-health', daemon=True)
         self._thread.start()
 
-    def stop(self) -> None:
-        """Stop probing and wait for the thread to finish."""
+    def stop(self, join_timeout_s: Optional[float] = None) -> None:
+        """
+        Stop probing and wait for the thread to finish.
+
+        Args:
+            join_timeout_s: How long to wait for it; None waits out one probe's request. A thread
+                still inside a request then dies with the process: it only asks who the producer is
+        """
         self._stop.set()
         if self._thread is not None:
-            self._thread.join(timeout=self._config.request_timeout_s + 2.0)
+            self._thread.join(timeout=(self._config.request_timeout_s + 2.0
+                                       if join_timeout_s is None else join_timeout_s))
             self._thread = None
 
     def get_status(self) -> SignalHealthStatus:

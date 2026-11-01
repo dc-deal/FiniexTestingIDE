@@ -324,7 +324,8 @@ class TestAStopInProgress:
         '🛑 SHUTTING DOWN · SIGTERM 14:22:42 UTC · decisions stopped',
         '   Waiting for   market BUY 0.12 ETHUSD · on its way 4.2 s · venue has not answered',
         '   Still to do   carry-over · 0 orders to cancel · venue read · reports · alerts',
-        '   Order wait    4.2 s of 30 s, then: booked unaccounted, reported, session ends itself',
+        '   Order wait    4.2 s of 30.0 s, then: booked unaccounted, reported, session ends '
+        'itself',
         '   Kill          in 75.8 s (supervisor)',
     ]
 

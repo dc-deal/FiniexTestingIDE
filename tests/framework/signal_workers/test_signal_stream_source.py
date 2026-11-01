@@ -679,6 +679,19 @@ class TestStoppingWhileTheProducerHangs:
             assert wait_until(lambda: bool(seen))
         assert seen[0] == expected_connect
 
+    def test_the_identity_probe_stops_inside_the_same_bound(self, inbox):
+        """A session's stop budget counts one wait for the stream and its probe together."""
+        server = MockStreamServer([MockStreamReply(stall_s=6.0)])
+        server.start()
+        probe = MagicMock()
+        source = build(server, inbox, health_probe=probe)
+        try:
+            source.stop(join_timeout_s=2.0)
+        finally:
+            server.stop()
+        (bound_s,), _ = probe.stop.call_args
+        assert 0.0 <= bound_s <= 2.0
+
     def test_stop_returns_promptly_while_a_connect_is_still_in_flight(self, inbox):
         """
         The hung-upstream case: the connection is ACCEPTED and the response head never

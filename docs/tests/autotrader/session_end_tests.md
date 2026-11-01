@@ -146,23 +146,32 @@ that sends an order and asks for the end on one tick.
 |---|---|
 | `TestAnAwaitedOpenIsBookedByTheWait` | the fill reaches the book, the balances and the logic before the session-end event, whether the answer arrives during the wait or already lay unread |
 | `TestAnAwaitedMarketClose` | the close's fill ends the position and books the trade; a close with no answer leaves the position open, unaccounted and named |
-| `TestARestingOrderWithNoReferenceYet` | the wait lasts until the reference came, and the cleanup then cancels with it |
+| `TestARestingOrderWithNoReferenceYet` | the wait lasts until the reference came, and the cleanup then cancels with it, in both account models |
 | `TestNothingAwaitedCostsNothing` | no pass and no line, also with a resting order the venue confirmed; a pass stamps the liveness and touches no decision, no worker, no reconcile, no state frame and no signal inbox |
-| `TestTheBoundRunsOut` | unaccounted with `session_end`, one ERROR per order, no fill invented, the logic hears it before the session-end event, one alert naming the order, nothing queued goes out, a late answer changes nothing booked. The fill timeout's road still applies: a last read books a fill, a confirmed cancel books a cancel, an executed part is booked, and a venue that stopped answering leaves the outcome unknown and never a refusal |
-| `TestAFillTimeoutInsideTheWait` | an order whose fill timeout falls inside the wait goes the wait's road, in both account models: unaccounted with `session_end`, an ERROR per order, the alert, and a submit still queued never goes out |
+| `TestTheBoundRunsOut` | unaccounted with `session_end`, one ERROR per order, no fill invented, the logic hears it before the session-end event, one alert naming the order, the worker stopped before the first booking (by the order of the calls), a late answer changes nothing booked. The fill timeout's road still applies: a last read books a fill, a confirmed cancel books a cancel, an executed part is booked, and a venue that stopped answering leaves the outcome unknown and never a refusal |
+| `TestAFillTimeoutInsideTheWait` | an order whose fill timeout falls inside the wait goes the wait's road, in both account models: unaccounted with `session_end`, an ERROR, the alert; a submit still queued never goes out and is withdrawn as cancelled |
 | `TestTheEndsThatDoNotWait` | a hard stop's EMERGENCY and an input that ran out go straight on; a hook that turns the end into an emergency ends the wait; what these ends leave is an ERROR, no longer a warning and exit 0 |
-| `TestABoundaryCrossedDuringTheWait` | the wait's clock crosses midnight from the last event, and the fill is booked into the day it opened |
+| `TestABoundaryCrossedDuringTheWait` | the wait's clock crosses midnight from the last event, and the fill is booked into the day it opened; the answer is released once that clock passed midnight, a condition rather than a timer |
 | `TestAHookThatSendsAnOrderDuringTheWait` | the same bound covers the new order |
 | `TestTheRowsTheStopReads` | what each row says about an open, a close, an acknowledged order and a resting one |
 | `TestAWholeSessionWithAnAwaitedOrder` | through a session's records: the order booked, its position valued though no tick follows the fill, one booking period and no phantom ones up to today, the fill stamped near the last event, the hooks in order, exit 0 |
 | `TestAWholeSessionWhoseBoundRunsOut` | through a session's records: exit 3 on the ERROR, the order unaccounted, no position, the hooks in order |
-| `TestTheCleanup` | the worker stops first and a queued submit does not go out, an answer that came is read before anything is booked, a read that fails still cancels the resting orders |
+| `TestTheCleanup` | the worker stops before the first booking (by the order of the calls) and a queued submit never goes out and ends cancelled, an answer that came is read before anything is booked, a read that fails still cancels the resting orders |
 | `TestTheNoteAfterTheCleanup` | a fill the cleanup found reaches the note at spot. At margin the note carries no book, which this pins as well (#209) |
-| `TestTheBudget` | a declared kill shortens the wait or leaves no pass at all; with no time left no read and no cancel goes out, and each such order takes the unconfirmed route with a sentence saying why; a stop counts from the first signal, or from its first step where nobody signalled |
+| `TestTheBudget` | in both account models: a declared kill leaves the reserve and every join and the alert flush their time, read off the bound the wait begins with, or leaves no pass at all; with no time left no read and no cancel goes out, and each such order takes the unconfirmed route with a sentence saying why; a stop counts from the first signal, or from its first step where nobody signalled. A worker still inside a call doubles what the next call may cost, and the executor's ladder counts the adapter's socket timeout where broker_transport sets it apart |
 | `TestTheEndReadUnderTheBudget` | with no time left each part stays unread and is named, with time for one attempt each part gets one, with time for the ladder a healthy venue answers, and the read at the start is untouched |
 | `TestAWholeSessionWithAVenueThatStoppedAnswering` | the parts stay unread and named, exit 3, and the ledger row is written |
+| `TestAWholeSessionWithNothingAwaitedUnderAShortKill` | with nothing on its way the stop still opens its budget: the venue read keeps to it, each part stays unread and named, exit 3, and nothing was waited for; in both account models |
+| `TestAnOrderSentAtTheSessionEnd` | a close sent from `on_session_end` is waited for, its fill booked and the trade in the books before the cleanup, in both account models and answer shapes; the logic hears nothing after the session-end event; both waits keep to one bound; after a wait that ran out nothing more goes out, and the event's order ends cancelled |
+| `TestAPartAtTheRunOut` | a part the venue's last answer shows executed is booked as the order's fill and the rest is unaccounted, with one ERROR naming both, the alert's line and the closing outcome counting it filled in part; in both account models |
+| `TestAnOrderThatNeverLeft` | a submit queued behind an unanswered order and a hook's order sent after the worker stopped never reach the venue: cancelled by the framework, a WARNING, not in the alert, heard before the session-end event; in both account models |
+| `TestTheLeavePolicy` | under `orders: "leave"` a resting order with no reference is booked unaccounted with an ERROR, not counted open at the venue; in both account models |
+| `TestAnOrderAtTheResolutionCeiling` | an order nothing asks about any more is not waited for, and the cleanup books it unaccounted with an ERROR; in both account models |
+| `TestARestingOrderWithACancelOnItsWay` | its age is the age of its cancel, not of its life |
+| `TestAHookThatClosesOnTheFill` | an open and its close share one id and count as two orders, each with its line in the journal; in both account models |
+| `TestASlowPass` | `settled after` counts the pass that held a read of the venue |
 | `TestWhatTheStatusAsksTheSession` | how many orders the cleanup will cancel, by the session-end policy, and what asked for a stop no signal asked for; a signal keeps its word |
-| `TestWhatTheWaitCameTo` | what the closing alert's line reads off the order records of a real executor: an open and a close that filled and a bound that ran out in both account models, a resting order the venue took, and no status at all with nothing in flight |
+| `TestWhatTheWaitCameTo` | what the closing alert's line reads off the order records of a real executor: an open and a close that filled, a bound that ran out and a resting order the venue took, in both account models, and no status at all with nothing in flight |
 
 ## The two guards worth knowing about
 

@@ -345,7 +345,8 @@ before: the OSError always arrived first, so the silence error could never fire 
 the connection and never sends a response head left `stop()` with nothing to shut down, because the
 socket handle was published only after the response was read — so a session end blocked for the whole
 watchdog, and in a live-adapter session that wait sits *ahead of closing open positions*. The test measures
-that `stop()` returns in under two seconds against a six-second watchdog.
+that `stop()` returns in under two seconds against a six-second watchdog. A second one holds that the
+identity probe stops inside the same bound, so a session's stop budget counts one wait for both threads.
 
 ### test_signal_boot_bridge.py (#468)
 

@@ -468,7 +468,9 @@ and [Reading the Results Ledger](user_guides/results_ledger_guide.md).
 **kill** (`supervisor_kill_after_s`, `Kill` on a stop's panel) — The supervisor's end of a session's
 stop: what it sends once the period after its signal is over, which the process cannot catch and is
 never told in advance. Not the session's own act, and not a venue's kill switch, which cancels
-orders and blocks new ones. See
+orders and blocks new ones. Once the declared time has gone by the panel reads it `overdue`; a stop
+no signal asked for, a strategy's own end, keeps to the same time with no kill coming, `not
+signalled`. See
 [Unattended operation](autotrader/unattended_operation.md#a-stop--what-it-waits-for-and-the-kill-it-has-to-fit-under).
 
 **layer** — Never used alone. A configuration value is *layered* by its cascade (see *cascade*);
@@ -555,8 +557,9 @@ record is repeated or skipped. See [recorded streams](consumer/recorded-streams.
 **on its way** (`Waiting for` on a stop's panel, `on their way` in its lines) — What a *session's
 stop* waits for: an order in the request processor's pipeline, or a resting order with an operation
 in flight or no reference yet. Wider than *in flight*, which ends with the venue's first answer: an
-order the venue took and has not filled is still on its way. In the code it is an `AwaitedOrder`,
-and `get_awaited_orders` lists them. See [Session
+order the venue took and has not filled is still on its way. Not an order at the resolution ceiling,
+which nothing asks about any more. In the code it is an `AwaitedOrder`, told apart by its id and its
+action, and `get_awaited_orders` lists them. See [Session
 End](architecture/session_end_policy.md#what-waits-and-for-what).
 
 **one-off** — A session that belongs to no deployment.
@@ -608,8 +611,9 @@ resting order the venue reports under a type this project cannot name: reported,
 and never acted on. What a venue offers of the types is its order capabilities.
 
 **order wait** (`order_wait_s`, `Order wait` on a stop's panel) — How long a *session's stop* waits
-for the orders *on their way* before it books them unaccounted. Shorter under a declared *kill*. Not
-the fill timeout, which keeps running inside it. See
+for the orders *on their way* before it books them unaccounted. Shorter under a declared *kill*. One
+bound covers what the logic sends from the session-end event as well. Not the fill timeout, which
+does not act once a stop is under way. See
 [Unattended operation](autotrader/unattended_operation.md#a-stop--what-it-waits-for-and-the-kill-it-has-to-fit-under).
 
 **orders to** (`orders_to`) — Where a run's orders went: `simulated` or `venue` — and `venue` is

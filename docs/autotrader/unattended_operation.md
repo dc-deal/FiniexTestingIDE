@@ -180,6 +180,7 @@ signal, or the strategy's own end
   the loop's last pass
   wait for the orders on their way      order_wait_s, shorter under a declared kill
   session-end event                     the logic has heard what the wait booked
+  wait for what the event sent          the rest of the same order_wait_s
   feeds stopped                         signal_transport_join_s · tick_thread_join_s
   carry-over written
   orders: worker stopped, last answers
@@ -243,7 +244,7 @@ like this in the journal, here under a kill that shortened the wait (real lines 
 ```
 🛑 SHUTTING DOWN · SIGTERM 17:30:49 UTC · decisions stopped · kill in 45.0 s (supervisor)
 ⏳ Stop: 1 order(s) on their way, waiting up to 5.9 s
-⏳ Stop: waited 5.0 s of 6 s · market BUY 0.01 BTCUSD · on its way 5.0 s · venue has not answered
+⏳ Stop: waited 5.0 s of 5.9 s · market BUY 0.01 BTCUSD · on its way 5.0 s · venue has not answered
 ⏳ Stop: the wait ran out after 5.9 s with 1 order(s) on their way
 ⏳ Stop: 1 order(s) recorded unaccounted, 0 left to the cleanup
 ```
@@ -251,12 +252,17 @@ like this in the journal, here under a kill that shortened the wait (real lines 
 and like this in the alert it sends at that moment:
 
 ```
-Stop is not clean — no answer for an order after 6 s
+Stop is not clean — no answer for an order after 5.9 s
 market BUY 0.01 BTCUSD · pos_btcusd_1 · venue has not answered
 Recorded UNACCOUNTED; it may still fill at the venue.
-The session keeps stopping, kill in about 39 s.
+The session keeps stopping, kill in 39.1 s (supervisor).
 Check the account after the stop.
 ```
+
+Two endings are no unanswered order. A part the venue's last answer shows executed is booked as the
+order's fill, and only the rest is unaccounted: its line in the alert says `0.004 executed and
+booked, no answer for the rest`. An order the stopped worker never sent never reached the venue: it
+ends `cancelled`, with a WARNING that it never left this process, and is not in the alert.
 
 - **The record:** the order is `unaccounted` with end reason `session_end`, with one ERROR per order
   on the session channel, and the logic hears it before the session-end event. Whatever the venue
@@ -277,6 +283,10 @@ and so does a second Ctrl+C, which ends the process at once.
 A declared kill needs room for one venue call on top of its reserve: with less than
 `reserve_for_records_s` plus one socket timeout left, 30 s at the defaults, no cancel and no end
 read goes out, so resting orders stay at the venue and the stop exits 3. The start's warning says so.
+One venue call is counted at the larger of the broker's two socket figures,
+`broker_transport.request_timeout_s` and its `connection.request_timeout_s`, and at twice that while
+a request worker whose join timed out is still inside a call, because the adapter makes one call at
+a time.
 
 ## A stop — what it says while it runs
 
@@ -293,12 +303,18 @@ each layout, where a frame cropped by a short terminal does not reach it, the st
 🛑 SHUTTING DOWN · SIGTERM 14:22:42 UTC · decisions stopped
    Waiting for   market BUY 0.12 ETHUSD · on its way 4.2 s · venue has not answered
    Still to do   carry-over · 0 orders to cancel · venue read · reports · alerts
-   Order wait    4.2 s of 30 s, then: booked unaccounted, reported, session ends itself
+   Order wait    4.2 s of 30.0 s, then: booked unaccounted, reported, session ends itself
    Kill          in 75.8 s (supervisor)
 ```
 
-`Kill` stands only where `supervisor_kill_after_s` declares one. With nothing on its way, `Waiting for`
-and `Order wait` are gone and a `Now` line names the step in progress.
+`Kill` stands only where `supervisor_kill_after_s` declares one. It reads `overdue by 2.0 s
+(supervisor)` once the declared time has gone by, which says the declaration is too short. A stop no
+signal asked for, a strategy's own end, keeps to the same time, but no supervisor's kill is coming:
+`not signalled, the stop keeps within 75.8 s`. `Order wait` names what follows its end by what it
+waits for: a market order is booked unaccounted there, a resting one is `left to the cleanup`. With
+nothing on its way, `Waiting for` and `Order wait` are gone and a `Now` line names the step in
+progress. A thread that outlasts its join, the tick source's or the display's, is said by a WARNING
+on the session channel, and a display that fails hands the console back to the lines.
 
 Under a supervisor there is no terminal, and the session's loggers buffer their console until the end.
 So the same status goes out line by line, flushed, wherever no display holds a terminal, and always to
@@ -309,7 +325,7 @@ because a print there can raise on the very write it interrupted; the first step
 ```
 🛑 SHUTTING DOWN · SIGTERM 14:22:42 UTC · decisions stopped · kill in 79.8 s (supervisor)
 ⏳ Stop: 1 order(s) on their way, waiting up to 30.0 s
-⏳ Stop: waited 5.1 s of 30 s · market BUY 0.12 ETHUSD · on its way 5.1 s · venue has not answered
+⏳ Stop: waited 5.1 s of 30.0 s · market BUY 0.12 ETHUSD · on its way 5.1 s · venue has not answered
 ⏳ Stop: market BUY 0.12 ETHUSD settled after 7.2 s: executed
 ⏳ Stop: nothing on its way any more after 7.2 s
 🛑 Stop: stopping the feeds
@@ -325,6 +341,7 @@ runs out does, and the closing message then carries one line on what the wait ca
 
 ```
 Stop: waited 5.2 s for 1 order, filled and booked
+Stop: waited 0.2 s for 1 order, filled in part, the part booked
 Stop: waited 30.0 s for 1 order, no answer for 1, recorded unaccounted
 ```
 

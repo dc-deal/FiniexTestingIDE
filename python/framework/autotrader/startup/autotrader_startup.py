@@ -704,6 +704,7 @@ def _build_executor(
         spot_mode=account.spot_mode,
         poll_interval_ms=broker_entry.broker_transport.poll_interval_ms,
         connection_policy=connection_policy,
+        socket_timeout_s=broker_entry.broker_transport.request_timeout_s,
         # #473 — four characters of the run id's random half. The SESSION owns it, derived here
         # once and never re-derived downstream: a key that changed mid-session would leave the
         # orders sent under the old one looking like a stranger's.

@@ -126,6 +126,9 @@ class PendingOrderTiming:
     # exactly the span the settle window measures before an empty answer may be promoted
     # to "the venue never took it".
     last_write_at: Optional[datetime] = None
+    # The same moment on the MONOTONIC clock, for the age a session's stop shows of the write an
+    # order waits for: a duration, so never from the canonical clock above
+    last_write_monotonic: Optional[float] = None
 
 
 @dataclass

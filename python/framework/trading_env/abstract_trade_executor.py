@@ -213,6 +213,10 @@ class AbstractTradeExecutor(ABC):
             maxlen=order_history_max if order_history_max > 0 else None
         )
         self._order_history_limit_warned = False
+        # Orders whose booked ending gave the venue's hold back: cancelled or expired. The end of a
+        # session or a scenario books its resting orders so and leaves them in the active lists for
+        # the snapshot, so the funds they claimed are released here, not by removing them
+        self._released_order_ids: Set[str] = set()
 
         # Execution statistics — the rows are counted by status where they are booked
         # (`_book_order_result`), the submissions where an order is handed to the venue, the
@@ -327,6 +331,8 @@ class AbstractTradeExecutor(ABC):
         self._execution_counts.count_status(result.status)
         self._check_order_history_limit()
         self._order_history.append(result)
+        if result.status in (OrderStatus.CANCELLED, OrderStatus.EXPIRED):
+            self._released_order_ids.add(result.order_id)
         recorded_as = event_type or ORDER_EVENT_BY_STATUS[result.status]
         if recorded_as is None:
             return result
@@ -2366,7 +2372,10 @@ class AbstractTradeExecutor(ABC):
 
             OPEN  LONG   → quote, lots * price + fee     OPEN  SHORT  → base,  lots
 
-        A CLOSE claims nothing — see `_pending_outflow`.
+        A CLOSE claims nothing — see `_pending_outflow`. Nor does an order already booked cancelled or
+        expired: the end of a session or a scenario leaves those in the active lists for the
+        snapshot, and counting them showed funds as claimed that the venue had given back.
+        An order booked unaccounted still counts, because the venue may still hold it.
 
         Derived on demand and never stored: the claim is a running fact about the order
         book, and a cached one would need invalidating on every fill, cancel and modify.
@@ -2387,6 +2396,8 @@ class AbstractTradeExecutor(ABC):
         total = 0.0
         for pending in self.get_active_orders() + self.get_pipeline_orders():
             if pending.pending_order_id == exclude_order_id:
+                continue
+            if pending.pending_order_id in self._released_order_ids:
                 continue
             outflow_currency, amount = self._pending_outflow(pending)
             if outflow_currency == currency:
@@ -2615,6 +2626,17 @@ class AbstractTradeExecutor(ABC):
 
         Returns:
             The orders booked unaccounted
+        """
+        return []
+
+    def withdraw_unsent_orders(self) -> List[str]:
+        """
+        Book each order a stopped request worker never sent as cancelled at the session end.
+
+        Default: nothing, for the reason `get_awaited_orders` gives.
+
+        Returns:
+            The ids of the orders withdrawn
         """
         return []
 
@@ -3131,6 +3153,7 @@ class AbstractTradeExecutor(ABC):
         self._current_prices.clear()
         self._order_counter = 0
         self._order_history.clear()
+        self._released_order_ids.clear()
         self._execution_counts = ExecutionCounters()
         self._order_event_seq = 0
         self._recent_endings.clear()

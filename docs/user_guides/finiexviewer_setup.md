@@ -100,6 +100,63 @@ The container automatically installs npm dependencies on first start (`npm insta
 
 ---
 
+## A second server — reading an installation on another machine
+
+The viewer can read more than one API server: the development installation beside it, and an
+installation on another machine, such as a server that runs a bot. Each one is an installation of its
+own, with its own data, its own tokens and its own contract. This section covers how to reach such a
+server and tell it apart; how to run a bot there is
+[Unattended Operation](../autotrader/unattended_operation.md).
+
+- **Tell servers apart by `host_id`.** `GET /api/v1/health` serves it without a token, and the same
+  value stands as `origin_host` on every activity row and run row. It stays when the address
+  changes. `host_name` is a name for people to read, set in that installation's `api.host_name`, and
+  null where nobody set one.
+- **One token per server.** A token is known only to the installation that holds it in its
+  `user_configs/credentials/inbound/consumer_tokens.json`. Mint it on that server with
+  `api_token_cli.py account` and `mint`, and keep the plaintext on the viewer's side in its own
+  gitignored workspace, never in a repository or a browser.
+- **Read the contract per server**, from `X-Api-Contract`. Each installation is deployed on its
+  own, so for a while one is ahead of the other.
+- **Never publish that server's API port.** Bind it to the server's loopback (`127.0.0.1:8000`) and
+  reach it through an SSH tunnel, with an account on the server that may open this one port and
+  nothing else: no shell (`/usr/sbin/nologin`), its key restricted in `authorized_keys`, and a
+  `Match User` block in `sshd_config` that repeats the limit:
+
+  ```
+  # ~tunnel-user/.ssh/authorized_keys
+  restrict,port-forwarding,permitopen="127.0.0.1:8000" ssh-ed25519 AAAA… viewer tunnel
+
+  # /etc/ssh/sshd_config.d/ — and the account added to AllowUsers
+  Match User tunnel-user
+      AllowTcpForwarding local
+      PermitOpen 127.0.0.1:8000
+      PermitTTY no
+      X11Forwarding no
+      AllowAgentForwarding no
+      ForceCommand /usr/sbin/nologin
+  ```
+
+  The viewer's side keeps the tunnel open, in a loop so that it reconnects, and then reads
+  `http://localhost:8010/api/v1` as that server:
+
+  ```bash
+  ssh -N -i <key> -o UserKnownHostsFile=<pinned known_hosts> -o StrictHostKeyChecking=yes \
+      -o BatchMode=yes -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 \
+      -L 8010:127.0.0.1:8000 tunnel-user@<server>
+  ```
+
+  A tunnel that is down means no connection, never a statement about the server or a bot on it.
+- **Beside a bot on the same machine**, run the API server in a container of its own and mount the
+  bot's data home read-only, so a viewer can never change the bot's records. Two of its folders
+  still need write access, because a read rebuilds an index there: `runs/ledger/`, and a folder of
+  the API's own for the configuration directory's index (`data/runtime/config_directory/`). And
+  start that container without an init process, so the API server is process 1 there: the
+  activity list matches memory to activities by process number, and two containers can both have a
+  process 8.
+
+---
+
 ## Port Overview
 
 | Port | Service | Published as |
@@ -107,6 +164,7 @@ The container automatically installs npm dependencies on first start (`npm insta
 | `8000` | FiniexTestingIDE FastAPI (HTTP API) | `127.0.0.1:8000` — loopback only |
 | `5173` | FiniexViewer Vite dev server | `127.0.0.1:5173` — loopback only |
 | `4173` | FiniexViewer `vite preview` (the production bundle) | `127.0.0.1:4173` — loopback only |
+| `8010` | a second server's API, through the SSH tunnel (the port is an example) | on the viewer's side only |
 
 Both viewer ports are bound to the loopback for the API's reason: the Vite server forwards `/api`
 to the API, so a viewer port open on every interface would make the API reachable from the network

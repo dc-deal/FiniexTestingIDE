@@ -314,13 +314,14 @@ def stopping() -> ShutdownStatus:
     """
     return ShutdownStatus(
         asked_by='SIGTERM', asked_at=datetime(2026, 10, 12, 14, 22, 42, tzinfo=timezone.utc),
-        as_of_monotonic_s=1004.2, kill_at_monotonic_s=1080.0, orders_to_cancel=0,
+        as_of_monotonic_s=1004.2, kill_at_monotonic_s=1080.0, kill_signalled=True,
+        orders_to_cancel=0,
         awaited_orders=(AwaitedOrder(
             order_id='pos_ethusd_1', action=OrderAction.OPEN, order_type=OrderType.MARKET,
             direction=OrderDirection.LONG, lots=0.12, symbol='ETHUSD',
             sent_at_monotonic_s=1000.0, waits_for='venue has not answered'),),
         order_wait_began_monotonic_s=1000.0, order_wait_bound_s=30.0,
-        orders_waited_for=frozenset({'pos_ethusd_1'}))
+        orders_waited_for=frozenset({('pos_ethusd_1', OrderAction.OPEN)}))
 
 
 @pytest.fixture

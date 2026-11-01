@@ -8,9 +8,9 @@ decisions rather than one.** Layer b (architecture / flow) per #323.
 | Config block | `session_end` in a profile · defaults in [app_config.json](../../configs/app_config.json) |
 | Broker posture | `brokers[].session_end_orders` in [market_config.json](../../configs/market_config.json) |
 | Policy resolution | [session_end_validator.py](../../python/framework/validators/session_end_validator.py) |
-| Live cleanup | [live_trade_executor.py:3875](../../python/framework/trading_env/live/live_trade_executor.py#L3875) |
+| Live cleanup | [live_trade_executor.py:4020](../../python/framework/trading_env/live/live_trade_executor.py#L4020) |
 | Sim cleanup | [trade_simulator.py:1440](../../python/framework/trading_env/simulation/trade_simulator.py#L1440) |
-| A stop's wait for orders on their way | [autotrader_tick_loop.py:776](../../python/framework/autotrader/autotrader_tick_loop.py#L776) |
+| A stop's wait for orders on their way | [autotrader_tick_loop.py:760](../../python/framework/autotrader/autotrader_tick_loop.py#L760) |
 | Its settings | `autotrader.shutdown` in [app_config.json](../../configs/app_config.json) |
 | Accounting rule | [reporting_pipeline.md](reporting_pipeline.md) — *Realised vs valued* |
 | Tests | [session_end_tests.md](../tests/autotrader/session_end_tests.md) |
@@ -239,7 +239,15 @@ log rotation and the carry-over watcher.
 It waits for every order in the request processor's pipeline, where a market open and a market close
 both live, and every resting order with an operation in flight or no reference yet. With nothing on
 its way it costs no pass and no line. A resting order the venue confirmed is not on its way: that is
-the policy's, above.
+the policy's, above. Nor is an order at the resolution ceiling: nothing asks about it any more, so a
+wait for it would only run out, and the cleanup books it unaccounted with an ERROR that says so.
+
+**And once more after the session-end event.** A strategy may close on its way out, from
+`on_session_end`. Such a close is waited for the same way, so its fill is booked before the cleanup,
+and both waits keep to one bound: the second goes on from the time the first spent, and does not
+run at all once the first ran out, because the worker stopped with it. The logic does not hear what
+this second wait settles: the session-end event stays the last thing it is told. An open and its
+close carry the same id, so the stop tells its orders apart by id and action.
 
 ### One wait pass
 
@@ -269,15 +277,26 @@ ends `unaccounted` with `end_reason` `session_end`, an ERROR per order on the se
 one alert, so the session exits 3. A resting order on its way stays for the cleanup, which cancels
 or leaves it by the policy.
 
+- **An executed part the venue named is booked.** Where its last answer shows part of the order
+  executed and nobody asks again, that part is the order's fill, as for an order the venue ended
+  after a part; the rest ends unaccounted, a step after the fill, and the ERROR names both. The
+  closing message counts such an order as `filled in part`.
+- **An order that never left is withdrawn.** A submit still queued when the worker stops, or one a
+  hook sends after it stopped, never reached the venue. It ends `cancelled` by the framework with
+  `end_reason` `session_end`, a WARNING says it never left this process, and the logic hears it as a
+  cancel: nothing about it is unknown, so it is neither unaccounted nor an ERROR.
+
 What the operator reads when that happens, and what to do, is in
 [Unattended Operation](../autotrader/unattended_operation.md#a-stop--what-it-waits-for-and-the-kill-it-has-to-fit-under).
 
 ### The cleanup, and the carry-over written twice
 
-`finish_remaining_orders` stops the worker and reads its answers first, so a queued submit cannot go
-out after its order was booked. Its second phase, which books what is left in the pipeline, serves
-only the ends that do not wait, and each such order gets an ERROR, where it used to be a warning and
-exit 0.
+`finish_remaining_orders` stops the worker, reads its answers and withdraws what it never sent first,
+so a queued submit cannot go out after its order was booked. Its second phase, which books what is
+left in the pipeline, serves only the ends that do not wait, and each such order gets an ERROR, where
+it used to be a warning and exit 0. Under `orders: "leave"` a resting order with no reference cannot
+be left standing by name: its submit went out unanswered, so it is booked unaccounted with an ERROR
+rather than counted as open at the venue.
 
 `_shutdown` writes the carry-over before the cleanup, because that is the state it describes, and
 again after it, because a fill the cleanup found, on a read after a refused cancel, moved the book.
@@ -334,15 +353,15 @@ populated.
 | Policy resolution + the three refusals | [session_end_validator.py:36](../../python/framework/validators/session_end_validator.py#L36) |
 | The incoherent pair | [session_end_validator.py:80](../../python/framework/validators/session_end_validator.py#L80) |
 | Resolved at startup, before anything is touched | [autotrader_main.py:614](../../python/framework/autotrader/autotrader_main.py#L614) |
-| The shutdown call site | [autotrader_main.py:1431](../../python/framework/autotrader/autotrader_main.py#L1431) |
-| The contract | [abstract_trade_executor.py:2878](../../python/framework/trading_env/abstract_trade_executor.py#L2878) |
-| `check_clean_shutdown(expect_flat)` | [abstract_trade_executor.py:2907](../../python/framework/trading_env/abstract_trade_executor.py#L2907) |
+| The shutdown call site | [autotrader_main.py:1447](../../python/framework/autotrader/autotrader_main.py#L1447) |
+| The contract | [abstract_trade_executor.py:2889](../../python/framework/trading_env/abstract_trade_executor.py#L2889) |
+| `check_clean_shutdown(expect_flat)` | [abstract_trade_executor.py:2918](../../python/framework/trading_env/abstract_trade_executor.py#L2918) |
 | The open-position report row | [report_types.py:545](../../python/framework/types/api/report_types.py#L545) |
 | The equity curve, one scale for both writers | [portfolio_manager.py:1380](../../python/framework/trading_env/portfolio_manager.py#L1380) |
 | The adoption prompt that states this policy | [cold_start_adopter.py:1005](../../python/framework/autotrader/cold_start/cold_start_adopter.py#L1005) |
-| A stop's wait and one pass of it | [autotrader_tick_loop.py:776](../../python/framework/autotrader/autotrader_tick_loop.py#L776) · [autotrader_tick_loop.py:822](../../python/framework/autotrader/autotrader_tick_loop.py#L822) |
-| What it waits for | [live_trade_executor.py:3715](../../python/framework/trading_env/live/live_trade_executor.py#L3715) |
-| A bound that runs out | [live_trade_executor.py:3790](../../python/framework/trading_env/live/live_trade_executor.py#L3790) |
+| A stop's wait and one pass of it | [autotrader_tick_loop.py:760](../../python/framework/autotrader/autotrader_tick_loop.py#L760) · [autotrader_tick_loop.py:824](../../python/framework/autotrader/autotrader_tick_loop.py#L824) |
+| What it waits for | [live_trade_executor.py:3810](../../python/framework/trading_env/live/live_trade_executor.py#L3810) |
+| A bound that runs out | [live_trade_executor.py:3894](../../python/framework/trading_env/live/live_trade_executor.py#L3894) |
 | The budget, and the check at the start | [stop_budget.py:16](../../python/framework/autotrader/stop_budget.py#L16) · [stop_budget_validator.py:31](../../python/framework/validators/stop_budget_validator.py#L31) |
 
 ## Related

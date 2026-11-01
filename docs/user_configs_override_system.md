@@ -19,7 +19,7 @@ The two systems are independent. Don't expect content-merge for credentials, and
 
 ## System A — Content-Merge (shared config files)
 
-These six configs follow the merge pattern. Each has a base in `configs/` and an optional override in `user_configs/` with the same filename:
+These configs follow the merge pattern. Each has a base in `configs/` and an optional override in `user_configs/` with the same filename:
 
 | Config | Base | User override | Pydantic schema |
 |---|---|---|---|
@@ -29,6 +29,9 @@ These six configs follow the merge pattern. Each has a base in `configs/` and an
 | Test config | `configs/test_config.json` | `user_configs/test_config.json` | — |
 | Discoveries config | `configs/discoveries/discoveries_config.json` | `user_configs/discoveries_config.json` | — |
 | Generator config | `configs/generator/generator_config.json` | `user_configs/generator_config.json` | — |
+| Sentiment config | `configs/sentiment_config.json` | `user_configs/sentiment_config.json` | `SentimentConfig` |
+| Composite definition | `configs/composite_definition.json` | `user_configs/composite_definition.json` | `CompositeDefinitionConfig` |
+| Data origins | `configs/data_origins.json` | `user_configs/data_origins.json` | `DataOriginConfig` |
 
 ### Merge rules
 

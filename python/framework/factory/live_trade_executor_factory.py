@@ -37,6 +37,7 @@ def build_live_executor(
     resolution_config: Optional[UnresolvedResolutionDefaults] = None,
     venue_read_settle_seconds: float = 5.0,
     shutdown_config: Optional[ShutdownDefaults] = None,
+    socket_timeout_s: Optional[float] = None,
 ) -> LiveTradeExecutor:
     """
     Create a fully configured LiveTradeExecutor.
@@ -66,6 +67,8 @@ def build_live_executor(
             before an answer that names nothing counts as evidence (#487).
         shutdown_config: The waits of the session's stop (#630). Sourced from
             AutoTraderConfig.shutdown.
+        socket_timeout_s: How long the adapter's socket waits for one call. Sourced from
+            BrokerTransportConfig.request_timeout_s; None leaves the ladder's own figure
 
     Returns:
         LiveTradeExecutor ready for an AutoTrader session
@@ -84,9 +87,14 @@ def build_live_executor(
 
     # One ladder for this broker's REST endpoint, handed to the executor so the order path
     # and the Reconciler classify the same 502 the same way (#473).
+    # The ladder's worst case and the stop's budget count a call at the socket timeout the adapter
+    # really waits, which broker_transport sets apart from the ladder's own figure
+    policy = connection_policy or ConnectionPolicy()
+    if socket_timeout_s is not None and socket_timeout_s > policy.request_timeout_s:
+        policy = policy.model_copy(update={'request_timeout_s': float(socket_timeout_s)})
     rest_ladder = ConnectionLadder(
         name='broker_rest',
-        policy=connection_policy or ConnectionPolicy(),
+        policy=policy,
         logger=logger,
     )
 

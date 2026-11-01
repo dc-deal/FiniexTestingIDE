@@ -21,6 +21,7 @@ Runs on its own thread because the loop must never wait on a socket.
 import json
 import socket
 import threading
+import time
 from collections import deque
 from datetime import datetime, timezone
 from http.client import HTTPConnection, HTTPResponse, HTTPSConnection
@@ -268,13 +269,16 @@ class SignalStreamSource(AbstractSignalTransport):
         """
         self._stop.set()
         self._close_open()
-        if self._health_probe is not None:
-            self._health_probe.stop()
+        stop_began = time.monotonic()
         stranded = False
         if self._thread is not None:
             self._thread.join(timeout=join_timeout_s)
             stranded = self._thread.is_alive()
             self._thread = None
+        # The identity probe gets what the same bound has left, so a session's stop budget counts
+        # one wait for both threads
+        if self._health_probe is not None:
+            self._health_probe.stop(max(0.0, join_timeout_s - (time.monotonic() - stop_began)))
         self._logger.info(
             f'📡 Signal stream stopped: {self._connections} connections, '
             f'{self._enqueued} envelopes, {self._replays} replays requested')

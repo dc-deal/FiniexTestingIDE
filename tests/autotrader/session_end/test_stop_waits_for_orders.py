@@ -33,6 +33,7 @@ from python.framework.autotrader.shutdown_status_holder import ShutdownStatusHol
 from python.framework.autotrader.stop_budget import StopBudget
 from python.framework.bars.bar_rendering_controller import BarRenderingController
 from python.framework.exceptions.connection_errors import ConnectionAttemptFailedError
+from python.framework.factory.live_trade_executor_factory import build_live_executor
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.reporting.store.run_results_ledger import RunResultsLedger
 from python.framework.testing.mock_broker_adapter import MockBrokerAdapter, MockExecutionMode
@@ -50,6 +51,7 @@ from python.framework.types.autotrader_types.shutdown_status_types import StopWa
 from python.framework.types.config_types.autotrader_defaults_config_types import (
     AutotraderExecutionDefaults,
     ShutdownDefaults,
+    UnresolvedResolutionDefaults,
 )
 from python.framework.types.config_types.connection_policy_config_types import ConnectionPolicy
 from python.framework.types.config_types.market_config_types import TradingModel
@@ -328,6 +330,15 @@ class _Stage:
         """
         return [record.message for record in self.logger.get_records(LogLevel.ERROR)]
 
+    def warnings(self) -> List[str]:
+        """
+        What reached the session channel as a warning.
+
+        Returns:
+            The messages
+        """
+        return [record.message for record in self.logger.get_records(LogLevel.WARNING)]
+
     def info(self) -> List[str]:
         """
         What reached the session channel as information.
@@ -496,8 +507,9 @@ class TestAnAwaitedMarketClose:
 
 class TestARestingOrderWithNoReferenceYet:
 
-    def test_the_wait_lasts_until_its_reference_came(self, stage):
-        built = stage()
+    @ACCOUNT_MODELS
+    def test_the_wait_lasts_until_its_reference_came(self, stage, spot_mode):
+        built = stage(spot_mode=spot_mode)
         held = built.hold_answers()
         order_id = built.rest_a_limit().order_id
         assert held.entered.wait(5), 'the worker never reached the venue'
@@ -512,9 +524,10 @@ class TestARestingOrderWithNoReferenceYet:
         assert built.executor.get_awaited_orders() == []
         assert built.errors() == []
 
-    def test_the_cleanup_then_cancels_it_with_its_reference(self, stage):
+    @ACCOUNT_MODELS
+    def test_the_cleanup_then_cancels_it_with_its_reference(self, stage, spot_mode):
         """Without the wait it had no reference to cancel with, and stayed at the venue."""
-        built = stage()
+        built = stage(spot_mode=spot_mode)
         held = built.hold_answers()
         built.rest_a_limit()
         assert held.entered.wait(5), 'the worker never reached the venue'
@@ -633,25 +646,30 @@ class TestTheBoundRunsOut:
         assert order_id in detail
         assert 'market BUY 0.01 BTCUSD' in detail
 
-    def test_the_worker_is_stopped_before_anything_is_booked(self, stage):
-        """What was queued behind the unanswered order stays unsent."""
-        built = stage('acknowledging', False, _settings(order_wait_s=0.05))
+    @ACCOUNT_MODELS
+    def test_the_worker_is_stopped_before_anything_is_booked(self, stage, monkeypatch, spot_mode):
+        """What was queued behind the unanswered order stays unsent, and is withdrawn."""
+        built = stage('acknowledging', spot_mode, _settings(order_wait_s=0.05))
         held = built.hold_answers()
         built.buy_at_market()
         assert held.entered.wait(5), 'the worker never reached the venue'
         built.buy_at_market()
         worker = built.executor.get_request_processor()._worker_thread
+        calls = _watch_the_order_of_stop_and_booking(built, monkeypatch)
 
         built.stop()
         held.release()
         worker.join(timeout=5)
 
+        assert calls[0] == 'stop_worker'
+        assert 'book' in calls
         assert len(built.venue.submits) == 1
         assert not worker.is_alive()
 
-    def test_a_late_answer_changes_nothing_booked(self, stage):
+    @ACCOUNT_MODELS
+    def test_a_late_answer_changes_nothing_booked(self, stage, spot_mode):
         """An answer read after the order was given up finds no order, and invents no fill."""
-        built = stage('fill_in_answer', True, _settings(order_wait_s=0.05))
+        built = stage('fill_in_answer', spot_mode, _settings(order_wait_s=0.05))
         held = built.hold_answers()
         built.buy_at_market()
         assert held.entered.wait(5), 'the worker never reached the venue'
@@ -752,11 +770,16 @@ class TestAFillTimeoutInsideTheWait:
 
         built.stop(_HearingLogic())
 
-        endings = built.endings()
-        assert {row.order_id for row in endings} == {first, second}
-        assert all(row.status is OrderStatus.UNACCOUNTED for row in endings)
-        assert all(row.end_reason is OrderEndReason.SESSION_END for row in endings)
-        assert len(built.errors()) == 2
+        endings = {row.order_id: row for row in built.endings()}
+        assert set(endings) == {first, second}
+        assert (endings[first].status, endings[first].end_reason) == (
+            OrderStatus.UNACCOUNTED, OrderEndReason.SESSION_END)
+        # Queued behind the first, it never left this process: nothing is unknown about it
+        assert (endings[second].status, endings[second].initiator, endings[second].end_reason) == (
+            OrderStatus.CANCELLED, OrderInitiator.FRAMEWORK, OrderEndReason.SESSION_END)
+        assert len(built.errors()) == 1
+        assert any(second in message and 'never left this process' in message
+                   for message in built.warnings())
         built.alerts.send.assert_called()
         held.release()
         time.sleep(0.2)
@@ -858,7 +881,15 @@ class TestABoundaryCrossedDuringTheWait:
         held = built.hold_answers()
         built.buy_at_market()
         assert held.entered.wait(5), 'the worker never reached the venue'
-        threading.Timer(0.2, held.release).start()
+        # The answer travels once the wait's own clock has passed midnight, however long the
+        # loop took to get there: a condition, not a timer
+        real_heartbeat = built.executor.heartbeat
+
+        def heartbeat() -> None:
+            if built.executor.get_current_time() >= _MIDNIGHT:
+                held.release()
+            real_heartbeat()
+        built.executor.heartbeat = heartbeat
 
         loop = built.stop()
 
@@ -990,6 +1021,44 @@ def session_venue_gone(request):
     remove_run_dir(trader._run_dir)
 
 
+@pytest.fixture(scope='module', params=[_SPOT_PROFILE, _MARGIN_PROFILE], ids=['spot', 'margin'])
+def session_nothing_awaited_short_kill(request):
+    """
+    One mock session with nothing on its way at its end, under a kill with no room for a read.
+
+    Yields:
+        The finished session and its result
+    """
+    trader, result = _run_session(
+        request.param, _settings(supervisor_kill_after_s=1.0, reserve_for_records_s=0.0),
+        answer_after_s=0.0, bot_suffix='nk', sends_an_order=False)
+    yield trader, result
+    remove_run_dir(trader._run_dir)
+
+
+class TestAWholeSessionWithNothingAwaitedUnderAShortKill:
+    """The budget opens with the stop, not with a wait: the venue read keeps to it as well."""
+
+    def test_nothing_was_waited_for(self, session_nothing_awaited_short_kill):
+        _, result = session_nothing_awaited_short_kill
+        assert result.stop_wait is None
+        assert [row for row in result.order_history if row.status is not OrderStatus.PENDING] == []
+
+    def test_the_parts_stay_unread_and_named(self, session_nothing_awaited_short_kill):
+        trader, result = session_nothing_awaited_short_kill
+        assert trader._executor._stop_budget is not None
+        parts = result.broker_truth[-1].snapshot.unread_parts
+        assert BrokerTruthPart.VENUE_ORDERS in parts
+        assert BrokerTruthPart.VENUE_BALANCES in parts
+        errors = logged_messages(result, LogLevel.ERROR)
+        for part in parts:
+            assert any(part.value in message and 'left unread' in message for message in errors)
+
+    def test_the_session_is_graded_on_it(self, session_nothing_awaited_short_kill):
+        _, result = session_nothing_awaited_short_kill
+        assert result.get_exit_code() == 3
+
+
 class TestAWholeSessionWithAnAwaitedOrder:
     """A replayed session ends with its clock on its last tick, and its records say so."""
 
@@ -1058,21 +1127,30 @@ class TestAWholeSessionWhoseBoundRunsOut:
 
 class TestTheCleanup:
 
-    def test_the_worker_stops_first_and_a_queued_submit_does_not_go_out(self, stage):
-        built = stage()
+    @ACCOUNT_MODELS
+    def test_the_worker_stops_first_and_a_queued_submit_does_not_go_out(
+            self, stage, monkeypatch, spot_mode):
+        built = stage('acknowledging', spot_mode)
         held = built.hold_answers()
-        built.buy_at_market()
+        first = built.buy_at_market().order_id
         assert held.entered.wait(5), 'the worker never reached the venue'
-        built.buy_at_market()
+        second = built.buy_at_market().order_id
         worker = built.executor.get_request_processor()._worker_thread
+        calls = _watch_the_order_of_stop_and_booking(built, monkeypatch)
 
         built.executor.finish_remaining_orders()
         held.release()
         worker.join(timeout=5)
 
+        assert calls[0] == 'stop_worker'
         assert len(built.venue.submits) == 1
-        assert [row.status for row in built.endings()] == [OrderStatus.UNACCOUNTED] * 2
-        assert len(built.errors()) == 2
+        endings = {row.order_id: row.status for row in built.endings()}
+        # The one sent is unknown; the one still queued never left this process
+        assert endings == {first: OrderStatus.UNACCOUNTED, second: OrderStatus.CANCELLED}
+        assert len(built.errors()) == 1
+        assert any(second in message and 'never left this process' in message
+                   for message in built.warnings())
+        _assert_untouched_book(built)
 
     @ACCOUNT_MODELS
     def test_an_answer_that_came_is_read_before_anything_is_booked(self, stage, spot_mode):
@@ -1152,26 +1230,39 @@ class TestTheBudget:
     def _no_time_left(self) -> StopBudget:
         return StopBudget(0.01, 0.0, time.monotonic() - 1.0)
 
-    def test_a_declared_kill_shortens_the_wait(self, stage):
+    @ACCOUNT_MODELS
+    def test_a_declared_kill_leaves_the_joins_and_the_reserve_their_time(self, stage, spot_mode):
+        """
+        The wait may spend only what the kill leaves after the reserve and every bounded wait still
+        to come: here 14 s, less 1 s and 11.05 s, so under 2 s of a patient order wait.
+        """
         settings = _settings(
-            order_wait_s=_PATIENT, supervisor_kill_after_s=0.2, reserve_for_records_s=0.0,
-            tick_thread_join_s=0.0, signal_transport_join_s=0.0, display_join_s=0.0,
-            request_worker_join_s=0.05, alert_flush_s=0.0)
-        built = stage('acknowledging', False, settings)
+            order_wait_s=_PATIENT, supervisor_kill_after_s=14.0, reserve_for_records_s=1.0,
+            tick_thread_join_s=1.0, signal_transport_join_s=1.0, display_join_s=1.0,
+            request_worker_join_s=0.05, alert_flush_s=8.0)
+        built = stage('acknowledging', spot_mode, settings)
         held = built.hold_answers()
         built.buy_at_market()
         assert held.entered.wait(5), 'the worker never reached the venue'
+        holder = ShutdownStatusHolder(settings.supervisor_kill_after_s)
+        journal = RecordingLogger()
+        holder.connect_journal(journal)
         started = time.monotonic()
 
-        built.stop()
+        built.stop(shutdown_status=holder)
 
-        assert time.monotonic() - started < _PATIENT / 2
+        began = next(message for message in journal.infos if 'waiting up to' in message)
+        bound_s = float(began.split('waiting up to ')[1].split(' s')[0])
+        assert 1.5 <= bound_s <= 1.95
+        assert time.monotonic() - started < 4.0
         assert built.endings()[-1].status is OrderStatus.UNACCOUNTED
-        assert 'kill in about' in built.alerts.send.call_args.args[3]
+        assert built.alerts.send.call_args.args[3].splitlines()[-2].startswith(
+            'The session keeps stopping, kill not signalled, the stop keeps within ')
 
-    def test_a_kill_with_no_room_left_gives_up_at_once_without_a_pass(self, stage):
+    @ACCOUNT_MODELS
+    def test_a_kill_with_no_room_left_gives_up_at_once_without_a_pass(self, stage, spot_mode):
         settings = _settings(supervisor_kill_after_s=1.0, reserve_for_records_s=2.0)
-        built = stage('acknowledging', False, settings)
+        built = stage('acknowledging', spot_mode, settings)
         held = built.hold_answers()
         built.buy_at_market()
         assert held.entered.wait(5), 'the worker never reached the venue'
@@ -1183,8 +1274,9 @@ class TestTheBudget:
         watched.assert_not_called()
         assert built.endings()[-1].status is OrderStatus.UNACCOUNTED
 
-    def test_the_give_up_makes_no_call_with_no_time_left(self, stage):
-        built = stage('acknowledging', False, _settings(order_wait_s=0.0))
+    @ACCOUNT_MODELS
+    def test_the_give_up_makes_no_call_with_no_time_left(self, stage, spot_mode):
+        built = stage('acknowledging', spot_mode, _settings(order_wait_s=0.0))
         built.buy_at_market()
         assert built.executor.get_request_processor().flush_outbox(5.0)
         built.executor.set_stop_budget(self._no_time_left())
@@ -1196,8 +1288,9 @@ class TestTheBudget:
         assert built.endings()[-1].status is OrderStatus.UNACCOUNTED
         assert any('no time left' in message for message in built.errors())
 
-    def test_no_cancel_goes_out_with_no_time_left(self, stage):
-        built = stage()
+    @ACCOUNT_MODELS
+    def test_no_cancel_goes_out_with_no_time_left(self, stage, spot_mode):
+        built = stage(spot_mode=spot_mode)
         built.rest_a_limit()
         MockOrderExecution().await_submit_confirmation(built.executor)
         built.executor.get_request_processor().drain_inbox()
@@ -1223,8 +1316,9 @@ class TestTheBudget:
 
         assert built.venue.queries == []
 
-    def test_a_refused_cancel_is_not_read_when_the_time_ran_out_meanwhile(self, stage):
-        built = stage()
+    @ACCOUNT_MODELS
+    def test_a_refused_cancel_is_not_read_when_the_time_ran_out_meanwhile(self, stage, spot_mode):
+        built = stage(spot_mode=spot_mode)
         order_id = built.rest_a_limit().order_id
         MockOrderExecution().await_submit_confirmation(built.executor)
         built.executor.get_request_processor().drain_inbox()
@@ -1258,6 +1352,40 @@ class TestTheBudget:
         assert budget.until_kill_s() <= 40.0
         assert session._open_stop_budget() is budget
         assert built.executor._stop_budget is budget
+
+    def test_a_worker_still_inside_a_call_doubles_what_the_next_call_may_cost(self, stage):
+        """The adapter makes one call at a time: a call meanwhile waits for that one first."""
+        built = stage()
+        held = built.hold_answers()
+        built.buy_at_market()
+        assert held.entered.wait(5), 'the worker never reached the venue'
+        socket_s = built.executor.get_rest_ladder().get_policy().request_timeout_s
+        processor = built.executor.get_request_processor()
+
+        processor.stop_worker(0.05)
+
+        assert processor.is_worker_call_lingering()
+        assert built.executor._stop_call_s() == 2 * socket_s
+        built.executor.set_stop_budget(StopBudget(socket_s * 1.5, 0.0, time.monotonic()))
+        assert not built.executor._has_stop_time_for_venue_call()
+        held.release()
+        deadline = time.monotonic() + 5.0
+        while processor.is_worker_call_lingering():
+            assert time.monotonic() < deadline, 'the worker never returned'
+            time.sleep(0.01)
+        assert built.executor._stop_call_s() == socket_s
+
+    def test_the_ladder_counts_the_socket_timeout_the_adapter_waits(self):
+        """broker_transport sets the adapter's socket apart from the ladder's own figure."""
+        executor = build_live_executor(
+            broker_config=BrokerConfig(BrokerType.KRAKEN_SPOT, AcknowledgingVenueMock()),
+            balances={'USD': _START_USD}, account_currency='USD', logger=RecordingLogger(),
+            order_history_max=0, trade_history_max=0,
+            connection_policy=ConnectionPolicy(request_timeout_s=15.0), socket_timeout_s=30.0)
+        try:
+            assert executor.get_rest_ladder().get_policy().request_timeout_s == 30.0
+        finally:
+            executor.get_request_processor().stop_worker(0.0)
 
     def test_a_stop_nobody_signalled_counts_from_its_first_step(self):
         session = AutotraderMain(AutoTraderConfig(
@@ -1372,6 +1500,353 @@ class TestAWholeSessionWithAVenueThatStoppedAnswering:
         assert trader._run_id in {row.run_id for row in rows}
 
 
+def _watch_the_order_of_stop_and_booking(built: _Stage, monkeypatch: Any) -> List[str]:
+    """
+    Record, in order, when the request worker is stopped and when an order's ending is booked.
+
+    Args:
+        built: The stage
+        monkeypatch: The test's patcher
+
+    Returns:
+        The list the calls are written to: 'stop_worker' and 'book'
+    """
+    calls: List[str] = []
+    processor = built.executor.get_request_processor()
+    real_stop = processor.stop_worker
+    real_book = built.executor._book_order_result
+
+    def stop_worker(timeout: float) -> None:
+        calls.append('stop_worker')
+        real_stop(timeout)
+
+    def book(result: OrderResult, *args: Any, **kwargs: Any) -> OrderResult:
+        if result.status is not OrderStatus.PENDING:
+            calls.append('book')
+        return real_book(result, *args, **kwargs)
+
+    monkeypatch.setattr(processor, 'stop_worker', stop_worker)
+    monkeypatch.setattr(built.executor, '_book_order_result', book)
+    return calls
+
+
+class _ActsAtTheSessionEnd(_HearingLogic):
+    """A logic that acts in its session-end event, as a strategy closing on the way out does."""
+
+    def __init__(self, act: Callable[[], None]) -> None:
+        super().__init__()
+        self._act = act
+
+    def on_session_end(self, event: Any) -> None:
+        super().on_session_end(event)
+        self._act()
+
+
+def _close_everything(built: _Stage) -> None:
+    """
+    Send a market close for every position the stage holds.
+
+    Args:
+        built: The stage
+    """
+    for position in built.executor.get_open_positions():
+        built.executor.close_position(position.position_id)
+
+
+class TestAnOrderSentAtTheSessionEnd:
+    """A strategy may close on its way out: the stop waits for that close too, under one bound."""
+
+    @ACCOUNT_MODELS
+    @ANSWER_SHAPES
+    def test_its_fill_is_booked_before_the_cleanup(self, stage, shape, spot_mode):
+        built = stage(shape, spot_mode)
+        position_id = built.open_a_position()
+        logic = _ActsAtTheSessionEnd(lambda: _close_everything(built))
+        holder = ShutdownStatusHolder(None)
+        journal = RecordingLogger()
+        holder.connect_journal(journal)
+
+        built.stop(logic, shutdown_status=holder)
+
+        assert built.executor.get_open_positions() == []
+        trades = built.executor.get_trade_history()
+        assert [trade.position_id for trade in trades] == [position_id]
+        assert built.executor.get_awaited_orders() == []
+        assert built.errors() == []
+        # What the second wait settled is booked, and the session end stays the last word
+        assert logic.heard[-1] == 'session_end'
+        assert any('1 order(s) sent at the session end' in message for message in journal.infos)
+        if spot_mode:
+            balances = built.executor.portfolio.get_balances()
+            assert balances['BTC'] == pytest.approx(0.0)
+            assert balances['USD'] == pytest.approx(_START_USD + trades[0].net_pnl)
+        else:
+            assert built.executor.get_balance() == pytest.approx(_START_USD + trades[0].net_pnl)
+        outcome = StopWaitOutcome.over_records(
+            holder.get().order_wait_ran_s, holder.get().orders_waited_for,
+            built.executor.get_order_history())
+        assert (outcome.orders_executed, outcome.orders_waited_for()) == (1, 1)
+
+    @ACCOUNT_MODELS
+    def test_both_waits_keep_to_one_bound(self, stage, spot_mode):
+        """The first wait spends part of the bound; the close sent at the end gets the rest."""
+        bound_s = 0.6
+        built = stage('acknowledging', spot_mode, _settings(order_wait_s=bound_s))
+        built.buy_at_market()
+
+        def hold_and_close() -> None:
+            built.hold_answers()
+            _close_everything(built)
+        logic = _ActsAtTheSessionEnd(hold_and_close)
+        holder = ShutdownStatusHolder(None)
+
+        built.stop(logic, shutdown_status=holder)
+
+        position_id = built.executor.get_open_positions()[0].position_id
+        ran_s = holder.get().order_wait_ran_s
+        assert ran_s == pytest.approx(bound_s, abs=0.2)
+        row = built.endings()[-1]
+        assert (row.order_id, row.action, row.status) == (
+            position_id, OrderAction.CLOSE, OrderStatus.UNACCOUNTED)
+        assert len([message for message in built.errors() if position_id in message]) == 1
+        built.alerts.send.assert_called_once()
+        assert logic.heard[-1] == 'session_end'
+
+    @ACCOUNT_MODELS
+    def test_after_a_wait_that_ran_out_nothing_more_goes_out(self, stage, spot_mode):
+        """The worker stopped with the run-out: an order from the event never leaves."""
+        built = stage('acknowledging', spot_mode, _settings(order_wait_s=0.05))
+        held = built.hold_answers()
+        built.buy_at_market()
+        assert held.entered.wait(5), 'the worker never reached the venue'
+        sent: List[str] = []
+        logic = _ActsAtTheSessionEnd(lambda: sent.append(built.buy_at_market().order_id))
+
+        built.stop(logic)
+        built.executor.finish_remaining_orders()
+
+        assert len(built.venue.submits) == 1
+        endings = {row.order_id: row for row in built.endings()}
+        assert (endings[sent[0]].status, endings[sent[0]].end_reason) == (
+            OrderStatus.CANCELLED, OrderEndReason.SESSION_END)
+        assert any(sent[0] in message and 'never left this process' in message
+                   for message in built.warnings())
+        built.alerts.send.assert_called_once()
+
+
+class TestAPartAtTheRunOut:
+    """The venue names an executed part and nobody asks again: the part is real money."""
+
+    @ACCOUNT_MODELS
+    def test_the_part_is_booked_and_the_rest_unaccounted(self, stage, spot_mode):
+        built = stage('acknowledging', spot_mode, _settings(order_wait_s=0.0))
+        built.venue.fill_market_orders = False
+        order_id = built.buy_at_market().order_id
+        assert built.executor.get_request_processor().flush_outbox(5.0)
+        built.venue.set_venue_status(
+            built.venue.submits[0], 'PENDING', filled_lots=0.004, fill_price=_ASK)
+        # The cancel's answer is lost, so no read after it: the last answer showed the part
+        built.venue.set_transport_fault('cancel', 'read timed out', terminal=False)
+        holder = ShutdownStatusHolder(None)
+
+        built.stop(shutdown_status=holder)
+
+        assert [position.lots for position in built.executor.get_open_positions()] == [0.004]
+        filled = built.endings()[-1]
+        assert (filled.status, filled.executed_lots) == (OrderStatus.EXECUTED, 0.004)
+        if spot_mode:
+            assert built.executor.portfolio.get_balances()['BTC'] == pytest.approx(0.004)
+        errors = [message for message in built.errors() if order_id in message]
+        assert len(errors) == 1
+        assert '0.004 of 0.01' in errors[0] and 'UNACCOUNTED' in errors[0]
+        detail = built.alerts.send.call_args.args[3]
+        assert '0.004 executed and booked, no answer for the rest' in detail
+        outcome = StopWaitOutcome.over_records(
+            holder.get().order_wait_ran_s, holder.get().orders_waited_for,
+            built.executor.get_order_history())
+        assert (outcome.orders_filled_in_part, outcome.orders_waited_for()) == (1, 1)
+
+
+class TestAnOrderThatNeverLeft:
+    """A submit the stopped worker never sent: the venue never had it, so nothing is unknown."""
+
+    @ACCOUNT_MODELS
+    def test_one_queued_behind_an_unanswered_order_is_withdrawn(self, stage, spot_mode):
+        built = stage('acknowledging', spot_mode, _settings(order_wait_s=0.05))
+        held = built.hold_answers()
+        first = built.buy_at_market().order_id
+        assert held.entered.wait(5), 'the worker never reached the venue'
+        second = built.buy_at_market().order_id
+        logic = _HearingLogic()
+
+        built.stop(logic)
+
+        endings = {row.order_id: row for row in built.endings()}
+        assert endings[first].status is OrderStatus.UNACCOUNTED
+        assert (endings[second].status, endings[second].initiator) == (
+            OrderStatus.CANCELLED, OrderInitiator.FRAMEWORK)
+        assert not any(second in message for message in built.errors())
+        assert 'no answer for an order' in built.alerts.send.call_args.args[2]
+        # Both before the session end; the withdrawal comes first, with the worker's stop
+        assert logic.heard == [f'cancelled:{second}', f'unaccounted:{first}', 'session_end']
+        _assert_untouched_book(built)
+
+    @ACCOUNT_MODELS
+    def test_a_hooks_order_after_the_worker_stopped_is_withdrawn(self, stage, spot_mode):
+        built = stage('acknowledging', spot_mode, _settings(order_wait_s=0.05))
+        held = built.hold_answers()
+        first = built.buy_at_market().order_id
+        assert held.entered.wait(5), 'the worker never reached the venue'
+        sent: List[str] = []
+
+        class _BuysAgain(_HearingLogic):
+            def on_order_unaccounted(self, event: Any) -> None:
+                super().on_order_unaccounted(event)
+                sent.append(built.buy_at_market().order_id)
+        logic = _BuysAgain()
+
+        built.stop(logic)
+        held.release()
+
+        assert len(built.venue.submits) == 1
+        endings = {row.order_id: row for row in built.endings()}
+        assert endings[sent[0]].status is OrderStatus.CANCELLED
+        assert any(sent[0] in message and 'never left this process' in message
+                   for message in built.warnings())
+        detail = built.alerts.send.call_args.args[3]
+        assert sent[0] not in detail and first in detail
+        assert logic.heard == [f'unaccounted:{first}', f'cancelled:{sent[0]}', 'session_end']
+
+
+class TestTheLeavePolicy:
+
+    @ACCOUNT_MODELS
+    def test_a_resting_order_with_no_reference_cannot_be_left_by_name(self, stage, spot_mode):
+        """Its submit went out and was never answered: the venue may hold it, or not."""
+        built = stage('acknowledging', spot_mode, _settings(order_wait_s=0.05))
+        held = built.hold_answers()
+        order_id = built.rest_a_limit().order_id
+        assert held.entered.wait(5), 'the worker never reached the venue'
+        holder = ShutdownStatusHolder(None)
+
+        built.stop(shutdown_status=holder)
+        built.executor.finish_remaining_orders(cancel_orders=False)
+
+        row = built.endings()[-1]
+        assert (row.order_id, row.status, row.end_reason) == (
+            order_id, OrderStatus.UNACCOUNTED, OrderEndReason.SESSION_END)
+        assert any(order_id in message and 'cannot be left standing' in message
+                   for message in built.errors())
+        outcome = StopWaitOutcome.over_records(
+            holder.get().order_wait_ran_s, holder.get().orders_waited_for,
+            built.executor.get_order_history())
+        assert (outcome.orders_unaccounted, outcome.orders_still_open) == (1, 0)
+
+
+class TestAnOrderAtTheResolutionCeiling:
+
+    @ACCOUNT_MODELS
+    def test_no_wait_for_it_and_the_cleanup_books_it(self, stage, spot_mode):
+        """Nothing asks about it any more, so a wait would only run out."""
+        built = stage('acknowledging', spot_mode)
+        built.executor._resolution_config = UnresolvedResolutionDefaults(
+            max_attempts=1, max_window_seconds=1.0)
+        built.venue.lose_next_submit_answer = True
+        order_id = built.rest_a_limit().order_id
+        now = built.executor.get_current_time()
+        deadline = time.monotonic() + 5.0
+        while order_id not in built.executor.get_unresolved_at_ceiling():
+            assert time.monotonic() < deadline, 'the order never reached the ceiling'
+            now += timedelta(seconds=1)
+            built.executor.set_current_time(now)
+            built.executor.heartbeat()
+            time.sleep(0.02)
+        assert built.executor.get_awaited_orders() == []
+        watched = MagicMock(wraps=built.executor.heartbeat)
+        built.executor.heartbeat = watched
+
+        built.stop()
+        built.executor.finish_remaining_orders()
+
+        watched.assert_not_called()
+        built.alerts.send.assert_not_called()
+        assert built.endings()[-1].status is OrderStatus.UNACCOUNTED
+        assert any(order_id in message for message in built.errors())
+
+
+class TestARestingOrderWithACancelOnItsWay:
+
+    def test_its_age_is_its_cancels_not_its_life(self, stage):
+        """A limit that rested an hour is not an hour on its way: its cancel is."""
+        built = stage()
+        order_id = built.rest_a_limit().order_id
+        MockOrderExecution().await_submit_confirmation(built.executor)
+        built.executor.get_request_processor().drain_inbox()
+        built.executor.get_request_processor().stop_worker(0.05)
+        resting = built.executor.get_active_orders()[0]
+        resting.timing.submitted_monotonic -= 3600.0
+        resting.timing.last_write_monotonic -= 3600.0
+        built.executor.cancel_limit_order(order_id)
+
+        row = built.executor.get_awaited_orders()[0]
+
+        assert row.waits_for == 'its cancel has not been answered'
+        assert time.monotonic() - row.sent_at_monotonic_s < 5.0
+
+
+class TestAHookThatClosesOnTheFill:
+
+    @ACCOUNT_MODELS
+    def test_the_open_and_its_close_are_two_orders(self, stage, spot_mode):
+        """A close carries its position's id; the stop still counts and names both."""
+        built = stage('acknowledging', spot_mode)
+        held = built.hold_answers()
+        built.buy_at_market()
+        assert held.entered.wait(5), 'the worker never reached the venue'
+        held.release_during_the_wait()
+        logic = _HearingLogic(on_filled=lambda: _close_everything(built))
+        holder = ShutdownStatusHolder(None)
+        journal = RecordingLogger()
+        holder.connect_journal(journal)
+
+        built.stop(logic, shutdown_status=holder)
+
+        assert built.executor.get_open_positions() == []
+        outcome = StopWaitOutcome.over_records(
+            holder.get().order_wait_ran_s, holder.get().orders_waited_for,
+            built.executor.get_order_history())
+        assert (outcome.orders_executed, outcome.orders_waited_for()) == (2, 2)
+        settled = [message for message in journal.infos if 'settled after' in message]
+        assert any('market BUY 0.01 BTCUSD' in message for message in settled)
+        assert any('market close of LONG 0.01 BTCUSD' in message for message in settled)
+
+
+class TestASlowPass:
+
+    def test_settled_after_counts_the_pass(self, stage):
+        """A pass that holds a read of the venue takes its time, and the line says it."""
+        built = stage()
+        built.venue.fill_market_orders = False
+        built.buy_at_market()
+        assert built.executor.get_request_processor().flush_outbox(5.0)
+        real_heartbeat = built.executor.heartbeat
+
+        def slow_heartbeat() -> None:
+            time.sleep(0.3)
+            built.venue.set_venue_status(
+                built.venue.submits[0], 'FILLED', filled_lots=_LOTS, fill_price=_ASK)
+            real_heartbeat()
+        built.executor.heartbeat = slow_heartbeat
+        holder = ShutdownStatusHolder(None)
+        journal = RecordingLogger()
+        holder.connect_journal(journal)
+
+        built.stop(shutdown_status=holder)
+
+        settled = next(message for message in journal.infos if 'settled after' in message)
+        assert float(settled.split('settled after ')[1].split(' s')[0]) >= 0.3
+
+
 def _session_around(executor: LiveTradeExecutor) -> AutotraderMain:
     """
     A session reduced to what its signal handlers and its shutdown touch.
@@ -1391,7 +1866,8 @@ def _session_around(executor: LiveTradeExecutor) -> AutotraderMain:
 
 
 def _run_session(profile: str, settings: ShutdownDefaults, answer_after_s: float,
-                 venue_stops_answering: bool = False, bot_suffix: str = 'ok') -> Any:
+                 venue_stops_answering: bool = False, bot_suffix: str = 'ok',
+                 sends_an_order: bool = True) -> Any:
     """
     One whole mock session, with the venue's answers delayed from outside.
 
@@ -1401,6 +1877,7 @@ def _run_session(profile: str, settings: ShutdownDefaults, answer_after_s: float
         answer_after_s: How long the venue takes to answer a submit, after it acted
         venue_stops_answering: Whether the venue's account reads fail when the stop begins
         bot_suffix: Keeps this session's carry-over apart from the other scenarios'
+        sends_an_order: Whether the logic sends its order on the tick it asks for the end
 
     Returns:
         The session and its result
@@ -1408,6 +1885,9 @@ def _run_session(profile: str, settings: ShutdownDefaults, answer_after_s: float
     config = load_autotrader_config(profile)
     config.shutdown = settings
     config.bot_id = f'{config.bot_id}{bot_suffix}'
+    if not sends_an_order:
+        # Past every tick the profile replays
+        config.strategy_config['decision_logic_config']['open_tick'] = 900000
     trader = AutotraderMain(config)
     real_submit = MockBrokerAdapter.do_request_submit
     real_shutdown = AutotraderMain._shutdown
@@ -1495,8 +1975,9 @@ class TestWhatTheWaitCameTo:
         outcome = self._outcome(built, holder)
         assert (outcome.orders_unaccounted, outcome.orders_executed) == (1, 0)
 
-    def test_a_resting_order_the_venue_took_stays_open(self, stage):
-        built = stage()
+    @ACCOUNT_MODELS
+    def test_a_resting_order_the_venue_took_stays_open(self, stage, spot_mode):
+        built = stage(spot_mode=spot_mode)
         held = built.hold_answers()
         built.rest_a_limit()
         assert held.entered.wait(5), 'the worker never reached the venue'

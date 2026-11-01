@@ -8,7 +8,8 @@ flushed print.
 
 No lock, and every write replaces the whole snapshot by assignment. The writers run on the main
 thread, the signal handler among them, and a handler runs between two bytecodes on the very thread
-that may hold a lock. Only the display reads from another thread, and it reads one attribute.
+that may hold a lock. Only the display works from another thread: it reads one attribute, and
+writes one flag when it fails, to hand the console back to the lines.
 """
 
 import time
@@ -18,11 +19,11 @@ from typing import Callable, Optional, Sequence, Tuple
 
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.types.autotrader_types.shutdown_status_types import (
+    AwaitedOrderEnding,
     ShutdownStatus,
     ShutdownStep,
 )
 from python.framework.types.trading_env_types.awaited_order_types import AwaitedOrder
-from python.framework.types.trading_env_types.order_types import OrderStatus
 
 
 class ShutdownStatusHolder:
@@ -88,18 +89,22 @@ class ShutdownStatusHolder:
     # WRITERS
     # =========================================================================
 
-    def note_asked(self, asked_by: str, asked_at: datetime, asked_at_monotonic_s: float) -> None:
+    def note_asked(self, asked_by: str, asked_at: datetime, asked_at_monotonic_s: float,
+                   signalled: bool = False) -> None:
         """
-        Keep what first asked for the stop. Called from a signal handler, so it does nothing but
-        assign: a buffered print there can raise, on a write the handler interrupted. The first step
-        says the line.
+        Keep what first asked for the stop, and whether a signal ever did. Called from a signal
+        handler, so it does nothing but assign: a buffered print there can raise, on a write the
+        handler interrupted. The first step says the line.
 
         Args:
             asked_by: What asked, in a word or two
             asked_at: When, UTC
             asked_at_monotonic_s: The same instant on the monotonic clock
+            signalled: Whether a signal asked, so that a supervisor's kill is coming
         """
         if self._status is not None:
+            if signalled and not self._status.kill_signalled:
+                self._status = replace(self._status, kill_signalled=True)
             return
         self._status = ShutdownStatus(
             asked_by=asked_by,
@@ -107,6 +112,7 @@ class ShutdownStatusHolder:
             as_of_monotonic_s=asked_at_monotonic_s,
             kill_at_monotonic_s=(asked_at_monotonic_s + self._kill_after_s
                                  if self._kill_after_s is not None else None),
+            kill_signalled=signalled,
         )
 
     def enter_step(self, step: ShutdownStep) -> None:
@@ -146,32 +152,43 @@ class ShutdownStatusHolder:
             self._status = replace(self._status, tick_source_stopped=True)
 
     def order_wait_began(self, awaited: Sequence[AwaitedOrder], began_monotonic_s: float,
-                         bound_s: float) -> None:
+                         bound_s: float, after_session_end: bool = False,
+                         spent_s: float = 0.0) -> None:
         """
-        The stop begins to wait for the orders on their way.
+        The stop begins to wait for the orders on their way, or, after the session-end event, for
+        what the logic sent from it. Both waits keep to one bound, so the second goes on from the
+        time the first spent.
 
         Args:
             awaited: What it waits for
-            began_monotonic_s: `time.monotonic()` when the wait began
-            bound_s: How long it may run
+            began_monotonic_s: `time.monotonic()` when the wait began, the time an earlier wait
+                spent counted in
+            bound_s: How long it may run in all, from that moment
+            after_session_end: Whether this is the wait for what the session-end event sent
+            spent_s: What an earlier wait already spent of the bound
         """
         self._say_asked_once()
         if self._status is None:
             return
+        status = self._status
         self._status = replace(
-            self._status,
+            status,
             awaited_orders=tuple(awaited),
             order_wait_began_monotonic_s=began_monotonic_s,
             order_wait_bound_s=bound_s,
-            orders_waited_for=frozenset(row.order_id for row in awaited),
+            orders_waited_for=status.orders_waited_for | {row.key() for row in awaited},
             orders_to_cancel=self._read_orders_to_cancel(),
         )
-        self._say(f'⏳ Stop: {len(awaited)} order(s) on their way, waiting up to {bound_s:.1f} s')
+        if after_session_end:
+            self._say(f'⏳ Stop: {len(awaited)} order(s) sent at the session end, waiting up to '
+                      f'{bound_s - spent_s:.1f} s more of the same {bound_s:.1f} s')
+        else:
+            self._say(f'⏳ Stop: {len(awaited)} order(s) on their way, waiting up to {bound_s:.1f} s')
 
     def order_wait_passed(
         self,
         awaited: Sequence[AwaitedOrder],
-        settled: Sequence[Tuple[AwaitedOrder, Optional[OrderStatus]]],
+        settled: Sequence[Tuple[AwaitedOrder, AwaitedOrderEnding]],
         waited_s: float,
         bound_s: float,
     ) -> None:
@@ -181,10 +198,9 @@ class ShutdownStatusHolder:
 
         Args:
             awaited: What is still on its way
-            settled: Each order no longer on its way, with its ending; None for an order with none
-                on the record yet, as a resting order the venue took
-            waited_s: How long the wait has run
-            bound_s: How much longer it may run
+            settled: Each order no longer on its way, with its ending
+            waited_s: How long the wait has run, read after the pass
+            bound_s: How much longer it may run, from then
         """
         status = self._status
         if status is None:
@@ -193,13 +209,13 @@ class ShutdownStatusHolder:
             status,
             awaited_orders=tuple(awaited),
             order_wait_bound_s=waited_s + bound_s,
-            orders_waited_for=status.orders_waited_for | {row.order_id for row in awaited},
+            orders_waited_for=status.orders_waited_for | {row.key() for row in awaited},
             orders_to_cancel=self._read_orders_to_cancel(),
         )
         self._status = current
         for row, ending in settled:
-            how = ending.value if ending is not None else 'open at the venue'
-            self._say(f'⏳ Stop: {row.describe()} settled after {waited_s:.1f} s: {how}')
+            self._say(f'⏳ Stop: {row.describe()} settled after {waited_s:.1f} s: '
+                      f'{ending.describe()}')
         if not awaited:
             self._say(f'⏳ Stop: nothing on its way any more after {waited_s:.1f} s')
             return
@@ -210,7 +226,7 @@ class ShutdownStatusHolder:
             self._next_wait_line_s = waited_s + self._WAIT_LINE_EVERY_S
             reading = replace(current, as_of_monotonic_s=time.monotonic())
             for line in reading.order_lines():
-                self._say(f'⏳ Stop: waited {waited_s:.1f} s of {waited_s + bound_s:.0f} s · {line}')
+                self._say(f'⏳ Stop: waited {waited_s:.1f} s of {waited_s + bound_s:.1f} s · {line}')
 
     def order_wait_ran_out(self, awaited: Sequence[AwaitedOrder], waited_s: float) -> None:
         """

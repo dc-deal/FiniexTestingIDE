@@ -325,7 +325,9 @@ class ShutdownDefaults(StrictConfigModel):
         it can miss an order's second status read.
 
     `tick_thread_join_s`, `signal_transport_join_s`, `display_join_s`, `request_worker_join_s`
-        How long the stop waits for one thread before it goes on without it.
+        How long the stop waits for one thread before it goes on without it, and says so. The
+        signal stream's above zero: its thread ends a moment after its socket is shut, and one not
+        waited for at all would be reported as abandoned, an error, on every stop.
 
     `alert_flush_s`
         How long the queued alerts may take to go out when the session ends. Long enough for a
@@ -338,11 +340,15 @@ class ShutdownDefaults(StrictConfigModel):
 
     `reserve_for_records_s`
         What a declared kill keeps free for the reports and the ledger row: no wait and no
-        venue call of the stop may spend it.
+        venue call of the stop may spend it. Far above the under 1 s they took when measured
+        (2026-10-31, a mock session on the development container), on purpose: that figure left
+        out a live feed's tick stream and a slower disk, and a row lost to the kill is the end
+        this budget exists to prevent. The price is that a kill of 30 s or less, at the defaults,
+        leaves no time for a cancel or the venue's last read.
     """
     order_wait_s: float = Field(30.0, ge=0.0)
     tick_thread_join_s: float = Field(5.0, ge=0.0)
-    signal_transport_join_s: float = Field(2.0, ge=0.0)
+    signal_transport_join_s: float = Field(2.0, gt=0.0)
     display_join_s: float = Field(2.0, ge=0.0)
     request_worker_join_s: float = Field(2.0, ge=0.0)
     alert_flush_s: float = Field(15.0, ge=0.0)
@@ -353,7 +359,10 @@ class ShutdownDefaults(StrictConfigModel):
         """
         What the joins and the alert flush can spend at most, one after another.
 
-        One sum, so the check at the start and the order wait's bound count the same waits.
+        One sum, so the check at the start and the order wait's bound count the same waits. It
+        counts every join, also of a thread a session does not start (no display, no signal
+        stream): the safe side, which costs such a session a few seconds of its order wait under a
+        declared kill, where counting too little would let the stop overrun the kill.
 
         Returns:
             The sum in seconds

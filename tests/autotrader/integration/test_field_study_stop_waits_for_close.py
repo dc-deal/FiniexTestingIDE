@@ -61,7 +61,8 @@ def not_waited():
     """The same session on the stop before #630; a bot of its own, so no carry-over joins the two."""
     config = replace(load_autotrader_config(_PROFILE), bot_id='fldstop02')
     with pytest.MonkeyPatch.context() as patch:
-        patch.setattr(AutotraderTickLoop, '_wait_for_orders', lambda self, ticks_processed: None)
+        # Both waits go: the stop before #630 had neither
+        patch.setattr(AutotraderTickLoop, '_wait_for_orders', lambda self, *args, **kwargs: None)
         run_dir, lines, analysis = _session(config)
     yield lines, analysis
     remove_run_dir(run_dir)

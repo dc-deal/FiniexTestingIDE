@@ -17,6 +17,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from python.configuration.autotrader.autotrader_config_loader import load_autotrader_config
+from python.configuration.market_config_manager import MarketConfigManager
 from python.framework.autotrader.autotrader_main import AutotraderMain
 from python.framework.autotrader.operator_alerts.loop_progress import LoopProgress
 from python.framework.autotrader.operator_alerts.operator_alerts import OperatorAlerts
@@ -170,6 +171,28 @@ class TestTheCheckOnALiveStart:
         trader = AutotraderMain(config)
         trader._session_logger = MagicMock()
         trader._check_stop_budget(attended)
+        assert [finding.check for finding in trader._startup_findings] == checks
+
+    @pytest.mark.parametrize('poll_interval_ms, checks', [
+        (5000, ['shutdown_order_wait_below_poll']),
+        (500, []),
+    ], ids=['slow_poll', 'quick_poll'])
+    def test_the_session_hands_the_check_its_brokers_poll_interval(
+            self, monkeypatch, poll_interval_ms, checks):
+        """An order wait of 3 s misses a second read 5 s apart, and not one 0.5 s apart."""
+        config = load_autotrader_config(_PROFILE)
+        config.adapter_type = 'live'
+        config.shutdown = ShutdownDefaults(order_wait_s=3.0)
+        trader = AutotraderMain(config)
+        trader._session_logger = MagicMock()
+        real = MarketConfigManager().get_broker_entry(config.broker_type)
+        entry = real.model_copy(update={'broker_transport': real.broker_transport.model_copy(
+            update={'poll_interval_ms': poll_interval_ms})})
+        monkeypatch.setattr(MarketConfigManager, 'get_broker_entry',
+                            lambda manager, broker_type: entry)
+
+        trader._check_stop_budget(attended=True)
+
         assert [finding.check for finding in trader._startup_findings] == checks
 
 

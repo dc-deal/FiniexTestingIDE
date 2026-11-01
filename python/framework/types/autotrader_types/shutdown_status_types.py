@@ -12,7 +12,19 @@ from enum import Enum
 from typing import Dict, FrozenSet, Iterable, List, Optional, Sequence, Tuple
 
 from python.framework.types.trading_env_types.awaited_order_types import AwaitedOrder
-from python.framework.types.trading_env_types.order_types import OrderResult, OrderStatus
+from python.framework.types.trading_env_types.order_types import (
+    OrderAction,
+    OrderResult,
+    OrderStatus,
+    OrderType,
+)
+
+# An order a stop waits for, told apart by its id and its action: a market close carries the id of
+# the position it closes
+AwaitedOrderKey = Tuple[str, OrderAction]
+
+# Below this share of the lots sent, an execution counts as a part: float noise, not a missing lot
+_PART_TOLERANCE = 1e-9
 
 
 class ShutdownStep(Enum):
@@ -73,7 +85,10 @@ class ShutdownStatus:
         asked_at: When it was asked for, UTC, for a person to read
         as_of_monotonic_s: `time.monotonic()` of this reading
         step: The step in progress
-        kill_at_monotonic_s: When the declared kill falls; None when no kill is declared
+        kill_at_monotonic_s: When the declared kill falls, counted from the instant the stop was
+            asked for; None when no kill is declared
+        kill_signalled: Whether a signal asked for the stop, so that a supervisor's kill is coming.
+            A stop nobody signalled keeps to the same time, as if a signal had come when it began
         tick_source_stopped: Whether the session stopped its tick source, so that a stream gone
             silent is no fault
         orders_to_cancel: How many resting orders the cleanup will cancel; None while no executor
@@ -82,7 +97,7 @@ class ShutdownStatus:
         order_wait_began_monotonic_s: When the wait for them began; None while no wait runs
         order_wait_bound_s: How long that wait may run in all, as its last pass read it; None while
             no wait runs
-        orders_waited_for: The id of every order a wait waited for, which outlasts the wait
+        orders_waited_for: The key of every order a wait waited for, which outlasts the wait
         order_wait_ran_s: How long the wait ran; None while it runs, and when there was none
     """
     asked_by: str
@@ -90,12 +105,13 @@ class ShutdownStatus:
     as_of_monotonic_s: float
     step: ShutdownStep = ShutdownStep.LOOP_END
     kill_at_monotonic_s: Optional[float] = None
+    kill_signalled: bool = False
     tick_source_stopped: bool = False
     orders_to_cancel: Optional[int] = None
     awaited_orders: Tuple[AwaitedOrder, ...] = ()
     order_wait_began_monotonic_s: Optional[float] = None
     order_wait_bound_s: Optional[float] = None
-    orders_waited_for: FrozenSet[str] = frozenset()
+    orders_waited_for: FrozenSet[AwaitedOrderKey] = frozenset()
     order_wait_ran_s: Optional[float] = None
 
     def headline(self) -> str:
@@ -173,50 +189,123 @@ class ShutdownStatus:
         How far the wait for the orders has come, and what follows it.
 
         Returns:
-            For instance `4.2 s of 30 s, then: booked unaccounted, reported, session ends itself`;
-            None while no wait runs
+            For instance `4.2 s of 30.0 s, then: booked unaccounted, reported, session ends
+            itself`; None while no wait runs
         """
         began = self.order_wait_began_monotonic_s
         if began is None or self.order_wait_bound_s is None:
             return None
-        return (f'{self.as_of_monotonic_s - began:.1f} s of {self.order_wait_bound_s:.0f} s, '
-                f'then: booked unaccounted, reported, session ends itself')
+        return (f'{self.as_of_monotonic_s - began:.1f} s of {self.order_wait_bound_s:.1f} s, '
+                f'then: {self._what_follows_the_wait()}, reported, session ends itself')
+
+    def _what_follows_the_wait(self) -> str:
+        """
+        What becomes of the orders still on their way when the wait runs out. A market order is
+        booked unaccounted there and then; a resting order goes on to the cleanup, which cancels,
+        leaves or books it by the session-end policy.
+
+        Returns:
+            A few words
+        """
+        resting = sum(1 for row in self.awaited_orders if row.order_type is not OrderType.MARKET)
+        if not resting:
+            return 'booked unaccounted'
+        if resting == len(self.awaited_orders):
+            return 'left to the cleanup'
+        return 'market orders booked unaccounted, resting ones left to the cleanup'
 
     def kill_text(self) -> Optional[str]:
         """
         How long until the supervisor's declared kill.
 
         Returns:
-            For instance `in 75.8 s (supervisor)`, `in 0.0 s` once it is due; None when no kill is
-            declared
+            For instance `in 75.8 s (supervisor)`, `overdue by 2.0 s (supervisor)` once the declared
+            time has gone by, or, for a stop nobody signalled, `not signalled, the stop keeps
+            within 75.8 s`; None when no kill is declared
         """
         if self.kill_at_monotonic_s is None:
             return None
-        until_kill_s = max(0.0, self.kill_at_monotonic_s - self.as_of_monotonic_s)
-        return f'in {until_kill_s:.1f} s (supervisor)'
+        left_s = self.kill_at_monotonic_s - self.as_of_monotonic_s
+        if not self.kill_signalled:
+            if left_s < 0:
+                return f'not signalled, the stop is {-left_s:.1f} s past the time it keeps within'
+            return f'not signalled, the stop keeps within {left_s:.1f} s'
+        if left_s < 0:
+            return f'overdue by {-left_s:.1f} s (supervisor)'
+        return f'in {left_s:.1f} s (supervisor)'
 
 
-def last_status_by_order(
-    order_ids: Iterable[str],
+@dataclass(frozen=True)
+class AwaitedOrderEnding:
+    """
+    How one order a stop waited for ended, as its records say.
+
+    Args:
+        status: Its last ending; None for an order with no ending on the record, as a resting order
+            the venue took has none
+        executed_lots: What it executed, on an executed ending
+        sent_lots: What it was sent with, from the row of its submission; None where that row is
+            not on the record
+    """
+    status: Optional[OrderStatus]
+    executed_lots: Optional[float] = None
+    sent_lots: Optional[float] = None
+
+    def is_filled_in_part(self) -> bool:
+        """
+        Whether it executed, but less than it was sent with.
+
+        Returns:
+            True for an executed ending below the lots sent
+        """
+        return (self.status is OrderStatus.EXECUTED
+                and self.executed_lots is not None and self.sent_lots is not None
+                and self.executed_lots < self.sent_lots * (1.0 - _PART_TOLERANCE))
+
+    def describe(self) -> str:
+        """
+        The ending, as the operator reads it.
+
+        Returns:
+            For instance `executed`, `executed in part, 0.004 of 0.01` or `open at the venue`
+        """
+        if self.status is None:
+            return 'open at the venue'
+        if self.is_filled_in_part():
+            return f'executed in part, {self.executed_lots:g} of {self.sent_lots:g}'
+        return self.status.value
+
+
+def endings_by_order(
+    keys: Iterable[AwaitedOrderKey],
     order_history: Sequence[OrderResult],
-) -> Dict[str, Optional[OrderStatus]]:
+) -> Dict[AwaitedOrderKey, AwaitedOrderEnding]:
     """
     How each of some orders ended, read off the session's order records.
 
     Args:
-        order_ids: The orders
+        keys: The orders, each by its id and its action
         order_history: The records, oldest first
 
     Returns:
-        Each order's last ending; None for an order with no ending on the record, as a resting
-        order the venue took has none
+        Each order's ending
     """
-    endings: Dict[str, Optional[OrderStatus]] = dict.fromkeys(order_ids)
-    for row in reversed(order_history):
-        if (row.order_id in endings and endings[row.order_id] is None
-                and row.status is not OrderStatus.PENDING):
-            endings[row.order_id] = row.status
-    return endings
+    last: Dict[AwaitedOrderKey, Optional[OrderResult]] = dict.fromkeys(keys)
+    sent: Dict[AwaitedOrderKey, Optional[float]] = dict.fromkeys(last)
+    for row in order_history:
+        key = (row.order_id, row.action)
+        if key not in last:
+            continue
+        if row.status is OrderStatus.PENDING:
+            if sent[key] is None:
+                sent[key] = row.requested_lots
+        else:
+            last[key] = row
+    return {
+        key: (AwaitedOrderEnding(status=None) if row is None else AwaitedOrderEnding(
+            status=row.status, executed_lots=row.executed_lots, sent_lots=sent[key]))
+        for key, row in last.items()
+    }
 
 
 @dataclass(frozen=True)
@@ -229,7 +318,9 @@ class StopWaitOutcome:
 
     Args:
         waited_s: How long the wait ran, on the monotonic clock
-        orders_executed: Waited for, and `executed`: fully or in part, and booked
+        orders_executed: Waited for, and `executed` in full, and booked
+        orders_filled_in_part: Waited for, and `executed` below the lots sent: the part is booked,
+            and the rest did not execute or nobody knows whether it did
         orders_unaccounted: Waited for, and `unaccounted`: the venue did not say
         orders_ended_unfilled: Waited for, and any other ending: refused, cancelled, expired
         orders_still_open: Waited for, and with no ending on the record: a resting order the venue
@@ -237,6 +328,7 @@ class StopWaitOutcome:
     """
     waited_s: float
     orders_executed: int = 0
+    orders_filled_in_part: int = 0
     orders_unaccounted: int = 0
     orders_ended_unfilled: int = 0
     orders_still_open: int = 0
@@ -246,16 +338,16 @@ class StopWaitOutcome:
         How many orders the wait waited for.
 
         Returns:
-            The sum of the four endings
+            The sum of the five endings
         """
-        return (self.orders_executed + self.orders_unaccounted + self.orders_ended_unfilled
-                + self.orders_still_open)
+        return (self.orders_executed + self.orders_filled_in_part + self.orders_unaccounted
+                + self.orders_ended_unfilled + self.orders_still_open)
 
     @classmethod
     def over_records(
         cls,
         waited_s: float,
-        order_ids: Iterable[str],
+        keys: Iterable[AwaitedOrderKey],
         order_history: Sequence[OrderResult],
     ) -> 'StopWaitOutcome':
         """
@@ -263,20 +355,22 @@ class StopWaitOutcome:
 
         Args:
             waited_s: How long the wait ran
-            order_ids: The orders it waited for
+            keys: The orders it waited for, each by its id and its action
             order_history: The session's order records, oldest first
 
         Returns:
             The outcome
         """
-        endings = list(last_status_by_order(order_ids, order_history).values())
-        filled = endings.count(OrderStatus.EXECUTED)
-        unanswered = endings.count(OrderStatus.UNACCOUNTED)
-        still_open = endings.count(None)
+        endings = list(endings_by_order(keys, order_history).values())
+        in_part = sum(1 for ending in endings if ending.is_filled_in_part())
+        filled = sum(1 for ending in endings if ending.status is OrderStatus.EXECUTED) - in_part
+        unanswered = sum(1 for ending in endings if ending.status is OrderStatus.UNACCOUNTED)
+        still_open = sum(1 for ending in endings if ending.status is None)
         return cls(
             waited_s=waited_s,
             orders_executed=filled,
+            orders_filled_in_part=in_part,
             orders_unaccounted=unanswered,
-            orders_ended_unfilled=len(endings) - filled - unanswered - still_open,
+            orders_ended_unfilled=len(endings) - filled - in_part - unanswered - still_open,
             orders_still_open=still_open,
         )

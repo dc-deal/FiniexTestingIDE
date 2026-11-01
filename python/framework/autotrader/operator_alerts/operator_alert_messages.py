@@ -157,6 +157,9 @@ def _stop_wait_line(outcome: StopWaitOutcome) -> str:
     if outcome.orders_executed:
         count = '' if total == 1 else f'{outcome.orders_executed} '
         parts.append(f'{count}filled and booked')
+    if outcome.orders_filled_in_part:
+        count = '' if total == 1 else f'{outcome.orders_filled_in_part} '
+        parts.append(f'{count}filled in part, the part booked')
     if outcome.orders_unaccounted:
         parts.append(f'no answer for {outcome.orders_unaccounted}, recorded unaccounted')
     if outcome.orders_ended_unfilled:
@@ -170,16 +173,15 @@ def _stop_wait_line(outcome: StopWaitOutcome) -> str:
 
 
 def orders_unanswered_at_stop_text(given_up: List[AwaitedOrder], left: List[AwaitedOrder],
-                                   waited_s: float,
-                                   until_kill_s: Optional[float]) -> Tuple[str, str]:
+                                   waited_s: float, kill: Optional[str]) -> Tuple[str, str]:
     """
     The message of a stop whose wait for the orders on their way ran out (#630).
 
     Args:
-        given_up: The orders the stop booked unaccounted
+        given_up: The orders the stop booked unaccounted, in whole or after an executed part
         left: What is still on its way, a resting order above all, which the cleanup takes
         waited_s: How long the stop waited
-        until_kill_s: How long until the declared kill; None when none is declared
+        kill: The declared kill as the stop's status words it; None when none is declared
 
     Returns:
         Title and detail
@@ -192,10 +194,10 @@ def orders_unanswered_at_stop_text(given_up: List[AwaitedOrder], left: List[Awai
     lines.extend(f'{row.describe()} · {row.order_id} · {row.waits_for}' for row in left)
     if left:
         lines.append('Left to the cleanup, which cancels, leaves or books it.')
-    kill = f', kill in about {until_kill_s:.0f} s' if until_kill_s is not None else ''
-    lines.append(f'The session keeps stopping{kill}.')
+    kill_words = f', kill {kill}' if kill is not None else ''
+    lines.append(f'The session keeps stopping{kill_words}.')
     lines.append('Check the account after the stop.')
-    return f'Stop is not clean — no answer for {orders} after {waited_s:.0f} s', '\n'.join(lines)
+    return f'Stop is not clean — no answer for {orders} after {waited_s:.1f} s', '\n'.join(lines)
 
 
 # How late a period may open after its trading day did and still count as the whole day. A day

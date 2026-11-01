@@ -7,6 +7,7 @@ tick source in separate thread, queue.Queue communication.
 """
 
 import queue
+import os
 import signal
 import sys
 import time
@@ -1238,7 +1239,11 @@ class AutotraderMain:
         twice.
         """
         if self._display:
-            self._display.stop()
+            if not self._display.stop() and self._session_logger is not None:
+                self._session_logger.warning(
+                    f'⚠️ Stop: the live display did not finish its last frame within '
+                    f'{self._config.shutdown.display_join_s:g} s (display_join_s) — the stop goes on '
+                    f'without it.')
             self._global_logger.info('📺 Live display stopped')
         self._shutdown_status.set_lines_on_console(True)
 
@@ -1394,11 +1399,14 @@ class AutotraderMain:
         Returns:
             AutoTraderResult with session statistics
         """
-        self._global_logger.info(
-            f'🛑 Shutdown initiated: mode={self._shutdown_mode}'
-        )
         # #630: a loop that waited for its orders has opened it already
         self._open_stop_budget()
+        status = self._shutdown_status.get()
+        # Said here and not in a signal handler, which may interrupt this very logger's write
+        self._global_logger.info(
+            f'🛑 Shutdown initiated: mode={self._shutdown_mode}, asked by '
+            f'{status.asked_by if status is not None else "nothing named"}'
+        )
         self._shutdown_status.say('🛑 Stop: stopping the feeds')
 
         # Stop the signal transport before the tick source: it is the only other thread
@@ -1412,6 +1420,11 @@ class AutotraderMain:
             self._tick_source.stop()
         if self._tick_thread and self._tick_thread.is_alive():
             self._tick_thread.join(timeout=self._config.shutdown.tick_thread_join_s)
+            if self._tick_thread.is_alive():
+                self._session_logger.warning(
+                    f'⚠️ Stop: the tick source thread did not finish within '
+                    f'{self._config.shutdown.tick_thread_join_s:g} s (tick_thread_join_s) — the stop '
+                    f'goes on without it, and it ends with the process.')
 
         self._shutdown_status.enter_step(ShutdownStep.CARRY_OVER)
         # #355 + #492: the note describes what the VENUE holds, and it is written before the
@@ -1454,7 +1467,13 @@ class AutotraderMain:
                 self._session_logger.error(f'Broker truth at session end not recorded: {e}')
 
         # #630: the display stays on through every wait of the stop, the operator's one view of
-        # it, and stops here because the reports print to the console from now on
+        # it, and stops here because the reports print to the console from now on. Its last frame
+        # shows the book as the cleanup and the venue's read left it, which the report describes.
+        if self._tick_loop is not None:
+            try:
+                self._tick_loop.push_last_display_frame(ticks_processed)
+            except Exception as e:
+                self._session_logger.error(f"The display's last frame could not be built: {e}")
         self._stop_display()
         self._shutdown_status.enter_step(ShutdownStep.REPORTS)
 
@@ -1850,11 +1869,11 @@ class AutotraderMain:
         First interrupt: emergency shutdown.
         Second interrupt within 3s: force exit.
         """
-        self._note_stop_asked('Ctrl+C')
+        self._note_stop_asked('Ctrl+C', signalled=True)
         now = time.monotonic()
         if self._first_interrupt_time > 0 and (now - self._first_interrupt_time) < 3.0:
             # Second Ctrl+C within 3s → force exit
-            print('\n⚡ Force exit — second interrupt received')
+            _write_from_signal_handler('\n⚡ Force exit — second interrupt received\n')
             sys.exit(1)
 
         self._first_interrupt_time = now
@@ -1863,16 +1882,17 @@ class AutotraderMain:
         self._request_signal_end()
         # No longer "closing positions": the session end finishes ORDERS per policy and
         # leaves open positions where they are (#492).
-        print('\n⚠️  Shutdown initiated — finishing orders (Ctrl+C again within 3s to force)')
+        _write_from_signal_handler(
+            '\n⚠️  Shutdown initiated — finishing orders (Ctrl+C again within 3s to force)\n')
         # Stop tick loop if running
         if self._tick_loop:
             self._tick_loop.stop()
-        if self._global_logger:
-            self._global_logger.info('⚠️  Interrupt received — shutting down (Ctrl+C again within 3s to force)')
+        # No log line here: a handler interrupts the main thread, which may be inside the same
+        # logger's write. The stop's first step says what asked for it.
 
     def _handle_terminate(self, signum: int, frame: Any) -> None:
         """Handle SIGTERM — a normal shutdown, unless the session already ends in an emergency."""
-        self._note_stop_asked('SIGTERM')
+        self._note_stop_asked('SIGTERM', signalled=True)
         # A supervisor's stop during the shutdown of a crash or a hard stop must not turn the
         # emergency into an ordinary end — the grade, the closing alert and the fail ping read it
         if self._shutdown_mode != 'emergency':
@@ -1882,10 +1902,9 @@ class AutotraderMain:
         # Stop tick loop if running
         if self._tick_loop:
             self._tick_loop.stop()
-        if self._global_logger:
-            self._global_logger.info('🛑 SIGTERM received — normal shutdown')
+        # No log line here, for the reason _handle_interrupt gives
 
-    def _note_stop_asked(self, asked_by: str) -> None:
+    def _note_stop_asked(self, asked_by: str, signalled: bool = False) -> None:
         """
         Keep what first asked for the stop and when, which the supervisor's kill counts from
         (#630). Plain assignments: a handler interrupts the main thread, and a lock it may already
@@ -1893,11 +1912,12 @@ class AutotraderMain:
 
         Args:
             asked_by: What asked, in a word or two
+            signalled: Whether a signal asked, so that a supervisor's kill is coming
         """
         if self._stop_asked_monotonic_s is None:
             self._stop_asked_monotonic_s = time.monotonic()
         self._shutdown_status.note_asked(
-            asked_by, datetime.now(timezone.utc), self._stop_asked_monotonic_s)
+            asked_by, datetime.now(timezone.utc), self._stop_asked_monotonic_s, signalled)
 
     def _what_asked_for_the_stop(self) -> str:
         """
@@ -2321,3 +2341,21 @@ class AutotraderMain:
             True if dry-run mode
         """
         return resolve_dry_run(self._config)
+
+
+def _write_from_signal_handler(text: str) -> None:
+    """
+    Write one line to stderr from inside a signal handler.
+
+    A handler runs between two bytecodes of the main thread, which may be inside a `print` to
+    the same buffered stream: a second `print` then raises a reentrant-call error inside the
+    handler. Writing to the file descriptor bypasses that buffer. A failed write is dropped,
+    because a handler must not raise.
+
+    Args:
+        text: The line, with its own line breaks
+    """
+    try:
+        os.write(sys.__stderr__.fileno(), text.encode('utf-8', 'replace'))
+    except (OSError, ValueError, AttributeError):
+        pass

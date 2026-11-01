@@ -261,15 +261,22 @@ def _order_on_its_way(order_id: str = 'pos_btcusd_1',
 class TestOrdersUnansweredAtStop:
 
     def test_one_order_given_up(self):
-        title, detail = orders_unanswered_at_stop_text([_order_on_its_way()], [], 30.2, 50.4)
+        title, detail = orders_unanswered_at_stop_text(
+            [_order_on_its_way()], [], 30.2, 'in 50.4 s (supervisor)')
 
-        assert title == 'Stop is not clean — no answer for an order after 30 s'
+        assert title == 'Stop is not clean — no answer for an order after 30.2 s'
         assert detail.splitlines() == [
             'market BUY 0.021 ETHUSD · pos_btcusd_1 · venue has not answered',
             'Recorded UNACCOUNTED; it may still fill at the venue.',
-            'The session keeps stopping, kill in about 50 s.',
+            'The session keeps stopping, kill in 50.4 s (supervisor).',
             'Check the account after the stop.',
         ]
+
+    def test_a_kill_already_past_says_so(self):
+        _, detail = orders_unanswered_at_stop_text(
+            [_order_on_its_way()], [], 30.0, 'overdue by 2.0 s (supervisor)')
+        assert 'The session keeps stopping, kill overdue by 2.0 s (supervisor).' in (
+            detail.splitlines())
 
     def test_no_kill_declared_names_none(self):
         _, detail = orders_unanswered_at_stop_text([_order_on_its_way()], [], 30.0, None)
@@ -330,10 +337,16 @@ class TestTheStopLineOfTheClosingMessage:
 
         assert 'Stop: waited 1.5 s for 1 order, still open at the venue' in lines
 
+    def test_one_order_filled_in_part(self):
+        lines = self._lines(StopWaitOutcome(waited_s=0.2, orders_filled_in_part=1))
+
+        assert 'Stop: waited 0.2 s for 1 order, filled in part, the part booked' in lines
+
     def test_each_ending_is_counted_where_there_are_several(self):
         lines = self._lines(StopWaitOutcome(
-            waited_s=12.0, orders_executed=1, orders_unaccounted=2, orders_ended_unfilled=3,
-            orders_still_open=4))
+            waited_s=12.0, orders_executed=1, orders_filled_in_part=5, orders_unaccounted=2,
+            orders_ended_unfilled=3, orders_still_open=4))
 
-        assert ('Stop: waited 12.0 s for 10 orders, 1 filled and booked, no answer for 2, recorded '
-                'unaccounted, 3 ended without a fill, 4 still open at the venue') in lines
+        assert ('Stop: waited 12.0 s for 15 orders, 1 filled and booked, 5 filled in part, the '
+                'part booked, no answer for 2, recorded unaccounted, 3 ended without a fill, '
+                '4 still open at the venue') in lines

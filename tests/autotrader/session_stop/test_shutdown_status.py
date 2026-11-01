@@ -11,6 +11,7 @@ import contextlib
 import dataclasses
 import io
 import os
+import queue
 import signal
 import time
 from datetime import datetime, timezone
@@ -29,12 +30,17 @@ from python.framework.testing.mock_broker_adapter import MockBrokerAdapter
 from python.framework.trading_env.live.live_trade_executor import LiveTradeExecutor
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
 from python.framework.types.autotrader_types.autotrader_result_types import AutoTraderResult
+from python.framework.types.autotrader_types.operator_alert_types import (
+    OperatorAlertKind,
+    OperatorAlertLevel,
+)
 from python.framework.types.autotrader_types.shutdown_status_types import (
     SHUTDOWN_STEP_LABELS,
+    AwaitedOrderEnding,
     ShutdownStatus,
     ShutdownStep,
     StopWaitOutcome,
-    last_status_by_order,
+    endings_by_order,
 )
 from python.framework.types.config_types.autotrader_defaults_config_types import ShutdownDefaults
 from python.framework.types.trading_env_types.awaited_order_types import AwaitedOrder
@@ -56,21 +62,26 @@ ACCOUNT_MODELS = {
 _ASKED_AT = datetime(2026, 10, 12, 14, 22, 42, tzinfo=timezone.utc)
 # Past every tick the profile replays: only the signal ends these sessions
 _NEVER = 900000
+_OPEN = OrderAction.OPEN
 
 
-def _order(order_id: str = 'pos_ethusd_1', sent_at: Optional[float] = 100.0) -> AwaitedOrder:
+def _order(order_id: str = 'pos_ethusd_1', sent_at: Optional[float] = 100.0,
+           action: OrderAction = OrderAction.OPEN,
+           order_type: OrderType = OrderType.MARKET) -> AwaitedOrder:
     """
     One order on its way.
 
     Args:
         order_id: Its id
         sent_at: When it was sent, on the monotonic clock; None for an adopted one
+        action: Whether it opens or closes
+        order_type: What it was sent as
 
     Returns:
         Its row
     """
     return AwaitedOrder(
-        order_id=order_id, action=OrderAction.OPEN, order_type=OrderType.MARKET,
+        order_id=order_id, action=action, order_type=order_type,
         direction=OrderDirection.LONG, lots=0.12, symbol='ETHUSD', sent_at_monotonic_s=sent_at,
         waits_for='venue has not answered')
 
@@ -86,7 +97,8 @@ def _status(**fields: Any) -> ShutdownStatus:
         The status
     """
     return dataclasses.replace(
-        ShutdownStatus(asked_by='SIGTERM', asked_at=_ASKED_AT, as_of_monotonic_s=104.2), **fields)
+        ShutdownStatus(asked_by='SIGTERM', asked_at=_ASKED_AT, as_of_monotonic_s=104.2,
+                       kill_signalled=True), **fields)
 
 
 class TestTheDeclaredSteps:
@@ -131,10 +143,27 @@ class TestTheStatus:
             'market BUY 0.12 ETHUSD · venue has not answered']
 
     def test_the_order_wait_says_how_far_and_what_follows(self):
-        status = _status(order_wait_began_monotonic_s=100.0, order_wait_bound_s=30.0)
+        status = _status(order_wait_began_monotonic_s=100.0, order_wait_bound_s=30.0,
+                         awaited_orders=(_order(),))
 
         assert status.order_wait_text() == (
-            '4.2 s of 30 s, then: booked unaccounted, reported, session ends itself')
+            '4.2 s of 30.0 s, then: booked unaccounted, reported, session ends itself')
+
+    @pytest.mark.parametrize('order_types, follows', [
+        ((OrderType.LIMIT,), 'left to the cleanup'),
+        ((OrderType.STOP, OrderType.LIMIT), 'left to the cleanup'),
+        ((OrderType.MARKET, OrderType.LIMIT),
+         'market orders booked unaccounted, resting ones left to the cleanup'),
+    ], ids=['resting', 'all_resting', 'mixed'])
+    def test_a_resting_order_is_promised_the_cleanup_not_a_booking(self, order_types, follows):
+        """The run-out books a market order; a resting one goes on to the cleanup's policy."""
+        status = _status(
+            order_wait_began_monotonic_s=100.0, order_wait_bound_s=5.94,
+            awaited_orders=tuple(_order(str(index), order_type=order_type)
+                                 for index, order_type in enumerate(order_types)))
+
+        assert status.order_wait_text() == (
+            f'4.2 s of 5.9 s, then: {follows}, reported, session ends itself')
 
     def test_no_wait_has_no_text(self):
         assert _status().order_wait_text() is None
@@ -142,10 +171,23 @@ class TestTheStatus:
     @pytest.mark.parametrize('kill_at, expected', [
         (None, None),
         (180.0, 'in 75.8 s (supervisor)'),
-        (104.0, 'in 0.0 s (supervisor)'),
-    ], ids=['undeclared', 'ahead', 'past'])
+        (104.2, 'in 0.0 s (supervisor)'),
+        (102.2, 'overdue by 2.0 s (supervisor)'),
+    ], ids=['undeclared', 'ahead', 'due', 'past'])
     def test_the_kill_counts_down_from_the_reading(self, kill_at, expected):
         assert _status(kill_at_monotonic_s=kill_at).kill_text() == expected
+
+    @pytest.mark.parametrize('kill_at, expected', [
+        (None, None),
+        (180.0, 'not signalled, the stop keeps within 75.8 s'),
+        (102.2, 'not signalled, the stop is 2.0 s past the time it keeps within'),
+    ], ids=['undeclared', 'ahead', 'past'])
+    def test_a_stop_nobody_signalled_counts_down_no_kill(self, kill_at, expected):
+        """A strategy's own end: no supervisor kills, and the stop still keeps to the time."""
+        status = _status(asked_by="strategy's request", kill_signalled=False,
+                         kill_at_monotonic_s=kill_at)
+
+        assert status.kill_text() == expected
 
     def test_it_names_the_step_in_progress_only_where_no_order_says_it(self):
         assert _status(step=ShutdownStep.VENUE_READ).now_doing() == 'venue read'
@@ -162,10 +204,10 @@ class TestWhatTheWaitCameTo:
 
     @pytest.mark.parametrize('status', list(OrderStatus), ids=lambda s: s.name)
     def test_every_way_an_order_stands_counts_once(self, status):
-        history = [OrderResult(order_id='a', status=OrderStatus.PENDING),
-                   OrderResult(order_id='a', status=status)]
+        history = [OrderResult(order_id='a', status=OrderStatus.PENDING, action=_OPEN),
+                   OrderResult(order_id='a', status=status, action=_OPEN)]
 
-        outcome = StopWaitOutcome.over_records(1.5, ['a'], history)
+        outcome = StopWaitOutcome.over_records(1.5, [('a', _OPEN)], history)
 
         assert outcome.waited_s == 1.5
         assert outcome.orders_waited_for() == 1
@@ -176,19 +218,62 @@ class TestWhatTheWaitCameTo:
             OrderStatus.EXECUTED, OrderStatus.UNACCOUNTED, OrderStatus.PENDING})
 
     def test_an_order_with_no_record_stays_open_rather_than_filled(self):
-        assert StopWaitOutcome.over_records(1.0, ['gone'], []).orders_still_open == 1
+        assert StopWaitOutcome.over_records(1.0, [('gone', _OPEN)], []).orders_still_open == 1
 
     def test_an_order_it_did_not_wait_for_does_not_count(self):
-        history = [OrderResult(order_id='a', status=OrderStatus.EXECUTED),
-                   OrderResult(order_id='b', status=OrderStatus.EXECUTED)]
+        history = [OrderResult(order_id='a', status=OrderStatus.EXECUTED, action=_OPEN),
+                   OrderResult(order_id='b', status=OrderStatus.EXECUTED, action=_OPEN)]
 
-        assert StopWaitOutcome.over_records(1.0, ['a'], history).orders_waited_for() == 1
+        assert StopWaitOutcome.over_records(
+            1.0, [('a', _OPEN)], history).orders_waited_for() == 1
 
     def test_the_last_ending_is_the_one_that_counts(self):
-        history = [OrderResult(order_id='a', status=OrderStatus.UNACCOUNTED),
-                   OrderResult(order_id='a', status=OrderStatus.EXECUTED)]
+        history = [OrderResult(order_id='a', status=OrderStatus.UNACCOUNTED, action=_OPEN),
+                   OrderResult(order_id='a', status=OrderStatus.EXECUTED, action=_OPEN)]
 
-        assert last_status_by_order(['a'], history) == {'a': OrderStatus.EXECUTED}
+        assert endings_by_order([('a', _OPEN)], history) == {
+            ('a', _OPEN): AwaitedOrderEnding(status=OrderStatus.EXECUTED)}
+
+    def test_an_open_and_its_close_are_two_orders_under_one_id(self):
+        """A market close carries its position's id, and both executed."""
+        history = [
+            OrderResult(order_id='p', status=OrderStatus.PENDING, action=_OPEN),
+            OrderResult(order_id='p', status=OrderStatus.EXECUTED, action=_OPEN),
+            OrderResult(order_id='p', status=OrderStatus.PENDING, action=OrderAction.CLOSE),
+            OrderResult(order_id='p', status=OrderStatus.EXECUTED, action=OrderAction.CLOSE),
+        ]
+
+        outcome = StopWaitOutcome.over_records(
+            1.0, [('p', _OPEN), ('p', OrderAction.CLOSE)], history)
+
+        assert (outcome.orders_executed, outcome.orders_waited_for()) == (2, 2)
+
+    def test_an_execution_below_the_lots_sent_is_a_part(self):
+        history = [
+            OrderResult(order_id='a', status=OrderStatus.PENDING, action=_OPEN,
+                        requested_lots=0.01),
+            OrderResult(order_id='a', status=OrderStatus.EXECUTED, action=_OPEN,
+                        requested_lots=0.004, executed_lots=0.004),
+        ]
+
+        outcome = StopWaitOutcome.over_records(1.0, [('a', _OPEN)], history)
+        ending = endings_by_order([('a', _OPEN)], history)[('a', _OPEN)]
+
+        assert (outcome.orders_filled_in_part, outcome.orders_executed) == (1, 0)
+        assert outcome.orders_waited_for() == 1
+        assert ending.describe() == 'executed in part, 0.004 of 0.01'
+
+    def test_a_full_execution_is_no_part(self):
+        history = [
+            OrderResult(order_id='a', status=OrderStatus.PENDING, action=_OPEN,
+                        requested_lots=0.01),
+            OrderResult(order_id='a', status=OrderStatus.EXECUTED, action=_OPEN,
+                        requested_lots=0.01, executed_lots=0.01),
+        ]
+
+        outcome = StopWaitOutcome.over_records(1.0, [('a', _OPEN)], history)
+
+        assert (outcome.orders_filled_in_part, outcome.orders_executed) == (0, 1)
 
 
 def _holder(kill_after_s: Optional[float] = None,
@@ -206,7 +291,7 @@ def _holder(kill_after_s: Optional[float] = None,
     holder = ShutdownStatusHolder(kill_after_s)
     log = RecordingLogger()
     holder.connect_journal(log, None if orders_to_cancel is None else lambda: orders_to_cancel)
-    holder.note_asked('SIGTERM', _ASKED_AT, 100.0)
+    holder.note_asked('SIGTERM', _ASKED_AT, 100.0, signalled=True)
     return holder, log
 
 
@@ -245,6 +330,20 @@ class TestTheHolder:
     def test_no_kill_declared_no_kill(self):
         holder, _ = _holder()
         assert holder.get().kill_at_monotonic_s is None
+
+    def test_a_signal_after_the_first_ask_says_a_kill_is_coming(self):
+        """A strategy's own end, then a supervisor's SIGTERM: the first word stays, the kill comes."""
+        holder = ShutdownStatusHolder(80.0)
+        holder.note_asked("strategy's request", _ASKED_AT, 100.0)
+        assert not holder.get().kill_signalled
+
+        holder.note_asked('SIGTERM', datetime(2027, 1, 1, tzinfo=timezone.utc), 105.0,
+                          signalled=True)
+
+        status = holder.get()
+        assert (status.asked_by, status.asked_at) == ("strategy's request", _ASKED_AT)
+        assert status.kill_signalled
+        assert status.kill_at_monotonic_s == 180.0
 
     def test_a_write_replaces_the_snapshot_and_leaves_the_reader_its_own(self):
         holder, _ = _holder()
@@ -373,7 +472,10 @@ class TestTheJournal:
         assert holder.get().step is ShutdownStep.VENUE_READ
 
     def test_what_asked_is_said_once_at_the_first_step_with_the_kill(self):
-        holder, log = _holder(kill_after_s=80.0)
+        holder = ShutdownStatusHolder(80.0)
+        log = RecordingLogger()
+        holder.connect_journal(log)
+        holder.note_asked('SIGTERM', _ASKED_AT, time.monotonic(), signalled=True)
         assert log.infos == []
 
         holder.enter_step(ShutdownStep.CARRY_OVER)
@@ -390,8 +492,9 @@ class TestTheJournal:
         first, second = _order('a'), _order('b')
 
         holder.order_wait_began([first, second], 100.0, 30.0)
-        holder.order_wait_passed([second], [(first, OrderStatus.EXECUTED)], 2.0, 28.0)
-        holder.order_wait_passed([], [(second, None)], 3.0, 27.0)
+        holder.order_wait_passed(
+            [second], [(first, AwaitedOrderEnding(status=OrderStatus.EXECUTED))], 2.0, 28.0)
+        holder.order_wait_passed([], [(second, AwaitedOrderEnding(status=None))], 3.0, 27.0)
 
         assert log.infos[1:] == [
             '⏳ Stop: 2 order(s) on their way, waiting up to 30.0 s',
@@ -412,7 +515,7 @@ class TestTheJournal:
 
         said = log.infos[already_said:]
         assert [line.split(' · ')[0] for line in said] == [
-            '⏳ Stop: waited 5.1 s of 30 s', '⏳ Stop: waited 10.2 s of 30 s']
+            '⏳ Stop: waited 5.1 s of 30.0 s', '⏳ Stop: waited 10.2 s of 30.0 s']
         assert all('market BUY 0.12 ETHUSD' in line and 'venue has not answered' in line
                    for line in said)
 
@@ -435,7 +538,7 @@ class TestTheJournal:
         assert over.awaited_orders == ()
         assert over.order_wait_text() is None
         assert over.order_wait_ran_s == 2.5
-        assert over.orders_waited_for == {'a', 'b'}
+        assert over.orders_waited_for == {('a', OrderAction.OPEN), ('b', OrderAction.OPEN)}
 
     def test_the_run_out_says_it_before_the_last_read_and_what_it_came_to_after(self):
         holder, log = _holder()
@@ -469,6 +572,8 @@ class TestASignalHandlerWritesNothing:
             shutdown=ShutdownDefaults(supervisor_kill_after_s=80.0)))
         journal = RecordingLogger()
         session._shutdown_status.connect_journal(journal)
+        # A log write here could meet the very logger the interrupted main thread is inside
+        session._global_logger = RecordingLogger()
         previous = {number: signal.getsignal(number) for number in (signal.SIGTERM, signal.SIGINT)}
         session._setup_signal_handlers()
         console = _RecordingStream()
@@ -481,13 +586,28 @@ class TestASignalHandlerWritesNothing:
 
         status = session._shutdown_status.get()
         assert status.asked_by == asked_by
+        assert status.kill_signalled
         assert status.kill_at_monotonic_s == session._stop_asked_monotonic_s + 80.0
         assert journal.infos == []
-        # The handler's one existing print is Ctrl+C's own: none of the stop's lines is in it
-        if sent is signal.SIGTERM:
-            assert console.getvalue() == ''
-        else:
-            assert 'SHUTTING DOWN' not in console.getvalue()
+        assert session._global_logger.infos == []
+        # Nothing reaches the buffered stdout: Ctrl+C's notice goes to the descriptor
+        assert console.getvalue() == ''
+
+    def test_ctrl_c_writes_its_notice_past_the_buffered_stream(self, monkeypatch, capfd):
+        """A print would raise if the main thread were inside one; the notice reaches stderr all the same."""
+        session = AutotraderMain(AutoTraderConfig(
+            profile_name='status', symbol='BTCUSD', broker_type='kraken_spot',
+            shutdown=ShutdownDefaults(supervisor_kill_after_s=80.0)))
+        session._global_logger = RecordingLogger()
+
+        def _no_print(*args, **kwargs):
+            raise RuntimeError('reentrant call inside <_io.BufferedWriter>')
+
+        monkeypatch.setattr('builtins.print', _no_print)
+        session._handle_interrupt(signal.SIGINT, None)
+
+        assert session._shutdown_status.get().asked_by == 'Ctrl+C'
+        assert 'Shutdown initiated' in capfd.readouterr().err
 
 
 def _session_under_sigterm(profile: str, settings: ShutdownDefaults, answer_after_s: float,
@@ -545,9 +665,9 @@ def _session_under_sigterm(profile: str, settings: ShutdownDefaults, answer_afte
         watched['frames'].append(args[4])
         return real_render(instance, *args)
 
-    def watching_display_stop(instance: AutoTraderLiveDisplay) -> None:
+    def watching_display_stop(instance: AutoTraderLiveDisplay) -> bool:
         watched['marks'].append('display_stop')
-        real_display_stop(instance)
+        return real_display_stop(instance)
 
     def watching_truth(instance: LiveTradeExecutor, *args: Any, **kwargs: Any) -> Any:
         watched['marks'].append('end_read')
@@ -852,3 +972,117 @@ class TestAFillTimeoutInsideAWholeStop:
             assert result.get_exit_code() == 0
         finally:
             remove_run_dir(trader._run_dir)
+
+
+class TestACrashWhileStopping:
+    """A crash in the stop or the reports still stops the display and says so out of band."""
+
+    def test_the_display_is_stopped_the_alert_goes_out_and_the_flush_is_an_emergency(self):
+        config = load_autotrader_config('configs/autotrader_profiles/mock/session_stop_test.json')
+        config.bot_id = f'{config.bot_id}cr'
+        trader = AutotraderMain(config)
+        display = MagicMock()
+        display.stop.return_value = True
+        watched: Dict[str, Any] = {}
+
+        def crashing_shutdown(instance: AutotraderMain, *args: Any) -> AutoTraderResult:
+            instance._display = display
+            watched['alerts'] = MagicMock(wraps=instance._operator_alerts)
+            instance._operator_alerts = watched['alerts']
+            raise RuntimeError('the stop crashed')
+
+        with pytest.MonkeyPatch.context() as patch, contextlib.redirect_stdout(io.StringIO()):
+            patch.setattr(AutotraderMain, '_shutdown', crashing_shutdown)
+            with pytest.raises(RuntimeError, match='the stop crashed'):
+                trader.run()
+        remove_run_dir(trader._run_dir)
+
+        display.stop.assert_called_once()
+        kind, level, title, detail = watched['alerts'].send.call_args.args
+        assert (kind, level) == (OperatorAlertKind.SHUTDOWN_CRASHED, OperatorAlertLevel.CRITICAL)
+        assert 'the stop crashed' in detail
+        assert watched['alerts'].finish.call_args.kwargs['emergency'] is True
+
+
+class TestThreadsThatOutlastTheirJoin:
+    """A join that times out is said on the session channel, never passed over in silence."""
+
+    def _session(self) -> AutotraderMain:
+        session = AutotraderMain(AutoTraderConfig(
+            profile_name='status', symbol='BTCUSD', broker_type='kraken_spot',
+            shutdown=ShutdownDefaults(display_join_s=0.25)))
+        session._session_logger = RecordingLogger()
+        session._global_logger = RecordingLogger()
+        return session
+
+    def test_a_display_that_did_not_finish_is_said(self):
+        session = self._session()
+        session._display = MagicMock()
+        session._display.stop.return_value = False
+
+        session._stop_display()
+
+        assert any('live display did not finish' in message and '0.25 s' in message
+                   for message in session._session_logger.warnings)
+
+    def test_a_display_that_finished_says_nothing(self):
+        session = self._session()
+        session._display = MagicMock()
+        session._display.stop.return_value = True
+
+        session._stop_display()
+
+        assert session._session_logger.warnings == []
+
+    def test_the_display_reports_a_thread_it_could_not_join(self):
+        display = AutoTraderLiveDisplay(
+            queue.Queue(), MagicMock(),
+            AutoTraderConfig(shutdown=ShutdownDefaults(display_join_s=0.01)))
+        stuck = MagicMock()
+        stuck.is_alive.return_value = True
+        display._thread = stuck
+
+        assert display.stop() is False
+        stuck.is_alive.return_value = False
+        assert display.stop() is True
+
+
+class TestADisplayThatFails:
+
+    def test_it_hands_the_console_back_to_the_lines(self):
+        holder = ShutdownStatusHolder(None)
+        holder.set_lines_on_console(False)
+        display = AutoTraderLiveDisplay(
+            queue.Queue(), MagicMock(), AutoTraderConfig(),
+            shutdown_status=holder)
+        display._running = True
+
+        with pytest.MonkeyPatch.context() as patch:
+            patch.setattr('python.system.ui.autotrader_live_display.Live', MagicMock(
+                side_effect=RuntimeError('no terminal after all')))
+            display._update_loop()
+
+        assert holder._lines_on_console is True
+
+
+class TestTheLastFrameAfterTheCleanup:
+
+    def test_the_display_gets_the_book_the_cleanup_left_before_it_stops(self, monkeypatch):
+        session = AutotraderMain(AutoTraderConfig(
+            profile_name='status', symbol='BTCUSD', broker_type='kraken_spot'))
+        session._session_logger = RecordingLogger()
+        session._global_logger = RecordingLogger()
+        marks: List[str] = []
+        session._tick_loop = MagicMock()
+        session._tick_loop.push_last_display_frame.side_effect = lambda ticks: marks.append(
+            f'frame:{ticks}')
+        monkeypatch.setattr(session, '_stop_display', lambda: marks.append('display_stop'))
+        monkeypatch.setattr(session, '_collect_results',
+                            lambda ticks, clipped: AutoTraderResult())
+        monkeypatch.setattr(session, '_generate_reports', lambda result: None)
+        monkeypatch.setattr('python.framework.autotrader.autotrader_main.SessionPostRunValidator',
+                            MagicMock())
+
+        session._shutdown(7, 0)
+
+        assert marks == ['frame:7', 'display_stop']
