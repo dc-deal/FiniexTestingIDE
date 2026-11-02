@@ -4,7 +4,7 @@
 
 > ⚠️ **No financial advice.** This software is for educational and research purposes only.
 
-> **Version:** 1.4.0
+> **Version:** 1.5.0
 > **Status:** Alpha
 > **Versioning:** until 2.0, a minor version counts a development cycle and may break what came before it; semantic versioning applies from 2.0 on. The API's compatibility is its contract version, which every answer carries
 > **Target:** Developers with Python experience who want to systematically backtest trading strategies
@@ -15,18 +15,21 @@ project means one thing.
 
 ---
 
-## What's New in 1.4.0
+## What's New in 1.5.0
 
-- **SIGNAL Workers — External Data as a First-Class Input** — A new worker type reads recorded, model-produced signals (LLM sentiment) the same way an indicator reads price. Archived per source and resolved by timestamp with a strict no-look-ahead merge key, so a backtest can never see a signal before it existed.
-- **Live Signal Transport** — A live-adapter session starts with an empty provider that a transport fills as envelopes arrive, drained on both the tick and heartbeat paths. The same worker reads a mounted archive or a live feed without knowing which it got.
-- **Mandatory Staleness Contracts** — Every decision logic must answer what it does when an input goes quiet — for signals and for market data. Not knowing is a state, and a strategy that cannot describe its own blindness is not testable.
-- **Signal Reporting — Offered vs. Decided-On** — Reports separate what the archive *could* have offered from what the strategy *actually decided on*, and record when disturbances happened as observed spans. Two different questions; a report that merges them answers neither.
-- **Run-Outcome Contract & Exit Codes** — A run's outcome is a single canonical value on the report model, and the CLI exit code reflects it. Automation no longer sees green on a failed run.
-- **Compute Only What Is Consumed** — A decision logic declares the worker outputs it reads, so a worker skips computing the rest; a worker reads only the bar window it needs. Bit-identical results, less work per tick.
-- **Unified Release Certificates** — All four release gates (benchmark, live adapter, field study, signal feed) share one identity: the declared release is checked against the version the tree carries, a declared release from uncommitted work is refused, and each certificate records the configuration it actually ran under.
+- **GIPS-Aligned Results — Composites and a Daily Track Record** — The ledger keeps one booking period per trading day, anchored on the market's own day, so a backtest and a live session can be compared day by day. A run's accounts fold into one result the way the Global Investment Performance Standards fold a composite: what happened adds up, the ratios are recomputed from the added parts, and a reading of one account has no answer across them. Every figure declares which kind it is, and a live bot that would continue an open position under a changed composite is refused unless that one start accepts the change.
+- **Unattended Live Operation** — A bot restarts where it left off. It adopts its own resting orders at the venue by a key it minted, trades only its declared share of the account, continues its drawdown curve and risk baseline only when a session of its own kind wrote them, and lets its decision logic answer for the boot situation. A kernel lock refuses a second start of the same bot, a start that fails on a passing fault exits so the supervisor tries again, and a normal stop waits, within a bound, for the orders still on their way.
+- **The Venue Decides What an Order Can Carry** — A strategy declares the order features it uses, and a start refuses what its venue does not offer — a backtest too, unless its set declares a recorded exception. A declared stop or target is enforced in live as well, and a bot owns its exits.
+- **Resolved by Asking, Never Retried** — One retry ladder and one give-up rule for every external connection. A write whose answer was lost is never sent twice: the venue is asked what became of it, and the live order path books what the venue answers, never a timer or a failed read.
+- **Operator Alerts and Session Status** — Telegram messages per symptom and at each trading day's close, and a liveness ping that vouches for the tick loop, so a dead or hung session reaches the operator. A running session can be asked how it stands, and the dashboard survives a panel that fails.
+- **A Record That Survives a Crash** — Every trading day of a session is sealed at its boundary, so a session that dies on day 29 keeps every day it sealed. Every run states who started it, with exactly which code and configuration, and what it is for; every order transition is a crash-safe stream; a deployment marks where its sessions ran different code; and the ledger and the deployment history are readable over the API.
+- **The Security Study — a Fourth Live Certificate** — Five real-money sessions provoke the order guard's refusals and the circuit breaker's block and stop, a restart included, and the certificate says rule by rule how each is proven. The field study runs on the same engine and reads the live core's own record, and one check before the tag holds all release certificates to the release and its code.
+- **Fees and Risk Limits You Can Trust Over Thirty Days** — A live fill is booked with the venue's own fee, the exit fee is booked too, and a fee rate comes from one answered source. One drawdown definition, measured on the per-tick equity curve, is shared by the circuit breaker and the reports and survives a restart, beside an absolute drawdown cap and a daily loss limit.
+- **Data Fidelity** — Prices are stored as the double their decimal parses to, ticks recorded without a quote get one estimated from the trades' own sides, MT5 times follow the broker server's clock rule, and every warmup uses the last bars complete at its first tick. Every data file says which instance wrote it, the live tick source records every outage with the venue's trade ids around it, and the signal push stream recovers a missed envelope.
 
 ### Previous Releases
 
+- **1.4.0** — SIGNAL workers (external, model-produced data as a first-class input), live signal transport, mandatory staleness contracts, signal reporting (offered vs. decided-on), run-outcome contract and exit codes, compute only what is consumed, unified release certificates
 - **1.3.1** — Production-bot case study, unified reporting pipeline, trade analytics (MAE/MFE, R-multiple, expectancy), robustness validation (IS/OOS), parameter sweep, honest-backtest tooling (swap cost, broker-derived precision), restart-safe algo memory
 - **1.3.0** — Live acceptance certificate (Field Study), reconciliation foundation, decision event channel, timer-driven loop clock & cadence, order-lifecycle hardening, audit telemetry + API performance monitor
 - **1.2.3** — Live execution architecture refactor (symmetric sim/live pipelines, async HTTP dispatch), async modify/cancel/position-modify, broker trade record model (order ↔ executions pairing)
@@ -83,6 +86,8 @@ FiniexTestingIDE is a high-performance backtesting and live trading framework fo
 - **Order Guard** - Duplicate signal guard, SHORT protection in spot mode, rejection cooldown
 - **AwarenessChannel** - Decision logic narration channel for live display integration
 - **Clipping Monitor** - Detects when tick processing time exceeds tick arrival interval
+- **Restart-Safe Operation** - On boot a bot adopts its own resting orders at the venue, continues its risk baseline and drawdown curve, refuses a second start of itself, and leaves a passing fault to its supervisor's retry
+- **Operator Alerts** - Telegram messages per symptom and at each trading day's close, and a liveness ping that vouches for the tick loop
 
 ### Trade Simulation & Execution
 - **Realistic Execution** - Inbound latency simulation with ms-timestamp fill detection (seeded)
@@ -143,44 +148,42 @@ Two-tier system: **default configs** (`configs/`, version controlled) and **user
 
 ## Sample Data
 
-A sample dataset is available for testing and learning (updated 2026-08-24, 4.29 GB):
+A sample dataset is available for testing and learning (updated 2026-11-02, 5.56 GB):
 
 **Download:** [download page](https://finiex-rag.duckdns.org/downloads/)
 
 ### Installation
 
-Extract the ZIP contents to `data/processed/`:
+Extract the ZIP contents to an empty `data/processed/` (delete an older package first):
 
 ```
 data/processed/
-├── ticks_index.parquet
-├── bars_index.parquet
-├── discovery_caches/
 ├── mt5/
 │   ├── ticks/
 │   │   ├── AUDUSD/ ... USDJPY/
 │   └── bars/
 ├── kraken_spot/
 │   ├── ticks/
-│   │   ├── BTCUSD/ ... XRPUSD/
+│   │   ├── ADAUSD/ ... XRPUSD/
 │   └── bars/
 └── signals/
-    ├── signals_index.parquet
-    └── crypto_sentiment/ ... forex_macro_sentiment/
+    └── crypto_macro_sentiment/ ... forex_macro_sentiment_mock/
 ```
 
-The index files and discovery caches are derived: each is rebuilt from the data it describes, and a
-missing index is built on first use. A ZIP that predates the current index names therefore works as
-it is — its older index files are ignored and can be deleted.
+The package holds no index files and no discovery caches. Both are derived: each is built from the
+data it describes on first use, so the first run takes a little longer.
 
 ### Dataset Overview
 
 | Broker | Symbols | Time Range | Ticks |
 |--------|---------|------------|-------|
-| MT5 (Forex) | AUDUSD, EURGBP, EURUSD, GBPUSD, NZDUSD, USDCAD, USDCHF, USDJPY | Sep 2025 → Aug 2026 | ~223M |
-| Kraken Spot | ADAUSD, BTCUSD, DASHUSD, ETHEUR, ETHUSD, LTCUSD, SOLUSD, XRPUSD | Jan → Aug 2026 | ~31M |
+| MT5 (Forex) | AUDUSD, EURGBP, EURUSD, GBPUSD, NZDUSD, USDCAD, USDCHF, USDJPY | Sep 2025 → Oct 2026 | ~262M |
+| Kraken Spot | ADAUSD, BTCUSD, DASHUSD, DOTUSD, ETHEUR, ETHUSD, LTCUSD, SOLUSD, XRPUSD | Jan → Oct 2026 (DOTUSD from Sep) | ~50M |
 
-**Total: ~254M ticks across 16 instruments (8 Forex pairs + 8 Crypto), with auto-rendered M1–D1 bars**
+**Total: ~312M ticks across 17 instruments (8 Forex pairs + 9 Crypto), with auto-rendered M1–D1 bars**
+
+Only our own collection is in the package. Trade history a venue publishes, which the archive imports
+beside it, is left out: it is the venue's to distribute, not ours.
 
 The two brokers differ in more than their instruments: Kraken publishes a central order book
 where every trade prints at a price, while MT5 forex is dealer-quoted and has no traded price
@@ -188,8 +191,8 @@ at all. That changes what a bar is made of, so it is declared per broker rather 
 see [Market Model](docs/architecture/market_model.md) for the three axes that describe a venue
 and which combinations the framework currently supports.
 
-Sentiment signals are included as a separate data source: ~4.9M rows across crypto and
-forex macro sentiment, covering Jan → Aug 2026 (synthetic backfill up to 2026-07-15,
+Sentiment signals are included as a separate data source: ~755k rows across crypto, crypto macro
+and forex macro sentiment, covering Jan → Oct 2026 (synthetic backfill up to 2026-07-15,
 collected from a live feed afterwards).
 
 > ⚠️ **Data Disclaimer:** The provided dataset consists of historical tick and bar data
@@ -249,16 +252,24 @@ Individual suites can be run separately: `pytest tests/<group>/<suite>/ -v`
 
 Configuration: `configs/test_config.json` (excluded suites, fail-fast behavior). Each test suite has its own documentation in [`docs/tests/`](docs/tests/).
 
-**Release Certificates.** Every release is gated by four independent certificates, each written as a machine-checkable artifact with a 90-day validity and verified by its own test:
+**Release Certificates.** Every release is gated by independent certificates, each written as a machine-checkable artifact with a 90-day validity and verified by its own test:
 
 | Certificate | Validates |
 |---|---|
 | **Benchmark** | Throughput against registered system baselines (3-run median, stability and configuration guards) |
 | **Live Adapter** | The broker API contract — order placement, limit lifecycle, and a real market round-trip |
 | **Live Field Study** | The full live execution stack on a real account: every order type, modify/cancel, rejection battery, partial close, idle heartbeat |
+| **Security Study** | The account's protective rules on a real account: the order guard's refusals, the circuit breaker's block and stop, and the risk baseline across a restart |
 | **Signal Feed** | The external signal producer's contract against its running production instance |
 
-All four share one identity: the declared release is checked against the version the repository carries, and a certificate is refused if it would be taken from uncommitted work. Details in [`docs/architecture/release_certificates.md`](docs/architecture/release_certificates.md).
+All share one identity: the declared release is checked against the version the repository carries, and a certificate is refused if it would be taken from uncommitted work. Before the tag, one check holds the live certificates to the release and its code. Details in [`docs/architecture/release_certificates.md`](docs/architecture/release_certificates.md).
+
+**Size of the codebase per release.** Physical lines as [`analyze_project_structure.py`](python/experiments/analyze_project_structure/analyze_project_structure.py) counts them: comments, docstrings and blank lines included. Production is `python/`, tests are `tests/`, MQL5 is the MetaTrader collector source. A row is never changed once its release ships.
+
+| Release | Production | Tests | MQL5 | Total | Test : production |
+|---|---|---|---|---|---|
+| 1.5.0 | 188,313 | 130,646 | 1,584 | 320,543 | 0.69 : 1 |
+| 1.4.0 | 95,196 | 44,347 | 1,183 | 140,726 | 0.47 : 1 |
 
 ---
 
@@ -272,6 +283,7 @@ See the [Documentation Index](docs/documentation_index.md) for a complete overvi
 
 - **No native OCO/Iceberg/trailing-stop order types** - Market, Limit, Stop, and Stop-Limit are supported; extended order types are planned. Strategy-level trailing (moving a position's stop as price advances) is supported and demonstrated by the reference strategy.
 - **No Broker-Side Partial-Fill Detection** - An order at a real venue is treated as pending until fully filled; a broker-reported *partial* fill (one order, multiple executions) is not yet surfaced as its own state. Partial position close (closing a fraction of an open position) is supported in both backtesting and AutoTrader sessions.
+- **Live trading on spot only** - The live path is proven on Kraken Spot. The margin account model runs in backtests and against the mock venue; a live margin adapter (MT5) is planned
 - **FiniexViewer in progress** - HTTP API available; browser UI in active development (see [FiniexViewer Setup](docs/user_guides/finiexviewer_setup.md))
 
 > **Note on Multiple Positions:** Full multi-position support is implemented and validated by integration tests, and the reference strategy (`CORE/trend_channel_reference`) actively stacks several positions on a symbol. Holding multiple *symbols* against one shared capital pool — portfolio backtesting — is the next core-engine milestone. See `configs/scenario_sets/backtesting/multi_position_test.json` for a reference on how to build multi-position scenarios.
@@ -292,7 +304,8 @@ See the [Documentation Index](docs/documentation_index.md) for a complete overvi
 - Live acceptance certificate (Field Study), reconciliation foundation, decision event channel, timer-driven loop cadence (V1.3.0)
 - Production-bot case study, restart-safe algo memory, unified reporting, trade analytics, robustness validation, and parameter sweep (V1.3.1)
 - The SIGNAL chain — external, model-produced data as a first-class worker input, with mandatory staleness contracts and a live transport (V1.4)
-- Next: unattended live operation — everything a strategy needs to run thirty days on a real account without a human watching: state recovery, alerting, reconciliation resolution, and paper trading as a first-class mode (V1.5)
+- Unattended live operation — what a strategy needs to run thirty days on a real account without a human watching: restart and state recovery, operator alerts, resolution of lost answers, and a security study that proves the guards with real money (V1.5)
+- Next: the thirty-day real-money run and its parity proof against a backtest of the same period (V1.5.x), then hardening (V1.6), the portfolio backtest (V1.7) and an event-driven loop core (V1.8)
 
 For the full vision, detailed roadmap, and feature path see **[Issue #138 — Vision & Roadmap](https://github.com/dc-deal/FiniexTestingIDE/issues/138)**.
 
