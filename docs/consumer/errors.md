@@ -57,7 +57,7 @@ that is not safelisted, so they are published deliberately.
 | 404 | `timeframe_not_rendered` | no bars exist for that timeframe |
 | 404 | `coverage_report_unavailable` | the coverage cache holds no report for the symbol yet |
 | 404 | `no_bars_in_range` | bars exist, but none in the requested window |
-| 404 | `deployment_not_found` | no such deployment in the run-results ledger |
+| 404 | `deployment_not_found` | no session in the run index and no row in the run-results ledger names that deployment |
 | 404 | `sweep_not_found` | no such sweep in the run-results ledger |
 | 404 | `config_file_not_found` | the configuration directory lists no such file |
 | 404 | `document_not_found` | no document goes by that name — `/api/v1/docs` lists them |

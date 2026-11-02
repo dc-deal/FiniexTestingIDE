@@ -61,11 +61,16 @@ def render_deployment_list(summaries: List[DeploymentSummary]) -> None:
         deepest = (f'{negated_magnitude(summary.max_drawdown):>11.2f}'
                    if summary.max_drawdown is not None
                    else f'{"—":>11}')
+        net_pnl = (f'{summary.net_pnl:>11.2f}' if summary.net_pnl is not None
+                   else f'{"—":>11}')
         print(f'{summary.deployment_id:<32} {summary.bot:<22} '
               f'{(summary.bot_id or "—"):<20} {orders_to:<16} {summary.sessions:>8} '
-              f'{since:<17} {summary.net_pnl:>11.2f} {deepest} '
+              f'{since:<17} {net_pnl} {deepest} '
               f'{gap:>9}{mark}')
     print('─' * 155)
+    if any(s.currency is None for s in summaries):
+        print('— under net P&L = sessions that have booked no trading day yet: they run before '
+              'their first seal, or ended before it.')
     if any(s.configuration_changed for s in summaries):
         print('⚠ = the sessions were not all produced by the same configuration; the detail '
               'view draws the break.')
@@ -94,18 +99,18 @@ def render_deployment_history(
         advisory: What the comparability analyzer found, printed ABOVE the table when it
             found anything. Above, because the question it answers — may these rows be read
             as one series — has to reach the reader before the numbers do
-        unfinished: How many of this deployment's runs never reached their close. The table
-            is built from the LEDGER, which holds a session's sealed days (#476) but the row
-            of its close only at the end — so such a run stands in the table without an end
-            when it sealed a day, and is absent from it when it died before its first seal.
-            The two counts overlap and are never added. Zero leaves the line exactly as it was
+        unfinished: How many of this deployment's runs never reached their close. The LEDGER
+            holds a session's sealed days (#476) but the row of its close only at the end — so
+            such a run stands in the table without an end when it sealed a day, and with no
+            figures when it sealed none yet (#645). Every run it counts is in the table, and the
+            two are never added. Zero leaves the line exactly as it was
         code_summary: How often the code moved, printed as one dated line above the table and above
             the advisory's block. One line, because it never leaves the deployment's history: a
             block here would stand on every maintained deployment for good
     """
     caption = deployment_caption(sessions)
     first = caption.first_started.strftime('%Y-%m-%d %H:%M') if caption.first_started else '?'
-    recorded = (f'{caption.session_count} session(s) in the ledger · {unfinished} never completed'
+    recorded = (f'{caption.session_count} session(s) · {unfinished} not completed'
                 if unfinished else f'{caption.session_count} session(s)')
     bot_id = next((s.bot_id for s in sessions if s.bot_id), '')
     identity = f' · bot {bot_id}' if bot_id else ''
@@ -147,6 +152,8 @@ def render_deployment_history(
         # Reported, never judged: no threshold here decides what is "too long" — that is a
         # judgement about the market and the bot, not about the data. Named "idle" because
         # the table now reads downwards into the past: it is the stretch before this session.
+        if session.net_pnl is None and session.currency is None:
+            notes.append('nothing booked yet')
         if session.gap_hours is not None and session.gap_hours >= 1:
             measure = ' between starts' if session.gap_between_starts else ''
             notes.append(f'idle {session.gap_hours:.1f} h{measure}'
@@ -157,7 +164,9 @@ def render_deployment_history(
                    else f'{"—":>13}')
         share = (f'{session.max_drawdown_pct:>6.2f}%' if session.max_drawdown_pct is not None
                  else f'{"—":>7}')
-        print(f'{session.run_id:<26} {started:<17} {ran:>7} {session.net_pnl:>11.2f} '
+        net_pnl = (f'{session.net_pnl:>11.2f}' if session.net_pnl is not None
+                   else f'{"—":>11}')
+        print(f'{session.run_id:<26} {started:<17} {ran:>7} {net_pnl} '
               f'{decline} {share}   '
               f'{" · ".join(notes)}')
 

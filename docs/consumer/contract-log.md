@@ -33,6 +33,29 @@ reads downwards from the version their fixtures hold until they reach the one be
 A test holds the newest heading in this log to the number the server answers with, so a version
 cannot ship without its entry.
 
+## Version 49 — 2026-11-02 (#645)
+
+A deployment is listed from its first session's start, not from its first sealed trading day. Until
+now a new deployment stood in no list for up to a day while its session ran.
+
+- [Deployments](/api/v1/docs/deployments), a changed meaning: which sessions a deployment holds now
+  comes from the runs that name it, and what they booked from the ledger as before. A session that
+  has booked no trading day yet, because it runs before its first seal or ended before it, stands in
+  the list and in the detail **without figures**.
+- Deployments, the list: such sessions have no account currency yet, so they form a row of their own
+  with **`currency: null`**, after the deployment's other rows. A deployment whose earlier sessions
+  booked days shows that row beside its booked ones. Its session moves into its currency's row at its
+  first seal. The key stays `["deployment_id", "currency"]`.
+- Deployments, the list row and the session row: **`net_pnl` and `currency` are nullable**, null on
+  such a session and never a zero. Drawdowns were nullable before.
+- `/deployments/{deployment_id}`: answers 200 for such a deployment instead of `404`. Every run
+  `unfinished` counts is now in `sessions`, either without an `ended` or without figures.
+- [Booking periods](/api/v1/docs/booking-periods), `/deployments/{deployment_id}/booking-periods`:
+  answers 200 with an empty list for such a deployment. `sessions_without_periods` also counts its
+  sessions that have not sealed a day yet.
+- [Errors](/api/v1/docs/errors): `deployment_not_found` now means that no session in the run index
+  and no ledger row names the identity.
+
 ## Version 48 — 2026-11-01
 
 A consumer can tell which installation answers, now that this API exists on more than one system.

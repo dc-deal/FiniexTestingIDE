@@ -26,12 +26,14 @@ from python.configuration.host_identity_manager import HostIdentityManager
 from python.data_management.index.bars_index_manager import BarsIndexManager
 from python.framework.discoveries.data_coverage.data_coverage_report import DataCoverageReport
 from python.framework.types.api.report_types import (
+    ParentKind,
     RunConfigSnapshot,
     RunInfo,
     RunResultRow,
 )
 from python.framework.types.config_types.data_origin_config_types import OriginClass
 from python.framework.types.coverage_report_types import Gap, GapCategory
+from python.framework.types.run_kind_types import OrdersTo
 from python.framework.types.run_origin_types import CodeStand, RepositoryStand
 from python.framework.validators.validation_check_catalog import VALIDATION_CHECKS_BY_ID
 
@@ -668,12 +670,19 @@ class TestEveryListSaysWhatMakesARowUnique:
 class TestDeployments:
     """
     A deployment is the life of ONE bot across its restarts, and it is not a run: no header, no
-    directory, no artifacts. Its rows live in the ledger and nowhere else — which is why these
-    routes read the ledger and only the ledger (one route, one store).
+    directory, no artifacts. Which sessions it holds is the run index's answer, and what they
+    booked the ledger's (#645): every session registers in the index at its start and books its
+    first ledger row only at its first seal.
 
     Before #539 the ledger's only reader filtered on `sweep_id`, which an AutoTrader session does not
     have, so every one of these rows was written and unreachable (§44).
     """
+
+    @pytest.fixture(autouse=True)
+    def _an_index_that_knows_no_run(self):
+        """By default the run index knows no run, so a test reads only the ledger it hands over."""
+        with self._no_unfinished():
+            yield
 
     @staticmethod
     def _rows():
@@ -818,9 +827,9 @@ class TestDeployments:
 
     def test_a_session_that_never_reached_its_close_is_counted(self, client):
         """
-        The sessions come from the LEDGER, whose row is written last — so a killed run is
-        absent from them by construction, and a bare count would be a number the reader has
-        no reason to doubt (§44).
+        The ledger's row of a session's close is written last, so a killed run stands in the
+        sessions with no end, or with no figures when it sealed no day — and without the count
+        a session that died reads like one still running (§44).
         """
         ledger = MagicMock()
         ledger.read_rows.return_value = self._rows()
@@ -833,6 +842,99 @@ class TestDeployments:
             data = client.get('/api/v1/deployments/deploy_1').json()
         assert data['count'] == 2 and data['unfinished'] == 2
 
+    @staticmethod
+    def _index_with(*runs: RunInfo):
+        """An index that registered these runs at their start."""
+        index = MagicMock()
+        index.list_runs.return_value = list(runs)
+        return patch('python.api.endpoints.deployments_router.RunIndex', return_value=index)
+
+    @staticmethod
+    def _started(run_id: str, deployment_id: str = 'deploy_2',
+                 start: str = '2026-11-03T09:00:00+00:00',
+                 kind: ParentKind = ParentKind.DEPLOYMENT) -> RunInfo:
+        """A session the run index registered at its start, naming its deployment."""
+        return RunInfo(run_id=run_id, group='autotrader', name='ethusd_rehearsal', start_time=start,
+                       parent_id=deployment_id, parent_kind=kind, orders_to=OrdersTo.SIMULATED)
+
+    def test_a_deployment_is_listed_from_its_first_sessions_start(self, client):
+        """
+        A session books its first ledger row at its first seal. Read from the ledger alone, the
+        deployment of a running session stood in no list for up to a day (#645).
+        """
+        ledger = MagicMock()
+        ledger.read_rows.return_value = []
+        with patch('python.api.endpoints.deployments_router._ledger', return_value=ledger), \
+                self._index_with(self._started('r1')):
+            data = client.get('/api/v1/deployments').json()
+        assert data['count'] == 1
+        row = data['deployments'][0]
+        assert row['deployment_id'] == 'deploy_2' and row['sessions'] == 1
+        # Nothing was booked, so nothing is claimed: null, never a zero
+        assert row['currency'] is None and row['net_pnl'] is None
+        assert row['max_drawdown'] is None and row['max_drawdown_pct'] is None
+        assert row['bot'] == 'ethusd_rehearsal' and row['orders_to'] == ['simulated']
+        assert row['first_started'].startswith('2026-11-03T09:00:00')
+
+    def test_its_detail_answers_with_the_session_that_booked_nothing(self, client):
+        ledger = MagicMock()
+        ledger.read_rows.return_value = []
+        with patch('python.api.endpoints.deployments_router._ledger', return_value=ledger), \
+                self._index_with(self._started('r1')):
+            r = client.get('/api/v1/deployments/deploy_2')
+        assert r.status_code == 200
+        data = r.json()
+        assert [s['run_id'] for s in data['sessions']] == ['r1']
+        session = data['sessions'][0]
+        assert session['currency'] is None and session['net_pnl'] is None
+        assert session['ended'] is None and session['max_drawdown'] is None
+        # It never reached its close — it may be running right now — and it IS in the list
+        assert data['count'] == 1 and data['unfinished'] == 1
+
+    def test_its_booking_periods_are_an_empty_list_and_not_a_404(self, client):
+        ledger = MagicMock()
+        ledger.read_rows.return_value = []
+        with patch('python.api.endpoints.deployments_router._ledger', return_value=ledger), \
+                self._index_with(self._started('r1')):
+            r = client.get('/api/v1/deployments/deploy_2/booking-periods')
+        assert r.status_code == 200
+        data = r.json()
+        assert data['periods'] == [] and data['sessions'] == 0
+        # The session that has not sealed a day is not lost: it is what keeps the list honest
+        assert data['sessions_without_periods'] == 1
+
+    def test_a_new_session_of_a_booked_deployment_stands_in_a_row_of_its_own(self, client):
+        """
+        Before its first seal it has no account currency, so it cannot join the USD row —
+        counting it there would claim a currency nobody recorded, and its null P&L would have
+        to be summed with real ones.
+        """
+        ledger = MagicMock()
+        ledger.read_rows.return_value = self._rows()
+        with patch('python.api.endpoints.deployments_router._ledger', return_value=ledger), \
+                self._index_with(
+                    self._started('s1', 'deploy_1', '2026-09-01T06:00:00+00:00'),
+                    self._started('s2', 'deploy_1', '2026-09-02T06:00:00+00:00'),
+                    self._started('s3', 'deploy_1', '2026-09-03T06:00:00+00:00')):
+            rows = client.get('/api/v1/deployments').json()['deployments']
+            detail = client.get('/api/v1/deployments/deploy_1').json()
+        assert [(r['deployment_id'], r['currency'], r['sessions']) for r in rows] == [
+            ('deploy_1', 'USD', 2), ('deploy_1', None, 1)]
+        assert rows[0]['net_pnl'] == 6.0 and rows[1]['net_pnl'] is None
+        assert [s['run_id'] for s in detail['sessions']] == ['s1', 's2', 's3']
+        assert detail['sessions'][2]['currency'] is None
+
+    def test_a_sweep_naming_the_same_id_is_not_a_session(self, client):
+        """A parent id is an opaque key, and a sweep's has the same shape: the KIND decides (#386)."""
+        ledger = MagicMock()
+        ledger.read_rows.return_value = []
+        with patch('python.api.endpoints.deployments_router._ledger', return_value=ledger), \
+                self._index_with(self._started('r1', kind=ParentKind.SWEEP)):
+            listed = client.get('/api/v1/deployments').json()
+            detail = client.get('/api/v1/deployments/deploy_2')
+        assert listed['deployments'] == []
+        assert detail.status_code == 404
+
     def test_unknown_deployment_is_a_404_and_not_an_empty_history(self, client):
         """An empty list would read as a deployment that ran and did nothing."""
         ledger = MagicMock()
@@ -841,6 +943,8 @@ class TestDeployments:
             r = client.get('/api/v1/deployments/nope')
         assert r.status_code == 404
         assert r.json()['error'] == 'deployment_not_found'
+        # The answer names both stores it asked, so a reader knows the session is not just unbooked
+        assert 'run index' in r.json()['detail']
 
     @staticmethod
     def _period_rows():

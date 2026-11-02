@@ -22,10 +22,12 @@ from unittest.mock import MagicMock, patch
 
 from python.cli.run_index_cli import RunIndexCli
 from python.framework.reporting.builders.deployment_history_builder import (
+    add_unbooked_sessions,
     build_deployment_histories,
     deployment_code_summary,
     deployment_comparability_advisory,
     summarize_deployments,
+    unbooked_runs,
 )
 from python.framework.reporting.console.deployment_history_summary import (
     render_deployment_history,
@@ -36,6 +38,8 @@ from python.framework.types.api.report_types import (
     DeploymentCodeChange,
     DeploymentSessionRow,
     DeploymentSummary,
+    ParentKind,
+    RunInfo,
     RunResultRow,
 )
 from python.framework.types.run_kind_types import OrdersTo
@@ -427,7 +431,7 @@ class TestASessionEndsWithTheRowOfItsClose:
         ])[DEPLOYMENT]
         render_deployment_history(DEPLOYMENT, sessions, unfinished=1)
         printed = capsys.readouterr().out
-        assert '1 session(s) in the ledger · 1 never completed' in printed
+        assert '1 session(s) · 1 not completed' in printed
         assert '+' not in printed.splitlines()[1]
 
     def test_the_gap_after_a_session_that_never_closed_is_marked(self):
@@ -1330,3 +1334,114 @@ class TestTheCommandCarriesIt:
         printed = self._run(DEPLOYMENT, capsys)
         assert '2 code stands over 2 sessions' in printed
         assert 'code changed here' in printed
+
+
+def started(run_id: str, timestamp: str, deployment: str = DEPLOYMENT,
+            kind: Optional[ParentKind] = ParentKind.DEPLOYMENT) -> RunInfo:
+    """
+    One session as the run index registers it at its start.
+
+    Args:
+        run_id: The session's own identity
+        timestamp: Its start, ISO-8601
+        deployment: The parent it names
+        kind: What kind of parent that is, None for a run indexed before the kind existed
+
+    Returns:
+        The index's row
+    """
+    return RunInfo(run_id=run_id, group='autotrader', name='a_bot', start_time=timestamp,
+                   parent_id=deployment, parent_kind=kind, orders_to=OrdersTo.SIMULATED)
+
+
+class TestADeploymentIsListedFromItsFirstSession:
+    """
+    Which sessions a deployment holds is the run index's answer, what they booked the ledger's
+    (#645). A session books its first ledger row at its first seal, so a history read from the
+    ledger alone left a new deployment out of every list until then, while its session ran.
+    """
+
+    def test_a_session_no_ledger_row_names_has_booked_nothing(self):
+        runs = [started('new', '2026-09-03T06:00:00+00:00'),
+                started('booked', '2026-09-01T06:00:00+00:00')]
+        found = unbooked_runs([row('booked', '2026-09-01T06:00:00+00:00')], runs)
+        assert [run.run_id for run in found[DEPLOYMENT]] == ['new']
+
+    def test_only_a_deployment_parent_counts(self):
+        """A sweep id has the deployment's shape, and an index row without a kind claims neither."""
+        runs = [started('swept', '2026-09-01T06:00:00+00:00', kind=ParentKind.SWEEP),
+                started('older', '2026-09-01T06:00:00+00:00', kind=None)]
+        assert unbooked_runs([], runs) == {}
+
+    def test_a_deployment_only_the_index_names_is_added_without_figures(self):
+        sessions = add_unbooked_sessions(
+            {}, [], [started('new', '2026-09-03T06:00:00+00:00')])[DEPLOYMENT]
+        assert [s.run_id for s in sessions] == ['new']
+        session = sessions[0]
+        # Nothing was booked, so nothing is claimed: None, never a zero
+        assert session.net_pnl is None and session.currency is None
+        assert session.max_drawdown is None and session.max_drawdown_pct is None
+        assert session.ended is None and session.ran_hours is None
+        assert session.started == datetime(2026, 9, 3, 6, tzinfo=timezone.utc)
+        assert session.bot == 'a_bot' and session.orders_to is OrdersTo.SIMULATED
+
+    def test_a_booked_history_keeps_its_sessions_and_gains_the_new_one(self):
+        rows = [row('r1', '2026-09-01T06:00:00+00:00', net_pnl=10.0),
+                row('r2', '2026-09-02T06:00:00+00:00', net_pnl=-4.0)]
+        booked = build_deployment_histories(rows)
+        merged = add_unbooked_sessions(booked, rows, [
+            started('r1', '2026-09-01T06:00:00+00:00'),
+            started('r2', '2026-09-02T06:00:00+00:00'),
+            started('r3', '2026-09-03T06:00:00+00:00')])[DEPLOYMENT]
+        assert merged[:2] == booked[DEPLOYMENT]
+        assert [s.run_id for s in merged] == ['r1', 'r2', 'r3']
+        assert merged[2].currency is None and merged[2].index == 1
+
+    def test_the_summary_puts_the_sessions_without_a_currency_in_a_row_of_their_own(self):
+        """A null P&L summed with booked ones would be a number about nothing."""
+        rows = [row('r1', '2026-09-01T06:00:00+00:00', net_pnl=10.0),
+                row('r2', '2026-09-02T06:00:00+00:00', net_pnl=-4.0)]
+        histories = add_unbooked_sessions(build_deployment_histories(rows), rows, [
+            started('r3', '2026-09-03T06:00:00+00:00')])
+        summaries = summarize_deployments(histories, {}, {})
+        assert [(s.currency, s.sessions, s.net_pnl) for s in summaries] == [
+            ('USD', 2, 6.0), (None, 1, None)]
+        assert summaries[1].max_drawdown is None
+        assert summaries[1].first_started == datetime(2026, 9, 3, 6, tzinfo=timezone.utc)
+
+    def test_the_list_prints_a_dash_and_says_why(self, capsys):
+        histories = add_unbooked_sessions({}, [], [started('new', '2026-09-03T06:00:00+00:00')])
+        render_deployment_list(summarize_deployments(histories, {}, {}))
+        printed = capsys.readouterr().out
+        line = next(text for text in printed.splitlines() if text.startswith(DEPLOYMENT))
+        assert '—' in line and '0.00' not in line
+        assert 'booked no trading day yet' in printed
+
+    def test_the_detail_notes_that_nothing_is_booked_yet(self, capsys):
+        sessions = add_unbooked_sessions(
+            {}, [], [started('new', '2026-09-03T06:00:00+00:00')])[DEPLOYMENT]
+        render_deployment_history(DEPLOYMENT, sessions, unfinished=1)
+        printed = capsys.readouterr().out
+        assert '1 session(s) · 1 not completed' in printed
+        assert 'nothing booked yet' in printed
+
+    def _run(self, deployment: str, rows, runs, capsys) -> str:
+        ledger = MagicMock()
+        ledger.read_rows.return_value = rows
+        index = MagicMock()
+        index.list_runs.return_value = runs
+        with patch('python.cli.run_index_cli.RunResultsLedger', return_value=ledger), \
+                patch('python.cli.run_index_cli.RunIndex', return_value=index):
+            assert RunIndexCli().cmd_deployments(deployment) == 0
+        return capsys.readouterr().out
+
+    def test_the_command_lists_a_deployment_the_ledger_does_not_know_yet(self, capsys):
+        runs = [started('new', '2026-09-03T06:00:00+00:00')]
+        assert DEPLOYMENT in self._run('', [], runs, capsys)
+        detail = self._run(DEPLOYMENT, [], runs, capsys)
+        assert 'nothing booked yet' in detail and 'No deployment' not in detail
+
+    def test_an_empty_answer_names_both_stores_it_asked(self, capsys):
+        printed = self._run('', [], [], capsys)
+        assert 'no session in the run index and no ledger row names one' in printed
+        assert 'deploy_unknown' in self._run('deploy_unknown', [], [], capsys)

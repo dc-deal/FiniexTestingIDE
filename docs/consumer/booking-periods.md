@@ -168,7 +168,9 @@ The rows have the same shape plus `run_id`, which across a deployment is the onl
 two periods apart, and is the hinge into that run's report routes.
 
 Sessions that booked no period are skipped, and counted in `sessions_without_periods` — so an
-incomplete history is not read as a quiet one.
+incomplete history is not read as a quiet one. That count includes a session that has not sealed its
+first trading day yet, which runs before its first seal or ended before it. A deployment that has
+only such sessions answers 200 with an empty list, never `404`.
 
 **A session books its days while it runs**: each trading day's row appears when the day closes, so
 this route shows the days a running session has sealed so far, and those of a session that died

@@ -37,9 +37,31 @@ total.
 
 The list is newest first. The detail route is oldest first — a life reads forwards.
 
+## From the first session's start: a row that has booked nothing yet
+
+Which sessions a deployment holds comes from the runs that name it, and each session is registered
+as it starts. What they booked comes from the run-results ledger, and a session books a trading day
+only when that day closes. So a session that has **booked nothing yet**, because it runs before its
+first seal or ended before reaching it, stands in both routes with its start and **without
+figures**: `currency`, `net_pnl`, `max_drawdown` and `max_drawdown_pct` are null and never zero,
+because nothing was measured. `bot` names it already; `bot_id` stays empty until its first seal.
+Whether it still runs is what the run list's `recording` says.
+
+Such sessions have no account currency yet. In the list they therefore form one row of their own
+per deployment, with `currency: null`, after the deployment's other rows. A new deployment has only
+that row. A deployment whose earlier sessions booked days shows it beside them. At its first seal
+the session moves into its currency's row.
+
+```json
+{"deployment_id": "deploy_20261103_090000_a1b2c3d4", "currency": null, "sessions": 1,
+ "first_started": "2026-11-03T09:00:00+00:00", "last_started": "2026-11-03T09:00:00+00:00",
+ "net_pnl": null, "max_drawdown": null, "max_drawdown_pct": null, "orders_to": ["simulated"]}
+```
+
 ## What adds up, and what never does
 
-`net_pnl` is summed over the row's sessions. This one genuinely adds up.
+`net_pnl` is summed over the row's sessions. This one genuinely adds up. It is null on the row of
+the sessions that have booked nothing yet.
 
 `max_drawdown` is the **largest** of them and never a sum. Each live session carries the running
 decline measured against the peak it inherited, so adding them counts one decline once per session
@@ -91,13 +113,13 @@ money's, so the session rows' `max_drawdown` restarts where the kind of run chan
 | `ran_hours` | how long it ran |
 | `gap_hours` | hours the bot was **not** running before it |
 | `gap_between_starts` | whether that gap could only be measured the coarse way |
-| `net_pnl` | realised P&L of that session |
+| `net_pnl` | realised P&L of that session; null when it has booked nothing yet |
 | `max_drawdown` / `max_drawdown_pct` | the cumulative account decline as of that session; both are null where the session's rows carry none |
 | `orders_to` | where its orders went — `venue` is real money, `simulated` a rehearsal; null when not recorded |
 | `strategy_changed` / `operation_changed` / `orders_to_changed` | what differed from the session before |
 | `code_changes` | which repositories' code differed from the session before, and how far; see [which code the sessions started on](#which-code-the-sessions-started-on) |
-| `bot` / `bot_id` | which bot ran it |
-| `currency` | the row's account currency |
+| `bot` / `bot_id` | which bot ran it; `bot_id` is empty until the session has booked a day |
+| `currency` | the row's account currency; null when it has booked nothing yet |
 
 `key` is `["run_id", "currency"]` — the same two-part identity as the list, one level down.
 
@@ -119,7 +141,8 @@ A fixture captured before this changed holds those figures measured across curre
 
 `ended` is when the row of the session's close was written, which is when it stopped. A session
 books each trading day as it closes, so a session still running — or one that died before its end —
-already has rows; until the row of its close exists, `ended` and `ran_hours` are null. Whether the
+has rows from its first sealed day on; until the row of its close exists, `ended` and `ran_hours`
+are null. Before its first seal it has no rows at all and stands here without figures. Whether the
 session is still running or stopped is what the run list's `recording` says. `ended` is also null on
 a row written before the stamp existed.
 
@@ -238,9 +261,10 @@ sessions on either side of it are compared with each other.
 
 `unfinished` counts this deployment's runs that never reached their close. A session books each
 trading day as it closes and the row of its own close last, so a run killed before that stands
-in `sessions` with `ended` null when it sealed at least one day, and is absent from `sessions`
-when it died before its first seal. The two counts therefore overlap and are never added.
-Without this one, a short list would be a number you had no reason to doubt.
+in `sessions` with `ended` null when it sealed at least one day, and without figures when it
+sealed none. Every run the count names is therefore in `sessions`, and the two are never added.
+Without this one, nothing would tell a session that died from one written before the close
+stamp existed, whose `ended` is null as well.
 
 A session running **right now** looks exactly the same — a start record and no close. Render it as
 *not completed*, never as *aborted*; whoever reads it knows whether a bot is up.
@@ -272,9 +296,11 @@ its deployment-wide route carries the same absence for the same reason.
 
 ## Where these rows come from
 
-The run-results ledger, and nothing else. A deployment has no run directory, no header and no
-artifacts of its own, so the report routes have nothing to say about one — they are addressed by
+Which sessions a deployment holds: the runs that name it, registered as each one starts. What they
+booked: the run-results ledger, and nothing else. A deployment has no run directory, no header and
+no artifacts of its own, so the report routes have nothing to say about one — they are addressed by
 `run_id`, which is what every session row carries for exactly that reason.
 
-An identity no ledger row names answers `404 deployment_not_found`. An **empty** `/deployments` is
-a state and not a failure: no profile has declared a continuous deployment yet.
+An identity that no session and no ledger row names answers `404 deployment_not_found`. An
+**empty** `/deployments` is a state and not a failure: no session has named a continuous
+deployment yet.

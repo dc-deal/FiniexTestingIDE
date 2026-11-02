@@ -90,7 +90,9 @@ MARKET_TYPE_NOT_CONFIGURED = ApiErrorKind(
 # --- Ledger: deployments and sweeps ----------------------------------------------------------
 
 DEPLOYMENT_NOT_FOUND = ApiErrorKind(
-    404, 'deployment_not_found', "No deployment '{deployment_id}' in the run-results ledger")
+    404, 'deployment_not_found',
+    "No deployment '{deployment_id}': no session in the run index and no row in the run-results "
+    'ledger names it')
 SWEEP_NOT_FOUND = ApiErrorKind(
     404, 'sweep_not_found', "No sweep '{sweep_id}' in the run-results ledger")
 

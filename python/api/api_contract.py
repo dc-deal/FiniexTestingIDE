@@ -23,7 +23,7 @@ from typing import List
 
 # One monotonic integer. Not a date and not the app version: a consumer compares it for
 # equality, and equality is the only question they have.
-API_CONTRACT_VERSION = 48
+API_CONTRACT_VERSION = 49
 
 # Every response carries it, so a saved fixture carries it too.
 CONTRACT_HEADER = 'X-Api-Contract'
@@ -36,8 +36,13 @@ API_PREFIX = '/api/v1'
 # What moved INTO the current version. One line per change, written for someone who cannot
 # read this repository.
 CHANGES: List[str] = [
-    'health: host_id, the identity of the installation answering, the same value as origin_host on the '
-    'rows; null where the server cannot read it',
-    "health: host_name, a name for people to read from the installation's configuration; null where none "
-    'is set',
+    "deployments: a deployment is listed from its first session's start, not from its first sealed "
+    'trading day; its sessions that have booked no day yet stand in a row of their own, currency null',
+    'deployments: net_pnl and currency are nullable on a list row and on a session row, null on a '
+    'session that has booked no trading day yet; never a zero',
+    'deployments/{deployment_id}: answers for a deployment whose sessions have booked nothing yet, '
+    'with those sessions in sessions; every run unfinished counts is now in sessions',
+    'deployments/{deployment_id}/booking-periods: 200 with an empty list for such a deployment; '
+    'sessions_without_periods also counts sessions that have not sealed their first day',
+    'errors: deployment_not_found means that no session in the run index and no ledger row names it',
 ]

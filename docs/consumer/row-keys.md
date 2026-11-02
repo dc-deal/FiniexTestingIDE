@@ -20,6 +20,11 @@ It is machine-readable on purpose. You can assert against it rather than read it
 changes shape is then something your tests see on the day it happens rather than something your
 aggregates quietly absorb.
 
+A part of a key can be null, and it is then a value like any other. On `/deployments` the sessions
+of a deployment that have booked no trading day yet stand in one row with `currency: null`, and
+that null is what keeps the row apart from the deployment's booked rows. See
+[deployments](/api/v1/docs/deployments).
+
 ## A response serving several lists declares one key per list
 
 A single key over two row types would name fields one of them does not have, so a response with
