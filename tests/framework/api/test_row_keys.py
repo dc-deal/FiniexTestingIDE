@@ -20,6 +20,7 @@ A response serving ONE list declares `key`; one serving several declares `keys`,
 list — a single `key` over two row types would name fields one of them does not have.
 """
 
+from datetime import datetime, timezone
 from types import NoneType, UnionType
 from typing import Union, get_args, get_origin
 
@@ -29,6 +30,12 @@ from python.api.api_app import create_app
 from python.framework.reporting.builders import deployment_history_builder
 from python.framework.types.activity_registry_types import ActivityKind, ActivityState
 from python.framework.types.api.api_types import ACTIVITY_ROW_KEY, ActivityRow
+from python.framework.types.api.recorded_stream_types import (
+    RecordedStateFrame,
+    RecordedStreamExtent,
+    RecordedStreamsWindow,
+    UnitRecordedStreams,
+)
 from python.framework.types.api.report_types import (
     BOOKING_PERIOD_KEY,
     DEPLOYMENT_KEY,
@@ -259,6 +266,36 @@ class TestTheKeyActuallySeparatesTheRows:
         key = PendingOrdersReport.model_fields['key'].default
         assert key == ['name']
         assert set(key) <= set(PendingOrdersUnitRow.model_fields)
+
+    def test_a_recorded_frame_is_its_position_never_its_instant(self):
+        # Two frames of one session can share an instant — a pass that wrote at the clock the one
+        # before it left — so their time cannot tell them apart; their place in the stream does.
+        key = RecordedStreamsWindow.model_fields['keys'].default['state_frames']
+        rows = [_recorded_frame(record_no=7), _recorded_frame(record_no=8)]
+        assert _distinct(rows, key) == 2
+        assert _distinct(rows, ('frame_time',)) == 1                  # what it would collapse to
+
+    def test_a_recorded_stream_needs_its_name_beside_its_kind(self):
+        # A strategy's tables are to be one kind with names the strategy chooses, so a timeline
+        # keyed on the kind alone would fold them into one row.
+        key = UnitRecordedStreams.model_fields['key'].default
+        rows = [_extent('my_table'), _extent('my_other_table')]
+        assert _distinct(rows, key) == 2
+        assert _distinct(rows, ('stream_kind',)) == 1
+
+
+def _recorded_frame(record_no: int) -> RecordedStateFrame:
+    """A recorded frame that differs from its neighbour only in its position."""
+    moment = datetime(2026, 12, 1, 1, 5, tzinfo=timezone.utc)
+    return RecordedStateFrame(record_no=record_no, frame_time=moment, written_at=moment,
+                              written_for='cadence', ticks_processed=10, symbol='ETHUSD',
+                              account_currency='USD', balance=248.10)
+
+
+def _extent(stream_name: str) -> RecordedStreamExtent:
+    """A recorded stream's row that differs from its neighbour only in its name."""
+    return RecordedStreamExtent(stream_kind='state_frames', stream_name=stream_name,
+                                record_time_field='frame_time', record_count=0)
 
 
 def _activity(activity_id: str, pid: int) -> ActivityRow:

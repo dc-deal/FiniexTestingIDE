@@ -234,7 +234,8 @@ class OrderLatencySimulator(AbstractPendingOrderManager):
         symbol: Optional[str] = None,
         close_lots: Optional[float] = None,
         close_reason: Optional[CloseReason] = None,
-        position_direction: Optional[OrderDirection] = None
+        position_direction: Optional[OrderDirection] = None,
+        exit_level: Optional[float] = None,
     ) -> str:
         """
         Submit CLOSE order for execution with delay.
@@ -251,6 +252,7 @@ class OrderLatencySimulator(AbstractPendingOrderManager):
                 close — it rides on the PendingOrder to the fill (#500)
             position_direction: The position's direction, carried for the same reason as
                 its symbol
+            exit_level: The level an own exit fired at (#625), carried like the reason
 
         Returns:
             position_id: Same as input (for chaining)
@@ -273,6 +275,7 @@ class OrderLatencySimulator(AbstractPendingOrderManager):
             symbol=symbol,
             closed_position_direction=position_direction,
             close_reason=close_reason,
+            exit_level=exit_level,
             close_lots=close_lots,
             submission=SubmissionMetadata(
                 tick_mid_price=tick.mid,

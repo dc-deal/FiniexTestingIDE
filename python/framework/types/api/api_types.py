@@ -37,7 +37,8 @@ class ApiContractResponse(BaseModel):
 
 class HealthResponse(BaseModel):
     """
-    Whether the server answers, and since when — open, so it carries nothing a stranger could use.
+    Whether the server answers, since when, and which installation answers — open, so it carries
+    nothing a stranger could use.
 
     Args:
         status: Always `ok` when it answers at all
@@ -46,11 +47,17 @@ class HealthResponse(BaseModel):
             restart, so a consumer sees a restart instead of guessing at one
         uptime_s: Seconds since then, measured by the server on its monotonic clock, so a
             consumer needs no clock of its own to tell a fresh server from an old one
+        host_id: The installation's identity, the value `origin_host` holds on the rows; None where
+            this server cannot read it
+        host_name: A name for people to read, from the installation's configuration; None where
+            none is set
     """
     status: str
     version: str
     started_at: str
     uptime_s: float
+    host_id: Optional[str] = None
+    host_name: Optional[str] = None
 
 
 class CallerResponse(BaseModel):

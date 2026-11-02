@@ -1,12 +1,11 @@
 """HybridSentimentReference fusion + factory registration + #425 subscription (#141)."""
 
-from tests.framework.signal_workers.conftest import make_tick, utc
-
 from python.framework.decision_logic.core.hybrid_sentiment_reference import HybridSentimentReference
 from python.framework.factory.decision_logic_factory import DecisionLogicFactory
 from python.framework.factory.worker_factory import WorkerFactory
 from python.framework.types.decision_logic_types import DecisionLogicAction
 from python.framework.types.worker_types import WorkerResult
+from tests.framework.signal_workers.conftest import make_tick, utc
 
 
 def _logic(mock_logger) -> HybridSentimentReference:

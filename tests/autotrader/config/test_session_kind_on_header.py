@@ -12,8 +12,8 @@ from datetime import datetime, timezone
 from unittest.mock import patch
 
 from python.configuration.autotrader.autotrader_config_loader import load_autotrader_config
-from python.framework.autotrader.startup.autotrader_startup import _data_windows, _ticks_from
 from python.framework.autotrader.dry_run_resolver import resolve_orders_to
+from python.framework.autotrader.startup.autotrader_startup import _data_windows, _ticks_from
 from python.framework.types.run_kind_types import OrdersTo, TicksFrom
 
 _MOCK_PROFILE = 'configs/autotrader_profiles/mock/mock_session_test.json'

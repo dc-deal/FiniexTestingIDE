@@ -12,14 +12,14 @@ from typing import Optional
 
 from fastapi import APIRouter
 
-from python.api.api_route_documents import describes
-from python.configuration.market_config_manager import MarketConfigManager
-from python.data_management.index.bars_index_manager import BarsIndexManager
 from python.api.api_error_catalog import (
     BROKER_NOT_FOUND,
     MARKET_TYPE_NOT_CONFIGURED,
     api_error,
 )
+from python.api.api_route_documents import describes
+from python.configuration.market_config_manager import MarketConfigManager
+from python.data_management.index.bars_index_manager import BarsIndexManager
 from python.framework.factory.broker_config_factory import BrokerConfigFactory
 from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.trading_env.broker_config import BrokerConfig

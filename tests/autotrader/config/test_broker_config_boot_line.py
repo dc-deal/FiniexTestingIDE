@@ -10,7 +10,9 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import MagicMock
 
-from python.framework.autotrader.startup.autotrader_broker_config_setup import _log_broker_config_loaded
+from python.framework.autotrader.startup.autotrader_broker_config_setup import (
+    _log_broker_config_loaded,
+)
 from python.framework.factory.broker_config_factory import BrokerConfigFactory
 
 _SEED = Path('configs/brokers/kraken/kraken_spot_broker_config.json')

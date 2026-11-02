@@ -12,26 +12,26 @@ Tests (parametrized over all CORE components):
 """
 
 import pytest
-from tests.framework.worker_tests.conftest import (
-    ALL_COMPONENTS,
-    ALL_WORKERS,
-)
 
 from python.framework.decision_logic.core.aggressive_trend import AggressiveTrend
+from python.framework.decision_logic.core.simple_consensus import SimpleConsensus
 from python.framework.decision_logic.core.test_probes.deterministic_probe import (
     DeterministicProbe,
 )
-from python.framework.decision_logic.core.simple_consensus import SimpleConsensus
 from python.framework.types.parameter_types import (
     InputParamDef,
     OutputParamDef,
 )
-from python.framework.workers.core.test_probes.heavy_rsi_worker import HeavyRsiWorker
 from python.framework.workers.core.bollinger_worker import BollingerWorker
 from python.framework.workers.core.ma_trend_worker import MaTrendWorker
 from python.framework.workers.core.macd_worker import MacdWorker
 from python.framework.workers.core.obv_worker import ObvWorker
 from python.framework.workers.core.rsi_worker import RsiWorker
+from python.framework.workers.core.test_probes.heavy_rsi_worker import HeavyRsiWorker
+from tests.framework.worker_tests.conftest import (
+    ALL_COMPONENTS,
+    ALL_WORKERS,
+)
 
 # ============================================
 # Schema Structure Tests

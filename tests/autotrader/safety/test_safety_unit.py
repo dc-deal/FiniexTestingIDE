@@ -20,9 +20,9 @@ from types import SimpleNamespace
 import pytest
 
 from python.framework.autotrader.cold_start.carried_readings import carried_readings_verdict
+from python.framework.autotrader.operator_alerts.alert_episode import AlertEpisode
 from python.framework.autotrader.safety.risk_baseline_tracker import RiskBaselineTracker
 from python.framework.autotrader.safety.safety_circuit_breaker import SafetyCircuitBreaker
-from python.framework.autotrader.operator_alerts.alert_episode import AlertEpisode
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
 from python.framework.types.autotrader_types.operator_alert_types import OperatorAlertKind
 from python.framework.types.config_types.autotrader_defaults_config_types import SafetyConfig

@@ -18,9 +18,10 @@ session's own books say about its money is the [portfolio](/api/v1/docs/portfoli
 
 ## One row per live session
 
-`units` holds a row for each session that asked its venue anything, keyed `["name"]` — the answer
-declares it in `key`; see [row keys](/api/v1/docs/row-keys). `name` is the session, as every other
-section of the run names it.
+`units` holds a row for each session that asked its venue anything — a read, or a reconcile cycle,
+even one that could not reach the venue — keyed `["name"]`; the answer declares it in `key`, see
+[row keys](/api/v1/docs/row-keys). `name` is the session, as every other section of the run names
+it.
 
 ## At the start and at the end — `at_start`, `at_end`
 
@@ -58,12 +59,29 @@ is always a divergent one.
 `"divergent"` says it still held when the last line was written. Two lines keep a configured
 distance — five minutes unless the session sets another — so a change in a session's last minutes
 may have no line; `at_end` shows what the venue held then. No line at all says the comparison never
-found the books apart, or did not run: a session can switch it off.
+found the books apart, or did not run — `reconciliation` below tells the two apart.
 
 `last_divergence` names its members as a divergent line on the order events does: venue
 references of orders the session cannot place (`ghost_orders`, `abandoned_orders`,
 `foreign_session_orders`), the session's order ids the venue does not show (`orphan_orders`,
 `unconfirmed_orders`) or shows differently (`stale_orders`), and positions as counts.
+
+## Over the whole session — `reconciliation`
+
+The lines above are written only when the picture changes, so they cannot say how often the
+comparison ran. `reconciliation` can:
+
+| Field | Meaning |
+|---|---|
+| `enabled` | whether the session's configuration switched the comparison on |
+| `cycles_compared` | the cycles that read the venue and compared it with the session's books |
+| `cycles_skipped` | the cycles that could not reach the venue, and so compared nothing |
+| `divergences_seen` | the divergences the cycles saw, summed over the cycles — one that stood for three cycles counts three |
+
+The counts are null when the comparison was switched off. Both cycle counts at 0 say it was on and
+never came due before the session ended. `cycles_compared: 0` beside skipped cycles is the session
+that only looks clean, because it never reached its venue. `reconciliation` itself is null on a
+record from before this field existed.
 
 ```json
 {
@@ -80,7 +98,9 @@ references of orders the session cannot place (`ghost_orders`, `abandoned_orders
     "last_divergence": {"ghost_orders": ["OQ3V2K-ABCDE-FGHIJK"], "abandoned_orders": [],
                         "foreign_session_orders": [], "unconfirmed_orders": [], "orphan_orders": [],
                         "stale_orders": [], "ghost_positions": 0, "orphan_positions": 0,
-                        "stale_positions": 0}
+                        "stale_positions": 0},
+    "reconciliation": {"enabled": true, "cycles_compared": 2877, "cycles_skipped": 3,
+                       "divergences_seen": 4}
   }],
   "key": ["name"]
 }

@@ -90,7 +90,7 @@ class ExecutionStats:
     they live in CostBreakdown, the single cost source owned by the PortfolioManager.
 
     Each count carries the name of what it counts (#362). `orders_submitted` counts the
-    orders this unit handed to the venue — opens, closes and protective orders;
+    orders this unit handed to the venue — opens and closes;
     `orders_adopted` the orders a previous session sent and this one took over at boot; every
     other `orders_<status>` counts the order-history rows that ended with that status, as
     `EXECUTION_STATS_FIELD_BY_STATUS` declares. A refusal made here never reached the
@@ -99,7 +99,7 @@ class ExecutionStats:
     oldest rows.
 
     Attributes:
-        orders_submitted: Orders handed to the venue — opens, closes, protective orders
+        orders_submitted: Orders handed to the venue — opens and closes
         orders_adopted: Orders a previous session sent, taken over at boot — they end here,
             so an execution rate divides by both
         orders_executed: Rows `executed` — open and close fills

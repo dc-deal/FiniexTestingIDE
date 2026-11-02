@@ -7,8 +7,6 @@ from typing import List
 
 from pydantic import field_validator
 
-from python.framework.types.config_types.strict_config_model import StrictConfigModel
-
 from python.framework.types.config_types.api_auth_config_types import ApiConfig
 from python.framework.types.config_types.autotrader_defaults_config_types import (
     AutotraderDefaultsConfig,
@@ -17,6 +15,7 @@ from python.framework.types.config_types.backtesting_config_types import Backtes
 from python.framework.types.config_types.console_logging_config_types import ConsoleLoggingConfig
 from python.framework.types.config_types.docs_search_config_types import DocsSearchConfig
 from python.framework.types.config_types.file_logging_config_types import FileLoggingConfig
+from python.framework.types.config_types.strict_config_model import StrictConfigModel
 
 
 class SharedPaths(StrictConfigModel):

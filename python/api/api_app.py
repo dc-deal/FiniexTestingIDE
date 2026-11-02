@@ -23,11 +23,8 @@ from fastapi.routing import APIRoute
 
 from python.api.api_auth_setup import setup_api_auth
 from python.api.api_contract import API_CONTRACT_VERSION, API_PREFIX, CHANGES, CONTRACT_HEADER
-from python.api.api_error_catalog import IDENTITY_UNBOUND, api_error
+from python.api.api_error_catalog import ARTIFACT_UNREADABLE, IDENTITY_UNBOUND, api_error
 from python.api.api_route_documents import describes
-from python.api.head_request_middleware import HeadRequestMiddleware
-from python.api.link_header_middleware import LinkHeaderMiddleware
-from python.api.polled_route_access_filter import PolledRouteAccessFilter
 from python.api.endpoints import (
     bars_router,
     broker_router,
@@ -38,12 +35,18 @@ from python.api.endpoints import (
     reports_router,
     sweeps_router,
 )
+from python.api.head_request_middleware import HeadRequestMiddleware
+from python.api.link_header_middleware import LinkHeaderMiddleware
+from python.api.polled_route_access_filter import PolledRouteAccessFilter
 from python.configuration.app_config_manager import AppConfigManager
 from python.configuration.data_home import describe_data_home
+from python.configuration.host_identity_manager import HostIdentityManager
 from python.framework.activities.activity_registry_reader import ActivityRegistryReader
+from python.framework.constants.recorded_stream_constants import UNIT_RECORDED_STREAMS_ROUTE
 from python.framework.docs_search.docs_corpus import DOCS_ROOT
 from python.framework.docs_search.docs_search_index import docs_search_index
 from python.framework.exceptions.api_errors import ApiException
+from python.framework.exceptions.report_artifact_errors import ReportArtifactUnreadableError
 from python.framework.types.api.api_identity_types import ApiConsumerIdentity
 from python.framework.types.api.api_types import (
     ApiContractResponse,
@@ -87,6 +90,7 @@ POLLED_PATHS = frozenset({
     '/api/v1/activities',
     '/api/v1/machine-resources',
     '/api/v1/reports/runs/{run_id}/state-frames/latest',
+    f'/api/v1/reports/runs/{{run_id}}/{UNIT_RECORDED_STREAMS_ROUTE}',
 })
 
 # The bar routes answer with a bare array, so everything a consumer needs ABOUT the rows travels
@@ -191,10 +195,14 @@ def create_app() -> FastAPI:
     machine_reader = MachineResourcesReader()
     machine_thresholds = AppConfigManager().get_machine_resources_config()
     state_frames_thresholds = AppConfigManager().get_state_frames_api_config()
+    host_name = AppConfigManager().get_api_host_name()
     auth = setup_api_auth()
     print(auth.boot_line)
     # Which data home this server reads its stores from — the one its sessions write (#598)
     print(describe_data_home())
+    # Which installation this server answers for, the two names /health serves
+    host_id_at_start = HostIdentityManager().read_host_id()
+    print(f"🆔 Installation: {host_id_at_start or 'no identity to read'} · {host_name or 'no name set'}")
 
     # Every protected router carries the bearer check, and it is mounted on the ROUTER rather
     # than on its routes: a route added later inherits it by construction, so the failure this
@@ -277,12 +285,22 @@ def create_app() -> FastAPI:
             headers=exc.headers,
         )
 
+    @app.exception_handler(ReportArtifactUnreadableError)
+    async def artifact_unreadable_handler(
+        request: Request, exc: ReportArtifactUnreadableError,
+    ) -> JSONResponse:
+        # One answer for every route that reads a stored artifact: a record that no longer matches
+        # its model is a known condition, never an unexplained server error
+        return await api_exception_handler(request, api_error(ARTIFACT_UNREADABLE, reason=str(exc)))
+
     @app.get('/api/v1/health', response_model=HealthResponse,
              openapi_extra=describes('server'))
     def health() -> HealthResponse:
         return HealthResponse(status='ok', version=app_version,
                               started_at=started_at.isoformat(),
-                              uptime_s=round(time.monotonic() - started_monotonic, 1))
+                              uptime_s=round(time.monotonic() - started_monotonic, 1),
+                              host_id=HostIdentityManager().read_host_id(),
+                              host_name=host_name)
 
     # Open beside /health, decided rather than inherited: a timeframe list is the app's own
     # static configuration, not data about a venue or a run, and it is none of the

@@ -20,8 +20,8 @@ class RobustnessRole(StrEnum):
 
 class RobustnessMetric(StrEnum):
     """The per-window metric the robustness report distributes + compares IS vs OOS over."""
-    EXPECTANCY = 'expectancy'   # mean R-multiple — currency/instrument-neutral (default)
-    NET_PNL = 'net_pnl'         # account-currency P&L — not comparable across currencies
+    EXPECTANCY = 'expectancy'   # mean R-multiple — currency/instrument-neutral, needs a stop on the position
+    NET_PNL = 'net_pnl'         # account-currency P&L — always measured, not comparable across currencies (default)
     # Final equity against the window's starting value, in percent, with everything still open
     # marked at the last price. The measure for a strategy that is invested all the time: its
     # result sits in what it holds, which the two closed-trade metrics above never see.
@@ -49,7 +49,7 @@ class RobustnessConfig(BaseModel):
     model_config = ConfigDict(extra='forbid')
 
     enabled: bool = False
-    metric: RobustnessMetric = RobustnessMetric.EXPECTANCY
+    metric: RobustnessMetric = RobustnessMetric.NET_PNL
     # Time-ordered IS/OOS split used by the generator (last fraction → out_of_sample).
     oos_split: float = 0.3
     # Distribution below this window count is statistically weak → advisory.

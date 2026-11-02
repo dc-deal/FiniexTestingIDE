@@ -6,7 +6,7 @@
   "description": "Didactic reference robustness set (#118 case study) \u2014 CORE/trend_channel_reference on mt5 EURUSD+GBPUSD, 36 windows (IS/OOS 0.3). Teaching example, NOT a profitable strategy: exercises the full order surface (resting LIMIT entries, SL/TP, trailing stop, partial close, multi-position) under multi-window IS/OOS validation.",
   "robustness": {
     "enabled": true,
-    "metric": "expectancy",
+    "metric": "net_pnl",
     "oos_split": 0.3,
     "min_windows": 3,
     "overfit_wfe_threshold": 0.5,

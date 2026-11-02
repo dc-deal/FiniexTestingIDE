@@ -145,6 +145,53 @@ class TestAttemptAfterLoss:
         assert ladder.next_delay(5000) == ladder.get_policy().max_delay_s
 
 
+class TestWorstCase:
+
+    def test_every_attempt_runs_into_its_timeout_and_every_wait_takes_its_length(self):
+        ladder = build_ladder(
+            RecordingLogger(), attempt_budget=3, request_timeout_s=15.0, initial_delay_s=1.0,
+            max_delay_s=60.0, jitter=True)
+        assert ladder.worst_case_s() == pytest.approx(48.0)
+
+    def test_the_cap_holds_in_the_arithmetic_too(self):
+        ladder = build_ladder(
+            RecordingLogger(), attempt_budget=4, request_timeout_s=1.0, initial_delay_s=2.0,
+            max_delay_s=3.0, jitter=False)
+        assert ladder.worst_case_s() == pytest.approx(4.0 + 2.0 + 3.0 + 3.0)
+
+    def test_a_ladder_that_never_gives_up_has_no_worst_case(self):
+        assert build_ladder(RecordingLogger(), attempt_budget=0).worst_case_s() == float('inf')
+
+
+class TestOneAttempt:
+
+    def test_it_tries_once_and_gives_up_under_the_same_name(self):
+        logger = RecordingLogger()
+        ladder = build_ladder(logger, attempt_budget=3).with_one_attempt()
+        calls = []
+
+        def always_down():
+            calls.append(1)
+            raise TransientFault('502')
+
+        run_with_ladder(always_down, ladder, wait=lambda _: None)
+
+        assert len(calls) == 1
+        assert logger.levels().count('error') == 1
+        assert ladder.get_name() in logger.text()
+
+    def test_it_classifies_as_the_ladder_it_came_from(self):
+        ladder = build_ladder(RecordingLogger())
+        one = ladder.with_one_attempt()
+        for error in (TransientFault('502'), RefusedCredential('no')):
+            assert one.classify(error) is ladder.classify(error)
+
+    def test_the_ladder_it_came_from_keeps_its_budget(self):
+        ladder = build_ladder(RecordingLogger(), attempt_budget=3)
+        ladder.with_one_attempt()
+        assert ladder.get_policy().attempt_budget == 3
+
+
 class TestBudget:
     """is_exhausted(attempt) — when the ladder stops trying."""
 

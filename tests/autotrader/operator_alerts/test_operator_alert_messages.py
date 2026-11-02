@@ -7,7 +7,7 @@ grade cannot arrive without an answer here.
 """
 
 from datetime import date, datetime, timezone
-from typing import Optional
+from typing import List, Optional
 
 import pytest
 
@@ -17,6 +17,7 @@ from python.framework.autotrader.operator_alerts.operator_alert_messages import 
     day_closed_text,
     days_closed_unheard_text,
     format_duration,
+    orders_unanswered_at_stop_text,
     session_ended_text,
     session_started_text,
 )
@@ -24,9 +25,16 @@ from python.framework.types.api.report_types import RunSummary, RunSummaryCurren
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
 from python.framework.types.autotrader_types.autotrader_result_types import AutoTraderResult
 from python.framework.types.autotrader_types.operator_alert_types import OperatorAlertLevel
+from python.framework.types.autotrader_types.shutdown_status_types import StopWaitOutcome
+from python.framework.types.run_origin_types import CodeIdentity, RepositoryState
 from python.framework.types.run_outcome_types import RunOutcome
 from python.framework.types.run_results_types import BookingPeriod, PeriodCloseReason
-
+from python.framework.types.trading_env_types.awaited_order_types import AwaitedOrder
+from python.framework.types.trading_env_types.order_types import (
+    OrderAction,
+    OrderDirection,
+    OrderType,
+)
 
 _DAY_OPENED = datetime(2026, 10, 20, tzinfo=timezone.utc)
 
@@ -115,10 +123,46 @@ class TestTheStartMessage:
     def test_it_says_whether_real_orders_go_out(self, adapter, dry_run, mode):
         title, detail = session_started_text(
             AutoTraderConfig(profile_name='eth_daily', adapter_type=adapter), dry_run,
-            '20261020_070000_a1b2c3d4', '4c61dc93deadbeef')
+            '20261020_070000_a1b2c3d4', [('framework', '4c61dc93deadbeef')])
         assert title == 'Session started'
         assert detail.startswith(mode)
-        assert 'Commit: 4c61dc93' in detail and 'deadbeef' not in detail
+        assert 'Commit: framework 4c61dc93' in detail and 'deadbeef' not in detail
+
+    @staticmethod
+    def _detail(code_identity: CodeIdentity) -> str:
+        _, detail = session_started_text(
+            AutoTraderConfig(profile_name='eth_daily', adapter_type='mock'), True,
+            '20261020_070000_a1b2c3d4', code_identity.labelled_commits())
+        return detail
+
+    def test_it_names_the_commits_of_both_repositories(self):
+        detail = self._detail(CodeIdentity(
+            framework=RepositoryState(root='/srv/release', commit='4c61dc93'),
+            repositories=[RepositoryState(root='/srv/home/my_strategy', commit='2f054f5')]))
+        assert detail.endswith('Commit: framework 4c61dc93 · strategy 2f054f5')
+
+    def test_several_other_repositories_are_told_apart_by_their_directory(self):
+        detail = self._detail(CodeIdentity(
+            framework=RepositoryState(root='/srv/release', commit='4c61dc93'),
+            repositories=[RepositoryState(root='/srv/home/my_strategy', commit='2f054f5'),
+                          RepositoryState(root='/srv/home/my_helpers', commit='7c1e9a0')]))
+        assert detail.endswith(
+            'Commit: framework 4c61dc93 · strategy my_strategy 2f054f5 · strategy my_helpers 7c1e9a0')
+
+    def test_a_commit_nobody_could_read_is_said(self):
+        detail = self._detail(CodeIdentity(
+            framework=RepositoryState(root='/srv/release', commit=None),
+            repositories=[RepositoryState(root='/srv/home/my_strategy', in_repository=False)]))
+        assert detail.endswith('Commit: framework unknown · strategy unknown')
+
+    def test_an_identity_without_this_repository_still_formats(self):
+        assert self._detail(CodeIdentity()).endswith('Commit: framework unknown')
+
+    def test_nothing_recorded_prints_no_commit_line(self):
+        _, detail = session_started_text(
+            AutoTraderConfig(profile_name='eth_daily', adapter_type='mock'), True,
+            '20261020_070000_a1b2c3d4', [])
+        assert 'Commit' not in detail
 
 
 @pytest.mark.parametrize('seconds, text', [
@@ -193,3 +237,115 @@ class TestTheDayClose:
             period.period_max_drawdown = dip
             _, detail = day_closed_text(period, date(2026, 10, 20), _DAY_OPENED)
             assert detail.endswith('Deepest dip: 0.00 USD')
+
+
+def _order_on_its_way(order_id: str = 'pos_btcusd_1',
+                      order_type: OrderType = OrderType.MARKET) -> AwaitedOrder:
+    """
+    One order a stop waited for.
+
+    Args:
+        order_id: Its id
+        order_type: What it was submitted as
+
+    Returns:
+        Its row
+    """
+    return AwaitedOrder(
+        order_id=order_id, action=OrderAction.OPEN, order_type=order_type,
+        direction=OrderDirection.LONG, lots=0.021, symbol='ETHUSD', sent_at_monotonic_s=1.0,
+        waits_for='venue has not answered')
+
+
+class TestOrdersUnansweredAtStop:
+
+    def test_one_order_given_up(self):
+        title, detail = orders_unanswered_at_stop_text(
+            [_order_on_its_way()], [], 30.2, 'in 50.4 s (supervisor)')
+
+        assert title == 'Stop is not clean — no answer for an order after 30.2 s'
+        assert detail.splitlines() == [
+            'market BUY 0.021 ETHUSD · pos_btcusd_1 · venue has not answered',
+            'Recorded UNACCOUNTED; it may still fill at the venue.',
+            'The session keeps stopping, kill in 50.4 s (supervisor).',
+            'Check the account after the stop.',
+        ]
+
+    def test_a_kill_already_past_says_so(self):
+        _, detail = orders_unanswered_at_stop_text(
+            [_order_on_its_way()], [], 30.0, 'overdue by 2.0 s (supervisor)')
+        assert 'The session keeps stopping, kill overdue by 2.0 s (supervisor).' in (
+            detail.splitlines())
+
+    def test_no_kill_declared_names_none(self):
+        _, detail = orders_unanswered_at_stop_text([_order_on_its_way()], [], 30.0, None)
+        assert 'The session keeps stopping.' in detail.splitlines()
+
+    def test_what_stays_for_the_cleanup_is_told_apart(self):
+        title, detail = orders_unanswered_at_stop_text(
+            [_order_on_its_way()], [_order_on_its_way('pos_btcusd_2', OrderType.LIMIT)], 30.0, None)
+
+        assert 'no answer for 2 orders' in title
+        lines = detail.splitlines()
+        assert lines.index('Recorded UNACCOUNTED; it may still fill at the venue.') < lines.index(
+            'limit BUY 0.021 ETHUSD · pos_btcusd_2 · venue has not answered')
+        assert 'Left to the cleanup, which cancels, leaves or books it.' in lines
+
+
+class TestTheStopLineOfTheClosingMessage:
+    """One line, read from the result, and only where a stop waited for an order (#630)."""
+
+    @staticmethod
+    def _lines(outcome: Optional[StopWaitOutcome]) -> List[str]:
+        """
+        The detail lines of the closing message of a session whose stop came to an outcome.
+
+        Args:
+            outcome: What the wait came to
+
+        Returns:
+            The lines
+        """
+        _, _, detail = session_ended_text(
+            AutoTraderResult(shutdown_mode='normal', session_duration_s=60.0, stop_wait=outcome),
+            _summary(0.0, 0), end_reason='termination signal (SIGTERM)')
+        return detail.splitlines()
+
+    def test_nothing_waited_no_line(self):
+        assert not [line for line in self._lines(None) if line.startswith('Stop:')]
+
+    def test_one_order_filled(self):
+        lines = self._lines(StopWaitOutcome(waited_s=5.2, orders_executed=1))
+
+        assert 'Stop: waited 5.2 s for 1 order, filled and booked' in lines
+        assert lines.index('Reason: termination signal (SIGTERM)') < lines.index(
+            'Stop: waited 5.2 s for 1 order, filled and booked')
+
+    def test_a_run_out_names_the_unanswered_count(self):
+        lines = self._lines(StopWaitOutcome(waited_s=30.0, orders_unaccounted=2))
+
+        assert 'Stop: waited 30.0 s for 2 orders, no answer for 2, recorded unaccounted' in lines
+
+    def test_one_order_ended_without_a_fill(self):
+        lines = self._lines(StopWaitOutcome(waited_s=1.5, orders_ended_unfilled=1))
+
+        assert 'Stop: waited 1.5 s for 1 order, ended without a fill' in lines
+
+    def test_one_order_still_open(self):
+        lines = self._lines(StopWaitOutcome(waited_s=1.5, orders_still_open=1))
+
+        assert 'Stop: waited 1.5 s for 1 order, still open at the venue' in lines
+
+    def test_one_order_filled_in_part(self):
+        lines = self._lines(StopWaitOutcome(waited_s=0.2, orders_filled_in_part=1))
+
+        assert 'Stop: waited 0.2 s for 1 order, filled in part, the part booked' in lines
+
+    def test_each_ending_is_counted_where_there_are_several(self):
+        lines = self._lines(StopWaitOutcome(
+            waited_s=12.0, orders_executed=1, orders_filled_in_part=5, orders_unaccounted=2,
+            orders_ended_unfilled=3, orders_still_open=4))
+
+        assert ('Stop: waited 12.0 s for 15 orders, 1 filled and booked, 5 filled in part, the '
+                'part booked, no answer for 2, recorded unaccounted, 3 ended without a fill, '
+                '4 still open at the venue') in lines

@@ -22,6 +22,7 @@ from python.framework.constants.run_layout_constants import (
     TRADES_STREAM,
 )
 from python.framework.exceptions.store_errors import EntryMemberRefusedError
+from python.framework.types.run_stream_types import RecordedStreamKind
 
 # A placeholder stands for one variable part of a file name and never spans a directory.
 _PLACEHOLDER_REGEX = r'[^/]+'
@@ -117,6 +118,7 @@ class RunEntryMemberId(StrEnum):
     SIGNAL = 'signal'
     TRADE_HISTORY = 'trade_history'
     VENUE_ACCOUNT = 'venue_account'
+    VENUE_API_PERFORMANCE = 'venue_api_performance'
     WARNINGS_ERRORS = 'warnings_errors'
     WORKER_DECISION = 'worker_decision'
     EXECUTION_STATS_CSV = 'execution_stats_csv'
@@ -181,6 +183,8 @@ class EntryMember:
             stream declares them
         day_record: The member a session's stream is sealed into at each trading-day boundary
             (#476), or None when it is not sealed
+        recorded_stream_kind: The kind of stream a unit's timeline and window serve it as (#580),
+            or None when they do not serve it
     """
     member_id: Union[RunEntryMemberId, SweepEntryMemberId]
     path_pattern: str
@@ -194,6 +198,7 @@ class EntryMember:
     served_route: Optional[str] = None
     time_fields: Optional[Tuple[str, ...]] = None
     day_record: Optional[RunEntryMemberId] = None
+    recorded_stream_kind: Optional[RecordedStreamKind] = None
 
     def placeholders(self) -> Tuple[str, ...]:
         """

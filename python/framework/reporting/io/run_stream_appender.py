@@ -214,24 +214,6 @@ class RunStreamAppender:
         """
         return self._path
 
-    def get_stream(self) -> str:
-        """
-        The stream's name, as its header gives it.
-
-        Returns:
-            The name
-        """
-        return self._stream
-
-    def get_trading_day(self) -> Optional[date]:
-        """
-        The trading day the file holds, as its header names it.
-
-        Returns:
-            The day, or None when the header names none
-        """
-        return self._trading_day
-
     def _writing(self) -> bool:
         """
         Whether records still reach the file — the lock already held.

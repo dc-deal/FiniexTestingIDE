@@ -34,7 +34,6 @@ from python.framework.types.trading_env_types.order_types import (
     OrderStatus,
 )
 
-
 # The statuses that end an order without a fill — each gets an event of its own (#362)
 _UNFILLED_ENDINGS = frozenset({
     OrderStatus.DENIED, OrderStatus.REJECTED, OrderStatus.CANCELLED, OrderStatus.EXPIRED,

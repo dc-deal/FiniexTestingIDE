@@ -11,7 +11,7 @@ Session log rotates daily: session_logs/autotrader_session_YYYYMMDD.log
 import queue
 import time
 from collections import deque
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Callable, Deque, Dict, List, Optional, Tuple
 
@@ -25,6 +25,7 @@ from python.framework.autotrader.operator_alerts.alert_episode import (
 from python.framework.autotrader.operator_alerts.operator_alert_messages import (
     day_closed_text,
     days_closed_unheard_text,
+    orders_unanswered_at_stop_text,
 )
 from python.framework.autotrader.operator_alerts.operator_alerts import OperatorAlerts
 from python.framework.autotrader.operator_alerts.operator_alerts_setup import (
@@ -37,6 +38,8 @@ from python.framework.autotrader.run_record.state_frame_recorder import StateFra
 from python.framework.autotrader.safety.risk_baseline_tracker import RiskBaselineTracker
 from python.framework.autotrader.safety.safety_circuit_breaker import SafetyCircuitBreaker
 from python.framework.autotrader.session_log_rotator import SessionLogRotator
+from python.framework.autotrader.shutdown_status_holder import ShutdownStatusHolder
+from python.framework.autotrader.stop_budget import StopBudget
 from python.framework.autotrader.tick_sources.abstract_tick_source import AbstractTickSource
 from python.framework.bars.bar_rendering_controller import BarRenderingController
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
@@ -71,13 +74,16 @@ from python.framework.types.autotrader_types.operator_alert_types import (
     OperatorAlertLevel,
 )
 from python.framework.types.autotrader_types.safety_session_types import SafetySessionRecord
+from python.framework.types.autotrader_types.shutdown_status_types import endings_by_order
 from python.framework.types.config_types.market_config_types import TradingModel
+from python.framework.types.decision_event_types import SessionEndSeverity
 from python.framework.types.decision_logic_types import Decision, DecisionLogicAction
 from python.framework.types.disturbance_episode_types import DisturbanceEpisode, MarketDataTickStats
 from python.framework.types.log_level import LogLevel
 from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.persistence_types import BaselineQuantities
 from python.framework.types.run_results_types import BookingPeriod, PeriodCloseReason
+from python.framework.types.trading_env_types.awaited_order_types import AwaitedOrder
 from python.framework.types.trading_env_types.market_data_status_types import MarketDataStatus
 from python.framework.types.trading_env_types.order_types import OrderResult
 from python.framework.utils.trading_day_anchor import boundary_opening
@@ -114,6 +120,10 @@ class AutotraderTickLoop:
             called at each trading day's seal (#476); None writes nothing before the session ends
         seal_streams: Seals the session's streams into day records at a trading day's boundary
             (#476), given the day that ended and the day that opened; None seals nothing
+        open_stop_budget: Opens what a stop may still spend (#630), from the instant it was asked
+            for; None opens one at the moment it is needed, from the configured settings
+        shutdown_status: What every surface of the stop reads (#630), which the wait writes to;
+            None gives the loop one of its own that says its lines in the loop's log
     """
 
     def __init__(
@@ -149,6 +159,8 @@ class AutotraderTickLoop:
         state_frames: Optional[StateFrameRecorder] = None,
         book_sealed_periods: Optional[Callable[[List[BookingPeriod]], None]] = None,
         seal_streams: Optional[Callable[[date, date], None]] = None,
+        open_stop_budget: Optional[Callable[[], StopBudget]] = None,
+        shutdown_status: Optional[ShutdownStatusHolder] = None,
     ):
         self._config = config
         self._tick_queue = tick_queue
@@ -217,6 +229,15 @@ class AutotraderTickLoop:
         self._persist_carry_over = persist_carry_over
         self._book_sealed_periods = book_sealed_periods
         self._seal_streams = seal_streams
+        self._open_stop_budget = open_stop_budget or self._stop_budget_from_now
+        if shutdown_status is None:
+            shutdown_status = ShutdownStatusHolder(config.shutdown.supervisor_kill_after_s)
+            shutdown_status.connect_journal(logger)
+        self._shutdown_status = shutdown_status
+        # What a stop's waits for orders have spent: the wait after the session-end event keeps to
+        # the same bound as the one before it, and does not wait once that one ran out
+        self._order_wait_spent_s = 0.0
+        self._order_wait_ran_out = False
         # The trading days one boundary check sealed, closed together once the check is done:
         # a check several days late seals one period per day, and booking each on its own would
         # rewrite the ledger fragment once per day inside one pass (#476)
@@ -374,7 +395,8 @@ class AutotraderTickLoop:
         Execute the tick processing loop.
 
         Blocks until tick source is exhausted, stop() is called,
-        or a sentinel (None) is received from the queue.
+        or a sentinel (None) is received from the queue. A normal stop then waits for the orders
+        on their way, under its own bound.
 
         Returns:
             (ticks_processed, ticks_clipped) counts
@@ -384,10 +406,6 @@ class AutotraderTickLoop:
         ticks_processed = 0
         ticks_clipped = 0
         prev_msc: int = 0
-
-        # Track last valid tick/decision for the final shutdown snapshot
-        last_tick: Optional[TickData] = None
-        last_decision: Optional[Decision] = None
 
         # #320 — Push an initial startup pulse frame so the display renders
         # the full dashboard from t=0 instead of falling back to a wait
@@ -425,16 +443,7 @@ class AutotraderTickLoop:
                 # advances during idle (phase/op timeouts track real elapsed time),
                 # then run the side-effect-free cadence — no tick state mutation.
                 self._executor.set_current_time(datetime.now(timezone.utc))
-                # #537 / #476: the boundary is checked HERE too, before anything this pass
-                # resolves — a fill the heartbeat drains after the boundary belongs to the day
-                # it opened. The seal is stamped with the boundary, whenever it is noticed.
-                self._booking.check_boundary(
-                    self._executor.get_current_time_if_set(), self._seal_source)
-                self._close_sealed_days()
-                # The log follows the booking period's day, and after it: the line that seals a
-                # day is written into that day's file, and a feed that goes quiet across the
-                # rollover still rotates. A booking does not depend on whether logs are written.
-                self._log_rotator.check_daily_rotation()
+                self._pass_day_boundary_off_tick()
                 # #320 + #360: drain async responses + check timeouts + re-poll
                 # active orders (the fill/cancel-confirm query now fires during idle).
                 self._executor.heartbeat()
@@ -684,39 +693,27 @@ class AutotraderTickLoop:
 
             # Track last valid tick/decision for the final shutdown snapshot
             # and heartbeat pulse frames (#320).
-            last_tick = tick
-            last_decision = decision
             self._last_real_tick = tick
             self._last_real_decision = decision
             self._last_real_tick_wall_time = time.time()
+
+        # #630: a normal stop waits here for the orders on their way — the last moment a hook can
+        # still hear a fill, with the day boundary and the carry-over watcher still in this loop
+        self._wait_for_orders(ticks_processed)
 
         # === Session end event (#348) — emitted once the loop ends, whether by
         # request, tick-source exhaustion, or stop(). Delivered before teardown.
         if self._decision_event_dispatcher is not None:
             self._decision_event_dispatcher.emit_session_end()
+            # An order the logic sent from the session-end event is waited for as well, so
+            # its fill is booked before the cleanup. The logic does not hear what this wait
+            # settles: the session-end event stays the last thing it is told.
+            if not self._order_wait_ran_out:
+                self._wait_for_orders(ticks_processed, after_session_end=True)
 
         # Final display snapshot — ensures the last rendered frame reflects
         # the terminal pipeline state regardless of display refresh timing.
-        # The queue (maxsize=10) is likely full from high-speed tick replay,
-        # so drain stale snapshots first to guarantee the final one lands.
-        if (self._display_queue is not None
-                and last_tick is not None
-                and last_decision is not None):
-            while not self._display_queue.empty():
-                try:
-                    self._display_queue.get_nowait()
-                except queue.Empty:
-                    break
-            final_stats = self._display_exporter.build(
-                last_decision, ticks_processed, last_tick,
-                safety=self._safety.get_display_state(),
-                recent_rejections=list(self._recent_rejections),
-                total_rejections=self._rejection_count,
-                initial_spot_equity=self._initial_spot_equity)
-            try:
-                self._display_queue.put(final_stats, timeout=1.0)
-            except queue.Full:
-                pass
+        self.push_last_display_frame(ticks_processed)
 
         # #360 ghost-pass observability — proves the idle decision pass fired
         # (and acted) over the session. Machine-parseable.
@@ -731,6 +728,218 @@ class AutotraderTickLoop:
 
         self._running = False
         return ticks_processed, ticks_clipped
+
+    def _stop_budget_from_now(self) -> StopBudget:
+        """
+        The stop budget of a loop nobody handed an opener, from this instant.
+
+        Returns:
+            The budget, under the configured settings
+        """
+        settings = self._config.shutdown
+        asked_at_s = time.monotonic()
+        self._shutdown_status.note_asked(
+            self._executor.get_session_end_reason(), datetime.now(timezone.utc), asked_at_s)
+        return StopBudget(settings.supervisor_kill_after_s, settings.reserve_for_records_s,
+                          asked_at_s)
+
+    def _stop_waits_for_orders(self) -> bool:
+        """
+        Whether this end of the loop waits for the orders on their way (#630).
+
+        A session-end request of normal severity does: a SIGTERM, a first Ctrl+C, a strategy's own
+        end. A hard stop's EMERGENCY has its drain of its own and does not, and a tick source that
+        ran out made no request, so a replayed mock session ends as it always did.
+
+        Returns:
+            True when it waits
+        """
+        return (self._executor.is_session_end_requested()
+                and self._executor.get_session_end_severity() is SessionEndSeverity.NORMAL)
+
+    def _wait_for_orders(self, ticks_processed: int, after_session_end: bool = False) -> None:
+        """
+        Let the orders on their way settle before the session-end event, and what the logic sent
+        from that event before the cleanup.
+
+        With nothing on its way this costs no pass and no line. Otherwise wait passes run on the
+        idle pass's cadence until nothing is left or the bound runs out. The bound is re-read on
+        each pass, because what a declared kill leaves shrinks as the wait runs; a pass can overrun
+        it, because a heartbeat's reads of the venue are synchronous. The fill timeout does not act
+        once a stop is under way: this bound decides.
+
+        No gate on new orders: a hook may still send one, and the same bound then covers it. The
+        wait after the session-end event goes on from the time the one before it spent, so both
+        keep to one bound, and it tells the logic nothing.
+
+        Args:
+            ticks_processed: The session's tick count
+            after_session_end: Whether this is the wait after the session-end event
+        """
+        if not self._stop_waits_for_orders():
+            return
+        awaited = self._executor.get_awaited_orders()
+        if not awaited:
+            return
+
+        settings = self._config.shutdown
+        stop_budget = self._open_stop_budget()
+        still_to_come_s = settings.bounded_waits_s()
+        # Never the wall clock here, unlike the idle pass: a replayed session's clock stands on its
+        # last tick, and an idle pass's reading would seal one booking period per day up to today.
+        # The last event plus the time elapsed is the same thing in a live session, near enough.
+        last_event = self._executor.get_current_time()
+        run_began = time.monotonic()
+        spent_before_s = self._order_wait_spent_s
+        self._shutdown_status.order_wait_began(
+            awaited, run_began - spent_before_s,
+            spent_before_s + stop_budget.order_wait_bound_s(
+                settings.order_wait_s - spent_before_s, still_to_come_s),
+            after_session_end, spent_before_s)
+        hear = not after_session_end
+        while awaited and self._stop_waits_for_orders():
+            waited_s = spent_before_s + time.monotonic() - run_began
+            bound_s = stop_budget.order_wait_bound_s(
+                settings.order_wait_s - waited_s, still_to_come_s)
+            if bound_s <= 0.0:
+                self._order_wait_spent_s = waited_s
+                self._order_wait_ran_out = True
+                self._give_up_on_awaited_orders(waited_s, stop_budget, hear)
+                return
+            self._run_order_wait_pass(
+                ticks_processed, last_event + timedelta(seconds=time.monotonic() - run_began),
+                hear)
+            before_pass = awaited
+            awaited = self._executor.get_awaited_orders()
+            # Read after the pass: a pass that holds a read of the venue takes its time
+            waited_s = spent_before_s + time.monotonic() - run_began
+            bound_s = stop_budget.order_wait_bound_s(
+                settings.order_wait_s - waited_s, still_to_come_s)
+            self._report_order_wait(awaited, before_pass, waited_s, bound_s, ticks_processed)
+            if awaited and bound_s > 0.0:
+                time.sleep(min(self._heartbeat_interval_s, bound_s))
+        self._order_wait_spent_s = spent_before_s + time.monotonic() - run_began
+        self._shutdown_status.order_wait_ended(self._order_wait_spent_s)
+
+    def _run_order_wait_pass(self, ticks_processed: int, now: datetime, hear: bool) -> None:
+        """
+        One pass of a stop's wait: what an idle pass does for the orders, and nothing for the algo.
+
+        Stamps the liveness, so the monitor stays quiet. No tick, no ghost pass, no signal inbox, no
+        reconcile and no state frame: the decisions have stopped, and a write is never repeated.
+
+        Args:
+            ticks_processed: The session's tick count
+            now: The clock of this pass
+            hear: Whether the logic hears what this pass settles; not after the session-end event
+        """
+        self._loop_progress.stamp()
+        self._executor.set_current_time(now)
+        self._pass_day_boundary_off_tick()
+        self._executor.heartbeat()
+        if hear:
+            self._drain_decision_events()
+        self._persist_carry_over_if_needed(ticks_processed)
+
+    def _pass_day_boundary_off_tick(self) -> None:
+        """
+        The trading day's boundary, for the passes that carry no tick: the idle and the wait pass.
+        """
+        # #537 / #476: the boundary is checked HERE too, before anything this pass
+        # resolves — a fill the heartbeat drains after the boundary belongs to the day
+        # it opened. The seal is stamped with the boundary, whenever it is noticed.
+        self._booking.check_boundary(
+            self._executor.get_current_time_if_set(), self._seal_source)
+        self._close_sealed_days()
+        # The log follows the booking period's day, and after it: the line that seals a
+        # day is written into that day's file, and a feed that goes quiet across the
+        # rollover still rotates. A booking does not depend on whether logs are written.
+        self._log_rotator.check_daily_rotation()
+
+    def _report_order_wait(self, awaited: List[AwaitedOrder], before_pass: List[AwaitedOrder],
+                           waited_s: float, bound_s: float, ticks_processed: int) -> None:
+        """
+        Say what a wait pass knows — the one place a surface of the stop reads the wait from.
+
+        Args:
+            awaited: What is still on its way after this pass
+            before_pass: What was on its way before it
+            waited_s: How long the wait has run, read after the pass
+            bound_s: How much longer it may run, from then
+            ticks_processed: The session's tick count
+        """
+        self._push_pulse_frame(ticks_processed)
+        still_on_its_way = {row.key() for row in awaited}
+        settled = [row for row in before_pass if row.key() not in still_on_its_way]
+        endings = (endings_by_order([row.key() for row in settled],
+                                    self._executor.get_order_history())
+                   if settled else {})
+        self._shutdown_status.order_wait_passed(
+            awaited, [(row, endings[row.key()]) for row in settled], waited_s, bound_s)
+
+    def _give_up_on_awaited_orders(self, waited_s: float, stop_budget: StopBudget,
+                                   hear: bool = True) -> None:
+        """
+        A stop's wait ran out: book what is left while the logic can still hear it, and say so.
+
+        Args:
+            waited_s: How long the stop waited
+            stop_budget: What the stop may still spend
+            hear: Whether the logic hears what the give-up booked; not after the session-end event
+        """
+        self._shutdown_status.order_wait_ran_out(self._executor.get_awaited_orders(), waited_s)
+        given_up = self._executor.give_up_on_awaited_orders(waited_s)
+        if hear:
+            self._drain_decision_events()
+        # A hook's order sent just now cannot go out, because the worker has stopped: it is
+        # withdrawn, and the logic hears that with the session-end event
+        self._executor.withdraw_unsent_orders()
+        left = self._executor.get_awaited_orders()
+        self._shutdown_status.order_wait_given_up(given_up, left, waited_s)
+        if not given_up and not left:
+            return
+        status = self._shutdown_status.get()
+        try:
+            title, detail = orders_unanswered_at_stop_text(
+                given_up, left, waited_s, status.kill_text() if status is not None else None)
+        except Exception as error:   # noqa: BLE001 — a message must never end a stop
+            self._logger.error(
+                f'📣 The message for the orders unanswered at the stop could not be written '
+                f'({type(error).__name__}: {error})')
+            return
+        self._operator_alerts.send(
+            OperatorAlertKind.ORDERS_UNANSWERED_AT_STOP, OperatorAlertLevel.WARNING, title, detail)
+
+    def push_last_display_frame(self, ticks_processed: int) -> None:
+        """
+        Hand the display a snapshot of the session as it stands now: when the loop ends, and again
+        once the stop's cleanup has moved the book, so its last frame shows the orders and
+        the portfolio the report describes.
+
+        The queue (maxsize=10) is likely full from a fast replay, so the stale snapshots are
+        drained first, to guarantee this one lands.
+
+        Args:
+            ticks_processed: The session's tick count
+        """
+        if (self._display_queue is None or self._last_real_tick is None
+                or self._last_real_decision is None):
+            return
+        while not self._display_queue.empty():
+            try:
+                self._display_queue.get_nowait()
+            except queue.Empty:
+                break
+        final_stats = self._display_exporter.build(
+            self._last_real_decision, ticks_processed, self._last_real_tick,
+            safety=self._safety.get_display_state(),
+            recent_rejections=list(self._recent_rejections),
+            total_rejections=self._rejection_count,
+            initial_spot_equity=self._initial_spot_equity)
+        try:
+            self._display_queue.put(final_stats, timeout=1.0)
+        except queue.Full:
+            pass
 
     def write_final_state_frame(self, ticks_processed: int) -> None:
         """

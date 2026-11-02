@@ -150,7 +150,7 @@ latency has elapsed. See
 `_active_limit_orders` as **shadow state** — when the broker accepts a LIMIT order (status=PENDING),
 it is tracked locally as resting. Each tick, `_process_active_orders()` polls the broker for fills.
 After a successful `modify_limit_order()`, the local shadow state is updated to reflect the new
-price/SL/TP. Shadow state correctness depends on #151 (Reconciliation).
+price. Shadow state correctness depends on #151 (Reconciliation).
 
 ---
 
@@ -473,15 +473,17 @@ At scenario end, `finish_remaining_orders()` handles all three worlds:
 2. **Active limit orders** (`_active_limit_orders`): `_expire_active_orders()` creates
    `OrderResult(status=EXPIRED, reason="scenario_end")` entries in `_order_history` for each. Lists
    are **preserved** (not cleared) — `get_active_orders_snapshot()` snapshots them into
-   `ActiveOrdersSnapshot.active_limit_orders` for reporting. On the live execution stack, active limit
-   orders are also cancelled at the broker before expiry. A warning is logged.
+   `ActiveOrdersSnapshot.active_limit_orders` for reporting. On the live execution stack they are
+   cancelled at the broker and booked `cancelled`, or `unaccounted` where the venue did not confirm the
+   cancel ([session_end_policy.md](session_end_policy.md)). A warning is logged.
 
 3. **Active stop orders** (`_active_stop_orders`): Same treatment as limit orders — EXPIRED records created, lists preserved for snapshots. A warning is logged.
 
 4. **Latency queue** (`clear_pending()`): any genuine stuck-in-pipeline orders are handed back
    and booked — `expired` in a backtest, where the data ended while they were on their way, and
-   `unaccounted` live, where the venue may hold them. The pending-orders report counts the first
-   as `total_expired` and lists the second under `never_confirmed_orders`.
+   `unaccounted` live, with an ERROR, where the venue may hold them. A live session's normal stop
+   waited for them first. The pending-orders report counts the first as `total_expired` and lists
+   the second under `never_confirmed_orders`.
 
 **Note:** `check_clean_shutdown()` validates only the latency pipeline (via `_has_pipeline_orders()` → `has_pipeline_orders()`) — intentionally preserved active limit/stop orders do not trigger cleanup warnings.
 

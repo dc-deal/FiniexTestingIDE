@@ -16,10 +16,9 @@ test-only switch.
 
 from types import SimpleNamespace
 
-from tests.framework.signal_workers.conftest import SYMBOL, make_provider, snapshot, utc
-
 from python.framework.workers.abstract_signal_worker import AbstractSignalWorker
 from python.framework.workers.core.llm_sentiment_worker import LlmSentimentWorker
+from tests.framework.signal_workers.conftest import SYMBOL, make_provider, snapshot, utc
 
 
 def build(mock_logger, delay_minutes, max_staleness=600, *snapshots) -> LlmSentimentWorker:

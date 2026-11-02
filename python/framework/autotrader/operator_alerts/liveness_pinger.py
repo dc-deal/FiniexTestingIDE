@@ -91,7 +91,6 @@ class LivenessPinger:
         self._failing = False
         self._file_failing = False
         self._beat_failing = False
-        self._pings_delivered = 0
 
     def start(self) -> None:
         """
@@ -151,24 +150,6 @@ class LivenessPinger:
             True when it has a ping URL
         """
         return bool(self._ping_url)
-
-    def ping_once(self) -> bool:
-        """
-        One ping, now — the operator's check that the monitor answers.
-
-        Returns:
-            True when the monitor accepted it
-        """
-        return self._ping(self._ping_url, fail=False)
-
-    def get_pings_delivered(self) -> int:
-        """
-        Pings the monitor accepted.
-
-        Returns:
-            The count
-        """
-        return self._pings_delivered
 
     def _run(self) -> None:
         """Beat once per interval until stopped — a failure nobody classified is said, once."""
@@ -256,7 +237,6 @@ class LivenessPinger:
             return False
         status = response.status_code
         if 200 <= status < 300:
-            self._pings_delivered += 1
             if self._failing:
                 self._failing = False
                 self._logger.info('📡 Liveness ping delivered again')

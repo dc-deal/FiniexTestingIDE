@@ -29,6 +29,7 @@ from typing import Callable, Dict, List, Optional
 from python.framework.bars.bar_rendering_controller import BarRenderingController
 from python.framework.exceptions.warmup_history_errors import WarmupHistoryRefusedError
 from python.framework.logging.scenario_logger import ScenarioLogger
+from python.framework.store.entry_members.run_entry_writer import RunEntryWriter
 from python.framework.types.connection_types import ConnectionOutcome
 from python.framework.types.market_types.market_data_types import Bar
 from python.framework.types.market_types.warmup_history_types import (
@@ -36,7 +37,6 @@ from python.framework.types.market_types.warmup_history_types import (
     WarmupSource,
     WarmupTimeframeRecord,
 )
-from python.framework.store.entry_members.run_entry_writer import RunEntryWriter
 from python.framework.types.process_data_types import ProcessDataPackage
 from python.framework.types.store_member_types import RunEntryMemberId
 from python.framework.utils.bar_period import open_time_of, period_end, period_start
@@ -197,15 +197,6 @@ class WarmupHistory:
             Dict[timeframe, count]
         """
         return {timeframe: len(bars) for timeframe, bars in self._bars_by_timeframe.items()}
-
-    def get_reference_time(self) -> Optional[datetime]:
-        """
-        The instant the history was selected for (updated when the seam re-reads a timeframe).
-
-        Returns:
-            The instant, or None for an empty history
-        """
-        return self._reference_time
 
     def get_source(self) -> WarmupSource:
         """

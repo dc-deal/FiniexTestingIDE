@@ -138,11 +138,11 @@ from python.framework.types.live_types.live_stats_config_types import (
 )
 from python.framework.types.mount_package_types import DataIdentityKey, MountPackage
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
-from python.scenario.scenario_set import ScenarioSet
 from python.framework.types.trading_env_types.broker_types import BrokerType
 from python.framework.utils.runtime_env_utils import is_debug_execution
 from python.framework.validators.post_run_validator import PostRunValidator
 from python.framework.validators.scenario_validator import ScenarioValidator
+from python.scenario.scenario_set import ScenarioSet
 from python.system.ui.live_progress_display import LiveProgressDisplay
 
 
@@ -236,6 +236,7 @@ class BatchOrchestrator:
             app_config=self._app_config_manager,
             requirements_collector=self._requirements_collector,
             live_stats=self._live_stats_coordinator,
+            feature_exception_held_narrow=not scenario_set.is_in_sweep(),
         )
 
         # Create display (if monitoring enabled)

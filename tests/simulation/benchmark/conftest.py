@@ -26,18 +26,18 @@ import pytest
 from python.configuration.app_config_manager import AppConfigManager
 from python.framework.batch.batch_orchestrator import BatchOrchestrator
 from python.framework.batch.batch_report_coordinator import BatchReportCoordinator
-from python.framework.types.batch_execution_types import BatchExecutionSummary
-from python.framework.reporting.store.run_provenance_builder import (
-    consumption_record,
-)
 from python.framework.reporting.certificates.certificate_config_utils import (
     compare_config_contract,
 )
 from python.framework.reporting.certificates.certificate_identity_builder import (
     build_certificate_identity,
 )
-from python.scenario.scenario_set import ScenarioSet
+from python.framework.reporting.store.run_provenance_builder import (
+    consumption_record,
+)
+from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.scenario.scenario_config_loader import ScenarioConfigLoader
+from python.scenario.scenario_set import ScenarioSet
 from tests.simulation.benchmark.system_fingerprint import (
     SystemFingerprint,
     find_matching_system,
@@ -537,6 +537,16 @@ def benchmark_report(
             f'and config isolation does not gate that path — this run measured a different '
             f'workload than the reference.')
 
+    features_beyond_venue = json.loads(
+        Path(benchmark_execution_runs[0].scenario_config_path).read_text(encoding='utf-8')
+    ).get('features_beyond_venue', [])
+    if features_beyond_venue:
+        overall_status = 'FAILED'
+        warnings.append(
+            f'FEATURES BEYOND THE VENUE: the scenario set declares {features_beyond_venue} as an '
+            f"exception, so this run measured something its venue's API cannot hold and a "
+            f'certificate does not accept it.')
+
     if identity.workspace_overrides.applied:
         overrides = identity.workspace_overrides
         warnings.append(
@@ -690,6 +700,7 @@ def benchmark_report(
             'scenario_set_path': _repo_relative(
                 benchmark_execution_runs[0].scenario_config_path),
             'required_effective': required_effective,
+            'features_beyond_venue': features_beyond_venue,
         },
         # What this certificate READ, as opposed to what it was configured to run. Until this
         # existed a certificate said which CODE produced it and nothing about the DATA, so one

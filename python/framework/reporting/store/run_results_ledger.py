@@ -93,7 +93,7 @@ LEDGER_COLUMNS: List[str] = [
     # sim row that recorded nothing.
     # Appended, so older fragments stay readable and read back as None.
     'input_plane', 'data_format_versions', 'origin_classes', 'origin_evidence_grades',
-    'input_files', 'unstamped_input_files', 'price_bases',
+    'input_files', 'unstamped_input_files', 'price_bases', 'features_beyond_venue',
     # WHICH deployment this row belongs to and what the OPERATIONAL half of the
     # profile looked like (#497). The pair is what lets a reader attribute a change:
     # the rows of one deployment, and the hash that says where the parameters moved.
@@ -126,6 +126,12 @@ LEDGER_COLUMNS: List[str] = [
     # while it runs (#476): a session killed on day 29 names its configuration in the rows it
     # left, not only in its header and a log line. Appended, so older fragments read back ''.
     'rendered_config_id', 'broker_config_id',
+    # WHICH CODE a session started on, per repository (#559): the commit, whether the tree was
+    # clean, and what the history said, read from the run header's code identity like
+    # `git_commit` and never from git. JSON like `worker_versions`. It says what `git_commit`
+    # cannot: a strategy from another repository moves neither that nor `git_dirty`. None on a
+    # backtest and on a fragment written before the column existed: no stand, never a change.
+    'code_stand',
     # WHEN this row was written, which is within seconds of when the run ENDED — the reports
     # are persisted at its close and the append is the last step. The ledger had no end of any
     # kind, and `SweepSummary.duration_s` says so in its own comment ("last - first run start,
@@ -227,6 +233,9 @@ COLUMN_REDUCTION: Dict[str, Reduction] = {
     # disagreement says the configuration moved between them — reported, as `profile_hash` is.
     'rendered_config_id': Reduction.IDENTITY,
     'broker_config_id': Reduction.IDENTITY,
+    # One stand per session, on each of its rows. Across a deployment's sessions a disagreement
+    # says the code moved between them.
+    'code_stand': Reduction.IDENTITY,
     # One run's outcome and counts, repeated on each of its rows — so they agree within a run.
     # Across runs a combined row has no single outcome, and summing counts that every period row
     # repeats would multiply them.
@@ -257,6 +266,7 @@ COLUMN_REDUCTION: Dict[str, Reduction] = {
     'origin_classes': Reduction.UNION,
     'origin_evidence_grades': Reduction.UNION,
     'price_bases': Reduction.UNION,
+    'features_beyond_venue': Reduction.UNION,
 
     # --- flows and counters: the rows partition them, so adding is correct
     'net_pnl': Reduction.SUM,
@@ -380,6 +390,10 @@ COLUMN_COMPANION_OF: Dict[str, str] = {
 # Where a null can mean both — a set that can be empty, or a row from before the column — it is
 # declared UNDEFINED, because leaving out the runs that never lost is the worse mistake.
 COLUMN_NULL_MEANING: Dict[str, NullMeaning] = {
+    # The trades had no R on record: a logic keeps its stop itself, so the position carries none. A
+    # ranking leaves such a run out and counts it. A row from before this column could be empty
+    # reads 0.0 with `r_trade_count` 0, and a fold of it reads empty like this one
+    'expectancy': NullMeaning.UNMEASURED,
     # The period's own band, ticks and costs: a row that books no period, a period that could value
     # nothing, a row written before the column existed
     'period_max_equity': NullMeaning.UNMEASURED,
@@ -687,6 +701,7 @@ class RunResultsLedger:
         sweep_params = _json_or(record.get('sweep_params'), None, run_id, 'sweep_params')
         if sweep_params is not None:
             data['sweep_params'] = sweep_params
+        data['code_stand'] = _json_or(record.get('code_stand'), None, run_id, 'code_stand')
         return RunResultRow(**data)
 
     def _provenance_fields(self, p: RunProvenance) -> Dict[str, Any]:
@@ -717,6 +732,7 @@ class RunResultsLedger:
             'input_files': p.input_files,
             'unstamped_input_files': p.unstamped_input_files,
             'price_bases': p.price_bases,
+            'features_beyond_venue': p.features_beyond_venue,
             'deployment_id': p.deployment_id,
             'bot_id': p.bot_id,
             'profile_hash': p.profile_hash,
@@ -731,6 +747,8 @@ class RunResultsLedger:
             'log_warning_count': p.log_warning_count,
             'rendered_config_id': p.rendered_config_id,
             'broker_config_id': p.broker_config_id,
+            'code_stand': (json.dumps(p.code_stand.model_dump(), sort_keys=True)
+                           if p.code_stand is not None else None),
             # Empty at birth: the records exist, because the run that wrote this row just
             # produced them. Only `mark_records_pruned` ever fills it.
             'records_pruned_at': '',

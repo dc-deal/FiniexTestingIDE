@@ -33,6 +33,7 @@ from python.framework.types.config_types.robustness_config_types import Robustne
 from python.framework.types.run_config_types import RunConfigKind
 from python.framework.types.run_purpose_types import RunPurpose
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
+from python.framework.types.trading_env_types.order_types import OrderFeature
 from python.framework.types.trading_env_types.stress_test_types import StressTestConfig
 from python.framework.utils.config_fingerprint_utils import to_plain
 from python.framework.utils.config_merge_utils import deep_merge
@@ -41,6 +42,7 @@ from python.framework.utils.config_merge_utils import deep_merge
 def render_scenario_set(
     scenarios: List[SingleScenario],
     run_purpose: RunPurpose,
+    features_beyond_venue: List[OrderFeature],
     robustness: RobustnessConfig,
     app_config: AppConfigManager,
 ) -> Dict[str, Any]:
@@ -50,6 +52,7 @@ def render_scenario_set(
     Args:
         scenarios: The run's scenarios, cascaded — a sweep combination's with its overrides applied
         run_purpose: What the run is for, as the set declares it
+        features_beyond_venue: The order features the set declares its venue need not hold
         robustness: The set-wide robustness block
         app_config: Application configuration
 
@@ -61,6 +64,7 @@ def render_scenario_set(
     return {
         'kind': RunConfigKind.SCENARIO_SET_RENDERED.value,
         'run_purpose': run_purpose.value,
+        'features_beyond_venue': [feature.value for feature in features_beyond_venue],
         'robustness': to_plain(robustness),
         'backtesting': {
             'execution': to_plain(app_config.get_execution_config()),

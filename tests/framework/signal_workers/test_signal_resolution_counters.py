@@ -12,7 +12,6 @@ from types import SimpleNamespace
 from typing import Any, Dict, List
 
 import pytest
-from tests.framework.signal_workers.conftest import SYMBOL, make_provider, make_tick, snapshot, utc
 
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.types.decision_logic_types import Decision, DecisionLogicAction
@@ -21,6 +20,7 @@ from python.framework.types.trading_env_types.order_types import OrderType
 from python.framework.types.worker_types import WorkerRequirement
 from python.framework.workers.core.llm_sentiment_worker import LlmSentimentWorker
 from python.framework.workers.worker_orchestrator import WorkerOrchestrator
+from tests.framework.signal_workers.conftest import SYMBOL, make_provider, make_tick, snapshot, utc
 
 
 def _worker(mock_logger, max_staleness: int = 30) -> LlmSentimentWorker:
@@ -36,6 +36,10 @@ def _worker(mock_logger, max_staleness: int = 30) -> LlmSentimentWorker:
 
 class _CountingDecision(AbstractDecisionLogic):
     """Minimal contract-complete decision — records nothing but stays out of the way."""
+
+    @classmethod
+    def get_required_order_features(cls, decision_logic_config: Dict[str, Any]) -> list:
+        return []
 
     @classmethod
     def get_required_order_types(cls, decision_logic_config: Dict[str, Any]) -> List[OrderType]:

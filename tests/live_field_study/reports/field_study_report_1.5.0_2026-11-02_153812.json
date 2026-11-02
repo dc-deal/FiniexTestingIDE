@@ -1,0 +1,242 @@
+{
+  "record_kind": "certificate",
+  "release_version": "1.5.0",
+  "app_version": "1.5.0",
+  "timestamp": "2026-11-02T15:38:12.547093+00:00",
+  "valid_until": "2027-01-31T15:27:39.790024+00:00",
+  "git_commit": "498741b8",
+  "git_branch": "dev-v-1-4",
+  "git_dirty": false,
+  "uncommitted_count": 0,
+  "comment": "",
+  "isolation_active": false,
+  "workspace_overrides": {
+    "files_present": [
+      "app_config.json",
+      "data_origins.json",
+      "market_config.json",
+      "sentiment_config.json"
+    ],
+    "unnamed_files": 1,
+    "applied": true
+  },
+  "code_identity": {
+    "framework": {
+      "root": "/app",
+      "in_repository": true,
+      "commit": "498741b8",
+      "branch": "dev-v-1-4",
+      "dirty": false,
+      "uncommitted_count": 0,
+      "changes": [],
+      "diff_hash": null,
+      "patch_ref": null,
+      "patch_excluded": [],
+      "restorable": true,
+      "commit_subject": null,
+      "recent_commits": null
+    },
+    "repositories": [],
+    "components": []
+  },
+  "source_jsonl": "runs/autotrader/kraken_spot_ethusd_field_study/20261102_152739_2f8bdda2/field_study.jsonl",
+  "evidence_runs": [
+    {
+      "run_id": "20261102_152739_2f8bdda2",
+      "commit": "498741b8",
+      "started": "2026-11-02T15:27:39.790024+00:00"
+    }
+  ],
+  "profile": "kraken_spot_ethusd_field_study",
+  "symbol": "ETHUSD",
+  "started_utc": "2026-11-02T15:27:45.734660+00:00",
+  "overall_status": "PASSED",
+  "phase_count": 21,
+  "phases": [
+    {
+      "phase": "market_long_open",
+      "outcome": "pass",
+      "reason": "filled"
+    },
+    {
+      "phase": "market_long_close",
+      "outcome": "pass",
+      "reason": "flat"
+    },
+    {
+      "phase": "market_short_open",
+      "outcome": "pass",
+      "reason": "filled"
+    },
+    {
+      "phase": "market_short_close",
+      "outcome": "pass",
+      "reason": "flat"
+    },
+    {
+      "phase": "reject_below_min",
+      "outcome": "expected_rejection",
+      "reason": "rejected as expected"
+    },
+    {
+      "phase": "reject_oversized",
+      "outcome": "expected_rejection",
+      "reason": "rejected as expected"
+    },
+    {
+      "phase": "limit_long_near_price",
+      "outcome": "pass",
+      "reason": "filled"
+    },
+    {
+      "phase": "limit_long_close",
+      "outcome": "pass",
+      "reason": "flat"
+    },
+    {
+      "phase": "limit_short_near_price",
+      "outcome": "pass",
+      "reason": "filled"
+    },
+    {
+      "phase": "limit_short_close",
+      "outcome": "pass",
+      "reason": "flat"
+    },
+    {
+      "phase": "limit_modify_test",
+      "outcome": "inconclusive",
+      "reason": "no fill after modify"
+    },
+    {
+      "phase": "limit_modify_close",
+      "outcome": "pass",
+      "reason": "flat"
+    },
+    {
+      "phase": "limit_cancel_test",
+      "outcome": "pass",
+      "reason": "cancelled, no position"
+    },
+    {
+      "phase": "stop_cancel_test",
+      "outcome": "pass",
+      "reason": "cancelled, no position"
+    },
+    {
+      "phase": "multi_concurrent_limits",
+      "outcome": "pass",
+      "reason": "all watching"
+    },
+    {
+      "phase": "multi_cancel_all",
+      "outcome": "pass",
+      "reason": "all cancelled"
+    },
+    {
+      "phase": "partial_close_test",
+      "outcome": "pass",
+      "reason": "half then flat"
+    },
+    {
+      "phase": "idle_heartbeat_test",
+      "outcome": "pass",
+      "reason": "idle complete"
+    },
+    {
+      "phase": "force_close_all",
+      "outcome": "skipped",
+      "reason": "already flat"
+    },
+    {
+      "phase": "stop_waits_for_close",
+      "outcome": "pass",
+      "reason": "the stop waited for the close and booked its fill"
+    },
+    {
+      "phase": "final_summary",
+      "outcome": "skipped",
+      "reason": "the session ended in stop_waits_for_close"
+    }
+  ],
+  "failed_phases": [],
+  "missing_phases": [],
+  "flat_at_session_end": true,
+  "checks": {
+    "study:real_orders": {
+      "passed": true,
+      "detail": "the run sent its orders to the venue"
+    },
+    "study:committed_code": {
+      "passed": true,
+      "detail": "the run ran from committed code"
+    }
+  },
+  "failed_checks": [],
+  "fees_charged": {
+    "value": 0.512,
+    "currency": "USD",
+    "source": "run_record"
+  },
+  "fee_source": {
+    "status": "recorded",
+    "fills": 13,
+    "by_source": {
+      "venue": 13,
+      "estimate": 0
+    },
+    "not_recorded": 0,
+    "fee_report": "status_answer",
+    "venue_fee_expected": true
+  },
+  "account_delta": {
+    "status": "ok",
+    "per_asset": {
+      "ZUSD": -0.5152000000000001
+    }
+  },
+  "slippage": {
+    "measured_against": {
+      "limit": "limit_price",
+      "market": "submission_mid"
+    },
+    "sign": "positive = adverse",
+    "by_order_type": {
+      "limit": {
+        "legs": 2,
+        "measured": 2,
+        "vs_limit_max_pct": 0.0
+      },
+      "market": {
+        "legs": 11,
+        "measured": 11,
+        "adverse_avg_pct": 0.0026388886995207038,
+        "adverse_max_pct": 0.03079967758637047
+      }
+    },
+    "status": "measured"
+  },
+  "api_calls": {
+    "status": "recorded",
+    "calls": 219,
+    "errors": 0,
+    "slow_calls": 0
+  },
+  "reconciliation": {
+    "status": "checked",
+    "cycles": 9,
+    "skipped": 0,
+    "divergences_seen": 0,
+    "divergent_records": 0
+  },
+  "detected_via": {
+    "poll": 38
+  },
+  "run_directory": {
+    "checked": true,
+    "close_state": "closed",
+    "undeclared": [],
+    "needs_a_look": []
+  },
+  "warnings": []
+}

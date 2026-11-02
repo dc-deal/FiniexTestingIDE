@@ -38,8 +38,7 @@ filled at once — and a sort by time leaves their order to chance.
 ## `submitted_seq` ties the steps of one order together
 
 `order_id` repeats: a position's open and its market closes share it, so it does not identify an
-order. A protective order resting at the venue has an id of its own and names its position in
-`position_id`; a close refused before it was sent is `close_<position id>`. Every event carries
+order. A close refused before it was sent is `close_<position id>`. Every event carries
 `submitted_seq` — the `seq` of the submission it belongs to — and all the steps of one order share
 that number. Group by `scenario_name` and `submitted_seq`.
 
@@ -101,14 +100,14 @@ zero.
 | `scenario_name` | the unit the event belongs to: a scenario, or the session | never |
 | `seq` | the event's place in its unit's stream — the order to read in, never a timestamp | never |
 | `event_type` | what happened, above | never |
-| `order_id` | the order's own id; a position's open and its market closes share one, a protective order has its own | never |
+| `order_id` | the order's own id; a position's open and its market closes share one | never |
 | `submitted_seq` | the `seq` of the submission this event belongs to — the join key for one order's steps | on `denied`, which was never submitted |
 | `record_plane` | whose account this is: `bot` for this side's own steps | never |
 | `position_id` | the position the order opens or closes | the order belongs to no position yet |
 | `action` | `open` or `close` | not known for this step |
 | `order_type` | the type the order was asked as | not known |
 | `symbol` | the instrument | not known |
-| `direction` | the POSITION's direction; a close carries the direction of the position it closes, which a protective order's own trading side is the opposite of | not known |
+| `direction` | the POSITION's direction; a close carries the direction of the position it closes | not known |
 | `client_order_id` | this side's key on the wire | a backtest, or an order sent without one |
 | `broker_ref` | the venue's handle for the order | a backtest, or the venue has not answered yet |
 | `previous_broker_ref` | the handle an amend replaced | every event that is not an amend's answer |
@@ -119,7 +118,7 @@ zero.
 | `limit_price` | the order's limit | the order has none |
 | `trigger_price` | the order's stop — the price that activates it | the order has none |
 | `fee` · `fee_currency` | the fee charged on this execution, and its currency | the event is no execution; or a fill nothing could be booked for, its position already gone, whose venue reported no fee. A fill that cost nothing reads `0.0`, never null |
-| `fee_source` | where `fee` came from: `venue` — the figure the venue's answer reported for this fill, what the account was charged (in a mock session, the mock venue's); `estimate` — our fee model's, the declared rate times the order's value. A backtest is always `estimate`, and so is a live fill whose venue reports no fee per fill. A protective order the venue reports as one total is booked in steps: each step's figure is what the total grew by, and a step that had to be estimated is settled by the next total, so the order's fees add up to the venue's — where an estimate exceeded the venue's later total, the excess stays booked until a later total above the books absorbs it, so only an order whose last total stays below them ends above the venue's figure. A step that settles an estimate, or finds one exceeded, says so in `message` | the event is no execution; a fill nothing could be booked for, its position already gone, whose venue reported no fee; or it was recorded before the field existed |
+| `fee_source` | where `fee` came from: `venue` — the figure the venue's answer reported for this fill, what the account was charged (in a mock session, the mock venue's); `estimate` — our fee model's, the declared rate times the order's value. A backtest is always `estimate`, and so is a live fill whose venue reports no fee per fill. | the event is no execution; a fill nothing could be booked for, its position already gone, whose venue reported no fee; or it was recorded before the field existed |
 | `submission_mid` | the market's mid when the order was submitted | every event but the submission |
 | `submission_time_msc` | that market moment, in epoch milliseconds | as above |
 | `in_flight_ms` | on the acceptance or refusal that answers a submission: how long the answer took — modelled in a backtest, measured live | every other event |

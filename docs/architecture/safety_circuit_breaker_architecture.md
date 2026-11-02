@@ -40,7 +40,7 @@ AutoTrader Tick Loop (every tick)
     ├── if _safety_blocked:
     │   └── decision's action overridden to FLAT → no order from the action
     │       (an action-driven close is suppressed too; position management, resting
-    │        orders and SL/TP keep working — soft stop, not hard liquidation)
+    │        orders and a logic's own exits keep working — soft stop, not hard liquidation)
     │
     └── if NOT _safety_blocked:
         └── normal decision execution proceeds
@@ -70,7 +70,7 @@ When triggered, Safety is a **soft stop**:
 - What a strategy sends from its own position management whatever the action — a close, a stop
   amend, a cancel — still goes out, and a resting order can still fill
 - Existing open positions are NOT force-closed by the breaker
-- SL/TP triggers still execute normally
+- A logic's own exits still go out, and a backtest's position levels still fire
 - If the checked value recovers above thresholds (e.g. equity rises), the breaker **automatically clears** and trading resumes
 
 This is intentional — a hard liquidation during a temporary drawdown could lock in losses that would have recovered.

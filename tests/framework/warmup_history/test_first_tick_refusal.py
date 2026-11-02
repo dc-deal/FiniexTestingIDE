@@ -4,9 +4,9 @@ First-Tick Refusal — a session that cannot close its warmup seam says it refus
 A live session reads its warmup at boot and reads it again at the first tick where a period ended in
 between. When the venue has not committed that period yet, or cannot be read, the session stops
 before the workers and the decision run on that tick. That is a refusal, not a crash, and a restart
-a few seconds later closes the seam. It is not a promise that nothing reached the venue: the seam
-closes where the tick's bars are rendered, after the executor's stop and take-profit check of the
-same tick — so the block names what the session had sent by then. These tests hold the console, the
+a few seconds later closes the seam. It is not a promise that nothing reached the venue: a heartbeat
+pass before the first tick can run the decision — so the block names what the session had sent by
+then. These tests hold the console, the
 session log and the result to saying exactly that — while the grading stays FAILED, so whoever
 relaunches sessions relaunches it.
 """
@@ -47,7 +47,7 @@ def _session(tick_loop_started: bool, executor=None) -> AutotraderMain:
     session = AutotraderMain.__new__(AutotraderMain)
     session._tick_loop_started = tick_loop_started
     session._executor = executor or SimpleNamespace(
-        get_execution_stats=lambda: SimpleNamespace(orders_submitted=0, sl_tp_triggered=0))
+        get_execution_stats=lambda: SimpleNamespace(orders_submitted=0))
     session._session_logger = RecordingLogger()
     session._global_logger = RecordingLogger()
     session._refused_at_first_tick = False
@@ -69,10 +69,10 @@ class TestTheAbortIsNamedForWhatItIs:
         block = capsys.readouterr().out.strip().splitlines()
         assert block[1] == '  ⛔ REFUSED AT THE FIRST TICK — its workers and decision did not run'
         assert 'not yet committed' in block[2]
-        assert block[3] == ('  No order was submitted in this session and no stop or take-profit '
-                            'fired.')
+        assert block[3] == '  No order was submitted in this session.'
         assert 'RUNTIME ERROR' not in '\n'.join(block)
         assert session._refused_at_first_tick
+        assert session._start_failure_transient
         assert session._shutdown_mode == 'emergency'
 
     def test_the_refusal_reaches_the_session_log(self, capsys):
@@ -84,7 +84,7 @@ class TestTheAbortIsNamedForWhatItIs:
         assert session._session_logger.lines[0][0] == 'error'
         assert session._session_logger.lines[0][1].startswith('⛔ Refused at the first tick')
         assert session._session_logger.lines[1] == (
-            'info', 'No order was submitted in this session and no stop or take-profit fired.')
+            'info', 'No order was submitted in this session.')
         assert session._global_logger.lines == []
 
     def test_a_crash_in_the_tick_loop_still_reads_as_one(self, capsys):
@@ -106,26 +106,17 @@ class TestTheAbortIsNamedForWhatItIs:
 
 
 class TestWhatReachedTheVenueIsNamed:
-    """The executor's part of the first tick runs before the seam — and can send a close."""
+    """A heartbeat pass can run the decision before the first tick — and send an order."""
 
-    def test_a_take_profit_crossed_by_the_first_tick_is_named(self, capsys):
-        """A carried LONG whose take profit the first tick crosses, then the seam refuses."""
-        # A session that opened the position and wrote its carry-over
-        previous = MockOrderExecution(mode=MockExecutionMode.INSTANT_FILL, spot_mode=True,
-                                      initial_balances={'USD': 10000.0, 'BTC': 0.0})
-        previous_executor = previous.create_executor()
-        previous.feed_tick(previous_executor, symbol='BTCUSD', bid=50000.0, ask=50001.0)
-        previous_executor.open_order(OpenOrderRequest(
+    def test_an_order_sent_before_the_first_tick_is_named(self, capsys):
+        """An order went out before the first tick, then the seam refuses."""
+        mock = MockOrderExecution(mode=MockExecutionMode.INSTANT_FILL, spot_mode=True,
+                                  initial_balances={'USD': 10000.0, 'BTC': 0.0})
+        executor = mock.create_executor()
+        mock.feed_tick(executor, symbol='BTCUSD', bid=50000.0, ask=50001.0)
+        executor.open_order(OpenOrderRequest(
             symbol='BTCUSD', order_type=OrderType.MARKET, direction=OrderDirection.LONG,
-            lots=0.01, take_profit=51000.0))
-        previous.feed_tick(previous_executor, symbol='BTCUSD', bid=50000.0, ask=50001.0)
-        book = previous_executor.portfolio.get_position_book()
-
-        # This session restores it at boot, as the cold-start adopter does
-        executor = MockOrderExecution(
-            mode=MockExecutionMode.INSTANT_FILL, spot_mode=True,
-            initial_balances={'USD': 9499.99, 'BTC': 0.01}).create_executor()
-        executor.portfolio.restore_position_book(book)
+            lots=0.01))
         bar_controller = BarRenderingController(logger=RecordingLogger(), max_history=10)
 
         def refusing_seam(first_tick_time):
@@ -135,7 +126,7 @@ class TestWhatReachedTheVenueIsNamed:
 
         # The first tick, in the AutoTrader loop's order: the executor, then the bars
         tick = TickData(timestamp=datetime.now(timezone.utc), symbol='BTCUSD',
-                        bid=51100.0, ask=51101.0)
+                        bid=50000.0, ask=50001.0)
         executor.on_tick(tick)
         with pytest.raises(WarmupHistoryRefusedError) as refused:
             render_bars_for_tick(tick, bar_controller)
@@ -145,20 +136,19 @@ class TestWhatReachedTheVenueIsNamed:
         session._report_abort(refused.value)
 
         block = capsys.readouterr().out.strip().splitlines()
-        assert block[3] == ('  ⚠️ Before the refusal: 1 order(s) submitted in this session · '
-                            '1 close(s) triggered by a stop or take-profit on this tick — check '
-                            'what the venue holds before a restart.')
+        assert block[3] == ('  ⚠️ Before the refusal: 1 order(s) submitted in this session — '
+                            'check what the venue holds before a restart.')
         assert session._session_logger.lines[1] == ('warning', block[3].strip())
 
 
 class TestTheGradingStays:
 
-    def test_a_refused_session_is_still_failed_and_exits_2(self):
-        """A relaunch is the remedy, and a supervisor relaunches on a failed exit."""
+    def test_a_refused_session_is_still_failed_and_exits_75(self):
+        """A relaunch is the remedy, and a supervisor restarts a start that failed in passing."""
         result = AutoTraderResult(shutdown_mode='emergency', emergency_reason=str(REFUSAL),
-                                  refused_at_first_tick=True)
+                                  refused_at_first_tick=True, start_failure_transient=True)
         assert result.get_outcome() is RunOutcome.FAILED
-        assert result.get_exit_code() == 2
+        assert result.get_exit_code() == 75
 
 
 class _Constructed(Exception):

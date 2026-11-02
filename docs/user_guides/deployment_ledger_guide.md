@@ -86,9 +86,10 @@ deployment                       bot                    bot id               ord
 ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 deploy_20260820_090000_5e3f91a7  ethusd_production      ethlive01            venue                   1 2026-08-20 09:00        12.00      -30.00         —
 deploy_20260901_060000_ab12c9d0  dotusd_production      dotlive01            venue                   4 2026-09-01 06:00       136.10     -212.75     6.6 d ⚠
-deploy_20260712_051500_77c1e4b2  dotusd_production      dotlive01            venue                   2 2026-07-12 05:15      -402.88     -991.40     2.1 d
+deploy_20260712_051500_77c1e4b2  dotusd_production      dotlive01            venue                   2 2026-07-12 05:15      -402.88     -991.40     2.1 d ⚠ code 64 d ago
 ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 ⚠ = the sessions were not all produced by the same configuration; the detail view draws the break.
+⚠ code N d ago = the sessions started on different code, last N days ago; the detail view draws each change.
 Two rows sharing a BOT ID = one bot restarted with --new-deployment. The older history stays readable.
 Open one with `run_index_cli.py deployments --id <deployment>`.
 ```
@@ -172,8 +173,10 @@ you read it the peak has usually moved on.
 | `STRATEGY CHANGED HERE` | The strategy parameters differ from the previous session | Which parameter, or in which direction |
 | `OPERATION CHANGED HERE` | Something operational differs — a safety threshold, an order guard setting, a timeout, the capital declaration | The same |
 | `ORDERS TO CHANGED HERE` | The orders went to a simulator on one side of the line and to the venue on the other — simulated fills and real money in one history | How the fills of the two halves compare |
+| `code changed here` | The code differs from the previous session in at least one repository. One row per repository names both commits, how far apart they stand and a commit's message | Whether the commit changed anything the bot does |
 
-Changes at one restart share one line: `STRATEGY and OPERATION CHANGED HERE`.
+Changes at one restart share one line: `STRATEGY and OPERATION CHANGED HERE`. The code's line
+stands apart, directly below that one when both happen at one restart.
 
 Nothing here is a verdict, deliberately. A threshold that decided *for* you what counts as too
 long a gap would be a judgement about your market and your night, made by a tool that knows
@@ -197,6 +200,63 @@ comparable run beyond comparison. The strategy configuration of each session is 
 ledger row as the profile gave it, so a tool can tell you `rsi_buy_threshold: 45 → 40` rather than
 only "the hash differs".
 
+### A code change draws one row per repository and one dated warning
+
+A `git pull` between two restarts moves no parameter and no setting, so neither mark above sees it.
+So a session records, per repository, which code it started on: this repository and every other
+one a strategy or a worker came from. That record is its **code stand** (`code_stand` on its ledger
+row), and the detail view compares it with the previous session's. Where it differs, the rows stand
+between the two sessions (values invented, columns shortened):
+
+```
+deploy_20261201_000500_ab12c9d0 — 3 session(s) · since 2026-12-01 00:05 UTC · bot mybot01
+⚠️  Code changed 22 d ago (2026-12-09) — 2 code stands over 3 sessions; net P&L adds them up
+────────────────────────────────────────────────────────────────────────────────────────────────────────
+run id                     started               ran     net P&L
+20261216_000700_8e10a4f3   2026-12-16 00:07  167.8 h       19.60
+20261209_001200_c07d93b5   2026-12-09 00:12  167.6 h       12.40
+··· code changed here ··················································································
+    framework  a1b2c3d4 → e5f6a7b8  +3 commits  "Fix the fee rounding"
+    strategy   2f054f5a → 7c1e9a0d  +1 commit   "Size the order from the equity"
+20261201_000500_9f2c17d8   2026-12-01 00:05  191.6 h        9.20
+```
+
+| The row reads | What happened |
+|---|---|
+| `+3 commits` | The newer session's code is that many commits ahead. The message is the newer commit's |
+| `back 1` | A rollback: the newer session's code is that many commits behind. The message is that of the commit it went back from |
+| `+?` | The commit moved and nobody can say how far: neither session's recorded commits hold the other's commit, usually because a clone was too shallow ([a deploy](../autotrader/unattended_operation.md#a-deploy--a-restart-into-a-new-code-tree) says how deep it has to be). Both hashes and the message still stand there |
+| `uncommitted changes` | One commit with other uncommitted changes on it: a dry run or a mock session, because a real-money start refuses such a tree unless `--allow-dirty` was typed |
+| `(new)` or `(gone)` in place of a commit | A repository only the newer or only the older session used |
+| `unknown` in place of a commit | Nobody could read it. It is never the same as anything, not even another unknown one, so a strategy in no repository draws the line at every restart: unknown is not clean |
+
+**Every commit counts, a documentation commit too.** Nobody decides for you which commits mattered,
+and the message shows at once when one did not.
+
+**The count is read from the record, never from git.** A session of a deployment keeps its last 50
+commits on the first-parent line, and the distance is where the other session's commit stands in
+that list. So the view needs no clone, it does not change with what is checked out when you read it,
+and a commit found in neither list, also one further away than that, reads `+?` rather than a
+wrong number.
+
+**One line, because a warning that never ages turns into noise.** The warning block reads a
+deployment's whole history, so a code change half a year old would print it on every view, and every
+maintained deployment would stand under the same sign as a real strategy change. A code change is
+therefore one dated line, above the table and above the block when that prints too. The list says it
+in its last column, apart from the `⚠` of a changed configuration:
+
+```
+deploy_20261201_000500_ab12c9d0  …   3 …    41.20    -58.40     0.0 d ⚠ code 22 d ago        the code moved
+deploy_20260901_060000_ab12c9d0  …   4 …   136.10   -212.75     6.6 d ⚠                      the configuration moved
+deploy_20260301_060000_c41d77e2  …  41 …   312.75   -120.40     0.9 d ⚠ · code 181 d ago     both
+```
+
+The age is what tells a maintained deployment from one whose code moved last week. The number of
+code stands counts distinct ones, so a rollback to an earlier stand adds none.
+
+A row recorded before the column existed has no stand. It draws nothing, in either direction, and
+the sessions on either side of it are compared with each other. Nothing is back-filled.
+
 ### What the marks compare, and what they do not
 
 Each line compares one thing between neighbouring sessions, read from their ledger rows:
@@ -204,15 +264,17 @@ Each line compares one thing between neighbouring sessions, read from their ledg
 - **strategy** — the strategy parameters as the profile wrote them (`param_hash`)
 - **operation** — the profile's operational settings (`profile_hash`)
 - **orders to** — whether the orders went to a simulator or to the venue (`orders_to`)
+- **code** — per repository, the commit and any uncommitted changes on it (`code_stand`)
 
-The `⚠` in the list and the warning block above the table compare the same three: "the same
-configuration" means these and nothing more. **The code and the broker configuration are not
-compared.** A session that ran on a new commit or a new component version — a parameter default
-changed in a worker's code included — or at another fee tier, with the same profile, draws no
-line. Each session's ledger row names this repository's commit and the component versions
-(`git_commit`, `decision_version`, `worker_versions`); the commit of your strategy's own repository
-is named only in the run header's `code_identity`, and the broker configuration only in the run's
-broker section — both for as long as the run directory exists. Read them before adding a column up across a restart;
+The `⚠` in the list and the warning block above the table compare strategy, operation and orders
+to: "the same configuration" means these and nothing more. A parameter default changed in a worker's code moves
+none of them; it shows as the code line, and its commit's message is where you learn of it.
+**The broker configuration is not compared.** A session at another fee tier, with the same profile,
+draws no line. Each session's ledger row names the code stand and the component versions
+(`code_stand`, `decision_version`, `worker_versions`); the broker configuration is named only in the
+run's broker section, and the rest of the code's record — each component's package digest, where the
+patch of uncommitted changes lies — only in the run header's `code_identity`, both for as long as
+the run directory exists. Read them before adding a column up across a restart;
 why every run keeps them is in
 [A run is a record, and an old one stays true](../introduction_to_the_ide.md#a-run-is-a-record-and-an-old-one-stays-true).
 
@@ -418,10 +480,11 @@ history doing its job.
 
 **What a pruned row still says, and what went with the directory.** The row keeps the session's
 figures, `param_hash` and `profile_hash`, the strategy configuration as the profile gave it, this
-repository's commit and the component versions, and what kind of data it read. The rest lived in
-the run directory: the header, which names the profile the session was given and the configuration
-it ran with (`config_id`, `rendered_config_id`), the commit of every other repository a component
-came from and where the patch of any uncommitted code lies; the
+repository's commit and the component versions, the commit of every other repository a component
+came from (`code_stand`, on a row recorded since that column exists), and what kind of data it read.
+The rest lived in the run directory: the header, which names the profile the session was given, the
+configuration it ran with (`config_id`, `rendered_config_id`) and where the patch of any uncommitted
+code lies; the
 broker section, which names the frozen broker configuration (`broker_config_id`); and the warmup
 history the session started from. The frozen copies and the patch stay where they were stored, but
 after a prune nothing says which session used them. For a run you mean to compare — a thirty-day
@@ -474,6 +537,12 @@ life reads forwards, where the table above puts the newest on top because that i
 open it for. And the warning block is a field on the response (`advisory`) rather than a banner,
 so a client cannot render the table and drop the sentence that says whether the rows may be
 added up at all.
+
+A code change is served beside it: `code_changes` on a session row and `code_summary` on the
+response, both in the served
+[deployments document](../consumer/deployments.md#which-code-the-sessions-started-on). A code change
+alone leaves `advisory` null, so `changed: true` with `advisory: null` is an answer a client has to
+expect.
 
 The response also carries `unfinished`: the runs of this deployment that never reached their
 close. One that sealed a day is in the list with `ended` null; one killed before its first seal

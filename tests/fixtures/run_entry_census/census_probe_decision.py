@@ -52,6 +52,10 @@ class CensusProbeDecision(AbstractDecisionLogic):
         }
 
     @classmethod
+    def get_required_order_features(cls, decision_logic_config: Dict[str, Any]) -> list:
+        return []
+
+    @classmethod
     def get_required_order_types(cls, decision_logic_config: Dict[str, Any]) -> List[OrderType]:
         return [OrderType.MARKET]
 

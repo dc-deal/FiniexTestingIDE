@@ -29,12 +29,12 @@ from datetime import datetime, timezone
 
 import pytest
 
-from python.framework.types.trading_env_types.order_types import OrderDirection
 from python.framework.types.market_types.market_data_types import TickData
+from python.framework.types.trading_env_types.order_types import OrderDirection
 from python.framework.utils.trading_math.price_trigger import (
     is_limit_reached,
-    mid_price,
     is_stop_reached,
+    mid_price,
     taken_price,
 )
 

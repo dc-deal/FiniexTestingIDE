@@ -34,6 +34,7 @@ from python.framework.types.trading_env_types.order_types import (
     MarketOrder,
     OrderCapabilities,
     OrderDirection,
+    OrderFeature,
     StopLimitOrder,
     StopOrder,
 )
@@ -106,9 +107,6 @@ class Mt5Adapter(AbstractAdapter):
             iceberg_orders=False,  # Not supported by MT5
             hedging_allowed=self._hedging_allowed,
             partial_fills_supported=False,  # MT5 fills orders atomically
-            # False is not a gap: MT5 holds the level ON the position rather than as a
-            # separate order, which is a different mechanism and belongs to #209 (#503).
-            venue_held_protective_orders=False,
             # No trades query is built yet: HistoryDealsGetByOrder is #209's deal layer, and
             # declaring True before it exists sends the drift auditor to a method that raises.
             trade_level_reporting=False,
@@ -118,6 +116,8 @@ class Mt5Adapter(AbstractAdapter):
             # carries the deal's ticket and no fee. #209 measures where and when it appears
             # before it declares — on the documentation alone, EXECUTIONS (#508, 2026-10-11).
             fee_report=FeeReport.NOT_REPORTED,
+            # MT5 holds both levels on the position itself (#209, #625).
+            offered_order_features=frozenset({OrderFeature.STOP_LOSS, OrderFeature.TAKE_PROFIT}),
         )
 
     # ============================================

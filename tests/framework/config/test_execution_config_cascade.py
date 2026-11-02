@@ -13,6 +13,7 @@ Scope: execution_config lane only. The other cascade lanes
 follow the same pattern and deserve equivalent coverage in a follow-up.
 """
 
+import json
 from pathlib import Path
 
 import pytest
@@ -90,3 +91,18 @@ class TestExecutionConfigCascade:
         msg = str(exc_info.value)
         assert 'global.execution_config' in msg
         assert 'parallel_workerz' in msg
+
+    def test_a_misspelt_global_section_hard_fails_rather_than_read_as_absent(self, tmp_path):
+        """Each section's keys are checked against its schema, but the SECTION names under
+        `global` were not: `execution_confg` loaded, and its whole block was silently not
+        applied. Every scenario then ran on the app defaults instead."""
+        data = json.loads((_FIXTURE_DIR / 'global_overrides_app.json').read_text(encoding='utf-8'))
+        data['global']['execution_confg'] = data['global'].pop('execution_config')
+        path = tmp_path / 'misspelt_section.json'
+        path.write_text(json.dumps(data, indent=2), encoding='utf-8')
+
+        with pytest.raises(ValueError) as exc_info:
+            ScenarioConfigLoader().load_config(str(path))
+        msg = str(exc_info.value)
+        assert 'Unknown keys in global:' in msg
+        assert 'execution_confg' in msg

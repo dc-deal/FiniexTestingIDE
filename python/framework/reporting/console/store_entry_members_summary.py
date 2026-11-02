@@ -10,6 +10,7 @@ the two together.
 import os
 from typing import Dict, List, Tuple
 
+from python.framework.constants.recorded_stream_constants import RECORDED_STREAM_ROUTES
 from python.framework.constants.run_layout_constants import (
     RUN_TYPE_AUTOTRADER,
     RUN_TYPE_SIMULATION,
@@ -47,7 +48,7 @@ def render_entry_members(descriptor: StoreDescriptor) -> None:
     rows = [(member.member_id.value, member.path_pattern, _shape(member),
              *(_moment(member, run_type) for run_type in run_types),
              member.index_column.value if member.index_column else '—',
-             member.served_route or '—')
+             ' · '.join(_served_routes(member)) or '—')
             for member in members]
     headers = ('MEMBER', 'FILE', 'SHAPE', *(run_type.upper() for run_type in run_types),
                'LISTED IN', 'SERVED AT')
@@ -102,11 +103,28 @@ def entry_members_markdown(members: Tuple[EntryMember, ...]) -> str:
     for member in members:
         written = [_moment(member, run_type, with_condition=True) for run_type in run_types]
         listed = f'`{member.index_column.value}`' if member.index_column else '—'
-        served = f'`…/{member.served_route}`' if member.served_route else '—'
+        served = ' · '.join(f'`…/{route}`' for route in _served_routes(member)) or '—'
         lines.append(f'| [`{member.member_id.value}`]({_doc_link(member.doc)}) | '
                      f'`{member.path_pattern}` | {_shape(member)} | '
                      + ' | '.join(written) + f' | {listed} | {served} |')
     return '\n'.join(lines)
+
+
+def _served_routes(member: EntryMember) -> List[str]:
+    """
+    The routes below a run that serve a member: its own, and a unit's timeline and window for a
+    stream that declares a recorded-stream kind (#580).
+
+    Args:
+        member: The member
+
+    Returns:
+        The routes, its own first; empty when none serves it
+    """
+    routes = [member.served_route] if member.served_route else []
+    if member.recorded_stream_kind is not None:
+        routes.extend(RECORDED_STREAM_ROUTES)
+    return routes
 
 
 def _render_no_members(descriptor: StoreDescriptor) -> None:

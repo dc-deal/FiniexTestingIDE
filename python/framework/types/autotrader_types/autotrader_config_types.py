@@ -19,6 +19,7 @@ from python.framework.types.config_types.autotrader_defaults_config_types import
     ReconciliationDefaults,
     SafetyConfig,
     SessionEndDefaults,
+    ShutdownDefaults,
     StateFramesDefaults,
     StatePersistenceDefaults,
     TickSourceConfig,
@@ -102,6 +103,7 @@ class AutoTraderConfig:
         session_end: What the session does with resting orders and open positions when it
             ends (#492). Two axes; `orders: 'leave'` is the loosening one and needs the
             broker's posture behind it, the same way `dry_run` does
+        shutdown: The waits of the session's stop and the kill they have to fit under (#630)
         operator_alerts: The out-of-band channels to the operator (#235) — Telegram alerts and
             the liveness ping, both off by default
         deployment: Whether this profile's sessions form one continuous deployment (#497).
@@ -139,6 +141,7 @@ class AutoTraderConfig:
     state_frames: StateFramesDefaults = field(default_factory=StateFramesDefaults)
     cold_start: ColdStartDefaults = field(default_factory=ColdStartDefaults)
     session_end: SessionEndDefaults = field(default_factory=SessionEndDefaults)
+    shutdown: ShutdownDefaults = field(default_factory=ShutdownDefaults)
     capital: CapitalDefaults = field(default_factory=CapitalDefaults)
     operator_alerts: OperatorAlertsConfig = field(default_factory=OperatorAlertsConfig)
     config_path: Optional[Path] = None

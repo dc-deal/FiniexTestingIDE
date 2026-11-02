@@ -11,8 +11,6 @@ resolution is patched so the test stays free of broker-config data.
 from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
-from tests.data.scenario_generator.conftest import utc
-
 from python.framework.types.config_types.robustness_config_types import RobustnessConfig
 from python.framework.types.market_types.market_volatility_profile_types import (
     TradingSession,
@@ -22,6 +20,7 @@ from python.framework.types.scenario_types.scenario_generator_types import Gener
 from python.framework.types.scenario_types.window_set_types import GeneratedWindow, WindowSet
 from python.scenario.generator.generation_coordinator import GenerationCoordinator
 from python.scenario.generator.window_set_serializer import WindowSetSerializer
+from tests.data.scenario_generator.conftest import utc
 
 _RESOLVE_PATH = 'python.scenario.generator.window_set_serializer.resolve_quote_currency'
 

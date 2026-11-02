@@ -29,7 +29,7 @@ tests/autotrader/api_monitor/
 
 | File | Focus |
 |------|-------|
-| `test_api_perf_monitor.py` | `record()` aggregates count / avg / min / max / last per endpoint; **one row per endpoint** (a repeat call updates, a new endpoint adds); error counting + `last_error` + `total_errors`; **abnormal-only logging** — a failure logs `[API] … failed`, a call over `slow_call_threshold_ms` logs `[API] … slow` + increments `slow_count`, a fast clean call is silent; `shutdown()` emits a per-endpoint summary |
+| `test_api_perf_monitor.py` | `record()` aggregates count / avg / min / max / last per endpoint; **one row per endpoint** (a repeat call updates, a new endpoint adds); error counting + `last_error` + `total_errors`; **abnormal-only logging** — a failure logs `[API] … failed`, a call over `slow_call_threshold_ms` logs `[API] … slow` + increments `slow_count`, a fast clean call is silent; the slow calls are counted per endpoint as well as over the session, and the snapshot carries the threshold it judged them by (#631, served as the venue API section); `shutdown()` emits a per-endpoint summary |
 | `test_thread_safety.py` | concurrent `record()` from many threads → no lost updates (count == total); mixed endpoints + errors stay consistent (the monitor is called from the tick-loop thread AND #319/#320/#327 worker threads) |
 | `test_api_monitor_config.py` | `load_autotrader_config`: mock auto-disabled (default), live adapter enabled by default, mock + explicit `enabled` overrides the auto-disable, unknown key → `ValueError` |
 

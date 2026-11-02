@@ -16,12 +16,14 @@ This file closes that: it calls the real writer with a real row and reads the fi
 """
 
 import csv
+import json
 from pathlib import Path
 
 import pytest
 
 from python.framework.optimization.optimization_report import _write_csv
 from python.framework.types.api.report_types import RunResultRow
+from python.framework.types.run_origin_types import CodeStand, RepositoryStand
 
 
 @pytest.fixture
@@ -79,3 +81,17 @@ def test_an_empty_ranking_still_writes_a_header(sweep_root):
     header = csv.DictReader(path.open()).fieldnames
     assert header is not None and 'run_id' in header
     assert list(csv.DictReader(path.open())) == []
+
+
+def test_a_code_stand_is_json_in_the_export_and_empty_where_there_is_none(sweep_root):
+    """The structured columns are JSON in the file: a row's repr is nothing a reader can parse."""
+    stand = CodeStand(repositories=[
+        RepositoryStand(repository='framework', commit='a1b2c3d4e5f6', dirty=False)])
+
+    path = _write_csv([_row(code_stand=stand), _row(run_id='20260101_000001')],
+                      'sweep_20260101_000000')
+
+    with path.open(encoding='utf-8') as export:
+        rows = {row['run_id']: row['code_stand'] for row in csv.DictReader(export)}
+    assert CodeStand(**json.loads(rows['20260101_000000'])) == stand
+    assert rows['20260101_000001'] == ''

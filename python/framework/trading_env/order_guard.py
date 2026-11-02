@@ -42,18 +42,20 @@ State updates flow through two paths:
 """
 
 from datetime import datetime, timedelta
-from typing import Dict, Optional, Set
+from typing import Dict, Optional, Sequence, Set
 
 from python.framework.types.trading_env_types.market_data_status_types import MarketDataStatus
 from python.framework.types.trading_env_types.order_types import (
     OpenOrderRequest,
     OrderAction,
     OrderDirection,
+    OrderFeature,
     OrderResult,
     OrderStatus,
     RejectionReason,
     create_refusal_result,
 )
+from python.framework.validators.order_feature_validator import undeclared_feature_sentence
 
 
 class OrderGuard:
@@ -157,6 +159,29 @@ class OrderGuard:
             )
 
         return None
+
+    def refuse_undeclared_features(
+        self,
+        request: OpenOrderRequest,
+        now: datetime,
+        undeclared: Sequence[OrderFeature],
+    ) -> OrderResult:
+        """
+        Refuse an order that carries a level its logic did not declare (#625).
+
+        Args:
+            request: The request
+            now: The time the guard decided at
+            undeclared: The features it carries undeclared
+
+        Returns:
+            The DENIED OrderResult — the order never left this process
+        """
+        return self._refuse(
+            request, now,
+            reason=RejectionReason.ORDER_FEATURE_NOT_DECLARED,
+            message=undeclared_feature_sentence(undeclared),
+        )
 
     def _refuse(
         self,

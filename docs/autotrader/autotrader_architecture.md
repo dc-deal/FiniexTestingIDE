@@ -59,7 +59,7 @@ session. Same classes, same interfaces. Only the runner and the executor change.
 | [autotrader_runtime_model.md](autotrader_runtime_model.md) | which thread does what, why the tick source and the broker adapter are separate, how a session starts / runs / ends, what survives a restart |
 | [autotrader_configuration.md](autotrader_configuration.md) | the profile cascade, the deployment identity a restarted bot inherits, the two fingerprints |
 | [autotrader_data_intake.md](autotrader_data_intake.md) | tick sources, the sentiment feed, the staleness contract, warmup |
-| [autotrader_capital_and_safety.md](autotrader_capital_and_safety.md) | what the bot may spend, committed funds, whose account it is, protective levels, the circuit breaker |
+| [autotrader_capital_and_safety.md](autotrader_capital_and_safety.md) | what the bot may spend, committed funds, whose account it is, stops and targets, the circuit breaker |
 | [autotrader_venue_integration.md](autotrader_venue_integration.md) | broker config acquisition, the Kraken execution tier, polling, the drift audit, the connection ladder |
 | [autotrader_observability.md](autotrader_observability.md) | the live console, the clipping monitor, the three log channels |
 | [unattended_operation.md](unattended_operation.md) | what reaches the operator when nobody watches: Telegram alerts, the liveness ping, the supervisor |
@@ -68,7 +68,7 @@ Outside this folder, and owned there rather than here: the execution layer
 ([architecture_execution_layer.md](../architecture/architecture_execution_layer.md)), the live
 execution stack's order path
 ([live_execution_architecture.md](../architecture/live_execution_architecture.md)), the
-protective-level contract ([protective_levels.md](../architecture/protective_levels.md)), the
+order-feature contract ([venue_order_features.md](../architecture/venue_order_features.md)), the
 session-end policy ([session_end_policy.md](../architecture/session_end_policy.md)) and the
 external-connection policy
 ([external_connection_policy.md](../architecture/external_connection_policy.md)).

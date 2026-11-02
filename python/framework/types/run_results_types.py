@@ -15,6 +15,7 @@ from typing import Any, Dict, List, Optional
 
 from python.framework.types.api.report_types import RunSummaryCurrency
 from python.framework.types.run_kind_types import OrdersTo
+from python.framework.types.run_origin_types import CodeStand
 from python.framework.types.run_outcome_types import RunOutcome
 from python.framework.types.trading_env_types.trading_env_stats_types import ExecutionStats
 
@@ -24,7 +25,7 @@ class SweepContext:
     """Sweep tagging threaded into a single combination's batch run."""
     sweep_id: str
     sweep_params: Dict[str, Any]    # the combination's concrete grid point {path: value}
-    objective: str = 'expectancy'   # the spec's ranking objective (recorded so report defaults to it)
+    objective: str = 'net_pnl'      # the spec's ranking objective (recorded so report defaults to it)
     maximize: bool = True           # the spec's ranking direction
     # How many combinations the SEARCH spans (#32). A property of the search rather than of any
     # run in it, which is why it has to travel with the tagging: no run can count its siblings.
@@ -89,6 +90,9 @@ class RunProvenance:
     # expose rather than to smooth over. On the LIVE side it is a DECLARATION and not a stamp;
     # `input_plane` is what tells the two apart.
     price_bases: str = ''                   # distinct, sorted, comma-joined
+    # The order features this backtest was allowed beyond what its venue's API holds (#625):
+    # a row produced under an exception must say so wherever it is ranked or compared.
+    features_beyond_venue: str = ''         # distinct, sorted, comma-joined
     # WAS this run declared part of a continuous deployment, and WHICH one (#497). The
     # RESOLVED answer: a profile declaring continuous under `--one-off` records ''. Without
     # it a reader cannot tell a session that belongs to no deployment from one whose
@@ -148,6 +152,11 @@ class RunProvenance:
     # a log line. '' where the run froze none.
     rendered_config_id: str = ''
     broker_config_id: str = ''
+    # WHICH CODE a session started on, per repository (#559), as its header's code identity
+    # recorded it and never as git answers at the end. A strategy from another repository moves
+    # neither `git_commit` nor `git_dirty`, so those two cannot say that the code moved under a
+    # deployment. None on a backtest, which has no sessions to compare.
+    code_stand: Optional[CodeStand] = None
 
 
 class PeriodCloseReason(Enum):

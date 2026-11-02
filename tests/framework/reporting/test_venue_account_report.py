@@ -11,6 +11,7 @@ from typing import List, Optional
 
 from python.framework.reporting.builders.run_unit import RunUnit
 from python.framework.reporting.builders.venue_account_report_builder import (
+    asked_its_venue,
     build_venue_account_report,
 )
 from python.framework.types.live_types.broker_truth_types import (
@@ -25,6 +26,7 @@ from python.framework.types.live_types.reconciliation_types import (
     BrokerPosition,
     ReconcileDivergence,
     ReconcileState,
+    ReconcileTotals,
 )
 from python.framework.types.trading_env_types.order_types import OrderDirection, OrderType
 
@@ -189,3 +191,57 @@ class TestWhoGetsARow:
 
         assert [row.name for row in report.units] == ['btc_session']
         assert report.key == ['name']
+
+    def test_a_session_that_reconciled_has_one_without_a_line(self):
+        """#631: the totals never vanish with an empty list of lines — a session whose every cycle
+        was skipped is exactly the one whose record has to say so."""
+        skipped_only = RunUnit(
+            name='btc_session', symbol='BTCUSD', reconcile_enabled=True,
+            reconcile_totals=ReconcileTotals(cycles_compared=0, cycles_skipped=4,
+                                             divergences_seen=0))
+        never_due = RunUnit(
+            name='btc_session', symbol='BTCUSD', reconcile_enabled=True,
+            reconcile_totals=ReconcileTotals(cycles_compared=0, cycles_skipped=0,
+                                             divergences_seen=0))
+
+        assert asked_its_venue(skipped_only) is True
+        assert asked_its_venue(never_due) is False
+        row = build_venue_account_report(_RUN_ID, [skipped_only]).units[0]
+        assert row.at_start is None and row.reconcile_lines == 0
+        assert row.reconciliation.cycles_skipped == 4
+
+
+class TestOverTheWholeSession:
+    """#631: how often the comparison ran, which its lines cannot say."""
+
+    def _row(self, enabled, totals):
+        unit = RunUnit(name='btc_session', symbol='BTCUSD',
+                       broker_truth=[_read(1, BrokerTruthReadReason.SESSION_START)],
+                       reconcile_enabled=enabled, reconcile_totals=totals)
+        return build_venue_account_report(_RUN_ID, [unit]).units[0]
+
+    def test_the_totals_are_served_as_the_reconciler_kept_them(self):
+        row = self._row(True, ReconcileTotals(cycles_compared=2877, cycles_skipped=3,
+                                              divergences_seen=4))
+
+        served = row.model_dump(mode='json')['reconciliation']
+        assert served == {'enabled': True, 'cycles_compared': 2877, 'cycles_skipped': 3,
+                          'divergences_seen': 4}
+
+    def test_switched_off_the_counts_are_null(self):
+        reconciliation = self._row(False, None).reconciliation
+
+        assert reconciliation.enabled is False
+        assert (reconciliation.cycles_compared, reconciliation.cycles_skipped,
+                reconciliation.divergences_seen) == (None, None, None)
+
+    def test_on_and_never_due_counts_zero(self):
+        reconciliation = self._row(True, ReconcileTotals(
+            cycles_compared=0, cycles_skipped=0, divergences_seen=0)).reconciliation
+
+        assert reconciliation.enabled is True
+        assert (reconciliation.cycles_compared, reconciliation.cycles_skipped) == (0, 0)
+
+    def test_a_unit_that_does_not_say_whether_it_reconciled_has_none(self):
+        """The builder does not guess: no answer is served as no answer."""
+        assert self._row(None, None).reconciliation is None

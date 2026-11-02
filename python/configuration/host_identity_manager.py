@@ -89,6 +89,31 @@ class HostIdentityManager:
                 HostIdentityManager._cache[key] = self._read_or_mint()
             return HostIdentityManager._cache[key]
 
+    def read_host_id(self) -> Optional[str]:
+        """
+        The installation's identity as it stands, for a reader that writes nothing and has to keep
+        answering: it never mints and never refuses. A session's start still asks `get_host_id`.
+
+        Returns:
+            The identity, the declared test id under isolation, or None where the file is missing
+            or cannot be trusted
+        """
+        if is_config_isolation_active():
+            return TEST_HOST_ID
+
+        key = os.path.abspath(self._path)
+        cached = HostIdentityManager._cache.get(key)
+        if cached is not None:
+            return cached
+
+        try:
+            host_id = self._parse(self._path.read_text(encoding='utf-8')).host_id
+        except (OSError, UnicodeDecodeError, HostIdentityError):
+            return None
+
+        with HostIdentityManager._lock:
+            return HostIdentityManager._cache.setdefault(key, host_id)
+
     @classmethod
     def clear_cache(cls) -> None:
         """Drop the cached identities so the next call reads the file again."""

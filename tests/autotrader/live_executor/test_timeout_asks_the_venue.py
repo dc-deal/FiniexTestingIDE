@@ -26,7 +26,12 @@ from python.framework.logging.global_logger import GlobalLogger
 from python.framework.trading_env.broker_config import BrokerConfig
 from python.framework.trading_env.live.live_request_processor import LiveRequestProcessor
 from python.framework.trading_env.live.live_trade_executor import LiveTradeExecutor
-from python.framework.types.decision_event_types import DecisionEvent, OrderCancelledEvent
+from python.framework.types.decision_event_types import (
+    DecisionEvent,
+    OrderCancelledEvent,
+    PartialCloseEvent,
+    PositionClosedEvent,
+)
 from python.framework.types.live_types.live_execution_types import (
     BrokerOrderStatus,
     TimeoutConfig,
@@ -422,6 +427,144 @@ class TestTheTimeoutRunsOnTheMonotonicClock:
 
         assert executor.get_request_processor().check_timeouts() == [], (
             'the re-armed deadline was set from replay time and expired at once')
+
+
+class TestACloseTheVenueEndedPartWay:
+    """
+    What executed is booked as the close's fill, and what that leaves behind is a fact about the
+    account: a margin exposure stays a position however small, a spot record below the venue's
+    minimum is retired while the coins stay in the balance, and float drift is no remainder at all.
+    """
+
+    _HELD = 0.10
+    _DUST_CLOSE = 0.09998
+    _DRIFT_CLOSE = 0.09999999999999999
+
+    @staticmethod
+    def _settle(executor: LiveTradeExecutor, done) -> None:
+        """Deliver ticks until the worker's answer has been booked."""
+        deadline = time.monotonic() + 6.0
+        while time.monotonic() < deadline:
+            _tick(executor)
+            if done():
+                return
+            time.sleep(0.02)
+        pytest.fail('the venue answer was never booked')
+
+    def _long(self, spot_mode: bool) -> tuple:
+        """
+        A live LONG on the acknowledging venue, filled through its status answer.
+
+        Args:
+            spot_mode: Which account model the portfolio keeps
+
+        Returns:
+            (venue, executor, position)
+        """
+        venue = AcknowledgingVenueMock()
+        venue.fill_market_orders = False
+        executor = _executor(venue, spot_mode)
+        _tick(executor)
+        result = executor.open_order(OpenOrderRequest(
+            symbol=_SYMBOL, order_type=OrderType.MARKET, direction=OrderDirection.LONG,
+            lots=self._HELD))
+        processor = executor.get_request_processor()
+        processor.flush_outbox()
+        processor.drain_inbox()
+        venue.set_venue_status(processor.get_order(result.order_id).broker_ref, 'FILLED',
+                               filled_lots=self._HELD, fill_price=_ASK)
+        self._settle(executor, lambda: bool(executor.get_open_positions()))
+        return venue, executor, executor.get_open_positions()[0]
+
+    def _close_answered(self, venue, executor, position, status, executed, lots=None) -> None:
+        """
+        Send a close and let the venue answer it.
+
+        Args:
+            venue: The venue mock
+            executor: The executor under test
+            position: The position it closes
+            status: What the venue answers, FILLED or EXPIRED
+            executed: The lots it says it executed
+            lots: The lots asked for, None for a full close
+        """
+        executor.close_position(position.position_id, lots=lots)
+        processor = executor.get_request_processor()
+        processor.flush_outbox()
+        processor.drain_inbox()
+        pending = processor.get_order(position.position_id)
+        assert pending.broker_ref, 'fixture: no acknowledgement'
+        venue.set_venue_status(pending.broker_ref, status, filled_lots=executed, fill_price=_BID)
+        self._settle(executor, lambda: processor.get_order(position.position_id) is None)
+
+    def test_margin_keeps_the_dust_as_a_position_because_it_is_the_exposure(self):
+        venue, executor, position = self._long(spot_mode=False)
+
+        self._close_answered(venue, executor, position, 'EXPIRED', self._DUST_CLOSE)
+
+        open_positions = executor.get_open_positions()
+        assert len(open_positions) == 1, 'a margin exposure was written off'
+        assert open_positions[0].lots == pytest.approx(0.00002)
+
+    def test_spot_retires_the_record_and_leaves_the_holding_in_the_balance(self):
+        venue, executor, position = self._long(spot_mode=True)
+
+        self._close_answered(venue, executor, position, 'EXPIRED', self._DUST_CLOSE)
+
+        assert not executor.get_open_positions(), (
+            'an unsellable record blocks every logic that refuses to open while a position is open')
+        assert executor.portfolio.get_asset_balance('BTC') == pytest.approx(0.00002), (
+            'the coins are real: retiring the record must not write them off')
+
+    def test_a_retired_dust_record_tells_the_logic_its_position_closed(self):
+        venue, executor, position = self._long(spot_mode=True)
+        events: List[DecisionEvent] = []
+        executor.set_decision_event_sink(events.append)
+
+        self._close_answered(venue, executor, position, 'EXPIRED', self._DUST_CLOSE)
+
+        assert [type(event) for event in events
+                if isinstance(event, (PartialCloseEvent, PositionClosedEvent))] == [
+                    PartialCloseEvent, PositionClosedEvent]
+
+    def test_margin_dust_stays_a_position_and_no_close_is_reported(self):
+        venue, executor, position = self._long(spot_mode=False)
+        events: List[DecisionEvent] = []
+        executor.set_decision_event_sink(events.append)
+
+        self._close_answered(venue, executor, position, 'EXPIRED', self._DUST_CLOSE)
+
+        assert not any(isinstance(event, PositionClosedEvent) for event in events)
+
+    @ACCOUNT_MODELS
+    def test_a_remainder_that_is_only_float_drift_is_a_full_close(self, spot_mode):
+        """Summing a venue's per-trade volumes lands one ULP short routinely."""
+        venue, executor, position = self._long(spot_mode)
+
+        self._close_answered(venue, executor, position, 'EXPIRED', self._DRIFT_CLOSE)
+
+        assert not executor.get_open_positions(), (
+            'a zero-lot position is carried into the next session and nothing sweeps it')
+
+    @ACCOUNT_MODELS
+    def test_a_remainder_above_the_minimum_stays_a_position(self, spot_mode):
+        venue, executor, position = self._long(spot_mode)
+
+        self._close_answered(venue, executor, position, 'EXPIRED', 0.04)
+
+        open_positions = executor.get_open_positions()
+        assert len(open_positions) == 1
+        assert open_positions[0].lots == pytest.approx(0.06)
+
+    @ACCOUNT_MODELS
+    def test_a_request_a_few_ulps_short_is_a_full_close(self, spot_mode):
+        """The gate at submission and the booking draw the same boundary."""
+        venue, executor, position = self._long(spot_mode)
+
+        self._close_answered(venue, executor, position, 'FILLED', self._DRIFT_CLOSE,
+                             lots=self._DRIFT_CLOSE)
+
+        assert not executor.get_open_positions()
 
 
 class TestAnOrderTheVenueEnded:

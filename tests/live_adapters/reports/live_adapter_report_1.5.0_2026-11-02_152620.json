@@ -1,0 +1,83 @@
+{
+  "record_kind": "certificate",
+  "release_version": "1.5.0",
+  "app_version": "1.5.0",
+  "timestamp": "2026-11-02T15:26:20.313163+00:00",
+  "valid_until": "2027-01-31T15:26:20.313163+00:00",
+  "git_commit": "f9e36f99",
+  "git_branch": "dev-v-1-4",
+  "git_dirty": false,
+  "uncommitted_count": 0,
+  "comment": null,
+  "isolation_active": true,
+  "workspace_overrides": {
+    "files_present": [
+      "app_config.json",
+      "data_origins.json",
+      "market_config.json",
+      "sentiment_config.json"
+    ],
+    "unnamed_files": 1,
+    "applied": false
+  },
+  "code_identity": {
+    "framework": {
+      "root": "/app",
+      "in_repository": true,
+      "commit": "f9e36f99",
+      "branch": "dev-v-1-4",
+      "dirty": false,
+      "uncommitted_count": 0,
+      "changes": [],
+      "diff_hash": null,
+      "patch_ref": null,
+      "patch_excluded": [],
+      "restorable": true,
+      "commit_subject": null,
+      "recent_commits": null
+    },
+    "repositories": [],
+    "components": []
+  },
+  "overall_status": "PASSED",
+  "tests_passed": 18,
+  "tests_failed": 0,
+  "tests_failed_names": [],
+  "tests_skipped": 0,
+  "tests_expected_to_fail": [],
+  "tests_run": [
+    "test_market_buy_dryrun",
+    "test_market_sell_dryrun",
+    "test_limit_buy_dryrun",
+    "test_limit_buy_with_sltp_dryrun",
+    "test_the_venues_own_description_is_preserved",
+    "test_a_standalone_stop_reaches_the_venue",
+    "test_a_declared_level_deliberately_does_not_travel_on_the_entry",
+    "test_invalid_symbol_rejected",
+    "test_below_minimum_lot_rejected",
+    "test_market_order_fill_roundtrip",
+    "test_limit_order_lifecycle",
+    "test_stop_order_lifecycle",
+    "test_no_error_and_the_same_result_keys",
+    "test_every_field_keeps_its_type",
+    "test_rows_are_still_stamped_with_their_opening_minute",
+    "test_the_commit_marker_still_precedes_the_forming_row",
+    "test_the_reader_takes_only_committed_bars",
+    "test_the_reader_reads_the_venue"
+  ],
+  "observed": {
+    "phases": [
+      {
+        "phase": "validate_only",
+        "dry_run": true,
+        "api_base_url": "https://api.kraken.com"
+      },
+      {
+        "phase": "real_orders",
+        "dry_run": false,
+        "api_base_url": "https://api.kraken.com"
+      }
+    ]
+  },
+  "warnings": []
+}

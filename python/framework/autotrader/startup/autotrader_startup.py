@@ -31,6 +31,7 @@ from python.framework.constants.run_layout_constants import (
     SESSION_LOG_NAME,
 )
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
+from python.framework.exceptions.order_feature_errors import OrderFeatureRefusedError
 from python.framework.factory.decision_logic_factory import DecisionLogicFactory
 from python.framework.factory.live_trade_executor_factory import build_live_executor
 from python.framework.factory.worker_factory import WorkerFactory
@@ -41,6 +42,11 @@ from python.framework.reporting.store.run_index import RunIndex
 from python.framework.signal_data.signal_data_provider import SignalDataProvider
 from python.framework.signal_data.signal_source_resolver import SignalSourceResolver
 from python.framework.signal_data.transport.signal_boot_resolver import prepare_live_signal_boot
+from python.framework.store.broker_config_freeze import freeze_broker_config
+from python.framework.store.entry_members.run_entry_members import run_member_folder
+from python.framework.store.entry_members.run_entry_writer import RunEntryWriter
+from python.framework.store.entry_members.strategy_file_writer import StrategyFileWriter
+from python.framework.store.run_config_store import RunConfigStore
 from python.framework.stress_test.stale_data_stress_driver import (
     StaleDataStressDriver,
     build_stale_stress_driver,
@@ -49,21 +55,16 @@ from python.framework.trading_env.abstract_trade_executor import AbstractTradeEx
 from python.framework.trading_env.broker_config import BrokerConfig
 from python.framework.trading_env.decision_trading_api import DecisionTradingApi
 from python.framework.trading_env.live.live_trade_executor import LiveTradeExecutor
-from python.framework.store.broker_config_freeze import freeze_broker_config
-from python.framework.store.entry_members.run_entry_members import run_member_folder
-from python.framework.store.entry_members.run_entry_writer import RunEntryWriter
-from python.framework.store.entry_members.strategy_file_writer import StrategyFileWriter
-from python.framework.store.run_config_store import RunConfigStore
 from python.framework.types.api.report_types import DataWindow, ParentKind, RunHeader
-from python.framework.types.composite_types import RunAxes
-from python.framework.types.run_config_types import RunConfigKind
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
 from python.framework.types.autotrader_types.display_label_cache import DisplayLabelCache
+from python.framework.types.composite_types import RunAxes
 from python.framework.types.config_types.connection_policy_config_types import ConnectionPolicy
 from python.framework.types.live_types.live_execution_types import TimeoutConfig
 from python.framework.types.market_types.market_data_types import Bar
 from python.framework.types.market_types.market_types import TradingContext
 from python.framework.types.process_data_types import ProcessDataPackage
+from python.framework.types.run_config_types import RunConfigKind
 from python.framework.types.run_kind_types import TicksFrom
 from python.framework.types.run_origin_types import CodeIdentity, RunOrigin
 from python.framework.types.signal_data_types import (
@@ -78,8 +79,8 @@ from python.framework.types.trading_env_types.stress_test_types import StressTes
 from python.framework.utils.account_currency_resolver import resolve_account_currency
 from python.framework.utils.file_utils import create_directory
 from python.framework.utils.git_info_utils import get_git_commit
-from python.framework.validators.adapter_wiring_validator import REPLAY_TICK_SOURCE
 from python.framework.utils.run_id_utils import mint_run_id, session_key_from_run_id
+from python.framework.validators.adapter_wiring_validator import REPLAY_TICK_SOURCE
 from python.framework.validators.capital_validator import (
     check_account_sufficiency,
     describe_missing_reference_price,
@@ -87,7 +88,10 @@ from python.framework.validators.capital_validator import (
 from python.framework.validators.component_metadata_advisory import (
     surface_decision_logic_version,
 )
-from python.framework.validators.decision_logic_hook_validator import check_cold_start_hook
+from python.framework.validators.decision_logic_hook_validator import (
+    check_cold_start_hook,
+    check_order_feature_declaration,
+)
 from python.framework.workers.abstract_signal_worker import AbstractSignalWorker
 from python.framework.workers.worker_orchestrator import WorkerOrchestrator
 
@@ -282,6 +286,8 @@ def create_autotrader_loggers(
             start_time=run_timestamp,
             run_type=RUN_TYPE_AUTOTRADER,
             run_name=session_name,
+            # Only a backtest can declare an exception: a session is what the venue holds
+            features_beyond_venue=[],
             # Which continuous DEPLOYMENT this session belongs to (#497). The same field a
             # sweep's combination uses for its sweep, and the same KIND of parent: an identity
             # that groups runs without being one, defined by the runs that name it. Written
@@ -584,6 +590,11 @@ def _resolve_order_requirements(
     cold_start_hook_error = check_cold_start_hook(decision_logic_class, required_order_types)
     if cold_start_hook_error:
         raise ValueError(cold_start_hook_error)
+    # #625 — a logic has to say which order features it uses; whether its venue holds them is
+    # asked where the trading API is built, against the adapter that really runs.
+    order_feature_declaration_error = check_order_feature_declaration(decision_logic_class)
+    if order_feature_declaration_error:
+        raise OrderFeatureRefusedError(order_feature_declaration_error)
     return decision_logic_factory, required_order_types
 
 
@@ -669,37 +680,6 @@ def _build_executor(
     Returns:
         The wired executor and the broker's connection policy (phase 9 warms up over it)
     """
-    # #503 — a profile-wide opt-in the venue cannot carry is a startup problem, not a
-    # per-order one. Left to the submit path it would reject EVERY protected entry, one at
-    # a time, for the whole session: the bot would run, trade nothing, and each rejection
-    # would look like an isolated incident. §35 says a pre-run problem ABORTS.
-    #
-    # But only where there IS a venue. A mock session builds a MockBrokerAdapter whatever
-    # the profile's broker_type says, so it can never carry one — and refusing there would
-    # make an opted-in profile UNREHEARSABLE, which is the same mistake the simulation
-    # deliberately avoids by accepting the flag and changing nothing. So: live refuses,
-    # mock says so once and ignores it for the run.
-    venue_held_protection = config.execution.venue_held_protection
-    if venue_held_protection and not (
-            broker_config.get_order_capabilities().venue_held_protective_orders):
-        if config.adapter_type == 'live':
-            raise ValueError(
-                f"Configuration error: AutoTrader profile '{config.profile_name}' sets "
-                f"execution.venue_held_protection, but "
-                f"'{broker_config.get_broker_name()}' cannot hold a protective order for a "
-                f"position.\n"
-                f"Turn the profile switch off, or run this profile against a broker that "
-                f"can. A single order may still opt in explicitly via "
-                f"send_order(venue_held_protection=True) — and will be refused the same way."
-            )
-        logger.warning(
-            f"⚠️ execution.venue_held_protection is set, but this is a "
-            f"'{config.adapter_type}' session and has no venue to hold a protective order. "
-            f"The switch is IGNORED for this run — levels are enforced locally, exactly as "
-            f"in a backtest. The same profile against a LIVE adapter that cannot carry it "
-            f"refuses to start.")
-        venue_held_protection = False
-
     broker_entry = MarketConfigManager().get_broker_entry(config.broker_type)
     connection_policy = broker_entry.broker_transport.connection
     # Every read and write a live session sends to its venue goes through this ladder, and a
@@ -724,13 +704,11 @@ def _build_executor(
         spot_mode=account.spot_mode,
         poll_interval_ms=broker_entry.broker_transport.poll_interval_ms,
         connection_policy=connection_policy,
+        socket_timeout_s=broker_entry.broker_transport.request_timeout_s,
         # #473 — four characters of the run id's random half. The SESSION owns it, derived here
         # once and never re-derived downstream: a key that changed mid-session would leave the
         # orders sent under the old one looking like a stranger's.
         session_key=session_key_from_run_id(run_id),
-        # #503 — the profile's intent. A per-order override still wins over it, and the
-        # adapter's capability can refuse it outright.
-        venue_held_protection=venue_held_protection,
         # #487 — the fill timeout and the resolution window are one decision read together,
         # which is why both now come from the same config block instead of one of them
         # being a runtime default no file could reach.
@@ -738,6 +716,7 @@ def _build_executor(
             order_timeout_seconds=config.execution.order_timeout_seconds),
         resolution_config=config.execution.unresolved_resolution,
         venue_read_settle_seconds=config.execution.venue_read_settle_seconds,
+        shutdown_config=config.shutdown,
         # The history caps are the app's, not the profile's — the simulation reads the same
         # block, and a live session that silently kept its constructor defaults would cap
         # at a number no file states.
@@ -872,6 +851,9 @@ def _build_decision_layer(
         executor=executor,
         required_order_types=required_order_types,
         order_guard_config=config.order_guard,
+        required_order_features=type(decision_logic).get_required_order_features(
+            config.strategy_config.get('decision_logic_config', {})),
+        logic_name=config.strategy_config.get('decision_logic_type', ''),
     )
     decision_logic.set_trading_api(trading_api)
     logger.debug('✅ DecisionTradingApi injected')

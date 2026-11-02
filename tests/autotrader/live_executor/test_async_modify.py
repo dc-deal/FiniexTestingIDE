@@ -73,7 +73,6 @@ class TestModifyLimitOrderAsyncLifecycle:
 
         executor_delayed.modify_limit_order(
             order_id=order_id, new_price=51000.0,
-            new_stop_loss=48000.0, new_take_profit=55000.0,
         )
 
         # Drain only — flush_outbox + drain_inbox, no on_tick / no Phase-2 polling
@@ -82,8 +81,6 @@ class TestModifyLimitOrderAsyncLifecycle:
         target = next(p for p in executor_delayed._active_limit_orders
                       if p.pending_order_id == order_id)
         assert target.entry_price == 51000.0
-        assert target.order_kwargs.get('stop_loss') == 48000.0
-        assert target.order_kwargs.get('take_profit') == 55000.0
 
     def test_in_flight_clears_after_drain(self, mock_delayed, executor_delayed):
         """After drain, in_flight_operation back to NONE, pending_modification cleared."""

@@ -117,12 +117,3 @@ class MountPackage:
     batch_warmup_time: float
     # scenario_index → DataIdentityKey (the mount's data fingerprint)
     data_identity: Dict[int, DataIdentityKey]
-
-    def data_identity_fingerprint(self) -> Tuple[DataIdentityKey, ...]:
-        """
-        Set-level data fingerprint: the per-scenario keys ordered by scenario_index.
-
-        Returns:
-            Tuple of DataIdentityKey ordered by scenario_index
-        """
-        return tuple(key for _, key in sorted(self.data_identity.items()))

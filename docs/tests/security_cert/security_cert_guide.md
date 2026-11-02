@@ -159,7 +159,9 @@ phases pass. `tests/autotrader/integration/test_security_study_stages.py` runs i
 Each stage writes `security_cert.jsonl` into its run directory, in the format the field study's
 capture defines ([field_study_guide.md](../live_field_study/field_study_guide.md), *JSONL Schema*):
 the study's own phase lines, and the order and venue lines copied from the session's order-event
-stream. A submit phase's result adds what it expected and what it sent:
+stream. What its summary lines carry — the reconciliation's totals, the REST API's performance —
+every session now records in its own report sections as well (#631), as the field study guide says.
+A submit phase's result adds what it expected and what it sent:
 
 ```json
 {"event_type":"phase_result","phase":"g_cooled_buy","status":"pass","extra":{"reason":"denied (rejection_cooldown)","expect":"denied","expect_reason":"rejection_cooldown","lot_rule":"min_lot","lots":6e-05}}

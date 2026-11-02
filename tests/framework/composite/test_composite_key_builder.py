@@ -12,6 +12,9 @@ import pytest
 
 from python.configuration.composite_definition_manager import CompositeDefinitionManager
 from python.framework.types.composite_types import CompositeDocument, CompositePart, RunAxes
+from python.framework.types.config_types.autotrader_defaults_config_types import (
+    ShutdownDefaults,
+)
 from python.framework.types.config_types.composite_definition_config_types import CompositeTier
 from python.framework.types.run_kind_types import OrdersTo, TicksFrom
 from python.framework.utils.composite_key_builder import (
@@ -225,3 +228,30 @@ class TestASessionDocument:
         assert key(renamed).composite_key == key(document).composite_key
         (change,) = config_changes(document, tightened, CompositeDocument.SESSION, session_rules)
         assert change.setting == 'safety.max_drawdown_pct'
+
+    def test_the_settings_of_its_stop_move_no_part_of_the_key(self):
+        CompositeDefinitionManager.reload()
+        session_rules = CompositeDefinitionManager(
+            config_path='configs/composite_definition.json').get_rules(CompositeDocument.SESSION)
+        document = {
+            'kind': 'autotrader_rendered',
+            'blocks': {'safety': {'max_drawdown_pct': 25.0}, 'symbol': 'BTCUSD',
+                       'tick_source': {'type': 'mock', 'ws_url': ''},
+                       'shutdown': ShutdownDefaults().model_dump()},
+            'strategy_config': {'decision_logic_type': 'CORE/aggressive_trend'},
+            'market_entry': {'trading_model': 'spot'},
+        }
+        retimed = copy.deepcopy(document)
+        retimed['blocks']['shutdown'] = ShutdownDefaults(
+            order_wait_s=5.0, tick_thread_join_s=1.0, signal_transport_join_s=1.0, display_join_s=1.0,
+            request_worker_join_s=1.0, alert_flush_s=1.0, supervisor_kill_after_s=80.0,
+            reserve_for_records_s=1.0).model_dump()
+        without_the_block = copy.deepcopy(document)
+        del without_the_block['blocks']['shutdown']
+        axes = RunAxes('autotrader', TicksFrom.ARCHIVE, OrdersTo.SIMULATED)
+
+        def key(doc):
+            return build_composite_key(doc, CompositeDocument.SESSION, session_rules, 'd', 'USD', axes)
+        # The whole record: the key, each of its four parts, the definition and the version
+        assert key(retimed) == key(document)
+        assert key(without_the_block) == key(document)

@@ -9,9 +9,6 @@ from dataclasses import dataclass
 
 from python.framework.types.config_types.market_config_types import MarketType, TradingModel
 
-# Validation timezone for UTC offset verification
-VALIDATION_TIMEZONE = 'Europe/Berlin'
-
 
 @dataclass
 class WeekendClosureWindow:
@@ -35,20 +32,6 @@ class WeekendClosureWindow:
     max_duration_hours: int = 80
     alt_min_duration_hours: int = 24
     alt_max_duration_hours: int = 50
-
-    def get_description(self) -> str:
-        """
-        Generate human-readable description of closure window.
-
-        Returns:
-            Formatted multi-line string for reports
-        """
-        lines = [
-            f'• Friday from {self.friday_start_hour_utc:02d}:00 UTC → Monday until {self.sunday_end_hour_utc:02d}:00 UTC',
-            f'• Expected duration: {self.min_duration_hours}-{self.max_duration_hours} hours',
-            f'• Alternative: Saturday → Monday ({self.alt_min_duration_hours}-{self.alt_max_duration_hours}h)'
-        ]
-        return '\n'.join(lines)
 
     def matches_primary_pattern(
         self,

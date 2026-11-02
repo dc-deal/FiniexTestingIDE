@@ -12,9 +12,8 @@ draw now. The statuses themselves are described in the order history's consumer 
 an executor books a row is in [Execution Layer](../../architecture/architecture_execution_layer.md).
 
 Not here: the live give-up and resolution paths (`cancelled` at the fill timeout,
-`unaccounted`, `undelivered`), the session-end cancels and the released protective stop, which
-the live executor, session-end and protective-level suites cover against the venue mocks they
-already build.
+`unaccounted`, `undelivered`) and the session-end cancels, which the live executor and session-end
+suites cover against the venue mocks they already build.
 
 ## What Is Tested
 

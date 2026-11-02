@@ -259,11 +259,11 @@ class TestTheSlippageSources:
         assert (fill['slippage']['measured_against'], fill['slippage']['reference_price']) == (
             'limit_price', 99.0)
 
-    def test_a_protective_stop_against_its_trigger_on_the_sell_side(self, tmp_path):
+    def test_a_stop_against_its_trigger_on_the_sell_side(self, tmp_path):
         recorder = _capture(tmp_path)
         projection = AcceptanceStudyStreamProjection(recorder, 'prof')
         projection(_event(1, OrderEventType.FILLED, submitted_seq=1, lots=0.01, fill_price=94.0,
-                          action=OrderAction.CLOSE, order_type=OrderType.STOP,
+                          direction=OrderDirection.SHORT, order_type=OrderType.STOP,
                           trigger_price=95.0))
 
         fill = next(line for line in _lines(recorder) if line['event_type'] == 'order_filled')
@@ -345,18 +345,17 @@ class TestAnOrderThatEndsAfterPartOfItExecuted:
         assert ended['extra']['initiator'] == OrderInitiator.STRATEGY.value
 
 
-class TestTheVenueClosesInTwoSteps:
-    """A protective stop the venue executes in two parts: a partial close, then the full one."""
+class TestACloseInTwoSteps:
+    """A close the venue executes in two parts: a partial close, then the full one."""
 
     def test_open_then_two_closing_executions(self, tmp_path):
         recorder = _capture(tmp_path)
         projection = AcceptanceStudyStreamProjection(recorder, 'prof')
         projection(_event(1, OrderEventType.FILLED, submitted_seq=1, lots=0.004,
                           fill_price=100.0))
-        stop = dict(submitted_seq=2, action=OrderAction.CLOSE, order_type=OrderType.STOP,
-                    trigger_price=95.0, order_id='protect_pos_btcusd_1')
-        projection(_event(2, OrderEventType.PARTIALLY_FILLED, lots=0.002, fill_price=94.9, **stop))
-        projection(_event(3, OrderEventType.FILLED, lots=0.002, fill_price=94.8, **stop))
+        close = dict(submitted_seq=2, action=OrderAction.CLOSE)
+        projection(_event(2, OrderEventType.PARTIALLY_FILLED, lots=0.002, fill_price=94.9, **close))
+        projection(_event(3, OrderEventType.FILLED, lots=0.002, fill_price=94.8, **close))
 
         lines = _lines(recorder)
         assert [(line['event_type'], line['extra']['action']) for line in lines] == [

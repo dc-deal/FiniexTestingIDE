@@ -611,6 +611,7 @@ a key the loader does not know is refused, so a misspelt one cannot silently rea
 {
   "scenario_set_name": "report_coverage_reference", // the set's name — its run name
   "run_purpose": "fixture",                         // what its runs are FOR (#576)
+  "features_beyond_venue": ["stop_loss"],            // order features its venue's API need not hold (#625)
   "description": "Every report state in one run.",  // why the set exists, Markdown allowed
   "version": "1.0",                                 // generator provenance
   "created": "2026-10-08",                          // generator provenance

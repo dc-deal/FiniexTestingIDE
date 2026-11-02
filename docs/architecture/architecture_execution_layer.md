@@ -209,7 +209,9 @@ It finishes the run's **orders** only. Active orders are expired (live: cancelle
 first, unless the session-end policy leaves them standing), then `clear_pending()` catches any
 genuine stuck-in-pipeline orders (e.g. an order submitted right before the run ended) and hands
 them back: a backtest books them `expired` — the data ended while they were on their way — and a
-live session `unaccounted`, because the venue may hold them.
+live session `unaccounted`, because the venue may hold them, with an ERROR per order. A live session's
+normal stop waited for these first, and its worker stopped before anything is booked here
+([Session End](session_end_policy.md#orders-on-their-way--a-normal-stop-waits-for-them-630)).
 
 **Open positions are not touched.** Until #492 they were closed here through a synthetic
 PendingOrder that bypassed the pipeline — and in live that close never reached the venue: it was
@@ -579,10 +581,8 @@ The **modify paths carry prices too** and use the same `_round_price` helper at 
 is prepared for the broker: `modify_limit_order` (new limit price), `modify_stop_order` (new trigger
 + limit price), and the native-SL/TP `modify_position`. Both executors round identically (sim/live
 parity). The Kraken-style local-only position SL/TP (capability `native_position_sl_tp=False`) is
-left unrounded — it is a local trigger threshold, never submitted to the broker. That threshold is
-now genuinely acted upon: since #500 the executor evaluates a declared level against its own tick
-stream in live as well as in simulation, where it used to skip the check on the assumption that the
-venue held the level.
+left unrounded — it is a local trigger threshold, never submitted to the broker. Only the simulation
+acts on it: a live executor refuses a level (#625).
 
 `round(price, digits)` is correct for **decimal-priced** markets, where `tick_size == 10^(-digits)`
 — true for every Kraken spot pair (BTCUSD `digits=1`, ETHUSD `2`, ADAUSD `6`, …) and MT5 forex/CFD
@@ -738,8 +738,8 @@ spread a second time — exactly, since its formula is `gross_pnl_from_price_dif
 quantity rather than as a fee (#244), because everything in the fee hierarchy is subtracted.
 
 A close is a MARKET order today, so its exit fee is always the **taker** rate
-(`is_maker=False`). That stops being a constant when a venue-held exit order can fill as a maker
-(#503) — the value then has to come from the closing order rather than from this assumption.
+(`is_maker=False`). That stops being a constant when an exit can rest as a limit order — the value
+then has to come from the closing order rather than from this assumption.
 
 ### Live Execution Stack
 
@@ -759,11 +759,11 @@ ref on modify (defensive path, not triggered by Kraken).
 ### Cleanup
 
 At run end, `finish_remaining_orders()` expires unfilled active orders:
-1. **Live**: Active limit orders are cancelled at the broker first — unless
-   `session_end.orders = "leave"`, which leaves them at the venue for a later session to adopt
-   (#355) and therefore does NOT expire them locally either: an order that can still fill must not
-   be recorded as expired
-2. **Both modes**: `_expire_active_orders()` creates `OrderResult(status=EXPIRED)` entries in `_order_history`
+1. **Live**: Active limit orders are cancelled at the broker and booked `cancelled`, or `unaccounted`
+   where the venue did not confirm the cancel — unless `session_end.orders = "leave"`, which leaves
+   them at the venue for a later session to adopt (#355) and therefore does NOT expire them locally
+   either: an order that can still fill must not be recorded as expired
+2. **Simulation**: `_expire_active_orders()` creates `OrderResult(status=EXPIRED)` entries in `_order_history`
 3. Lists preserved for `get_active_orders_snapshot()` (reporting)
 
 ---

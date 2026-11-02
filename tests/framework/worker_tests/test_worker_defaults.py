@@ -10,19 +10,19 @@ Validates:
 """
 
 import pytest
-from tests.framework.worker_tests.conftest import ALL_DECISION_LOGICS, ALL_WORKERS
 
 from python.framework.decision_logic.core.aggressive_trend import AggressiveTrend
 from python.framework.decision_logic.core.simple_consensus import SimpleConsensus
 from python.framework.types.parameter_types import REQUIRED, InputParamDef
 from python.framework.validators.parameter_validator import apply_defaults, validate_parameters
-from python.framework.workers.core.test_probes.sample_probe_worker import (
-    SampleProbeWorker,
-)
-from python.framework.workers.core.test_probes.heavy_rsi_worker import HeavyRsiWorker
 from python.framework.workers.core.bollinger_worker import BollingerWorker
 from python.framework.workers.core.ma_trend_worker import MaTrendWorker
 from python.framework.workers.core.macd_worker import MacdWorker
+from python.framework.workers.core.test_probes.heavy_rsi_worker import HeavyRsiWorker
+from python.framework.workers.core.test_probes.sample_probe_worker import (
+    SampleProbeWorker,
+)
+from tests.framework.worker_tests.conftest import ALL_DECISION_LOGICS, ALL_WORKERS
 
 # ============================================
 # Test Schema Fixtures

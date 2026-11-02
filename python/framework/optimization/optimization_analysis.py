@@ -15,6 +15,7 @@ from typing import Dict, List, Optional, get_args
 from python.framework.reporting.store.ledger_aggregation import aggregate_ledger_rows
 from python.framework.reporting.store.run_results_ledger import COLUMN_NULL_MEANING
 from python.framework.types.api.report_types import RunResultRow, SweepSummary
+from python.framework.types.data_origin_types import joined_distinct
 from python.framework.types.run_results_types import NullMeaning
 
 # What may be empty on a row and still order a ranking: a figure that was only not MEASURED for
@@ -70,6 +71,8 @@ def summarize_sweeps(rows: List[RunResultRow]) -> List[SweepSummary]:
             symbols=head.symbols,
             objective=head.sweep_objective or '',
             maximize=head.sweep_maximize if head.sweep_maximize is not None else True,
+            features_beyond_venue=joined_distinct(
+                [name for r in group for name in r.features_beyond_venue.split(',') if name]),
         ))
 
     return sorted(summaries, key=lambda s: s.sweep_id)
@@ -345,7 +348,7 @@ def _scope(
     if objective in _UNRANKABLE_OBJECTIVES:
         raise ValueError(
             f"Objective '{objective}' can be undefined for a run, so it cannot produce a "
-            f"total ranking. Use a KPI that is always measured, e.g. 'expectancy' or 'net_pnl'.")
+            f"total ranking. Use a KPI that is always measured, e.g. 'net_pnl'.")
     scoped = [r for r in rows if r.status == 'ok']
     if objective_currency is not None:
         scoped = [r for r in scoped if r.currency == objective_currency]

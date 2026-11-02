@@ -8,18 +8,11 @@ GET /api/v1/brokers/{broker}/symbols/{symbol}/indicators/atr?timeframe=M5&from=&
 """
 
 from dataclasses import asdict
-from datetime import datetime, timezone
 from typing import Optional
 
 import pandas as pd
 from fastapi import APIRouter, Query, Response
 
-from python.api.api_query_params import parse_iso_query
-from python.api.api_route_documents import describes
-from python.data_management.index.bars_index_manager import BarsIndexManager
-from python.framework.discoveries.data_coverage.data_coverage_report_cache import (
-    DataCoverageReportCache,
-)
 from python.api.api_error_catalog import (
     BROKER_NOT_FOUND,
     COVERAGE_REPORT_UNAVAILABLE,
@@ -27,11 +20,17 @@ from python.api.api_error_catalog import (
     INVALID_PERIOD,
     INVALID_RANGE,
     INVALID_TIMEFRAME,
-    NO_BARS_INDEXED,
     NO_BARS_IN_RANGE,
+    NO_BARS_INDEXED,
     SYMBOL_NOT_FOUND,
     TIMEFRAME_NOT_RENDERED,
     api_error,
+)
+from python.api.api_query_params import parse_iso_query
+from python.api.api_route_documents import describes
+from python.data_management.index.bars_index_manager import BarsIndexManager
+from python.framework.discoveries.data_coverage.data_coverage_report_cache import (
+    DataCoverageReportCache,
 )
 from python.framework.types.api.api_types import (
     BarResponse,
@@ -43,6 +42,7 @@ from python.framework.types.api.api_types import (
 )
 from python.framework.types.config_types.data_origin_config_types import OriginClass
 from python.framework.types.indicator_types import MaType
+from python.framework.utils.time_utils import ensure_utc_aware
 from python.framework.utils.timeframe_config_utils import TimeframeConfig
 from python.framework.utils.trading_math.indicators.atr import atr_series
 from python.framework.utils.trading_math.indicators.wilder_moving_average import (
@@ -98,12 +98,6 @@ def _require_broker_symbol(index: BarsIndexManager, broker: str, symbol: str) ->
     if symbol not in index.list_symbols(broker_type=broker):
         raise api_error(SYMBOL_NOT_FOUND, symbol=symbol, broker=broker)
 
-
-
-def _utc(dt: datetime) -> datetime:
-    if dt.tzinfo is None:
-        return dt.replace(tzinfo=timezone.utc)
-    return dt.astimezone(timezone.utc)
 
 
 @router.get('/brokers/{broker}/symbols/{symbol}/coverage', response_model=CoverageResponse,
@@ -165,8 +159,8 @@ def get_bars(
 
     # Read strictly: a bare number is refused rather than taken as Unix seconds, which is what
     # a `datetime` parameter does — `from=2026` would become 1970-01-01T00:33:46Z (contract 35)
-    from_utc = _utc(parse_iso_query(from_text, 'from'))
-    to_utc = _utc(parse_iso_query(to_text, 'to'))
+    from_utc = ensure_utc_aware(parse_iso_query(from_text, 'from'))
+    to_utc = ensure_utc_aware(parse_iso_query(to_text, 'to'))
 
     if from_utc >= to_utc:
         raise api_error(INVALID_RANGE)
@@ -255,11 +249,11 @@ def get_gaps(
 
     since_at = parse_iso_query(since, 'since')
     report.attribute_gaps()
-    since_utc = _utc(since_at) if since_at is not None else None
+    since_utc = ensure_utc_aware(since_at) if since_at is not None else None
     served = [
         gap for gap in report.gaps
         if (origin_class is None or gap.origin_class == origin_class)
-        and (since_utc is None or (gap.gap_start is not None and _utc(gap.gap_start) >= since_utc))
+        and (since_utc is None or (gap.gap_start is not None and ensure_utc_aware(gap.gap_start) >= since_utc))
     ]
 
     return CoverageGapsResponse(
@@ -338,8 +332,8 @@ def get_atr(
 
     # Read strictly: a bare number is refused rather than taken as Unix seconds, which is what
     # a `datetime` parameter does — `from=2026` would become 1970-01-01T00:33:46Z (contract 35)
-    from_utc = _utc(parse_iso_query(from_text, 'from'))
-    to_utc = _utc(parse_iso_query(to_text, 'to'))
+    from_utc = ensure_utc_aware(parse_iso_query(from_text, 'from'))
+    to_utc = ensure_utc_aware(parse_iso_query(to_text, 'to'))
 
     if from_utc >= to_utc:
         raise api_error(INVALID_RANGE)

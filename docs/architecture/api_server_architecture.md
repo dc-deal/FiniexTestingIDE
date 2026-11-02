@@ -117,6 +117,11 @@ Every route but the deliberately open ones — `/api/v1/health`, `/api/v1/contra
 (`docs/consumer/server.md`) explains — requires a bearer token, and
 holding a token is not the same as being entitled to what it asks for.
 
+`/api/v1/health` also says which installation answers: `host_id` from the identity file, read without
+minting, so the open route writes nothing and a broken file costs a null rather than the answer, and
+`host_name` from `api.host_name`, null by default. Both show to anyone who reaches the server, so a
+name is chosen with that in mind.
+
 **Without a grant, the application only describes itself.** Open, or behind a token alone, are only
 the routes that say what the application IS — its health, its version and contract, its static
 vocabularies such as the timeframes and the check ids — and who the caller is. Everything about

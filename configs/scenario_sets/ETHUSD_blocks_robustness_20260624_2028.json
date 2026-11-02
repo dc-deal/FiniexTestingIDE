@@ -4,7 +4,7 @@
   "created": "2026-06-24T20:28:56.933987+00:00",
   "robustness": {
     "enabled": true,
-    "metric": "expectancy",
+    "metric": "net_pnl",
     "oos_split": 0.3,
     "min_windows": 3,
     "overfit_wfe_threshold": 0.5,

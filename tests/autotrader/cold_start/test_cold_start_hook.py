@@ -31,7 +31,6 @@ from python.framework.types.config_types.autotrader_defaults_config_types import
 from python.framework.types.trading_env_types.order_types import OrderType
 from python.framework.utils.run_id_utils import build_client_order_id
 from python.framework.validators.decision_logic_hook_validator import check_cold_start_hook
-
 from tests.autotrader.cold_start.conftest import PREVIOUS_SESSION_KEY, make_broker_order
 
 

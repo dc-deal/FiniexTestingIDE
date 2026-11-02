@@ -18,8 +18,8 @@ from finiex_auth.token_registry import TokenRegistry
 from pydantic import TypeAdapter, ValidationError
 
 from python.configuration.api_auth.api_account_manager import ApiAccountManager
-from python.configuration.credential_guard import is_tracked_credential
 from python.configuration.api_auth.inbound_credentials_cascade import read_inbound_section
+from python.configuration.credential_guard import is_tracked_credential
 from python.configuration.credentials_cascade import workspace_credentials_dir
 from python.framework.exceptions.api_errors import ApiConfigurationError
 from python.framework.types.api.api_identity_types import ApiConsumerIdentity

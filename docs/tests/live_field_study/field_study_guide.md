@@ -57,8 +57,10 @@ realism subset (real timing, fills, fees, slippage, broker_ref) that mocks canno
    reconcile status line (#151), API performance panel (#351).
 3. Phases run sequentially (see the Phase Sequence table below). LIMIT phases re-arm
    toward the market until filled (bounded by `max_rearm_attempts` + `max_session_cost_usd`).
-4. Phase 17 idle: verify the `💓 Ns since last tick` heartbeat pulse.
-5. Phase 18 force-close-all; phase 19 ends the session cleanly via `request_session_end`.
+4. Phase 18 idle: verify the `💓 Ns since last tick` heartbeat pulse.
+5. Phase 19 force-close-all. Phase 20 opens a position and ends the session with its close on its
+   way, so the stop has to wait for the close before the session ends; phase 21, the final summary,
+   is then concluded as skipped.
 6. **Post-run**: generate the certificate from the JSONL (below).
 
 The run **self-aborts** (cancel + close-all + graceful session end) if the realized
@@ -92,7 +94,8 @@ Phases are config (`phase_sequence` in the profile) — the engine is generic. E
 | 17 | `partial_close_test` | MARKET → 50% → rest | LONG | partial-close path end-to-end at the venue | half, then flat | multi-step; lots-polling detects the partial |
 | 18 | `idle_heartbeat_test` | IDLE | — | display pulse + heartbeat drain during a quiet period | pulse frame | no orders — wall-clock wait only |
 | 19 | `force_close_all` | force-close | — | kill-switch / safety cleanup | account flat | cancels resting + closes positions |
-| 20 | `final_summary` | session end | — | clean exit via `request_session_end` (#348) | session ends | no operator Ctrl+C needed |
+| 20 | `stop_waits_for_close` | MARKET → close + session end | LONG | the stop waits for an order on its way (#630): the close is sent in the pass that asks for the end | flat in the book at the session-end event | concluded at that event; a book still holding the position **fails** |
+| 21 | `final_summary` | session end | — | clean exit via `request_session_end` (#348) | session ends | skipped when phase 20 ended the session |
 
 ### Why phase 14 exists, and why it costs nothing
 
@@ -163,12 +166,7 @@ omitted.
   carries no `order_id`, so the planes do not join on one.
 - **An order line names the phase that SUBMITTED its order**, not the phase that was running when
   the answer came. A fill that arrives after its phase passed still carries its own phase.
-  An order the framework places on the study's behalf — a protective order once an entry fills, or a
-  close held back until the venue confirms the protective order is gone — names the phase that
-  submitted IT, which can be a later one than its entry's. A close shares its position's `order_id`;
-  a protective order takes a fresh number from the order counter (`protect_pos_ethusd_41` protects
-  `pos_ethusd_40`), so its entry is found through the stream row its `extra.stream_seq` points at,
-  which carries the `position_id`.
+  A close shares its position's `order_id`.
 - `event_type` includes: `phase_start`, `order_filled`, `order_rejected`, `order_unaccounted`,
   `order_cancelled`, `partial_close`, `phase_result`, `broker_snapshot`, `reconcile_alert`,
   `api_perf`, `session_end`.
@@ -204,6 +202,11 @@ omitted.
   compared.
 - `api_perf` is written once, at the end, where the REST monitor ran: per endpoint its calls, latency
   and errors, with the session's slow calls and errors.
+
+Every session records the same facts in its own report sections now, not only a study (#631): the
+reconciliation's totals in the venue account, the REST monitor per endpoint in the venue API section,
+the fee declaration in the broker section and each fill's slippage in the order history. The capture
+keeps its own lines until the study reads from those sections.
 
 ---
 

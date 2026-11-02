@@ -118,7 +118,7 @@ def _to_currency(
         total_trades=agg.total_trades,
         winning_trades=agg.winning_trades,
         losing_trades=agg.losing_trades,
-        expectancy=analytics.expectancy if analytics else 0.0,
+        expectancy=analytics.expectancy if analytics else None,
         avg_win_r=analytics.avg_win_r if analytics else None,
         avg_loss_r=analytics.avg_loss_r if analytics else None,
         r_trade_count=analytics.r_trade_count if analytics else 0,

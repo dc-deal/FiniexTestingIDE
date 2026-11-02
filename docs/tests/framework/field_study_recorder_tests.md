@@ -43,7 +43,7 @@ The projection from the order-event stream into the capture:
 | `TestOpenPartialAndFullClose` | Open, partial close and full close of one position through a real executor, in both account models — each fill with its fee, and the mock venue's own (`fee_source: venue`) |
 | `TestTheFeeSource` | A fill line carries the `fee_source` of the event its fee comes from, for every source there is, a partial close included; an event that names none leaves the key out |
 | `TestAnOrderThatEndsAfterPartOfItExecuted` | The executed part is a fill line; the ending says who ended the rest and why |
-| `TestTheVenueClosesInTwoSteps` | A protective stop executed in two parts: a partial close, then the full one |
+| `TestACloseInTwoSteps` | A close executed in two parts: a partial close, then the full one |
 | `TestTheUnaccountedEnding` | An unaccounted order names why it ended |
 | `TestTheShortSide` | A short opens with a sell and closes with a buy — the side its slippage is signed by |
 | `TestTheSlippageSources` | A fill carries what it is measured against: the mid at submission, its limit, its trigger |

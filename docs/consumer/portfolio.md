@@ -88,8 +88,7 @@ session's fee figure is the venue's and how much is estimated:
   object means the unit executed nothing. A backtest has only `estimate`: it has no venue to ask.
   In a mock session the `venue` figures are the mock venue's.
 - **`fill_count` counts the fills as the [order events](/api/v1/docs/order-events) record them** —
-  each event that executed something, under its `fee_source`. That is not always one per order: a
-  protective order the venue reports as one growing total is booked in steps, one fill each.
+  each event that executed something, under its `fee_source`.
   `fill_fees` is what their fees came to, in the unit's account currency.
 - **It is neither of the two fee totals.** Swap is not a fill's fee and is not in it. And a close
   the venue executed for a position no longer held here is in it, at the venue's figure, although
@@ -168,24 +167,6 @@ rather than an invented number.
 
 There is deliberately no flag saying a position was inherited at the session's start. That is
 answered by the run's cold-start section, keyed by the same `position_id`.
-
-## Who holds the stop, and who holds the target
-
-A position may carry `stop_loss` and `take_profit`, and the level alone does not say who would act
-on it. Two fields do, and they are **not the same answer**:
-
-| Value | Meaning |
-|---|---|
-| `local` | this process watches the tick stream and closes on a breach — a process that dies leaves the position unprotected |
-| `venue` | the level rests at the broker and outlives us |
-| *(empty)* | no level is set |
-
-`protective_level_enforcement` answers it for the stop, `take_profit_enforcement` for the target.
-They differ in ordinary operation: only one order can rest at a venue that offers neither a
-one-cancels-other pair nor a bracket, and the stop is the one that rests there, because a bounded
-loss is worth more than a captured opportunity. So a position whose stop the venue holds still has
-a take profit watched by this process alone. One answer across both levels told an operator the
-target survives a restart, and it does not.
 
 ## Spot: two balances, not one
 

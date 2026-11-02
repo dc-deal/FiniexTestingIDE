@@ -72,6 +72,17 @@ at 1006.88 USD.
 | `test_live_books_it_despite_our_shortfall` | A live session books the fill the venue made and reports the disagreement as an error, in both account models — refusing to book it left the venue holding coins the book did not. The margin case needs the market to move with the fill, because the margin check prices the current tick and the spot check the fill itself |
 | `test_the_simulation_still_refuses_it` | The simulation plays the venue, and a venue refuses an order it cannot fund |
 
+#### `TestWhatTheEndReleased` — an order the end booked gives its funds back
+
+The end of a session or a scenario books its resting orders cancelled or expired and leaves them in
+the active lists for the snapshot. Counting them still made the run's last report show funds as
+committed that the venue had given back.
+
+| Test | What it verifies |
+|---|---|
+| `test_a_resting_buy_the_session_end_cancelled_claims_nothing` | A live session's cleanup cancels a resting buy: the row is `cancelled`, the order stays in the active list, and it claims nothing |
+| `test_a_resting_buy_the_scenario_end_expired_claims_nothing` | The same in the simulation, where the end of the data expires the order |
+
 ### `test_account_sufficiency.py` — a boot that can fund nothing
 
 The criterion is the **AND** of both sides, and that is the part worth testing: a spot bot may

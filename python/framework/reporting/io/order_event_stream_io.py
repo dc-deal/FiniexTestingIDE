@@ -51,6 +51,7 @@ from python.framework.types.trading_env_types.order_event_types import (
 )
 from python.framework.utils.time_utils import parse_datetime
 
+
 def order_event_header(run_id: str) -> Dict[str, Any]:
     """
     The stream's first line.

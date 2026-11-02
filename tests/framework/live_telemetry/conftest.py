@@ -13,6 +13,7 @@ from typing import List
 
 import pytest
 
+from python.framework.autotrader.shutdown_status_holder import ShutdownStatusHolder
 from python.framework.autotrader.tick_sources.abstract_tick_source import AbstractTickSource
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
 from python.framework.types.autotrader_types.autotrader_display_types import (
@@ -27,6 +28,7 @@ from python.framework.types.autotrader_types.autotrader_display_types import (
     TradeHistoryEntry,
 )
 from python.framework.types.autotrader_types.display_label_cache import DisplayLabelCache
+from python.framework.types.autotrader_types.shutdown_status_types import ShutdownStatus
 from python.framework.types.config_types.autotrader_defaults_config_types import SafetyConfig
 from python.framework.types.decision_logic_types import (
     AwarenessLevel,
@@ -41,9 +43,11 @@ from python.framework.types.signal_data_types import SignalHealthStatus, SignalT
 from python.framework.types.trading_env_types.active_orders_snapshot_types import (
     ActiveOrderSnapshot,
 )
+from python.framework.types.trading_env_types.awaited_order_types import AwaitedOrder
 from python.framework.types.trading_env_types.broker_trade_types import BrokerTrade
 from python.framework.types.trading_env_types.order_types import (
     CloseType,
+    OrderAction,
     OrderDirection,
     OrderSide,
     OrderType,
@@ -290,12 +294,45 @@ def render_reports() -> List[str]:
 
 
 @pytest.fixture
-def dashboard(render_reports: List[str]) -> AutoTraderLiveDisplay:
+def shutdown_holder() -> ShutdownStatusHolder:
+    """
+    What the session's stop is doing, as the dashboard polls it per frame; no stop was asked for.
+
+    Returns:
+        The holder
+    """
+    return ShutdownStatusHolder(None)
+
+
+@pytest.fixture
+def stopping() -> ShutdownStatus:
+    """
+    A stop 4.2 seconds into its wait for one order, under a declared kill.
+
+    Returns:
+        The status
+    """
+    return ShutdownStatus(
+        asked_by='SIGTERM', asked_at=datetime(2026, 10, 12, 14, 22, 42, tzinfo=timezone.utc),
+        as_of_monotonic_s=1004.2, kill_at_monotonic_s=1080.0, kill_signalled=True,
+        orders_to_cancel=0,
+        awaited_orders=(AwaitedOrder(
+            order_id='pos_ethusd_1', action=OrderAction.OPEN, order_type=OrderType.MARKET,
+            direction=OrderDirection.LONG, lots=0.12, symbol='ETHUSD',
+            sent_at_monotonic_s=1000.0, waits_for='venue has not answered'),),
+        order_wait_began_monotonic_s=1000.0, order_wait_bound_s=30.0,
+        orders_waited_for=frozenset({('pos_ethusd_1', OrderAction.OPEN)}))
+
+
+@pytest.fixture
+def dashboard(render_reports: List[str],
+              shutdown_holder: ShutdownStatusHolder) -> AutoTraderLiveDisplay:
     """
     The dashboard as a session builds it — no thread is started, nothing reaches a terminal.
 
     Args:
         render_reports: Receives the display's failure reports
+        shutdown_holder: What it polls for a stop
 
     Returns:
         The display
@@ -313,4 +350,4 @@ def dashboard(render_reports: List[str]) -> AutoTraderLiveDisplay:
     return AutoTraderLiveDisplay(
         display_queue=queue.Queue(), tick_source=QuietTickSource(), config=config,
         dry_run=False, deployment_id='deploy_20261012_074850', display_label_cache=labels,
-        on_render_error=render_reports.append)
+        on_render_error=render_reports.append, shutdown_status=shutdown_holder)

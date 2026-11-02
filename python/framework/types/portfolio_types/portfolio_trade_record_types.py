@@ -39,6 +39,25 @@ class CloseReason(Enum):
     TP_TRIGGERED = 'tp_triggered'
     SCENARIO_END = 'scenario_end'
 
+    def fired_level(self, stop_loss: Optional[float],
+                    take_profit: Optional[float]) -> Optional[float]:
+        """
+        The protective level a close for this reason fired at (#631).
+
+        Args:
+            stop_loss: The position's stop-loss level at the close
+            take_profit: The position's take-profit level at the close
+
+        Returns:
+            The stop-loss for SL_TRIGGERED, the take-profit for TP_TRIGGERED, None for a close
+            that no protective level made
+        """
+        if self is CloseReason.SL_TRIGGERED:
+            return stop_loss
+        if self is CloseReason.TP_TRIGGERED:
+            return take_profit
+        return None
+
 
 class EntryType(Enum):
     """
@@ -132,6 +151,10 @@ class TradeRecord:
 
     # === Close Reason ===
     close_reason: CloseReason = CloseReason.MANUAL
+    # The level a stop-loss or take-profit close fired at — the position's own or, for an own
+    # exit, the logic's (#625), which the position does not carry. None for every other close.
+    # The exit's slippage is measured against it (#631).
+    exit_level: Optional[float] = None
 
     # === Entry Type ===
     entry_type: EntryType = EntryType.MARKET

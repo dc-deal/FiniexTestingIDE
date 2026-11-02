@@ -177,20 +177,6 @@ class PositionCarryOver(BaseModel):
         mae_price: Price at the worst excursion
         mfe_price: Price at the best excursion
         swap_accrued_until: Last rollover instant already charged, ISO-8601 UTC (#365)
-        protective_order_id: Our id for the protective order the venue holds (#503)
-        protective_broker_ref: The venue's reference for it — the ONLY key with which the
-            next session can still ask "did it fill?". A pairing flag would not do: a
-            pairing can be re-derived from a counter, a txid from nothing
-        protective_client_order_id: The wire key it was SENT under (#487). Carried for the
-            same reason as the reference and it cannot be recomputed either — it holds the
-            discriminator of the session that minted it, and re-deriving one from the
-            session doing the reading would claim a predecessor's order as this one's
-        protective_applied_lots: How much of that order is already booked (#508). The venue
-            reports the order as totals for all it executed, so a successor that started
-            from nothing would book an executed step a second time
-        protective_applied_fee: The fee booked for that volume, in the quote currency
-        protective_applied_value: Lots times price booked for it — the next step's own
-            price follows from the venue's average and this
         fees: Fees already incurred
         entry_trades: The atomic executions behind the entry
         entry_submission: Submission-moment audit values of the entry
@@ -216,12 +202,7 @@ class PositionCarryOver(BaseModel):
     pip_size: float = 0.0
     price_unit: str = ''
     entry_tick_index: int = 0
-    protective_order_id: Optional[str] = None
-    protective_broker_ref: Optional[str] = None
-    protective_client_order_id: Optional[str] = None
-    protective_applied_lots: float = 0.0
-    protective_applied_fee: float = 0.0
-    protective_applied_value: float = 0.0
+
     mae_pnl: float = 0.0
     mfe_pnl: float = 0.0
     mae_price: float = 0.0
@@ -499,6 +480,9 @@ class CarryOverLoad:
             document too, because that is the one a boot must not overwrite
         session_keys: How many session keys it holds — the keys a successor recognises its
             resting orders by; counted for a FOREIGN document for the same reason
+        level_refusal: Why no session may start on this book: it still holds a stop or a target
+            (#625), which nobody would enforce. None for a clean book, and wherever the book was
+            not accepted
         saved_at_utc: When the document was written, ISO-8601 UTC as it states; None when its
             envelope could not be read — what the boot names as the carry-over it continued
     """
@@ -509,6 +493,7 @@ class CarryOverLoad:
     open_positions: int = 0
     session_keys: int = 0
     saved_at_utc: Optional[str] = None
+    level_refusal: Optional[str] = None
 
     def holds_venue_claims(self) -> bool:
         """

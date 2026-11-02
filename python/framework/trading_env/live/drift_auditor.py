@@ -45,7 +45,6 @@ from python.framework.types.live_types.drift_audit_types import (
 from python.framework.types.live_types.live_request_types import TradesQueryResponse
 from python.framework.types.trading_env_types.latency_simulator_types import PendingOrder
 from python.framework.types.trading_env_types.order_types import (
-    CloseType,
     OrderAction,
     OrderDirection,
     OrderResult,
@@ -148,42 +147,24 @@ class DriftAuditor:
         The exit leg used to have no audit at all — a close reaches no order-outcome listener —
         so the leg with no estimate check was also the leg with no truth check (#508).
 
-        A protective order the venue holds is booked in steps while it works, and the venue's
-        executions describe the whole order. So it is audited once, by the booking that closes
-        the position, against everything booked for it — counted by the resolver, which also
-        knows what a restarted session's predecessor booked. One the venue ends after part of
-        it executed leaves its position open and is not audited.
-
         Args:
             pending: The close order that filled
             result: Its executed result, naming the position's symbol and direction
         """
         if result.status != OrderStatus.EXECUTED:
             return
-        venue_held = pending.closes_position_id is not None
-        if venue_held and result.close_type is not CloseType.FULL:
-            return
-        # Before this booking — the resolver advances its counters after it; all zero for a
-        # close that is not a venue-held protective order
-        state = pending.execution_state
         lots = result.executed_lots or 0.0
-        booked_lots = state.venue_close_applied_lots + lots
-        booked_value = state.venue_close_applied_value + lots * (result.executed_price or 0.0)
         self._start_audit(AuditContext(
             order_id=result.order_id,
             broker_ref=pending.broker_ref,
             symbol=result.symbol,
             direction=result.direction,
-            requested_lots=booked_lots,
-            synthetic_cumulative_fee=state.venue_close_applied_fee + result.commission,
-            synthetic_cumulative_avg_price=(booked_value / booked_lots if booked_lots > 0
-                                            else 0.0),
-            synthetic_cumulative_filled_lots=booked_lots,
+            requested_lots=lots,
+            synthetic_cumulative_fee=result.commission,
+            synthetic_cumulative_avg_price=(result.executed_price or 0.0) if lots > 0 else 0.0,
+            synthetic_cumulative_filled_lots=lots,
             fee_currency=pending.fills.trades[0].fee_currency if pending.fills.trades else None,
-            # A protective order rested at the venue from its placement: the mid at that moment
-            # measures its distance to the stop, not what its fill cost
-            submission_tick_mid_price=(None if venue_held
-                                       else pending.submission.tick_mid_price),
+            submission_tick_mid_price=pending.submission.tick_mid_price,
             action=OrderAction.CLOSE,
         ))
 

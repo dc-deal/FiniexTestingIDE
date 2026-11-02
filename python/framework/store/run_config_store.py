@@ -24,7 +24,6 @@ lookup plus one `stat` on the known path: 111 ms for all 67 configs, where a sin
 
 import json
 import os
-import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -305,22 +304,3 @@ def _scope_hash(raw: Dict[str, Any]) -> str:
         for s in scenarios if isinstance(s, dict)
     ]
     return generate_config_fingerprint({'scenarios': scoped})
-
-
-def prune_store(root: Path) -> int:
-    """
-    Remove the store entirely — it is rebuildable from the sources by re-registering.
-
-    Exists for the tests and for an operator who wants a clean slate; the store is a RECORD, so
-    nothing calls this on its own initiative.
-
-    Args:
-        root: The store root
-
-    Returns:
-        1 when something was removed, 0 when there was nothing there
-    """
-    if not Path(root).exists():
-        return 0
-    shutil.rmtree(root)
-    return 1

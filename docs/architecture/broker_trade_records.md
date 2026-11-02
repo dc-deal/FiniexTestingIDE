@@ -169,19 +169,6 @@ without a fee is booked from the estimate, its event says `estimate`, and the se
 the configured model charges none per fill is warned about and NOT booked: the configuration does
 not describe that venue.
 
-**A protective order the venue holds** is reported as totals for everything it executed — the
-volume, its average price, its fee — while it is booked in steps. Each step books what each total
-grew by since the last one: its own volume, at its own price, with the fee the total grew by. The
-counters (`venue_close_applied_lots`, `_fee`, `_value`) follow the booking, a step booked from
-the estimate included, so the venue's next total settles it rather than paying it twice. The
-position carries a copy into the cold-start carry-over, so a restart books only what is new.
-Where an estimate exceeded the venue's later total, that step books no fee and reverses nothing:
-the excess stays booked, a later total above the books absorbs it, and only an order whose last
-total stays below them ends above the venue's figure. The session log warns, and the step's event says so in its `message` — as does the
-event of a step that settles an estimate. The part booked from the estimate is counted in-session
-only (`venue_close_estimated_fee`), so after a restart a settling step books the same figure
-without its sentence.
-
 **The drift auditor checks both legs.** After every fill — an entry, and since #508 a close as
 well — it asks for the order's executions and compares them with what was booked. With the fee
 now the venue's, its FEE channel compares two of the venue's own figures, the way the PRICE

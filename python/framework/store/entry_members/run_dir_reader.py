@@ -12,6 +12,7 @@ A stream is read as one across the trading days a session sealed out of it and i
 (#476) — the caller asks for the stream, never for its files.
 """
 
+import os
 from pathlib import Path
 from typing import List, Optional, TypeVar
 
@@ -19,9 +20,10 @@ from python.framework.reporting.io.artifact_specs import ArtifactSpec
 from python.framework.reporting.io.report_artifact_io import read_artifact
 from python.framework.reporting.io.run_header_io import read_run_header
 from python.framework.reporting.io.run_stream_union_reader import (
+    read_stream_page,
     read_stream_union,
     read_stream_union_ends,
-    read_stream_union_index,
+    read_stream_union_overview,
 )
 from python.framework.store.entry_members.run_entry_members import (
     RUN_ENTRY_MEMBERS_BY_ID,
@@ -32,7 +34,8 @@ from python.framework.types.api.report_types import RunHeader
 from python.framework.types.run_stream_types import (
     RunStreamEnds,
     RunStreamLines,
-    StreamDayIndexRow,
+    RunStreamOverview,
+    RunStreamPage,
     StreamTimeWindow,
 )
 from python.framework.types.store_member_types import RunEntryMemberId
@@ -137,6 +140,26 @@ class RunDirReader:
             self.path_of(member_id, **names), lambda: self.day_record_paths(member_id, **names),
             RUN_ENTRY_MEMBERS_BY_ID[member_id].time_fields or (), window)
 
+    def read_stream_page(self, member_id: RunEntryMemberId, window: StreamTimeWindow, limit: int,
+                         **names: str) -> Optional[RunStreamPage]:
+        """
+        One page of a stream within a time window — at most `limit` records unless one
+        millisecond holds more, oldest first, each numbered by its position in the whole stream
+        (#580).
+
+        Args:
+            member_id: The stream
+            window: The stretch to read
+            limit: The most records the page holds, at least one
+            names: One value per variable part of the stream's path
+
+        Returns:
+            The page, or None when the run holds no such stream
+        """
+        return read_stream_page(
+            self.path_of(member_id, **names), lambda: self.day_record_paths(member_id, **names),
+            RUN_ENTRY_MEMBERS_BY_ID[member_id].time_fields or (), window, limit)
+
     def read_stream_ends(self, member_id: RunEntryMemberId,
                          **names: str) -> Optional[RunStreamEnds]:
         """
@@ -152,20 +175,19 @@ class RunDirReader:
         return read_stream_union_ends(
             self.path_of(member_id, **names), lambda: self.day_record_paths(member_id, **names))
 
-    def read_stream_index(self, member_id: RunEntryMemberId,
-                          **names: str) -> List[StreamDayIndexRow]:
+    def read_stream_overview(self, member_id: RunEntryMemberId,
+                             **names: str) -> Optional[RunStreamOverview]:
         """
-        One stream's trading days with their counts and the time of their first and last record,
-        read without their records.
+        One stream's two ends and its trading days, from one read of its file (#580).
 
         Args:
             member_id: The stream
             names: One value per variable part of the stream's path
 
         Returns:
-            One row per day, oldest first; empty when the run holds no such stream
+            The overview, or None when the run holds no such stream
         """
-        return read_stream_union_index(
+        return read_stream_union_overview(
             self.path_of(member_id, **names), lambda: self.day_record_paths(member_id, **names),
             RUN_ENTRY_MEMBERS_BY_ID[member_id].time_fields or ())
 
@@ -184,12 +206,16 @@ class RunDirReader:
         if day_member_id is None:
             return []
         day_member = RUN_ENTRY_MEMBERS_BY_ID[day_member_id]
-        # One folder per trading day, named by the day, so the names sort oldest first
+        # One folder per trading day, named by the day, so the names sort oldest first. A listing
+        # carries each entry's type, so the folders cost one call rather than one each
         days_dir = self._run_dir / day_member.path_pattern.split('/', 1)[0]
-        if not days_dir.is_dir():
+        try:
+            with os.scandir(days_dir) as entries:
+                day_names = sorted(entry.name for entry in entries if entry.is_dir())
+        except (FileNotFoundError, NotADirectoryError):
             return []
-        paths = (self._run_dir / day_member.path_for(day=day_dir.name, **names)
-                 for day_dir in sorted(days_dir.iterdir()) if day_dir.is_dir())
+        paths = (self._run_dir / day_member.path_for(day=day_name, **names)
+                 for day_name in day_names)
         return [path for path in paths if path.is_file()]
 
     def files_of(self, member_id: RunEntryMemberId) -> List[Path]:

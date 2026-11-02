@@ -30,7 +30,6 @@ from python.framework.types.store_member_types import SweepEntryMemberId
 from python.framework.utils.file_utils import create_directory
 
 
-
 def render_sweep_list() -> None:
     """Print every recorded sweep as an informative one-liner (most recent last)."""
     ledger = RunResultsLedger(Path(AppConfigManager().get_run_ledger_path()))
@@ -89,7 +88,7 @@ def render_sweep_report(
     # Default objective + direction to what the sweep's spec declared (recorded in the ledger),
     # so `report <sweep_id>` ranks by the spec, not a hardcoded fallback. Explicit args override.
     if objective is None:
-        objective = next((r.sweep_objective for r in rows if r.sweep_objective), None) or 'expectancy'
+        objective = next((r.sweep_objective for r in rows if r.sweep_objective), None) or 'net_pnl'
     if maximize is None:
         spec_maximize = next((r.sweep_maximize for r in rows if r.sweep_maximize is not None), None)
         maximize = spec_maximize if spec_maximize is not None else True
@@ -310,4 +309,5 @@ def _flat(row: RunResultRow) -> Dict[str, Any]:
     data['worker_versions'] = json.dumps(data['worker_versions'])
     data['symbols'] = json.dumps(data['symbols'])
     data['sweep_params'] = json.dumps(data['sweep_params']) if data['sweep_params'] is not None else ''
+    data['code_stand'] = json.dumps(data['code_stand'], sort_keys=True) if data['code_stand'] is not None else ''
     return data

@@ -18,12 +18,11 @@ See the feature: [Robustness Validation guide](../../user_guides/robustness_vali
 | `test_zero_windows` | empty input → empty roles |
 | `test_trailing_order` | OOS is always the trailing fraction, never the lead |
 
-### `TestToScenarioDict` — generator output cleanliness
+### `TestToScenarioDicts` — generator output cleanliness
 | Test | Description |
 |------|-------------|
-| `test_no_empty_cascade_containers` | no `strategy_config` / `execution_config` / `trade_simulator_config` keys emitted |
-| `test_role_omitted_when_none` | `role` absent when not assigned |
-| `test_role_present_when_set` | `role` written when assigned |
+| `test_no_cascade_keys` | generated scenario dicts carry no per-scenario cascade keys |
+| `test_role_present_when_enabled` | robustness on: each dict carries a role; off: no role key |
 
 ### `TestParameterConstancy` — the fair-test guard
 | Test | Description |
@@ -35,7 +34,7 @@ See the feature: [Robustness Validation guide](../../user_guides/robustness_vali
 ### `TestRobustnessConfig` — the schema
 | Test | Description |
 |------|-------------|
-| `test_defaults` | disabled, `expectancy`, 0.3 split, 3 min-windows |
+| `test_defaults` | disabled, `net_pnl`, 0.3 split, 3 min-windows |
 | `test_rejects_unknown_key` | `extra='forbid'` rejects a typo |
 | `test_metric_enum_coercion` | `'net_pnl'` string → enum |
 | `test_rejects_invalid_metric` | an unknown metric is rejected |

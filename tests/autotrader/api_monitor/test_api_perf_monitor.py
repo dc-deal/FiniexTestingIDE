@@ -87,3 +87,22 @@ def test_shutdown_emits_summary():
     m.record('/0/private/Balance', 100.0)
     m.shutdown()
     assert any('API Performance final' in str(c) for c in logger.info.call_args_list)
+
+
+def test_slow_calls_are_counted_per_endpoint():
+    # #631: the venue API section serves the slow calls per endpoint, so a slow stretch on one
+    # endpoint is not spread over the others
+    m = _monitor(threshold=1000.0)
+    m.record('/0/private/OpenOrders', 1500.0)
+    m.record('/0/private/OpenOrders', 1200.0)
+    m.record('/0/private/OpenOrders', 400.0)
+    m.record('/0/private/Balance', 2000.0)
+    m.record('/0/private/Balance', 1000.0)   # at the threshold is not slow
+    snap = m.get_snapshot()
+    by_endpoint = {s.endpoint: s.slow_count for s in snap.endpoints}
+    assert by_endpoint == {'/0/private/OpenOrders': 2, '/0/private/Balance': 1}
+    assert snap.slow_count == sum(by_endpoint.values())
+
+
+def test_the_snapshot_carries_the_threshold_it_was_judged_by():
+    assert _monitor(threshold=1750.0).get_snapshot().slow_call_threshold_ms == 1750.0

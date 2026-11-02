@@ -73,6 +73,29 @@ def check_signal_staleness_hook(decision_logic: Any, consumes_signal: bool) -> O
     )
 
 
+def check_order_feature_declaration(decision_logic_class: Type[Any]) -> Optional[str]:
+    """
+    A logic must say which order features it uses, even when the answer is none (#625).
+
+    The start refuses a declared feature its venue lacks, and that only means something when no
+    logic can get past it by saying nothing.
+
+    Args:
+        decision_logic_class: The resolved decision-logic CLASS (no instance needed)
+
+    Returns:
+        The failure message, or None when the method is overridden
+    """
+    if overrides_hook(decision_logic_class, 'get_required_order_features'):
+        return None
+    return (
+        f"DecisionLogic '{decision_logic_class.__name__}' does not override "
+        f'get_required_order_features() — it has to say which order features it uses. Return '
+        f'[] when the logic sets no stop or target on an order or a position. See '
+        f'docs/user_guides/quickstart_guide.md.'
+    )
+
+
 def check_cold_start_hook(
     decision_logic_class: Type[Any],
     required_order_types: List[OrderType],
@@ -144,8 +167,10 @@ def overrides_hook(decision_logic_class: Type[Any], hook_name: str) -> bool:
     Returns:
         True when the class (or one of its bases below AbstractDecisionLogic) defines it
     """
-    own = getattr(decision_logic_class, hook_name, None)
+    # Static lookup: reading a classmethod off a class builds a new bound object each time, so a
+    # plain getattr would report every classmethod hook as overridden
+    own = inspect.getattr_static(decision_logic_class, hook_name, None)
     if own is None:
         return False
 
-    return own is not getattr(AbstractDecisionLogic, hook_name)
+    return own is not inspect.getattr_static(AbstractDecisionLogic, hook_name)

@@ -15,12 +15,6 @@ measures the model against the venue, as it always did. On Kraken a configured r
 not charged no longer shows in this channel; the fee-tier check at session start (#337) is what
 catches it there.
 
-A protective order the venue holds is booked in steps while it works, and its executions describe
-the whole order. So it is audited once, by the booking that closes its position, against everything
-booked for it, a restarted session's predecessor included. One the venue ends after part of it
-executed leaves its position open and is not audited. Its SLIPPAGE is not measured: the mid at its
-placement measures the distance to the stop, not what the fill cost.
-
 ## Concept
 
 Every fully-filled order has two views of itself once it leaves our pipeline:

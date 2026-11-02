@@ -4,8 +4,10 @@ Trend Channel Reference Tests — the didactic CORE/trend_channel_reference logi
 Validates that the reference logic drives the framework's full order surface end-to-end in the
 backtest pipeline:
 - resting LIMIT entries (limit_pullback mode) and resting STOP entries (stop_breakout mode)
-- SL/TP set at submission on every position
-- the always-on trailing stop (proven by a stop-loss that closed a trade in profit)
+- its own SL/TP from submission, never a position's level (#625)
+- the always-on trailing stop is driven tick by tick in test_trend_channel_own_exits.py: these
+  windows show a trailed stop only where it was the exit, and their trailed positions ran on
+  into their targets
 - the partial-close ladder (a position closed in more than one TradeRecord)
 - multi-position stacking on the symbol (overlapping position lifetimes)
 
@@ -77,9 +79,18 @@ class TestEntryModes:
 
 
 class TestRiskGeometry:
-    def test_every_position_has_sl_and_tp(self, all_trades):
+    def test_the_levels_are_the_logic_s_own(self, all_trades):
+        """
+        No position carries a level, and every stop-loss or take-profit exit names the level
+        that fired (#625): the logic keeps its stop and target itself, so it runs on a venue
+        whose API holds neither.
+        """
         assert all_trades
-        assert all(t.stop_loss is not None and t.take_profit is not None for t in all_trades)
+        assert all(t.stop_loss is None and t.take_profit is None for t in all_trades)
+        protective = [t for t in all_trades
+                      if t.close_reason in (CloseReason.SL_TRIGGERED, CloseReason.TP_TRIGGERED)]
+        assert protective
+        assert all(t.exit_level is not None for t in protective)
 
     def test_sl_and_tp_triggers_both_occur(self, all_trades):
         reasons = {t.close_reason for t in all_trades}
@@ -96,37 +107,6 @@ class TestPartialClose:
     def test_partial_portion_is_smaller_than_entry_size(self, all_trades):
         # At least one closed portion is a fraction of the full entry size.
         assert any(t.lots < LOT_SIZE - 1e-9 for t in all_trades)
-
-
-class TestTrailingStop:
-    def test_the_trail_ratchets_the_stop_past_breakeven(self, all_trades):
-        """
-        The property is that the stop moves past the entry, making the position risk-free.
-
-        This used to assert the CONJUNCTION — an SL_TRIGGERED exit that also closed in
-        profit — which additionally requires the trailed stop to beat the take profit to
-        the exit. That is a race between two levels, decided by the window and the
-        parameter set, not by whether the trail works: measured 2026-09-15, both positions
-        whose stop was ratcheted past entry ran on into their TP, so the trail did its job
-        and the old assertion still read "trailing did not ratchet". The message was right
-        and the assertion was narrower than the message.
-        """
-        ratcheted = [
-            t for t in all_trades
-            if t.stop_loss is not None and (
-                t.stop_loss > t.entry_price if t.direction == OrderDirection.LONG
-                else t.stop_loss < t.entry_price)
-        ]
-        assert ratcheted, 'no stop was trailed past its entry — trailing did not ratchet'
-
-        for t in ratcheted:
-            if t.direction == OrderDirection.LONG:
-                assert t.stop_loss > t.entry_price   # LONG SL trailed above entry
-            else:
-                assert t.stop_loss < t.entry_price   # SHORT SL trailed below entry
-            assert t.gross_pnl > 0, (
-                'a stop ratcheted past the entry must not be able to close at a loss — '
-                'that would mean the trail moved the wrong way')
 
 
 class TestMultiPosition:

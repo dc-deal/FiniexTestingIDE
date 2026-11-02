@@ -51,7 +51,7 @@ class _Executor:
                  venue_fee_expected: bool = True):
         self.order_listeners: List[Any] = []
         self.truth_listeners: List[Any] = []
-        capabilities = OrderCapabilities(fee_report=fee_report)
+        capabilities = OrderCapabilities(fee_report=fee_report, offered_order_features=frozenset())
         self.broker = SimpleNamespace(
             adapter=SimpleNamespace(get_order_capabilities=lambda: capabilities))
         self._venue_fee_expected = venue_fee_expected

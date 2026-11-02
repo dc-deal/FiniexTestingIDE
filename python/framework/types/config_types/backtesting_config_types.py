@@ -7,11 +7,10 @@ from typing import Dict, List, Optional
 from pydantic import BaseModel, ConfigDict, Field
 
 from python.framework.types.config_types.data_origin_config_types import OriginClass
-from python.framework.types.config_types.strict_config_model import StrictConfigModel
-
 from python.framework.types.config_types.performance_tracking_config_types import (
     PerformanceTrackingConfig,
 )
+from python.framework.types.config_types.strict_config_model import StrictConfigModel
 
 
 class DefaultScenarioExecutionConfig(BaseModel):

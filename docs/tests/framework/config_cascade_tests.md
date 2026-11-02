@@ -58,6 +58,7 @@ still hold as long as the merged result is correct.
 | `test_scenario_overrides_global_and_app` | Level 3 — `scenarios[i].execution_config` overrides global which already overrode app — 3 levels deep |
 | `test_sub_group_per_key_merge` | #137 — nested `performance_tracking` sub-group merges per-key: scenario overrides `worker_decision_tracking`, `tick_loop_profiling` is inherited from global |
 | `test_unknown_key_hard_fails_with_provenance` | Safety net — typo in `global.execution_config` raises `ValueError` with full provenance string, before any merge happens |
+| `test_a_misspelt_global_section_hard_fails_rather_than_read_as_absent` | The section names under `global` are checked too: `execution_confg` raises `Unknown keys in global`, where it used to load with its whole block silently not applied |
 
 ## Fixtures (conftest.py)
 
@@ -279,7 +280,9 @@ exemption names it rather than hiding it.
 Every run header states the `host` it ran on (#551). A hostname cannot be that identity, because
 the container's hostname changes on every rebuild. So `HostIdentityManager` mints one on the
 first start that asks — `h_` plus six random characters of `[a-z0-9]` — writes it to
-`user_configs/host_identity.json` and reads it back unchanged ever after.
+`user_configs/host_identity.json` and reads it back unchanged ever after. A reader that writes nothing,
+the health route, asks `read_host_id` instead: it never mints and never refuses, and a missing or broken
+file reads as None (`TestAReaderNeverMintsAndNeverRefuses`).
 
 The refusal is what this file exists for. A manager that quietly minted a new identity over a
 broken file would pass every other test here, and from that moment every run from the same

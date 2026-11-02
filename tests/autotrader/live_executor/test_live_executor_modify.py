@@ -56,8 +56,8 @@ class TestModifyLimitOrderSuccess:
         assert mod_result.success is True
         assert mod_result.rejection_reason is None
 
-    def test_modify_pending_order_sl_tp(self, mock_delayed, executor_delayed):
-        """modify_limit_order() can modify SL and TP on a resting LIMIT order."""
+    def test_a_level_on_a_resting_order_is_refused(self, mock_delayed, executor_delayed):
+        """No live path passes a level to its venue, and an order keeps its own values (#625)."""
         mock_delayed.feed_tick(executor_delayed, bid=49999.0, ask=50001.0)
 
         result = executor_delayed.open_order(OpenOrderRequest(
@@ -73,7 +73,8 @@ class TestModifyLimitOrderSuccess:
             new_stop_loss=48000.0,
             new_take_profit=55000.0)
 
-        assert mod_result.success is True
+        assert mod_result.success is False
+        assert mod_result.rejection_reason is ModificationRejectionReason.ORDER_FEATURE_NOT_DECLARED
 
     def test_modify_with_unset_keeps_current(self, mock_delayed, executor_delayed):
         """UNSET parameters are translated to None (no change) for adapter."""

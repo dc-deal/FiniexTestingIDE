@@ -56,6 +56,12 @@ STATE_FRAMES_NOT_RECORDED = ApiErrorKind(
 STATE_FRAME_NOT_WRITTEN_YET = ApiErrorKind(
     404, 'state_frame_not_written_yet',
     "Run '{run_id}' has not written its first state frame yet — ask again after one cadence")
+STREAMS_NOT_RECORDED = ApiErrorKind(
+    404, 'streams_not_recorded',
+    "Run '{run_id}' records no stream over time — a backtest records none yet, and neither does a "
+    "session from before its streams were recorded or one with the recording switched off")
+UNIT_NOT_FOUND = ApiErrorKind(
+    404, 'unit_not_found', "Run '{run_id}' records no unit named '{unit_name}'")
 
 # --- Market data: brokers, symbols, bars, coverage -------------------------------------------
 
@@ -122,7 +128,7 @@ IDENTITY_UNBOUND = ApiErrorKind(
 API_ERRORS: Tuple[ApiErrorKind, ...] = (
     RUN_NOT_FOUND, REPORTS_NOT_COMMISSIONED, RUN_NOT_COMPLETED, ARTIFACT_NOT_PRODUCED,
     ARTIFACT_UNREADABLE, CONFIG_SNAPSHOT_MISSING, RUN_HEADER_MISSING, INVALID_TIMESTAMP,
-    STATE_FRAMES_NOT_RECORDED, STATE_FRAME_NOT_WRITTEN_YET,
+    STATE_FRAMES_NOT_RECORDED, STATE_FRAME_NOT_WRITTEN_YET, STREAMS_NOT_RECORDED, UNIT_NOT_FOUND,
     BROKER_NOT_FOUND, SYMBOL_NOT_FOUND, NO_BARS_INDEXED, TIMEFRAME_NOT_RENDERED,
     COVERAGE_REPORT_UNAVAILABLE, NO_BARS_IN_RANGE, INVALID_TIMEFRAME, INVALID_LIMIT,
     INVALID_PERIOD, INVALID_RANGE, MARKET_TYPE_NOT_CONFIGURED,

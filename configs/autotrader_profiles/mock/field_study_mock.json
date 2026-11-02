@@ -88,6 +88,13 @@
           "fill_timeout_s": 15
         },
         {
+          "_comment": "The close on its way at the stop (#630): opens, then closes and asks for the session's end in one pass. Concluded at that end; final_summary is then skipped.",
+          "phase_id": "stop_waits_for_close",
+          "phase_type": "close_and_end",
+          "side": "long",
+          "fill_timeout_s": 15
+        },
+        {
           "phase_id": "final_summary",
           "phase_type": "final_summary"
         }

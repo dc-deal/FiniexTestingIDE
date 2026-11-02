@@ -20,12 +20,12 @@ from typing import Optional
 from python.configuration.sentiment_config_manager import SentimentConfigManager
 from python.framework.exceptions.signal_data_errors import SignalSourceUnresolvedError
 from python.framework.logging.scenario_logger import ScenarioLogger
+from python.framework.signal_data.producer.signal_health_probe import SignalHealthProbe
+from python.framework.signal_data.signal_observed_accumulator import SignalObservedAccumulator
 from python.framework.signal_data.transport.abstract_signal_transport import (
     AbstractSignalTransport,
 )
-from python.framework.signal_data.producer.signal_health_probe import SignalHealthProbe
 from python.framework.signal_data.transport.signal_inbox import SignalInbox
-from python.framework.signal_data.signal_observed_accumulator import SignalObservedAccumulator
 from python.framework.signal_data.transport.signal_stream_source import SignalStreamSource
 from python.framework.types.config_types.sentiment_config_types import (
     ActiveProducer,

@@ -142,6 +142,9 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         self._http_inbox: queue.Queue = queue.Queue()
         self._worker_thread: Optional[threading.Thread] = None
         self._worker_running: bool = False
+        # A worker whose stop timed out, still inside a call: the adapter's lock is held until
+        # that call returns, so a synchronous call meanwhile waits behind it
+        self._lingering_worker: Optional[threading.Thread] = None
 
         # Executor hooks invoked from drain_inbox() on the main thread.
         # Registered by LiveTradeExecutor in its __init__ via
@@ -306,7 +309,6 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         broker_ref: Optional[str],
         order_kwargs: Optional[Dict] = None,
         submission: Optional[SubmissionMetadata] = None,
-        venue_held_protection: bool = False,
         client_order_id: Optional[str] = None,
         entry_time: Optional[datetime] = None,
     ) -> str:
@@ -330,8 +332,6 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
             submission: Submission-moment snapshot for the SLIPPAGE audit
                         channel (#340/#345). None when no tick is in scope
                         (cold-start, heartbeat-only path).
-            venue_held_protection: Whether the resulting position should get a protective
-                        order at the venue (#503) — resolved at submit, read at fill
             client_order_id: The wire key this order is sent under (#487). Recorded so the
                         reconciler and the resolution path read it instead of re-deriving it
             entry_time: The submission on the canonical clock, which only the executor holds.
@@ -360,7 +360,6 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
             entry_time=entry_time,
             order_kwargs=order_kwargs or {},
             submission=submission if submission else SubmissionMetadata(),
-            venue_held_protection=venue_held_protection,
         )
 
         self.store_order(pending)
@@ -385,6 +384,7 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         client_order_id: Optional[str] = None,
         symbol: Optional[str] = None,
         position_direction: Optional[OrderDirection] = None,
+        exit_level: Optional[float] = None,
     ) -> str:
         """
         Track a submitted CLOSE order with broker reference.
@@ -409,6 +409,8 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
             symbol: The position's symbol — so an ending recorded after the position is
                           gone still names it (#362)
             position_direction: The position's direction, for the same reason
+            exit_level: The level an own exit fired at (#625), stored for the same reason as
+                          the close reason
 
         Returns:
             position_id for chaining
@@ -430,6 +432,7 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
             symbol=symbol,
             close_lots=close_lots,
             close_reason=close_reason,
+            exit_level=exit_level,
             submission=submission if submission else SubmissionMetadata(),
         )
 
@@ -838,7 +841,7 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         self._worker_thread.start()
         self.logger.info(f'Worker thread started: {self._worker_thread.name}')
 
-    def stop_worker(self, timeout: float = 2.0) -> None:
+    def stop_worker(self, timeout: float) -> None:
         """
         Stop the worker thread cleanly. Safe to call when not running.
 
@@ -851,6 +854,7 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         if self._worker_thread is not None:
             self._worker_thread.join(timeout=timeout)
             if self._worker_thread.is_alive():
+                self._lingering_worker = self._worker_thread
                 self.logger.warning(
                     f'Worker thread did not shut down within {timeout}s — '
                     f'continuing (daemon)'
@@ -858,6 +862,38 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
             else:
                 self.logger.info('Worker thread stopped cleanly')
         self._worker_thread = None
+
+    def is_worker_call_lingering(self) -> bool:
+        """
+        Whether a stopped worker is still inside a call to the venue, because its stop timed out.
+
+        Returns:
+            True while that thread is alive
+        """
+        return self._lingering_worker is not None and self._lingering_worker.is_alive()
+
+    def take_unsent_submits(self) -> List[SubmitJob]:
+        """
+        Take every job off the outbox that a stopped worker never took, and hand back the submits.
+
+        Such a job never left this process, and once taken here no worker can send it. The other
+        jobs are dropped: a stopped worker would never send them either, and the session's cleanup
+        reads and cancels by itself. Only for a stopped worker: a running one would lose what it
+        was about to send.
+
+        Returns:
+            The submits among them, oldest first; empty while the worker still runs
+        """
+        if self._worker_running:
+            return []
+        submits: List[SubmitJob] = []
+        while True:
+            try:
+                job = self._http_outbox.get_nowait()
+            except queue.Empty:
+                return submits
+            if isinstance(job, SubmitJob):
+                submits.append(job)
 
     def _worker_loop(self) -> None:
         """
@@ -1186,7 +1222,7 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
             if len(matches) > 1:
                 # Several orders carry our key. Picking one would be a guess about which, and
                 # answering "none" would read as "the venue never took it" — a verdict that
-                # books the order undelivered and sends a close parked behind it. A FAILED read
+                # books the order undelivered. A FAILED read
                 # is what this is: the resolution asks again, and its ceiling ends the question.
                 self._http_inbox.put(OrderResolveResponse(
                     order_id=job.order_id,

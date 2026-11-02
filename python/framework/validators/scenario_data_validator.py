@@ -13,13 +13,13 @@ from python.configuration.market_config_manager import MarketConfigManager
 from python.framework.discoveries.data_coverage.data_coverage_report import DataCoverageReport
 from python.framework.discoveries.signal_coverage.signal_coverage_report import SignalCoverageReport
 from python.framework.exceptions.market_compatibility_errors import MarketCompatibilityError
+from python.framework.exceptions.mount_errors import ScenarioPackageMissingError
 from python.framework.factory.worker_factory import WorkerFactory
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.types.config_types.data_origin_config_types import OriginClass
 from python.framework.types.coverage_report_types import GapCategory
 from python.framework.types.process_data_types import ProcessDataPackage, RequirementsMap
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
-from python.framework.exceptions.mount_errors import ScenarioPackageMissingError
 from python.framework.types.validation_types import (
     Severity,
     ValidationDomain,

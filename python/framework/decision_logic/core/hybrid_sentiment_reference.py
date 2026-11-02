@@ -26,6 +26,7 @@ from python.framework.types.parameter_types import InputParamDef, OutputParamDef
 from python.framework.types.trading_env_types.market_data_status_types import MarketDataStatus
 from python.framework.types.trading_env_types.order_types import (
     OrderDirection,
+    OrderFeature,
     OrderResult,
     OrderSide,
     OrderStatus,
@@ -149,6 +150,19 @@ class HybridSentimentReference(AbstractDecisionLogic):
             doc_link='docs/user_guides/worker_naming_doc.md',
             recommended_markets=('crypto',),
         )
+
+    @classmethod
+    def get_required_order_features(cls, decision_logic_config: Dict[str, Any]) -> List[OrderFeature]:
+        """
+        None: it sets no level on an order or a position.
+
+        Args:
+            decision_logic_config: Decision logic configuration dict
+
+        Returns:
+            An empty list
+        """
+        return []
 
     @classmethod
     def get_required_order_types(cls, decision_logic_config: Dict[str, Any]) -> List[OrderType]:

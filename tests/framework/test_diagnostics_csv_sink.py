@@ -17,7 +17,6 @@ import numpy as np
 import pytest
 
 from python.framework.autotrader.run_record.session_records import stream_diagnostics_rows
-
 from python.framework.constants.run_layout_constants import (
     RUN_TYPE_AUTOTRADER,
     RUN_TYPE_SIMULATION,
@@ -34,6 +33,10 @@ from python.framework.types.store_member_types import RunEntryMemberId
 
 class _DummyDecision(AbstractDecisionLogic):
     """Minimal concrete decision logic for exercising the sink API."""
+
+    @classmethod
+    def get_required_order_features(cls, decision_logic_config) -> list:
+        return []
 
     @classmethod
     def get_required_order_types(cls, decision_logic_config):

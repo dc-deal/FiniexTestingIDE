@@ -24,8 +24,8 @@ from python.framework.constants.run_layout_constants import (
 )
 from python.framework.reporting.io.artifact_specs import WARNINGS_ERRORS_ARTIFACT
 from python.framework.reporting.io.report_artifact_io import write_artifact
-from python.framework.reporting.io.run_stream_reader import read_stream_ends
 from python.framework.reporting.io.run_stream_appender import RunStreamAppender
+from python.framework.reporting.io.run_stream_reader import read_stream_ends
 from python.framework.reporting.store.report_store import ReportStore
 from python.framework.reporting.store.run_index import RunIndex
 from python.framework.types.api.report_types import (

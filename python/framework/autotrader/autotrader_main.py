@@ -6,6 +6,7 @@ Threading model 8.a: sync algo loop in main thread,
 tick source in separate thread, queue.Queue communication.
 """
 
+import os
 import queue
 import signal
 import sys
@@ -61,16 +62,17 @@ from python.framework.autotrader.run_record.rendered_profile_builder import (
     render_autotrader_profile,
 )
 from python.framework.autotrader.run_record.sealed_period_booker import SealedPeriodBooker
-from python.framework.autotrader.run_record.state_frame_recorder import (
-    StateFrameRecorder,
-    open_state_frame_stream,
-)
 from python.framework.autotrader.run_record.session_records import (
     open_trade_stream,
     record_restored_algo_state,
     stream_diagnostics_rows,
 )
+from python.framework.autotrader.run_record.state_frame_recorder import (
+    StateFrameRecorder,
+    open_state_frame_stream,
+)
 from python.framework.autotrader.safety.risk_baseline_tracker import RiskBaselineTracker
+from python.framework.autotrader.shutdown_status_holder import ShutdownStatusHolder
 from python.framework.autotrader.startup.autotrader_data_preparer import prepare_mock_session_data
 from python.framework.autotrader.startup.autotrader_startup import (
     create_autotrader_loggers,
@@ -79,6 +81,7 @@ from python.framework.autotrader.startup.autotrader_startup import (
 )
 from python.framework.autotrader.startup.bot_instance_lock import record_holder_run, take_bot_lock
 from python.framework.autotrader.startup.start_failure_classifier import is_passing_start_failure
+from python.framework.autotrader.stop_budget import StopBudget
 from python.framework.autotrader.tick_sources.abstract_tick_source import AbstractTickSource
 from python.framework.autotrader.tick_sources.tick_source_setup import setup_tick_source
 from python.framework.bars.bar_rendering_controller import BarRenderingController
@@ -88,6 +91,7 @@ from python.framework.decision_logic.abstract_decision_logic import AbstractDeci
 from python.framework.discoveries.signal_coverage.signal_scenario_info import SignalScenarioInfo
 from python.framework.exceptions.code_identity_errors import CodeIdentityCaptureError
 from python.framework.exceptions.live_execution_errors import StartupRefusedError
+from python.framework.exceptions.persistence_errors import CarriedLevelError
 from python.framework.exceptions.swap_errors import SwapModeNotImplementedError
 from python.framework.exceptions.warmup_history_errors import WarmupHistoryRefusedError
 from python.framework.logging.scenario_logger import ScenarioLogger
@@ -124,6 +128,10 @@ from python.framework.types.autotrader_types.operator_alert_types import (
     OperatorAlertKind,
     OperatorAlertLevel,
 )
+from python.framework.types.autotrader_types.shutdown_status_types import (
+    ShutdownStep,
+    StopWaitOutcome,
+)
 from python.framework.types.config_types.autotrader_defaults_config_types import (
     BaselineMode,
     SessionEndDefaults,
@@ -147,6 +155,7 @@ from python.framework.types.scenario_types.scenario_set_types import SingleScena
 from python.framework.types.signal_data_types import (
     SignalObservedSeries,
 )
+from python.framework.types.trading_env_types.order_types import OrderResult
 from python.framework.types.validation_types import ValidationFinding, ValidationResult
 from python.framework.utils.code_identity_builder import verify_component_digests
 from python.framework.utils.file_lock import FileLock
@@ -164,6 +173,7 @@ from python.framework.validators.carry_over_identity_validator import (
 from python.framework.validators.component_metadata_advisory import check_market_fit
 from python.framework.validators.session_end_validator import resolve_session_end_policy
 from python.framework.validators.session_post_run_validator import SessionPostRunValidator
+from python.framework.validators.stop_budget_validator import check_stop_budget
 from python.framework.validators.uncommitted_code_validator import (
     describe_uncommitted_code,
     validate_code_unchanged_since_capture,
@@ -372,6 +382,12 @@ class AutotraderMain:
 
         # Signal handling state
         self._first_interrupt_time: float = 0.0
+        # #630: when the first signal asked for the stop, and what the stop may still spend
+        self._stop_asked_monotonic_s: Optional[float] = None
+        self._stop_budget: Optional[StopBudget] = None
+        # What the stop is doing, for every surface that shows it; here because a signal can
+        # arrive before anything else of the session exists
+        self._shutdown_status = ShutdownStatusHolder(self._config.shutdown.supervisor_kill_after_s)
         # Why a signal asked the session to end, '' while none has (#348). Kept here because a
         # signal can arrive before the executor that records the request exists.
         self._signal_end_reason: str = ''
@@ -437,7 +453,7 @@ class AutotraderMain:
         # it, and held here, because the startup guard asks it — which must not depend on a header
         # having been written. A capture that FAILS is held too, and refused inside the startup
         # handling below, once the header exists to record the session.
-        capture_failure = self._capture_code_identity()
+        capture_failure = self._capture_code_identity(with_commit_history=bool(deployment_id))
 
         # === RENDERED CONFIGURATION (#547) ===
         # What this session RUNS with, not only what it was given: the app_config layer merged
@@ -457,6 +473,7 @@ class AutotraderMain:
         self._global_logger = loggers.global_logger
         self._session_logger = loggers.session_logger
         self._summary_logger = loggers.summary_logger
+        self._shutdown_status.connect_journal(self._session_logger, self._count_orders_to_cancel)
         self._run_dir = loggers.run_dir
         self._run_id = loggers.run_id
         self._rendered_config_id = loggers.rendered_config_id
@@ -529,6 +546,13 @@ class AutotraderMain:
                     f'trace is in autotrader_global.log; fix the cause, then start again.'
                 ) from capture_failure
 
+            # === A STORED LEVEL (#625) ===
+            # Nobody would enforce it. Read with the carry-over, refused here for the same reason as
+            # the code identity above: it ends as STARTUP FAILED with a ledger row and an alert, and
+            # exits 2, which a supervisor does not restart. A refused boot leaves the book as it is.
+            if self._carried_load is not None and self._carried_load.level_refusal:
+                raise CarriedLevelError(self._carried_load.level_refusal)
+
             self._setup_signal_handlers()
 
             # === DATA PACKAGE (mock replay, #438) ===
@@ -598,6 +622,10 @@ class AutotraderMain:
             self._session_logger.info(
                 f'🧾 Session-end policy: orders={self._session_end.orders} · '
                 f'positions={self._session_end.positions}')
+
+            # === THE STOP'S SETTINGS (#630) ===
+            # Here because the check needs `attended`, resolved above.
+            self._check_stop_budget(attended)
 
             # === WHAT THIS SESSION RUNS UNDER (#626) ===
             # Its kind of run and the configuration its claims about the venue are made under,
@@ -767,7 +795,7 @@ class AutotraderMain:
             self._operator_alerts.start_liveness()
             title, detail = session_started_text(
                 self._config, dry_run, self._run_id,
-                self._code_identity.framework.commit or '' if self._code_identity else '')
+                self._code_identity.labelled_commits() if self._code_identity else [])
             self._operator_alerts.send(
                 OperatorAlertKind.SESSION_STARTED, OperatorAlertLevel.INFO, title, detail)
             ticks_processed, ticks_clipped = self._tick_loop.run()
@@ -818,18 +846,16 @@ class AutotraderMain:
         if self._tick_loop_started and isinstance(error, WarmupHistoryRefusedError):
             # #588: the warmup seam could not be closed at the first tick. That is a refusal
             # rather than a crash, and the console, the session log and the summary say so.
-            # The seam closes where the tick's bars are rendered — after the executor's part
-            # of that tick, whose stop and take-profit check can send a close, and after any
-            # heartbeat pass before it, which can run the decision. So the block says what did
-            # not run on the tick and names what the session had sent by then.
+            # The seam closes where the tick's bars are rendered, after any heartbeat pass before
+            # it, which can run the decision. So the block says what did not run on the tick and
+            # names what the session had sent by then.
             self._refused_at_first_tick = True
             # #598: a restart a few seconds later closes it, so the supervisor may try again
             self._start_failure_transient = True
             stats = self._executor.get_execution_stats()
-            sent = self._describe_orders_before_refusal(
-                stats.orders_submitted, stats.sl_tp_triggered)
+            sent = self._describe_orders_before_refusal(stats.orders_submitted)
             self._session_logger.error(f'⛔ Refused at the first tick: {error}')
-            if stats.orders_submitted or stats.sl_tp_triggered:
+            if stats.orders_submitted:
                 self._session_logger.warning(sent)
             else:
                 self._session_logger.info(sent)
@@ -1020,6 +1046,38 @@ class AutotraderMain:
             self._session_logger.warning(f'⚠️  {warning}')
             print(f'  ⚠️  {warning}')
 
+    def _check_stop_budget(self, attended: bool) -> None:
+        """
+        Say at the start where this session's stop cannot keep what its settings promise (#630).
+
+        Advisory, and held like the market-fit finding, because the record's channel lives on the
+        result. The session log and the console as well: the person starting a session has to
+        see it now, not in the report after the stop it is about.
+
+        Args:
+            attended: Whether a human declared they are watching this start
+
+        Returns:
+            None
+        """
+        findings = check_stop_budget(
+            self._config.shutdown,
+            MarketConfigManager().get_broker_entry(
+                self._config.broker_type).broker_transport.poll_interval_ms,
+            live_session=self._config.adapter_type == 'live',
+            attended=attended,
+            scope=self._config.get_unit_name())
+        self._startup_findings.extend(findings)
+        for finding in findings:
+            # INFO, deliberately not WARNING, for the market-fit advisory's reason: the VERDICT
+            # travels as a Tier-1 finding, and a WARNING would put it in the report twice.
+            self._session_logger.info(f'⚠️  {finding.message}')
+            try:
+                print(f'  ⚠️  {finding.message}', flush=True)
+            except OSError:
+                # A console gone at the start must not turn an advisory into an aborted start
+                pass
+
     def _render_profile(self) -> Optional[Exception]:
         """
         Render what this session runs with, and hold a failure instead of raising it (#547).
@@ -1040,7 +1098,7 @@ class AutotraderMain:
             return error
         return None
 
-    def _capture_code_identity(self) -> Optional[Exception]:
+    def _capture_code_identity(self, with_commit_history: bool) -> Optional[Exception]:
         """
         Capture which code this session runs, and hold a failure instead of raising it (#551).
 
@@ -1048,12 +1106,17 @@ class AutotraderMain:
         stack trace with no header, no STARTUP FAILED and no ledger row. The component resolution
         degrades by itself; what can still fail is the storage and filesystem around it.
 
+        Args:
+            with_commit_history: Whether this session has a deployment, whose view compares the
+                code of its sessions; a session standing alone does not pay for the reads
+
         Returns:
             None when the identity was captured; otherwise the exception, which `run()` refuses
             once the header exists (it keeps its traceback for the global log)
         """
         try:
-            self._code_identity = capture_code_identity([self._config.strategy_config])
+            self._code_identity = capture_code_identity(
+                [self._config.strategy_config], with_commit_history=with_commit_history)
         except Exception as error:
             self._code_identity = None
             return error
@@ -1162,9 +1225,27 @@ class AutotraderMain:
                 # A panel that fails is an error of this session, graded as one (#586)
                 on_render_error=(self._session_logger.error
                                  if self._session_logger is not None else None),
+                shutdown_status=self._shutdown_status,
             )
             self._display.start()
+            # A display is on by default, and with no terminal it shows only its last frame: a
+            # supervised session would say nothing about its stop until then
+            self._shutdown_status.set_lines_on_console(not self._display.holds_a_terminal())
             self._global_logger.info('📺 Live display started')
+
+    def _stop_display(self) -> None:
+        """
+        Stop the live display, if one runs, and give the console to the stop's lines. Safe to call
+        twice.
+        """
+        if self._display:
+            if not self._display.stop() and self._session_logger is not None:
+                self._session_logger.warning(
+                    f'⚠️ Stop: the live display did not finish its last frame within '
+                    f'{self._config.shutdown.display_join_s:g} s (display_join_s) — the stop goes on '
+                    f'without it.')
+            self._global_logger.info('📺 Live display stopped')
+        self._shutdown_status.set_lines_on_console(True)
 
     def _build_tick_loop(self, run_timestamp: datetime, dry_run: bool) -> AutotraderTickLoop:
         """
@@ -1232,6 +1313,8 @@ class AutotraderMain:
                 broker_config_id=self._executor.broker.get_frozen_config_id()).book,
             # #476: and its streams' day moves into their day records at the same boundary
             seal_streams=self._stream_sealer.seal,
+            open_stop_budget=self._open_stop_budget,
+            shutdown_status=self._shutdown_status,
         )
 
     # =========================================================================
@@ -1278,28 +1361,21 @@ class AutotraderMain:
         print(f"{'=' * 60}\n")
 
     @staticmethod
-    def _describe_orders_before_refusal(orders_submitted: int, protective_closes: int) -> str:
+    def _describe_orders_before_refusal(orders_submitted: int) -> str:
         """
         Say what a session refused at its first tick had sent to the venue by then.
 
         Args:
-            orders_submitted: Orders this session submitted — adopted ones are not counted
-            protective_closes: Closes the stop and take-profit check triggered. It runs only on
-                a tick, so at a first-tick refusal every one of them is that tick's
+            orders_submitted: Orders this session submitted, a close among them — adopted ones
+                are not counted
 
         Returns:
             One sentence: nothing sent, or what was sent and what to check before a restart
         """
-        if not orders_submitted and not protective_closes:
-            return 'No order was submitted in this session and no stop or take-profit fired.'
-        sent = []
-        if orders_submitted:
-            sent.append(f'{orders_submitted} order(s) submitted in this session')
-        if protective_closes:
-            sent.append(f'{protective_closes} close(s) triggered by a stop or take-profit '
-                        f'on this tick')
-        return (f'⚠️ Before the refusal: {" · ".join(sent)} — check what the venue holds '
-                f'before a restart.')
+        if not orders_submitted:
+            return 'No order was submitted in this session.'
+        return (f'⚠️ Before the refusal: {orders_submitted} order(s) submitted in this session — '
+                f'check what the venue holds before a restart.')
 
     def _print_runtime_error(self, message: str) -> None:
         """Print a tick-loop runtime error to console. Aborts via emergency shutdown."""
@@ -1323,26 +1399,34 @@ class AutotraderMain:
         Returns:
             AutoTraderResult with session statistics
         """
+        # #630: a loop that waited for its orders has opened it already
+        self._open_stop_budget()
+        status = self._shutdown_status.get()
+        # Said here and not in a signal handler, which may interrupt this very logger's write
         self._global_logger.info(
-            f'🛑 Shutdown initiated: mode={self._shutdown_mode}'
+            f'🛑 Shutdown initiated: mode={self._shutdown_mode}, asked by '
+            f'{status.asked_by if status is not None else "nothing named"}'
         )
+        self._shutdown_status.say('🛑 Stop: stopping the feeds')
 
         # Stop the signal transport before the tick source: it is the only other thread
         # that can still deposit work for a loop that is no longer draining.
         if self._signal_transport:
-            self._signal_transport.stop()
+            self._signal_transport.stop(self._config.shutdown.signal_transport_join_s)
 
         # Stop tick source
+        self._shutdown_status.note_tick_source_stopped()
         if self._tick_source:
             self._tick_source.stop()
         if self._tick_thread and self._tick_thread.is_alive():
-            self._tick_thread.join(timeout=5.0)
+            self._tick_thread.join(timeout=self._config.shutdown.tick_thread_join_s)
+            if self._tick_thread.is_alive():
+                self._session_logger.warning(
+                    f'⚠️ Stop: the tick source thread did not finish within '
+                    f'{self._config.shutdown.tick_thread_join_s:g} s (tick_thread_join_s) — the stop '
+                    f'goes on without it, and it ends with the process.')
 
-        # Stop display (before position cleanup prints to console)
-        if self._display:
-            self._display.stop()
-            self._global_logger.info('📺 Live display stopped')
-
+        self._shutdown_status.enter_step(ShutdownStep.CARRY_OVER)
         # #355 + #492: the note describes what the VENUE holds, and it is written before the
         # cleanup because that is the state it describes. This used to be a workaround — the
         # cleanup closed open positions in our book only, so a note written afterwards would
@@ -1355,26 +1439,43 @@ class AutotraderMain:
         # call — `expect_flat` tells the check whether a survivor is an anomaly or a
         # decision. A session that never resolved its policy (an abort during startup) is
         # read as the strict case: nobody decided to leave anything behind.
+        self._shutdown_status.enter_step(ShutdownStep.ORDER_CLEANUP)
         if self._executor:
             try:
                 leave_positions = (
                     self._session_end is not None
                     and self._session_end.positions == 'leave')
                 self._executor.finish_remaining_orders(
-                    cancel_orders=(
-                        self._session_end is None
-                        or self._session_end.orders == 'cancel'))
+                    cancel_orders=self._session_end_cancels_orders())
                 self._executor.check_clean_shutdown(expect_flat=not leave_positions)
             except Exception as e:
                 self._session_logger.error(f'Error during order cleanup: {e}')
 
+        # #630: and once more, because a fill the cleanup found (a refused cancel, a cancel's read)
+        # moved the book after the first write, and the next session would start from a flat note
+        # beside a coin. Margin writes no book into it (2026-10-31, #209): such a fill reaches the
+        # report and not the next session, which reads its positions from the venue.
+        self._persist_cold_start_carry_over()
+
         # #362 — what the venue holds once the session's orders are handled, written before
         # the stream closes. Its own try: a read that fails must never keep the stream open.
+        self._shutdown_status.enter_step(ShutdownStep.VENUE_READ)
         if self._executor and self._order_event_stream:
             try:
                 self._executor.record_session_truth(BrokerTruthReadReason.SESSION_END)
             except Exception as e:
                 self._session_logger.error(f'Broker truth at session end not recorded: {e}')
+
+        # #630: the display stays on through every wait of the stop, the operator's one view of
+        # it, and stops here because the reports print to the console from now on. Its last frame
+        # shows the book as the cleanup and the venue's read left it, which the report describes.
+        if self._tick_loop is not None:
+            try:
+                self._tick_loop.push_last_display_frame(ticks_processed)
+            except Exception as e:
+                self._session_logger.error(f"The display's last frame could not be built: {e}")
+        self._stop_display()
+        self._shutdown_status.enter_step(ShutdownStep.REPORTS)
 
         # #362 — the stream ends after the order cleanup, whose cancels are steps of their
         # own. Its own try: a stream that cannot close must not keep the report from being
@@ -1524,8 +1625,6 @@ class AutotraderMain:
                     spec.base_currency: self._executor.get_committed_funds(
                         spec.base_currency),
                 }
-                stats.protective_level_enforcement = (
-                    self._executor.get_protective_level_enforcement().value)
                 try:
                     bid, ask = self._executor.get_current_price(self._config.symbol)
                     stats.last_price = mid_price(bid, ask)
@@ -1536,12 +1635,24 @@ class AutotraderMain:
                     # the trade and order history would be lost to a missing price.
                     self._session_logger.info(
                         '📌 No tick arrived — open positions are reported unvalued')
+                # First the executor's own answers, which read nothing that can fail (#631)
+                result.venue_fee_expected = self._executor.expects_venue_fee_in_fill_answer()
+                result.protective_fill_levels = self._executor.get_protective_fill_levels()
                 result.execution_stats = self._executor.get_execution_stats()
                 result.trade_history = self._executor.get_trade_history()
                 result.order_history = self._executor.get_order_history()
                 result.active_orders = self._executor.get_active_orders_snapshot()
+                result.stop_wait = self._derive_stop_wait(result.order_history)
             except Exception as e:
                 self._session_logger.error(f'Error collecting executor stats: {e}')
+
+        # #631 — what the session's own observers measured, read while both still hold it, so
+        # every session's record says whether it reconciled and how its venue's API answered
+        result.reconcile_enabled = self._config.reconciliation.enabled
+        if self._reconciler is not None:
+            result.reconcile_totals = self._reconciler.get_totals()
+        if self._api_monitor is not None:
+            result.venue_api_performance = self._api_monitor.get_snapshot()
 
         # #362 — the stream is closed by now; read back once, for the pending-order counters,
         # the check that it holds every submission, and the venue-account section
@@ -1605,6 +1716,22 @@ class AutotraderMain:
 
         return result
 
+    def _derive_stop_wait(self, order_history: List[OrderResult]) -> Optional[StopWaitOutcome]:
+        """
+        What the stop's wait for the orders on their way came to (#630).
+
+        Args:
+            order_history: The session's order records
+
+        Returns:
+            The outcome; None when nothing waited
+        """
+        status = self._shutdown_status.get()
+        if status is None or status.order_wait_ran_s is None:
+            return None
+        return StopWaitOutcome.over_records(
+            status.order_wait_ran_s, status.orders_waited_for, order_history)
+
     def _generate_reports(self, result: AutoTraderResult) -> None:
         """
         Write all session artifacts, print the post-session summary, close the loggers.
@@ -1631,6 +1758,7 @@ class AutotraderMain:
             deployment_id=self._deployment_id,
         ).generate_and_log()
 
+        self._shutdown_status.enter_step(ShutdownStep.ALERTS)
         self._send_closing_alert(result, run_summary)
 
         # The list entry ends while the session log can still take a warning from ending it; the
@@ -1667,7 +1795,9 @@ class AutotraderMain:
                           and self._executor.is_session_end_requested() else '')
             level, title, detail = session_ended_text(result, run_summary, end_reason)
             self._operator_alerts.send(OperatorAlertKind.SESSION_ENDED, level, title, detail)
-        self._operator_alerts.finish(emergency=result.get_outcome() is RunOutcome.FAILED)
+        self._operator_alerts.finish(
+            emergency=result.get_outcome() is RunOutcome.FAILED,
+            flush_timeout_s=self._config.shutdown.alert_flush_s)
 
     def _alert_shutdown_crash(self, error: Exception) -> None:
         """
@@ -1679,12 +1809,15 @@ class AutotraderMain:
         Returns:
             None
         """
+        # A crash before the planned stop of the display must not leave it holding the terminal
+        self._stop_display()
         self._operator_alerts.send(
             OperatorAlertKind.SHUTDOWN_CRASHED, OperatorAlertLevel.CRITICAL,
             'SESSION CRASHED while shutting down',
             f'{type(error).__name__}: {error} — the report may be incomplete; check the account '
             f'and the run directory.')
-        self._operator_alerts.finish(emergency=True)
+        self._operator_alerts.finish(
+            emergency=True, flush_timeout_s=self._config.shutdown.alert_flush_s)
 
     # =========================================================================
     # SIGNAL HANDLING
@@ -1736,10 +1869,11 @@ class AutotraderMain:
         First interrupt: emergency shutdown.
         Second interrupt within 3s: force exit.
         """
+        self._note_stop_asked('Ctrl+C', signalled=True)
         now = time.monotonic()
         if self._first_interrupt_time > 0 and (now - self._first_interrupt_time) < 3.0:
             # Second Ctrl+C within 3s → force exit
-            print('\n⚡ Force exit — second interrupt received')
+            _write_from_signal_handler('\n⚡ Force exit — second interrupt received\n')
             sys.exit(1)
 
         self._first_interrupt_time = now
@@ -1748,15 +1882,17 @@ class AutotraderMain:
         self._request_signal_end()
         # No longer "closing positions": the session end finishes ORDERS per policy and
         # leaves open positions where they are (#492).
-        print('\n⚠️  Shutdown initiated — finishing orders (Ctrl+C again within 3s to force)')
+        _write_from_signal_handler(
+            '\n⚠️  Shutdown initiated — finishing orders (Ctrl+C again within 3s to force)\n')
         # Stop tick loop if running
         if self._tick_loop:
             self._tick_loop.stop()
-        if self._global_logger:
-            self._global_logger.info('⚠️  Interrupt received — shutting down (Ctrl+C again within 3s to force)')
+        # No log line here: a handler interrupts the main thread, which may be inside the same
+        # logger's write. The stop's first step says what asked for it.
 
     def _handle_terminate(self, signum: int, frame: Any) -> None:
         """Handle SIGTERM — a normal shutdown, unless the session already ends in an emergency."""
+        self._note_stop_asked('SIGTERM', signalled=True)
         # A supervisor's stop during the shutdown of a crash or a hard stop must not turn the
         # emergency into an ordinary end — the grade, the closing alert and the fail ping read it
         if self._shutdown_mode != 'emergency':
@@ -1766,8 +1902,81 @@ class AutotraderMain:
         # Stop tick loop if running
         if self._tick_loop:
             self._tick_loop.stop()
-        if self._global_logger:
-            self._global_logger.info('🛑 SIGTERM received — normal shutdown')
+        # No log line here, for the reason _handle_interrupt gives
+
+    def _note_stop_asked(self, asked_by: str, signalled: bool = False) -> None:
+        """
+        Keep what first asked for the stop and when, which the supervisor's kill counts from
+        (#630). Plain assignments: a handler interrupts the main thread, and a lock it may already
+        hold there would never be released.
+
+        Args:
+            asked_by: What asked, in a word or two
+            signalled: Whether a signal asked, so that a supervisor's kill is coming
+        """
+        if self._stop_asked_monotonic_s is None:
+            self._stop_asked_monotonic_s = time.monotonic()
+        self._shutdown_status.note_asked(
+            asked_by, datetime.now(timezone.utc), self._stop_asked_monotonic_s, signalled)
+
+    def _what_asked_for_the_stop(self) -> str:
+        """
+        What asked for a stop no signal asked for.
+
+        Returns:
+            A word or two, as the status names it
+        """
+        if self._emergency_reason:
+            return 'abort'
+        if self._executor is not None and self._executor.is_session_end_requested():
+            if self._executor.get_session_end_severity() is SessionEndSeverity.EMERGENCY:
+                return 'hard stop'
+            return "strategy's request"
+        return 'end of input' if self._tick_loop_started else 'refused start'
+
+    def _session_end_cancels_orders(self) -> bool:
+        """
+        Whether the session's end cancels its resting orders. A session that never resolved its
+        policy, an abort during startup, is read as the strict case.
+
+        Returns:
+            True when it cancels them
+        """
+        return self._session_end is None or self._session_end.orders == 'cancel'
+
+    def _count_orders_to_cancel(self) -> Optional[int]:
+        """
+        How many resting orders the cleanup will cancel, for the status of the stop (#630).
+
+        Returns:
+            The count; None before an executor exists
+        """
+        if self._executor is None:
+            return None
+        if not self._session_end_cancels_orders():
+            return 0
+        snapshot = self._executor.get_active_orders_snapshot()
+        return len(snapshot.active_limit_orders) + len(snapshot.active_stop_orders)
+
+    def _open_stop_budget(self) -> StopBudget:
+        """
+        What the session's stop may still spend, opened once and handed to the executor (#630).
+
+        From the instant a signal asked for the stop; a stop nobody signalled, a strategy's own
+        end or a crash, counts from here, the moment its first step asks.
+
+        Returns:
+            The stop's budget
+        """
+        if self._stop_budget is None:
+            settings = self._config.shutdown
+            self._note_stop_asked(self._what_asked_for_the_stop())
+            self._stop_budget = StopBudget(
+                settings.supervisor_kill_after_s, settings.reserve_for_records_s,
+                self._stop_asked_monotonic_s)
+            if isinstance(self._executor, LiveTradeExecutor):
+                self._executor.set_stop_budget(self._stop_budget)
+        return self._stop_budget
 
     def _interrupted_by_the_operator(self) -> bool:
         """
@@ -2132,3 +2341,21 @@ class AutotraderMain:
             True if dry-run mode
         """
         return resolve_dry_run(self._config)
+
+
+def _write_from_signal_handler(text: str) -> None:
+    """
+    Write one line to stderr from inside a signal handler.
+
+    A handler runs between two bytecodes of the main thread, which may be inside a `print` to
+    the same buffered stream: a second `print` then raises a reentrant-call error inside the
+    handler. Writing to the file descriptor bypasses that buffer. A failed write is dropped,
+    because a handler must not raise.
+
+    Args:
+        text: The line, with its own line breaks
+    """
+    try:
+        os.write(sys.__stderr__.fileno(), text.encode('utf-8', 'replace'))
+    except (OSError, ValueError, AttributeError):
+        pass

@@ -776,6 +776,39 @@ class TestARealCaptureReachesTheLedger:
         # Every repository is committed, so the code that ran is reproducible from commits.
         assert p.git_dirty is False
 
+    def test_the_commit_history_reaches_the_ledger_when_a_session_asks_for_it(self, repos):
+        framework, _, path_worker = repos
+        algos = Path(_git(path_worker.parent, 'rev-parse', '--show-toplevel'))
+        strategy = {'decision_logic_type': 'CORE/simple_consensus',
+                    'worker_instances': {'user_w': str(path_worker)}}
+        config = load_autotrader_config(_PROFILE)
+        config.strategy_config = strategy
+
+        identity = capture_code_identity([strategy], with_commit_history=True)
+        bundle = create_autotrader_loggers(config, _START, origin=build_run_origin(RunChannel.CLI),
+                                           code_identity=identity)
+        try:
+            p = build_run_provenance_from_session(
+                config, bundle.run_id, _START, None, run_dir=bundle.run_dir,
+                logger=bundle.summary_logger)
+        finally:
+            for logger in (bundle.global_logger, bundle.session_logger, bundle.summary_logger):
+                logger.close()
+
+        stands = {stand.repository: stand for stand in p.code_stand.repositories}
+        assert set(stands) == {'framework', str(algos)}
+        for stand, repo in ((stands['framework'], framework), (stands[str(algos)], algos)):
+            prefix = _git(repo, 'rev-parse', 'HEAD')[:12]
+            assert stand.commit == prefix and stand.recent_commits == [prefix]
+            assert stand.subject == 'initial' and stand.dirty is False
+
+    def test_a_capture_that_does_not_ask_records_no_history(self, repos):
+        identity = capture_code_identity([])
+
+        assert identity.framework.commit is not None
+        assert identity.framework.commit_subject is None
+        assert identity.framework.recent_commits is None
+
 
 class TestEachPatchStaysWithItsRepository:
     """

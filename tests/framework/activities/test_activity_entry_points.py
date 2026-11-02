@@ -78,7 +78,7 @@ class TestTheRunsEnterThemselves:
     def test_an_autotrader_session_is_listed_under_its_run_id(self, witness, registry_dir,
                                                                monkeypatch):
         """Refused at its start — cheap, and the path that must still leave the list."""
-        def no_identity(configs):
+        def no_identity(configs, **_):
             raise OSError(28, 'No space left on device')
 
         monkeypatch.setattr(autotrader_main_module, 'capture_code_identity', no_identity)

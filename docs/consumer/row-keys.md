@@ -33,6 +33,9 @@ more than one list carries `keys` instead:
 [Trade history](/api/v1/docs/trade-history) carries three lists and declares all three.
 [Order events](/api/v1/docs/order-events) declares `events` and `broker_truth` alike —
 `["scenario_name", "seq"]` — because `seq` runs across both lists within a unit.
+[Execution statistics](/api/v1/docs/execution-stats) keys its counts on `name`, the slippage of each
+unit's fills on `name` and `measured_against`, and the slippage of all of them on
+`measured_against`.
 
 ## An empty key is a declaration too
 
@@ -55,7 +58,8 @@ and the exit — all three.
 ## One unit, four field names, one identity
 
 The same unit appears as `name` on [scenario details](/api/v1/docs/scenario-details),
-[portfolio](/api/v1/docs/portfolio) and [venue account](/api/v1/docs/venue-account), as
+[portfolio](/api/v1/docs/portfolio), [execution statistics](/api/v1/docs/execution-stats) and
+[venue account](/api/v1/docs/venue-account), as
 `scenario_name` on [trade history](/api/v1/docs/trade-history) and
 [order events](/api/v1/docs/order-events), and as `unit_name` on
 [booking periods](/api/v1/docs/booking-periods).

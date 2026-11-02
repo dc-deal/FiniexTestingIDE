@@ -91,8 +91,10 @@ two distances in the instrument's own price unit, and `price_unit` labels which 
 forex, `tick` on crypto.
 
 `r_multiple` is the result in units of what the trade risked: `net_pnl` over the loss the stop
-would have taken. It is **null when the trade had no stop loss** — there is nothing to divide by,
-so R is undefined rather than zero. See [nulls](/api/v1/docs/nulls).
+would have taken. It is **null when the position carried no stop loss** — there is nothing to divide
+by, so R is undefined rather than zero. That includes a strategy keeping its stop itself: such a
+trade may name the level it closed at in `exit_level`, but the position carried none. See
+[nulls](/api/v1/docs/nulls).
 
 The stop it divides by is the one standing when the row was closed. Where a strategy moved its
 stop while the position was open, `r_multiple` is therefore not the R the trade was entered with,
@@ -101,8 +103,19 @@ and a stop moved to the entry price leaves it null.
 ## Slippage, and when it was not measurable
 
 `entry_slippage` and `exit_slippage` compare the fill against the mid price at the moment of
-submission, signed so that **a value above zero means worse than the submission mid**.
+submission, signed so that **a value above zero means worse than that price**.
 `entry_slippage_pct` and `exit_slippage_pct` are the same comparison as a share.
+
+**A stop-loss or take-profit exit is measured against the level that fired instead** — its
+`exit_slippage` and its `exit_slippage_pct`, the percent a share of the level
+(`exit_slippage_measured_against: "protective_level"`, otherwise `"submission_mid"`), and
+`exit_level` names it. A backtest fills a level the position carries AT the level, so it reads 0; a
+level the strategy keeps itself is a close it sends once the market has reached the level, so it
+fills at the next price and reads what that cost, as a live session does. That level is on no
+position, so `stop_loss` and `take_profit` are null and `exit_level` is the only place it is read.
+Against the mid, the backtest's figure would only say how far the tick that crossed the level
+overshot it. `exit_slippage_measured_against` is null on a row recorded before it existed, and
+`exit_level` on every other exit too.
 
 All four are null when no submission tick was captured — a close performed in cleanup has no
 submission moment to measure against, and neither does a record old enough to predate the
@@ -175,7 +188,7 @@ entry names its `currency` and the `trade_count` it covers.
 
 | Field | Meaning |
 |---|---|
-| `expectancy` | mean R over the trades that have a defined R |
+| `expectancy` | mean R over the trades that have a defined R; null when none has |
 | `r_trade_count` | trades that had a stop loss, so R is defined |
 | `avg_win_r` · `avg_loss_r` | mean R of winners and of losers |
 | `r_win_count` · `r_loss_count` | how many of the R-defined trades won and lost |

@@ -293,19 +293,18 @@ workers and decision run:
   committed bar opens at …. Refusing before the workers and the decision run on that tick rather
   than trading on a history with a missing bar — the venue commits a period within about two
   seconds of its end, so a restart a few seconds later closes it.
-  No order was submitted in this session and no stop or take-profit fired.
+  No order was submitted in this session.
 ============================================================
 ```
 
-The last line is counted, not assumed. The executor's stop and take-profit check runs on the tick
-before its bars are rendered, so a carried position whose level the first tick crossed already has
-a close on its way when the seam refuses; the line then reads
-`⚠️ Before the refusal: 1 order(s) submitted in this session · 1 close(s) triggered by a stop or
-take-profit on this tick — check what the venue holds before a restart.`
+The last line is counted, not assumed. A heartbeat pass before the first tick may have run the
+decision and sent an order; the line then reads
+`⚠️ Before the refusal: 1 order(s) submitted in this session — check what the venue holds before a
+restart.`
 
 The same block appears when the venue cannot be read again at that moment. The session log
 carries the reason, the summary reads `Shutdown: emergency (refused at the first tick)`, and the
-exit code is `2` like any failed session ([Runtime Model](autotrader_runtime_model.md), *Session
+exit code is `75`, so a supervisor starts it again ([Runtime Model](autotrader_runtime_model.md), *Session
 outcome and exit code*).
 
 ### Injection

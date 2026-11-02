@@ -163,7 +163,7 @@ class TestARestingOrderWaitsForItsPrice:
         response = _poll(sim, submit.broker_ref, _market(bid=3999.0, ask=4001.0), times=20)
 
         assert response.status == BrokerOrderStatus.PENDING, (
-            'this is the protective stop of #503 — a rehearsal must not report it as fired')
+            'a sell stop above the market has not fired, and a rehearsal must not report it as fired')
 
     def test_a_sell_stop_fills_at_the_MARKET_not_at_its_trigger(self):
         """
@@ -190,8 +190,8 @@ class TestARestingOrderWaitsForItsPrice:
         """
         The only stateful branch, and the real stop-limit trap: the trigger fires, and the
         price is already below the limit, so the order can no longer be filled at all. A
-        protective stop-limit in a crash does exactly this — which is precisely what a
-        rehearsal has to be able to show, instead of a comfortable fill.
+        sell stop-limit in a crash does exactly this — which is precisely what a rehearsal has
+        to be able to show, instead of a comfortable fill.
 
         A SELL limit fills when the bid is at or ABOVE it (selling higher than your limit is
         welcome), so the window that waits is a bid BELOW the limit.

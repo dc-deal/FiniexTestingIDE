@@ -24,7 +24,10 @@ maps where each is kept.
 how the patch of a dirty tree is stored and restored (see
 [Data Storage Layout](data_storage_layout.md#run-patches-keep-the-code-a-dirty-tree-ran-551)),
 what the API serves and when its contract changed (see
-[API Contract Log](../consumer/contract-log.md)), and the run header's other fields (see the
+[API Contract Log](../consumer/contract-log.md)), how a deployment shows two sessions' code side by
+side (see
+[Deployment & Ledger](../user_guides/deployment_ledger_guide.md#a-code-change-draws-one-row-per-repository-and-one-dated-warning)),
+and the run header's other fields (see the
 served [run header](../consumer/run-header.md) document, which lists every key).
 
 ## What a run header carries
@@ -46,12 +49,16 @@ The shape, with illustrative values — a session whose decision logic is loaded
                  "uncommitted_count": 42, "changes": [" M .gitignore", "…"],
                  "diff_hash": "9f2c…", "patch_ref": "run_patches/c83a….patch",
                  "patch_excluded": ["configs/credentials/inbound/consumer_tokens.json"],
-                 "restorable": true },
+                 "restorable": true,
+                 "commit_subject": "Fix the fee rounding",
+                 "recent_commits": ["151c98891a2b", "0f1e2d3c4b5a", "…"] },
   "repositories": [
     { "root": "/app/user_algos", "in_repository": true, "commit": "2f054f5", "dirty": true,
       "changes": ["?? my_bot/"], "diff_hash": "4e01…",
       "patch_ref": ".finiex_run_patches/7d19….patch",
-      "patch_excluded": [], "restorable": true }
+      "patch_excluded": [], "restorable": true,
+      "commit_subject": "Size the order from the equity",
+      "recent_commits": ["2f054f5a1b2c", "…"] }
   ],
   "components": [
     { "role": "decision", "name": "user_algos/my_bot/my_strategy.py",
@@ -198,13 +205,34 @@ could not be read records its code as unknown.
   when the tree is dirty through a nested repository, whose content a patch of the outer one
   cannot carry.
 
+**The commit's message and the recent commits, read only for a session of a deployment.**
+`commit_subject` is the commit's subject line; `recent_commits` the last 50 commits on HEAD's
+first-parent line, newest first, each as the first 12 characters of its hash. Together they let a
+deployment say how far the code moved between two sessions without asking git when the view is
+rendered. A list, because a count is what git gets wrong here: measured 2026-10-30 on throwaway
+repositories, `git rev-list --count old..HEAD` answers 1 with exit 0 where the truth is 3 on a clone
+that re-fetched itself with `--depth 1`, and 0 after a rollback. A shallow clone lists only the
+commits it holds, so a commit missing from the list may still be an older one. Two commits are
+compared by their shared beginning (`commits_agree`), never for equality, because `rev-parse
+--short` reads one commit as `5d9b4017` in one clone and `5d9b401` in another.
+
+- Both are null unless the capture asks, `capture_code_identity(..., with_commit_history=True)`,
+  which an AutoTrader session does exactly when it has a deployment. A backtest, a certificate and a
+  one-off session pay nothing for what nothing would read.
+- Each is read on its own and fails to null on its own (`get_repo_commit_history`), so a message
+  nobody can read does not cost the position, and the other way round. A repository git could not
+  read has neither.
+- A list whose newest commit is not the commit the state recorded is left out, and the subject with
+  it: HEAD moved between the reads, and a count derived from that list would describe a commit this
+  run does not name. The deployment view then reads `+?` for that session.
+
 **When it is captured.**
 
 | Run | Code identity |
 |---|---|
 | a simulation commissioned to report (`reporting: expected`) — every CLI run and sweep combination | captured over EVERY scenario's strategy |
 | a simulation commissioned not to report (`reporting: none`, the test path) | none — nothing will read it |
-| an AutoTrader session — mock, dry run or real orders | always, over the profile's strategy |
+| an AutoTrader session — mock, dry run or real orders | always, over the profile's strategy; with the commit history when it has a deployment |
 | a sweep's mount build | no header at all — it is not a run |
 
 An AutoTrader session captures it after its origin and BEFORE its header, and keeps it on the session,
@@ -248,6 +276,17 @@ its component versions and its dirty flag entirely; the header is written first.
   then would pair the start's commit with whatever is checked out after thirty days. Only a run
   whose header carries no code identity falls back to the process's read — and a recorded identity
   whose commit git could not read keeps that commit MISSING rather than borrowing a later read.
+- **`code_stand`** is the ledger's short form of the identity, on a session's row: per repository
+  its `repository` (`framework` for this one, because a deploy starts the next session from a new
+  tree and a root would read as another repository; the root for any other), `commit` (the newest of
+  `recent_commits`, else the recorded short hash), `dirty`, `diff_hash`, `subject` and
+  `recent_commits`. It comes from the header and never from git, not even as the fallback `git_commit`
+  has: the row is written long after the start. `dirty` is anything but exactly one known commit, so
+  an unreadable state reads dirty. A session whose identity nobody can read still gets a stand, this
+  repository with no commit, because an EMPTY column means the row predates the column, and a session
+  whose code nobody can name must not read as no change. A backtest leaves it empty: it has no sessions
+  to compare. The comparison is `builders/code_stand_comparison.py`, which reads two stands and asks
+  git nothing.
 
 Every run that reaches the ledger carries a code identity: both report coordinators write into the
 run directory its header was written into, only a simulation commissioned to report is given a
@@ -300,6 +339,9 @@ one the capture paid at the START (`get_git_info()` at the ledger fell from 2.7 
 is new is the diff hash and the patch, and only on a dirty tree: about 1.8 s on `/app` in the
 state measured above. A clean repository pays neither. The package re-check at the real-money startup
 guard reads one package directory per path component — milliseconds.
+
+The commit history adds two git calls per repository, about 0.28 s each on this mount (measured
+2026-10-30), once per process and only for a session with a deployment.
 
 ## Real orders from uncommitted code
 

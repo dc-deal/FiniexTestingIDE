@@ -34,15 +34,15 @@ from python.framework.types.performance_types.performance_stats_types import (
 from python.framework.types.portfolio_types.portfolio_aggregation_types import PortfolioStats
 from python.framework.types.portfolio_types.portfolio_trade_record_types import TradeRecord
 from python.framework.types.portfolio_types.portfolio_types import Position
+from python.framework.types.run_results_types import BookingPeriod
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
 from python.framework.types.signal_data_types import SignalResolutionStats, SignalSeries
-from python.framework.types.run_results_types import BookingPeriod
 from python.framework.types.trading_env_types.active_orders_snapshot_types import (
     ActiveOrdersSnapshot,
 )
 from python.framework.types.trading_env_types.broker_types import BrokerType
 from python.framework.types.trading_env_types.order_event_types import OrderEvent
-from python.framework.types.trading_env_types.order_types import OrderResult
+from python.framework.types.trading_env_types.order_types import OrderFeature, OrderResult
 from python.framework.types.trading_env_types.stress_test_types import StressTestConfig
 from python.framework.types.trading_env_types.trading_env_stats_types import (
     CostBreakdown,
@@ -282,6 +282,9 @@ class ProcessScenarioConfig:
     # === ORDER GUARD CONFIG ===
     order_guard_config: OrderGuardDefaults = field(default_factory=OrderGuardDefaults)
 
+    # === ORDER FEATURES BEYOND THE VENUE (#625) ===
+    features_beyond_venue: List[OrderFeature] = field(default_factory=list)
+
     # === HISTORY LIMITS ===
     bar_max_history: int = 1000
     order_history_max: int = 10000
@@ -443,6 +446,7 @@ class ProcessScenarioConfig:
             seeds=seeds,
             stress_test_config=stress_test_config,
             order_guard_config=order_guard_config,
+            features_beyond_venue=scenario.features_beyond_venue,
             bar_max_history=app_config_loader.get_bar_max_history(),
             order_history_max=app_config_loader.get_order_history_max(),
             trade_history_max=app_config_loader.get_trade_history_max(),
@@ -567,6 +571,10 @@ class ProcessTickLoopResult:
     # Every order transition of the scenario (#362) — uncapped, unlike the order history.
     # The report writes them; the subprocess cannot write a run artifact itself
     order_events: Optional[List[OrderEvent]] = None
+
+    # The level each stop-loss or take-profit close fired at, by its fill event's seq (#631) —
+    # what that fill's slippage is measured against; uncapped, unlike the trade history
+    protective_fill_levels: Optional[Dict[int, float]] = None
 
     # The orders still resting or on their way when the scenario ended
     active_orders: Optional[ActiveOrdersSnapshot] = None

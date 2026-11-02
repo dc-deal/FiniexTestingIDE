@@ -210,7 +210,7 @@ LONG limit with price modification. Original price unreachable, modified at tick
 |------|-----------|
 | `test_trade_count` | Exactly 1 trade |
 | `test_entry_type_is_limit` | entry_type = LIMIT |
-| `test_entry_price_equals_modified` | entry_price == modified config limit price |
+| `test_entry_price_is_modified` | entry_price == modified config limit price |
 | `test_direction_is_long` | direction = LONG |
 
 ### TestStopLongTrigger

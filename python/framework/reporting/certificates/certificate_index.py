@@ -94,12 +94,16 @@ class CertificateIndex(AbstractStoreIndex):
         Why the index may not be served.
 
         Returns:
-            The reason, or None when it is current and newer than every certificate
+            The reason, or None when it is current, newer than every certificate and holds exactly
+            those on disk: a certificate that was removed leaves no newer file behind, and served
+            from the index it would be a path that no longer exists
         """
         code = super().staleness_reason()
         if code is not None:
             return code
         files = self.certificate_files()
+        if set(self.read()['path']) != {str(path) for path in files}:
+            return 'the certificates on disk are not the ones indexed'
         if not files:
             return None
         if self.get_path().stat().st_mtime_ns < max(f.stat().st_mtime_ns for f in files):

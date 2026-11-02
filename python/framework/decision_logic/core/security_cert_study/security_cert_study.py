@@ -37,7 +37,7 @@ from python.framework.types.market_types.market_types import TradingContext
 from python.framework.types.parameter_types import InputParamDef
 from python.framework.types.store_member_types import RunEntryMemberId
 from python.framework.types.trading_env_types.broker_types import SymbolSpecification
-from python.framework.types.trading_env_types.order_types import OrderType
+from python.framework.types.trading_env_types.order_types import OrderFeature, OrderType
 
 
 class SecurityCertStudy(AbstractAcceptanceStudy):
@@ -95,6 +95,19 @@ class SecurityCertStudy(AbstractAcceptanceStudy):
     # ============================================
     # Factory interface
     # ============================================
+
+    @classmethod
+    def get_required_order_features(cls, decision_logic_config: Dict[str, Any]) -> List[OrderFeature]:
+        """
+        None: the study sets no level on an order or a position.
+
+        Args:
+            decision_logic_config: Decision logic configuration dict
+
+        Returns:
+            An empty list
+        """
+        return []
 
     @classmethod
     def get_required_order_types(cls, decision_logic_config: Dict[str, Any]) -> List[OrderType]:

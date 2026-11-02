@@ -140,6 +140,33 @@ def venue_credentials_path(broker_type: str) -> Path:
     return workspace_credentials_path(entry.credentials_file)
 
 
+def require_venue_key(request, broker_type: str) -> Path:
+    """
+    The configured key's path, or the answer to a key that is not there.
+
+    A bare run skips, so a whole-tree pytest on a machine without credentials stays harmless. A run
+    that declared its intent, with real orders or a named release, fails: it set out to prove
+    something, and a skip would exit 0 with nothing proven, while the check after it passes on the
+    previous certificate (#640).
+
+    Args:
+        request: The fixture request, whose options say what the run declared
+        broker_type: The broker entry in `market_config.json`, e.g. 'kraken_spot'
+
+    Returns:
+        The path of the credentials file, which exists
+    """
+    credentials_path = venue_credentials_path(broker_type)
+    if credentials_path.exists():
+        return credentials_path
+    detail = f'{broker_type} credentials not found: {credentials_path}'
+    declared = (request.config.getoption('place_real_orders', default=False)
+                or request.config.getoption('release_version', default='dev') != 'dev')
+    if declared:
+        pytest.fail(f'This run declared real orders or a release, and has no key. {detail}')
+    pytest.skip(detail)
+
+
 @pytest.fixture(scope='module')
 def real_orders_authorised(request) -> None:
     """
@@ -188,6 +215,8 @@ def pytest_addoption(parser):
 def pytest_sessionfinish(session, exitstatus):
     """Write the release certificate after the session completes."""
     results = session.config._live_adapter_results
+    refuse_a_run_that_placed_nothing(session, results)
+
     # Expected failures count as RUN. They are reported by pytest as skips, and leaving them
     # out of the total made a session consisting only of known-broken paths look like a
     # session in which nothing happened — no certificate at all — and left the arithmetic
@@ -214,6 +243,23 @@ def pytest_sessionfinish(session, exitstatus):
         comment=session.config.getoption('comment', default=None),
         results=results,
     )
+
+
+def refuse_a_run_that_placed_nothing(session, results: _ResultCollector) -> None:
+    """
+    End with a failing exit code where `--place-real-orders` placed none, whatever made the phases
+    skip. Pytest alone would exit 0, and the check after it judges the previous certificate (#640).
+
+    Args:
+        session: The pytest session, whose exit status this may change
+        results: The session's collected outcomes and observed adapter settings
+    """
+    if not session.config.getoption('place_real_orders', default=False):
+        return
+    if any(phase['dry_run'] is False for phase in results.observed_phases):
+        return
+    print('\n❌ --place-real-orders was given and no real-order phase ran: nothing was certified.')
+    session.exitstatus = pytest.ExitCode.TESTS_FAILED
 
 
 def _write_report(release_version: str, comment: str, results: _ResultCollector) -> None:

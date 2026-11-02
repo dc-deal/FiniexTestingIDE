@@ -29,15 +29,15 @@ from python.framework.constants.currency_constants import format_currency_signed
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.process.market_data_episode_tracker import MarketDataEpisodeTracker
-from python.framework.reporting.booking_period_recorder import (
-    BookingPeriodRecorder,
-    snapshot_from_executor,
-)
 from python.framework.process.process_live_export import process_live_export, process_live_setup
 from python.framework.process.tick_pipeline_core import (
     execute_algo_path,
     render_bars_for_tick,
     run_ghost_pass,
+)
+from python.framework.reporting.booking_period_recorder import (
+    BookingPeriodRecorder,
+    snapshot_from_executor,
 )
 from python.framework.stress_test.stale_data_stress_driver import (
     StaleDataStressDriver,
@@ -510,13 +510,12 @@ def execute_tick_loop(
             _symbol_spec.base_currency: trade_simulator.get_committed_funds(
                 _symbol_spec.base_currency),
         }
-        portfolio_stats.protective_level_enforcement = (
-            trade_simulator.get_protective_level_enforcement().value)
         if current_tick:
             portfolio_stats.last_price = current_tick.mid
         execution_stats = trade_simulator.get_execution_stats()
         cost_breakdown = trade_simulator.portfolio.get_cost_breakdown()
         trade_history = trade_simulator.get_trade_history()
+        protective_fill_levels = trade_simulator.get_protective_fill_levels()
         order_history = trade_simulator.get_order_history()
         active_orders = trade_simulator.get_active_orders_snapshot()
 
@@ -546,6 +545,7 @@ def execute_tick_loop(
             trade_history=trade_history,
             order_history=order_history,
             order_events=order_events,
+            protective_fill_levels=protective_fill_levels,
             active_orders=active_orders,
             open_positions=open_positions,
             profiling_data=ProcessProfileData(

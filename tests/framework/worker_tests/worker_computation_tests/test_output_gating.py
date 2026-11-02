@@ -5,7 +5,6 @@ requirement keeps compute-all, so existing strategies stay bit-identical.
 """
 
 import pytest
-from tests.framework.worker_tests.worker_computation_tests.conftest import make_bars, make_tick
 
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.decision_logic.core.aggressive_trend import AggressiveTrend
@@ -13,6 +12,7 @@ from python.framework.decision_logic.core.simple_consensus import SimpleConsensu
 from python.framework.types.worker_types import SUBSCRIBE_ALL, WorkerRequirement
 from python.framework.workers.core.bollinger_worker import BollingerWorker
 from python.framework.workers.worker_orchestrator import WorkerOrchestrator
+from tests.framework.worker_tests.worker_computation_tests.conftest import make_bars, make_tick
 
 # 30 bars > period + 1 → the slope path (the gated 2nd moving average) is exercised
 CLOSES = [100.0 + (i % 5) - 2 + i * 0.1 for i in range(30)]
@@ -97,6 +97,10 @@ class _StubLogic(AbstractDecisionLogic):
     def __init__(self, logger, workers_decl):
         super().__init__(name='stub', logger=logger, config={})
         self._workers_decl = workers_decl
+
+    @classmethod
+    def get_required_order_features(cls, decision_logic_config) -> list:
+        return []
 
     @classmethod
     def get_required_order_types(cls, decision_logic_config):

@@ -21,9 +21,9 @@ from datetime import date, datetime, timedelta, timezone
 from types import SimpleNamespace
 from typing import List, Optional
 
-from python.framework.autotrader.safety.safety_circuit_breaker import SafetyCircuitBreaker
 from python.framework.autotrader.operator_alerts.alert_episode import AlertEpisode
 from python.framework.autotrader.safety.risk_baseline_tracker import RiskBaselineTracker
+from python.framework.autotrader.safety.safety_circuit_breaker import SafetyCircuitBreaker
 from python.framework.reporting.builders.safety_report_builder import (
     build_safety_report_from_session,
 )

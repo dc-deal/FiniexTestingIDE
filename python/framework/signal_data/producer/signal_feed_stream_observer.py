@@ -36,6 +36,9 @@ from python.framework.signal_data.producer.signal_producer_reads import (
 from python.framework.signal_data.transport.signal_frame_recorder import SignalFrameRecorder
 from python.framework.signal_data.transport.signal_inbox import SignalInbox
 from python.framework.signal_data.transport.signal_stream_source import SignalStreamSource
+from python.framework.types.config_types.autotrader_defaults_config_types import (
+    ShutdownDefaults,
+)
 from python.framework.types.config_types.sentiment_config_types import (
     ActiveProducer,
     SentimentStreamConfig,
@@ -189,7 +192,7 @@ class SignalFeedStreamObserver:
         try:
             time.sleep(seconds)
         finally:
-            source.stop()
+            source.stop(ShutdownDefaults().signal_transport_join_s)
 
         stats = source.get_transport_stats()
         for observation in recorder.get_observations():

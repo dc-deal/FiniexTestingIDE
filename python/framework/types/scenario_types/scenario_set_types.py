@@ -13,15 +13,16 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from python.framework.types.config_types.backtesting_config_types import TradeSimulatorDefaults
-from python.framework.types.data_deficiency_types import DataDeficiency
-from python.framework.types.run_purpose_types import RunPurpose
-from python.framework.types.trading_env_types.broker_types import BrokerType
 from python.framework.types.config_types.robustness_config_types import (
     RobustnessConfig,
     RobustnessRole,
 )
+from python.framework.types.data_deficiency_types import DataDeficiency
+from python.framework.types.run_purpose_types import RunPurpose
 from python.framework.types.scenario_types.window_set_types import WindowSet
 from python.framework.types.spread_estimate_types import ModelledSpreadSummary
+from python.framework.types.trading_env_types.broker_types import BrokerType
+from python.framework.types.trading_env_types.order_types import OrderFeature
 from python.framework.types.validation_types import ValidationResult
 
 
@@ -75,6 +76,10 @@ class SingleScenario:
     # OrderGuard configuration (per scenario, cascaded from global)
     # None = OrderGuardDefaults (60s cooldown, 2 rejections)
     order_guard_config: Optional[Dict[str, Any]] = None
+
+    # Order features the set declares its venue need not hold (#625) — set-wide, a recorded
+    # exception. Empty for every set that declares none.
+    features_beyond_venue: List[OrderFeature] = field(default_factory=list)
 
     account_currency: str = ''
 
@@ -173,27 +178,6 @@ class SingleScenario:
             return float(config['modelled_spread_factor'])
         return TradeSimulatorDefaults().modelled_spread_factor
 
-    def to_config_string_for_display(self) -> str:
-        """
-        Display string for scenario configuration.
-
-        Returns:
-            Human-readable config summary
-        """
-        sentiment_line = (
-            f'  Sentiment Source: {self.data_sentiment_type}\n'
-            if self.data_sentiment_type else ''
-        )
-        return (
-            f"Scenario: {self.name}\n"
-            f"  Data broker: {self.data_broker_type}\n"
-            f"  Symbol: {self.symbol}\n"
-            f"{sentiment_line}"
-            f"  Period: {self.start_date} → {self.end_date}\n"
-            f"  Max Ticks: {self.max_ticks or 'unlimited'}\n"
-            f"  Enabled: {self.enabled}"
-        )
-
     def is_valid(self) -> bool:
         """
         Check if scenario passed validation.
@@ -223,6 +207,8 @@ class LoadedScenarioConfig:
     disabled_count: int = 0
     # What the set's runs are FOR (#576) — the top-level `run_purpose`, absent meaning REGULAR.
     run_purpose: RunPurpose = RunPurpose.REGULAR
+    # The order features the set declares its venue need not hold (#625).
+    features_beyond_venue: List[OrderFeature] = field(default_factory=list)
 
 
 @dataclass

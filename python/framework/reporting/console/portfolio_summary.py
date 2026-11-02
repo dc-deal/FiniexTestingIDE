@@ -31,7 +31,6 @@ from python.framework.types.api.report_types import (
     PortfolioUnitRow,
 )
 from python.framework.types.trading_env_types.broker_types import FeeSource
-from python.framework.types.trading_env_types.order_types import ProtectiveLevelEnforcement
 from python.framework.utils.console_renderer import ConsoleRenderer
 from python.framework.utils.math_utils import force_negative, force_positive
 
@@ -251,8 +250,6 @@ class PortfolioSummary(AbstractBatchSummarySection):
                 lines.append(
                     f'  {pos.position_id} {pos.direction.upper()} {pos.lots} @ '
                     f'{pos.entry_price:,.5f} → {mark}')
-                # A protective level is never printed without its holder (#500). It used to
-                # be shown alone, and nobody was enforcing it.
                 level = PortfolioSummary._protective_level_line(pos, renderer)
                 if level:
                     lines.append(f'    {level}')
@@ -270,54 +267,21 @@ class PortfolioSummary(AbstractBatchSummarySection):
     @staticmethod
     def _protective_level_line(
         pos: OpenPositionRow, renderer: ConsoleRenderer) -> str:
-        """The position's stop and target, and who actually enforces them (#500).
+        """The position's stop and target.
 
         Args:
             pos: The open-position row
             renderer: Console renderer for formatting
 
         Returns:
-            The line, empty when the position declares no level
+            The line, empty when the position carries no level
         """
-        stop_held = pos.protective_level_enforcement
-        target_held = pos.take_profit_enforcement or stop_held
-        # One label across both levels reads as a claim about both. Since #503 that claim
-        # can be half false: only the STOP rests at the venue, so a position reported as
-        # "survives a restart" has a target that does not. Labelled per level as soon as the
-        # two answers differ, and left as one line when they agree, which is the usual case.
-        split = stop_held != target_held
         parts = []
         if pos.stop_loss is not None:
-            parts.append(f'stop {pos.stop_loss:,.5f}'
-                         + (f'  [{PortfolioSummary._enforcement_label(stop_held, renderer)}]'
-                            if split else ''))
+            parts.append(f'stop {pos.stop_loss:,.5f}')
         if pos.take_profit is not None:
-            parts.append(f'target {pos.take_profit:,.5f}'
-                         + (f'  [{PortfolioSummary._enforcement_label(target_held, renderer)}]'
-                            if split else ''))
-        if not parts:
-            return ''
-        if split:
-            return ' · '.join(parts)
-        return ' · '.join(parts) + (
-            f'  [{PortfolioSummary._enforcement_label(stop_held, renderer)}]')
-
-    @staticmethod
-    def _enforcement_label(enforcement: str, renderer: ConsoleRenderer) -> str:
-        """How one level's enforcement answer is shown.
-
-        Args:
-            enforcement: The enforcement value from the row
-            renderer: Console renderer for formatting
-
-        Returns:
-            The bracket text for that level
-        """
-        if enforcement == ProtectiveLevelEnforcement.VENUE.value:
-            return 'held at the venue — survives a restart'
-        if enforcement == ProtectiveLevelEnforcement.LOCAL.value:
-            return renderer.yellow('watched by this process only')
-        return renderer.red('ENFORCED BY NOBODY')
+            parts.append(f'target {pos.take_profit:,.5f}')
+        return ' · '.join(parts)
 
     def _balance_lines(
         self, unit: PortfolioUnitRow, renderer: ConsoleRenderer) -> List[str]:

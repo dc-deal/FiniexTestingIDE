@@ -71,7 +71,8 @@ def build_run_origin(channel: RunChannel, allow_dirty: bool = False,
 
 
 def capture_code_identity(strategy_configs: List[Dict],
-                          ignore_untracked_under: Optional[str] = None) -> CodeIdentity:
+                          ignore_untracked_under: Optional[str] = None,
+                          with_commit_history: bool = False) -> CodeIdentity:
     """
     Capture which code a run is about to run, keeping every dirty tree's patch.
 
@@ -85,13 +86,16 @@ def capture_code_identity(strategy_configs: List[Dict],
             which certifies this repository's code
         ignore_untracked_under: A certificate's reports directory, whose untracked artifacts are
             not code; None for a run
+        with_commit_history: Also read every repository's commit subject and recent commits; a
+            session with a deployment asks for it, and nothing else pays for it
 
     Returns:
         The run's code identity
     """
     store = RunPatchStore(Path(AppConfigManager().get_run_patches_path()))
     return build_code_identity(strategy_configs, patch_sink=_patch_sink(store),
-                               ignore_untracked_under=ignore_untracked_under)
+                               ignore_untracked_under=ignore_untracked_under,
+                               with_commit_history=with_commit_history)
 
 
 def _patch_sink(framework_store: RunPatchStore) -> PatchSink:

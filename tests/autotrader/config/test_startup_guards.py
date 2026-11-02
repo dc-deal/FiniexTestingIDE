@@ -94,65 +94,6 @@ def _setup_error(tmp_path, **overrides) -> str:
     return ''
 
 
-class TestAVenueThatCannotHoldAProtectiveOrder:
-    """
-    #503: a profile-wide opt-in is a STARTUP problem, not a per-order one.
-
-    Left to the submit path it would reject every protected entry, one at a time, for the
-    whole session — the bot would run, trade nothing, and each rejection would read as an
-    isolated incident rather than as one wrong line in the profile.
-
-    But the refusal belongs to a LIVE-ADAPTER session only. A mock session builds a
-    MockBrokerAdapter whatever its profile's broker_type says, so it can never carry a
-    protective order — refusing there would make an opted-in profile UNREHEARSABLE, which
-    is the same mistake the simulation deliberately avoids by accepting the flag and
-    changing nothing.
-    """
-
-    def test_a_live_session_refuses_to_start(self, tmp_path):
-        message = _setup_error(
-            tmp_path, broker_type='mt5', symbol='EURUSD', **_LIVE_WIRING,
-            execution={'venue_held_protection': True})
-
-        assert 'venue_held_protection' in message, (
-            f'A live profile the venue cannot serve must not start: {message!r}')
-
-    def test_the_refusal_names_both_sides(self, tmp_path):
-        """The profile switch AND the broker — an operator has to know which to change."""
-        message = _setup_error(
-            tmp_path, broker_type='mt5', symbol='EURUSD', **_LIVE_WIRING,
-            execution={'venue_held_protection': True})
-
-        assert 'execution.venue_held_protection' in message
-        assert 'send_order(venue_held_protection=True)' in message, (
-            'The per-order route is refused the same way and the message should say so')
-
-    def test_a_mock_rehearsal_is_not_stopped(self, tmp_path):
-        """
-        The rehearsal must still run. A profile is written for live and tried against
-        recorded data first; a gate that refused it would remove the only cheap way to
-        exercise everything ELSE in that profile.
-        """
-        message = _setup_error(
-            tmp_path, broker_type='mt5', symbol='EURUSD',
-            execution={'venue_held_protection': True})
-
-        assert 'venue_held_protection' not in message, (
-            f'A mock session has no venue and nothing to refuse: {message!r}')
-
-    def test_the_switch_is_off_by_default(self, tmp_path):
-        """
-        A profile that never mentions it starts against any venue.
-
-        The default matters as much as the guard: opting in changes what the bot does with
-        real money, so a session must never acquire the behaviour by accident.
-        """
-        message = _setup_error(
-            tmp_path, broker_type='mt5', symbol='EURUSD', **_LIVE_WIRING)
-
-        assert 'venue_held_protection' not in message
-
-
 class TestARestLadderThatNeverGivesUp:
     """
     #362: every read and write a live session sends goes through its broker's REST ladder, and a

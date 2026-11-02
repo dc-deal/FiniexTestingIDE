@@ -171,8 +171,7 @@ class OrderEvent:
         action: Open or close
         order_type: The type the order was asked as; None where it is not known
         symbol: The instrument
-        direction: The POSITION's direction — for a close that of the position it closes,
-            which a protective order's own trading side is the opposite of
+        direction: The POSITION's direction — for a close that of the position it closes
         client_order_id: Our wire key
         broker_ref: The venue's handle for the order
         previous_broker_ref: The handle before an amend replaced it

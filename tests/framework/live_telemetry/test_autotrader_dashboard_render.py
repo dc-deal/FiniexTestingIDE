@@ -9,11 +9,13 @@ because every mock profile switches the display off.
 
 import dataclasses
 import io
+import time
 from datetime import datetime, timedelta, timezone
 from typing import List
 
 import pytest
 from rich.console import Console
+from rich.live import Live
 from rich.panel import Panel
 
 import python.system.ui.autotrader_live_display as autotrader_live_display
@@ -23,6 +25,7 @@ from python.framework.types.autotrader_types.autotrader_display_types import (
     TickSourceSnapshot,
     TradeHistoryEntry,
 )
+from python.framework.types.autotrader_types.shutdown_status_types import ShutdownStep
 from python.framework.types.portfolio_types.portfolio_trade_record_types import (
     CloseReason,
     EntryType,
@@ -308,6 +311,213 @@ class TestTheLoop:
         assert 'dashboard render failed: MarkupError' in screen.getvalue()
         # The failure frame still names the deployment it belongs to
         assert 'DEPLOYMENT deploy_20261012_074850' in screen.getvalue()
+
+
+class TestAStopInProgress:
+    """
+    A session that stops says what it waits for and what is still to do (#630). Stated once in a
+    panel on top, because a dashboard that keeps saying RUNNING and calls a stopped source dead
+    reads like a fault while the session does exactly what it should.
+    """
+
+    _DRAWN = [
+        '🛑 SHUTTING DOWN · SIGTERM 14:22:42 UTC · decisions stopped',
+        '   Waiting for   market BUY 0.12 ETHUSD · on its way 4.2 s · venue has not answered',
+        '   Still to do   carry-over · 0 orders to cancel · venue read · reports · alerts',
+        '   Order wait    4.2 s of 30.0 s, then: booked unaccounted, reported, session ends '
+        'itself',
+        '   Kill          in 75.8 s (supervisor)',
+    ]
+
+    @pytest.mark.parametrize('width', [_SINGLE, _TWO, _THREE], ids=['1-col', '2-col', '3-col'])
+    def test_it_stands_on_top_as_it_was_approved_in_each_layout(
+            self, dashboard, dashboard_frame, connection, frame_time, render_reports, stopping,
+            width):
+        text = _export(dashboard.render(dashboard_frame, connection, frame_time, width, stopping),
+                       width)
+
+        lines = text.splitlines()
+        for row, drawn in enumerate(self._DRAWN):
+            # Below the frame's top border and the panel's own
+            assert lines[2 + row].startswith(f'│ │ {drawn}'), (drawn, lines[2 + row])
+        assert 'panel failed' not in text
+        assert render_reports == []
+
+    @pytest.mark.parametrize('width', [_SINGLE, _TWO, _THREE], ids=['1-col', '2-col', '3-col'])
+    def test_the_rest_of_the_dashboard_stays(self, dashboard, dashboard_frame, connection,
+                                             frame_time, stopping, width):
+        text = _export(dashboard.render(dashboard_frame, connection, frame_time, width, stopping),
+                       width)
+
+        for title in _PANELS[width]:
+            assert title in text, title
+
+    def test_no_stop_no_panel(self, dashboard, dashboard_frame, connection, frame_time):
+        text = _export(dashboard.render(dashboard_frame, connection, frame_time, _TWO), _TWO)
+
+        assert 'SHUTTING DOWN' not in text
+        assert 'Still to do' not in text
+
+    @pytest.mark.parametrize('width', [_SINGLE, _TWO, _THREE], ids=['1-col', '2-col', '3-col'])
+    def test_nothing_awaited_still_says_what_is_to_do(self, dashboard, dashboard_frame,
+                                                        connection, frame_time, stopping, width):
+        status = dataclasses.replace(stopping, awaited_orders=(),
+                                     order_wait_began_monotonic_s=None, order_wait_bound_s=None,
+                                     step=ShutdownStep.ORDER_CLEANUP, orders_to_cancel=2)
+
+        text = _export(dashboard.render(dashboard_frame, connection, frame_time, width, status),
+                       width)
+
+        assert 'Waiting for' not in text
+        assert 'Order wait' not in text
+        assert 'Now           2 orders to cancel' in text
+        assert 'Still to do   venue read · reports · alerts' in text
+
+    def test_no_kill_declared_no_kill_line(self, dashboard, dashboard_frame, connection,
+                                           frame_time, stopping):
+        status = dataclasses.replace(stopping, kill_at_monotonic_s=None)
+
+        text = _export(dashboard.render(dashboard_frame, connection, frame_time, _TWO, status),
+                       _TWO)
+
+        assert 'Kill' not in text
+        assert 'supervisor' not in text
+
+    def test_a_cropped_frame_cannot_hide_it(self, dashboard, dashboard_frame, connection,
+                                            frame_time, stopping):
+        screen = io.StringIO()
+        # Far too short for the frame: the live display crops it from the bottom
+        terminal = Console(file=screen, width=_TWO, height=12, force_terminal=True,
+                           color_system=None)
+        frame = dashboard.render(dashboard_frame, connection, frame_time, _TWO, stopping)
+
+        with Live(console=terminal, auto_refresh=False) as live:
+            live.update(frame, refresh=True)
+
+        for drawn in self._DRAWN:
+            assert drawn in screen.getvalue(), drawn
+
+    def test_many_orders_are_counted_rather_than_taking_the_frame(
+            self, dashboard, dashboard_frame, connection, frame_time, stopping):
+        row = stopping.awaited_orders[0]
+        status = dataclasses.replace(stopping, awaited_orders=(row,) * 11)
+
+        text = _export(dashboard.render(dashboard_frame, connection, frame_time, _TWO, status),
+                       _TWO)
+
+        assert text.count('market BUY 0.12 ETHUSD') == dashboard._MAX_ACTIVE_ORDERS
+        assert '+ 3 more' in text
+        assert text.count('Waiting for') == 1
+
+    def test_a_venues_and_a_strategys_words_are_text(self, dashboard, dashboard_frame, connection,
+                                                     frame_time, render_reports, stopping):
+        row = dataclasses.replace(stopping.awaited_orders[0], waits_for='venue said [/x] wait')
+        status = dataclasses.replace(stopping, asked_by='strategy [/x] asked',
+                                     awaited_orders=(row,))
+
+        text = _export(dashboard.render(dashboard_frame, connection, frame_time, _WIDE, status),
+                       _WIDE)
+
+        assert 'strategy [/x] asked' in text
+        assert 'venue said [/x] wait' in text
+        assert render_reports == []
+
+    def test_before_the_first_snapshot(self, dashboard, connection, frame_time, render_reports,
+                                       stopping):
+        text = _export(dashboard.render(None, connection, frame_time, _TWO, stopping), _TWO)
+
+        assert 'FiniexAutoTrader' in text
+        assert '🛑 SHUTTING DOWN · SIGTERM 14:22:42 UTC' in text
+        assert 'Still to do' in text
+        assert render_reports == []
+
+    @pytest.mark.parametrize('width', [_SINGLE, _TWO, _THREE], ids=['1-col', '2-col', '3-col'])
+    def test_the_status_line_stops_claiming_running(self, dashboard, dashboard_frame, connection,
+                                                    frame_time, stopping, width):
+        running = _export(dashboard.render(dashboard_frame, connection, frame_time, width), width)
+        stopped = _export(dashboard.render(dashboard_frame, connection, frame_time, width,
+                                           stopping), width)
+
+        assert '● RUNNING' in _line_with(running, 'Status:')
+        assert '🛑 SHUTTING DOWN' in _line_with(stopped, 'Status:')
+        assert 'RUNNING' not in stopped
+        # The frame is a pulse: its time since the last tick is no longer news
+        assert 'since last tick' not in stopped
+
+    @pytest.mark.parametrize('width', [_TWO, _THREE], ids=['2-col', '3-col'])
+    def test_a_source_stopped_on_purpose_is_no_dead_stream(self, dashboard, dashboard_frame,
+                                                           frame_time, stopping, width):
+        silent = TickSourceSnapshot(message_age_s=11.0, connection_dead_s=10.0)
+        status = dataclasses.replace(stopping, tick_source_stopped=True)
+
+        text = _export(dashboard.render(dashboard_frame, silent, frame_time, width, status), width)
+
+        assert '● stopped on purpose' in text
+        assert '● dead' not in text
+
+    def test_a_source_still_running_during_the_wait_reads_as_it_is(
+            self, dashboard, dashboard_frame, frame_time, stopping):
+        silent = TickSourceSnapshot(message_age_s=11.0, connection_dead_s=10.0)
+
+        text = _export(dashboard.render(dashboard_frame, silent, frame_time, _TWO, stopping), _TWO)
+
+        assert '● dead' in text
+        assert 'stopped on purpose' not in text
+
+    @pytest.mark.parametrize('width', [_SINGLE, _TWO, _THREE], ids=['1-col', '2-col', '3-col'])
+    def test_a_panel_that_fails_shows_failed_in_place_and_is_reported_once(
+            self, dashboard, dashboard_frame, connection, frame_time, render_reports, stopping,
+            width):
+        broken = dataclasses.replace(stopping, asked_at=None)
+
+        first = _export(dashboard.render(dashboard_frame, connection, frame_time, width, broken),
+                        width)
+        dashboard.render(dashboard_frame, connection, frame_time, width, broken)
+
+        assert 'panel failed: TypeError' in first
+        assert first.index('SHUTTING DOWN') < first.index('panel failed: TypeError')
+        for title in _PANELS[width]:
+            assert title in first, title
+        assert len(render_reports) == 1
+        assert render_reports[0].startswith('❌ [DISPLAY] Panel SHUTTING DOWN failed — TypeError')
+
+    def test_the_frame_polls_what_the_stop_is_doing(self, dashboard, dashboard_frame,
+                                                    shutdown_holder, render_reports, monkeypatch):
+        terminal = Console(file=io.StringIO(), width=_TWO, height=60, color_system=None,
+                           force_terminal=False)
+        monkeypatch.setattr(dashboard, '_console', terminal)
+        dashboard._stats = dashboard_frame
+        assert 'SHUTTING DOWN' not in _export(dashboard._frame(), _TWO)
+
+        shutdown_holder.note_asked(
+            'SIGTERM', datetime(2026, 10, 12, 14, 22, 42, tzinfo=timezone.utc), time.monotonic())
+
+        assert '🛑 SHUTTING DOWN · SIGTERM 14:22:42 UTC' in _export(dashboard._frame(), _TWO)
+        assert render_reports == []
+
+    def test_a_failure_frame_still_says_the_session_is_stopping(
+            self, dashboard, shutdown_holder, render_reports, monkeypatch):
+        def fails(*args):
+            raise RuntimeError('cannot draw')
+
+        monkeypatch.setattr(dashboard, 'render', fails)
+        assert 'SHUTTING DOWN' not in _export(dashboard._frame(), _TWO)
+
+        shutdown_holder.note_asked(
+            'SIGTERM', datetime(2026, 10, 12, 14, 22, 42, tzinfo=timezone.utc), time.monotonic())
+
+        text = _export(dashboard._frame(), _TWO)
+        assert '🛑 SHUTTING DOWN' in text
+        assert 'dashboard render failed: RuntimeError' in text
+
+
+@pytest.mark.parametrize('on_a_terminal', [True, False], ids=['terminal', 'no_terminal'])
+def test_it_knows_whether_it_has_a_terminal_to_draw_on(dashboard, monkeypatch, on_a_terminal):
+    """Without one it shows only its last frame, so a stop's lines must reach the console (#630)."""
+    monkeypatch.setattr(dashboard, '_console', Console(
+        file=io.StringIO(), force_terminal=on_a_terminal, color_system=None))
+
+    assert dashboard.holds_a_terminal() is on_a_terminal
 
 
 class TestTheExporterCopiesTheRecord:

@@ -33,11 +33,11 @@ from datetime import date, datetime
 from typing import List, Optional
 
 from python.framework.reporting.builders.report_aggregators import aggregate_trade_analytics
+from python.framework.reporting.builders.run_unit import RunUnit
 from python.framework.reporting.builders.trade_history_report_builder import (
     TradeWindowBasis,
     build_trade_history_report,
 )
-from python.framework.reporting.builders.run_unit import RunUnit
 from python.framework.types.api.report_types import RunSummaryCurrency, TradeHistoryRow
 from python.framework.types.portfolio_types.portfolio_trade_record_types import TradeRecord
 from python.framework.types.run_results_types import BookingPeriod, PeriodCloseReason
@@ -234,7 +234,7 @@ def _figures(rows: List[TradeHistoryRow], snapshot: PeriodSnapshot) -> RunSummar
         final_equity=snapshot.final_equity,
         open_position_count=snapshot.open_position_count,
         # --- risk-normalised and excursion figures, from the same single pass
-        expectancy=stats.expectancy if stats else 0.0,
+        expectancy=stats.expectancy if stats else None,
         avg_win_r=stats.avg_win_r if stats else None,
         avg_loss_r=stats.avg_loss_r if stats else None,
         r_trade_count=stats.r_trade_count if stats else 0,

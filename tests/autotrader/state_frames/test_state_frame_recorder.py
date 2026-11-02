@@ -21,7 +21,9 @@ from python.framework.types.config_types.autotrader_defaults_config_types import
 from python.framework.types.config_types.market_config_types import TradingModel
 from python.framework.types.decision_logic_types import Decision, DecisionLogicAction
 from python.framework.types.process_table_types import OwnProcessMemory
-from python.framework.types.trading_env_types.active_orders_snapshot_types import ActiveOrdersSnapshot
+from python.framework.types.trading_env_types.active_orders_snapshot_types import (
+    ActiveOrdersSnapshot,
+)
 from tests.shared.recording_logger import RecordingLogger
 
 _T0 = datetime(2026, 11, 3, 10, 0, 30, tzinfo=timezone.utc)
@@ -43,7 +45,6 @@ class _Session:
                 get_account_value=lambda: 489.35),
             get_current_price=self._price,
             get_open_positions=lambda: [],
-            get_protective_level_enforcement=lambda: SimpleNamespace(value='local'),
             get_active_orders_snapshot=lambda: ActiveOrdersSnapshot(),
             account_currency='USD',
             get_market_data_status=lambda: SimpleNamespace(is_stale=False),

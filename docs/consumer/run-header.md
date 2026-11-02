@@ -69,6 +69,7 @@ and a word invented beside it already means something else somewhere.
 | `orders_to` | Orders to | where the run's orders went | `simulated` · `venue` | the run predates the field, or a session whose dry-run setting was refused — it never traded | `orders_to` |
 | `data_windows` | Data windows | the market window each unit was declared to cover | | the run predates the field | `data_windows` |
 | `run_purpose` | Purpose | what the run is for | `regular` · `fixture` · `certificate` | the run predates the field | `run_purpose` |
+| `features_beyond_venue` | Beyond the venue | the order features a backtest was allowed beyond what its venue's API holds, as its scenario set declared; empty for every other run | `stop_loss` · `take_profit` | the run predates the field | — |
 | `report_contract` | Report contract | the API contract the run's reports were written under | | the run predates the field | `report_contract` |
 
 ## Origin — who started the run
@@ -107,6 +108,7 @@ served.
 | `root` | Repository | which repository, as above |
 | `in_repository` | Versioned | whether that directory is under version control at all: false also for a directory the repository around it ignores; null when version control could not be asked |
 | `commit` · `branch` | Repository commit · Branch | as checked out when the run started; null when unknown |
+| `commit_subject` · `recent_commits` | Commit message · Recent commits | the commit's message line, and the last commits on its first-parent line, newest first, each the first 12 characters of its hash. Null on every run but a session of a deployment, and where they could not be read; a shallow clone lists only the commits it holds. A commit message is free text, so it can say what a strategy does, and whoever may read this run's header reads it |
 | `dirty` | Uncommitted changes | whether the working tree differed from its commit |
 | `uncommitted_count` · `changes` | Uncommitted count · Changes | how many changes there were, and the first of them |
 | `diff_hash` | Change hash | a hash over the content of every changed path |

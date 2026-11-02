@@ -17,12 +17,12 @@ from datetime import datetime, timezone
 import pandas as pd
 import pytest
 
+from python.framework.data_preparation.shared_data_preparator import SharedDataPreparator
+from python.framework.exceptions.data_quality_errors import TradedPriceMissingException
 from python.framework.types.market_types.market_data_types import (
     TickData,
     TickTransportColumn,
 )
-from python.framework.data_preparation.shared_data_preparator import SharedDataPreparator
-from python.framework.exceptions.data_quality_errors import TradedPriceMissingException
 from python.framework.utils.process_serialization_utils import (
     _traded_price_or_none,
     process_deserialize_ticks_batch,

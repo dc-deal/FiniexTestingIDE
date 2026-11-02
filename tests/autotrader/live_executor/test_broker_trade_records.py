@@ -141,7 +141,7 @@ class TestTradesQueryAsyncRoundtrip:
         )
         request_processor.flush_outbox()
         request_processor.drain_inbox()
-        request_processor.stop_worker()
+        request_processor.stop_worker(timeout=2.0)
 
         assert len(captured) == 1
         resp: TradesQueryResponse = captured[0]
@@ -177,7 +177,7 @@ class TestTradesQueryAsyncRoundtrip:
         )
         request_processor.flush_outbox()
         request_processor.drain_inbox()
-        request_processor.stop_worker()
+        request_processor.stop_worker(timeout=2.0)
 
         assert len(captured) == 1
         assert len(captured[0].trades) == 3
@@ -201,7 +201,7 @@ class TestTradesQueryAsyncRoundtrip:
         )
         request_processor.flush_outbox()
         request_processor.drain_inbox()
-        request_processor.stop_worker()
+        request_processor.stop_worker(timeout=2.0)
 
         assert len(captured) == 1
         assert captured[0].success

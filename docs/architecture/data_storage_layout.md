@@ -794,7 +794,10 @@ would have said "this bot holds nothing" while the asset was still at the broker
 exactly what the successor needs. The cleanup no longer touches positions at all, so the
 ordering is now simply the honest one rather than a defence against a defect. A session that
 sells at the venue would have to write the note AFTER the sale; that path is not built, and
-`session_end.positions = 'close'` refuses at startup until #487 makes it resolvable.
+`session_end.positions = 'close'` refuses at startup until #487 makes it resolvable. The note is
+written once more AFTER the cleanup (#630), because a fill the cleanup found, on a read after a
+refused cancel, moved the book. Margin writes no book into it, so such a fill reaches the report
+and not the next session, which reads its positions from the venue.
 
 The check is deliberately **one-sided**. The account is shared, so holding MORE than the book
 claims is normal and says nothing (what a bot may *use* is declared capital, #489). Holding

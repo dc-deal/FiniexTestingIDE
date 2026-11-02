@@ -15,6 +15,7 @@ Validates path-based worker and decision logic loading: on-demand file loading, 
 - Worker loaded by relative path with explicit base_path
 - Missing file → ValueError with clear message
 - Syntax error in file → ValueError
+- A file whose own import fails → ValueError naming the file
 - File with zero AbstractWorker subclasses → ValueError
 - File with two AbstractWorker subclasses → ValueError
 - File with one worker + helper class → loads correctly (helper ignored)
@@ -24,6 +25,7 @@ Validates path-based worker and decision logic loading: on-demand file loading, 
 - Decision logic loaded by absolute path
 - File with zero AbstractDecisionLogic subclasses → ValueError
 - Missing file → ValueError
+- A file whose own import fails → ValueError naming the file
 - `create_logic()` injects `_source_path` on the returned instance
 - CORE decision logic has `_source_path = None`
 

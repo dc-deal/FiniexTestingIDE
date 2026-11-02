@@ -113,7 +113,7 @@ whatever columns their strategy chose, so they declare none, and a time window r
 ## How a stream is read
 
 The run directory's reader reads a stream as one (`RunDirReader.read_stream`): the sealed days, oldest
-first, then the stream's own file. Two rules keep that exact while a session seals underneath a
+first, then the stream's own file. These rules keep that exact while a session seals underneath a
 reader:
 
 - **The file is read first, the days are listed after it.** A seal that happens in between has
@@ -121,16 +121,47 @@ reader:
   the day is still in the file.
 - **A file whose day is already sealed is left out.** Its header names its day; the session's first
   file names none and counts as sealed once any day is.
+- **A day record gone by the time the read asks for it was taken back.** A seal whose fresh file
+  could not be started removes its day record again, and the day's lines are still in the file the
+  read began with — so the day is read from there, as if it had never been sealed.
 
 A read can be narrowed to a time window: a day whose records all lie outside it is not opened, and a
 record without a time is read with its day. The two ends of a stream — its header, first and latest
 record, what the state-frame check-in polls — come from the file's two ends, and right after a seal
-from the newest day's last line. A stream's index lists each day with its record count and the times
-of its first and last record without reading the records. A sealed day never changes, so the reading
+from the newest day's last line. A stream's overview — what a unit's timeline is served from — lists
+each day with its record count and the times of its first and last record from the day's footer, and
+reads no record but the stream's two ends. A sealed day never changes, so the reading
 process keeps what its footer and its two end lines say by the file's path, size and modification
-time. Once read, the two ends cost a listing of the days and the two ends of the stream's file; the
-index costs the same plus one read of the running file, whose records it counts by their line ends —
-at most one trading day of them, a few megabytes at the default frame cadence.
+time. A read asks each day record for its status once — two calls per sealed day with its listing —
+and answers every question it has of the day from that. Once read, the two ends cost a listing of the
+days and the two ends of the stream's file; the overview costs the same plus one read of the running
+file, whose records it counts by their line ends — at most one trading day of them, a few megabytes
+at the default frame cadence. Measured on a stream thirty days in with
+`python/experiments/cost_probes/probe_recorded_stream_read_cost.py`: a unit's timeline 1.7 ms on a
+local disk and about 210 ms on this container's bridged drive, where each status call costs
+milliseconds — before each day was asked once, 3.2 ms and 1,056 ms.
+
+**A page** (`RunDirReader.read_stream_page`) reads a window up to a limit — what a unit's window over
+the API serves (#580). A stream's records come in the order of their time, because its writer stamps
+them from a clock that only moves forward, so a page is a run of consecutive records and the read
+stops at the day that fills it; the days after it are only counted, a whole day inside the window
+from its footer, a day the window ends in from its time column. Three rules make walking a stream
+page by page meet every record once:
+
+- **A record is numbered by its position in the whole stream**, from 1: the sealed days' footer counts
+  before it, then its place. A record keeps its number when its day is sealed, so the number
+  identifies it in every answer.
+- **A page never ends inside a millisecond.** The part of a millisecond the limit would cut moves to
+  the next page, which starts there; a millisecond holding more records than the limit is served
+  whole. A client that keeps time in milliseconds asks for the next page from where the last one
+  ended and neither repeats nor skips a record.
+- **A page says what it left out**: how many records the window holds, and where the rest begins —
+  set only when the page left some out.
+
+A page holds only records that carry their time. One without has no place in the order a page is
+read in, and makes the stream unreadable by pages rather than appear on every page whose window
+touches its day; the whole-stream read keeps such a record with its day. A stream a unit's timeline
+and window serve therefore declares the one time field every record of it carries.
 
 ## How others cut a log
 

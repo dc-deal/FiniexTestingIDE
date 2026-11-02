@@ -71,11 +71,13 @@ ended, into the next session's ledger row.
 | `test_both_ledger_rows_name_it` | It reached the RECORD, not only the running process |
 | `test_the_rows_read_back_as_one_history` | `build_deployment_histories` groups them, in order, with the gap |
 | `test_the_two_fingerprints_hold_across_a_restart` | Nothing changed, so `param_hash` and `profile_hash` must not move — a fingerprint that drifts would mark every restart |
-| `test_a_one_off_start_records_no_deployment` | `--one-off` writes `''` and joins no history |
-| `test_a_one_off_start_does_not_end_the_deployment` | It stays out of the history without destroying it |
+| `test_the_probe_records_no_deployment` | `--one-off` writes `''` and joins no history |
+| `test_the_probe_does_not_become_the_deployment` | It stays out of the history without destroying it |
+| `test_one_off_is_refused_once_the_deployment_exists` | Past the deployment's first start the flag is refused, with the ways out named |
 | `test_new_deployment_begins_a_second_history` | Two deployments over the same three rows |
-| `test_a_dry_run_session_leaves_no_carry_over` | The LIMIT of the mechanism, pinned rather than discovered at a venue |
+| `test_the_document_carries_the_identity_but_no_venue_claim` | A dry run hands on the identity and no venue claim: the limit of the mechanism, pinned rather than discovered at a venue |
 | `test_an_ordinary_restart_continues_them` · `test_a_new_deployment_starts_them_fresh` | #626 — the drawdown curve and the risk baseline follow the deployment: `second` continues `first`'s, and `--new-deployment` begins its own curve (`restarts` 0) instead of inheriting the first deployment's; the document stamps them as a rehearsal's |
+| `TestTheRowsNameTheCode` | #559 — through real sessions: a session of the deployment records the commit history on its row, the one-off outside it pays for none, and two sessions on one tree name one stand |
 
 **No arming, no patching.** These are ordinary mock sessions, which is possible because the
 carry-over's write gate is split by what each field CLAIMS: a session whose `dry_run` resolves
@@ -180,15 +182,15 @@ One session is shared across all test classes (`scope='module'`) to avoid runnin
 
 ### test_autotrader_trade_scenarios.py
 
-Targeted scenario tests for specific AutoTrader pipeline behaviors: SL/TP level propagation, duplicate signal suppression, and resilience under minimal warmup data.
+Targeted scenario tests for specific AutoTrader pipeline behaviors: a logic's own exits at a stop and a target, duplicate signal suppression, and resilience under minimal warmup data.
 
 Each class runs an independent session from its own profile. Sessions are module-scoped.
 
-> **Architectural note:** SL/TP is enforced by THIS process in both pipelines since #500 —
-> `_check_sl_tp_triggers` used to return immediately outside `ExecutorMode.SIMULATION`, on the
-> assumption that the broker held the level, and nothing ever sent one. So these two profiles are
-> named after a trigger that had never happened, and the tests asserted that the level was STORED.
-> They now assert that it ACTED.
+> **Architectural note:** A session holds no level since #625, because Kraken's API holds none for
+> a position. The probe keeps the two levels as its own (`exit_mode: own`, `OwnExitLevels`), so the
+> stop and the target act through the probe's own `close_position`, and the trade names the level
+> that fired (`exit_level`) while carrying no `stop_loss` of its own. The tests assert that the
+> level ACTED, not that it was stored.
 >
 > Two properties of the AutoTrader close shape what they may assert. The exit goes through the
 > asynchronous `close_position()`, so it lands at the broker's next price and **never at the level**
@@ -196,13 +198,12 @@ Each class runs an independent session from its own profile. Sessions are module
 > flight at session end is recorded as an anomaly and cleared rather than filled (`clear_pending`),
 > and a partially filled close leaves lots that trigger again. The tests therefore assert the
 > OUTCOME — something closed for the right reason and nothing is left open — not a count. See
-> [session_end_policy.md](../../architecture/session_end_policy.md) and
-> [protective_level_tests.md](protective_level_tests.md).
+> [session_end_policy.md](../../architecture/session_end_policy.md).
 
 | Class | Tests | What it validates |
 |-------|-------|-------------------|
-| `TestStopLossConfiguration` | 3 | The stop ACTED: an exit carries `SL_TRIGGERED` and nothing is left open; the exit price is a real fill at or below the 89200.0 level, never the level itself; no session errors |
-| `TestTakeProfitConfiguration` | 3 | The target ACTED: an exit carries `TP_TRIGGERED` and nothing is left open; the exit price is a real fill at or above the 89350.0 level; no session errors |
+| `TestStopLossConfiguration` | 4 | The stop ACTED: an exit carries `SL_TRIGGERED` and nothing is left open; the exit price is a real fill at or below the 88964.0 level, never the level itself, and the trade names that level as `exit_level` with no `stop_loss` of its own; the close counts in `sl_tp_triggered`; no session errors |
+| `TestTakeProfitConfiguration` | 3 | The target ACTED: an exit carries `TP_TRIGGERED` and nothing is left open; the exit price is a real fill at or above the 88865.0 level, named as `exit_level`; no session errors |
 | `TestDuplicateSignalGuard` | 3 | Exactly 1 position opened despite 490 repeated BUY signals (hold_ticks=5000 > max_ticks=500); the session end fabricates no exit; no errors |
 | `TestMinimalWarmup` | 2 | A warmup the bar history cannot hold is REFUSED at startup: bar_max_history=30 against the RSI's 71 M5 bars ends the session before its first tick, naming `M5: 30/71` and the setting |
 
@@ -287,6 +288,27 @@ belongs to is held deterministically by the projection's unit tests.
 | `test_every_fee_is_the_venue_s_own` | The certificate's `fee_source` counts every fill as the venue's — the mock venue reports each fill's fee in its answer — and warns of nothing |
 
 **Runtime:** ~12 seconds.
+
+### test_field_study_stop_waits_for_close.py
+
+Runs the field study's phase `stop_waits_for_close` alone, as a whole mock session
+(`configs/autotrader_profiles/mock/field_study_stop_waits_mock.json`), twice (#630). The phase sends a
+close and asks for the session's end in one pass, so the close is still awaited when the loop ends.
+On today's stop the close is booked before the session-end event and the phase passes; the control
+runs the stop as it was before #630, with the session-end event right after the loop, and the phase
+fails; the control patches out both of the stop's waits. A wait of no length would not serve as the control: the stop's last read books an answer that
+has already arrived, and this mock venue answers at once. The open gets an hour of replayed time, so
+its fill never races the replay (#494). Spot only: the acceptance studies refuse a margin account until
+#209; the stop's wait is held in both account models by the session-end suite.
+
+| Test | What it validates |
+|------|-------------------|
+| `test_the_phase_passes_and_the_summary_is_overtaken` | The certificate's analysis reads the phase as `pass` and the final summary as `skipped`, nothing failed or missing |
+| `test_the_close_is_booked_under_the_phase` | The capture holds the close's fill, filed under the phase |
+| `test_the_phase_fails_and_names_the_position_still_in_the_book` | On the stop before #630 the phase fails, naming the position the book still held at the session-end event |
+| `test_the_session_ended_normally` (in both classes) | Each session ends `normal` with no emergency reason, so a crash cannot pass for either result: one after the session-end event would leave the pass standing, and one in the control's stop would fail the phase for the wrong reason |
+
+**Runtime:** ~20 seconds.
 
 ### test_security_study_stages.py
 

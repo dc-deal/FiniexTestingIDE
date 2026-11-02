@@ -36,8 +36,13 @@ class AbstractSignalTransport(ABC):
         """Begin receiving on a background thread."""
 
     @abstractmethod
-    def stop(self) -> None:
-        """Stop receiving and wait for the thread to finish."""
+    def stop(self, join_timeout_s: float) -> None:
+        """
+        Stop receiving and wait for the thread to finish.
+
+        Args:
+            join_timeout_s: How long to wait for the thread before going on without it
+        """
 
     @abstractmethod
     def get_transport_stats(self) -> SignalTransportStats:

@@ -14,8 +14,8 @@ from python.api.api_app import create_app
 from python.framework.constants.run_layout_constants import RUN_HEADER_ARTIFACT, RUN_TYPE_SIMULATION
 from python.framework.reporting.io.run_header_io import write_run_header
 from python.framework.reporting.store.report_store import ReportStore
-from python.framework.reporting.store.served_run_header import served_run_header
 from python.framework.reporting.store.run_index import RunIndex
+from python.framework.reporting.store.served_run_header import served_run_header
 from python.framework.types.api.report_types import RunHeader
 from python.framework.types.run_origin_types import (
     CodeIdentity,
@@ -107,6 +107,22 @@ class TestTheHeaderIsServedWhole:
     def test_no_path_of_the_machine_leaves(self, client, tmp_path):
         text = client.get(_URL).text
         assert str(tmp_path) not in text and '/elsewhere' not in text
+
+    def test_the_commit_history_is_served_as_recorded(self):
+        """Hashes and a subject hold no path, so nothing about them is made relative (#559)."""
+        recent = ['a1b2c3d4e5f6', '0f1e2d3c4b5a']
+        header = RunHeader(
+            run_id=_RUN, start_time=datetime(2026, 10, 9, 12, 0, tzinfo=timezone.utc),
+            run_type=RUN_TYPE_SIMULATION, run_name='my_set',
+            code_identity=CodeIdentity(framework=RepositoryState(
+                root='/srv/releases/v1', commit_subject='Fix the fee rounding',
+                recent_commits=recent)))
+
+        served = served_run_header(header).code_identity.framework
+
+        assert served.root == '.'
+        assert served.commit_subject == 'Fix the fee rounding'
+        assert served.recent_commits == recent
 
 
 class TestAHeaderThatCannotBeServedSaysWhy:

@@ -8,7 +8,6 @@ from typing import Dict, List, Optional
 from python.configuration.market_config_loader import MarketConfigFileLoader
 from python.framework.exceptions.market_config_errors import TradingDayAnchorMissingError
 from python.framework.types.config_types.market_config_types import (
-    PriceFormation,
     BrokerEntryConfig,
     ConfigMode,
     DayAnchorConfig,
@@ -16,6 +15,7 @@ from python.framework.types.config_types.market_config_types import (
     MarketRulesConfig,
     MarketType,
     PipMode,
+    PriceFormation,
     ProfileDefaultsConfig,
     ServerClockConfig,
     SwapRolloverConfig,

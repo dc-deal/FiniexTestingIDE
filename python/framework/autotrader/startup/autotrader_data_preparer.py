@@ -83,6 +83,7 @@ def prepare_mock_session_data(
         logger=logger,
         app_config=AppConfigManager(),
         requirements_collector=RequirementsCollector(logger=logger),
+        feature_exception_possible=False,
     )
     mount = preparer.prepare_mount([scenario])
     package = mount.scenario_packages.get(scenario.scenario_index)

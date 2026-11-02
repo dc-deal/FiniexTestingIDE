@@ -23,7 +23,7 @@ from python.framework.trading_env.adapters.kraken_adapter import KrakenAdapter
 from python.framework.trading_env.live.live_request_processor import LiveRequestProcessor
 from python.framework.types.live_types.live_execution_types import BrokerOrderStatus, TimeoutConfig
 from python.framework.types.trading_env_types.order_types import OrderDirection, OrderType
-from tests.live_adapters.conftest import record_observed_adapter, venue_credentials_path
+from tests.live_adapters.conftest import record_observed_adapter, require_venue_key
 
 _BROKER_CONFIG_PATH = Path('configs/brokers/kraken/kraken_spot_broker_config.json')
 
@@ -36,9 +36,7 @@ def live_adapter(request):
     Returns:
         KrakenAdapter with Tier 3 enabled and dry_run mode active
     """
-    credentials_path = venue_credentials_path('kraken_spot')
-    if not credentials_path.exists():
-        pytest.skip(f'Kraken credentials not found: {credentials_path}')
+    require_venue_key(request, 'kraken_spot')
 
     with open(_BROKER_CONFIG_PATH, 'r') as f:
         broker_config = json.load(f)
@@ -222,18 +220,12 @@ class TestKrakenAdapterOrderLifecycle:
         self, live_adapter, processor
     ):
         """
-        The question #500 opened, answered by #503 — and answered at a different layer.
+        A `stop_loss` handed to the adapter does not reach Kraken's description of the entry.
 
-        This test was a strict `xfail` waiting for a declared `stop_loss` to appear in
-        Kraken's description of the ENTRY. It could never flip, because #503 does not
-        send it there: Kraken has no bracket and no OCO, so the level reaches the venue
-        as a SEPARATE stop order the framework places once the entry has filled.
-
-        So the payload's silence is now the CORRECT answer, and this pins it as such —
-        an entry carrying a hidden conditional close would mean two enforcers on one
-        position. What the payload cannot show is whether the level reaches the venue at
-        all; that needs a filled position and a real order resting over it, which is the
-        field study's `protective_level_test` phase.
+        Kraken's API takes no level for a position (its API team, 2026-10-27), and the trading
+        API and the live executor refuse one before it gets here (#625). The payload's silence
+        is the correct answer, and this pins it: a hidden conditional close would leave a level
+        at the venue that nothing in this process knows about.
         """
         response = processor.submit_open_order(
             symbol='ETHUSD',
@@ -247,9 +239,9 @@ class TestKrakenAdapterOrderLifecycle:
 
         descr = (response.raw_response or {}).get('descr', {})
         assert not (descr.get('close') or '').strip(), (
-            'The entry must carry NO conditional close. A level attached here and a '
-            'protective order placed for the same position would be two enforcers on '
-            f'one holding. Kraken described the close leg as: {descr.get("close")!r}'
+            'The entry must carry NO conditional close. A level attached here would be held '
+            'at the venue and known to nothing in this process. '
+            f'Kraken described the close leg as: {descr.get("close")!r}'
         )
         assert 'limit' in (descr.get('order') or '').lower(), (
             f'and the entry itself is still a plain limit: {descr.get("order")!r}')

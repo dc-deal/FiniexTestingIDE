@@ -8,8 +8,10 @@ decisions rather than one.** Layer b (architecture / flow) per #323.
 | Config block | `session_end` in a profile · defaults in [app_config.json](../../configs/app_config.json) |
 | Broker posture | `brokers[].session_end_orders` in [market_config.json](../../configs/market_config.json) |
 | Policy resolution | [session_end_validator.py](../../python/framework/validators/session_end_validator.py) |
-| Live cleanup | [live_trade_executor.py:1910](../../python/framework/trading_env/live/live_trade_executor.py#L1910) |
-| Sim cleanup | [trade_simulator.py:1302](../../python/framework/trading_env/simulation/trade_simulator.py#L1302) |
+| Live cleanup | [live_trade_executor.py:4020](../../python/framework/trading_env/live/live_trade_executor.py#L4020) |
+| Sim cleanup | [trade_simulator.py:1440](../../python/framework/trading_env/simulation/trade_simulator.py#L1440) |
+| A stop's wait for orders on their way | [autotrader_tick_loop.py:760](../../python/framework/autotrader/autotrader_tick_loop.py#L760) |
+| Its settings | `autotrader.shutdown` in [app_config.json](../../configs/app_config.json) |
 | Accounting rule | [reporting_pipeline.md](reporting_pipeline.md) — *Realised vs valued* |
 | Tests | [session_end_tests.md](../tests/autotrader/session_end_tests.md) |
 
@@ -43,32 +45,19 @@ position it protected was closed by another route is a naked order at the venue.
 
 | | resting orders | open positions |
 |---|---|---|
-| **Live adapter, `orders: cancel`** (default) | cancelled AT the venue (in a dry run: in the `DryRunOrderSimulator`, which stands where the venue would) + `EXPIRED` record **only where the venue CONFIRMED the cancel** — an unconfirmed one is reported into the session error pot and deliberately left unrecorded, because `EXPIRED` is a claim about the VENUE and we did not obtain one (#505). **A protective order (#503) is exempt entirely** | **left open**, reported and valued |
+| **Live adapter, `orders: cancel`** (default) | cancelled AT the venue (in a dry run: in the `DryRunOrderSimulator`, which stands where the venue would) + `EXPIRED` record **only where the venue CONFIRMED the cancel** — an unconfirmed one is reported into the session error pot and deliberately left unrecorded, because `EXPIRED` is a claim about the VENUE and we did not obtain one (#505). | **left open**, reported and valued |
 | **Live adapter, `orders: leave`** | left at the venue, and **not** expired locally — an order that can still fill is not finished | left open |
 | **Mock** | same code path, with nothing to cancel — no resting type passes pre-flight | left open |
 | **Simulation** | always expired — there is no venue to leave them at, so `cancel_orders` is accepted only for the shared contract | left open |
 
-### 2b · The one order the policy does not govern (#503)
-
-A **protective order** — the STOP the framework places at the venue for a declared `stop_loss` —
-is **left standing at session end whatever `session_end.orders` says**, and logged as such.
-
-The reason is the pair a session can actually start with. `orders: cancel` is the default and
-`positions: leave` is the only position policy, so the shipped combination cancels every resting
-order and keeps every position. Applied to a protective order that is the exact inversion of its
-purpose: the protection would be withdrawn at precisely the moment the bot stops looking, leaving
-an open position with a level enforced by a process that has ended.
-
-The warning above still holds and is the other half of it: a stop left standing after its position
-is gone is a naked order at the venue. That is why a close by any other route cancels the
-protective order FIRST and waits for the confirmation before closing — the orphan is prevented
-where it would be created, not cleaned up at the end.
+An order still **on its way** when the run ends rests nowhere yet and is none of these: see
+[Orders on their way](#orders-on-their-way--a-normal-stop-waits-for-them-630).
 
 ### 3 · What a position IS
 
 | | LONG | SHORT | at the end |
 |---|---|---|---|
-| **Spot** | owning the base asset (a balance) | **no naked short** — a SELL without the holding is rejected with `INSUFFICIENT_FUNDS` ([abstract_trade_executor.py:791](../../python/framework/trading_env/abstract_trade_executor.py#L791)); a "SHORT" is only the sale of a holding | the asset stays in the account and the **position book remembers** the entry (#355) |
+| **Spot** | owning the base asset (a balance) | **no naked short** — a SELL without the holding is rejected with `INSUFFICIENT_FUNDS` ([abstract_trade_executor.py:1810](../../python/framework/trading_env/abstract_trade_executor.py#L1810)); a "SHORT" is only the sale of a holding | the asset stays in the account and the **position book remembers** the entry (#355) |
 | **Margin** | a real position at the broker | a real position at the broker | the position stays in the market; MT5 returns it on the next boot (#209) |
 
 That last row is why the position book exists only at spot: at margin you **ask** the broker,
@@ -147,7 +136,8 @@ It refuses at startup, naming #487. A close that really reaches the venue is an
 the fill arrives on the *next tick*. At session end the tick source is already stopped and
 the request worker dies in the same cleanup — so a real close needs a synchronous drain with
 a timeout plus an answer for "the timeout expired", which is the unresolved-write resolution
-(#487).
+(#487). The wait for orders on their way does not change that: it hears a close the strategy already
+sent, and nothing there sends one.
 
 ### The incoherent pair
 
@@ -213,6 +203,127 @@ rather than a warning, which is stronger and needs no second channel.
 
 ---
 
+## Orders on their way — a normal stop waits for them (#630)
+
+`session_end.orders` governs what rests. An order sent a moment ago rests nowhere: it is on its way,
+and a stop used not to wait for it. The loop ended, the carry-over for the next session was written,
+and the cleanup booked the order as unaccounted. Nothing read the answers after the loop, so one
+that arrived, or had already arrived, was read by nobody. Reproduced on a mock venue in both account
+models (2026-10-30), with the answer held back and with it already waiting:
+
+```
+                without the wait             with the wait
+venue           FILLED 0.01 at 60001         FILLED 0.01 at 60001
+our record      unaccounted, no position     executed, position 0.01, fee booked
+balance         unchanged                    moved
+log             a warning, no error          nothing
+```
+
+At spot the next session then started from a carry-over that said flat, read no balance and alerted
+nothing: the strategy saw no position and could buy again.
+
+### What waits, and for what
+
+The wait sits in the loop's `run`, after its last pass and before the session-end event. That is the
+last moment a hook can still hear a fill, and the loop owns the day boundary, the sealed days, the
+log rotation and the carry-over watcher.
+
+| How the session ends | Waits | Why |
+|---|---|---|
+| SIGTERM, a first Ctrl+C, a strategy's normal end | yes | a session-end request of normal severity |
+| A hard stop | no | it asks at EMERGENCY severity and has a drain of its own |
+| A crash in the loop | no | it leaves the loop by exception |
+| A second Ctrl+C | no | it exits |
+| A tick source that ran out | no | nobody asked for the end, so nothing waits. An order still on its way at the end of the input is booked unaccounted in the cleanup with an ERROR, which grades a replayed mock session exit 3 where the simulation expires the same order |
+
+It waits for every order in the request processor's pipeline, where a market open and a market close
+both live, and every resting order with an operation in flight or no reference yet. With nothing on
+its way it costs no pass and no line. A resting order the venue confirmed is not on its way: that is
+the policy's, above. Nor is an order at the resolution ceiling: nothing asks about it any more, so a
+wait for it would only run out, and the cleanup books it unaccounted with an ERROR that says so.
+
+**And once more after the session-end event.** A strategy may close on its way out, from
+`on_session_end`. Such a close is waited for the same way, so its fill is booked before the cleanup,
+and both waits keep to one bound: the second goes on from the time the first spent, and does not
+run at all once the first ran out, because the worker stopped with it. The logic does not hear what
+this second wait settles: the session-end event stays the last thing it is told. An open and its
+close carry the same id, so the stop tells its orders apart by id and action.
+
+### One wait pass
+
+What an idle pass does for the orders, and nothing for the algo: the liveness stamp, so the monitor
+stays quiet, the clock, the day boundary, the sealed days, the log rotation, `heartbeat()`, the
+decision events, the carry-over watcher. No tick, no ghost pass, no signal inbox, no reconcile, no
+state frame. No write is repeated, and a write whose answer did not come stays unknown.
+
+- **Its clock is the last event plus the monotonic time elapsed.** The wall clock of an idle pass
+  would seal one booking period per day up to today in a replayed mock session. A fill the wait
+  books after a midnight belongs to the day it opened.
+- **Its bound is read again on every pass,** because what a declared kill leaves shrinks as the wait
+  runs. A pass can overrun it, because the reads inside `heartbeat()` are synchronous. The fill timeout
+  does not act once a stop is under way: it counts from the send, so it would come first and book the
+  order with a warning and exit 0, with the worker still sending what is queued.
+- **New orders are not held back.** A hook may still send one, and the same bound then covers it.
+  Holding them is the wind-down's gate, which is not built, so the display says `decisions stopped`,
+  not `no new orders`.
+
+### When the bound runs out
+
+`give_up_on_awaited_orders` runs before the session-end event, so the logic hears the outcome. The
+request worker stops first, so nothing queued goes out, and what it delivered is read once more.
+Then the road the fill timeout takes: an order with a reference is asked about, because a final
+answer settles it, an executed part included, and one still working is cancelled. What stays open
+ends `unaccounted` with `end_reason` `session_end`, an ERROR per order on the session channel and
+one alert, so the session exits 3. A resting order on its way stays for the cleanup, which cancels
+or leaves it by the policy.
+
+- **An executed part the venue named is booked.** Where its last answer shows part of the order
+  executed and nobody asks again, that part is the order's fill, as for an order the venue ended
+  after a part; the rest ends unaccounted, a step after the fill, and the ERROR names both. The
+  closing message counts such an order as `filled in part`.
+- **An order that never left is withdrawn.** A submit still queued when the worker stops, or one a
+  hook sends after it stopped, never reached the venue. It ends `cancelled` by the framework with
+  `end_reason` `session_end`, a WARNING says it never left this process, and the logic hears it as a
+  cancel: nothing about it is unknown, so it is neither unaccounted nor an ERROR.
+
+What the operator reads when that happens, and what to do, is in
+[Unattended Operation](../autotrader/unattended_operation.md#a-stop--what-it-waits-for-and-the-kill-it-has-to-fit-under).
+
+### The cleanup, and the carry-over written twice
+
+`finish_remaining_orders` stops the worker, reads its answers and withdraws what it never sent first,
+so a queued submit cannot go out after its order was booked. Its second phase, which books what is
+left in the pipeline, serves only the ends that do not wait, and each such order gets an ERROR, where
+it used to be a warning and exit 0. Under `orders: "leave"` a resting order with no reference cannot
+be left standing by name: its submit went out unanswered, so it is booked unaccounted with an ERROR
+rather than counted as open at the venue.
+
+`_shutdown` writes the carry-over before the cleanup, because that is the state it describes, and
+again after it, because a fill the cleanup found, on a read after a refused cancel, moved the book.
+**At margin the carry-over holds no book:** such a fill reaches the report and not the next session,
+which reads its positions from the venue (#209).
+
+Under a declared kill every venue call of the cleanup, and each part of the end read, asks the
+budget first. The read at the START is untouched: a session that has not begun has no kill to fit
+under.
+
+**Not closed by this:** a crash in the loop and a kill leave the state the table above shows.
+Finding such a fill at the next boot by its client key is not built.
+
+### What others do (read 2026-10-30)
+
+Nautilus Trader waits a fixed time for residual events after a stop (10 s) and by default settles an
+order it cannot resolve locally, as rejected. Hummingbot cancels its limit orders under a 20 s
+constant without checking the result. Freqtrade leaves orders standing, with a cancel as an option.
+systemd, Docker and Kubernetes send a signal and kill after a period, and none tells the process how
+long it has. Nygard, *Release It!* (ch. 14), and Beyer et al., *Site Reliability Engineering* (ch.
+20, the lame duck state), give the shape this follows: a named state, no new work, finish what is in
+flight, bound it. Kleppmann, *Designing Data-Intensive Applications* (ch. 4 and 8): a request that
+timed out has an unknown outcome, not a failed one, which is why it ends `unaccounted` and never
+`rejected`.
+
+---
+
 ## The stop branch — closed 2026-09-07 (#500)
 
 This section used to record a known limit, and it is worth keeping as a record of the shape rather
@@ -237,22 +348,28 @@ populated.
 
 | What | Where |
 |---|---|
-| The config block | [autotrader_defaults_config_types.py:242](../../python/framework/types/config_types/autotrader_defaults_config_types.py#L242) |
+| The config block | [autotrader_defaults_config_types.py:274](../../python/framework/types/config_types/autotrader_defaults_config_types.py#L274) |
 | The broker posture | [market_config_types.py:174](../../python/framework/types/config_types/market_config_types.py#L174) · [market_config_manager.py:285](../../python/configuration/market_config_manager.py#L285) |
 | Policy resolution + the three refusals | [session_end_validator.py:36](../../python/framework/validators/session_end_validator.py#L36) |
 | The incoherent pair | [session_end_validator.py:80](../../python/framework/validators/session_end_validator.py#L80) |
-| Resolved at startup, before anything is touched | [autotrader_main.py:479](../../python/framework/autotrader/autotrader_main.py#L479) |
-| The shutdown call site | [autotrader_main.py:1158](../../python/framework/autotrader/autotrader_main.py#L1158) |
-| The contract | [abstract_trade_executor.py:2981](../../python/framework/trading_env/abstract_trade_executor.py#L2981) |
-| `check_clean_shutdown(expect_flat)` | [abstract_trade_executor.py:3010](../../python/framework/trading_env/abstract_trade_executor.py#L3010) |
-| The open-position report row | [report_types.py:463](../../python/framework/types/api/report_types.py#L463) |
-| The equity curve, one scale for both writers | [portfolio_manager.py:1595](../../python/framework/trading_env/portfolio_manager.py#L1595) |
-| The adoption prompt that states this policy | [cold_start_adopter.py:1045](../../python/framework/autotrader/cold_start/cold_start_adopter.py#L1045) |
+| Resolved at startup, before anything is touched | [autotrader_main.py:614](../../python/framework/autotrader/autotrader_main.py#L614) |
+| The shutdown call site | [autotrader_main.py:1447](../../python/framework/autotrader/autotrader_main.py#L1447) |
+| The contract | [abstract_trade_executor.py:2889](../../python/framework/trading_env/abstract_trade_executor.py#L2889) |
+| `check_clean_shutdown(expect_flat)` | [abstract_trade_executor.py:2918](../../python/framework/trading_env/abstract_trade_executor.py#L2918) |
+| The open-position report row | [report_types.py:545](../../python/framework/types/api/report_types.py#L545) |
+| The equity curve, one scale for both writers | [portfolio_manager.py:1380](../../python/framework/trading_env/portfolio_manager.py#L1380) |
+| The adoption prompt that states this policy | [cold_start_adopter.py:1005](../../python/framework/autotrader/cold_start/cold_start_adopter.py#L1005) |
+| A stop's wait and one pass of it | [autotrader_tick_loop.py:760](../../python/framework/autotrader/autotrader_tick_loop.py#L760) · [autotrader_tick_loop.py:824](../../python/framework/autotrader/autotrader_tick_loop.py#L824) |
+| What it waits for | [live_trade_executor.py:3810](../../python/framework/trading_env/live/live_trade_executor.py#L3810) |
+| A bound that runs out | [live_trade_executor.py:3894](../../python/framework/trading_env/live/live_trade_executor.py#L3894) |
+| The budget, and the check at the start | [stop_budget.py:16](../../python/framework/autotrader/stop_budget.py#L16) · [stop_budget_validator.py:31](../../python/framework/validators/stop_budget_validator.py#L31) |
 
 ## Related
 
 - [autotrader_runtime_model.md](../autotrader/autotrader_runtime_model.md) — the session lifecycle this sits in
 - [architecture_execution_layer.md](architecture_execution_layer.md) — the cleanup mechanic itself
 - [live_execution_architecture.md](live_execution_architecture.md) — cold start, and why the two are a pair
-- [data_storage_layout.md](data_storage_layout.md) — why the carry-over is written before the cleanup
+- [data_storage_layout.md](data_storage_layout.md) — why the carry-over is written before the cleanup,
+  and again after it
+- [unattended_operation.md](../autotrader/unattended_operation.md#a-stop--what-it-waits-for-and-the-kill-it-has-to-fit-under) — what a stop sets, shows and leaves to do
 - [reporting_pipeline.md](reporting_pipeline.md) — realised vs valued, and the spot equity trap

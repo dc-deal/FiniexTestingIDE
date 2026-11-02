@@ -71,8 +71,7 @@ of the framework uses. Chosen by `adapter_type`: `mock` for the broker-neutral `
 `live` for a real venue's adapter. See [Adapter Development](user_guides/adapter/adapter_development_guide.md).
 
 **adopted** (`adopted` order event, `orders_adopted`) — An order a previous session sent and this
-one took over at its start: a resting order found at the venue under this bot's key, or a protective
-order carried over with its position. Counted apart from `orders_submitted`, which is what this
+one took over at its start: a resting order found at the venue under this bot's key. Counted apart from `orders_submitted`, which is what this
 session sent; an execution rate divides by both. See *carry-over*.
 
 **alert episode** — One symptom as the operator hears it: an *operator alert* when it starts, the
@@ -188,6 +187,14 @@ before. See [Store Entry Members](architecture/store_entry_members.md#the-footpr
 **close type** (`close_type` on an order-history row and a trade) — Whether a close took the whole
 position (`full`) or part of it (`partial`). Set once the close fills; empty on every other row.
 
+**code stand** (`code_stand` on a session's ledger row, `code_stands` on a deployment) — Which code
+a session started on, per repository: the commit, any uncommitted changes on it, the commit's message
+and the commits before it. The ledger's short form of the run header's code identity. Two sessions
+stand on the same code when every repository shows the same commit and the same uncommitted changes;
+a commit nobody could read is a stand of its own. The deployment view compares each session's
+with the previous session's. See
+[Deployment Ledger](user_guides/deployment_ledger_guide.md#a-code-change-draws-one-row-per-repository-and-one-dated-warning).
+
 **combination** — One point of a sweep's parameter grid, run as one ordinary backtest. See
 [Parameter Optimization](architecture/parameter_optimization_system.md).
 
@@ -286,6 +293,11 @@ file holds the running day. A backtest writes none. See
 **decision logic** — The one class that turns worker outputs into decisions. See
 [Quickstart](user_guides/quickstart_guide.md).
 
+**decisions stopped** — What a *session's stop* says once it began: no tick reaches the decision
+logic any more. Not "no new orders": a hook can still send one during the wait for the orders on
+their way, under the same bound. See
+[Unattended operation](autotrader/unattended_operation.md#a-stop--what-it-says-while-it-runs).
+
 **declared continuation** (`carry_over_from` in an AutoTrader profile) — A later stage of one bot
 that starts from what an earlier stage left: the later profile names the earlier one, and the two
 share the bot's carry-over in both directions. Allowed only between a release study's stages or a
@@ -316,8 +328,8 @@ every order validated by the venue and never placed, fills simulated locally. A 
 called a dry run, although the `dry_run` flag reads true for it too. To be renamed *paper* (#304).
 See [AutoTrader Configuration](autotrader/autotrader_configuration.md).
 
-**end reason** (`end_reason`) — Why an order ended without filling: the strategy's cancel, a
-protective order released, the order timeout, the resolution ceiling, the end of the session or of
+**end reason** (`end_reason`) — Why an order ended without filling: the strategy's cancel, the
+order timeout, the resolution ceiling, the end of the session or of
 the backtest's data, or the venue's own cancel or expiry. Stands beside *initiator* on the same row
 or event.
 
@@ -350,17 +362,27 @@ start. Not the *evidence grade* of a run's data (see *data origin*). See
 about how much market time was processed — that is the *tick timespan* — and it is never a point
 in time: when an order's event happened is its *event time*.
 
+**exit level** (`exit_level` on a trade row) — The stop or target a close fired at: the level a
+backtest's position carried, or the one a logic named for its own exit. Empty on every other close.
+A trade's exit slippage is measured against it. See *own exit*.
+
 **external** (`origin_class: external`) — Data no instance of ours recorded: a venue's published
 history, brought in by a converter that stamps its own identity. A backtest reads it only where
 `admitted_origin_classes` admits it, and it is never admissible for a parity measurement. Not
 *unknown*, which means nobody could be named. See [Data Provenance](architecture/data_provenance.md).
 
+**features beyond venue** (`features_beyond_venue`) — The order features a scenario set allows its
+backtest although the venue's API does not hold them: a declared exception, recorded in the run's
+header and ledger row, warned about in its report and refused by a certificate. A session cannot
+declare one. See [Config Cascade Guide](config_cascade_guide.md).
+
 **fee report** (`fee_report`) — Where a venue reports the fee it charged for a fill, as its adapter
 declares it: `status_answer` — in the answer that reports the order filled, as Kraken does;
 `executions` — only with the order's executions, after the fill; `not_reported` — no fee per fill,
 as at a spread broker. A declaration, not a report of fees: it decides whether a live fill can carry
-the venue's own figure (*fee source*). A field study's capture records it in its header. See
-[Broker Trade Records](architecture/broker_trade_records.md).
+the venue's own figure (*fee source*). The broker section serves it for every run, beside
+`venue_fee_expected` — whether the run's fills carry the venue's own fee — and a field study's
+capture records it in its header. See [Broker Trade Records](architecture/broker_trade_records.md).
 
 **fee source** (`fee_source`, `fill_fees_by_source`) — Where the fee booked for a fill came from:
 `venue` — the figure the venue reported for that fill, in the answer that reported it, which is
@@ -406,6 +428,11 @@ content: the configuration it was given (`config_id`), the one an AutoTrader ses
 rewritten, so an old run keeps saying what it used. Not the fee seed's `_fee_structure_frozen`,
 which records when a declared fee rate was set. See [Introduction](introduction_to_the_ide.md).
 
+**host id** (`host_id` on `/health`, `origin_host` on a row) — Which installation an answer or a row
+comes from: an identity minted once per installation and kept in its data home, so it stays across a
+restart, a redeploy and a new address. Neither a machine's name nor its address. `host_name`, beside
+it on `/health`, is a name for people to read, from the installation's configuration, and never a key.
+
 **in flight** — A pending order that was sent and not yet acknowledged: in a backtest the latency
 simulator still holds it, in a session the venue has not yet answered. `in_flight_ms` on an order
 event is how long that took, on the acceptance or refusal that answers the submission — the modelled
@@ -437,6 +464,14 @@ its account's currency — the results table across runs, one fragment per run);
 the figures over many periods, such as a deployment's total or a month's drawdown. Sealing one
 booking period is *closing a period*. See [Accounting Periods](architecture/accounting_periods.md)
 and [Reading the Results Ledger](user_guides/results_ledger_guide.md).
+
+**kill** (`supervisor_kill_after_s`, `Kill` on a stop's panel) — The supervisor's end of a session's
+stop: what it sends once the period after its signal is over, which the process cannot catch and is
+never told in advance. Not the session's own act, and not a venue's kill switch, which cancels
+orders and blocks new ones. Once the declared time has gone by the panel reads it `overdue`; a stop
+no signal asked for, a strategy's own end, keeps to the same time with no kill coming, `not
+signalled`. See
+[Unattended operation](autotrader/unattended_operation.md#a-stop--what-it-waits-for-and-the-kill-it-has-to-fit-under).
 
 **layer** — Never used alone. A configuration value is *layered* by its cascade (see *cascade*);
 the *execution layer* is the code that turns an order into a fill — the executors, the portfolio and
@@ -511,8 +546,21 @@ report) — A submission the venue never confirmed: `undelivered` (it confirmed 
 order) or `unaccounted` (we stopped asking, and it may still hold the order — the case to check by
 hand). Live only: a simulated venue answers every order.
 
+**next_from** (on a unit's recorded-streams window) — Where the records a page left out begin: the
+start of the millisecond the first of them falls in, set only when the page left some out
+(`truncated`). The next page is asked from it; a page never ends inside a millisecond, so no
+record is repeated or skipped. See [recorded streams](consumer/recorded-streams.md).
+
 **observation** — A dry run whose profile pins `dry_run: true`, kept in
 `configs/autotrader_profiles/observation/`.
+
+**on its way** (`Waiting for` on a stop's panel, `on their way` in its lines) — What a *session's
+stop* waits for: an order in the request processor's pipeline, or a resting order with an operation
+in flight or no reference yet. Wider than *in flight*, which ends with the venue's first answer: an
+order the venue took and has not filled is still on its way. Not an order at the resolution ceiling,
+which nothing asks about any more. In the code it is an `AwaitedOrder`, told apart by its id and its
+action, and `get_awaited_orders` lists them. See [Session
+End](architecture/session_end_policy.md#what-waits-and-for-what).
 
 **one-off** — A session that belongs to no deployment.
 
@@ -536,6 +584,13 @@ asking that settled it, the fill or the ending — and the run's file that holds
 backtest. The *order history* keeps a row for each submission and for each way an order ended;
 the stream keeps every step. See [Order-Event Stream](architecture/order_event_stream.md).
 
+**order feature** (`OrderFeature`, `get_required_order_features`, `offered_order_features`) — What an
+order or a position carries beyond its type and a venue's API holds or does not: today a stop-loss
+and a take-profit level held for the position. A decision logic declares the ones it uses, an
+adapter states the ones its API takes, and a run refuses a declared one its venue lacks. Not an
+*own exit*, which no venue holds. See
+[Quickstart — Own Exits](user_guides/quickstart_guide.md).
+
 **order history** — The run's order-lifecycle records: one row per EVENT of an order, not one per
 order. An order appears as `pending` when it enters the pipeline and once more for the way it ended
 — `executed` when it fills, else `denied`, `rejected`, `cancelled`, `expired`, `undelivered` or
@@ -555,6 +610,12 @@ a guard refusal `guard_…`. With its `scenario_name` it names the same position
 resting order the venue reports under a type this project cannot name: reported, with no prices,
 and never acted on. What a venue offers of the types is its order capabilities.
 
+**order wait** (`order_wait_s`, `Order wait` on a stop's panel) — How long a *session's stop* waits
+for the orders *on their way* before it books them unaccounted. Shorter under a declared *kill*. One
+bound covers what the logic sends from the session-end event as well. Not the fill timeout, which
+does not act once a stop is under way. See
+[Unattended operation](autotrader/unattended_operation.md#a-stop--what-it-waits-for-and-the-kill-it-has-to-fit-under).
+
 **orders to** (`orders_to`) — Where a run's orders went: `simulated` or `venue` — and `venue` is
 the only value that means real money. Recorded on every run header and every ledger row; a
 deployment lists the values of its sessions, and both together mean it mixed a rehearsal with real
@@ -568,6 +629,15 @@ keeps this one meaning: the configuration directory row's `origin` (where a file
 feed-health episode's `origin` (real or stress-injected) and the `origin_classes` /
 `origin_evidence_grades` of a run's data (see *data origin*) are being renamed (#581, #582). See
 [Run Origin & Code Identity](architecture/run_origin_and_code_identity.md).
+
+**own exit** · **own level** (`OwnExitLevels`, `close_position(..., exit=OwnExit(...))`) — A stop
+or a target a decision logic keeps itself and checks on every tick, closing through its own
+`close_position` when the market reaches it — the exit on a venue whose API holds no level for a
+position, as Kraken's does not. No order carries it and the position does not either: the trade
+keeps its `sl_triggered` / `tp_triggered` reason and names the level that fired (its exit slippage
+is measured against it), while `stop_loss` / `take_profit` on the position and the trade stay
+empty, and so do the R-multiple and, where no trade has one, `expectancy`. Counted in `sl_tp_triggered` like a close the framework's own
+level check made, once when the close goes out. See [Quickstart — Own Exits](user_guides/quickstart_guide.md).
 
 **paper** — The planned name for a dry run, not yet a configuration value (#304).
 
@@ -637,21 +707,42 @@ stream, never on a tick. See [AutoTrader Data Intake](autotrader/autotrader_data
 **real-money session** — A live-adapter session with `dry_run` false: its orders are placed at the
 venue and move the account.
 
-**recording** (`recording` on the latest-frame route and on the run list) — Whether a session is
+**reconciliation** — Two comparisons share the word, told apart by where they stand. A live
+session's *venue reconciliation* compares its own books with what its venue reports, cycle by cycle;
+its lines and its totals (`reconciliation`: `cycles_compared`, `cycles_skipped`,
+`divergences_seen`) are served in the *venue account*. The booking-periods section's `reconciles`
+checks that the periods add up to the figures the run reports — that nothing went missing between
+them — and asks no venue. See [Venue account](consumer/venue-account.md) and
+[Booking periods](consumer/booking-periods.md).
+
+**record_no** (on every record of a unit's recorded-streams window) — A record's position in its
+unit's stream, counted from 1 over the sealed trading days in order and then the running file. It
+identifies the record in every answer — two state frames may share an instant — keeps its value when
+its day is sealed, and the newest one equals the timeline's `record_count`. Derived when read, not
+written into the record.
+
+**recorded stream** (`stream_kind`, `stream_name` on a unit's recorded-streams timeline) — A stream a
+run records over time for one of its units and serves by time window: today a session's *state
+frames*; drawings, algo events and a strategy's tables are to join. Not the run list's *stream
+files*, which names files, and not the producer's *stream state*. See
+[recorded streams](consumer/recorded-streams.md).
+
+**recording** (`recording` wherever a session's state frames are served) — Whether a session is
 still recording its *state frames*, as the route judges it when it answers — never a yes or no:
 `current` when the latest frame is younger than three of its cadences, `stopped` when it is older
 and not the last one (the session hangs or its process died; the activity list tells which),
 `ended` when the latest frame is the one written at the session's end. Null for a session replaying
 recorded data before its end, whose frames come at replay speed. The run list carries the same
-verdict on every row that records state frames. Not the staleness contract's `stale`, which judges
+verdict on every row that records state frames, and a unit's recorded-streams timeline beside its
+streams. Not the staleness contract's `stale`, which judges
 the session's INPUTS and travels inside the frame. See [state frames](consumer/state-frames.md).
 
 **refused at the first tick** (`refused_at_first_tick`) — A live-adapter session that stopped at its
 first tick because its *warmup history* could not be completed there: the venue had not yet
 committed the period that ended since the boot read, or could not be read again. A refusal of the
 SESSION, never of an order — no order is *denied* or *rejected* by it. Graded `failed` like any
-emergency. The tick's workers and decision did not run, but the executor's stop and take-profit
-check of that tick may have sent a close. Not a start refused before the loop — by the cold start
+emergency. The tick's workers and decision did not run, but a heartbeat pass before it may have
+sent an order. Not a start refused before the loop — by the cold start
 or the Field Study's preflight: that one is graded by what it logged, and its operator alert reads
 STARTUP REFUSED. See [Warmup History](architecture/warmup_history.md).
 
@@ -773,6 +864,16 @@ external, pre-collected data such as sentiment. See [Signal Data Source](data_pi
 
 **signal basis** — A signal row's quality grade from the producer (`llm`, `no_data`, `degraded`).
 
+**slippage** (`slippage`, `slippage_pct`) — How far a fill landed from the price it is measured
+against, signed so that a positive figure is a cost. What it is measured against is named beside it
+(`slippage_measured_against` on an order-history row, `measured_against` in the execution
+statistics' `fill_slippage`): `submission_mid`, the mid when a market order was sent;
+`limit_price`, the limit in force at the fill; `trigger_price`, the trigger in force for a stop or a
+stop-limit; `protective_level`, the stop-loss or take-profit level that closed the position. A
+trade's `entry_slippage` and `exit_slippage` (and their `_pct`) measure its entry and exit price
+against the submission mid, except a protective exit, which is measured against its level — where a
+backtest reads 0, because it fills there. See [Order history](consumer/order-history.md).
+
 **snapshot** — Several meanings, each qualified. A *snapshot member* is an *entry member*'s shape:
 a file that says what is true now and is replaced whole, never appended to — a run's header, a
 session's warmup history. A *signal snapshot* is one archived line of a signal source: the
@@ -788,6 +889,20 @@ a backtest, which unlike the backtest cannot be run again. Its latest frame is s
 age while the session runs (#611, see *recording*). Not the dashboard's *frame*, which is built only
 while a display runs and keeps only the latest. See
 [Live Telemetry](architecture/live_telemetry_architecture.md#the-recorded-state-frame--not-this-stream).
+
+**stop** — Never used alone where its meanings could meet. A *stop order* rests until the price
+crosses its *stop trigger*. A *session's stop* is how an AutoTrader session ends on a signal or on
+its strategy's request; its settings are a profile's `shutdown` block, and the findings about them
+carry that word (`shutdown_…`) so that they cannot be read as a stop order's. A *hard stop* is the
+circuit breaker ending a session at EMERGENCY severity, which does not wait for the orders *on their
+way*.
+
+**stop budget** (`supervisor_kill_after_s`, `reserve_for_records_s` in a profile's `shutdown`) — The
+time a *session's stop* has before its supervisor kills the process. No supervisor tells a process
+that time, so the operator declares it; the wait for the orders on their way, the cancels and the
+venue's last read then take what is left after a reserve for the records, which is time and not
+funds. Undeclared, no budget applies. See
+[Unattended operation](autotrader/unattended_operation.md#a-stop--what-it-waits-for-and-the-kill-it-has-to-fit-under).
 
 **stop trigger** (`trigger_price` on an order event, `stop_price` on a venue order) — The price at
 which a stop order activates. A triggered stop fills at the market, not at its trigger — the
@@ -876,6 +991,12 @@ session's start and at its end — open orders and positions counted, its balanc
 the reconciliation lines between, derived from the *broker truth* and served as the
 `venue-account` section. Not the session's own books, which are its *account*. See
 [Venue account](consumer/venue-account.md).
+
+**venue API performance** (the `venue-api-performance` section) — How the venue's API answered one
+live session, endpoint by endpoint: the calls, how long they took, how many were slower than the
+session's threshold, and how many failed. *Venue*, because the IDE serves an API of its own, which
+this says nothing about. Only a session that watched its venue's API has it. See
+[Venue API performance](consumer/venue-api-performance.md).
 
 **wall clock** — The machine's clock. It stamps when WE did or saw something (`ts_init`, a run's
 `start_time`) and measures durations — on its monotonic form, because the wall clock itself can

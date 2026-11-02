@@ -15,19 +15,21 @@ from pydantic import BaseModel, Field, computed_field
 
 from python.framework.types.api.recording_state_types import RecordingState
 from python.framework.types.autotrader_types.safety_session_types import FlattenOutcome
+from python.framework.types.fill_slippage_types import SlippageReference
 from python.framework.types.live_types.broker_truth_types import (
     BrokerTruthPart,
     BrokerTruthReadReason,
 )
 from python.framework.types.live_types.live_execution_types import BrokerOrderStatus
 from python.framework.types.live_types.reconciliation_types import ReconcileState
+
 # The risk baseline is REUSED, not projected. It is already a Pydantic record that describes
 # itself — kind, stamp, origin, and on spot the price and quantities its value can be
 # re-derived from — and the safety report's job is to surface exactly that record. A parallel
 # row type would be a hand-maintained copy of it, and a copy is what silently drops a field.
 from python.framework.types.persistence_types import RiskBaseline
 from python.framework.types.run_kind_types import OrdersTo, TicksFrom
-from python.framework.types.run_origin_types import CodeIdentity, RunChannel, RunOrigin
+from python.framework.types.run_origin_types import CodeIdentity, CodeStand, RunChannel, RunOrigin
 from python.framework.types.run_outcome_types import RunOutcome
 from python.framework.types.run_purpose_types import RunPurpose
 from python.framework.types.trading_env_types.broker_types import FeeSource
@@ -38,15 +40,16 @@ from python.framework.types.trading_env_types.order_event_types import (
 )
 from python.framework.types.trading_env_types.order_types import (
     CloseType,
+    FeeReport,
     OrderAction,
     OrderDirection,
     OrderEndReason,
+    OrderFeature,
     OrderInitiator,
     OrderStatus,
     OrderType,
     RejectionReason,
 )
-
 
 # WHAT MAKES ONE ROW of each deployment view unique. Declared once, read by the response model
 # below AND by the fold that produces the rows (`deployment_history_builder` passes SESSION_KEY
@@ -144,12 +147,18 @@ class TradeHistoryRow(BaseModel):
     exit_side: str = ''
     entry_executions: list[ExecutionRow] = []   # #330 per-fill sub-lines (entry)
     exit_executions: list[ExecutionRow] = []    # #330 per-fill sub-lines (exit)
-    # Submission-vs-fill slippage (#340) — adverse (>0 = paid worse than submission mid);
-    # None when no submission tick was captured (legacy / cleanup-only close).
+    # Submission-vs-fill slippage (#340) — adverse (>0 = paid worse than its reference); None
+    # when no reference was captured (legacy / cleanup-only close). The entry is measured
+    # against the submission mid; the exit too, except a stop-loss or take-profit exit, which is
+    # measured against the level that fired (#631) — `exit_slippage_measured_against` says which
     entry_slippage: float | None = None
     exit_slippage: float | None = None
     entry_slippage_pct: float | None = None
     exit_slippage_pct: float | None = None
+    exit_slippage_measured_against: SlippageReference | None = None
+    # The level a stop-loss or take-profit exit fired at (#625) — also the logic's own, which
+    # stop_loss and take_profit above never carry. None for every other exit.
+    exit_level: float | None = None
     # What belongs to the TRADE rather than to one of its fills. `lots` is what this record
     # closed; `entry_lots` is the position's size when it opened, and `position_closes` how
     # many records the position produced in its unit — counted before any filter, so a filter
@@ -167,7 +176,8 @@ class TradeAnalytics(BaseModel):
     """
     currency: str = ''      # account currency this aggregate is over
     trade_count: int = 0    # trades in this currency group
-    expectancy: float       # mean R over trades with a defined R
+    # None = not measured: no trade has a defined R, as with a logic that keeps its own exits
+    expectancy: float | None    # mean R over trades with a defined R
     # None = not measured (no R-defined winner / loser) — never 0.0, which a reader cannot
     # tell from a measured zero. Gate on the counts, not on r_trade_count: a run can have
     # R-defined trades and still no winner among them.
@@ -291,6 +301,18 @@ class OrderHistoryRow(BaseModel):
     initiator: Optional[OrderInitiator] = None  # who ended it — cancelled, expired and
                                                 # unaccounted rows only
     end_reason: Optional[OrderEndReason] = None  # why it ended — the same rows
+    # The order event this row was booked with (#631) — its key into the order-event stream.
+    # Null on a pending row, which has no event yet, and on a record from before contract 44
+    order_event_seq: Optional[int] = None
+    # A fill's slippage (#631) — against the mid when a market order was sent, a limit's limit,
+    # a stop's trigger, or the level a stop-loss or take-profit fired at; positive is a cost, in
+    # price units and in percent of the reference. Null on a row that records no fill and on a
+    # record from before contract 44; the price and the figures also where the reference was not
+    # captured
+    slippage_measured_against: Optional[SlippageReference] = None
+    slippage_reference_price: Optional[float] = None
+    slippage: Optional[float] = None
+    slippage_pct: Optional[float] = None
 
 
 class OrderHistoryReport(RunScopedReport):
@@ -446,6 +468,23 @@ class VenueSnapshotRow(BaseModel):
     unread_parts: list[BrokerTruthPart] = []
 
 
+class VenueReconciliation(BaseModel):
+    """
+    What a live session's reconciliation did over the whole session (#631): whether its
+    configuration switched it on, the cycles that compared the venue with our books, the cycles
+    that could not reach the venue, and the divergences seen.
+
+    The counts are null when the comparison was switched off; both cycle counts at 0 say it was on
+    and never came due before the session ended. `divergences_seen` is summed over the cycles, so
+    one divergence that stood for three cycles counts three; the row's reconcile lines say what
+    each picture was.
+    """
+    enabled: bool                                   # the session's configuration switched it on
+    cycles_compared: Optional[int] = None           # cycles that read the venue and compared
+    cycles_skipped: Optional[int] = None            # cycles that could not reach the venue
+    divergences_seen: Optional[int] = None          # summed over the cycles that saw them
+
+
 class VenueAccountRow(BaseModel):
     """
     One live session's account as its venue reported it — at the start, at the end, and what
@@ -462,6 +501,7 @@ class VenueAccountRow(BaseModel):
     divergent_lines: int = 0                        # of those, the ones that found a divergence
     last_reconcile_state: Optional[ReconcileState] = None      # the last line's; null: none written
     last_divergence: Optional[ReconcileDivergenceRow] = None   # the latest divergent picture
+    reconciliation: Optional[VenueReconciliation] = None       # null: written before contract 44
 
 
 class VenueAccountReport(RunScopedReport):
@@ -471,6 +511,35 @@ class VenueAccountReport(RunScopedReport):
     """
     units: list[VenueAccountRow]
     key: list[str] = ['name']
+
+
+class VenueEndpointPerformanceRow(BaseModel):
+    """
+    How one endpoint of the venue's REST API answered a live session (#631) — every call the
+    session made to it, timed. The endpoint is the label the session's adapter gives the call,
+    passed through as it is.
+    """
+    venue_endpoint: str     # the adapter's label for the call, such as a path of the venue's API
+    calls: int
+    avg_ms: float
+    min_ms: float
+    max_ms: float
+    slow_calls: int = 0     # slower than the report's slow_call_threshold_ms
+    failed_calls: int = 0   # the venue's error answers and the transport failures
+
+
+class VenueApiPerformanceReport(RunScopedReport):
+    """
+    The venue REST API's performance as a live session's monitor measured it (#631) — per
+    endpoint, busiest first, with the session's totals. AutoTrader only: a backtest calls no
+    venue. Written whenever the session ran its monitor, with no endpoint when its adapter called
+    none.
+    """
+    slow_call_threshold_ms: Optional[float] = None    # a call slower than this counted as slow
+    slow_calls: int = 0                               # over every endpoint
+    failed_calls: int = 0                             # over every endpoint
+    endpoints: list[VenueEndpointPerformanceRow] = []
+    key: list[str] = ['venue_endpoint']
 
 
 class OpenPositionRow(BaseModel):
@@ -502,18 +571,6 @@ class OpenPositionRow(BaseModel):
     valued: bool = False
     stop_loss: float | None = None
     take_profit: float | None = None
-    # Who enforces the STOP (#500). 'local' — our own process watches the tick stream and
-    # closes on a breach, so a process that dies leaves the position unprotected. 'venue' —
-    # the level rests at the broker and outlives us. Empty where no level is set. A level
-    # was reported for a long time with nobody behind it; this is what makes the difference
-    # readable instead of assumed.
-    protective_level_enforcement: str = ''
-    # And who enforces the TARGET, which is not the same answer (#503). Only ONE order can
-    # rest at the venue — Kraken has neither OCO nor a bracket — and it holds the stop,
-    # because a bounded loss is worth more than a captured opportunity. So a position whose
-    # stop the venue holds still has a take profit watched by this process alone. One answer
-    # across both levels told an operator the target survives a restart, and it does not.
-    take_profit_enforcement: str = ''
 
 
 class FeeSourceFills(BaseModel):
@@ -683,7 +740,7 @@ class ExecutionStatsRow(BaseModel):
     Order-execution counts of one run unit (sim: a scenario; live: the session).
 
     Each count carries the name of what it counts (#362): `orders_submitted` the orders handed
-    to the venue — opens, closes and protective orders; `orders_adopted` the orders a previous
+    to the venue — opens and closes; `orders_adopted` the orders a previous
     session sent and this one took over at boot; every other `orders_<status>` the
     order-history rows that ended with that status. A refusal made here never reached the
     venue, so it is denied and not submitted.
@@ -723,10 +780,39 @@ class ExecutionStatsTotals(BaseModel):
     orders_failed: int = 0
 
 
+class FillSlippageSummary(BaseModel):
+    """
+    The slippage of a run's fills of one reference kind (#631) — re-derived over the fills
+    themselves, never combined from per-unit figures, since a mean of means is not a mean. Per
+    fill and unweighted, in percent of each fill's reference, so symbols compare; market and
+    limit fills never share a figure, as a limit fill can only meet or beat its limit. The mean
+    and the maximum are null when no fill of the kind was measured.
+    """
+    measured_against: SlippageReference
+    fills: int                                  # the fills of this kind
+    fills_measured: int                         # of those, the ones whose reference was captured
+    adverse_pct_mean: Optional[float] = None
+    adverse_pct_max: Optional[float] = None     # the costliest fill; positive is a cost
+
+
+class FillSlippageRow(FillSlippageSummary):
+    """The slippage of one unit's fills of one reference kind (#631)."""
+    name: str                                   # the unit, as `units` names it
+
+
 class ExecutionStatsReport(RunScopedReport):
     """Order-execution counts as the unified array model: per-unit rows + a summed total."""
     units: list[ExecutionStatsRow]
     totals: ExecutionStatsTotals
+    # The slippage of the fills (#631): per unit and reference kind, and over every unit's fills
+    fill_slippage: list[FillSlippageRow] = []
+    fill_slippage_totals: list[FillSlippageSummary] = []
+    # What makes one row of each list unique — a served list declares it
+    keys: dict[str, list[str]] = {
+        'units': ['name'],
+        'fill_slippage': ['name', 'measured_against'],
+        'fill_slippage_totals': ['measured_against'],
+    }
 
 
 class ActiveOrderRow(BaseModel):
@@ -1035,6 +1121,9 @@ class RunHeader(BaseModel):
     orders_to: Optional[OrdersTo] = None
     data_windows: Optional[list[DataWindow]] = None
     run_purpose: Optional[RunPurpose] = None
+    # The order features this backtest was allowed beyond what its venue's API holds (#625);
+    # empty for every other run, None on a run recorded before the field existed.
+    features_beyond_venue: Optional[list[OrderFeature]] = None
     report_contract: Optional[int] = None
 
 
@@ -1272,7 +1361,7 @@ class RunSummaryCurrency(BaseModel):
     total_initial_balance: float | None = None
     unit_count: int | None = None
     open_position_count: int = 0
-    expectancy: float       # ← TradeAnalytics.expectancy (mean R) — the sweep objective
+    expectancy: float | None    # ← TradeAnalytics.expectancy (None = no R-defined trade)
     avg_win_r: float | None     # ← TradeAnalytics (None = no R-defined winner)
     avg_loss_r: float | None    # ← TradeAnalytics (None = no R-defined loser)
     r_trade_count: int      # ← TradeAnalytics.r_trade_count
@@ -1524,7 +1613,7 @@ class RunSummary(RunScopedReport):
 class RunResultRow(BaseModel):
     """
     One run-results ledger row (#390), typed. The parsed projection of the parquet `LEDGER_COLUMNS`:
-    the JSON columns (`worker_versions`, `symbols`, `sweep_params`) are parsed back to structured types
+    the JSON columns (`worker_versions`, `symbols`, `sweep_params`, `code_stand`) are parsed back to structured types
     so the optimization analysis + the (future) API read typed objects, not string-keyed DataFrame cells.
     """
     # Identity + provenance
@@ -1565,6 +1654,8 @@ class RunResultRow(BaseModel):
     input_files: int | None = None
     unstamped_input_files: int | None = None
     price_bases: str = ''
+    # Order features this backtest was allowed beyond what its venue's API holds (#625)
+    features_beyond_venue: str = ''
     deployment_id: str = ''
     # The bot's DECLARED identity (#538) — live only, and the one identity on this row that does
     # not move. `scenario_set_name` is what the profile is CALLED, `deployment_id` is minted per
@@ -1583,6 +1674,9 @@ class RunResultRow(BaseModel):
     # where the run froze none.
     rendered_config_id: str = ''
     broker_config_id: str = ''
+    # WHICH CODE a session started on, per repository (#559). None on a backtest and on a
+    # fragment written before the column existed: no stand, never a change.
+    code_stand: CodeStand | None = None
     # When this row was written — within seconds of the run's end. '' on an older fragment,
     # which is what makes a gap measured from it fall back to start-to-start and SAY so.
     recorded_at_utc: str = ''
@@ -1635,7 +1729,7 @@ class RunResultRow(BaseModel):
     currency: str = ''
     # KPIs (the rankable objective fields)
     net_pnl: float = 0.0
-    expectancy: float = 0.0
+    expectancy: float | None = None     # None = not measured (no R-defined trade)
     profit_factor: float | None = None  # None = undefined (no losing trade)
     win_rate: float = 0.0
     # None where no drawdown was measured — a session whose every sealed day came before its
@@ -1727,6 +1821,7 @@ class SweepSummary(BaseModel):
     symbols: list[str] = []
     objective: str = ''
     maximize: bool = True
+    features_beyond_venue: str = ''      # what its set allowed beyond the venue (comma-joined)
 
 
 class SweepListResponse(BaseModel):
@@ -1756,6 +1851,51 @@ class SweepDetailResponse(BaseModel):
     # only for a figure some runs did not measure. Without it a shorter list would read as the
     # whole sweep.
     unranked: int = 0
+
+
+class CodeChangeDirection(StrEnum):
+    """
+    How one repository's code differs from the previous session's (#559).
+
+    FORWARD and BACK carry a distance: the older commit stands in the newer session's recorded
+    history, or the newer one in the older session's. UNKNOWN is every other commit that moved: a
+    clone too shallow to hold the other one, or a commit nobody could read. UNCOMMITTED is one
+    commit with other uncommitted changes on it. ADDED and REMOVED are a repository only the newer
+    or only the older session used, which is what tells them from an old or a new commit that is
+    merely unreadable.
+    """
+    FORWARD = 'forward'
+    BACK = 'back'
+    UNKNOWN = 'unknown'
+    UNCOMMITTED = 'uncommitted'
+    ADDED = 'added'
+    REMOVED = 'removed'
+
+
+class DeploymentCodeChange(BaseModel):
+    """
+    One repository whose code differs from the previous session's (#559).
+
+    Args:
+        repository_label: Which repository: `framework`; `strategy` when the two sessions used one
+            other; `strategy` and its directory's name when they used several
+        old_commit: The previous session's commit, as long as its stand recorded it, so one commit
+            may read at two lengths. None when nobody could read it, and on `added`
+        new_commit: This session's commit on the same terms, None on `removed` as well
+        commits_between: How many commits apart the two stand on the first-parent line, in the
+            direction `change_direction` names. None where no distance exists
+        change_direction: How the code moved. Not the bare word: on a trade or an order row
+            `direction` is long or short
+        subject: The message of the commit that made the difference: the newer commit's, on `back`
+            the commit it went back from. None where it was not read, on `uncommitted` and on
+            `removed`
+    """
+    repository_label: str
+    old_commit: Optional[str] = None
+    new_commit: Optional[str] = None
+    commits_between: Optional[int] = None
+    change_direction: CodeChangeDirection
+    subject: Optional[str] = None
 
 
 class DeploymentSessionRow(BaseModel):
@@ -1802,6 +1942,10 @@ class DeploymentSessionRow(BaseModel):
             rehearsal; None on a session recorded before the field existed
         orders_to_changed: True when `orders_to` differs from the previous session's — a
             deployment that went from a rehearsal to real money, or back
+        code_changes: What moved in the code since the previous session, one entry per repository
+            that did. Empty when nothing moved, on the first session of a series, and on a session
+            recorded before the field existed, which is no change: the sessions on either side of
+            it are compared with each other
     """
     index: int
     run_id: str
@@ -1820,13 +1964,29 @@ class DeploymentSessionRow(BaseModel):
     operation_changed: bool = False
     orders_to: Optional[OrdersTo] = None
     orders_to_changed: bool = False
+    code_changes: list[DeploymentCodeChange] = []
+
+
+class DeploymentCaption(BaseModel):
+    """
+    What the detail view's heading and footer say about a whole deployment. Not served.
+
+    Args:
+        session_count: How many sessions it holds: distinct runs, not rows
+        first_started: The earliest start any row can name, None when none can
+        currencies: The account currencies of its rows, sorted; empty when no row produced a figure
+    """
+    session_count: int
+    first_started: Optional[datetime] = None
+    currencies: list[str] = []
 
 
 class DeploymentComparabilityAdvisory(BaseModel):
     """
     A deployment whose sessions were not all produced by the same profile — the same strategy
     parameters, the same operational settings, the same place the orders went. The code each
-    session ran and the broker configuration it traded with are not compared (#559).
+    session ran is counted apart, on `DeploymentCodeSummary`, and the broker configuration it traded
+    with is not compared (#559).
 
     The per-session marks say WHERE something changed; this says WHETHER the history can be
     read as one series at all, and it says it BEFORE the table rather than inside it. The
@@ -1856,6 +2016,28 @@ class DeploymentComparabilityAdvisory(BaseModel):
     orders_to: list[OrdersTo] = []
 
 
+class DeploymentCodeSummary(BaseModel):
+    """
+    How often a deployment's code moved, and when it last did (#559).
+
+    One dated line and not the advisory's block, because the advisory reads a deployment's whole
+    history and never ages: a change half a year old would print the block on every view, and every
+    maintained deployment would end up under the same sign as a real strategy change.
+
+    Args:
+        code_stands: Distinct code stands over the sessions that recorded one. A rollback to an
+            earlier stand adds none; an unreadable commit is a stand of its own every time
+        sessions: How many sessions the deployment holds: distinct runs, not rows
+        last_change_at: When the latest session whose code differs from the one before it started.
+            None when that session's start cannot be read
+        age_days: Whole days from then to the moment of the answer, None with it
+    """
+    code_stands: int
+    sessions: int
+    last_change_at: Optional[datetime] = None
+    age_days: Optional[int] = None
+
+
 class DeploymentSummary(BaseModel):
     """
     One deployment's at-a-glance line, for the list view.
@@ -1879,7 +2061,11 @@ class DeploymentSummary(BaseModel):
             sharing one `bot_id` are one bot restarted with `--new-deployment`
         currency: The account currency the figures are in
         longest_gap_hours: The longest stretch the bot was not running
-        changed: True when the sessions were not all produced by the same configuration
+        changed: True when the sessions did not all run alike: the configuration moved, the code
+            moved, or both
+        configuration_changed: True when the configuration moved, the advisory's question alone.
+            False with `changed` true means only the code moved, and the advisory is null
+        code_summary: How often the code moved and when it last did, None under two code stands
         orders_to: Where its sessions' orders went, each value once — `["venue"]` is a
             real-money deployment, `["simulated"]` a rehearsal, both a deployment that mixes the
             two (then `changed` is true as well). Empty when no session recorded it
@@ -1896,6 +2082,8 @@ class DeploymentSummary(BaseModel):
     bot_id: str = ''
     longest_gap_hours: Optional[float] = None
     changed: bool = False
+    configuration_changed: bool = False
+    code_summary: Optional[DeploymentCodeSummary] = None
     orders_to: list[OrdersTo] = []
 
 
@@ -1929,11 +2117,15 @@ class DeploymentDetailResponse(BaseModel):
     passed one is the more expensive mistake.
     """
     key: list[str] = list(SESSION_KEY)
+    # The key of `code_changes` on each session row: none. An entry's identity is its place in the
+    # list, because a repository's root is not served and its label can repeat.
+    code_changes_key: list[str] = []
     deployment_id: str
     sessions: list[DeploymentSessionRow]
     count: int
     unfinished: int = 0
     advisory: Optional[DeploymentComparabilityAdvisory] = None
+    code_summary: Optional[DeploymentCodeSummary] = None
 
 
 class DeploymentBookingPeriodRow(BookingPeriodRow):
@@ -2248,6 +2440,13 @@ class BrokerInfoRow(BaseModel):
     broker_config_id: str = ''
     scenarios: list[str] = []
     symbols: list[BrokerSymbolRow] = []
+    # Where the venue reports a fill's fee, as the broker's adapter declares it (#631) — a fact
+    # of the venue, the same in a backtest and a session. Null on a record from before contract 44
+    fee_report: Optional[FeeReport] = None
+    # Whether this run's fills should carry the venue's own fee: the executor's answer in a
+    # session — false in a dry run, whose fills are simulated — and false in a backtest, which
+    # has no venue. Null on an older record, and where a session never built its executor
+    venue_fee_expected: Optional[bool] = None
 
 
 class BrokerReport(RunScopedReport):
@@ -2889,7 +3088,7 @@ class RobustnessWindowRow(BaseModel):
     currency: str = ''
     metric_value: float = 0.0   # the configured primary metric (a RobustnessMetric value)
     net_pnl: float = 0.0        # secondary, non-aggregated reference
-    expectancy: float = 0.0
+    expectancy: float | None = None     # None = not measured (no R-defined trade)
     # Final equity against the starting value, in percent, open positions marked; None when
     # the window had no starting value to measure against.
     equity_return_pct: float | None = None
@@ -2936,7 +3135,7 @@ class RobustnessReport(RunScopedReport):
     The renderer applies only a display class; the verdict warning fires from the validator.
     """
     enabled: bool = False
-    metric: str = 'expectancy'              # the primary metric name
+    metric: str = 'net_pnl'                 # the primary metric name
     windows: list[RobustnessWindowRow] = []
     distribution: RobustnessDistribution | None = None
     in_sample: RobustnessRoleAggregate | None = None

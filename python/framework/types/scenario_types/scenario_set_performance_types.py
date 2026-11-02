@@ -85,19 +85,6 @@ class ProfilingData:
         timing = self.operations.get(operation_name)
         return timing.total_time_ms if timing else 0.0
 
-    def get_operation_count(self, operation_name: str) -> int:
-        """
-        Get call count for operation.
-
-        Args:
-            operation_name: Name of operation (e.g., 'worker_decision')
-
-        Returns:
-            Call count, or 0 if operation not found
-        """
-        timing = self.operations.get(operation_name)
-        return timing.call_count if timing else 0
-
     @classmethod
     def from_dicts(
         cls,

@@ -85,6 +85,7 @@ class ApiPerfMonitor:
                 self._total_errors += 1
             is_slow = duration_ms > self._config.slow_call_threshold_ms
             if is_slow:
+                stats.slow_count += 1
                 self._slow_count += 1
 
         # Log outside the lock — only the abnormal.
@@ -110,7 +111,8 @@ class ApiPerfMonitor:
             slow = self._slow_count
             errors = self._total_errors
         endpoints.sort(key=lambda s: s.count, reverse=True)
-        return ApiPerfSnapshot(endpoints=endpoints, slow_count=slow, total_errors=errors)
+        return ApiPerfSnapshot(endpoints=endpoints, slow_count=slow, total_errors=errors,
+                               slow_call_threshold_ms=self._config.slow_call_threshold_ms)
 
     def shutdown(self) -> None:
         """Emit a final per-endpoint summary to the session log."""

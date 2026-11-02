@@ -4,6 +4,7 @@ from python.configuration.sentiment_config_manager import SentimentConfigManager
 from python.framework.bars.bar_rendering_controller import BarRenderingController
 from python.framework.bars.warmup_history import WarmupHistory
 from python.framework.constants.run_layout_constants import RUN_TYPE_SIMULATION
+from python.framework.exceptions.order_feature_errors import OrderFeatureRefusedError
 from python.framework.factory.decision_logic_factory import DecisionLogicFactory
 from python.framework.factory.trade_simulator_factory import prepare_trade_executor_for_scenario
 from python.framework.factory.worker_factory import WorkerFactory
@@ -25,7 +26,10 @@ from python.framework.utils.process_serialization_utils import process_deseriali
 from python.framework.validators.component_metadata_advisory import (
     surface_decision_logic_version,
 )
-from python.framework.validators.decision_logic_hook_validator import check_cold_start_hook
+from python.framework.validators.decision_logic_hook_validator import (
+    check_cold_start_hook,
+    check_order_feature_declaration,
+)
 from python.framework.workers.abstract_signal_worker import AbstractSignalWorker
 from python.framework.workers.worker_orchestrator import WorkerOrchestrator
 
@@ -74,6 +78,14 @@ def process_startup_preparation(
     cold_start_hook_error = check_cold_start_hook(decision_logic_class, required_order_types)
     if cold_start_hook_error:
         raise ValueError(cold_start_hook_error)
+    # #625 — the batch's main process has refused this already, with the same sentence; a
+    # scenario started any other way still has to answer.
+    order_feature_declaration_error = check_order_feature_declaration(decision_logic_class)
+    if order_feature_declaration_error:
+        raise OrderFeatureRefusedError(order_feature_declaration_error)
+    required_order_features = decision_logic_class.get_required_order_features(
+        config.decision_logic_config
+    )
 
     # === PHASE 2: Create Trade Simulator (with requirements) ===
     trade_simulator = prepare_trade_executor_for_scenario(
@@ -166,6 +178,9 @@ def process_startup_preparation(
         executor=trade_simulator,
         required_order_types=required_order_types,
         order_guard_config=config.order_guard_config,
+        required_order_features=required_order_features,
+        features_beyond_venue=config.features_beyond_venue,
+        logic_name=config.decision_logic_type,
     )
     decision_logic.set_trading_api(trading_api)
     scenario_logger.debug('✅ DecisionTradingApi injected into Decision Logic')

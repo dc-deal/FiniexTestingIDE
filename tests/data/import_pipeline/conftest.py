@@ -18,15 +18,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from python.data_management.index.tick_index_manager import TickIndexManager
-
 import numpy as np
 import pytest
 
-from python.configuration.import_config_manager import ImportConfigManager
 from python.configuration.data_origin_registry import DataOriginRegistry
+from python.configuration.import_config_manager import ImportConfigManager
 from python.configuration.market_config_manager import MarketConfigManager
 from python.data_management.importers.tick_data_importer import TickDataImporter
+from python.data_management.index.tick_index_manager import TickIndexManager
 from python.framework.utils.time_utils import server_clock_to_utc_ms
 
 # =============================================================================

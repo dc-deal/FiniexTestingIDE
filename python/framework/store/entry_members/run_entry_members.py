@@ -12,8 +12,8 @@ from typing import Dict, FrozenSet, Optional, Tuple
 
 from python.framework.constants.run_layout_constants import (
     ACCEPTANCE_CAPTURE_SCHEMA_VERSION,
-    ALGO_STATE_RESTORED_FILE,
     AGGREGATED_PORTFOLIO_ARTIFACT_FILE,
+    ALGO_STATE_RESTORED_FILE,
     BACKTEST_GLOBAL_LOG_NAME,
     BACKTEST_SYSTEM_INFO_LOG_NAME,
     BLOCK_SPLITTING_ARTIFACT_FILE,
@@ -74,11 +74,13 @@ from python.framework.constants.run_layout_constants import (
     TRADES_FILE,
     TRADES_SCHEMA_VERSION,
     VENUE_ACCOUNT_ARTIFACT_FILE,
+    VENUE_API_PERFORMANCE_ARTIFACT_FILE,
     WARMUP_HISTORY_FILE,
     WARNINGS_ERRORS_ARTIFACT_FILE,
     WORKER_DECISION_ARTIFACT_FILE,
 )
 from python.framework.exceptions.store_errors import EntryMemberRefusedError
+from python.framework.types.run_stream_types import RecordedStreamKind
 from python.framework.types.store_member_types import (
     EntryMember,
     EntryMemberMoment,
@@ -362,6 +364,10 @@ RUN_ENTRY_MEMBERS: Tuple[EntryMember, ...] = (
     _section(RunEntryMemberId.VENUE_ACCOUNT, 'venue-account', VENUE_ACCOUNT_ARTIFACT_FILE,
              'what the venue held at the session\'s start and end',
              _at_end(RUN_TYPE_AUTOTRADER, condition='the session asked its venue')),
+    _section(RunEntryMemberId.VENUE_API_PERFORMANCE, 'venue-api-performance',
+             VENUE_API_PERFORMANCE_ARTIFACT_FILE,
+             'how the venue\'s REST API answered the session, per endpoint',
+             _at_end(RUN_TYPE_AUTOTRADER, condition='the session watched its venue API')),
     _section(RunEntryMemberId.WARNINGS_ERRORS, 'warnings-errors', WARNINGS_ERRORS_ARTIFACT_FILE,
              'the warnings and errors, tiered, and the run\'s outcome', _at_end(*_BOTH)),
     _section(RunEntryMemberId.WORKER_DECISION, 'worker-decision', WORKER_DECISION_ARTIFACT_FILE,
@@ -394,7 +400,8 @@ RUN_ENTRY_MEMBERS: Tuple[EntryMember, ...] = (
         'docs/architecture/live_telemetry_architecture.md#the-recorded-state-frame--not-this-stream',
         index_column=RunIndexColumn.STREAM_FILES, schema_version=STATE_FRAMES_SCHEMA_VERSION,
         served_route='state-frames/latest', time_fields=('frame_time',),
-        day_record=RunEntryMemberId.STATE_FRAMES_DAY),
+        day_record=RunEntryMemberId.STATE_FRAMES_DAY,
+        recorded_stream_kind=RecordedStreamKind.STATE_FRAMES),
     EntryMember(
         RunEntryMemberId.TICK_STREAM_EVENTS, f'{IO_SUBDIR}/{TICK_STREAM_EVENTS_FILE}',
         EntryMemberShape.STREAM, 'the tick stream\'s outages and the trades it refused',

@@ -46,7 +46,7 @@ Define the strategy once in `global`, then one window per scenario with a `role`
 ```json
 {
   "scenario_set_name": "eurusd_robustness",
-  "robustness": { "enabled": true, "metric": "expectancy", "oos_split": 0.3 },
+  "robustness": { "enabled": true, "metric": "net_pnl", "oos_split": 0.3 },
   "global": {
     "strategy_config": { "decision_logic_type": "user_algos/my_algo/my_strategy.py", "...": "the ONE strategy" }
   },
@@ -72,16 +72,18 @@ The block is set-wide (a sibling of `scenario_set_name`, never inside `global`):
 | Field | Default | Meaning |
 |---|---|---|
 | `enabled` | `false` | Turn robustness mode on |
-| `metric` | `expectancy` | The per-window metric: `expectancy` (mean R, currency-neutral), `net_pnl`, or `equity_return_pct` (final equity against the start, open positions marked) |
+| `metric` | `net_pnl` | The per-window metric: `net_pnl`, `expectancy` (mean R, currency-neutral), or `equity_return_pct` (final equity against the start, open positions marked) |
 | `oos_split` | `0.3` | Trailing fraction assigned to Out-of-Sample by the generator |
 | `min_windows` | `3` | Below this the distribution is statistically weak (advisory) |
 | `overfit_wfe_threshold` | `0.5` | WFE below → OVERFIT verdict |
 | `robust_wfe_threshold` | `0.8` | WFE at/above → ROBUST |
 | `disposition_trust_pct` | `25.0` | Block-splitting distortion above which the verdict is suppressed |
 
-**`expectancy` vs `net_pnl`:** expectancy (mean R-multiple) is comparable across instruments and
-currencies and is the recommended default. It requires trades with a stop loss (no stop → no
-R-multiple → expectancy 0). `net_pnl` is intuitive but not comparable across currencies.
+**`net_pnl` vs `expectancy`:** `net_pnl` is always measured, which makes it the default, but it is
+not comparable across currencies. Expectancy (mean R-multiple) is comparable across instruments and
+currencies, but it needs a stop on the position, and a logic keeping its own exits has none. A
+window with no R has no expectancy: it counts as 0.0 in the distribution, and the report gives no
+verdict and says so.
 
 **`equity_return_pct` — for a strategy that is invested all the time.** Both metrics above are
 read from the trades a window CLOSED. A strategy that holds an allocation for weeks closes little
@@ -97,7 +99,7 @@ The run summary shows a **ROBUSTNESS VALIDATION** section:
 
 ```
 🎯 ROBUSTNESS VALIDATION
-  Distribution (10 windows · metric: expectancy)
+  Distribution (10 windows · metric: net_pnl)
     profitable: 70%  |  mean +0.18  median +0.21  std 0.34
     best +0.72 (w04)  |  worst −0.41 (w08)  |  CoV 1.89
   By regime:

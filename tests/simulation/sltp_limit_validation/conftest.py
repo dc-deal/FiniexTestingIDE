@@ -25,9 +25,9 @@ from python.framework.types.portfolio_types.portfolio_types import Position
 from python.framework.types.process_data_types import ProcessTickLoopResult
 from python.framework.types.trading_env_types.trading_env_stats_types import ExecutionStats
 from tests.shared.fixture_helpers import (
-    extract_open_positions,
     ScenarioExpectedValues,
     extract_execution_stats,
+    extract_open_positions,
     extract_process_result,
     extract_scenario_expected_values,
     extract_tick_loop_results,

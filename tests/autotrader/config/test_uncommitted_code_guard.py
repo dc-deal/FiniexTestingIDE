@@ -47,10 +47,10 @@ from python.framework.exceptions.code_identity_errors import (
 from python.framework.reporting.builders.warnings_errors_report_builder import (
     build_warnings_errors_report_from_session,
 )
+from python.framework.store.run_patch_store import RunPatchStore
 from python.framework.types.api.report_types import WarningTier
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
 from python.framework.types.autotrader_types.autotrader_result_types import AutoTraderResult
-from python.framework.store.run_patch_store import RunPatchStore
 from python.framework.types.run_origin_types import (
     CodeIdentity,
     ComponentIdentity,

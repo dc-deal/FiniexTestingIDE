@@ -10,18 +10,23 @@ Formatting only — the grouping, the marks and the roll-up are derived in
 derivations of one deployment are two chances to disagree about what its drawdown is (#539).
 
 What this does NOT do is judge. A deployment is a DECLARATION that these sessions belong
-together; whether they are COMPARABLE is what the two fingerprints answer, and whether a gap
-was acceptable is a judgement a person makes. All three are shown, none is collapsed into a
-verdict (#527 owns the richer surface; this is the console floor beneath it).
+together; whether they are COMPARABLE is what the two fingerprints and the code stands answer,
+and whether a gap was acceptable is a judgement a person makes. All three are shown, none is
+collapsed into a verdict (#527 owns the richer surface; this is the console floor beneath it).
 """
 
 from typing import List, Optional
 
+from python.framework.reporting.builders.deployment_history_builder import deployment_caption
 from python.framework.types.api.report_types import (
+    CodeChangeDirection,
+    DeploymentCodeChange,
+    DeploymentCodeSummary,
     DeploymentComparabilityAdvisory,
     DeploymentSessionRow,
     DeploymentSummary,
 )
+from python.framework.types.run_origin_types import FRAMEWORK_REPOSITORY
 from python.framework.utils.math_utils import negated_magnitude
 
 
@@ -46,7 +51,7 @@ def render_deployment_list(summaries: List[DeploymentSummary]) -> None:
     for summary in sorted(summaries, key=lambda s: (s.bot, s.deployment_id), reverse=True):
         since = summary.first_started.strftime('%Y-%m-%d %H:%M') if summary.first_started else '?'
         gap = f'{summary.longest_gap_hours / 24:.1f} d' if summary.longest_gap_hours else '—'
-        mark = ' ⚠' if summary.changed else ''
+        mark = _list_mark(summary)
         # `bot_id` is the only identity that does not move, and the footer's claim about two
         # rows for one bot is only checkable against it — `bot` is the profile NAME, which an
         # operator improves. A profile that declares none shows a dash rather than a blank.
@@ -61,9 +66,12 @@ def render_deployment_list(summaries: List[DeploymentSummary]) -> None:
               f'{since:<17} {summary.net_pnl:>11.2f} {deepest} '
               f'{gap:>9}{mark}')
     print('─' * 155)
-    if any(s.changed for s in summaries):
+    if any(s.configuration_changed for s in summaries):
         print('⚠ = the sessions were not all produced by the same configuration; the detail '
               'view draws the break.')
+    if any(s.code_summary is not None for s in summaries):
+        print('⚠ code N d ago = the sessions started on different code, last N days ago; the '
+              'detail view draws each change.')
     print('Two rows sharing a BOT ID = one bot restarted with --new-deployment. The older '
           'history stays readable.')
     print('Open one with `run_index_cli.py deployments --id <deployment>`.')
@@ -72,7 +80,8 @@ def render_deployment_list(summaries: List[DeploymentSummary]) -> None:
 def render_deployment_history(
     deployment: str, sessions: List[DeploymentSessionRow],
     advisory: Optional[DeploymentComparabilityAdvisory] = None,
-    unfinished: int = 0) -> None:
+    unfinished: int = 0,
+    code_summary: Optional[DeploymentCodeSummary] = None) -> None:
     """
     Print one deployment's sessions as a table — the detail half.
 
@@ -90,14 +99,19 @@ def render_deployment_history(
             of its close only at the end — so such a run stands in the table without an end
             when it sealed a day, and is absent from it when it died before its first seal.
             The two counts overlap and are never added. Zero leaves the line exactly as it was
+        code_summary: How often the code moved, printed as one dated line above the table and above
+            the advisory's block. One line, because it never leaves the deployment's history: a
+            block here would stand on every maintained deployment for good
     """
-    currency = sessions[0].currency if sessions else ''
-    first = sessions[0].started.strftime('%Y-%m-%d %H:%M') if sessions and sessions[0].started else '?'
-    recorded = (f'{len(sessions)} session(s) in the ledger · {unfinished} never completed'
-                if unfinished else f'{len(sessions)} session(s)')
+    caption = deployment_caption(sessions)
+    first = caption.first_started.strftime('%Y-%m-%d %H:%M') if caption.first_started else '?'
+    recorded = (f'{caption.session_count} session(s) in the ledger · {unfinished} never completed'
+                if unfinished else f'{caption.session_count} session(s)')
     bot_id = next((s.bot_id for s in sessions if s.bot_id), '')
     identity = f' · bot {bot_id}' if bot_id else ''
     print(f'\n{deployment} — {recorded} · since {first} UTC{identity}')
+    if code_summary is not None:
+        print(_code_warning(code_summary))
     if advisory is not None:
         print('─' * 104)
         print('⚠️  THIS DEPLOYMENT SPANS MORE THAN ONE CONFIGURATION')
@@ -127,6 +141,9 @@ def render_deployment_history(
         started = session.started.strftime('%Y-%m-%d %H:%M') if session.started else '?'
         ran = f'{session.ran_hours:.1f} h' if session.ran_hours is not None else '—'
         notes = []
+        # With several currencies the footer cannot say which one a row's amounts are in
+        if len(caption.currencies) > 1 and session.currency:
+            notes.append(session.currency)
         # Reported, never judged: no threshold here decides what is "too long" — that is a
         # judgement about the market and the bot, not about the data. Named "idle" because
         # the table now reads downwards into the past: it is the stretch before this session.
@@ -160,9 +177,12 @@ def render_deployment_history(
         if moved:
             print(f'{"·" * 26} {" and ".join(moved)} CHANGED HERE — rows above and below '
                   f'answer different questions {"·" * 6}')
+        if session.code_changes:
+            _print_code_changes(session.code_changes)
 
     print('─' * 104)
-    print(f'Amounts in {currency}. Newest session first. `ran` is measured from the start to '
+    amounts = ', '.join(caption.currencies) or '—'
+    print(f'Amounts in {amounts}. Newest session first. `ran` is measured from the start to '
           'the moment the')
     print('row was written, so it carries the reporting tail. The drawdown column is '
           'CUMULATIVE over the')
@@ -175,3 +195,96 @@ def render_deployment_history(
     print('Descend into one session: runs/autotrader/<profile>/<run id>/ — its summary, session log and '
           'events.csv each answer a different question '
           '(docs/autotrader/autotrader_observability.md).')
+
+
+def _list_mark(summary: DeploymentSummary) -> str:
+    """
+    What a list line says about change, behind its last column.
+
+    Args:
+        summary: The deployment's roll-up
+
+    Returns:
+        ` ⚠` for a moved configuration, ` ⚠ code 22 d ago` for moved code, ` ⚠ · code 22 d ago` for
+        both, '' for neither
+    """
+    code = summary.code_summary
+    if code is None:
+        return ' ⚠' if summary.configuration_changed else ''
+    age = f'code {code.age_days} d ago' if code.age_days is not None else 'code'
+    return f' ⚠ · {age}' if summary.configuration_changed else f' ⚠ {age}'
+
+
+def _code_warning(code: DeploymentCodeSummary) -> str:
+    """
+    The one dated line a deployment's code change prints above the table.
+
+    Args:
+        code: How often the code moved, and when it last did
+
+    Returns:
+        The line
+    """
+    when = (f'{code.age_days} d ago ({code.last_change_at:%Y-%m-%d})'
+            if code.last_change_at is not None and code.age_days is not None
+            else 'on an unknown date')
+    return (f'⚠️  Code changed {when} — {code.code_stands} code stands over {code.sessions} '
+            'sessions; net P&L adds them up')
+
+
+def _print_code_changes(changes: List[DeploymentCodeChange]) -> None:
+    """
+    The line between two sessions whose code differs, with one row per repository under it.
+
+    Args:
+        changes: What moved, one entry per repository
+    """
+    heading = '··· code changed here '
+    print(heading + '·' * (104 - len(heading)))
+    label_width = max([len(FRAMEWORK_REPOSITORY)] + [len(c.repository_label) for c in changes])
+    for change in changes:
+        old = _commit_shown(
+            change.old_commit,
+            '(new)' if change.change_direction is CodeChangeDirection.ADDED else 'unknown')
+        new = _commit_shown(
+            change.new_commit,
+            '(gone)' if change.change_direction is CodeChangeDirection.REMOVED else 'unknown')
+        commits = f'{old} → {new}'
+        subject = f'"{change.subject}"' if change.subject else ''
+        print(f'    {change.repository_label:<{label_width}}  {commits:<19}  '
+              f'{_how_far(change):<10}  {subject}'.rstrip())
+
+
+def _commit_shown(commit: Optional[str], absent: str) -> str:
+    """
+    A commit as the console shows it. Cut here and nowhere else: the served figure keeps its length.
+
+    Args:
+        commit: The commit, None where there is none to show
+        absent: What stands in its place then
+
+    Returns:
+        The first 8 characters of the commit, or the stand-in
+    """
+    return commit[:8] if commit else absent
+
+
+def _how_far(change: DeploymentCodeChange) -> str:
+    """
+    How far the code moved, as a change row says it.
+
+    Args:
+        change: One repository's change
+
+    Returns:
+        The words; empty for a repository only one of the two sessions used, which has no distance
+    """
+    if change.change_direction is CodeChangeDirection.FORWARD:
+        return f'+{change.commits_between} commit{"" if change.commits_between == 1 else "s"}'
+    if change.change_direction is CodeChangeDirection.BACK:
+        return f'back {change.commits_between}'
+    if change.change_direction is CodeChangeDirection.UNKNOWN:
+        return '+?'
+    if change.change_direction is CodeChangeDirection.UNCOMMITTED:
+        return 'uncommitted changes'
+    return ''

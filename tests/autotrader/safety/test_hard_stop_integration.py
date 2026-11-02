@@ -64,6 +64,7 @@ _LOGIC_CONFIG = {
     'modify_stop_sequence': [],
     'cancel_limit_sequence': [],
     'cancel_stop_sequence': [],
+    'exit_mode': 'declared',
 }
 
 

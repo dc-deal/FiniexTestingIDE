@@ -13,8 +13,8 @@ import json
 import pytest
 
 from python.configuration.market_config_manager import MarketConfigManager
-from python.framework.trading_env.adapters.kraken_adapter import KrakenAdapter
 from python.framework.testing.mock_broker_adapter import MockBrokerAdapter
+from python.framework.trading_env.adapters.kraken_adapter import KrakenAdapter
 from python.framework.trading_env.adapters.mt5_adapter import Mt5Adapter
 from python.framework.types.config_types.market_config_types import PipMode
 from python.framework.types.trading_env_types.broker_types import BrokerType

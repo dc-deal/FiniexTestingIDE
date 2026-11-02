@@ -141,7 +141,6 @@ class SecurityRule(StrEnum):
     COOLDOWN_COUNT_DOES_NOT_DECAY = 'cooldown_count_does_not_decay'
     A_FILL_RESETS_THE_COUNT = 'a_fill_resets_the_count'
     VENUE_REFUSAL_ARMS = 'venue_refusal_arms'
-    PROTECTIVE_AMEND_REFUSAL_DOES_NOT_ARM = 'protective_amend_refusal_does_not_arm'
     SOFT_BLOCK_ON_THE_ACCOUNT_VALUE = 'soft_block_on_the_account_value'
     SOFT_BLOCK_NAMES_EVERY_LIMIT = 'soft_block_names_every_limit'
     CLOSING_STAYS_ALLOWED = 'closing_stays_allowed'

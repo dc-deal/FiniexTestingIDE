@@ -15,6 +15,9 @@ from python.framework.exceptions.connection_errors import ConnectionInadmissible
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
 from python.framework.types.autotrader_types.autotrader_result_types import AutoTraderResult
 from python.framework.types.live_types.broker_truth_types import BrokerTruthReadReason
+from python.framework.types.trading_env_types.active_orders_snapshot_types import (
+    ActiveOrdersSnapshot,
+)
 from tests.autotrader.cold_start.conftest import RecordingLogger
 
 
@@ -43,7 +46,9 @@ def _session(monkeypatch, calls: List[str], truth_fails: bool = False) -> Autotr
     session._executor = SimpleNamespace(
         finish_remaining_orders=lambda cancel_orders: calls.append('orders handled'),
         check_clean_shutdown=lambda expect_flat: True,
-        record_session_truth=record_session_truth)
+        record_session_truth=record_session_truth,
+        is_session_end_requested=lambda: False,
+        get_active_orders_snapshot=ActiveOrdersSnapshot)
     session._order_event_stream = SimpleNamespace(close=lambda: calls.append('stream closed'))
     monkeypatch.setattr(session, '_persist_cold_start_carry_over', lambda: True)
     monkeypatch.setattr(session, '_collect_results', lambda ticks, clipped: AutoTraderResult())

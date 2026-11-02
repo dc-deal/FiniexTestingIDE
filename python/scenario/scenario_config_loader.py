@@ -8,11 +8,9 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 from python.configuration.app_config_manager import AppConfigManager
-from python.framework.store.run_config_store import RunConfigStore
-from python.framework.utils.file_utils import create_directory
-from python.scenario.scenario_set_resolver import resolve_scenario_set_path
-from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.config_directory.config_directory_discovery import is_user_owned
+from python.framework.logging.bootstrap_logger import get_global_logger
+from python.framework.store.run_config_store import RunConfigStore
 from python.framework.types.config_directory_types import ConfigKind
 from python.framework.types.config_types.autotrader_defaults_config_types import OrderGuardDefaults
 from python.framework.types.config_types.backtesting_config_types import (
@@ -29,6 +27,7 @@ from python.framework.types.scenario_types.scenario_set_types import (
     SingleScenario,
 )
 from python.framework.types.scenario_types.window_set_types import WindowSet
+from python.framework.types.trading_env_types.order_types import OrderFeature
 from python.framework.types.trading_env_types.stress_test_types import StressTestConfig
 from python.framework.utils.config_merge_utils import (
     allowlist_from,
@@ -36,11 +35,13 @@ from python.framework.utils.config_merge_utils import (
     validate_merged_config,
 )
 from python.framework.utils.declared_purpose_utils import read_declared_purpose
+from python.framework.utils.file_utils import create_directory
 from python.framework.utils.parameter_override_detector import ParameterOverrideDetector
 from python.framework.utils.time_utils import parse_datetime
 from python.framework.validators.config_name_validator import refuse_config_name_conflict
 from python.scenario.generator.window_materializer import WindowMaterializer
 from python.scenario.scenario_cascade import ScenarioCascade
+from python.scenario.scenario_set_resolver import resolve_scenario_set_path
 
 vLog = get_global_logger()
 
@@ -60,7 +61,14 @@ _KNOWN_STRESS_TEST_KEYS: frozenset = allowlist_from(StressTestConfig)
 # misspelt `run_purpose` would otherwise read as absent — a fixture silently run as regular.
 _KNOWN_SCENARIO_SET_TOP_KEYS: frozenset = frozenset({
     'scenario_set_name', 'version', 'created', 'description', 'run_purpose',
-    'global', 'robustness', 'scenarios',
+    'features_beyond_venue', 'global', 'robustness', 'scenarios',
+})
+# The sections `global` cascades into every scenario. Each section's own keys are checked
+# against its schema; without this, a misspelt SECTION read as absent and its whole block was
+# silently not applied.
+_KNOWN_GLOBAL_KEYS: frozenset = frozenset({
+    'strategy_config', 'execution_config', 'trade_simulator_config', 'stress_test_config',
+    'order_guard',
 })
 
 
@@ -77,6 +85,30 @@ def _declared_purpose(config: Dict[str, Any], config_path: Path) -> RunPurpose:
     """
     check_unknown_keys(f'{config_path.name} (top level)', config, _KNOWN_SCENARIO_SET_TOP_KEYS)
     return read_declared_purpose(config, config_path.name, is_user_owned(config_path))
+
+
+def _declared_features_beyond_venue(config: Dict[str, Any], config_path: Path) -> List[OrderFeature]:
+    """
+    Read the order features a scenario set declares its venue need not hold (#625).
+
+    An exception, written down in the set, recorded with the run and refused by a certificate.
+    Whether each name is needed at all is asked once the scenarios' logics are resolved.
+
+    Args:
+        config: The set's raw JSON
+        config_path: Where it was read from — named in a refusal
+
+    Returns:
+        The declared features — empty when the set says nothing
+    """
+    declared = config.get('features_beyond_venue', [])
+    allowed = [feature.value for feature in OrderFeature]
+    unknown = [name for name in declared if name not in allowed]
+    if unknown:
+        raise ValueError(
+            f'{config_path.name}: features_beyond_venue names {unknown}, which is not one of: '
+            f'{allowed}')
+    return [OrderFeature(name) for name in declared]
 
 
 class ScenarioConfigLoader:
@@ -141,6 +173,7 @@ class ScenarioConfigLoader:
             config = json.load(f)
 
         run_purpose = _declared_purpose(config, config_path)
+        features_beyond_venue = _declared_features_beyond_venue(config, config_path)
 
         # Parse global defaults
         global_config = config.get('global', {})
@@ -158,6 +191,7 @@ class ScenarioConfigLoader:
         global_order_guard = global_config.get('order_guard', {})
 
         # Structural key validation — global level (pre-merge, full provenance)
+        check_unknown_keys('global',                         global_config,         _KNOWN_GLOBAL_KEYS)
         check_unknown_keys('global.execution_config',        global_execution,      _KNOWN_EXECUTION_KEYS)
         check_unknown_keys('global.trade_simulator_config',  global_trade_simulator, _KNOWN_TRADE_SIM_KEYS)
         check_unknown_keys('global.order_guard',             global_order_guard,    _KNOWN_ORDER_GUARD_KEYS)
@@ -307,6 +341,9 @@ class ScenarioConfigLoader:
 
         vLog.info(f'✅ Loaded {len(scenarios)} scenarios from {config_file}')
 
+        for scenario in scenarios:
+            scenario.features_beyond_venue = features_beyond_venue
+
         # ScenarioSet creates its own loggers
         return LoadedScenarioConfig(
             scenario_set_name=scenario_set_name,
@@ -315,6 +352,7 @@ class ScenarioConfigLoader:
             robustness=robustness,
             disabled_count=disabled_count,
             run_purpose=run_purpose,
+            features_beyond_venue=features_beyond_venue,
         )
 
     def load_from_profiles(
@@ -346,6 +384,7 @@ class ScenarioConfigLoader:
             config = json.load(f)
 
         run_purpose = _declared_purpose(config, config_path)
+        features_beyond_venue = _declared_features_beyond_venue(config, config_path)
 
         # Parse global defaults from scenario set
         global_config = config.get('global', {})
@@ -356,6 +395,7 @@ class ScenarioConfigLoader:
         global_order_guard = global_config.get('order_guard', {})
 
         # Structural key validation — global level (pre-merge, full provenance)
+        check_unknown_keys('global',                         global_config,         _KNOWN_GLOBAL_KEYS)
         check_unknown_keys('global.execution_config',        global_execution,      _KNOWN_EXECUTION_KEYS)
         check_unknown_keys('global.trade_simulator_config',  global_trade_simulator, _KNOWN_TRADE_SIM_KEYS)
         check_unknown_keys('global.order_guard',             global_order_guard,    _KNOWN_ORDER_GUARD_KEYS)
@@ -419,6 +459,9 @@ class ScenarioConfigLoader:
             f'{len(window_sets)} profile(s)'
         )
 
+        for scenario in scenarios:
+            scenario.features_beyond_venue = features_beyond_venue
+
         return LoadedScenarioConfig(
             scenario_set_name=scenario_set_name,
             scenarios=scenarios,
@@ -426,4 +469,5 @@ class ScenarioConfigLoader:
             generator_profiles=window_sets,
             robustness=robustness,
             run_purpose=run_purpose,
+            features_beyond_venue=features_beyond_venue,
         )

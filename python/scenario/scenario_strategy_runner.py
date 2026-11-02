@@ -19,8 +19,8 @@ from python.framework.types.run_origin_types import RunChannel
 from python.framework.types.run_results_types import SweepContext
 from python.framework.types.scenario_types.scenario_set_types import LoadedScenarioConfig
 from python.scenario.generator.generator_profile_loader import GeneratorProfileLoader
-from python.scenario.scenario_set import ScenarioSet
 from python.scenario.scenario_config_loader import ScenarioConfigLoader
+from python.scenario.scenario_set import ScenarioSet
 
 vLog = get_global_logger()
 

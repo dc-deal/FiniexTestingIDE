@@ -32,7 +32,6 @@ from typing import Any, Dict, List, Optional, Set
 
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.logging.scenario_logger import ScenarioLogger
-from python.framework.types.probe_metadata_types import ProbeMetadata
 from python.framework.types.decision_event_types import (
     DecisionEventType,
     OrderCancelledEvent,
@@ -48,8 +47,10 @@ from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.market_types.market_types import TradingContext
 from python.framework.types.parameter_types import InputParamDef, OutputParamDef
 from python.framework.types.performance_types.performance_stats_types import DecisionLogicStats
+from python.framework.types.probe_metadata_types import ProbeMetadata
 from python.framework.types.trading_env_types.market_data_status_types import MarketDataStatus
 from python.framework.types.trading_env_types.order_types import (
+    OrderFeature,
     OrderResult,
     OrderSide,
     OrderType,
@@ -149,12 +150,25 @@ class EventProbe(AbstractDecisionLogic):
         }
 
     @classmethod
+    def get_required_order_features(cls, decision_logic_config: Dict[str, Any]) -> List[OrderFeature]:
+        """
+        None: the probe sets no level on an order or a position.
+
+        Args:
+            decision_logic_config: Decision logic configuration dict
+
+        Returns:
+            An empty list
+        """
+        return []
+
+    @classmethod
     def get_required_order_types(cls, decision_logic_config: Dict[str, Any]) -> List[OrderType]:
         return [OrderType.MARKET]
 
     @classmethod
     def get_subscribed_events(cls) -> Set[DecisionEventType]:
-        """Subscribe to every event so the probe records the full channel."""
+        """Subscribe to every event. POSITION_CLOSED has no hook here, so it is not recorded."""
         return {
             DecisionEventType.ORDER_FILLED,
             DecisionEventType.ORDER_REJECTED,

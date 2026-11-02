@@ -28,6 +28,7 @@ from python.framework.types.run_origin_types import CodeIdentity, RepositoryStat
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
 from python.framework.types.spread_estimate_types import ModelledSpreadSummary
 from python.framework.types.trading_env_types.order_event_types import OrderEvent, OrderEventType
+from python.framework.types.trading_env_types.order_types import OrderFeature
 from python.framework.types.trading_env_types.trading_env_stats_types import ExecutionStats
 from python.framework.validators.post_run_validator import PostRunValidator
 
@@ -95,6 +96,19 @@ def _warnings(batch) -> dict:
     PostRunValidator(batch, _RUN_ID).validate()
     return {finding.check: finding.message
             for vr in batch.batch_validation_result for finding in vr.findings}
+
+
+def test_a_run_beyond_its_venue_is_warned_about():
+    scenario = _scenario()
+    scenario.features_beyond_venue = [OrderFeature.STOP_LOSS]
+
+    out = _warnings(_batch([scenario]))
+
+    assert 'stop_loss' in out['features_beyond_venue']
+
+
+def test_a_run_within_its_venue_is_not():
+    assert 'features_beyond_venue' not in _warnings(_batch([_scenario()]))
 
 
 def test_debug_mode():

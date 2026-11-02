@@ -19,6 +19,7 @@ from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.data_deficiency_types import DataDeficiency
 from python.framework.types.disturbance_episode_types import DisturbanceEpisode, MarketDataTickStats
 from python.framework.types.live_types.broker_truth_types import BrokerTruthRecord
+from python.framework.types.live_types.reconciliation_types import ReconcileTotals
 from python.framework.types.performance_types.performance_stats_types import (
     DecisionLogicStats,
     WorkerCoordinatorPerformanceStats,
@@ -73,6 +74,13 @@ class RunUnit:
     # What the venue reported when a live session asked it (#362), read back from the same
     # stream. Empty on sim: a backtest's venue is its own book, there is nothing to ask.
     broker_truth: List[BrokerTruthRecord] = field(default_factory=list)
+    # Whether a live session's reconciliation was switched on and what it did (#631). None on
+    # sim, for the same reason
+    reconcile_enabled: Optional[bool] = None
+    reconcile_totals: Optional[ReconcileTotals] = None
+    # The level each stop-loss or take-profit close fired at, by its fill event's seq (#631) —
+    # both pipelines; uncapped, so a fill the capped trade history no longer lists still finds it
+    protective_fill_levels: Dict[int, float] = field(default_factory=dict)
     portfolio_stats: Optional[PortfolioStats] = None
     execution_stats: Optional[ExecutionStats] = None
     # What was still resting or on its way when the unit ended
@@ -137,6 +145,7 @@ def run_units_from_batch(batch: BatchExecutionSummary) -> List[RunUnit]:
             open_positions=tick_loop.open_positions or [],
             order_history=tick_loop.order_history or [],
             order_events=tick_loop.order_events or [],
+            protective_fill_levels=tick_loop.protective_fill_levels or {},
             portfolio_stats=tick_loop.portfolio_stats,
             execution_stats=tick_loop.execution_stats,
             active_orders=tick_loop.active_orders,
@@ -297,7 +306,10 @@ def run_units_from_session(
         session_end_policy=session.session_end_policy,
         order_history=session.order_history or [],
         order_events=session.order_events or [],
+        protective_fill_levels=session.protective_fill_levels or {},
         broker_truth=session.broker_truth or [],
+        reconcile_enabled=session.reconcile_enabled,
+        reconcile_totals=session.reconcile_totals,
         portfolio_stats=session.portfolio_stats,
         execution_stats=session.execution_stats,
         active_orders=session.active_orders,

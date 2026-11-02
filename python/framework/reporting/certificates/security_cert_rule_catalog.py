@@ -78,12 +78,6 @@ SECURITY_RULE_CATALOG: Dict[SecurityRule, SecurityRuleEntry] = {
         'demand without a venue that refuses on purpose.',
         _OFFLINE, 'tests/autotrader/live_executor/test_async_submit.py::TestAsyncSubmitRejection'
                   '::test_async_reject_triggers_outcome_listener_chain'),
-    SecurityRule.PROTECTIVE_AMEND_REFUSAL_DOES_NOT_ARM: SecurityRuleEntry(
-        'A venue refusing an amend of a protective order does not arm the cooldown, which would '
-        'block its own replacement.',
-        _OFFLINE, 'tests/autotrader/protective_levels/test_protective_order_lifecycle.py'
-                  '::TestARefusedAmendDoesNotArmTheCooldown'
-                  '::test_a_protective_amend_refusal_notifies_no_outcome'),
     SecurityRule.SOFT_BLOCK_ON_THE_ACCOUNT_VALUE: SecurityRuleEntry(
         'The soft circuit breaker measures the real account value and blocks every new entry.',
         _LIVE, 'safety:soft_blocked', _SOFT),

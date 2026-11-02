@@ -23,8 +23,8 @@ from python.data_management.index.index_entry_times import entry_time_bounds
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.store.abstract_store_index import store_index_filename
-from python.framework.types.store_types import StoreId
 from python.framework.types.signal_data_types import SIGNAL_ENVELOPE_SYMBOL, SignalParquetColumn
+from python.framework.types.store_types import StoreId
 
 vLog = get_global_logger()
 

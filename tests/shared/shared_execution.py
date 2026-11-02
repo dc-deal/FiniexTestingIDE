@@ -9,8 +9,8 @@ Import these classes into suite-specific test_<suite>_trade_execution.py files.
 
 
 
-from python.framework.types.probe_metadata_types import ProbeMetadata
 from python.framework.types.portfolio_types.portfolio_aggregation_types import PortfolioStats
+from python.framework.types.probe_metadata_types import ProbeMetadata
 from python.framework.types.process_data_types import ProcessTickLoopResult
 
 

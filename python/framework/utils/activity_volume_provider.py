@@ -24,7 +24,6 @@ class ActivityVolumeProvider:
 
     Usage:
         provider = ActivityVolumeProvider()
-        value = provider.get_activity_value(bar_data, MarketType.FOREX)
         label = provider.get_metric_label(MarketType.CRYPTO)
     """
 
@@ -72,26 +71,6 @@ class ActivityVolumeProvider:
         resolved = self._resolve_market_type(market_type)
         rules = self._market_config.get_market_rules(resolved)
         return rules.primary_activity_metric == 'volume'
-
-    def get_activity_value(
-        self,
-        data: Dict,
-        market_type: Union[MarketType, str]
-    ) -> float:
-        """
-        Get primary activity value for given market type.
-
-        Args:
-            data: Dict containing tick_count and/or volume
-            market_type: MarketType enum or string
-
-        Returns:
-            Activity value (tick_count or volume)
-        """
-        if self._is_volume_based(market_type):
-            return float(data.get('volume', 0.0) or 0.0)
-        else:
-            return float(data.get('tick_count', 0) or 0)
 
     def get_avg_activity_value(
         self,

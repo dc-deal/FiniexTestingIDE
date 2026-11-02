@@ -120,6 +120,48 @@ warningDataGapSeconds = 60;    // Warning at 1 min gap
 
 ---
 
+## The Outside Check
+
+A terminal that stopped collects nothing, and nothing inside it can say so: the gap shows only when
+somebody looks at the data, possibly days later. So an outside monitor watches it: the terminal pings
+a check at healthchecks.io, and the check sends an e-mail when the pings stop. This document covers
+the terminal's side, not the Python importer.
+
+The ping comes from an expert of its own, `mql5/FiniexKeepalive.mq5`, on one extra chart of any symbol
+with normal market hours. It is not part of `TickCollector`: `WebRequest` blocks its thread, and the
+collector reads only the latest tick per `OnTick`, so a ping inside it would lose the ticks arriving
+meanwhile. One keepalive serves the whole terminal, however many symbols it collects.
+
+**Setting it up:**
+
+1. Create a check: period 10 minutes, grace 30 minutes, simple schedule, e-mail on down. An alarm then
+   comes about 40 minutes after the last ping, so a restart of a few minutes sends no mail.
+2. Compile `FiniexKeepalive.mq5` and copy it to `MQL5/Experts/` as in the installation above.
+3. Allow the address: Tools > Options > Expert Advisors > *Allow WebRequest for listed URL*, add
+   `https://hc-ping.com`. Until then the expert logs error 4014 and pings nothing.
+4. Drag it onto a chart of its own and paste the check's ping address into `PingUrl`. The address is a
+   credential, because whoever holds it can report the terminal healthy: it stays in the chart's
+   settings on that machine, and the expert never prints it.
+
+**What the chart says:** the counters `sent`, `withheld` and `failed`, and the last ping's time.
+`withheld` means the terminal is not healthy, `failed` that the path to the check is broken. The log
+gets one line only when that state changes.
+
+| It reports | The check sees |
+|---|---|
+| machine, terminal or the expert gone | silence, then the e-mail |
+| broker connection lost during an open session | pings withheld, then the e-mail |
+| broker connection lost while the market is closed | pings go on: brokers run maintenance then |
+| market closed, connected | pings go on: the timer needs no ticks |
+
+**What it does not see:** a `TickCollector` removed from its chart, or one that hangs. The expert reads
+nothing of the collectors. It says that the terminal is alive, not that every symbol is collecting.
+
+**To test it:** take it off the chart. The check has to go down and send its e-mail about 40 minutes
+after the last ping.
+
+---
+
 ## JSON Output Structure
 
 ### Complete File Structure

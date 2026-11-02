@@ -209,6 +209,7 @@ The history command prints the week, newest first (values invented, columns shor
 $ python python/cli/run_index_cli.py deployments --id deploy_20261102_090012_5c1e8a3f
 
 deploy_20261102_090012_5c1e8a3f — 8 session(s) · since 2026-11-02 09:00 UTC · bot mybot01
+⚠️  Code changed 2 d ago (2026-11-05) — 2 code stands over 8 sessions; net P&L adds them up
 ──────────────────────────────────────────────────────────────────────────────────────────────
 ⚠️  THIS DEPLOYMENT SPANS MORE THAN ONE CONFIGURATION
     3 strategy stand(s) and 3 operational stand(s) over 8 sessions.
@@ -220,6 +221,8 @@ run id                     started             ran     net P&L  max DD (cum)   s
 20261105_090511_d6e7f8a9   2026-11-05 09:05  26.9 h      41.30       -118.40   1.16%
 20261105_090002_c5d6e7f8   2026-11-05 09:00   0.0 h       0.00         -0.00   0.00%
 ·········· OPERATION CHANGED HERE — rows above and below answer different questions ·········
+··· code changed here ········································································
+    framework  e5f6a7b8 → 91c2d3e4  +4 commits  "Add the pause on a gap"
 20261104_100003_b4c5d6e7   2026-11-04 10:00  23.0 h     -12.75        -96.10   0.95%
 ·········· OPERATION CHANGED HERE — rows above and below answer different questions ·········
 20261103_224109_c4e5f6a7   2026-11-03 22:41  11.3 h      18.20        -61.20   0.61%
@@ -236,13 +239,16 @@ Three things to read in it:
   stopped before it continued the curve. It is recorded under the configuration it refused to run,
   so the change mark sits on it rather than on the session that accepted the change a few minutes
   later.
-- **The marks compare what is fingerprinted today:** the strategy's parameters (`STRATEGY`) and the
-  rest of the loaded profile, defaults included (`OPERATION`). So Thursday's release shows up even
-  though nobody edited a file. A mark is not a composite boundary, though: a value the composite
-  ignores — the capital declaration, most of the execution block — still draws an `OPERATION`
-  mark, and a composite value from outside the profile — the broker's price formation in
-  `market_config.json` — draws none. What names a new composite is the start's own notice or
-  refusal.
+- **The marks compare the configuration, the line below them the code.** The marks read the
+  strategy's parameters (`STRATEGY`) and the rest of the loaded profile, defaults included
+  (`OPERATION`), so Thursday's release draws a mark even though nobody edited a file. It also draws
+  `code changed here`, as every release does, new setting or not: one row per repository, with how
+  far it moved and the newest commit's message. The dated line above the table says when that last
+  happened. Neither is a composite boundary, though: a value the composite ignores — the capital
+  declaration, most of the execution block — still draws an `OPERATION` mark, a composite value from
+  outside the profile — the broker's price formation in `market_config.json` — draws none, and a
+  release that moves no value draws its code line and names no new composite. What names a new
+  composite is the start's own notice or refusal.
 - **The drawdown column runs on across every change** that a session actually ran — the refused
   rows aside. It is the account's own history, one account over time; what changed is the
   configuration it was measured under.

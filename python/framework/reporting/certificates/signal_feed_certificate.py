@@ -23,6 +23,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from python.framework.reporting.certificates.certificate_identity_builder import (
+    build_certificate_identity,
+)
 from python.framework.signal_data.producer.signal_feed_stream_observer import (
     STREAM_ROUTE_TEMPLATE,
 )
@@ -36,9 +39,6 @@ from python.framework.types.signal_certificate_types import (
     FeedCheck,
     FeedProbeResult,
     SignalFeedAssessment,
-)
-from python.framework.reporting.certificates.certificate_identity_builder import (
-    build_certificate_identity,
 )
 from python.framework.utils.file_utils import create_directory
 from python.framework.utils.git_info_utils import get_git_info

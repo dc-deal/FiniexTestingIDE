@@ -232,7 +232,7 @@ Tests end-to-end factory workflows: config → validation → instantiation for 
 | Test | Description |
 |------|-------------|
 | `test_consensus_rsi_oversold_too_high` | Factory rejects `rsi_oversold=101` (above max 100) |
-| `test_consensus_lot_size_zero` | Factory rejects `lot_size=0` (below min 0.01) |
+| `test_consensus_lot_size_below_broker_min` | Factory rejects a `lot_size` below the broker's `volume_min` |
 | `test_consensus_min_confidence_above_one` | Factory rejects `min_confidence=1.5` (above max 1.0) |
 
 #### TestDecisionLogicFactoryBoundaryNonStrict
@@ -409,14 +409,7 @@ Unit tests for indicator computation logic. Each test creates a worker with know
 
 #### test_macd_computation.py
 
-##### TestEMACalculation
-
-| Test | Description |
-|------|-------------|
-| `test_ema_exact_period_returns_sma` | EMA with exactly N bars returns SMA |
-| `test_ema_less_than_period_returns_mean` | EMA with fewer bars returns simple mean |
-| `test_ema_iterative_calculation` | EMA iteratively matches manual calculation |
-| `test_ema_period_5` | EMA with period 5 matches known reference values |
+The EMA itself is pinned in `tests/framework/indicators/test_recursive_average.py`.
 
 ##### TestMACDStructure
 
@@ -462,7 +455,6 @@ Unit tests for indicator computation logic. Each test creates a worker with know
 |------|-------------|
 | `test_obv_output_fields` | Outputs contain `obv_value`, `bars_used`, `total_volume`, `trend`, `has_volume` |
 | `test_obv_has_volume_false_when_zero` | `has_volume=False` when all volumes are zero (Forex) |
-| `test_obv_forex_warning` | Forex `TradingContext` triggers volume warning in logger |
 
 ---
 

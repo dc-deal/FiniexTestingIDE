@@ -18,7 +18,7 @@ class SweepSpec(BaseModel):
 
     base_scenario_set: str          # scenario set file the grid varies (resolved like a normal set)
     grid: Dict[str, List[Any]]      # dotted path (decision_logic_config.<x> | workers.<name>.<x>) → values
-    objective: str = 'expectancy'   # RunSummary currency field to rank by
+    objective: str = 'net_pnl'      # RunSummary currency field to rank by
     objective_currency: Optional[str] = None  # required only when the run has > 1 currency
     maximize: bool = True           # rank direction (False e.g. for max_drawdown / total_fees)
     sweep_name: str = ''            # defaults to the spec file stem

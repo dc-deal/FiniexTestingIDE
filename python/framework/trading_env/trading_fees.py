@@ -106,6 +106,9 @@ class SwapFee(AbstractTradingFee):
         return -(self.swap_rate_points * self.days_held * self.tick_value * self.lots)
 
 
+# Unreferenced until a commission broker arrives — #210 (stocks and ETFs) or #209 (an MT5 ECN
+# account) — prepared work waiting for its consumer, not dead code. Recorded here so a dead-code
+# sweep does not re-derive it.
 @dataclass
 class CommissionFee(AbstractTradingFee):
     """

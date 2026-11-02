@@ -54,7 +54,11 @@ from python.framework.types.parameter_types import (
 from python.framework.types.performance_types.performance_stats_types import DecisionLogicStats
 from python.framework.types.persistence_types import RestoreContext
 from python.framework.types.trading_env_types.market_data_status_types import MarketDataStatus
-from python.framework.types.trading_env_types.order_types import OrderResult, OrderType
+from python.framework.types.trading_env_types.order_types import (
+    OrderFeature,
+    OrderResult,
+    OrderType,
+)
 from python.framework.types.worker_types import WorkerRequirement, WorkerResult
 from python.framework.validators.parameter_validator import validate_parameters
 
@@ -180,6 +184,25 @@ class AbstractDecisionLogic(ABC):
                     return [OrderType.MARKET]
             """
         pass
+
+    @classmethod
+    def get_required_order_features(cls, decision_logic_config: Dict[str, Any]) -> List[OrderFeature]:
+        """
+        Declare the order features this logic uses, WITHOUT creating an instance (#625).
+
+        A run refuses a declared feature its venue's API does not hold, and refuses at order time
+        a level that was not declared. Every logic answers, because the start cannot tell a logic
+        that uses none from one that was never asked: `check_order_feature_declaration` fails on
+        a class that does not override this. Return an empty list when the logic sets no level;
+        one that keeps its stops itself (OwnExitLevels) sets none.
+
+        Args:
+            decision_logic_config: Decision logic configuration dict
+
+        Returns:
+            The features this logic's orders and positions carry
+        """
+        return []
 
     # ============================================
     # Parameter Schema
@@ -663,9 +686,7 @@ class AbstractDecisionLogic(ABC):
         """
         React to a position closing completely. No-op unless overridden.
 
-        Fires on EVERY full close in both pipelines — including one the VENUE initiated,
-        where a protective order it held fired and nobody here asked for a close (#503).
-        `event.requested_locally` tells the two apart.
+        Fires on EVERY full close in both pipelines.
 
         Args:
             event: Close detail (position id, reason, price, lots, realised P&L)
@@ -798,9 +819,11 @@ class AbstractDecisionLogic(ABC):
         Return the algo's internal state for persistence (#354).
 
         Must be JSON-serializable — use only primitives (str/int/float/bool/
-        list/dict/None); store timestamps as ISO strings. Category B only: persist
-        position-independent memory (counters, regime, risk HWM, daily flags), NOT
-        live-position references (those return on boot via Cold-Start Recovery, #355).
+        list/dict/None); store timestamps as ISO strings. Category B only: persist the
+        algo's memory (counters, regime, risk HWM, daily flags), NEVER a position — positions
+        return on boot via Cold-Start Recovery (#355). What the algo knows ABOUT a position,
+        such as its own exit levels (#625), may be kept by the position's id and applied on
+        restore only to the positions the framework restored.
 
         Returns:
             JSON-serializable state dict (empty default → nothing persisted)

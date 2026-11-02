@@ -10,17 +10,17 @@ from typing import Any, Dict, List
 
 import pytest
 
-from python.framework.types.probe_metadata_types import ProbeMetadata
 from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.portfolio_types.portfolio_aggregation_types import PortfolioStats
 from python.framework.types.portfolio_types.portfolio_trade_record_types import TradeRecord
+from python.framework.types.probe_metadata_types import ProbeMetadata
 from python.framework.types.process_data_types import ProcessResult, ProcessTickLoopResult
 from python.framework.types.trading_env_types.order_types import OrderResult
 from python.framework.utils.seeded_generators.seeded_delay_generator import SeededDelayGenerator
 from tests.shared.fixture_helpers import (
-    extract_probe_metadata,
     extract_order_history,
     extract_portfolio_stats,
+    extract_probe_metadata,
     extract_process_result,
     extract_seeds_config,
     extract_tick_loop_results,

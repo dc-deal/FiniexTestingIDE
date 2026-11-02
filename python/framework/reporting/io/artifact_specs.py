@@ -32,6 +32,7 @@ from python.framework.constants.run_layout_constants import (
     SIGNAL_ARTIFACT_FILE,
     TRADE_HISTORY_ARTIFACT_FILE,
     VENUE_ACCOUNT_ARTIFACT_FILE,
+    VENUE_API_PERFORMANCE_ARTIFACT_FILE,
     WARNINGS_ERRORS_ARTIFACT_FILE,
     WORKER_DECISION_ARTIFACT_FILE,
 )
@@ -56,6 +57,7 @@ from python.framework.types.api.report_types import (
     SignalReport,
     TradeHistoryReport,
     VenueAccountReport,
+    VenueApiPerformanceReport,
     WarningsErrorsReport,
     WorkerDecisionReport,
 )
@@ -105,6 +107,10 @@ TRADE_HISTORY_ARTIFACT: ArtifactSpec[TradeHistoryReport] = ArtifactSpec(
 # between (#362) — derived from the broker-truth lines of the order-event stream.
 VENUE_ACCOUNT_ARTIFACT: ArtifactSpec[VenueAccountReport] = ArtifactSpec(
     VENUE_ACCOUNT_ARTIFACT_FILE, VenueAccountReport)
+# How the venue's REST API answered a live session, per endpoint (#631) — written when its
+# monitor ran.
+VENUE_API_PERFORMANCE_ARTIFACT: ArtifactSpec[VenueApiPerformanceReport] = ArtifactSpec(
+    VENUE_API_PERFORMANCE_ARTIFACT_FILE, VenueApiPerformanceReport)
 WARNINGS_ERRORS_ARTIFACT: ArtifactSpec[WarningsErrorsReport] = ArtifactSpec(
     WARNINGS_ERRORS_ARTIFACT_FILE, WarningsErrorsReport)
 WORKER_DECISION_ARTIFACT: ArtifactSpec[WorkerDecisionReport] = ArtifactSpec(

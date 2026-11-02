@@ -101,18 +101,6 @@ class TickStreamOutage:
             return None
         return (self.first_public_trade_time - self.last_public_trade_time).total_seconds()
 
-    def get_unseen_trade_ids(self) -> Optional[int]:
-        """
-        How many public trade ids lie between the two trades — an upper bound of the trades the
-        session missed, because the venue allocates some ids that never become public trades.
-
-        Returns:
-            The count, or None when either id is unknown
-        """
-        if self.last_public_trade_id is None or self.first_public_trade_id is None:
-            return None
-        return max(self.first_public_trade_id - self.last_public_trade_id - 1, 0)
-
     def to_record(self) -> Dict[str, Any]:
         """
         The outage as one line of the tick stream record.

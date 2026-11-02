@@ -23,7 +23,7 @@ from typing import List
 
 # One monotonic integer. Not a date and not the app version: a consumer compares it for
 # equality, and equality is the only question they have.
-API_CONTRACT_VERSION = 42
+API_CONTRACT_VERSION = 48
 
 # Every response carries it, so a saved fixture carries it too.
 CONTRACT_HEADER = 'X-Api-Contract'
@@ -36,8 +36,8 @@ API_PREFIX = '/api/v1'
 # What moved INTO the current version. One line per change, written for someone who cannot
 # read this repository.
 CHANGES: List[str] = [
-    'A booking period carries its own order counts: every orders_* field and sl_tp_triggered on a '
-    "sweep combination folded from a run's periods is now the sum of those periods' counts — they "
-    'were null there, because a period carried none. Null only on a row written before this '
-    'contract',
+    'health: host_id, the identity of the installation answering, the same value as origin_host on the '
+    'rows; null where the server cannot read it',
+    "health: host_name, a name for people to read from the installation's configuration; null where none "
+    'is set',
 ]

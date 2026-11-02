@@ -34,10 +34,6 @@ from python.framework.types.autotrader_types.cold_start_types import (
     SkipReason,
 )
 from python.framework.types.config_types.autotrader_defaults_config_types import ColdStartDefaults
-from python.framework.types.live_types.live_execution_types import (
-    BrokerOrderStatus,
-    BrokerResponse,
-)
 from python.framework.types.live_types.reconciliation_types import BrokerOrder
 from python.framework.types.persistence_types import ColdStartPayload, PositionCarryOver
 from python.framework.types.trading_env_types.order_types import (
@@ -81,25 +77,6 @@ def _counter_of(position_id: str) -> int:
     """
     tail = position_id.rsplit('_', 1)[-1]
     return int(tail) if tail.isdigit() else 0
-
-
-def _protection_filled(response: Optional[BrokerResponse]) -> bool:
-    """
-    Did the venue actually close something through this protective order? (#503)
-
-    Volume decides, not status. A protective order can end CANCELLED or EXPIRED after
-    having filled part of the position — the dangerous shape, because reading only the
-    status would drop lots that really left the account.
-
-    Args:
-        response: The venue's answer about the protective order, or None
-
-    Returns:
-        True when the venue reports executed volume on it
-    """
-    if response is None:
-        return False
-    return bool(response.filled_lots and response.filled_lots > 0)
 
 
 def _describe_order(order: BrokerOrder) -> str:
@@ -305,17 +282,6 @@ class ColdStartAdopter:
         # Only asked when there is a book to hold against it. The ladder may be configured
         # to ABORT on a give-up (§43), so an unnecessary read is not merely a wasted REST
         # call — it is a way to end a boot over a number nobody needed.
-        # #503 — ask the venue what became of every protective order this book carries,
-        # BEFORE holding the book against the balances. A stop that fired overnight is the
-        # feature's most ordinary SUCCESS, and without this the next boot reads it as a
-        # shortfall and reports that somebody sold outside this bot.
-        #
-        # Read-only on purpose. Nothing is applied until the boot is allowed to proceed
-        # (see _apply_carried_protection below): a boot that goes on to refuse must leave
-        # the executor exactly as it found it, and at this point the positions are not in
-        # the portfolio yet either.
-        protection = self._read_carried_protection(book)
-
         shortfall = 0.0
         if book:
             balances = self._pull_broker_balances()
@@ -327,23 +293,7 @@ class ColdStartAdopter:
                     'covers the book.'
                 )
             else:
-                shortfall = self._cross_check_book(book, balances, protection)
-
-        # #503 — a protective order rests at the venue like any other, carries a key this
-        # bot minted, and is a STOP, which `_RESTING_ORDER_TYPES` admits since #500. Offered
-        # to `_split` it is therefore claimed as an ENTRY of ours and adopted a SECOND time,
-        # beside the CLOSE that `_apply_carried_protection` files from the same reference.
-        # Both copies then poll the same broker_ref, and when the stop fires the OPEN copy
-        # runs `_fill_open_order` and mints a phantom position with an entry fee — the exact
-        # double-booking the in-session path guards against. Under the shipped default
-        # `operator_confirm` the milder outcome comes first: the bot reports its own stop as
-        # an unaccounted resting order and an unattended restart refuses to start.
-        #
-        # Excluded by REFERENCE, never by shape: the carry-over names the exact txid, so
-        # this needs no guess about what a stop "looks like". A protective order whose
-        # reference the carry-over does NOT hold is not covered here and cannot be — see
-        # #355's unbuilt assertion at the adoption seam.
-        broker_orders = self._set_aside_protective_orders(broker_orders, book)
+                shortfall = self._cross_check_book(book, balances)
 
         ours, skipped = self._split(broker_orders, known_keys)
         self._report_unattributable(skipped)
@@ -378,10 +328,6 @@ class ColdStartAdopter:
         # === From here the session is allowed to start, so state may change ===
         self._situation.applied = True
         self._restore_position_book(book)
-        # #503 — the positions exist now, so what the venue said about their protective
-        # orders can finally be acted on. Deliberately after the restore and after the
-        # verdict: a refused boot leaves the executor untouched.
-        self._apply_carried_protection(protection)
         if ours:
             self._executor.adopt_resting_orders(ours)
             # The consequence is stated, not left to be discovered. An adopted order makes
@@ -596,123 +542,10 @@ class ColdStartAdopter:
             )
         self._logger.warning('\n'.join(lines))
 
-    def _read_carried_protection(
-        self,
-        book: List[PositionCarryOver],
-    ) -> Dict[str, BrokerResponse]:
-        """
-        Ask the venue what became of each protective order this book carries (#503).
-
-        Read-only, and deliberately so: it runs before the boot has been allowed to
-        proceed and before the positions exist in the portfolio, so there is nothing to
-        apply it to yet. `_apply_carried_protection` does that afterwards.
-
-        A reference the venue cannot answer about is NOT read as "still resting". Kraken
-        returns an empty record for a txid it never minted, and the parse layer turns that
-        into UNKNOWN rather than PENDING (#505) — the difference matters most here, where
-        "still resting" would start the bot believing in a protection that is not there.
-
-        Args:
-            book: The carry-over notes this boot may restore
-
-        Returns:
-            position id → the venue's answer, for the positions that carried one
-        """
-        answers: Dict[str, BrokerResponse] = {}
-        for record in book:
-            if not record.protective_broker_ref:
-                if record.protective_order_id:
-                    # Submitted, never confirmed, and then the process ended. The id names
-                    # an order object that died with the session, so nothing can cancel it
-                    # — and a close is WITHHELD behind exactly that cancel, which would
-                    # leave the position unclosable for the rest of its life and re-persist
-                    # that state on every save. Answered as an ABSENCE so the branch below
-                    # clears it; the level goes back to the local check, which is true.
-                    answers[record.position_id] = BrokerResponse(
-                        broker_ref='', status=BrokerOrderStatus.UNKNOWN)
-                    self._logger.error(
-                        f'❌ Cold start: {record.position_id} carried the protective order '
-                        f'{record.protective_order_id} with no venue reference — it was '
-                        f'submitted and the session ended before the venue answered. '
-                        f'Whether it rests at the venue cannot be asked without a '
-                        f'reference; check the account by hand.')
-                continue
-            response = self._executor.get_request_processor().query_order_sync(
-                broker_ref=record.protective_broker_ref,
-                adapter=self._executor.broker.adapter,
-            )
-            answers[record.position_id] = response
-            self._logger.info(
-                f'🛡️ Cold start: the protective order {record.protective_broker_ref} for '
-                f'{record.position_id} came back {response.status.value}'
-                + (f' with {response.filled_lots} filled' if response.filled_lots else ''))
-            if response.status == BrokerOrderStatus.UNKNOWN:
-                self._logger.error(
-                    f'❌ Cold start: the venue does not recognise the protective order '
-                    f'{record.protective_broker_ref} for {record.position_id}. That is an '
-                    f'ABSENCE, not "still working" — the position is treated as UNPROTECTED '
-                    f'and the local check takes the level back. A reference lookup cannot '
-                    f'resolve this; only a time-ranged history read can.')
-        return answers
-
-    def _apply_carried_protection(
-        self,
-        protection: Dict[str, BrokerResponse],
-    ) -> None:
-        """
-        Act on what the venue said, now that the positions are back in the portfolio (#503).
-
-        Two outcomes and they are not symmetric. A protective order that FILLED closed a
-        position while nothing was running — the money already moved, and the books have
-        to catch up or every later number is wrong. One still RESTING is re-adopted into
-        the stop world so this session can amend and cancel it like any other.
-
-        Anything else — cancelled without filling, expired, unknown — leaves the position
-        with no protection at the venue, and the stamp is left unset so the local check
-        watches it from the first tick. A read that FAILED is not one of those: it says
-        nothing about the order, so the order is adopted as resting and asked about again.
-
-        Args:
-            protection: What the venue answered, keyed by position id
-        """
-        for position_id, response in protection.items():
-            position = self._executor.portfolio.get_position(position_id)
-            if position is None:
-                continue
-            if _protection_filled(response):
-                self._executor.apply_carried_venue_close(
-                    position, response.filled_lots,
-                    response.fill_price, response.status, response.rejection_reason,
-                    fill_fee=response.fill_fee)
-                continue
-            if response.status == BrokerOrderStatus.PENDING:
-                self._executor.adopt_carried_protective_order(position)
-                continue
-            if response.status == BrokerOrderStatus.UNRESOLVED:
-                # The read failed — the venue said nothing about the order. Clearing the
-                # reference here would orphan a stop the venue may still hold: no session
-                # could cancel it any more, and the next close would race it. Adopted
-                # instead, so the ordinary poll asks again and books whatever it learns.
-                self._logger.error(
-                    f'❌ Cold start: the protective order {position.protective_broker_ref} '
-                    f'for {position_id} could not be read ({response.rejection_reason}). It is '
-                    f'kept as still resting and asked about again on the ordinary cadence — '
-                    f"until an answer comes, the venue's stop is the only protection.")
-                self._executor.adopt_carried_protective_order(position)
-                continue
-            position.protective_broker_ref = None
-            position.protective_order_id = None
-            position.protective_client_order_id = None
-            self._logger.error(
-                f'❌ Cold start: {position_id} comes back UNPROTECTED — its protective '
-                f'order is {response.status.value} at the venue. The declared level is '
-                f'enforced by this process only, from now until something replaces it.')
-
     def _cross_check_book(
         self,
         book: List[PositionCarryOver],
         balances: Dict[str, float],
-        protection: Optional[Dict[str, BrokerResponse]] = None,
     ) -> float:
         """
         Hold the restored book against the venue's balance — and only report.
@@ -738,16 +571,9 @@ class ColdStartAdopter:
         BUYS the base back, so it is a claim on the QUOTE balance, which is shared with
         everything else in the account and says nothing on its own.
 
-        A position whose PROTECTIVE order the venue already filled is excluded (#503). The
-        note still claims the coin because the note was written before the stop fired; the
-        account is right and the note is merely out of date, and reporting that as a
-        shortfall would make the feature's most ordinary success look like interference.
-
         Args:
             book: The restored notes
             balances: Asset → amount as the venue reports it
-            protection: What the venue answered about each carried protective order,
-                keyed by position id (#503). None when nothing carried one
 
         Returns:
             How much the book's LONG positions claim beyond what the account holds, in base
@@ -761,11 +587,9 @@ class ColdStartAdopter:
             amount for asset, amount in balances.items()
             if normalize_broker_asset(asset) == base
         )
-        settled = protection or {}
         booked = sum(
             record.lots * record.contract_size for record in book
             if record.direction == OrderDirection.LONG.value
-            and not _protection_filled(settled.get(record.position_id))
         )
 
         if booked - held > _BOOK_DUST:
@@ -784,40 +608,6 @@ class ColdStartAdopter:
                if held - booked > _BOOK_DUST else '')
         )
         return 0.0
-
-    def _set_aside_protective_orders(
-        self,
-        broker_orders: List[BrokerOrder],
-        book: List[PositionCarryOver],
-    ) -> List[BrokerOrder]:
-        """
-        Take this book's own protective orders out of the adoption candidates (#503).
-
-        They are OURS and they are already accounted for — `_apply_carried_protection` files
-        each one as the CLOSE it is. Leaving them in the candidate list would adopt the same
-        venue order a second time as an entry.
-
-        Args:
-            broker_orders: Everything the venue reports as resting
-            book: The carry-over notes this boot may restore
-
-        Returns:
-            The orders that are still candidates for ordinary adoption
-        """
-        protective_refs = {
-            record.protective_broker_ref for record in book
-            if record.protective_broker_ref
-        }
-        if not protective_refs:
-            return broker_orders
-
-        remaining = [o for o in broker_orders if o.broker_ref not in protective_refs]
-        set_aside = len(broker_orders) - len(remaining)
-        if set_aside:
-            self._logger.info(
-                f'🛡️ Cold start: {set_aside} resting order(s) at the venue are this book\'s '
-                f'own protective order(s) — handled as protection, not adopted as entries.')
-        return remaining
 
     def _split(
         self,
@@ -1036,10 +826,9 @@ class ColdStartAdopter:
         is the same in both halves — a refusal is not the safe outcome here:
 
         - It leaves a state that is not "flat and safe" but **exposed and unmanaged**. This
-          bot may hold a spot position and a protective resting order; a refusal abandons
-          both at the venue with nothing reconciling them. Worse than it sounds, because a
-          live SL/TP is not enforced venue-side on spot — the level lives in the process
-          that just declined to start.
+          bot may hold a spot position; a refusal abandons it at the venue with nothing
+          reconciling it. Worse than it sounds, because a stop is not enforced venue-side on
+          spot — the level lives in the process that just declined to start.
         - It can DEADLOCK. Two sibling bots on one account each see the other's order, both
           refuse, and neither runs. The condition is symmetric and nothing outside resolves
           it.

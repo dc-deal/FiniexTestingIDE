@@ -52,12 +52,17 @@ measured; null when none could.
 
 `first_started` and `last_started` are the first and the most recent session's start.
 
-## `changed` is a flag; the advisory is the reason
+## `changed` is a flag; the advisory and the code summary are its reasons
 
-`changed: true` means the row's sessions did **not** all run under one profile — one set of strategy
-parameters, one operational configuration and one place for their orders. It is a one-bit summary
-for a list a reader is scanning to decide what to open. What actually moved is on the detail route,
-as the advisory.
+`changed: true` means the row's sessions did **not** all run alike. Either they did not all run under
+one profile — one set of strategy parameters, one operational configuration and one place for their
+orders: then `configuration_changed` is true as well, and what moved is on the detail route, as the
+advisory. Or they did not all start on one code stand: then `code_summary` says how often and when,
+on the row itself. `changed` is a one-bit summary for a list a reader is scanning to decide what to
+open.
+
+**`changed: true` with `advisory: null` is a state of its own:** the code moved and the profile held.
+Read the reason from `configuration_changed` and `code_summary`, never from the advisory alone.
 
 ## Real money or a rehearsal — `orders_to`
 
@@ -90,6 +95,7 @@ money's, so the session rows' `max_drawdown` restarts where the kind of run chan
 | `max_drawdown` / `max_drawdown_pct` | the cumulative account decline as of that session; both are null where the session's rows carry none |
 | `orders_to` | where its orders went — `venue` is real money, `simulated` a rehearsal; null when not recorded |
 | `strategy_changed` / `operation_changed` / `orders_to_changed` | what differed from the session before |
+| `code_changes` | which repositories' code differed from the session before, and how far; see [which code the sessions started on](#which-code-the-sessions-started-on) |
 | `bot` / `bot_id` | which bot ran it |
 | `currency` | the row's account currency |
 
@@ -102,8 +108,9 @@ about that session alone.
 
 ## Each currency is its own series
 
-`index`, `gap_hours` and the two change marks restart per currency. The first session of the next
-currency has no predecessor, so nothing is measured against the last session of the other one.
+`index`, `gap_hours`, the change marks and `code_changes` restart per currency. The first session of
+the next currency has no predecessor, so nothing is measured against the last session of the other
+one.
 
 A fixture captured before this changed holds those figures measured across currencies instead;
 [the contract log](/api/v1/docs/contract-log) names the version it moved in.
@@ -165,15 +172,67 @@ operational stand and one place the orders went, across the whole deployment. A 
 having nothing to compare against. A warning that fires on the normal case is a warning that gets
 skipped.
 
-**What the advisory does not compare:** the code each session ran (`code_identity` on that
-session's [run header](/api/v1/docs/run-header) — a deploy is one of the reasons a bot restarts),
-the broker configuration it traded under (`config_hash` and `broker_config_id` on its
-[broker](/api/v1/docs/broker) section) and the market data it read. Two sessions with no mark
-between them can have run different code, or against a different venue minimum: no mark means the
-same profile, not the same run.
+**What the advisory does not compare:** the code each session ran, which `code_changes` and
+`code_summary` answer apart ([below](#which-code-the-sessions-started-on)), the broker configuration
+it traded under (`config_hash` and `broker_config_id` on its [broker](/api/v1/docs/broker) section)
+and the market data it read. Two sessions with no mark and no `code_changes` between them can have
+run against a different venue minimum: that means the same profile and the same code, not the same
+run.
 
 It renders no verdict. Whether the halves of a changed history may be compared is a judgement a
 person makes with what it reports.
+
+## Which code the sessions started on
+
+A session of a deployment records, per repository, which code it started on: this application's
+repository and every other one a strategy or a worker of it came from. That record is its **code
+stand**. Two sessions stand on the same code when every repository shows the same commit and the
+same uncommitted changes. Every commit counts, a documentation commit too: nobody decides for the
+reader which commits mattered, and the message shows at once when one did not. A commit nobody could
+read is never the same as anything, not even as another unreadable one, because unknown is not clean.
+
+`code_changes` on a session row holds one entry per repository whose code differs from the session
+before it. It stands apart from the change marks: a session can have a code change and no mark, and
+the other way round.
+
+| Field | Meaning |
+|---|---|
+| `repository_label` | which repository: `framework`, `strategy` when the two sessions used one other repository, `strategy` and its directory's name when they used several |
+| `old_commit` / `new_commit` | the commit of the session before and of this one; null when nobody could read it, and on the side where `change_direction` says the repository was not used |
+| `change_direction` | how the code moved, as below |
+| `commits_between` | how many commits apart the two stand on the first-parent line; only on `forward` and `back` |
+| `subject` | the message of the commit that made the difference: the newer commit's, on `back` the commit it went back from; null where it could not be read, on `uncommitted` and on `removed` |
+
+| `change_direction` | What happened |
+|---|---|
+| `forward` | this session's code is `commits_between` commits newer |
+| `back` | a rollback: this session's code is `commits_between` commits older |
+| `unknown` | the commit moved, and nobody can say how far: the other commit is not in the history the session recorded, usually a clone too shallow to hold it, or a commit could not be read |
+| `uncommitted` | one commit, with other uncommitted changes on it: usually a dry run or a mock session, because a real-money start refuses such a tree unless it was explicitly allowed |
+| `added` / `removed` | a repository only this session, or only the session before, used |
+
+Compare two commits by their shared beginning and never for equality: one commit can read at two
+lengths, in one session as its first 12 characters and in another as a shorter abbreviation.
+
+`code_changes_key` on the detail is empty: an entry's identity is its place in the list.
+`repository_label` is a word for reading, not a key. It can repeat where two repositories share a
+directory's name, and one repository can read differently for another pair of sessions.
+
+`code_summary`, on a list row and on the detail, is the same comparison over the whole deployment.
+
+| Field | Meaning |
+|---|---|
+| `code_stands` | how many distinct code stands the sessions started on; a rollback to an earlier one adds none, and an unreadable commit is a stand of its own every time |
+| `sessions` | how many sessions the deployment holds: distinct runs, not rows, and in every currency |
+| `last_change_at` | when the latest session whose code differs from the one before it started; null where that start could not be read |
+| `age_days` | whole days from then to the moment of the answer, null with it |
+
+**Null means under two code stands.** Unlike the advisory it dates the change, because a change half
+a year old is still in the history: it stays `changed` for good, and `age_days` is what tells a
+maintained deployment from one whose code moved last week.
+
+A session recorded before this existed has no stand. It draws no change, in either direction, and the
+sessions on either side of it are compared with each other.
 
 ## `unfinished`: the sessions that never reached their close
 

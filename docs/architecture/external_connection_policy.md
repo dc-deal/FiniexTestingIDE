@@ -123,10 +123,8 @@ while.
 
 **All four writes are covered, and three of them used to collapse.** `is_unresolved` was
 read in two places in the whole live layer; everything else treated "not rejected" as
-"accepted", so an unresolved cancel ran the entire success path — dropping an order the
-venue may still hold, clearing the protective stamp, and releasing the deferred close
-beside a stop that may still be resting. That is the double-fill the cancel-before-close
-ordering exists to prevent, reached through a transport fault instead of a race.
+"accepted", so an unresolved cancel ran the entire success path, dropping an order the
+venue may still hold.
 
 The rule is one sentence: **an unresolved write books NOTHING.** The local state stays as it
 was, `in_flight_operation` stays set so no second write races the first, and the resolution
@@ -271,7 +269,11 @@ need a plugin point to serve them all.
 | Own thread on an interval | liveness ping | not at all — a failed ping is not repeated, the next one is due within the interval |
 | asyncio | broker tick socket | `asyncio.wait_for` on the source's stop event with the delay as its timeout — stop() wakes it at once |
 | Broker worker thread | order submit / cancel / query jobs | blocking; **does not block the tick loop** |
+| A session's stop (#630) | the wait for orders on their way, the cancels, the venue's last read | on the main thread, after the loop's last pass, which nothing is late for. The wait sleeps the idle pass's cadence under `order_wait_s` and repeats no write. Under a declared kill each call first asks the [stop budget](../autotrader/unattended_operation.md#a-stop--what-it-waits-for-and-the-kill-it-has-to-fit-under) with the ladder's worst case: too long gets one attempt, too long for that is not made and named |
 | **Inside the tick loop** | reconcile pull, order re-poll | **it does not wait at all** |
+
+The stop's bounds live in `autotrader.shutdown`, not in a ladder: a venue call keeps its timeouts in
+`broker_transport`, and the stop only decides whether to start one.
 
 The last row is the important one. Everything the tick loop does against the broker is
 already **cadenced** — `Reconciler.is_due` (ticks OR wall seconds), the per-order

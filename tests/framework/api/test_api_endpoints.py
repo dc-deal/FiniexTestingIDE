@@ -22,6 +22,7 @@ from fastapi.testclient import TestClient
 from python.api.api_app import create_app
 from python.api.api_contract import API_CONTRACT_VERSION, CHANGES
 from python.configuration.app_config_manager import AppConfigManager
+from python.configuration.host_identity_manager import HostIdentityManager
 from python.data_management.index.bars_index_manager import BarsIndexManager
 from python.framework.discoveries.data_coverage.data_coverage_report import DataCoverageReport
 from python.framework.types.api.report_types import (
@@ -31,6 +32,7 @@ from python.framework.types.api.report_types import (
 )
 from python.framework.types.config_types.data_origin_config_types import OriginClass
 from python.framework.types.coverage_report_types import Gap, GapCategory
+from python.framework.types.run_origin_types import CodeStand, RepositoryStand
 from python.framework.validators.validation_check_catalog import VALIDATION_CHECKS_BY_ID
 
 # ---------------------------------------------------------------------------
@@ -162,9 +164,26 @@ class TestHealth:
         r = client.get('/api/v1/health')
         assert r.status_code == 200
         body = r.json()
-        assert set(body) == {'status', 'version', 'started_at', 'uptime_s'}
+        assert set(body) == {'status', 'version', 'started_at', 'uptime_s', 'host_id', 'host_name'}
         assert body['status'] == 'ok'
         assert body['version'] == AppConfigManager().get_version()
+
+    def test_it_says_which_installation_answers(self, client):
+        """The identity a run's rows state, under isolation the declared test identity."""
+        body = client.get('/api/v1/health').json()
+        assert body['host_id'] == HostIdentityManager().get_host_id()
+        assert body['host_name'] is None
+
+    def test_a_configured_name_is_served(self):
+        with patch.object(AppConfigManager, 'get_api_host_name', return_value='my server'):
+            server = TestClient(create_app())
+        assert server.get('/api/v1/health').json()['host_name'] == 'my server'
+
+    def test_it_keeps_answering_where_the_identity_cannot_be_read(self, client):
+        with patch.object(HostIdentityManager, 'read_host_id', return_value=None):
+            r = client.get('/api/v1/health')
+        assert r.status_code == 200
+        assert r.json()['host_id'] is None
 
     def test_it_says_when_the_server_started_in_utc(self, client):
         started = datetime.fromisoformat(client.get('/api/v1/health').json()['started_at'])
@@ -740,6 +759,62 @@ class TestDeployments:
         assert data['advisory']['strategy_stands'] == 1     # it kept deciding the same way
         assert data['sessions'][1]['operation_changed'] is True
         assert data['sessions'][1]['strategy_changed'] is False
+
+    @classmethod
+    def _rows_on_two_code_stands(cls):
+        # The same profile twice, the second session on a newer commit of the strategy's repository.
+        def stand(commit: str, **fields) -> CodeStand:
+            return CodeStand(repositories=[
+                RepositoryStand(repository='framework', commit='a1b2c3d4aaaa', dirty=False),
+                RepositoryStand(repository='/srv/home/user_algos/my_strategy', commit=commit,
+                                dirty=False, **fields)])
+
+        older, newer = cls._rows()
+        return [older.model_copy(update={'code_stand': stand('2f054f5')}),
+                newer.model_copy(update={
+                    'profile_hash': older.profile_hash,
+                    'code_stand': stand('7c1e9a0', subject='Size the order from the equity',
+                                        recent_commits=['7c1e9a0', '2f054f5'])})]
+
+    def test_a_code_change_alone_is_changed_with_no_advisory(self, client):
+        """The state the contract log names: `changed: true` with `advisory: null`."""
+        ledger = MagicMock()
+        ledger.read_rows.return_value = self._rows_on_two_code_stands()
+        with patch('python.api.endpoints.deployments_router._ledger', return_value=ledger), \
+                self._no_unfinished():
+            listed = client.get('/api/v1/deployments')
+            detail = client.get('/api/v1/deployments/deploy_1')
+
+        row = listed.json()['deployments'][0]
+        assert (row['changed'], row['configuration_changed']) == (True, False)
+        assert row['code_summary']['code_stands'] == 2
+        assert row['code_summary']['sessions'] == 2
+        assert row['code_summary']['last_change_at'].startswith('2026-09-02T06:00:00')
+        assert row['code_summary']['age_days'] >= 0
+
+        data = detail.json()
+        assert data['advisory'] is None
+        assert data['code_summary'] == row['code_summary']
+        assert data['code_changes_key'] == []
+        assert data['sessions'][0]['code_changes'] == []
+        assert data['sessions'][1]['code_changes'] == [{
+            'repository_label': 'strategy', 'old_commit': '2f054f5', 'new_commit': '7c1e9a0',
+            'commits_between': 1, 'change_direction': 'forward',
+            'subject': 'Size the order from the equity'}]
+        # A repository's root is a path of the machine the run ran on, and no route serves one.
+        assert '/srv/home' not in listed.text and '/srv/home' not in detail.text
+
+    def test_a_configuration_change_alone_keeps_its_old_answer(self, client):
+        ledger = MagicMock()
+        ledger.read_rows.return_value = self._rows()
+        with patch('python.api.endpoints.deployments_router._ledger', return_value=ledger), \
+                self._no_unfinished():
+            row = client.get('/api/v1/deployments').json()['deployments'][0]
+            data = client.get('/api/v1/deployments/deploy_1').json()
+        assert (row['changed'], row['configuration_changed']) == (True, True)
+        assert row['code_summary'] is None
+        assert data['code_summary'] is None
+        assert all(session['code_changes'] == [] for session in data['sessions'])
 
     def test_a_session_that_never_reached_its_close_is_counted(self, client):
         """

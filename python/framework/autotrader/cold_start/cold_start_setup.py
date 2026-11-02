@@ -28,7 +28,6 @@ from python.framework.types.autotrader_types.autotrader_config_types import Auto
 from python.framework.types.autotrader_types.cold_start_types import (
     ColdStartSituation,
     ColdStartVerdict,
-    ConfigurationComparison,
     CurrentConfiguration,
 )
 from python.framework.types.persistence_types import (
@@ -71,9 +70,8 @@ class ColdStartSetup:
             an unreachable venue, or a session with no cold start at all
         verdict: What the decision logic answered, when it was asked
         refusal: Why the boot was refused, as the session log says it — '' when it was not
-        configuration_comparison: How the session's configuration compared with the one the
-            claims it takes over were made under (#626) — None when no comparison was made
-        configuration_finding: What that comparison leaves on the run's record, when anything
+        configuration_finding: What comparing the session's configuration with the one the claims
+            it takes over were made under (#626) leaves on the run's record, when anything
         acceptance_notice: The notice of a change `--accept-composite-change` let through, for
             the console — '' when none was
     """
@@ -85,7 +83,6 @@ class ColdStartSetup:
     situation: Optional[ColdStartSituation] = None
     verdict: Optional[ColdStartVerdict] = None
     refusal: str = ''
-    configuration_comparison: Optional[ConfigurationComparison] = None
     configuration_finding: Optional[ValidationFinding] = None
     acceptance_notice: str = ''
 
@@ -183,7 +180,6 @@ def setup_cold_start(
             situation=adopter.get_situation(),
             verdict=adopter.get_verdict(),
             refusal=adopter.get_refusal(),
-            configuration_comparison=adopter.get_configuration_comparison(),
         )
 
     return ColdStartSetup(
@@ -200,7 +196,6 @@ def setup_cold_start(
         keys_in_use=adopter.get_venue_session_keys(),
         situation=adopter.get_situation(),
         verdict=adopter.get_verdict(),
-        configuration_comparison=adopter.get_configuration_comparison(),
         configuration_finding=adopter.get_configuration_finding(),
         acceptance_notice=adopter.get_acceptance_notice(),
     )

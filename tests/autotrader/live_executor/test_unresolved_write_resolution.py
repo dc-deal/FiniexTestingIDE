@@ -17,9 +17,7 @@ Three verdicts and no fourth:
                         ENTRIES, and never silently drop the order
 
 What carries money here is the CANCEL and the AMEND. Booking an unresolved cancel as a
-success drops an order the venue may still be holding and then releases the deferred close
-beside it — the failure #503's cancel-before-close ordering exists to prevent, reached
-through a transport fault instead of a race.
+success drops an order the venue may still be holding.
 
 No network: MockBrokerAdapter with injected transport faults throughout.
 """
@@ -30,8 +28,8 @@ import pytest
 
 from python.framework.testing.mock_broker_adapter import MockExecutionMode
 from python.framework.testing.mock_order_execution import MockOrderExecution
-from python.framework.types.live_types.reconciliation_types import BrokerOrder
 from python.framework.types.live_types.live_execution_types import BrokerOrderStatus
+from python.framework.types.live_types.reconciliation_types import BrokerOrder
 from python.framework.types.trading_env_types.latency_simulator_types import PendingOperation
 from python.framework.types.trading_env_types.order_types import (
     OpenOrderRequest,
@@ -216,8 +214,7 @@ class TestTheVenueNamesIt:
 
         The submit answer and the reconcile attribution both send it; the resolution restored
         the reference and stopped there. The limit the algo had cancelled kept resting and
-        could fill, and a close parked behind a protective order's cancel waited for the rest
-        of the session.
+        could fill.
         """
         pending = _unresolved_limit(executor_instant, mock_instant)
         assert executor_instant.cancel_limit_order(pending.pending_order_id)
@@ -288,7 +285,7 @@ class TestTheVenueNamesNothing:
 
         It used to come back as "the venue names nothing", which after the settle window is a
         verdict: the order was booked undelivered while two orders under our key were at the
-        venue, and a close parked behind it would now be sent.
+        venue.
         """
         pending = _unresolved_limit(executor_instant, mock_instant)
         adapter = executor_instant.broker.adapter

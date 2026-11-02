@@ -14,6 +14,7 @@ from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.trading_env.broker_config import BrokerConfig
 from python.framework.trading_env.live.live_trade_executor import LiveTradeExecutor
 from python.framework.types.config_types.autotrader_defaults_config_types import (
+    ShutdownDefaults,
     UnresolvedResolutionDefaults,
 )
 from python.framework.types.config_types.connection_policy_config_types import ConnectionPolicy
@@ -33,9 +34,10 @@ def build_live_executor(
     poll_interval_ms: int = 5000,
     connection_policy: Optional[ConnectionPolicy] = None,
     session_key: str = '',
-    venue_held_protection: bool = False,
     resolution_config: Optional[UnresolvedResolutionDefaults] = None,
     venue_read_settle_seconds: float = 5.0,
+    shutdown_config: Optional[ShutdownDefaults] = None,
+    socket_timeout_s: Optional[float] = None,
 ) -> LiveTradeExecutor:
     """
     Create a fully configured LiveTradeExecutor.
@@ -59,13 +61,14 @@ def build_live_executor(
             (#473). Sourced from BrokerTransportConfig.connection.
         session_key: Discriminator for the client order ids this session sends (#473).
             Empty on paths that never reach a venue.
-        venue_held_protection: Profile default for #503 — whether a declared stop_loss
-            additionally rests at the venue as an order of its own. Sourced from
-            AutotraderExecutionDefaults.venue_held_protection.
         resolution_config: How a write whose answer was lost is asked about (#487).
             Sourced from AutotraderExecutionDefaults.unresolved_resolution.
         venue_read_settle_seconds: How long the venue's read plane may lag its write plane
             before an answer that names nothing counts as evidence (#487).
+        shutdown_config: The waits of the session's stop (#630). Sourced from
+            AutoTraderConfig.shutdown.
+        socket_timeout_s: How long the adapter's socket waits for one call. Sourced from
+            BrokerTransportConfig.request_timeout_s; None leaves the ladder's own figure
 
     Returns:
         LiveTradeExecutor ready for an AutoTrader session
@@ -84,9 +87,14 @@ def build_live_executor(
 
     # One ladder for this broker's REST endpoint, handed to the executor so the order path
     # and the Reconciler classify the same 502 the same way (#473).
+    # The ladder's worst case and the stop's budget count a call at the socket timeout the adapter
+    # really waits, which broker_transport sets apart from the ladder's own figure
+    policy = connection_policy or ConnectionPolicy()
+    if socket_timeout_s is not None and socket_timeout_s > policy.request_timeout_s:
+        policy = policy.model_copy(update={'request_timeout_s': float(socket_timeout_s)})
     rest_ladder = ConnectionLadder(
         name='broker_rest',
-        policy=connection_policy or ConnectionPolicy(),
+        policy=policy,
         logger=logger,
     )
 
@@ -102,8 +110,8 @@ def build_live_executor(
         rest_ladder=rest_ladder,
         resolution_config=resolution_config or UnresolvedResolutionDefaults(),
         venue_read_settle_seconds=venue_read_settle_seconds,
+        shutdown_config=shutdown_config,
         session_key=session_key,
-        venue_held_protection=venue_held_protection,
         order_history_max=order_history_max,
         trade_history_max=trade_history_max,
     )

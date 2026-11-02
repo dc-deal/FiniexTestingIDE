@@ -18,6 +18,20 @@ from python.framework.types.validation_types import ValidationCheckInfo
 VALIDATION_CHECKS: Tuple[ValidationCheckInfo, ...] = (
     # --- Configuration of a scenario ---------------------------------------------------------
     ValidationCheckInfo(
+        'order_feature_refused', 'Order feature the venue does not hold',
+        "The scenario's decision logic declares an order feature its venue's API does not hold, "
+        'and its scenario set declares no exception for it.'),
+    ValidationCheckInfo(
+        'order_feature_undeclared', 'Order features not declared',
+        "The scenario's decision logic does not say which order features it uses."),
+    ValidationCheckInfo(
+        'feature_beyond_venue_unneeded', 'Exception nothing needs',
+        'The scenario set declares an order feature as beyond its venue that no scenario needs, '
+        'or that the venue holds anyway.'),
+    ValidationCheckInfo(
+        'features_beyond_venue', 'Order features beyond the venue',
+        "The run used order features its venue's API does not hold, as its scenario set declared."),
+    ValidationCheckInfo(
         'scenario_name_missing', 'Scenario without a name',
         'A scenario in the set has no name.'),
     ValidationCheckInfo(
@@ -34,7 +48,7 @@ VALIDATION_CHECKS: Tuple[ValidationCheckInfo, ...] = (
         'The scenario configures no starting balances.'),
     ValidationCheckInfo(
         'balance_currency_mismatch', "No balance in the symbol's currencies",
-        "None of the configured balances is in the base or the quote currency of the symbol."),
+        'None of the configured balances is in the base or the quote currency of the symbol.'),
     ValidationCheckInfo(
         'account_currency_invalid', 'Account currency not in the symbol',
         'The configured account currency is neither the base nor the quote currency of the '
@@ -175,6 +189,19 @@ VALIDATION_CHECKS: Tuple[ValidationCheckInfo, ...] = (
         "Some data files the run read, or the bars a warmup history started from, are a "
         "venue's published history rather than our own collection; such ticks are never "
         'admissible for a parity comparison.'),
+    ValidationCheckInfo(
+        'shutdown_waits_beyond_kill', 'Waits of a stop longer than the supervisor allows',
+        "A session's stop can spend more on its waits, on the orders on their way and on its "
+        'records than the time the session declares its supervisor gives it; the end of the stop '
+        'would be lost to the kill.'),
+    ValidationCheckInfo(
+        'shutdown_kill_undeclared', 'Unattended session declares no supervisor kill',
+        'A live session runs unattended without declaring when its supervisor kills it after a '
+        'stop signal, so its stop has no budget to keep the session records out of the kill.'),
+    ValidationCheckInfo(
+        'shutdown_order_wait_below_poll', 'Wait for orders shorter than two status reads',
+        "The time a session's stop waits for the orders on their way is below the broker's poll "
+        "interval plus a second, so it can end before an order's second status read."),
     # --- What the data LACKS (#561) — one per DataDeficiency, worded from its declaration ------
     ValidationCheckInfo(
         'data_no_quote', 'Ticks without a quote',
@@ -248,6 +275,10 @@ VALIDATION_CHECKS: Tuple[ValidationCheckInfo, ...] = (
     ValidationCheckInfo(
         'robustness_low_windows', 'Too few windows',
         'The robustness figures rest on fewer windows than the configured minimum.'),
+    ValidationCheckInfo(
+        'robustness_metric_unmeasured', 'Expectancy not measured in some windows',
+        'Some windows have no trade with an R, so the metric has no value there and no verdict is '
+        'given. A logic keeping its own exits has none; use another metric.'),
     ValidationCheckInfo(
         'robustness_low_trust', 'Block splitting distorts the windows',
         'Splitting the data into blocks distorted the windows beyond the trust limit, so no '

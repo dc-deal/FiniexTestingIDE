@@ -34,11 +34,6 @@ An order that ends without filling has a row for that ending too: its `status` s
 ended, and on a cancelled, expired or unaccounted row `initiator` and `end_reason` say who ended it
 and why.
 
-**A protective order is the exception, twice.** The stop or target this side places at the venue
-for a position carries an `order_id` of its own — `protect_` and the position's id — and it is not
-recorded `pending` when it is placed: its placement is in the
-[order-event stream](/api/v1/docs/order-events), and the history records only how it ended.
-
 **The last row under an `order_id` is not what became of the position.** It says how the latest of
 the orders under that id ended. What the position became is in
 [trade history](/api/v1/docs/trade-history) — each closed part, with `close_type` and
@@ -48,8 +43,8 @@ appears in neither.
 
 ## `order_id` is the position's id, so it repeats
 
-It is minted when the position opens and carried by every later order belonging to that position,
-a protective order excepted (above). It does not identify a row and it does not identify an order.
+It is minted when the position opens and carried by every later order belonging to that position.
+It does not identify a row and it does not identify an order.
 
 An executed row's `scenario_name` and `position_id` together name the same position as a trade
 row does. One counter per unit mints it and no id is used twice, so that pair is a reliable join
@@ -79,17 +74,29 @@ matching their contents.
 | `fee_source` | where `commission` came from: `venue` — the figure the venue reported for the fill, what the account was charged; `estimate` — our fee model's, the declared rate times the order's value. A backtest's is always `estimate` |
 | `rejection_reason` · `rejection_message` | why it was refused, as a code and as a sentence |
 | `initiator` · `end_reason` | who ended the order, and why — on a cancelled, expired or unaccounted row |
+| `order_event_seq` | the event this row records, by its `seq` on the [order events](/api/v1/docs/order-events) — the row's key into the stream |
+| `slippage_measured_against` | what the fill is measured against — `submission_mid` for a market order (the mid when it was sent), `limit_price` for a limit (its limit in force at the fill), `trigger_price` for a stop or a stop-limit, `protective_level` for a stop-loss or take-profit close (the level that fired) |
+| `slippage_reference_price` | that price |
+| `slippage` · `slippage_pct` | how far the fill landed from it, in price units and in percent of it — positive is a cost: a buy that paid more, a sell that received less |
 
 `event_time` runs on the run's own clock, so in a backtest it is the replayed market time and not
 the time the backtest was executed. It is the moment of the event this row records — the
 submission on a `pending` row, else the fill, the refusal, the cancel, the expiry.
 
 `order_type` is the type that was REQUESTED: a stop-limit order stays `stop_limit` after its stop
-triggered, a close is `market`, and an exit through a protective order the venue held carries that
-order's type.
+triggered, and a close is `market`.
 
 `direction`, `action`, `status`, `fee_source`, `order_type`, `close_type`, `rejection_reason`,
-`initiator` and `end_reason` are closed vocabularies and appear in the schema with their values.
+`initiator`, `end_reason` and `slippage_measured_against` are closed vocabularies and appear in the
+schema with their values.
+
+**A fill's slippage is measured against a price set before the fill could move it.** A market order
+against the mid when it was sent, so every part of a split fill is measured against the same
+price; a limit against its limit, which a fill can only meet or beat; a stop against its trigger. A
+stop-loss or take-profit close against the level that fired: a backtest fills such a close at its
+level and reads 0, a live session reads how far past the level the venue filled it — the difference
+a comparison of the two runs is after. The [execution statistics](/api/v1/docs/execution-stats)
+summarise it per reference.
 
 ## What is null, and the one field that never is
 
@@ -106,6 +113,9 @@ read as a price is a mistake that cannot be undone further down.
 | `rejection_reason` · `rejection_message` | the order was neither denied nor rejected |
 | `initiator` · `end_reason` | the row is not a cancel, an expiry or an order unaccounted for |
 | `direction` · `action` · `order_type` | the record did not carry them |
+| `order_event_seq` | a `pending` row, which has no event yet, or a row recorded before the field existed |
+| `slippage_measured_against` | the row records no fill, or the row was recorded before the field existed |
+| `slippage_reference_price` · `slippage` · `slippage_pct` | the row records no fill, the row was recorded before the field existed, or the price it is measured against was not captured — a market order sent before the session's first quote |
 
 The exception is `commission`: it is a plain number and present on every row. For the cost of a
 *closed trade*, read the itemised fees in [trade history](/api/v1/docs/trade-history) rather than
@@ -136,13 +146,13 @@ The `status` query parameter takes one of these values and matches it exactly.
 ## Who ended it, and why — `initiator` and `end_reason`
 
 On a cancelled, expired or unaccounted row, `initiator` says who ended the order — `strategy`,
-`framework` (this side: a timeout, the end of the run, a protective order no longer needed) or
+`framework` (this side: a timeout, the end of the run) or
 `venue` — and `end_reason` says why:
 
 | `end_reason` | The order ended because |
 |---|---|
 | `cancel_requested` | the strategy asked for the cancel |
-| `protection_released` | it was a protective order its position no longer needed at the venue: the position's close was going out, or its stop was withdrawn |
+| `protection_released` | only in a run recorded before contract 46: a stop the framework held at the venue was no longer needed |
 | `order_timeout` | it did not fill within the order timeout |
 | `resolution_ceiling` | its answer was lost, and the venue never named it however long it was asked |
 | `session_end` | the live session ended with the order still out |
@@ -162,7 +172,7 @@ set on a `denied` and on a `rejected` row. The vocabulary:
 insufficient_margin · insufficient_funds · invalid_lot_size · symbol_not_tradeable
 market_closed · invalid_price · order_type_not_supported · broker_error
 rejection_cooldown · stale_market_data · unaccounted_order · position_not_found
-close_withheld · remainder_below_minimum
+remainder_below_minimum · order_feature_not_declared
 ```
 
 Four of them are worth spelling out, because their names do not carry their meaning:
@@ -177,8 +187,6 @@ Four of them are worth spelling out, because their names do not carry their mean
   continue; only new entries stop.
 - **`position_not_found`** — a close for a position that is not held. In a backtest the simulated
   venue also refuses a close whose position was closed while the close was on its way.
-- **`close_withheld`** — the close was held back because the protective order resting over the
-  position could not be cancelled first, and a close beside a working stop can fill twice.
 
 An answer that never came is not a refusal: the [order events](/api/v1/docs/order-events) follow it
 as `unresolved` and `resolved`, and an order whose answer was never found ends `unaccounted`. Which

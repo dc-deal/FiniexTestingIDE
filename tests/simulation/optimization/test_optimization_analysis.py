@@ -83,9 +83,29 @@ def test_rank_rejects_an_objective_that_can_be_undefined(sweep_rows):
 
 
 def test_rank_keeps_the_always_measured_kpis(sweep_rows):
-    """The sweep objective and the P&L KPI stay rankable — this guards the exclusion."""
-    assert rank(sweep_rows, 'expectancy', maximize=True)
+    """The default objective stays rankable — this guards the exclusion."""
     assert rank(sweep_rows, 'net_pnl', maximize=True)
+
+
+class TestARunWithNoR:
+    """A logic keeping its own exits has no R on record, and a zero would rank it as a measurement."""
+
+    def test_a_ranking_by_expectancy_leaves_it_out_and_counts_it(
+            self, tmp_ledger, make_run_summary, make_provenance):
+        for run_id, summary in (
+                ('r0', make_run_summary(expectancy=1.5, r_trade_count=2, total_trades=2)),
+                ('r1', make_run_summary(expectancy=None, total_trades=2)),
+                ('r2', make_run_summary(expectancy=-0.5, r_trade_count=2, total_trades=2))):
+            tmp_ledger.append(summary, make_provenance(param_hash=run_id, run_id=run_id))
+        rows = tmp_ledger.read_rows()
+
+        assert [row.run_id for row in rank(rows, 'expectancy')] == ['r0', 'r2']
+        assert unranked_count(rows, 'expectancy') == 1
+
+    def test_a_row_written_as_zero_before_it_could_be_empty_reads_empty_too(self, sweep_rows):
+        """The fold rebuilds a mean over its population, and `r_trade_count` 0 is none."""
+        assert rank(sweep_rows, 'expectancy') == []
+        assert unranked_count(sweep_rows, 'expectancy') == len(sweep_rows)
 
 
 def test_rows_are_typed(sweep_rows):
@@ -139,6 +159,20 @@ def test_error_rows_excluded_from_ranking(tmp_ledger, make_run_summary, make_pro
 
 def _utc(h, m, s):
     return datetime(2026, 1, 1, h, m, s, tzinfo=timezone.utc)
+
+
+def test_the_sweep_line_names_what_its_set_allowed_beyond_the_venue(
+        tmp_ledger, make_run_summary, make_provenance):
+    tmp_ledger.append(make_run_summary(), make_provenance(
+        run_id='a0', scenario_set_name='base__sweep_A_c000', sweep_id='sweep_A',
+        features_beyond_venue='stop_loss'))
+    tmp_ledger.append(make_run_summary(), make_provenance(
+        run_id='b0', scenario_set_name='base__sweep_B_c000', sweep_id='sweep_B'))
+
+    lines = {line.sweep_id: line for line in summarize_sweeps(tmp_ledger.read_rows())}
+
+    assert lines['sweep_A'].features_beyond_venue == 'stop_loss'
+    assert lines['sweep_B'].features_beyond_venue == ''
 
 
 def test_summarize_sweeps(tmp_ledger, make_run_summary, make_provenance):

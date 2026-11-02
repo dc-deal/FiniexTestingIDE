@@ -45,6 +45,7 @@ Each order life in a backtest, read by submission; money-touching flows in both 
 | `TestAPositionsCloses` | a close is an order of its own and states its position and that position's direction; a breached stop-loss exits through an order of its own; a close whose position went on its way still names its side — the side travels on the close, as live |
 | `TestARefusal` | a denial was never submitted; a refused close names its position; a stress-test refusal answers the submission with its delay |
 | `TestTheStreamItself` | `seq` strictly increasing, every step names a recorded submission, no wall clock, and two identical backtests write identical streams |
+| `TestEachFillIsFoundAndMeasured` | #631: a booked row names the event it was booked with, in both account models; over the real stream a stop-limit is measured against its trigger although the simulation rests it as a limit once it fires, and a stop-loss exit against its level, where the simulation fills it — 0 |
 
 ### `test_live_order_events.py`
 
@@ -56,10 +57,10 @@ Each order life in a live session against the mock venue.
 | `TestARestingOrder` | a cancel asked for then carried out; a cancel before the reference is `cancel_deferred` and sent on the answer; a modification; a local refusal of a modification writes nothing; a venue ending after a partial fill is `partially_filled` then the ending without a row; the session end cancels and says so |
 | `TestALostAnswer` | `unresolved` then `resolved` and a late acceptance without latency when the venue names it; `undelivered` when it never had it; the truth pull naming it is a resolution too |
 | `TestAnAdoptedOrder` | adopted, and its fill follows without a second acceptance — counted adopted, not submitted |
-| `TestAProtectiveOrder` | the entry, the protective stop and the close as three lives: the stop is cancelled first, with its position, its position's side and `protection_released` |
 | `TestACloseWhosePositionIsGone` | a close whose position something else took before the answer came still names the position's side and size on its steps, in both account models — both travel on the close from its registration |
 | `TestTheStreamItself` | `seq` strictly increasing across orders; an answer for an order that is gone names how it ended |
 | `TestTheSessionsPendingCounters` | the pending-order counters derived from a session's events — one accepted, one rejected, one never confirmed — add up, and only the answers carry a duration |
+| `TestEachFillIsFoundAndMeasured` | #631: a booked row names its own fill event and a market fill is measured against the mid when the order was sent, in both account models; a stop-loss exit is measured against its level and reads how far below it the mock venue sold — where the simulation reads 0 |
 
 ### `test_live_crossed_answers.py`
 
@@ -72,7 +73,6 @@ What the stream records where answers cross, time out or come back late.
 | `TestACancelBeforeTheReference` | a cancel asked for twice before the reference arrived is parked once and sent once |
 | `TestACancelTheVenueDidNotCarryOut` | a lost cancel the venue did not carry out explains no later ending: a later expiry is the venue's |
 | `TestTheFillTimeoutsOwnCancel` | the timeout's cancel after a partial fill ends the order as the framework's; a lost cancel answer is the cancel's question, not the read's; the give-up keeps the venue's refusal of its cancel |
-| `TestAProtectiveOrderPartlyFilled` | what executed while it worked is its ending: the cancel answer adds the step, no second row |
 | `TestTheSessionEnd` | a session-end cancel whose answer was lost is `unresolved` before the order is `unaccounted` |
 
 ### `test_order_event_stream_io.py`

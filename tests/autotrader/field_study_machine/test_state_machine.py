@@ -3,10 +3,13 @@ FiniexTestingIDE - Field Study Phase Machine Tests (#332)
 
 Deterministic tests for FieldStudyPhaseMachine driven by synthetic PhaseContext
 observations — no broker, no network. Covers the per-phase flows, the re-arm
-bound, expected-rejection handling, and the skip/end paths.
+bound, expected-rejection handling, the skip/end paths, and the phase whose close is on its way
+when the session ends (#630).
 """
 
 from datetime import datetime, timedelta, timezone
+
+import pytest
 
 from python.framework.decision_logic.core.live_field_study.field_study_phase_machine import (
     FieldStudyPhaseMachine,
@@ -17,6 +20,7 @@ from python.framework.types.acceptance_study_types.study_phase_types import (
     PhaseContext,
     PhaseOutcome,
 )
+from python.framework.types.decision_event_types import SessionEndSeverity
 
 _T0 = datetime(2026, 6, 2, 12, 0, 0, tzinfo=timezone.utc)
 
@@ -318,64 +322,146 @@ def test_full_sequence_runs_to_completion():
     ]
 
 
-class TestTheProtectiveLevelPhase:
-    """
-    #503. The one phase that answers the question #500 opened: does a level the STRATEGY
-    declares ever leave this process?
+# ---------------------------------------------------------------------------
+# A close on its way at the stop (#630)
+# ---------------------------------------------------------------------------
 
-    It cannot be read off the entry's payload — the level deliberately does not travel
-    there — so the phase proves it the only way it can be proven: by an order resting at
-    the venue over a real holding, and by that order being cancelled BEFORE the close.
-    """
+_END = 'field study complete'
 
-    _RAW = {'side': 'long', 'lots': 0.003, 'stop_loss_offset_pct': 0.05,
-            'fill_timeout_s': 45}
 
-    def test_the_entry_carries_a_declared_level_far_from_the_market(self):
-        m = _machine([_phase('p', 'protective_level', **self._RAW)])
+def _close_and_end(**phase):
+    """The phase, followed by the ending its own end overtakes."""
+    return _machine([
+        _phase('stop_waits_for_close', 'close_and_end', side='long', fill_timeout_s=30, **phase),
+        _phase('final_summary', 'final_summary'),
+    ])
 
-        action = m.advance(_ctx(1))
 
-        assert action.kind == PhaseActionKind.SUBMIT_MARKET
-        assert action.stop_loss == 1900.0, (
-            '5 % below a 2000 mid — wide on purpose: a stop that triggers inside the '
-            'phase proves the offset was too tight, not that the feature works')
-        assert action.lots == 0.003, (
-            'Its own size, because a protective order is worth lots x TRIGGER and the '
-            "default would land under Kraken's cost minimum")
+def _send_the_close(m):
+    """Drive the phase to the pass that closes and asks for the end."""
+    assert m.advance(_ctx(1)).kind == PhaseActionKind.SUBMIT_MARKET
+    assert m.advance(_ctx(2, open_pos=1, filled=True)).kind == (
+        PhaseActionKind.CLOSE_ALL_AND_END_SESSION)
 
-    def test_it_waits_for_the_venue_to_hold_the_order_before_closing(self):
-        m = _machine([_phase('p', 'protective_level', **self._RAW)])
-        m.advance(_ctx(1))
-        m.advance(_ctx(2, open_pos=1))
 
-        waiting = m.advance(_ctx(3, open_pos=1, stops=0))
-        assert waiting.kind == PhaseActionKind.NONE, (
-            'A position that is open but not yet protected is exactly the window the '
-            'feature exists to close — the phase does not walk past it')
+def test_the_close_and_the_end_request_go_out_in_one_pass():
+    m = _close_and_end()
+    _send_the_close(m)
+    assert m.get_results() == []
+    assert not m.is_complete()
 
-        assert m.advance(_ctx(4, open_pos=1, stops=1)).kind == PhaseActionKind.CLOSE_ALL
 
-    def test_it_passes_only_when_nothing_is_left_behind(self):
-        m = _machine([_phase('p', 'protective_level', **self._RAW)])
-        m.advance(_ctx(1))
-        m.advance(_ctx(2, open_pos=1))
-        m.advance(_ctx(3, open_pos=1, stops=1))
+def test_a_book_flat_at_the_end_passes_and_the_summary_is_overtaken():
+    m = _close_and_end()
+    _send_the_close(m)
 
-        m.advance(_ctx(4, open_pos=0, stops=1))
-        assert not m.is_complete(), (
-            'A closed position with the stop still at the venue is an orphan, not a pass')
+    m.conclude_at_session_end(_ctx(3), _END, SessionEndSeverity.NORMAL)
 
-        m.advance(_ctx(5, open_pos=0, stops=0))
-        assert m.get_results()[0].outcome == PhaseOutcome.PASS
+    assert m.is_complete()
+    assert [(r.phase_id, r.outcome, r.reason) for r in m.get_results()] == [
+        ('stop_waits_for_close', PhaseOutcome.PASS,
+         'the stop waited for the close and booked its fill'),
+        ('final_summary', PhaseOutcome.SKIPPED, 'the session ended in stop_waits_for_close'),
+    ]
 
-    def test_a_protection_that_never_appears_closes_the_position_out(self):
-        """A failed phase must not leave real money exposed."""
-        m = _machine([_phase('p', 'protective_level', **self._RAW)])
-        m.advance(_ctx(1))
-        m.advance(_ctx(2, open_pos=1))
 
-        action = m.advance(_ctx(200, open_pos=1, stops=0))
+@pytest.mark.parametrize('observed, words', [
+    ({'open_pos': 1}, 'before the close was booked: 1 position(s) open in the book'),
+    ({'open_pos': 1, 'unaccounted': True}, 'given up unaccounted at the stop'),
+    ({'open_pos': 1, 'rejected': True}, 'the close was rejected'),
+    ({'pending': True}, 'still pending'),
+])
+def test_a_close_the_stop_did_not_settle_fails_and_is_named(observed, words):
+    m = _close_and_end()
+    _send_the_close(m)
 
-        assert action.kind == PhaseActionKind.CLOSE_ALL
-        assert 'no protective order' in action.reason
+    m.conclude_at_session_end(_ctx(3, **observed), _END, SessionEndSeverity.NORMAL)
+
+    result, overtaken = m.get_results()
+    assert result.outcome == PhaseOutcome.FAIL
+    assert words in result.reason
+    assert overtaken.outcome == PhaseOutcome.SKIPPED
+
+
+def test_an_end_not_of_normal_severity_is_named():
+    m = _close_and_end()
+    _send_the_close(m)
+
+    m.conclude_at_session_end(_ctx(3, open_pos=1), 'hard drawdown', SessionEndSeverity.EMERGENCY)
+
+    assert m.get_results()[0].reason.endswith(
+        f'({SessionEndSeverity.EMERGENCY.value} end: hard drawdown)')
+
+
+def test_an_end_before_the_close_concludes_nothing():
+    """A run that ended while the open still waited reads its phases as missing, as before."""
+    m = _close_and_end()
+    m.advance(_ctx(1))
+
+    m.conclude_at_session_end(_ctx(2), 'field study safe-abort: timeout', SessionEndSeverity.NORMAL)
+
+    assert m.get_results() == []
+    assert not m.is_complete()
+
+
+def test_an_end_in_another_phase_concludes_nothing():
+    m = _machine([_phase('open', 'market_open', side='long'), _phase('final', 'final_summary')])
+    m.advance(_ctx(1))
+
+    m.conclude_at_session_end(_ctx(2, open_pos=1), _END, SessionEndSeverity.NORMAL)
+
+    assert m.get_results() == []
+
+
+def test_a_position_at_entry_sends_nothing_and_the_summary_ends_the_session():
+    m = _close_and_end()
+
+    assert m.advance(_ctx(1, open_pos=1)).kind == PhaseActionKind.NONE
+
+    assert m.get_results()[0].outcome == PhaseOutcome.FAIL
+    assert m.advance(_ctx(2, open_pos=1)).kind == PhaseActionKind.END_SESSION
+
+
+@pytest.mark.parametrize('observed, words', [
+    ({'rejected': True}, 'open rejected'),
+    ({'unaccounted': True}, 'unaccounted'),
+])
+def test_an_open_that_does_not_fill_fails_and_the_summary_ends_the_session(observed, words):
+    m = _close_and_end()
+    m.advance(_ctx(1))
+
+    m.advance(_ctx(2, **observed))
+
+    assert m.get_results()[0].outcome == PhaseOutcome.FAIL
+    assert words in m.get_results()[0].reason
+    assert m.advance(_ctx(3)).kind == PhaseActionKind.END_SESSION
+
+
+def test_an_open_that_times_out_fails():
+    m = _close_and_end()
+    m.advance(_ctx(1))
+
+    m.advance(_ctx(40))
+
+    assert (m.get_results()[0].outcome, m.get_results()[0].reason) == (
+        PhaseOutcome.FAIL, 'open not filled')
+
+
+def test_a_pass_after_the_close_means_the_session_did_not_end():
+    m = _close_and_end()
+    _send_the_close(m)
+
+    assert m.advance(_ctx(10)).kind == PhaseActionKind.NONE
+    m.advance(_ctx(40))
+
+    assert m.get_results()[0].reason == 'the session did not end'
+    assert m.advance(_ctx(41)).kind == PhaseActionKind.END_SESSION
+
+
+def test_a_disabled_phase_leaves_the_ending_as_it_was():
+    m = _close_and_end(enabled=False)
+
+    m.advance(_ctx(1))
+
+    assert m.get_results()[0].outcome == PhaseOutcome.SKIPPED
+    assert m.advance(_ctx(2)).kind == PhaseActionKind.END_SESSION

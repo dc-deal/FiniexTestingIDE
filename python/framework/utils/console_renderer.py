@@ -10,7 +10,6 @@ Provides:
 
 """
 
-import re
 
 from python.framework.constants.currency_constants import format_currency_simple
 from python.framework.types.log_level import ColorCodes
@@ -94,33 +93,3 @@ class ConsoleRenderer:
     def print_bold(self, text: str):
         """Print bold text."""
         print(self.bold(text))
-
-    # ============================================
-    # String Utilities (ANSI-aware)
-    # ============================================
-
-    def strip_ansi(self, text: str) -> str:
-        """
-        Remove ANSI color codes from string.
-
-        Args:
-            text: String potentially containing ANSI codes
-
-        Returns:
-            String without ANSI codes
-        """
-        ansi_escape = re.compile(r'\033\[[0-9;]*m')
-        return ansi_escape.sub('', text)
-
-    def visual_length(self, text: str) -> int:
-        """
-        Get visual length of string (excluding ANSI codes).
-
-        Args:
-            text: String to measure
-
-        Returns:
-            Visual length (what user sees)
-        """
-        return len(self.strip_ansi(text))
-

@@ -10,7 +10,7 @@ Two-Tier Order System:
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum, StrEnum
-from typing import Any, Dict, Optional
+from typing import Any, Dict, FrozenSet, Optional
 
 from python.framework.types.trading_env_types.broker_types import FeeSource
 from python.framework.types.trading_env_types.submission_metadata_types import SubmissionMetadata
@@ -52,6 +52,21 @@ class OrderType(Enum):
     TRAILING_STOP = 'trailing_stop'
     ICEBERG = 'iceberg'
     UNKNOWN = 'unknown'
+
+
+class OrderFeature(Enum):
+    """
+    What an order or a position carries beyond its type, and a venue's API holds or does not.
+
+    A decision logic declares the ones it uses (`get_required_order_features`), an adapter states
+    the ones its API takes (`OrderCapabilities.offered_order_features`), and a run refuses a
+    declared one the venue lacks (#625). OCO, bracket and reduce-only join with #164.
+
+    STOP_LOSS: A stop level the venue holds for the position
+    TAKE_PROFIT: A target level the venue holds for the position
+    """
+    STOP_LOSS = 'stop_loss'
+    TAKE_PROFIT = 'take_profit'
 
 
 # Order types that actually REST at a venue — a placed order waiting for a price rather
@@ -175,14 +190,16 @@ class OrderInitiator(Enum):
     venue, and a strategy reading its own history has to tell them apart.
     """
     STRATEGY = 'strategy'        # The decision logic asked for the cancel
-    FRAMEWORK = 'framework'      # We ended it: a timeout, the end of the run, a protective order released
+    FRAMEWORK = 'framework'      # We ended it: a timeout, the end of the run
     VENUE = 'venue'              # The venue ended it without being asked
 
 
 class OrderEndReason(Enum):
     """Why an order ended without filling — beside `initiator` on the same row."""
     CANCEL_REQUESTED = 'cancel_requested'        # The strategy asked for the cancel
-    PROTECTION_RELEASED = 'protection_released'  # A protective order the position no longer needs at the venue: its close is going out, or its stop was withdrawn
+    # In runs recorded before contract 46 only: nothing produces it since a session holds no stop at
+    # the venue (#625), and a record stays readable as it was written
+    PROTECTION_RELEASED = 'protection_released'
     ORDER_TIMEOUT = 'order_timeout'              # No fill within the order timeout
     RESOLUTION_CEILING = 'resolution_ceiling'    # Its answer was lost, and the venue never named it however long we asked
     SESSION_END = 'session_end'                  # The live session ended with the order still out
@@ -241,39 +258,17 @@ class RejectionReason(Enum):
     # A close for a position this bot does not hold. The simulation's venue also refuses a
     # close whose position was closed while the close was on its way.
     POSITION_NOT_FOUND = 'position_not_found'
-    # #503 — the close was held back because the protective order resting over the position
-    # could not be cancelled first, and a close beside a working stop can fill twice.
-    CLOSE_WITHHELD = 'close_withheld'
     # #507 — the requested size is fine, the LEFTOVER is not: closing it would strand a
     # remainder below the symbol's volume_min, which can never be sold afterwards. Its own
     # reason rather than INVALID_LOT_SIZE, because the lots asked for are valid and a caller
     # reading that name would look in the wrong place.
     REMAINDER_BELOW_MINIMUM = 'remainder_below_minimum'
+    # #625 — the order carries a stop or a target its logic did not declare in
+    # get_required_order_features(), so the start never checked whether anything holds it.
+    # A decision bug, like an invalid lot size, and so it feeds no cooldown.
+    ORDER_FEATURE_NOT_DECLARED = 'order_feature_not_declared'
 
 
-
-class ProtectiveLevelEnforcement(Enum):
-    """
-    Who actually enforces a stop_loss / take_profit declared on an order (#500).
-
-    The level used to be recorded on the Position and enforced by nobody: the payload
-    carried no field for it and the engine's check skipped every non-simulation executor,
-    on the assumption that the venue had taken it. The assumption was never true, so the
-    console showed a stop that did not exist. This says who holds it.
-
-    LOCAL: our own process evaluates it against the tick stream and closes the position
-        when it is breached. Protects while we are running and connected; a process that
-        dies leaves the position unprotected.
-    VENUE: the level rests at the broker as an order of its own and survives our process
-        dying. Answered since #503, where Kraken Spot holds a declared stop as a standalone
-        STOP order — opt-in, default OFF. It is the STOP only: Kraken has neither OCO nor a
-        bracket, so one order rests and it is the one that bounds the loss; a declared take
-        profit stays with the local check whatever this says. The MARGIN side is unwalked —
-        MT5 holds the level ON the position, with no separate order to derive an answer
-        from, so a three-way reading may be needed there (#209).
-    """
-    LOCAL = 'local'
-    VENUE = 'venue'
 
 class FeeReport(Enum):
     """
@@ -327,7 +322,8 @@ class OrderCapabilities:
 
     # Position-level features (#318)
     # native_position_sl_tp: broker supports server-side attached SL/TP on
-    # open positions (MT5: True, Kraken Spot: False). When True, the executor
+    # open positions (MT5 declares True once #209 builds its live adapter — today no
+    # adapter does; Kraken Spot: False). When True, the executor
     # routes modify_position through the async pattern (processor.submit_
     # modify_position_async / sim _pending_position_modifications). When
     # False, modify_position falls back to instant local portfolio update.
@@ -347,15 +343,23 @@ class OrderCapabilities:
     # without one is booked from the estimate, and that is said in the session's log.
     fee_report: FeeReport = FeeReport.NOT_REPORTED
 
-    # Venue-held protective orders (#503)
-    # venue_held_protective_orders: the venue accepts a STANDALONE order that can hold a
-    # protective level for an open position, so the level survives our process dying.
-    # Kraken: True — measured, a stop-loss order rests over a spot holding and fires
-    # without us. MT5: False — MT5 holds the level ON the position, a different mechanism
-    # (#209). It is NOT native_position_sl_tp, which says who performs a MODIFY: on the
-    # two venues that exist the two answers point in opposite directions, and reading one
-    # for the other reinstates #500's original defect one level up.
-    venue_held_protective_orders: bool = False
+    # Order features (#625)
+    # offered_order_features: what the venue's API holds for a position. Required, so an adapter
+    # that leaves it out fails at once instead of reading as holding nothing. Not
+    # native_position_sl_tp, which says who performs a modify.
+    offered_order_features: FrozenSet[OrderFeature] = field(kw_only=True)
+
+    def offers_order_feature(self, feature: OrderFeature) -> bool:
+        """
+        Whether the venue's API holds this feature.
+
+        Args:
+            feature: The feature
+
+        Returns:
+            True when the adapter states it
+        """
+        return feature in self.offered_order_features
 
     def supports_order_type(self, order_type: OrderType) -> bool:
         """Check if broker supports specific order type"""
@@ -524,14 +528,18 @@ class OrderResult:
     # The order type the algo ASKED for, on every result a refusal included: a refusal that
     # says why but not what was refused cannot be read. A stop-limit stays `stop_limit` after
     # its stop triggered; a close, and a stop-loss or take-profit exit the framework performs,
-    # is `market`; an exit through a protective order held at the venue carries that order's
-    # type. None only where a constructor has not set it.
+    # is `market`. None only where a constructor has not set it.
     order_type: Optional[OrderType] = None
 
     # Who ended an order that did not fill, and why — on a cancelled, expired or unaccounted
     # row; None on every other status.
     initiator: Optional[OrderInitiator] = None
     end_reason: Optional[OrderEndReason] = None
+
+    # The order event this row was booked with (#631) — the row's key into the order-event
+    # stream, by which a report finds the fill the row records. None where a row has no event:
+    # a pending one.
+    order_event_seq: Optional[int] = None
 
     # Submission slippage audit (#340) — algo's trade-channel mid price at
     # the submission moment, propagated from PendingOrder. Surfaced in the
@@ -670,9 +678,6 @@ class OpenOrderRequest:
         stop_loss: Optional stop loss price level on resulting position
         take_profit: Optional take profit price level on resulting position
         comment: Order comment
-        venue_held_protection: Whether the resulting position's protective level should
-            rest at the venue as an order of its own (#503). None follows the profile's
-            execution.venue_held_protection; True/False overrides it for this order
     """
     symbol: str
     order_type: OrderType
@@ -683,7 +688,6 @@ class OpenOrderRequest:
     stop_loss: Optional[float] = None
     take_profit: Optional[float] = None
     comment: str = ''
-    venue_held_protection: Optional[bool] = None
 
 
 # ============================================
@@ -708,6 +712,7 @@ class ModificationRejectionReason(Enum):
     # #318 — Async modify/cancel reject cases
     ORDER_NOT_CONFIRMED = 'order_not_confirmed'   # broker_ref still None (Option A)
     OPERATION_BUSY = 'operation_busy'             # another in_flight_operation already
+    ORDER_FEATURE_NOT_DECLARED = 'order_feature_not_declared'   # #625, see RejectionReason
     ORDER_TYPE_NOT_SUPPORTED = 'order_type_not_supported'   # capability gate (e.g. stop_orders=False)
 
 
@@ -739,9 +744,8 @@ class ModificationResult:
                  keep working under the post-#318 async path where the
                  modification is queued and resolves on the next tick / drain.
         status: Lifecycle status (PENDING for async-queued, SUCCESS for
-                synchronous fallback or post-resolve, REJECTED on reject).
-                Defaults to SUCCESS so legacy callers that don't set status
-                explicitly behave unchanged.
+                synchronous fallback or post-resolve, REJECTED on reject). A refusal
+                that states none reads REJECTED: success and status never disagree.
         rejection_reason: Reason for rejection (None if successful or pending)
         order_id: Order/position id this modification targets — populated for
                   PENDING returns so the caller can use has_in_flight_operation()
@@ -751,3 +755,8 @@ class ModificationResult:
     rejection_reason: Optional[ModificationRejectionReason] = None
     status: ModificationStatus = ModificationStatus.SUCCESS
     order_id: Optional[str] = None
+
+    def __post_init__(self) -> None:
+        """A refusal is never a success, whichever of the two its builder stated."""
+        if not self.success and self.status is ModificationStatus.SUCCESS:
+            self.status = ModificationStatus.REJECTED

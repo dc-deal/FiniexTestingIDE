@@ -11,7 +11,6 @@ from datetime import timedelta
 from unittest.mock import MagicMock, patch
 
 import pytest
-from tests.data.scenario_generator.conftest import make_gap, mock_coverage_report, utc
 
 from python.framework.types.coverage_report_types import GapCategory
 from python.framework.types.market_types.market_volatility_profile_types import (
@@ -25,6 +24,7 @@ from python.scenario.generator.splitters.blocks_split import BlocksSplit
 from python.scenario.generator.splitters.continuous_region_extractor import (
     ContinuousRegionExtractor,
 )
+from tests.data.scenario_generator.conftest import make_gap, mock_coverage_report, utc
 
 # =============================================================================
 # REGION EXTRACTION (ContinuousRegionExtractor)

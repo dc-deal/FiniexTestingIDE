@@ -103,8 +103,7 @@ the one reading these lists exist to prevent. The snapshot is read after that ex
 lists the expiry deliberately leaves intact, which is why both views exist and agree.
 
 **In a live session some may still be working.** The session cancels its resting orders when it
-ends, unless its policy leaves them standing at the venue, and a protective stop over an open
-position is always left standing. [Order history](/api/v1/docs/order-history) records which: a
+ends, unless its policy leaves them standing at the venue. [Order history](/api/v1/docs/order-history) records which: a
 cancelled order ends there, one left standing does not.
 
 Which list an order sits in follows from its type, not from its fate. A `limit` order is in the
@@ -122,10 +121,6 @@ limit list; a `stop` or `stop_limit` whose trigger was never reached is in the s
 | `stop_loss` / `take_profit` | the levels the order carries, null where it carries none |
 
 `entry_price` is one field with two meanings, so read it together with `order_type`.
-
-**A resting order is not necessarily an entry.** A protective stop belonging to an open position
-rests in exactly the same way and appears in the stop list; in order history its expiry is
-recorded on the close side.
 
 The two lists declare no key at all, which is not the same as declaring an empty one: nothing in
 the response says yet what makes one of their rows unique. [Row keys](/api/v1/docs/row-keys) has

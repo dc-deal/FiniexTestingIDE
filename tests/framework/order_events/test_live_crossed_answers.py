@@ -16,7 +16,6 @@ import pytest
 from python.framework.exceptions.connection_errors import ConnectionAttemptFailedError
 from python.framework.logging.global_logger import GlobalLogger
 from python.framework.testing.mock_broker_adapter import MockExecutionMode
-from python.framework.testing.mock_order_execution import MockOrderExecution
 from python.framework.trading_env.broker_config import BrokerConfig
 from python.framework.trading_env.live.live_trade_executor import LiveTradeExecutor
 from python.framework.types.live_types.live_execution_types import (
@@ -40,15 +39,12 @@ from python.framework.types.trading_env_types.order_types import (
     OrderDirection,
     OrderEndReason,
     OrderInitiator,
-    OrderStatus,
     OrderType,
 )
 from tests.autotrader.live_executor.conftest import AcknowledgingVenueMock
-from tests.autotrader.protective_levels.conftest import VenueHoldsProtectionMock
 from tests.framework.order_events.conftest import (
     limit_order,
     live_session,
-    order_lives,
     order_steps,
     record_events,
 )
@@ -260,50 +256,6 @@ class TestTheFillTimeoutsOwnCancel:
         refused = [e for e in events if e.event_type is OrderEventType.CANCEL_REJECTED]
         assert len(refused) == 1 and refused[0].venue_reason
         assert events[-1].event_type is OrderEventType.UNACCOUNTED
-
-
-class TestAProtectiveOrderPartlyFilled:
-    """What executed while it worked is its ending; the cancel that follows writes no second row."""
-
-    def test_the_cancel_answer_ends_it_as_the_fill_it_already_was(self):
-        mock = MockOrderExecution(mode=MockExecutionMode.INSTANT_FILL)
-        executor = LiveTradeExecutor(
-            broker_config=BrokerConfig(
-                BrokerType.KRAKEN_SPOT,
-                VenueHoldsProtectionMock(mode=MockExecutionMode.INSTANT_FILL)),
-            initial_balance=100000.0,
-            account_currency='USD',
-            logger=GlobalLogger('CrossedAnswersProtective'),
-            venue_held_protection=True,
-        )
-        mock.feed_tick(executor, bid=50000.0, ask=50001.0)
-        events = record_events(executor)
-        executor.open_order(OpenOrderRequest(
-            symbol='BTCUSD', order_type=OrderType.MARKET, direction=OrderDirection.LONG,
-            lots=0.1, stop_loss=49000.0))
-        mock.await_submit_confirmation(executor)              # the entry fills
-        mock.await_submit_confirmation(executor)              # the venue takes the stop
-        position = executor.get_open_positions()[0]
-        stop = [p for p in executor.get_active_orders() if p.closes_position_id][0]
-        executor._handle_query_response(QueryResponse(
-            order_id=stop.pending_order_id,
-            broker_response=BrokerResponse(
-                broker_ref=stop.broker_ref, status=BrokerOrderStatus.PENDING,
-                filled_lots=0.04, fill_price=49000.0,
-                timestamp=datetime(2026, 1, 1, tzinfo=timezone.utc))))
-
-        executor.close_position(position.position_id)
-        mock.await_submit_confirmation(executor)              # the stop's cancel
-        mock.await_submit_confirmation(executor)              # the close
-
-        stop_steps = order_lives(events)[stop.submitted_seq]
-        assert stop_steps == [
-            'submitted', 'accepted', 'partially_filled', 'cancel_requested', 'cancelled']
-        ending = [e for e in events if e.submitted_seq == stop.submitted_seq][-1]
-        assert (ending.lots, ending.cum_lots) == (None, pytest.approx(0.04))
-        stop_rows = [r for r in executor.get_order_history()
-                     if r.order_id == stop.pending_order_id]
-        assert [r.status for r in stop_rows] == [OrderStatus.EXECUTED]
 
 
 class TestTheSessionEnd:

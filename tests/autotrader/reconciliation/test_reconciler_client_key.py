@@ -22,7 +22,6 @@ from typing import List
 
 from python.framework.types.trading_env_types.latency_simulator_types import PendingOperation
 from python.framework.utils.run_id_utils import build_client_order_id
-
 from tests.autotrader.reconciliation.conftest import make_broker_order, make_pending
 
 _OURS = '1641'          # the FakeExecutor's session (conftest default)

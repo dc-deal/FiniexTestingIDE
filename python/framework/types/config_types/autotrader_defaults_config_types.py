@@ -6,17 +6,16 @@ Note: This covers only the app_config defaults section — not the full
 AutoTraderConfig profile type defined in autotrader_config_types.py.
 """
 from enum import StrEnum
-from typing import Literal
+from typing import Literal, Optional
 from urllib.parse import urlparse
 
-from pydantic import field_validator
+from pydantic import Field, field_validator
 
 from python.framework.types.config_types.operator_alerts_config_types import OperatorAlertsConfig
-from python.framework.types.config_types.strict_config_model import StrictConfigModel
-
 from python.framework.types.config_types.performance_tracking_config_types import (
     AutoTraderPerformanceTrackingConfig,
 )
+from python.framework.types.config_types.strict_config_model import StrictConfigModel
 from python.framework.utils.timeframe_config_utils import TimeframeConfig
 
 
@@ -64,13 +63,6 @@ class AutotraderExecutionDefaults(StrictConfigModel):
     # (sim replay gaps are data). 0 disables the contract. Per-profile
     # overridable; matches the sim inter_tick_gap_threshold_s magnitude.
     market_data_stale_after_s: float = 300.0
-    # Venue-held protective orders (#503): a declared stop_loss additionally becomes a
-    # real STOP order at the venue, so it survives this process dying — which a 30-day
-    # unattended run guarantees will happen. Default OFF: opting in changes what the bot
-    # does with real money, so it is a decision and not a convenience. Overridable per
-    # order via send_order(venue_held_protection=...). Refused where the adapter cannot
-    # carry it; the simulation accepts it and enforces the level itself, unchanged.
-    venue_held_protection: bool = False
     # How long the broker waits for a fill or a refusal before the order is given up on
     # (#487). It lived as a runtime dataclass default reachable from no config file at all,
     # which meant its relation to the resolution window below could not be tuned — and the
@@ -314,6 +306,70 @@ class SessionEndDefaults(StrictConfigModel):
     positions: Literal['close', 'leave'] = 'leave'
 
 
+class ShutdownDefaults(StrictConfigModel):
+    """
+    The waits of a session's stop, and the kill they have to fit under (#630).
+
+    A supervisor sends a signal and kills after a period it never tells the process — `docker
+    stop -t`, `TimeoutStopSec` — so every wait between the signal and the last record is a
+    setting here, and the period itself is a declaration. All of it says how a session ends,
+    not what it is compared as: the block is neutral in the composite definition, and it is no
+    part of `session_end`, which is defining, because a changed timeout would then be a changed
+    composite. Calls to the venue are not here: they keep `broker_transport` and the ladder.
+
+    `order_wait_s`
+        How long a stop waits for the orders on their way before it books them unaccounted. A
+        fill shows on a read after about 2 s (May 2026) to 8 s (estimate), a lost submit answer
+        resolves in 21 to 41 s (estimate). Below the broker's `poll_interval_ms` plus a second
+        it can miss an order's second status read.
+
+    `tick_thread_join_s`, `signal_transport_join_s`, `display_join_s`, `request_worker_join_s`
+        How long the stop waits for one thread before it goes on without it, and says so. The
+        signal stream's above zero: its thread ends a moment after its socket is shut, and one not
+        waited for at all would be reported as abandoned, an error, on every stop.
+
+    `alert_flush_s`
+        How long the queued alerts may take to go out when the session ends. Long enough for a
+        handful of messages at the configured pace; short enough that a dead channel does not
+        hold a supervised restart.
+
+    `supervisor_kill_after_s`
+        The time the supervisor gives the process after its signal. None when it is not
+        declared: then no budget applies and each wait keeps its own bound.
+
+    `reserve_for_records_s`
+        What a declared kill keeps free for the reports and the ledger row: no wait and no
+        venue call of the stop may spend it. Far above the under 1 s they took when measured
+        (2026-10-31, a mock session on the development container), on purpose: that figure left
+        out a live feed's tick stream and a slower disk, and a row lost to the kill is the end
+        this budget exists to prevent. The price is that a kill of 30 s or less, at the defaults,
+        leaves no time for a cancel or the venue's last read.
+    """
+    order_wait_s: float = Field(30.0, ge=0.0)
+    tick_thread_join_s: float = Field(5.0, ge=0.0)
+    signal_transport_join_s: float = Field(2.0, gt=0.0)
+    display_join_s: float = Field(2.0, ge=0.0)
+    request_worker_join_s: float = Field(2.0, ge=0.0)
+    alert_flush_s: float = Field(15.0, ge=0.0)
+    supervisor_kill_after_s: Optional[float] = Field(None, gt=0.0)
+    reserve_for_records_s: float = Field(15.0, ge=0.0)
+
+    def bounded_waits_s(self) -> float:
+        """
+        What the joins and the alert flush can spend at most, one after another.
+
+        One sum, so the check at the start and the order wait's bound count the same waits. It
+        counts every join, also of a thread a session does not start (no display, no signal
+        stream): the safe side, which costs such a session a few seconds of its order wait under a
+        declared kill, where counting too little would let the stop overrun the kill.
+
+        Returns:
+            The sum in seconds
+        """
+        return (self.tick_thread_join_s + self.signal_transport_join_s + self.display_join_s
+                + self.request_worker_join_s + self.alert_flush_s)
+
+
 class TickSourceConfig(StrictConfigModel):
     """
     Configuration for the tick TRANSPORT (how ticks are delivered).
@@ -473,5 +529,6 @@ class AutotraderDefaultsConfig(StrictConfigModel):
     state_frames: StateFramesDefaults = StateFramesDefaults()
     cold_start: ColdStartDefaults = ColdStartDefaults()
     session_end: SessionEndDefaults = SessionEndDefaults()
+    shutdown: ShutdownDefaults = ShutdownDefaults()
     tick_source: TickSourceConfig = TickSourceConfig()
     operator_alerts: OperatorAlertsConfig = OperatorAlertsConfig()

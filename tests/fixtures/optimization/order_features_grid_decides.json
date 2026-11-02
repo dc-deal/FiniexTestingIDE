@@ -1,0 +1,11 @@
+{
+  "base_scenario_set": "tests/fixtures/scenario_sets/order_features/exception_declared.json",
+  "objective": "net_pnl",
+  "maximize": true,
+  "grid": {
+    "decision_logic_config.exit_mode": [
+      "declared",
+      "own"
+    ]
+  }
+}

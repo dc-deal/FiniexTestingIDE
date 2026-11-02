@@ -124,7 +124,8 @@ def live_session(mode: MockExecutionMode = MockExecutionMode.DELAYED_FILL,
 
 def make_simulator(spot_mode: bool, latency_ms: int = 0,
                    stress: Optional[StressTestConfig] = None,
-                   initial_balance: float = 100000.0) -> TradeSimulator:
+                   initial_balance: float = 100000.0,
+                   trade_history_max: int = 5000) -> TradeSimulator:
     """
     The simulation executor with one BTCUSD tick fed at 1000 ms.
 
@@ -133,6 +134,7 @@ def make_simulator(spot_mode: bool, latency_ms: int = 0,
         latency_ms: The inbound latency, fixed
         stress: A stress-test configuration, or None
         initial_balance: The account currency's balance
+        trade_history_max: How many trade records the portfolio keeps
 
     Returns:
         The simulator, ready to take orders
@@ -149,6 +151,7 @@ def make_simulator(spot_mode: bool, latency_ms: int = 0,
         inbound_latency_max_ms=latency_ms,
         spot_mode=spot_mode,
         initial_balances={'USD': initial_balance, 'BTC': 0.0} if spot_mode else None,
+        trade_history_max=trade_history_max,
     )
     sim_tick(sim, msc=1000)
     return sim

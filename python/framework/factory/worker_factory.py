@@ -27,16 +27,16 @@ from python.framework.types.market_types.market_types import TradingContext
 from python.framework.types.parameter_types import ValidatedParameters
 from python.framework.validators.parameter_validator import apply_defaults
 from python.framework.workers.abstract_worker import AbstractWorker
-from python.framework.workers.core.test_probes.sample_probe_worker import (
-    SampleProbeWorker,
-)
-from python.framework.workers.core.test_probes.heavy_rsi_worker import HeavyRsiWorker
 from python.framework.workers.core.bollinger_worker import BollingerWorker
 from python.framework.workers.core.llm_sentiment_worker import LlmSentimentWorker
 from python.framework.workers.core.ma_trend_worker import MaTrendWorker
 from python.framework.workers.core.macd_worker import MacdWorker
 from python.framework.workers.core.obv_worker import ObvWorker
 from python.framework.workers.core.rsi_worker import RsiWorker
+from python.framework.workers.core.test_probes.heavy_rsi_worker import HeavyRsiWorker
+from python.framework.workers.core.test_probes.sample_probe_worker import (
+    SampleProbeWorker,
+)
 
 
 class WorkerFactory:

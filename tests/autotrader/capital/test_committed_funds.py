@@ -428,3 +428,33 @@ class TestAFillTheVenueMadeIsBooked:
         assert len(rejections) == 1
         assert rejections[0].rejection_reason == RejectionReason.INSUFFICIENT_FUNDS
 
+
+class TestWhatTheEndReleased:
+    """
+    The end of a session or a scenario books its resting orders cancelled or expired, and leaves
+    them in the active lists for the snapshot. What they claimed is free again all the same, or
+    the run's last report shows funds as committed that the venue has given back.
+    """
+
+    def test_a_resting_buy_the_session_end_cancelled_claims_nothing(self):
+        _, executor = _spot_executor()
+        executor.open_order(_limit(OrderDirection.LONG, 0.012, _RESTING_BUY_PRICE))
+        assert executor.get_committed_funds('USD') > 0.0
+
+        executor.finish_remaining_orders(cancel_orders=True)
+
+        assert [row.status for row in executor.get_order_history()][-1] == OrderStatus.CANCELLED
+        assert executor.get_active_orders(), 'kept for the snapshot'
+        assert executor.get_committed_funds('USD') == 0.0
+
+    def test_a_resting_buy_the_scenario_end_expired_claims_nothing(self):
+        sim = _spot_simulator(usd=1000.0)
+        sim.open_order(_limit(OrderDirection.LONG, 0.012, _RESTING_BUY_PRICE))
+        _feed_sim_tick(sim, msc=1001)          # latency drains; the LIMIT rests
+        assert sim.get_committed_funds('USD') > 0.0
+
+        sim.finish_remaining_orders()
+
+        assert [row.status for row in sim.get_order_history()][-1] == OrderStatus.EXPIRED
+        assert sim.get_active_orders(), 'kept for the snapshot'
+        assert sim.get_committed_funds('USD') == 0.0

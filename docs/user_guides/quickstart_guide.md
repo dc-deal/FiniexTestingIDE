@@ -291,6 +291,10 @@ class AggressiveTrend(AbstractDecisionLogic):
     def get_required_order_types(cls, decision_logic_config: Dict[str, Any]) -> List[OrderType]:
         return [OrderType.MARKET]  # Only market orders for this example
     
+    @classmethod
+    def get_required_order_features(cls, decision_logic_config: Dict[str, Any]) -> List[OrderFeature]:
+        return []  # No stop or target on an order — see Own Exits below
+    
     def get_required_workers(self) -> Dict[str, WorkerRequirement]:
         """Declare which workers this logic needs, and which of their signals it reads"""
         return {
@@ -425,6 +429,7 @@ class AggressiveTrend(AbstractDecisionLogic):
 |--------|---------|
 | `get_required_workers()` | Declare workers + the signals read: `{"rsi_fast": WorkerRequirement.of("CORE/rsi", "rsi_value")}` |
 | `get_required_order_types()` | Return `[OrderType.MARKET]` |
+| `get_required_order_features()` | The levels your orders carry, `[]` when none; a run refuses one its venue's API does not hold |
 | `get_output_schema()` | Declare typed output fields (optional) |
 | `compute_tick()` | Analyze workers on a market tick, return `Decision(action=..., outputs={...})` — `tick` is never None |
 | `compute_heartbeat()` | Optional: act between ticks on the idle heartbeat (cached worker results, no tick). Override together with `wants_heartbeat()` |
@@ -521,6 +526,51 @@ ones silently.
 **Ring buffer size:** Configurable via `monitoring.event_tape_size` in
 `configs/app_config.json` (default: 5). When more events have been emitted
 than fit in the buffer, the display shows `… (+N older events)`.
+
+### Own Exits — a Stop and a Target the Logic Keeps Itself
+
+A stop or a target sent with an order is held by the venue only where its API takes one.
+Kraken's takes neither for a position — no level attached to an order, no bracket, no
+one-cancels-other (its API team, 2026-10-27) — and the framework does not rebuild what a venue
+lacks. A logic meant to run there keeps its levels itself, checks them on every tick, and closes
+through its own `close_position`. The start checks this: a logic declares what it sends in
+`get_required_order_features()`, a run refuses a declared level its venue's API does not hold, and
+an order or a modify carrying an undeclared one is refused with `order_feature_not_declared`: an order
+books a denied row, a modify returns the refusal and logs a warning once per feature. A backtest may
+allow a level beyond its venue with `features_beyond_venue` in its scenario set — recorded with the
+run, warned about in its report, and refused by a certificate. `OwnExitLevels`
+(`python/framework/decision_logic/own_exit_levels.py`) is that check, written once:
+
+```python
+from python.framework.decision_logic.own_exit_levels import OwnExitLevels
+
+# In __init__ — the distances re-derive levels for a position that arrives without them,
+# such as one read back after a restart
+self._exits = OwnExitLevels(stop_distance=sl_dist, target_distance=tp_dist, logger=self.logger)
+
+# In _execute_decision_impl(), first — closes what this tick reached, once
+self._exits.enforce(self.trading_api, tick)
+
+# At submission: the levels wait under the entry's order id, which becomes the position's id
+result = self.trading_api.send_order(symbol=tick.symbol, order_type=OrderType.STOP, ...)
+if not result.is_refused:
+    self._exits.set_levels(result.order_id, stop=sl_price, target=tp_price)
+
+# A break-even or a trail: the stop only ever tightens
+self._exits.move_stop(position.position_id, position.direction, position.entry_price)
+```
+
+The close names its reason and level — `close_position(position_id, exit=OwnExit(reason,
+level))`, which `enforce` does for you — so the trade keeps `sl_triggered` / `tp_triggered`, the
+close counts in the run's `sl_tp_triggered`, and its fill's slippage is measured against the
+level, as it would be for a level the venue held.
+The position itself carries no level, so the trade's R-multiple stays empty, and so does the run's
+`expectancy`: rank a sweep over such a logic by `net_pnl`. A moved stop exists
+only in the logic's memory: carry it over with `snapshot()` / `restore()` through
+[algo state persistence](algo_state_persistence_guide.md), or a restart re-derives it from the
+entry. Nothing rests at the venue, so a position is unprotected while the process is not running
+— the same as every exit a strategy decides for itself. `CORE/cautious_macd` and
+`CORE/trend_channel_reference` show it.
 
 ---
 
@@ -715,11 +765,12 @@ Current limitations:
 
 | Rule | Description |
 |------|-------------|
+| **Order Features** | Declared in `get_required_order_features()`; a declared stop or target the venue's API does not hold refuses the run (see Own Exits) |
 | **Order Types** | MARKET, LIMIT, STOP, STOP_LIMIT supported. No native OCO, iceberg or trailing-stop order types yet. |
-| **Position Close** | Full or partial: `close_position(position_id, lots=None)` closes all, `lots=` a part. A second close while one is in flight joins it rather than sending another — `is_pending_close(position_id)` says whether one is |
+| **Position Close** | Full or partial: `close_position(position_id, lots=None)` closes all, `lots=` a part; `exit=OwnExit(reason, level)` names the own stop or target that made it (see Own Exits above). A second close while one is in flight joins it rather than sending another — `is_pending_close(position_id)` says whether one is |
 | **Partial Fills** | A broker-reported partial fill at a real venue is not yet surfaced as its own state |
 | **Margin Check** | Orders rejected if insufficient margin |
-| **Resting Order Mgmt** | `modify_limit_order`, `modify_stop_order`, `cancel_limit_order`, `cancel_stop_order`, `modify_position` (SL/TP) available |
+| **Resting Order Mgmt** | `modify_limit_order`, `modify_stop_order`, `cancel_limit_order`, `cancel_stop_order`, `modify_position` (a stop or target only where the venue's API holds one, or in a backtest that declares the exception) available |
 
 > **Multiple Positions:** Multiple simultaneous positions on one symbol are supported and validated
 > by integration tests; the reference strategy (`CORE/trend_channel_reference`) stacks several.

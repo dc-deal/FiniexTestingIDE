@@ -14,6 +14,9 @@ Tests for all FiniexTestingIDE HTTP API endpoints. Uses `FastAPI TestClient` wit
 | `TestTimeframes` | `test_timeframes_sorted_ascending_by_minutes` | List is sorted from shortest to longest bar duration |
 | `TestTimeframes` | `test_the_validation_checks_are_the_catalog` | `/validation-checks` serves exactly the check catalog, keyed on `check` |
 | `TestHealth` | `test_health_ok` | Status + version in response |
+| `TestHealth` | `test_it_says_which_installation_answers` | `host_id` is the identity a run's rows state, `host_name` null by default |
+| `TestHealth` | `test_a_configured_name_is_served` | `host_name` comes from the installation's configuration |
+| `TestHealth` | `test_it_keeps_answering_where_the_identity_cannot_be_read` | 200 with `host_id` null |
 | `TestBrokers` | `test_list_brokers` | Broker list from mocked index |
 | `TestSymbols` | `test_list_symbols` | Symbols with correct `market_type`, and `tick_size` from the broker configuration — null for a symbol it does not name |
 | `TestSymbols` | `test_list_symbols_when_the_broker_configuration_cannot_be_read` | 200, every `tick_size` null — the list does not depend on the configuration |
@@ -119,7 +122,9 @@ declared for both lists, the served names a consumer keys on (`record_plane`, `l
 live session's broker-truth lines in their own list on the same counter and left out when the
 stream is narrowed to one order, the unit and order filters, a line cut off mid-write left out and
 reported, a damaged stream answered `artifact_unreadable` rather than a server error, and a run
-without one naming why.
+without one naming why. The answer stands behind every route that reads a stored artifact, which
+`test_a_route_with_no_guard_of_its_own_answers_409_for_an_unreadable_artifact` pins on one that has
+no handling of its own.
 
 Where a fill's fee came from (#508, contract 28) reaches three routes in `test_reports_endpoint.py`:
 `test_portfolio_serves_the_fills_by_fee_source` — `fill_fees_by_source` on the unit and the
@@ -131,6 +136,10 @@ The venue account (#362) is served from its artifact — `TestTheVenueAccount` i
 `test_reports_endpoint.py`: a session's row with its key, a part the venue did not answer for as
 null and named rather than empty, where the last reconcile line left the books and the latest
 divergence by name; a backtest, which has none, answered `artifact_not_produced`.
+`TestTheVenueApiPerformance` serves how the venue's API answered a session (#631): each endpoint
+with its calls, latency, slow calls and failed calls under its key, beside the session's totals and the
+threshold they were judged by; a backtest, which calls no venue API, answered
+`artifact_not_produced`.
 
 ## The run header (`test_run_header_route.py`)
 
@@ -143,7 +152,7 @@ absolute paths throughout — so the tests can see what the route makes of them.
 | `TestTheHeaderIsServedWhole` | the run and its origin come back as written; every path is relative to a repository the run recorded — `.` for this repository, `user_algos` for one inside it, the patch reference too, a decision's name (its type, a path) relative to this repository, a component's file relative to its own repository, a path in no repository reduced to its name; and no path of the planting machine appears anywhere in the answer |
 | `TestAHeaderThatCannotBeServedSaysWhy` | an unknown run is `run_not_found`; a missing header file of a run the index lists is `run_header_missing`, naming the rebuild; a header that no longer matches its model is `artifact_unreadable` and names the failing fields, never a value — Pydantic's own text would quote the input, and a header's input holds paths |
 | `TestTheRunListSaysWhoStartedEachRun` | `origin_channel`, `origin_client`, `origin_principal` and `origin_host` on the run's row, from the header's origin block |
-| `TestAPathFromAnotherSystemIsServedTheSameWay` | a header written on Windows — drive letter, backslashes — has its paths made relative the same way |
+| `TestAPathFromAnotherSystemIsServedTheSameWay` | a header written on Windows — drive letter, backslashes — has its paths made relative the same way; the commit's subject and its recent commits hold no path and are served as recorded (#559) |
 
 ## A run's files and their routes (`test_run_entry_member_routes.py`)
 
@@ -151,7 +160,9 @@ The run store declares, for each file a run may hold, the route that serves it (
 the declaration to the routes the application mounts below `/reports/runs/{run_id}/`, in both
 directions: every declared route is served, every route below a run serves a declared file — or
 names the other store it serves from, such as the run's configuration — and no two files claim one
-route.
+route. A unit's timeline and window (#580) are claimed by every stream that declares a recorded-stream
+kind: both are served, at least one stream declares a kind, no file claims them as its own route,
+and the window carries a list and a row key for every declared kind.
 
 ## Machine resources (`test_machine_resources.py`)
 
@@ -192,6 +203,20 @@ written through the same appender a session uses, beside a run registered in a t
 | `TestTheRunListCarriesTheVerdict` | each run-list row that records state frames carries the route's verdict: `current` on its cadence, `stopped` when its frames stopped; an ended recording is read once and remembered; a replay before its end and a run without frames carry none; a stream that cannot be read costs its row the verdict, never the list |
 | `TestTheRunListNamesTheStream` | once the session recorded the stream in the run index, the run list names it under `stream_files`, and never among the report artifacts |
 
+## A unit's recorded streams over time (`test_recorded_streams_routes.py`)
+
+`/reports/runs/{run_id}/units/{unit_name}/recorded-streams` and its `/window` (#580) serve a unit's
+timeline and a window of its records a page at a time. The run is written through the session's own
+run writer and stream sealer — three trading days of state frames, two sealed and one running —
+beside a run registered in a tmp run index.
+
+| Class | Validates |
+|---|---|
+| `TestTheTimeline` | a running unit lists its stream across the sealed days and its file — the count, the first and latest frame time, the cadence, the key and `current`; its verdict is the latest-frame route's (`stopped` for both) and judged on the newest frame — days written long ago and a frame written just now read `current`; a unit before its first seal lists its running file; it lists every kind the store declares, and the window's `keys` name the same; a stream holding only its header counts none with no times; a stream opened before its header names `state_frame_not_written_yet` |
+| `TestEveryAbsenceNamesItsCause` | on both routes an unknown run is `run_not_found`, a run recording no stream `streams_not_recorded`, a unit the run does not record `unit_not_found`; a header naming another schema is `artifact_unreadable` |
+| `TestTheWindow` | left open it serves the whole stream with `record_no` from 1 and says which instants it covered; walking the pages from `next_from` meets every frame once for several limits; a window across a day boundary serves both sides; seeking with `limit=1` serves the first frame at or after the instant; a bound left out is a record's millisecond, never finer; a window holding no record — one before the stream, one after it, or a stream holding only its header — leaves the bound it was not given null, never an end before its start; a limit outside 1 to the ceiling is `invalid_limit`, a window ending before it starts `invalid_range`, an instant that is not ISO `invalid_timestamp` |
+| `TestFollowingASessionWhileItWrites` | a session writes and seals a trading day on a thread of its own while the timeline and the window are followed the documented way — the window asked from the millisecond of the newest frame held, its pages walked, held frames dropped by `record_no`; the session goes on only once an answer saw the stage it is in, so answers come from before the seal and after it; every answer is whole, the count never goes back, and every frame is met once with the time it keeps in every answer (#380) |
+
 ## Polled routes in the access log (`test_polled_route_access_filter.py`)
 
 A route made to be polled stays out of the server's access log while it answers successfully
@@ -202,6 +227,7 @@ requests that carry meaning.
 |---|---|
 | `TestOnlyASuccessfulReadingIsDropped` | a successful answer (200, 304) on a polled route is dropped; a failed one (401, 403, 500) stays; another route stays; a query string does not hide the path; a record not shaped like an access line is left alone |
 | `TestARouteWithARunIdInItsPath` | a polled path written as mounted, with `{run_id}` in braces, matches any run's id in that segment (#611); a sibling route, a longer path and a missing segment stay in the log; an exact path still matches |
+| `TestARouteWithTwoBracedSegments` | a unit's timeline matches any run id and unit name in its two braced segments (#580); its window and a path missing a segment stay in the log |
 | `TestTheDeclarationHoldsToTheApp` | every path in `POLLED_PATHS` is a mounted route, so a renamed route cannot leave a declaration that filters nothing; the factory installs one filter however often it runs |
 
 ## Row keys (`test_row_keys.py`)
@@ -222,7 +248,9 @@ optional list included — so a route added tomorrow is covered the day it exist
   symbol both count from `pos_<symbol>_1`). Plus the pending-orders unit, keyed by its name
   (contract 19): the run-scoped walk exempts every report route, so that case is what holds the
   declaration. And an activity, keyed by its own id: two activities of one process differ in
-  nothing else.
+  nothing else. And a unit's recorded streams (#580): a frame keyed by its `record_no`, since two
+  frames can share an instant, and a stream by its name beside its kind, since a strategy's tables
+  are to be one kind with names of their own.
 
 ## Mocking Strategy
 
@@ -259,6 +287,8 @@ read the ledger and only the ledger.
 | `test_no_deployment_is_not_an_error` | Nothing declared yet is a state, not a failure |
 | `test_sessions_read_forwards` | Oldest first — the opposite order to the console, deliberately |
 | `test_a_configuration_change_is_reported_before_the_table` | The advisory rides on the response rather than inside a row, so a client cannot render the table and drop the sentence that says whether the strategy parameters, the operational configuration or the orders' destination changed across the rows |
+| `test_a_code_change_alone_is_changed_with_no_advisory` | #559 — the state the contract log names: `changed` true with `advisory` null, `configuration_changed` false, the reason in `code_summary` and `code_changes`, and no path of the machine in any of them |
+| `test_a_configuration_change_alone_keeps_its_old_answer` | The same answer as before the code stands, with `code_summary` null |
 | `test_a_session_that_never_reached_its_close_is_counted` | The ledger row is written last, so a killed session is absent from the list by construction |
 | `test_unknown_deployment_is_a_404_and_not_an_empty_history` | An empty list would read as a deployment that ran and did nothing |
 | `test_the_detail_route_filters_in_the_store` | `read_rows(deployment_id=...)`, not a full read followed by a filter |

@@ -12,6 +12,8 @@ Architecture:
 - Panel priority: session/portfolio/positions/orders always shown,
   algo state/connection/clipping/worker perf added with terminal width
 - A panel that raises shows as failed in place and is reported to the session log (#586)
+- A session's stop is polled per frame like the tick source, and stands on top of every layout
+  in a panel of its own height, so a cropped frame cannot hide it (#630)
 """
 
 import queue
@@ -21,14 +23,16 @@ from datetime import datetime, timezone
 from typing import Callable, Optional, Tuple
 
 from rich import box
-from rich.console import Console
+from rich.console import Console, Group
 from rich.layout import Layout
 from rich.live import Live
 from rich.markup import escape
+from rich.padding import Padding
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
+from python.framework.autotrader.shutdown_status_holder import ShutdownStatusHolder
 from python.framework.autotrader.tick_sources.abstract_tick_source import AbstractTickSource
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
 from python.framework.types.autotrader_types.autotrader_display_types import (
@@ -38,6 +42,7 @@ from python.framework.types.autotrader_types.autotrader_display_types import (
     TickSourceSnapshot,
 )
 from python.framework.types.autotrader_types.display_label_cache import DisplayLabelCache
+from python.framework.types.autotrader_types.shutdown_status_types import ShutdownStatus
 from python.framework.types.decision_logic_types import AwarenessLevel, DecisionLogicAction
 from python.framework.types.signal_data_types import SignalTransportState
 from python.framework.types.trading_env_types.order_types import CloseType, OrderDirection
@@ -71,6 +76,7 @@ class AutoTraderLiveDisplay:
         display_label_cache: Labels for decision and worker outputs
         on_render_error: Receives the report of a render failure — the session log's error
             channel in a session; None reports nothing
+        shutdown_status: What the session's stop is doing, polled per frame; None never shows one
     """
 
     # Layout breakpoints
@@ -93,6 +99,7 @@ class AutoTraderLiveDisplay:
         deployment_id: str = '',
         display_label_cache: Optional[DisplayLabelCache] = None,
         on_render_error: Optional[Callable[[str], None]] = None,
+        shutdown_status: Optional[ShutdownStatusHolder] = None,
     ):
         self._display_queue = display_queue
         self._tick_source = tick_source
@@ -102,6 +109,7 @@ class AutoTraderLiveDisplay:
         self._display_label_cache = display_label_cache or DisplayLabelCache()
         self._update_interval = config.display.update_interval_ms / 1000.0
         self._failure_reporter = RenderFailureReporter(on_render_error)
+        self._shutdown_status = shutdown_status
 
         # Stats cache (latest snapshot from queue)
         self._stats: Optional[AutoTraderDisplayStats] = None
@@ -127,12 +135,31 @@ class AutoTraderLiveDisplay:
         )
         self._thread.start()
 
-    def stop(self) -> None:
-        """Stop the display thread. Final drain + render happens inside the
-        display thread to avoid cross-thread ``live.update()`` calls."""
+    def stop(self) -> bool:
+        """
+        Stop the display thread. Final drain + render happens inside the
+        display thread to avoid cross-thread ``live.update()`` calls.
+
+        Returns:
+            True when the thread finished within display_join_s, or none ran
+        """
         self._running = False
         if self._thread:
-            self._thread.join(timeout=2.0)
+            self._thread.join(timeout=self._config.shutdown.display_join_s)
+            if self._thread.is_alive():
+                return False
+            self._thread = None
+        return True
+
+    def holds_a_terminal(self) -> bool:
+        """
+        Whether this display has a terminal to draw on. Without one, as under a supervisor, it shows
+        nothing but its last frame.
+
+        Returns:
+            True on a terminal
+        """
+        return self._console.is_terminal
 
     def _update_loop(self) -> None:
         """
@@ -165,6 +192,9 @@ class AutoTraderLiveDisplay:
                 self._show(live)
         except Exception as error:
             self._running = False
+            # The terminal is free again, so a stop's lines go to it from here on
+            if self._shutdown_status is not None:
+                self._shutdown_status.set_lines_on_console(True)
             self._failure_reporter.report(
                 'The dashboard', error, 'The dashboard has stopped; trading is unaffected.')
 
@@ -210,7 +240,8 @@ class AutoTraderLiveDisplay:
     def _frame(self) -> Panel:
         """
         The dashboard for this moment: the newest snapshot, the tick source's readings, the wall
-        clock and the terminal width. A frame that cannot be built is a failure frame (#586).
+        clock, the terminal width and what a stop is doing. A frame that cannot be built is a
+        failure frame (#586).
 
         Returns:
             Rich Panel containing the dashboard
@@ -219,7 +250,8 @@ class AutoTraderLiveDisplay:
             with self._lock:
                 stats = self._stats
             return self.render(stats, self._poll_tick_source(),
-                               datetime.now(timezone.utc), self._console.size.width)
+                               datetime.now(timezone.utc), self._console.size.width,
+                               self._poll_shutdown_status())
         except Exception as error:
             self._failure_reporter.report(
                 'The dashboard frame', error,
@@ -243,6 +275,17 @@ class AutoTraderLiveDisplay:
             connection_dead_s=self._tick_source.get_connection_dead_s(),
         )
 
+    def _poll_shutdown_status(self) -> Optional[ShutdownStatus]:
+        """
+        Read what the session's stop is doing, once for this frame.
+
+        Returns:
+            The status; None while no stop was asked for
+        """
+        if self._shutdown_status is None:
+            return None
+        return self._shutdown_status.get()
+
     def _failure_frame(self, error: Exception) -> Panel:
         """
         What stands on screen while a frame cannot be rendered.
@@ -255,9 +298,10 @@ class AutoTraderLiveDisplay:
         """
         with self._lock:
             stats = self._stats
+        stopping = '🛑 SHUTTING DOWN\n' if self._poll_shutdown_status() is not None else ''
         return Panel(
-            Text(f'⚠ dashboard render failed: {type(error).__name__} — see the session log',
-                 style='yellow'),
+            Text(f'{stopping}⚠ dashboard render failed: {type(error).__name__} — '
+                 f'see the session log', style='yellow'),
             title=self._build_header_title(stats), border_style='yellow', box=box.ROUNDED)
 
     def _guarded(
@@ -297,19 +341,22 @@ class AutoTraderLiveDisplay:
         connection: TickSourceSnapshot,
         now: datetime,
         width: int,
+        shutdown: Optional[ShutdownStatus] = None,
     ) -> Panel:
         """
         Build the full display panel with responsive layout.
 
         Everything a frame shows arrives here — the session's snapshot, the tick source's
-        readings, the wall clock, the terminal width — so nothing in the render path reads a
-        live object, and a test renders every panel without a running session (#586).
+        readings, the wall clock, the terminal width, what a stop is doing — so nothing in the
+        render path reads a live object, and a test renders every panel without a running
+        session (#586).
 
         Args:
             stats: The newest snapshot, None before the first one
             connection: The tick source's readings for this frame
             now: The wall clock, for uptime and ages
             width: The terminal width the layout is chosen for
+            shutdown: What the session's stop is doing, None while no stop was asked for
 
         Returns:
             Rich Panel containing the dashboard
@@ -319,18 +366,21 @@ class AutoTraderLiveDisplay:
             # while-loop, so the display has a frame from t=0. This empty
             # panel is visible at most one refresh cycle, if at all.
             return Panel(
-                '',
+                self._guarded('SHUTTING DOWN', self._build_shutdown_panel, shutdown)
+                if shutdown is not None else '',
                 title=self._build_header_title(),
                 border_style='cyan',
                 box=box.ROUNDED,
             )
 
         if width >= self._WIDTH_THREE_COL:
-            body = self._render_three_col(stats, connection, now, width)
+            body = self._render_three_col(stats, connection, now, width, shutdown)
         elif width >= self._WIDTH_TWO_COL:
-            body = self._render_two_col(stats, connection, now, width)
+            body = self._render_two_col(stats, connection, now, width, shutdown)
         else:
-            body = self._render_single_col(stats, now, width)
+            body = self._render_single_col(stats, now, width, shutdown)
+        if shutdown is not None:
+            body = self._with_shutdown_on_top(body, shutdown, width)
 
         return Panel(
             body,
@@ -396,6 +446,7 @@ class AutoTraderLiveDisplay:
         connection: TickSourceSnapshot,
         now: datetime,
         width: int,
+        shutdown: Optional[ShutdownStatus],
     ) -> Layout:
         """Three-column layout for wide terminals (≥160 cols)."""
         layout = Layout()
@@ -407,10 +458,10 @@ class AutoTraderLiveDisplay:
 
         # Left: Session + Connection + Worker Performance (optional — hidden if tracking off)
         left_panels = [
-            Layout(self._guarded('SESSION', self._build_session_panel, stats, now, width),
+            Layout(self._guarded('SESSION', self._build_session_panel, stats, now, width, shutdown),
                    name='session'),
             Layout(self._guarded('CONNECTION', self._build_connection_panel,
-                                 stats, connection, now), name='connection'),
+                                 stats, connection, now, shutdown), name='connection'),
         ]
         worker_perf = self._guarded('WORKER PERFORMANCE', self._build_worker_perf_panel, stats)
         if worker_perf is not None:
@@ -446,6 +497,7 @@ class AutoTraderLiveDisplay:
         connection: TickSourceSnapshot,
         now: datetime,
         width: int,
+        shutdown: Optional[ShutdownStatus],
     ) -> Layout:
         """Two-column layout for medium terminals (≥120 cols)."""
         layout = Layout()
@@ -456,7 +508,7 @@ class AutoTraderLiveDisplay:
 
         # Left: Session + Portfolio (+ API perf)
         left_panels = [
-            Layout(self._guarded('SESSION', self._build_session_panel, stats, now, width),
+            Layout(self._guarded('SESSION', self._build_session_panel, stats, now, width, shutdown),
                    name='session'),
             Layout(self._guarded('PORTFOLIO', self._build_portfolio_panel, stats),
                    name='portfolio'),
@@ -475,7 +527,8 @@ class AutoTraderLiveDisplay:
         right_panels.append(Layout(
             self._guarded('ALGO STATE', self._build_algo_state_panel, stats, now), name='algo'))
         right_panels.append(Layout(
-            self._guarded('CONNECTION', self._build_connection_panel, stats, connection, now),
+            self._guarded('CONNECTION', self._build_connection_panel, stats, connection, now,
+                          shutdown),
             name='connection'))
         layout['right'].split_column(*right_panels)
 
@@ -518,16 +571,45 @@ class AutoTraderLiveDisplay:
             for name, panel in tables])
         return layout
 
+    def _with_shutdown_on_top(
+        self,
+        body: Layout,
+        shutdown: ShutdownStatus,
+        width: int,
+    ) -> Layout:
+        """
+        Put what a stop is doing above everything else, as tall as its rows (#630).
+
+        On top, and sized before the rest is shared out: a terminal too short for the frame crops
+        it from the bottom and squeezes the panels without a size, and neither reaches this one.
+
+        Args:
+            body: The layout of the frame
+            shutdown: What the stop is doing
+            width: The terminal width
+
+        Returns:
+            The panel above the layout
+        """
+        panel = self._guarded('SHUTTING DOWN', self._build_shutdown_panel, shutdown)
+        layout = Layout()
+        layout.split_column(
+            Layout(panel, name='shutdown',
+                   size=rendered_height(panel, width - self._FRAME_MARGIN)),
+            body)
+        return layout
+
     def _render_single_col(
         self,
         stats: AutoTraderDisplayStats,
         now: datetime,
         width: int,
+        shutdown: Optional[ShutdownStatus],
     ) -> Layout:
         """Single-column layout for narrow terminals (<120 cols)."""
         layout = Layout()
         panels = [
-            Layout(self._guarded('SESSION', self._build_session_panel, stats, now, width),
+            Layout(self._guarded('SESSION', self._build_session_panel, stats, now, width, shutdown),
                    name='session'),
             Layout(self._guarded('PORTFOLIO', self._build_portfolio_panel, stats),
                    name='portfolio'),
@@ -555,8 +637,42 @@ class AutoTraderLiveDisplay:
         s = int(seconds)
         return f'{s // 60}m{s % 60:02d}s' if s >= 60 else f'{s}s'
 
-    def _build_session_panel(self, stats: AutoTraderDisplayStats, now: datetime,
-                             width: int) -> Panel:
+    def _build_shutdown_panel(self, shutdown: ShutdownStatus) -> Panel:
+        """
+        What a session's stop is doing: what it waits for, what it still has to do, and until when.
+
+        Plain text rather than markup, because a venue's and a strategy's words can carry brackets.
+
+        Args:
+            shutdown: What the stop is doing
+
+        Returns:
+            The panel
+        """
+        rows = Table.grid(padding=(0, 3, 0, 0))
+        rows.add_column(no_wrap=True)
+        rows.add_column(overflow='fold')
+        orders = shutdown.order_lines()
+        for index, line in enumerate(orders[:self._MAX_ACTIVE_ORDERS]):
+            rows.add_row('Waiting for' if index == 0 else '', Text(line))
+        if len(orders) > self._MAX_ACTIVE_ORDERS:
+            rows.add_row('', Text(f'+ {len(orders) - self._MAX_ACTIVE_ORDERS} more'))
+        now_doing = shutdown.now_doing()
+        if now_doing is not None:
+            rows.add_row('Now', Text(now_doing))
+        rows.add_row('Still to do', Text(' · '.join(shutdown.still_to_do()) or 'nothing'))
+        order_wait = shutdown.order_wait_text()
+        if order_wait is not None:
+            rows.add_row('Order wait', Text(order_wait))
+        kill = shutdown.kill_text()
+        if kill is not None:
+            rows.add_row('Kill', Text(kill))
+        return Panel(
+            Group(Text(shutdown.headline(), style='bold red'), Padding(rows, (0, 0, 0, 3))),
+            border_style='red', box=box.ROUNDED)
+
+    def _build_session_panel(self, stats: AutoTraderDisplayStats, now: datetime, width: int,
+                             shutdown: Optional[ShutdownStatus] = None) -> Panel:
         """
         Session overview: uptime, tick rate, trades, mode.
 
@@ -564,6 +680,7 @@ class AutoTraderLiveDisplay:
             stats: The snapshot
             now: The wall clock, for the uptime
             width: The terminal width — the Audit line is compact below 120
+            shutdown: What a stop is doing; a session that is stopping no longer claims to run
 
         Returns:
             The SESSION panel
@@ -593,7 +710,9 @@ class AutoTraderLiveDisplay:
         # a "💓 Ns since last tick" suffix (or "since startup" before the
         # first real tick) so the operator sees the loop is alive without the
         # status switching to a misleading IDLE.
-        if stats.is_pulse and stats.seconds_since_last_tick > 0:
+        if shutdown is not None:
+            status_str = '[red bold]🛑 SHUTTING DOWN[/red bold]'
+        elif stats.is_pulse and stats.seconds_since_last_tick > 0:
             since_label = 'since startup' if stats.core.ticks_processed == 0 else 'since last tick'
             status_str = (
                 f'[green]● RUNNING[/green]  '
@@ -902,7 +1021,7 @@ class AutoTraderLiveDisplay:
 
             # Partial-fill sub-row (#330) — shown for an order taken over at a cold start
             # partly filled; an ordinary resting order's partial execution is mirrored only
-            # once #342 lands. A protective order reads requested_lots 0.0 and never shows it.
+            # once #342 lands.
             # The figures stand in the ID column: the 10-wide Status column cut them off.
             if order.cumulative_filled_lots > 0 and order.cumulative_filled_lots < order.requested_lots:
                 progress = (f'[dim]└─ {order.cumulative_filled_lots:.4f}/'
@@ -1060,6 +1179,7 @@ class AutoTraderLiveDisplay:
         stats: Optional[AutoTraderDisplayStats],
         connection: TickSourceSnapshot,
         now: datetime,
+        shutdown: Optional[ShutdownStatus] = None,
     ) -> Panel:
         """
         Connection stats from the tick source, read once for this frame.
@@ -1068,6 +1188,7 @@ class AutoTraderLiveDisplay:
             stats: The snapshot, None before the first one
             connection: The tick source's readings
             now: The wall clock, for stream and tick ages
+            shutdown: What a stop is doing; a source it stopped on purpose is no dead stream
 
         Returns:
             The CONNECTION panel
@@ -1081,7 +1202,9 @@ class AutoTraderLiveDisplay:
         # it, dead from all of it, where the source reconnects.
         msg_age_s = connection.message_age_s
         dead_s = connection.connection_dead_s
-        if msg_age_s is None:
+        if shutdown is not None and shutdown.tick_source_stopped:
+            stream_str = '[dim]● stopped on purpose[/dim]'
+        elif msg_age_s is None:
             stream_str = '[dim]● waiting[/dim]'
         elif dead_s is not None and msg_age_s > dead_s:
             stream_str = '[red]● dead[/red]'

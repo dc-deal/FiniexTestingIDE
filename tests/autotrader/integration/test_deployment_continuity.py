@@ -38,6 +38,7 @@ from python.framework.reporting.builders.deployment_history_builder import (
 )
 from python.framework.reporting.store.run_results_ledger import RunResultsLedger
 from python.framework.types.persistence_types import ReadingsVerdict
+from python.framework.types.run_origin_types import FRAMEWORK_REPOSITORY
 from tests.shared.entry_census_helpers import assert_run_dir_declared
 from tests.shared.fixture_helpers import remove_run_dir
 
@@ -336,3 +337,26 @@ class TestThePeriodNumberingContinues:
         assert stored['max_drawdown'] == pytest.approx(reported.max_drawdown), (
             'the stored curve is not the one the session reported')
         assert stored['max_equity'] == pytest.approx(reported.max_equity)
+
+
+class TestTheRowsNameTheCode:
+    """
+    A session records which code it started on (#559). A session of a deployment pays for the
+    history its view counts from; the probe outside the deployment does not.
+    """
+
+    def test_a_session_of_a_deployment_records_the_history(self, rows):
+        framework = rows['first'].code_stand.repositories[0]
+
+        assert framework.repository == FRAMEWORK_REPOSITORY
+        assert framework.recent_commits and framework.commit == framework.recent_commits[0]
+        assert framework.subject is not None
+
+    def test_the_session_outside_it_pays_for_no_history(self, rows):
+        framework = rows['probe'].code_stand.repositories[0]
+
+        assert framework.repository == FRAMEWORK_REPOSITORY and framework.commit
+        assert framework.recent_commits is None and framework.subject is None
+
+    def test_two_sessions_on_one_tree_name_one_stand(self, rows):
+        assert rows['first'].code_stand == rows['second'].code_stand

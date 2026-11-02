@@ -87,6 +87,7 @@ def test_a_session_says_it_started_and_how_it_ended(recorded):
     assert channel.titles() == ['✅ Session started', '✅ Session ended — SUCCESS (exit 0)']
     started, ended = channel.delivered
     assert 'mock replay' in started
+    assert 'Commit: framework ' in started
     assert f'Ticks: {result.ticks_processed:,}' in ended.splitlines()
     # the speaker line names the session, so several bots can share one chat
     assert 'kraken_spot' in ended.splitlines()[-2]

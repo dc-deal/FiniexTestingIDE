@@ -12,7 +12,7 @@ Usage:
 import argparse
 import sys
 import time
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import List, Optional
 
@@ -20,6 +20,7 @@ from python.configuration.app_config_manager import AppConfigManager
 from python.framework.config_directory.config_directory import declared_run_purposes
 from python.framework.reporting.builders.deployment_history_builder import (
     build_deployment_histories,
+    deployment_code_summary,
     deployment_comparability_advisory,
     summarize_deployments,
 )
@@ -135,12 +136,17 @@ class RunIndexCli:
                 [r for r in rows if r.deployment_id == name])
             for name in histories
         }
+        now = datetime.now(timezone.utc)
+        code_summaries = {
+            name: deployment_code_summary([r for r in rows if r.deployment_id == name], now)
+            for name in histories
+        }
 
         # Two halves, and the split is the same one a sweep already has: the LIST answers
         # "which one do I open", the DETAIL answers "what happened inside it". Printing every
         # deployment's full table was neither — it buried the overview in the detail.
         if not deployment:
-            render_deployment_list(summarize_deployments(histories, advisories))
+            render_deployment_list(summarize_deployments(histories, advisories, code_summaries))
             return 0
 
         # The sessions ABOVE come from the ledger, which holds the row of a session's close
@@ -157,7 +163,8 @@ class RunIndexCli:
                 runs, rows, parent_id=name, parent_kind=ParentKind.DEPLOYMENT)
             render_deployment_history(
                 name, histories[name], advisories[name],
-                unfinished=sum(len(group) for group in missing.values()))
+                unfinished=sum(len(group) for group in missing.values()),
+                code_summary=code_summaries[name])
             if missing:
                 render_unfinished_runs(missing, indent='')
                 print()

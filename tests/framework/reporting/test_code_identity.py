@@ -28,6 +28,7 @@ import pytest
 
 from python.framework.decision_logic.core.simple_consensus import SimpleConsensus
 from python.framework.store.run_patch_store import PATCH_SUFFIX, RunPatchStore
+from python.framework.types.git_info_types import RepoCommitHistory
 from python.framework.types.run_origin_types import (
     CodeIdentity,
     ComponentRole,
@@ -823,3 +824,101 @@ class TestAnUnansweredQuestionIsNeverClean:
 
         assert identity.components[0].source_path is None
         assert verify_component_digests(identity) == [identity.components[0]]
+
+
+class TestTheCommitHistoryIsReadOnlyOnRequest:
+    """
+    A session with a deployment records each repository's subject and recent commits, so that its
+    view can count commits without asking git again (#559). A backtest, a certificate and a
+    one-off do not ask, and pay nothing.
+    """
+
+    def test_nothing_is_read_unless_asked(self, tmp_path, monkeypatch):
+        repo = _algo_repo(tmp_path, commit_package=True)
+        asked = []
+        monkeypatch.setattr(code_identity_builder, 'get_repo_commit_history', asked.append)
+
+        identity = build_code_identity([_package_strategy(repo)])
+
+        assert asked == []
+        for state in [identity.framework, *identity.repositories]:
+            assert state.commit is not None
+            assert state.commit_subject is None and state.recent_commits is None
+
+    def test_a_request_fills_every_repository(self, tmp_path, framework_repo):
+        repo = _algo_repo(tmp_path, commit_package=True)
+
+        identity = build_code_identity([_package_strategy(repo)], with_commit_history=True)
+
+        framework = _state_of(identity, framework_repo)
+        assert framework.commit_subject == run_git(framework_repo, 'log', '-1', '--format=%s')
+        assert framework.recent_commits == [run_git(framework_repo, 'rev-parse', 'HEAD')[:12]]
+        strategy = _state_of(identity, repo)
+        assert strategy.commit_subject == 'add my_strategy'
+        assert strategy.recent_commits == [run_git(repo, 'rev-parse', revision)[:12]
+                                           for revision in ('HEAD', 'HEAD~1')]
+
+    def test_an_uncommitted_tree_keeps_the_history_of_its_commit(self, tmp_path):
+        repo = _algo_repo(tmp_path, commit_package=True)
+        write_files(repo, {'my_strategy/helpers.py': 'THRESHOLD = 0.7\n'})
+
+        identity = build_code_identity([_package_strategy(repo)], with_commit_history=True)
+
+        state = _state_of(identity, repo)
+        assert state.dirty and state.diff_hash is not None
+        assert state.commit_subject == 'add my_strategy'
+        assert state.recent_commits[0] == run_git(repo, 'rev-parse', 'HEAD')[:12]
+
+
+class TestAnUnreadableHistoryStaysUnknown:
+    """
+    The same rule as for the dirty state: a read that did not answer leaves None, and it changes
+    no other answer. None here means nobody knows, never an empty history.
+    """
+
+    def test_an_unanswered_history_stays_none_and_moves_nothing_else(self, tmp_path, monkeypatch):
+        repo = _algo_repo(tmp_path, commit_package=True)
+        monkeypatch.setattr(code_identity_builder, 'get_repo_commit_history',
+                            lambda root: RepoCommitHistory())
+
+        identity = build_code_identity([_package_strategy(repo)], with_commit_history=True)
+
+        state = _state_of(identity, repo)
+        assert state.commit_subject is None and state.recent_commits is None
+        assert state.commit is not None and state.is_committed()
+
+    def test_a_repository_git_could_not_read_gets_no_history(self, tmp_path, monkeypatch):
+        repo = _algo_repo(tmp_path, commit_package=True)
+        asked = []
+        monkeypatch.setattr(code_identity_builder, 'get_repo_status', lambda root: None)
+        monkeypatch.setattr(code_identity_builder, 'get_repo_commit_history', asked.append)
+
+        identity = build_code_identity([_package_strategy(repo)], with_commit_history=True)
+
+        state = _state_of(identity, repo)
+        assert asked == []
+        assert state.commit is None and state.recent_commits is None
+        assert identity.is_dirty()
+
+    def test_a_package_nobody_can_vouch_for_gets_no_history(self, tmp_path, monkeypatch):
+        repo = _algo_repo(tmp_path, commit_package=True)
+        monkeypatch.setattr(code_identity_builder, '_compute_package_digest', lambda *_: None)
+
+        identity = build_code_identity([_package_strategy(repo)], with_commit_history=True)
+
+        [outside] = identity.repositories
+        assert outside.in_repository is None and outside.commit is None
+        assert outside.recent_commits is None
+
+    def test_a_list_that_does_not_start_at_the_recorded_commit_is_left_out(self, tmp_path,
+                                                                            monkeypatch):
+        """HEAD moved between the two reads, and a count from that list names another commit."""
+        repo = _algo_repo(tmp_path, commit_package=True)
+        moved = RepoCommitHistory(subject='a later commit', recent_commits=('f' * 12,))
+        monkeypatch.setattr(code_identity_builder, 'get_repo_commit_history', lambda root: moved)
+
+        identity = build_code_identity([_package_strategy(repo)], with_commit_history=True)
+
+        state = _state_of(identity, repo)
+        assert state.commit is not None
+        assert state.commit_subject is None and state.recent_commits is None

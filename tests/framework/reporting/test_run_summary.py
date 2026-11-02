@@ -7,15 +7,15 @@ trade analytics + execution totals) — no re-derivation. Per-currency join + gl
 
 from datetime import datetime, timedelta, timezone
 
-from python.framework.reporting.io.artifact_specs import (
-    RUN_SUMMARY_ARTIFACT,
-)
-from python.framework.reporting.io.report_artifact_io import read_artifact, write_artifact
 from python.framework.reporting.builders.report_aggregators import (
     aggregate_portfolio_by_currency,
 )
 from python.framework.reporting.builders.run_summary_builder import build_run_summary
 from python.framework.reporting.builders.run_unit import RunUnit
+from python.framework.reporting.io.artifact_specs import (
+    RUN_SUMMARY_ARTIFACT,
+)
+from python.framework.reporting.io.report_artifact_io import read_artifact, write_artifact
 from python.framework.types.api.report_types import (
     AbsentUnitRow,
     ExecutionStatsReport,
@@ -75,13 +75,13 @@ class TestBuild:
         assert (rs.orders_submitted, rs.orders_executed, rs.sl_tp_triggered) == (5, 4, 2)
         assert rs.unit_count == 1
 
-    def test_currency_without_analytics_defaults_r(self):
-        # portfolio currency present, no matching trade analytics → R fields default 0
+    def test_currency_without_analytics_has_no_r(self):
+        # portfolio currency present, no matching trade analytics → no R figure was measured
         portfolio = PortfolioReport(run_id=_RUN_ID, units=[_unit('JPY')], aggregates=[_agg(currency='JPY')])
         trade = TradeHistoryReport(run_id=_RUN_ID, trades=[], count=0, symbols=[], analytics=[])
         c = build_run_summary(_RUN_ID, portfolio, trade, _exec()).currencies[0]
         assert c.currency == 'JPY' and c.net_pnl == 60.0
-        assert c.expectancy == 0.0 and c.r_trade_count == 0
+        assert c.expectancy is None and c.r_trade_count == 0
 
     def test_multi_currency(self):
         portfolio = PortfolioReport(run_id=_RUN_ID, 

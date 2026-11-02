@@ -238,6 +238,45 @@ class TestABrokenIdentityRefusesAndIsNeverReMinted:
         assert HostIdentityManager(str(path)).get_host_id() == _VALID_ID
 
 
+class TestAReaderNeverMintsAndNeverRefuses:
+    """What the health route asks: it writes nothing and has to keep answering."""
+
+    def test_a_missing_file_reads_as_none_and_stays_missing(self, tmp_path, logger):
+        path = tmp_path / 'host_identity.json'
+        assert HostIdentityManager(str(path)).read_host_id() is None
+        assert not path.exists()
+        assert logger.warnings == []
+
+    def test_an_existing_identity_is_read(self, tmp_path):
+        path = tmp_path / 'host_identity.json'
+        _write(path, json.dumps({'host_id': _VALID_ID, 'minted_at': _VALID_MINTED_AT}))
+        assert HostIdentityManager(str(path)).read_host_id() == _VALID_ID
+
+    @pytest.mark.parametrize('content', ['not json', '{"host_id": "no"}'])
+    def test_a_broken_file_reads_as_none_and_is_left_alone(self, tmp_path, content):
+        path = tmp_path / 'host_identity.json'
+        _write(path, content)
+        assert HostIdentityManager(str(path)).read_host_id() is None
+        assert path.read_text(encoding='utf-8') == content
+
+    def test_a_file_that_cannot_be_opened_reads_as_none(self, tmp_path):
+        path = tmp_path / 'host_identity.json'
+        path.mkdir()
+        assert HostIdentityManager(str(path)).read_host_id() is None
+
+    def test_an_identity_minted_later_is_seen(self, tmp_path, logger):
+        manager = HostIdentityManager(str(tmp_path / 'host_identity.json'))
+        assert manager.read_host_id() is None
+        minted = manager.get_host_id()
+        assert manager.read_host_id() == minted
+
+    def test_isolation_states_the_test_identity(self, tmp_path, monkeypatch):
+        monkeypatch.setenv('FINIEX_CONFIG_ISOLATION', '1')
+        path = tmp_path / 'host_identity.json'
+        assert HostIdentityManager(str(path)).read_host_id() == TEST_HOST_ID
+        assert not path.exists()
+
+
 class TestIsolationStatesTheTestIdentity:
 
     def test_no_file_is_minted(self, tmp_path, monkeypatch, logger):

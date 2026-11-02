@@ -26,6 +26,13 @@ from typing import Any, Dict, Optional, Tuple, Type
 from python.configuration.data_home import resolve_strategy_file
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.decision_logic.core.aggressive_trend import AggressiveTrend
+from python.framework.decision_logic.core.cautious_macd import CautiousMacd
+from python.framework.decision_logic.core.hybrid_sentiment_reference import HybridSentimentReference
+from python.framework.decision_logic.core.live_field_study.live_field_study import LiveFieldStudy
+from python.framework.decision_logic.core.security_cert_study.security_cert_study import (
+    SecurityCertStudy,
+)
+from python.framework.decision_logic.core.simple_consensus import SimpleConsensus
 from python.framework.decision_logic.core.test_probes.deterministic_probe import (
     DeterministicProbe,
 )
@@ -41,13 +48,6 @@ from python.framework.decision_logic.core.test_probes.multi_position_probe impor
 from python.framework.decision_logic.core.test_probes.outage_probe import (
     OutageProbe,
 )
-from python.framework.decision_logic.core.cautious_macd import CautiousMacd
-from python.framework.decision_logic.core.hybrid_sentiment_reference import HybridSentimentReference
-from python.framework.decision_logic.core.live_field_study.live_field_study import LiveFieldStudy
-from python.framework.decision_logic.core.security_cert_study.security_cert_study import (
-    SecurityCertStudy,
-)
-from python.framework.decision_logic.core.simple_consensus import SimpleConsensus
 from python.framework.decision_logic.core.trend_channel_reference import TrendChannelReference
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.logging.scenario_logger import ScenarioLogger

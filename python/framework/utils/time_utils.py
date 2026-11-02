@@ -104,54 +104,6 @@ def format_log_event_time(event_time: Optional[datetime]) -> str:
     return f"{event_time.strftime('%Y-%m-%d %H:%M:%S')}.{event_time.microsecond // 1000:03d}"
 
 
-def format_seconds(seconds: float) -> str:
-    """
-    Format seconds in readable format.
-
-    Args:
-        seconds: Duration in seconds
-
-    Returns:
-        Formatted string like "12.5s" or "2m 30s"
-    """
-    if seconds < 60:
-        return f'{seconds:.2f}s'
-
-    minutes = int(seconds // 60)
-    remaining_seconds = int(seconds % 60)
-
-    if minutes < 60:
-        return f'{minutes}m {remaining_seconds}s'
-
-    hours = minutes // 60
-    remaining_minutes = minutes % 60
-
-    return f'{hours}h {remaining_minutes}m {remaining_seconds}s'
-
-
-def format_minutes(minutes: int) -> str:
-    """Format minutes into readable duration like '1h 45m' or '2d 3h'"""
-    if minutes < 60:
-        return f'{minutes}m'
-
-    hours = minutes // 60
-    remaining_minutes = minutes % 60
-
-    if hours < 24:
-        return f'{hours}h {remaining_minutes}m' if remaining_minutes else f'{hours}h'
-
-    days = hours // 24
-    remaining_hours = hours % 24
-
-    parts = [f'{days}d']
-    if remaining_hours:
-        parts.append(f'{remaining_hours}h')
-    if remaining_minutes:
-        parts.append(f'{remaining_minutes}m')
-
-    return ' '.join(parts)
-
-
 def format_timestamp(dt: datetime, show_weekday: bool = True) -> str:
     """
     Format timestamp with optional weekday.
@@ -309,6 +261,20 @@ def ensure_utc_aware(dt: datetime) -> datetime:
     if dt.tzinfo is None:
         return dt.replace(tzinfo=timezone.utc)
     return dt.astimezone(timezone.utc)
+
+
+def floor_to_millisecond(instant: datetime) -> datetime:
+    """
+    The start of the millisecond an instant falls in — the precision a JavaScript client keeps a
+    time in, so an instant served at it comes back unchanged.
+
+    Args:
+        instant: The instant
+
+    Returns:
+        It with its microseconds cut to the millisecond
+    """
+    return instant.replace(microsecond=instant.microsecond - instant.microsecond % 1000)
 
 
 def mt5_weekday_to_python(mt5_weekday: int) -> int:

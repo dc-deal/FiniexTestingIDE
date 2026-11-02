@@ -25,12 +25,12 @@ from python.framework.reporting.builders.worker_decision_report_builder import (
     build_worker_decision_report,
 )
 from python.framework.reporting.console.performance_summary import PerformanceSummary
-from python.framework.types.autotrader_types.autotrader_result_types import AutoTraderResult
 from python.framework.types.api.report_types import (
     WorkerDecisionReport,
     WorkerDecisionUnitRow,
     WorkerStatRow,
 )
+from python.framework.types.autotrader_types.autotrader_result_types import AutoTraderResult
 from python.framework.types.performance_types.performance_stats_types import (
     DecisionLogicStats,
     WorkerCoordinatorPerformanceStats,
