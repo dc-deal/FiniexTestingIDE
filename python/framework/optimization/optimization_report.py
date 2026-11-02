@@ -30,7 +30,6 @@ from python.framework.types.store_member_types import SweepEntryMemberId
 from python.framework.utils.file_utils import create_directory
 
 
-
 def render_sweep_list() -> None:
     """Print every recorded sweep as an informative one-liner (most recent last)."""
     ledger = RunResultsLedger(Path(AppConfigManager().get_run_ledger_path()))

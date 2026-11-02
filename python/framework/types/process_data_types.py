@@ -34,9 +34,9 @@ from python.framework.types.performance_types.performance_stats_types import (
 from python.framework.types.portfolio_types.portfolio_aggregation_types import PortfolioStats
 from python.framework.types.portfolio_types.portfolio_trade_record_types import TradeRecord
 from python.framework.types.portfolio_types.portfolio_types import Position
+from python.framework.types.run_results_types import BookingPeriod
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
 from python.framework.types.signal_data_types import SignalResolutionStats, SignalSeries
-from python.framework.types.run_results_types import BookingPeriod
 from python.framework.types.trading_env_types.active_orders_snapshot_types import (
     ActiveOrdersSnapshot,
 )

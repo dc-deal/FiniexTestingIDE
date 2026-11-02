@@ -17,11 +17,11 @@ from python.framework.discoveries.data_coverage.data_coverage_report_cache impor
     DataCoverageReportCache,
 )
 from python.framework.discoveries.discovery_cache_manager import DiscoveryCacheManager
-from python.framework.discoveries.volatility_profile_analyzer.volatility_regime import (
-    measured_against_themselves,
-)
 from python.framework.discoveries.volatility_profile_analyzer.volatility_profile_analyzer_cache import (
     VolatilityProfileAnalyzerCache,
+)
+from python.framework.discoveries.volatility_profile_analyzer.volatility_regime import (
+    measured_against_themselves,
 )
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.logging.bootstrap_logger import get_global_logger

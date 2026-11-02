@@ -17,7 +17,6 @@ from typing import Callable, Dict, Optional
 
 from python.configuration.app_config_manager import AppConfigManager
 from python.framework.activities.activity_registry import ActivityRegistry
-
 from python.framework.discoveries.data_coverage.data_coverage_report_cache import (
     DataCoverageReportCache,
 )

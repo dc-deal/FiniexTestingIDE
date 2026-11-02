@@ -29,8 +29,8 @@ from python.framework.discoveries.discovery_cache_index import DiscoveryCacheInd
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.types.coverage_report_types import Gap, GapCategory
-from python.framework.types.trading_env_types.broker_types import BrokerType
 from python.framework.types.store_types import DISCOVERY_CACHE_DIRNAME
+from python.framework.types.trading_env_types.broker_types import BrokerType
 from python.framework.utils.config_fingerprint_utils import (
     generate_config_fingerprint,
     read_cache_metadata,

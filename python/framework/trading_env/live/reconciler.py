@@ -56,7 +56,6 @@ from python.framework.types.trading_env_types.latency_simulator_types import (
 from python.framework.utils.broker_asset_utils import normalize_broker_asset
 from python.framework.utils.run_id_utils import parse_client_order_id
 
-
 # Relative tolerance (percent) for the stale-field comparison.
 _STALE_TOLERANCE_PCT = 0.1
 # Asset balance magnitude below which a balance counts as dust (flat-preflight).

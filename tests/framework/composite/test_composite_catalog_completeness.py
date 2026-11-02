@@ -17,7 +17,9 @@ from python.configuration.app_config_manager import AppConfigManager
 from python.configuration.autotrader.autotrader_config_loader import load_autotrader_config
 from python.configuration.composite_definition_manager import CompositeDefinitionManager
 from python.configuration.market_config_manager import MarketConfigManager
-from python.framework.autotrader.run_record.rendered_profile_builder import render_autotrader_profile
+from python.framework.autotrader.run_record.rendered_profile_builder import (
+    render_autotrader_profile,
+)
 from python.framework.config_directory.config_directory_builder import config_kind_of
 from python.framework.constants.composite_constants import FLOOR_DOCUMENT_PATHS
 from python.framework.types.composite_types import CompositeDocument

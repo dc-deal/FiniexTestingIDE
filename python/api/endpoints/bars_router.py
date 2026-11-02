@@ -13,12 +13,6 @@ from typing import Optional
 import pandas as pd
 from fastapi import APIRouter, Query, Response
 
-from python.api.api_query_params import parse_iso_query
-from python.api.api_route_documents import describes
-from python.data_management.index.bars_index_manager import BarsIndexManager
-from python.framework.discoveries.data_coverage.data_coverage_report_cache import (
-    DataCoverageReportCache,
-)
 from python.api.api_error_catalog import (
     BROKER_NOT_FOUND,
     COVERAGE_REPORT_UNAVAILABLE,
@@ -26,11 +20,17 @@ from python.api.api_error_catalog import (
     INVALID_PERIOD,
     INVALID_RANGE,
     INVALID_TIMEFRAME,
-    NO_BARS_INDEXED,
     NO_BARS_IN_RANGE,
+    NO_BARS_INDEXED,
     SYMBOL_NOT_FOUND,
     TIMEFRAME_NOT_RENDERED,
     api_error,
+)
+from python.api.api_query_params import parse_iso_query
+from python.api.api_route_documents import describes
+from python.data_management.index.bars_index_manager import BarsIndexManager
+from python.framework.discoveries.data_coverage.data_coverage_report_cache import (
+    DataCoverageReportCache,
 )
 from python.framework.types.api.api_types import (
     BarResponse,

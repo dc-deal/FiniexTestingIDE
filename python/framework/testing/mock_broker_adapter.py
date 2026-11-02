@@ -42,7 +42,6 @@ from python.framework.types.trading_env_types.broker_types import (
     SwapMode,
     SymbolSpecification,
 )
-from python.framework.utils.trading_math.price_trigger import taken_price
 from python.framework.types.trading_env_types.order_types import (
     FeeReport,
     LimitOrder,
@@ -52,6 +51,7 @@ from python.framework.types.trading_env_types.order_types import (
     OrderSide,
     OrderType,
 )
+from python.framework.utils.trading_math.price_trigger import taken_price
 
 
 class MockExecutionMode(Enum):

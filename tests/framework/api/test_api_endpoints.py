@@ -31,8 +31,8 @@ from python.framework.types.api.report_types import (
     RunResultRow,
 )
 from python.framework.types.config_types.data_origin_config_types import OriginClass
-from python.framework.types.run_origin_types import CodeStand, RepositoryStand
 from python.framework.types.coverage_report_types import Gap, GapCategory
+from python.framework.types.run_origin_types import CodeStand, RepositoryStand
 from python.framework.validators.validation_check_catalog import VALIDATION_CHECKS_BY_ID
 
 # ---------------------------------------------------------------------------

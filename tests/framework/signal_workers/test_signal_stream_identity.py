@@ -7,10 +7,9 @@ documented fallback and the legacy behaviour must stay bit-identical — that is
 test group pins.
 """
 
-from tests.framework.signal_workers.conftest import SYMBOL, make_provider, snapshot, utc
-
 from python.framework.signal_data.signal_data_provider import SignalDataProvider
 from python.framework.types.signal_data_types import SentimentResult, SignalSeries, SignalSnapshot
+from tests.framework.signal_workers.conftest import SYMBOL, make_provider, snapshot, utc
 
 
 def stream_snapshot(

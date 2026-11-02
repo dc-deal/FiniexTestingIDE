@@ -26,18 +26,18 @@ import pytest
 from python.configuration.app_config_manager import AppConfigManager
 from python.framework.batch.batch_orchestrator import BatchOrchestrator
 from python.framework.batch.batch_report_coordinator import BatchReportCoordinator
-from python.framework.types.batch_execution_types import BatchExecutionSummary
-from python.framework.reporting.store.run_provenance_builder import (
-    consumption_record,
-)
 from python.framework.reporting.certificates.certificate_config_utils import (
     compare_config_contract,
 )
 from python.framework.reporting.certificates.certificate_identity_builder import (
     build_certificate_identity,
 )
-from python.scenario.scenario_set import ScenarioSet
+from python.framework.reporting.store.run_provenance_builder import (
+    consumption_record,
+)
+from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.scenario.scenario_config_loader import ScenarioConfigLoader
+from python.scenario.scenario_set import ScenarioSet
 from tests.simulation.benchmark.system_fingerprint import (
     SystemFingerprint,
     find_matching_system,

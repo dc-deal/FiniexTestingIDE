@@ -76,6 +76,7 @@ from python.framework.types.portfolio_types.portfolio_trade_record_types import 
 from python.framework.types.trading_env_types.active_orders_snapshot_types import (
     ActiveOrdersSnapshot,
 )
+from python.framework.types.trading_env_types.awaited_order_types import AwaitedOrder
 from python.framework.types.trading_env_types.executor_mode_types import ExecutorMode
 from python.framework.types.trading_env_types.latency_simulator_types import (
     ModificationRequest,
@@ -107,7 +108,6 @@ from python.framework.types.trading_env_types.order_types import (
     OrderType,
     RejectionReason,
 )
-from python.framework.types.trading_env_types.awaited_order_types import AwaitedOrder
 from python.framework.types.trading_env_types.submission_metadata_types import SubmissionMetadata
 from python.framework.utils.connection_ladder import ConnectionLadder, run_with_ladder
 from python.framework.utils.run_id_utils import build_client_order_id

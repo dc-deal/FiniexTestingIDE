@@ -17,6 +17,7 @@ from python.framework.factory.decision_logic_factory import DecisionLogicFactory
 from python.framework.factory.worker_factory import WorkerFactory
 from python.framework.types.worker_types import WorkerRequirement
 from tests.framework.path_based_loading.conftest import (
+    IMPORT_ERROR_CODE,
     NOT_A_WORKER_CODE,
     SYNTAX_ERROR_CODE,
     VALID_LOGIC_CODE,
@@ -76,6 +77,14 @@ class TestPathWorkerLoading:
         factory = WorkerFactory(logger=mock_logger)
         with pytest.raises(ValueError):
             factory._load_path_worker(str(py_file))
+
+    def test_load_worker_import_error(self, mock_logger, tmp_path):
+        """File whose own import fails → ValueError naming the file."""
+        py_file = write_module(tmp_path, 'bad_import.py', IMPORT_ERROR_CODE)
+        factory = WorkerFactory(logger=mock_logger)
+        with pytest.raises(ValueError, match='Failed to load worker file'):
+            factory._load_path_worker(str(py_file))
+        cleanup_user_loaded()
 
     def test_load_worker_zero_subclasses(self, mock_logger, tmp_path):
         """File with no AbstractWorker subclass → ValueError."""
@@ -189,6 +198,14 @@ class TestPathDecisionLogicLoading:
         factory = DecisionLogicFactory(logger=mock_logger)
         with pytest.raises(ValueError, match='not found'):
             factory._load_path_logic(str(tmp_path / 'missing.py'))
+
+    def test_load_logic_import_error(self, mock_logger, tmp_path):
+        """File whose own import fails → ValueError naming the file."""
+        py_file = write_module(tmp_path, 'bad_import.py', IMPORT_ERROR_CODE)
+        factory = DecisionLogicFactory(logger=mock_logger)
+        with pytest.raises(ValueError, match='Failed to load decision logic file'):
+            factory._load_path_logic(str(py_file))
+        cleanup_user_loaded()
 
     def test_source_path_injected_on_create_logic(self, mock_logger, tmp_path):
         """create_logic() injects _source_path on the returned instance."""

@@ -5,7 +5,6 @@ Pydantic models for the console_logging section of app_config.json.
 from typing import Optional
 
 from python.framework.types.config_types.strict_config_model import StrictConfigModel
-
 from python.framework.types.log_level import LogLevel
 
 

@@ -28,8 +28,8 @@ import pytest
 
 from python.framework.testing.mock_broker_adapter import MockExecutionMode
 from python.framework.testing.mock_order_execution import MockOrderExecution
-from python.framework.types.live_types.reconciliation_types import BrokerOrder
 from python.framework.types.live_types.live_execution_types import BrokerOrderStatus
+from python.framework.types.live_types.reconciliation_types import BrokerOrder
 from python.framework.types.trading_env_types.latency_simulator_types import PendingOperation
 from python.framework.types.trading_env_types.order_types import (
     OpenOrderRequest,

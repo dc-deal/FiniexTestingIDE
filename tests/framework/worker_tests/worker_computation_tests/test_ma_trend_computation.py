@@ -18,10 +18,10 @@ Key implementation details (verified from source):
 """
 
 import pytest
-from tests.framework.worker_tests.worker_computation_tests.conftest import make_bars, make_tick
 
 from python.framework.types.worker_types import WorkerResult
 from python.framework.workers.core.ma_trend_worker import MaTrendWorker
+from tests.framework.worker_tests.worker_computation_tests.conftest import make_bars, make_tick
 
 RISING_CLOSES_6 = [100, 101, 102, 103, 104, 105]
 FALLING_CLOSES_6 = [105, 104, 103, 102, 101, 100]

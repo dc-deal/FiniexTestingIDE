@@ -17,7 +17,6 @@ import numpy as np
 import pytest
 
 from python.framework.autotrader.run_record.session_records import stream_diagnostics_rows
-
 from python.framework.constants.run_layout_constants import (
     RUN_TYPE_AUTOTRADER,
     RUN_TYPE_SIMULATION,

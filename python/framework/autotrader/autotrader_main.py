@@ -6,8 +6,8 @@ Threading model 8.a: sync algo loop in main thread,
 tick source in separate thread, queue.Queue communication.
 """
 
-import queue
 import os
+import queue
 import signal
 import sys
 import time
@@ -62,16 +62,17 @@ from python.framework.autotrader.run_record.rendered_profile_builder import (
     render_autotrader_profile,
 )
 from python.framework.autotrader.run_record.sealed_period_booker import SealedPeriodBooker
-from python.framework.autotrader.run_record.state_frame_recorder import (
-    StateFrameRecorder,
-    open_state_frame_stream,
-)
 from python.framework.autotrader.run_record.session_records import (
     open_trade_stream,
     record_restored_algo_state,
     stream_diagnostics_rows,
 )
+from python.framework.autotrader.run_record.state_frame_recorder import (
+    StateFrameRecorder,
+    open_state_frame_stream,
+)
 from python.framework.autotrader.safety.risk_baseline_tracker import RiskBaselineTracker
+from python.framework.autotrader.shutdown_status_holder import ShutdownStatusHolder
 from python.framework.autotrader.startup.autotrader_data_preparer import prepare_mock_session_data
 from python.framework.autotrader.startup.autotrader_startup import (
     create_autotrader_loggers,
@@ -79,7 +80,6 @@ from python.framework.autotrader.startup.autotrader_startup import (
     setup_pipeline,
 )
 from python.framework.autotrader.startup.bot_instance_lock import record_holder_run, take_bot_lock
-from python.framework.autotrader.shutdown_status_holder import ShutdownStatusHolder
 from python.framework.autotrader.startup.start_failure_classifier import is_passing_start_failure
 from python.framework.autotrader.stop_budget import StopBudget
 from python.framework.autotrader.tick_sources.abstract_tick_source import AbstractTickSource

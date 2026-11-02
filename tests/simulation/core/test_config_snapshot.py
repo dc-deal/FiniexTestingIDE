@@ -30,8 +30,8 @@ from python.framework.store.run_config_store import RunConfigStore
 from python.framework.types.api.report_types import RunReporting
 from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.utils.config_fingerprint_utils import to_plain
-from python.scenario.scenario_set import ScenarioSet
 from python.scenario.scenario_config_loader import ScenarioConfigLoader
+from python.scenario.scenario_set import ScenarioSet
 
 SCENARIO_SET = 'backtesting/multi_position_test.json'
 

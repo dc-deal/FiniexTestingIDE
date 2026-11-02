@@ -36,9 +36,9 @@ from python.framework.types.live_types.broker_truth_types import (
     BrokerTruthSnapshot,
 )
 from python.framework.types.run_kind_types import OrdersTo
+from python.framework.types.run_origin_types import CodeIdentity, RepositoryState
 from python.framework.types.trading_env_types.broker_types import FeeSource
 from python.framework.types.trading_env_types.order_event_types import OrderEventPlane
-from python.framework.types.run_origin_types import CodeIdentity, RepositoryState
 from python.framework.types.trading_env_types.order_types import FeeReport
 from python.framework.utils.run_origin_builder import capture_code_identity
 

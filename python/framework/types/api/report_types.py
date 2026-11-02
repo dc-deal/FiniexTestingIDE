@@ -22,6 +22,7 @@ from python.framework.types.live_types.broker_truth_types import (
 )
 from python.framework.types.live_types.live_execution_types import BrokerOrderStatus
 from python.framework.types.live_types.reconciliation_types import ReconcileState
+
 # The risk baseline is REUSED, not projected. It is already a Pydantic record that describes
 # itself — kind, stamp, origin, and on spot the price and quantities its value can be
 # re-derived from — and the safety report's job is to surface exactly that record. A parallel
@@ -49,7 +50,6 @@ from python.framework.types.trading_env_types.order_types import (
     OrderType,
     RejectionReason,
 )
-
 
 # WHAT MAKES ONE ROW of each deployment view unique. Declared once, read by the response model
 # below AND by the fold that produces the rows (`deployment_history_builder` passes SESSION_KEY

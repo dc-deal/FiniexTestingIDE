@@ -9,7 +9,6 @@ from typing import Any, Dict, List
 from unittest.mock import MagicMock
 
 import pytest
-from tests.framework.signal_workers.conftest import SYMBOL, make_provider, make_tick, snapshot, utc
 
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.decision_logic.core.hybrid_sentiment_reference import HybridSentimentReference
@@ -22,6 +21,7 @@ from python.framework.types.trading_env_types.order_types import OrderType
 from python.framework.types.worker_types import WorkerRequirement, WorkerResult
 from python.framework.workers.core.llm_sentiment_worker import LlmSentimentWorker
 from python.framework.workers.worker_orchestrator import WorkerOrchestrator
+from tests.framework.signal_workers.conftest import SYMBOL, make_provider, make_tick, snapshot, utc
 
 
 def _at(minutes: int):

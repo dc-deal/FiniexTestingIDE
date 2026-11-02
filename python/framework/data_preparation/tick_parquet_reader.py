@@ -23,7 +23,6 @@ import pandas as pd
 import pyarrow.parquet as pq
 
 
-
 def read_tick_parquet(path: Path, columns: Optional[List[str]] = None) -> pd.DataFrame:
     """
     Read a tick parquet file and normalize column names to framework convention.

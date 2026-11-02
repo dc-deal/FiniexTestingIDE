@@ -25,9 +25,6 @@ from python.api.api_auth_setup import setup_api_auth
 from python.api.api_contract import API_CONTRACT_VERSION, API_PREFIX, CHANGES, CONTRACT_HEADER
 from python.api.api_error_catalog import ARTIFACT_UNREADABLE, IDENTITY_UNBOUND, api_error
 from python.api.api_route_documents import describes
-from python.api.head_request_middleware import HeadRequestMiddleware
-from python.api.link_header_middleware import LinkHeaderMiddleware
-from python.api.polled_route_access_filter import PolledRouteAccessFilter
 from python.api.endpoints import (
     bars_router,
     broker_router,
@@ -38,6 +35,9 @@ from python.api.endpoints import (
     reports_router,
     sweeps_router,
 )
+from python.api.head_request_middleware import HeadRequestMiddleware
+from python.api.link_header_middleware import LinkHeaderMiddleware
+from python.api.polled_route_access_filter import PolledRouteAccessFilter
 from python.configuration.app_config_manager import AppConfigManager
 from python.configuration.data_home import describe_data_home
 from python.configuration.host_identity_manager import HostIdentityManager

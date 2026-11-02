@@ -14,7 +14,6 @@ from python.framework.types.trading_env_types.submission_metadata_types import S
 from python.framework.utils.trading_math.pnl_math import gross_pnl_from_price_diff
 from python.framework.utils.trading_math.price_trigger import mid_price
 
-
 # The fee types a trade record books as its COMMISSION — every charged per-side cost. Declared
 # once because two places classify a fee this way: the position's own total, and the exit fee a
 # partial close charges on top of its share of that total.

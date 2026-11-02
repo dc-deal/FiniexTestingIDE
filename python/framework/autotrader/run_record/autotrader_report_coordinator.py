@@ -20,6 +20,9 @@ from python.framework.constants.run_layout_constants import RUN_TYPE_AUTOTRADER
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.discoveries.signal_coverage.signal_scenario_info import SignalScenarioInfo
 from python.framework.logging.scenario_logger import ScenarioLogger
+from python.framework.reporting.builders.booking_periods_report_builder import (
+    build_booking_periods_report,
+)
 from python.framework.reporting.builders.broker_report_builder import (
     build_broker_report_from_session,
 )
@@ -43,9 +46,10 @@ from python.framework.reporting.builders.venue_api_performance_report_builder im
 from python.framework.reporting.builders.warnings_errors_report_builder import (
     build_warnings_errors_report_from_session,
 )
+from python.framework.reporting.console.autotrader_session_summary import AutotraderSessionSummary
+from python.framework.reporting.console.booking_periods_summary import BookingPeriodsSummary
 from python.framework.reporting.console.broker_summary import BrokerSummary
 from python.framework.reporting.console.feed_stability_summary import FeedStabilitySummary
-from python.framework.reporting.console.autotrader_session_summary import AutotraderSessionSummary
 from python.framework.reporting.console.performance_summary import PerformanceSummary
 from python.framework.reporting.console.portfolio_summary import PortfolioSummary
 from python.framework.reporting.console.run_console_renderer import RunConsoleRenderer
@@ -67,13 +71,9 @@ from python.framework.reporting.shared_report_coordinator import SharedReportCoo
 from python.framework.reporting.store.run_provenance_builder import (
     build_run_provenance_from_session,
 )
-from python.framework.reporting.builders.booking_periods_report_builder import (
-    build_booking_periods_report,
-)
-from python.framework.reporting.console.booking_periods_summary import BookingPeriodsSummary
 from python.framework.reporting.store.run_results_ledger import append_run_to_ledger
-from python.framework.store.entry_members.run_entry_writer import RunEntryWriter
 from python.framework.store.entry_members.run_entry_members import RUN_ENTRY_MEMBERS
+from python.framework.store.entry_members.run_entry_writer import RunEntryWriter
 from python.framework.store.entry_members.run_footprint import (
     expectation,
     expectation_after,
@@ -83,9 +83,9 @@ from python.framework.trading_env.broker_config import BrokerConfig
 from python.framework.types.api.report_types import RunSummary
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
 from python.framework.types.autotrader_types.autotrader_result_types import AutoTraderResult
-from python.framework.types.scenario_types.scenario_set_types import SingleScenario
 from python.framework.types.log_level import LogLevel
 from python.framework.types.run_footprint_types import MemberExpectation
+from python.framework.types.scenario_types.scenario_set_types import SingleScenario
 from python.framework.types.signal_data_types import SignalObservedSeries
 from python.framework.types.store_member_types import EntryMemberShape, RunEntryMemberId
 from python.framework.utils.console_renderer import ConsoleRenderer

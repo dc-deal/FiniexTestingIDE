@@ -12,8 +12,8 @@ from typing import Dict, FrozenSet, Optional, Tuple
 
 from python.framework.constants.run_layout_constants import (
     ACCEPTANCE_CAPTURE_SCHEMA_VERSION,
-    ALGO_STATE_RESTORED_FILE,
     AGGREGATED_PORTFOLIO_ARTIFACT_FILE,
+    ALGO_STATE_RESTORED_FILE,
     BACKTEST_GLOBAL_LOG_NAME,
     BACKTEST_SYSTEM_INFO_LOG_NAME,
     BLOCK_SPLITTING_ARTIFACT_FILE,

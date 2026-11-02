@@ -81,6 +81,7 @@ from python.framework.types.trading_env_types.active_orders_snapshot_types impor
     ActiveOrderSnapshot,
     ActiveOrdersSnapshot,
 )
+from python.framework.types.trading_env_types.awaited_order_types import AwaitedOrder
 from python.framework.types.trading_env_types.broker_trade_types import BrokerTrade
 from python.framework.types.trading_env_types.broker_types import (
     FeeSource,
@@ -100,7 +101,6 @@ from python.framework.types.trading_env_types.order_event_types import (
     OrderEvent,
     OrderEventType,
 )
-from python.framework.types.trading_env_types.awaited_order_types import AwaitedOrder
 from python.framework.types.trading_env_types.order_types import (
     RESTING_ORDER_TYPES,
     CloseType,

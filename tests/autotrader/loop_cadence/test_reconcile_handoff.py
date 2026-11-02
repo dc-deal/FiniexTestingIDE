@@ -23,8 +23,6 @@ from python.framework.types.trading_env_types.latency_simulator_types import Pen
 from python.framework.types.trading_env_types.order_types import OrderDirection, OrderType
 
 
-
-
 class StubReconciler:
     """Answers is_due/reconcile without touching a broker."""
 

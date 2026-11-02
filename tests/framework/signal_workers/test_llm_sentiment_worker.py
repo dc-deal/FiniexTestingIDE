@@ -4,7 +4,6 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
-from tests.framework.signal_workers.conftest import SYMBOL, make_provider, make_tick, snapshot, utc
 
 from python.framework.exceptions.signal_data_errors import SignalProviderNotInjectedError
 from python.framework.factory.worker_factory import WorkerFactory
@@ -14,6 +13,7 @@ from python.framework.types.worker_types import WorkerType
 from python.framework.workers.abstract_signal_worker import AbstractSignalWorker
 from python.framework.workers.core.llm_sentiment_worker import LlmSentimentWorker
 from python.framework.workers.worker_orchestrator import WorkerOrchestrator
+from tests.framework.signal_workers.conftest import SYMBOL, make_provider, make_tick, snapshot, utc
 
 
 def _worker(mock_logger, max_staleness=30) -> LlmSentimentWorker:

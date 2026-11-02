@@ -15,12 +15,12 @@ import pytest
 from python.framework.reporting.builders.booking_periods_report_builder import (
     build_booking_periods_report,
 )
+from python.framework.reporting.builders.run_unit import RunUnit
 from python.framework.reporting.console.booking_periods_summary import (
     BookingPeriodsSummary,
     render_booking_periods,
 )
 from python.framework.reporting.console.run_console_renderer import RunConsoleRenderer
-from python.framework.reporting.builders.run_unit import RunUnit
 from python.framework.types.api.report_types import RunSummary, RunSummaryCurrency
 from python.framework.types.run_results_types import BookingPeriod, PeriodCloseReason
 from python.framework.utils.console_renderer import ConsoleRenderer

@@ -36,7 +36,6 @@ from python.framework.types.trading_env_types.order_types import (
     OrderType,
 )
 
-
 _DAY_OPENED = datetime(2026, 10, 20, tzinfo=timezone.utc)
 
 

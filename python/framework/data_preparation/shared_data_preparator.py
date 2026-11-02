@@ -72,7 +72,6 @@ from python.framework.utils.process_serialization_utils import (
 )
 from python.framework.utils.time_utils import ensure_utc_aware
 
-
 # The temporary column that marks a row from a file without a quote — never transported
 _WITHOUT_QUOTE = '_without_quote'
 

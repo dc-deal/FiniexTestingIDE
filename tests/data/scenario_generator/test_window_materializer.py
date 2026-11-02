@@ -7,8 +7,6 @@ Unit tests for the single home of the generator's cross-cutting plumbing: role a
 
 from datetime import datetime, timezone
 
-from tests.data.scenario_generator.conftest import utc
-
 from python.framework.types.config_types.robustness_config_types import (
     RobustnessConfig,
     RobustnessRole,
@@ -20,6 +18,7 @@ from python.framework.types.market_types.market_volatility_profile_types import 
 from python.framework.types.scenario_types.scenario_generator_types import GenerationStrategy
 from python.framework.types.scenario_types.window_set_types import GeneratedWindow, WindowSet
 from python.scenario.generator.window_materializer import WindowMaterializer
+from tests.data.scenario_generator.conftest import utc
 
 _CASCADE_KEYS = ('strategy_config', 'execution_config', 'trade_simulator_config')
 

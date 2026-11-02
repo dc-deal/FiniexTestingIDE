@@ -14,7 +14,6 @@ from python.framework.types.autotrader_types.cold_start_types import (
 )
 from python.framework.types.autotrader_types.safety_session_types import SafetySessionRecord
 from python.framework.types.autotrader_types.shutdown_status_types import StopWaitOutcome
-from python.framework.types.run_results_types import BookingPeriod
 from python.framework.types.disturbance_episode_types import DisturbanceEpisode, MarketDataTickStats
 from python.framework.types.live_types.api_perf_types import ApiPerfSnapshot
 from python.framework.types.live_types.broker_truth_types import BrokerTruthRecord
@@ -30,6 +29,7 @@ from python.framework.types.portfolio_types.portfolio_aggregation_types import P
 from python.framework.types.portfolio_types.portfolio_trade_record_types import TradeRecord
 from python.framework.types.portfolio_types.portfolio_types import Position
 from python.framework.types.run_outcome_types import TRANSIENT_START_EXIT_CODE, RunOutcome
+from python.framework.types.run_results_types import BookingPeriod
 from python.framework.types.signal_data_types import SignalResolutionStats
 from python.framework.types.store_member_types import RunEntryMemberId
 from python.framework.types.trading_env_types.active_orders_snapshot_types import (

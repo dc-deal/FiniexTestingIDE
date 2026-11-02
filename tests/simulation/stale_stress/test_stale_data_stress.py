@@ -19,8 +19,8 @@ import pytest
 from python.configuration.app_config_manager import AppConfigManager
 from python.framework.batch.batch_orchestrator import BatchOrchestrator
 from python.framework.types.api.report_types import RunReporting
-from python.scenario.scenario_set import ScenarioSet
 from python.scenario.scenario_config_loader import ScenarioConfigLoader
+from python.scenario.scenario_set import ScenarioSet
 
 FIXTURE_SET = (
     Path(__file__).resolve().parents[3]

@@ -20,13 +20,13 @@ from python.framework.reporting.builders.pending_orders_report_builder import pe
 from python.framework.testing.mock_broker_adapter import MockExecutionMode
 from python.framework.testing.mock_order_execution import MockOrderExecution
 from python.framework.trading_env.live.live_trade_executor import LiveTradeExecutor
+from python.framework.types.fill_slippage_types import SlippageReference
 from python.framework.types.live_types.live_execution_types import (
     BrokerOrderStatus,
     BrokerResponse,
 )
 from python.framework.types.live_types.live_request_types import QueryResponse
 from python.framework.types.live_types.reconciliation_types import BrokerOrder
-from python.framework.types.fill_slippage_types import SlippageReference
 from python.framework.types.portfolio_types.portfolio_trade_record_types import CloseReason
 from python.framework.types.trading_env_types.order_event_types import (
     OrderEventType,

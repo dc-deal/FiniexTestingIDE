@@ -16,8 +16,8 @@ from python.framework.discoveries.data_coverage.gap_file_attribution import (
     attribute_gaps_to_files,
     parse_file_open_time,
 )
-from python.framework.types.config_types.market_config_types import ServerClockConfig
 from python.framework.types.config_types.data_origin_config_types import OriginClass
+from python.framework.types.config_types.market_config_types import ServerClockConfig
 from python.framework.types.coverage_report_types import Gap
 from python.framework.utils.market_calendar import GapCategory
 

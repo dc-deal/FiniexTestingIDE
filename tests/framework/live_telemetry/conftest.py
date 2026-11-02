@@ -43,8 +43,8 @@ from python.framework.types.signal_data_types import SignalHealthStatus, SignalT
 from python.framework.types.trading_env_types.active_orders_snapshot_types import (
     ActiveOrderSnapshot,
 )
-from python.framework.types.trading_env_types.broker_trade_types import BrokerTrade
 from python.framework.types.trading_env_types.awaited_order_types import AwaitedOrder
+from python.framework.types.trading_env_types.broker_trade_types import BrokerTrade
 from python.framework.types.trading_env_types.order_types import (
     CloseType,
     OrderAction,

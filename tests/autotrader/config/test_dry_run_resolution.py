@@ -17,8 +17,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from python.framework.autotrader.startup.autotrader_broker_config_setup import create_broker_config
 from python.framework.autotrader.dry_run_resolver import resolve_dry_run
+from python.framework.autotrader.startup.autotrader_broker_config_setup import create_broker_config
 from python.framework.exceptions.live_execution_errors import DryRunConflictError
 from python.framework.types.config_types.market_config_types import ConfigMode
 

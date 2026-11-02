@@ -26,8 +26,8 @@ from python.framework.constants.run_layout_constants import (
 from python.framework.exceptions.report_artifact_errors import ReportArtifactUnreadableError
 from python.framework.reporting.io.jsonl_stream_writer import JsonlStreamWriter
 from python.framework.reporting.io.order_event_stream_io import order_events_of
-from python.framework.reporting.io.run_stream_appender import RunStreamAppender
 from python.framework.reporting.io.run_header_io import write_run_header
+from python.framework.reporting.io.run_stream_appender import RunStreamAppender
 from python.framework.reporting.io.run_stream_day_record import (
     read_day_record_summary,
     record_time_of,

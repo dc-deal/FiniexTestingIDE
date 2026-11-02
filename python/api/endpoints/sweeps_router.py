@@ -14,9 +14,9 @@ from pathlib import Path
 
 from fastapi import APIRouter
 
+from python.api.api_error_catalog import SWEEP_NOT_FOUND, api_error
 from python.api.api_route_documents import describes
 from python.configuration.app_config_manager import AppConfigManager
-from python.api.api_error_catalog import SWEEP_NOT_FOUND, api_error
 from python.framework.optimization.optimization_analysis import (
     rank_per_currency,
     summarize_sweeps,

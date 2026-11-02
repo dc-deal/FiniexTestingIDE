@@ -47,7 +47,7 @@ def live_adapter_fill(request, real_orders_authorised):
     Returns:
         KrakenAdapter with Tier 3 enabled and dry_run disabled
     """
-    credentials_path = require_venue_key(request, 'kraken_spot')
+    require_venue_key(request, 'kraken_spot')
 
     with open(_BROKER_CONFIG_PATH, 'r') as f:
         broker_config = json.load(f)

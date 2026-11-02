@@ -16,10 +16,13 @@ OBV tests use make_bars_with_volume() for explicit volume control.
 """
 
 import pytest
-from tests.framework.worker_tests.worker_computation_tests.conftest import make_bars_with_volume, make_tick
 
 from python.framework.types.worker_types import WorkerResult
 from python.framework.workers.core.obv_worker import ObvWorker
+from tests.framework.worker_tests.worker_computation_tests.conftest import (
+    make_bars_with_volume,
+    make_tick,
+)
 
 
 def _make_obv_worker(mock_logger, period=20):

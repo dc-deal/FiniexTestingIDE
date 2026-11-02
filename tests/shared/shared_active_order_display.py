@@ -10,10 +10,10 @@ Used by: active_order_display
 Import these classes into suite-specific test files.
 """
 
-from python.framework.types.trading_env_types.order_types import OrderDirection, OrderType
 from python.framework.types.trading_env_types.active_orders_snapshot_types import (
     ActiveOrdersSnapshot,
 )
+from python.framework.types.trading_env_types.order_types import OrderDirection, OrderType
 
 
 class TestActiveLimitOrdersReported:

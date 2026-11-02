@@ -33,17 +33,18 @@ FUTURE NOTES:
 from datetime import datetime, timedelta
 from typing import Any, Collection, Dict, FrozenSet, List, Optional, Sequence, Union
 
+from python.framework.exceptions.order_feature_errors import OrderFeatureRefusedError
 from python.framework.types.config_types.autotrader_defaults_config_types import OrderGuardDefaults
 from python.framework.types.decision_event_types import SessionEndSeverity
 from python.framework.types.trading_env_types.broker_types import SymbolSpecification
 from python.framework.types.trading_env_types.latency_simulator_types import PendingOrder
 from python.framework.types.trading_env_types.market_data_status_types import MarketDataStatus
 from python.framework.types.trading_env_types.order_types import (
+    ModificationRejectionReason,
     ModificationResult,
+    ModificationStatus,
     OpenOrderRequest,
     OrderCapabilities,
-    ModificationRejectionReason,
-    ModificationStatus,
     OrderDirection,
     OrderFeature,
     OrderResult,
@@ -54,8 +55,6 @@ from python.framework.types.trading_env_types.order_types import (
 )
 from python.framework.types.trading_env_types.own_exit_types import OwnExit
 from python.framework.types.trading_env_types.trading_env_stats_types import CostBreakdown
-
-from python.framework.exceptions.order_feature_errors import OrderFeatureRefusedError
 from python.framework.validators.order_feature_validator import (
     features_the_venue_lacks,
     order_feature_refusal,

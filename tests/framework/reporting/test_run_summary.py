@@ -7,15 +7,15 @@ trade analytics + execution totals) — no re-derivation. Per-currency join + gl
 
 from datetime import datetime, timedelta, timezone
 
-from python.framework.reporting.io.artifact_specs import (
-    RUN_SUMMARY_ARTIFACT,
-)
-from python.framework.reporting.io.report_artifact_io import read_artifact, write_artifact
 from python.framework.reporting.builders.report_aggregators import (
     aggregate_portfolio_by_currency,
 )
 from python.framework.reporting.builders.run_summary_builder import build_run_summary
 from python.framework.reporting.builders.run_unit import RunUnit
+from python.framework.reporting.io.artifact_specs import (
+    RUN_SUMMARY_ARTIFACT,
+)
+from python.framework.reporting.io.report_artifact_io import read_artifact, write_artifact
 from python.framework.types.api.report_types import (
     AbsentUnitRow,
     ExecutionStatsReport,

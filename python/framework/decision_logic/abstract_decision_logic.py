@@ -54,7 +54,11 @@ from python.framework.types.parameter_types import (
 from python.framework.types.performance_types.performance_stats_types import DecisionLogicStats
 from python.framework.types.persistence_types import RestoreContext
 from python.framework.types.trading_env_types.market_data_status_types import MarketDataStatus
-from python.framework.types.trading_env_types.order_types import OrderFeature, OrderResult, OrderType
+from python.framework.types.trading_env_types.order_types import (
+    OrderFeature,
+    OrderResult,
+    OrderType,
+)
 from python.framework.types.worker_types import WorkerRequirement, WorkerResult
 from python.framework.validators.parameter_validator import validate_parameters
 

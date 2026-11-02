@@ -33,11 +33,11 @@ from datetime import date, datetime
 from typing import List, Optional
 
 from python.framework.reporting.builders.report_aggregators import aggregate_trade_analytics
+from python.framework.reporting.builders.run_unit import RunUnit
 from python.framework.reporting.builders.trade_history_report_builder import (
     TradeWindowBasis,
     build_trade_history_report,
 )
-from python.framework.reporting.builders.run_unit import RunUnit
 from python.framework.types.api.report_types import RunSummaryCurrency, TradeHistoryRow
 from python.framework.types.portfolio_types.portfolio_trade_record_types import TradeRecord
 from python.framework.types.run_results_types import BookingPeriod, PeriodCloseReason

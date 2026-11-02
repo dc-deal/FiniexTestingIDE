@@ -18,10 +18,10 @@ Reference formula for std_dev (population):
 import math
 
 import pytest
-from tests.framework.worker_tests.worker_computation_tests.conftest import make_bars, make_tick
 
 from python.framework.types.worker_types import WorkerResult
 from python.framework.workers.core.bollinger_worker import BollingerWorker
+from tests.framework.worker_tests.worker_computation_tests.conftest import make_bars, make_tick
 
 # ============================================
 # Pre-calculated constants for closes = [100, 101, 102, 103, 104]

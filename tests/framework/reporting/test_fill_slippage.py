@@ -21,6 +21,7 @@ from python.framework.types.trading_env_types.order_types import (
     OrderType,
 )
 
+
 def _event(seq, event_type, submitted_seq, order_type=OrderType.MARKET,
            direction=OrderDirection.LONG, action=OrderAction.OPEN, position_id='pos_1', **fields):
     """

@@ -11,9 +11,9 @@ artifact, fifteen of them differing in three tokens each; the artifact spec carr
 tokens, and `get(run_id, BROKER_ARTIFACT)` is still statically a `BrokerReport`.
 """
 
+import json
 from datetime import datetime
 from pathlib import Path
-import json
 from typing import Any, Dict, List, Optional, Tuple, TypeVar
 
 from pydantic import BaseModel, ValidationError

@@ -12,11 +12,10 @@ from urllib.parse import urlparse
 from pydantic import Field, field_validator
 
 from python.framework.types.config_types.operator_alerts_config_types import OperatorAlertsConfig
-from python.framework.types.config_types.strict_config_model import StrictConfigModel
-
 from python.framework.types.config_types.performance_tracking_config_types import (
     AutoTraderPerformanceTrackingConfig,
 )
+from python.framework.types.config_types.strict_config_model import StrictConfigModel
 from python.framework.utils.timeframe_config_utils import TimeframeConfig
 
 

@@ -10,9 +10,9 @@ import csv
 
 import pytest
 
-from tests.shared.fixture_helpers import remove_run_dir
 from python.configuration.autotrader.autotrader_config_loader import load_autotrader_config
 from python.framework.autotrader.autotrader_main import AutotraderMain
+from tests.shared.fixture_helpers import remove_run_dir
 
 _PROFILE = 'configs/autotrader_profiles/mock/diagnostics_probe_test.json'
 

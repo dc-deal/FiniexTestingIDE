@@ -23,6 +23,9 @@ from python.framework.constants.run_layout_constants import (
     RUN_TYPE_SIMULATION,
 )
 from python.framework.logging.global_logger import GlobalLogger
+from python.framework.reporting.builders.venue_api_performance_report_builder import (
+    build_venue_api_performance_report,
+)
 from python.framework.reporting.io.artifact_specs import (
     AGGREGATED_PORTFOLIO_ARTIFACT,
     BOOKING_PERIODS_ARTIFACT,
@@ -39,9 +42,6 @@ from python.framework.reporting.io.artifact_specs import (
     VENUE_ACCOUNT_ARTIFACT,
     VENUE_API_PERFORMANCE_ARTIFACT,
     WARNINGS_ERRORS_ARTIFACT,
-)
-from python.framework.reporting.builders.venue_api_performance_report_builder import (
-    build_venue_api_performance_report,
 )
 from python.framework.reporting.io.order_event_stream_io import write_order_event_stream
 from python.framework.reporting.io.report_artifact_io import write_artifact

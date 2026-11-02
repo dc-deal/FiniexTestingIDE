@@ -17,7 +17,9 @@ from python.framework.types.market_types.market_volatility_profile_types import 
 )
 from python.framework.types.scenario_types.scenario_generator_types import GenerationStrategy
 from python.framework.types.scenario_types.window_set_types import GeneratedWindow
-from python.scenario.generator.splitters.abstract_volatility_profile_splitter import AbstractVolatilityProfileSplitter
+from python.scenario.generator.splitters.abstract_volatility_profile_splitter import (
+    AbstractVolatilityProfileSplitter,
+)
 
 
 class VolatilitySplit(AbstractVolatilityProfileSplitter):

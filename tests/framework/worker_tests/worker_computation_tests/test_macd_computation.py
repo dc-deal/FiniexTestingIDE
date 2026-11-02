@@ -19,10 +19,10 @@ Key implementation details (verified from source):
 
 import numpy as np
 import pytest
-from tests.framework.worker_tests.worker_computation_tests.conftest import make_bars, make_tick
 
 from python.framework.types.worker_types import WorkerResult
 from python.framework.workers.core.macd_worker import MacdWorker
+from tests.framework.worker_tests.worker_computation_tests.conftest import make_bars, make_tick
 
 
 class TestMACDStructure:

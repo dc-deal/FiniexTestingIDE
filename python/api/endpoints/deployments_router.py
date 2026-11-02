@@ -21,9 +21,9 @@ from pathlib import Path
 
 from fastapi import APIRouter
 
+from python.api.api_error_catalog import DEPLOYMENT_NOT_FOUND, api_error
 from python.api.api_route_documents import describes
 from python.configuration.app_config_manager import AppConfigManager
-from python.api.api_error_catalog import DEPLOYMENT_NOT_FOUND, api_error
 from python.framework.reporting.builders.booking_periods_report_builder import (
     booking_periods_from_ledger_rows,
 )

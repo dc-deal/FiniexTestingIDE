@@ -9,7 +9,6 @@ from pydantic import Field
 
 from python.framework.constants.run_layout_constants import SWEEPS_SUBDIR
 from python.framework.types.config_types.strict_config_model import StrictConfigModel
-
 from python.framework.types.log_level import LogLevel
 
 

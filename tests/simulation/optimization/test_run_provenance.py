@@ -25,8 +25,8 @@ from python.framework.reporting.builders.warnings_errors_report_builder import (
 from python.framework.reporting.io.run_header_io import write_run_header
 from python.framework.reporting.store.run_provenance_builder import (
     build_run_provenance,
-    consumption_record,
     build_run_provenance_from_session,
+    consumption_record,
 )
 from python.framework.types.api.report_types import RunHeader, WarningsErrorsReport
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig

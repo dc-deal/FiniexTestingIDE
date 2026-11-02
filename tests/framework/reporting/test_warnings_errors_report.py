@@ -13,15 +13,15 @@ import re
 from contextlib import redirect_stdout
 from datetime import datetime, timezone
 
-from python.framework.reporting.io.artifact_specs import (
-    WARNINGS_ERRORS_ARTIFACT,
-)
-from python.framework.reporting.io.report_artifact_io import write_artifact
 from python.framework.reporting.builders.warnings_errors_report_builder import (
     build_warnings_errors_report_from_batch,
     build_warnings_errors_report_from_session,
 )
 from python.framework.reporting.console.warnings_summary import WarningsSummary
+from python.framework.reporting.io.artifact_specs import (
+    WARNINGS_ERRORS_ARTIFACT,
+)
+from python.framework.reporting.io.report_artifact_io import write_artifact
 from python.framework.types.api.report_types import (
     LogEntryRow,
     UnitErrorRow,

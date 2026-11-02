@@ -83,8 +83,8 @@ from python.framework.types.log_level import LogLevel
 from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.persistence_types import BaselineQuantities
 from python.framework.types.run_results_types import BookingPeriod, PeriodCloseReason
-from python.framework.types.trading_env_types.market_data_status_types import MarketDataStatus
 from python.framework.types.trading_env_types.awaited_order_types import AwaitedOrder
+from python.framework.types.trading_env_types.market_data_status_types import MarketDataStatus
 from python.framework.types.trading_env_types.order_types import OrderResult
 from python.framework.utils.trading_day_anchor import boundary_opening
 from python.framework.workers.worker_orchestrator import WorkerOrchestrator

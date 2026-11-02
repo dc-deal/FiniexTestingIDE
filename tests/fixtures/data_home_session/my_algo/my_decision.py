@@ -7,13 +7,18 @@ data home are apart. It never trades.
 
 from typing import Any, Dict, List, Optional
 
+from user_algos.my_algo.my_math import ANSWER
+
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.types.decision_logic_types import Decision, DecisionLogicAction
 from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.trading_env_types.market_data_status_types import MarketDataStatus
-from python.framework.types.trading_env_types.order_types import OrderFeature, OrderResult, OrderType
+from python.framework.types.trading_env_types.order_types import (
+    OrderFeature,
+    OrderResult,
+    OrderType,
+)
 from python.framework.types.worker_types import WorkerRequirement, WorkerResult
-from user_algos.my_algo.my_math import ANSWER
 
 
 class MyDecision(AbstractDecisionLogic):

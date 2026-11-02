@@ -20,7 +20,6 @@ from enum import Enum
 from typing import Any, Dict, Optional
 
 
-
 class BrokerOrderStatus(Enum):
     """
     Broker-side order status.

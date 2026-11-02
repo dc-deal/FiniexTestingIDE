@@ -16,6 +16,8 @@ from typing import List, Optional
 import pandas as pd
 import pytest
 
+from python.framework.acceptance_studies import security_cert_runner
+from python.framework.acceptance_studies.security_cert_runner import starts_without_a_carry_over
 from python.framework.exceptions.persistence_errors import (
     CarryOverContinuationError,
     CarryOverForeignClaimsError,
@@ -29,8 +31,6 @@ from python.framework.reporting.builders.booking_period_builder import (
 from python.framework.reporting.store.run_results_ledger import RunResultsLedger
 from python.framework.types.persistence_types import CarryOverLoad, CarryOverLoadOutcome
 from python.framework.types.run_results_types import PeriodCloseReason, RunProvenance
-from python.framework.acceptance_studies import security_cert_runner
-from python.framework.acceptance_studies.security_cert_runner import starts_without_a_carry_over
 from python.framework.validators.carry_over_continuity_validator import (
     validate_carry_over_continuity,
 )

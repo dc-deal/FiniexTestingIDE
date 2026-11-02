@@ -26,8 +26,8 @@ from python.framework.reporting.store.ledger_aggregation import aggregate_ledger
 from python.framework.reporting.store.run_completion_audit import closes_its_run
 from python.framework.types.api.report_types import (
     SESSION_KEY,
-    DeploymentCodeSummary,
     DeploymentCaption,
+    DeploymentCodeSummary,
     DeploymentComparabilityAdvisory,
     DeploymentSessionRow,
     DeploymentSummary,
