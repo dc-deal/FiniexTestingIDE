@@ -1,11 +1,7 @@
 """
 FiniexTestingIDE - Performance Metrics Types
-Dataclasses for profiling and performance metrics
-
-CREATED (New):
-- Structured types for profiling data from batch_orchestrator
-- Includes per-tick profiling, operation breakdowns, and scenario metrics
-- Used by ProfilingSummary for reporting
+Dataclasses for profiling and performance metrics: how the time between ticks is distributed,
+and how a scenario's time splits between workers, decision logic and coordination.
 
 Architecture:
 - Filled by batch_orchestrator during tick loop profiling
@@ -14,27 +10,7 @@ Architecture:
 """
 
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional
-
-
-@dataclass
-class OperationProfile:
-    """
-    Profiling data for a single operation type.
-
-    Tracks timing and call counts for operations like:
-    - trade_simulator
-    - bar_rendering
-    - bar_history
-    - worker_decision
-    - order_execution
-    - stats_update
-    """
-    operation_name: str
-    total_time_ms: float  # Total time spent in milliseconds
-    call_count: int  # Number of times called
-    avg_time_ms: float  # Average time per call
-    percentage: float  # Percentage of total tick time
+from typing import Dict
 
 
 @dataclass
@@ -70,98 +46,6 @@ class InterTickIntervalStats:
     filtered_intervals: int
     gaps_removed: int
     gap_threshold_s: float
-
-
-@dataclass
-class TickLoopProfile:
-    """
-    Complete profiling data for a scenario's tick loop.
-
-    Contains:
-    - Per-operation breakdowns
-    - Total tick processing time
-    - Performance percentages
-    - Bottleneck identification
-    """
-    scenario_index: int
-    scenario_name: str
-    total_ticks: int
-
-    # Per-operation profiles
-    operations: List[OperationProfile] = field(default_factory=list)
-
-    # Overall metrics
-    total_time_ms: float = 0.0  # Total time for all ticks
-    avg_time_per_tick_ms: float = 0.0  # Average time per tick
-
-    # Derived metrics
-    bottleneck_operation: Optional[str] = None  # Operation taking most time
-    bottleneck_percentage: float = 0.0
-
-    # Inter-tick interval statistics
-    interval_stats: Optional[InterTickIntervalStats] = None
-
-    def __post_init__(self):
-        """Calculate derived metrics after initialization."""
-        if self.operations:
-            # Find bottleneck
-            slowest = max(self.operations, key=lambda op: op.percentage)
-            self.bottleneck_operation = slowest.operation_name
-            self.bottleneck_percentage = slowest.percentage
-
-        # Calculate average per tick
-        if self.total_ticks > 0:
-            self.avg_time_per_tick_ms = self.total_time_ms / self.total_ticks
-
-
-@dataclass
-class ProfilingMetrics:
-    """
-    Aggregated profiling metrics across multiple scenarios.
-
-    Used for:
-    - Cross-scenario performance comparison
-    - Identifying consistent bottlenecks
-    - Performance optimization targets
-    """
-    # Individual scenario profiles
-    scenario_profiles: List[TickLoopProfile] = field(default_factory=list)
-
-    # Aggregated statistics
-    total_scenarios: int = 0
-    total_ticks_processed: int = 0
-    total_execution_time_ms: float = 0.0
-    avg_tick_time_ms: float = 0.0
-
-    # Cross-scenario bottleneck analysis
-    most_common_bottleneck: Optional[str] = None
-    bottleneck_frequency: Dict[str, int] = field(default_factory=dict)
-
-    def add_scenario_profile(self, profile: TickLoopProfile):
-        """Add a scenario profile and update aggregates."""
-        self.scenario_profiles.append(profile)
-        self.total_scenarios += 1
-        self.total_ticks_processed += profile.total_ticks
-        self.total_execution_time_ms += profile.total_time_ms
-
-        # Track bottleneck frequency
-        if profile.bottleneck_operation:
-            bottleneck = profile.bottleneck_operation
-            self.bottleneck_frequency[bottleneck] = \
-                self.bottleneck_frequency.get(bottleneck, 0) + 1
-
-        # Update averages
-        if self.total_ticks_processed > 0:
-            self.avg_tick_time_ms = (
-                self.total_execution_time_ms / self.total_ticks_processed
-            )
-
-        # Find most common bottleneck
-        if self.bottleneck_frequency:
-            self.most_common_bottleneck = max(
-                self.bottleneck_frequency.items(),
-                key=lambda x: x[1]
-            )[0]
 
 
 @dataclass

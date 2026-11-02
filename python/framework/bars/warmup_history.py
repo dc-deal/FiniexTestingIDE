@@ -198,15 +198,6 @@ class WarmupHistory:
         """
         return {timeframe: len(bars) for timeframe, bars in self._bars_by_timeframe.items()}
 
-    def get_reference_time(self) -> Optional[datetime]:
-        """
-        The instant the history was selected for (updated when the seam re-reads a timeframe).
-
-        Returns:
-            The instant, or None for an empty history
-        """
-        return self._reference_time
-
     def get_source(self) -> WarmupSource:
         """
         Where the history was read from.

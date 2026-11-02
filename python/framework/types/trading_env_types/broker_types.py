@@ -35,7 +35,6 @@ class MarginMode(Enum):
     """Account margin calculation mode"""
     RETAIL_NETTING = 'retail_netting'    # Single position per symbol
     RETAIL_HEDGING = 'retail_hedging'    # Multiple positions allowed
-    EXCHANGE = 'exchange'                # Exchange margin calculation
     NONE = 'none'                        # No margin (Spot trading, leverage=1)
 
 
@@ -64,7 +63,6 @@ class FeeStatus(Enum):
     """Fee payment status"""
     PENDING = 'pending'      # Fee calculated but not yet applied
     APPLIED = 'applied'      # Fee deducted from balance
-    DEFERRED = 'deferred'    # Fee will be applied later (e.g., swap on close)
 
 
 class BrokerType(Enum):

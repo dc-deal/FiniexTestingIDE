@@ -48,41 +48,6 @@ class MarketCalendar:
         return 0 <= weekday <= 4  # Monday=0, Friday=4
 
     @staticmethod
-    def spans_weekend(start: datetime, end: datetime) -> Tuple[bool, int]:
-        """
-        Check if time period spans a weekend and count weekend days.
-
-        Args:
-            start: Start timestamp
-            end: End timestamp
-
-        Returns:
-            Tuple of (spans_weekend: bool, weekend_days: int)
-        """
-        if start > end:
-            raise ValueError('Start time must be before end time')
-
-        days_between = (end - start).days
-
-        # Quick check: If less than a day apart, no weekend
-        if days_between == 0:
-            # Unless it crosses into weekend
-            if start.weekday() <= 4 and end.weekday() >= 5:
-                return True, 1
-            return False, 0
-
-        # Count weekend days in range
-        weekend_days = 0
-        current = start
-
-        while current <= end:
-            if current.weekday() >= 5:  # Saturday=5, Sunday=6
-                weekend_days += 1
-            current += timedelta(days=1)
-
-        return weekend_days > 0, weekend_days
-
-    @staticmethod
     def get_trading_days(start: datetime, end: datetime) -> int:
         """
         Count trading days (Mon-Fri) between two timestamps.

@@ -149,27 +149,6 @@ def scan(project_root: Path, subdirs: Sequence[str]) -> Dict[str, List[Tuple[str
     return found
 
 
-def shapes_in_several_files(
-    found: Dict[str, List[Tuple[str, int]]]
-) -> Dict[str, List[Tuple[str, int]]]:
-    """
-    Keep only the shapes that occur in more than one file.
-
-    A shape repeated inside one function is a loop or an unrolled step; the same shape in
-    two files is a formula living in two places, which is what §19 is about.
-
-    Args:
-        found: The full scan result
-
-    Returns:
-        The subset occurring in two or more distinct files
-    """
-    return {
-        shape: sites for shape, sites in found.items()
-        if len({site[0] for site in sites}) >= 2
-    }
-
-
 def single_source_leaks(
     found: Dict[str, List[Tuple[str, int]]]
 ) -> Dict[str, Tuple[List[str], List[str]]]:

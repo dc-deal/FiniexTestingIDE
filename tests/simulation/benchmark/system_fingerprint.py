@@ -74,6 +74,9 @@ class SystemFingerprint:
 
         return True, None
 
+    # Unreferenced until #525 wires it: the call beside `matches_reference`, and a reference
+    # that records the interpreter it was measured on. Finished work waiting for its consumer,
+    # not dead code. Recorded here so a dead-code sweep does not re-derive it.
     def interpreter_note(self, reference: Dict[str, Any]) -> Optional[str]:
         """
         Say so when the interpreter differs from the one the baseline was taken on.

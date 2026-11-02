@@ -342,25 +342,3 @@ def _get(row: Optional[RunResultRow], column: str) -> Any:
     if row is None:
         return None
     return getattr(row, column, None)
-
-
-# Kept for callers that want the grouping without the combining — the deployment view needs the
-# groups themselves to render one table per currency.
-def group_ledger_rows(
-    rows: List[RunResultRow],
-    by: Sequence[str],
-) -> Dict[tuple, List[RunResultRow]]:
-    """
-    The rows of each group, ungrouped by nothing else.
-
-    Args:
-        rows: The rows
-        by: The grouping key
-
-    Returns:
-        Group key → its rows, in input order
-    """
-    groups: Dict[tuple, List[RunResultRow]] = {}
-    for row in rows:
-        groups.setdefault(tuple(getattr(row, key, '') for key in by), []).append(row)
-    return groups

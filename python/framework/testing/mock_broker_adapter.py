@@ -133,8 +133,6 @@ class MockBrokerAdapter(AbstractAdapter):
 
     Provides real symbol specifications (BTCUSD from Kraken config)
     with configurable execution behavior. No network calls.
-
-    Supports additional symbols via add_symbol() for multi-symbol tests.
     """
 
     def __init__(
@@ -214,10 +212,6 @@ class MockBrokerAdapter(AbstractAdapter):
         # tests via set_broker_* — independent of the local shadow side.
         self._divergence_mode: MockDivergenceMode = MockDivergenceMode.NONE
         self._broker_orders: List[BrokerOrder] = []
-        # Broker CLOSED-order truth (#487). Seeded separately from the open ones, because
-        # the two answer opposite questions: an order is in exactly one of the buckets, and
-        # the whole point of the closed read is to see what the open one cannot.
-        self._closed_broker_orders: List[BrokerOrder] = []
         self._broker_positions: List[BrokerPosition] = []
         self._broker_balances: Dict[str, float] = {}
 
@@ -964,16 +958,6 @@ class MockBrokerAdapter(AbstractAdapter):
         """
         self._fee_in_status_answer = enabled
 
-    def add_symbol(self, symbol: str, spec: Dict[str, Any]) -> None:
-        """
-        Register an additional symbol specification at runtime.
-
-        Args:
-            symbol: Trading symbol (e.g., 'EURUSD')
-            spec: Symbol spec dict with keys matching _MOCK_BROKER_CONFIG symbols entries
-        """
-        self.broker_config['symbols'][symbol] = spec
-
     def get_maker_fee(self) -> float:
         """Get mock maker fee percentage."""
         return self._get_config_value('fee_structure.maker_fee', 0.16)
@@ -1035,15 +1019,6 @@ class MockBrokerAdapter(AbstractAdapter):
         """
         self._broker_orders = list(orders)
 
-    def set_closed_broker_orders(self, orders: List[BrokerOrder]) -> None:
-        """
-        Seed the broker-side closed orders returned by get_closed_broker_orders.
-
-        Args:
-            orders: Terminal-order truth for the next resolution read
-        """
-        self._closed_broker_orders = list(orders)
-
     def set_broker_positions(self, positions: List[BrokerPosition]) -> None:
         """
         Seed the broker-side positions returned by get_broker_positions.
@@ -1090,25 +1065,21 @@ class MockBrokerAdapter(AbstractAdapter):
         client_order_id: Optional[str] = None,
     ) -> List[BrokerOrder]:
         """
-        Return seeded broker closed orders, filtered the way a venue would filter them.
+        The mock venue keeps no history of closed orders, so it answers with none.
 
-        The range is NOT applied: a seeded BrokerOrder carries no venue timestamp, so
-        filtering on one would answer from a field the test never set. The key filter IS
-        applied, because that is the narrowing #487's resolution depends on.
+        The resolution that reads them (#487) is tested with an adapter double of its own, which
+        holds the closed orders each test needs: `tests/autotrader/live_executor/conftest.py`.
 
         Args:
-            start: Range start (accepted, unused — see above)
-            end: Range end (accepted, unused — see above)
-            client_order_id: When given, only orders carrying exactly this key
+            start: Range start (accepted, unused)
+            end: Range end (accepted, unused)
+            client_order_id: The key a venue narrows to (accepted, unused)
 
         Returns:
-            List of BrokerOrder (empty when nothing was seeded / nothing matches)
+            An empty list
         """
         self._raise_injected_fault('closedorders')
-        if client_order_id is None:
-            return list(self._closed_broker_orders)
-        return [o for o in self._closed_broker_orders
-                if o.client_order_id == client_order_id]
+        return []
 
     def get_broker_balances(self) -> Dict[str, float]:
         """

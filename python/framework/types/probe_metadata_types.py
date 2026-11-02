@@ -119,7 +119,3 @@ class ProbeMetadata:
     def get_snapshot_count(self) -> int:
         """Get number of captured bar snapshots."""
         return len(self.bar_snapshots)
-    
-    def get_expected_trade_count(self) -> int:
-        """Get number of expected trades in sequence."""
-        return len(self.expected_trades)

@@ -48,7 +48,7 @@ VALIDATION_CHECKS: Tuple[ValidationCheckInfo, ...] = (
         'The scenario configures no starting balances.'),
     ValidationCheckInfo(
         'balance_currency_mismatch', "No balance in the symbol's currencies",
-        "None of the configured balances is in the base or the quote currency of the symbol."),
+        'None of the configured balances is in the base or the quote currency of the symbol.'),
     ValidationCheckInfo(
         'account_currency_invalid', 'Account currency not in the symbol',
         'The configured account currency is neither the base nor the quote currency of the '

@@ -181,25 +181,6 @@ def get_currency_symbol(currency_code: str) -> str:
     return CURRENCY_SYMBOLS.get(currency_code.upper(), currency_code)
 
 
-def has_currency_symbol(currency_code: str) -> bool:
-    """
-    Check if currency has a dedicated symbol in mapping.
-
-    Args:
-        currency_code: ISO 4217 currency code
-
-    Returns:
-        True if currency has symbol, False otherwise
-
-    Examples:
-        >>> has_currency_symbol("USD")
-        True
-        >>> has_currency_symbol("ZWL")
-        False
-    """
-    return currency_code.upper() in CURRENCY_SYMBOLS
-
-
 def format_currency_simple(amount: float, currency_code: str, use_decimals: bool = True) -> str:
     """
     Simple currency formatter with symbol — for a MAGNITUDE.

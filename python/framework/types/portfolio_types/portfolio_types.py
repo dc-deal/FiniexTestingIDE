@@ -347,10 +347,6 @@ class Position:
         swap_fees = self.get_fees_by_type(FeeType.SWAP)
         return sum(fee.cost for fee in swap_fees)
 
-    def get_margin_used(self, contract_size: float, leverage: int) -> float:
-        """Calculate margin used by this position"""
-        return (self.lots * contract_size * self.entry_price) / leverage
-
     # ============================================
     # SL/TP Trigger Detection
     # ============================================

@@ -60,15 +60,6 @@ class RunConfigIndex(AbstractStoreIndex):
         super().__init__(Path(root) / RUN_CONFIG_INDEX_FILE)
         self._root = Path(root)
 
-    def get_root(self) -> Path:
-        """
-        The store's directory.
-
-        Returns:
-            The root this index describes
-        """
-        return self._root
-
     def frozen_files(self) -> List[Path]:
         """
         Every frozen copy below the root.

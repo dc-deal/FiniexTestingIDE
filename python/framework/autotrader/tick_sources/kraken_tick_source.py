@@ -116,8 +116,6 @@ class KrakenTickSource(AbstractTickSource):
         self._tick_queue = tick_queue
         self._ws_url = ws_url
         self._quote_channel_enabled = quote_channel_enabled
-        self._reconnect_initial_delay_s = reconnect_initial_delay_s
-        self._reconnect_max_delay_s = reconnect_max_delay_s
         # #473 — the shared ladder. Budget 0 keeps this connection's "never give up":
         # a dead tick socket is not a reason to end a session, it is a reason to keep
         # asking. Jitter is what it did not have.

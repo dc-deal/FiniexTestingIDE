@@ -24,7 +24,6 @@ from python.framework.workers.core.ma_trend_worker import MaTrendWorker
 from tests.framework.worker_tests.worker_computation_tests.conftest import make_bars, make_tick
 
 RISING_CLOSES_6 = [100, 101, 102, 103, 104, 105]
-FALLING_CLOSES_6 = [105, 104, 103, 102, 101, 100]
 FLAT_CLOSES_6 = [100.0] * 6
 
 # An EMA needs three periods of history plus one bar for the shifted slope window, so the

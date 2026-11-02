@@ -178,13 +178,13 @@ class DecisionTradingApi:
             supported_types = self._get_supported_order_types()
             executor_name = type(self._executor).__name__
             raise ValueError(
-                f"❌ Required order types cannot be carried on this pipeline!\n"
-                f"Required: {[t.value for t in required_types]}\n"
-                f"{self._executor.broker.adapter.get_capability_label()} does not offer: "
-                f"{[t.value for t in venue_lacks]}\n"
-                f"{executor_name} has not implemented: {[t.value for t in pipeline_lacks]}\n"
-                f"Usable here (venue AND pipeline): {[t.value for t in supported_types]}\n"
-                f"→ Change the Decision Logic, or a broker config / pipeline that carries them."
+                f'❌ Required order types cannot be carried on this pipeline!\n'
+                f'Required: {[t.value for t in required_types]}\n'
+                f'{self._executor.broker.adapter.get_capability_label()} does not offer: '
+                f'{[t.value for t in venue_lacks]}\n'
+                f'{executor_name} has not implemented: {[t.value for t in pipeline_lacks]}\n'
+                f'Usable here (venue AND pipeline): {[t.value for t in supported_types]}\n'
+                f'→ Change the Decision Logic, or a broker config / pipeline that carries them.'
             )
 
     def _validate_order_features(

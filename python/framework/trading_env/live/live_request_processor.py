@@ -863,15 +863,6 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
                 self.logger.info('Worker thread stopped cleanly')
         self._worker_thread = None
 
-    def is_worker_running(self) -> bool:
-        """
-        Whether the worker still takes jobs off the outbox.
-
-        Returns:
-            False once it was told to stop, whether or not its thread has ended
-        """
-        return self._worker_running
-
     def is_worker_call_lingering(self) -> bool:
         """
         Whether a stopped worker is still inside a call to the venue, because its stop timed out.

@@ -1,21 +1,8 @@
 from dataclasses import dataclass
 from enum import Enum
-from typing import Dict, FrozenSet, TypedDict, Union
+from typing import Dict, FrozenSet, Union
 
 from python.framework.types.parameter_types import OutputValue
-
-
-class IndicatorConfig(TypedDict, total=False):
-    """
-    Type-safe config for INDICATOR workers.
-
-    Required:
-        periods: Dict[timeframe, bars] - Warmup requirements per timeframe
-
-    Optional:
-        Any worker-specific parameters (deviation, threshold, etc.)
-    """
-    periods: Dict[str, int]  # REQUIRED - e.g. {"M5": 20, "M30": 50}
 
 
 class WorkerState(Enum):
@@ -24,7 +11,6 @@ class WorkerState(Enum):
     WORKING = 'working'
     READY = 'ready'
     ERROR = 'error'
-    ASYNC_WORKING = 'async_working'
 
 
 class WorkerType(Enum):

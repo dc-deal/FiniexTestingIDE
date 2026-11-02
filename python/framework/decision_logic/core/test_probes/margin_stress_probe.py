@@ -751,12 +751,3 @@ class MarginStressProbe(AbstractDecisionLogic):
         )
 
         return base_stats
-
-    # ============================================
-    # Public Access for Test Assertions
-    # ============================================
-
-    @property
-    def position_map(self) -> Dict[int, str]:
-        """Sequence index → order_id mapping."""
-        return self._position_map

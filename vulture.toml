@@ -60,10 +60,26 @@ ignore_decorators = [
 #   signum        the signal-handler signature
 #   exitstatus    the pytest_sessionfinish signature
 #   model_config  Pydantic reads it off the class body
+#   log_message, daemon_threads, protocol_version   http.server reads them off the handler
+#                 and server classes the signal transport tests build
+#   readable, seekable, tell, readinto   the io.RawIOBase file protocol
+#   side_effect   unittest.mock reads it when the mock is called
+#   _content      requests.Response keeps its body there; tests build a response by hand
+#   exc_type      the __exit__ signature
 ignore_names = [
     "pytest_*",
     "do_GET",
     "signum",
     "exitstatus",
     "model_config",
+    "log_message",
+    "daemon_threads",
+    "protocol_version",
+    "readable",
+    "seekable",
+    "tell",
+    "readinto",
+    "side_effect",
+    "_content",
+    "exc_type",
 ]

@@ -178,27 +178,6 @@ class SingleScenario:
             return float(config['modelled_spread_factor'])
         return TradeSimulatorDefaults().modelled_spread_factor
 
-    def to_config_string_for_display(self) -> str:
-        """
-        Display string for scenario configuration.
-
-        Returns:
-            Human-readable config summary
-        """
-        sentiment_line = (
-            f'  Sentiment Source: {self.data_sentiment_type}\n'
-            if self.data_sentiment_type else ''
-        )
-        return (
-            f"Scenario: {self.name}\n"
-            f"  Data broker: {self.data_broker_type}\n"
-            f"  Symbol: {self.symbol}\n"
-            f"{sentiment_line}"
-            f"  Period: {self.start_date} → {self.end_date}\n"
-            f"  Max Ticks: {self.max_ticks or 'unlimited'}\n"
-            f"  Enabled: {self.enabled}"
-        )
-
     def is_valid(self) -> bool:
         """
         Check if scenario passed validation.

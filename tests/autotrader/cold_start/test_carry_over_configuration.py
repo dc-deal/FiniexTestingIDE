@@ -236,7 +236,7 @@ class TestTheComparison:
         # Written the way a profile writes it
         assert 'not set → "fixed"' in text
         assert 'an update added or dropped it' in text
-        assert "cannot be restored in a file" in text
+        assert 'cannot be restored in a file' in text
 
 
 class TestWhereAValueComesFrom:
