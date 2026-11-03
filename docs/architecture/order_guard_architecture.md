@@ -2,11 +2,26 @@
 
 ## Overview
 
-The OrderGuard is a spam protection layer inside `DecisionTradingApi` that prevents rejection storms
-**before** orders reach the executor. It is the universal gateway for all decision logics (CORE and
+The OrderGuard is the pre-trade guard inside `DecisionTradingApi`: it stops an order **before** it
+reaches the executor. It is the universal gateway for all decision logics (CORE and
 user-authored), covering both backtesting and every AutoTrader session.
 
-Its single responsibility is the **Rejection Cooldown** — blocking a direction after N consecutive broker rejections for a configurable period, preventing rejection spam (e.g. repeated INSUFFICIENT_MARGIN attempts).
+It denies an order when one of its rules holds, checked in this order:
+
+- **An undeclared level** (`ORDER_FEATURE_NOT_DECLARED`) — the order carries a stop-loss or
+  take-profit level its decision logic did not declare (`refuse_undeclared_features()`).
+- **Stale market data** (`STALE_MARKET_DATA`) — no new entry while the session's tick stream is
+  stale. Only an AutoTrader session can be stale; a backtest's data is always fresh.
+- **An unaccounted order** (`UNACCOUNTED_ORDER`) — no new entry while an order sent earlier was
+  never named open or closed by the venue after its resolution ran out. A latch, not a cooldown:
+  it ends when the order is accounted for.
+- **Rejection Cooldown** (`REJECTION_COOLDOWN`) — blocking a direction after N consecutive broker
+  rejections for a configurable period, preventing rejection spam (e.g. repeated
+  INSUFFICIENT_MARGIN attempts). It is the one rule whose state the guard keeps itself, and most
+  of this document describes it.
+
+The guard is reached from `send_order()` only: closing or protecting an open position never passes
+through it.
 
 The OrderGuard lives in the intermediate layer between DecisionLogic and executor. It does not
 enforce business rules, does not know about market types, and does not know about balances.
@@ -34,19 +49,25 @@ DecisionLogic
 DecisionTradingApi
     │  resolves side → direction via executor
     │
+    ├── OrderGuard.refuse_undeclared_features()
+    │   Only for an order carrying a stop-loss or take-profit
+    │   level its logic did not declare → DENIED
+    │   (ORDER_FEATURE_NOT_DECLARED)
+    │
     ├── OrderGuard.validate()          ← PRE-VALIDATION (sync)
-    │   Returns REJECTED if cooldown active
-    │   (REJECTION_COOLDOWN)
+    │   Returns DENIED on stale market data, an unaccounted
+    │   order or an active cooldown (STALE_MARKET_DATA,
+    │   UNACCOUNTED_ORDER, REJECTION_COOLDOWN)
     │
     ├── executor.open_order()          ← ORDER SUBMISSION
-    │   Returns PENDING (async) or REJECTED (sync)
+    │   Returns PENDING (async) or DENIED (sync)
     │
     └── _on_order_outcome() callback   ← ASYNC OUTCOME
         Receives fill/rejection from executor
         Updates guard state (cooldown counter)
 ```
 
-The guard sits at the top of the call chain. Blocked orders **never reach the executor** — they produce an `OrderResult(REJECTED)` with a `guard_` prefixed order ID, recorded in the executor's order history via `record_guard_rejection()`.
+The guard sits at the top of the call chain. Blocked orders **never reach the executor** — they produce an `OrderResult(DENIED)` with a `guard_` prefixed order ID, recorded in the executor's order history via `record_guard_rejection()`.
 
 ---
 
@@ -91,7 +112,8 @@ register today:
 | `decision_event_dispatcher.py` | strategy-facing order events |
 | `live/drift_auditor.py` | read-only local-vs-broker telemetry (#327) |
 
-The listener fires at every terminal outcome point:
+The listener fires where an order reaches a terminal state after the PENDING return. A cancel does
+not reach it, and neither does a denial, which `send_order()` returns directly.
 
 | Location | Outcome | Callback |
 |----------|---------|----------|
@@ -100,8 +122,9 @@ The listener fires at every terminal outcome point:
 | `AbstractTradeExecutor._fill_open_order()` | INSUFFICIENT_FUNDS (SHORT sell) | `_notify_outcome(direction, rejection)` |
 | `AbstractTradeExecutor._fill_open_order()` | Successful fill | `_notify_outcome(direction, result)` |
 | `LiveTradeExecutor._handle_broker_response()` | Broker REJECTED | `_notify_outcome(direction, rejection)` |
-| `LiveTradeExecutor._handle_timeout()` | Order timeout | `_notify_outcome(direction, rejection)` |
-| `LiveTradeExecutor._process_active_orders()` | Terminal (cancelled/expired) | `_notify_outcome(direction, rejection)` |
+| `LiveTradeExecutor._record_async_rejection()` | Broker REJECTED in its answer to a submission, or UNDELIVERED (the venue never received the order) | `_notify_outcome(direction, rejection)` |
+| `LiveTradeExecutor._book_order_given_up()` | UNACCOUNTED (given up: fill timeout, resolution ceiling or a session's stop) | `_notify_outcome(direction, unaccounted)` |
+| `LiveTradeExecutor._handle_query_response()` | Broker REJECTED after it had accepted the order | `_notify_outcome(direction, rejection)` |
 
 ### Latency Window
 
@@ -116,14 +139,16 @@ once the rejection confirmation arrives.
 
 Guard state (`record_rejection` / `record_success`) is updated through two paths:
 
-1. **Synchronous** — direct rejections from `open_order()` that return immediately (lot validation errors, adapter exceptions, immediate broker rejection on the live execution stack). Handled in `send_order()` before returning to the decision logic.
+1. **Synchronous** — refusals `open_order()` returns immediately (lot validation errors, funds at submission). The executor's own checks deny them; nothing the venue says comes back synchronously. Handled in `send_order()` before returning to the decision logic.
 
-2. **Asynchronous** — outcomes after PENDING return (margin check at fill time, broker polling results). Flow through `_notify_outcome()` → `_on_order_outcome()` callback.
+2. **Asynchronous** — outcomes after PENDING return (margin check at fill time, the venue's answer to a submission, broker polling results). Flow through `_notify_outcome()` → `_on_order_outcome()` callback.
 
-Only **broker/account rejections** feed the cooldown counter:
-- `INSUFFICIENT_MARGIN`, `INSUFFICIENT_FUNDS`, `BROKER_ERROR`, `MARKET_CLOSED`
+Only these feed the cooldown counter:
+- **Broker/account reasons:** `INSUFFICIENT_MARGIN`, `INSUFFICIENT_FUNDS`, `BROKER_ERROR`, `MARKET_CLOSED`
+- **The endings `UNDELIVERED` and `UNACCOUNTED`**, whatever their reason: the venue could not be
+  relied on, and sending more orders is what helps least
 
-Local validation rejections (`INVALID_LOT_SIZE`, `INVALID_PRICE`, `SYMBOL_NOT_TRADEABLE`) are decision logic bugs and do **not** arm the cooldown.
+Local validation refusals (`INVALID_LOT_SIZE`, `INVALID_PRICE`, `SYMBOL_NOT_TRADEABLE`) are decision logic bugs and do **not** arm the cooldown.
 
 ---
 
@@ -157,19 +182,26 @@ record_success(LONG)    → counter[LONG] = 0, cooldown_until[LONG] cleared
 The OrderGuard is configured through `OrderGuardDefaults`:
 
 ```python
-class OrderGuardDefaults(BaseModel):
+class OrderGuardDefaults(StrictConfigModel):
     cooldown_seconds: float = 60.0           # Cooldown duration after threshold
     max_consecutive_rejections: int = 2       # Rejections before cooldown arms
+    block_stale_market_data: bool = True      # Deny new entries while market data is stale
 ```
+
+`block_stale_market_data` is the switch of the stale-market-data rule. It has no effect in a
+backtest, where market data is always fresh. This block has no setting for the undeclared-level and
+unaccounted-order rules.
 
 ### AutoTrader Pipeline
 
-Configured in profile JSON (`configs/autotrader_profiles/*.json`):
+Configured in profile JSON (`configs/autotrader_profiles/.../*.json`), over the defaults in
+`app_config.autotrader.order_guard`:
 
 ```json
 "order_guard": {
     "cooldown_seconds": 60.0,
-    "max_consecutive_rejections": 2
+    "max_consecutive_rejections": 2,
+    "block_stale_market_data": true
 }
 ```
 
@@ -190,7 +222,8 @@ Configured in scenario set JSON (`configs/scenario_sets/backtesting/*.json`):
 
 Supports 2-level cascade (`global` → per-`scenario`), same pattern as `stress_test_config`. Loaded by `scenario_config_loader.py` → `ProcessScenarioConfig.order_guard_config`.
 
-If omitted, `OrderGuardDefaults()` defaults apply in both pipelines.
+If omitted, an AutoTrader session uses `app_config.autotrader.order_guard`, which mirrors the model's
+defaults, and a backtest uses `OrderGuardDefaults()` itself.
 
 > **Note on `cooldown_seconds` in backtests:** the value is measured in **simulated tick time**, not
 > wall-clock. A backtest that processes 10 hours of data in 3 seconds of CPU time will see 10 hours
@@ -199,14 +232,14 @@ If omitted, `OrderGuardDefaults()` defaults apply in both pipelines.
 
 ---
 
-## Guard Rejections in Reporting
+## Guard Denials in Reporting
 
-Guard rejections are recorded in the executor's `_order_history` via `record_guard_rejection()`. They:
+Guard denials are recorded in the executor's `_order_history` via `record_guard_rejection()`. They:
 
-- Increment `_orders_rejected` (same counter as broker rejections)
-- Appear in `execution_stats.orders_rejected`
+- Are counted in `execution_stats.orders_denied`, beside the executor's own denials, never as broker
+  rejections
 - Carry a `guard_` prefixed order ID for identification in logs
-- Use `RejectionReason.REJECTION_COOLDOWN`
+- Carry the `RejectionReason` of the rule that denied them (see [Overview](#overview))
 
 ---
 
@@ -214,11 +247,11 @@ Guard rejections are recorded in the executor's `_order_history` via `record_gua
 
 | File | Role |
 |------|------|
-| `python/framework/trading_env/order_guard.py` | OrderGuard class — cooldown validation + state tracking |
+| `python/framework/trading_env/order_guard.py` | OrderGuard class — its rules (`validate()`, `refuse_undeclared_features()`) + the cooldown's state tracking |
 | `python/framework/trading_env/decision_trading_api.py` | Integration point — guard in `send_order()`, async callback, side→direction resolution |
 | `python/framework/trading_env/abstract_trade_executor.py` | Listener mechanism (`add_order_outcome_listener`, `_notify_outcome`), `resolve_order_side()` |
 | `python/framework/types/config_types/autotrader_defaults_config_types.py` | `OrderGuardDefaults` Pydantic model — shared by both pipelines |
-| `python/framework/types/trading_env_types/order_types.py` | `OrderSide`, `OrderDirection`, `REJECTION_COOLDOWN` enum value |
+| `python/framework/types/trading_env_types/order_types.py` | `OrderSide`, `OrderDirection`, `RejectionReason` (the reason each rule denies with) |
 
 ---
 
@@ -257,6 +290,9 @@ The project has two runtime protection mechanisms that operate independently at 
 | **Pipeline** | Both (backtesting + AutoTrader) | AutoTrader only |
 | **Rationale** | Prevents retry spam after rejection | Prevents account blowup |
 | **Config** | `order_guard` in profile / scenario JSON | `safety` in profile JSON |
+
+The guard step in the diagram and the OrderGuard column describe the guard's rejection cooldown; its
+other rules are listed under [Overview](#overview).
 
 The layers are **fully independent** — neither knows about the other, neither can bypass the other.
 When Safety blocks, the decision is overridden to FLAT *before* `send_order()` is called, so the

@@ -497,7 +497,7 @@ class TradeSimulator(AbstractTradeExecutor):
             request: OpenOrderRequest with all order parameters
 
         Returns:
-            OrderResult with PENDING status (or rejection)
+            OrderResult with PENDING status, or DENIED when a check here refused it
         """
         request = self._normalize_order_request(request)
 

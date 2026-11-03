@@ -1022,7 +1022,7 @@ class AbstractTradeExecutor(ABC):
             request: OpenOrderRequest with all order parameters
 
         Returns:
-            OrderResult — TradeSimulator: PENDING, LiveTradeExecutor: PENDING/EXECUTED
+            OrderResult — PENDING, or DENIED when a check before submission refused it
         """
         pass
 

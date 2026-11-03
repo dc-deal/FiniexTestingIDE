@@ -606,7 +606,7 @@ class AutotraderTickLoop:
                 # series was otherwise written only when a position CLOSED, which measures
                 # the largest decline across closed trades rather than the largest decline
                 # of the equity curve. Two different measures; only the second is what the
-                # word means. (#366 will add the sim's own per-tick pass — it rides this
+                # word means. (#515 will add the stop-out pass — it rides this
                 # same seam rather than opening a second one.)
                 self._executor.portfolio.sample_equity(safety_value)
 

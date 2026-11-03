@@ -342,7 +342,7 @@ def execute_tick_loop(
             # price, spot multiplies a balance. This raises the sim's throughput floor, so
             # the BENCHMARK baseline and its certificate are re-registered BY HAND with this
             # as the stated reason (§42): a deliberate regression must not look like one
-            # that crept in. #366's stop-out pass rides this sample rather than opening a
+            # that crept in. #515's stop-out pass rides this sample rather than opening a
             # second one.
             if profiling_enabled: t14 = time.perf_counter()
             # The booking period's VALUATION half rides this sample rather than opening a

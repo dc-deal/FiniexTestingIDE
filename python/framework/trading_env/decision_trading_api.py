@@ -110,7 +110,7 @@ class DecisionTradingApi:
         Args:
             executor: AbstractTradeExecutor instance (TradeSimulator or LiveTradeExecutor)
             required_order_types: Order types that Decision Logic will use
-            order_guard_config: Spam-protection guard configuration (defaults if None)
+            order_guard_config: Pre-trade guard configuration (defaults if None)
             required_order_features: Order features that Decision Logic declared (#625); a level
                 outside them is refused at order time
             features_beyond_venue: Features a backtest declared as a recorded exception, which

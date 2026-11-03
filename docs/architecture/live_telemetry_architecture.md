@@ -1,4 +1,4 @@
-# Live Telemetry Stream — Console Dashboards & Viewer Push (Groundwork)
+# Live Telemetry Stream — Console Dashboards
 
 The **live telemetry stream** is the throttled, lossy per-run feed that drives the live console
 dashboards *while a run is in flight*. It is the deliberate counterpart of the unified **report
@@ -7,10 +7,10 @@ pipeline** — and is kept strictly separate from it (see [Boundary](#boundary-v
 Both execution pipelines emit this feed through one shared model, derived off the hot loop:
 
 ```
-CAPTURE (per pipeline, throttled ~300ms)        MODEL (shared core)            PRESENT (surfaces)
-  sim subprocess ─ process_live_export ──┐                                     ┌─► console (rich.live)   ← today
-                   builds LiveScenarioStats ├─► LiveCoreSnapshot ───────────────┼─► JSONL replay (#379)   ← groundwork
-  AutoTrader     ─ AutotraderDisplayExporter┘   + per-domain extension          └─► socket push (#380/#331) ← groundwork
+CAPTURE (per pipeline, throttled ~300ms)        MODEL (shared core)            PRESENT (surface)
+  sim subprocess ─ process_live_export ──┐
+                   builds LiveScenarioStats ├─► LiveCoreSnapshot ─────────────────► console (rich.live)
+  AutoTrader     ─ AutotraderDisplayExporter┘   + per-domain extension
                    builds AutoTraderDisplayStats
 ```
 
@@ -115,24 +115,26 @@ queue is the one failure they skip without a word. Any other failure to hand a f
 reported to the global log once and never raised; a scenario whose frames cannot be sent stops
 sending them and runs on.
 
-## Viewer push — preview (groundwork only)
+## Frames as JSON — no push to the viewer
 
-The frames are JSON-serializable so the FiniexViewer live windows (#379 Algo State / Session /
-Portfolio / Trade History / Orders) can render the **same** model. The encoder is a thin
-PRESENT-stage step:
+The frames are JSON-serializable. The encoder is a thin PRESENT-stage step:
 
 ```python
 # framework/utils/live_frame_serialization_utils.py
 frame_to_json(frame)  # = serialize_value(asdict(frame))  — enums→value, datetime→isoformat
 ```
 
-The frames stay `@dataclass` runtime domain types; JSON is a render concern. **The push
-transport itself is not built here** — it is owned by #380 (live streaming, transport designed
-once with #331's WebSocket) and #379 (the per-run JSONL replay artifact). The hard part is the
-**cross-process bridge**: the sim feed already crosses a process boundary (subprocess → batch
-process), and the read-only API server ([api_server_architecture.md](api_server_architecture.md))
-is a separate uvicorn process — so exposing the live feed needs a bridge (in-process host, a light
-message bus, or a JSONL tail that doubles as #379's replay artifact). That design lives in #380.
+The frames stay `@dataclass` runtime domain types; JSON is a render concern, and no surface
+consumes it today. **No push transport is built or planned for this stream.** Since #380 was
+re-cut on 2026-10-11, a viewer that follows a running session reads the run's record as it grows,
+not this feed: the session writes its streams into its own run directory and flushes each record
+(#476), and the read-only API server
+([api_server_architecture.md](api_server_architecture.md)), a separate uvicorn process, reads the
+same files, so no bridge between processes is needed. The viewer's side, still to be built, will
+poll the recorded-streams timeline and read what is new from its window (#580), and take the
+current state from the latest-frame route (#611), both described under
+[The recorded state frame](#the-recorded-state-frame--not-this-stream). Push comes only if a
+measurement shows polling too slow, and then as SSE rather than a WebSocket (#380).
 
 ## Boundary vs the report pipeline
 
@@ -144,7 +146,7 @@ stream is the fast, lossy live feed. The two never share code:
 |---|---|---|
 | When | end of run (+ snapshot #392) | during the run, throttled |
 | Fidelity | coherent, derived once | lossy, latest-wins |
-| Transport | persisted JSON/CSV → REST | mp.Queue / thread queue → console (push later) |
+| Transport | persisted JSON/CSV → REST | mp.Queue / thread queue → console |
 | Model | `report_types.py` (Pydantic) | `LiveCoreSnapshot` + frames (`@dataclass`) |
 
 ## The recorded state frame — not this stream
