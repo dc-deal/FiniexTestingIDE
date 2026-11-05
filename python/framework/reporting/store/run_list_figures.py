@@ -17,7 +17,7 @@ one by rename, so both move the stamp.
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from python.framework.reporting.store.ledger_aggregation import aggregate_ledger_rows
+from python.framework.reporting.aggregation.aggregation_fold import aggregate_ledger_rows
 from python.framework.reporting.store.run_ledger_index import RunLedgerIndex
 from python.framework.reporting.store.run_results_ledger import LEDGER_COLUMNS, RunResultsLedger
 from python.framework.types.api.report_types import (

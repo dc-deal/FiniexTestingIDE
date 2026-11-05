@@ -13,16 +13,20 @@ a streak that cannot be recovered at all.
 
 from typing import List
 
-from python.framework.reporting.store.ledger_aggregation import (
+from python.framework.reporting.aggregation.aggregation_fold import (
+    DERIVATION_OF,
+    FOLD_OF_REDUCTION,
     aggregate_ledger_rows,
     identity_conflicts,
 )
-from python.framework.reporting.store.run_results_ledger import (
+from python.framework.reporting.aggregation.figure_catalog import (
     COLUMN_COMPANION_OF,
     COLUMN_REDUCTION,
+    COLUMN_WEIGHTED_BY,
+    LEDGER_FIGURES,
 )
+from python.framework.types.aggregation_types import FigureKind, Reduction
 from python.framework.types.api.report_types import RunResultRow
-from python.framework.types.run_results_types import Reduction
 
 _RUN = '20260921_000000_a1b2c3d4'
 
@@ -296,25 +300,44 @@ class TestTheDeepestDeclineSurvivesTheFold:
 
 class TestEveryDeclaredReductionCanBeApplied:
     """
-    The map is held to LEDGER_COLUMNS elsewhere — a column cannot exist without a declaration.
-    Nothing held the ENUM to the code that applies it, and the failure has no symptom: a
-    member with no branch falls through to `return None`, so the column quietly empties. Found
-    while splitting MAX into MAX and MAX_ABS (#539 audit), where exactly that was one edit away.
+    The catalog is held to LEDGER_COLUMNS elsewhere — a column cannot exist without a declaration.
+    These hold the ENUM to the code that applies it, and the catalog to the derivations. The
+    failure they prevent has no symptom: when the fold was a chain of branches, a member with no
+    branch fell through to `return None`, so the column quietly emptied. Found while splitting MAX
+    into MAX and MAX_ABS (#539 audit), where exactly that was one edit away.
     """
 
-    # Reduced by a different mechanism or deliberately not combinable — see the enum's own
-    # comments. Named here rather than skipped silently, so adding a member is a decision.
-    _NOT_COMBINED = {Reduction.DERIVE, Reduction.COMPANION}
+    def test_every_member_that_folds_on_its_own_has_a_fold_and_no_other(self):
+        on_its_own = {member for member in Reduction if member.folds_on_its_own()}
+        assert set(FOLD_OF_REDUCTION) == on_its_own
 
-    def test_no_member_falls_through_to_none(self):
-        rows = [_period(1, 'd1', net_pnl=3.0), _period(2, 'd2', net_pnl=4.0)]
-        for member in Reduction:
-            if member in self._NOT_COMBINED:
-                continue
-            column = next((c for c, r in COLUMN_REDUCTION.items() if r is member), None)
-            assert column is not None, f'{member} is declared by no column'
-            combined = aggregate_ledger_rows(rows, by=('run_id',))[0]
-            assert hasattr(combined, column)
+    def test_every_member_is_declared_by_some_figure(self):
+        # A member no figure declares is a branch nothing reaches.
+        declared = {declaration.reduction for declaration in LEDGER_FIGURES.values()}
+        assert declared == set(Reduction)
+
+    def test_every_derived_figure_has_exactly_one_derivation(self):
+        derived = {column for column, reduction in COLUMN_REDUCTION.items()
+                   if reduction is Reduction.DERIVE}
+        assert set(COLUMN_WEIGHTED_BY) | set(DERIVATION_OF) == derived
+        assert not set(COLUMN_WEIGHTED_BY) & set(DERIVATION_OF)
+
+    def test_a_mean_is_weighted_by_a_count_that_adds_up(self):
+        # A weight is the population the mean was taken over, and populations add up over rows.
+        for column, weight in COLUMN_WEIGHTED_BY.items():
+            assert COLUMN_REDUCTION[weight] is Reduction.SUM, (column, weight)
+            assert COLUMN_REDUCTION[weight].figure_kind() is FigureKind.FLOW, (column, weight)
+
+    def test_a_companion_and_only_a_companion_names_its_leader(self):
+        companions = {column for column, reduction in COLUMN_REDUCTION.items()
+                      if reduction is Reduction.COMPANION}
+        assert set(COLUMN_COMPANION_OF) == companions
+
+    def test_every_leader_selects_one_row(self):
+        # A companion is taken from the row whose leader won — a computed leader was won by no row.
+        for companion, leader in COLUMN_COMPANION_OF.items():
+            assert COLUMN_REDUCTION[leader].selects(), (companion, leader)
+            assert COLUMN_REDUCTION[leader].folds_on_its_own(), (companion, leader)
 
     def test_the_two_maxima_do_different_things(self):
         # The one property that makes the split worth having, asserted directly.

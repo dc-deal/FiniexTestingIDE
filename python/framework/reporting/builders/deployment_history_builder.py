@@ -22,11 +22,11 @@ collapsed into a verdict (#527 owns the richer surface; the console is the floor
 from datetime import datetime, timezone
 from typing import Dict, List, Optional
 
+from python.framework.reporting.aggregation.aggregation_fold import aggregate_ledger_rows
 from python.framework.reporting.builders.code_stand_comparison import (
     code_changes_between,
     stands_agree,
 )
-from python.framework.reporting.store.ledger_aggregation import aggregate_ledger_rows
 from python.framework.reporting.store.run_completion_audit import closes_its_run
 from python.framework.types.api.report_types import (
     SESSION_KEY,

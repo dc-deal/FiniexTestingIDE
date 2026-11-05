@@ -12,11 +12,11 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Dict, List, Optional, get_args
 
-from python.framework.reporting.store.ledger_aggregation import aggregate_ledger_rows
-from python.framework.reporting.store.run_results_ledger import COLUMN_NULL_MEANING
+from python.framework.reporting.aggregation.aggregation_fold import aggregate_ledger_rows
+from python.framework.reporting.aggregation.figure_catalog import COLUMN_NULL_MEANING
+from python.framework.types.aggregation_types import NullMeaning
 from python.framework.types.api.report_types import RunResultRow, SweepSummary
 from python.framework.types.data_origin_types import joined_distinct
-from python.framework.types.run_results_types import NullMeaning
 
 # What may be empty on a row and still order a ranking: a figure that was only not MEASURED for
 # some runs — they are left out, and `unranked_count` says how many. A figure that can be

@@ -30,12 +30,9 @@ from python.framework.persistence.cold_start_state_store import (
     ColdStartStateStore,
     carried_level_refusal,
 )
+from python.framework.reporting.aggregation.figure_catalog import COLUMN_REDUCTION
 from python.framework.reporting.store.run_provenance_builder import consumption_record
-from python.framework.reporting.store.run_results_ledger import (
-    COLUMN_REDUCTION,
-    LEDGER_COLUMNS,
-    RunResultsLedger,
-)
+from python.framework.reporting.store.run_results_ledger import LEDGER_COLUMNS, RunResultsLedger
 from python.framework.testing.mock_broker_adapter import MockBrokerAdapter, MockExecutionMode
 from python.framework.testing.mock_order_execution import MockOrderExecution
 from python.framework.trading_env.adapters.kraken_adapter import KrakenAdapter
@@ -44,11 +41,11 @@ from python.framework.trading_env.broker_config import BrokerConfig
 from python.framework.trading_env.decision_trading_api import DecisionTradingApi
 from python.framework.trading_env.live.live_trade_executor import LiveTradeExecutor
 from python.framework.trading_env.simulation.trade_simulator import TradeSimulator
+from python.framework.types.aggregation_types import Reduction
 from python.framework.types.api.report_types import RunHeader
 from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.persistence_types import CarryOverLoadOutcome
 from python.framework.types.portfolio_types.portfolio_trade_record_types import CloseReason
-from python.framework.types.run_results_types import Reduction
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
 from python.framework.types.trading_env_types.broker_types import BrokerType
 from python.framework.types.trading_env_types.order_types import (
