@@ -38,6 +38,7 @@ def build_live_executor(
     venue_read_settle_seconds: float = 5.0,
     shutdown_config: Optional[ShutdownDefaults] = None,
     socket_timeout_s: Optional[float] = None,
+    portfolio_cache: bool = True,
 ) -> LiveTradeExecutor:
     """
     Create a fully configured LiveTradeExecutor.
@@ -69,6 +70,9 @@ def build_live_executor(
             AutoTraderConfig.shutdown.
         socket_timeout_s: How long the adapter's socket waits for one call. Sourced from
             BrokerTransportConfig.request_timeout_s; None leaves the ladder's own figure
+        portfolio_cache: Whether the portfolio marks open positions lazily; False keeps every
+            one current at every event, the reference a verification run compares (#653).
+            Sourced from the profile's execution.verification block
 
     Returns:
         LiveTradeExecutor ready for an AutoTrader session
@@ -114,4 +118,5 @@ def build_live_executor(
         session_key=session_key,
         order_history_max=order_history_max,
         trade_history_max=trade_history_max,
+        portfolio_cache=portfolio_cache,
     )

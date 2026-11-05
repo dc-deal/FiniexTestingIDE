@@ -9,6 +9,7 @@
 | [Quickstart Guide](user_guides/quickstart_guide.md) | Create your first strategy (Worker + Decision Logic + Config) |
 | [CLI Tools Guide](cli_tools_guide.md) | All CLI commands with examples and workflow overview |
 | [Worker Naming](user_guides/worker_naming_doc.md) | Worker reference system, path-based loading, requirements contract |
+| [Algo Masks](user_guides/algo_masks.md) | What an algo receives instead of an engine object — the read-only masks, their fields and where each value comes from (#653) |
 | [Algo State Persistence](user_guides/algo_state_persistence_guide.md) | Restart-safe algo memory — snapshot/restore hooks, staleness, JSON contract |
 | [Reading the Results Ledger](user_guides/results_ledger_guide.md) | What one ledger row is, which of its numbers add up, and what changes between one account and several |
 | [Robustness Validation](user_guides/robustness_validation_guide.md) | Multi-window + In-Sample/Out-of-Sample overfit guard — roles, WFE, distribution, trust gate (#367) |
@@ -239,6 +240,7 @@ Each test suite has its own documentation in [`tests/`](tests/).
 | [Algo Clock Convention](tests/framework/algo_clock_tests.md) | Wall-clock ban lint (decision logic/workers, CI plane) |
 | [Algo Clock Validator](tests/framework/algo_clock_validator_tests.md) | Wall-clock ban, runtime startup validator — AST scan of loaded algos (CORE + user) + batch pre-flight |
 | [Discovery Cache Validity](tests/framework/discovery_validity_tests.md) | The config-fingerprint comparison across all three cache families, and the single-open metadata reader behind it |
+| [Cache Transparency Tests](tests/framework/cache_transparency_tests.md) | Nothing an algo sees depends on the portfolio's lazy marking — the observer probe with the cache on and off, a session read at its tick, the read-only algo mask (#653) |
 | [Divergence Report Tests](tests/framework/divergence_report_tests.md) | A live session against a backtest of exactly its window — the backtest built from the session's record: the rendered profile with every block declared, the frozen broker document, the recorded warmup (#512) |
 | [Composite Key Tests](tests/framework/composite_tests.md) | Which accounts may add up to one result — the composite definition and its floor, the key projected from the rendered configuration, what joins and what splits, the excluded member, the changed values, every value of every shipped document classified (#615) |
 | [Rendered Configuration Tests](tests/framework/rendered_config_tests.md) | What a run records it ran with, held to what it actually ran with — every shipped scenario set's document against its subprocess configuration, the portable strategy key, the header naming it, a sweep combination's own, never fatal, one strategy section in both pipelines |

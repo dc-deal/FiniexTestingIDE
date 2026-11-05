@@ -12,6 +12,7 @@ from python.framework.types.config_types.performance_tracking_config_types impor
     PerformanceTrackingConfig,
 )
 from python.framework.types.config_types.strict_config_model import StrictConfigModel
+from python.framework.types.config_types.verification_config_types import VerificationConfig
 
 
 class DefaultScenarioExecutionConfig(BaseModel):
@@ -27,6 +28,8 @@ class DefaultScenarioExecutionConfig(BaseModel):
     # The scenario's state frames (#579 part B item 3) — off unless the scenario asks; a backtest
     # of a session's window turns them on with the session's cadence (#512)
     state_frames: StateFramesDefaults = StateFramesDefaults(enabled=False)
+    # Switches that change no result by design; turned off only to compare (#653)
+    verification: VerificationConfig = VerificationConfig()
 
 
 class BacktestingExecutionConfig(StrictConfigModel):

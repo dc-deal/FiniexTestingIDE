@@ -34,9 +34,11 @@ from datetime import datetime, timedelta
 from typing import Any, Collection, Dict, FrozenSet, List, Optional, Sequence, Union
 
 from python.framework.exceptions.order_feature_errors import OrderFeatureRefusedError
+from python.framework.trading_env.algo_masks.algo_position import AlgoPosition
 from python.framework.types.config_types.autotrader_defaults_config_types import OrderGuardDefaults
 from python.framework.types.decision_event_types import SessionEndSeverity
 from python.framework.types.trading_env_types.broker_types import SymbolSpecification
+from python.framework.types.trading_env_types.decision_api_method_types import DecisionApiMethodKind
 from python.framework.types.trading_env_types.latency_simulator_types import PendingOrder
 from python.framework.types.trading_env_types.market_data_status_types import MarketDataStatus
 from python.framework.types.trading_env_types.order_types import (
@@ -62,7 +64,7 @@ from python.framework.validators.order_feature_validator import (
 
 from .abstract_trade_executor import AbstractTradeExecutor
 from .order_guard import OrderGuard
-from .portfolio_manager import UNSET, AccountInfo, Position, _UnsetType
+from .portfolio_manager import UNSET, AccountInfo, _UnsetType
 
 # Rejection reasons that indicate broker/account-side problems worth
 # cooling down on. Local validation rejections (lot size, unsupported type)
@@ -79,6 +81,46 @@ _COOLDOWN_REJECTION_REASONS = frozenset({
 # orders is what helps least. They used to arrive as rejections with the reason
 # `broker_unreachable` — the reason this set carried for the same purpose.
 _COOLDOWN_STATUSES = frozenset({OrderStatus.UNDELIVERED, OrderStatus.UNACCOUNTED})
+
+# What every public method of this API does (#653). A decision sees the run only through the READS
+# methods and the events it subscribes to, so those are where a cache could reach it: the observer
+# probe reads every one of them on every pass, and a test holds this map to the class in both
+# directions, so a new method cannot arrive without saying which it is.
+DECISION_API_METHOD_KINDS: Dict[str, DecisionApiMethodKind] = {
+    'send_order': DecisionApiMethodKind.ACTS,
+    'get_account_info': DecisionApiMethodKind.READS,
+    'get_symbol_spec': DecisionApiMethodKind.READS,
+    'is_spot_mode': DecisionApiMethodKind.READS,
+    'get_asset_balance': DecisionApiMethodKind.READS,
+    'get_free_entry_capital': DecisionApiMethodKind.READS,
+    'get_cost_breakdown': DecisionApiMethodKind.READS,
+    'get_open_positions': DecisionApiMethodKind.READS,
+    'get_position': DecisionApiMethodKind.READS,
+    'has_pending_orders': DecisionApiMethodKind.READS,
+    'has_pipeline_orders': DecisionApiMethodKind.READS,
+    'has_in_flight_operation': DecisionApiMethodKind.READS,
+    'get_in_flight_operation': DecisionApiMethodKind.READS,
+    'is_pending_close': DecisionApiMethodKind.READS,
+    'close_position': DecisionApiMethodKind.ACTS,
+    'get_order_capabilities': DecisionApiMethodKind.READS,
+    'get_current_time': DecisionApiMethodKind.READS,
+    'get_market_data_status': DecisionApiMethodKind.READS,
+    'get_broker_name': DecisionApiMethodKind.READS,
+    'get_leverage': DecisionApiMethodKind.READS,
+    'get_time_to_next_rollover': DecisionApiMethodKind.READS,
+    'is_next_rollover_triple': DecisionApiMethodKind.READS,
+    'get_time_to_market_close': DecisionApiMethodKind.READS,
+    'is_weekend_ahead': DecisionApiMethodKind.READS,
+    'request_session_end': DecisionApiMethodKind.ACTS,
+    'modify_position': DecisionApiMethodKind.ACTS,
+    'modify_limit_order': DecisionApiMethodKind.ACTS,
+    'modify_stop_order': DecisionApiMethodKind.ACTS,
+    'cancel_limit_order': DecisionApiMethodKind.ACTS,
+    'cancel_stop_order': DecisionApiMethodKind.ACTS,
+    'get_active_order_counts': DecisionApiMethodKind.READS,
+    'get_active_orders': DecisionApiMethodKind.READS,
+    'get_order_history': DecisionApiMethodKind.READS,
+}
 
 
 class DecisionTradingApi:
@@ -503,24 +545,25 @@ class DecisionTradingApi:
         """
         return self._executor.portfolio.get_cost_breakdown()
 
-    def get_open_positions(self, symbol: Optional[str] = None) -> List[Position]:
+    def get_open_positions(self, symbol: Optional[str] = None) -> List[AlgoPosition]:
         """
-        Get list of open positions.
+        Get list of open positions — each as an algo mask, never the engine's own object (#653).
+
+        A mask is read-only, shows the fields `docs/user_guides/algo_masks.md` lists, and computes
+        its price, P&L, excursion and fees from the latest quote when read, so a value read is the
+        value now — in a backtest and in a live session alike, and in a mask kept across passes.
 
         Args:
             symbol: Filter by symbol (None = all positions)
 
         Returns:
-            List of Position objects with details:
+            One AlgoPosition per open position, for example:
             - position_id: Unique identifier
-            - symbol: Trading symbol
-            - direction: BUY or SELL
+            - direction: LONG or SHORT
             - lots: Position size
-            - open_price: Entry price
-            - current_price: Current market price
-            - unrealized_pnl: Floating profit/loss
-            - stop_loss: SL level (if set)
-            - take_profit: TP level (if set)
+            - entry_price: Entry price
+            - current_price: The price it would close at now
+            - unrealized_pnl: Floating profit/loss now
 
         Example:
             positions = self.trading_api.get_open_positions("EURUSD")
@@ -528,24 +571,19 @@ class DecisionTradingApi:
                 if pos.unrealized_pnl < -100:
                     self.close_position(pos.position_id)
         """
-        all_positions = self._executor.get_open_positions()
+        return self._executor.get_algo_positions(symbol or None)
 
-        if symbol:
-            return [p for p in all_positions if p.symbol == symbol]
-
-        return all_positions
-
-    def get_position(self, position_id: str) -> Optional[Position]:
+    def get_position(self, position_id: str) -> Optional[AlgoPosition]:
         """
-        Get specific position by ID.
+        Get specific position by ID — as an algo mask (#653).
 
         Args:
             position_id: Position identifier
 
         Returns:
-            Position object or None if not found
+            The position's AlgoPosition, or None if no such position is open
         """
-        return self._executor.get_position(position_id)
+        return self._executor.get_algo_position(position_id)
 
     # ============================================
     # Public API: Pending Order Awareness

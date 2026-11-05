@@ -26,6 +26,7 @@ from python.framework.types.config_types.backtesting_config_types import (
     TradeSimulatorDefaults,
 )
 from python.framework.types.config_types.market_config_types import MarketType, TradingModel
+from python.framework.types.config_types.verification_config_types import VerificationConfig
 from python.framework.types.disturbance_episode_types import DisturbanceEpisode, MarketDataTickStats
 from python.framework.types.live_types.live_stats_config_types import LiveStatsExportConfig
 from python.framework.types.log_record_types import LogRecord
@@ -312,6 +313,11 @@ class ProcessScenarioConfig:
     state_frames_enabled: bool = False
     state_frames_cadence: str = StateFramesDefaults().cadence_timeframe
 
+    # === VERIFICATION (#653) ===
+    # Whether the portfolio marks open positions lazily (the ordinary behaviour) or keeps every
+    # one current at every event — the reference a cache-transparency run compares against
+    portfolio_cache: bool = VerificationConfig().portfolio_cache
+
     # === TICK PROCESSING BUDGET ===
     tick_processing_budget_ms: float = 0.0  # 0 = disabled (no clipping)
 
@@ -424,6 +430,10 @@ class ProcessScenarioConfig:
         frames_block = exec_config.get('state_frames')
         state_frames = (StateFramesDefaults(**frames_block) if frames_block is not None
                         else _EXECUTION_DEFAULTS.state_frames)
+        # The scenario's verification switches (#653), the block as a whole through its model
+        verification_block = exec_config.get('verification')
+        verification = (VerificationConfig(**verification_block) if verification_block is not None
+                        else _EXECUTION_DEFAULTS.verification)
 
         # Parse stress test config from scenario
         stress_test_config = StressTestConfig.from_dict(
@@ -474,6 +484,7 @@ class ProcessScenarioConfig:
             heartbeat_interval_ms=heartbeat_interval_ms,
             state_frames_enabled=state_frames.enabled,
             state_frames_cadence=state_frames.cadence_timeframe,
+            portfolio_cache=verification.portfolio_cache,
             tick_processing_budget_ms=tick_processing_budget_ms,
             inbound_latency_min_ms=inbound_latency_min_ms,
             inbound_latency_max_ms=inbound_latency_max_ms,

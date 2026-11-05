@@ -44,6 +44,7 @@ from python.framework.factory.trading_fee_factory import (
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.trading_env.abstract_pending_order_manager import AbstractPendingOrderManager
 from python.framework.trading_env.abstract_trading_fee import AbstractTradingFee
+from python.framework.trading_env.algo_masks.algo_position import AlgoPosition
 from python.framework.trading_env.broker_config import BrokerConfig
 from python.framework.trading_env.execution_counters import ExecutionCounters
 from python.framework.trading_env.market_clock import MarketClock
@@ -163,6 +164,7 @@ class AbstractTradeExecutor(ABC):
         trade_history_max: int = 5000,
         spot_mode: bool = False,
         initial_balances: Optional[Dict[str, float]] = None,
+        portfolio_cache: bool = True,
     ):
         self.broker = broker_config
         self.logger = logger
@@ -189,6 +191,7 @@ class AbstractTradeExecutor(ABC):
             initial_balances=initial_balances,
             clock_fn=self.get_current_time,
             swap_rollover=self._market_clock.get_swap_rollover(),
+            portfolio_cache=portfolio_cache,
         )
 
         # Current market prices
@@ -2587,6 +2590,30 @@ class AbstractTradeExecutor(ABC):
         """Get specific position by ID."""
         return self.portfolio.get_position(position_id)
 
+    def get_algo_positions(self, symbol: Optional[str] = None) -> List[AlgoPosition]:
+        """
+        The open positions as an algo receives them — read-only masks (#653).
+
+        Args:
+            symbol: Only this symbol's positions, None for all
+
+        Returns:
+            A mask for each open position
+        """
+        return self.portfolio.get_algo_positions(symbol)
+
+    def get_algo_position(self, position_id: str) -> Optional[AlgoPosition]:
+        """
+        One open position as an algo receives it — a read-only mask (#653).
+
+        Args:
+            position_id: The position's identifier
+
+        Returns:
+            Its mask, or None when no such position is open
+        """
+        return self.portfolio.get_algo_position(position_id)
+
     # ============================================
     # Pending Order Awareness (for Decision Logic via API)
     # ============================================
@@ -2804,6 +2831,8 @@ class AbstractTradeExecutor(ABC):
             now: Timezone-aware UTC datetime for the current pass
         """
         self._clock_time = self._forward_only(now)
+        # The reference mode keeps the positions current at a clock advance too (#653)
+        self.portfolio.on_clock_advanced()
 
     def _forward_only(self, now: datetime) -> datetime:
         """

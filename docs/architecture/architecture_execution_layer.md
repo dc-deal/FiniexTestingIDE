@@ -265,7 +265,8 @@ The foundation. Contains all concrete fill processing and shared infrastructure.
   override for live (broker's actual price); `None` for simulation (use current tick bid/ask)
 - `_fill_close_order(pending_order, fill_price=None)` — Portfolio close, P&L realization, statistics. Same price override pattern.
 - `get_order_history()` — All OrderResults (fills + rejections) for audit trail
-- `get_open_positions()` — Returns confirmed portfolio positions only
+- `get_open_positions()` — Returns confirmed portfolio positions only, each as a read-only
+  `AlgoPosition` — an [algo mask](../user_guides/algo_masks.md), never the engine's `Position`
 - `get_account_info()` — Balance, equity, position counts, and the multi-currency `balances`
   at spot. **`margin_used`, `free_margin` and `margin_level` are None at SPOT** (2026-09-24):
   a spot account posts no margin, and the figures it used to receive were the branch of the
@@ -521,6 +522,8 @@ The previous approach mixed pending orders into `get_open_positions()` as "pseud
 The new design separates concerns completely:
 
 **`get_open_positions()`** — Returns only confirmed, filled, real portfolio positions. Always. In every mode.
+Each comes as an `AlgoPosition` that computes its price and P&L from the latest quote when read
+([Algo Masks](../user_guides/algo_masks.md)).
 
 **`has_pending_orders()`** — Global check: "Is anything in flight across all worlds?" Concrete in
 `AbstractTradeExecutor` — combines `has_pipeline_orders()` + `_active_limit_orders` +

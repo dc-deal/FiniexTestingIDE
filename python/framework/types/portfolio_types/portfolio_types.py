@@ -27,6 +27,21 @@ class PositionStatus(Enum):
     PARTIALLY_CLOSED = 'partially_closed'
 
 
+@dataclass(frozen=True)
+class PositionValuation:
+    """
+    What an open position is worth at one quote.
+
+    Args:
+        current_price: The price it would close at — the bid for a LONG, the ask for a SHORT
+        gross_pnl: The P&L before fees
+        unrealized_pnl: The P&L after every fee charged so far
+    """
+    current_price: float
+    gross_pnl: float
+    unrealized_pnl: float
+
+
 @dataclass
 class Position:
     """
@@ -142,31 +157,55 @@ class Position:
         if self.swap_accrued_until is None:
             self.swap_accrued_until = self.entry_time
 
+    def valuation_at(self, bid: float, ask: float, tick_value: float, digits: int) -> PositionValuation:
+        """
+        What this position is worth at a quote — computed, nothing written.
+
+        The one P&L formula of a position: the mark below writes its result, and an algo's view
+        of the position computes it when read (#653), so the two can never disagree.
+
+        Args:
+            bid: The symbol's bid
+            ask: The symbol's ask
+            tick_value: The value of one point in the account currency
+            digits: The symbol's price digits
+
+        Returns:
+            The close price, the gross and the net P&L at that quote
+        """
+        # Close at bid for a LONG, at ask for a SHORT
+        current_price = bid if self.direction == OrderDirection.LONG else ask
+
+        # Calculate price difference in points
+        if self.direction == OrderDirection.LONG:
+            price_diff = current_price - self.entry_price
+        else:
+            price_diff = self.entry_price - current_price
+
+        # Calculate P&L: points * tick_value * lots - all fees
+        gross_pnl = gross_pnl_from_price_diff(price_diff, digits, tick_value, self.lots)
+        return PositionValuation(current_price=current_price, gross_pnl=gross_pnl,
+                                 unrealized_pnl=gross_pnl - self.get_total_fees())
+
     def update_current_price(self, bid: float, ask: float, tick_value: float, digits: int) -> None:
         """
         Update current price and recalculate unrealized P&L.
 
         P&L calculation includes all accumulated fees.
+
+        Args:
+            bid: The symbol's bid
+            ask: The symbol's ask
+            tick_value: The value of one point in the account currency
+            digits: The symbol's price digits
         """
-        # Use appropriate price based on position direction
-        if self.direction == OrderDirection.LONG:
-            self.current_price = bid  # Close at bid
-        else:
-            self.current_price = ask  # Close at ask
-
-        # Calculate price difference in points
-        if self.direction == OrderDirection.LONG:
-            price_diff = self.current_price - self.entry_price
-        else:
-            price_diff = self.entry_price - self.current_price
-
-        # Calculate P&L: points * tick_value * lots - all fees
-        gross_pnl = gross_pnl_from_price_diff(price_diff, digits, tick_value, self.lots)
-        total_fees = self.get_total_fees()
+        valuation = self.valuation_at(bid, ask, tick_value, digits)
+        self.current_price = valuation.current_price
+        gross_pnl = valuation.gross_pnl
 
         # Store gross_pnl for trade record
         self.gross_pnl = gross_pnl
-        self.unrealized_pnl = gross_pnl - total_fees
+        self.unrealized_pnl = valuation.unrealized_pnl
 
         # Track max adverse / favorable excursion over the position's life (#389).
         # gross_pnl (pre-fee) is the excursion axis → fee-noise-free; record the

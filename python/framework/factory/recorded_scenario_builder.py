@@ -32,6 +32,7 @@ from python.framework.types.config_types.backtesting_config_types import (
     DefaultScenarioExecutionConfig,
     TradeSimulatorDefaults,
 )
+from python.framework.types.config_types.verification_config_types import VerificationConfig
 from python.framework.types.run_purpose_types import RunPurpose
 from python.framework.types.scenario_types.recorded_scenario_types import RecordedScenarioInputs
 from python.framework.utils.file_utils import create_directory
@@ -75,6 +76,8 @@ RENDERED_BLOCKS_WITHOUT_COUNTERPART: Dict[str, str] = {
 RENDERED_EXECUTION_TARGETS: Dict[str, str] = {
     'parallel_workers': 'execution_config.parallel_workers',
     'heartbeat_interval_ms': 'execution_config.heartbeat_interval_ms — the ghost-pass cadence',
+    'verification': ('execution_config.verification — switches that change no result by design '
+                     '(#653), carried as the session ran them'),
 }
 
 # The execution fields with no counterpart in a backtest, and why.
@@ -139,6 +142,8 @@ class RecordedScenarioBuilder:
                     **DefaultScenarioExecutionConfig().model_dump(mode='json'),
                     'parallel_workers': execution.get('parallel_workers'),
                     'heartbeat_interval_ms': execution.get('heartbeat_interval_ms'),
+                    'verification': execution.get(
+                        'verification', VerificationConfig().model_dump(mode='json')),
                     # The frames the divergence report reads, on the slots the session recorded on
                     'state_frames': {
                         'enabled': True,

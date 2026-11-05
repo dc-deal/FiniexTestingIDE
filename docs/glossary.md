@@ -86,6 +86,12 @@ disturbance episode, [Outage Handling](user_guides/outage_handling_guide.md).
 framework (CORE) or written by a user. A user's algos are kept in `user_algos/`. See
 [User Algo Workspace](user_guides/user_modules_and_hot_reload_mechanics.md).
 
+**algo mask** (`AlgoPosition`, …) — What an algo receives in place of an engine object: a
+read-only view that shows a declared set of fields and computes what moves with the market when it
+is read. The decision trading API hands out masks, never the engine's own objects, so a field the
+engine gains reaches no algo until a mask declares it (#653). Not a pandas boolean mask. See
+[Algo Masks](user_guides/algo_masks.md).
+
 **archive** (tick archive) — The imported tick data a backtest and a mock session replay. The one
 part of the application that stays backward compatible: data from every collector format ever
 accepted is still read. See [Data Import](data_pipeline/data_import_pipeline.md).

@@ -108,6 +108,10 @@
       },
       "performance_tracking": {
         "worker_decision_tracking": true
+      },
+      "verification": {
+        "_comment": "Switches that change no result by design (#653): portfolio_cache true marks open positions lazily, only when something asks; false keeps every position current at every event, the reference a run compares the lazy marking against. Turned off only to compare.",
+        "portfolio_cache": true
       }
     },
     "clipping_monitor": {
@@ -248,6 +252,10 @@
           "_comment": "A backtest scenario's state frames (#579 part B item 3), in io/state_frames_{scenario}.jsonl: off unless a scenario asks; a backtest of a live session's window (#512) switches them on with the session's cadence.",
           "enabled": false,
           "cadence_timeframe": "M1"
+        },
+        "verification": {
+          "_comment": "Switches that change no result by design (#653): portfolio_cache true marks open positions lazily, only when something asks; false keeps every position current at every event, the reference a run compares the lazy marking against. Turned off only to compare.",
+          "portfolio_cache": true
         }
       }
     },

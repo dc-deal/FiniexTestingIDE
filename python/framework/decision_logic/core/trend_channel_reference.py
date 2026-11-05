@@ -824,12 +824,9 @@ class TrendChannelReference(AbstractDecisionLogic):
         """
         The price this position would be closed at right now, read from THIS tick.
 
-        Read from the tick rather than from `pos.current_price`, and that is the point:
-        `PortfolioManager.get_open_positions()` hands out positions WITHOUT marking them —
-        its own docstring says the values may be stale — so a decision reading the marked
-        price got whatever the last unrelated caller happened to leave there. The behaviour
-        of the strategy then depended on who else asked for a mark-to-market that tick,
-        which is a reproducibility leak, not a stale number (#497).
+        Read from the tick: it is the quote this pass decides on. A position's `current_price`
+        agrees with it, because an algo receives an `AlgoPosition`, which computes that price from
+        the latest quote when read (#653).
 
         Closing a LONG sells into the bid and closing a SHORT buys the ask — the same
         convention `Position.update_current_price` marks with, so the R measured here and

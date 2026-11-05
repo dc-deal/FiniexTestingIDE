@@ -451,6 +451,11 @@ Execution settings cascade individually, allowing performance testing with diffe
 > `io/state_frames_{scenario}.jsonl` — the same frame a live session records, so the two can be laid
 > side by side ([Live Telemetry](architecture/live_telemetry_architecture.md#the-recorded-state-frame--not-this-stream)).
 
+> **Note:** `verification` is another sub-group: switches that by design change no result.
+> `portfolio_cache: true` is the ordinary lazy marking of open positions; `false` keeps every
+> position current at every event, so a run can be compared against the lazy one — what an algo
+> reads must not differ ([Algo Masks](user_guides/algo_masks.md)).
+
 ---
 
 ### 4. `trade_simulator_config` (Per-Parameter Merge, 3-Level)
