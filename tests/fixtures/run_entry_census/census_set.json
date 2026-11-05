@@ -3,7 +3,7 @@
   "scenario_set_name": "run_entry_census_set",
   "run_purpose": "fixture",
   "created": "2026-10-23T00:00:00+00:00",
-  "description": "The run entry census (#621): two short BTCUSD windows, one in sample and one out of sample, traded by a probe logic that writes a diagnostics row and opens and closes one position, so a run writes every member that hangs on an order, a sink or the robustness mode.",
+  "description": "The run entry census (#621): two short BTCUSD windows, one in sample and one out of sample, traded by a probe logic that writes a diagnostics row and opens and closes one position and records its state frames, so a run writes every member that hangs on an order, a sink, the robustness mode or the frames.",
   "robustness": {
     "enabled": true,
     "metric": "net_pnl",
@@ -29,7 +29,11 @@
       }
     },
     "execution_config": {
-      "parallel_workers": false
+      "parallel_workers": false,
+      "state_frames": {
+        "enabled": true,
+        "cadence_timeframe": "M1"
+      }
     },
     "trade_simulator_config": {
       "balances": {

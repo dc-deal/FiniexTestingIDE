@@ -235,6 +235,7 @@ behind its `write_strategy_files` parameter.
 | [`trade_history_csv`](reporting_pipeline.md#report-sections--domain--migration-status) | `io/trade_history.csv` | report output | at end | at end | `artifacts` | — |
 | [`order_events`](order_event_stream.md#storage) | `io/order_events.jsonl` | stream · v2 | at end — a scenario recorded an order event | at start — the session got through its startup checks | `stream_files` | `…/order-events` |
 | [`state_frames`](live_telemetry_architecture.md#the-recorded-state-frame--not-this-stream) | `io/state_frames.jsonl` | stream · v1 | — | at start — the profile records state frames | `stream_files` | `…/state-frames/latest` · `…/units/{unit_name}/recorded-streams` · `…/units/{unit_name}/recorded-streams/window` |
+| [`scenario_state_frames`](live_telemetry_architecture.md#the-recorded-state-frame--not-this-stream) | `io/state_frames_{scenario}.jsonl` | stream · v1 | as it runs — the scenario records state frames | — | — | — |
 | [`tick_stream_events`](../autotrader/autotrader_architecture.md#what-a-session-records) | `io/tick_stream_events.jsonl` | stream · v1 | — | at start — the session reads its ticks from a venue | — | — |
 | [`diagnostics_rows`](diagnostics_csv_sink.md#lifecycle-framework-owned) | `diagnostics/{sink}.jsonl` | stream · v1 | — | as it runs — the logic declared a diagnostics sink | — | — |
 | [`trades`](../autotrader/autotrader_architecture.md#what-a-session-records) | `io/trades.jsonl` | stream · v1 | — | at start — the session reached its tick loop | — | — |

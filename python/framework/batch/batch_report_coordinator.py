@@ -318,7 +318,12 @@ class BatchReportCoordinator:
                               for result in process_results),
             block_splitting_written=bool(block_splitting_report.symbols),
             robustness_written=robustness_report.enabled,
-            order_events_written=any(unit.order_events for unit in units))
+            order_events_written=any(unit.order_events for unit in units),
+            state_frames_asked=any(
+                result.tick_loop_results is not None
+                and (scenario.execution_config or {}).get('state_frames', {}).get('enabled', False)
+                for result, scenario in zip(
+                    process_results, self._batch_execution_summary.single_scenario_list)))
         try:
             write_footprint(run_dir, run_id, RUN_TYPE_SIMULATION, expectations)
         except OSError as error:
@@ -327,7 +332,8 @@ class BatchReportCoordinator:
 
     def _footprint_expectations(self, scenario_ran: bool, orders_placed: bool,
                                 block_splitting_written: bool, robustness_written: bool,
-                                order_events_written: bool) -> List[MemberExpectation]:
+                                order_events_written: bool,
+                                state_frames_asked: bool) -> List[MemberExpectation]:
         """
         For each file a backtest writes only sometimes, whether this run expected it — judged
         from what the run knows at its close. A scenario's diagnostics tables are written by its
@@ -339,6 +345,7 @@ class BatchReportCoordinator:
             block_splitting_written: Whether the block-splitting section was written
             robustness_written: Whether the robustness section was written
             order_events_written: Whether any scenario recorded an order event
+            state_frames_asked: Whether a scenario that reached its process asked for state frames
 
         Returns:
             One expectation per member the run decides on
@@ -364,5 +371,8 @@ class BatchReportCoordinator:
             expectation(RunEntryMemberId.ORDER_EVENTS, order_events_written,
                         'a scenario recorded an order event',
                         'no scenario recorded an order event'),
+            expectation(RunEntryMemberId.SCENARIO_STATE_FRAMES, state_frames_asked,
+                        'a scenario asked for state frames',
+                        'no scenario asked for state frames'),
         ]
 

@@ -67,10 +67,7 @@ from python.framework.autotrader.run_record.session_records import (
     record_restored_algo_state,
     stream_diagnostics_rows,
 )
-from python.framework.autotrader.run_record.state_frame_recorder import (
-    StateFrameRecorder,
-    open_state_frame_stream,
-)
+from python.framework.autotrader.run_record.state_frame_stream_opener import open_state_frame_stream
 from python.framework.autotrader.safety.risk_baseline_tracker import RiskBaselineTracker
 from python.framework.autotrader.shutdown_status_holder import ShutdownStatusHolder
 from python.framework.autotrader.startup.autotrader_data_preparer import prepare_mock_session_data
@@ -96,6 +93,7 @@ from python.framework.exceptions.swap_errors import SwapModeNotImplementedError
 from python.framework.exceptions.warmup_history_errors import WarmupHistoryRefusedError
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.persistence.algo_state_store import AlgoStateStore
+from python.framework.process.state_frame_recorder import StateFrameRecorder
 from python.framework.reporting.acceptance_study_recorder import AcceptanceStudyRecorder
 from python.framework.reporting.api_perf_monitor import ApiPerfMonitor
 from python.framework.reporting.io.order_event_stream_writer import OrderEventStreamWriter

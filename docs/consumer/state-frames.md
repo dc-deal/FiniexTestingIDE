@@ -126,7 +126,7 @@ writing it. That line is left out and the frame before it is served.
 | Status | `error` | meaning |
 |---|---|---|
 | 404 | `run_not_found` | no such run in the run index |
-| 404 | `state_frames_not_recorded` | the run records no state frames: a session from before they were recorded, one with the recording switched off, or a backtest |
+| 404 | `state_frames_not_recorded` | the run records no state frames: a session from before they were recorded, one with the recording switched off, or a backtest — whose frames are not served even where its scenario records them |
 | 404 | `state_frame_not_written_yet` | the session has opened its stream but not written its first frame yet — ask again after one cadence |
 | 409 | `artifact_unreadable` | the stream, or the end classification, exists but cannot be read |
 

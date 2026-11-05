@@ -5,11 +5,13 @@ Config Loader (FIXED: Deep copy prevents config mutation)
 
 import json
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from python.configuration.app_config_manager import AppConfigManager
+from python.framework.bars.warmup_record_reader import read_warmup_record
 from python.framework.config_directory.config_directory_discovery import is_user_owned
 from python.framework.logging.bootstrap_logger import get_global_logger
+from python.framework.store.broker_config_freeze import read_frozen_broker_config
 from python.framework.store.run_config_store import RunConfigStore
 from python.framework.types.config_directory_types import ConfigKind
 from python.framework.types.config_types.autotrader_defaults_config_types import OrderGuardDefaults
@@ -21,6 +23,7 @@ from python.framework.types.config_types.robustness_config_types import (
     RobustnessConfig,
     RobustnessRole,
 )
+from python.framework.types.market_types.warmup_history_types import WarmupHistoryRecord
 from python.framework.types.run_purpose_types import RunPurpose
 from python.framework.types.scenario_types.scenario_set_types import (
     LoadedScenarioConfig,
@@ -109,6 +112,30 @@ def _declared_features_beyond_venue(config: Dict[str, Any], config_path: Path) -
             f'{config_path.name}: features_beyond_venue names {unknown}, which is not one of: '
             f'{allowed}')
     return [OrderFeature(name) for name in declared]
+
+
+def _recorded_warmup(scenario_data: Dict[str, Any]) -> Optional[WarmupHistoryRecord]:
+    """
+    Read the warmup history a scenario names with `warmup_from_run` (#512).
+
+    A backtest of a session's window starts from the bars the session started from, so the
+    record must belong to the scenario's symbol.
+
+    Args:
+        scenario_data: The scenario's raw JSON
+
+    Returns:
+        The record, or None when the scenario names no run
+    """
+    run_id = scenario_data.get('warmup_from_run', '')
+    if not run_id:
+        return None
+    record = read_warmup_record(run_id)
+    if record.symbol != scenario_data.get('symbol'):
+        raise ValueError(
+            f"Scenario '{scenario_data.get('scenario_name', '')}': warmup_from_run {run_id} "
+            f"recorded {record.symbol}, the scenario trades {scenario_data.get('symbol')}.")
+    return record
 
 
 class ScenarioConfigLoader:
@@ -331,6 +358,14 @@ class ScenarioConfigLoader:
                 order_guard_config=scenario_order_guard if scenario_order_guard else None,
                 # Per-window IS/OOS label (#367); Pydantic-style enum validation on the value.
                 role=RobustnessRole(scenario_data.get('role', RobustnessRole.UNASSIGNED.value)),
+                # What a backtest of a session's window reads instead of the archive's warmup
+                # and the broker's file (#512); empty for every other scenario
+                warmup_from_run=scenario_data.get('warmup_from_run', ''),
+                broker_config_document=scenario_data.get('broker_config_document', ''),
+                warmup_record=_recorded_warmup(scenario_data),
+                broker_config_document_content=(
+                    read_frozen_broker_config(scenario_data['broker_config_document'])
+                    if scenario_data.get('broker_config_document') else None),
             )
             scenarios.append(scenario)
             current_scenario_index += 1

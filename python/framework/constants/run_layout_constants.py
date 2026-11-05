@@ -140,6 +140,8 @@ STREAM_HEADER_KIND = 'header'
 STREAM_TRADING_DAY_FIELD = 'trading_day'
 # What the session held and decided, moment by moment (#579 part A, served since #611).
 STATE_FRAMES_FILE = 'state_frames.jsonl'
+# A backtest scenario's own state-frame stream (#579 part B item 3), beside events_{scenario}.csv
+SCENARIO_STATE_FRAMES_FILE_PATTERN = 'state_frames_{scenario}.jsonl'
 STATE_FRAMES_STREAM = 'state_frames'
 STATE_FRAMES_SCHEMA_VERSION = 1
 # Every trade the session closed, as it closed (#476) — the trade history's rows, written while the

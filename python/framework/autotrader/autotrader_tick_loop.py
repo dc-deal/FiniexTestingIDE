@@ -34,7 +34,6 @@ from python.framework.autotrader.operator_alerts.operator_alerts_setup import (
 from python.framework.autotrader.operator_alerts.signal_staleness_alerter import (
     SignalStalenessAlerter,
 )
-from python.framework.autotrader.run_record.state_frame_recorder import StateFrameRecorder
 from python.framework.autotrader.safety.risk_baseline_tracker import RiskBaselineTracker
 from python.framework.autotrader.safety.safety_circuit_breaker import SafetyCircuitBreaker
 from python.framework.autotrader.session_log_rotator import SessionLogRotator
@@ -47,6 +46,7 @@ from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.persistence.algo_state_store import AlgoStateStore
 from python.framework.persistence.position_book_watcher import PositionBookWatcher
 from python.framework.process.market_data_episode_tracker import MarketDataEpisodeTracker
+from python.framework.process.state_frame_recorder import StateFrameRecorder
 from python.framework.process.tick_pipeline_core import (
     execute_algo_path,
     render_bars_for_tick,
@@ -479,9 +479,10 @@ class AutotraderTickLoop:
                 # #579: the cadence runs on a quiet feed too — a live session's clock is the
                 # wall clock here — and an order a ghost pass sent is a moment of its own
                 if self._state_frames is not None:
+                    safety = self._safety.get_display_state()
                     self._state_frames.on_pass(
-                        ticks_processed, self._last_real_decision,
-                        self._safety.get_display_state(), on_tick=False, order=ghost_order)
+                        ticks_processed, self._last_real_decision, on_tick=False, order=ghost_order,
+                        safety_blocked=safety.blocked, safety_drawdown_pct=safety.drawdown_pct)
                 if self._executor.is_session_end_requested():
                     self._logger.info(
                         f'🛑 Session end requested: {self._executor.get_session_end_reason()}')
@@ -694,9 +695,11 @@ class AutotraderTickLoop:
             # === 9. State Frame (#579 part A) — on its cadence, at a closed bar, at an order ===
             # After the timing above: recording is not the algo being slow
             if self._state_frames is not None:
+                safety = self._safety.get_display_state()
                 self._state_frames.on_pass(
-                    ticks_processed, decision, self._safety.get_display_state(), on_tick=True,
-                    closed_timeframes=closed_timeframes, order=order_result)
+                    ticks_processed, decision, on_tick=True,
+                    closed_timeframes=closed_timeframes, order=order_result,
+                    safety_blocked=safety.blocked, safety_drawdown_pct=safety.drawdown_pct)
 
             # Track last valid tick/decision for the final shutdown snapshot
             # and heartbeat pulse frames (#320).
@@ -961,8 +964,10 @@ class AutotraderTickLoop:
         """
         if self._state_frames is None:
             return
+        safety = self._safety.get_display_state()
         self._state_frames.write_shutdown(
-            ticks_processed, self._last_real_decision, self._safety.get_display_state())
+            ticks_processed, self._last_real_decision,
+            safety_blocked=safety.blocked, safety_drawdown_pct=safety.drawdown_pct)
 
     def _drain_signal_inbox(self, off_tick: bool) -> None:
         """

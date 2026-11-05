@@ -166,7 +166,8 @@ at most one per pass of the loop. It is what a backtest of the same period is co
 | A health nobody checked | a default (`reconcile_clean` true without a reconciler) | null |
 | Positions and orders | the dashboard's own rows | the rows the report serves, so the last frame agrees with it |
 
-It is built on its own from the session's objects — `framework/autotrader/run_record/state_frame_recorder.py`,
+It is built on its own from the run's objects — `framework/process/state_frame_recorder.py`, shared by
+both pipelines, opened for a session by `framework/autotrader/run_record/state_frame_stream_opener.py`;
 the line `framework/types/api/state_frame_types.py` — and written through the run-stream appender
 (`framework/reporting/io/run_stream_appender.py`). At each trading-day boundary the session seals the
 day's frames into `days/<day>/io/state_frames.parquet` and the file starts afresh
@@ -174,6 +175,18 @@ day's frames into `days/<day>/io/state_frames.parquet` and the file starts afres
 memory rides on every frame of a live session. A replay compresses hours into seconds, and reading
 the memory costs about a millisecond in a session-sized process, so a replay reads it at most once
 per cadence interval of the monotonic clock and at its last frame.
+
+**A backtest records the same frame when its scenario asks (#579 part B item 3).** The scenario's
+execution block carries `state_frames` (`enabled`, `cadence_timeframe`; off by default, mirrored in
+`app_config.json`), and a scenario that switches it on writes `io/state_frames_{scenario}.jsonl` in its
+run, beside its events table — at the end of each tick pass, at each ghost pass, and once at its end, on
+the slots of the simulated clock. The recorder reads the run and changes nothing it computes; a test runs
+one scenario with frames on and off and compares the order events and trades event by event. A
+backtest's frame carries no reconciliation, no circuit breaker (`safety_blocked` false, no drawdown
+reading) and no memory reading. Its heartbeats run on simulated time, so a cadence slot inside a quiet
+stretch is filled only when the decision logic asks for heartbeats; a live session fills it on its own
+heartbeat, and the divergence report compares the slots both sides hold (#512). A backtest of a session's
+window switches the frames on with the cadence the session recorded with.
 
 **Served while it is written (#611).** `GET /api/v1/reports/runs/{run_id}/state-frames/latest`
 reads the stream's two ends — its header, its first frame and its last complete line — never the

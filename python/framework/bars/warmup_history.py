@@ -42,6 +42,7 @@ from python.framework.types.store_member_types import RunEntryMemberId
 from python.framework.utils.bar_period import open_time_of, period_end, period_start
 from python.framework.utils.connection_ladder import ConnectionLadder, run_with_ladder
 from python.framework.utils.process_serialization_utils import deserialize_bars_batch
+from python.framework.utils.time_utils import parse_iso_datetime
 
 # (timeframe, count, reference instant) -> the newest `count` bars complete at that instant.
 # Raises when the venue cannot be read.
@@ -52,8 +53,9 @@ class WarmupHistory:
     """
     One session's warmup history: its bars, the instant they were selected for, their source.
 
-    Built by from_package (archive) or from_venue (live adapter), then handed to the renderer
-    with inject_into, which also arranges for the seam to close at the first tick.
+    Built by from_package (archive), from_venue (live adapter) or from_record (a backtest of a
+    session's window, #512), then handed to the renderer with inject_into, which also arranges
+    for the seam to close at the first tick.
 
     Args:
         symbol: Trading symbol from config (authoritative)
@@ -123,6 +125,43 @@ class WarmupHistory:
         }
         return cls(symbol, bars, package.warmup_reference_time, WarmupSource.ARCHIVE, logger,
                    required_by_timeframe=required_by_timeframe)
+
+    @classmethod
+    def from_record(
+        cls,
+        record: WarmupHistoryRecord,
+        logger: ScenarioLogger,
+    ) -> 'WarmupHistory':
+        """
+        The history another run recorded — a backtest of a session's window starts from the bars
+        the session started from (#512).
+
+        The bars are the record's as written, complete at its `selected_for`; the seam then checks
+        that the backtest's first tick falls in no later period of any timeframe than the record
+        reaches, because the record cannot supply a bar it does not hold.
+
+        Args:
+            record: The run's recorded warmup history
+            logger: ScenarioLogger for status messages
+
+        Returns:
+            The recorded history, already closed at its own first tick
+        """
+        if not record.selected_for:
+            raise WarmupHistoryRefusedError(
+                f'{record.symbol}: the recorded warmup history names no instant its bars were '
+                f'selected for — the run recorded no history to start a backtest from.')
+        bars = {
+            timeframe: [Bar(symbol=record.symbol, timeframe=timeframe, timestamp=row[0],
+                            open=row[1], high=row[2], low=row[3], close=row[4], volume=row[5],
+                            tick_count=row[6])
+                        for row in entry.bars]
+            for timeframe, entry in record.timeframes.items()
+        }
+        return cls(record.symbol, bars, parse_iso_datetime(record.selected_for),
+                   WarmupSource.RECORD, logger,
+                   required_by_timeframe={timeframe: entry.required
+                                          for timeframe, entry in record.timeframes.items()})
 
     @classmethod
     def from_venue(
@@ -267,7 +306,8 @@ class WarmupHistory:
         At the first tick, re-read every timeframe whose period ended since the boot read.
 
         Runs once, before the first tick is rendered. The archive's history was selected for
-        this very tick and has nothing to close. The venue's was selected at boot: where its
+        this very tick and has nothing to close; a recorded one is only checked to reach the
+        tick's period (_refuse_open_record_seam). The venue's was selected at boot: where its
         newest bar ends before the first tick's period opens, the periods in between ended
         after the read, and the timeframe is read again for the tick and replaced whole — so
         the history becomes the last N bars complete at the first tick, as in a backtest.
@@ -286,6 +326,8 @@ class WarmupHistory:
             None
         """
         self._first_tick_time = first_tick_time
+        if self._source is WarmupSource.RECORD:
+            self._refuse_open_record_seam(first_tick_time)
         if self._fetch is None:
             self._write_record()
             return
@@ -331,6 +373,31 @@ class WarmupHistory:
         )
         self._log_tails()
         self._write_record()
+
+    def _refuse_open_record_seam(self, first_tick_time: datetime) -> None:
+        """
+        Refuse a recorded history that ends before the backtest's first tick's period begins.
+
+        The session's first tick and the backtest's are two captures of the start of one window;
+        where the collector missed the session's first trades, the backtest's first tick can open
+        a later period, and the bars in between exist in neither the record nor this run.
+
+        Args:
+            first_tick_time: The backtest's first tick
+
+        Returns:
+            None
+        """
+        for timeframe, bars in self._bars_by_timeframe.items():
+            if not self._seam_open(timeframe, bars, first_tick_time):
+                continue
+            newest = bars[-1].timestamp if bars else 'none'
+            raise WarmupHistoryRefusedError(
+                f'{self._symbol} {timeframe}: the recorded warmup history ends with the bar '
+                f"opening at {newest}, but this run's first tick ({first_tick_time.isoformat()}) "
+                f'falls in a later period — the bars in between are in neither the record nor '
+                f'the run. The backtest cannot start from the state the session started from; '
+                f"start its window where the record's first tick was.")
 
     @staticmethod
     def _seam_open(timeframe: str, bars: List[Bar], first_tick_time: datetime) -> bool:

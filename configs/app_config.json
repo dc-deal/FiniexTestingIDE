@@ -243,7 +243,12 @@
         },
         "strict_parameter_validation": true,
         "tick_processing_budget_ms": 0.0,
-        "heartbeat_interval_ms": 1000
+        "heartbeat_interval_ms": 1000,
+        "state_frames": {
+          "_comment": "A backtest scenario's state frames (#579 part B item 3), in io/state_frames_{scenario}.jsonl: off unless a scenario asks; a backtest of a live session's window (#512) switches them on with the session's cadence.",
+          "enabled": false,
+          "cadence_timeframe": "M1"
+        }
       }
     },
     "default_trade_simulator_config": {

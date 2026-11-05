@@ -10,7 +10,8 @@ Responsibilities:
 - Log concise broker overview
 """
 
-from typing import Any, Dict, List
+import copy
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 from python.configuration.autotrader.broker_config_cache_policy import get_entry_fetched_at
 from python.configuration.autotrader.kraken_config_fetcher import (
@@ -130,6 +131,8 @@ class BrokerDataPreparator:
         # Pre-collect symbols per DYNAMIC broker so all can be checked at once
         dynamic_broker_symbols: Dict[str, List[str]] = {}
         for scenario in self.scenarios:
+            if scenario.broker_config_document:
+                continue   # #512: it trades with the session's frozen document, not the cache
             if market_config.get_config_mode(scenario.data_broker_type) == ConfigMode.DYNAMIC:
                 symbols = dynamic_broker_symbols.setdefault(scenario.data_broker_type, [])
                 if scenario.symbol not in symbols:
@@ -149,11 +152,21 @@ class BrokerDataPreparator:
                 dynamic_broker_errors[data_broker_type] = str(e)
 
         # Main loop: assign broker types and build scenario map
+        documented_broker_types: Set[BrokerType] = set()
         for scenario in self.scenarios:
             data_broker_type = scenario.data_broker_type
             config_mode = market_config.get_config_mode(data_broker_type)
 
-            if config_mode == ConfigMode.DYNAMIC and data_broker_type in dynamic_broker_errors:
+            if scenario.broker_config_document:
+                # #512: a backtest of a session's window trades with the configuration the
+                # session traded with, frozen at its start — never the file or cache of today
+                frozen = self._load_frozen_broker_config(scenario)
+                if frozen is None:
+                    continue
+                broker_config, config_path = frozen
+                scenario.broker_spec_fetched_at = get_entry_fetched_at(
+                    broker_config.adapter.broker_config['symbols'].get(scenario.symbol))
+            elif config_mode == ConfigMode.DYNAMIC and data_broker_type in dynamic_broker_errors:
                 scenario.validation_result.append(ValidationResult(
                     scenario.name, [ValidationFinding(
                         severity=Severity.ERROR, check='broker_config_unavailable',
@@ -164,8 +177,7 @@ class BrokerDataPreparator:
                     f'❌ {scenario.name}: broker config unavailable — {dynamic_broker_errors[data_broker_type]}'
                 )
                 continue
-
-            if config_mode == ConfigMode.DYNAMIC:
+            elif config_mode == ConfigMode.DYNAMIC:
                 broker_config = dynamic_broker_configs[data_broker_type]
                 config_path = str(get_runtime_cache_path(data_broker_type))
                 # Stamped here, where the cache is read, and counted once per run afterwards
@@ -182,6 +194,25 @@ class BrokerDataPreparator:
                 broker_config = self._config_path_cache[config_path]
 
             broker_type = broker_config.broker_type
+
+            # One configuration per broker type reaches the processes: a set that mixes a frozen
+            # document with another source for one broker cannot run both scenarios as configured
+            known = self._broker_scenario_map.get(broker_type)
+            if (known is not None and known.config_path != config_path
+                    and (scenario.broker_config_document or broker_type in documented_broker_types)):
+                scenario.validation_result.append(ValidationResult(
+                    scenario.name, [ValidationFinding(
+                        severity=Severity.ERROR, check='broker_config_sources_differ',
+                        domain=ValidationDomain.BROKER,
+                        message=(f'{broker_type.value} is configured from {known.config_path} for '
+                                 f'{", ".join(known.scenarios)} and from {config_path} here; one run '
+                                 f'trades one configuration per broker'),
+                        scope=scenario.name)]))
+                self.logger.error(
+                    f'❌ {scenario.name}: {broker_type.value} configured from two sources in one set')
+                continue
+            if scenario.broker_config_document:
+                documented_broker_types.add(broker_type)
 
             # Assign broker_type to scenario (needed for subprocess deserialization)
             scenario.broker_type = broker_type
@@ -267,6 +298,53 @@ class BrokerDataPreparator:
         """
         seed_path = MarketConfigManager().get_broker_config_path(broker_type)
         return BrokerConfigFactory.fee_structure_from(seed_path)
+
+    def _load_frozen_broker_config(
+            self, scenario: SingleScenario) -> Optional[Tuple[BrokerConfig, str]]:
+        """
+        The broker configuration a session froze at its start (#512), as the loader read it.
+
+        The loader resolved the document before the batch began, so nothing here reads a store. A
+        document that cannot be built into a configuration is this scenario's error, never the
+        batch's crash.
+
+        Args:
+            scenario: A scenario naming `broker_config_document`, its content read by the loader
+
+        Returns:
+            The configuration and the label it is listed under, or None when it cannot be built
+        """
+        document_id = scenario.broker_config_document
+        cache_key = f'broker_config_document {document_id}'
+        problem = ''
+        if scenario.broker_config_document_content is None:
+            problem = f'{cache_key} was not read by the loader'
+        elif cache_key not in self._config_path_cache:
+            # A copy: building injects hashes into the dict it is given
+            document = copy.deepcopy(scenario.broker_config_document_content)
+            try:
+                if 'broker_type' not in document:
+                    # A venue's runtime cache names its type; a static seed is typed by the folder
+                    # it lives in, which its frozen copy no longer sits in
+                    seed_path = MarketConfigManager().get_broker_config_path(
+                        scenario.data_broker_type)
+                    if seed_path not in self._config_path_cache:
+                        self._config_path_cache[seed_path] = (
+                            BrokerConfigFactory.build_broker_config(seed_path))
+                    document['broker_type'] = self._config_path_cache[seed_path].broker_type.value
+                self._config_path_cache[cache_key] = BrokerConfigFactory.build_from_dict(
+                    document, source=cache_key)
+            except (OSError, ValueError, KeyError) as error:
+                problem = f'{cache_key} cannot be built: {error}'
+        if not problem:
+            return self._config_path_cache[cache_key], cache_key
+
+        scenario.validation_result.append(ValidationResult(
+            scenario.name, [ValidationFinding(
+                severity=Severity.ERROR, check='broker_config_document_unavailable',
+                domain=ValidationDomain.BROKER, message=problem, scope=scenario.name)]))
+        self.logger.error(f'❌ {scenario.name}: {problem}')
+        return None
 
     def _serialize_broker_configs(self) -> Dict[BrokerType, Dict[str, Any]]:
         """

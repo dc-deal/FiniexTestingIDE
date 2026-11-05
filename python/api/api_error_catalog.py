@@ -52,7 +52,8 @@ INVALID_TIMESTAMP = ApiErrorKind(
 STATE_FRAMES_NOT_RECORDED = ApiErrorKind(
     404, 'state_frames_not_recorded',
     "Run '{run_id}' records no state frames — a session from before they were recorded, one with "
-    "the recording switched off (state_frames.enabled in its profile), or a backtest")
+    "the recording switched off (state_frames.enabled in its profile), or a backtest, whose frames "
+    "are not served even where its scenario records them")
 STATE_FRAME_NOT_WRITTEN_YET = ApiErrorKind(
     404, 'state_frame_not_written_yet',
     "Run '{run_id}' has not written its first state frame yet — ask again after one cadence")

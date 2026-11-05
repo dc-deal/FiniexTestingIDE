@@ -36,7 +36,8 @@ class RunConfigKind(StrEnum):
     added up to when the run started. None has a file of its own to point at, so each is frozen
     from content. They are records of
     what ran, never schemas: a later version of an algo may rename or drop a parameter, and an old
-    rendered document stays exactly as true as it was — it is never fed back into a factory.
+    rendered document stays exactly as true as it was. It is fed back into a factory in one place
+    only: a backtest of the session's own window (#512), where it is the strategy the session ran.
     """
     SCENARIO_SET = 'scenario_set'
     AUTOTRADER_PROFILE = 'autotrader_profile'

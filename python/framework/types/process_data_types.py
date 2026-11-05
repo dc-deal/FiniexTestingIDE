@@ -17,7 +17,10 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from python.configuration.app_config_manager import AppConfigManager
 from python.configuration.market_config_manager import MarketConfigManager
-from python.framework.types.config_types.autotrader_defaults_config_types import OrderGuardDefaults
+from python.framework.types.config_types.autotrader_defaults_config_types import (
+    OrderGuardDefaults,
+    StateFramesDefaults,
+)
 from python.framework.types.config_types.backtesting_config_types import (
     DefaultScenarioExecutionConfig,
     TradeSimulatorDefaults,
@@ -26,6 +29,7 @@ from python.framework.types.config_types.market_config_types import MarketType, 
 from python.framework.types.disturbance_episode_types import DisturbanceEpisode, MarketDataTickStats
 from python.framework.types.live_types.live_stats_config_types import LiveStatsExportConfig
 from python.framework.types.log_record_types import LogRecord
+from python.framework.types.market_types.warmup_history_types import WarmupHistoryRecord
 from python.framework.types.performance_types.performance_stats_types import (
     DecisionLogicStats,
     WorkerCoordinatorPerformanceStats,
@@ -285,6 +289,11 @@ class ProcessScenarioConfig:
     # === ORDER FEATURES BEYOND THE VENUE (#625) ===
     features_beyond_venue: List[OrderFeature] = field(default_factory=list)
 
+    # === RECORDED WARMUP (#512) ===
+    # A backtest of a session's window starts from the bars the session started from; None warms
+    # up on the archive's selection, as every other backtest does
+    warmup_record: Optional[WarmupHistoryRecord] = None
+
     # === HISTORY LIMITS ===
     bar_max_history: int = 1000
     order_history_max: int = 10000
@@ -297,6 +306,11 @@ class ProcessScenarioConfig:
     # Simulated-time interval between ghost-passes within a sub-threshold tick
     # gap. Only active for an opt-in decision (wants_heartbeat); 0 = disabled.
     heartbeat_interval_ms: int = 1000
+
+    # === STATE FRAMES (#579 part B item 3) ===
+    # Whether the scenario records its state on the session's slots, and on which cadence
+    state_frames_enabled: bool = False
+    state_frames_cadence: str = StateFramesDefaults().cadence_timeframe
 
     # === TICK PROCESSING BUDGET ===
     tick_processing_budget_ms: float = 0.0  # 0 = disabled (no clipping)
@@ -406,6 +420,11 @@ class ProcessScenarioConfig:
         heartbeat_interval_ms = exec_config.get(
             'heartbeat_interval_ms', _EXECUTION_DEFAULTS.heartbeat_interval_ms)
 
+        # The scenario's state frames (#579 part B item 3): the block as a whole through its model
+        frames_block = exec_config.get('state_frames')
+        state_frames = (StateFramesDefaults(**frames_block) if frames_block is not None
+                        else _EXECUTION_DEFAULTS.state_frames)
+
         # Parse stress test config from scenario
         stress_test_config = StressTestConfig.from_dict(
             scenario.stress_test_config)
@@ -447,11 +466,14 @@ class ProcessScenarioConfig:
             stress_test_config=stress_test_config,
             order_guard_config=order_guard_config,
             features_beyond_venue=scenario.features_beyond_venue,
+            warmup_record=scenario.warmup_record,
             bar_max_history=app_config_loader.get_bar_max_history(),
             order_history_max=app_config_loader.get_order_history_max(),
             trade_history_max=app_config_loader.get_trade_history_max(),
             inter_tick_gap_threshold_s=inter_tick_gap_threshold_s,
             heartbeat_interval_ms=heartbeat_interval_ms,
+            state_frames_enabled=state_frames.enabled,
+            state_frames_cadence=state_frames.cadence_timeframe,
             tick_processing_budget_ms=tick_processing_budget_ms,
             inbound_latency_min_ms=inbound_latency_min_ms,
             inbound_latency_max_ms=inbound_latency_max_ms,

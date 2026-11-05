@@ -87,6 +87,14 @@ VALIDATION_CHECKS: Tuple[ValidationCheckInfo, ...] = (
         'broker_config_unavailable', 'Broker configuration unavailable',
         "The broker's configuration could not be fetched or loaded."),
     ValidationCheckInfo(
+        'broker_config_document_unavailable', 'Recorded broker configuration unavailable',
+        "A backtest of a session's window names the broker configuration the session froze at its "
+        'start, and no configuration can be built from the document the loader read.'),
+    ValidationCheckInfo(
+        'broker_config_sources_differ', 'One broker configured from two sources',
+        'One scenario set configures a broker from a recorded document and another scenario '
+        'configures it differently; a run trades one configuration per broker.'),
+    ValidationCheckInfo(
         'symbol_unknown', 'Symbol not in the broker configuration',
         'The broker configuration does not list the symbol.'),
     ValidationCheckInfo(
