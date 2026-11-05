@@ -1299,15 +1299,17 @@ class TestARunThatMeasuredNothingStandsWithoutFigures:
                           ('failed', 2, SessionBookingState.FAILED),
                           ('newest', 3, SessionBookingState.NOT_BOOKED_YET)]
 
-    def test_its_line_in_the_list_sums_nothing_and_spans_its_starts(self):
+    def test_it_is_counted_on_the_booked_row_and_adds_nothing_to_it(self, capsys):
         rows = self._rows()
         runs = [started('newest', '2026-12-20T00:05:00+00:00')]
         summaries = summarize_deployments(add_unbooked_sessions(
             build_deployment_histories(rows), rows, runs), {}, {})
-        without = next(summary for summary in summaries if summary.currency is None)
-        assert (without.sessions, without.net_pnl) == (2, None)
-        assert without.first_started == datetime.fromisoformat(SECOND_START)
-        assert without.last_started == datetime.fromisoformat('2026-12-20T00:05:00+00:00')
+        assert [(s.currency, s.sessions, s.sessions_without_figures, s.sessions_failed)
+                for s in summaries] == [('USD', 2, 2, 1)]
+        assert summaries[0].net_pnl == 0.0
+        assert summaries[0].first_started == datetime.fromisoformat(FIRST_START)
+        render_deployment_list(summaries)
+        assert '+2 without figures (1 failed)' in capsys.readouterr().out
 
 
 class TestTheListSaysWhichMoved:
@@ -1455,17 +1457,26 @@ class TestADeploymentIsListedFromItsFirstSession:
         assert [s.run_id for s in merged] == ['r1', 'r2', 'r3']
         assert merged[2].currency is None and merged[2].index == 1
 
-    def test_the_summary_puts_the_sessions_without_a_currency_in_a_row_of_their_own(self):
-        """A null P&L summed with booked ones would be a number about nothing."""
+    def test_the_summary_counts_the_sessions_without_a_currency_on_the_booked_row(self):
+        """
+        A null P&L summed with booked ones would be a number about nothing, and a row of their
+        own read the same deployment twice: they are counted on the booked row.
+        """
         rows = [row('r1', '2026-09-01T06:00:00+00:00', net_pnl=10.0),
                 row('r2', '2026-09-02T06:00:00+00:00', net_pnl=-4.0)]
         histories = add_unbooked_sessions(build_deployment_histories(rows), rows, [
             started('r3', '2026-09-03T06:00:00+00:00')])
         summaries = summarize_deployments(histories, {}, {})
-        assert [(s.currency, s.sessions, s.net_pnl) for s in summaries] == [
-            ('USD', 2, 6.0), (None, 1, None)]
-        assert summaries[1].max_drawdown is None
-        assert summaries[1].first_started == datetime(2026, 9, 3, 6, tzinfo=timezone.utc)
+        assert [(s.currency, s.sessions, s.net_pnl, s.sessions_without_figures, s.sessions_failed)
+                for s in summaries] == [('USD', 2, 6.0, 1, 0)]
+
+    def test_a_deployment_that_booked_nothing_keeps_its_row(self):
+        histories = add_unbooked_sessions({}, [], [started('r1', '2026-09-03T06:00:00+00:00')])
+        summary = summarize_deployments(histories, {}, {})[0]
+        assert (summary.currency, summary.sessions, summary.net_pnl) == (None, 1, None)
+        assert (summary.sessions_without_figures, summary.sessions_failed) == (1, 0)
+        assert summary.max_drawdown is None
+        assert summary.first_started == datetime(2026, 9, 3, 6, tzinfo=timezone.utc)
 
     def test_the_list_prints_a_dash_and_says_why(self, capsys):
         histories = add_unbooked_sessions({}, [], [started('new', '2026-09-03T06:00:00+00:00')])
@@ -1473,7 +1484,7 @@ class TestADeploymentIsListedFromItsFirstSession:
         printed = capsys.readouterr().out
         line = next(text for text in printed.splitlines() if text.startswith(DEPLOYMENT))
         assert '—' in line and '0.00' not in line
-        assert 'sessions without booked figures' in printed
+        assert 'a deployment that has booked nothing' in printed
 
     def test_the_detail_notes_that_nothing_is_booked_yet(self, capsys):
         sessions = add_unbooked_sessions(

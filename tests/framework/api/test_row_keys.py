@@ -204,10 +204,12 @@ class TestTheKeyActuallySeparatesTheRows:
         # One deployment, two account currencies. Keyed on `deployment_id` alone these are ONE
         # row, and the P&L a consumer then shows is two currencies added together.
         rows = [
-            DeploymentSummary(deployment_id='deploy_1', sessions=2, first_started=None,
+            DeploymentSummary(deployment_id='deploy_1', sessions=2, sessions_without_figures=0,
+                              sessions_failed=0, first_started=None,
                               last_started=None, net_pnl=10.0, max_drawdown=1.0,
                               max_drawdown_pct=0.1, currency='USD'),
-            DeploymentSummary(deployment_id='deploy_1', sessions=2, first_started=None,
+            DeploymentSummary(deployment_id='deploy_1', sessions=2, sessions_without_figures=0,
+                              sessions_failed=0, first_started=None,
                               last_started=None, net_pnl=0.5, max_drawdown=0.01,
                               max_drawdown_pct=0.1, currency='BTC'),
         ]

@@ -33,7 +33,10 @@ A P&L column added up over two currencies is not a number, so a bot that traded 
 silently, in the direction that loses data. See [row keys](/api/v1/docs/row-keys).
 
 `sessions` on such a row counts the sessions **in that currency**, not the deployment's sessions in
-total.
+total. `sessions_without_figures` counts the deployment's sessions that have no booked figures, and
+`sessions_failed` how many of those failed before they measured anything — see the next section.
+Both describe the deployment, not the currency: on a deployment with two rows they repeat, and are
+never added across rows.
 
 The list is newest first. The detail route is oldest first — a life reads forwards.
 
@@ -53,21 +56,30 @@ would read like a session that traded and broke even. `booking_state` tells the 
 `failed` for this one, `not_booked_yet` for a session whose first seal has not come, `booked` for
 every other session.
 
-None of these sessions has an account currency. In the list they therefore form one row of their
-own per deployment, with `currency: null`, after the deployment's other rows. A new deployment has
-only that row. A deployment whose earlier sessions booked days shows it beside them. At its first
-seal a session not booked yet moves into its currency's row; a failed one stays where it is.
+None of these sessions has an account currency, and none adds a figure. In the list they are
+therefore **counted on the deployment's booked rows** rather than drawn as rows of their own:
+
+```json
+{"deployment_id": "deploy_20261022_123713_e5f6a7b8", "currency": "USD", "sessions": 1,
+ "sessions_without_figures": 1, "sessions_failed": 0, "net_pnl": -0.10, …}
+```
+
+A deployment that has booked nothing — a new one, or one whose sessions all failed — has no booked
+row to carry them, so it stands in a row of its own with `currency: null`. At its first seal a
+session not booked yet moves into its currency's row and out of the count; a failed one stays in
+the count.
 
 ```json
 {"deployment_id": "deploy_20261103_090000_a1b2c3d4", "currency": null, "sessions": 1,
+ "sessions_without_figures": 1, "sessions_failed": 0,
  "first_started": "2026-11-03T09:00:00+00:00", "last_started": "2026-11-03T09:00:00+00:00",
  "net_pnl": null, "max_drawdown": null, "max_drawdown_pct": null, "orders_to": ["simulated"]}
 ```
 
 ## What adds up, and what never does
 
-`net_pnl` is summed over the row's sessions. This one genuinely adds up. It is null on the row of
-the sessions without booked figures.
+`net_pnl` is summed over the row's booked sessions. This one genuinely adds up. It is null on the
+row of a deployment that has booked nothing.
 
 `max_drawdown` is the **largest** of them and never a sum. Each live session carries the running
 decline measured against the peak it inherited, so adding them counts one decline once per session

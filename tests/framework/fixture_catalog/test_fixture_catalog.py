@@ -316,7 +316,8 @@ class TestAPropertyReadsWhatIsServed:
 
     def test_two_histories_of_one_bot(self):
         def history(deployment_id: str, bot_id: str) -> DeploymentSummary:
-            return DeploymentSummary(deployment_id=deployment_id, sessions=1, first_started=None,
+            return DeploymentSummary(deployment_id=deployment_id, sessions=1,
+                                     sessions_without_figures=0, sessions_failed=0, first_started=None,
                                      last_started=None, net_pnl=0.0, max_drawdown=0.0,
                                      max_drawdown_pct=0.0, currency='USD',
                                      bot='demo_btcusd_bot', bot_id=bot_id, changed=False,

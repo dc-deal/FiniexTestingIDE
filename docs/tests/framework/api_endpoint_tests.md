@@ -295,8 +295,8 @@ the ledger it hands over.
 | `test_a_deployment_is_listed_from_its_first_sessions_start` | #645 — a deployment only the run index names is listed, with `currency`, `net_pnl` and both drawdowns null, never zero, and `bot`, `orders_to` and `first_started` from the index |
 | `test_its_detail_answers_with_the_session_that_booked_nothing` | the detail answers 200 with that session in `sessions`, without figures and without an end, and `unfinished` counts it |
 | `test_its_booking_periods_are_an_empty_list_and_not_a_404` | an empty list, and the session counted in `sessions_without_periods` |
-| `test_a_new_session_of_a_booked_deployment_stands_in_a_row_of_its_own` | before its first seal a session has no currency, so it stands in a row with `currency` null after the booked USD row, and last in the detail |
-| `test_a_failed_start_serves_no_figure_and_says_why` | #646 — a run that failed before it measured anything serves no figure and no currency, stands in the null-currency row beside a session not booked yet, and its `booking_state` reads `failed` |
+| `test_a_new_session_of_a_booked_deployment_is_counted_on_its_row` | before its first seal a session has no currency, so it is counted on the booked USD row (`sessions_without_figures`) rather than standing in an empty row, and last in the detail |
+| `test_a_failed_start_serves_no_figure_and_says_why` | #646 — a run that failed before it measured anything serves no figure and no currency, is counted on the deployment's booked row with a session not booked yet (`sessions_without_figures` 2, `sessions_failed` 1), and its `booking_state` reads `failed` |
 | `test_a_sweep_naming_the_same_id_is_not_a_session` | the parent's KIND decides, not the shape of its id |
 | `test_unknown_deployment_is_a_404_and_not_an_empty_history` | An empty list would read as a deployment that ran and did nothing; the sentence names both stores it asked |
 | `test_the_detail_route_filters_in_the_store` | `read_rows(deployment_id=...)`, not a full read followed by a filter |

@@ -64,14 +64,21 @@ def render_deployment_list(summaries: List[DeploymentSummary]) -> None:
                    else f'{"—":>11}')
         net_pnl = (f'{summary.net_pnl:>11.2f}' if summary.net_pnl is not None
                    else f'{"—":>11}')
+        # The sessions without booked figures stand on a booked row as a count; a row of
+        # their own, a dash under net P&L, says the same for a deployment that booked nothing
+        without = ''
+        if summary.currency is not None and summary.sessions_without_figures:
+            without = f'  +{summary.sessions_without_figures} without figures'
+            if summary.sessions_failed:
+                without += f' ({summary.sessions_failed} failed)'
         print(f'{summary.deployment_id:<32} {summary.bot:<22} '
               f'{(summary.bot_id or "—"):<20} {orders_to:<16} {summary.sessions:>8} '
               f'{since:<17} {net_pnl} {deepest} '
-              f'{gap:>9}{mark}')
+              f'{gap:>9}{mark}{without}')
     print('─' * 155)
     if any(s.currency is None for s in summaries):
-        print('— under net P&L = sessions without booked figures: they failed before they measured '
-              'anything, run before their first seal, or ended before it.')
+        print('— under net P&L = a deployment that has booked nothing: its sessions failed before '
+              'they measured anything, run before their first seal, or ended before it.')
     if any(s.configuration_changed for s in summaries):
         print('⚠ = the sessions were not all produced by the same configuration; the detail '
               'view draws the break.')

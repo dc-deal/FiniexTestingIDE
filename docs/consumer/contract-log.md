@@ -33,6 +33,20 @@ reads downwards from the version their fixtures hold until they reach the one be
 A test holds the newest heading in this log to the number the server answers with, so a version
 cannot ship without its entry.
 
+## Version 51 — 2026-11-05 (#646)
+
+A deployment no longer reads twice in the list, once of the two rows empty.
+
+- [Deployments](/api/v1/docs/deployments), a changed shape: the sessions without booked figures —
+  failed before they measured anything, or not booked yet — no longer stand in a row of their own
+  beside the deployment's booked rows. Each booked row counts them: **`sessions_without_figures`**,
+  and **`sessions_failed`** for those that failed. The counts describe the deployment; on a
+  deployment with two currency rows they repeat and are never added across rows.
+- Deployments: the row with `currency: null` is served only for a deployment that has booked
+  nothing, and carries the same two counts. The key stays `["deployment_id", "currency"]`.
+
+Nothing removed or renamed; two fields added.
+
 ## Version 50 — 2026-11-04 (#646)
 
 A run that failed before it measured anything no longer reads like a session that traded and broke
@@ -111,35 +125,13 @@ this application's.
 
 Nothing removed or renamed; one meaning changed: `changed`.
 
-## Version 46 — 2026-10-30 (#625)
-
-A session holds no stop or target for a position any more, so the fields and values that said who held
-one are gone.
-
-- [Portfolio](/api/v1/docs/portfolio) and the state frames: `protective_level_enforcement` and
-  `take_profit_enforcement` are removed from the open-position rows. `stop_loss` and `take_profit`
-  stay: a backtest's position may carry one.
-- [Order history](/api/v1/docs/order-history) and [order events](/api/v1/docs/order-events): the
-  `end_reason` `protection_released` is no longer produced. A run recorded before this contract may
-  still hold it, and it stays served. The `rejection_reason` `close_withheld` is removed; no recorded
-  run holds it.
-- Every report route answers `409 artifact_unreadable` for a stored artifact that no longer matches
-  its model. Some answered 500 before. See [errors](/api/v1/docs/errors).
-- A close's `order_id` is its position's on every row. A rebuilt stop's own id, `protect_` and the
-  position's id, is no longer produced.
-- `expectancy` can be null, on [run summaries](/api/v1/docs/run-summary), [trade analytics](/api/v1/docs/trade-history),
-  booking periods, ledger rows and robustness windows, where no trade has an R. It used to read `0.0`.
-  A run recorded before this contract keeps its `0.0` beside `r_trade_count` 0.
-- [Sweeps](/api/v1/docs/sweeps): a sweep ranked by `expectancy` leaves such a run out and counts it in
-  `unranked`, and a sweep that recorded no objective ranks by `net_pnl`. The sweep list carries
-  `features_beyond_venue`. It is not on the run list: the run header holds it.
-
-## Versions 45 and earlier
+## Versions 46 and earlier
 
 One line each. Every one of these moved a shape or a meaning; what they moved is summarised here
 rather than spelled out, because a consumer this far behind needs the list of steps, not each step's
 reasoning. The full text of a compressed version is in this repository's history.
 
+- **Version 46** — 2026-10-30 (#625): A session holds no stop or target for a position any more — `protective_level_enforcement` and `take_profit_enforcement` removed from the open-position rows, `protection_released` and `close_withheld` no longer produced, `409 artifact_unreadable` for a stored artifact that no longer matches its model, `expectancy` null where no trade has an R, and a sweep ranked by `expectancy` counts such runs in `unranked`.
 - **Version 45** — 2026-10-30 (#625): A venue's API decides which levels a run can use — `exit_level` on every [trade history](/api/v1/docs/trade-history) row, `features_beyond_venue` on the [run header](/api/v1/docs/run-header), `order_feature_not_declared` as a `rejection_reason`, four new validation checks, and an exit a strategy keeps itself fills in a backtest at the next price after its level.
 - **Version 44** — 2026-10-27 (#631): What every live session knows about its venue is recorded — `GET /api/v1/reports/runs/{run_id}/venue-api-performance` (new), `reconciliation` on the [venue account](/api/v1/docs/venue-account), `fee_report` and `venue_fee_expected` on [broker](/api/v1/docs/broker), a fill's slippage on [order history](/api/v1/docs/order-history) and in `fill_slippage` on [execution statistics](/api/v1/docs/execution-stats), and a protective exit's `exit_slippage` measured against the level that fired.
 - **Version 43** — 2026-10-27 (#580): A unit's recorded streams can be read over time: a timeline to draw the axis from, and a window to read them a page at a time — a finished run's and a running session's alike. Its document is [recorded streams](/api/v1/docs/recorded-streams).
