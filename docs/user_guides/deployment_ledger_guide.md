@@ -89,7 +89,7 @@ deploy_20260820_090000_5e3f91a7  ethusd_production      ethlive01            ven
 deploy_20260901_060000_ab12c9d0  dotusd_production      dotlive01            venue                   4 2026-09-01 06:00       136.10     -212.75     6.6 d ⚠
 deploy_20260712_051500_77c1e4b2  dotusd_production      dotlive01            venue                   2 2026-07-12 05:15      -402.88     -991.40     2.1 d ⚠ code 64 d ago
 ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-— under net P&L = sessions that have booked no trading day yet: they run before their first seal, or ended before it.
+— under net P&L = sessions without booked figures: they failed before they measured anything, run before their first seal, or ended before it.
 ⚠ = the sessions were not all produced by the same configuration; the detail view draws the break.
 ⚠ code N d ago = the sessions started on different code, last N days ago; the detail view draws each change.
 Two rows sharing a BOT ID = one bot restarted with --new-deployment. The older history stays readable.
@@ -399,7 +399,9 @@ the **last** step. A session killed before that — a crash, a reboot, a hard st
 keeps the days it sealed, and the row of its close is missing: in the session table it has no `ended`
 and no length, and the gap after it is measured between the starts. A session killed before its
 first seal has no row at all. It stands in the table with its start, a dash for every figure and
-the note `nothing booked yet`, because nothing of it was booked.
+the note `nothing booked yet`, because nothing of it was booked. A session that failed before it
+measured anything — refused at its start, say — stands beside it the same way, with the note
+`failed before it measured anything`: its ledger row records the failure and no figure.
 
 The run index is what still holds every one of them, because a run registers from its header
 before anything can fail. The report reads both and names the difference:

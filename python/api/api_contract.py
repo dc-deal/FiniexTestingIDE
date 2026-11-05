@@ -23,7 +23,7 @@ from typing import List
 
 # One monotonic integer. Not a date and not the app version: a consumer compares it for
 # equality, and equality is the only question they have.
-API_CONTRACT_VERSION = 49
+API_CONTRACT_VERSION = 50
 
 # Every response carries it, so a saved fixture carries it too.
 CONTRACT_HEADER = 'X-Api-Contract'
@@ -36,13 +36,13 @@ API_PREFIX = '/api/v1'
 # What moved INTO the current version. One line per change, written for someone who cannot
 # read this repository.
 CHANGES: List[str] = [
-    "deployments: a deployment is listed from its first session's start, not from its first sealed "
-    'trading day; its sessions that have booked no day yet stand in a row of their own, currency null',
-    'deployments: net_pnl and currency are nullable on a list row and on a session row, null on a '
-    'session that has booked no trading day yet; never a zero',
-    'deployments/{deployment_id}: answers for a deployment whose sessions have booked nothing yet, '
-    'with those sessions in sessions; every run unfinished counts is now in sessions',
-    'deployments/{deployment_id}/booking-periods: 200 with an empty list for such a deployment; '
-    'sessions_without_periods also counts sessions that have not sealed their first day',
-    'errors: deployment_not_found means that no session in the run index and no ledger row names it',
+    'deployments: a session that failed before it measured anything serves no figure — net_pnl, '
+    'max_drawdown and max_drawdown_pct null where they read 0.0 — and no currency, null where it '
+    'read the empty string; it stands with the sessions that have booked nothing yet, in the row '
+    'whose currency is null',
+    'deployments/{deployment_id}: every session carries booking_state — booked, failed (it failed '
+    'before it measured anything) or not_booked_yet; the sessions without booked figures follow the '
+    'booked ones as one series, oldest first and numbered from 1, with no gap and no change mark',
+    'sweeps/{sweep_id}: net_pnl, win_rate, total_fees, total_trades, winning_trades, losing_trades '
+    'and r_trade_count are nullable in the schema; a ranked combination never carries null there',
 ]

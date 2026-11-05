@@ -811,8 +811,11 @@ class AutotraderMain:
             ticks_clipped = 0
         except Exception as e:
             self._report_abort(e)
-            ticks_processed = 0
-            ticks_clipped = 0
+            # What the loop counted before it fell: the counts live on the loop, so the exception
+            # that ended it does not take them along (#636). A loop that was never built counted
+            # nothing, and a refusal above happens before it is.
+            ticks_processed, ticks_clipped = (
+                self._tick_loop.get_tick_counts() if self._tick_loop is not None else (0, 0))
 
         # #235: the loop is over — from here a pass that no longer comes is the shutdown, not a
         # stall, and the liveness watch must not report one
@@ -866,8 +869,13 @@ class AutotraderMain:
             # Runtime error inside the tick loop — NOT a startup failure.
             self._global_logger.error(f'❌ AutoTrader runtime error in tick loop: {error}')
             self._print_runtime_error(str(error))
+            # How far it got: the abort is the session's one message, so it carries the count
+            # the closing message would have (#636)
+            ticks_processed = (self._tick_loop.get_tick_counts()[0]
+                               if self._tick_loop is not None else 0)
             self._alert_abort(OperatorAlertKind.RUNTIME_ERROR,
-                              'RUNTIME ERROR — session aborted', str(error))
+                              'RUNTIME ERROR — session aborted',
+                              f'{error}\nTicks: {ticks_processed:,}')
         else:
             # #598: a passing cause — the venue did not answer within its budget — leaves with
             # exit 75, which a supervisor restarts after its pause; anything else stays down

@@ -19,7 +19,7 @@ import json
 import math
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Tuple, get_args
 
 import pandas as pd
 
@@ -29,6 +29,7 @@ from python.framework.reporting.store.run_ledger_index import RunLedgerIndex
 from python.framework.types.api.report_types import RunResultRow, RunSummary
 from python.framework.types.run_results_types import (
     BookingPeriod,
+    FigureKind,
     NullMeaning,
     Reduction,
     RunProvenance,
@@ -390,6 +391,16 @@ COLUMN_COMPANION_OF: Dict[str, str] = {
 # Where a null can mean both — a set that can be empty, or a row from before the column — it is
 # declared UNDEFINED, because leaving out the runs that never lost is the worse mistake.
 COLUMN_NULL_MEANING: Dict[str, NullMeaning] = {
+    # The figures the row of a run that measured nothing leaves empty — an error row without a
+    # currency (#646). Not measured rather than undefined: a ranking leaves such a row out by its
+    # status anyway, and declared undefined they would refuse every sweep ranked by its P&L
+    'net_pnl': NullMeaning.UNMEASURED,
+    'win_rate': NullMeaning.UNMEASURED,
+    'total_fees': NullMeaning.UNMEASURED,
+    'total_trades': NullMeaning.UNMEASURED,
+    'winning_trades': NullMeaning.UNMEASURED,
+    'losing_trades': NullMeaning.UNMEASURED,
+    'r_trade_count': NullMeaning.UNMEASURED,
     # The trades had no R on record: a logic keeps its stop itself, so the position carries none. A
     # ranking leaves such a run out and counts it. A row from before this column could be empty
     # reads 0.0 with `r_trade_count` 0, and a fold of it reads empty like this one
@@ -445,6 +456,14 @@ COLUMN_NULL_MEANING: Dict[str, NullMeaning] = {
     'orders_unaccounted': NullMeaning.UNMEASURED,
     'sl_tp_triggered': NullMeaning.UNMEASURED,
 }
+
+# The figures a run that measured nothing leaves empty: every column the ledger declares a figure —
+# its reduction is no description — that the row model lets be empty. A test holds every numeric
+# figure column to that, so a new one cannot read back as its default on such a row.
+_FIGURE_COLUMNS: Tuple[str, ...] = tuple(
+    column for column in LEDGER_COLUMNS
+    if COLUMN_REDUCTION[column].figure_kind() is not FigureKind.DESCRIPTION
+    and type(None) in get_args(RunResultRow.model_fields[column].annotation))
 
 
 class RunResultsLedger:
@@ -702,7 +721,15 @@ class RunResultsLedger:
         if sweep_params is not None:
             data['sweep_params'] = sweep_params
         data['code_stand'] = _json_or(record.get('code_stand'), None, run_id, 'code_stand')
-        return RunResultRow(**data)
+        row = RunResultRow(**data)
+        # The row of a run that measured nothing reads every figure as None: the writer leaves
+        # those cells empty on purpose, and the writer before it stored a literal zero there
+        # (#646). A model default must not turn either back into a number. Told apart by the
+        # row's own status and currency, never by its empty cells: the fragments are read as one
+        # table, so a fragment from before a column existed is empty there too.
+        if row.measured_nothing():
+            return row.model_copy(update=dict.fromkeys(_FIGURE_COLUMNS, None))
+        return row
 
     def _provenance_fields(self, p: RunProvenance) -> Dict[str, Any]:
         """The shared provenance columns (identical for ok + error rows)."""

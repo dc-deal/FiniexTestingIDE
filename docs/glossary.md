@@ -111,6 +111,12 @@ numbered from 1; the ledger holds one row per booking period, in its account's c
 trading day of the market calendar has one, a day without a tick included (`tick_count` 0). In code
 `BookingPeriod` and `period_no`. See [Accounting Periods](architecture/accounting_periods.md).
 
+**booking state** (`booking_state`) — Whether a deployment's session has booked figures, and if
+not, why: `booked`; `failed`, the run failed before it measured anything, so its ledger row holds
+no figure; `not_booked_yet`, its first booking period has not closed. Not the state of a booking
+period. In code `SessionBookingState`. See the served document on deployments
+(`docs/consumer/deployments.md`).
+
 **broker** (`broker_type`) — Our configuration entry for one venue and product in
 `market_config.json` (`kraken_spot`, `mt5`). Not the same as the venue. The broker whose ticks a
 unit read is its *data broker*. See [Broker Config](broker_config_guide.md).

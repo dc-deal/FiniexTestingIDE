@@ -19,7 +19,7 @@ its own weight. Two are honestly unrecoverable here and answer None — the stre
 of winners can CROSS a period boundary and no arithmetic over two summaries can see that.
 """
 
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Dict, List, Optional, Sequence, get_args
 
 from python.framework.reporting.store.run_results_ledger import (
     COLUMN_COMPANION_OF,
@@ -33,6 +33,11 @@ from python.framework.types.run_results_types import Reduction
 # carries wins: a booking period is closed at `period_closed_at`, a row that books no period was
 # written at `recorded_at_utc`, and everything older than that column has only its run timestamp.
 _RECENCY_KEYS = ('period_closed_at', 'recorded_at_utc', 'run_timestamp')
+
+# The row fields that may be empty — derived from the model, so a field widened later is covered.
+_NULLABLE_FIELDS = frozenset(
+    name for name, field in RunResultRow.model_fields.items()
+    if type(None) in get_args(field.annotation))
 
 
 def aggregate_ledger_rows(
@@ -115,7 +120,11 @@ def _combine(rows: List[RunResultRow]) -> RunResultRow:
         combined[column] = _fold(column, reduction, rows, ordered, one_account)
     _apply_companions(combined, rows)
     _apply_derived(combined, rows)
-    return RunResultRow(**{k: v for k, v in combined.items() if v is not None})
+    # None stays None where the model lets a field be empty: dropped, a figure with a number for
+    # its default would come back as that number — the zero a run that measured nothing never
+    # booked (#646). Dropped only where the model refuses it, so a description keeps its default.
+    return RunResultRow(**{k: v for k, v in combined.items()
+                           if v is not None or k in _NULLABLE_FIELDS})
 
 
 def _fold(
@@ -228,7 +237,10 @@ def _apply_derived(combined: Dict[str, Any], rows: List[RunResultRow]) -> None:
     gross_profit = combined.get('gross_profit') or 0.0
     gross_loss = combined.get('gross_loss') or 0.0
 
-    combined['win_rate'] = (winners / total) if total else 0.0
+    # A group that measured nothing — the rows of runs that failed before they measured anything —
+    # has no win rate rather than one of zero (#646); a group without a trade keeps its 0.0.
+    combined['win_rate'] = (None if combined.get('total_trades') is None
+                            else (winners / total) if total else 0.0)
     if not total:
         combined['profit_factor'] = None
     elif gross_loss > 0:

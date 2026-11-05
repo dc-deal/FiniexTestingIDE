@@ -924,6 +924,32 @@ class TestDeployments:
         assert [s['run_id'] for s in detail['sessions']] == ['s1', 's2', 's3']
         assert detail['sessions'][2]['currency'] is None
 
+    def test_a_failed_start_serves_no_figure_and_says_why(self, client):
+        """
+        A run that failed before it measured anything served a P&L of 0.0, which read like a
+        session that traded and broke even (#646). It serves no figure and no currency, stands
+        with the sessions that have booked nothing yet, and its booking state tells them apart.
+        """
+        failed = RunResultRow(run_id='s3', param_hash='p1', profile_hash='o2',
+                              run_timestamp='2026-09-03T06:00:00+00:00',
+                              deployment_id='deploy_1', bot_id='bot-a', scenario_set_name='a_bot',
+                              status='error', error='refused at the start', currency='',
+                              net_pnl=None, win_rate=None, total_fees=None, total_trades=None,
+                              winning_trades=None, losing_trades=None, r_trade_count=None)
+        ledger = MagicMock()
+        ledger.read_rows.return_value = self._rows() + [failed]
+        with patch('python.api.endpoints.deployments_router._ledger', return_value=ledger), \
+                self._index_with(self._started('s4', 'deploy_1', '2026-09-04T06:00:00+00:00')):
+            rows = client.get('/api/v1/deployments').json()['deployments']
+            detail = client.get('/api/v1/deployments/deploy_1').json()
+        assert [(r['currency'], r['sessions'], r['net_pnl']) for r in rows] == [
+            ('USD', 2, 6.0), (None, 2, None)]
+        states = {s['run_id']: (s['currency'], s['net_pnl'], s['booking_state'])
+                  for s in detail['sessions']}
+        assert states['s3'] == (None, None, 'failed')
+        assert states['s4'] == (None, None, 'not_booked_yet')
+        assert states['s1'][2] == 'booked'
+
     def test_a_sweep_naming_the_same_id_is_not_a_session(self, client):
         """A parent id is an opaque key, and a sweep's has the same shape: the KIND decides (#386)."""
         ledger = MagicMock()

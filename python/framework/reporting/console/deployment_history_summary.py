@@ -25,6 +25,7 @@ from python.framework.types.api.report_types import (
     DeploymentComparabilityAdvisory,
     DeploymentSessionRow,
     DeploymentSummary,
+    SessionBookingState,
 )
 from python.framework.types.run_origin_types import FRAMEWORK_REPOSITORY
 from python.framework.utils.math_utils import negated_magnitude
@@ -69,8 +70,8 @@ def render_deployment_list(summaries: List[DeploymentSummary]) -> None:
               f'{gap:>9}{mark}')
     print('─' * 155)
     if any(s.currency is None for s in summaries):
-        print('— under net P&L = sessions that have booked no trading day yet: they run before '
-              'their first seal, or ended before it.')
+        print('— under net P&L = sessions without booked figures: they failed before they measured '
+              'anything, run before their first seal, or ended before it.')
     if any(s.configuration_changed for s in summaries):
         print('⚠ = the sessions were not all produced by the same configuration; the detail '
               'view draws the break.')
@@ -152,7 +153,9 @@ def render_deployment_history(
         # Reported, never judged: no threshold here decides what is "too long" — that is a
         # judgement about the market and the bot, not about the data. Named "idle" because
         # the table now reads downwards into the past: it is the stretch before this session.
-        if session.net_pnl is None and session.currency is None:
+        if session.booking_state is SessionBookingState.FAILED:
+            notes.append('failed before it measured anything')
+        elif session.booking_state is SessionBookingState.NOT_BOOKED_YET:
             notes.append('nothing booked yet')
         if session.gap_hours is not None and session.gap_hours >= 1:
             measure = ' between starts' if session.gap_between_starts else ''

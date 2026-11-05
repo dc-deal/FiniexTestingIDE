@@ -385,6 +385,7 @@ tests feed it rows; the real repositories behind a stand are in `test_git_repo_i
 | `TestTheListSaysWhichMoved` (#559) | each form of the mark; a code change alone is `changed` with no advisory, a configuration change alone carries no code summary, and nothing moved is not `changed`; the legend names only the marks on the page; a change nobody can date still says `code` |
 | `TestTheCommandCarriesIt` (#559) | the real command hands the summaries to both views, so the list and the detail print what the builder derived |
 | `TestADeploymentIsListedFromItsFirstSession` (#645) | a session the run index registered and no ledger row of its deployment names has booked nothing yet: it is added with its start and no figures, after the booked sessions and in a summary row of its own with no currency; a sweep parent or an index row without a kind is no session; the list prints a dash and says why, the detail notes it, and the command lists such a deployment and names both stores when it finds none |
+| `TestARunThatMeasuredNothingStandsWithoutFigures` (#646) | a run that failed before it measured anything follows the booked series with no figure, no currency and no gap or change mark, its `booking_state` `failed`; it shares one series with the sessions not booked yet, oldest first and renumbered, a start without an offset included; and the list's row for them sums nothing and spans the earliest to the latest start |
 
 No threshold anywhere decides what counts as too long a gap: that is a judgement about the
 market and the operator's night, not about the data.

@@ -47,10 +47,16 @@ figures**: `currency`, `net_pnl`, `max_drawdown` and `max_drawdown_pct` are null
 because nothing was measured. `bot` names it already; `bot_id` stays empty until its first seal.
 Whether it still runs is what the run list's `recording` says.
 
-Such sessions have no account currency yet. In the list they therefore form one row of their own
-per deployment, with `currency: null`, after the deployment's other rows. A new deployment has only
-that row. A deployment whose earlier sessions booked days shows it beside them. At its first seal
-the session moves into its currency's row.
+A session that **failed before it measured anything** — refused at its start, say — stands with
+them. Its ledger row records the failure and no figure, so it shows the same nulls: a zero there
+would read like a session that traded and broke even. `booking_state` tells the cases apart:
+`failed` for this one, `not_booked_yet` for a session whose first seal has not come, `booked` for
+every other session.
+
+None of these sessions has an account currency. In the list they therefore form one row of their
+own per deployment, with `currency: null`, after the deployment's other rows. A new deployment has
+only that row. A deployment whose earlier sessions booked days shows it beside them. At its first
+seal a session not booked yet moves into its currency's row; a failed one stays where it is.
 
 ```json
 {"deployment_id": "deploy_20261103_090000_a1b2c3d4", "currency": null, "sessions": 1,
@@ -61,7 +67,7 @@ the session moves into its currency's row.
 ## What adds up, and what never does
 
 `net_pnl` is summed over the row's sessions. This one genuinely adds up. It is null on the row of
-the sessions that have booked nothing yet.
+the sessions without booked figures.
 
 `max_drawdown` is the **largest** of them and never a sum. Each live session carries the running
 decline measured against the peak it inherited, so adding them counts one decline once per session
@@ -72,7 +78,7 @@ this row. Only the sessions that measured a drawdown take part; where none did, 
 `longest_gap_hours` is the longest stretch the bot was not running, over the gaps that could be
 measured; null when none could.
 
-`first_started` and `last_started` are the first and the most recent session's start.
+`first_started` and `last_started` are the earliest and the latest start among the row's sessions.
 
 ## `changed` is a flag; the advisory and the code summary are its reasons
 
@@ -106,20 +112,21 @@ money's, so the session rows' `max_drawdown` restarts where the kind of run chan
 
 | Field | Meaning |
 |---|---|
-| `index` | its position in the deployment, 1-based |
+| `index` | its position in its series, 1-based — see [each currency is its own series](#each-currency-is-its-own-series) |
 | `run_id` | the session's own run identity, and the way into its report routes |
 | `started` | when it began |
 | `ended` | when it stopped |
 | `ran_hours` | how long it ran |
 | `gap_hours` | hours the bot was **not** running before it |
 | `gap_between_starts` | whether that gap could only be measured the coarse way |
-| `net_pnl` | realised P&L of that session; null when it has booked nothing yet |
+| `net_pnl` | realised P&L of that session; null when it has no booked figures, and `booking_state` says why |
 | `max_drawdown` / `max_drawdown_pct` | the cumulative account decline as of that session; both are null where the session's rows carry none |
 | `orders_to` | where its orders went — `venue` is real money, `simulated` a rehearsal; null when not recorded |
 | `strategy_changed` / `operation_changed` / `orders_to_changed` | what differed from the session before |
 | `code_changes` | which repositories' code differed from the session before, and how far; see [which code the sessions started on](#which-code-the-sessions-started-on) |
 | `bot` / `bot_id` | which bot ran it; `bot_id` is empty until the session has booked a day |
-| `currency` | the row's account currency; null when it has booked nothing yet |
+| `currency` | the row's account currency; null when it has no booked figures |
+| `booking_state` | whether its figures exist: `booked`; `failed`, it failed before it measured anything; `not_booked_yet`, its first seal has not come |
 
 `key` is `["run_id", "currency"]` — the same two-part identity as the list, one level down.
 
@@ -133,6 +140,9 @@ about that session alone.
 `index`, `gap_hours`, the change marks and `code_changes` restart per currency. The first session of
 the next currency has no predecessor, so nothing is measured against the last session of the other
 one.
+
+The sessions without booked figures are one more series, after the others: oldest first and
+numbered from 1. They mark no gap and no change, because there is no figure to compare across.
 
 A fixture captured before this changed holds those figures measured across currencies instead;
 [the contract log](/api/v1/docs/contract-log) names the version it moved in.
@@ -151,7 +161,7 @@ the seconds its reports took**. Null when either end is unknown — an unmeasura
 as unmeasured rather than as a number nobody can check.
 
 `gap_hours` runs from the predecessor's close to this session's start. It is null for the first
-session of a currency series, which has no predecessor.
+session of a currency series, which has no predecessor, and on a session without booked figures.
 
 `gap_between_starts: true` is the warning on that figure. It means the gap could only be measured
 from one **start** to the next, because the predecessor's row predates the close stamp or the

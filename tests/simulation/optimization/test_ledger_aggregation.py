@@ -171,6 +171,21 @@ class TestARateIsRebuiltNeverFolded:
         assert aggregate_ledger_rows(rows)[0].signal_fresh_ratio == 0.40
 
 
+class TestARunThatMeasuredNothing:
+    """The rows of runs that failed before they measured anything fold to no figure (#646)."""
+
+    def test_its_figures_fold_to_nothing_and_not_to_the_defaults(self):
+        failed = RunResultRow(
+            run_id=_RUN, param_hash='hash', run_timestamp='2026-09-21T00:00:00+00:00',
+            status='error', error='refused at the start', currency='', net_pnl=None,
+            win_rate=None, total_fees=None, total_trades=None, winning_trades=None,
+            losing_trades=None, r_trade_count=None)
+        combined = aggregate_ledger_rows([failed])[0]
+        for field in ('net_pnl', 'win_rate', 'total_fees', 'total_trades', 'winning_trades',
+                      'losing_trades', 'r_trade_count'):
+            assert getattr(combined, field) is None, f'{field} folds to {getattr(combined, field)!r}'
+
+
 class TestWhatCannotBeRecovered:
 
     def test_a_streak_is_not_answered_from_two_summaries(self):

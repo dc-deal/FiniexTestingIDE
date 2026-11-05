@@ -21,9 +21,9 @@ changes shape is then something your tests see on the day it happens rather than
 aggregates quietly absorb.
 
 A part of a key can be null, and it is then a value like any other. On `/deployments` the sessions
-of a deployment that have booked no trading day yet stand in one row with `currency: null`, and
-that null is what keeps the row apart from the deployment's booked rows. See
-[deployments](/api/v1/docs/deployments).
+of a deployment without booked figures — not booked yet, or failed before they measured anything —
+stand in one row with `currency: null`, and that null is what keeps the row apart from the
+deployment's booked rows. See [deployments](/api/v1/docs/deployments).
 
 ## A response serving several lists declares one key per list
 

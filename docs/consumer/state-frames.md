@@ -81,7 +81,8 @@ worker and of the decision; and the memory the session's process held.
   the cadence's timeframe; `cadence_slot` names the period by its opening),
   `bar_close` (a bar the workers read closed; `closed_bars` names it by its opening), `order` (the
   decision sent an order; `order_id` names it) or `shutdown` (the session's last frame, at the state
-  its report describes).
+  its report describes; after a crash in the session's loop its `ticks_processed` is the count up to
+  the crash).
 - **null means not checked**, never a default: `feed_stale` is null when the session reads no
   signal, `reconcile_clean` when it runs no reconciliation — or none has reached the venue yet, or
   the latest could not — and `last_price` and `equity` before the first price.

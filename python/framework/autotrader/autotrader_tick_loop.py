@@ -265,6 +265,11 @@ class AutotraderTickLoop:
         self._ghost_pass_count: int = 0
         self._ghost_action_count: int = 0
 
+        # #636: the session's tick counts, mirrored where they change. `run` keeps them in locals
+        # for the hot path and returns them; these survive an exception that leaves the loop.
+        self._ticks_processed: int = 0
+        self._ticks_clipped: int = 0
+
         # #436: market-data staleness contract — no real tick for this many wall
         # seconds → session-level stale (pot warning + on_market_data_stale +
         # OrderGuard entry block). 0 disables. Edge state below; the episode
@@ -502,6 +507,7 @@ class AutotraderTickLoop:
                 prev_msc = current_msc
 
             ticks_processed += 1
+            self._ticks_processed = ticks_processed
 
             # #141 Part 2a: fold in whatever the signal transport received since the last
             # pass, BEFORE the workers run — the existing should_refresh picks a new snapshot
@@ -670,6 +676,7 @@ class AutotraderTickLoop:
                     f'queue_depth_max={report.interval_max_queue_depth}'
                 )
                 ticks_clipped += report.interval_clipped
+                self._ticks_clipped = ticks_clipped
 
             # === 8. Display Stats ===
             if self._display_queue is not None:
@@ -1389,6 +1396,16 @@ class AutotraderTickLoop:
             (first, last) tick timestamps; (None, None) before the first tick
         """
         return self._first_tick_time, self._last_tick_time
+
+    def get_tick_counts(self) -> Tuple[int, int]:
+        """
+        The ticks this session processed and clipped so far — readable after an exception ended
+        the loop, whose counts `run`'s return value cannot carry out (#636).
+
+        Returns:
+            (ticks_processed, ticks_clipped)
+        """
+        return self._ticks_processed, self._ticks_clipped
 
     def get_market_data_tick_stats(self) -> MarketDataTickStats:
         """
