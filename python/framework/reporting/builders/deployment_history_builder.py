@@ -68,18 +68,24 @@ def summarize_deployments(
         One summary per (deployment × account currency), most recent first. Per currency and
         not per deployment: a P&L column added up over two currencies is not a number, and the
         row count would report a two-currency bot as having run twice as often. The sessions
-        that have booked nothing yet have no currency and share one summary of their own, after
-        the deployment's other rows
+        without booked figures have no currency: they are counted on every row of their
+        deployment, and form a row of their own only where the deployment has booked nothing
     """
     summaries: List[DeploymentSummary] = []
     for deployment, all_sessions in histories.items():
+        without = [s for s in all_sessions if not s.booking_state.has_booked_figures()]
+        failed = sum(1 for s in without if s.booking_state is SessionBookingState.FAILED)
         by_currency: Dict[Optional[str], List[DeploymentSessionRow]] = {}
         for session in all_sessions:
-            by_currency.setdefault(session.currency, []).append(session)
-        for sessions in by_currency.values():
+            if session.booking_state.has_booked_figures():
+                by_currency.setdefault(session.currency, []).append(session)
+        # A row of their own only for a deployment that booked nothing: beside a booked row it
+        # would read the same deployment twice, one of the two empty.
+        for sessions in list(by_currency.values()) or [without]:
             if not sessions:
                 continue
-            summaries.append(_summarize_one(deployment, sessions, advisories, code_summaries))
+            summaries.append(_summarize_one(
+                deployment, sessions, len(without), failed, advisories, code_summaries))
     # The currency's PRESENCE before its value: None does not compare with a string, and the row
     # that has booked nothing belongs after the deployment's booked rows.
     return sorted(summaries, key=lambda s: (s.deployment_id, s.currency is not None, s.currency or ''),
@@ -89,6 +95,8 @@ def summarize_deployments(
 def _summarize_one(
     deployment: str,
     sessions: List[DeploymentSessionRow],
+    sessions_without_figures: int,
+    sessions_failed: int,
     advisories: Dict[str, Optional[DeploymentComparabilityAdvisory]],
     code_summaries: Dict[str, Optional[DeploymentCodeSummary]],
 ) -> DeploymentSummary:
@@ -97,7 +105,9 @@ def _summarize_one(
 
     Args:
         deployment: The deployment identity
-        sessions: Its sessions in one currency, ordered
+        sessions: Its sessions in one currency, or those without booked figures, ordered
+        sessions_without_figures: How many of the deployment's sessions have no booked figures
+        sessions_failed: How many of those failed before they measured anything
         advisories: Deployment identity → its comparability advisory, or None
         code_summaries: Deployment identity → its code summary, or None
 
@@ -116,6 +126,8 @@ def _summarize_one(
     return DeploymentSummary(
         deployment_id=deployment,
         sessions=len(sessions),
+        sessions_without_figures=sessions_without_figures,
+        sessions_failed=sessions_failed,
         # Earliest and latest rather than first and last: the sessions without booked figures take
         # their starts from two sources, a ledger row and the run index.
         first_started=min(starts, key=ensure_utc_aware) if starts else None,

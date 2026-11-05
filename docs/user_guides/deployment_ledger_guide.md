@@ -89,7 +89,7 @@ deploy_20260820_090000_5e3f91a7  ethusd_production      ethlive01            ven
 deploy_20260901_060000_ab12c9d0  dotusd_production      dotlive01            venue                   4 2026-09-01 06:00       136.10     -212.75     6.6 d ⚠
 deploy_20260712_051500_77c1e4b2  dotusd_production      dotlive01            venue                   2 2026-07-12 05:15      -402.88     -991.40     2.1 d ⚠ code 64 d ago
 ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-— under net P&L = sessions without booked figures: they failed before they measured anything, run before their first seal, or ended before it.
+— under net P&L = a deployment that has booked nothing: its sessions failed before they measured anything, run before their first seal, or ended before it.
 ⚠ = the sessions were not all produced by the same configuration; the detail view draws the break.
 ⚠ code N d ago = the sessions started on different code, last N days ago; the detail view draws each change.
 Two rows sharing a BOT ID = one bot restarted with --new-deployment. The older history stays readable.

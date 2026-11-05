@@ -903,11 +903,11 @@ class TestDeployments:
         # The session that has not sealed a day is not lost: it is what keeps the list honest
         assert data['sessions_without_periods'] == 1
 
-    def test_a_new_session_of_a_booked_deployment_stands_in_a_row_of_its_own(self, client):
+    def test_a_new_session_of_a_booked_deployment_is_counted_on_its_row(self, client):
         """
-        Before its first seal it has no account currency, so it cannot join the USD row —
-        counting it there would claim a currency nobody recorded, and its null P&L would have
-        to be summed with real ones.
+        Before its first seal it has no account currency, so its null P&L is not summed with
+        the USD row's — it is counted on that row instead of standing in an empty row of its
+        own, which read the same deployment twice.
         """
         ledger = MagicMock()
         ledger.read_rows.return_value = self._rows()
@@ -919,16 +919,18 @@ class TestDeployments:
             rows = client.get('/api/v1/deployments').json()['deployments']
             detail = client.get('/api/v1/deployments/deploy_1').json()
         assert [(r['deployment_id'], r['currency'], r['sessions']) for r in rows] == [
-            ('deploy_1', 'USD', 2), ('deploy_1', None, 1)]
-        assert rows[0]['net_pnl'] == 6.0 and rows[1]['net_pnl'] is None
+            ('deploy_1', 'USD', 2)]
+        assert rows[0]['net_pnl'] == 6.0
+        assert (rows[0]['sessions_without_figures'], rows[0]['sessions_failed']) == (1, 0)
         assert [s['run_id'] for s in detail['sessions']] == ['s1', 's2', 's3']
         assert detail['sessions'][2]['currency'] is None
 
     def test_a_failed_start_serves_no_figure_and_says_why(self, client):
         """
         A run that failed before it measured anything served a P&L of 0.0, which read like a
-        session that traded and broke even (#646). It serves no figure and no currency, stands
-        with the sessions that have booked nothing yet, and its booking state tells them apart.
+        session that traded and broke even (#646). It serves no figure and no currency, is
+        counted on its deployment's booked row with the sessions not booked yet, and its
+        booking state tells them apart in the detail.
         """
         failed = RunResultRow(run_id='s3', param_hash='p1', profile_hash='o2',
                               run_timestamp='2026-09-03T06:00:00+00:00',
@@ -942,8 +944,8 @@ class TestDeployments:
                 self._index_with(self._started('s4', 'deploy_1', '2026-09-04T06:00:00+00:00')):
             rows = client.get('/api/v1/deployments').json()['deployments']
             detail = client.get('/api/v1/deployments/deploy_1').json()
-        assert [(r['currency'], r['sessions'], r['net_pnl']) for r in rows] == [
-            ('USD', 2, 6.0), (None, 2, None)]
+        assert [(r['currency'], r['sessions'], r['net_pnl'], r['sessions_without_figures'],
+                 r['sessions_failed']) for r in rows] == [('USD', 2, 6.0, 2, 1)]
         states = {s['run_id']: (s['currency'], s['net_pnl'], s['booking_state'])
                   for s in detail['sessions']}
         assert states['s3'] == (None, None, 'failed')

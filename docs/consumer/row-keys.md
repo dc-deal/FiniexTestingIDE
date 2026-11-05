@@ -20,10 +20,10 @@ It is machine-readable on purpose. You can assert against it rather than read it
 changes shape is then something your tests see on the day it happens rather than something your
 aggregates quietly absorb.
 
-A part of a key can be null, and it is then a value like any other. On `/deployments` the sessions
-of a deployment without booked figures — not booked yet, or failed before they measured anything —
-stand in one row with `currency: null`, and that null is what keeps the row apart from the
-deployment's booked rows. See [deployments](/api/v1/docs/deployments).
+A part of a key can be null, and it is then a value like any other. On `/deployments` a deployment
+that has booked nothing — its sessions not booked yet, or failed before they measured anything —
+stands in one row with `currency: null`. A deployment with booked rows counts such sessions on
+those rows instead. See [deployments](/api/v1/docs/deployments).
 
 ## A response serving several lists declares one key per list
 

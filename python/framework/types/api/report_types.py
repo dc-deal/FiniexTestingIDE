@@ -1930,6 +1930,16 @@ class SessionBookingState(StrEnum):
     FAILED = 'failed'
     NOT_BOOKED_YET = 'not_booked_yet'
 
+    def has_booked_figures(self) -> bool:
+        """
+        Whether a session in this state carries booked figures — the line between a deployment's
+        booked rows and the sessions counted beside them.
+
+        Returns:
+            True for BOOKED only
+        """
+        return self is SessionBookingState.BOOKED
+
 
 class DeploymentSessionRow(BaseModel):
     """
@@ -2090,7 +2100,14 @@ class DeploymentSummary(BaseModel):
 
     Args:
         deployment_id: The identity its sessions name
-        sessions: How many sessions it holds
+        sessions: How many sessions the row stands for — on a booked row the sessions in its
+            currency, on the row of a deployment that has booked nothing all of its sessions
+        sessions_without_figures: How many of the deployment's sessions have no booked figures —
+            failed before they measured anything, or not booked yet. They have no currency, so
+            they stand on every row of their deployment as this count rather than in a row of
+            their own; on a deployment that books in two currencies the count repeats on each row
+            and is never added across rows
+        sessions_failed: How many of those failed before they measured anything
         first_started: When the deployment began
         last_started: When its most recent session began
         net_pnl: Realised P&L summed over its sessions — this one DOES add up. None on the row of
@@ -2103,12 +2120,10 @@ class DeploymentSummary(BaseModel):
         bot: The AutoTrader profile that ran it
         bot_id: Its DECLARED identity — see `DeploymentSessionRow.bot_id`. Two deployments
             sharing one `bot_id` are one bot restarted with `--new-deployment`
-        currency: The account currency the figures are in. None on the row that holds the
-            deployment's sessions without booked figures: those that failed before they measured
-            anything (#646), and those the run index registered at their start that no ledger row
-            names yet — a currency is known only from a ledger row that measured something. Such
-            a row carries no figure at all; a session not booked yet moves to its currency's row
-            at its first seal (#645)
+        currency: The account currency the figures are in. None only on the row of a deployment
+            that has booked nothing: its sessions failed before they measured anything (#646) or
+            no ledger row names them yet, and a currency is known only from a ledger row that
+            measured something. Such a row carries no figure at all
         longest_gap_hours: The longest stretch the bot was not running
         changed: True when the sessions did not all run alike: the configuration moved, the code
             moved, or both
@@ -2121,6 +2136,8 @@ class DeploymentSummary(BaseModel):
     """
     deployment_id: str
     sessions: int
+    sessions_without_figures: int
+    sessions_failed: int
     first_started: Optional[datetime]
     last_started: Optional[datetime]
     net_pnl: Optional[float]
@@ -2146,7 +2163,8 @@ class DeploymentListResponse(BaseModel):
     currencies is not a number — the same split the summary rows carry. Which is exactly why
     `key` names BOTH: a consumer keying on `deployment_id` alone folds two rows into one. The
     sessions without booked figures — failed before they measured anything, or not booked yet —
-    have no currency, so they stand in one more entry whose `currency` is None.
+    have no currency: they are counted on the deployment's booked rows, and stand in an entry
+    whose `currency` is None only where the deployment has booked nothing.
     """
     key: list[str] = list(DEPLOYMENT_KEY)
     deployments: list[DeploymentSummary]
