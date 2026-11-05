@@ -23,7 +23,8 @@ pre-flight check family (siblings: #354 state-snapshot serializability, #249 cer
 | `TestFindWallClockCalls` | AST core: flags `datetime.now()` / `time.time()` in fixture algos, clean file passes, no false positives from comments/strings/docstrings |
 | `TestCollectAlgoClockViolations` | Class-level collection: source resolution via `inspect`, same-file dedupe, builtin (no source) skipped |
 | `TestValidateAlgoClock` | Raising wrapper: clean passes, violation raises `AlgoClockViolationError` with `file:line` + `get_current_time()` guidance |
-| `TestCollectorClockPreflight` | Batch pre-flight: clean/dirty logic, dirty worker via `worker_instances`, no-logic no-op, unresolvable-type best-effort skip, cache per distinct algo set |
+| `TestCollectorClockPreflight` | Batch pre-flight: clean/dirty logic, dirty worker via `worker_instances`, no-logic no-op, an unresolvable type returned as `skipped` (excludes nothing), cache per distinct algo set |
+| `TestAWorkerNamedFromTheProjectRoot` | #633: a worker the set names from the project root is scanned and its wall-clock read found; a reference that resolves nowhere becomes an `algo_preflight_skipped` warning on a scenario that stays valid; the worker-signal check resolves a required worker from the logic's folder |
 
 Fixture algos (loadable USER-style files) live in `tests/fixtures/algo_clock_validator/`.
 

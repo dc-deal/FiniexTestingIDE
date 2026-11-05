@@ -20,7 +20,7 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple, Type
 
-from python.configuration.data_home import resolve_strategy_file
+from python.configuration.data_home import get_data_home, resolve_strategy_file
 from python.framework.exceptions.warmup_history_errors import WarmupRequirementMismatchError
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.types.market_types.market_types import TradingContext
@@ -327,6 +327,47 @@ class WorkerFactory:
             return str((base_path / p).resolve())
         return str((Path.cwd() / p).resolve())
 
+    def resolve_configured_worker_class(
+        self,
+        worker_type: str,
+    ) -> Tuple[Type[AbstractWorker], Optional[Path]]:
+        """
+        Resolve a worker reference a scenario set or a profile CONFIGURES (`worker_instances`).
+
+        Such a reference is named from the project root: a file path is looked up in the data home
+        first, then in the code tree — the resolution the run itself uses to create the worker.
+        Every check that reads a configured reference resolves it here, so a check cannot look
+        at a different file than the run (#633).
+
+        Args:
+            worker_type: "CORE/name" or a file path as the set names it
+
+        Returns:
+            Tuple of (worker class, source file path or None)
+        """
+        return self.resolve_worker_class(worker_type)
+
+    def resolve_required_worker_class(
+        self,
+        worker_type: str,
+        logic_source: Optional[Path],
+    ) -> Tuple[Type[AbstractWorker], Optional[Path]]:
+        """
+        Resolve a worker reference a decision logic REQUIRES (`get_required_workers()`).
+
+        Such a reference is named relative to the logic's own file, the way the worker orchestrator
+        compares it with the configured one.
+
+        Args:
+            worker_type: "CORE/name" or a file path as the logic names it
+            logic_source: The decision logic's source file, None for a CORE logic
+
+        Returns:
+            Tuple of (worker class, source file path or None)
+        """
+        return self.resolve_worker_class(
+            worker_type, base_path=logic_source.parent if logic_source else None)
+
     def resolve_worker_class(
         self,
         worker_type: str,
@@ -392,9 +433,15 @@ class WorkerFactory:
             return self._registry[cache_key]
 
         if not p.exists():
+            # A reference named from the project root was looked up in the data home first: say so,
+            # so the reader knows both places were tried
+            home = get_data_home()
+            looked_in = ''
+            if home is not None and not base_path and not Path(path_str).is_absolute():
+                looked_in = f"; the data home '{home}' holds no such file either"
             raise ValueError(
                 f"Worker file not found: '{p}' "
-                f"(resolved from '{path_str}')"
+                f"(resolved from '{path_str}'{looked_in})"
             )
 
         module_name = f'user_loaded.worker.{p.stem}'

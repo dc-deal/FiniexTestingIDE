@@ -5,7 +5,7 @@ Type definitions for scenario data validation
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 
 class Severity(Enum):
@@ -33,6 +33,22 @@ class ValidationDomain(Enum):
     PORTFOLIO = 'portfolio'         # accounting, currencies
     ROBUSTNESS = 'robustness'       # robustness / overfit assessment
     RELEASE = 'release'             # release gates and the certificates that pass them
+
+
+@dataclass(frozen=True)
+class PreflightOutcome:
+    """
+    What one batch pre-flight concluded about a scenario's algorithm sources.
+
+    A pre-flight that could not run says why in `skipped`, and the batch reports it as a warning:
+    a guard that skips with no word to the reader looks exactly like one that passed (#633).
+
+    Args:
+        error: Why the scenario is excluded, None when the pre-flight found nothing
+        skipped: Why the pre-flight could not run, None when it ran
+    """
+    error: Optional[str] = None
+    skipped: Optional[str] = None
 
 
 @dataclass

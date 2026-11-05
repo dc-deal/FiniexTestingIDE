@@ -25,6 +25,7 @@ from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.types.process_data_types import RequirementsMap
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
 from python.framework.types.validation_types import (
+    PreflightOutcome,
     Severity,
     ValidationDomain,
     ValidationFinding,
@@ -61,7 +62,7 @@ class RequirementsCollector:
 
         # Shared factory — pre-flight class resolution only, no instantiation.
         # strict_parameter_validation is irrelevant here because the factory
-        # is only used via resolve_worker_class(); per-scenario strict mode
+        # is only used to resolve worker classes; per-scenario strict mode
         # is re-applied later via worker_class.validate_parameter_schema().
         self._worker_factory = WorkerFactory(
             logger=self._logger,
@@ -84,10 +85,10 @@ class RequirementsCollector:
         # #359 algo-clock pre-flight cache. Violations are a property of the
         # SOURCE FILES (logic + workers), not of the config — keyed by
         # (decision_logic_type, sorted worker types) only.
-        self._clock_preflight_cache: Dict[str, Optional[str]] = {}
+        self._clock_preflight_cache: Dict[str, PreflightOutcome] = {}
         # #425 worker-signal subscription pre-flight cache. Keyed per distinct
         # (decision_logic_type, config) — the declared signals depend on the config.
-        self._signal_preflight_cache: Dict[str, Optional[str]] = {}
+        self._signal_preflight_cache: Dict[str, PreflightOutcome] = {}
 
         self._aggregate_requirements = AggregateScenarioDataRequirements(
             logger=self._logger,
@@ -155,28 +156,30 @@ class RequirementsCollector:
             # canonical clock is get_current_time(). Source-level AST scan of
             # the loaded algo files (the only path that sees gitignored
             # user_algos/). A violation excludes the scenario, batch continues.
-            clock_error = self._algo_clock_preflight(scenario)
-            if clock_error:
-                self._logger.error(f'❌ {scenario.name}: {clock_error}')
+            clock = self._algo_clock_preflight(scenario)
+            self._warn_if_skipped(scenario, clock)
+            if clock.error:
+                self._logger.error(f'❌ {scenario.name}: {clock.error}')
                 scenario.validation_result.append(ValidationResult(
                     scenario.name, [ValidationFinding(
                         severity=Severity.ERROR, check='algo_clock',
                         domain=ValidationDomain.ALGO,
-                        message=clock_error, scope=scenario.name)]))
+                        message=clock.error, scope=scenario.name)]))
                 continue
 
             # === STEP 3b: Worker-signal subscription pre-flight (#425) ===
             # Each declared signal must exist on the worker's output schema; a typo
             # or dead signal excludes the scenario here rather than crashing the
             # subprocess (the orchestrator enforces the same check at construction).
-            signal_error = self._worker_signal_preflight(scenario)
-            if signal_error:
-                self._logger.error(f'❌ {scenario.name}: {signal_error}')
+            signal = self._worker_signal_preflight(scenario)
+            self._warn_if_skipped(scenario, signal)
+            if signal.error:
+                self._logger.error(f'❌ {scenario.name}: {signal.error}')
                 scenario.validation_result.append(ValidationResult(
                     scenario.name, [ValidationFinding(
                         severity=Severity.ERROR, check='worker_signal_subscription',
                         domain=ValidationDomain.ALGO,
-                        message=signal_error, scope=scenario.name)]))
+                        message=signal.error, scope=scenario.name)]))
                 continue
 
             # === STEP 4: Requirements aggregation ===
@@ -204,7 +207,27 @@ class RequirementsCollector:
 
         return requirements_map
 
-    def _algo_clock_preflight(self, scenario: SingleScenario) -> Optional[str]:
+    def _warn_if_skipped(self, scenario: SingleScenario, outcome: PreflightOutcome) -> None:
+        """
+        Report a pre-flight that could not run as a warning on the scenario (#633).
+
+        A DEBUG line alone left a skipped guard looking exactly like one that passed; the warning
+        reaches the scenario log and the batch summary's warnings.
+
+        Args:
+            scenario: The scenario the pre-flight ran for
+            outcome: What the pre-flight concluded
+        """
+        if outcome.skipped is None:
+            return
+        self._logger.warning(f'⚠️ {scenario.name}: {outcome.skipped}')
+        scenario.validation_result.append(ValidationResult(
+            scenario.name, [ValidationFinding(
+                severity=Severity.WARNING, check='algo_preflight_skipped',
+                domain=ValidationDomain.ALGO,
+                message=outcome.skipped, scope=scenario.name)]))
+
+    def _algo_clock_preflight(self, scenario: SingleScenario) -> PreflightOutcome:
         """
         Pre-flight the scenario's algo sources for wall-clock reads (#359).
 
@@ -214,21 +237,21 @@ class RequirementsCollector:
         Cached per distinct (decision_logic_type, worker types) — violations
         are a source-file property, independent of parameter config.
 
-        A resolution failure (unknown type, missing file) is a best-effort
-        skip — the regular pipeline validation reports those with full
-        context, so no false exclusion is produced here.
+        A resolution failure (unknown type, missing file) skips the pre-flight without excluding
+        the scenario — the regular pipeline reports the failure with full context — and the skip
+        is returned as `skipped`, so it reaches the batch as a warning.
 
         Args:
             scenario: The scenario whose algo sources to pre-flight
 
         Returns:
-            Error message if a wall-clock violation was found, else None
+            The outcome: the violation as `error`, or why the scan could not run as `skipped`
         """
         strategy = scenario.strategy_config or {}
         logic_type = strategy.get('decision_logic_type', '')
         worker_instances = strategy.get('worker_instances', {})
         if not logic_type:
-            return None
+            return PreflightOutcome()
 
         cache_key = f"{logic_type}|{','.join(sorted(set(worker_instances.values())))}"
         if cache_key in self._clock_preflight_cache:
@@ -236,34 +259,29 @@ class RequirementsCollector:
 
         classes = []
         try:
-            logic_class, logic_source = self._decision_logic_factory.resolve_logic_class(logic_type)
+            logic_class, _ = self._decision_logic_factory.resolve_logic_class(logic_type)
             classes.append(logic_class)
-            # Relative USER worker refs resolve against the logic's source dir
-            # (same semantics as WorkerOrchestrator).
-            worker_base_path = logic_source.parent if logic_source else None
+            # The set's worker_instances are named from the project root, as the run creates
+            # them — not relative to the logic, which is how a logic names its REQUIRED workers.
             for worker_type in worker_instances.values():
-                worker_class, _ = self._worker_factory.resolve_worker_class(
-                    worker_type, base_path=worker_base_path)
+                worker_class, _ = self._worker_factory.resolve_configured_worker_class(worker_type)
                 classes.append(worker_class)
         except Exception as e:
-            self._logger.debug(
-                f"Algo clock pre-flight skipped for '{logic_type}' "
-                f"(class resolution failed: {e})"
-            )
-            self._clock_preflight_cache[cache_key] = None
-            return None
+            outcome = PreflightOutcome(
+                skipped=f"Wall-clock pre-flight skipped for '{logic_type}': {e}")
+            self._clock_preflight_cache[cache_key] = outcome
+            return outcome
 
         violations = collect_algo_clock_violations(classes)
-        result: Optional[str] = None
+        outcome = PreflightOutcome()
         if violations:
-            result = (
+            outcome = PreflightOutcome(error=(
                 'Wall-clock read in decision logic / worker code — use '
                 'self.trading_api.get_current_time(), the run\'s own clock, so a backtest can be '
-                'reproduced: ' + '; '.join(violations)
-            )
+                'reproduced: ' + '; '.join(violations)))
 
-        self._clock_preflight_cache[cache_key] = result
-        return result
+        self._clock_preflight_cache[cache_key] = outcome
+        return outcome
 
     def _state_snapshot_preflight(self, scenario: SingleScenario) -> Optional[str]:
         """
@@ -321,7 +339,7 @@ class RequirementsCollector:
         self._state_preflight_cache[cache_key] = result
         return result
 
-    def _worker_signal_preflight(self, scenario: SingleScenario) -> Optional[str]:
+    def _worker_signal_preflight(self, scenario: SingleScenario) -> PreflightOutcome:
         """
         Pre-flight the decision logic's worker-signal subscription (#425).
 
@@ -329,58 +347,63 @@ class RequirementsCollector:
         resolves the worker class (class resolution only) and checks that the declared
         signals exist on its output schema. A SUBSCRIBE_ALL requirement skips the key
         check. An unknown signal is a real bug that would fail the run, so it excludes
-        the scenario; any OTHER resolution problem (a logic that needs a full trading
-        context to construct, an unresolvable worker ref) is a best-effort skip — the
-        real run / orchestrator validates with full context. Cached per distinct
+        the scenario. A logic that needs a full trading context to construct is a
+        best-effort skip at DEBUG — the real run validates with full context. A required
+        worker that cannot be resolved skips the pre-flight too, and that skip is returned
+        as `skipped`, so it reaches the batch as a warning (#633). Cached per distinct
         (decision_logic_type, config).
 
         Args:
             scenario: The scenario whose subscription to pre-flight
 
         Returns:
-            Error message if a declared signal is unknown, else None
+            The outcome: the unknown signal as `error`, or why the check could not run as
+            `skipped`
         """
         strategy = scenario.strategy_config or {}
         logic_type = strategy.get('decision_logic_type', '')
         logic_config = strategy.get('decision_logic_config', {})
         if not logic_type:
-            return None
+            return PreflightOutcome()
 
         cache_key = f'{logic_type}|{json.dumps(logic_config, sort_keys=True, default=str)}'
         if cache_key in self._signal_preflight_cache:
             return self._signal_preflight_cache[cache_key]
 
-        result: Optional[str] = None
         try:
             logic = self._decision_logic_factory.create_logic(
                 logic_type=logic_type,
                 logger=self._logger,
                 logic_config=logic_config,
             )
-            # Relative USER worker refs resolve against the logic's source dir
-            # (same semantics as WorkerOrchestrator).
-            dl_source = getattr(logic, '_source_path', None)
-            worker_base_path = dl_source.parent if dl_source else None
-            for instance_name, requirement in logic.get_required_workers().items():
-                if requirement.signals is SUBSCRIBE_ALL:
-                    continue
-                worker_class, _ = self._worker_factory.resolve_worker_class(
-                    requirement.worker_type, base_path=worker_base_path)
-                valid_outputs = set(worker_class.get_output_schema().keys())
-                unknown = sorted(str(s) for s in set(requirement.signals) - valid_outputs)
-                if unknown:
-                    result = (
-                        f"Decision logic '{logic_type}' declares unknown signal(s) {unknown} "
-                        f"for worker instance '{instance_name}' ({requirement.worker_type}) — "
-                        f"not in its output schema {sorted(str(o) for o in valid_outputs)}."
-                    )
-                    break
         except Exception as e:
             self._logger.debug(
                 f"Worker-signal pre-flight skipped for '{logic_type}' "
-                f"(resolution failed: {e})"
+                f"(standalone instantiation failed: {e})"
             )
-            result = None
+            self._signal_preflight_cache[cache_key] = PreflightOutcome()
+            return self._signal_preflight_cache[cache_key]
 
-        self._signal_preflight_cache[cache_key] = result
-        return result
+        outcome = PreflightOutcome()
+        try:
+            # A logic names the workers it REQUIRES relative to its own file.
+            dl_source = getattr(logic, '_source_path', None)
+            for instance_name, requirement in logic.get_required_workers().items():
+                if requirement.signals is SUBSCRIBE_ALL:
+                    continue
+                worker_class, _ = self._worker_factory.resolve_required_worker_class(
+                    requirement.worker_type, dl_source)
+                valid_outputs = set(worker_class.get_output_schema().keys())
+                unknown = sorted(str(s) for s in set(requirement.signals) - valid_outputs)
+                if unknown:
+                    outcome = PreflightOutcome(error=(
+                        f"Decision logic '{logic_type}' declares unknown signal(s) {unknown} "
+                        f"for worker instance '{instance_name}' ({requirement.worker_type}) — "
+                        f"not in its output schema {sorted(str(o) for o in valid_outputs)}."))
+                    break
+        except Exception as e:
+            outcome = PreflightOutcome(
+                skipped=f"Worker-signal pre-flight skipped for '{logic_type}': {e}")
+
+        self._signal_preflight_cache[cache_key] = outcome
+        return outcome

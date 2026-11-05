@@ -79,6 +79,10 @@ VALIDATION_CHECKS: Tuple[ValidationCheckInfo, ...] = (
         "The decision logic or a worker reads the system clock instead of the run's own clock, "
         'which makes a backtest impossible to reproduce.'),
     ValidationCheckInfo(
+        'algo_preflight_skipped', 'A check of the algorithm could not run',
+        'A pre-flight that checks the decision logic or a worker could not find one of the files it '
+        'names, so the check did not run; the run itself may still find and use the file.'),
+    ValidationCheckInfo(
         'market_fit', 'Algorithm not recommended for this market',
         'The decision logic names the markets or instruments it is meant for, and this one is '
         'not among them.'),

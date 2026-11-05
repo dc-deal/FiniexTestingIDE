@@ -111,7 +111,7 @@ class AggregateScenarioDataRequirements:
                 )
 
             # Resolve worker class (from registry) — unpack (class, source_path) tuple
-            worker_class, _ = self._worker_factory.resolve_worker_class(
+            worker_class, _ = self._worker_factory.resolve_configured_worker_class(
                 worker_type)
 
             # Validate config (ensures 'periods' exists & valid Timeframes for INDICATOR)

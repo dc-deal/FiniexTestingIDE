@@ -22,6 +22,14 @@ Components are referenced by type strings in scenario sets and AutoTrader profil
 
 **Detection rule:** If the string starts with `CORE/` → framework magic. Anything else → file path.
 
+**Every check resolves a reference the way the run does.** A path a scenario set or a profile
+names is looked up in the data home first, then from the project root; a path a decision logic
+requires is resolved from the logic's own folder. The batch pre-flights — the wall-clock scan and
+the worker-signal check — and the scenario validator's parameter check follow the same two rules,
+so they look at exactly the file the run will load. A pre-flight that still cannot find a file
+does not run, and says so as a warning in the scenario log and in the batch summary
+(`algo_preflight_skipped`); the run itself then reports the missing file.
+
 ---
 
 ## CORE Workers & Decision Logics
@@ -485,6 +493,7 @@ Labels are resolved once at startup and cached (frozen `DisplayLabelCache`) — 
 ValueError: Worker file not found: '/app/user_algos/my_algo/my_range_worker.py'
 ```
 **Fix:** Check the path. Paths in JSON are relative to project root. Paths in `get_required_workers()` are relative to the decision logic file.
+When the message adds that the data home holds no such file either, both places were searched.
 
 ### ❌ Zero or multiple matching classes
 ```
