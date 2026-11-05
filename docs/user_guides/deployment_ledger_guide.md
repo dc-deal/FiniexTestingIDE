@@ -132,7 +132,7 @@ run id                     started               ran     net P&L  max DD (cum)  
 20260908_071500_41ab6e02   2026-09-08 07:15   10.4 h      -12.75       -134.10   1.33%   idle 6.6 d
 20260901_060000_9f2c17d8   2026-09-01 06:00   12.0 h       41.20        -58.40   0.58%
 ────────────────────────────────────────────────────────────────────────────────────────────────
-Amounts in USD. Newest session first. …
+Amounts in USD. Newest first within each series. …
 Descend into one session: runs/autotrader/<profile>/<run id>/
 ```
 
@@ -140,8 +140,10 @@ Descend into one session: runs/autotrader/<profile>/<run id>/
 happened between two sessions, and that is also what it did to the numbers: everything above
 the line was produced by a different bot than everything below it.
 
-**Newest session first, and each line is keyed by its run id** — because the id is what the
-next question needs. The three steps are meant to be walked in order:
+**Newest first within each series, and each line is keyed by its run id** — because the id is
+what the next question needs. A series is the sessions of one account currency, or the sessions
+without booked figures, which stand on top; a dotted line names the two series it parts, so an
+`idle` or a change mark is read against its own series. The three steps are meant to be walked in order:
 
 ```
   deployments                    which deployment do I want?
