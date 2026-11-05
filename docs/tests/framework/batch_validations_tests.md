@@ -72,6 +72,21 @@ Phase 0 step (#407) rejecting a symbol whose `swap_mode` the swap engine does no
 | `test_unknown_mode_marks_invalid` | `UNKNOWN` (unparseable string mapped by the adapter) → invalid |
 | `test_broker_not_in_map_skips_scenario` | Broker type not in map → silent skip |
 
+#### `TestValidateScenarioParameters`
+
+Strategy parameters checked against each component's schema before the run, with the real CORE
+components.
+
+| Test | Description |
+|------|-------------|
+| `test_clean_params_no_validation_result` | Valid parameters → nothing appended, no error logged |
+| `test_unknown_decision_param_marks_invalid` | An unknown decision parameter → invalid, named in the error |
+| `test_out_of_range_decision_param_marks_invalid` | A value outside the schema's bounds → invalid |
+| `test_unknown_worker_param_marks_invalid` | An unknown worker parameter → invalid |
+| `test_reserved_worker_keys_pass` | A framework key such as `compute_basis` is not an unknown parameter |
+| `test_a_user_worker_named_from_the_project_root_is_checked` | #633: a user worker the set names from the project root, beside a user decision logic, is resolved the way the run resolves it, so its misspelt parameter is caught |
+| `test_no_decision_logic_type_skips` | No decision logic → nothing checked |
+
 ### `test_scenario_data_validator.py`
 
 #### `TestMissingCoverageRange`

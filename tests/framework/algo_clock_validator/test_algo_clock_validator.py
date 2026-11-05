@@ -10,6 +10,7 @@ tests/fixtures/algo_clock_validator/ and are loaded the same way the factories
 load USER algos (importlib from file path).
 """
 
+import shutil
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Dict
@@ -18,6 +19,7 @@ import pytest
 
 from python.framework.batch.requirements_collector import RequirementsCollector
 from python.framework.exceptions.algo_clock_errors import AlgoClockViolationError
+from python.framework.types.validation_types import Severity
 from python.framework.validators.algo_clock_validator import (
     collect_algo_clock_violations,
     find_wall_clock_calls,
@@ -105,12 +107,13 @@ class TestCollectorClockPreflight:
     def test_clean_logic_passes(self, logger):
         collector = RequirementsCollector(logger=logger)
         scenario = _scenario(str(FIXTURES_DIR / 'clean_logic.py'))
-        assert collector._algo_clock_preflight(scenario) is None
+        outcome = collector._algo_clock_preflight(scenario)
+        assert outcome.error is None and outcome.skipped is None
 
     def test_dirty_logic_flagged(self, logger):
         collector = RequirementsCollector(logger=logger)
         scenario = _scenario(str(FIXTURES_DIR / 'wall_clock_logic.py'))
-        error = collector._algo_clock_preflight(scenario)
+        error = collector._algo_clock_preflight(scenario).error
         assert error is not None
         assert 'get_current_time()' in error
 
@@ -121,20 +124,23 @@ class TestCollectorClockPreflight:
             str(FIXTURES_DIR / 'clean_logic.py'),
             worker_instances={'w1': str(FIXTURES_DIR / 'wall_clock_worker.py')},
         )
-        error = collector._algo_clock_preflight(scenario)
+        error = collector._algo_clock_preflight(scenario).error
         assert error is not None
         assert 'time.time()' in error
 
     def test_no_logic_type_is_noop(self, logger):
         collector = RequirementsCollector(logger=logger)
-        assert collector._algo_clock_preflight(SimpleNamespace(strategy_config={})) is None
+        outcome = collector._algo_clock_preflight(SimpleNamespace(strategy_config={}))
+        assert outcome.error is None and outcome.skipped is None
 
     def test_unresolvable_logic_skipped(self, logger):
-        # Resolution failure is a best-effort skip — the regular pipeline
-        # validation reports unknown types with full context (§33).
+        # A resolution failure excludes nothing — the regular pipeline reports unknown types
+        # with full context — but the skip is returned, so it reaches the batch as a warning.
         collector = RequirementsCollector(logger=logger)
         scenario = _scenario('CORE/does_not_exist')
-        assert collector._algo_clock_preflight(scenario) is None
+        outcome = collector._algo_clock_preflight(scenario)
+        assert outcome.error is None
+        assert 'CORE/does_not_exist' in outcome.skipped
 
     def test_cached_per_distinct_algo_set(self, logger):
         collector = RequirementsCollector(logger=logger)
@@ -143,3 +149,68 @@ class TestCollectorClockPreflight:
         second = collector._algo_clock_preflight(scenario)
         assert first == second
         assert len(collector._clock_preflight_cache) == 1
+
+
+def _project_tree(tmp_path: Path, monkeypatch, required_worker: str = '') -> None:
+    """
+    A bot folder under a stand-in project root, named the way a scenario set names it (#633).
+
+    Args:
+        tmp_path: The stand-in project root; the test runs from it
+        monkeypatch: To make it the working directory
+        required_worker: A worker reference the logic requires, '' for none
+    """
+    bot = tmp_path / 'my_bot'
+    bot.mkdir()
+    logic = (FIXTURES_DIR / 'clean_logic.py').read_text()
+    if required_worker:
+        logic = logic.replace(
+            '        return {}\n',
+            f"        return {{'w': WorkerRequirement.of('{required_worker}', 'forecast')}}\n")
+    (bot / 'my_logic.py').write_text(logic)
+    shutil.copy(FIXTURES_DIR / 'wall_clock_worker.py', bot / 'my_worker.py')
+    monkeypatch.chdir(tmp_path)
+
+
+class TestAWorkerNamedFromTheProjectRoot:
+    """
+    #633: a scenario set names its workers from the project root, as the run creates them.
+
+    The pre-flight used to resolve them against the logic's folder, joined the two paths into one
+    that does not exist, and skipped itself at DEBUG — so a user worker was never scanned.
+    """
+
+    def test_the_wall_clock_scan_reaches_it(self, logger, tmp_path, monkeypatch):
+        _project_tree(tmp_path, monkeypatch)
+        outcome = RequirementsCollector(logger=logger)._algo_clock_preflight(
+            _scenario('my_bot/my_logic.py', {'w': 'my_bot/my_worker.py'}))
+        assert outcome.skipped is None
+        assert outcome.error is not None and 'time.time()' in outcome.error
+
+    def test_a_reference_that_resolves_nowhere_is_a_warning(self, logger, tmp_path, monkeypatch):
+        _project_tree(tmp_path, monkeypatch)
+        scenario = _scenario('my_bot/my_logic.py', {'w': 'my_bot/missing_worker.py'})
+        scenario.validation_result = []
+        collector = RequirementsCollector(logger=logger)
+
+        outcome = collector._algo_clock_preflight(scenario)
+        collector._warn_if_skipped(scenario, outcome)
+
+        assert outcome.error is None
+        assert 'my_bot/missing_worker.py' in outcome.skipped
+        finding = scenario.validation_result[0].findings[0]
+        assert finding.severity is Severity.WARNING
+        assert finding.check == 'algo_preflight_skipped'
+        # A warning: the scenario still runs, and the run itself reports the missing file
+        assert scenario.validation_result[0].is_valid
+        assert any('missing_worker.py' in line for line in logger.warnings)
+
+    def test_the_signal_check_resolves_a_required_worker_from_the_logic(
+            self, logger, tmp_path, monkeypatch):
+        # A logic names the workers it requires relative to its own file; the check reaches the
+        # worker and finds the subscribed output missing from its schema
+        _project_tree(tmp_path, monkeypatch, required_worker='my_worker.py')
+        outcome = RequirementsCollector(logger=logger)._worker_signal_preflight(
+            _scenario('my_bot/my_logic.py', {'w': 'my_bot/my_worker.py'}))
+        assert outcome.skipped is None
+        assert outcome.error is not None and 'forecast' in outcome.error
