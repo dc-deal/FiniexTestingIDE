@@ -9,6 +9,11 @@ import pytest
 
 from python.framework.constants.run_layout_constants import RUN_TYPE_AUTOTRADER, RUN_TYPE_SIMULATION
 from python.framework.exceptions.store_errors import LedgerRowUnreadableError
+from python.framework.reporting.aggregation.aggregation_fold import aggregate_ledger_rows
+from python.framework.reporting.aggregation.figure_catalog import (
+    COLUMN_NULL_MEANING,
+    COLUMN_REDUCTION,
+)
 from python.framework.reporting.builders.booking_period_builder import (
     PeriodSnapshot,
     derive_booking_period,
@@ -17,23 +22,17 @@ from python.framework.reporting.builders.deployment_history_builder import (
     build_deployment_histories,
     deployment_code_summary,
 )
-from python.framework.reporting.store.ledger_aggregation import aggregate_ledger_rows
 from python.framework.reporting.store.run_results_ledger import (
-    COLUMN_NULL_MEANING,
-    COLUMN_REDUCTION,
     LEDGER_COLUMNS,
     RUN_END_COLUMNS,
     RunResultsLedger,
 )
+from python.framework.types.aggregation_types import FigureKind, Reduction
 from python.framework.types.api.report_types import RunResultRow, RunSummary
 from python.framework.types.run_kind_types import OrdersTo
 from python.framework.types.run_origin_types import CodeStand, RepositoryStand
 from python.framework.types.run_outcome_types import RunOutcome
-from python.framework.types.run_results_types import (
-    FigureKind,
-    PeriodCloseReason,
-    Reduction,
-)
+from python.framework.types.run_results_types import PeriodCloseReason
 from python.framework.types.trading_env_types.trading_env_stats_types import (
     EXECUTION_COUNT_FIELDS,
     ExecutionStats,

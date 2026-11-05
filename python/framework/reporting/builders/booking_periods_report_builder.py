@@ -40,8 +40,8 @@ is the finding the table exists to surface.
 from collections import Counter
 from typing import List
 
+from python.framework.reporting.aggregation.aggregation_fold import aggregate_ledger_rows
 from python.framework.reporting.builders.run_unit import RunUnit
-from python.framework.reporting.store.ledger_aggregation import aggregate_ledger_rows
 from python.framework.reporting.store.run_results_ledger import period_ledger_fields
 from python.framework.types.api.report_types import (
     BookingPeriodRow,
