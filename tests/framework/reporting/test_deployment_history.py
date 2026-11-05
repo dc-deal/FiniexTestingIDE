@@ -1299,6 +1299,18 @@ class TestARunThatMeasuredNothingStandsWithoutFigures:
                           ('failed', 2, SessionBookingState.FAILED),
                           ('newest', 3, SessionBookingState.NOT_BOOKED_YET)]
 
+    def test_the_detail_parts_its_series_with_a_named_line(self, capsys):
+        rows = self._rows()
+        sessions = add_unbooked_sessions(build_deployment_histories(rows), rows, [
+            started('newest', '2026-12-20T00:05:00+00:00')])[DEPLOYMENT]
+        render_deployment_history(DEPLOYMENT, sessions)
+        lines = capsys.readouterr().out.splitlines()
+        table = [line.split()[0] for line in lines
+                 if line.startswith(('first', 'failed', 'third', 'newest', '···'))]
+        assert table == ['newest', 'failed', '··························', 'third', 'first']
+        assert any('without booked figures above · USD below' in line for line in lines)
+        assert any('Newest first within each series.' in line for line in lines)
+
     def test_it_is_counted_on_the_booked_row_and_adds_nothing_to_it(self, capsys):
         rows = self._rows()
         runs = [started('newest', '2026-12-20T00:05:00+00:00')]

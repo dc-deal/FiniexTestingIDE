@@ -150,7 +150,15 @@ def render_deployment_history(
     # other way is a second thing to read. The id is what the next question needs: it is the
     # directory name under runs/autotrader/<profile>/, so a reader can descend from here into the
     # logs of one session — the last step of deployments → sessions → this run.
-    for session in reversed(sessions):
+    # Each series reads newest first on its own — the sessions of one currency, and those without
+    # booked figures — and a line between two series says where the next begins, so a gap or a
+    # change mark is read against its own series and not against the row printed above it.
+    previous_series: Optional[str] = None
+    for position, session in enumerate(reversed(sessions)):
+        if position and session.currency != previous_series:
+            print(f'{"·" * 26} {_series_label(previous_series)} above · '
+                  f'{_series_label(session.currency)} below {"·" * 26}')
+        previous_series = session.currency
         started = session.started.strftime('%Y-%m-%d %H:%M') if session.started else '?'
         ran = f'{session.ran_hours:.1f} h' if session.ran_hours is not None else '—'
         notes = []
@@ -201,8 +209,8 @@ def render_deployment_history(
 
     print('─' * 104)
     amounts = ', '.join(caption.currencies) or '—'
-    print(f'Amounts in {amounts}. Newest session first. `ran` is measured from the start to '
-          'the moment the')
+    print(f'Amounts in {amounts}. Newest first within each series. `ran` is measured from the '
+          'start to the moment the')
     print('row was written, so it carries the reporting tail. The drawdown column is '
           'CUMULATIVE over the')
     print('deployment — each row holds the running figure against the inherited peak, so '
@@ -249,6 +257,21 @@ def _code_warning(code: DeploymentCodeSummary) -> str:
             else 'on an unknown date')
     return (f'⚠️  Code changed {when} — {code.code_stands} code stands over {code.sessions} '
             'sessions; net P&L adds them up')
+
+
+def _series_label(currency: Optional[str]) -> str:
+    """
+    How a series of sessions is named on the line that parts it from the next.
+
+    Args:
+        currency: The series' account currency, None for the sessions without booked figures
+
+    Returns:
+        The name
+    """
+    if currency is None:
+        return 'without booked figures'
+    return currency or 'no currency'
 
 
 def _print_code_changes(changes: List[DeploymentCodeChange]) -> None:
