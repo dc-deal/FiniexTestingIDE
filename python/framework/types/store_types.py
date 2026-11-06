@@ -80,6 +80,7 @@ class StoreId(StrEnum):
     BROKER_RUNTIME = 'broker_runtime'
     CONFIG_DIRECTORY = 'config_directory'
     RAW_INBOX = 'raw_inbox'
+    REFUSED_FILES = 'refused_files'
     FINISHED_ARCHIVE = 'finished_archive'
     EXTERNAL_HISTORY = 'external_history'
     GLOBAL_LOG = 'global_log'

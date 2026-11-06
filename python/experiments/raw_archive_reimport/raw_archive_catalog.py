@@ -12,6 +12,7 @@ from typing import IO, Callable, Dict, List, Optional, Set, Tuple
 
 import pandas as pd
 
+from python.data_management.importers.tick_zip_inbox import TICK_FILE_NAME
 from python.experiments.raw_archive_reimport.raw_archive_reimport_types import (
     ArchiveMember,
     BrokerSource,
@@ -21,9 +22,8 @@ from python.experiments.raw_archive_reimport.raw_archive_reimport_types import (
 )
 from python.framework.utils.time_utils import ensure_utc_aware
 
-# A raw tick file's own name: SYMBOL_YYYYMMDD_HHMMSS_ticks.json. The stamp is the collector's
+# A raw tick file's own name is the import's (TICK_FILE_NAME). Its stamp is the collector's
 # file start on its own clock, which is why it is only a fallback for the window.
-_MEMBER_NAME = re.compile(r'^(?P<symbol>.+)_(?P<stamp>\d{8}_\d{6})_ticks\.json$')
 _NAME_STAMP_FORMAT = '%Y%m%d_%H%M%S'
 
 # A zip whose name says it holds signals is never read: the signal archives are a different
@@ -354,7 +354,7 @@ class RawArchiveCatalog:
         Returns:
             (symbol, the stamp read as UTC), or None when the name is not a tick file's
         """
-        match = _MEMBER_NAME.match(name)
+        match = TICK_FILE_NAME.match(name)
         if match is None:
             return None
         try:

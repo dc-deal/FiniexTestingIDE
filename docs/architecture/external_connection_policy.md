@@ -344,6 +344,7 @@ Refusal, as the operator reads it:
 | 7 | Broker config + balance (boot) | broker policy, budget 3 | falls back to a cached copy, warning louder as it ages; no cache → refuse |
 | 8 | Operator alerts — Telegram (#235) | 2 s → 60 s, jitter, budget 5 per message — never unlimited, or the boot check would wait out a whole outage; `retry_after` honoured | an exhausted budget drops that one message; a refused token or chat closes the channel for the session. At boot a refusal refuses the start, an unreachable Telegram does not |
 | 9 | Liveness ping (#235) | its interval (60 s) is the ladder | a 4xx on the ping URL — wrong URL, deleted check — or a URL the HTTP stack cannot request stops the pings, and the monitor then raises its alarm; the same on the fail URL stops only the fail pings. A URL nothing could request is refused at boot |
+| 10 | Data collector's tick packages (the import, #120) | 2 s → 30 s, jitter, budget 3, per read | budget or a refused token → the fetch stops and counts an error; the import goes on with what lies in the inbox. The receipt is a write: sent once, a lost answer settled by reading the package back |
 
 Row 7 is a fourth pattern worth naming: it does not retry into the void, it **degrades to an
 older copy and gets louder the staler that copy is**. That is a TRANSIENT whose answer in
@@ -367,6 +368,7 @@ and jitter and the give-up action keep the policy's defaults.
 | AutoTrader profile → `tick_source` | 4 |
 | `configs/market_config.json` → `broker_transport.connection` | 5, 6, 7 |
 | `configs/app_config.json` → `autotrader.operator_alerts.telegram.connection` | 8 |
+| `configs/data_collector_config.json` → `packages.connection` | 10 |
 
 **A live session refuses a broker ladder that never gives up.** Budget 0 means retry for ever —
 right for a tick socket (row 4), wrong for broker REST: the broker-truth reads at a session's start

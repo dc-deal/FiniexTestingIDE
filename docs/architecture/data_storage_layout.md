@@ -59,7 +59,8 @@ and a written one cannot drift apart (#621). The tables, the shapes and how a fi
 | 10c | `data/runtime/import_timings.json` | DERIVED ← the imports' own durations (not a store) | none | none — one file | A · document |
 | 11 | `data/finished/` | ARCHIVE | zip or file name | none — opened by name | A · document |
 | 11b | `data/external/` | ARCHIVE | vendor / dataset / fetch folder | none — a fetch is opened by its folder, its `manifest.json` keyed on part SHA-256 and fetch time | A · document |
-| 12 | `data/raw/` → `data/finished/` | **SPECIAL** | file name | none — conveyor | — |
+| 12 | `data/raw/` → `data/finished/`, through `data/unpacking/` for a zip's files | **SPECIAL** | file name | none — conveyor | — |
+| 12b | `data/refused/` | **SPECIAL** | file or zip name | none — quarantine, a note beside each file | — |
 | 13 | `logs/global.log` | **SPECIAL** | none | none — append stream | — |
 | 14 | `user_configs/host_identity.json` | **SPECIAL** | none | none — one file, read at boot by its manager | — |
 | 15 | `~/.finiex/activities/` — one per machine, configured | **SPECIAL** | `activity_id` | none — read by its own reader | — |
@@ -513,8 +514,15 @@ bot's, rather than ignoring it and overwriting the successor's book.
 ### Why the SPECIAL stores stay special
 
 - **`data/raw/` → `data/finished/`** is a **conveyor, not a store**: a file lies there in order to
-  disappear. The importer reads it and MOVES it; it never rewrites the content. Giving it a header
-  and an index would make it something it is not, and would blur that contract.
+  disappear. The importer reads it and MOVES it; it never rewrites the content, and every import
+  drains it. A zip's files pass through `data/unpacking/`, one folder per zip, which is empty again
+  after the import. Giving it a header and an index would make it something it is not, and would
+  blur that contract.
+- **`data/refused/`** is a **quarantine**: a raw file or zip the import refused or failed on lies
+  there unchanged, with `<name>.refused.txt` beside it — one line per refusal, when and why — until
+  somebody decides. It goes back into `data/raw/` by hand once its cause is fixed. It is no archive
+  (nothing was imported from it) and no conveyor (nothing moves it on by itself), and the import only
+  ever adds to it, because what lies there is raw source of truth.
 - **`logs/global.log`** is an append stream without identity. It gets bounding and rotation, never
   an index.
 - **`user_configs/host_identity.json`** is the installation's minted identity (#551): one file,

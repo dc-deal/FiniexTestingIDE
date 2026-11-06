@@ -20,7 +20,7 @@ connection policy for reaching a peer, which is
 | `consumer_tokens.json` | **inbound** — who may call us | we do | a consumer is locked out | a third party calls our API as that consumer, within its grants |
 | `accounts.json` | **inbound** — on whose behalf a token acts | the operator, from a CLI block | every live token refuses the boot | names the people and services that hold access — no credential |
 | `rag_credentials*.json` | **outbound** — a sibling project | they do | we cannot read their data | a third party reads as us |
-| `collector_credentials*.json` | **outbound** — a sibling project | they do | we cannot read their archive | a third party reads as us |
+| `collector_credentials*.json` | **outbound** — a sibling project: its status routes and, for the import, its tick packages (`configs/data_collector_config.json`) | they do | we cannot read their archive, nor fetch or acknowledge a package | a third party reads as us, and could acknowledge a package it never imported |
 | `kraken_credentials.json` | **outbound** — a trading venue | the venue | no live trading | **a third party can move money** |
 
 Every file exists twice: a **tracked** copy under `configs/credentials/` whose secrets are empty

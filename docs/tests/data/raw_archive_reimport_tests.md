@@ -37,7 +37,7 @@ into its own `tmp_path`. Nothing binary is committed.
 | `tree` → `ArchiveTree` | An archives directory, a finished directory, an inbox and a processed tree under one temp root, plus the tick index frame describing the parquets (times naive, as the real index stores them) |
 | `member_json()` | A raw tick file shaped like the collector's: the metadata block first, then the ticks |
 | `build_standard_archive()` | Two zips, one named after a `kraken_spot` member while most of what it holds is `mt5`; every member indexed the way a previous import left it |
-| `ArchiveTree.simulate_import()` | Stands in for `data_index_cli.py import --override`: rewrites each inbox file's parquet and index row and moves the file to the finished directory — or refuses a file (it stays in the inbox, its old parquet stays), or moves it without rewriting its parquet |
+| `ArchiveTree.simulate_import()` | Stands in for `data_index_cli.py import --override`: rewrites each inbox file's parquet and index row and moves the file to the finished directory — or refuses a file (it moves to the refused directory, its old parquet stays), or moves it on without rewriting its parquet, as an import without `--override` does with a duplicate |
 
 The import is simulated rather than run on purpose: the subject is the tool, and running the
 real importer would make every case here depend on what the importer currently refuses.
@@ -125,6 +125,7 @@ Each refusal leaves the inbox exactly as it was.
 |------|------|
 | `test_an_inbox_already_holding_a_tick_file` | A leftover could not be told apart from an extracted file |
 | `test_a_partial_extraction_left_in_the_inbox` | A `.part` is an interrupted extraction |
+| `test_a_selected_member_refused_by_an_earlier_import` | Its old refusal in the refused directory would read as one of this re-import |
 | `test_while_a_manifest_exists` | A re-import is already in progress |
 | `test_when_the_disk_is_too_small` | Free disk must cover the selected bytes with headroom |
 | `test_when_a_selected_member_already_lies_loose` | The import would replace that loose file, and it may hold what the zip does not |
@@ -139,7 +140,8 @@ Each refusal leaves the inbox exactly as it was.
 | `test_passes_after_the_import_and_reports_the_shift` | Every check green, in its order; the summary reads `3 files shifted by +1 h · 0 unchanged · 0 tick counts changed`, with a before → after line per changed file |
 | `test_count_and_names_cover_the_broker_and_symbols_not_the_window` | A winter extraction is still counted against every `mt5` file |
 | `test_a_refused_file_fails_inbox_and_rewritten_while_count_and_names_pass` | The case count and names cannot see |
-| `test_an_import_without_override_leaves_every_file_in_the_inbox` | Every selected name is an inbox offender |
+| `test_an_import_without_override_is_caught_by_rewritten_alone` | Its duplicates move on and the inbox empties; only rewritten sees that nothing was imported |
+| `test_a_refused_file_is_found_in_the_refused_directory` | The inbox check names where the refused file went |
 | `test_a_stale_parquet_fails_rewritten_while_count_names_and_inbox_pass` | The file left the inbox, its parquet is older than its extraction |
 | `test_names_are_compared_in_both_directions` | One file only the archive holds and one only the index names: the counts agree, the names do not |
 | `test_a_missing_parquet_fails_rewritten` | An index row pointing at a deleted parquet proves nothing |

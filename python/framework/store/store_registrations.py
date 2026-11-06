@@ -418,7 +418,8 @@ def build_registrations() -> Dict[StoreId, StoreDescriptor]:
                   'from, moved here unchanged by the import and later zipped by hand — the tick '
                   'files under Archives/, the signal envelopes under Archives/signals/. An entry '
                   'is one zip or one loose file: a loose file is a copy once a zip holds it and '
-                  'is then removed, one in no zip yet is a source file. A history fetch whose '
+                  'is then removed, one in no zip yet is a source file. A fetched tick package '
+                  'keeps its manifest beside its zip (<zip stem>.manifest.json). A history fetch whose '
                   'parts were removed after its verified import exists only here, as its '
                   'converted files. '
                   'No index — nothing searches it; a zip\'s member list is read without '
@@ -454,8 +455,27 @@ def build_registrations() -> Dict[StoreId, StoreDescriptor]:
             form=RetrievalForm.NONE,
             backend=StoreBackend.DISK,
             note=('Conveyor, not a store: a file lies here in order to disappear. The importer '
-                  'reads it and MOVES it to the finished archive — it never rewrites the '
-                  'content. A header and an index would make it something it is not.'),
+                  'reads it and MOVES it — to the finished archive when the archive took it, to '
+                  'the refused files when not — and never rewrites the content; every import '
+                  'drains it. A zip\'s files pass through the unpacking directory, one folder '
+                  'per zip, which is empty again after the import. A tick package the import '
+                  'fetches arrives as <zip>.part until its hash is proven, with its manifest '
+                  'beside it. A header and an index would make it something it is not.'),
+        ),
+        StoreId.REFUSED_FILES: StoreDescriptor(
+            store_id=StoreId.REFUSED_FILES,
+            kind=StoreKind.SPECIAL,
+            purpose='collector files the import refused, kept unchanged',
+            doc='docs/architecture/data_storage_layout.md#why-the-special-stores-stay-special',
+            root=Path(ImportConfigManager().get_data_refused_path()),
+            key='file or zip name',
+            form=RetrievalForm.NONE,
+            backend=StoreBackend.DISK,
+            note=('Quarantine, not a store: a raw file or zip the import refused or failed on '
+                  'lies here unchanged, with a note of every refusal beside it '
+                  '(<name>.refused.txt), until somebody decides — back into the import inbox '
+                  'once its cause is fixed. The import only ever adds to it: it is raw source of '
+                  'truth, and nothing refused is read again by the next import.'),
         ),
         StoreId.GLOBAL_LOG: StoreDescriptor(
             store_id=StoreId.GLOBAL_LOG,

@@ -14,6 +14,7 @@ from enum import Enum
 from pathlib import Path
 from typing import List, Optional
 
+from python.framework.types.import_types.tick_inbox_types import TickZipContent, TickZipMember
 from python.framework.types.log_level import LogLevel
 
 
@@ -33,7 +34,9 @@ class ImportStepId(Enum):
     Every step an import can run, in the order it runs them. The frame holds the steps the
     import asked for; one whose inbox turned out empty is shown as skipped, not dropped.
     """
+    PACKAGES_FETCH = 'packages_fetch'
     SCAN = 'scan'
+    TICKS_UNPACK = 'ticks_unpack'
     TICKS_IMPORT = 'ticks_import'
     TICKS_INDEX = 'ticks_index'
     TICKS_ORDER = 'ticks_order'
@@ -42,6 +45,7 @@ class ImportStepId(Enum):
     SIGNALS_IMPORT = 'signals_import'
     SIGNALS_INDEX = 'signals_index'
     CACHES = 'caches'
+    PACKAGES_RECEIPT = 'packages_receipt'
 
 
 class ImportStepStatus(Enum):
@@ -237,14 +241,16 @@ class InboxFile:
     parses every file in full.
 
     Args:
-        path: The file
-        size_bytes: Its size
+        path: The file — for a zip member, the zip that holds it
+        size_bytes: Its size — for a zip member, its size unpacked
         broker_type: Broker type from the metadata head, None for a signal file or when the
             head did not show it
+        zip_member: The member this entry stands for, None for a loose file
     """
     path: Path
     size_bytes: int
     broker_type: Optional[str] = None
+    zip_member: Optional[TickZipMember] = None
 
 
 @dataclass
@@ -253,11 +259,14 @@ class InboxScan:
     What both inboxes hold at the start of an import.
 
     Args:
-        tick_files: The tick JSON files
+        tick_files: The tick JSON files, loose ones first, then the members of each zip
         signal_files: The signal JSONL files
+        tick_zips: The zips of the tick inbox whose members are imported; a zip refused as a
+            whole at the scan is not among them
     """
     tick_files: List[InboxFile] = field(default_factory=list)
     signal_files: List[InboxFile] = field(default_factory=list)
+    tick_zips: List[TickZipContent] = field(default_factory=list)
 
 
 @dataclass
@@ -289,6 +298,10 @@ class ImportPaths:
         tick_source: The tick inbox
         tick_target: The processed-data root the tick and bar archives live in
         tick_finished: Where imported tick files move, None when they stay
+        tick_unpacking: Where the members of a zip in the tick inbox are unpacked for their
+            import, one folder per zip
+        tick_refused: Where tick files and zips the import refused go, each with its reason
+            beside it; None when they stay in the inbox
         signal_source: The signal inbox
         signal_target: The signal archive root
         signal_finished: Where imported signal files move, None when they stay
@@ -298,6 +311,8 @@ class ImportPaths:
     tick_source: Path
     tick_target: Path
     tick_finished: Optional[Path]
+    tick_unpacking: Path
+    tick_refused: Optional[Path]
     signal_source: Path
     signal_target: Path
     signal_finished: Optional[Path]

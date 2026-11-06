@@ -16,8 +16,12 @@ rule; see [signal_data_source.md](signal_data_source.md).
 **Flow:**
 ```
 data_index_cli.py import → ImportCoordinator
-  ├─ Scan both import inboxes (each file's size; a tick file's broker from the metadata at its head)
+  ├─ Fetch the data collector's tick packages into the tick inbox (see Fetching the collector's packages)
+  ├─ Scan both import inboxes (each file's size; a tick file's broker from the metadata at its head;
+  │   a zip's files from its central directory)
+  ├─ Unpack the zips of the tick inbox, a step of its own (see Zip packages in the inbox)
   ├─ Ticks (below) → Signals (signal_data_source.md) → discovery caches, once
+  ├─ Acknowledge each fetched package whose zip reached data/finished/
   └─ Its own log: logs/imports/import_<import_id>.log
        ↓
 Data Collectors (JSON)
@@ -30,7 +34,8 @@ Data Collectors (JSON)
   ├─ Convert the server clock to UTC (the broker's rule, market_config.json)
   ├─ Recalculate sessions (UTC-based)
   ├─ Quality checks (prices, spreads)
-  └─ Write Parquet (with source metadata)
+  ├─ Write Parquet (with source metadata)
+  └─ Move the file out of the inbox: finished/ when the archive holds it, refused/ when not
        ↓
   Tick index rebuild, then the archive order check (target_dir-aware)
        ↓
@@ -288,6 +293,8 @@ Import configuration lives in `configs/import_config.json` with optional user ov
         "data_raw": "data/raw",
         "import_output": "data/processed",
         "data_finished": "data/finished",
+        "data_unpacking": "data/unpacking",
+        "data_refused": "data/refused",
         "import_timings": "data/runtime/import_timings.json"
     },
     "test_paths": {
@@ -384,6 +391,8 @@ data/test/import/
 | `get_data_raw_path()` | Source directory path |
 | `get_import_output_path()` | Output directory path |
 | `get_data_finished_path()` | Finished directory path |
+| `get_data_unpacking_path()` | Where a zip's files are unpacked for their import |
+| `get_data_refused_path()` | Where refused tick files and zips go |
 | `get_move_processed_files()` | bool |
 | `get_auto_render_bars()` | bool |
 | `get_bar_render_workers()` | int (fallback: 2, see `processing.bar_render_workers` in config) |
@@ -473,6 +482,9 @@ python -m python.cli.data_index_cli import --override
 python -m python.cli.data_index_cli import --only ticks
 python -m python.cli.data_index_cli import --only signals --include-finished
 python -m python.cli.data_index_cli import --no-display
+
+# Without fetching the data collector's packages first
+python -m python.cli.data_index_cli import --no-fetch
 ```
 
 The command exits `0` when everything imported, `1` when the import counted errors (a refused
@@ -521,6 +533,9 @@ in as the steps run:
   the same rule as the import's, so the step lines and the header cannot disagree. A note or file
   name too long for the terminal ends in `…`. The memory bar turns yellow above 70 % and red
   above 85 %.
+- **Unpacking zips is a step of its own**, shown and skipped like any other when no zip waits,
+  and timed by the size of the zips rather than inside the import step, whose rate it would
+  otherwise distort.
 - **The screen never stands still.** A fresh frame goes out every `display.update_interval_ms`,
   also while one step is inside a long call — a tick file of hundreds of MB, one cache family, a
   render on one worker — so the clock, the memory bar and the current file keep moving.
@@ -678,7 +693,8 @@ writing, looks that name up across every broker type in the tick index. The inde
 import, checked for staleness first, and every file the import writes is added to it as it goes —
 so a batch is checked against itself as well. Until #561 the check opened one parquet footer per
 existing file of the symbol for every imported file, which is quadratic in the file count. On a
-match it raises `ArtificialDuplicateException` — a warning, the file is skipped, the batch continues. Use
+match it raises `ArtificialDuplicateException` — a warning, the file is skipped, the batch continues,
+and the file leaves the inbox for `data/finished/` like any file the archive holds. Use
 `--override` to delete the existing parquet and re-import. A file the structural validation refuses
 is refused before this step, so `--override` deletes nothing for it: its old parquet stays — which is
 why a re-import is checked by more than count and names (see *Re-importing from the raw archive*).
@@ -701,6 +717,97 @@ check after the import stays as the archive-wide second plane.
 The signal importer has no equivalent check: it decides on the presence of the target parquet
 (`SignalAlreadyImportedError`, also a warning + skip), because a signal day's file name IS its date
 and the projection is per day.
+
+---
+
+## Every import drains the tick inbox
+
+`data/raw/` holds new work and nothing else. A file left there would be read again by every
+import, and one thrown away would hide the problem, so each file leaves the inbox for one of two
+places once its import ended — the pattern *Enterprise Integration Patterns* (Hohpe and Woolf)
+calls an Invalid Message Channel:
+
+| The import of a file… | It goes to |
+|---|---|
+| wrote it to the archive | `data/finished/` |
+| skipped it as a duplicate — the archive holds it already | `data/finished/` |
+| refused it (structural validation, overlap) or failed on it (unreadable JSON, a write error) | `data/refused/`, with `<name>.refused.txt` beside it |
+
+- **A refused file is kept unchanged** — it is raw source of truth — and its note gains one line per
+  refusal: when, and why. The summary lists every file it refused. Once the cause is fixed, the file
+  goes back into `data/raw/` by hand; nothing re-reads it on its own.
+- **Neither directory is ever overwritten.** An identical file of that name there already makes the
+  inbox copy redundant, and it is removed; a different one keeps the file in the inbox, counted as an
+  error, because a second file under one name is something to look at.
+- **Signals are not part of it** (yet): the signal inbox keeps its own rule
+  ([signal_data_source.md](signal_data_source.md)).
+- `move_processed_files: false` keeps every file where it is, as before.
+
+### Zip packages in the inbox
+
+A zip in `data/raw/` is imported by the same command: a zip is only the packaging of tick files,
+which go through the import exactly as loose ones do. It arrives that way from a collector's weekly
+package, or zipped by hand (#120).
+
+```
+data/raw/week45.zip
+  ├─ scan: its files from the central directory — refused as a whole, nothing written, when one
+  │   is not a tick export lying flat in it, a name occurs twice, or a name is taken by a loose
+  │   file or another zip of this import
+  ├─ Unpack zips — a step of its own, timed by the zips' size — into data/unpacking/week45/,
+  │   after checking the files fit on the disk; zipfile checks each file's CRC
+  ├─ Import tick files: each one like a loose file; the copy of a file the archive took is removed
+  └─ the zip moves on unchanged
+       anything in it of use (a file written now or already in the archive)
+         → data/finished/week45.zip; a file the import refused → data/refused/, its note naming the zip
+       nothing of use → data/refused/week45.zip, its note naming every file's reason
+```
+
+- **Refused as a whole** — a file that is no tick export, a damaged file, a doubled name — the zip
+  goes to `data/refused/` before anything of it is written.
+- **A zip stays in the inbox only when what stopped it lay outside it:** its files would not fit on
+  the disk, or the file system refused the unpacking. The next import tries again.
+- **`data/unpacking/` is empty after every import.** It holds a zip's files only while they are
+  imported; whatever a crash left there is cleared before the zip is unpacked again.
+- **Deflate64** — two zips of the raw archive use it — is read through `zipfile_deflate64`.
+- **Filing a zip into `data/finished/Archives/` stays a step by hand.** The import never reads or
+  writes that folder.
+
+### Fetching the collector's packages
+
+The data collector packs its finished tick files into weekly packages — one Deflate zip per
+collector (`kraken`, `mt5`) with a manifest, sealed Sunday 00:00 UTC — and serves them at
+`/v1/packages` (#120). The import fetches them before it scans the inbox, and acknowledges each one
+it took once the import is through:
+
+```
+Fetch packages        every package that waits for our receipt, oldest first
+  zip in data/finished/ already (same SHA-256)   → nothing to fetch; only the receipt is due
+  zip in data/refused/                           → not fetched again, not acknowledged
+  otherwise   the manifest → data/raw/<zip stem>.manifest.json
+              the zip → data/raw/<zip>.part, resumed with a Range request after a break-off,
+              renamed to data/raw/<zip> once its SHA-256 matches the list
+… the import as above: a fetched zip whose files differ from its manifest — a name, or a file's
+  SHA-256 checked while it is unpacked — is refused whole; the manifest moves with its zip
+Acknowledge packages  for each package whose zip lies in data/finished/: the receipt, carrying the
+                      SHA-256 of the zip we hold and what the import did with it
+```
+
+- **The receipt is what releases the collector's original files** — it moves them to a trash
+  folder that is emptied only on the operator's word, and keeps the zip — so it is sent only for a
+  zip in `data/finished/`. A zip in `data/refused/` is not acknowledged: the
+  package stays waiting, and the collector reports it overdue after 14 days.
+- **Nothing is kept about the exchange but the files themselves.** What to fetch and what to
+  acknowledge is read fresh from the list and from the two directories, so a receipt whose answer
+  was lost is simply sent again by the next import; a repeated receipt changes nothing.
+- **The service failing stops the fetch, never the import.** Every read runs under the connection
+  ladder (`packages.connection`); a give-up — or a refused token, which is not retried — counts an
+  error, and the import goes on with what lies in the inbox. The receipt is a write: sent once,
+  and an answer that is lost is settled by reading the package back.
+- **Where it fetches from** is `configs/data_collector_config.json` → `packages`: the active
+  endpoint's address beside its credential file (`peers/collector_credentials.json`). The tracked
+  address is empty, so nothing is fetched until a workspace copy names it; the step then shows
+  skipped as `no package source configured`. `--no-fetch` skips it on purpose.
 
 ---
 
@@ -766,8 +873,14 @@ clean     deletes each moved copy that is byte-identical to its archived member;
 **Count and names are not enough.** The importer refuses a defective file before `--override`
 deletes its old parquet, so a refused file keeps its old parquet under the same name, and the
 archive and the index still agree file for file. `verify` therefore also checks that no selected file
-is left in the inbox and that every selected parquet was written after its member was extracted. The
-tool's own docstring has the details; it has no entry point in `python/cli/` on purpose.
+is left in the inbox or was refused to `data/refused/`, and that every selected parquet was written
+after its member was extracted — the one check that also catches an import run without
+`--override`, whose duplicates move on like any other file. The tool's own docstring has the
+details; it has no entry point in `python/cli/` on purpose.
+
+**A whole zip can be re-imported without the tool:** copy it into `data/raw/` and run the import
+with `--override`. The tool remains the way to select some members of a zip, and to prove the
+re-import complete.
 
 ---
 

@@ -47,6 +47,8 @@ def _paths(root: Path) -> ImportPaths:
         tick_source=root / 'raw',
         tick_target=root / 'processed',
         tick_finished=root / 'finished',
+        tick_unpacking=root / 'unpacking',
+        tick_refused=root / 'refused',
         signal_source=root / 'raw' / 'signals',
         signal_target=root / 'processed' / 'signals',
         signal_finished=root / 'finished' / 'signals',
@@ -105,6 +107,13 @@ class TestBothArchives:
         assert statuses.pop(ImportStepId.CACHES) == ImportStepStatus.SKIPPED
         caches = _step(coordinator, ImportStepId.CACHES)
         assert caches.detail == 'not the production archive'
+        # No zip in the inbox: the unpacking step is shown, and skipped
+        assert statuses.pop(ImportStepId.TICKS_UNPACK) == ImportStepStatus.SKIPPED
+        assert _step(coordinator, ImportStepId.TICKS_UNPACK).detail == 'no zip in the inbox'
+        # No package source: the package exchange is shown, and skipped
+        for step_id in (ImportStepId.PACKAGES_FETCH, ImportStepId.PACKAGES_RECEIPT):
+            assert statuses.pop(step_id) == ImportStepStatus.SKIPPED
+            assert _step(coordinator, step_id).detail == 'no package source configured'
         assert all(status == ImportStepStatus.DONE for status in statuses.values()), statuses
 
         log_text = coordinator.get_log_path().read_text(encoding='utf-8')
@@ -122,7 +131,8 @@ class TestBothArchives:
         encoded = frame_to_json(coordinator._tracker.snapshot())
         json.dumps(encoded)
         assert encoded['outcome'] == ImportOutcome.COMPLETED.value
-        assert encoded['steps'][0]['step_id'] == ImportStepId.SCAN.value
+        # The package fetch runs ahead of the scan, so it is the first step
+        assert encoded['steps'][0]['step_id'] == ImportStepId.PACKAGES_FETCH.value
 
     def test_scan_names_the_broker_from_the_file_head(self, tmp_path):
         paths = _paths(tmp_path)

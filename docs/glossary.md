@@ -453,9 +453,11 @@ delay in a backtest, measured live, and empty where the answer was learned by as
 
 **inbox** — Three different places, so the bare word is not used alone:
 - **import inbox** — the folder a producer's files wait in until an import takes them: `data/raw/`
-  for tick exports, `data/raw/signals/` for signal JSONL. An import writes the archive from it and
-  moves each file it imported to `data/finished/`; a file it refused, or skipped as a duplicate,
-  stays where it is. The import screen's first step scans both. See [Data Import
+  for tick exports, `data/raw/signals/` for signal JSONL. An import writes the archive from it.
+  Every tick import drains `data/raw/`: a file the archive took — written, or skipped as a
+  duplicate — moves to `data/finished/`, one it refused or failed on to `data/refused/` with its
+  reason beside it; a zip there is unpacked and moves on the same way. The signal inbox keeps its
+  own rule. The import screen's first step scans both. See [Data Import
   Pipeline](data_pipeline/data_import_pipeline.md#the-import-screen-its-log-and-its-estimate).
 - **signal inbox** (`SignalInbox`) — the buffer between a signal stream's transport thread and the
   loop: it holds the snapshots that arrived until the loop takes them. See [Signal Data
@@ -950,6 +952,12 @@ they arrive as they happen.
 
 **sweep** — A parameter search that runs one backtest per combination, each naming the sweep as
 its parent. Not itself a run. See [Parameter Optimization](architecture/parameter_optimization_system.md).
+
+**tick package** — One weekly delivery of the data collector's finished tick files: a zip per
+collector with a manifest naming every file and its SHA-256, sealed at a UTC cutoff (#120). The
+import fetches it, imports it like any zip and acknowledges it with the zip's hash. Not a Python
+package, and not the *data package* a user downloads to run the IDE out of the box (#564). See [Data
+Import Pipeline](data_pipeline/data_import_pipeline.md#fetching-the-collectors-packages).
 
 **tick source** — The AutoTrader component that feeds ticks into the loop, chosen by
 `tick_source.type`: the replaying `mock` source or a venue feed.
