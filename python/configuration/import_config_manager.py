@@ -95,6 +95,38 @@ class ImportConfigManager:
             )
         return resolve_in_data_home(path)
 
+    def get_data_unpacking_path(self) -> str:
+        """
+        Get the directory the files of a zip in the tick inbox are unpacked into.
+
+        Returns:
+            Path string for the unpacking directory
+        """
+        paths = self._config.get('paths', {})
+        path = paths.get('data_unpacking')
+        if not path:
+            raise ValueError(
+                "Missing required path 'data_unpacking' in import_config.json. "
+                "Add to 'paths' section: \"data_unpacking\": \"data/unpacking\""
+            )
+        return resolve_in_data_home(path)
+
+    def get_data_refused_path(self) -> str:
+        """
+        Get the directory the import moves refused tick files and zips into.
+
+        Returns:
+            Path string for the refused directory
+        """
+        paths = self._config.get('paths', {})
+        path = paths.get('data_refused')
+        if not path:
+            raise ValueError(
+                "Missing required path 'data_refused' in import_config.json. "
+                "Add to 'paths' section: \"data_refused\": \"data/refused\""
+            )
+        return resolve_in_data_home(path)
+
     def get_data_external_path(self) -> str:
         """
         Get the external history store — a venue's published archives, kept unchanged.

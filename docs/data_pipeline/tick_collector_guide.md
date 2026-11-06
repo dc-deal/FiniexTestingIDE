@@ -95,6 +95,8 @@ Professional tick data collector for MetaTrader 5 with tiered error tracking and
 input string ExportPath = "";                    // Empty = MQL5 default folder
 input bool CollectTicks = true;                  // Enable/disable collection
 input int MaxTicksPerFile = 50000;               // Ticks per file (rotation)
+input int FlushIntervalSeconds = 5;              // Seconds between pushes of the open file to disk
+input bool CloseAtUtcMidnight = true;            // Close the open file at 00:00 UTC
 input bool IncludeRealVolume = true;             // Collect real volume
 input bool IncludeTickFlags = true;              // Collect tick flags
 ```
@@ -192,7 +194,7 @@ From data format **1.7.0** every exported file carries an `origin` block:
   "instance_id": "dc0db6a25f15",
   "collected_on": "LAPTOP-Q267UHDA",
   "producer": "finiex-mt5-collector",
-  "producer_version": "1.2.0"
+  "producer_version": "1.3.0"
 }
 ```
 
@@ -434,6 +436,35 @@ data_reliability_score = 1.0 - ((serious_errors + fatal_errors) / total_ticks)
 
 ## File Rotation System
 
+A file ends at whichever comes first: its 50,000th tick, 00:00 UTC, or the collector's stop.
+
+### Daily Close at 00:00 UTC
+
+From collector version 1.3.0 the open file is closed at 00:00 UTC, as the Kraken collector closes
+its files. A file therefore never reaches past the weekly package cutoff (Monday 00:00 UTC), which
+holds back every file whose last tick lies beyond it.
+
+- **A file opens with its first tick.** The weekend and a holiday leave no file at all: Friday's
+  file closes at 00:00 UTC on Saturday with all of Friday's ticks, and the next one opens with the
+  first tick on Sunday evening. There is no market-day check in the collector and none is needed.
+- **A file without a tick is discarded, never finished** — at the midnight close and at the
+  collector's stop alike, so no archive without content arises.
+- **A one-second timer closes the file in a quiet market**, where no tick would arrive to do it. It
+  returns at once when there is nothing to do; it never waits, so it cannot hold up the ticks.
+- **One stamp decides the file:** a tick's `collected_msc` (UTC) is taken before the file is chosen,
+  so a tick never lands in a file whose UTC day it does not belong to.
+- `CloseAtUtcMidnight = false` restores the tick-count rotation alone.
+
+### Flushing to Disk
+
+MT5 holds file writes in a buffer of its own and hands them to the disk in 256 KB blocks, which is
+why the size of an open `.part` grows in steps of 256 KB. Without a flush, a hard stop of the
+terminal loses what the buffer held — for a quiet pair, an hour of ticks — and leaves the file cut in
+the middle of a tick (`python/experiments/recover_part_files/` finishes such a file; the lost tail
+it cannot bring back). From version 1.3.0 the collector flushes the open file every
+`FlushIntervalSeconds` (5 by default) while it has written something, so a hard stop loses at most
+those seconds.
+
 ### Tick-Based Rotation
 
 Files rotate based on **tick count**, not file size:
@@ -463,7 +494,8 @@ Tick 50,001: Write to new file
 
 **Key Properties:**
 - **Seamless:** No data loss during rotation
-- **Predictable:** File size based on tick count
+- **Predictable:** File size based on tick count, on busy pairs; the daily close cuts a quiet pair's
+  file shorter
 - **Atomic:** Rotation happens between OnTick() calls
 
 ### File Naming Convention

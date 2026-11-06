@@ -4,7 +4,7 @@ Command-line tools for tick data import and inspection
 
 Usage:
     python python/cli/data_index_cli.py import [--override] [--only ticks|signals]
-                                               [--include-finished] [--no-display]
+                                               [--include-finished] [--no-display] [--no-fetch]
     python python/cli/data_index_cli.py tick-data-report [BROKER_TYPE]
     python python/cli/data_index_cli.py inspect BROKER_TYPE SYMBOL [TIMEFRAME]
 
@@ -21,6 +21,7 @@ from python.data_management.importers.import_coordinator import (
     IMPORT_EXIT_CODES,
     ImportCoordinator,
     import_paths_from_config,
+    package_client_from_config,
 )
 from python.data_management.importers.tick_data_reporter import run_summary_report
 from python.data_management.index.bars_index_manager import BarsIndexManager
@@ -49,7 +50,8 @@ class DataIndexCli:
         self.bar_index_manager = BarsIndexManager()
 
     def cmd_import(self, override: bool = False, only: str = None,
-                   include_finished: bool = False, show_display: bool = True) -> int:
+                   include_finished: bool = False, show_display: bool = True,
+                   fetch: bool = True) -> int:
         """
         Import both inboxes: tick exports, then signal JSONL.
 
@@ -58,6 +60,7 @@ class DataIndexCli:
             only: 'ticks' or 'signals' to import one archive only, None for both
             include_finished: If True, also re-read the finished signal archive
             show_display: If False, log line by line instead of the live screen
+            fetch: If False, fetch no package from the data collector first
 
         Returns:
             The process exit code for the import's outcome
@@ -69,6 +72,8 @@ class DataIndexCli:
             include_finished=include_finished,
             show_display=show_display,
             channel=RunChannel.CLI,
+            package_client=package_client_from_config() if fetch else None,
+            no_fetch_reason='no package source configured' if fetch else 'skipped by --no-fetch',
         )
         return IMPORT_EXIT_CODES[coordinator.run()]
 
@@ -143,6 +148,9 @@ def main():
     import_parser.add_argument(
         '--no-display', action='store_true', default=False,
         help='Log line by line instead of showing the live screen')
+    import_parser.add_argument(
+        '--no-fetch', action='store_true', default=False,
+        help="Fetch no package from the data collector's package service first")
 
     # ─────────────────────────────────────────────────────────────────────────
     # TICK-DATA-REPORT command
@@ -184,6 +192,7 @@ def main():
                 only=args.only,
                 include_finished=args.include_finished,
                 show_display=not args.no_display,
+                fetch=not args.no_fetch,
             ))
 
         elif args.command == 'tick-data-report':

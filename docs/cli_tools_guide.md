@@ -100,8 +100,8 @@ them to Parquet and renders the bars for every configured timeframe.
 | | |
 |---|---|
 | **VS Code** | `📥 Import` · `📥 Import (Override)` |
-| **CLI** | `python python/cli/data_index_cli.py import [--override] [--only ticks\|signals] [--include-finished] [--no-display]` |
-| **Purpose** | Import the tick and the signal import inbox, render bars, rebuild the discovery caches |
+| **CLI** | `python python/cli/data_index_cli.py import [--override] [--only ticks\|signals] [--include-finished] [--no-display] [--no-fetch]` |
+| **Purpose** | Fetch the data collector's tick packages, import the tick and the signal import inbox, render bars, rebuild the discovery caches, acknowledge the packages taken |
 
 Each broker's timestamps are converted to UTC through its server clock rule in `market_config.json`
 (see [Data Import Pipeline](data_pipeline/data_import_pipeline.md)); `--override` re-imports files that
@@ -112,6 +112,8 @@ already have a Parquet. Ticks come first, then the signals, then the discovery c
 - `--only ticks` / `--only signals` — import only one of the two import inboxes
 - `--include-finished` — also re-read the finished signal archive
 - `--no-display` — log line by line instead of showing the live screen
+- `--no-fetch` — fetch no package from the data collector first (see [Fetching the collector's
+  packages](data_pipeline/data_import_pipeline.md#fetching-the-collectors-packages))
 
 In a terminal the import shows one live screen with every step, machine memory as a bar and an
 estimate from earlier imports; every line also goes to its own log file, which the summary names

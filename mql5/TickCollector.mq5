@@ -12,7 +12,7 @@
 // One number, two renderings. The bare form goes on the wire as `producer_version`,
 // because a consumer reads that field across three producers and two spellings of a
 // version is two things to get wrong; the "V" form is for the console only.
-#define PRODUCER_VERSION     "1.2.0"
+#define PRODUCER_VERSION     "1.3.0"
 #define EA_VERSION           "V" PRODUCER_VERSION
 // Schema version of the exported JSON. A constant, not an input: the version
 // identifies the code that wrote the file and must not be set per chart.
@@ -70,6 +70,14 @@ struct ErrorInfo
 input string ExportPath = "";
 input bool CollectTicks = true;
 input int MaxTicksPerFile = 50000;
+// Seconds between pushes of the open file to disk. MT5 holds file writes in a buffer of its own
+// and hands them to the disk in 256 KB blocks, so without a flush a hard stop of the terminal
+// loses up to that much - for a quiet pair, an hour of ticks.
+input int FlushIntervalSeconds = 5;
+// Close the open file at 00:00 UTC, like the Kraken collector, so a file never reaches past the
+// weekly package cutoff (Monday 00:00 UTC). A file opens only with its first tick, so a weekend or
+// a holiday leaves no file at all.
+input bool CloseAtUtcMidnight = true;
 input bool IncludeRealVolume = true;
 input bool IncludeTickFlags = true;
 input ENUM_TIMEFRAMES VolumeTimeframe = PERIOD_M1;
@@ -112,6 +120,13 @@ string g_collectedOn    = "";  // hostname, forensic only; nothing decides on it
 long  g_collectedMs     = 0;   // last emitted collection timestamp (epoch ms, UTC)
 int   g_anchorResyncs   = 0;   // how often the OS clock jumped backwards
 long  g_maxCorrectionMs = 0;   // largest backwards jump absorbed
+
+// The open file's UTC day, and when it last went to disk. The flush interval is a duration, so it
+// is measured on the monotonic GetTickCount64(), never on the wall clock.
+#define MS_PER_DAY 86400000
+long  g_fileUtcDay        = -1;    // days since 1970-01-01 UTC
+ulong g_lastFlushMs       = 0;
+bool  g_writtenSinceFlush = false;
 
 // Erweiterte Validierungsparameter
 double maxSpreadPercent = 5.0;        // Max 5% Spread
@@ -346,6 +361,13 @@ int OnInit()
     Print("✅ Export-Pfad: ", ExportPath);
     Print("✅ Gestuftes Error-Tracking aktiviert (Negligible:", LogNegligibleErrors, 
           " Serious:", LogSeriousErrors, " Fatal:", LogFatalErrors, ")");
+
+    // One timer drives the flush and the midnight close of a quiet market. A timer that cannot be
+    // set stops nothing: the file then closes with the first tick after midnight, and at
+    // MaxTicksPerFile, as before.
+    g_lastFlushMs = GetTickCount64();
+    if (!EventSetTimer(1))
+        Print("⚠ Timer could not be set - no periodic flush; the midnight close waits for a tick");
     
     return INIT_SUCCEEDED;
 }
@@ -390,7 +412,19 @@ void OnTick()
     // Tick nur exportieren wenn nicht fatal oder wenn fatale Errors erlaubt sind
     if (worstSeverity != ERROR_FATAL || !StopOnFatalErrors)
     {
-        if (ExportTick(tick))
+        // Collection timestamp, read straight from the OS clock (UTC). One stamp decides both
+        // the file and the tick's collected_msc, so a tick never lands in a file whose UTC day
+        // it does not belong to
+        long collectedMsc = NextCollectedMsc();
+        CloseIfDayEnded(collectedMsc);
+        // A file opens with the first tick it holds: a weekend or a holiday leaves none
+        if (fileHandle == INVALID_HANDLE)
+        {
+            if (!CreateNewExportFile())
+                return;
+            g_fileUtcDay = collectedMsc / MS_PER_DAY;
+        }
+        if (ExportTick(tick, collectedMsc))
         {
             tickCounter++;
             UpdateLastTickData(tick);
@@ -759,6 +793,8 @@ bool CreateNewExportFile()
     
     FileWriteString(fileHandle, header);
     tickCounter = 0;
+    g_fileUtcDay = UtcMscPrecise() / MS_PER_DAY;
+    g_writtenSinceFlush = true;
     
     Print("✅ Neue Export-Datei erstellt: ", currentWorkFileName);
     Print("   → Local Device Time: ", TimeToString(localTime, TIME_DATE | TIME_SECONDS));
@@ -813,7 +849,7 @@ long NextCollectedMsc()
 //+------------------------------------------------------------------+
 //| Exportiert einzelnen Tick als JSON                             |
 //+------------------------------------------------------------------+
-bool ExportTick(MqlTick &tick)
+bool ExportTick(MqlTick &tick, long collectedMsc)
 {
     if (fileHandle == INVALID_HANDLE) return false;
     
@@ -852,9 +888,6 @@ bool ExportTick(MqlTick &tick)
     }
     
     string session = GetTradingSession(tick.time);
-    
-    // Collection timestamp, read straight from the OS clock (UTC)
-    long collectedMsc = NextCollectedMsc();
 
     // JSON-Objekt erstellen
     // NOTE: tick.time bleibt in BROKER SERVER ZEIT (unverändert!)
@@ -878,6 +911,7 @@ bool ExportTick(MqlTick &tick)
     );
     
     FileWriteString(fileHandle, jsonTick);
+    g_writtenSinceFlush = true;
     return true;
 }
 
@@ -1033,11 +1067,72 @@ string GenerateDataQualityRecommendations()
 }
 
 //+------------------------------------------------------------------+
+//| Close the open file once its UTC day has ended                   |
+//|                                                                  |
+//| Like the Kraken collector, a file ends at 00:00 UTC, so it never |
+//| reaches past the weekly package cutoff. A file without a tick is |
+//| discarded rather than finished - no archive without content; the|
+//| next file opens with the next tick.                              |
+//|                                                                  |
+//| Args:                                                            |
+//|   utcMs - the instant checked, epoch milliseconds UTC            |
+//+------------------------------------------------------------------+
+void CloseIfDayEnded(long utcMs)
+{
+    if (!CloseAtUtcMidnight || fileHandle == INVALID_HANDLE) return;
+    if (utcMs / MS_PER_DAY == g_fileUtcDay) return;
+    if (tickCounter == 0)
+        DiscardCurrentFile();
+    else
+        CloseCurrentFile();
+}
+
+//+------------------------------------------------------------------+
+//| Discard the open file while it holds no tick                     |
+//|                                                                  |
+//| It carries a header only. Finished, it would be an archive       |
+//| without content; deleted, nothing is lost.                       |
+//+------------------------------------------------------------------+
+void DiscardCurrentFile()
+{
+    if (fileHandle == INVALID_HANDLE) return;
+    FileClose(fileHandle);
+    fileHandle = INVALID_HANDLE;
+    if (FileDelete(currentWorkFileName))
+        Print("ℹ Empty export file discarded: ", currentWorkFileName);
+    else
+        Print("FEHLER: Empty export file could not be deleted: ", currentWorkFileName,
+              " (", GetLastError(), ")");
+}
+
+//+------------------------------------------------------------------+
+//| Timer: the flush, and the midnight close of a quiet market       |
+//|                                                                  |
+//| Runs every second and returns at once when there is nothing to   |
+//| do; it never waits, so it cannot hold up the ticks.              |
+//+------------------------------------------------------------------+
+void OnTimer()
+{
+    CloseIfDayEnded(UtcMscPrecise());
+    if (fileHandle == INVALID_HANDLE || !g_writtenSinceFlush) return;
+    ulong nowMs = GetTickCount64();
+    if (nowMs - g_lastFlushMs < (ulong)FlushIntervalSeconds * 1000) return;
+    FileFlush(fileHandle);
+    g_lastFlushMs = nowMs;
+    g_writtenSinceFlush = false;
+}
+
+//+------------------------------------------------------------------+
 //| Expert Advisor Deinitialisierung                               |
 //+------------------------------------------------------------------+
 void OnDeinit(const int reason)
 {
-    CloseCurrentFile();
+    EventKillTimer();
+    // A file that holds no tick is no archive: it is discarded, never finished
+    if (tickCounter == 0)
+        DiscardCurrentFile();
+    else
+        CloseCurrentFile();
     
     string reasonText = "";
     switch(reason)

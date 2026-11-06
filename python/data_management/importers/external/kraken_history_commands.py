@@ -145,9 +145,9 @@ class KrakenHistoryCommands:
         Prove a conversion imported, zip its files into the raw archive, remove the loose copies.
 
         The four checks of the import protocol, over exactly the files the conversion wrote:
-        count and names against the tick index, none left in the inbox, every parquet written
-        after the conversion. Only all four together prove the import complete; a file the
-        import refused keeps whatever was there before, and count and names alone would pass.
+        count and names against the tick index, none left in the inbox or refused, every parquet
+        written after the conversion. Only all four together prove the import complete; a file
+        the import refused keeps whatever was there before, and count and names alone would pass.
 
         Args:
             zip_name: File name of the zip under data/finished/Archives/
@@ -162,6 +162,7 @@ class KrakenHistoryCommands:
         converted_at = datetime.fromisoformat(record['converted_at'])
         raw_dir = Path(record['raw_dir'])
         finished_dir = Path(ImportConfigManager().get_data_finished_path())
+        refused_dir = Path(ImportConfigManager().get_data_refused_path())
 
         index = self._tick_index(force=True)
         parquet_by_source = {
@@ -176,8 +177,12 @@ class KrakenHistoryCommands:
                             f'e.g. {missing[0]}')
         left = [name for name in names if (raw_dir / name).exists()]
         if left:
-            failures.append(f'inbox: {len(left)} file(s) still in {raw_dir} — refused by the '
-                            f'import, or not imported yet, e.g. {left[0]}')
+            failures.append(f'inbox: {len(left)} file(s) still in {raw_dir} — not imported yet, '
+                            f'e.g. {left[0]}')
+        refused = [name for name in names if (refused_dir / name).exists()]
+        if refused:
+            failures.append(f'refused: {len(refused)} file(s) in {refused_dir}, each with the '
+                            f'reason beside it, e.g. {refused[0]}')
         stale = [name for name in names if name in parquet_by_source
                  and self._processed_at(parquet_by_source[name]) <= converted_at]
         if stale:
