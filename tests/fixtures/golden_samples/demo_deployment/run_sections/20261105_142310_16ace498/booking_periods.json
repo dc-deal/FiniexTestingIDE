@@ -1,0 +1,107 @@
+{
+  "run_id": "20261105_142310_16ace498",
+  "keys": {
+    "periods": [
+      "unit_name",
+      "period_no"
+    ],
+    "unit_totals": [
+      "unit_name"
+    ]
+  },
+  "periods": [
+    {
+      "unit_name": "demo_btcusd_bot",
+      "period_no": 1,
+      "opened_at": "2026-02-01T18:00:00.055000+00:00",
+      "closed_at": "2026-02-02T00:00:00+00:00",
+      "reason": "anchor",
+      "currency": "USD",
+      "trade_count": 0,
+      "tick_count": 24252,
+      "net_pnl": 0.0,
+      "total_fees": 0.0,
+      "commission_cost": 0.0,
+      "swap_cost": 0.0,
+      "spread_cost": 0.0,
+      "modelled_spread_cost": 0.0,
+      "win_rate": 0.0,
+      "profit_factor": null,
+      "opening_equity": 10000.0,
+      "final_equity": 9937.808799999999,
+      "min_equity": 9816.1688,
+      "max_equity": 10017.568800000001,
+      "max_drawdown": 201.40000000000146,
+      "account_max_drawdown": 201.40000000000146,
+      "account_max_dd_pct": 2.0104678492450327,
+      "unrealized_pnl": -62.1912000000003,
+      "open_position_count": 1
+    },
+    {
+      "unit_name": "demo_btcusd_bot",
+      "period_no": 2,
+      "opened_at": "2026-02-02T00:00:00+00:00",
+      "closed_at": "2026-02-02T15:00:41.776000+00:00",
+      "reason": "session_end",
+      "currency": "USD",
+      "trade_count": 2,
+      "tick_count": 65748,
+      "net_pnl": 1.2142399999996911,
+      "total_fees": 245.50576,
+      "commission_cost": 245.50576,
+      "swap_cost": 0.0,
+      "spread_cost": 0.680000000000291,
+      "modelled_spread_cost": 0.0,
+      "win_rate": 0.5,
+      "profit_factor": 1.0402185549089962,
+      "opening_equity": 9937.808799999999,
+      "final_equity": 10001.214240000001,
+      "min_equity": 9861.204160000001,
+      "max_equity": 10062.69416,
+      "max_drawdown": 197.05463999999847,
+      "account_max_drawdown": 201.40000000000146,
+      "account_max_dd_pct": 2.0104678492450327,
+      "unrealized_pnl": 0.0,
+      "open_position_count": 0
+    }
+  ],
+  "unit_totals": [
+    {
+      "unit_name": "demo_btcusd_bot",
+      "currency": "USD",
+      "period_count": 2,
+      "opened_at": "2026-02-01T18:00:00.055000+00:00",
+      "closed_at": "2026-02-02T15:00:41.776000+00:00",
+      "trade_count": 2,
+      "net_pnl": 1.2142399999996911,
+      "total_fees": 245.50576,
+      "commission_cost": 245.50576,
+      "swap_cost": 0.0,
+      "spread_cost": 0.680000000000291,
+      "modelled_spread_cost": 0.0,
+      "gross_profit": 31.405279999999408,
+      "gross_loss": 30.191039999999717,
+      "win_rate": 0.5,
+      "profit_factor": 1.0402185549089962,
+      "opening_equity": 10000.0,
+      "final_equity": 10001.214240000001,
+      "min_equity": 9816.1688,
+      "max_equity": 10062.69416,
+      "deepest_period_drawdown": 201.40000000000146,
+      "account_max_drawdown": 201.40000000000146,
+      "account_max_dd_pct": 2.0104678492450327
+    }
+  ],
+  "currency": "USD",
+  "currencies": [
+    "USD"
+  ],
+  "total_net_pnl": 1.2142399999996911,
+  "total_fees": 245.50576,
+  "total_trades": 2,
+  "run_net_pnl": 1.2142399999996911,
+  "run_total_trades": 2,
+  "reconciles": true,
+  "deepest_period_drawdown": 201.40000000000146,
+  "total_final_equity": 10001.214240000001
+}

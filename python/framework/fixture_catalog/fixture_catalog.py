@@ -7,8 +7,8 @@ CURRENT fixture, derived from the production record and never written into a run
 
 The properties are the ones the consumers assert. FiniexViewer replays its tests from the
 report-coverage run, the demo deployment and the state-frame session; #557 freezes its golden
-samples from the backtest, the mock sessions, the deployment and the sweep — both pipelines, both
-account models.
+samples from the backtest, the mock sessions, the deployment, the sweep and the signal-and-feed
+backtest — both pipelines, both account models.
 """
 
 from collections import defaultdict
@@ -232,6 +232,34 @@ def _reported(evidence: FixtureEvidence) -> bool:
         Whether the production carries this property
     """
     return bool(evidence.runs) and all(run.artifacts for run in evidence.runs)
+
+
+def _signal_worker(evidence: FixtureEvidence) -> bool:
+    """
+    A run's strategy reads a signal worker that resolved ticks.
+
+    Args:
+        evidence: What the production made, as the API serves it
+
+    Returns:
+        Whether the production carries this property
+    """
+    return any(summary.signal_fresh_ratio is not None
+               for summary in evidence.run_summary.values())
+
+
+def _feeds_disturbed(evidence: FixtureEvidence) -> bool:
+    """
+    A run's feeds were disturbed by planned outages on more than one source.
+
+    Args:
+        evidence: What the production made, as the API serves it
+
+    Returns:
+        Whether the production carries this property
+    """
+    return any(summary.disturbance_stress_injected > 0 and summary.disturbance_source_count > 1
+               for summary in evidence.run_summary.values())
 
 
 def _orders_simulated(evidence: FixtureEvidence) -> bool:
@@ -612,6 +640,21 @@ FIXTURE_CATALOG: Tuple[FixtureEntry, ...] = (
         ),
     ),
     FixtureEntry(
+        entry_id='signal_feed',
+        title='One backtest whose strategy reads a signal worker, its signal sources and its '
+              'tick feeds disturbed by planned outages',
+        producer=FixtureProducerKind.SCENARIO_SET,
+        source='configs/scenario_sets/backtesting/signal_feed_disturbance_reference.json',
+        consumers=(_GOLDEN_SAMPLES,),
+        properties=(
+            FixtureProperty('reported', 'The run reaches its report', _reported),
+            FixtureProperty('signal_worker', 'Its strategy reads a signal worker that resolved '
+                            'ticks', _signal_worker),
+            FixtureProperty('feeds_disturbed', 'Planned outages disturb more than one of its '
+                            'sources', _feeds_disturbed),
+        ),
+    ),
+    FixtureEntry(
         entry_id='sweep',
         title='A small parameter sweep — every combination an ordinary backtest of its parent',
         producer=FixtureProducerKind.SWEEP,
@@ -630,6 +673,16 @@ FIXTURE_CATALOG: Tuple[FixtureEntry, ...] = (
 
 FIXTURE_CATALOG_BY_ID: Dict[str, FixtureEntry] = {entry.entry_id: entry
                                                   for entry in FIXTURE_CATALOG}
+
+
+def golden_sample_entries() -> List[FixtureEntry]:
+    """
+    The entries #557 freezes its golden samples from.
+
+    Returns:
+        Every entry whose consumers name the golden samples, in catalog order
+    """
+    return [entry for entry in FIXTURE_CATALOG if _GOLDEN_SAMPLES in entry.consumers]
 
 
 def entry_ids() -> List[str]:

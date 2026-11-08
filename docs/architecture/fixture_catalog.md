@@ -76,6 +76,42 @@ the sweep they belong to, so a sweep is not counted.
 `verify` checks the current production again without producing anything — after a contract change,
 it says whether the pinned runs still carry what their consumers assert.
 
+## Golden samples — a production's aggregates, frozen
+
+The aggregation refactor (#557) moves every aggregate the reports serve onto one component, and it
+must move no number. What proves that is a set of runs whose aggregates were frozen before
+anything moved — and the catalog already reproduces such runs on demand. `freeze` writes an entry's
+current production into `tests/fixtures/golden_samples/<entry>/`:
+
+```
+python python/cli/fixture_catalog_cli.py freeze report_coverage
+python python/cli/fixture_catalog_cli.py freeze --all
+```
+
+- **What is frozen:** each run's report sections, as the section writer writes them — the inputs
+  every aggregate is computed from and the aggregates the run recorded beside them; the ledger
+  rows and run index rows the read-time views are composed from; and those views, as the routes
+  compose them from the real stores. A sweep freezes its ledger rows only: its combinations are
+  ordinary backtests whose sections repeat what the report-coverage backtest covers, at several
+  megabytes, and what only a sweep has — its ranking — is composed from ledger rows.
+- **Where it comes from:** the sample's header names the production and when it ran, when the
+  sample was frozen, the contract, and for every run the code it ran on, read from its own header —
+  the commit, the branch, whether the tree was clean, and the hash of any uncommitted change.
+- **Nothing doubtful is written.** The sample is written to a scratch folder, read back, and every
+  aggregate is rebuilt from what was read and compared field by field with what the run recorded;
+  the views are composed from the frozen rows and compared with what the stores answer. One field
+  that is not reproduced refuses the freeze. So does a production made on an uncommitted tree,
+  unless `--allow-dirty` is given for a sample that is not committed.
+
+The suite `tests/framework/golden_samples/` runs the same checks on every committed sample. A few
+families are frozen and not rebuilt yet, each with its reason in `FROZEN_NOT_REBUILT`: their folds
+read what exists only while a run runs, or sit inline in their builders until #557 lifts them out.
+
+**A sample does not go stale by age, only by intent.** It stays the reference as long as the code
+it guards should compute the same numbers. When a change is meant to move a number or a served
+shape, the entry is produced and frozen again and the review reads the diff — the samples are what
+makes such a change visible field by field. A sample is removed only with the aggregates it guards.
+
 ## The production record
 
 `runs/fixture_productions.jsonl` records every production, one line each: the entry, when it

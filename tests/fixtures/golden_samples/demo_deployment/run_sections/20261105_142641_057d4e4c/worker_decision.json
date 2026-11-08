@@ -1,0 +1,107 @@
+{
+  "run_id": "20261105_142641_057d4e4c",
+  "units": [
+    {
+      "name": "demo_btcusd_bot",
+      "symbol": "BTCUSD",
+      "decision_logic_type": "CORE/simple_consensus",
+      "decision_logic_name": "simple_consensus",
+      "worker_decision_tracked": true,
+      "decision_count": 90000,
+      "buy_signals": 604,
+      "sell_signals": 875,
+      "flat_signals": 88521,
+      "trades_requested": 1,
+      "decision_total_time_ms": 1379.4290563237155,
+      "decision_avg_time_ms": 0.015,
+      "decision_min_time_ms": 0.007,
+      "decision_max_time_ms": 1.655,
+      "ticks_processed": 90000,
+      "parallel_workers": false,
+      "parallel_time_saved_ms": 0.0,
+      "parallel_avg_saved_per_tick_ms": 0.0,
+      "workers": [
+        {
+          "worker_type": "CORE/rsi",
+          "worker_name": "rsi_fast",
+          "call_count": 90000,
+          "total_time_ms": 5006.284620616498,
+          "avg_time_ms": 0.056,
+          "min_time_ms": 0.028,
+          "max_time_ms": 6.662,
+          "compute_basis": "live",
+          "last_compute_tick": 90000,
+          "compute_ratio_pct": 100.0,
+          "ticks_idle": 0
+        },
+        {
+          "worker_type": "CORE/bollinger",
+          "worker_name": "bollinger_main",
+          "call_count": 90000,
+          "total_time_ms": 3368.85614251878,
+          "avg_time_ms": 0.037,
+          "min_time_ms": 0.02,
+          "max_time_ms": 5.252,
+          "compute_basis": "live",
+          "last_compute_tick": 90000,
+          "compute_ratio_pct": 100.0,
+          "ticks_idle": 0
+        },
+        {
+          "worker_type": "CORE/obv",
+          "worker_name": "obv_volume",
+          "call_count": 90000,
+          "total_time_ms": 3611.295437433,
+          "avg_time_ms": 0.04,
+          "min_time_ms": 0.023,
+          "max_time_ms": 5.264,
+          "compute_basis": "live",
+          "last_compute_tick": 90000,
+          "compute_ratio_pct": 100.0,
+          "ticks_idle": 0
+        }
+      ]
+    }
+  ],
+  "worker_totals": [
+    {
+      "worker_type": "CORE/rsi",
+      "worker_name": "rsi_fast",
+      "call_count": 90000,
+      "total_time_ms": 5006.284620616498,
+      "avg_time_ms": 0.05562538467351664,
+      "min_time_ms": 0.028,
+      "max_time_ms": 6.662,
+      "compute_basis": "live",
+      "last_compute_tick": -1,
+      "compute_ratio_pct": null,
+      "ticks_idle": null
+    },
+    {
+      "worker_type": "CORE/obv",
+      "worker_name": "obv_volume",
+      "call_count": 90000,
+      "total_time_ms": 3611.295437433,
+      "avg_time_ms": 0.040125504860366666,
+      "min_time_ms": 0.023,
+      "max_time_ms": 5.264,
+      "compute_basis": "live",
+      "last_compute_tick": -1,
+      "compute_ratio_pct": null,
+      "ticks_idle": null
+    },
+    {
+      "worker_type": "CORE/bollinger",
+      "worker_name": "bollinger_main",
+      "call_count": 90000,
+      "total_time_ms": 3368.85614251878,
+      "avg_time_ms": 0.037431734916875334,
+      "min_time_ms": 0.02,
+      "max_time_ms": 5.252,
+      "compute_basis": "live",
+      "last_compute_tick": -1,
+      "compute_ratio_pct": null,
+      "ticks_idle": null
+    }
+  ]
+}

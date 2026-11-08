@@ -10,6 +10,7 @@ from python.framework.fixture_catalog.fixture_catalog import (
     DECLARED_RUN_COUNT_SENTENCE,
 )
 from python.framework.types.fixture_catalog_types import FixtureEntry, FixtureProduction
+from python.framework.types.golden_sample_types import GoldenSampleFreeze
 
 
 def render_catalog(entries: List[FixtureEntry], current: Dict[str, FixtureProduction],
@@ -86,6 +87,37 @@ def render_verification(entry: FixtureEntry, production: Optional[FixtureProduct
     print(f'\n{mark} {entry.entry_id}: the production of {production.produced_at[:19]}Z')
     _print_ids(production)
     _print_failures(entry, failed)
+
+
+def render_freeze(result: GoldenSampleFreeze) -> None:
+    """
+    Print what one freeze wrote and where it came from.
+
+    Args:
+        result: The freeze
+    """
+    header = result.header
+    commits = sorted({run.commit or 'unknown' for run in header.runs})
+    unclean = [run.run_id for run in header.runs if run.dirty is not False]
+    print(f'\n🧊 {header.entry_id}: frozen from the production of {header.produced_at[:19]}Z')
+    print(f'   {len(header.runs)} run(s) on {", ".join(commits)} · '
+          f'contract {header.report_contract}')
+    print(f'   {result.block_checks} aggregate(s) rebuilt and compared, the read-time views for '
+          f'{result.view_subjects} subject(s) — every field reproduced')
+    if unclean:
+        print(f'   ⚠️  {len(unclean)} run(s) ran on an uncommitted tree — not a sample to commit')
+    print(f'   → {result.folder}')
+
+
+def render_freeze_refused(entry_id: str, reason: str) -> None:
+    """
+    Print why an entry was not frozen.
+
+    Args:
+        entry_id: The entry
+        reason: The refusal, as the error words it
+    """
+    print(f'\n❌ {entry_id}: not frozen — {reason}')
 
 
 def _print_ids(production: FixtureProduction) -> None:

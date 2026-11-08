@@ -1,0 +1,71 @@
+{
+  "run_id": "20261105_142310_16ace498",
+  "currencies": [
+    {
+      "currency": "USD",
+      "net_pnl": 1.2142399999996911,
+      "profit_factor": 1.0402185549089962,
+      "win_rate": 0.5,
+      "account_max_drawdown": 201.40000000000146,
+      "max_equity": 10062.69416,
+      "account_max_dd_pct": 2.0104678492450327,
+      "account_max_drawdown_unit": "demo_btcusd_bot",
+      "total_fees": 245.50576,
+      "fees_charged": 245.50576,
+      "gross_profit": 31.405279999999408,
+      "gross_loss": 30.191039999999717,
+      "total_trades": 2,
+      "winning_trades": 1,
+      "losing_trades": 1,
+      "unrealized_pnl": 0.0,
+      "final_equity": 10001.214240000001,
+      "total_final_equity": 10001.214240000001,
+      "total_initial_balance": 10000.0,
+      "unit_count": 1,
+      "open_position_count": 0,
+      "expectancy": null,
+      "avg_win_r": null,
+      "avg_loss_r": null,
+      "r_trade_count": 0,
+      "r_win_count": 0,
+      "r_loss_count": 0,
+      "avg_mae_winners": -48.35,
+      "avg_mae_losers": -122.31999999999971,
+      "avg_mfe_losers": 119.76999999999971,
+      "largest_mae": 122.31999999999971,
+      "largest_mfe": 153.46999999999971,
+      "avg_trade_duration_s": 14905.603,
+      "max_consecutive_wins": 1,
+      "max_consecutive_losses": 1
+    }
+  ],
+  "orders_submitted": 4,
+  "orders_adopted": 0,
+  "orders_executed": 4,
+  "orders_denied": 0,
+  "orders_rejected": 0,
+  "orders_cancelled": 0,
+  "orders_expired": 0,
+  "orders_undelivered": 0,
+  "orders_unaccounted": 0,
+  "sl_tp_triggered": 0,
+  "unit_count": 1,
+  "tick_timespan_seconds": 75641.721,
+  "tick_timespan_total_seconds": 75641.721,
+  "units_declared": 1,
+  "units_disabled": 0,
+  "units_absent": [],
+  "signal_fresh_ratio": null,
+  "disturbance_episode_count": 0,
+  "disturbance_stale_seconds": 0.0,
+  "disturbance_source_count": 0,
+  "disturbance_stress_injected": 0,
+  "keys": {
+    "currencies": [
+      "currency"
+    ],
+    "units_absent": [
+      "name"
+    ]
+  }
+}

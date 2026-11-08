@@ -13,7 +13,7 @@ keep it in `report_csv_io.py` and `report_filters.py`.
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Generic, Type, TypeVar
+from typing import Generic, Optional, Type, TypeVar
 
 from pydantic import BaseModel
 
@@ -62,3 +62,18 @@ def read_artifact(path: Path, spec: ArtifactSpec[T]) -> T:
         The decoded report
     """
     return spec.model.model_validate_json(Path(path).read_bytes())
+
+
+def read_artifact_in(folder: Path, spec: ArtifactSpec[T]) -> Optional[T]:
+    """
+    Read a report artifact from the folder `write_artifact` wrote it to.
+
+    Args:
+        folder: The folder holding the artifact
+        spec: Which artifact this is
+
+    Returns:
+        The decoded report, or None when the folder holds no such artifact
+    """
+    path = Path(folder) / spec.filename
+    return read_artifact(path, spec) if path.is_file() else None

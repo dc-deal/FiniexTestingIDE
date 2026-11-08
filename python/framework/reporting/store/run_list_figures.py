@@ -49,7 +49,7 @@ def get_run_list_figures(ledger_dir: Path) -> Dict[str, RunListFigures]:
         return cached[1]
     # Stored under the stamp taken BEFORE the read: a read that rebuilds the index moves the
     # stamp, and a fragment appended during the read must not hide behind the new one.
-    figures = _fold(RunResultsLedger(ledger_dir).read_rows())
+    figures = fold_run_list_figures(RunResultsLedger(ledger_dir).read_rows())
     _cache[ledger_dir] = (stamp, figures)
     return figures
 
@@ -70,7 +70,7 @@ def _ledger_stamp(ledger_dir: Path) -> Optional[tuple]:
     return ledger_dir.stat().st_mtime_ns, names
 
 
-def _fold(rows: List[RunResultRow]) -> Dict[str, RunListFigures]:
+def fold_run_list_figures(rows: List[RunResultRow]) -> Dict[str, RunListFigures]:
     """
     Fold ledger rows into one figures entry per run.
 

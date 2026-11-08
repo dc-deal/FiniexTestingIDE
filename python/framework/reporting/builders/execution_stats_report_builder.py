@@ -57,12 +57,12 @@ def build_execution_stats_report(run_id: str, units: List[RunUnit]) -> Execution
         run_id=run_id, units=rows, totals=aggregate_execution_totals(rows),
         fill_slippage=[FillSlippageRow(name=name, **summary.model_dump())
                        for name, fills in fills_by_unit
-                       for summary in _slippage_summaries(fills)],
-        fill_slippage_totals=_slippage_summaries(
+                       for summary in slippage_summaries(fills)],
+        fill_slippage_totals=slippage_summaries(
             [fill for _, fills in fills_by_unit for fill in fills]))
 
 
-def _slippage_summaries(fills: List[FillSlippage]) -> List[FillSlippageSummary]:
+def slippage_summaries(fills: List[FillSlippage]) -> List[FillSlippageSummary]:
     """
     The slippage of a set of fills, one summary per reference kind present.
 
