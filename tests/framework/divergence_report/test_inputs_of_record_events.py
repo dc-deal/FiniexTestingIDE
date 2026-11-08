@@ -23,8 +23,8 @@ import pytest
 
 from python.configuration.app_config_manager import AppConfigManager
 from python.configuration.market_config_manager import MarketConfigManager
-from python.framework.batch.batch_orchestrator import BatchOrchestrator
 from python.framework.bars.warmup_history import WarmupHistory
+from python.framework.batch.batch_orchestrator import BatchOrchestrator
 from python.framework.factory.broker_config_factory import BrokerConfigFactory
 from python.framework.store.broker_config_freeze import freeze_broker_config
 from python.framework.types.api.report_types import RunReporting
